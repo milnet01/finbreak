@@ -52,9 +52,40 @@ for the full table and reasoning):
 
 ## Build and test
 
-(Filled in at P01 — Bootstrap, once `pyproject.toml` +
-`scripts/ci-local.sh` exist. The harness contract is specified in
-[`docs/specs/FIBR-0001.md`](docs/specs/FIBR-0001.md).)
+The harness contract is [`docs/specs/FIBR-0001.md`](docs/specs/FIBR-0001.md).
+
+**Requirements:** Python ≥ 3.12 and the `gitleaks` binary on `PATH` (a Go
+binary, not a pip package — install from your distro or the
+[gitleaks releases](https://github.com/gitleaks/gitleaks/releases)).
+
+**One-time dev setup** — isolated env + the pinned dev toolchain (ruff,
+bandit, pip-audit, pytest, pytest-qt):
+
+```bash
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install --upgrade pip      # PEP 735 --group needs pip >= 25.1
+python -m pip install --group dev
+```
+
+**Run the full gate** — the same stages CI runs (lint, format-check, bandit,
+pip-audit, gitleaks, tests; FIBR-0001 INV-1/INV-2):
+
+```bash
+./scripts/ci-local.sh
+```
+
+**Run tests / a single test** (INV-6):
+
+```bash
+pytest                                              # whole suite
+pytest -k package_imports                           # by keyword
+pytest tests/test_smoke.py::test_package_imports    # by node id
+```
+
+The gate runs `pytest -m "not perf"` (perf excluded; integration tests run).
+`pytest-qt`'s plugin is disabled via `pyproject.toml` `addopts` until PySide6
+lands at P02 — remove that line when the first GUI test is added.
 
 ## Commit conventions
 
@@ -79,7 +110,21 @@ header.
 
 ## Module map
 
-(Filled in at P01 — Bootstrap, once `src/` is non-empty.)
+`src` layout; the package is `finbreak`, found by pytest via
+`pythonpath = ["src"]` (no editable install needed for the gate).
+
+- `src/finbreak/` — the application package. Currently a placeholder
+  (`__init__.py` with `__version__`); UI / services / repositories / crypto
+  modules land from P02 (see [`docs/design.md`](docs/design.md) for the
+  layered architecture).
+- `tests/` — pytest suite. `tests/test_smoke.py` asserts the package imports;
+  `tests/features/<name>/` (spec.md + test) and `tests/fixtures/<rule>/` arrive
+  with the features they cover
+  ([`docs/standards/testing.md`](docs/standards/testing.md)).
+- `scripts/ci-local.sh` — the one-command quality + security gate.
+- `.github/workflows/ci.yml` — CI mirror; installs the dev group + gitleaks,
+  then invokes the gate script (single source of truth, INV-2).
+- `pyproject.toml` — metadata, pinned `dev` group, ruff / pytest / bandit config.
 
 ## Resumption flow — MANDATORY summarise-back
 

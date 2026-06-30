@@ -1,0 +1,17 @@
+# gitleaks config for finbreak's working-tree secret scan (FIBR-0001 INV-1/INV-5).
+#
+# `gitleaks dir .` scans files on disk, so it would otherwise crawl a local
+# virtualenv and VCS internals. Extend the default ruleset and ignore paths
+# that are not project source. This narrows WHERE we scan, not WHAT counts as a
+# secret — the full default detector set still applies to source files.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Ignore virtualenvs, VCS internals, and build output"
+paths = [
+  '''\.venv/''',
+  '''\.git/''',
+  '''dist/''',
+  '''build/''',
+]

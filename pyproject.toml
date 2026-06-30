@@ -1,0 +1,63 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "finbreak"
+version = "0.0.0"
+description = "Private, offline desktop app for understanding your personal finances."
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+authors = [{ name = "Anthony Schemel" }]
+
+# No runtime dependencies yet — the placeholder package ships no features
+# (FIBR-0001). PySide6, SQLCipher bindings, etc. arrive from P02 onward.
+
+# PEP 735 dev dependency group. Pinned EXACTLY (==) for a reproducible
+# toolchain across machines (FIBR-0001 INV-4); refreshed to latest-stable on
+# the periodic sweep (coding.md § 1.5 / global rule § 5c), not silently.
+# gitleaks is intentionally absent: it is a Go binary, not a pip package, and
+# is installed separately (see CLAUDE.md "Build and test").
+[dependency-groups]
+dev = [
+    "ruff==0.15.11",
+    "bandit==1.9.4",
+    "pip-audit==2.10.0",
+    "pytest==9.0.3",
+    "pytest-qt==4.5.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+# E/W pycodestyle, F pyflakes, I import-sort, UP pyupgrade (modern idioms,
+# coding.md § 1.5), B flake8-bugbear.
+select = ["E", "W", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+# pytest-qt is pinned in the dev group now (INV-4) but unusable until PySide6
+# lands at P02 — with no Qt binding its plugin aborts collection. Disable just
+# that plugin until then. P02 REMOVES this line when it adds PySide6 + the
+# first qtbot GUI test.
+addopts = "-p no:pytest-qt"
+# Categories registered so `-m` selection and the gate's `-m "not perf"`
+# exclusion work without "unknown marker" warnings (testing.md § 3.2–3.4).
+markers = [
+    "features: end-to-end feature-conformance tests (testing.md § 3.2)",
+    "integration: cross-component tests hitting a real DB/FS/subprocess (testing.md § 3.3)",
+    "perf: performance/throughput tests, excluded from the gate (testing.md § 3.4)",
+]
+
+[tool.bandit]
+# Scan the application package only. Test trees may hold intentional
+# bad-pattern fixtures for rule tests (testing.md § 3.5).
+exclude_dirs = ["tests", ".venv"]
