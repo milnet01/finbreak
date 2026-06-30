@@ -72,10 +72,10 @@ Even when following TDD strictly, double-check before claiming a
 test locks in a fix:
 
 ```bash
-git checkout HEAD~1 -- src/foo.cpp     # revert the fix
-cmake --build build && ctest -R the_new_test    # must FAIL
-git checkout HEAD -- src/foo.cpp       # restore the fix
-ctest -R the_new_test                  # must PASS
+git stash                                   # set the fix aside
+pytest -k the_new_test                       # must FAIL
+git stash pop                                # restore the fix
+pytest -k the_new_test                       # must PASS
 ```
 
 If the test passes on broken code, it's not testing what you
@@ -106,19 +106,27 @@ but still GUI-free where possible. Pattern:
 ```
 tests/features/<feature_name>/
 ├── spec.md           # contract — human-readable invariants
-└── test_<name>.cpp   # enforcement — INV-1, INV-2, … assertions
+└── test_<name>.py    # enforcement — INV-1, INV-2, … assertions
 ```
 
-CMakeLists.txt wiring:
+`pytest` discovers `test_*.py` automatically; no per-test wiring
+file is needed. Mark categories with markers (registered in
+`pyproject.toml` under `[tool.pytest.ini_options] markers`):
 
-```cmake
-add_executable(test_foo
-    tests/features/foo/test_foo.cpp
-    src/foo.cpp)
-target_link_libraries(test_foo PRIVATE Qt6::Core Qt6::Test)
-add_test(NAME foo_feature COMMAND test_foo)
-set_tests_properties(foo_feature PROPERTIES LABELS "features;fast")
+```python
+import pytest
+
+@pytest.mark.features
+def test_vault_unreadable_without_key(tmp_path):
+    ...
+
+# GUI tests use the pytest-qt `qtbot` fixture:
+def test_unlock_screen_rejects_wrong_password(qtbot):
+    ...
 ```
+
+Run a single test while iterating:
+`pytest tests/features/vault/test_vault.py::test_vault_unreadable_without_key -q`.
 
 ### 3.3 Integration tests
 
@@ -128,17 +136,20 @@ interaction is the thing under test.
 
 ### 3.4 Performance tests
 
-Measure throughput / latency / memory. Tag `LABELS perf` so they
-can be excluded from CI when noisy. Compare against a baseline,
+Measure throughput / latency / memory. Mark `@pytest.mark.perf`
+so they can be excluded from CI when noisy. Compare against a baseline,
 not absolute thresholds, so machine differences don't fail the
 test.
 
 ### 3.5 Fixture-based tests
 
-For rule-based tools (linters, audit checks): keep `bad.cpp` and
-`good.cpp` files in `tests/audit_fixtures/<rule>/`, run the rule
-against them, assert N hits on `bad` and 0 on `good`. Count-based,
-not line-number-based — line numbers shift across edits.
+For rule-based tools (ruff, bandit, the importer parsers): keep
+`bad.py` / `bad.csv` and `good.py` / `good.csv` files in
+`tests/fixtures/<rule>/`, run the rule against them, assert N hits
+on `bad` and 0 on `good`. Count-based, not line-number-based —
+line numbers shift across edits. Import-parser fixtures use
+**synthetic** statement data only — never a real statement
+(security INV-6).
 
 
 ## 4. spec.md authoring
@@ -184,31 +195,32 @@ test code and commit messages.
 A failing test must print enough to diagnose without reproducing
 locally:
 
-```cpp
-QVERIFY2(grid->cellAt(0, 0).fg == QColor(255, 0, 0),
-         qPrintable(QString("Cell 0,0 fg = %1, expected #FF0000")
-                    .arg(grid->cellAt(0, 0).fg.name())));
+```python
+assert tx.amount == expected, (
+    f"transaction amount = {tx.amount}, expected {expected}"
+)
 ```
 
-Not just `QVERIFY(grid->cellAt(0, 0).fg == QColor(255, 0, 0))`,
-which only prints "QVERIFY failed at line N".
-
-Same principle for Python (`assert x == y, f"got {x}, want {y}"`)
-and any other language: every assertion carries enough context
-that the CI log alone is diagnosable.
+Not just `assert tx.amount == expected`, which prints only the
+two values with no label in some runners. Every assertion carries
+enough context that the CI log alone is diagnosable. (`pytest`'s
+assertion rewriting helps, but an explicit message is still
+clearer for non-obvious comparisons.)
 
 
 ## 6. Performance / determinism
 
 - **Deterministic.** No `random.random()`, no time-of-day. If
   randomness is genuinely needed, seed it with a fixed value.
-- **Fast.** Target < 100 ms each for `LABELS fast`. Move slower
-  tests to `LABELS perf` or `LABELS integration`.
+- **Fast.** Target < 100 ms each for the default suite. Move
+  slower tests to `@pytest.mark.perf` or
+  `@pytest.mark.integration`.
 - **Isolated.** No shared state between tests; one failing test
-  doesn't poison another.
-- **No network unless opt-in.** A test that hits the network
-  needs `LABELS network` and an env-var gate (e.g.
-  `ANTS_TEST_NETWORK=1`).
+  doesn't poison another. Use `tmp_path` for any on-disk vault.
+- **No network unless opt-in.** Fin_Break ships no network code
+  (security INV-8), so tests must not hit the network at all; a
+  test that somehow needs it is a design smell to surface, not to
+  gate behind a marker.
 
 
 ## 7. Coverage policy
@@ -232,10 +244,10 @@ prefix. With the `<ID>: <description>` mandate from
 [commits § 1.1](commits.md):
 
 ```
-ANTS-1234: lock the OSC 8 multi-row span emission
+FIBR-0010: lock manual-override priority over re-import
 
-Adds INV-7c to tests/features/osc8_hyperlinks/spec.md and the
-corresponding assertion in test_osc8_hyperlinks.cpp.
+Adds INV-3 to tests/features/categorisation/spec.md and the
+corresponding assertion in test_categorisation.py.
 
 Co-Authored-By: …
 ```

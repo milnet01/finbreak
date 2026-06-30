@@ -4,12 +4,12 @@
 
 | Field | Value |
 |-------|-------|
-| **Project phase** | Phase B — Design (next) |
+| **Project phase** | Phase C — Documentation |
 | **Active item ID** | (none — pre-code phases) |
 | **Active step** | (see "Step progress" below) |
 | **Blocked on** | — |
-| **Last update** | 2026-06-30 (Phase A discovery approved) |
-| **Next gate** | User approves `docs/design.md` + ADRs |
+| **Last update** | 2026-06-30 (Phase B design + ADRs approved) |
+| **Next gate** | User approves standards + ROADMAP + first specs |
 | **Convergence checkpoint** | 5 (consecutive `FP##` items immediately preceding any ✅-`implement`-Kind close in the active release block — see `~/.claude/commands/close-phase.md § 5a-6`) |
 | **Debt-sweep phase threshold** | 5 (auto-prompt for `/debt-sweep` after this many phases without one) |
 | **Last debt sweep** | (none yet) |
@@ -74,6 +74,20 @@ journal); §2 is the only part that changes.
 ## §3. Session journal
 
 Append-only. Newest at the top.
+
+### 2026-06-30 — Phase B design approved
+
+`docs/design.md` (layered UI→Services→Repos→SQLCipher architecture, components,
+import→insight data flow, cross-cutting concerns incl. the Security and
+Packaging/self-contained-delivery sections) approved by the user, together with
+ADRs 0002–0007. ADR-0007 (self-contained bundled releases — bundle the CPython
+runtime + all native deps; clean-machine no-Python launch gates every release)
+was the last addition before sign-off.
+
+Next: Phase C — write/tweak the four `docs/standards/*.md`, populate `ROADMAP.md`
+with the build order (P01 Bootstrap → P02 vertical slice → features →
+packaging/release), keep CHANGELOG `[Unreleased]` empty, and write specs for the
+first 1–3 roadmap items. Then Phase D — `/cold-eyes` doc-audit loop until clean.
 
 ### 2026-06-30 — Phase A discovery approved
 

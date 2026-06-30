@@ -6,7 +6,7 @@
 
 ## Roadmap reference
 
-- **Item ID:** (e.g. `fin_break-1042` or `P03`)
+- **Item ID:** (e.g. `FIBR-0042` or `P03`)
 - **Spec:** `docs/specs/<id>.md` (link or path)
 
 ## Changes

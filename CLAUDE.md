@@ -44,7 +44,7 @@ Per [`docs/standards/commits.md § 1.1`](docs/standards/commits.md):
 every commit subject is `<ID>: <description>`, where `<ID>` is
 either a phase ID (`P##`, `FP##`, `DS##`, `DOC##`, `R##`) or a
 stable per-bullet ID for ROADMAP_FORMAT v1 projects
-(`fin_break-NNNN`).
+(`FIBR-NNNN`).
 
 Every implementation phase ends with `git tag -a <ID>-complete`
 on the closing commit. Tags are local until the user explicitly

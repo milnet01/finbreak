@@ -1,6 +1,6 @@
 # Fin_Break — Design (Phase B)
 
-> **Status:** Draft — awaiting user sign-off.
+> **Status:** Approved 2026-06-30.
 > **Phase:** B — Design.
 > **Output:** architecture diagram, components, data flow,
 > cross-cutting concerns, ADRs in `docs/decisions/`.
@@ -263,12 +263,12 @@ recorded in [docs/glossary.md](glossary.md).
 
 ## Sign-off
 
-- [ ] Architecture diagram drafted (mermaid renders cleanly).
-- [ ] Component list captures every box, with main responsibility per box.
-- [ ] Data flow described.
-- [ ] Cross-cutting concerns each have a one-paragraph treatment.
-- [ ] At least one ADR per non-obvious choice written.
-- [ ] **User has approved this document and the ADRs.** Date: ____.
+- [x] Architecture diagram drafted (mermaid renders cleanly).
+- [x] Component list captures every box, with main responsibility per box.
+- [x] Data flow described.
+- [x] Cross-cutting concerns each have a one-paragraph treatment.
+- [x] At least one ADR per non-obvious choice written.
+- [x] **User has approved this document and the ADRs.** Date: 2026-06-30.
 
 Once approved, proceed to Phase C — write the four
 `docs/standards/*.md` files, populate `ROADMAP.md`, and write
