@@ -17,13 +17,11 @@ for now-removed features, **Fixed** for bug fixes, and
 The `[Unreleased]` block is required at the top, always —
 even if empty. The Roadmap dialog reads it for current-work
 signaling per
-[`docs/standards/documentation.md § 4.1`](docs/standards/documentation.md).
+[`docs/standards/roadmap-format.md § 3.6.2`](docs/standards/roadmap-format.md).
 
 ## [Unreleased]
 
-### Added
-
-- (Nothing yet — project just scaffolded 2026-06-30. The
-  scaffold itself is not a release; the first real version
-  appears here as `## [0.X.0] — YYYY-MM-DD` once a meaningful
-  shipped artefact exists.)
+*Nothing yet — the scaffold (2026-06-30) is not a release. The first
+version appears here as `## [0.X.0] — YYYY-MM-DD` once a meaningful
+artefact ships; categorical `### Added` / `### Fixed` … subheadings
+are added then.*

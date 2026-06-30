@@ -35,7 +35,8 @@ them in; the app never touches the bank and nothing leaves the machine.
 
 1. **A South African individual** who banks with Standard Bank and Absa, holds
    several account types (current, savings, personal loan, credit card, home
-   loan, investment), and wants to understand their spending **without giving
+   loan, investment — among others; the full type list lives in the data
+   model), and wants to understand their spending **without giving
    any app internet-banking access**.
 2. **A friend, family member, or anyone worldwide** on any bank, who is given
    the app and needs to set up *their own* bank's statement layout and *their
@@ -72,7 +73,7 @@ Each is demonstrable by doing, not just by reading code.
    launching to the same dark-themed app. Every artifact **bundles the Python
    runtime and all dependencies**: the user downloads one file and runs it on a
    clean machine with **nothing pre-installed** (no "install Python 3 first").
-   Verified each release on a clean machine with no Python.
+   Each release will be verified on a clean machine with no Python before it ships.
 
 > **Locked-PDF handling:** when an imported statement PDF is itself
 > password-protected, the app prompts for the PDF's open-password, decrypts it
@@ -158,10 +159,14 @@ implemented in the packaging phase once the app and its packaging are designed �
 a publish script can't predate the thing it publishes.
 
 **Local CI emulation:** a committed `scripts/ci-local.sh` runs the *same* gates
-as the GitHub Actions workflow (lint with ruff, tests with pytest, and a build
+as the GitHub Actions workflow (lint with ruff, format check, the security
+scanners — bandit/pip-audit/gitleaks, tests with pytest, and a build
 smoke-test) so problems are caught **before** pushing to the public repo. The CI
 workflow (`.github/workflows/ci.yml`) and this mirror script are P01 (Bootstrap)
 deliverables and are kept in lockstep (one source of truth for the gate list).
+The lint/test/security stages land in the first P01 bullet (`FIBR-0001`); the
+**build smoke-test** stage is added to the same script by the later P01 bullet
+`FIBR-0003`.
 
 **Licensing:** the project is **MIT**; PySide6 is **LGPL**, which permits
 distributing our binaries under MIT without forcing a copyleft licence on the
@@ -179,7 +184,7 @@ issue templates, PR template). Public repo → push freely (global rule § 6).
 
 - [x] Problem captured.
 - [x] Users captured (3 personae).
-- [x] Success criteria captured (5 measurable outcomes).
+- [x] Success criteria captured (6 measurable outcomes).
 - [x] Tech stack chosen with one-sentence reasoning each.
 - [x] Out-of-scope list captured.
 - [x] Distribution chosen (public GitHub; optionals activated).

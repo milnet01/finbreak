@@ -4,12 +4,12 @@
 
 | Field | Value |
 |-------|-------|
-| **Project phase** | Phase C — Documentation |
+| **Project phase** | Phase D — Documentation audit loop |
 | **Active item ID** | (none — pre-code phases) |
 | **Active step** | (see "Step progress" below) |
 | **Blocked on** | — |
-| **Last update** | 2026-06-30 (Phase B design + ADRs approved) |
-| **Next gate** | User approves standards + ROADMAP + first specs |
+| **Last update** | 2026-06-30 (Phase D — 5 `/cold-eyes` loops run; converged to non-actionable; awaiting user sign-off) |
+| **Next gate** | User signs off "docs ready to code from" → P01 (FIBR-0001) implementation |
 | **Convergence checkpoint** | 5 (consecutive `FP##` items immediately preceding any ✅-`implement`-Kind close in the active release block — see `~/.claude/commands/close-phase.md § 5a-6`) |
 | **Debt-sweep phase threshold** | 5 (auto-prompt for `/debt-sweep` after this many phases without one) |
 | **Last debt sweep** | (none yet) |
@@ -74,6 +74,46 @@ journal); §2 is the only part that changes.
 ## §3. Session journal
 
 Append-only. Newest at the top.
+
+### 2026-06-30 — Phase D `/cold-eyes` doc-audit loop (5 loops)
+
+Ran the `/cold-eyes` skill over the full Phase A–C doc set (discovery, design,
+7 ADRs + README, security-model, the 4 standards + roadmap-format sub-spec,
+FIBR-0001 spec, ROADMAP) partitioned into 8 topic lanes. Each loop dispatched
+independent cold reviewers; every finding was verified against the files before
+fixing (several agent claims were dismissed as false positives on verification —
+e.g. a hallucinated CONTRIBUTING clone URL, a "discovery has no Tech-stack
+section" claim, a "§5.2 doesn't show Signal/@Slot" claim).
+
+Convergence: ~50 → ~39 → ~20 → ~18 verified findings → loop 5 (fine precision
+only). **Zero CRITICAL across all loops.** Loop 1 fixed the big template residue
+(coding.md/testing.md/commits.md C++→Python conversion, PROJ→FIBR IDs, stale
+Claude-4.7→4.8 trailer) + security-model testability gaps (T9 AES-vs-HMAC
+crypto fix, INV-5 split into 5a/5b/5c, INV-2 dangling-spec ref, INV-8 enforcement
+honesty). Loops 2–5 fixed second-order issues (4 wrong §-anchors in ROADMAP, a
+dashboard→transfer-detection DAG edge for correct SC1 totals, INV citation
+precision, str-wipe / raw-key / export-temp-file security gotchas captured for
+the P02/P11 specs). Lanes 2/6/7/8 reached cosmetic-clean at loop 4.
+
+Two items deliberately deferred (not doc defects): the exact Argon2id parameters
+(pinned in the FIBR-0004/P02 spec with researched OWASP values, per no-guessing
+rule) and the data-dir naming (documented the deliberate Fin_Break / FinBreak /
+finbreak split rather than renaming).
+
+Awaiting user sign-off "docs ready to code from" before P01 (FIBR-0001).
+
+### 2026-06-30 — Phase C signed off; entering Phase D
+
+User approved the Phase C doc set: `ROADMAP.md` build order (P01–P13,
+FIBR-NNNN IDs, counter=16), `docs/security-model.md` (threat model + 9
+enforceable invariants), the Python/pytest conversion of
+`docs/standards/testing.md`, the `docs/specs/FIBR-0001.md` bootstrap spec,
+and the empty `CHANGELOG.md`. Committed `a5162d3`, pushed to public origin.
+
+Next: Phase D — `/cold-eyes` doc-audit loop over the full Phase A–C doc set
+until a pass returns zero verified actionable findings (global rule § 14).
+Loop 2+ runs cold (no briefing on prior findings). Then user signs off
+"docs ready to code from" and P01 (FIBR-0001) implementation begins.
 
 ### 2026-06-30 — Phase B design approved
 

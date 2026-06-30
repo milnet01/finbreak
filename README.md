@@ -1,6 +1,8 @@
 # Fin_Break
 
-> One-line description of what this project does.
+> A private, offline desktop app that breaks down where your money
+> goes — from your own bank statements, with no bank linking and
+> nothing ever leaving your machine.
 
 [![Status](https://img.shields.io/badge/status-pre--alpha-orange)]()
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
@@ -13,8 +15,12 @@ follows.
 
 ## Status
 
-Just scaffolded from the **Ants App-Build** template. Phase A
-discovery is the next step.
+Pre-code. Discovery (Phase A) and design (Phase B) are signed off;
+the documentation set (Phase C) is written and under its cold-eyes
+review (Phase D). Implementation begins at **P01 — Bootstrap**
+(`FIBR-0001`) once the docs are cleared. See
+[ROADMAP.md](ROADMAP.md) for the full P01–P13 build order and
+[.claude/workflow.md](.claude/workflow.md) for live state.
 
 **To begin (or resume) work:** open a terminal in this directory
 and run `claude`. Once Claude Code is running, type `let's start
@@ -25,12 +31,12 @@ Claude resume work without it.
 
 ## Features
 
-(filled out during Phase C documentation; reflects shipped
-capability, not intent)
+(filled out once features ship; reflects shipped capability, not
+intent — nothing has shipped at v0.0.0)
 
 ## Install
 
-(filled out at P01 — Bootstrap, once tech stack is chosen)
+(filled out once there's an installable artifact — P13 packaging)
 
 ## Quickstart
 

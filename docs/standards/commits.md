@@ -18,9 +18,9 @@ Every commit subject leads with the ROADMAP item ID it implements,
 followed by `:` and a present-tense description:
 
 ```
-PROJ-1234: implement live-search filter
-PROJ-1235: fix config-reload inotify loop
-PROJ-1236: extract storeIfChanged helper
+FIBR-1234: implement live-search filter
+FIBR-1235: fix config-reload inotify loop
+FIBR-1236: extract storeIfChanged helper
 ```
 
 This connects the commit to the work item end-to-end. A reader of
@@ -28,10 +28,17 @@ This connects the commit to the work item end-to-end. A reader of
 that justified it; a reader of the ROADMAP can grep `git log` for
 an ID and see exactly which commits implemented it.
 
+The `<ID>` is either a **stable per-bullet ID** (`FIBR-NNNN`) or a
+**phase ID** (`P##` bootstrap/feature phases, `FP##` fix-pass,
+`DS##` debt-sweep, `DOC##` doc-fix-pass, `R##` research) for
+phase-level commits that don't map to a single bullet — e.g.
+`P00: scaffold project from template`. The phase-ID scheme is
+defined in the app-workflow skill's ID scheme.
+
 The ID prefix replaces the type-based prefix (`feat:`, `fix:`,
 `refactor:`) of conventional-commits style — the **kind** is
 declared by the ROADMAP item's `Kind:` field, not the commit
-subject. This avoids the awkward `PROJ-1234: feat: …` double
+subject. This avoids the awkward `FIBR-1234: feat: …` double
 prefix.
 
 ### 1.2 Exception — commits without a ROADMAP item
@@ -41,10 +48,10 @@ use a category prefix instead:
 
 | Type | Format | Example |
 |------|--------|---------|
-| Release | `X.Y.Z: theme — short summary` | `0.7.55: VT parser correctness + audit-dialog hardening` |
-| Chore (debt sweep, gitignore tweak, dep bump) | `chore: short summary` | `chore: post-0.7.55 debt sweep` |
-| Doc-only (typo, README tweak not tracked on roadmap) | `docs: short summary` | `docs: fix typo in PLUGINS.md OSC 8 section` |
-| Hotfix without prior ROADMAP entry (will be back-filled) | `fix: short summary` + `Refs: PROJ-NNNN` trailer | see §1.4 |
+| Release | `X.Y.Z: theme — short summary` | `0.2.0: CSV/OFX import + duplicate detection` |
+| Chore (debt sweep, gitignore tweak, dep bump) | `chore: short summary` | `chore: post-0.2.0 debt sweep` |
+| Doc-only (typo, README tweak not tracked on roadmap) | `docs: short summary` | `docs: fix typo in security-model.md INV-2 section` |
+| Hotfix without prior ROADMAP entry (will be back-filled) | `fix: short summary` + `Refs: FIBR-NNNN` trailer | see §1.4 |
 
 If the work was substantive enough to be tracked on the roadmap
 (any feature, any non-trivial fix, any refactor), it gets a
@@ -55,10 +62,10 @@ ID. Don't ship code that should have been planned.
 
 - Single line, present tense, ≤ 72 chars.
 - No trailing period.
-- Capitalisation matches the ID's case (`PROJ-1234:`); the
+- Capitalisation matches the ID's case (`FIBR-1234:`); the
   description starts lowercase unless it begins with a proper
   noun.
-- Don't repeat the ID in the description ("PROJ-1234: PROJ-1234
+- Don't repeat the ID in the description ("FIBR-1234: FIBR-1234
   implement live search").
 
 ### 1.4 Body
@@ -67,7 +74,7 @@ Optional, but encouraged when the change isn't self-explanatory.
 Format:
 
 ```
-PROJ-1234: implement live-search filter
+FIBR-1234: implement live-search filter
 
 Optional one-paragraph description of the why.
 
@@ -75,7 +82,7 @@ Optional one-paragraph description of the why.
 - Bulleted list of files / subsystems touched.
 - Note any follow-up needed.
 
-Refs: PROJ-1235  (for related but separate work)
+Refs: FIBR-1235  (for related but separate work)
 Co-Authored-By: <name> <email>
 ```
 
@@ -89,13 +96,13 @@ WHAT.
 | `Co-Authored-By:` | Anyone who contributed materially (humans, AI agents) |
 | `Reviewed-by:` | After a `/indie-review` pass |
 | `Fixes:` | When the commit closes a tracker issue (Fixes: #42) |
-| `Refs:` | Cross-references — e.g. `Refs: PROJ-1235` for related ROADMAP items |
+| `Refs:` | Cross-references — e.g. `Refs: FIBR-1235` for related ROADMAP items |
 | `Signed-off-by:` | DCO-required projects |
 
 For AI-assisted commits, include the AI's identifier:
 
 ```
-Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
 ```
 
 
@@ -158,7 +165,7 @@ development), get rebased + merged in days, not weeks.
 
 ### 3.2 Branch names
 
-`<author>/<id>-<topic>` for personal branches: `alice/PROJ-1234-live-search`.
+`<author>/<id>-<topic>` for personal branches: `alice/FIBR-1234-live-search`.
 `feature/<id>-<topic>` for shared work. The ID lets a reviewer
 find the ROADMAP context at a glance.
 
@@ -204,22 +211,23 @@ contexts.
 
 ## 5. Release commits (`Kind: release`)
 
-Release commits use the `X.Y.Z: theme — summary` format from
-§1.2 plus a categorical body drawn from the CHANGELOG entry:
+Release commits use the `X.Y.Z: theme — summary` format (the
+Release row of §1.2's table) plus a categorical body drawn from the
+CHANGELOG entry:
 
 ```
-0.7.55: VT parser correctness + audit-dialog hardening
+0.2.0: CSV/OFX import + duplicate detection
 
 Tier-1 fixes:
 
-- PROJ-1042: HIGH — ESC-in-OSC dispatches RIS as side-effect.
-- PROJ-1043: HIGH — Audit-pipeline rule-quality file pollutes git status.
+- FIBR-0009: HIGH — PDF import left decrypted bytes in a temp file.
+- FIBR-0011: MEDIUM — transfer detection missed same-day reversals.
 
 Tier-2 hardening:
 
 - ...
 
-Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
 ```
 
 Note that the *bullets* inside the release body still cite
@@ -227,7 +235,7 @@ ROADMAP IDs — the release commit aggregates many ID-tracked
 items into one shipping point.
 
 Touched files for a release commit are typically: every
-version-bearing file (`CMakeLists.txt`, packaging files,
+version-bearing file (`pyproject.toml`, packaging files,
 `README.md`, `ROADMAP.md`), `CHANGELOG.md` (new dated section),
 and the implementation changes themselves.
 
@@ -273,4 +281,5 @@ Don't manually upload artifacts that CI will produce.
 - ❌ Pushing a release tag whose CI hasn't run / passed.
 - ❌ Force-pushing tags.
 - ❌ ROADMAP IDs that don't actually exist (typos in the prefix
-  or an ID that was never assigned).
+  or an ID that was never assigned) — verify against the allocation
+  rules in [roadmap-format § 3.5.1](roadmap-format.md).

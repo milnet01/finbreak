@@ -34,12 +34,15 @@ Don't write one for:
 
 Sequential, zero-padded to 4 digits:
 `0001-record-architecture-decisions.md`,
-`0002-use-qt6-not-qt5.md`, …
+`0002-pyside6-over-pyqt6.md`, …
 
 Append-only — once an ADR has a number, it keeps it forever,
 even if superseded.
 
 ## Lifecycle
+
+Status values are defined canonically in ADR-0001's template block;
+this table is the at-a-glance gloss.
 
 | Status | Meaning |
 |--------|---------|
@@ -51,6 +54,18 @@ even if superseded.
 A status change is an edit to the ADR's `Status:` field; the
 body of an accepted ADR isn't rewritten — supersession is
 captured in a new ADR.
+
+## Index
+
+| ADR | Decision |
+|-----|----------|
+| [0001](0001-record-architecture-decisions.md) | Record architecture decisions (this process) |
+| [0002](0002-pyside6-over-pyqt6.md) | PySide6 over PyQt6 (LGPL vs GPL) |
+| [0003](0003-sqlcipher-local-only-storage.md) | SQLCipher + Argon2id, local-only, per-OS-user storage |
+| [0004](0004-qt-native-pdf-over-weasyprint.md) | Qt-native PDF engine over WeasyPrint |
+| [0005](0005-csv-mapping-profiles.md) | Per-bank CSV column-mapping profiles |
+| [0006](0006-transfer-detection-suggest-confirm.md) | Transfer detection: suggest-then-confirm |
+| [0007](0007-self-contained-bundled-releases.md) | Self-contained bundled releases |
 
 ## Template
 

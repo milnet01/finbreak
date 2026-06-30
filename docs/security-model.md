@@ -9,7 +9,9 @@
 > **How it's used:** every `implement`-Kind spec must state how
 > it upholds the **security invariants** in § 5; every `/audit`,
 > `/indie-review`, and `/cold-eyes` pass checks against them.
-> See ADR-0003 (storage/crypto) and ADR-0007 (bundling).
+> See [ADR-0003](decisions/0003-sqlcipher-local-only-storage.md)
+> (storage/crypto) and
+> [ADR-0007](decisions/0007-self-contained-bundled-releases.md) (bundling).
 
 This is a deliberately plain-English document. Where a term is
 unavoidable it is glossed on first use.
@@ -20,7 +22,7 @@ unavoidable it is glossed on first use.
 |---|-------|----------------|
 | A1 | **The vault** — the SQLCipher database file holding every transaction, account, rule, and setting | The whole financial picture. Its disclosure is the worst case. |
 | A2 | **The master password** | Unlocks everything. Never stored anywhere. |
-| A3 | **The derived key** — the key Argon2id produces from the master password | Decrypts the vault; lives only in memory while unlocked. |
+| A3 | **The derived key** — the key Argon2id produces from the master password, passed to SQLCipher as its **raw** key (so Argon2id, not SQLCipher's built-in PBKDF2, is the KDF) | Decrypts the vault; lives only in memory while unlocked. |
 | A4 | **Stored statement-PDF passwords** (optional, opt-in) | Bank-document passwords; only ever live *inside* the encrypted vault. |
 | A5 | **Decrypted statement data in memory during import** | A locked PDF is decrypted in RAM only; must never touch disk. |
 | A6 | **Exported report PDFs** | Leave the app deliberately, password-locked by the user. |
@@ -35,9 +37,11 @@ unavoidable it is glossed on first use.
   hardware key-logger — that is out of scope for a local
   desktop app and stated as such.
 - **Everything off the machine is untrusted — and unreachable.**
-  The app opens **no sockets and makes no outbound call of any
-  kind** (success criterion 4). There is no network attack
-  surface because there is no network code.
+  The **shipped application** opens **no sockets and makes no
+  outbound call of any kind** (success criterion 4). There is no
+  network attack surface because there is no network code. (Dev/CI
+  tooling such as `pip-audit` and Dependabot run in GitHub's
+  infrastructure, never in the shipped app — INV-8.)
 - **Imported files are untrusted input.** CSV/OFX/PDF files come
   from outside and are parsed defensively (§ 4, T5).
 
@@ -49,16 +53,17 @@ attacked. Each row: the threat → how Fin_Break stops it.
 | # | Threat | Mitigation |
 |---|--------|------------|
 | T1 | **Lost/stolen laptop → someone reads the vault file** | Whole-file AES-256 encryption (SQLCipher). The file is meaningless without the key (A1, INV-1). |
-| T2 | **Weak master password brute-forced** | **Argon2id** memory-hard key derivation with pinned, expensive parameters (§ 5 INV-2) makes guessing slow and GPU-resistant. We also surface password strength at first-run. |
-| T3 | **Key or password recovered from memory / swap / a crash dump** | Key held only while unlocked; **wiped on lock and on exit**; auto-lock drops it after idle (INV-3). Plaintext password is never held longer than the unlock call. |
-| T4 | **Decrypted bank statement leaks to disk** | Locked input PDFs are decrypted **in memory only**, never written out (A5, INV-4). Temp files are never used for decrypted content. |
-| T5 | **Malicious import file** (crafted CSV/OFX/PDF — parser crash, path traversal, zip-bomb-style resource exhaustion, formula injection) | Parsers run defensively: bounded resource use, no `eval`, no shell-out; CSV cells are treated as data, never spreadsheet formulas; per-row errors are reported, not fatal (INV-5). |
+| T2 | **Weak master password brute-forced** | **Argon2id** memory-hard key derivation with pinned, expensive parameters (§ 5 INV-2) makes guessing slow and GPU-resistant. Password strength is also surfaced at first-run (advisory, not an enforced INV). |
+| T3 | **Key or password recovered from memory / swap / a crash dump** | Key held only while unlocked; **wiped on lock and on exit**; auto-lock drops it after idle (INV-3). The plaintext password reference is cleared before the unlock routine returns. (Defending against the OS paging memory to swap is out of scope — see § 4.) |
+| T4 | **Decrypted bank statement leaks to disk** | Locked input PDFs are decrypted **in memory only**; no decrypted content is *deliberately* written to disk or temp files (A5, INV-4). (Defending against the OS paging memory to swap is out of scope — § 4.) |
+| T5 | **Malicious import file** (crafted CSV/OFX/PDF — parser crash, path traversal, zip-bomb-style resource exhaustion, formula injection) | Parsers run defensively: bounded resource use, no `eval`, no shell-out; CSV cells are treated as data, never spreadsheet formulas; per-row errors are reported, not fatal (INV-5a/5b/5c). |
 | T6 | **Secret accidentally committed to the public repo** | `gitleaks` in CI **and** the local pre-push script; `.gitignore` excludes `*.db`/vault/build output; no real financial data in tests — only synthetic fixtures (INV-6, A7). |
 | T7 | **Vulnerable third-party dependency (known CVE)** | `pip-audit` in CI + local script fails the build on a known-vulnerable dependency; Dependabot raises bumps; latest-stable policy (global rule § 5). |
 | T8 | **Insecure code pattern introduced** (hardcoded secret, weak hash, `subprocess(shell=True)`, etc.) | `bandit` security linter in CI + local script. |
-| T9 | **Tampered vault / downgrade of crypto settings** | SQLCipher authenticates pages (AES gives integrity per-page); the schema records the KDF parameters used so they can't be silently downgraded on open (INV-2). |
+| T9 | **Tampered vault / downgrade of crypto settings** | SQLCipher authenticates **each page with a per-page HMAC** (HMAC-SHA512 by default) — tamper-evident. AES gives confidentiality, **not** integrity, so the HMAC must stay enabled; a tampered page fails to open (INV-1). The recorded KDF parameters can't be downgraded **below the pinned floor** on open (INV-2). Both will be pinned/asserted in the FIBR-0004 (P02) spec (written just-in-time). |
 | T10 | **Exported report shared, then read by the wrong person** | Export is password-locked with AES-256 (`pikepdf`) using a password the user sets at export time (A6, INV-7). The user is reminded the password is theirs to share safely. |
-| T11 | **Forgotten master password** | By design there is **no backdoor** (a backdoor is a vulnerability). Mitigation is a user-initiated **encrypted backup export** they can store safely (ADR-0003). This is a deliberate availability-for-confidentiality trade. |
+| T11 | **Forgotten master password** | By design there is **no backdoor** (a backdoor is a vulnerability), so a forgotten master password means the data is **unrecoverable** — a deliberate confidentiality-over-availability trade. The encrypted backup export (ADR-0003) mitigates vault *loss/corruption*, **not** a forgotten password (a backup is only as recoverable as its own secret). *No INV — this is a design stance, not a testable control.* |
+| T12 | **Sensitive data leaked via the log file** | The local rotating log never records transaction contents, passwords, keys, or decrypted data (INV-9). |
 
 ## 4. Out of scope (stated honestly)
 
@@ -77,39 +82,86 @@ consciously excluded, not missed.
 
 ## 5. Security invariants (the enforceable checklist)
 
-Every spec and every review pass checks these. They are phrased
-so a test can assert them.
+Every spec and every review pass checks these. Each is phrased to
+be checkable. Enforcement arrives in step with the code:
+
+- **From P01 on:** INV-6 and the no-`eval` / no-shell legs of
+  INV-5a, via the static gate (§ 6). INV-5a's CSV-as-data and
+  no-content-derived-path legs are unit-tested with the import
+  specs (FIBR-0007+).
+- **With the phase that builds the code each governs:** INV-1,
+  INV-2, INV-3, INV-4, INV-5b, INV-5c, INV-7, INV-9 — asserted by
+  tests that land alongside the vault, crypto, import, export, and
+  logging paths (none of which exist yet at P01).
+- **INV-8 (no network)** is enforced two ways: no networking
+  dependency is declared in `pyproject.toml` (verifiable from P01),
+  and a forbidden-import check (no `socket` / `http` / `requests` /
+  `urllib` in `src/finbreak/`) lands with the first runtime code.
+  The § 6 scanners do **not** detect network use, so INV-8 does not
+  rely on them.
 
 - **INV-1 — Encrypted at rest.** No code path writes
   unencrypted vault contents to disk. Opening the file without
-  the correct key fails.
+  the correct key fails, and the vault is opened with per-page
+  HMAC integrity enabled (`cipher_use_hmac = ON`, SQLCipher 4) so a
+  tampered page fails to open rather than returning corrupt data.
 - **INV-2 — Strong, pinned KDF.** The master password is
-  stretched with Argon2id using parameters fixed in the P02 spec
-  (memory, time, parallelism); the parameters are recorded with
-  the vault and never silently weakened on open.
+  stretched with Argon2id. The exact parameters (memory, time,
+  parallelism) are pinned in the **FIBR-0004 (P02) spec**, chosen
+  against current
+  [OWASP Password Storage](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html)
+  guidance and **never below** its Argon2id minimum; the specific
+  values and the OWASP retrieval date are frozen in that spec (a
+  dated snapshot, not a live "current guidance" target). The
+  parameters are recorded with the vault, and the open path **must
+  refuse to proceed** if a vault's recorded cost is below the pinned
+  floor — so they can never be silently weakened. (The P02 spec is
+  written just-in-time with the numbers researched then, not guessed
+  now.) The FIBR-0004 spec must also assert the Argon2id output is
+  passed as SQLCipher's **raw** key (raw-key pragma), so the
+  "Argon2id is the KDF" claim (A3) is testable, not merely stated.
 - **INV-3 — Key lifetime.** The derived key and the plaintext
   password exist in memory only while unlocked, are wiped on
   lock/exit, and are dropped by auto-lock after the configured
-  idle period.
+  idle period. (A true wipe needs a *mutable* buffer — `bytearray`,
+  not an immutable `str` — so the FIBR-0004 spec holds the password
+  in a zeroable buffer; this is what makes "wiped" testable.)
 - **INV-4 — No plaintext spill.** Decrypted input PDFs and any
-  decrypted statement bytes never touch disk, swap-backed temp
-  files, or logs.
-- **INV-5 — Untrusted input is bounded and inert.** Importers
-  never `eval`, never shell out, treat CSV cells as data (no
-  formula execution), and fail per-row rather than crashing.
+  decrypted statement bytes are never *deliberately* written to
+  disk, temp files, or logs. (Defending against the OS paging
+  process memory to swap is out of scope — see § 4; short of buffer
+  pinning the app does not claim it.)
+- **INV-5a — Untrusted input is inert.** Importers never `eval`,
+  never shell out, never open a filesystem path derived from file
+  *content* (no path traversal), and treat CSV cells as data (no
+  spreadsheet-formula execution). The no-`eval` / no-shell legs are
+  caught by `bandit` (T8) from P01; the CSV-as-data and
+  no-content-derived-path legs are asserted by unit tests that land
+  with the import specs (FIBR-0007+) — e.g. a fixture cell
+  `=cmd|'/c calc'` must round-trip as literal text.
+- **INV-5b — Untrusted input is bounded.** Importers cap resource
+  use (max file size, row count, parse time); the concrete budget
+  is pinned in the import specs — FIBR-0007 (CSV), FIBR-0008 (OFX),
+  and especially FIBR-0009 (PDF, the decompression/zip-bomb vector).
+  This is the testable form of T5's "no zip-bomb-style exhaustion".
+- **INV-5c — Per-row failure.** A malformed row is reported and
+  skipped; the rest of the import proceeds. Owned by the import
+  specs (FIBR-0007 / FIBR-0008 / FIBR-0009), **not** by P01.
 - **INV-6 — No secret in the repo.** No key, password, vault, or
   real financial record is ever committed; tests use synthetic
   data only; `gitleaks` enforces it.
 - **INV-7 — Exports are user-locked.** Every exported PDF is
-  AES-256 encrypted with the user's chosen password before it
-  leaves the app.
+  written AES-256 encrypted with the user's chosen password (no
+  unencrypted report file is ever produced — the FIBR-0013 spec
+  must assert the render-then-encrypt path never stages a plaintext
+  PDF in a temp file, reconciling with INV-4).
 - **INV-8 — No network.** The shipped app opens no socket and
   makes no outbound request; there is no networking dependency in
   the runtime bundle.
 - **INV-9 — Logs are clean.** The local log file never records
   transaction contents, passwords, keys, or decrypted data.
 
-## 6. Tooling that enforces this (wired up in P01)
+## 6. Tooling that enforces this (harness wired in P01; per-INV tests land with each phase)
 
 | Tool | Catches | Runs in |
 |------|---------|---------|
@@ -117,8 +169,17 @@ so a test can assert them.
 | **pip-audit** | dependencies with known CVEs (T7) | CI + `scripts/ci-local.sh` |
 | **gitleaks** | secrets staged for commit (T6) | CI + `scripts/ci-local.sh` |
 | **ruff** | general correctness/lint (defence in depth) | CI + `scripts/ci-local.sh` |
-| **pytest** | the INV-* assertions above as tests | CI + `scripts/ci-local.sh` |
+| **pytest** | the INV-* assertions, **added per phase** as the code each invariant governs lands | CI + `scripts/ci-local.sh` |
 
-The CI workflow and the local script run the **same** gate list
-(one source of truth) so a security regression fails *before* a
-push, not after.
+The four scanners (bandit, pip-audit, gitleaks, ruff) and the test
+harness are wired in P01 (FIBR-0001); the per-INV pytest assertions
+(INV-1/2/3/4/5b/5c/7/9) arrive with the later phases that build the
+vault, crypto, import, export, and logging paths. The CI workflow
+and the local script run the **same** gate list (one source of
+truth) so a security regression fails *before* a push, not after.
+
+Notes: `pip-audit` fetches its CVE database over the network, but it
+runs only in CI and the **dev-time** local gate — outside the
+shipped-app boundary, so it does not violate INV-8 (which constrains
+the *shipped application*). `semgrep` is intentionally **not** in the
+gate — `bandit` covers Python security patterns for this codebase.

@@ -31,12 +31,30 @@ are done — see SKILL.md for the full description.
 
 ## Tech stack
 
-(Filled in at the end of Phase A — Discovery. The discovery
-output drives this section.)
+Chosen in Phase A (see [`docs/discovery.md`](docs/discovery.md)
+for the full table and reasoning):
+
+- **Language:** Python 3.12+
+- **GUI:** PySide6 (LGPL) — dark-themed Qt desktop (ADR-0002)
+- **Encrypted storage:** SQLCipher (SQLite + AES-256), keyed by an
+  **Argon2id**-derived key (`argon2-cffi`) (ADR-0003)
+- **PDF:** Qt engine (`QTextDocument` + `QPdfWriter`) for export;
+  `pikepdf` for AES-256 export-locking and in-memory decrypt of
+  locked input statements (ADR-0004)
+- **Import parsers:** stdlib `csv` + per-bank mapping profiles
+  (ADR-0005), `ofxparse` (OFX), `pdfplumber` (PDF)
+- **Tests / lint:** pytest (+ pytest-qt), ruff
+- **Security gate:** bandit, pip-audit, gitleaks (see
+  [`docs/security-model.md`](docs/security-model.md))
+- **Packaging:** PyInstaller (Windows `.exe`, macOS `.app`/`.dmg`),
+  AppImage + Flatpak/Flathub (Linux) (ADR-0007)
+- **License:** MIT; local-only, no network.
 
 ## Build and test
 
-(Filled in at P01 — Bootstrap, once tech stack is chosen.)
+(Filled in at P01 — Bootstrap, once `pyproject.toml` +
+`scripts/ci-local.sh` exist. The harness contract is specified in
+[`docs/specs/FIBR-0001.md`](docs/specs/FIBR-0001.md).)
 
 ## Commit conventions
 

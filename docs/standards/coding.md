@@ -8,8 +8,8 @@ other three standards in this folder ([documentation](documentation.md),
 
 This standard governs ROADMAP bullets with `Kind: implement`,
 `fix`, `refactor`, `audit-fix`, or `review-fix`. The other kinds
-(`doc`, `test`, `chore`/`release`) defer to their respective
-companion documents.
+(`doc`/`doc-fix`, `test`, `chore`/`release`) defer to their
+respective companion documents.
 
 
 ## 1. Principles
@@ -51,15 +51,16 @@ author? If not, it's too clever or too long.
 
 ### 1.5 Use latest stable library + current idioms
 
-When pulling in an external library (Qt, React, Python pkg, …),
-prefer the latest stable release unless pinned for an explicit
-reason. When calling library APIs, use the current idiomatic
-syntax for that version — not the one current three years ago.
+When pulling in an external library (PySide6, a parsing or crypto
+package, …), prefer the latest stable release unless pinned for an
+explicit reason. When calling library APIs, use the current
+idiomatic syntax for that version — not the one current three years
+ago.
 
-For per-language idiom examples (Qt 6, C++20+, Python 3.10+,
-React 18+), see `~/.claude/CLAUDE.md § 5` — that's the
-canonical source. When unsure what's current, check the
-library docs first. Stale idioms compile but they age the
+For Python/PySide6 specifically: modern syntax (`X | None`,
+`list[int]`, `match`/`case` — available since 3.10; the project
+runs 3.12+) and current PySide6 signal/slot style (see § 5.2). When unsure what's current for a library, read its
+current docs before writing. Stale idioms still run but they age the
 codebase.
 
 
@@ -83,10 +84,10 @@ codebase.
 Default to **no comments**. Only add one when the WHY is
 non-obvious:
 
-- A hidden constraint (`// gpg is single-threaded; serialise here`).
-- A subtle invariant (`// must run before m_grid is freed`).
-- A workaround for a specific bug (`// QTBUG-79126: frameless +
-  modal drops clicks on Wayland — fall back to event filter`).
+- A hidden constraint (`# qpdf is single-threaded; serialise here`).
+- A subtle invariant (`# must run before the vault key is wiped`).
+- A workaround for a specific bug (`# QTBUG-79126: frameless +
+  modal drops clicks on Wayland — fall back to an event filter`).
 - Behaviour that would surprise a reader.
 
 Don't:
@@ -99,48 +100,52 @@ Don't:
 
 ## 4. Naming
 
-- **Functions** — verb phrases (`parseRGBColor`, `applyTheme`).
-- **Variables** — noun phrases (`m_currentTab`, `gridSize`).
-- **Booleans** — `is*` / `has*` / `can*` (`isReady`, `hasFocus`).
-- **Constants** — match the file's existing style. Don't mix
-  SCREAMING_SNAKE and PascalCase in one file.
+- **Functions / methods** — snake_case verb phrases
+  (`parse_rgb_color`, `apply_theme`).
+- **Variables** — snake_case noun phrases (`current_tab`,
+  `grid_size`).
+- **Classes** — PascalCase (`CategorizationService`, `CsvImporter`).
+- **Booleans** — `is_*` / `has_*` / `can_*` (`is_ready`,
+  `has_focus`).
+- **Constants** — module-level `UPPER_SNAKE_CASE`.
 - **Avoid abbreviations** except universally-known (`url`, `id`,
   `db`). Prefer `temperature` over `temp` when ambiguous.
-- **No Hungarian notation.** `m_` prefix for member fields is
-  fine where a project uses it; type prefixes (`strName`, `iCount`)
-  are not.
+- **No Hungarian notation.** A leading underscore (`_internal`)
+  marks a non-public attribute; type prefixes (`str_name`,
+  `i_count`) are not used.
 
 
 ## 5. Language-specific notes
 
-### 5.1 C++
+This is a **Python 3.12+ / PySide6** project (ADR-0002). The notes
+below cover the two surfaces; there is no C++ in the codebase.
 
-- C++20 minimum unless project pins higher.
-- `auto` for obvious types; explicit type when the type matters
-  for the reader.
-- RAII for everything that owns a resource.
-- `[[nodiscard]]` on factory / parser return types.
-- `std::make_unique` / `std::make_shared` over raw `new`.
-- Prefer `std::optional<T>` over sentinel values (`-1`, `nullptr`).
-- `noexcept` on move constructors, swap, destructors.
+### 5.1 Python
 
-### 5.2 Qt
-
-- Modern signal-slot connection syntax only.
-- Parent-child ownership; don't manually `delete` a parented child.
-- `Q_OBJECT` macro on every QObject subclass.
-- Wrap user-visible strings in `tr()` for translator compatibility.
-- `QSaveFile` for atomic writes, not raw `QFile::Truncate`.
-- `setOwnerOnlyPerms()` on files that contain config / secrets.
-
-### 5.3 Python
-
-- Type hints on every public function signature.
+- Type hints on every public function signature; `list[int]` /
+  `int | None` over `List[int]` / `Optional[int]` (3.10+ syntax).
 - Use `pathlib.Path` over `os.path`.
 - `pyproject.toml` for config; no `setup.py`.
-- `subprocess.run([cmd, arg])` not `shell=True` with f-strings.
+- `subprocess.run([cmd, arg])` — never `shell=True` with an
+  f-string (see §7).
+- `match`/`case` where an `isinstance` ladder would otherwise pile
+  up; `dataclasses` for plain record types.
+- Context managers (`with`) for anything that owns a resource —
+  files, DB connections, locks — over manual open/close.
 
-(Add language sections as the project grows.)
+### 5.2 PySide6 (Qt for Python)
+
+- New-style signal/slot connections only:
+  `sender.signal.connect(self.slot)`. Decorate slots with `@Slot()`.
+- Define signals with `Signal(...)` as class attributes (PySide6),
+  not the PyQt `pyqtSignal` spelling (ADR-0002).
+- Parent-child ownership: pass a `parent` to `QObject`/`QWidget`
+  constructors; don't hold extra Python references that outlive the
+  parent and fight Qt's ownership.
+- Keep blocking work (parsing, import, crypto) off the GUI thread —
+  use a `QThread` worker, per design.md "Concurrency".
+- Restrictive permissions (`0o600`) on any file that holds config or
+  secrets (see §7).
 
 
 ## 6. Performance
@@ -150,27 +155,31 @@ Don't:
 - Avoid premature `O(n²)` patterns where `O(n)` fits.
 - For hot paths: pre-allocate, batch I/O, avoid copies.
 - Don't write a cache without measuring the hit rate first.
-- Don't pessimise — use `std::move` on the return of
-  rvalue-returning helpers, reserve capacity on growable
-  containers when the size is known.
+- Don't pessimise — stream large statement files rather than
+  reading them whole, build lists with comprehensions/generators,
+  and avoid needless copies of large transaction sets.
 
 
 ## 7. Security
 
-- **Never trust user input.** Validate at the boundary.
-- **No `shell=True`.** Use argv arrays:
-  `subprocess.run([cmd, arg])`, `QProcess::start(cmd, args)`.
-- **Atomic file writes.** Temp + rename, or `QSaveFile`. Don't
-  truncate-and-write — a crash leaves an empty file.
-- **Restrictive perms on secret-bearing files.** 0600 for config,
-  tokens, keys.
-- **Path traversal** — resolve and check `commonpath` /
-  `QDir::canonicalPath` before opening user-supplied paths.
-- **Argv injection** — when calling external tools with
-  user-supplied filenames, prepend `--` separator and prefix
-  paths with `./` if they could start with `-`.
-- **Don't log secrets.** Strip Authorization headers, API tokens,
-  private-key blocks before any `qDebug` / `print` / log call.
+Security is the load-bearing concern here — see
+[docs/security-model.md](../security-model.md) for the binding
+invariants. Coding-level rules:
+
+- **Never trust user input.** Validate at the boundary. Imported
+  CSV/OFX/PDF files are untrusted (security-model INV-5): treat CSV
+  cells as data, never as spreadsheet formulas; fail per-row.
+- **No `shell=True`.** Use argv arrays: `subprocess.run([cmd, arg])`.
+  Never interpolate user data into a shell string.
+- **Atomic file writes.** Write to a temp file, then `os.replace()`.
+  Don't truncate-and-write — a crash leaves an empty file.
+- **Restrictive perms on secret-bearing files.** `0o600` for the
+  vault and any config holding secrets.
+- **Path traversal** — `Path.resolve()` and check
+  `os.path.commonpath` before opening user-supplied paths.
+- **Don't log secrets** (security-model INV-9). The master
+  password, the derived key, and decrypted statement data never
+  reach a `print` / `logging` call.
 
 
 ## 8. Anti-patterns
@@ -179,9 +188,10 @@ Don't:
 - ❌ "Just in case" exception handlers that swallow everything.
 - ❌ Half-finished implementations behind feature flags.
 - ❌ Renaming a variable to `_unused` instead of removing it.
-- ❌ `// TODO: fix later` with no roadmap entry tracking it.
+- ❌ `# TODO: fix later` with no roadmap entry tracking it.
 - ❌ Hardcoded paths / magic numbers without a named constant.
 - ❌ Dead-code branches kept "just in case".
 - ❌ Compatibility shims for callers that don't exist any more.
-- ❌ `using namespace std;` in headers.
-- ❌ `from foo import *` in Python.
+- ❌ `from foo import *` — it pollutes the namespace and hides
+  where names come from.
+- ❌ Bare `except:` / `except Exception: pass` that swallows errors.

@@ -87,11 +87,19 @@ logic. Notable screens:
   preview → confirm; prompts for a PDF password when needed.
 - **Rules manager** — view/add/edit auto-categorisation rules.
 - **Accounts manager** — add/edit accounts and their type (current, savings,
-  credit card, loan, home loan, investment, other).
+  credit card, personal loan, home loan, investment, other).
 - **Settings** — base currency, auto-lock timeout, stored PDF passwords, backup
   export, theme.
 - **PDF export dialog** — tick sections (summary / charts / transactions), pick
   period, set the export password.
+
+> **Deferred decision — charts library.** discovery.md flagged the charts
+> library (QtCharts vs matplotlib vs pyqtgraph) as a "design-phase decision";
+> the design phase intentionally **re-defers** it to the dashboard spec
+> (FIBR-0012), where it is chosen and recorded as an ADR (must be
+> dark-themeable *and* render into the PDF). The decision only bites when the
+> dashboard is built, so it lives with that phase — this is a hand-off, not a
+> dropped thread.
 
 **Service layer** — the business logic; one service per concern:
 
@@ -166,6 +174,12 @@ signal → UI.
 
 ### Security (the load-bearing concern — this is personal financial data)
 
+The full threat model — assets, trust boundaries, the STRIDE-lite threat
+table, and the enforceable security invariants (§ 5) — lives in the canonical
+[docs/security-model.md](security-model.md). The summary below is the
+architecture-level view; `security-model.md` is authoritative, and every
+`implement`-Kind item must satisfy its invariants.
+
 - **Encryption at rest.** The entire database is SQLCipher (AES-256). The file
   is meaningless without the key.
 - **Key derivation.** The master password is stretched with **Argon2id**
@@ -215,14 +229,19 @@ UI state.
 - **Location:** `QStandardPaths.AppDataLocation` → `~/.local/share/FinBreak/`
   (Linux), `%APPDATA%\FinBreak\` (Windows), `~/Library/Application Support/FinBreak/`
   (macOS).
+  > **Naming:** the product/repo name is **`Fin_Break`**; the on-disk
+  > data directory is **`FinBreak`** and the Python package is
+  > **`finbreak`**. The underscore-free forms are the deliberate
+  > filesystem- and import-safe variants of the display name — not a typo.
 - **Schema & migrations:** a `schema_version` table; migrations run on unlock,
   forward-only, each in a transaction.
 - **Atomicity:** every import/edit is a single DB transaction — a failed import
   leaves no partial rows.
 - **Tables (high-level):** `accounts`, `transactions`, `categories` (self-
-  referential tree, `parent_id`), `rules`, `transfer_links`, `import_profiles`,
-  `secrets`, `settings`, `schema_version`. Exact columns are fixed in each
-  item's spec.
+  referential tree, `parent_id`), `rules`, `transfer_links` (links a confirmed
+  transfer pair — success criterion 3), `import_profiles`, `secrets` (the opt-in
+  stored PDF passwords — asset A4 in security-model.md), `settings`,
+  `schema_version`. Exact columns are fixed in each item's spec.
 
 ### Concurrency
 

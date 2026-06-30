@@ -50,8 +50,10 @@ makes **no network connections**.
   first-run warning copy.
 - SQLCipher bindings add a native dependency that each platform's packaging must
   bundle correctly (validated in P01).
-- Argon2id parameters must be tuned (memory/time cost) per the current OWASP
-  guidance and recorded.
+- Argon2id parameters (memory/time/parallelism) must be tuned per current
+  [OWASP Password Storage](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html)
+  guidance, pinned in the FIBR-0004 (P02) spec, and recorded with the vault so
+  they can't be silently weakened (security-model.md INV-2).
 
 **Neutral:**
 

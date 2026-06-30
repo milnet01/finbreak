@@ -12,7 +12,9 @@
 > (`P##`, `FP##`, `DS##`, `DOC##`, `R##`); the phase ID
 > categorises blocks while the stable ID identifies individual
 > bullets within them. ID is identity, position is priority,
-> items are tackled top-to-bottom.
+> items are tackled top-to-bottom. `Dependencies:` lines list
+> **direct** predecessors only; transitive prerequisites are
+> implied by walking the chain.
 >
 > **Build order rationale:** the layers are built bottom-up so
 > each phase rests on a tested one below it. The encrypted
@@ -22,14 +24,14 @@
 > proven end-to-end before any feature sits on top of it. Each
 > phase is then a thin, demonstrable increment.
 
-**Legend** (per `docs/standards/roadmap-format.md § 3.4`)
+**Legend** (per `docs/standards/roadmap-format.md § 3.3`)
 
 - ✅ Done (shipped)
 - 🚧 In progress (being tackled now)
 - 📋 Planned (next up for this phase)
 - 💭 Considered (research phase; scope or feasibility uncertain)
 
-**Themes** (per `docs/standards/roadmap-format.md § 3.5`)
+**Themes** (per `docs/standards/roadmap-format.md § 3.4`)
 
 - 🎨 Features · ⚡ Performance · 🔌 Plugins · 🖥 Platform
 - 🔒 Security · 🧰 Dev experience · 📚 Documentation
@@ -109,7 +111,9 @@ lands on top.
   to the unlock screen and the on-disk file is unreadable
   without the password. Verifies the whole security model
   (ADR-0003 + docs/security-model.md) concretely. Dependencies:
-  P01 closed. Lanes: ui, services, repo, security, tests. Kind:
+  FIBR-0001. (FIBR-0002 and FIBR-0003 also complete P01 first by
+  phase-ordering, but are not direct code prerequisites of the
+  vault.) Lanes: ui, services, repo, security, tests. Kind:
   implement. Source: planned.
 
 ---
@@ -233,7 +237,11 @@ lands on top.
   criterion 1). **Charts library is chosen at spec time**
   (QtCharts vs matplotlib vs pyqtgraph — must be dark-themeable
   *and* render into the PDF) and recorded as an ADR. Dependencies:
-  FIBR-0009, FIBR-0010. Lanes: services, ui, tests. Kind: implement.
+  FIBR-0008, FIBR-0009, FIBR-0010, FIBR-0011 (OFX, PDF, rule-based
+  categorisation, and **transfer detection** — so the consolidated
+  income/expenditure totals correctly exclude transfers, SC3; CSV via
+  FIBR-0007 is pulled in transitively, so all of CSV/OFX/PDF are
+  consolidated — SC1 names all three). Lanes: services, ui, tests. Kind: implement.
   Source: planned.
 
 ---
@@ -280,13 +288,18 @@ lands on top.
   deps (SQLCipher, the needed Qt plugins, qpdf); the **exit
   criterion** is a launch on a clean VM/container with **no
   Python installed** (ADR-0007). Builds on the P01 smoke-test.
-  Dependencies: FIBR-0013, FIBR-0014, FIBR-0003. Lanes: build, ci, packaging.
+  Dependencies: FIBR-0013, FIBR-0014, FIBR-0003 (direct
+  predecessors). Walking the dependency edges, FIBR-0013 and
+  FIBR-0014 transitively pull in the entire P02–P12 feature stack
+  (FIBR-0004 through FIBR-0012), so P13 cannot start until the app
+  is feature-complete. Lanes: build, ci, packaging.
   Kind: chore. Source: planned.
 
 - 📋 [FIBR-0016] **P13: `scripts/publish-release.sh` +
   release automation.** One committed script builds every
   artifact above, publishes the GitHub Release, and drives the
-  Flathub submission/update. It is itself a specced item (its own
+  Flathub submission/update — consuming the Flathub manifest
+  produced by FIBR-0015. It is itself a specced item (its own
   `docs/specs/`, cold-eyes-reviewed) — a publish script can't
   predate the thing it publishes. Dependencies: FIBR-0015. Lanes:
   build, ci, packaging. Kind: chore. Source: planned.
@@ -304,10 +317,11 @@ lands on top.
    blindly at the end).
 3. Set the status emoji (📋 Planned, 💭 Considered).
 4. Add `Lanes:` line declaring ownership.
-5. Add `Kind:` and `Source:` if they're not obvious from the
-   section heading.
+5. Add `Kind:` (required on every bullet, per
+   `roadmap-format.md § 3.5`) and `Source:` (omit only when it's
+   `planned`).
 
-See `docs/standards/roadmap-format.md § 3.6` for the full bullet
+See `docs/standards/roadmap-format.md § 3.5` for the full bullet
 contract.
 
 ## How findings get folded
@@ -324,6 +338,6 @@ Phase closes
     9-step loop; its own closing audits may produce another.
 ```
 
-See `docs/standards/roadmap-format.md § 3.9` and the
+See `docs/standards/roadmap-format.md § 3.8` and the
 [app-workflow skill](~/.claude/skills/app-workflow/SKILL.md)
 for the full pattern.

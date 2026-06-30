@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-06-30
 - **Deciders:** Project lead, Claude
-- **Related:** [docs/discovery.md](../discovery.md) (success criterion 6), ADR-0002, ADR-0003, ADR-0004
+- **Related:** [docs/discovery.md](../discovery.md) (success criterion 6), [ADR-0002](0002-pyside6-over-pyqt6.md), [ADR-0003](0003-sqlcipher-local-only-storage.md), [ADR-0004](0004-qt-native-pdf-over-weasyprint.md)
 
 ## Context
 

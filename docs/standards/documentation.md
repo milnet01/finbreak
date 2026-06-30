@@ -15,7 +15,7 @@ separate sub-spec at [`roadmap-format.md`](roadmap-format.md).
 A reader six months from now should be able to use the doc
 without the author present. If the doc says "see the recent
 change", that won't be true in six months — replace with a
-durable reference (`src/foo.cpp` + section name).
+durable reference (`src/foo.py` + section name).
 
 ### 1.2 Show, don't claim
 
@@ -45,8 +45,10 @@ Don't repeat the install steps in README + INSTALL + CONTRIBUTING
 
 Required sections, in order:
 
-1. **Masthead** — project name, one-line description, badges
-   (build, license, version).
+1. **Masthead** — project name, one-line description, and badges
+   *as available* (e.g. license; build once CI exists). The version
+   is not a required badge — its canonical home is the
+   Current-version line (item 2), per § 1.5.
 2. **Current version** — single line: `Current version: X.Y.Z`
    with links to CHANGELOG, ROADMAP, and any companion docs.
 3. **Features** — bulleted list of headline capabilities.

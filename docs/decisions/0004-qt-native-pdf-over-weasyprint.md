@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-06-30
 - **Deciders:** Project lead, Claude
-- **Related:** [docs/discovery.md](../discovery.md), ADR-0002
+- **Related:** [docs/discovery.md](../discovery.md), [ADR-0002](0002-pyside6-over-pyqt6.md)
 
 ## Context
 

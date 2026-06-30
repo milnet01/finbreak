@@ -15,7 +15,7 @@ Sub-spec extracted from `documentation.md` for token efficiency:
 
 | Sub-spec | Covers |
 |----------|--------|
-| [roadmap-format.md](roadmap-format.md) | Detailed `ROADMAP.md` and `CHANGELOG.md` format spec — file-header marker, status / theme emojis, stable IDs (`PROJ-NNNN`), insertion semantics, `Kind:` / `Source:` taxonomy, current-work signaling, fold-in subsections, anti-patterns. Read when authoring either file or any tooling that consumes them. |
+| [roadmap-format.md](roadmap-format.md) | Detailed `ROADMAP.md` and `CHANGELOG.md` format spec — file-header marker, status / theme emojis, stable IDs (the generic `PROJ-NNNN` pattern — this project uses `FIBR-NNNN`), insertion semantics, `Kind:` / `Source:` taxonomy, current-work signaling, fold-in subsections, anti-patterns. Read when authoring either file or any tooling that consumes them. |
 
 ## How they fit together
 
@@ -43,8 +43,10 @@ existing code, no "ask the original author".
 
 ## Adopting these standards in another project
 
-Copy the four files in this folder verbatim into your project's
-`docs/standards/` directory. They're intentionally
+Copy all five files in this folder (the four standards **plus**
+the `roadmap-format.md` sub-spec, which the closed loop above
+depends on) verbatim into your project's `docs/standards/`
+directory. They're intentionally
 project-agnostic: language-specific notes are guidance rather
 than mandates, and project-specific rules (specific module
 boundaries, specific build commands) live in `CLAUDE.md` at the

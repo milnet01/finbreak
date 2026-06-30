@@ -37,8 +37,8 @@ body):
   passing; no new test required.
 - Documentation-only changes (`Kind: doc` / `doc-fix`) — no test
   needed.
-- Generated code (`moc_*`, `ui_*`, etc.) — not tested directly;
-  the consumer is.
+- Generated code (`ui_*.py` from `pyside6-uic`, `*_rc.py` from
+  `pyside6-rcc`, etc.) — not tested directly; the consumer is.
 - Exploratory spike / proof-of-concept clearly marked as such.
 
 If TDD genuinely doesn't fit a change, write a comment in the
@@ -87,7 +87,7 @@ For feature-conformance tests: write `spec.md` first as a
 human-readable contract. Get user sign-off on the spec. Then
 write the test that enforces each invariant.
 
-The test references the spec by section: `// INV-3 from
+The test references the spec by section: `# INV-3 from
 spec.md § 2.1`. Reader can move between spec and test fluidly.
 
 
@@ -117,7 +117,7 @@ file is needed. Mark categories with markers (registered in
 import pytest
 
 @pytest.mark.features
-def test_vault_unreadable_without_key(tmp_path):
+def test_INV1_vault_unreadable_without_key(tmp_path):
     ...
 
 # GUI tests use the pytest-qt `qtbot` fixture:
@@ -126,7 +126,7 @@ def test_unlock_screen_rejects_wrong_password(qtbot):
 ```
 
 Run a single test while iterating:
-`pytest tests/features/vault/test_vault.py::test_vault_unreadable_without_key -q`.
+`pytest tests/features/vault/test_vault.py::test_INV1_vault_unreadable_without_key -q`.
 
 ### 3.3 Integration tests
 
@@ -149,7 +149,7 @@ For rule-based tools (ruff, bandit, the importer parsers): keep
 on `bad` and 0 on `good`. Count-based, not line-number-based —
 line numbers shift across edits. Import-parser fixtures use
 **synthetic** statement data only — never a real statement
-(security INV-6).
+([security-model.md](../security-model.md) INV-6).
 
 
 ## 4. spec.md authoring
@@ -185,7 +185,7 @@ inserting — add `INV-1c` for a new sub-case after `INV-1b`. Same
 policy as ROADMAP IDs.
 
 When a spec invariant is dropped (the feature decision changed),
-mark the INV as `**INV-3** (retired in 0.7.21): <reason>` rather
+mark the INV as `**INV-3** (retired in 0.x): <reason>` rather
 than deleting it — that preserves the cross-reference from old
 test code and commit messages.
 
@@ -217,10 +217,10 @@ clearer for non-obvious comparisons.)
   `@pytest.mark.integration`.
 - **Isolated.** No shared state between tests; one failing test
   doesn't poison another. Use `tmp_path` for any on-disk vault.
-- **No network unless opt-in.** Fin_Break ships no network code
-  (security INV-8), so tests must not hit the network at all; a
-  test that somehow needs it is a design smell to surface, not to
-  gate behind a marker.
+- **No network.** Fin_Break ships no network code
+  ([security-model.md](../security-model.md) INV-8), so tests must
+  not hit the network at all; a test that somehow needs it is a
+  design smell to surface, not to gate behind a marker.
 
 
 ## 7. Coverage policy
@@ -249,7 +249,7 @@ FIBR-0010: lock manual-override priority over re-import
 Adds INV-3 to tests/features/categorisation/spec.md and the
 corresponding assertion in test_categorisation.py.
 
-Co-Authored-By: …
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
 ```
 
 When the test ships *with* a fix in the same commit (TDD's normal

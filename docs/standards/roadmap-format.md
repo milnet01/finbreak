@@ -8,6 +8,11 @@
 >
 > Read this file when authoring a `ROADMAP.md` bullet, a `CHANGELOG.md`
 > entry, or any tooling that consumes either format. Skip otherwise.
+>
+> **Section numbers** start at § 3: this sub-spec was extracted from
+> `documentation.md` (§ 1–2 live there) and keeps its original
+> numbering so existing `documentation.md § 3 / § 4` cross-references
+> stay valid.
 
 ## 3. ROADMAP.md format spec
 
@@ -118,7 +123,7 @@ Required pieces:
   one-line summary; this is what the dialog filters and the LLM
   agent reads first.
 - **`Kind: <kind>.`** — declares the type of work. One of the
-  ten values in §3.5.3. **Required as of v1.1** so the Roadmap
+  ten values in §3.5.3. **Required** so the Roadmap
   viewer (and any tooling that consumes the file
   deterministically) can categorise without inferring from the
   surrounding section heading. The dominant Kind for a section
@@ -218,7 +223,7 @@ this without adding complexity to the bullet's surface form.
 | `chore` | Housekeeping (deps, build flags, generated files) | no test, changelog optional |
 | `release` | Version bump, packaging files, tag | drives the release skill |
 
-**Required as of v1.1** — every actionable bullet declares its
+**Required** — every actionable bullet declares its
 `Kind:` explicitly, even when the surrounding section makes the
 default obvious. Section context is a hint for human readers;
 machine consumers (the Roadmap dialog, the App-Build runner,
@@ -237,7 +242,7 @@ item.
 | `indie-review-YYYY-MM-DD` | `/indie-review` skill output on date YYYY-MM-DD |
 | `debt-sweep-YYYY-MM-DD` | `/debt-sweep` skill output on date YYYY-MM-DD |
 | `doc-review-YYYY-MM-DD` | Documentation review on date YYYY-MM-DD |
-| `static-analysis` | cppcheck / clazy / semgrep / ruff / bandit ad-hoc |
+| `static-analysis` | ruff / bandit / semgrep ad-hoc (or other language-appropriate analysers) |
 | `regression` | Item was previously ✅ but a later change broke it |
 | `external-CVE-NNNN-NNNN` | Public CVE / advisory triggering this work |
 | `upstream-<dep>` | Driven by a dep / library upstream change |
@@ -365,7 +370,7 @@ and heading wording change.
 
 ### 🐛 Static-analysis fold-in (2026-04-12)
 
-- 📋 [ANTS-0535] **MEDIUM — cppcheck `nullPointerArithmetic`.** …
+- 📋 [ANTS-0535] **MEDIUM — bandit `B608` possible SQL injection.** …
 
 ### 🧹 Debt-sweep fold-in (2026-04-28)
 
@@ -387,7 +392,7 @@ Conventions for any findings fold-in:
 - **Date-stamp the heading** — `(YYYY-MM-DD)`.
 - **Source-stamp the heading** — `(user, …)`, `(audit, …)`,
   `(indie-review, …)`, `(static-analysis, …)`,
-  `(doc-review, …)`, `(cppcheck, …)`, etc.
+  `(doc-review, …)`, `(bandit, …)`, etc.
 - **Severity in the headline** — `**CRITICAL — …**`,
   `**HIGH — …**`, `**MEDIUM — …**`, `**LOW — …**`.
 - **Position by priority** — Tier-1 / CRITICAL items go above

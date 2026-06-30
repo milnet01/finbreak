@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-06-30
 - **Deciders:** Project lead, Claude
-- **Related:** [docs/discovery.md](../discovery.md) (tech stack), ADR-0004
+- **Related:** [docs/discovery.md](../discovery.md) (tech stack), [ADR-0004](0004-qt-native-pdf-over-weasyprint.md) (also Qt-stack-dependent)
 
 ## Context
 
@@ -20,7 +20,7 @@ two bindings:
   libraries remain replaceable, which bundlers like PyInstaller satisfy.
 
 The user's other app (Music_Production) uses PyQt6, so there is muscle-memory
-cost to switching. The APIs are ~95% identical (enum scoping, a few signal
+cost to switching. The APIs are nearly identical (enum scoping, a few signal
 names, `Signal`/`Slot` vs `pyqtSignal`/`pyqtSlot`).
 
 ## Decision
