@@ -1,8 +1,8 @@
-# Fin_Break — Security model & threat model
+# finbreak — Security model & threat model
 
 > **Status:** Draft — part of the Phase C doc set; runs through
 > the Phase D `/cold-eyes` loop with the rest.
-> **Why this exists:** Fin_Break holds **personal financial
+> **Why this exists:** finbreak holds **personal financial
 > data**. Security is the load-bearing concern, so it gets its
 > own document — a single place that names what we protect, what
 > could go wrong, and exactly how each risk is stopped.
@@ -48,19 +48,19 @@ unavoidable it is glossed on first use.
 ## 3. Threats and mitigations (STRIDE-lite)
 
 "STRIDE" is just a checklist of the six classic ways software is
-attacked. Each row: the threat → how Fin_Break stops it.
+attacked. Each row: the threat → how finbreak stops it.
 
 | # | Threat | Mitigation |
 |---|--------|------------|
 | T1 | **Lost/stolen laptop → someone reads the vault file** | Whole-file AES-256 encryption (SQLCipher). The file is meaningless without the key (A1, INV-1). |
-| T2 | **Weak master password brute-forced** | **Argon2id** memory-hard key derivation with pinned, expensive parameters (§ 5 INV-2) makes guessing slow and GPU-resistant. Password strength is also surfaced at first-run (advisory, not an enforced INV). |
+| T2 | **Weak master password brute-forced** | **Argon2id** memory-hard key derivation with pinned parameters (§ 5 INV-2) makes guessing slow and GPU-resistant. Password strength is also surfaced at first-run (advisory, not an enforced INV). |
 | T3 | **Key or password recovered from memory / swap / a crash dump** | Key held only while unlocked; **wiped on lock and on exit**; auto-lock drops it after idle (INV-3). The plaintext password reference is cleared before the unlock routine returns. (Defending against the OS paging memory to swap is out of scope — see § 4.) |
 | T4 | **Decrypted bank statement leaks to disk** | Locked input PDFs are decrypted **in memory only**; no decrypted content is *deliberately* written to disk or temp files (A5, INV-4). (Defending against the OS paging memory to swap is out of scope — § 4.) |
 | T5 | **Malicious import file** (crafted CSV/OFX/PDF — parser crash, path traversal, zip-bomb-style resource exhaustion, formula injection) | Parsers run defensively: bounded resource use, no `eval`, no shell-out; CSV cells are treated as data, never spreadsheet formulas; per-row errors are reported, not fatal (INV-5a/5b/5c). |
 | T6 | **Secret accidentally committed to the public repo** | `gitleaks` in CI **and** the local pre-push script; `.gitignore` excludes `*.db`/vault/build output; no real financial data in tests — only synthetic fixtures (INV-6, A7). |
 | T7 | **Vulnerable third-party dependency (known CVE)** | `pip-audit` in CI + local script fails the build on a known-vulnerable dependency; Dependabot raises bumps; latest-stable policy (global rule § 5). |
 | T8 | **Insecure code pattern introduced** (hardcoded secret, weak hash, `subprocess(shell=True)`, etc.) | `bandit` security linter in CI + local script. |
-| T9 | **Tampered vault / downgrade of crypto settings** | SQLCipher authenticates **each page with a per-page HMAC** (HMAC-SHA512 by default) — tamper-evident. AES gives confidentiality, **not** integrity, so the HMAC must stay enabled; a tampered page fails to open (INV-1). The recorded KDF parameters can't be downgraded **below the pinned floor** on open (INV-2). Both will be pinned/asserted in the FIBR-0004 (P02) spec (written just-in-time). |
+| T9 | **Tampered vault / downgrade of crypto settings** | SQLCipher authenticates **each page with a per-page HMAC** (HMAC-SHA512 by default) — tamper-evident. AES gives confidentiality, **not** integrity, so the HMAC must stay enabled; a tampered page fails to open (INV-1). The recorded KDF parameters can't be downgraded **below the pinned floor** on open (INV-2). Both are asserted by the FIBR-0004 (P02) spec's tests. |
 | T10 | **Exported report shared, then read by the wrong person** | Export is password-locked with AES-256 (`pikepdf`) using a password the user sets at export time (A6, INV-7). The user is reminded the password is theirs to share safely. |
 | T11 | **Forgotten master password** | By design there is **no backdoor** (a backdoor is a vulnerability), so a forgotten master password means the data is **unrecoverable** — a deliberate confidentiality-over-availability trade. The encrypted backup export (ADR-0003) mitigates vault *loss/corruption*, **not** a forgotten password (a backup is only as recoverable as its own secret). *No INV — this is a design stance, not a testable control.* |
 | T12 | **Sensitive data leaked via the log file** | The local rotating log never records transaction contents, passwords, keys, or decrypted data (INV-9). |
@@ -106,20 +106,36 @@ be checkable. Enforcement arrives in step with the code:
   HMAC integrity enabled (`cipher_use_hmac = ON`, SQLCipher 4) so a
   tampered page fails to open rather than returning corrupt data.
 - **INV-2 — Strong, pinned KDF.** The master password is
-  stretched with Argon2id. The exact parameters (memory, time,
-  parallelism) are pinned in the **FIBR-0004 (P02) spec**, chosen
-  against current
-  [OWASP Password Storage](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html)
-  guidance and **never below** its Argon2id minimum; the specific
-  values and the OWASP retrieval date are frozen in that spec (a
-  dated snapshot, not a live "current guidance" target). The
-  parameters are recorded with the vault, and the open path **must
-  refuse to proceed** if a vault's recorded cost is below the pinned
-  floor — so they can never be silently weakened. (The P02 spec is
-  written just-in-time with the numbers researched then, not guessed
-  now.) The FIBR-0004 spec must also assert the Argon2id output is
-  passed as SQLCipher's **raw** key (raw-key pragma), so the
-  "Argon2id is the KDF" claim (A3) is testable, not merely stated.
+  stretched with Argon2id using these pinned parameters:
+  **memory = 47104 KiB (46 MiB), iterations (time cost) = 1,
+  parallelism = 1** — one of the five equal-strength Argon2id
+  configurations in the
+  [OWASP Password Storage Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html)
+  (the highest-memory one; OWASP states the five give equal
+  defence, trading CPU for RAM), retrieved **2026-06-30** as a
+  frozen dated snapshot, not a live "current guidance" target.
+  From a unique **16-byte random salt per vault** Argon2id derives
+  a **32-byte (256-bit) output** — SQLCipher's raw-key size; these
+  two lengths are finbreak's own choices (OWASP pins only memory /
+  time / parallelism). The parameters and salt are recorded with
+  the vault. On open the app derives the key from the parameters
+  **recorded in the vault** and **must refuse to proceed** unless
+  the record passes two checks — a directional **strength floor**
+  on memory and an **exact-format** match on the lengths. The
+  strength floor: recorded **memory ≥ 47104 KiB** (a vault with
+  *stronger* memory still opens, so the pin can be raised later
+  without locking out existing vaults). The exact-format match:
+  recorded **output length = 32 bytes** and **salt length = 16
+  bytes** — the raw key's required size; a *longer* output or salt
+  is rejected, not accepted. Iterations and parallelism get no
+  on-open check — Argon2id's own minimum of 1 already pins them, so
+  no recorded value can fall below the pin and there is no app-level
+  downgrade test for those two axes. So a tampered or downgraded
+  vault cannot force a weaker KDF. The
+  FIBR-0004 (P02) spec implements and *tests* these values, and
+  asserts the Argon2id output is passed as SQLCipher's **raw** key
+  (raw-key pragma), so the "Argon2id is the KDF" claim (A3) is
+  testable, not merely stated.
 - **INV-3 — Key lifetime.** The derived key and the plaintext
   password exist in memory only while unlocked, are wiped on
   lock/exit, and are dropped by auto-lock after the configured

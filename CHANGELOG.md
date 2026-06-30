@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to Fin_Break are documented in this
+All notable changes to finbreak are documented in this
 file.
 
 The format follows

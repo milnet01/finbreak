@@ -217,7 +217,7 @@ clearer for non-obvious comparisons.)
   `@pytest.mark.integration`.
 - **Isolated.** No shared state between tests; one failing test
   doesn't poison another. Use `tmp_path` for any on-disk vault.
-- **No network.** Fin_Break ships no network code
+- **No network.** finbreak ships no network code
   ([security-model.md](../security-model.md) INV-8), so tests must
   not hit the network at all; a test that somehow needs it is a
   design smell to surface, not to gate behind a marker.

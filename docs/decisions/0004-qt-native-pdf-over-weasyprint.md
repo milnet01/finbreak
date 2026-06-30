@@ -7,7 +7,7 @@
 
 ## Context
 
-Fin_Break exports a shareable report as PDF, and must build cleanly into a
+finbreak exports a shareable report as PDF, and must build cleanly into a
 single bundle on Windows, macOS, and Linux (AppImage + Flatpak). The renderer
 choice strongly affects packaging:
 

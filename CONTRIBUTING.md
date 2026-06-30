@@ -1,4 +1,4 @@
-# Contributing to Fin_Break
+# Contributing to finbreak
 
 Thanks for considering a contribution. This project follows a
 disciplined, document-driven workflow — please read this file

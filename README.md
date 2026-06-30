@@ -1,4 +1,4 @@
-# Fin_Break
+# finbreak
 
 > A private, offline desktop app that breaks down where your money
 > goes — from your own bank statements, with no bank linking and

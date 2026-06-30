@@ -1,4 +1,4 @@
-# Fin_Break — Discovery (Phase A)
+# finbreak — Discovery (Phase A)
 
 > **Status:** Approved 2026-06-30.
 > **Phase:** A — Discovery.
@@ -26,7 +26,7 @@ recognise that money moved *between your own accounts* isn't spending. The
 result is either an unacceptable security posture or a manual, error-prone
 mess.
 
-Fin_Break (Finances Break Down) solves this with a **private, offline desktop
+finbreak (Finances Break Down) solves this with a **private, offline desktop
 app**: the user downloads their own statement files from their bank and feeds
 them in; the app never touches the bank and nothing leaves the machine.
 
@@ -122,7 +122,7 @@ Considered and deliberately excluded from v1:
 - **Multi-currency within one profile, with FX conversion** — v1 uses a single
   base currency per profile, chosen at first run. Cross-currency conversion is
   a later add-on.
-- **Budgeting, forecasting, savings-goal tracking** — Fin_Break explains the
+- **Budgeting, forecasting, savings-goal tracking** — finbreak explains the
   past, it doesn't plan the future (yet).
 - **Recurring-transaction prediction / bill reminders.**
 - **Mobile app, web app, or any cloud sync** — desktop-only, local-only by
@@ -138,7 +138,7 @@ Considered and deliberately excluded from v1:
 
 ## Distribution
 
-- **Distribution:** public GitHub — <https://github.com/milnet01/Fin_Break>.
+- **Distribution:** public GitHub — <https://github.com/milnet01/finbreak>.
 - **Reason:** the user requested a public repo; it's a personal-finance tool
   intended to be shared with friends/family and anyone worldwide.
 

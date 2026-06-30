@@ -1,4 +1,4 @@
-# Fin_Break — Audit allowlist
+# finbreak — Audit allowlist
 
 > **Status:** Empty until first confirmed false positive.
 > **Bar for entry:** high — every entry requires written

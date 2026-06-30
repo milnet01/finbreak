@@ -1,4 +1,4 @@
-# Fin_Break — Project instructions for Claude Code
+# finbreak — Project instructions for Claude Code
 
 Scaffolded from the **Ants App-Build** template; follows the
 [`app-workflow`](~/.claude/skills/app-workflow/SKILL.md)

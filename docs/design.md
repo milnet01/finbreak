@@ -1,4 +1,4 @@
-# Fin_Break — Design (Phase B)
+# finbreak — Design (Phase B)
 
 > **Status:** Approved 2026-06-30.
 > **Phase:** B — Design.
@@ -226,13 +226,10 @@ UI state.
 
 ### Persistence
 
-- **Location:** `QStandardPaths.AppDataLocation` → `~/.local/share/FinBreak/`
-  (Linux), `%APPDATA%\FinBreak\` (Windows), `~/Library/Application Support/FinBreak/`
-  (macOS).
-  > **Naming:** the product/repo name is **`Fin_Break`**; the on-disk
-  > data directory is **`FinBreak`** and the Python package is
-  > **`finbreak`**. The underscore-free forms are the deliberate
-  > filesystem- and import-safe variants of the display name — not a typo.
+- **Location:** `QStandardPaths.AppDataLocation` → `~/.local/share/finbreak/`
+  (Linux), `%APPDATA%\finbreak\` (Windows), `~/Library/Application Support/finbreak/`
+  (macOS). The name is `finbreak` everywhere — brand, repo, data
+  directory, and Python package — set via `QCoreApplication.setApplicationName("finbreak")`.
 - **Schema & migrations:** a `schema_version` table; migrations run on unlock,
   forward-only, each in a transaction.
 - **Atomicity:** every import/edit is a single DB transaction — a failed import

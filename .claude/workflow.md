@@ -1,4 +1,4 @@
-# Fin_Break — Workflow state
+# finbreak — Workflow state
 
 ## §1. Status header
 
@@ -8,7 +8,7 @@
 | **Active item ID** | (none — pre-code phases) |
 | **Active step** | (see "Step progress" below) |
 | **Blocked on** | — |
-| **Last update** | 2026-06-30 (Phase D — 5 `/cold-eyes` loops run; converged to non-actionable; awaiting user sign-off) |
+| **Last update** | 2026-07-01 (Phase D — two deferred items resolved: Argon2id params pinned in security-model INV-2 + naming unified to `finbreak` (repo renamed); resolving cold-eyes loop ran 5 passes to clean. Awaiting user sign-off) |
 | **Next gate** | User signs off "docs ready to code from" → P01 (FIBR-0001) implementation |
 | **Convergence checkpoint** | 5 (consecutive `FP##` items immediately preceding any ✅-`implement`-Kind close in the active release block — see `~/.claude/commands/close-phase.md § 5a-6`) |
 | **Debt-sweep phase threshold** | 5 (auto-prompt for `/debt-sweep` after this many phases without one) |
@@ -74,6 +74,42 @@ journal); §2 is the only part that changes.
 ## §3. Session journal
 
 Append-only. Newest at the top.
+
+### 2026-07-01 — Phase D deferred items resolved (Argon2id pin + finbreak rename)
+
+Closed the two items deferred at the end of the Phase D doc audit, before P01
+sign-off.
+
+1. **Argon2id parameters pinned.** Researched the current OWASP Password Storage
+   Cheat Sheet (retrieved 2026-06-30) and pinned the highest-memory of its five
+   equal-strength Argon2id configs — **memory 47104 KiB (46 MiB), iterations 1,
+   parallelism 1**, plus a 16-byte per-vault salt and 32-byte (256-bit) raw-key
+   output (the last two are finbreak choices; OWASP is silent on them). Values
+   now live in **one place** — `security-model.md` INV-2 — with an explicit,
+   testable open-path refusal rule (memory ≥ floor; output and salt exact-format;
+   iterations/parallelism uncheckable since 1 is Argon2id's own minimum).
+   ADR-0003, T9, T2 and the ROADMAP FIBR-0004 bullet now reference INV-2 instead
+   of restating numbers or promising a future just-in-time pin.
+
+2. **Naming unified to `finbreak`.** Per user decision, dropped the deliberate
+   Fin_Break / FinBreak / finbreak three-way split; brand, repo, on-disk data
+   dir, and Python package are now all `finbreak` (byte-for-byte). Swept 15
+   doc/config files; historical journal lines left intact. Data-dir path is now
+   `~/.local/share/finbreak/` etc. **GitHub repo renamed** milnet01/Fin_Break →
+   milnet01/finbreak (old URL auto-redirects; local remote updated). **Local
+   checkout dir not yet renamed** — still `…/Fin_Break`; recommend
+   `mv Fin_Break finbreak` from a fresh session to match (deferred to avoid
+   breaking this session's absolute paths).
+
+**Cold-eyes (global rule §14):** the edited security/ADR/design docs ran through
+`/cold-eyes` — 2 lanes (crypto-accuracy, naming). Naming clean on loop 1. Crypto
+lane looped 5 passes: loop 1 MED+LOW (params not concrete / single-source) →
+loop 2 HIGH ("top-recommended" mischaracterised OWASP's equal-strength configs)
++ MEDs → loops 3–4 (floor-predicate prose-vs-predicate precision) → **loop 5
+clean** (zero verified findings, all dimensions). Every value independently
+re-verified against the live OWASP page each loop.
+
+Next: still awaiting user sign-off "docs ready to code from" → P01 (FIBR-0001).
 
 ### 2026-06-30 — Phase D `/cold-eyes` doc-audit loop (5 loops)
 

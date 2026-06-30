@@ -1,5 +1,5 @@
 <!-- ants-roadmap-format: 1 -->
-# Fin_Break — Roadmap
+# finbreak — Roadmap
 
 > **Current version:** 0.0.0 (scaffolded 2026-06-30). See
 > [CHANGELOG.md](CHANGELOG.md) for what's shipped; this file
@@ -103,7 +103,8 @@ lands on top.
 - 📋 [FIBR-0004] **P02: master password → encrypted vault
   → one manual transaction → table → lock.** First-run sets the
   master password + base currency; `CryptoService` derives the
-  key with **Argon2id** (parameters pinned in the spec) and
+  key with **Argon2id** (parameters pinned in security-model.md
+  INV-2) and
   opens the **SQLCipher** (AES-256) vault; `AuthService`
   unlocks/locks and wipes the key from memory on lock; the user
   manually enters one transaction (through a repository, in a

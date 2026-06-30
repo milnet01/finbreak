@@ -7,7 +7,7 @@
 
 ## Context
 
-Fin_Break is a Qt-based desktop app distributed publicly — Windows `.exe`,
+finbreak is a Qt-based desktop app distributed publicly — Windows `.exe`,
 macOS `.app`, Linux AppImage, and a Flatpak on Flathub. Qt for Python ships in
 two bindings:
 

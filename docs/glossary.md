@@ -1,4 +1,4 @@
-# Fin_Break — Glossary
+# finbreak — Glossary
 
 Domain-specific and workflow-specific terms used in code,
 docs, and commits. If a term appears in `discovery.md`,
@@ -31,7 +31,7 @@ Sorted alphabetically; added during Phases B–C.
 | Term | Definition |
 |------|------------|
 | **Account** | One of the user's bank accounts, tagged with a **type**: current, savings, credit card, personal loan, home loan, investment, or other. A profile holds many accounts. |
-| **AppImage** | A single-file portable Linux application format — download, mark executable, run; no install. One of Fin_Break's Linux delivery formats. |
+| **AppImage** | A single-file portable Linux application format — download, mark executable, run; no install. One of finbreak's Linux delivery formats. |
 | **Auto-lock** | Dropping the in-memory database key after a configurable idle period, returning the app to the unlock screen so an unattended session can't be read. |
 | **Base currency** | The single currency a profile is denominated in, chosen at first run. v1 does not convert between currencies. |
 | **Category tree** | The hierarchy that classifies transactions: Type (Income / Expenditure) → Category → (optional, future) Sub-category. Stored self-referentially so depth can grow; v1's UI shows two levels. |

@@ -1,4 +1,4 @@
-# Fin_Break — Ideas
+# finbreak — Ideas
 
 > **Status:** Empty until first new idea is captured.
 > **Purpose:** mid-flight ideas the user proposes during an
