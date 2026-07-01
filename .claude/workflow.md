@@ -8,8 +8,8 @@
 | **Active item ID** | FIBR-0002 |
 | **Active step** | (see "Step progress" below) |
 | **Blocked on** | — |
-| **Last update** | 2026-07-01 (FIBR-0002 steps 1–2 done: spec `docs/specs/FIBR-0002.md` /cold-eyes-clean at loop 4, dep FIBR-0001 ✅. Step 3 next: write failing `git check-ignore --no-index` tests) |
-| **Next gate** | FIBR-0002 step 3 — failing `tests/features/gitignore/` test (INV-1..INV-3) |
+| **Last update** | 2026-07-01 (FIBR-0002 steps 1–4 done: `.gitignore` delta + `tests/features/gitignore/` (23 tests) green, full ci-local.sh gate exits 0. Steps 5–9 next via /close-phase) |
+| **Next gate** | FIBR-0002 steps 5–9 — /audit + /indie-review, then close |
 | **Convergence checkpoint** | 5 (consecutive `FP##` items immediately preceding any ✅-`implement`-Kind close in the active release block — see `~/.claude/commands/close-phase.md § 5a-6`) |
 | **Debt-sweep phase threshold** | 5 (auto-prompt for `/debt-sweep` after this many phases without one) |
 | **Last debt sweep** | (none yet) |
@@ -23,9 +23,9 @@ becomes active.
 
 1. ✅ Verify spec (read `docs/audit-allowlist.md` first)
 2. ✅ Verify dependencies on the roadmap DAG
-3. 🚧 Write failing tests
-4. ⬜ Implement until tests pass
-5. ⬜ Run `/audit` (read `docs/audit-allowlist.md` first)
+3. ✅ Write failing tests
+4. ✅ Implement until tests pass
+5. 🚧 Run `/audit` (read `docs/audit-allowlist.md` first)
 6. ⬜ Run `/indie-review` (same allowlist read)
 7. ⬜ Fold actionable findings → new FP## roadmap item
 8. ⬜ Update CHANGELOG / ROADMAP / journal

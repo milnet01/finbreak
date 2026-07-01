@@ -1,12 +1,39 @@
-# Common — language-agnostic baseline. Python dev-artefact ignores are
-# in the "Python" section below; FIBR-0002 expands that into the full set
-# (local vaults, *.db, packaging output: *.dmg / AppImage / dist).
+# Common — language-agnostic baseline. Python dev-artefacts are in the
+# "Python" section; financial data (local vaults / *.db), tooling caches, and
+# packaging output (*.dmg / AppImage / Flatpak / build / dist) follow below
+# (FIBR-0002).
 
 # Python — bytecode caches and the local dev virtualenv (.venv is also
 # allowlisted in .gitleaks.toml and excluded by bandit).
 __pycache__/
 *.py[cod]
 .venv/
+
+# Financial data / local vaults — the SQLCipher vault and any database, plus
+# the SQLite runtime sidecars (-wal/-shm/-journal) a live vault writes next to
+# it. Must never reach the public repo (security-model T6/A7; FIBR-0002).
+*.db
+*.sqlite
+*.sqlite3
+*.db-*
+*.sqlite-*
+*.sqlite3-*
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Packaging / build output — PyInstaller (build/, dist/), setuptools metadata
+# (*.egg-info/), and the platform installers: macOS .dmg, Linux AppImage,
+# Flatpak bundle + its build tree (FIBR-0002 / FIBR-0015).
+build/
+dist/
+*.egg-info/
+*.dmg
+*.AppImage
+*.flatpak
+.flatpak-builder/
 
 # OS
 .DS_Store
