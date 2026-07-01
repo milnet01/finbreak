@@ -84,7 +84,9 @@ scariest unknown (native-library bundling) up front.
   native libs early).** Freeze the trivial placeholder app into
   a one-file **AppImage** *and* a PyInstaller bundle, then launch
   each on a clean target with **no Python installed**, confirming
-  the CPython runtime + a stub SQLCipher/Qt load. This surfaces
+  the CPython runtime + a stub load of all three native stacks —
+  SQLCipher, Qt, and qpdf/`pikepdf` (scope broadened to the third
+  stack per the FIBR-0003 spec, 2026-07-01). This surfaces
   the native-lib collection risk named in ADR-0007 *now*, not
   after ten phases are built on top. Full multi-platform
   packaging + publish pipeline is deferred to P13. Dependencies:

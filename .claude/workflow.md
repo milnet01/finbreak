@@ -8,8 +8,8 @@
 | **Active item ID** | FIBR-0003 |
 | **Active step** | (see "Step progress" below) |
 | **Blocked on** | — |
-| **Last update** | 2026-07-01 (FIBR-0002 closed by /close-phase — /cold-eyes-clean spec, /audit + /indie-review zero-actionable, gate green; tagged FIBR-0002-complete. Next item FIBR-0003) |
-| **Next gate** | FIBR-0003 step 1 (verify/expand spec — bundling smoke-test) |
+| **Last update** | 2026-07-01 (FIBR-0003 spec drafted + /cold-eyes converged over 6 loops; steps 1–2 done; now step 3 — write failing tests) |
+| **Next gate** | FIBR-0003 step 3 (write failing tests: self-test loads Qt+SQLCipher+qpdf) |
 | **Convergence checkpoint** | 5 (consecutive `FP##` items immediately preceding any ✅-`implement`-Kind close in the active release block — see `~/.claude/commands/close-phase.md § 5a-6`) |
 | **Debt-sweep phase threshold** | 5 (auto-prompt for `/debt-sweep` after this many phases without one) |
 | **Last debt sweep** | (none yet) |
@@ -21,9 +21,9 @@ While an item is active, Claude marks the current step 🚧;
 completed steps flip to ✅. Resets to all ⬜ when a new item
 becomes active.
 
-1. ⬜ Verify spec (read `docs/audit-allowlist.md` first)
-2. ⬜ Verify dependencies on the roadmap DAG
-3. ⬜ Write failing tests
+1. ✅ Verify spec (read `docs/audit-allowlist.md` first)
+2. ✅ Verify dependencies on the roadmap DAG
+3. 🚧 Write failing tests
 4. ⬜ Implement until tests pass
 5. ⬜ Run `/audit` (read `docs/audit-allowlist.md` first)
 6. ⬜ Run `/indie-review` (same allowlist read)
@@ -73,6 +73,30 @@ journal); §2 is the only part that changes.
 ## §3. Session journal
 
 Append-only. Newest at the top.
+
+### 2026-07-01 — FIBR-0003 spec drafted + /cold-eyes (6 loops)
+
+Drafted `docs/specs/FIBR-0003.md` (P01 bundling smoke-test). Scope decided
+with the user: de-risk **all three** native stacks (Qt + SQLCipher + qpdf),
+and keep the bundle-build a **separate opt-in command** so the everyday
+`ci-local.sh` gate stays fast. Pinned toolchain from parallel research:
+`PySide6==6.11.1`, `sqlcipher3-binary==0.6.0` (bundles the native lib),
+`pikepdf==10.9.1`, `pyinstaller==6.21.0`; clean-room = Python-free
+`debian:13-slim` via podman `--env-clear`.
+
+**Cold-eyes (global rule §14):** 2 lanes (accuracy + implementability), 6
+loops, 12 independent cold reviewers, ~40 findings fixed — including one real
+CRITICAL I introduced in loop 3 (a `debian:stable-slim` left in the DoD after
+pinning the image) that both lanes caught in loop 4, plus two loop-2 citation
+corrections (INV-9→INV-6 for the fake-key justification; testing §3.4→§3.3 for
+the integration marker). Converged to polish + build-time-verification items
+(PyPI pin resolution, PySide6 wheel tag, Debian glibc) which are folded into
+the spec as explicit build steps. Both lanes verified all citations/contracts
+clean twice. Also reconciled the ROADMAP FIBR-0003 bullet to name all three
+native stacks (was "SQLCipher/Qt" only).
+
+Next: step 3 — write failing tests (the `--self-test` guard + the
+`integration`-marked build+clean-room test), then implement to green.
 
 ### 2026-07-01 — Phase D deferred items resolved (Argon2id pin + finbreak rename)
 
