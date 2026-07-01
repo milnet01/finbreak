@@ -19,7 +19,12 @@ runtime="$(command -v podman || command -v docker || true)"
 # run never writes into your tree (build/, dist/, caches). --security-opt
 # label=disable is required for bind-mount reads under SELinux/podman on this
 # host (same as scripts/build-smoke.sh).
+#
+# `chown` the copy to a foreign uid so the gate (run as root) sees a repo owned
+# by someone else — faithfully reproducing GitHub's container checkout, where
+# git otherwise trips "dubious ownership". This is what makes ci-setup.sh's
+# safe.directory line get exercised locally, not just on CI.
 exec "$runtime" run --rm -t --security-opt label=disable \
     -v "$PWD":/repo:ro \
     docker.io/library/python:3.12-slim-bookworm \
-    bash -c 'cp -a /repo /work && cd /work && ./scripts/ci-setup.sh && ./scripts/ci-local.sh "$@"' _ "$@"
+    bash -c 'cp -a /repo /work && chown -R 1001:1001 /work && cd /work && ./scripts/ci-setup.sh && ./scripts/ci-local.sh "$@"' _ "$@"

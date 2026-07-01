@@ -33,6 +33,13 @@ $SUDO apt-get install -y --no-install-recommends \
     curl ca-certificates git \
     libgl1 libegl1 libglib2.0-0 libxkbcommon0 libdbus-1-3 libfontconfig1
 
+# The gate's feature tests run `git` against the checkout. In a container the
+# checkout is usually owned by a different uid than the user running the gate,
+# so git 2.35.2+ refuses with "detected dubious ownership" (exit 128). Trust the
+# workspace explicitly — standard for ephemeral CI containers, and harmless on a
+# developer's own repo.
+git config --global --add safe.directory '*'
+
 echo "== gitleaks (a Go binary, not a pip package) =="
 GITLEAKS_VERSION=8.30.1
 curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
