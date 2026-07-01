@@ -77,6 +77,23 @@ pip-audit, gitleaks, tests; FIBR-0001 INV-1/INV-2):
 ./scripts/ci-local.sh
 ```
 
+**Reproduce GitHub CI EXACTLY before pushing** — the local gate runs on your
+desktop, which already has system libraries (Qt's `libGL`/`libEGL`/fontconfig,
+`git`) that a clean CI runner lacks, so a green local gate can still hide a red
+CI. To catch that *before* pushing, run the gate inside the **same container
+image CI uses** (`python:3.12-slim-bookworm`, fresh installs):
+
+```bash
+./scripts/ci-docker.sh                # identical to the GitHub run; needs podman/docker
+./scripts/ci-docker.sh --build        # ...plus the FIBR-0003 build smoke-test
+```
+
+`ci.yml` and `ci-docker.sh` both run the same image and both call
+`scripts/ci-setup.sh` (environment: system libs + gitleaks + deps) then
+`scripts/ci-local.sh` (the gate) — one definition each, so local and CI cannot
+drift. If a dependency bump needs a new system library, add it in **one place**
+(`ci-setup.sh`).
+
 **Run tests / a single test** (INV-6):
 
 ```bash
@@ -139,11 +156,18 @@ header.
   ([`docs/standards/testing.md`](docs/standards/testing.md)).
 - `scripts/ci-local.sh` — the one-command quality + security gate (`--build`
   adds the FIBR-0003 bundling smoke-test).
+- `scripts/ci-setup.sh` — the shared CI **environment** prep (system libs
+  PySide6 needs + gitleaks + Python deps). Called by BOTH `ci.yml` and
+  `ci-docker.sh` so the environment has a single definition.
+- `scripts/ci-docker.sh` — reproduce the GitHub CI run exactly, locally, in the
+  same `python:3.12-slim-bookworm` image (`ci-setup.sh` + `ci-local.sh`). Run
+  before pushing to catch environment issues a configured desktop masks.
 - `scripts/build-smoke.sh` (+ `_build-smoke-in-container.sh`) — freeze the stub
   in a `python:3.12-slim-bookworm` container (glibc ~2.36) and launch it in a
   Python-free `debian:13-slim` container (FIBR-0003).
-- `.github/workflows/ci.yml` — CI mirror; installs the dev group + runtime deps
-  + gitleaks, then invokes the gate script (single source of truth, INV-2).
+- `.github/workflows/ci.yml` — CI mirror; runs INSIDE `python:3.12-slim-bookworm`
+  and calls `ci-setup.sh` then `ci-local.sh` — the same image + scripts as
+  `ci-docker.sh`, so local and CI cannot drift (single source of truth, INV-2).
 - `.github/workflows/build-smoke.yml` — the dedicated, opt-in build job
   (`workflow_dispatch` + weekly), not run on every push.
 - `pyproject.toml` — metadata, pinned runtime deps + `dev`/`build` groups,

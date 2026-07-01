@@ -13,34 +13,24 @@ jobs:
   gate:
     name: lint + security + tests
     runs-on: ubuntu-24.04
+    # Run INSIDE the same image scripts/ci-docker.sh uses, so a local
+    # `scripts/ci-docker.sh` run and this job install an identical environment
+    # and run the identical gate — they cannot drift (FIBR-0001 INV-2). The
+    # image ships Python 3.12, so no setup-python step is needed.
+    container: python:3.12-slim-bookworm
     steps:
+      # actions/checkout shells out to git, which the slim image lacks.
+      - name: Install git for checkout
+        run: apt-get update -qq && apt-get install -y --no-install-recommends git ca-certificates
+
       - uses: actions/checkout@v7
 
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
+      # System libs (PySide6's OS deps) + gitleaks + Python deps. Shared with
+      # scripts/ci-docker.sh — one definition, so local and CI can't diverge.
+      - name: Prepare CI environment
+        run: ./scripts/ci-setup.sh
 
-      # PEP 735 `--group` needs pip >= 25.1; the runner's bundled pip may be older.
-      - name: Upgrade pip
-        run: python -m pip install --upgrade pip
-
-      - name: Install dev dependency group
-        run: python -m pip install --group dev
-
-      # Runtime deps (PySide6, sqlcipher3-binary, pikepdf) are needed by the
-      # fast bundling self-test guard (FIBR-0003 INV-6), which runs in the gate.
-      - name: Install project runtime dependencies
-        run: python -m pip install .
-
-      - name: Install gitleaks
-        run: |
-          version=8.30.1
-          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${version}/gitleaks_${version}_linux_x64.tar.gz" \
-            | sudo tar -xz -C /usr/local/bin gitleaks
-          gitleaks version
-
-      # Single source of truth: CI runs the exact same stages as a local
-      # checkout by invoking the script, not by re-listing them (INV-2).
+      # Single source of truth for the gate stages: the same script a developer
+      # runs locally (INV-2).
       - name: Run the gate
         run: ./scripts/ci-local.sh
