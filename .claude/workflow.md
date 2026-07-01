@@ -5,11 +5,11 @@
 | Field | Value |
 |-------|-------|
 | **Project phase** | P01 — Bootstrap |
-| **Active item ID** | FIBR-0002 |
+| **Active item ID** | FIBR-0003 |
 | **Active step** | (see "Step progress" below) |
 | **Blocked on** | — |
-| **Last update** | 2026-07-01 (FIBR-0002 steps 1–4 done: `.gitignore` delta + `tests/features/gitignore/` (23 tests) green, full ci-local.sh gate exits 0. Steps 5–9 next via /close-phase) |
-| **Next gate** | FIBR-0002 steps 5–9 — /audit + /indie-review, then close |
+| **Last update** | 2026-07-01 (FIBR-0002 closed by /close-phase — /cold-eyes-clean spec, /audit + /indie-review zero-actionable, gate green; tagged FIBR-0002-complete. Next item FIBR-0003) |
+| **Next gate** | FIBR-0003 step 1 (verify/expand spec — bundling smoke-test) |
 | **Convergence checkpoint** | 5 (consecutive `FP##` items immediately preceding any ✅-`implement`-Kind close in the active release block — see `~/.claude/commands/close-phase.md § 5a-6`) |
 | **Debt-sweep phase threshold** | 5 (auto-prompt for `/debt-sweep` after this many phases without one) |
 | **Last debt sweep** | (none yet) |
@@ -21,11 +21,11 @@ While an item is active, Claude marks the current step 🚧;
 completed steps flip to ✅. Resets to all ⬜ when a new item
 becomes active.
 
-1. ✅ Verify spec (read `docs/audit-allowlist.md` first)
-2. ✅ Verify dependencies on the roadmap DAG
-3. ✅ Write failing tests
-4. ✅ Implement until tests pass
-5. 🚧 Run `/audit` (read `docs/audit-allowlist.md` first)
+1. ⬜ Verify spec (read `docs/audit-allowlist.md` first)
+2. ⬜ Verify dependencies on the roadmap DAG
+3. ⬜ Write failing tests
+4. ⬜ Implement until tests pass
+5. ⬜ Run `/audit` (read `docs/audit-allowlist.md` first)
 6. ⬜ Run `/indie-review` (same allowlist read)
 7. ⬜ Fold actionable findings → new FP## roadmap item
 8. ⬜ Update CHANGELOG / ROADMAP / journal
@@ -36,12 +36,12 @@ becomes active.
 (filled in once Phase A → P01 hands over an active item)
 
 ```
-Item: FIBR-0002 (P01 Bootstrap — .gitignore + secret-leak guard)
-Spec: docs/specs/FIBR-0002.md (not yet written — Step 1 drafts it)
-Depends: FIBR-0001 (✅ closed 2026-07-01, tag FIBR-0001-complete)
+Item: FIBR-0003 (P01 Bootstrap — bundling smoke-test, de-risk native libs)
+Spec: docs/specs/FIBR-0003.md (not yet written — Step 1 drafts it)
+Depends: FIBR-0001 (✅ closed 2026-07-01), FIBR-0002 (✅ closed 2026-07-01)
 Branch: main (doc/chore work lands directly on main)
-Next: Step 1 — verify/expand the FIBR-0002 spec, then TDD loop
-Tests: (harness green from FIBR-0001; 1 passing, 0 failing)
+Next: Step 1 — verify/expand the FIBR-0003 spec, then TDD loop
+Tests: (harness green; 24 passing, 0 failing)
 ```
 
 ## §2. Workflow rules

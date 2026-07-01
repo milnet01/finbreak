@@ -31,3 +31,13 @@ signaling per
   cannot drift. Ships the `pyproject.toml` toolchain (exact-pinned dev
   group), the `.gitleaks.toml` scan config, and a placeholder `finbreak`
   package with a smoke test. (FIBR-0001)
+
+### Security
+
+- **`.gitignore` blocks financial data and build output from the public repo.** (FIBR-0002)
+  Extends the ignore set so a local vault (`*.db` / `*.sqlite` /
+  `*.sqlite3` and its SQLite `-wal` / `-shm` / `-journal` sidecars) and
+  all build/packaging output (PyInstaller `build/` / `dist/`,
+  `*.egg-info/`, `*.dmg`, `*.AppImage`, `*.flatpak`, `.flatpak-builder/`,
+  and tool caches) can never be staged; `gitleaks` remains the content
+  backstop. Regression-locked by `tests/features/gitignore/`. (FIBR-0002)
