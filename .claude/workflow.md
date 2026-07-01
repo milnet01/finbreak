@@ -4,12 +4,12 @@
 
 | Field | Value |
 |-------|-------|
-| **Project phase** | Phase D — Documentation audit loop |
-| **Active item ID** | (none — pre-code phases) |
+| **Project phase** | P01 — Bootstrap |
+| **Active item ID** | FIBR-0002 |
 | **Active step** | (see "Step progress" below) |
 | **Blocked on** | — |
-| **Last update** | 2026-07-01 (Phase D — two deferred items resolved: Argon2id params pinned in security-model INV-2 + naming unified to `finbreak` (repo renamed); resolving cold-eyes loop ran 5 passes to clean. Awaiting user sign-off) |
-| **Next gate** | User signs off "docs ready to code from" → P01 (FIBR-0001) implementation |
+| **Last update** | 2026-07-01 (FIBR-0001 closed by /close-phase — gate green local + CI, INV-1..6 demonstrated, /audit + /indie-review both zero-actionable; tagged FIBR-0001-complete. Next item FIBR-0002) |
+| **Next gate** | FIBR-0002 step 1 (verify/expand spec) |
 | **Convergence checkpoint** | 5 (consecutive `FP##` items immediately preceding any ✅-`implement`-Kind close in the active release block — see `~/.claude/commands/close-phase.md § 5a-6`) |
 | **Debt-sweep phase threshold** | 5 (auto-prompt for `/debt-sweep` after this many phases without one) |
 | **Last debt sweep** | (none yet) |
@@ -21,7 +21,7 @@ While an item is active, Claude marks the current step 🚧;
 completed steps flip to ✅. Resets to all ⬜ when a new item
 becomes active.
 
-1. ⬜ Verify spec (research first if non-trivial)
+1. ⬜ Verify spec (read `docs/audit-allowlist.md` first)
 2. ⬜ Verify dependencies on the roadmap DAG
 3. ⬜ Write failing tests
 4. ⬜ Implement until tests pass
@@ -36,13 +36,12 @@ becomes active.
 (filled in once Phase A → P01 hands over an active item)
 
 ```
-Item: <ID>
-Spec: docs/specs/<ID>.md
-Branch: main (no feature branch yet)
-Sub-findings:
-  - 📋 ...
-  - 📋 ...
-Tests: <count> passing, <count> failing
+Item: FIBR-0002 (P01 Bootstrap — .gitignore + secret-leak guard)
+Spec: docs/specs/FIBR-0002.md (not yet written — Step 1 drafts it)
+Depends: FIBR-0001 (✅ closed 2026-07-01, tag FIBR-0001-complete)
+Branch: main (doc/chore work lands directly on main)
+Next: Step 1 — verify/expand the FIBR-0002 spec, then TDD loop
+Tests: (harness green from FIBR-0001; 1 passing, 0 failing)
 ```
 
 ## §2. Workflow rules

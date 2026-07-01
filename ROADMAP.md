@@ -56,7 +56,7 @@ scariest unknown (native-library bundling) up front.
 
 ### 🧰 Dev experience
 
-- 📋 [FIBR-0001] **P01: project skeleton + lint + format
+- ✅ [FIBR-0001] **P01: project skeleton + lint + format
   + test + security-scan harness.** `pyproject.toml` (Python
   3.12+), `pip`+`venv` dev env, `ruff check` and `ruff format
   --check` clean on placeholder source, `pytest` exits 0 on an
@@ -66,6 +66,7 @@ scariest unknown (native-library bundling) up front.
   of truth for the gate list) so issues are caught before
   pushing. Dependencies: none. Lanes: build, ci, tests,
   security. Kind: chore. Source: planned.
+  Resolved (2026-07-01): closed by /close-phase. Local gate exits 0; CI green in 23s; INV-1..INV-6 all demonstrated (INV-5 secret-injection demo flipped gitleaks + bandit red, then green on removal). /audit + /indie-review both returned zero actionable findings on the same pass. Impl commit 6b6ac64; tag FIBR-0001-complete.
 
 - 📋 [FIBR-0002] **P01: `.gitignore` + secret-leak
   guard.** Standard Python ignore set (build artefacts,

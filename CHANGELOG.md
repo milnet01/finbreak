@@ -21,7 +21,13 @@ signaling per
 
 ## [Unreleased]
 
-*Nothing yet — the scaffold (2026-06-30) is not a release. The first
-version appears here as `## [0.X.0] — YYYY-MM-DD` once a meaningful
-artefact ships; categorical `### Added` / `### Fixed` … subheadings
-are added then.*
+### Added
+
+- Development quality + security gate: a single command,
+  `scripts/ci-local.sh`, runs ruff (lint + format-check), bandit,
+  pip-audit, gitleaks, and pytest, cheapest-first, failing on the first
+  bad stage. `.github/workflows/ci.yml` runs the identical stages by
+  invoking that same script (one source of truth), so local and CI runs
+  cannot drift. Ships the `pyproject.toml` toolchain (exact-pinned dev
+  group), the `.gitleaks.toml` scan config, and a placeholder `finbreak`
+  package with a smoke test. (FIBR-0001)
