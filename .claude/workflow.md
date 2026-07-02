@@ -4,12 +4,12 @@
 
 | Field | Value |
 |-------|-------|
-| **Project phase** | P02 — Vertical slice: the security spine |
-| **Active item ID** | FIBR-0004 |
-| **Active step** | (see "Step progress" below) |
+| **Project phase** | P03 — multiple accounts per profile |
+| **Active item ID** | FIBR-0005 |
+| **Active step** | 1 (verify/expand spec) |
 | **Blocked on** | — |
-| **Last update** | 2026-07-02 (FIBR-0004 steps 5–6 done — audit + 4-lane indie-review; 10 findings all fixed inline per user directive; gate green 68/1, mypy 0) |
-| **Next gate** | FIBR-0004 final clean-close pass (re-run `/audit` + `/indie-review` on the fixed code; if zero actionable → flip ✅ + tag `FIBR-0004-complete`, user-approved) |
+| **Last update** | 2026-07-02 (FIBR-0004 CLOSED — security spine; audit + 3 cold indie-review rounds converged, all findings fixed inline; gate green 74/1, mypy 0, audit 0; tagged FIBR-0004-complete) |
+| **Next gate** | FIBR-0005 step 1 — write/expand the spec (`docs/specs/FIBR-0005.md`), `/cold-eyes` it, then TDD |
 | **Convergence checkpoint** | 5 (consecutive `FP##` items immediately preceding any ✅-`implement`-Kind close in the active release block — see `~/.claude/commands/close-phase.md § 5a-6`) |
 | **Debt-sweep phase threshold** | 5 (auto-prompt for `/debt-sweep` after this many phases without one) |
 | **Last debt sweep** | (none yet) |
@@ -21,23 +21,25 @@ While an item is active, Claude marks the current step 🚧;
 completed steps flip to ✅. Resets to all ⬜ when a new item
 becomes active.
 
-1. ✅ Verify spec (`docs/specs/FIBR-0004.md`; `/cold-eyes` 6 loops;
-   user signed off 2026-07-01, ZAR added, 2 cross-doc fixes applied)
-2. ✅ Verify dependencies on the roadmap DAG (FIBR-0001 ✅, FIBR-0003 ✅)
-3. ✅ Write failing tests (`tests/features/vault/{spec.md,test_vault.py}`;
-   confirmed failing on absent modules before implementing)
-4. ✅ Implement until tests pass (crypto/vault/services/repositories/ui +
-   argon2 self-test leg + no-args→GUI; `./scripts/ci-local.sh` exits 0,
-   67 passed / 1 skipped, bandit clean incl. the raw-key pragma)
-5. ✅ Run `/audit` (Ants MCP `audit_run` full scope) — clean bar mypy;
-   allowlist empty (no false positives to skip)
-6. ✅ Run `/indie-review` (4 cold lanes: crypto+vault, services+repo,
-   UI+threading, tests+contract) — 10 actionable findings
-7. ✅ Findings FIXED INLINE (user directive: don't defer to an FP## after
-   audit/review). 2 HIGH (0o600-at-create, re-entrant-unlock crash) +
-   1 HIGH test-marker gap + 3 MEDIUM + 4 LOW. Gate green 68/1; mypy 0
-8. 🚧 Update CHANGELOG / ROADMAP / journal — at the clean close
-9. ⬜ Commit, tag `<ID>-complete` (clean close only), push (public)
+1. ⬜ Verify spec (`docs/specs/FIBR-0005.md`)
+2. ⬜ Verify dependencies on the roadmap DAG
+3. ⬜ Write failing tests
+4. ⬜ Implement until tests pass
+5. ⬜ Run `/audit`
+6. ⬜ Run `/indie-review`
+7. ⬜ Fold / fix actionable findings
+8. ⬜ Update CHANGELOG / ROADMAP / journal
+9. ⬜ Commit, tag `<ID>-complete` (clean close only), push
+
+### FIBR-0004 close record (P02, closed 2026-07-02)
+
+Steps 1–4 (spec cold-eyed + signed off; TDD; implement) then 5–9:
+`/audit` (Ants `audit_run`, full scope) + `/indie-review` (4 cold lanes)
+run **three rounds**; every actionable finding fixed inline per the user's
+standing directive (no FP## deferral). Round 1: 10 findings (2 HIGH). Round 2:
+new HIGH (idle-lock UI crash) + MEDIUMs. Round 3: doc/defensive/test hardening,
+converged. Live language switching deferred → FIBR-0017. Final: gate green
+74 passed / 1 skipped, mypy 0, audit 0. Tagged `FIBR-0004-complete`.
 
 ### Active item details
 

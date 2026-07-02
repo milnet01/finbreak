@@ -23,6 +23,15 @@ signaling per
 
 ### Added
 
+- **The security spine — set a master password, keep encrypted transactions,
+  lock it away.** First run sets a master password + base currency and creates
+  an encrypted vault; you can add a transaction (kept as exact whole-cent
+  amounts, never a lossy decimal) and see it in a table, then Lock to wipe the
+  key and return to the unlock screen. A wrong password or a tampered file is
+  refused cleanly. Amounts show in your base currency; the slow password-to-key
+  work runs off the UI thread so the window never freezes; the vault
+  auto-locks after 10 minutes idle. (FIBR-0004)
+
 - Development quality + security gate: a single command,
   `scripts/ci-local.sh`, runs ruff (lint + format-check), bandit,
   pip-audit, gitleaks, and pytest, cheapest-first, failing on the first
@@ -46,6 +55,18 @@ signaling per
   gate stays fast. (FIBR-0003)
 
 ### Security
+
+- **Vault encryption, key derivation, and in-memory key wiping (FIBR-0004).**
+  The master password is stretched into a 256-bit key with **Argon2id** (pinned
+  parameters), which unlocks a **SQLCipher (AES-256)** database — the on-disk
+  file is unreadable and integrity-checked (a wrong key or a flipped byte is
+  refused, not silently accepted). The plaintext parameters live in a non-secret
+  sidecar written owner-only and created owner-only from the start (no
+  world-readable window). The derived key lives only while unlocked and is wiped
+  from memory on lock, idle auto-lock, and app exit. There is no password
+  recovery in this slice (a forgotten password means the data is unrecoverable —
+  stated on the first-run screen), and the app makes no network calls
+  (enforced by a test). (FIBR-0004)
 
 - **`.gitignore` blocks financial data and build output from the public repo.** (FIBR-0002)
   Extends the ignore set so a local vault (`*.db` / `*.sqlite` /

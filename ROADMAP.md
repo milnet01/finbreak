@@ -105,7 +105,7 @@ lands on top.
 
 ### 🔒 Security
 
-- 📋 [FIBR-0004] **P02: master password → encrypted vault
+- ✅ [FIBR-0004] **P02: master password → encrypted vault
   → one manual transaction → table → lock.** First-run sets the
   master password + base currency; `CryptoService` derives the
   key with **Argon2id** (parameters pinned in security-model.md
@@ -121,6 +121,7 @@ lands on top.
   phase-ordering, but are not direct code prerequisites of the
   vault.) Lanes: ui, services, repo, security, tests. Kind:
   implement. Source: planned.
+  Shipped 2026-07-02. Security spine implemented TDD-first; audit (ruff/bandit/gitleaks/semgrep/mypy) clean and three cold 4-lane indie-review rounds converged (all findings fixed inline). Gate green 74 passed/1 skipped. Live language switching (retranslateUi) deferred to FIBR-0017 per user decision (spec deliverable shipped: tr() strings + RTL + QLocale amounts).
 
 ---
 
