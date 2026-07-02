@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal, InvalidOperation
+from typing import cast
 
 from finbreak.models import Transaction
 from finbreak.repositories.transactions import TransactionRepository
@@ -26,7 +27,8 @@ def parse_transaction(
     or the amount is non-numeric, non-finite, zero, or has more fractional digits
     than the currency allows (rounding money would silently mutate it — INV-4b).
     """
-    if not description.strip():
+    description = description.strip()
+    if not description:
         raise ValueError("description must not be empty")
     try:
         date.fromisoformat(occurred_on)
@@ -43,7 +45,8 @@ def parse_transaction(
         raise ValueError("amount is not a valid number") from exc
     if not amount.is_finite():
         raise ValueError("amount must be a finite decimal")
-    if -amount.as_tuple().exponent > exponent:
+    # is_finite() above guarantees the exponent is an int (never 'n'/'N'/'F').
+    if -cast(int, amount.as_tuple().exponent) > exponent:
         raise ValueError("amount has more fractional digits than the currency allows")
 
     amount_minor = int(amount.scaleb(exponent).to_integral_value())

@@ -77,3 +77,14 @@ markers = [
 # Scan the application package only. Test trees may hold intentional
 # bad-pattern fixtures for rule tests (testing.md § 3.5).
 exclude_dirs = ["tests", ".venv"]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["src", "tests"]
+
+# The three native stacks ship no type stubs (C-extension wheels: SQLCipher,
+# qpdf-behind-pikepdf, Argon2). Ignore only their missing imports — this is the
+# per-module root-cause config, not a blanket silence.
+[[tool.mypy.overrides]]
+module = ["sqlcipher3", "sqlcipher3.*", "pikepdf", "argon2", "argon2.*"]
+ignore_missing_imports = true

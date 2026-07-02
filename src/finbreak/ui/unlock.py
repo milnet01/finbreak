@@ -47,6 +47,8 @@ class UnlockWidget(QWidget):
 
     @Slot()
     def _on_unlock(self) -> None:
+        if self._worker is not None:
+            return  # a derivation is already in flight — ignore repeat submits
         self._error.clear()
         try:
             params = self._service.load_params()
@@ -56,25 +58,34 @@ class UnlockWidget(QWidget):
 
         password = bytearray(self._password.text().encode("utf-8"))
         self._password.clear()
-        self._unlock_button.setEnabled(False)
+        self._set_busy(True)
 
-        self._worker = DeriveWorker(password, params)
-        self._worker.done.connect(self._on_derived)
-        self._worker.failed.connect(self._on_failure)
-        self._worker.start()
+        worker = DeriveWorker(password, params)
+        worker.done.connect(self._on_derived)
+        worker.failed.connect(self._on_failure)
+        worker.finished.connect(worker.deleteLater)  # no leaked QThread per attempt
+        self._worker = worker
+        worker.start()
+
+    def _set_busy(self, busy: bool) -> None:
+        # Disable the field too (not just the button) so a second Enter can't
+        # re-enter _on_unlock and orphan the running worker.
+        self._unlock_button.setEnabled(not busy)
+        self._password.setEnabled(not busy)
 
     @Slot(bytes)
     def _on_derived(self, raw: bytes) -> None:
-        opened = self._service.complete_unlock(raw)
-        self._unlock_button.setEnabled(True)
-        if opened:
+        self._worker = None
+        self._set_busy(False)
+        if self._service.complete_unlock(raw):
             self.unlocked.emit()
         else:
             self._show_failure()
 
     @Slot(object)
     def _on_failure(self, _exc: object) -> None:
-        self._unlock_button.setEnabled(True)
+        self._worker = None
+        self._set_busy(False)
         self._show_failure()
 
     def _show_failure(self) -> None:

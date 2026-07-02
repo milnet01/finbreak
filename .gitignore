@@ -23,6 +23,7 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+.audit_cache/
 
 # Packaging / build output — PyInstaller (build/, dist/), setuptools metadata
 # (*.egg-info/), and the platform installers: macOS .dmg, Linux AppImage,

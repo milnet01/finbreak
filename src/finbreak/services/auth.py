@@ -1,7 +1,8 @@
 """AuthService — master password ↔ vault key, and the key's whole lifetime.
 
 The derived key lives in a zeroable ``bytearray`` held only while unlocked and
-wiped in place on lock, idle auto-lock, and application exit (FIBR-0004 INV-3).
+wiped in place on lock, the auto-lock timeout, and application exit (FIBR-0004
+INV-3).
 The expensive Argon2id derivation is a pure function (``derive_raw``) so the UI
 can run it on a worker thread and hand the raw 32 bytes back for the main thread
 to own — every wipe then runs on the one owning thread, no cross-thread race.
@@ -35,7 +36,9 @@ log = logging.getLogger(__name__)
 # the default. Extended (incl. 0-/3-decimal currencies) in a later phase.
 CURRENCY_EXPONENTS = {"ZAR": 2, "USD": 2, "EUR": 2, "GBP": 2, "AUD": 2, "CAD": 2}
 
-# Placeholder until FIBR-0014's Settings screen makes it user-configurable.
+# Fixed lock-out timeout measured from unlock — NOT reset on user activity.
+# True idle-detection (activity-reset) + user configurability land with
+# FIBR-0014's Settings screen.
 AUTO_LOCK_MINUTES = 10
 
 
@@ -116,9 +119,13 @@ class AuthService:
         if self._vault.presence_state() != "first_run":
             raise VaultStateError("cannot first-run over an existing vault")
         key = bytearray(raw)
-        self._vault.create(
-            key, params, base_currency, CURRENCY_EXPONENTS[base_currency]
-        )
+        try:
+            self._vault.create(
+                key, params, base_currency, CURRENCY_EXPONENTS[base_currency]
+            )
+        except Exception:
+            _wipe(key)  # don't leave the key in memory if creation failed
+            raise
         self._key = key
         self._arm_timer()
         log.info("first-run: vault created")

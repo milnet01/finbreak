@@ -10,7 +10,7 @@ from __future__ import annotations
 import sys
 
 from PySide6.QtCore import QLocale
-from PySide6.QtWidgets import QApplication, QMessageBox, QStackedWidget
+from PySide6.QtWidgets import QApplication, QMessageBox, QStackedWidget, QWidget
 
 from finbreak import paths
 from finbreak.errors import VaultStateError
@@ -45,11 +45,12 @@ class AppShell(QStackedWidget):
         widget.locked.connect(self._show_unlock)
         self._swap(widget)
 
-    def _swap(self, widget: QStackedWidget) -> None:
-        while self.count():
-            old = self.widget(0)
-            self.removeWidget(old)
-            old.deleteLater()
+    def _swap(self, widget: QWidget) -> None:
+        for i in reversed(range(self.count())):
+            old = self.widget(i)
+            if old is not None:
+                self.removeWidget(old)
+                old.deleteLater()
         self.addWidget(widget)
         self.setCurrentWidget(widget)
 

@@ -8,8 +8,8 @@
 | **Active item ID** | FIBR-0004 |
 | **Active step** | (see "Step progress" below) |
 | **Blocked on** | — |
-| **Last update** | 2026-07-01 (FIBR-0004 steps 3–4 done — security spine implemented TDD-first; gate green, 67 passed/1 skipped) |
-| **Next gate** | FIBR-0004 steps 5–6 (`/audit` + `/indie-review` in parallel over the new `src/finbreak/` modules, `tests/features/vault/`, bundling-test edits, pyproject change) |
+| **Last update** | 2026-07-02 (FIBR-0004 steps 5–6 done — audit + 4-lane indie-review; 10 findings all fixed inline per user directive; gate green 68/1, mypy 0) |
+| **Next gate** | FIBR-0004 final clean-close pass (re-run `/audit` + `/indie-review` on the fixed code; if zero actionable → flip ✅ + tag `FIBR-0004-complete`, user-approved) |
 | **Convergence checkpoint** | 5 (consecutive `FP##` items immediately preceding any ✅-`implement`-Kind close in the active release block — see `~/.claude/commands/close-phase.md § 5a-6`) |
 | **Debt-sweep phase threshold** | 5 (auto-prompt for `/debt-sweep` after this many phases without one) |
 | **Last debt sweep** | (none yet) |
@@ -29,11 +29,15 @@ becomes active.
 4. ✅ Implement until tests pass (crypto/vault/services/repositories/ui +
    argon2 self-test leg + no-args→GUI; `./scripts/ci-local.sh` exits 0,
    67 passed / 1 skipped, bandit clean incl. the raw-key pragma)
-5. 🚧 Run `/audit` (read `docs/audit-allowlist.md` first) — next
-6. ⬜ Run `/indie-review` (same allowlist read)
-7. ⬜ Fold actionable findings → new FP## roadmap item
-8. ⬜ Update CHANGELOG / ROADMAP / journal
-9. ⬜ Commit, tag `<ID>-complete`, ask user about push
+5. ✅ Run `/audit` (Ants MCP `audit_run` full scope) — clean bar mypy;
+   allowlist empty (no false positives to skip)
+6. ✅ Run `/indie-review` (4 cold lanes: crypto+vault, services+repo,
+   UI+threading, tests+contract) — 10 actionable findings
+7. ✅ Findings FIXED INLINE (user directive: don't defer to an FP## after
+   audit/review). 2 HIGH (0o600-at-create, re-entrant-unlock crash) +
+   1 HIGH test-marker gap + 3 MEDIUM + 4 LOW. Gate green 68/1; mypy 0
+8. 🚧 Update CHANGELOG / ROADMAP / journal — at the clean close
+9. ⬜ Commit, tag `<ID>-complete` (clean close only), push (public)
 
 ### Active item details
 

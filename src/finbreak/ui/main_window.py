@@ -8,6 +8,7 @@ the screen is translation-ready and mirrors for RTL locales with no rework
 from __future__ import annotations
 
 from decimal import Decimal
+from typing import cast
 
 from PySide6.QtCore import QDate, QLocale, Qt, Signal, Slot
 from PySide6.QtWidgets import (
@@ -108,5 +109,6 @@ class MainWindow(QWidget):
 
 
 def _format_amount(display: Decimal) -> str:
-    decimals = max(0, -display.as_tuple().exponent)
+    # A stored amount reconstructs to a finite Decimal, so its exponent is an int.
+    decimals = max(0, -cast(int, display.as_tuple().exponent))
     return QLocale().toString(float(display), "f", decimals)

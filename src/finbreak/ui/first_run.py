@@ -64,6 +64,8 @@ class FirstRunWidget(QWidget):
 
     @Slot()
     def _on_submit(self) -> None:
+        if self._worker is not None:
+            return  # a derivation is already in flight — ignore repeat submits
         self._error.clear()
         currency = self._currency.currentText()
         password = bytearray(self._password.text().encode("utf-8"))
@@ -83,21 +85,33 @@ class FirstRunWidget(QWidget):
         self._confirm.clear()
         self._submit.setEnabled(False)
 
-        self._worker = DeriveWorker(derive_password, self._pending_params)
-        self._worker.done.connect(self._on_derived)
-        self._worker.failed.connect(self._on_failure)
-        self._worker.start()
+        worker = DeriveWorker(derive_password, self._pending_params)
+        worker.done.connect(self._on_derived)
+        worker.failed.connect(self._on_failure)
+        worker.finished.connect(worker.deleteLater)  # no leaked QThread per attempt
+        self._worker = worker
+        worker.start()
 
     @Slot(bytes)
     def _on_derived(self, raw: bytes) -> None:
-        self._service.complete_first_run(
-            raw, self._pending_params, self._pending_currency
-        )
+        self._worker = None
+        params = self._pending_params
+        if params is None:  # _on_submit always sets it before start — defensive
+            return
+        try:
+            self._service.complete_first_run(raw, params, self._pending_currency)
+        except Exception as exc:  # vault creation failed — surface, don't crash
+            self._submit.setEnabled(True)
+            self._error.setText(
+                self.tr("Could not create the vault: {error}").format(error=exc)
+            )
+            return
         self._submit.setEnabled(True)
         self.completed.emit()
 
     @Slot(object)
     def _on_failure(self, exc: object) -> None:
+        self._worker = None
         self._submit.setEnabled(True)
         self._error.setText(
             self.tr("Could not create the vault: {error}").format(error=exc)

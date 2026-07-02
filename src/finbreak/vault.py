@@ -54,6 +54,12 @@ class Vault:
         vault-without-sidecar — caught as a mixed state next launch (INV-5).
         The connection is left open (the caller is now unlocked).
         """
+        # Create the vault file owner-only BEFORE SQLCipher writes any ciphertext
+        # into it, so there is never a window where the at-rest file sits at the
+        # process umask (world-readable), and a failure mid-create can't leave a
+        # readable file behind (INV-7). O_EXCL asserts the first-run invariant —
+        # presence_state() only routes here when neither file exists.
+        os.close(os.open(self._vault_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600))
         conn = self._connect(key)
         conn.execute("CREATE TABLE schema_version(version INTEGER NOT NULL)")
         conn.execute(
@@ -76,7 +82,6 @@ class Vault:
         )
         conn.commit()
         self._conn = conn
-        os.chmod(self._vault_path, 0o600)
         self._write_sidecar(params)
 
     def open(self, key: bytearray) -> None:

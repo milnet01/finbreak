@@ -41,6 +41,11 @@ from finbreak.vault import Vault
 # a fresh wipeable bytearray.
 _PW = b"correct horse battery staple"
 
+# These enforce tests/features/vault/spec.md, so the whole module is a
+# feature-conformance suite — without the marker `pytest -m features` would
+# silently run zero security-spine tests (testing.md § 3.2).
+pytestmark = pytest.mark.features
+
 
 def _params(salt: bytes) -> KdfParams:
     """A valid, at-floor KdfParams for the given salt."""
@@ -158,6 +163,17 @@ def test_INV2c_exact_format_rejects_wrong_lengths():
         "",
         json.dumps({"format_version": 1}),  # missing the other six fields
         json.dumps({"format_version": 1, "memory_kib": ARGON2_MEMORY_KIB}),
+        json.dumps(  # all fields present, but one has the wrong type
+            {
+                "format_version": 1,
+                "memory_kib": "not-an-int",
+                "time_cost": ARGON2_TIME_COST,
+                "parallelism": ARGON2_PARALLELISM,
+                "key_len": KEY_LEN,
+                "salt_len": SALT_LEN,
+                "salt_hex": "00" * SALT_LEN,
+            }
+        ),
     ],
 )
 def test_INV2c_malformed_sidecar_raises_kdf_policy_error(tmp_path, content):
@@ -197,6 +213,7 @@ def test_INV3_exit_handler_wipes_and_is_noop_when_locked(service):
     service.on_about_to_quit()
     assert bytes(key_buffer) == bytes(len(key_buffer))
     service.on_about_to_quit()  # already locked — must be a no-op, not a crash
+    assert service._key is None, "the exit handler leaves no key behind"
 
 
 def test_INV3_password_buffer_is_wiped_on_every_entry_point(service, paths):
@@ -457,6 +474,12 @@ def test_INV7_lifecycle_logs_carry_no_secret(service, caplog):
     joined = "\n".join(messages)
     assert password not in joined, "the master password must never be logged"
     assert "12.34" not in joined, "transaction amounts must not be logged"
+    # The derived key — and its 64-char hex form (a plausible leak is logging
+    # the `PRAGMA key = "x'<hex>'"` statement at DEBUG) — must never appear.
+    params = service.load_params()
+    key = derive_key(bytearray(_PW), params.salt, params)
+    assert bytes(key).hex() not in joined, "the derived key (hex) must never be logged"
+    assert bytes(key) not in joined.encode(), "the derived key bytes must not be logged"
     assert messages, "the cycle must emit at least one non-secret lifecycle line"
 
 
