@@ -34,6 +34,7 @@ from finbreak.services.transactions import TransactionService
 class MainWindow(QWidget):
     locked = Signal()
     manage_accounts = Signal()
+    manage_categories = Signal()
 
     def __init__(self, service: AuthService, parent: QWidget | None = None):
         super().__init__(parent)
@@ -73,12 +74,14 @@ class MainWindow(QWidget):
         self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
 
         self._manage_button = QPushButton(self.tr("Manage accounts…"))
+        self._categories_button = QPushButton(self.tr("Manage categories…"))
         self._lock_button = QPushButton(self.tr("Lock"))
 
         buttons = QHBoxLayout()
         buttons.addWidget(self._add_button)
         buttons.addStretch()
         buttons.addWidget(self._manage_button)
+        buttons.addWidget(self._categories_button)
         buttons.addWidget(self._lock_button)
 
         layout = QVBoxLayout(self)
@@ -89,6 +92,7 @@ class MainWindow(QWidget):
 
         self._add_button.clicked.connect(self._on_add)
         self._manage_button.clicked.connect(self.manage_accounts)
+        self._categories_button.clicked.connect(self.manage_categories)
         self._lock_button.clicked.connect(self._on_lock)
 
         self._reload_accounts()

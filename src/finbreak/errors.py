@@ -39,3 +39,13 @@ class SchemaVersionError(FinbreakError):
     """The on-disk vault's schema version is newer than this build supports —
     a distinct condition from ``VaultStateError``'s presence mismatch
     (FIBR-0005 INV-4)."""
+
+
+class ProtectedCategoryError(FinbreakError):
+    """Editing or deleting a Type root (Income / Expenditure) is refused — the
+    two roots are structural and permanent (FIBR-0006 INV-5/INV-6)."""
+
+
+class CategoryHasChildrenError(FinbreakError):
+    """Deleting a category that still has sub-categories (FIBR-0006 INV-6);
+    remove the children first."""

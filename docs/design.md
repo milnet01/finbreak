@@ -88,6 +88,9 @@ logic. Notable screens:
 - **Rules manager** — view/add/edit auto-categorisation rules.
 - **Accounts manager** — add/edit accounts and their type (current, savings,
   credit card, personal loan, home loan, investment, other).
+- **Category manager** — add/edit/delete categories under the two fixed types
+  (Income / Expenditure); the tree is stored self-referentially to hold a
+  future sub-category level (FIBR-0006).
 - **Settings** — base currency, auto-lock timeout, stored PDF passwords, backup
   export, theme.
 - **PDF export dialog** — tick sections (summary / charts / transactions), pick

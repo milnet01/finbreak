@@ -20,12 +20,34 @@ from finbreak.errors import SchemaVersionError
 
 log = logging.getLogger(__name__)
 
-LATEST_SCHEMA_VERSION = 2
+LATEST_SCHEMA_VERSION = 3
 
 # Seed data written by the v1->v2 migration (D8) — NOT a UI string, so never
 # run through tr(); the user renames it in the Accounts manager.
 DEFAULT_ACCOUNT_NAME = "Default"
 DEFAULT_ACCOUNT_TYPE = "current"
+
+# Seed data written by the v2->v3 migration (FIBR-0006 D8) — the two Type roots
+# and their default categories. Names are DATA, not UI strings: written to the
+# DB, never run through tr(); the user renames them in the category manager.
+# The root NAME is keyed by its stored CategoryKind token; the token identifies
+# the root structurally (rename-/locale-safe), the name is a plain seed value.
+CATEGORY_ROOT_NAMES = {"income": "Income", "expenditure": "Expenditure"}
+DEFAULT_CATEGORIES = {
+    "income": ["Salary", "Sales", "Interest", "Gifts", "Lottery", "Other income"],
+    "expenditure": [
+        "Groceries",
+        "Fast food",
+        "Bills & utilities",
+        "Rent / Mortgage",
+        "Transport",
+        "Medical",
+        "Entertainment",
+        "Clothing",
+        "Insurance",
+        "Other expenditure",
+    ],
+}
 
 
 def run_migrations(conn: dbapi2.Connection) -> None:
@@ -82,4 +104,43 @@ def _migrate_to_v2(conn: dbapi2.Connection) -> None:
         raise
 
 
-_MIGRATIONS = {2: _migrate_to_v2}
+def _migrate_to_v3(conn: dbapi2.Connection) -> None:
+    """v2->v3: add the self-referential ``categories`` table and seed the two
+    Type roots (Income/Expenditure) + their default categories. A ``CREATE`` +
+    seed ``INSERT``s only — no table rebuild — but still one atomic unit
+    (INV-4): with the vault's ``isolation_level=""`` the driver does not
+    implicitly ``BEGIN`` around the ``CREATE`` (DDL), so a failure mid-seed
+    could otherwise leave an empty ``categories`` table (a half-migrated
+    v2.5). The explicit ``BEGIN`` — the step's first statement, discrete
+    ``execute`` calls throughout so the runner owns the transaction (D2) —
+    makes it all-or-nothing: either v3 with the tree fully seeded, or still v2
+    with no ``categories`` table."""
+    now = datetime.now(UTC).isoformat()
+    conn.execute("BEGIN")  # first statement — own the transaction (D2)
+    try:
+        conn.execute(
+            "CREATE TABLE categories("
+            "id INTEGER PRIMARY KEY, "
+            "parent_id INTEGER REFERENCES categories(id), "
+            "name TEXT NOT NULL, kind TEXT, created_at TEXT NOT NULL)"
+        )
+        for kind, root_name in CATEGORY_ROOT_NAMES.items():
+            root_id = conn.execute(
+                "INSERT INTO categories(parent_id, name, kind, created_at) "
+                "VALUES (NULL, ?, ?, ?)",
+                (root_name, kind, now),
+            ).lastrowid
+            for child_name in DEFAULT_CATEGORIES[kind]:
+                conn.execute(
+                    "INSERT INTO categories(parent_id, name, kind, created_at) "
+                    "VALUES (?, ?, NULL, ?)",
+                    (root_id, child_name, now),
+                )
+        conn.execute("UPDATE schema_version SET version = 3")
+        conn.commit()
+    except Exception:
+        conn.rollback()  # undoes the CREATE — leaves a re-openable v2 vault
+        raise
+
+
+_MIGRATIONS = {2: _migrate_to_v2, 3: _migrate_to_v3}

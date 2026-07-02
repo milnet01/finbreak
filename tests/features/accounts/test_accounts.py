@@ -8,9 +8,7 @@ vault uses `tmp_path`; no test touches the network or real financial data
 (testing.md § 6).
 """
 
-import json
 import logging
-import os
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -18,7 +16,8 @@ import pytest
 from sqlcipher3 import dbapi2
 from sqlcipher3.dbapi2 import IntegrityError
 
-from finbreak.crypto import KEY_LEN, SALT_LEN, derive_key
+from conftest import _PW, _params, build_v1_vault
+from finbreak.crypto import SALT_LEN, derive_key
 from finbreak.errors import (
     AccountInUseError,
     LastAccountError,
@@ -29,33 +28,14 @@ from finbreak.migrations import (
     LATEST_SCHEMA_VERSION,
     run_migrations,
 )
-from finbreak.models import FORMAT_VERSION, AccountType, KdfParams
+from finbreak.models import AccountType
 from finbreak.repositories.accounts import AccountRepository
 from finbreak.repositories.transactions import TransactionRepository
 from finbreak.services.accounts import AccountService
-from finbreak.services.auth import (
-    ARGON2_MEMORY_KIB,
-    ARGON2_PARALLELISM,
-    ARGON2_TIME_COST,
-    AuthService,
-)
+from finbreak.services.auth import AuthService
 from finbreak.services.transactions import TransactionService
 
-_PW = b"correct horse battery staple"
-
 pytestmark = pytest.mark.features
-
-
-def _params(salt: bytes) -> KdfParams:
-    return KdfParams(
-        format_version=FORMAT_VERSION,
-        memory_kib=ARGON2_MEMORY_KIB,
-        time_cost=ARGON2_TIME_COST,
-        parallelism=ARGON2_PARALLELISM,
-        key_len=KEY_LEN,
-        salt_len=SALT_LEN,
-        salt=salt,
-    )
 
 
 @pytest.fixture
@@ -75,39 +55,6 @@ def _default_id(vault) -> int:
     """Resolve the seeded Default account's id by NAME (not list position)."""
     accounts = AccountRepository(vault.connection).list_all()
     return next(a.id for a in accounts if a.name == DEFAULT_ACCOUNT_NAME)
-
-
-def _build_v1_vault(vault_path: Path, sidecar_path: Path, salt: bytes, rows) -> None:
-    """Write a raw FIBR-0004-shape v1 vault (schema_version=1, account-less
-    transactions) + its sidecar, WITHOUT Vault.create() (which now migrates to
-    v2). This is the INV-4 upgrade-path fixture."""
-    params = _params(salt)
-    key = derive_key(bytearray(_PW), salt, params)
-    os.close(os.open(vault_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600))
-    conn = dbapi2.connect(str(vault_path))
-    conn.execute(f"PRAGMA key = \"x'{bytes(key).hex()}'\"")
-    conn.execute("CREATE TABLE schema_version(version INTEGER NOT NULL)")
-    conn.execute("INSERT INTO schema_version(version) VALUES (1)")
-    conn.execute("CREATE TABLE settings(key TEXT PRIMARY KEY, value TEXT NOT NULL)")
-    conn.execute("INSERT INTO settings(key, value) VALUES ('base_currency', 'ZAR')")
-    conn.execute("INSERT INTO settings(key, value) VALUES ('minor_unit_exponent', '2')")
-    conn.execute(
-        "CREATE TABLE transactions(id INTEGER PRIMARY KEY, occurred_on TEXT NOT "
-        "NULL, amount_minor INTEGER NOT NULL, description TEXT NOT NULL, "
-        "created_at TEXT NOT NULL)"
-    )
-    for occurred_on, amount_minor, description in rows:
-        conn.execute(
-            "INSERT INTO transactions(occurred_on, amount_minor, description, "
-            "created_at) VALUES (?, ?, ?, ?)",
-            (occurred_on, amount_minor, description, "2026-01-01T00:00:00+00:00"),
-        )
-    conn.commit()
-    conn.close()
-    payload = json.dumps(params.to_sidecar_dict(), indent=2)
-    fd = os.open(sidecar_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w") as handle:
-        handle.write(payload)
 
 
 # --------------------------------------------------------------------------- #
@@ -200,7 +147,7 @@ def test_INV3_name_stored_trimmed_and_update_allows_own_name(service):
 def test_INV4_v1_vault_upgrades_and_backfills(paths):
     vault_path, sidecar_path = paths
     salt = bytes(range(SALT_LEN))
-    _build_v1_vault(
+    build_v1_vault(
         vault_path,
         sidecar_path,
         salt,
@@ -210,7 +157,7 @@ def test_INV4_v1_vault_upgrades_and_backfills(paths):
     svc = AuthService(vault_path, sidecar_path)
     assert svc.unlock(bytearray(_PW)) is True  # unlock runs the migration
     conn = svc.vault.connection
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 2
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 3
 
     accounts = AccountRepository(conn).list_all()
     assert [a.name for a in accounts] == [DEFAULT_ACCOUNT_NAME]
@@ -223,19 +170,19 @@ def test_INV4_v1_vault_upgrades_and_backfills(paths):
     svc.lock()
 
 
-def test_INV4_first_run_vault_is_v2_with_one_default(service):
+def test_INV4_first_run_vault_is_v3_with_one_default(service):
     conn = service.vault.connection
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 2
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 3
     accounts = AccountRepository(conn).list_all()
     assert [a.name for a in accounts] == [DEFAULT_ACCOUNT_NAME]
     assert accounts[0].type == "current"
 
 
-def test_INV4_idempotent_on_v2(service):
-    # Re-running migrations on an already-v2 vault changes nothing.
+def test_INV4_idempotent_at_latest(service):
+    # Re-running migrations on an already-latest vault changes nothing.
     conn = service.vault.connection
     run_migrations(conn)
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 2
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 3
     assert len(AccountRepository(conn).list_all()) == 1, "Default not duplicated"
 
 
@@ -243,7 +190,7 @@ def test_INV4_rolls_back_on_failure(paths):
     vault_path, sidecar_path = paths
     salt = bytes(range(SALT_LEN))
     rows = [("2026-01-01", -100, "a"), ("2026-02-01", 200, "b")]
-    _build_v1_vault(vault_path, sidecar_path, salt, rows)
+    build_v1_vault(vault_path, sidecar_path, salt, rows)
 
     key = derive_key(bytearray(_PW), salt, _params(salt))
     conn = dbapi2.connect(str(vault_path))
@@ -304,7 +251,7 @@ def test_INV4_rolls_back_on_failure(paths):
 def test_INV4_refuses_newer_than_latest(paths):
     vault_path, sidecar_path = paths
     salt = bytes(range(SALT_LEN))
-    _build_v1_vault(vault_path, sidecar_path, salt, [])
+    build_v1_vault(vault_path, sidecar_path, salt, [])
     key = derive_key(bytearray(_PW), salt, _params(salt))
     conn = dbapi2.connect(str(vault_path))
     conn.execute(f"PRAGMA key = \"x'{bytes(key).hex()}'\"")
@@ -321,7 +268,7 @@ def test_INV4_unlock_of_newer_vault_raises_and_retains_no_key(paths):
     # service — the migration runner's refusal wipes and re-raises (INV-3/INV-4).
     vault_path, sidecar_path = paths
     salt = bytes(range(SALT_LEN))
-    _build_v1_vault(vault_path, sidecar_path, salt, [])
+    build_v1_vault(vault_path, sidecar_path, salt, [])
     key = derive_key(bytearray(_PW), salt, _params(salt))
     conn = dbapi2.connect(str(vault_path))
     conn.execute(f"PRAGMA key = \"x'{bytes(key).hex()}'\"")

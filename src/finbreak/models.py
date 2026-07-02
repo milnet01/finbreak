@@ -66,3 +66,28 @@ class Transaction:
     amount_minor: int
     description: str
     created_at: str
+
+
+class CategoryKind(StrEnum):
+    """The two Type roots of the category tree (FIBR-0006 INV-2). The ``.value``
+    is the stored, non-translated token carried on the root rows only; display
+    labels ("Income" / "Expenditure") are a separate UI concern."""
+
+    INCOME = "income"
+    EXPENDITURE = "expenditure"
+
+
+@dataclass
+class Category:
+    """One node of the self-referential ``categories`` tree. ``parent_id`` is
+    ``None`` for the two Type roots; ``kind`` is a ``CategoryKind`` token on the
+    roots only, ``None`` on every descendant (FIBR-0006). The repository
+    ``SELECT`` and this field order share ``id, parent_id, name, kind,
+    created_at`` so ``Category(*row)`` stays aligned — ``id`` and ``parent_id``
+    are adjacent ``int`` columns, so a swap would compile but corrupt."""
+
+    id: int
+    parent_id: int | None
+    name: str
+    kind: str | None
+    created_at: str
