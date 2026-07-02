@@ -55,7 +55,7 @@ def test_INV1_selftest_ok_all_stacks():
 
 
 @pytest.mark.features
-def test_INV1_noargs_routes_to_gui(monkeypatch):
+def test_INV1_noargs_routes_to_gui(monkeypatch) -> None:
     """No args now launches the GUI (FIBR-0004), not the retired NOT_BUILT stub.
 
     Asserts routing without spinning a real event loop: ``main([])`` must call

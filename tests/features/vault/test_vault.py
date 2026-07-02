@@ -620,7 +620,7 @@ def _banned_string_arg(node: ast.Call) -> str | None:
     return None
 
 
-def test_INV8_no_network_imports_under_src():
+def test_INV8_no_network_imports_under_src() -> None:
     package_root = Path(finbreak.__file__).parent
     offenders: list[str] = []
     for py in package_root.rglob("*.py"):
