@@ -172,6 +172,8 @@ class AuthService:
         log.info("locked")
 
     def _on_idle_timeout(self) -> None:
+        if self._key is None:
+            return  # already locked — a stale queued fire must not disturb the UI
         self.lock()
         if self.on_auto_lock is not None:
             self.on_auto_lock()

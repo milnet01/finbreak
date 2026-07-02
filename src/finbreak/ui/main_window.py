@@ -115,6 +115,8 @@ def _format_amount(display: Decimal, symbol: str) -> str:
     # Currency → QLocale.toCurrencyString with the base-currency symbol, so the
     # amount carries its currency and isn't reformatted to the locale's own
     # (coding.md § 5.2). A stored amount reconstructs to a finite Decimal, so its
-    # exponent is an int.
+    # exponent is an int. toCurrencyString has no Decimal overload, so the float()
+    # is a DISPLAY-ONLY, bounded conversion — storage/computation stay exact
+    # Decimal (D1); only the on-screen string crosses to float.
     decimals = max(0, -cast(int, display.as_tuple().exponent))
     return QLocale().toCurrencyString(float(display), symbol, decimals)

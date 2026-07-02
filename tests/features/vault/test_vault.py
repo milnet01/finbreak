@@ -176,6 +176,28 @@ def test_INV2c_exact_format_rejects_wrong_lengths():
                 "salt_hex": "00" * SALT_LEN,
             }
         ),
+        json.dumps(  # salt_hex is not valid hexadecimal
+            {
+                "format_version": 1,
+                "memory_kib": ARGON2_MEMORY_KIB,
+                "time_cost": ARGON2_TIME_COST,
+                "parallelism": ARGON2_PARALLELISM,
+                "key_len": KEY_LEN,
+                "salt_len": SALT_LEN,
+                "salt_hex": "zz" * SALT_LEN,
+            }
+        ),
+        json.dumps(  # an unknown/future format_version is refused, not reinterpreted
+            {
+                "format_version": FORMAT_VERSION + 1,
+                "memory_kib": ARGON2_MEMORY_KIB,
+                "time_cost": ARGON2_TIME_COST,
+                "parallelism": ARGON2_PARALLELISM,
+                "key_len": KEY_LEN,
+                "salt_len": SALT_LEN,
+                "salt_hex": "00" * SALT_LEN,
+            }
+        ),
     ],
 )
 def test_INV2c_malformed_sidecar_raises_kdf_policy_error(tmp_path, content):
@@ -207,6 +229,15 @@ def test_INV3_idle_autolock_wipes_key(service):
     service._on_idle_timeout()
     assert bytes(key_buffer) == bytes(len(key_buffer))
     assert service._key is None
+
+
+def test_INV3_idle_timeout_noop_when_already_locked(service):
+    service.first_run(bytearray(_PW), "ZAR")
+    service.lock()
+    fired = []
+    service.on_auto_lock = lambda: fired.append(True)
+    service._on_idle_timeout()  # a stale queued fire when already locked
+    assert fired == [], "must not route/notify the UI when there is no key held"
 
 
 def test_INV3_exit_handler_wipes_and_is_noop_when_locked(service):
@@ -310,6 +341,9 @@ def test_INV4b_rejects_bad_money_input(occurred_on, amount, description):
 def test_INV4b_accepts_either_sign_and_large_magnitude():
     assert parse_transaction("2026-07-01", "-12.34", "out", 2)[1] == -1234
     assert parse_transaction("2026-07-01", "50.00", "in", 2)[1] == 5000
+    # trailing zeros beyond the exponent are the same value — accepted, not
+    # rejected as "too many fractional digits" (12.340 == 12.34).
+    assert parse_transaction("2026-07-01", "12.340", "trailing zero", 2)[1] == 1234
     assert parse_transaction("2099-01-01", "10.00", "future date allowed", 2)[1] == 1000
     big = parse_transaction("2026-07-01", "90000000000000.00", "big", 2)[1]
     assert big == 9_000_000_000_000_000
@@ -437,6 +471,24 @@ def test_INV6_unlock_widget_roundtrip(qtbot, service):
     assert service._key is not None
 
 
+def test_INV6_unlock_ignores_reentrant_submit_while_deriving(qtbot, service):
+    # A second submit while a derivation is in flight must be ignored — else it
+    # would spawn a second worker and orphan the first (guard: unlock.py).
+    from finbreak.ui.unlock import UnlockWidget
+
+    service.first_run(bytearray(_PW), "ZAR")
+    service.lock()
+    widget = UnlockWidget(service)
+    qtbot.addWidget(widget)
+
+    widget._password.setText(_PW.decode())
+    sentinel = object()
+    widget._worker = sentinel  # simulate a derivation already running
+    widget._on_unlock()
+    assert widget._worker is sentinel, "a re-entrant submit must not replace the worker"
+    assert widget._password.text() == _PW.decode(), "the password field is untouched"
+
+
 def test_INV6_main_window_lists_saved_transaction(qtbot, service):
     from finbreak.ui.main_window import MainWindow
 
@@ -537,9 +589,12 @@ def _banned_string_arg(node: ast.Call) -> str | None:
     walk misses.
     """
     func = node.func
+    # __import__("x"), importlib.import_module("x"), or a bare import_module("x")
+    # after `from importlib import import_module`.
     is_dunder = isinstance(func, ast.Name) and func.id == "__import__"
-    is_importlib = isinstance(func, ast.Attribute) and func.attr == "import_module"
-    if not (is_dunder or is_importlib) or not node.args:
+    is_attr_module = isinstance(func, ast.Attribute) and func.attr == "import_module"
+    is_bare_module = isinstance(func, ast.Name) and func.id == "import_module"
+    if not (is_dunder or is_attr_module or is_bare_module) or not node.args:
         return None
     first = node.args[0]
     if isinstance(first, ast.Constant) and isinstance(first.value, str):

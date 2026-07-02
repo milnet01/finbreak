@@ -45,8 +45,11 @@ def parse_transaction(
         raise ValueError("amount is not a valid number") from exc
     if not amount.is_finite():
         raise ValueError("amount must be a finite decimal")
-    # is_finite() above guarantees the exponent is an int (never 'n'/'N'/'F').
-    if -cast(int, amount.as_tuple().exponent) > exponent:
+    # Count SIGNIFICANT fractional digits: normalize() strips trailing zeros, so
+    # "12.340" (== 12.34) is accepted while "12.345" is still rejected. is_finite()
+    # above guarantees the exponent is an int (never 'n'/'N'/'F'); normalize() can
+    # yield a positive exponent for whole numbers (1E+2), which the sign handles.
+    if -cast(int, amount.normalize().as_tuple().exponent) > exponent:
         raise ValueError("amount has more fractional digits than the currency allows")
 
     amount_minor = int(amount.scaleb(exponent).to_integral_value())

@@ -13,7 +13,7 @@ from pathlib import Path
 from argon2.low_level import Type, hash_secret_raw
 
 from finbreak.errors import KdfPolicyError
-from finbreak.models import KdfParams
+from finbreak.models import FORMAT_VERSION, KdfParams
 
 # Pinned Argon2id parameters (security-model.md INV-2). memory_cost is in KiB —
 # 47104 KiB is the "46 MiB" human gloss; the API argument is 47104, not 46.
@@ -44,6 +44,10 @@ def derive_key(password: bytearray, salt: bytes, params: KdfParams) -> bytearray
     Always passed by keyword: the low-level signature puts ``time_cost`` before
     ``memory_cost``, so positional args would silently transpose them. The
     immutable ``bytes`` result is copied into a wipeable ``bytearray``.
+
+    ``bytes(password)`` makes an immutable copy the C binding requires; it can't
+    be wiped and lingers until GC — an accepted best-effort gap (D5), the same
+    one flagged on the raw-key hex ``str`` in ``vault._connect``.
     """
     raw = hash_secret_raw(
         secret=bytes(password),
@@ -65,7 +69,15 @@ def validate_params(params: KdfParams) -> None:
     The salt exists on disk, so both its real length and the recorded
     ``salt_len`` must equal ``SALT_LEN``; the key is never on disk, so only its
     recorded ``key_len`` is checked against the constant.
+
+    An unknown ``format_version`` is refused up front: a future/foreign layout
+    must not be silently reinterpreted against this version's field meanings.
     """
+    if params.format_version != FORMAT_VERSION:
+        raise KdfPolicyError(
+            f"unsupported sidecar format_version {params.format_version} "
+            f"(expected {FORMAT_VERSION})"
+        )
     if params.key_len != KEY_LEN:
         raise KdfPolicyError(f"key_len must be {KEY_LEN}, got {params.key_len}")
     if len(params.salt) != SALT_LEN or params.salt_len != len(params.salt):
