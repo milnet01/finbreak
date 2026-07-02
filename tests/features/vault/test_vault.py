@@ -9,6 +9,8 @@ main window) use the pytest-qt `qtbot` fixture. Every on-disk vault lives under
 import ast
 import json
 import logging
+import re
+from collections.abc import Iterator
 from decimal import Decimal
 from pathlib import Path
 
@@ -66,7 +68,7 @@ def paths(tmp_path) -> tuple[Path, Path]:
 
 
 @pytest.fixture
-def service(paths) -> AuthService:
+def service(paths) -> Iterator[AuthService]:
     svc = AuthService(*paths)
     yield svc
     svc.lock()
@@ -251,6 +253,11 @@ def test_INV4a_failed_write_rolls_back(service, monkeypatch):
     from finbreak.repositories.transactions import TransactionRepository
 
     def boom(self):
+        # The INSERT has run on this connection but is not committed. Prove it's
+        # live HERE, so the post-reopen absence proves a real rollback — not that
+        # the INSERT never happened (which would also yield 0 rows).
+        live = self._conn.execute("SELECT count(*) FROM transactions").fetchone()[0]
+        assert live == 1, "the INSERT must be visible on the connection pre-commit"
         raise RuntimeError("simulated failure after INSERT, before commit")
 
     monkeypatch.setattr(TransactionRepository, "_commit", boom)
@@ -416,14 +423,16 @@ def test_INV6_unlock_widget_roundtrip(qtbot, service):
     widget = UnlockWidget(service)
     qtbot.addWidget(widget)
 
+    # 15 s, not 5 s: each click runs a real 47 MiB Argon2id derivation on a
+    # worker thread; a loaded/constrained CI runner can approach 5 s (flake).
     widget._password.setText("the wrong password")
-    with qtbot.waitSignal(widget.unlock_failed, timeout=5000):
+    with qtbot.waitSignal(widget.unlock_failed, timeout=15000):
         widget._unlock_button.click()
     assert service._key is None
     assert widget._error.text() != "", "a failed unlock shows a message"
 
     widget._password.setText(_PW.decode())
-    with qtbot.waitSignal(widget.unlocked, timeout=5000):
+    with qtbot.waitSignal(widget.unlocked, timeout=15000):
         widget._unlock_button.click()
     assert service._key is not None
 
@@ -437,6 +446,27 @@ def test_INV6_main_window_lists_saved_transaction(qtbot, service):
     window = MainWindow(service)
     qtbot.addWidget(window)
     assert window._table.rowCount() == 1, "the saved transaction appears in the table"
+
+
+def test_INV6_idle_autolock_routes_ui_back_to_unlock(qtbot, service):
+    # An idle auto-lock wipes the key + closes the vault; the shell must route
+    # back to the unlock screen, else the next action hits a locked vault and
+    # crashes (INV-3 idle-lock reflected through the UI).
+    from finbreak.app import AppShell
+    from finbreak.ui.main_window import MainWindow
+    from finbreak.ui.unlock import UnlockWidget
+
+    service.first_run(bytearray(_PW), "ZAR")  # leaves the service unlocked
+    shell = AppShell(service)
+    qtbot.addWidget(shell)
+    shell._show_main()
+    assert isinstance(shell.currentWidget(), MainWindow)
+
+    service._on_idle_timeout()  # the 10-minute idle timer fires
+    assert service._key is None, "idle auto-lock wipes the key"
+    assert isinstance(shell.currentWidget(), UnlockWidget), (
+        "the UI routes back to unlock so no action reaches the locked vault"
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -496,8 +526,29 @@ def test_INV7_vault_and_sidecar_are_owner_only(service, paths):
 # --------------------------------------------------------------------------- #
 # INV-8 — no network dependency introduced
 # --------------------------------------------------------------------------- #
+_BANNED_NETWORK = {"socket", "http", "urllib", "requests", "ftplib"}
+
+
+def _banned_string_arg(node: ast.Call) -> str | None:
+    """The banned top-level module named by a dynamic-import call, if any.
+
+    Catches ``__import__("socket")`` and ``importlib.import_module("urllib.x")``
+    with a string-literal first argument — the forms a plain Import/ImportFrom
+    walk misses.
+    """
+    func = node.func
+    is_dunder = isinstance(func, ast.Name) and func.id == "__import__"
+    is_importlib = isinstance(func, ast.Attribute) and func.attr == "import_module"
+    if not (is_dunder or is_importlib) or not node.args:
+        return None
+    first = node.args[0]
+    if isinstance(first, ast.Constant) and isinstance(first.value, str):
+        top = first.value.split(".")[0]
+        return top if top in _BANNED_NETWORK else None
+    return None
+
+
 def test_INV8_no_network_imports_under_src():
-    banned = {"socket", "http", "urllib", "requests", "ftplib"}
     package_root = Path(finbreak.__file__).parent
     offenders: list[str] = []
     for py in package_root.rglob("*.py"):
@@ -507,9 +558,28 @@ def test_INV8_no_network_imports_under_src():
                 offenders += [
                     f"{py.name}: import {alias.name}"
                     for alias in node.names
-                    if alias.name.split(".")[0] in banned
+                    if alias.name.split(".")[0] in _BANNED_NETWORK
                 ]
             elif isinstance(node, ast.ImportFrom) and node.module:
-                if node.module.split(".")[0] in banned:
+                if node.module.split(".")[0] in _BANNED_NETWORK:
                     offenders.append(f"{py.name}: from {node.module}")
+            elif isinstance(node, ast.Call):
+                if banned := _banned_string_arg(node):
+                    offenders.append(f"{py.name}: dynamic import {banned}")
     assert not offenders, f"network imports found under src/finbreak/: {offenders}"
+
+
+def test_INV8_no_network_package_in_runtime_deps():
+    """The static scan can't see a banned package imported dynamically — so also
+    assert none is declared as a runtime dependency (FIBR-0004 INV-8)."""
+    import tomllib
+
+    pyproject = Path(finbreak.__file__).parent.parent.parent / "pyproject.toml"
+    deps = tomllib.loads(pyproject.read_text())["project"]["dependencies"]
+    # The distribution name at the head of each requirement (before any version
+    # specifier / extra / marker).
+    names = {
+        re.split(r"[<>=!~ \[;]", dep, maxsplit=1)[0].strip().lower() for dep in deps
+    }
+    intruders = names & _BANNED_NETWORK
+    assert not intruders, f"network package in runtime deps: {intruders}"

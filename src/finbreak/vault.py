@@ -109,7 +109,10 @@ class Vault:
         # Raw-key pragma MUST be the first statement. key.hex() is exactly 64
         # chars from [0-9a-f] (Argon2 output, never user text), so this
         # interpolation has no injection surface; SQLCipher does not
-        # bind-parameterise PRAGMA key.
+        # bind-parameterise PRAGMA key. The transient hex `str` is an
+        # un-wipeable copy of the key (SQLCipher's PRAGMA takes a string) — an
+        # accepted best-effort gap, consistent with the D5 stance on the other
+        # immutable key/password intermediates.
         conn.execute(f"PRAGMA key = \"x'{key.hex()}'\"")
         return conn
 

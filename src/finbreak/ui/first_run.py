@@ -85,7 +85,7 @@ class FirstRunWidget(QWidget):
         self._confirm.clear()
         self._submit.setEnabled(False)
 
-        worker = DeriveWorker(derive_password, self._pending_params)
+        worker = DeriveWorker(derive_password, self._pending_params, self)  # Qt owns it
         worker.done.connect(self._on_derived)
         worker.failed.connect(self._on_failure)
         worker.finished.connect(worker.deleteLater)  # no leaked QThread per attempt
@@ -96,10 +96,13 @@ class FirstRunWidget(QWidget):
     def _on_derived(self, raw: bytes) -> None:
         self._worker = None
         params = self._pending_params
+        currency = self._pending_currency
+        self._pending_params = None  # consumed — don't leave stale state on a retry
+        self._pending_currency = ""
         if params is None:  # _on_submit always sets it before start — defensive
             return
         try:
-            self._service.complete_first_run(raw, params, self._pending_currency)
+            self._service.complete_first_run(raw, params, currency)
         except Exception as exc:  # vault creation failed — surface, don't crash
             self._submit.setEnabled(True)
             self._error.setText(

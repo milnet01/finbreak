@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 import secrets
+from collections.abc import Callable
 from pathlib import Path
 
 from PySide6.QtCore import QCoreApplication, QTimer
@@ -71,6 +72,10 @@ class AuthService:
         self._sidecar_path = sidecar_path
         self._key: bytearray | None = None
         self._timer: QTimer | None = None
+        # Invoked after an idle auto-lock so the UI can route away from the now
+        # -locked vault (else the next action hits a closed connection). Set by
+        # the UI shell; None in headless use.
+        self.on_auto_lock: Callable[[], None] | None = None
 
     @property
     def vault(self) -> Vault:
@@ -168,6 +173,8 @@ class AuthService:
 
     def _on_idle_timeout(self) -> None:
         self.lock()
+        if self.on_auto_lock is not None:
+            self.on_auto_lock()
 
     def on_about_to_quit(self) -> None:
         """Wipe on shutdown; a no-op when already locked (no key held)."""

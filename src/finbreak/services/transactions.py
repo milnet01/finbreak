@@ -70,6 +70,12 @@ class TransactionService:
         ).fetchone()
         return int(row[0])
 
+    def base_currency(self) -> str:
+        row = self._vault.connection.execute(
+            "SELECT value FROM settings WHERE key = 'base_currency'"
+        ).fetchone()
+        return str(row[0])
+
     def add_transaction(
         self, occurred_on: str, raw_amount: str | Decimal, description: str
     ) -> None:

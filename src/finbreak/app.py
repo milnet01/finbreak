@@ -24,6 +24,10 @@ class AppShell(QStackedWidget):
     def __init__(self, service: AuthService):
         super().__init__()
         self._service = service
+        # An idle auto-lock wipes the key + closes the vault on the service; route
+        # the UI back to the unlock screen so the next action can't hit a locked
+        # vault (same destination as the manual Lock button).
+        service.on_auto_lock = self._show_unlock
         self.setWindowTitle("finbreak")
         if service.state() == "first_run":
             self._show_first_run()

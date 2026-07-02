@@ -60,7 +60,7 @@ class UnlockWidget(QWidget):
         self._password.clear()
         self._set_busy(True)
 
-        worker = DeriveWorker(password, params)
+        worker = DeriveWorker(password, params, self)  # parented — Qt owns it
         worker.done.connect(self._on_derived)
         worker.failed.connect(self._on_failure)
         worker.finished.connect(worker.deleteLater)  # no leaked QThread per attempt

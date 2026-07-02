@@ -101,14 +101,20 @@ class MainWindow(QWidget):
 
     def _refresh(self) -> None:
         rows = self._transactions.list_transactions()
+        symbol = self._transactions.base_currency()
         self._table.setRowCount(len(rows))
         for row, (transaction, display) in enumerate(rows):
             self._table.setItem(row, 0, QTableWidgetItem(transaction.occurred_on))
-            self._table.setItem(row, 1, QTableWidgetItem(_format_amount(display)))
+            self._table.setItem(
+                row, 1, QTableWidgetItem(_format_amount(display, symbol))
+            )
             self._table.setItem(row, 2, QTableWidgetItem(transaction.description))
 
 
-def _format_amount(display: Decimal) -> str:
-    # A stored amount reconstructs to a finite Decimal, so its exponent is an int.
+def _format_amount(display: Decimal, symbol: str) -> str:
+    # Currency → QLocale.toCurrencyString with the base-currency symbol, so the
+    # amount carries its currency and isn't reformatted to the locale's own
+    # (coding.md § 5.2). A stored amount reconstructs to a finite Decimal, so its
+    # exponent is an int.
     decimals = max(0, -cast(int, display.as_tuple().exponent))
-    return QLocale().toString(float(display), "f", decimals)
+    return QLocale().toCurrencyString(float(display), symbol, decimals)
