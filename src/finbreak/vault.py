@@ -89,7 +89,10 @@ class Vault:
         # Bring the fresh v1 baseline to the latest schema, THEN write the
         # sidecar last — so a migration failure leaves a vault-without-sidecar
         # (the clean mixed-state retry, INV-5), never a sidecar over a
-        # half-migrated vault (FIBR-0005 D1/D2).
+        # half-migrated vault (FIBR-0005 D1/D2). The "DB durable before sidecar"
+        # half of that guarantee relies on SQLite's default per-commit fsync
+        # (synchronous=FULL); a later switch to WAL / synchronous=NORMAL would
+        # need the sidecar write deferred until the DB is durably flushed.
         run_migrations(conn)
         self._write_sidecar(params)
 

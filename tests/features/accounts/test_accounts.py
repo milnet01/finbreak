@@ -261,23 +261,41 @@ def test_INV4_rolls_back_on_failure(paths):
                 raise RuntimeError("injected failure at RENAME")
             return self._real.execute(sql, *a)
 
-        def commit(self):
-            return self._real.commit()
-
-        def rollback(self):
-            return self._real.rollback()
+        def __getattr__(self, name):
+            # Forward everything else (commit, rollback, cursor, ...) to the real
+            # connection, so the ONLY injected fault is the RENAME.
+            return getattr(self._real, name)
 
     with pytest.raises(RuntimeError):
         run_migrations(_FailAtRename(conn))
+
+    # Prove the ROLLBACK, not just recoverability: on the SAME connection —
+    # before any reopen re-runs the migration — the failed v1->v2 step must have
+    # left no trace. Still v1, the accounts table never created, and the original
+    # transactions table + rows intact (the DROP was undone). A silent
+    # no-rollback (DDL autocommit — the Cold-eyes Loop-2 CRITICAL) would surface
+    # here as a half-migrated wreck.
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 1
+    assert (
+        conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='accounts'"
+        ).fetchone()
+        is None
+    ), "the accounts table's CREATE was rolled back"
+    surviving = conn.execute(
+        "SELECT amount_minor, description FROM transactions"
+    ).fetchall()
+    assert {tuple(r) for r in surviving} == {(-100, "a"), (200, "b")}, (
+        "the original account-less rows survive; the DROP was undone"
+    )
     conn.close()
 
-    # The vault must still open at v1 with its original account-less rows.
+    # And, having rolled back cleanly, the vault is still openable — a
+    # subsequent unlock re-runs and completes the migration to v2 with the rows
+    # carried through.
     svc = AuthService(vault_path, sidecar_path)
     assert svc.unlock(bytearray(_PW)) is True
     reopened = svc.vault.connection
-    # unlock re-ran (and completed) the migration, so it is v2 now — but the
-    # point is the earlier failure left a clean, re-openable vault, not a
-    # half-migrated wreck. Prove the rows survived intact.
     txs = TransactionRepository(reopened).list_all()
     assert {(t.amount_minor, t.description) for t in txs} == {(-100, "a"), (200, "b")}
     svc.lock()
@@ -295,6 +313,26 @@ def test_INV4_refuses_newer_than_latest(paths):
     with pytest.raises(SchemaVersionError):
         run_migrations(conn)
     conn.close()
+
+
+def test_INV4_unlock_of_newer_vault_raises_and_retains_no_key(paths):
+    # Opening a newer-than-supported vault must PROPAGATE SchemaVersionError
+    # (not report a wrong-password False) and leave no derived key on the
+    # service — the migration runner's refusal wipes and re-raises (INV-3/INV-4).
+    vault_path, sidecar_path = paths
+    salt = bytes(range(SALT_LEN))
+    _build_v1_vault(vault_path, sidecar_path, salt, [])
+    key = derive_key(bytearray(_PW), salt, _params(salt))
+    conn = dbapi2.connect(str(vault_path))
+    conn.execute(f"PRAGMA key = \"x'{bytes(key).hex()}'\"")
+    conn.execute("UPDATE schema_version SET version = ?", (LATEST_SCHEMA_VERSION + 1,))
+    conn.commit()
+    conn.close()
+
+    svc = AuthService(vault_path, sidecar_path)
+    with pytest.raises(SchemaVersionError):
+        svc.unlock(bytearray(_PW))
+    assert svc._key is None, "no derived key retained after a refused open"
 
 
 # --------------------------------------------------------------------------- #
@@ -336,7 +374,6 @@ def test_INV5_account_id_and_row_id_are_independent(service):
 # --------------------------------------------------------------------------- #
 def test_INV6_delete_in_use_account_is_blocked(service):
     default_id = _default_id(service.vault)
-    AccountService(service.vault)  # ensure module import path exercised
     TransactionService(service.vault).add_transaction(
         default_id, "2026-07-01", "-1.00", "x"
     )
@@ -447,6 +484,29 @@ def test_INV7e_delete_empty_nonlast_removes_from_list(qtbot, service):
     widget._delete_button.click()
     listed = [widget._list.item(i).text() for i in range(widget._list.count())]
     assert not any("Spare" in text for text in listed), "empty non-last account gone"
+
+
+def test_INV7f_edit_selected_account_updates_it(qtbot, service):
+    from finbreak.ui.accounts import AccountsWidget
+
+    svc = AccountService(service.vault)
+    spare = svc.add_account("Spair", "other")  # a typo to correct via the form
+
+    widget = AccountsWidget(service)
+    qtbot.addWidget(widget)
+    # Selecting loads the account into the form; correct the name + type and
+    # press Update selected — the account changes in place (INV-7 add/edit form).
+    widget._select_account(spare.id)
+    widget._name.setText("Spare")
+    widget._type.setCurrentIndex(widget._type.findData("savings"))
+    widget._update_button.click()
+
+    assert widget._error.text() == "", "a valid edit shows no error"
+    listed = [widget._list.item(i).text() for i in range(widget._list.count())]
+    assert any("Spare — " in text for text in listed), "the rename shows in the list"
+    assert not any("Spair" in text for text in listed), "the old name is gone"
+    edited = next(a for a in svc.list_accounts() if a.id == spare.id)
+    assert edited.name == "Spare" and edited.type == "savings"
 
 
 # --------------------------------------------------------------------------- #

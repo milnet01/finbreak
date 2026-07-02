@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from finbreak.errors import KdfPolicyError
+from finbreak.errors import KdfPolicyError, SchemaVersionError
 from finbreak.services.auth import AuthService
 from finbreak.ui._worker import DeriveWorker
 
@@ -77,7 +77,20 @@ class UnlockWidget(QWidget):
     def _on_derived(self, raw: bytes) -> None:
         self._worker = None
         self._set_busy(False)
-        if self._service.complete_unlock(raw):
+        try:
+            unlocked = self._service.complete_unlock(raw)
+        except SchemaVersionError:
+            # A vault written by a newer build — distinct from a wrong password,
+            # so it gets its own message rather than the generic failure.
+            self._error.setText(
+                self.tr(
+                    "This vault was created by a newer version of finbreak. "
+                    "Please update finbreak to open it."
+                )
+            )
+            self.unlock_failed.emit()
+            return
+        if unlocked:
             self.unlocked.emit()
         else:
             self._show_failure()

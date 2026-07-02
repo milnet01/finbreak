@@ -27,6 +27,10 @@ from finbreak.services.accounts import AccountService
 from finbreak.services.auth import AuthService
 
 _ACCOUNT_ID_ROLE = Qt.ItemDataRole.UserRole
+# The selected account's current name + token, stashed on the row so selecting
+# it can populate the form for an in-place edit (the token is language-neutral).
+_ACCOUNT_NAME_ROLE = Qt.ItemDataRole.UserRole + 1
+_ACCOUNT_TYPE_ROLE = Qt.ItemDataRole.UserRole + 2
 
 
 class AccountsWidget(QWidget):
@@ -57,6 +61,7 @@ class AccountsWidget(QWidget):
         for token, label in self._type_labels.items():
             self._type.addItem(label, token)
         self._add_button = QPushButton(self.tr("Add"))
+        self._update_button = QPushButton(self.tr("Update selected"))
         self._delete_button = QPushButton(self.tr("Delete selected"))
         self._done_button = QPushButton(self.tr("Done"))
         self._error = QLabel()
@@ -65,6 +70,7 @@ class AccountsWidget(QWidget):
         add_row.addWidget(self._name)
         add_row.addWidget(self._type)
         add_row.addWidget(self._add_button)
+        add_row.addWidget(self._update_button)
 
         actions = QHBoxLayout()
         actions.addWidget(self._delete_button)
@@ -78,8 +84,13 @@ class AccountsWidget(QWidget):
         layout.addLayout(actions)
 
         self._add_button.clicked.connect(self._on_add)
+        self._update_button.clicked.connect(self._on_update)
         self._delete_button.clicked.connect(self._on_delete)
         self._done_button.clicked.connect(self.done)
+        # Selecting an account loads its name + type into the form, so the same
+        # two fields serve both Add (nothing selected) and Update (D8 — the
+        # seeded Default account is renamed / retyped here).
+        self._list.currentItemChanged.connect(self._on_selection_changed)
 
         self._refresh()
 
@@ -88,11 +99,38 @@ class AccountsWidget(QWidget):
         self._error.clear()
         try:
             self._accounts.add_account(self._name.text(), self._type.currentData())
-        except ValueError as exc:
+        except (ValueError, FinbreakError) as exc:
             self._error.setText(str(exc))
             return
         self._name.clear()
         self._refresh()
+
+    @Slot()
+    def _on_update(self) -> None:
+        self._error.clear()
+        item = self._list.currentItem()
+        if item is None:
+            return
+        try:
+            self._accounts.update_account(
+                item.data(_ACCOUNT_ID_ROLE),
+                self._name.text(),
+                self._type.currentData(),
+            )
+        except (ValueError, FinbreakError) as exc:
+            self._error.setText(str(exc))
+            return
+        self._refresh()
+
+    @Slot()
+    def _on_selection_changed(self) -> None:
+        item = self._list.currentItem()
+        if item is None:
+            return
+        self._name.setText(item.data(_ACCOUNT_NAME_ROLE))
+        index = self._type.findData(item.data(_ACCOUNT_TYPE_ROLE))
+        if index != -1:
+            self._type.setCurrentIndex(index)
 
     @Slot()
     def _on_delete(self) -> None:
@@ -123,4 +161,6 @@ class AccountsWidget(QWidget):
             label = self._type_labels.get(account.type, account.type)
             item = QListWidgetItem(f"{account.name} — {label}")
             item.setData(_ACCOUNT_ID_ROLE, account.id)
+            item.setData(_ACCOUNT_NAME_ROLE, account.name)
+            item.setData(_ACCOUNT_TYPE_ROLE, account.type)
             self._list.addItem(item)

@@ -40,7 +40,9 @@ or real financial data (testing.md § 6).
   the seven types (labels map back to tokens); Add shows the account in the list
   and in the main window's account picker; a transaction shows its account name;
   deleting an in-use account shows a message and removes nothing; an empty
-  non-last account deletes. Source: FIBR-0005 INV-7 (a–e).
+  non-last account deletes; selecting an account loads it into the form and
+  Update selected renames/retypes it in place (the add/edit form). Source:
+  FIBR-0005 INV-7 (a–f).
 - **INV-8** — The new modules add no network import and log no secret across an
   account add→delete cycle (covered by the vault-suite whole-`src/` scan plus a
   `caplog` capture here). Source: FIBR-0005 INV-8.

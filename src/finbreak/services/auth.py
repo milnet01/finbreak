@@ -158,6 +158,12 @@ class AuthService:
             _wipe(key)
             log.info("unlock failed")
             return False
+        except Exception:
+            # Any other open failure (e.g. a newer-than-supported vault raising
+            # SchemaVersionError from the migration runner) must still wipe the
+            # derived key before propagating — never leave it in memory (INV-3).
+            _wipe(key)
+            raise
         self._key = key
         self._arm_timer()
         log.info("unlocked")
