@@ -4,12 +4,12 @@
 
 | Field | Value |
 |-------|-------|
-| **Project phase** | P04 — Type → Category tree |
-| **Active item ID** | FIBR-0006 |
+| **Project phase** | P05 — CSV import + mapping profiles |
+| **Active item ID** | FIBR-0007 |
 | **Active step** | 1 (verify/expand spec) |
 | **Blocked on** | — |
-| **Last update** | 2026-07-02 (FIBR-0005 closed by the 9-step loop: 2 audit + indie-review rounds, all findings fixed inline — key-wipe on newer-vault open, wired the add/edit form, strengthened the INV-4 rollback test to a true atomicity test, root-caused a mypy note; gate green 100 passed/1 skipped, mypy 0, audit 0; tagged FIBR-0005-complete) |
-| **Next gate** | FIBR-0006 step 1 — write/expand `docs/specs/FIBR-0006.md` (P04 Type→Category tree), then `/cold-eyes` it to convergence before code (global rule § 14) |
+| **Last update** | 2026-07-02 (FIBR-0006 **closed** by /close-phase: spec cold-eyes-converged 7 loops; TDD; /audit 0 + /indie-review 0 actionable on the closing pass; folded one INFO inline (INV-7f re-enable); gate green 122 passed/1 skipped, mypy 0. Flipped ROADMAP → ✅, wrote docs/journal/FIBR-0006.md, tag FIBR-0006-complete) |
+| **Next gate** | FIBR-0007 step 1 — write/expand `docs/specs/FIBR-0007.md` (P05 CSV import + per-bank mapping profiles + dedup + import wizard), then `/cold-eyes` to convergence before code (global rule § 14) |
 | **Convergence checkpoint** | 5 (consecutive `FP##` items immediately preceding any ✅-`implement`-Kind close in the active release block — see `~/.claude/commands/close-phase.md § 5a-6`) |
 | **Debt-sweep phase threshold** | 5 (auto-prompt for `/debt-sweep` after this many phases without one) |
 | **Last debt sweep** | (none yet) |
@@ -21,7 +21,7 @@ While an item is active, Claude marks the current step 🚧;
 completed steps flip to ✅. Resets to all ⬜ when a new item
 becomes active.
 
-1. ⬜ Verify spec (`docs/specs/FIBR-0006.md`) — draft/expand, then `/cold-eyes`
+1. ⬜ Verify spec (`docs/specs/FIBR-0007.md`) — draft/expand, then `/cold-eyes`
 2. ⬜ Verify dependencies on the roadmap DAG
 3. ⬜ Write failing tests
 4. ⬜ Implement until tests pass
@@ -87,6 +87,63 @@ journal); §2 is the only part that changes.
 ## §3. Session journal
 
 Append-only. Newest at the top.
+
+### 2026-07-02 — FIBR-0006 closed (P04 Type → Category tree)
+
+Steps 3–9 of the 9-step loop, run autonomously (user's standing rule: a
+cold-eyes-converged spec I'm confident in is signed off — no wait). TDD:
+lifted the raw-v1-vault builder to `tests/conftest.py`, rippled the four
+schema-version assertions `== 2`→`== 3` + two accounts test renames, wrote
+`tests/features/categories/` (22 tests) and saw them red, then implemented
+`models`/`errors`/`migrations`/`repositories/categories`/`services/categories`/
+`ui/categories` + the `main_window`/`app` wiring to green. `/audit` (Ants
+`audit_run`, scope=files — ruff/bandit/semgrep/mypy) **0 findings**;
+`/indie-review` (2 cold lanes over the data layer and the UI+tests) **0
+actionable** — INFO-only (the cycle-guard deferral is spec-documented, the
+`lastrowid` typing is `AccountRepository` parity). Folded one INFO inline
+(INV-7f now asserts the actions re-enable when a category is re-selected).
+One bandit B608 on an f-string SQL was root-caused (inlined the literal column
+list, matching the codebase convention — no `# nosec`). Clean pair on the
+closing pass. Gate green: 122 passed / 1 skipped, mypy 0. Flipped ROADMAP
+FIBR-0006 → ✅, wrote `docs/journal/FIBR-0006.md`, tag `FIBR-0006-complete`.
+Transaction→category link deferred to P08 (FIBR-0010) by design (D10).
+
+Next: FIBR-0007 (P05 CSV import + per-bank mapping profiles + dedup + import
+wizard) step 1 — draft/expand the spec, then `/cold-eyes` to convergence.
+
+### 2026-07-02 — FIBR-0006 spec drafted + `/cold-eyes` (7 loops, converged)
+
+Opened P04 (Type → Category tree). Verified the codebase seams before drafting
+(§13): the FIBR-0005 migration runner (`run_migrations`/`_MIGRATIONS`/
+`LATEST_SCHEMA_VERSION`, the runner-owned `BEGIN…COMMIT`/`ROLLBACK`), the
+`PRAGMA foreign_keys = ON` seam that makes the self-referential FK real, the
+`AccountRepository`/`AccountService`/`AccountsWidget` pattern this phase mirrors,
+and the exact schema-version assertions in the vault + accounts suites. Drafted
+`docs/specs/FIBR-0006.md` — the categories aggregate (repo → service →
+`QTreeWidget` manager) + a v2→v3 migration step. Key design calls flagged for
+sign-off: **Income/Expenditure are two seeded, protected root rows** in a pure
+self-referential tree (kind token on roots only; D3–D5); **the transaction→
+category link is deferred to P08/FIBR-0010** (D10 — keeps P04 surgical: a new
+table + screen, transactions untouched); rich 16-category seed (D8); block-not-
+cascade delete guards (D6).
+
+**Cold-eyes (global rule §14):** 3 cold lanes/loop (accuracy · implementability ·
+consistency), **7 loops**, 21 independent reviewers, ~30 verified findings fixed,
+**0 CRITICAL throughout**, design stable since loop 2. Notable catches: loop 1 —
+the "only vault-suite ripple" claim was wrong (the accounts suite has **three
+more** schema assertions that flip `==2`→`==3` + two stale `_v2` test names), and
+the seed enumeration dropped the `NOT NULL created_at` column; loop 2 — a `None`
+parent could mint a **third root** (FK-exempt), and the INV-7 cite pointed at a
+non-existent design.md section (added a "Category manager" component); loops 3–6
+— test-mechanics precision (the atomic-rollback wedge, the conftest lift's hidden
+`_params`/`_PW`/`derive_key` deps, the FK-ON-connection requirement) and two
+wording nits my own fixes introduced. Loop 7 clean (0 CRIT/HIGH/MED/LOW, all
+lanes). Also fixed two cross-doc items: added the design.md "Category manager"
+component, and used `roadmap_log op:amend_body` to add FIBR-0005 to the ROADMAP
+FIBR-0006 `Dependencies:` line.
+
+Next: **user signs off `docs/specs/FIBR-0006.md`**, then Step 2 (deps FIBR-0004/
+0005 ✅) → Step 3 (write failing tests, TDD) → Step 4 (implement).
 
 ### 2026-07-02 — FIBR-0005 closed (P03 accounts + forward-migration runner)
 

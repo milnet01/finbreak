@@ -23,6 +23,18 @@ signaling per
 
 ### Added
 
+- **Categories — sort your money into Income and Expenditure buckets.**
+  finbreak now has a two-level category list: two fixed types — Income and
+  Expenditure — each holding a set of ready-made categories (Salary, Sales,
+  Bills & utilities, Groceries, Medical, and more; sixteen come built in). A new
+  "Manage categories…" screen lets you add your own, rename them, move one to
+  the other type, or delete the ones you don't use. The list is stored so a
+  future "sub-category" level can be added later without rebuilding your data.
+  (Actually tagging each transaction with a category comes in a later release —
+  this release builds the list itself.) Opening a vault from before this release
+  upgrades it in one all-or-nothing step that adds the category list, and a
+  power-cut mid-upgrade rolls back cleanly to the old shape. (FIBR-0006)
+
 - **Multiple accounts — keep each account's money separate.** Create as many
   accounts as you like, each tagged with a type (current, savings, credit card,
   personal loan, home loan, investment, or other); rename or retype them on a

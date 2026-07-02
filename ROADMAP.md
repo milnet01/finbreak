@@ -144,14 +144,15 @@ lands on top.
 
 ### 🎨 Features
 
-- 📋 [FIBR-0006] **P04: Type → Category tree (3rd level
+- ✅ [FIBR-0006] **P04: Type → Category tree (3rd level
   ready).** Self-referential `categories` table (`parent_id`),
   seeded Income/Expenditure types with sensible default
   categories (salary, sales / fast food, bills, medical,
   lottery…), and a category-management UI exposing two levels.
   Data model supports a future Sub-category level without
-  migration. Dependencies: FIBR-0004. Lanes: services, repo, ui,
+  migration. Dependencies: FIBR-0004, FIBR-0005. Lanes: services, repo, ui,
   tests. Kind: implement. Source: planned.
+  Resolved (2026-07-02): shipped the categories aggregate (self-referential table + 2 seeded Type roots + 16 defaults), the QTreeWidget manager, and the v2→v3 migration. Spec cold-eyes-converged (7 loops); TDD; /audit + /indie-review 0 actionable on the closing pass. Gate green (122 passed/1 skipped, mypy 0). Transaction→category link deferred to P08 (FIBR-0010) by design. Journal: docs/journal/FIBR-0006.md. Tag FIBR-0006-complete.
 
 ---
 
