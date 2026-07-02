@@ -1,0 +1,126 @@
+"""Accounts manager screen — add / edit-type / delete accounts (FIBR-0005 INV-7).
+
+All strings go through ``tr()`` and every widget sits in a Qt layout manager, so
+the screen is translation-ready and RTL-safe (coding.md § 5.2). The type picker
+carries the stored ``AccountType`` token as item data behind a translated label,
+so the DB stays language-neutral (D5).
+"""
+
+from __future__ import annotations
+
+from PySide6.QtCore import Qt, Signal, Slot
+from PySide6.QtWidgets import (
+    QComboBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
+
+from finbreak.errors import FinbreakError
+from finbreak.models import AccountType
+from finbreak.services.accounts import AccountService
+from finbreak.services.auth import AuthService
+
+_ACCOUNT_ID_ROLE = Qt.ItemDataRole.UserRole
+
+
+class AccountsWidget(QWidget):
+    done = Signal()
+
+    def __init__(self, service: AuthService, parent: QWidget | None = None):
+        super().__init__(parent)
+        self._accounts = AccountService(service.vault)
+
+        self.setWindowTitle(self.tr("Accounts"))
+
+        # Token -> translated label, in a fixed order; the label is display-only,
+        # the token (itemData) is what is stored (D5).
+        self._type_labels = {
+            AccountType.CURRENT.value: self.tr("Current"),
+            AccountType.SAVINGS.value: self.tr("Savings"),
+            AccountType.CREDIT_CARD.value: self.tr("Credit card"),
+            AccountType.PERSONAL_LOAN.value: self.tr("Personal loan"),
+            AccountType.HOME_LOAN.value: self.tr("Home loan"),
+            AccountType.INVESTMENT.value: self.tr("Investment"),
+            AccountType.OTHER.value: self.tr("Other"),
+        }
+
+        self._list = QListWidget()
+        self._name = QLineEdit()
+        self._name.setPlaceholderText(self.tr("Account name"))
+        self._type = QComboBox()
+        for token, label in self._type_labels.items():
+            self._type.addItem(label, token)
+        self._add_button = QPushButton(self.tr("Add"))
+        self._delete_button = QPushButton(self.tr("Delete selected"))
+        self._done_button = QPushButton(self.tr("Done"))
+        self._error = QLabel()
+
+        add_row = QHBoxLayout()
+        add_row.addWidget(self._name)
+        add_row.addWidget(self._type)
+        add_row.addWidget(self._add_button)
+
+        actions = QHBoxLayout()
+        actions.addWidget(self._delete_button)
+        actions.addStretch()
+        actions.addWidget(self._done_button)
+
+        layout = QVBoxLayout(self)
+        layout.addWidget(self._list)
+        layout.addLayout(add_row)
+        layout.addWidget(self._error)
+        layout.addLayout(actions)
+
+        self._add_button.clicked.connect(self._on_add)
+        self._delete_button.clicked.connect(self._on_delete)
+        self._done_button.clicked.connect(self.done)
+
+        self._refresh()
+
+    @Slot()
+    def _on_add(self) -> None:
+        self._error.clear()
+        try:
+            self._accounts.add_account(self._name.text(), self._type.currentData())
+        except ValueError as exc:
+            self._error.setText(str(exc))
+            return
+        self._name.clear()
+        self._refresh()
+
+    @Slot()
+    def _on_delete(self) -> None:
+        self._error.clear()
+        item = self._list.currentItem()
+        if item is None:
+            return
+        try:
+            self._accounts.delete_account(item.data(_ACCOUNT_ID_ROLE))
+        except FinbreakError as exc:
+            # AccountInUseError / LastAccountError — show the message, remove
+            # nothing (INV-6 reflected through the UI).
+            self._error.setText(str(exc))
+            return
+        self._refresh()
+
+    def _select_account(self, account_id: int) -> None:
+        """Select the list row for ``account_id`` (used by the UI tests)."""
+        for i in range(self._list.count()):
+            item = self._list.item(i)
+            if item.data(_ACCOUNT_ID_ROLE) == account_id:
+                self._list.setCurrentItem(item)
+                return
+
+    def _refresh(self) -> None:
+        self._list.clear()
+        for account in self._accounts.list_accounts():
+            label = self._type_labels.get(account.type, account.type)
+            item = QListWidgetItem(f"{account.name} — {label}")
+            item.setData(_ACCOUNT_ID_ROLE, account.id)
+            self._list.addItem(item)

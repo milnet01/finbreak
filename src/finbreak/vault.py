@@ -15,8 +15,12 @@ from pathlib import Path
 from sqlcipher3 import dbapi2
 
 from finbreak.errors import VaultLockedError, VaultStateError
+from finbreak.migrations import run_migrations
 from finbreak.models import KdfParams
 
+# The baseline version create() writes; migrations.py brings it to
+# LATEST_SCHEMA_VERSION. SCHEMA_VERSION must equal the first migration step's
+# from-version (FIBR-0005 INV-4, Baseline-complete).
 SCHEMA_VERSION = 1
 
 
@@ -82,6 +86,11 @@ class Vault:
         )
         conn.commit()
         self._conn = conn
+        # Bring the fresh v1 baseline to the latest schema, THEN write the
+        # sidecar last — so a migration failure leaves a vault-without-sidecar
+        # (the clean mixed-state retry, INV-5), never a sidecar over a
+        # half-migrated vault (FIBR-0005 D1/D2).
+        run_migrations(conn)
         self._write_sidecar(params)
 
     def open(self, key: bytearray) -> None:
@@ -96,6 +105,16 @@ class Vault:
             conn.close()
             raise
         self._conn = conn
+        # Migrations run on unlock (design.md "Persistence"). A failure rolls
+        # back inside the runner, leaving a re-openable vault at its old
+        # version; drop the connection and re-raise so nothing uses a
+        # half-open state (FIBR-0005 INV-4).
+        try:
+            run_migrations(conn)
+        except Exception:
+            self._conn = None
+            conn.close()
+            raise
 
     def close(self) -> None:
         if self._conn is not None:
@@ -114,6 +133,10 @@ class Vault:
         # accepted best-effort gap, consistent with the D5 stance on the other
         # immutable key/password intermediates.
         conn.execute(f"PRAGMA key = \"x'{key.hex()}'\"")
+        # Enforce the transactions->accounts foreign key (FIBR-0005 D4). Set on
+        # a fresh connection before its first statement: a *change* to
+        # foreign_keys is a no-op mid-transaction, but once ON it stays enforced.
+        conn.execute("PRAGMA foreign_keys = ON")
         return conn
 
     def _write_sidecar(self, params: KdfParams) -> None:

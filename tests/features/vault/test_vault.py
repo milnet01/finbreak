@@ -29,7 +29,9 @@ from finbreak.crypto import (
     validate_params,
 )
 from finbreak.errors import KdfPolicyError, VaultLockedError, VaultStateError
+from finbreak.migrations import DEFAULT_ACCOUNT_NAME
 from finbreak.models import FORMAT_VERSION, KdfParams
+from finbreak.repositories.accounts import AccountRepository
 from finbreak.services.auth import AuthService
 from finbreak.services.transactions import (
     TransactionService,
@@ -72,6 +74,13 @@ def service(paths) -> Iterator[AuthService]:
     svc = AuthService(*paths)
     yield svc
     svc.lock()
+
+
+def _default_id(service: AuthService) -> int:
+    """The seeded Default account's id (resolved by name), for the account_id
+    every transaction now requires (FIBR-0005). Call after first_run/unlock."""
+    accounts = AccountRepository(service._vault.connection).list_all()
+    return next(a.id for a in accounts if a.name == DEFAULT_ACCOUNT_NAME)
 
 
 # --------------------------------------------------------------------------- #
@@ -294,7 +303,7 @@ def test_INV4a_failed_write_rolls_back(service, monkeypatch):
     monkeypatch.setattr(TransactionRepository, "_commit", boom)
     with pytest.raises(RuntimeError):
         TransactionService(service._vault).add_transaction(
-            "2026-07-01", "-12.34", "coffee"
+            _default_id(service), "2026-07-01", "-12.34", "coffee"
         )
 
     service.lock()
@@ -306,11 +315,11 @@ def test_INV4a_failed_write_rolls_back(service, monkeypatch):
 def test_INV4a_money_round_trips_exactly(service):
     service.first_run(bytearray(_PW), "ZAR")
     txs = TransactionService(service._vault)
-    txs.add_transaction("2026-07-01", "-12.34", "coffee")
+    txs.add_transaction(_default_id(service), "2026-07-01", "-12.34", "coffee")
 
     rows = txs.list_transactions()
     assert len(rows) == 1
-    transaction, display = rows[0]
+    transaction, display, _account = rows[0]
     assert transaction.amount_minor == -1234, (
         "money is stored as signed integer minor units"
     )
@@ -408,7 +417,9 @@ def test_INV5_first_run_creates_settings_and_both_files(service, paths):
         ).fetchone()[0]
         == "2"
     )
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 1
+    # First-run now migrates the fresh v1 baseline straight to the latest
+    # schema (FIBR-0005 D1), so a new vault lands at v2, not v1.
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 2
     assert vault_path.exists() and sidecar_path.exists()
 
 
@@ -435,7 +446,9 @@ def test_INV5_first_run_writes_vault_before_sidecar(service, paths, monkeypatch)
 # --------------------------------------------------------------------------- #
 def test_INV6_unlock_lock_roundtrip_headless(service):
     service.first_run(bytearray(_PW), "ZAR")
-    TransactionService(service._vault).add_transaction("2026-07-01", "-12.34", "coffee")
+    TransactionService(service._vault).add_transaction(
+        _default_id(service), "2026-07-01", "-12.34", "coffee"
+    )
     service.lock()
 
     assert service.unlock(bytearray(b"the wrong password")) is False
@@ -451,7 +464,9 @@ def test_INV6_unlock_widget_roundtrip(qtbot, service):
     from finbreak.ui.unlock import UnlockWidget
 
     service.first_run(bytearray(_PW), "ZAR")
-    TransactionService(service._vault).add_transaction("2026-07-01", "-12.34", "coffee")
+    TransactionService(service._vault).add_transaction(
+        _default_id(service), "2026-07-01", "-12.34", "coffee"
+    )
     service.lock()
 
     widget = UnlockWidget(service)
@@ -493,7 +508,9 @@ def test_INV6_main_window_lists_saved_transaction(qtbot, service):
     from finbreak.ui.main_window import MainWindow
 
     service.first_run(bytearray(_PW), "ZAR")
-    TransactionService(service._vault).add_transaction("2026-07-01", "-12.34", "coffee")
+    TransactionService(service._vault).add_transaction(
+        _default_id(service), "2026-07-01", "-12.34", "coffee"
+    )
 
     window = MainWindow(service)
     qtbot.addWidget(window)
@@ -545,7 +562,7 @@ def test_INV7_lifecycle_logs_carry_no_secret(service, caplog):
     with caplog.at_level(logging.INFO, logger="finbreak"):
         service.first_run(bytearray(_PW), "ZAR")
         TransactionService(service._vault).add_transaction(
-            "2026-07-01", "-12.34", "coffee"
+            _default_id(service), "2026-07-01", "-12.34", "coffee"
         )
         service.lock()
         service.unlock(bytearray(_PW))

@@ -24,3 +24,18 @@ class VaultStateError(FinbreakError):
 class VaultLockedError(FinbreakError):
     """An operation needing the vault was attempted while it is locked
     (FIBR-0004 INV-3)."""
+
+
+class AccountInUseError(FinbreakError):
+    """Deleting an account that still holds >= 1 transaction (FIBR-0005 INV-6)."""
+
+
+class LastAccountError(FinbreakError):
+    """Deleting the only remaining account (FIBR-0005 INV-6/D7); at least one
+    account must always exist."""
+
+
+class SchemaVersionError(FinbreakError):
+    """The on-disk vault's schema version is newer than this build supports —
+    a distinct condition from ``VaultStateError``'s presence mismatch
+    (FIBR-0005 INV-4)."""

@@ -15,6 +15,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox, QStackedWidget, QWidget
 from finbreak import paths
 from finbreak.errors import VaultStateError
 from finbreak.services.auth import AuthService
+from finbreak.ui.accounts import AccountsWidget
 from finbreak.ui.first_run import FirstRunWidget
 from finbreak.ui.main_window import MainWindow
 from finbreak.ui.unlock import UnlockWidget
@@ -47,6 +48,14 @@ class AppShell(QStackedWidget):
     def _show_main(self) -> None:
         widget = MainWindow(self._service)
         widget.locked.connect(self._show_unlock)
+        widget.manage_accounts.connect(self._show_accounts)
+        self._swap(widget)
+
+    def _show_accounts(self) -> None:
+        # A normal stacked view (not a modal), so an idle auto-lock swaps it away
+        # like any other screen. On Done, a fresh MainWindow re-reads accounts.
+        widget = AccountsWidget(self._service)
+        widget.done.connect(self._show_main)
         self._swap(widget)
 
     def _swap(self, widget: QWidget) -> None:

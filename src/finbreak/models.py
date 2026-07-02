@@ -8,9 +8,23 @@ type). ``Transaction`` is one row of the ``transactions`` table.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import StrEnum
 
 # Sidecar schema version. Bumped only when the on-disk KDF record layout changes.
 FORMAT_VERSION = 1
+
+
+class AccountType(StrEnum):
+    """The closed set of account types (FIBR-0005 INV-2). The ``.value`` is the
+    stored, non-translated token; display labels are a separate UI concern."""
+
+    CURRENT = "current"
+    SAVINGS = "savings"
+    CREDIT_CARD = "credit_card"
+    PERSONAL_LOAN = "personal_loan"
+    HOME_LOAN = "home_loan"
+    INVESTMENT = "investment"
+    OTHER = "other"
 
 
 @dataclass
@@ -37,8 +51,17 @@ class KdfParams:
 
 
 @dataclass
+class Account:
+    id: int
+    name: str
+    type: str
+    created_at: str
+
+
+@dataclass
 class Transaction:
     id: int
+    account_id: int
     occurred_on: str
     amount_minor: int
     description: str

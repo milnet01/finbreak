@@ -12,6 +12,7 @@ from typing import cast
 
 from PySide6.QtCore import QDate, QLocale, Qt, Signal, Slot
 from PySide6.QtWidgets import (
+    QComboBox,
     QDateEdit,
     QFormLayout,
     QHBoxLayout,
@@ -25,20 +26,24 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from finbreak.services.accounts import AccountService
 from finbreak.services.auth import AuthService
 from finbreak.services.transactions import TransactionService
 
 
 class MainWindow(QWidget):
     locked = Signal()
+    manage_accounts = Signal()
 
     def __init__(self, service: AuthService, parent: QWidget | None = None):
         super().__init__(parent)
         self._service = service
         self._transactions = TransactionService(service.vault)
+        self._accounts = AccountService(service.vault)
 
         self.setWindowTitle(self.tr("finbreak"))
 
+        self._account = QComboBox()
         self._date = QDateEdit(QDate.currentDate())
         self._date.setCalendarPopup(True)
         self._amount = QLineEdit()
@@ -48,24 +53,32 @@ class MainWindow(QWidget):
         self._error = QLabel()
 
         form = QFormLayout()
+        form.addRow(self.tr("Account"), self._account)
         form.addRow(self.tr("Date"), self._date)
         form.addRow(self.tr("Amount"), self._amount)
         form.addRow(self.tr("Description"), self._description)
 
-        self._table = QTableWidget(0, 3)
+        self._table = QTableWidget(0, 4)
         self._table.setHorizontalHeaderLabels(
-            [self.tr("Date"), self.tr("Amount"), self.tr("Description")]
+            [
+                self.tr("Date"),
+                self.tr("Amount"),
+                self.tr("Description"),
+                self.tr("Account"),
+            ]
         )
         self._table.horizontalHeader().setSectionResizeMode(
             QHeaderView.ResizeMode.Stretch
         )
         self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
 
+        self._manage_button = QPushButton(self.tr("Manage accounts…"))
         self._lock_button = QPushButton(self.tr("Lock"))
 
         buttons = QHBoxLayout()
         buttons.addWidget(self._add_button)
         buttons.addStretch()
+        buttons.addWidget(self._manage_button)
         buttons.addWidget(self._lock_button)
 
         layout = QVBoxLayout(self)
@@ -75,17 +88,29 @@ class MainWindow(QWidget):
         layout.addWidget(self._table)
 
         self._add_button.clicked.connect(self._on_add)
+        self._manage_button.clicked.connect(self.manage_accounts)
         self._lock_button.clicked.connect(self._on_lock)
 
+        self._reload_accounts()
         self._refresh()
+
+    def _reload_accounts(self) -> None:
+        """(Re)fill the account picker, each item carrying its account_id."""
+        self._account.clear()
+        for account in self._accounts.list_accounts():
+            self._account.addItem(account.name, account.id)
 
     @Slot()
     def _on_add(self) -> None:
         self._error.clear()
+        account_id = self._account.currentData()
+        if account_id is None:  # no account selected (empty picker) — nothing to do
+            self._error.setText(self.tr("Create an account first."))
+            return
         occurred_on = self._date.date().toString(Qt.DateFormat.ISODate)
         try:
             self._transactions.add_transaction(
-                occurred_on, self._amount.text(), self._description.text()
+                account_id, occurred_on, self._amount.text(), self._description.text()
             )
         except ValueError as exc:
             self._error.setText(str(exc))
@@ -103,12 +128,13 @@ class MainWindow(QWidget):
         rows = self._transactions.list_transactions()
         symbol = self._transactions.base_currency()
         self._table.setRowCount(len(rows))
-        for row, (transaction, display) in enumerate(rows):
+        for row, (transaction, display, account_name) in enumerate(rows):
             self._table.setItem(row, 0, QTableWidgetItem(transaction.occurred_on))
             self._table.setItem(
                 row, 1, QTableWidgetItem(_format_amount(display, symbol))
             )
             self._table.setItem(row, 2, QTableWidgetItem(transaction.description))
+            self._table.setItem(row, 3, QTableWidgetItem(account_name))
 
 
 def _format_amount(display: Decimal, symbol: str) -> str:

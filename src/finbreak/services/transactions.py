@@ -14,6 +14,7 @@ from decimal import Decimal, InvalidOperation
 from typing import cast
 
 from finbreak.models import Transaction
+from finbreak.repositories.accounts import AccountRepository
 from finbreak.repositories.transactions import TransactionRepository
 from finbreak.vault import Vault
 
@@ -80,16 +81,31 @@ class TransactionService:
         return str(row[0])
 
     def add_transaction(
-        self, occurred_on: str, raw_amount: str | Decimal, description: str
+        self,
+        account_id: int,
+        occurred_on: str,
+        raw_amount: str | Decimal,
+        description: str,
     ) -> None:
         occurred_on, amount_minor, description = parse_transaction(
             occurred_on, raw_amount, description, self._exponent()
         )
         TransactionRepository(self._vault.connection).add(
-            occurred_on, amount_minor, description
+            account_id, occurred_on, amount_minor, description
         )
 
-    def list_transactions(self) -> list[tuple[Transaction, Decimal]]:
+    def list_transactions(self) -> list[tuple[Transaction, Decimal, str]]:
+        """Each row + its display amount + its account name (id->name resolved
+        once, not per row)."""
         exponent = self._exponent()
-        rows = TransactionRepository(self._vault.connection).list_all()
-        return [(row, to_display_decimal(row.amount_minor, exponent)) for row in rows]
+        conn = self._vault.connection
+        names = {a.id: a.name for a in AccountRepository(conn).list_all()}
+        rows = TransactionRepository(conn).list_all()
+        return [
+            (
+                row,
+                to_display_decimal(row.amount_minor, exponent),
+                names.get(row.account_id, ""),
+            )
+            for row in rows
+        ]
