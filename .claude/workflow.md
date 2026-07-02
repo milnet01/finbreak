@@ -4,12 +4,12 @@
 
 | Field | Value |
 |-------|-------|
-| **Project phase** | P03 — multiple accounts per profile |
-| **Active item ID** | FIBR-0005 |
-| **Active step** | 3 (write failing tests) |
+| **Project phase** | P04 — Type → Category tree |
+| **Active item ID** | FIBR-0006 |
+| **Active step** | 1 (verify/expand spec) |
 | **Blocked on** | — |
-| **Last update** | 2026-07-02 (FIBR-0005 spec written + `/cold-eyes` converged over 5 cold loops; user signed off; single-currency for v1 confirmed → FIBR-0021 ✅; FIBR-0038 gap-detection roadmapped + FIBR-0007 annotated) |
-| **Next gate** | FIBR-0005 step 3 — TDD: write failing `tests/features/accounts/` for INV-1..8 (verify they fail), then implement to green |
+| **Last update** | 2026-07-02 (FIBR-0005 closed by the 9-step loop: 2 audit + indie-review rounds, all findings fixed inline — key-wipe on newer-vault open, wired the add/edit form, strengthened the INV-4 rollback test to a true atomicity test, root-caused a mypy note; gate green 100 passed/1 skipped, mypy 0, audit 0; tagged FIBR-0005-complete) |
+| **Next gate** | FIBR-0006 step 1 — write/expand `docs/specs/FIBR-0006.md` (P04 Type→Category tree), then `/cold-eyes` it to convergence before code (global rule § 14) |
 | **Convergence checkpoint** | 5 (consecutive `FP##` items immediately preceding any ✅-`implement`-Kind close in the active release block — see `~/.claude/commands/close-phase.md § 5a-6`) |
 | **Debt-sweep phase threshold** | 5 (auto-prompt for `/debt-sweep` after this many phases without one) |
 | **Last debt sweep** | (none yet) |
@@ -21,9 +21,9 @@ While an item is active, Claude marks the current step 🚧;
 completed steps flip to ✅. Resets to all ⬜ when a new item
 becomes active.
 
-1. ✅ Verify spec (`docs/specs/FIBR-0005.md`) — cold-eyes converged (5 loops), signed off
-2. ✅ Verify dependencies on the roadmap DAG — FIBR-0004 ✅ (only code dep)
-3. 🚧 Write failing tests
+1. ⬜ Verify spec (`docs/specs/FIBR-0006.md`) — draft/expand, then `/cold-eyes`
+2. ⬜ Verify dependencies on the roadmap DAG
+3. ⬜ Write failing tests
 4. ⬜ Implement until tests pass
 5. ⬜ Run `/audit`
 6. ⬜ Run `/indie-review`
@@ -87,6 +87,38 @@ journal); §2 is the only part that changes.
 ## §3. Session journal
 
 Append-only. Newest at the top.
+
+### 2026-07-02 — FIBR-0005 closed (P03 accounts + forward-migration runner)
+
+Steps 5–9 of the 9-step loop. `/audit` (Ants `audit_run`, scoped to the
+FIBR-0005 diff) was clean every run (ruff/bandit/semgrep 0; one mypy
+`annotation-unchecked` INFO note, later root-caused). `/indie-review` ran **two
+rounds** — round 1: 4 cold reviewers (migration+vault, data layer, service+UI,
+tests); round 2: 2 focused cold re-reviewers over exactly the changed files, to
+catch fix-introduced defects. Every verified finding fixed inline (no FP##):
+
+- MED (auth): opening a newer-than-supported vault raised `SchemaVersionError`,
+  which `complete_unlock`'s `except DatabaseError` missed — leaked the un-wiped
+  derived key (INV-3) + opaque crash. Now wipe on any `open()` failure +
+  re-raise; unlock screen shows a distinct "newer version" message.
+- MED (ui): the spec's "add/edit form" deliverable was unwired
+  (`update_account` built+tested but unreachable → a mistyped name permanent).
+  Wired an Update-selected edit path + INV-7f; added it to the spec's INV-7.
+- HIGH (test): the INV-4 rollback test proved recoverability, not rollback —
+  now asserts, on the same connection before reopen, `schema_version == 1`,
+  accounts absent, rows intact (a true atomicity test).
+- LOWs: symmetric `(ValueError, FinbreakError)` catch; `_FailAtRename`
+  `__getattr__` passthrough; dropped a dead test line; a durability comment.
+
+Clean pair on the closing round (audit 0, review 0 actionable — the one
+residual MEDIUM is spec-conformant D8 shared-form UX, accepted for MVP). User
+asked whether to allowlist the mypy note; root-caused it instead (two test fns
+got `-> None`, which also type-checks their bodies) — allowlist stays empty.
+Gate green: 100 passed / 1 skipped, mypy 0. Flipped ROADMAP FIBR-0005 → ✅,
+wrote `docs/journal/FIBR-0005.md`, tag `FIBR-0005-complete`.
+
+Next: FIBR-0006 (P04 Type→Category tree) step 1 — draft/expand the spec, then
+`/cold-eyes` to convergence before code.
 
 ### 2026-07-01 — FIBR-0004 steps 3–4 (TDD + implement, gate green)
 

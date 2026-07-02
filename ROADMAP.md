@@ -129,13 +129,14 @@ lands on top.
 
 ### 🎨 Features
 
-- 📋 [FIBR-0005] **P03: multiple accounts per profile.**
+- ✅ [FIBR-0005] **P03: multiple accounts per profile.**
   Account model + CRUD + accounts-manager UI; each account
   tagged with a type (current, savings, credit card, personal
   loan, home loan, investment, other). Transactions belong to an
   account — this must exist before any import. Dependencies:
   FIBR-0004. Lanes: ui, services, repo, tests. Kind: implement.
   Source: planned.
+  Resolved (2026-07-02): shipped P03. Account model + CRUD, AccountService (validation + delete guard), AccountsWidget (add/edit/delete), the account picker + Account column + id→name join, and the first forward-only schema-migration runner (v1→v2: seed Default, backfill, atomic BEGIN…COMMIT/ROLLBACK). Migration transaction mechanism verified empirically vs sqlcipher3 0.6.0. Closed via 2 audit + indie-review rounds (all findings fixed inline — key-wipe on newer-vault open, wired the edit form, strengthened the INV-4 rollback test to a true atomicity test); gate green 100 passed/1 skipped, mypy 0, audit 0.
 
 ---
 

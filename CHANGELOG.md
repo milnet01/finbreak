@@ -23,6 +23,18 @@ signaling per
 
 ### Added
 
+- **Multiple accounts — keep each account's money separate.** Create as many
+  accounts as you like, each tagged with a type (current, savings, credit card,
+  personal loan, home loan, investment, or other); rename or retype them on a
+  new "Manage accounts…" screen; and choose which account each transaction
+  belongs to (shown as its own column in the table). Deleting is guarded so you
+  can't lose data: an account that still holds transactions can't be removed
+  (it asks you to clear them first), and you can never delete your last
+  account. Opening a vault from before this release upgrades it in one
+  all-or-nothing step — it creates a "Default" account and moves every existing
+  transaction into it, and a power-cut mid-upgrade rolls back cleanly to the
+  old shape rather than leaving a half-changed file. (FIBR-0005)
+
 - **The security spine — set a master password, keep encrypted transactions,
   lock it away.** First run sets a master password + base currency and creates
   an encrypted vault; you can add a transaction (kept as exact whole-cent
@@ -55,6 +67,12 @@ signaling per
   gate stays fast. (FIBR-0003)
 
 ### Security
+
+- **Opening a vault from a newer version fails safely (FIBR-0005).** If a
+  future build upgrades your vault's format and you then open it with an older
+  build, the app refuses cleanly with a clear "created by a newer version"
+  message and wipes the derived key from memory — instead of leaving the key in
+  memory and surfacing an opaque error.
 
 - **Vault encryption, key derivation, and in-memory key wiping (FIBR-0004).**
   The master password is stretched into a 256-bit key with **Argon2id** (pinned
