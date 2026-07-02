@@ -1,10 +1,9 @@
-"""FIBR-0003 INV-1 — ``python -m finbreak`` entry point.
+"""``python -m finbreak`` entry point.
 
-At P01 the only real mode is ``--self-test`` (the native-stack smoke check);
-with no arguments it prints a placeholder notice, since no GUI exists yet. The
-real GUI entry point lands from P02. ``--self-test`` is a **permanent**
-diagnostic mode — it survives as a way to check a broken install on a user's
-machine. See docs/specs/FIBR-0003.md.
+No arguments launches the GUI (FIBR-0004, superseding the FIBR-0003
+``FINBREAK_NOT_BUILT`` placeholder). ``--self-test`` runs the permanent
+native-stack diagnostic (FIBR-0003) — a way to check a broken install and the
+clean-room bundle sentinel. See docs/specs/FIBR-0004.md.
 """
 
 from __future__ import annotations
@@ -19,9 +18,9 @@ def main(argv: list[str] | None = None) -> int:
     if args == ["--self-test"]:
         return _selftest.run_self_test()
     if not args:
-        print("finbreak is not built yet — no GUI at P01. Try --self-test.")
-        print("FINBREAK_NOT_BUILT")
-        return 0
+        from finbreak.app import run
+
+        return run(None)
     print(f"finbreak: unrecognised arguments {args!r}", file=sys.stderr)
     return 2
 

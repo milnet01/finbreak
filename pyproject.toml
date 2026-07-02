@@ -25,6 +25,9 @@ dependencies = [
     "PySide6==6.11.1",
     "sqlcipher3-binary==0.6.0",
     "pikepdf==10.9.1",
+    # Argon2id KDF (FIBR-0004). argon2-cffi-bindings vendors the native Argon2
+    # library in-wheel, so no system lib is needed (bundling-first, ADR-0007).
+    "argon2-cffi==25.1.0",
 ]
 
 # PEP 735 dev dependency group. Pinned EXACTLY (==) for a reproducible
@@ -62,10 +65,6 @@ select = ["E", "W", "F", "I", "UP", "B"]
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
-# PySide6 now lands at P01 (FIBR-0003), so the plugin would load — but the
-# bundling smoke-test uses no `qtbot`, so the plugin stays disabled until the
-# first real GUI test (P02), which will REMOVE this line.
-addopts = "-p no:pytest-qt"
 # Categories registered so `-m` selection and the gate's `-m "not perf"`
 # exclusion work without "unknown marker" warnings (testing.md § 3.2–3.4).
 markers = [

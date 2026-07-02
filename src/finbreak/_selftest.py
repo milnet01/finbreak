@@ -63,6 +63,27 @@ def _check_pikepdf() -> None:
         raise RuntimeError("pikepdf did not create the expected single page")
 
 
+def _check_argon2() -> None:
+    """Derive a throwaway key, proving the native Argon2 library loads (FIBR-0004).
+
+    Tiny cost parameters — this only proves the vendored native lib travels with
+    the bundle, not the real (pinned) vault parameters.
+    """
+    from argon2.low_level import Type, hash_secret_raw
+
+    raw = hash_secret_raw(
+        secret=b"finbreak-selftest-not-a-real-secret",
+        salt=b"finbreak-16bytes",
+        time_cost=1,
+        memory_cost=8,
+        parallelism=1,
+        hash_len=16,
+        type=Type.ID,
+    )
+    if len(raw) != 16:
+        raise RuntimeError("argon2 did not return the expected key length")
+
+
 def run_self_test(out: TextIO | None = None) -> int:
     """Run all three native-stack checks in order; print one sentinel line.
 
@@ -76,6 +97,7 @@ def run_self_test(out: TextIO | None = None) -> int:
         ("qt", _check_qt),
         ("sqlcipher", _check_sqlcipher),
         ("pikepdf", _check_pikepdf),
+        ("argon2", _check_argon2),
     )
     for name, check in checks:
         try:

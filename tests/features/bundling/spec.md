@@ -6,22 +6,26 @@ INV-2/INV-3 (the build + clean-room launch) via one gated integration test.
 
 ## Fast guard (dev venv — runs in the everyday gate, `features` marker)
 
-Exercises the three entry-point modes of `python -m finbreak` (INV-1 table):
+Exercises the entry-point modes of `python -m finbreak` (INV-1 table):
 
-| Mode | Expected stdout line | Exit |
-|------|----------------------|------|
-| `--self-test`, all stacks load | `FINBREAK_SELFTEST_OK` | 0 |
+| Mode | Expected | Exit |
+|------|----------|------|
+| `--self-test`, all stacks load | `FINBREAK_SELFTEST_OK` (Qt + SQLCipher + qpdf + Argon2) | 0 |
 | `--self-test`, a stack fails | `FINBREAK_SELFTEST_FAIL: <stack>` | non-zero |
-| no args | `FINBREAK_NOT_BUILT` | 0 |
+| no args | routes to the GUI launcher (`finbreak.app.run`) | — |
 
-- **OK / no-args** run the real CLI as a subprocess (`python -m finbreak …`
-  with `QT_QPA_PLATFORM=offscreen`), so they need the runtime deps installed;
-  they assert the **exact** sentinel line and the exit code.
-- **FAIL** is a unit test of `finbreak._selftest.run_self_test`: it
-  monkeypatches the Qt check to pass and the SQLCipher check to raise, then
-  asserts the emitted line is `FINBREAK_SELFTEST_FAIL: sqlcipher` (proving the
-  ordered `<stack>` token, INV-1) and the return value is non-zero — so it is
-  independent of whether the heavy native deps are installed.
+- **OK** runs the real CLI as a subprocess (`python -m finbreak --self-test`
+  with `QT_QPA_PLATFORM=offscreen`), so it needs the runtime deps installed; it
+  asserts the **exact** sentinel line and exit 0 — now covering the fourth
+  (Argon2) native leg added by FIBR-0004.
+- **FAIL** is a unit test of `finbreak._selftest.run_self_test`: it monkeypatches
+  the earlier checks to pass and one check to raise, asserting the emitted line
+  names that ordered `<stack>` token (`sqlcipher` and `argon2` cases) with a
+  non-zero return — independent of whether the heavy native deps are installed.
+- **no args** — the FIBR-0003 `FINBREAK_NOT_BUILT` placeholder is retired
+  (superseded by FIBR-0004). `main([])` now routes to the GUI: the test asserts
+  it calls `finbreak.app.run` (in-process, no event loop). The GUI screens
+  themselves are covered by the `qtbot` tests in `tests/features/vault/`.
 
 ## Build + clean-room (integration — `integration` marker, opt-in)
 

@@ -8,8 +8,8 @@
 | **Active item ID** | FIBR-0004 |
 | **Active step** | (see "Step progress" below) |
 | **Blocked on** | — |
-| **Last update** | 2026-07-01 (FIBR-0003 closed by /close-phase — clean pair on the close round, 3 doc drifts fixed inline; tag FIBR-0003-complete; P01 Bootstrap complete) |
-| **Next gate** | FIBR-0004 step 1 (verify/expand the spec: master password → Argon2id → SQLCipher vault → one transaction → lock) |
+| **Last update** | 2026-07-01 (FIBR-0004 steps 3–4 done — security spine implemented TDD-first; gate green, 67 passed/1 skipped) |
+| **Next gate** | FIBR-0004 steps 5–6 (`/audit` + `/indie-review` in parallel over the new `src/finbreak/` modules, `tests/features/vault/`, bundling-test edits, pyproject change) |
 | **Convergence checkpoint** | 5 (consecutive `FP##` items immediately preceding any ✅-`implement`-Kind close in the active release block — see `~/.claude/commands/close-phase.md § 5a-6`) |
 | **Debt-sweep phase threshold** | 5 (auto-prompt for `/debt-sweep` after this many phases without one) |
 | **Last debt sweep** | (none yet) |
@@ -23,10 +23,13 @@ becomes active.
 
 1. ✅ Verify spec (`docs/specs/FIBR-0004.md`; `/cold-eyes` 6 loops;
    user signed off 2026-07-01, ZAR added, 2 cross-doc fixes applied)
-2. 🚧 Verify dependencies on the roadmap DAG (FIBR-0001 ✅ — next)
-3. ⬜ Write failing tests
-4. ⬜ Implement until tests pass
-5. ⬜ Run `/audit` (read `docs/audit-allowlist.md` first)
+2. ✅ Verify dependencies on the roadmap DAG (FIBR-0001 ✅, FIBR-0003 ✅)
+3. ✅ Write failing tests (`tests/features/vault/{spec.md,test_vault.py}`;
+   confirmed failing on absent modules before implementing)
+4. ✅ Implement until tests pass (crypto/vault/services/repositories/ui +
+   argon2 self-test leg + no-args→GUI; `./scripts/ci-local.sh` exits 0,
+   67 passed / 1 skipped, bandit clean incl. the raw-key pragma)
+5. 🚧 Run `/audit` (read `docs/audit-allowlist.md` first) — next
 6. ⬜ Run `/indie-review` (same allowlist read)
 7. ⬜ Fold actionable findings → new FP## roadmap item
 8. ⬜ Update CHANGELOG / ROADMAP / journal
@@ -78,6 +81,32 @@ journal); §2 is the only part that changes.
 ## §3. Session journal
 
 Append-only. Newest at the top.
+
+### 2026-07-01 — FIBR-0004 steps 3–4 (TDD + implement, gate green)
+
+Built the P02 security spine TDD-first. Re-verified the crypto APIs empirically
+in the venv before citing them (§13): argon2-cffi 25.1.0 `hash_secret_raw` → 32
+deterministic bytes; sqlcipher3 raw-key open reports `cipher_use_hmac=1` /
+`HMAC_SHA512` / page 4096, `isolation_level=""` (manual-commit), wrong-key →
+`DatabaseError`, on-disk header not SQLite magic. Wrote
+`tests/features/vault/{spec.md,test_vault.py}` (INV-1..8, incl. two `qtbot` UI
+round-trips), confirmed failing on absent modules, then implemented:
+`errors`, `models`, `crypto`, `paths`, `vault`, `repositories/transactions`,
+`services/{auth,transactions}`, `ui/{_worker,first_run,unlock,main_window}`,
+`app`; extended `_selftest` with the argon2 leg; `__main__` no-args now launches
+the GUI (retired `FINBREAK_NOT_BUILT`, with the FIBR-0003 spec + bundling-spec
+cross-refs updated); added `argon2-cffi==25.1.0`, removed the `-p no:pytest-qt`
+line. `./scripts/ci-local.sh` exits 0 — **67 passed / 1 skipped**, bandit clean
+(the raw-key f-string pragma did not trip B608 — DoD #2), pip-audit clean.
+
+One structural call surfaced to the user (not a silent drift): added
+`services/transactions.py` (`TransactionService` + pure `parse_transaction` /
+`to_display_decimal`) to honour the spec's INV-4a "the service layer
+reconstructs the display Decimal" under design.md's UI→Service→Repository layering.
+One test-mechanism fix: INV-1's tamper leg flips a byte in **page 1** (the page
+the schema read checks), per INV-1's stated first-read mechanism.
+
+Next: steps 5–6 — `/audit` + `/indie-review` in parallel (allowlist read first).
 
 ### 2026-07-01 — FIBR-0004 spec drafted + `/cold-eyes` (6 loops)
 

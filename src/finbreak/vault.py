@@ -1,0 +1,118 @@
+"""The single owned SQLCipher connection (design.md — UI never touches storage).
+
+Reads/writes the plaintext KDF sidecar, opens the encrypted database with the
+Argon2id-derived raw key, creates the schema on first-run, and refuses use while
+locked. Wrong-key / tamper detection is SQLCipher's (FIBR-0004 INV-1); the
+sidecar is written atomically and both files are owner-only (INV-7).
+"""
+
+from __future__ import annotations
+
+import json
+import os
+from pathlib import Path
+
+from sqlcipher3 import dbapi2
+
+from finbreak.errors import VaultLockedError, VaultStateError
+from finbreak.models import KdfParams
+
+SCHEMA_VERSION = 1
+
+
+class Vault:
+    def __init__(self, vault_path: Path, sidecar_path: Path):
+        self._vault_path = vault_path
+        self._sidecar_path = sidecar_path
+        self._conn: dbapi2.Connection | None = None
+
+    @property
+    def connection(self) -> dbapi2.Connection:
+        if self._conn is None:
+            raise VaultLockedError("the vault is locked")
+        return self._conn
+
+    def presence_state(self) -> str:
+        """Route by file presence; a mixed pair raises ``VaultStateError``."""
+        vault_there = self._vault_path.exists()
+        sidecar_there = self._sidecar_path.exists()
+        if vault_there and sidecar_there:
+            return "unlock"
+        if not vault_there and not sidecar_there:
+            return "first_run"
+        raise VaultStateError(
+            "mixed install: exactly one of the vault / sidecar is present"
+        )
+
+    def create(
+        self, key: bytearray, params: KdfParams, base_currency: str, exponent: int
+    ) -> None:
+        """Create the encrypted vault, its settings, and the sidecar (in that order).
+
+        The vault (schema + settings + ``schema_version``) is written first and
+        the sidecar last, so a crash mid-first-run leaves at most a
+        vault-without-sidecar — caught as a mixed state next launch (INV-5).
+        The connection is left open (the caller is now unlocked).
+        """
+        conn = self._connect(key)
+        conn.execute("CREATE TABLE schema_version(version INTEGER NOT NULL)")
+        conn.execute(
+            "INSERT INTO schema_version(version) VALUES (?)", (SCHEMA_VERSION,)
+        )
+        conn.execute("CREATE TABLE settings(key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+        conn.execute(
+            "INSERT INTO settings(key, value) VALUES ('base_currency', ?)",
+            (base_currency,),
+        )
+        conn.execute(
+            "INSERT INTO settings(key, value) VALUES ('minor_unit_exponent', ?)",
+            (str(exponent),),
+        )
+        conn.execute(
+            "CREATE TABLE transactions("
+            "id INTEGER PRIMARY KEY, occurred_on TEXT NOT NULL, "
+            "amount_minor INTEGER NOT NULL, description TEXT NOT NULL, "
+            "created_at TEXT NOT NULL)"
+        )
+        conn.commit()
+        self._conn = conn
+        os.chmod(self._vault_path, 0o600)
+        self._write_sidecar(params)
+
+    def open(self, key: bytearray) -> None:
+        """Open the vault with the raw key; a wrong key / tamper raises here."""
+        conn = self._connect(key)
+        try:
+            # First read forces SQLCipher to decrypt + HMAC-check page 1: a wrong
+            # key or a flipped body byte raises DatabaseError rather than
+            # returning corrupt data (INV-1).
+            conn.execute("SELECT count(*) FROM sqlite_master").fetchone()
+        except Exception:
+            conn.close()
+            raise
+        self._conn = conn
+
+    def close(self) -> None:
+        if self._conn is not None:
+            self._conn.close()
+            self._conn = None
+
+    def _connect(self, key: bytearray) -> dbapi2.Connection:
+        # Default isolation_level "" → manual-commit (DBAPI), so writes are
+        # delimited by an explicit commit() (INV-4a).
+        conn = dbapi2.connect(str(self._vault_path))
+        # Raw-key pragma MUST be the first statement. key.hex() is exactly 64
+        # chars from [0-9a-f] (Argon2 output, never user text), so this
+        # interpolation has no injection surface; SQLCipher does not
+        # bind-parameterise PRAGMA key.
+        conn.execute(f"PRAGMA key = \"x'{key.hex()}'\"")
+        return conn
+
+    def _write_sidecar(self, params: KdfParams) -> None:
+        """Atomically write the plaintext sidecar as owner-only (coding.md § 7)."""
+        payload = json.dumps(params.to_sidecar_dict(), indent=2)
+        tmp_path = self._sidecar_path.with_name(self._sidecar_path.name + ".tmp")
+        fd = os.open(tmp_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as handle:
+            handle.write(payload)
+        os.replace(tmp_path, self._sidecar_path)

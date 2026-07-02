@@ -44,7 +44,7 @@ def _run_cli(*args: str) -> subprocess.CompletedProcess[str]:
 
 @pytest.mark.features
 def test_INV1_selftest_ok_all_stacks():
-    """--self-test loads Qt + SQLCipher + qpdf → exact OK line, exit 0."""
+    """--self-test loads Qt + SQLCipher + qpdf + Argon2 → exact OK line, exit 0."""
     result = _run_cli("--self-test")
     assert result.returncode == 0, (
         f"--self-test exited {result.returncode}; stderr:\n{result.stderr}"
@@ -55,15 +55,25 @@ def test_INV1_selftest_ok_all_stacks():
 
 
 @pytest.mark.features
-def test_INV1_noargs_reports_not_built():
-    """No args (P01 has no GUI yet) → FINBREAK_NOT_BUILT line, exit 0."""
-    result = _run_cli()
-    assert result.returncode == 0, (
-        f"no-args exited {result.returncode}; stderr:\n{result.stderr}"
-    )
-    assert "FINBREAK_NOT_BUILT" in result.stdout.splitlines(), (
-        f"missing FINBREAK_NOT_BUILT line; stdout:\n{result.stdout}"
-    )
+def test_INV1_noargs_routes_to_gui(monkeypatch):
+    """No args now launches the GUI (FIBR-0004), not the retired NOT_BUILT stub.
+
+    Asserts routing without spinning a real event loop: ``main([])`` must call
+    ``finbreak.app.run``. The GUI screens themselves are covered by the qtbot
+    tests in tests/features/vault/.
+    """
+    import finbreak.app
+    from finbreak import __main__ as entry
+
+    called: dict[str, bool] = {}
+
+    def fake_run(argv=None) -> int:
+        called["ran"] = True
+        return 0
+
+    monkeypatch.setattr(finbreak.app, "run", fake_run)
+    assert entry.main([]) == 0
+    assert called.get("ran") is True, "no-args must route to the GUI launcher"
 
 
 @pytest.mark.features
@@ -89,6 +99,29 @@ def test_INV1_selftest_fail_names_the_broken_stack(monkeypatch):
     assert rc != 0, "a failing stack must exit non-zero"
     assert out.getvalue().splitlines() == ["FINBREAK_SELFTEST_FAIL: sqlcipher"], (
         f"expected the sqlcipher FAIL line only; got:\n{out.getvalue()}"
+    )
+
+
+@pytest.mark.features
+def test_INV1_selftest_fail_names_argon2(monkeypatch):
+    """The FIBR-0004 argon2 leg names itself on failure (all earlier stacks pass)."""
+    from finbreak import _selftest
+
+    monkeypatch.setattr(_selftest, "_check_qt", lambda: None)
+    monkeypatch.setattr(_selftest, "_check_sqlcipher", lambda: None)
+    monkeypatch.setattr(_selftest, "_check_pikepdf", lambda: None)
+
+    def _boom() -> None:
+        raise RuntimeError("simulated Argon2 load failure")
+
+    monkeypatch.setattr(_selftest, "_check_argon2", _boom)
+
+    out = io.StringIO()
+    rc = _selftest.run_self_test(out)
+
+    assert rc != 0, "a failing stack must exit non-zero"
+    assert out.getvalue().splitlines() == ["FINBREAK_SELFTEST_FAIL: argon2"], (
+        f"expected the argon2 FAIL line only; got:\n{out.getvalue()}"
     )
 
 
