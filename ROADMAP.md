@@ -168,6 +168,14 @@ lands on top.
   import path; establishes the pipeline P06/P07 reuse.
   Dependencies: FIBR-0005, FIBR-0006. Lanes: services, importers, ui,
   repo, tests. Kind: implement. Source: planned.
+  Design-ahead (user-request-2026-07-02): capture each imported
+  statement's coverage period (start/end date) per account as
+  first-class data AT IMPORT TIME — the reliable input for statement-gap
+  detection (FIBR-0038). Bank PDFs print the period; for CSV (no period
+  metadata) confirm it in the wizard. Cheap to add now, expensive to
+  retrofit (would need re-import to learn periods). Establish the
+  data-model hook here (the first importer) so OFX (FIBR-0008) and PDF
+  (FIBR-0009) populate it too.
 
 ---
 
@@ -434,7 +442,7 @@ because retrofitting them is a data migration.
 
 ### 🎨 Features & accessibility
 
-- 📋 [FIBR-0021] **Multi-currency decision (ADR).** Decide single- vs
+- ✅ [FIBR-0021] **Multi-currency decision (ADR).** Decide single- vs
   multi-currency for v1 **before** accounts are built. If multi: a
   currency column on accounts/transactions, QLocale-formatted display,
   and a rule that the dashboard never sums across currencies without
@@ -442,6 +450,15 @@ because retrofitting them is a data migration.
   currency column afterwards is a schema migration. Target phase: P03
   (the decision precedes it). Dependencies: none. Lanes: data.
   Kind: investigate. Source: user-request-2026-07-01.
+  Resolved 2026-07-02 (user decision): SINGLE-currency for v1 — every
+  account shares the vault's one base_currency, set at first-run. Rationale:
+  matches the shipped FIBR-0004 model, and because FIBR-0005 introduces the
+  forward-migration runner, adding per-account/per-transaction currency
+  later is a routine forward migration, not a painful retrofit — so the
+  "decide before accounts" gate is satisfied by choosing single-currency now
+  and revisiting only when a real multi-currency need arises. If revisited:
+  currency column on accounts/transactions, QLocale-formatted display, and a
+  rule that the dashboard never sums across currencies without conversion.
 
 - 📋 [FIBR-0022] **Budgets + recurring / subscription detection.**
   Per-category monthly spending limits with progress + over-budget
@@ -506,6 +523,26 @@ because retrofitting them is a data migration.
   flow). Draws its series colour from the active theme (FIBR-0023) like the
   other charts. Target phase: P10. Dependencies: FIBR-0012. Lanes:
   reporting, ui, tests. Kind: feature. Source: user-request-2026-07-01.
+
+- 📋 [FIBR-0038] **Statement coverage tracking + gap detection.**
+  Record each imported statement's coverage period (start/end date) per
+  account as first-class data, then a gap-detection pass reports
+  uncovered date ranges between covered ranges, per account (e.g.
+  Jan–Mar + May-onwards -> flags April missing). Range-based, so it is
+  reliable where a transaction-date heuristic is not: a quiet month with
+  zero transactions is still "covered" if its statement was imported, and
+  it handles non-monthly cycles (quarterly) and overlapping imports
+  (merge coverage). "Up to date" (latest statement -> today) is not a
+  gap; only holes between covered ranges are. Surfaces as a per-account
+  completeness report + a dashboard warning badge. Depends on the
+  coverage-period capture hook added at first import (FIBR-0007) — without
+  recorded periods, gaps can only be guessed from transaction dates
+  (false alarms on quiet months). Dependencies: FIBR-0005 (accounts —
+  gaps are per-account), FIBR-0007 (import captures the periods).
+  **Layman:** Warns you when you've skipped a statement — e.g. you loaded January–March and then May onwards, and it spots that April is missing for that account.
+  Kind: feature.
+  Lanes: services, repo, ui, tests.
+  Source: user-request-2026-07-02.
 
 ### ⚡ Performance
 

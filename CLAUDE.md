@@ -103,9 +103,8 @@ pytest tests/test_smoke.py::test_package_imports    # by node id
 ```
 
 The gate runs `pytest -m "not perf"` (perf excluded; integration tests run).
-`pytest-qt`'s plugin is disabled via `pyproject.toml` `addopts` — PySide6 now
-lands at P01 (FIBR-0003), but the bundling test uses no `qtbot`, so the plugin
-stays off until the first real GUI test (P02) removes that line.
+`pytest-qt`'s `qtbot` fixture is **enabled** — P02 (FIBR-0004) shipped the first
+real GUI tests and removed the `addopts = "-p no:pytest-qt"` line.
 
 **Bundling smoke-test** (FIBR-0003) — prove the native stacks (Qt, SQLCipher,
 qpdf) travel into a Python-free bundle:

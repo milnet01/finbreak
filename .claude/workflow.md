@@ -6,10 +6,10 @@
 |-------|-------|
 | **Project phase** | P03 — multiple accounts per profile |
 | **Active item ID** | FIBR-0005 |
-| **Active step** | 1 (verify/expand spec) |
+| **Active step** | 3 (write failing tests) |
 | **Blocked on** | — |
-| **Last update** | 2026-07-02 (FIBR-0004 CLOSED — security spine; audit + 3 cold indie-review rounds converged, all findings fixed inline; gate green 74/1, mypy 0, audit 0; tagged FIBR-0004-complete) |
-| **Next gate** | FIBR-0005 step 1 — write/expand the spec (`docs/specs/FIBR-0005.md`), `/cold-eyes` it, then TDD |
+| **Last update** | 2026-07-02 (FIBR-0005 spec written + `/cold-eyes` converged over 5 cold loops; user signed off; single-currency for v1 confirmed → FIBR-0021 ✅; FIBR-0038 gap-detection roadmapped + FIBR-0007 annotated) |
+| **Next gate** | FIBR-0005 step 3 — TDD: write failing `tests/features/accounts/` for INV-1..8 (verify they fail), then implement to green |
 | **Convergence checkpoint** | 5 (consecutive `FP##` items immediately preceding any ✅-`implement`-Kind close in the active release block — see `~/.claude/commands/close-phase.md § 5a-6`) |
 | **Debt-sweep phase threshold** | 5 (auto-prompt for `/debt-sweep` after this many phases without one) |
 | **Last debt sweep** | (none yet) |
@@ -21,9 +21,9 @@ While an item is active, Claude marks the current step 🚧;
 completed steps flip to ✅. Resets to all ⬜ when a new item
 becomes active.
 
-1. ⬜ Verify spec (`docs/specs/FIBR-0005.md`)
-2. ⬜ Verify dependencies on the roadmap DAG
-3. ⬜ Write failing tests
+1. ✅ Verify spec (`docs/specs/FIBR-0005.md`) — cold-eyes converged (5 loops), signed off
+2. ✅ Verify dependencies on the roadmap DAG — FIBR-0004 ✅ (only code dep)
+3. 🚧 Write failing tests
 4. ⬜ Implement until tests pass
 5. ⬜ Run `/audit`
 6. ⬜ Run `/indie-review`
