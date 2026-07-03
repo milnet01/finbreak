@@ -15,19 +15,18 @@ commits) the project follows.
 
 ## Status
 
-Pre-code. Discovery (Phase A) and design (Phase B) are signed off;
-the documentation set (Phase C) is written and under its cold-eyes
-review (Phase D). Implementation begins at **P01 — Bootstrap**
-(`FIBR-0001`) once the docs are cleared. See
-[ROADMAP.md](ROADMAP.md) for the full P01–P13 build order and
+In active development (pre-alpha — nothing released yet). The encrypted
+security spine (**P02**) and the accounts + category-tree + forward-migration
+layers (**P03–P04**) have shipped; **P05 — CSV import** is underway (its
+spec is `/cold-eyes`-converged and the test-first build is starting). See
+[ROADMAP.md](ROADMAP.md) for the full P01–P13 build order,
+[CHANGELOG.md](CHANGELOG.md) for what's shipped, and
 [.claude/workflow.md](.claude/workflow.md) for live state.
 
-**To begin (or resume) work:** open a terminal in this directory
-and run `claude`. Once Claude Code is running, type `let's start
-discovery` for a fresh project, or `continue` to resume in
-progress. Claude will summarise current state back to you before
-doing any work — confirm or correct that summary; never let
-Claude resume work without it.
+**To resume work:** open a terminal in this directory and run `claude`,
+then type `continue`. Claude will summarise current state back to you
+before doing any work — confirm or correct that summary; never let Claude
+resume work without it.
 
 ## Features
 
@@ -62,8 +61,8 @@ intent — nothing has shipped at v0.0.0)
   `/indie-review`.
 - [docs/ideas.md](docs/ideas.md) — mid-flight ideas pending a
   user-decision on placement (created on first use).
-- [docs/standards/](docs/standards/) — coding, documentation,
-  testing, commits.
+- [docs/standards/](docs/standards/) — coding, naming, dependencies,
+  documentation, testing, commits (+ roadmap-format).
 - [.claude/workflow.md](.claude/workflow.md) — live workflow
   state and rules.
 
