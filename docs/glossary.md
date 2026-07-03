@@ -35,12 +35,13 @@ Sorted alphabetically; added during Phases B–C.
 | **Auto-lock** | Dropping the in-memory database key after a configurable idle period, returning the app to the unlock screen so an unattended session can't be read. |
 | **Base currency** | The single currency a profile is denominated in, chosen at first run. v1 does not convert between currencies. |
 | **Category tree** | The hierarchy that classifies transactions: Type (Income / Expenditure) → Category → (optional, future) Sub-category. Stored self-referentially so depth can grow; v1's UI shows two levels. |
+| **Coverage period** | The date range (start/end) a statement covers, captured per account at import time and stored as a **statement period** row. The reliable input for statement-gap detection. See FIBR-0007 / FIBR-0038. |
 | **Dedup (de-duplication)** | Detecting that an imported row already exists (same account + date + amount + normalised description) so re-importing an overlapping statement adds no duplicates. |
-| **Draft (transaction draft)** | A normalised, not-yet-saved transaction an importer produces (date, amount, description, sign) before dedup and persistence. |
+| **Draft (transaction draft)** | A normalised, not-yet-saved transaction an importer produces (date, amount, description; the sign is carried in the signed amount, plus its source row number) before dedup and persistence. |
 | **Expenditure** | Money flowing out to an external party (a purchase, a bill). Distinct from a **transfer**. |
 | **Flatpak / Flathub** | Flatpak is a sandboxed Linux app package; Flathub is the cross-distro store that distributes it, reaching distro software centres. |
 | **Income** | Money flowing in from an external party (salary, sales). Distinct from a **transfer**. |
-| **Mapping profile** | A saved, user-confirmed description of one bank's CSV layout (which column is date / description / amount, the date format) so future imports of that layout parse automatically. See ADR-0005. |
+| **Mapping profile** | A saved, user-confirmed description of one bank's CSV layout (which column is date / description / amount — a single signed amount column **or** a debit/credit pair, with an optional sign-invert — plus the date format) so future imports of that layout parse automatically. See ADR-0005. |
 | **Master password** | The single secret the user sets at first run; stretched via Argon2id into the key that decrypts the database. Never stored; no recovery if forgotten. |
 | **OFX** | Open Financial Exchange — a standardised statement file format many banks export, parsed generically (no mapping profile needed). |
 | **Transfer** | Money moved between the user's *own* accounts (e.g. a credit-card payment). A third classification beside income and expenditure, excluded from breakdown totals. Detected as suggestions the user confirms — see ADR-0006. |

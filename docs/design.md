@@ -59,6 +59,7 @@ flowchart TB
         CatRepo[Categories tree]
         RuleRepo[Rules]
         ProfRepo[Import profiles]
+        StmtRepo[Statement periods]
         SetRepo[Settings + secrets]
     end
 
@@ -131,12 +132,14 @@ logic. Notable screens:
 
 **Importers (pluggable)** — `ManualEntry`, `CsvImporter` (+ mapping profile),
 `OfxImporter`, `PdfImporter` (decrypts in memory first). Each exposes the same
-interface: `parse(source) -> list[TransactionDraft]`. Adding a new format =
-adding one importer; nothing else changes.
+interface: `parse(source) -> ParseResult` — the transaction drafts plus any
+per-row parse errors and the statement's coverage period (start/end). Adding a
+new format = adding one importer; nothing else changes. (CSV is the first
+implementor — see FIBR-0007.)
 
 **Repository layer** — the only code that touches SQL. One repository per
-aggregate (Accounts, Transactions, Categories, Rules, Import profiles, Settings
-& secrets). Main responsibility: persistence, nothing else.
+aggregate (Accounts, Transactions, Categories, Rules, Import profiles, Statement
+periods, Settings & secrets). Main responsibility: persistence, nothing else.
 
 **Storage** — a single SQLCipher database file in the per-OS-user data
 directory (resolved via `QStandardPaths.AppDataLocation`). AES-256, whole-file
@@ -151,10 +154,11 @@ encrypted.
 2. User runs the import wizard and picks a statement file for an account.
 3. ImportService selects the importer (by extension/content); a PDF that's
    locked is decrypted in memory first (prompting for / reusing its password).
-4. The importer returns normalised drafts (date, amount, description, sign).
+4. The importer returns normalised drafts (date, amount, description — the
+   sign carried in the signed amount — plus the source row number).
 5. ImportService **de-duplicates** drafts against existing transactions (match
-   on account + date + amount + normalised description, hashed) → only genuinely
-   new rows are persisted.
+   on account + date + amount + normalised description; the indexed hash is
+   FIBR-0026) → only genuinely new rows are persisted.
 6. CategorizationService auto-tags the new rows via the rule set.
 7. TransferDetectionService scans for cross-account debit/credit matches and
    raises **suggestions**.
@@ -233,20 +237,24 @@ UI state.
   (Linux), `%APPDATA%\finbreak\` (Windows), `~/Library/Application Support/finbreak/`
   (macOS). The name is `finbreak` everywhere — brand, repo, data
   directory, and Python package — set via `QCoreApplication.setApplicationName("finbreak")`.
-- **Schema & migrations:** a `schema_version` table; migrations run on unlock,
-  forward-only, each in a transaction.
+- **Schema & migrations:** a `schema_version` table; migrations run on both
+  vault creation and unlock, forward-only, each in a transaction.
 - **Atomicity:** every import/edit is a single DB transaction — a failed import
   leaves no partial rows.
 - **Tables (high-level):** `accounts`, `transactions`, `categories` (self-
   referential tree, `parent_id`), `rules`, `transfer_links` (links a confirmed
-  transfer pair — success criterion 3), `import_profiles`, `secrets` (the opt-in
-  stored PDF passwords — asset A4 in security-model.md), `settings`,
-  `schema_version`. Exact columns are fixed in each item's spec.
+  transfer pair — success criterion 3), `import_profiles`, `statement_periods`
+  (a statement's coverage period per import — success criterion for FIBR-0038),
+  `secrets` (the opt-in stored PDF passwords — asset A4 in security-model.md),
+  `settings`, `schema_version`. Exact columns are fixed in each item's spec.
 
 ### Concurrency
 
-Parsing and import run on a worker thread (`QThread`) so the UI stays responsive
-on large statements; DB writes are serialised through the repository layer.
+CSV parsing/import runs on the GUI thread in v1 — personal statements parse well
+within a frame budget, so a worker thread is deferred until a large-file jank is
+actually measured (FIBR-0007 D11). Moving parsing/import to a worker thread
+(`QThread`) is the planned enhancement when that day comes. DB writes are
+serialised through the repository layer.
 
 ### Internationalization (i18n) & localisation
 

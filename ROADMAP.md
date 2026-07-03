@@ -560,8 +560,10 @@ because retrofitting them is a data migration.
   index on `(account_id, date, amount)` (and/or a normalised-description
   hash column) so import dedup (design.md data-flow step 5) is an indexed
   lookup, not an O(n·m) scan of existing rows for every imported row.
-  Target phase: P05. Dependencies: FIBR-0007. Lanes: data, perf.
-  Kind: perf. Source: user-request-2026-07-01.
+  Target phase: post-MVP perf (after P05 — FIBR-0007 ships the un-indexed
+  MVP dedup by design; index it when a large account measures slow).
+  Dependencies: FIBR-0007. Lanes: data, perf. Kind: perf.
+  Source: user-request-2026-07-01.
 
 - 📋 [FIBR-0027] **SQL-side dashboard aggregation + incremental refresh.**
   Compute dashboard summaries / charts with SQL `GROUP BY` rather than
