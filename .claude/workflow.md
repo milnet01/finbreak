@@ -88,6 +88,40 @@ journal); §2 is the only part that changes.
 
 Append-only. Newest at the top.
 
+### 2026-07-03 — FIBR-0008 spec drafted + `/cold-eyes` (loops 1–3; loop 4 pending)
+
+Opened P06 (OFX import). Verified the `ofxparse` 0.21 API **empirically** before
+drafting (§13): `OfxParser.parse(BytesIO)` → signed-`Decimal` `.amount`, `.date`
+datetime, `.payee`/`.memo`/`.id`/`.type`, `statement.start_date`/`.end_date`
+(embedded span; **`''`** when absent), `ofx.accounts` list (incl. credit-card
+`<CCSTMTRS>` with empty `account_type`), and the malformed-input exception
+surface. Drafted `docs/specs/FIBR-0008.md` — a pure `OfxImporter` feeding the
+**same** FIBR-0007 `ImportService` pipeline (D2 `_preview_from_result` split;
+**no schema change**, D9 — reuses the v4 tables); period from embedded
+DTSTART/DTEND (D4); no mapping profile (OFX self-describing); wizard OFX branch
+that skips the mapping step (D10).
+
+**Cold-eyes (global rule §14):** 3 cold lanes/loop (accuracy vs code+live
+ofxparse · implementability · consistency), briefed identically each loop.
+**Loop 1** 4 HIGH (multi-account flow + INV-7e; **D14** quiet-month period
+predicate; the `''` missing-span sentinel; **D13**/INV-10 resource bounds +
+security-model INV-5b binding). **Loop 2** 1 HIGH (`ofxparse` is NOT
+pure-Python — pulls native `lxml`; corrected + documented the transitive/native
+surface + FIBR-0003 bundling; filed **FIBR-0041** for the CSV resource-cap
+back-fill). **Loop 3** **1 CRITICAL** — the error model wrongly assumed CSV-style
+per-row tolerance; verified ofxparse parses **all-or-nothing per statement**
+(a present-but-empty `<NAME>`/bad date/empty `<TRNAMT>` aborts the whole
+statement). Added **D15** splitting the model (structural malformation →
+whole-statement `ValueError`; post-parse `parse_transaction` rejection → per-row
+`RowError`), rewrote INV-1c/INV-3/INV-4 + fixtures to use **absent** (not empty)
+tags, pinned INV-1a's sign to `<TRNAMT>`. ~35 verified findings fixed over 3
+loops; design converging (HIGH count 4→1→0, but loop 3 surfaced the CRITICAL).
+
+**Loop 4 pending** — a CRITICAL was fixed, so a confirming cold pass is required
+before sign-off + implementation. Spec status: `/cold-eyes` in progress, NOT yet
+cleared for code. FIBR-0041 (CSV size-cap back-fill) filed under the security
+backlog. Next: run loop 4; if clean, sign off → TDD-implement.
+
 ### 2026-07-03 — FIBR-0007 closed (P05 CSV import)
 
 Steps 5–9 of the loop, run autonomously (user out for the evening, standing

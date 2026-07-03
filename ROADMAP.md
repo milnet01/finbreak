@@ -443,6 +443,13 @@ because retrofitting them is a data migration.
   Dependencies: FIBR-0018. Lanes: crypto, ux. Kind: feature.
   Source: user-request-2026-07-01.
 
+- 📋 [FIBR-0041] **Back-fill the CSV import path with the INV-5b resource-size cap.**
+  security-model.md INV-5b binds an import resource budget (max file size / row count / parse time) to the import specs — naming FIBR-0007 (CSV) and FIBR-0008 (OFX) by id. FIBR-0008 pins the cap for the OFX path (D13: read_file_bytes stat-checks against _MAX_OFX_BYTES before read; a transaction-count cap). But FIBR-0007's CSV path (ImportService.read_file -> str) shipped WITHOUT a size cap, so security-model INV-5b's FIBR-0007 claim is currently unmet. Back-fill: apply the same size stat-check to read_file (or a shared bounded reader), pick a _MAX_CSV_BYTES constant, add a test (monkeypatch the cap down). Surfaced by the FIBR-0008 /cold-eyes (lane C, 2026-07-03).
+  **Layman:** Add the same "reject a suspiciously huge file" safety limit to the CSV import that OFX import gets, so no oversized statement file can hog memory.
+  Kind: security.
+  Lanes: importers, services, tests.
+  Source: cold-eyes-2026-07-03 FIBR-0008 lane-C.
+
 ### 🎨 Features & accessibility
 
 - ✅ [FIBR-0021] **Multi-currency decision (ADR).** Decide single- vs
