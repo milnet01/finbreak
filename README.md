@@ -9,9 +9,9 @@
 
 Current version: **0.0.0** — see [CHANGELOG](CHANGELOG.md) for shipped
 work, [ROADMAP](ROADMAP.md) for what's coming, and
-[docs/standards/](docs/standards/) for the four shareable v1
-standards (coding · documentation · testing · commits) the project
-follows.
+[docs/standards/](docs/standards/) for the six shareable v1
+standards (coding · naming · dependencies · documentation · testing ·
+commits) the project follows.
 
 ## Status
 
@@ -66,6 +66,23 @@ intent — nothing has shipped at v0.0.0)
   testing, commits.
 - [.claude/workflow.md](.claude/workflow.md) — live workflow
   state and rules.
+
+## Disclaimer
+
+finbreak is provided **as-is**, with no warranty of any kind (see
+[LICENSE](LICENSE)). It reads and summarises your bank statements locally
+on your own machine — it does **not** give financial advice, and it is
+**not** connected to your bank.
+
+The author is **not responsible for any incorrect information the app may
+display** — for example a mis-read amount, a wrong category, or an
+inaccurate total. Always check important figures against your original
+statements before relying on them.
+
+If you spot something wrong, **please
+[log an issue](https://github.com/milnet01/finbreak/issues)** so it can be
+investigated and fixed. Bug reports genuinely help make the app more
+accurate for everyone.
 
 ## License
 

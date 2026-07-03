@@ -546,6 +546,18 @@ because retrofitting them is a data migration.
   Lanes: services, repo, ui, tests.
   Source: user-request-2026-07-02.
 
+- 📋 [FIBR-0039] **In-app liability disclaimer + issue reporting.**
+  A plain-language liability disclaimer — the app is provided as-is and is not responsible for incorrect information it may display (mis-parsed amounts, wrong totals); it is local-only and not financial advice. Shown at first run (acknowledged once, persisted) and always available from an About/Help dialog. Alongside it, a "Report an issue" link opening the GitHub Issues page (https://github.com/milnet01/finbreak/issues) so users can log problems for resolution. Complements the MIT LICENSE's warranty disclaimer with a user-facing, plain-English one. Shares the About/Help screen with the donate-links item — whichever ships first builds the screen.
+  **Layman:** A clear notice that the app isn't responsible for any incorrect figures it shows, with an easy button to report problems so they get fixed.
+  Kind: feature.
+  Source: user-request-2026-07-03.
+
+- 📋 [FIBR-0040] **In-app donate / support links.**
+  Clickable support links that open each FUNDING.yml sponsor page in the user's browser — GitHub Sponsors (milnet01), Patreon (AntsProjectsHub), and the Paybru tip URL (https://paybru.co.za/tip/ants-projects-hub). Surfaced in the About/Help dialog and a Help-menu entry. Keep the URLs in one place in sync with .github/FUNDING.yml (a small constants module or read at build time) so they never drift. Shares the About/Help screen with the disclaimer item.
+  **Layman:** Buttons in the app that open the pages where people can support the project financially.
+  Kind: feature.
+  Source: user-request-2026-07-03.
+
 ### ⚡ Performance
 
 - 📋 [FIBR-0025] **Enable SQLite WAL mode.** Set
