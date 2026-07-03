@@ -2,10 +2,12 @@
 # Documentation Standards — v1
 
 Documentation contract for this project. Pairs with
-[coding](coding.md), [testing](testing.md), [commits](commits.md);
-see the [index](README.md). Governs `Kind: doc` / `doc-fix`
-bullets. ROADMAP.md and CHANGELOG.md format details live in a
-separate sub-spec at [`roadmap-format.md`](roadmap-format.md).
+[coding](coding.md), [naming](naming.md), [testing](testing.md),
+[commits](commits.md); see the [index](README.md). Governs
+`Kind: doc` / `doc-fix` bullets. What to **name** a doc file (specs,
+ADRs, journals, design docs) is in [naming.md](naming.md); ROADMAP.md
+and CHANGELOG.md format details live in a separate sub-spec at
+[`roadmap-format.md`](roadmap-format.md).
 
 
 ## 1. Principles
@@ -150,6 +152,10 @@ docstrings.
 
 
 ## 6. Screenshots
+
+This section owns **screenshot** filenames specifically; general file &
+directory naming (including other image / icon assets) is in
+[naming.md](naming.md).
 
 - **Path** — `docs/screenshots/` or `assets/screenshots/`.
 - **Filename** — `<feature>-<state>.png`

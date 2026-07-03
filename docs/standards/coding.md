@@ -57,6 +57,10 @@ explicit reason. When calling library APIs, use the current
 idiomatic syntax for that version — not the one current three years
 ago.
 
+This section is about **idioms** (calling the API the current way);
+**which version** to be on — latest-by-default, the below-latest-pin
+exception, and the break register — is [dependencies.md](dependencies.md).
+
 For Python/PySide6 specifically: modern syntax (`X | None`,
 `list[int]`, `match`/`case` — available since 3.10; the project
 runs 3.12+) and current PySide6 signal/slot style (see § 5.2). When unsure what's current for a library, read its
@@ -112,6 +116,9 @@ Don't:
 
 
 ## 4. Naming
+
+This section covers **in-code identifiers**. For **file & directory**
+names (modules, docs, scripts, tests), see [naming.md](naming.md).
 
 - **Functions / methods** — snake_case verb phrases
   (`parse_rgb_color`, `apply_theme`).

@@ -1,12 +1,15 @@
 # Project Standards
 
-Four short, focused standards that govern how this project is
-written, tested, documented, and committed. Each standard is v1
-and self-contained; cross-references between them are explicit.
+Six short, focused standards that govern how this project is
+written, named, tested, documented, versioned, and committed. Each
+standard is v1 and self-contained; cross-references between them are
+explicit.
 
 | Standard | Covers |
 |----------|--------|
-| [coding.md](coding.md) | Code style, language idioms, error handling, comments, naming, security. Governs `Kind: implement / fix / refactor / audit-fix / review-fix` work. |
+| [coding.md](coding.md) | Code style, language idioms, error handling, comments, in-code identifier naming, security. Governs `Kind: implement / fix / refactor / audit-fix / review-fix` work. |
+| [naming.md](naming.md) | **File & directory** naming — the snake_case (imported) vs kebab-case (everything else) split, ID-named docs, ADR numbering, tool-mandated names. Governs the name of **every** file, whatever the Kind. |
+| [dependencies.md](dependencies.md) | **Dependency versions** — latest-stable-by-default (features + security), the below-latest-pin exception, and the break register that tracks re-test triggers. Cross-cutting: governs every dependency, whatever the Kind. |
 | [documentation.md](documentation.md) | README / CLAUDE.md / SECURITY.md structure, API contracts, screenshots, markdown style. Governs `Kind: doc / doc-fix` work. |
 | [testing.md](testing.md) | TDD policy, test types, spec-first authoring, INV numbering, coverage, anti-patterns. Governs `Kind: test` work + the regression-test follow-through for `fix / audit-fix / review-fix`. |
 | [commits.md](commits.md) | The `<ID>: <description>` mandate, hygiene, branching, push policy, release commits. Governs every commit. |
@@ -19,7 +22,10 @@ Sub-spec extracted from `documentation.md` for token efficiency:
 
 ## How they fit together
 
-The four standards plus `ROADMAP.md` form a closed loop:
+The four Kind-scoped standards plus `ROADMAP.md` form a closed loop
+(`naming.md` and `dependencies.md` are cross-cutting — they govern the
+name of every file and the version of every dependency produced/pulled in
+by any Kind, so they sit outside this Kind→standard mapping):
 
 1. **ROADMAP item** declares an `[ID]`, `Kind:`, and `Source:`
    (per [roadmap-format § 3](roadmap-format.md)).
@@ -43,9 +49,10 @@ existing code, no "ask the original author".
 
 ## Adopting these standards in another project
 
-Copy all five files in this folder (the four standards **plus**
-the `roadmap-format.md` sub-spec, which the closed loop above
-depends on) verbatim into your project's `docs/standards/`
+Copy the seven standard files in this folder (the six standards
+**plus** the `roadmap-format.md` sub-spec, which the closed loop
+above depends on — not this `README.md`) verbatim into your
+project's `docs/standards/`
 directory. They're intentionally
 project-agnostic: language-specific notes are guidance rather
 than mandates, and project-specific rules (specific module
