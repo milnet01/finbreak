@@ -22,6 +22,7 @@ from pathlib import Path  # noqa: E402
 from sqlcipher3 import dbapi2  # noqa: E402
 
 from finbreak.crypto import KEY_LEN, SALT_LEN, derive_key  # noqa: E402
+from finbreak.migrations import _migrate_to_v2, _migrate_to_v3  # noqa: E402
 from finbreak.models import FORMAT_VERSION, KdfParams  # noqa: E402
 from finbreak.services.auth import (  # noqa: E402
     ARGON2_MEMORY_KIB,
@@ -86,3 +87,25 @@ def build_v1_vault(vault_path: Path, sidecar_path: Path, salt: bytes, rows) -> N
     fd = os.open(sidecar_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w") as handle:
         handle.write(payload)
+
+
+def build_v2_vault(vault_path: Path, sidecar_path: Path, salt: bytes, rows) -> None:
+    """A raw v2 vault: the v1 baseline taken through the real ``_migrate_to_v2``
+    (the shape ``Vault.create()`` can no longer produce — it now migrates to the
+    latest schema). Closes its connection; callers reopen via ``keyed_connection``.
+    Shared by the categories (FIBR-0006) and import (FIBR-0007) migration suites
+    past the Rule-of-Three (coding.md § 1.3)."""
+    build_v1_vault(vault_path, sidecar_path, salt, rows)
+    conn = keyed_connection(vault_path, salt)
+    _migrate_to_v2(conn)  # v1 -> v2 (accounts + account_id)
+    conn.close()
+
+
+def build_v3_vault(vault_path: Path, sidecar_path: Path, salt: bytes, rows) -> None:
+    """A raw v3 vault: ``build_v2_vault`` taken one more step through the real
+    ``_migrate_to_v3`` (categories tree seeded). The v3->v4 migration suite's
+    upgrade-path fixture (FIBR-0007 D12)."""
+    build_v2_vault(vault_path, sidecar_path, salt, rows)
+    conn = keyed_connection(vault_path, salt)
+    _migrate_to_v3(conn)  # v2 -> v3 (categories tree)
+    conn.close()

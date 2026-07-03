@@ -15,13 +15,12 @@ from pathlib import Path
 import pytest
 from sqlcipher3.dbapi2 import IntegrityError
 
-from conftest import _PW, build_v1_vault, keyed_connection
+from conftest import _PW, build_v2_vault, keyed_connection
 from finbreak.crypto import SALT_LEN, derive_key
 from finbreak.errors import CategoryHasChildrenError, ProtectedCategoryError
 from finbreak.migrations import (
     CATEGORY_ROOT_NAMES,
     DEFAULT_CATEGORIES,
-    _migrate_to_v2,
     run_migrations,
 )
 from finbreak.models import CategoryKind
@@ -40,7 +39,7 @@ def paths(tmp_path) -> tuple[Path, Path]:
 @pytest.fixture
 def service(paths) -> Iterator[AuthService]:
     svc = AuthService(*paths)
-    svc.first_run(bytearray(_PW), "ZAR")  # first-run migrates to v3 (tree seeded)
+    svc.first_run(bytearray(_PW), "ZAR")  # first-run migrates to latest (tree seeded)
     yield svc
     svc.lock()
 
@@ -49,16 +48,6 @@ def _roots(conn) -> dict[str, object]:
     """The two Type roots, keyed by kind token."""
     roots = CategoryRepository(conn).children_of(None)
     return {r.kind: r for r in roots if r.kind is not None}
-
-
-def _build_v2_vault(vault_path: Path, sidecar_path: Path, salt: bytes, rows) -> None:
-    """A raw v2 vault: the v1 baseline taken through the real `_migrate_to_v2`
-    (the shape `Vault.create()` can no longer produce — it now migrates to v3).
-    Closes its connection; callers reopen via `keyed_connection`."""
-    build_v1_vault(vault_path, sidecar_path, salt, rows)
-    conn = keyed_connection(vault_path, salt)
-    _migrate_to_v2(conn)  # v1 -> v2 (accounts + account_id)
-    conn.close()
 
 
 # --------------------------------------------------------------------------- #
@@ -156,7 +145,7 @@ def test_INV3_name_stored_trimmed_and_update_allows_own_name(service):
 def test_INV4_v2_upgrades_to_v3_and_seeds_tree(paths):
     vault_path, sidecar_path = paths
     salt = bytes(range(SALT_LEN))
-    _build_v2_vault(vault_path, sidecar_path, salt, [("2026-01-01", -100, "a")])
+    build_v2_vault(vault_path, sidecar_path, salt, [("2026-01-01", -100, "a")])
 
     conn = keyed_connection(vault_path, salt)
     before_tx = conn.execute(
@@ -164,8 +153,8 @@ def test_INV4_v2_upgrades_to_v3_and_seeds_tree(paths):
     ).fetchall()
     before_acct = conn.execute("SELECT id, name, type FROM accounts").fetchall()
 
-    run_migrations(conn)  # v2 -> v3
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 3
+    run_migrations(conn)  # v2 -> v3 -> v4 (run_migrations walks to LATEST)
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 4
 
     roots = _roots(conn)
     assert set(roots) == {"income", "expenditure"}
@@ -192,7 +181,7 @@ def test_INV4_v2_upgrades_to_v3_and_seeds_tree(paths):
 def test_INV4_atomic_rollback_leaves_v2_no_categories_table(paths):
     vault_path, sidecar_path = paths
     salt = bytes(range(SALT_LEN))
-    _build_v2_vault(vault_path, sidecar_path, salt, [])
+    build_v2_vault(vault_path, sidecar_path, salt, [])
 
     conn = keyed_connection(vault_path, salt)
 
@@ -229,23 +218,24 @@ def test_INV4_atomic_rollback_leaves_v2_no_categories_table(paths):
 def test_INV4_idempotent_at_latest(paths):
     vault_path, sidecar_path = paths
     salt = bytes(range(SALT_LEN))
-    _build_v2_vault(vault_path, sidecar_path, salt, [])
+    build_v2_vault(vault_path, sidecar_path, salt, [])
     conn = keyed_connection(vault_path, salt)
-    run_migrations(conn)  # v2 -> v3
+    run_migrations(conn)  # v2 -> v3 -> v4 (walks to LATEST)
     roots_before = len(CategoryRepository(conn).children_of(None))
     total_before = len(CategoryRepository(conn).list_all())
 
-    run_migrations(conn)  # re-run: no-op at v3
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 3
+    run_migrations(conn)  # re-run: no-op at v4
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 4
     assert len(CategoryRepository(conn).children_of(None)) == roots_before == 2
     assert len(CategoryRepository(conn).list_all()) == total_before, "no duplicate seed"
     conn.close()
 
 
-def test_INV4_first_run_vault_is_v3_with_seeded_tree(service):
-    # Baseline-complete: a fresh first-run vault ends at v3 with the tree seeded.
+def test_INV4_first_run_vault_is_v4_with_seeded_tree(service):
+    # Baseline-complete: a fresh first-run vault ends at v4 (import tables added
+    # at v3->v4); the category tree is still seeded at the v2->v3 step.
     conn = service.vault.connection
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 3
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 4
     assert set(_roots(conn)) == {"income", "expenditure"}
 
 

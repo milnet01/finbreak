@@ -35,6 +35,7 @@ class MainWindow(QWidget):
     locked = Signal()
     manage_accounts = Signal()
     manage_categories = Signal()
+    import_transactions = Signal()
 
     def __init__(self, service: AuthService, parent: QWidget | None = None):
         super().__init__(parent)
@@ -75,6 +76,7 @@ class MainWindow(QWidget):
 
         self._manage_button = QPushButton(self.tr("Manage accounts…"))
         self._categories_button = QPushButton(self.tr("Manage categories…"))
+        self._import_button = QPushButton(self.tr("Import transactions…"))
         self._lock_button = QPushButton(self.tr("Lock"))
 
         buttons = QHBoxLayout()
@@ -82,6 +84,7 @@ class MainWindow(QWidget):
         buttons.addStretch()
         buttons.addWidget(self._manage_button)
         buttons.addWidget(self._categories_button)
+        buttons.addWidget(self._import_button)
         buttons.addWidget(self._lock_button)
 
         layout = QVBoxLayout(self)
@@ -93,6 +96,7 @@ class MainWindow(QWidget):
         self._add_button.clicked.connect(self._on_add)
         self._manage_button.clicked.connect(self.manage_accounts)
         self._categories_button.clicked.connect(self.manage_categories)
+        self._import_button.clicked.connect(self.import_transactions)
         self._lock_button.clicked.connect(self._on_lock)
 
         self._reload_accounts()

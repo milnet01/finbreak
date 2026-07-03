@@ -13,10 +13,23 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 from typing import cast
 
+from sqlcipher3 import dbapi2
+
 from finbreak.models import Transaction
 from finbreak.repositories.accounts import AccountRepository
 from finbreak.repositories.transactions import TransactionRepository
 from finbreak.vault import Vault
+
+
+def read_minor_unit_exponent(conn: dbapi2.Connection) -> int:
+    """The base currency's minor-unit exponent, from ``settings`` — the single
+    source both ``TransactionService`` and ``ImportService`` (FIBR-0007) read,
+    so the key string and its cast live in one place (a typo would silently
+    read the wrong money scale)."""
+    row = conn.execute(
+        "SELECT value FROM settings WHERE key = 'minor_unit_exponent'"
+    ).fetchone()
+    return int(row[0])
 
 
 def parse_transaction(
@@ -69,10 +82,7 @@ class TransactionService:
         self._vault = vault
 
     def _exponent(self) -> int:
-        row = self._vault.connection.execute(
-            "SELECT value FROM settings WHERE key = 'minor_unit_exponent'"
-        ).fetchone()
-        return int(row[0])
+        return read_minor_unit_exponent(self._vault.connection)
 
     def base_currency(self) -> str:
         row = self._vault.connection.execute(

@@ -18,6 +18,7 @@ from finbreak.services.auth import AuthService
 from finbreak.ui.accounts import AccountsWidget
 from finbreak.ui.categories import CategoriesWidget
 from finbreak.ui.first_run import FirstRunWidget
+from finbreak.ui.import_wizard import ImportWizardWidget
 from finbreak.ui.main_window import MainWindow
 from finbreak.ui.unlock import UnlockWidget
 
@@ -51,6 +52,7 @@ class AppShell(QStackedWidget):
         widget.locked.connect(self._show_unlock)
         widget.manage_accounts.connect(self._show_accounts)
         widget.manage_categories.connect(self._show_categories)
+        widget.import_transactions.connect(self._show_import)
         self._swap(widget)
 
     def _show_accounts(self) -> None:
@@ -63,6 +65,13 @@ class AppShell(QStackedWidget):
     def _show_categories(self) -> None:
         # Same stacked-view pattern as Accounts — auto-lock swaps it away too.
         widget = CategoriesWidget(self._service)
+        widget.done.connect(self._show_main)
+        self._swap(widget)
+
+    def _show_import(self) -> None:
+        # Same stacked-view pattern (non-modal, D9) so auto-lock swaps it away.
+        # On Done (import or cancel), a fresh MainWindow re-reads the table.
+        widget = ImportWizardWidget(self._service)
         widget.done.connect(self._show_main)
         self._swap(widget)
 

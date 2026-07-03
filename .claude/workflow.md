@@ -6,10 +6,10 @@
 |-------|-------|
 | **Project phase** | P05 — CSV import + mapping profiles |
 | **Active item ID** | FIBR-0007 |
-| **Active step** | 1 (verify/expand spec) |
+| **Active step** | 5 (`/audit`) |
 | **Blocked on** | — |
-| **Last update** | 2026-07-02 (FIBR-0006 **closed** by /close-phase: spec cold-eyes-converged 7 loops; TDD; /audit 0 + /indie-review 0 actionable on the closing pass; folded one INFO inline (INV-7f re-enable); gate green 122 passed/1 skipped, mypy 0. Flipped ROADMAP → ✅, wrote docs/journal/FIBR-0006.md, tag FIBR-0006-complete) |
-| **Next gate** | FIBR-0007 step 1 — write/expand `docs/specs/FIBR-0007.md` (P05 CSV import + per-bank mapping profiles + dedup + import wizard), then `/cold-eyes` to convergence before code (global rule § 14) |
+| **Last update** | 2026-07-03 (FIBR-0007 steps 1–4 done: spec cold-eyes-converged 9 loops + signed off; TDD — lifted `build_v2_vault`/`build_v3_vault` to conftest, rippled 7 `==3`→`==4` schema assertions + 2 renames, wrote `tests/features/import_/` (43 tests) red, then implemented importer→service→repos→v4 migration→wizard + main_window/app wiring to green. Gate green **165 passed / 1 skipped**, ruff/format/bandit/pip-audit/gitleaks clean, mypy 0. Two bandit fixes root-caused not suppressed: B608 f-string SQL → inlined literal column lists; B101 asserts → `cast`) |
+| **Next gate** | FIBR-0007 steps 5–9 — `/close-phase` (`/audit` + `/indie-review` in parallel, triage, then close or fix-pass) |
 | **Convergence checkpoint** | 5 (consecutive `FP##` items immediately preceding any ✅-`implement`-Kind close in the active release block — see `~/.claude/commands/close-phase.md § 5a-6`) |
 | **Debt-sweep phase threshold** | 5 (auto-prompt for `/debt-sweep` after this many phases without one) |
 | **Last debt sweep** | (none yet) |
@@ -21,11 +21,11 @@ While an item is active, Claude marks the current step 🚧;
 completed steps flip to ✅. Resets to all ⬜ when a new item
 becomes active.
 
-1. ⬜ Verify spec (`docs/specs/FIBR-0007.md`) — draft/expand, then `/cold-eyes`
-2. ⬜ Verify dependencies on the roadmap DAG
-3. ⬜ Write failing tests
-4. ⬜ Implement until tests pass
-5. ⬜ Run `/audit`
+1. ✅ Verify spec (`docs/specs/FIBR-0007.md`) — draft/expand, then `/cold-eyes`
+2. ✅ Verify dependencies on the roadmap DAG
+3. ✅ Write failing tests
+4. ✅ Implement until tests pass
+5. 🚧 Run `/audit`
 6. ⬜ Run `/indie-review`
 7. ⬜ Fold / fix actionable findings
 8. ⬜ Update CHANGELOG / ROADMAP / journal
@@ -87,6 +87,36 @@ journal); §2 is the only part that changes.
 ## §3. Session journal
 
 Append-only. Newest at the top.
+
+### 2026-07-03 — FIBR-0007 steps 3–4 (TDD + implement, gate green)
+
+Built the P05 CSV-import stack test-first against the 9-loop cold-eyes-converged
+spec (signed off; user's standing rule — no wait). **D12 conftest lift:**
+`_build_v2_vault` moved from the categories suite to `tests/conftest.py` as
+`build_v2_vault`, added `build_v3_vault` beside it (the v3→v4 fixture); categories
+suite imports from conftest (22 tests still green). **Ripple:** the seven
+"lands-at-latest" `==3`→`==4` schema-version assertions (vault ×1, accounts ×3,
+categories ×3) + the two `…_is_v3_…`→`…_is_v4_…` renames; the `==1`/`==2` rollback
+legs and the symbolic `LATEST+1` refusals untouched. Wrote
+`tests/features/import_/{spec.md,test_import.py}` (43 tests, INV-1..11 incl.
+INV-3a–d / INV-10a–e / INV-8's four legs), confirmed red, then implemented to
+green: `models` (ImportProfile/StatementPeriod/ColumnMapping/TransactionDraft),
+`_migrate_to_v4` (two tables, `LATEST` 3→4), `repositories/{import_profiles,
+statement_periods}`, extended `repositories/transactions` (`existing_for` +
+commit-free `add_batch`), extracted `read_minor_unit_exponent` (D5 reuse),
+the pure `importers/csv_importer`, `services/import_` (match/upsert profiles,
+multiset-delta dedup, atomic write + span-dedup), `ui/import_wizard`
+(non-modal `QStackedLayout`, D9), and the `main_window`/`app` wiring.
+
+Gate green: **165 passed / 1 skipped**, ruff + format + bandit + pip-audit +
+gitleaks clean, mypy 0. Two bandit hits **root-caused, not suppressed** (global
+rule § 1): B608 on f-string SQL → inlined the literal column lists (the
+Account/Category repo convention, no `# nosec`); B101 asserts → `cast` (the
+`AccountService` convention). One mypy mixed-list nit fixed by filtering the
+`None` amount-style columns in a comprehension.
+
+Next: steps 5–9 — `/close-phase` (`/audit` + `/indie-review` in parallel,
+allowlist read first, then close or fix-pass).
 
 ### 2026-07-02 — FIBR-0006 closed (P04 Type → Category tree)
 

@@ -20,7 +20,7 @@ from finbreak.errors import SchemaVersionError
 
 log = logging.getLogger(__name__)
 
-LATEST_SCHEMA_VERSION = 3
+LATEST_SCHEMA_VERSION = 4
 
 # Seed data written by the v1->v2 migration (D8) — NOT a UI string, so never
 # run through tr(); the user renames it in the Accounts manager.
@@ -143,4 +143,38 @@ def _migrate_to_v3(conn: dbapi2.Connection) -> None:
         raise
 
 
-_MIGRATIONS = {2: _migrate_to_v2, 3: _migrate_to_v3}
+def _migrate_to_v4(conn: dbapi2.Connection) -> None:
+    """v3->v4: add the two import tables — ``import_profiles`` (saved bank
+    layouts) and ``statement_periods`` (per-import coverage records) — for
+    FIBR-0007 CSV import. Two ``CREATE TABLE``s, **no seed** (starter profiles
+    deferred, D11), but still one atomic unit: with the vault's
+    ``isolation_level=""`` the driver does not implicitly ``BEGIN`` around DDL,
+    so a failure between the two ``CREATE``s could leave a half-built v3.5. The
+    explicit ``BEGIN`` — the step's first statement, discrete ``execute`` calls
+    so the runner owns the transaction — makes it all-or-nothing (INV-8)."""
+    conn.execute("BEGIN")  # first statement — own the transaction (D2)
+    try:
+        conn.execute(
+            "CREATE TABLE import_profiles("
+            "id INTEGER PRIMARY KEY, name TEXT NOT NULL, "
+            "signature TEXT NOT NULL UNIQUE, "
+            "date_column TEXT NOT NULL, description_column TEXT NOT NULL, "
+            "amount_column TEXT, debit_column TEXT, credit_column TEXT, "
+            "date_format TEXT NOT NULL, "
+            "invert_amount INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL)"
+        )
+        conn.execute(
+            "CREATE TABLE statement_periods("
+            "id INTEGER PRIMARY KEY, "
+            "account_id INTEGER NOT NULL REFERENCES accounts(id), "
+            "period_start TEXT NOT NULL, period_end TEXT NOT NULL, "
+            "source_filename TEXT, imported_at TEXT NOT NULL)"
+        )
+        conn.execute("UPDATE schema_version SET version = 4")
+        conn.commit()
+    except Exception:
+        conn.rollback()  # undoes the first CREATE — leaves a re-openable v3 vault
+        raise
+
+
+_MIGRATIONS = {2: _migrate_to_v2, 3: _migrate_to_v3, 4: _migrate_to_v4}
