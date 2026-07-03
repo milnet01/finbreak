@@ -82,6 +82,14 @@ def test_INV1_crud_roundtrip_and_order(service):
     assert names == sorted(names, key=str.casefold), "children ordered by name, ci"
     assert "Bonus" in names
 
+    # list_all() is globally ordered (INV-1): the two roots (parent_id NULL)
+    # sort ahead of every child, and the root tie breaks by name ci — so
+    # "Expenditure" precedes "Income".
+    ordered = repo.list_all()
+    lead = ordered[: len([c for c in ordered if c.parent_id is None])]
+    assert all(c.parent_id is None for c in lead), "roots lead the list"
+    assert [c.name for c in lead] == ["Expenditure", "Income"], "roots by name, ci"
+
     svc.update_category(bonus.id, "Year-end bonus", income.id)
     assert repo.get(bonus.id).name == "Year-end bonus"
 
