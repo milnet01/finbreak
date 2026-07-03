@@ -13,8 +13,8 @@ Read these in order on every session start:
    phase, active item, step number, blockers, last-update
    timestamp). After reading, **summarise back to the user**
    before doing any work.
-3. **`docs/standards/{coding,documentation,testing,commits}.md`**
-   — the four shareable v1 standards.
+3. **`docs/standards/{coding,naming,dependencies,documentation,testing,commits}.md`**
+   — the six shareable v1 standards.
 4. **`docs/specs/<active-id>.md`** — the contract for the
    currently-active roadmap item.
 5. **`docs/audit-allowlist.md`** — read **additionally** before
@@ -189,8 +189,8 @@ working is cheaper than corrective rounds later.
 
 ## Standards reference
 
-The four standards (`coding`, `documentation`, `testing`,
-`commits`) plus `roadmap-format` live in
+The six standards (`coding`, `naming`, `dependencies`,
+`documentation`, `testing`, `commits`) plus `roadmap-format` live in
 [`docs/standards/`](docs/standards/) — see its
 [README](docs/standards/README.md) for the index, the
 closed-loop diagram, and which kinds each governs.
