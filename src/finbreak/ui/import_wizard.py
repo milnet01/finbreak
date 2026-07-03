@@ -38,6 +38,7 @@ from finbreak.models import ColumnMapping
 from finbreak.services.accounts import AccountService
 from finbreak.services.auth import AuthService
 from finbreak.services.import_ import ImportPreview, ImportService
+from finbreak.services.transactions import read_minor_unit_exponent, to_display_decimal
 
 _STEP_PICK, _STEP_MAP, _STEP_PREVIEW = 0, 1, 2
 _ERROR_ROW_BRUSH = QBrush(QColor(122, 59, 59))  # muted red — flags a RowError row
@@ -50,6 +51,9 @@ class ImportWizardWidget(QWidget):
         super().__init__(parent)
         self._imports = ImportService(service.vault)
         self._accounts = AccountService(service.vault)
+        # The currency scale, for rendering preview amounts as decimals (not raw
+        # minor units) — the same value the importer/service use (reuse, § 1.3).
+        self._exponent = read_minor_unit_exponent(service.vault.connection)
 
         self.setWindowTitle(self.tr("Import transactions"))
 
@@ -301,7 +305,10 @@ class ImportWizardWidget(QWidget):
                     [
                         str(draft.row_number),
                         draft.occurred_on,
-                        str(draft.amount_minor),
+                        # Render the decimal amount (e.g. -10.00), not the raw
+                        # minor units (-1000) — this preview is read by a person
+                        # checking a statement before import. No float (D1).
+                        str(to_display_decimal(draft.amount_minor, self._exponent)),
                         draft.description,
                         self.tr("OK"),
                     ],

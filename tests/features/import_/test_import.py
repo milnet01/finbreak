@@ -687,6 +687,10 @@ def test_INV10c_preview_shows_rows_summary_and_period(qtbot, service, tmp_path):
     assert widget._preview.new_count == 2 and widget._preview.duplicate_count == 0
     assert len(widget._preview.errors) == 1
     assert widget._summary_label.text() != ""
+    # The Amount column shows the decimal amount, not raw minor units: rows
+    # interleave by row_number, so row 0 is Coffee (-10.00) and row 2 is Salary.
+    assert widget._preview_table.item(0, 2).text() == "-10.00"
+    assert widget._preview_table.item(2, 2).text() == "1000.00"
     assert widget._period_start.date().toString(Qt.DateFormat.ISODate) == "2026-01-05"
     assert widget._period_end.date().toString(Qt.DateFormat.ISODate) == "2026-01-20"
 
