@@ -117,10 +117,25 @@ whole-statement `ValueError`; post-parse `parse_transaction` rejection → per-r
 tags, pinned INV-1a's sign to `<TRNAMT>`. ~35 verified findings fixed over 3
 loops; design converging (HIGH count 4→1→0, but loop 3 surfaced the CRITICAL).
 
-**Loop 4 pending** — a CRITICAL was fixed, so a confirming cold pass is required
-before sign-off + implementation. Spec status: `/cold-eyes` in progress, NOT yet
-cleared for code. FIBR-0041 (CSV size-cap back-fill) filed under the security
-backlog. Next: run loop 4; if clean, sign off → TDD-implement.
+**Loops 1–5 done; loop 6 pending.** Loop 4 was 0 CRIT/0 HIGH (polish). Loop 5
+caught 2 more **subtle empirical** issues (a CRITICAL + HIGH, both localized
+accuracy fixes, not design changes): an empty `<NAME>` does **not** abort a
+statement in natural one-tag-per-line SGML (only the pathological no-whitespace
+`<NAME><MEMO>` does) → re-pointed the canonical structural-abort fixture to a bad
+`<DTPOSTED>` / empty `<TRNAMT>`; and `lxml` **is** loaded at runtime via
+beautifulsoup4 (reworded "never imported" → "not used as the parser"). Totals
+across 5 loops: **2 CRITICAL + 2 HIGH + ~50 findings** fixed; design + error
+model stable and empirically verified since loop 3's D15 rewrite. Spec status:
+`/cold-eyes` in progress, NOT yet cleared for code. FIBR-0041 (CSV size-cap
+back-fill) filed under the security backlog. Committed + pushed each loop
+(spec draft `a3f55bb`; loop 4 `cf6b276`; loop 5 `0fbee24`).
+
+**Next session:** run loop 6 (confirming pass — likely clean or near-clean given
+the trajectory); if clean, sign off `docs/specs/FIBR-0008.md` → TDD-implement
+(step 3): write `tests/features/ofx_import/`, then `importers/base.py` +
+`ofx_importer.py`, the `ImportService` `_preview_from_result`/`preview_ofx`/
+`read_file_bytes` refactor, the wizard OFX branch, `pyproject` `ofxparse==0.21`,
+to green → `/close-phase`.
 
 ### 2026-07-03 — FIBR-0007 closed (P05 CSV import)
 
