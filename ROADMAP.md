@@ -160,7 +160,7 @@ lands on top.
 
 ### 🎨 Features
 
-- 📋 [FIBR-0007] **P05: CSV import with per-bank mapping
+- ✅ [FIBR-0007] **P05: CSV import with per-bank mapping
   profiles + dedup + import wizard.** `ImportService`
   orchestration + `CsvImporter` + saved per-bank column-mapping
   profiles (ADR-0005); de-duplication so re-importing an
@@ -178,6 +178,7 @@ lands on top.
   retrofit (would need re-import to learn periods). Establish the
   data-model hook here (the first importer) so OFX (FIBR-0008) and PDF
   (FIBR-0009) populate it too.
+  Resolved (2026-07-03): shipped via /close-phase. CsvImporter + ImportService (exact-signature profiles, multiset-delta dedup, atomic write + coverage-period), v3->v4 migration (import_profiles + statement_periods), non-modal wizard. 43 tests (INV-1..11); gate green 165 passed/1 skipped, mypy 0; audit 0 + indie-review 0 CRIT/HIGH/MED (one LOW fixed inline: preview renders decimals not minor units). Tag FIBR-0007-complete.
 
 ---
 

@@ -23,6 +23,22 @@ signaling per
 
 ### Added
 
+- **Import transactions from a bank-statement CSV file.** Instead of typing
+  every transaction by hand, point finbreak at a CSV your bank gives you and it
+  reads the transactions in. Because every bank lays its CSV out differently,
+  you tell finbreak once which columns are the date, the description, and the
+  amount (or separate "money out" / "money in" columns) — it remembers that as
+  a named layout and recognises the same bank's file automatically next time.
+  Before anything is saved you see a **preview**: every row, a
+  "N new · M duplicate · K error" tally, and the statement's date range (filled
+  in for you). Re-importing a statement you already loaded — even an overlapping
+  one — adds **no duplicates**, while genuinely identical repeats (two of the
+  same coffee on the same day) are kept the first time. Rows it can't read (a
+  bad date, a non-number amount) are listed, not silently dropped, and the good
+  rows still import. Opening a vault from before this release upgrades it in one
+  all-or-nothing step that adds the import bookkeeping, rolling back cleanly on
+  a power-cut. (FIBR-0007)
+
 - **Categories — sort your money into Income and Expenditure buckets.**
   finbreak now has a two-level category list: two fixed types — Income and
   Expenditure — each holding a set of ready-made categories (Salary, Sales,

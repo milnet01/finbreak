@@ -4,12 +4,12 @@
 
 | Field | Value |
 |-------|-------|
-| **Project phase** | P05 — CSV import + mapping profiles |
-| **Active item ID** | FIBR-0007 |
-| **Active step** | 5 (`/audit`) |
+| **Project phase** | P06 — OFX import |
+| **Active item ID** | FIBR-0008 |
+| **Active step** | 1 (verify/expand spec) |
 | **Blocked on** | — |
-| **Last update** | 2026-07-03 (FIBR-0007 steps 1–4 done: spec cold-eyes-converged 9 loops + signed off; TDD — lifted `build_v2_vault`/`build_v3_vault` to conftest, rippled 7 `==3`→`==4` schema assertions + 2 renames, wrote `tests/features/import_/` (43 tests) red, then implemented importer→service→repos→v4 migration→wizard + main_window/app wiring to green. Gate green **165 passed / 1 skipped**, ruff/format/bandit/pip-audit/gitleaks clean, mypy 0. Two bandit fixes root-caused not suppressed: B608 f-string SQL → inlined literal column lists; B101 asserts → `cast`) |
-| **Next gate** | FIBR-0007 steps 5–9 — `/close-phase` (`/audit` + `/indie-review` in parallel, triage, then close or fix-pass) |
+| **Last update** | 2026-07-03 (FIBR-0007 **closed** by /close-phase: `/audit` (ruff/bandit/semgrep) 0 + `/indie-review` (3 cold lanes) 0 CRIT/HIGH/MED on the closing pass; one LOW fixed inline (preview renders decimals not raw minor units) + test-locked in INV-10c, one INFO surfaced (mapping-combo show/hide). Gate green **165 passed / 1 skipped**, mypy 0. Flipped ROADMAP FIBR-0007 → ✅, wrote docs/journal/FIBR-0007.md, tag FIBR-0007-complete) |
+| **Next gate** | FIBR-0008 step 1 — write/expand `docs/specs/FIBR-0008.md` (P06 OFX import via `ofxparse`, reusing the FIBR-0007 `ImportService` pipeline; period from OFX's embedded DTSTART/DTEND), then `/cold-eyes` to convergence before code (global rule § 14) |
 | **Convergence checkpoint** | 5 (consecutive `FP##` items immediately preceding any ✅-`implement`-Kind close in the active release block — see `~/.claude/commands/close-phase.md § 5a-6`) |
 | **Debt-sweep phase threshold** | 5 (auto-prompt for `/debt-sweep` after this many phases without one) |
 | **Last debt sweep** | (none yet) |
@@ -21,11 +21,11 @@ While an item is active, Claude marks the current step 🚧;
 completed steps flip to ✅. Resets to all ⬜ when a new item
 becomes active.
 
-1. ✅ Verify spec (`docs/specs/FIBR-0007.md`) — draft/expand, then `/cold-eyes`
-2. ✅ Verify dependencies on the roadmap DAG
-3. ✅ Write failing tests
-4. ✅ Implement until tests pass
-5. 🚧 Run `/audit`
+1. ⬜ Verify spec (`docs/specs/FIBR-0008.md`) — draft/expand, then `/cold-eyes`
+2. ⬜ Verify dependencies on the roadmap DAG
+3. ⬜ Write failing tests
+4. ⬜ Implement until tests pass
+5. ⬜ Run `/audit`
 6. ⬜ Run `/indie-review`
 7. ⬜ Fold / fix actionable findings
 8. ⬜ Update CHANGELOG / ROADMAP / journal
@@ -87,6 +87,29 @@ journal); §2 is the only part that changes.
 ## §3. Session journal
 
 Append-only. Newest at the top.
+
+### 2026-07-03 — FIBR-0007 closed (P05 CSV import)
+
+Steps 5–9 of the loop, run autonomously (user out for the evening, standing
+"do as much as you can" + fix-findings-inline rules). `/audit` (Ants
+`audit_run`, scope since-tag:FIBR-0006-complete — ruff/bandit/semgrep) **0
+findings**; `/indie-review` **3 cold lanes** (importer+service core, data
+layer+migration, UI+wiring+tests), each briefed against the spec with no author
+intent. Two lanes returned CLEAN; the UI lane found **one LOW** (preview showed
+raw minor units `-1000` instead of `-10.00` — a real UX defect for the
+non-technical target user) + **one INFO** (mapping form shows amount+debit+credit
+combos regardless of style). Fixed the LOW inline — reused `to_display_decimal`
+(public, no float) via the vault exponent, strengthened INV-10c to assert the
+Amount cells render `-10.00`/`1000.00` — then a **cold re-audit** confirmed a
+clean pair (0). INFO surfaced in the journal (optional show/hide polish, not
+blocked). Gate green **165 passed / 1 skipped**, mypy 0. Flipped ROADMAP
+FIBR-0007 → ✅ (resolution note), wrote `docs/journal/FIBR-0007.md`, tag
+`FIBR-0007-complete`. Allowlist unchanged (no false positives).
+
+Next: FIBR-0008 (P06 OFX import) step 1 — draft/expand the spec (OfxImporter via
+`ofxparse` feeding the same ImportService pipeline; period from OFX's embedded
+DTSTART/DTEND; no mapping profile — OFX is self-describing), then `/cold-eyes`
+to convergence.
 
 ### 2026-07-03 — FIBR-0007 steps 3–4 (TDD + implement, gate green)
 
