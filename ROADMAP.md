@@ -608,6 +608,19 @@ because retrofitting them is a data migration.
 
 ---
 
+### 🧹 Warnings & tech debt
+
+Every warning or error found during any work — tests, gate, build, tooling,
+dependencies, review — is filed here (or the most fitting section) for later
+investigation/resolution, even when third-party or non-blocking. A warning today
+is a future error tomorrow.
+
+- 📋 [FIBR-0043] **Silence/resolve ofxparse's bs4 findAll DeprecationWarning noise in the test run.**
+  Surfaced by FIBR-0008 (2026-07-04). Running `tests/features/ofx_import/` emits ~100 `DeprecationWarning: Call to deprecated method findAll. (Replaced by find_all)` — raised INSIDE `ofxparse` 0.21 (`ofxparse.py` calling BeautifulSoup's deprecated `findAll`), not our code. Harmless today (tests pass), but: (a) it's log noise that masks real warnings, and (b) a future bs4 major could turn `findAll` into a hard error, breaking OFX import. ofxparse 0.21 is the current latest (lightly maintained), so there's no newer release to bump to. Options: a scoped pytest `filterwarnings` ignore for ofxparse's DeprecationWarning (documented, so it doesn't hide OUR deprecations); upstream a PR to ofxparse (findAll -> find_all); or, if bs4 ever breaks it, migrate to a maintained parser (ofxtools) — the escape hatch already noted in FIBR-0008 § Dependencies. Decide + apply.
+  **Layman:** The OFX-import library prints ~100 harmless "this method is old" warnings whenever we run our tests; the app works fine, but the noisy warnings should be quietened or fixed at the source.
+  Kind: investigate.
+  Source: in-session-2026-07-04 FIBR-0008 build/test warnings.
+
 ## How to add an item
 
 1. Allocate the next ID:
