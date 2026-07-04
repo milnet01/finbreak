@@ -193,6 +193,10 @@ class ImportWizardWidget(QWidget):
         self._period_start.setCalendarPopup(True)
         self._period_end = QDateEdit()
         self._period_end.setCalendarPopup(True)
+        # Unambiguous ISO-style YYYY/MM/DD in both period pickers (FIBR-0014 will
+        # make the format user-configurable in Settings).
+        for _picker in (self._period_start, self._period_end):
+            _picker.setDisplayFormat("yyyy/MM/dd")
         self._import_button = QPushButton(self.tr("Import"))
         self._import_button.setEnabled(False)
         cancel = QPushButton(self.tr("Cancel"))

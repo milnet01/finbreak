@@ -128,6 +128,11 @@ signaling per
   (`ci-local.sh --build`) with a dedicated weekly CI job, so the everyday
   gate stays fast. (FIBR-0003)
 
+### Changed
+
+- **Date pickers show unambiguous ISO YYYY/MM/DD, not the locale's M/D/YY.** (FIBR-0047)
+  Dates now always read year/month/day (e.g. 2026/07/04) so there's no US-vs-rest-of-world confusion.
+
 ### Security
 
 - **Opening a vault from a newer version fails safely (FIBR-0005).** If a

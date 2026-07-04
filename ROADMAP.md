@@ -587,6 +587,24 @@ because retrofitting them is a data migration.
   Kind: fix.
   Source: indie-review-2026-07-04 FIBR-0008 lane-1.
 
+- ✅ [FIBR-0047] **Date pickers show unambiguous ISO YYYY/MM/DD, not the locale's M/D/YY.**
+  Shipped 2026-07-04: setDisplayFormat("yyyy/MM/dd") on the main-window date field + the import wizard's period pickers; regression test in the vault suite. A user-CHOSEN format is the separate item below.
+  **Layman:** Dates now always read year/month/day (e.g. 2026/07/04) so there's no US-vs-rest-of-world confusion.
+  Kind: ux.
+  Source: user-request-2026-07-04.
+
+- 📋 [FIBR-0048] **User-configurable date-display format (Settings).**
+  Belongs with FIBR-0014 (P12 Settings). The ISO yyyy/MM/dd default already shipped; this promotes it to a user choice persisted in the vault settings.
+  **Layman:** Let the user pick how dates are shown (e.g. DD/MM/YYYY, YYYY-MM-DD) instead of the fixed ISO default.
+  Kind: feature.
+  Source: user-request-2026-07-04.
+
+- 📋 [FIBR-0049] **First-run onboarding / empty-state guidance on the home screen.**
+  The home screen opens on the manual add-transaction form with cryptic fields (Amount, Description) and no guidance, which confused a real non-technical tester. Add empty-state help + inline field hints (Amount = money in/out, negative = out; Description = what it was for).
+  **Layman:** A friendly welcome for a brand-new user — 'import a statement, or add a transaction by hand' — instead of a bare form.
+  Kind: ux.
+  Source: user-request-2026-07-04.
+
 ### ⚡ Performance
 
 - 📋 [FIBR-0025] **Enable SQLite WAL mode.** Set

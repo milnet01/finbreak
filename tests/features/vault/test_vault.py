@@ -518,6 +518,20 @@ def test_INV6_main_window_lists_saved_transaction(qtbot, service):
     assert window._table.rowCount() == 1, "the saved transaction appears in the table"
 
 
+def test_main_window_date_field_renders_unambiguous_iso(qtbot, service):
+    # The date picker shows YYYY/MM/DD, not the locale's ambiguous M/D/YY — a
+    # 2026-07-04 date must read "2026/07/04" to any user regardless of locale.
+    from PySide6.QtCore import QDate
+
+    from finbreak.ui.main_window import MainWindow
+
+    service.first_run(bytearray(_PW), "ZAR")
+    window = MainWindow(service)
+    qtbot.addWidget(window)
+    window._date.setDate(QDate(2026, 7, 4))
+    assert window._date.text() == "2026/07/04"
+
+
 def test_INV6_idle_autolock_routes_ui_back_to_unlock(qtbot, service):
     # An idle auto-lock wipes the key + closes the vault; the shell must route
     # back to the unlock screen, else the next action hits a locked vault and
