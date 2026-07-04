@@ -22,7 +22,8 @@ from datetime import date
 from pathlib import Path
 from typing import cast
 
-from finbreak.importers.csv_importer import CsvImporter, RowError, read_header
+from finbreak.importers.base import ParseResult, RowError
+from finbreak.importers.csv_importer import CsvImporter, read_header
 from finbreak.models import ColumnMapping, ImportProfile, TransactionDraft
 from finbreak.repositories.import_profiles import ImportProfileRepository
 from finbreak.repositories.statement_periods import StatementPeriodRepository
@@ -33,6 +34,12 @@ from finbreak.vault import Vault
 log = logging.getLogger(__name__)
 
 _SIGNATURE_DELIMITER = "\x1f"  # unit separator — cannot occur in a CSV header
+
+# OFX file-size cap (FIBR-0008 D13/INV-10) — refused BEFORE the bytes are read
+# into memory (read_file_bytes). Orders of magnitude above any real personal
+# statement (KB–low-MB); one-line-tunable. The transaction-count cap
+# (_MAX_OFX_TRANSACTIONS) lives on the importer.
+_MAX_OFX_BYTES = 16 * 1024 * 1024  # 16 MiB
 
 
 def signature_for(header: list[str]) -> str:
@@ -111,17 +118,42 @@ class ImportService:
 
     # -- preview + commit -----------------------------------------------------
     def read_file(self, path: str) -> str:
-        """Decode a picked file as ``utf-8-sig`` so a BOM is tolerated (D11)."""
+        """Decode a picked CSV file as ``utf-8-sig`` so a BOM is tolerated (D11)."""
         return Path(path).read_text(encoding="utf-8-sig")
+
+    def read_file_bytes(self, path: str) -> bytes:
+        """Read a picked OFX file as raw bytes, refusing an oversized file
+        **before** loading it into memory (FIBR-0008 D13/INV-10) — the bytes
+        counterpart to ``read_file``. The stat-then-read window is a benign
+        TOCTOU for a local, user-picked, single-user file."""
+        if Path(path).stat().st_size > _MAX_OFX_BYTES:
+            raise ValueError("this file is too large to import as OFX")
+        return Path(path).read_bytes()
 
     def preview(
         self, text: str, mapping: ColumnMapping, account_id: int
     ) -> ImportPreview:
-        """Parse + dedup-analyse + default the period — **no write**."""
+        """Parse a CSV + dedup-analyse + default the period — **no write**."""
         header = read_header(text)  # raises ValueError on an empty (headerless) file
         self._validate_mapping(mapping, header)
         exponent = read_minor_unit_exponent(self._conn)
         result = CsvImporter().parse(text, mapping, exponent)
+        return self._preview_from_result(result, account_id)
+
+    def preview_ofx(self, result: ParseResult, account_id: int) -> ImportPreview:
+        """Dedup-analyse an OFX statement's pre-built ``ParseResult`` (FIBR-0008
+        D2). The OFX parse runs in the wizard (it needs no vault); the DB-side
+        dedup + period-carry is the shared ``_preview_from_result`` the CSV path
+        also uses, so both importers reach the identical ``commit_import``."""
+        return self._preview_from_result(result, account_id)
+
+    def _preview_from_result(
+        self, result: ParseResult, account_id: int
+    ) -> ImportPreview:
+        """The dedup-analysis + period-carry tail shared by ``preview`` (CSV) and
+        ``preview_ofx`` (FIBR-0008 D2): the multiset-delta dedup delta and the
+        ``ParseResult``'s coverage span carried into an ``ImportPreview``. No
+        write; ``commit_import`` is unchanged and consumes either path's preview."""
         to_insert = self._dedup(
             account_id, result.drafts, TransactionRepository(self._conn)
         )

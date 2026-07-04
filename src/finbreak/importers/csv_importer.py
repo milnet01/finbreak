@@ -15,35 +15,17 @@ from __future__ import annotations
 
 import csv
 import io
-from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 
+from finbreak.importers.base import ParseResult, RowError
 from finbreak.models import ColumnMapping, TransactionDraft
 from finbreak.services.transactions import parse_transaction
 
-
-@dataclass
-class RowError:
-    """A per-row parse failure, surfaced (never raised) so valid rows still
-    import and every failure shows in the preview (INV-4). ``row_number`` is the
-    1-based source data row, so the preview can flag it in file order."""
-
-    row_number: int
-    reason: str
-
-
-@dataclass
-class ParseResult:
-    """The importer's output: valid ``drafts`` + collected ``errors`` (both carry
-    their ``row_number`` for file-order interleaving) + the min/max draft date
-    (``None`` when there are zero drafts). Conceptually fills design.md's uniform
-    ``parse(source) -> ParseResult`` importer interface (OFX/PDF reuse the type)."""
-
-    drafts: list[TransactionDraft]
-    errors: list[RowError]
-    period_start: str | None
-    period_end: str | None
+# ``ParseResult`` / ``RowError`` moved to ``importers/base`` (FIBR-0008 D12) and
+# are re-exported here so existing ``from finbreak.importers.csv_importer import
+# ParseResult`` call-sites keep working unchanged (INV-9).
+__all__ = ["CsvImporter", "ParseResult", "RowError", "read_header"]
 
 
 def read_header(text: str) -> list[str]:

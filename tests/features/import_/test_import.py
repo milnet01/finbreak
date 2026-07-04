@@ -63,6 +63,9 @@ def _acct(service: AuthService) -> int:
 
 def _do_import(imp: ImportService, text: str, mapping, account_id, source="stmt.csv"):
     preview = imp.preview(text, mapping, account_id)
+    # Every _do_import call-site imports at least one row, so the derived period
+    # is present — assert it (documents the precondition + narrows str | None).
+    assert preview.period_start is not None and preview.period_end is not None
     return imp.commit_import(preview, preview.period_start, preview.period_end, source)
 
 

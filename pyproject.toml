@@ -28,6 +28,11 @@ dependencies = [
     # Argon2id KDF (FIBR-0004). argon2-cffi-bindings vendors the native Argon2
     # library in-wheel, so no system lib is needed (bundling-first, ADR-0007).
     "argon2-cffi==25.1.0",
+    # OFX statement import (FIBR-0008). Pulls beautifulsoup4 + native lxml + six;
+    # ofxparse parses with the stdlib html.parser (lxml is loaded via bs4 but not
+    # used as the parser), so no system lib is needed — the manylinux lxml wheel
+    # is self-contained and travels into the FIBR-0003 bundle (spec § Dependencies).
+    "ofxparse==0.21",
 ]
 
 # PEP 735 dev dependency group. Pinned EXACTLY (==) for a reproducible
@@ -88,5 +93,14 @@ files = ["src", "tests"]
 # qpdf-behind-pikepdf, Argon2). Ignore only their missing imports — this is the
 # per-module root-cause config, not a blanket silence.
 [[tool.mypy.overrides]]
-module = ["sqlcipher3", "sqlcipher3.*", "pikepdf", "argon2", "argon2.*"]
+module = [
+    "sqlcipher3",
+    "sqlcipher3.*",
+    "pikepdf",
+    "argon2",
+    "argon2.*",
+    # ofxparse ships no type stubs (FIBR-0008) — root-cause per-module ignore.
+    "ofxparse",
+    "ofxparse.*",
+]
 ignore_missing_imports = true

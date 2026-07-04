@@ -6,10 +6,10 @@
 |-------|-------|
 | **Project phase** | P06 — OFX import |
 | **Active item ID** | FIBR-0008 |
-| **Active step** | 1 (verify/expand spec) |
+| **Active step** | 3 (write failing tests — TDD) |
 | **Blocked on** | — |
-| **Last update** | 2026-07-03 (FIBR-0007 **closed** by /close-phase: `/audit` (ruff/bandit/semgrep) 0 + `/indie-review` (3 cold lanes) 0 CRIT/HIGH/MED on the closing pass; one LOW fixed inline (preview renders decimals not raw minor units) + test-locked in INV-10c, one INFO surfaced (mapping-combo show/hide). Gate green **165 passed / 1 skipped**, mypy 0. Flipped ROADMAP FIBR-0007 → ✅, wrote docs/journal/FIBR-0007.md, tag FIBR-0007-complete) |
-| **Next gate** | FIBR-0008 step 1 — write/expand `docs/specs/FIBR-0008.md` (P06 OFX import via `ofxparse`, reusing the FIBR-0007 `ImportService` pipeline; period from OFX's embedded DTSTART/DTEND), then `/cold-eyes` to convergence before code (global rule § 14) |
+| **Last update** | 2026-07-04 (FIBR-0008 spec **converged + signed off**: `/cold-eyes` **8 loops**, 24 cold reviewers, 2 CRITICAL + 8 HIGH + ~57 findings fixed; **loop 8 clean across all 3 lanes** → cleared for code per global rule § 14. Deps FIBR-0007/0005/0004 all ✅. Now on step 3: TDD-implement) |
+| **Next gate** | FIBR-0008 step 3/4 — write `tests/features/ofx_import/{spec.md,test_ofx_import.py}` (INV-1..10) red, then implement `importers/base.py` + `ofx_importer.py`, the `ImportService` `_preview_from_result`/`preview_ofx`/`read_file_bytes` refactor, the wizard OFX branch, `pyproject` `ofxparse==0.21`, to green → `/close-phase` (re-run FIBR-0003 build smoke for native lxml) |
 | **Convergence checkpoint** | 5 (consecutive `FP##` items immediately preceding any ✅-`implement`-Kind close in the active release block — see `~/.claude/commands/close-phase.md § 5a-6`) |
 | **Debt-sweep phase threshold** | 5 (auto-prompt for `/debt-sweep` after this many phases without one) |
 | **Last debt sweep** | (none yet) |
@@ -21,11 +21,11 @@ While an item is active, Claude marks the current step 🚧;
 completed steps flip to ✅. Resets to all ⬜ when a new item
 becomes active.
 
-1. ⬜ Verify spec (`docs/specs/FIBR-0008.md`) — draft/expand, then `/cold-eyes`
-2. ⬜ Verify dependencies on the roadmap DAG
-3. ⬜ Write failing tests
-4. ⬜ Implement until tests pass
-5. ⬜ Run `/audit`
+1. ✅ Verify spec (`docs/specs/FIBR-0008.md`) — drafted, `/cold-eyes` 8 loops → converged + signed off
+2. ✅ Verify dependencies on the roadmap DAG — FIBR-0007/0005/0004 all ✅
+3. ✅ Write failing tests — `tests/features/ofx_import/` (32 tests, INV-1..10) red
+4. ✅ Implement until tests pass — gate green **197 passed / 1 skipped**, mypy 0
+5. 🚧 Run `/audit`
 6. ⬜ Run `/indie-review`
 7. ⬜ Fold / fix actionable findings
 8. ⬜ Update CHANGELOG / ROADMAP / journal

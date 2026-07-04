@@ -11,9 +11,10 @@ manager, so the screen is translation-ready and RTL-safe (coding.md § 5.2).
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import cast
 
-from PySide6.QtCore import QDate, Qt, Signal, Slot
+from PySide6.QtCore import QDate, QSignalBlocker, Qt, Signal, Slot
 from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -33,8 +34,10 @@ from PySide6.QtWidgets import (
 )
 
 from finbreak.errors import FinbreakError
+from finbreak.importers.base import ParseResult
 from finbreak.importers.csv_importer import read_header
-from finbreak.models import ColumnMapping
+from finbreak.importers.ofx_importer import OfxImporter
+from finbreak.models import ColumnMapping, OfxAccountInfo
 from finbreak.services.accounts import AccountService
 from finbreak.services.auth import AuthService
 from finbreak.services.import_ import ImportPreview, ImportService
@@ -61,6 +64,10 @@ class ImportWizardWidget(QWidget):
         self._header: list[str] = []
         self._source_path: str = ""
         self._preview: ImportPreview | None = None
+        # OFX only (FIBR-0008): the parsed statements of the picked file, so the
+        # chooser can re-preview a selected one without re-parsing. Empty on the
+        # CSV path (reset on every CSV pick).
+        self._ofx_statements: list[tuple[OfxAccountInfo, ParseResult]] = []
 
         self._stack = QStackedLayout()
         self._error = QLabel()
@@ -149,6 +156,13 @@ class ImportWizardWidget(QWidget):
     # -- step 2: preview ------------------------------------------------------
     def _build_preview_step(self) -> QWidget:
         page = QWidget()
+        # OFX-only statement chooser (FIBR-0008 D8) — shown only for a
+        # multi-account file; selecting an entry re-previews that statement.
+        self._ofx_statement_combo = QComboBox()
+        self._ofx_statement_combo.hide()
+        self._ofx_statement_combo.currentIndexChanged.connect(
+            self._on_ofx_statement_changed
+        )
         self._preview_table = QTableWidget(0, 5)
         self._preview_table.setHorizontalHeaderLabels(
             [
@@ -179,6 +193,7 @@ class ImportWizardWidget(QWidget):
         buttons.addWidget(self._import_button)
 
         layout = QVBoxLayout(page)
+        layout.addWidget(self._ofx_statement_combo)
         layout.addWidget(self._preview_table)
         layout.addWidget(self._summary_label)
         layout.addLayout(period)
@@ -196,20 +211,29 @@ class ImportWizardWidget(QWidget):
     def _on_pick_file(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
             self,
-            self.tr("Choose a statement CSV"),
+            self.tr("Choose a statement file"),
             "",
-            self.tr("CSV files (*.csv);;All files (*)"),
+            self.tr("Statement files (*.csv *.ofx *.qfx);;All files (*)"),
         )
         if path:
             self._select_file(path)
 
     def _select_file(self, path: str) -> None:
-        """Load the picked file, populate the mapping combos, and route: an
-        exact-signature match auto-applies its profile and jumps to the preview
-        (INV-10a); no match shows the mapping step (INV-10b/INV-9)."""
+        """Load the picked file and route by format. **OFX** (FIBR-0008 D10):
+        parse and jump straight to the preview, **skipping** the mapping step
+        (self-describing). **CSV** (FIBR-0007): an exact-signature match
+        auto-applies its profile and jumps to the preview (INV-10a); no match
+        shows the mapping step (INV-10b)."""
         self._error.clear()
         self._source_path = path
         self._account_id = self._account_combo.currentData()
+        if self._looks_like_ofx(path):
+            self._select_ofx(path)
+            return
+        # CSV path — reset any OFX chooser state so a prior OFX pick's chooser
+        # never lingers when switching to a CSV file (FIBR-0008 wizard step 7).
+        self._ofx_statements = []
+        self._ofx_statement_combo.hide()
         try:
             text = self._imports.read_file(path)
             header = read_header(text)  # raises ValueError on an empty file
@@ -224,6 +248,69 @@ class ImportWizardWidget(QWidget):
             self._run_preview(matched.column_mapping())
         else:
             self._goto_step(_STEP_MAP)
+
+    @staticmethod
+    def _looks_like_ofx(path: str) -> bool:
+        """OFX detection (FIBR-0008 D10): by extension (``.ofx``/``.qfx``), with a
+        **bounded** content-sniff fallback (the first 512 bytes only — never the
+        whole file, so the size cap can't be bypassed by the sniff) for a
+        mis-named file. A ``.csv`` extension is always CSV."""
+        lower = path.lower()
+        if lower.endswith((".ofx", ".qfx")):
+            return True
+        if lower.endswith(".csv"):
+            return False
+        try:
+            with Path(path).open("rb") as fh:
+                head = fh.read(512).lstrip().upper()
+        except OSError:
+            return False  # a missing/unreadable file falls through to the CSV path,
+            # which re-reads it and surfaces the OSError as a shown message.
+        return head.startswith(b"OFXHEADER") or b"<OFX" in head
+
+    def _select_ofx(self, path: str) -> None:
+        """Read (size-capped, D13) + parse the OFX file, populate the statement
+        chooser (shown only for a multi-account file, D8), and preview the first
+        statement. A malformed / statement-less / oversized file surfaces its
+        friendly ``ValueError`` as a shown message (INV-4/INV-10)."""
+        try:
+            data = self._imports.read_file_bytes(path)  # size-capped read (D13)
+            statements = OfxImporter().parse(data, self._exponent)
+        except (ValueError, OSError, FinbreakError) as exc:
+            self._error.setText(str(exc))
+            return
+        # Single reassignment displaces any prior file's list (the "reset").
+        self._ofx_statements = statements
+        combo = self._ofx_statement_combo
+        with QSignalBlocker(combo):  # don't fire currentIndexChanged mid-populate
+            combo.clear()
+            for index, (info, _result) in enumerate(statements):
+                label = (
+                    f"{info.account_id} · {info.account_type}"
+                    if info.account_type
+                    else info.account_id
+                )
+                combo.addItem(label, index)
+        # Shown for >1 statement, hidden for a single one — set explicitly on
+        # every OFX pick, so a prior file's visibility never leaks (D8).
+        combo.setVisible(len(statements) > 1)
+        self._preview_ofx_statement(0)
+
+    def _preview_ofx_statement(self, index: int) -> None:
+        _info, result = self._ofx_statements[index]
+        try:
+            preview = self._imports.preview_ofx(result, self._account_id)
+        except (ValueError, FinbreakError) as exc:
+            self._error.setText(str(exc))
+            return
+        self._show_preview(preview)
+
+    @Slot(int)
+    def _on_ofx_statement_changed(self, index: int) -> None:
+        # Re-preview the chosen statement (no separate "Next" button, INV-7e).
+        if 0 <= index < len(self._ofx_statements):
+            self._error.clear()
+            self._preview_ofx_statement(index)
 
     def _populate_mapping_combos(self, header: list[str]) -> None:
         for combo in self._column_combos.values():
@@ -271,13 +358,20 @@ class ImportWizardWidget(QWidget):
         )
 
     def _run_preview(self, mapping: ColumnMapping) -> None:
-        # _run_preview is only reached after _select_file loads the text.
+        # _run_preview is only reached after _select_file loads the text (CSV).
         text = cast(str, self._text)
         try:
             preview = self._imports.preview(text, mapping, self._account_id)
         except (ValueError, FinbreakError) as exc:
             self._error.setText(str(exc))
             return
+        self._show_preview(preview)
+
+    def _show_preview(self, preview: ImportPreview) -> None:
+        """Render a preview + go to the preview step — the shared step the CSV
+        driver (``_run_preview``) and the OFX path (``_preview_ofx_statement``)
+        both call (FIBR-0008 D2 wizard seam). Owns the ``self._preview`` stash
+        ``_on_import`` reads (else an Import press would silently no-op)."""
         self._preview = preview
         self._fill_preview_table(preview)
         self._summary_label.setText(
@@ -288,9 +382,13 @@ class ImportWizardWidget(QWidget):
             )
         )
         self._set_period_defaults(preview)
-        # Sole disable predicate: zero drafts (an all-duplicate file stays enabled
-        # so the user can still record its coverage period — INV-4/INV-10e).
-        self._import_button.setEnabled(len(preview.drafts) > 0)
+        # Import stays enabled when there are drafts OR a coverage period to
+        # record — so an all-duplicate CSV and a quiet-month OFX (zero drafts,
+        # embedded span, FIBR-0008 D14) both keep Import live. Equivalent for CSV
+        # (a CSV with zero drafts has period_start == None, INV-9).
+        self._import_button.setEnabled(
+            len(preview.drafts) > 0 or preview.period_start is not None
+        )
         self._goto_step(_STEP_PREVIEW)
 
     def _fill_preview_table(self, preview: ImportPreview) -> None:

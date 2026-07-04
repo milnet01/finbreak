@@ -112,6 +112,17 @@ class TransactionDraft:
 
 
 @dataclass
+class OfxAccountInfo:
+    """The per-statement summary an OFX file surfaces (FIBR-0008 D8). Both fields
+    come straight from the ofxparse ``Account``; ``account_type`` is ``""`` for a
+    credit-card statement (``<CCSTMTRS>``), so the wizard's chooser falls back to
+    the id alone. Not persisted — it only labels the statement chooser."""
+
+    account_id: str
+    account_type: str
+
+
+@dataclass
 class ImportProfile:
     """One saved bank layout (FIBR-0007). ``signature`` is the exact header
     fingerprint (the match key, ``UNIQUE`` at the DB). Exactly one amount style
