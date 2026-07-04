@@ -367,12 +367,6 @@ lands on top.
   Kind: package.
   Source: user-request-2026-07-04.
 
-- 💭 [FIBR-0046] **Official paid app stores: Microsoft Store + Mac App Store (pending a spend decision).**
-  The widest-reach channels for non-technical users, but both are gated on a paid developer account plus extra platform work, so this stays a CONSIDERED item pending an explicit go-ahead + budget: (a) Microsoft Store — a one-time ~$19 developer account, MSIX packaging + code-signing; (b) Mac App Store — a ~$99/year Apple Developer Program membership, notarization + app-sandbox rework (ADR-0007 currently ships an UNSIGNED .app/.dmg, so sandboxing is net-new). The local-only, no-network design is store-review-friendly. Awaiting the user's cost decision before promoting to planned. Depends on FIBR-0015. (Asked 2026-07-04; user was away — defaulting to 'considered' rather than committing to paid accounts.)
-  **Layman:** The big official stores reach the most non-technical users, but each needs a paid developer account and extra signing work — so this is parked until you decide it's worth the cost.
-  Kind: package.
-  Source: user-request-2026-07-04.
-
 ## Enhancements & performance backlog
 
 Ideas captured 2026-07-01 from a product / performance review
