@@ -354,6 +354,24 @@ lands on top.
 
 ---
 
+- 📋 [FIBR-0044] **Broaden Linux store reach: Snap Store + AUR + native distro packages.**
+  Flathub (FIBR-0015) already surfaces the app in GNOME Software + KDE Discover across most distros, so this item adds the remaining self-publishable Linux channels: (a) Snap Store — a snapcraft.yaml (Ubuntu App Centre's default backend); (b) AUR — a PKGBUILD pointing at the GitHub release/AppImage (community-maintained, low overhead); (c) native RPM + DEB packages for Fedora/openSUSE/Debian/Ubuntu built via the openSUSE Build Service (OBS) and/or Fedora COPR, published to a project repo. (Getting INTO official distro repos is maintainer-driven and slow — tracked separately if pursued.) All free, all self-publish. Depends on FIBR-0015 (the built artifacts) and FIBR-0016 (release automation extends to push each channel).
+  **Layman:** Beyond Flathub (which already puts us in most Linux app stores), also publish to Ubuntu's Snap Store and Arch's AUR, plus ready-to-install packages for Fedora/openSUSE/Debian — so almost any Linux user can install us in one click.
+  Kind: package.
+  Source: user-request-2026-07-04.
+
+- 📋 [FIBR-0045] **Free Windows/macOS package managers: winget, Chocolatey, Homebrew Cask.**
+  Free, self-publishable manager listings that just reference the GitHub Release artifact: (a) winget — a manifest PR to microsoft/winget-pkgs (`winget install finbreak`); (b) Chocolatey — a community nuspec package; (c) Homebrew Cask — a Ruby cask pointing at the macOS .dmg (`brew install --cask finbreak`). No paid account and no signing rework beyond what FIBR-0015 already does. Reaches the more technical slice of Windows/Mac users and gives them auto-update. Depends on FIBR-0015/FIBR-0016.
+  **Layman:** Also list the app in the free 'app installers' many Windows and Mac users already use, so they can install and auto-update it with one command — no store account needed from us.
+  Kind: package.
+  Source: user-request-2026-07-04.
+
+- 💭 [FIBR-0046] **Official paid app stores: Microsoft Store + Mac App Store (pending a spend decision).**
+  The widest-reach channels for non-technical users, but both are gated on a paid developer account plus extra platform work, so this stays a CONSIDERED item pending an explicit go-ahead + budget: (a) Microsoft Store — a one-time ~$19 developer account, MSIX packaging + code-signing; (b) Mac App Store — a ~$99/year Apple Developer Program membership, notarization + app-sandbox rework (ADR-0007 currently ships an UNSIGNED .app/.dmg, so sandboxing is net-new). The local-only, no-network design is store-review-friendly. Awaiting the user's cost decision before promoting to planned. Depends on FIBR-0015. (Asked 2026-07-04; user was away — defaulting to 'considered' rather than committing to paid accounts.)
+  **Layman:** The big official stores reach the most non-technical users, but each needs a paid developer account and extra signing work — so this is parked until you decide it's worth the cost.
+  Kind: package.
+  Source: user-request-2026-07-04.
+
 ## Enhancements & performance backlog
 
 Ideas captured 2026-07-01 from a product / performance review
