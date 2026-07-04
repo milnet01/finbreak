@@ -6,10 +6,10 @@
 |-------|-------|
 | **Project phase** | P07 — PDF statement import |
 | **Active item ID** | FIBR-0009 |
-| **Active step** | 1 (verify/expand spec) |
+| **Active step** | 3 (write failing tests → implement) |
 | **Blocked on** | — |
-| **Last update** | 2026-07-04 (FIBR-0008 **closed** by the 9-step loop: `/audit` 0 + `/indie-review` (3 cold lanes) fixed inline / deferred (tz-DTPOSTED → FIBR-0042); gate green **199 passed / 1 skipped**, mypy 0; **FIBR-0003 build smoke re-run GREEN** — both artifacts print the sentinel Python-free (all 5 native stacks travel, incl. ofxparse/lxml; fixed a latent argon2 dep-drift in the build script). Flipped ROADMAP FIBR-0008 → ✅, wrote docs/journal/FIBR-0008.md, tag FIBR-0008-complete) |
-| **Next gate** | FIBR-0009 step 1 — write/expand `docs/specs/FIBR-0009.md` (P07 PDF statement import, incl. locked PDFs; feeds the same `ImportService` pipeline as CSV/OFX; `pdfplumber` + `pikepdf` for AES-decrypt of locked inputs, ADR-0004), then `/cold-eyes` to convergence before code (global rule § 14) |
+| **Last update** | 2026-07-04 (FIBR-0009 **spec CONVERGED + signed off** — 8 `/cold-eyes` loops, 24 cold reviewers across 3 lanes; findings fell CRIT(loop 2 self-correction)→HIGH→MED→0-HIGH, design stable+clean since loop 2, lanes 1+3 clean the final 3 loops. Table-extraction approach: lift the transaction table via `pdfplumber` → serialise to CSV text → feed the existing CSV mapping→parse→preview→dedup→commit pipeline verbatim; in-memory `pikepdf` decrypt of locked PDFs (never to disk, INV-2); opt-in remembered password inside the vault (v5 nullable column); wrong password re-prompts. APIs empirically verified (pdfplumber 0.11.10 / pikepdf 10.9.1). Also: logged an Ants-MCP feedback re-verification (ANTS-3419 fixed; 3438/3439 still open)) |
+| **Next gate** | FIBR-0009 step 3 — write `tests/features/pdf_import/{spec.md,test_pdf_import.py}` red (INV-1/1a/2..11/7a-f), then implement the 9 Deliverables to green: `importers/pdf_importer.py`, `_migrate_to_v5`, accounts repo+service accessors, the `ImportService` D10 rename, the wizard PDF branch, `ui/password_dialog.py`, `pyproject` `pdfplumber==0.11.10`, `_selftest.py` leg. Then `/close-phase` |
 | **Convergence checkpoint** | 5 (consecutive `FP##` items immediately preceding any ✅-`implement`-Kind close in the active release block — see `~/.claude/commands/close-phase.md § 5a-6`) |
 | **Debt-sweep phase threshold** | 5 (auto-prompt for `/debt-sweep` after this many phases without one) |
 | **Last debt sweep** | (none yet) |
@@ -21,9 +21,9 @@ While an item is active, Claude marks the current step 🚧;
 completed steps flip to ✅. Resets to all ⬜ when a new item
 becomes active.
 
-1. ⬜ Verify spec (`docs/specs/FIBR-0009.md`) — draft/expand, then `/cold-eyes`
-2. ⬜ Verify dependencies on the roadmap DAG
-3. ⬜ Write failing tests
+1. ✅ Verify spec (`docs/specs/FIBR-0009.md`) — drafted + `/cold-eyes` **converged** (8 loops, 2026-07-04)
+2. ✅ Verify dependencies on the roadmap DAG — depends on FIBR-0007 (✅); FIBR-0008 (✅) touched by the D10 rename
+3. 🚧 Write failing tests
 4. ⬜ Implement until tests pass
 5. ⬜ Run `/audit`
 6. ⬜ Run `/indie-review`
@@ -87,6 +87,41 @@ journal); §2 is the only part that changes.
 ## §3. Session journal
 
 Append-only. Newest at the top.
+
+### 2026-07-04 — FIBR-0009 spec drafted + `/cold-eyes` CONVERGED (P07 PDF import, 8 loops)
+
+Opened P07. Brainstormed the core fork with the user (how to turn varied per-bank
+PDF layouts into mappable columns) → **user approved the table-extraction
+approach**: lift the transaction table via `pdfplumber.extract_tables()`, serialise
+it to CSV text (`table_to_text`), and feed the **existing** CSV
+mapping→parse→preview→dedup→commit pipeline verbatim (max reuse — the new importer
+is an *extractor*, not a second parser). Locked PDFs decrypted **in memory only**
+via `pikepdf` (never to disk, INV-2); opt-in remembered password stored inside the
+already-encrypted vault (v5 nullable `accounts.statement_pdf_password`); wrong
+password re-prompts. Empirically verified the whole chain before drafting (§13):
+`pdfplumber 0.11.10` / `pikepdf 10.9.1`, extract_tables shape, `pikepdf.PasswordError`,
+in-memory save-strip, owner-only behaviour, and the native transitive surface
+(Pillow + pypdfium2/`pypdfium2_raw` + cryptography — a FIBR-0003 bundle obligation).
+
+**Cold-eyes (global rule §14): 8 loops, 3 cold lanes/loop** (accuracy vs live
+libs+reused code · implementability/testability · cross-doc). Trajectory:
+**loop 2 = 1 CRITICAL self-correction** (my loop-1 "pdfplumber can't extract
+owner-only" was a probe artifact — the sample table lacked grid lines, so
+line-based detection returned `[]`; re-verified owner-only extracts fine + pikepdf
+save-strips it; D3 re-justified on the clean `PasswordError` signal, not
+"required"). Loops 3–5: test-completeness + testability precision (the 5-suite
+schema-version ripple, the `$TMPDIR`+`tempfile.tempdir` filesystem sentinel, the
+D13 header-uniquify, the credential service seam). **Loops 6–8: lanes 1+3 clean;
+the residual HIGH/MED were all self-introduced doc-wording nits in the wizard
+chooser-reset + test-ripple instructions** (fixed the OFX→PDF chooser leak by
+hoisting both resets before the format dispatch). The **design was stable+clean
+since loop 2**. User chose "one more pass then build" at the loop-5 guard; loop 8's
+sole finding (1 MED wording self-consistency) was fixed + self-verified → **signed
+off, cleared for code**. Committed + pushed each loop (`2fafb31` draft →
+`53f5737`… → loop-8 sign-off).
+
+Next: step 3 — write `tests/features/pdf_import/` red, then the 9 Deliverables to
+green → `/close-phase`.
 
 ### 2026-07-04 — FIBR-0008 closed (P06 OFX import)
 
