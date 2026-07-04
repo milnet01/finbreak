@@ -4,12 +4,12 @@
 
 | Field | Value |
 |-------|-------|
-| **Project phase** | P06 — OFX import |
-| **Active item ID** | FIBR-0008 |
-| **Active step** | 3 (write failing tests — TDD) |
+| **Project phase** | P07 — PDF statement import |
+| **Active item ID** | FIBR-0009 |
+| **Active step** | 1 (verify/expand spec) |
 | **Blocked on** | — |
-| **Last update** | 2026-07-04 (FIBR-0008 spec **converged + signed off**: `/cold-eyes` **8 loops**, 24 cold reviewers, 2 CRITICAL + 8 HIGH + ~57 findings fixed; **loop 8 clean across all 3 lanes** → cleared for code per global rule § 14. Deps FIBR-0007/0005/0004 all ✅. Now on step 3: TDD-implement) |
-| **Next gate** | FIBR-0008 step 3/4 — write `tests/features/ofx_import/{spec.md,test_ofx_import.py}` (INV-1..10) red, then implement `importers/base.py` + `ofx_importer.py`, the `ImportService` `_preview_from_result`/`preview_ofx`/`read_file_bytes` refactor, the wizard OFX branch, `pyproject` `ofxparse==0.21`, to green → `/close-phase` (re-run FIBR-0003 build smoke for native lxml) |
+| **Last update** | 2026-07-04 (FIBR-0008 **closed** by the 9-step loop: `/audit` 0 + `/indie-review` (3 cold lanes) fixed inline / deferred (tz-DTPOSTED → FIBR-0042); gate green **199 passed / 1 skipped**, mypy 0; **FIBR-0003 build smoke re-run GREEN** — both artifacts print the sentinel Python-free (all 5 native stacks travel, incl. ofxparse/lxml; fixed a latent argon2 dep-drift in the build script). Flipped ROADMAP FIBR-0008 → ✅, wrote docs/journal/FIBR-0008.md, tag FIBR-0008-complete) |
+| **Next gate** | FIBR-0009 step 1 — write/expand `docs/specs/FIBR-0009.md` (P07 PDF statement import, incl. locked PDFs; feeds the same `ImportService` pipeline as CSV/OFX; `pdfplumber` + `pikepdf` for AES-decrypt of locked inputs, ADR-0004), then `/cold-eyes` to convergence before code (global rule § 14) |
 | **Convergence checkpoint** | 5 (consecutive `FP##` items immediately preceding any ✅-`implement`-Kind close in the active release block — see `~/.claude/commands/close-phase.md § 5a-6`) |
 | **Debt-sweep phase threshold** | 5 (auto-prompt for `/debt-sweep` after this many phases without one) |
 | **Last debt sweep** | (none yet) |
@@ -21,11 +21,11 @@ While an item is active, Claude marks the current step 🚧;
 completed steps flip to ✅. Resets to all ⬜ when a new item
 becomes active.
 
-1. ✅ Verify spec (`docs/specs/FIBR-0008.md`) — drafted, `/cold-eyes` 8 loops → converged + signed off
-2. ✅ Verify dependencies on the roadmap DAG — FIBR-0007/0005/0004 all ✅
-3. ✅ Write failing tests — `tests/features/ofx_import/` (32 tests, INV-1..10) red
-4. ✅ Implement until tests pass — gate green **197 passed / 1 skipped**, mypy 0
-5. 🚧 Run `/audit`
+1. ⬜ Verify spec (`docs/specs/FIBR-0009.md`) — draft/expand, then `/cold-eyes`
+2. ⬜ Verify dependencies on the roadmap DAG
+3. ⬜ Write failing tests
+4. ⬜ Implement until tests pass
+5. ⬜ Run `/audit`
 6. ⬜ Run `/indie-review`
 7. ⬜ Fold / fix actionable findings
 8. ⬜ Update CHANGELOG / ROADMAP / journal
@@ -87,6 +87,38 @@ journal); §2 is the only part that changes.
 ## §3. Session journal
 
 Append-only. Newest at the top.
+
+### 2026-07-04 — FIBR-0008 closed (P06 OFX import)
+
+Cold-eyes loops 6–8 converged the spec (loop 6: 1 HIGH INV-1c contradiction +
+1 MED `_show_preview` stash + 2 LOW; loop 7: 2 self-introduced doc nits; **loop
+8 clean** across all 3 lanes) → signed off. TDD: wrote `tests/features/ofx_import/`
+(33 tests) red, then implemented the pure `OfxImporter` (base.py move + D2
+`_preview_from_result`/`preview_ofx`/`read_file_bytes` seam + wizard OFX branch +
+`ofxparse==0.21`; **no schema change**, D9) to green. Fixed a **pre-existing
+FIBR-0007 mypy error** the full-tree run surfaced (`_do_import` str|None).
+
+Close (steps 5–9, autonomous): `/audit` (Ants) **0**; `/indie-review` 3 cold
+lanes — 1 MED + 3 LOW test/coverage gaps + 1 INFO spec-drift **fixed inline**,
+1 LOW (tz-`<DTPOSTED>` UTC day-shift) **deferred → FIBR-0042** (out of contract +
+blocked by ofxparse's API). Gate green **199 passed / 1 skipped**, mypy 0.
+
+**FIBR-0003 build smoke re-run (DoD #2 — native lxml must travel):** it caught a
+**latent bug** — the clean-room bundle failed at `argon2`
+(`ModuleNotFoundError`). Root cause: `_build-smoke-in-container.sh` installed a
+hand-maintained dep list that never got `argon2-cffi` (added FIBR-0004; its slow
+opt-in smoke wasn't re-run in the pure-Python P05–P07 phases since). Fixed at
+root (no workaround): install runtime deps read straight from `pyproject`
+(can't drift) + `--collect-all` the native packages, and added a fifth self-test
+leg (`_check_ofxparse`) since `--self-test` never imports the app. Both onefile +
+AppImage now print `FINBREAK_SELFTEST_OK` Python-free. Flipped ROADMAP
+FIBR-0008 → ✅, wrote `docs/journal/FIBR-0008.md`, tag `FIBR-0008-complete`.
+Allowlist unchanged (no false positives). Commits: `936171b` (spec converged),
+`36589f0` (impl), `f8d3592` (close-review + build fix).
+
+Next: FIBR-0009 (P07 PDF statement import) step 1 — draft/expand the spec
+(`pdfplumber` + `pikepdf` for locked-PDF AES-decrypt, ADR-0004; feeds the same
+ImportService pipeline), then `/cold-eyes` to convergence.
 
 ### 2026-07-03 — FIBR-0008 spec drafted + `/cold-eyes` (loops 1–3; loop 4 pending)
 

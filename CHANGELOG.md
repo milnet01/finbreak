@@ -23,6 +23,23 @@ signaling per
 
 ### Added
 
+- **Import transactions from an OFX bank file.** OFX (Open Financial Exchange)
+  is the standard format almost every bank offers as a download. Because it
+  describes itself — the dates, amounts, descriptions, and the statement's date
+  range are all built into the format — finbreak needs **no column-mapping step**
+  for it: pick an `.ofx`/`.qfx` file and you go straight to the same **preview**
+  (every row, the "N new · M duplicate · K error" tally, the statement dates
+  filled in for you) as a CSV import, then Import. It flows through the exact
+  same machinery as CSV, so re-importing a statement you already loaded adds **no
+  duplicates**, an OFX row that matches one you typed by hand is recognised as
+  the same, and a row it can't read is listed rather than dropped. A file that
+  covers **more than one account** (say a bank account plus a credit card) shows
+  a small chooser so you pick which one to import; a "quiet month" with a real
+  date range but no transactions still records its coverage. Money stays exact
+  whole-cent amounts throughout (never a lossy decimal), and an over-large or
+  over-long file is refused up front. No change to your existing data — OFX
+  reuses the same storage the CSV import added. (FIBR-0008)
+
 - **Import transactions from a bank-statement CSV file.** Instead of typing
   every transaction by hand, point finbreak at a CSV your bank gives you and it
   reads the transactions in. Because every bank lays its CSV out differently,

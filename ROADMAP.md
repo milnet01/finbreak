@@ -186,12 +186,13 @@ lands on top.
 
 ### 🎨 Features
 
-- 📋 [FIBR-0008] **P06: OFX import.** `OfxImporter` via
+- ✅ [FIBR-0008] **P06: OFX import.** `OfxImporter` via
   `ofxparse`, feeding the same `ImportService` pipeline (dedup,
   categorisation, transfer detection) built in P05. OFX is a
   worldwide standard needing no mapping profile. Dependencies:
   FIBR-0007. Lanes: importers, services, tests. Kind: implement.
   Source: planned.
+  Resolved (2026-07-04): P06 OFX import shipped. Pure OfxImporter -> the same ParseResult/ImportService pipeline as CSV (D2 _preview_from_result seam); embedded DTSTART/DTEND period (D4); payee-else-memo (D5); all-or-nothing-per-statement error model (D15); resource caps (D13); wizard OFX branch skips mapping + a multi-account chooser (D8/D10); no schema change (D9). Spec cold-eyes-converged (8 loops). Gate green 199 passed / 1 skipped, mypy 0; /audit 0, /indie-review fixed inline (deferred the tz-DTPOSTED day-shift -> FIBR-0042). FIBR-0003 build smoke re-run green (all five native stacks travel, incl. ofxparse/lxml; fixed a latent argon2 dep-drift in the build script en route). Tag FIBR-0008-complete.
 
 ---
 
