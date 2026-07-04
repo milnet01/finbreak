@@ -4,12 +4,12 @@
 
 | Field | Value |
 |-------|-------|
-| **Project phase** | P07 — PDF statement import |
-| **Active item ID** | FIBR-0009 |
-| **Active step** | 5 (implement DONE + gate green; next: `/audit` + `/indie-review`) |
+| **Project phase** | P08 — Auto-categorisation rules |
+| **Active item ID** | FIBR-0010 |
+| **Active step** | 1 (draft/expand the spec → `/cold-eyes` to convergence) |
 | **Blocked on** | — |
-| **Last update** | 2026-07-04 (FIBR-0009 **spec CONVERGED + signed off** — 8 `/cold-eyes` loops, 24 cold reviewers across 3 lanes; findings fell CRIT(loop 2 self-correction)→HIGH→MED→0-HIGH, design stable+clean since loop 2, lanes 1+3 clean the final 3 loops. Table-extraction approach: lift the transaction table via `pdfplumber` → serialise to CSV text → feed the existing CSV mapping→parse→preview→dedup→commit pipeline verbatim; in-memory `pikepdf` decrypt of locked PDFs (never to disk, INV-2); opt-in remembered password inside the vault (v5 nullable column); wrong password re-prompts. APIs empirically verified (pdfplumber 0.11.10 / pikepdf 10.9.1). Also: logged an Ants-MCP feedback re-verification (ANTS-3419 fixed; 3438/3439 still open)) |
-| **Next gate** | FIBR-0009 step 3 — write `tests/features/pdf_import/{spec.md,test_pdf_import.py}` red (INV-1/1a/2..11/7a-f), then implement the 9 Deliverables to green: `importers/pdf_importer.py`, `_migrate_to_v5`, accounts repo+service accessors, the `ImportService` D10 rename, the wizard PDF branch, `ui/password_dialog.py`, `pyproject` `pdfplumber==0.11.10`, `_selftest.py` leg. Then `/close-phase` |
+| **Last update** | 2026-07-04 (FIBR-0009 **CLOSED** by `/close-phase` — P07 PDF import shipped. TDD: 41-test `tests/features/pdf_import/` + the extract-then-CSV-adapter `PdfImporter` (in-memory `pikepdf` decrypt, D8 grouping / D13 uniquify), the v5 migration, accounts credential accessors, the D10 rename, the wizard PDF branch + `password_dialog`, the `_selftest` pdfplumber leg. Schema ripple `==4`→`==5` across 5 suites. Gate green 240 passed/1 skipped, mypy 0; FIBR-0003 build smoke PASS. Close: `/audit` 0, `/indie-review` 3 cold lanes (2 clean, 1 LOW coverage-gap fixed inline). Also: repointed stale `.venv` shebangs (dir-rename fallout); created + pinned a `finbreak.desktop` launcher (runs current `src/`); Ants-MCP feedback re-verified (ANTS-3438 still reproduces; 3439 moot for this project). Tag `FIBR-0009-complete`) |
+| **Next gate** | FIBR-0010 step 1 — draft/expand `docs/specs/FIBR-0010.md` (P08 rules engine + manual override; the transaction→category link deferred here from P04/FIBR-0006 D10), then `/cold-eyes` to convergence before code |
 | **Convergence checkpoint** | 5 (consecutive `FP##` items immediately preceding any ✅-`implement`-Kind close in the active release block — see `~/.claude/commands/close-phase.md § 5a-6`) |
 | **Debt-sweep phase threshold** | 5 (auto-prompt for `/debt-sweep` after this many phases without one) |
 | **Last debt sweep** | (none yet) |
@@ -21,15 +21,29 @@ While an item is active, Claude marks the current step 🚧;
 completed steps flip to ✅. Resets to all ⬜ when a new item
 becomes active.
 
-1. ✅ Verify spec (`docs/specs/FIBR-0009.md`) — drafted + `/cold-eyes` **converged** (8 loops, 2026-07-04)
-2. ✅ Verify dependencies on the roadmap DAG — depends on FIBR-0007 (✅); FIBR-0008 (✅) touched by the D10 rename
-3. ✅ Write failing tests (`tests/features/pdf_import/`, 40 tests, confirmed red)
-4. ✅ Implement until tests pass (gate green 239/1-skip, mypy 0, build smoke PASS)
+1. ⬜ Verify spec (`docs/specs/FIBR-0010.md`)
+2. ⬜ Verify dependencies on the roadmap DAG
+3. ⬜ Write failing tests
+4. ⬜ Implement until tests pass
 5. ⬜ Run `/audit`
 6. ⬜ Run `/indie-review`
 7. ⬜ Fold / fix actionable findings
 8. ⬜ Update CHANGELOG / ROADMAP / journal
 9. ⬜ Commit, tag `<ID>-complete` (clean close only), push
+
+### FIBR-0009 close record (P07, closed 2026-07-04)
+
+TDD: 41-test `tests/features/pdf_import/` red → the 9 Deliverables to green
+(the extract-then-CSV-adapter `PdfImporter`, in-memory `pikepdf` decrypt, v5
+migration, credential accessors, D10 rename, wizard PDF branch +
+`password_dialog`, `_selftest` pdfplumber leg). Schema ripple `==4`→`==5` across
+vault/accounts/categories/import_/ofx_import. Gate green **240 passed / 1
+skipped**, mypy 0; FIBR-0003 build smoke **PASS** (native PDF tree travels).
+Close (steps 5–9): `/audit` **0**; `/indie-review` 3 cold lanes — 2 CLEAN, 1
+actionable LOW (INV-4 unencrypted-PDF-ignores-stored-password coverage gap)
+**fixed inline**, informational notes accepted. Allowlist unchanged. Fixture
+`Description`-column deviation surfaced in the spec (§14). Tag
+`FIBR-0009-complete`.
 
 ### FIBR-0004 close record (P02, closed 2026-07-02)
 

@@ -23,6 +23,23 @@ signaling per
 
 ### Added
 
+- ****Import transactions from a PDF bank statement — including password-locked ones.** (FIBR-0009)**
+  Many banks only give you a PDF. finbreak now reads the transaction
+  table straight off the page: pick a `.pdf` and it lifts the rows out,
+  then hands you the same familiar column-mapping and preview screens as a
+  CSV import (so a bank layout you map once is remembered for next time).
+  If the statement is **password-protected**, finbreak asks for the
+  password and unlocks it **entirely in memory — the unlocked file is
+  never written to your disk** — and you can tick "remember this password
+  for this account" (off by default) so it's stored, encrypted, inside
+  your vault; a wrong password just asks again instead of giving up. If a
+  statement holds more than one table (say a summary and the transactions),
+  you're shown a small chooser to pick the right one. It flows through the
+  exact same machinery as CSV and OFX, so re-importing a statement adds no
+  duplicates and the money stays exact to the cent. Statements printed as
+  free-flowing text (no ruled table) or scanned images aren't supported yet
+  — finbreak tells you to try your bank's CSV or OFX export instead.
+
 - **Import transactions from an OFX bank file.** OFX (Open Financial Exchange)
   is the standard format almost every bank offers as a download. Because it
   describes itself — the dates, amounts, descriptions, and the statement's date

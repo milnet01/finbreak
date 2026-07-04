@@ -457,6 +457,30 @@ def test_INV7f_stored_password_that_fails_falls_back_to_prompt(
     assert widget._stack.currentIndex() == 1
 
 
+def test_INV4_unencrypted_pdf_never_consults_stored_password(
+    qtbot, service, tmp_path, monkeypatch
+):
+    # INV-4: an unencrypted PDF (no PasswordError) must NOT consult a stored
+    # password — the first candidate_tables(None) succeeds before any stored
+    # lookup — and must not overwrite it. No dialog is shown.
+    acct = _acct(service)
+    AccountService(service.vault).set_pdf_password(acct, "unrelated-stored-pw")
+    path = _write(tmp_path, "plain.pdf", _fixture("single_table.pdf"))  # unencrypted
+    from finbreak.ui import import_wizard
+
+    class _NoDialog:
+        def __init__(self, *a, **k):
+            raise AssertionError("dialog shown for an unencrypted PDF")
+
+    monkeypatch.setattr(import_wizard, "PasswordDialog", _NoDialog)
+    widget = _wizard(qtbot, service, acct)
+    widget._select_file(str(path))
+    assert widget._stack.currentIndex() == 1, "unencrypted -> map step, no prompt"
+    assert (
+        AccountService(service.vault).get_pdf_password(acct) == "unrelated-stored-pw"
+    ), "the stored password is neither consulted nor overwritten"
+
+
 # --------------------------------------------------------------------------- #
 # INV-8 — v4->v5 migration + credential hygiene
 # --------------------------------------------------------------------------- #

@@ -200,8 +200,8 @@ lands on top.
 
 ### 🎨 Features · 🔒 Security
 
-- 📋 [FIBR-0009] **P07: PDF statement import with
-  in-memory decrypt.** `PdfImporter` (`pdfplumber` text/table
+- ✅ [FIBR-0009] **P07: PDF statement import with
+  in-memory decrypt.** `PdfImporter` (`pdfplumber` table
   extraction) on the P05 pipeline; password-protected statements
   are decrypted **in memory only** (`pikepdf`, never written
   decrypted to disk); opt-in "remember this password" stores it
@@ -210,6 +210,7 @@ lands on top.
   re-prompts rather than aborting the import. Dependencies: FIBR-0007.
   Lanes: importers, services, security, ui, tests. Kind:
   implement. Source: planned.
+  Resolved (2026-07-04): PdfImporter (extract-then-CSV-adapter) + in-memory pikepdf decrypt + opt-in remembered password (v5 column) + wizard PDF branch. TDD; gate green 240 passed/1 skipped, mypy 0; FIBR-0003 build smoke PASS (native PDF tree travels). /close-phase: /audit 0, /indie-review 3 lanes (2 clean, 1 LOW coverage gap fixed inline). Free-text/OCR PDFs deferred (§ Out of scope). See docs/journal/FIBR-0009.md.
 
 ---
 
