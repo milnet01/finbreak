@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDateEdit,
+    QDialog,
     QFileDialog,
     QFormLayout,
     QHBoxLayout,
@@ -37,11 +38,13 @@ from finbreak.errors import FinbreakError
 from finbreak.importers.base import ParseResult
 from finbreak.importers.csv_importer import read_header
 from finbreak.importers.ofx_importer import OfxImporter
-from finbreak.models import ColumnMapping, OfxAccountInfo
+from finbreak.importers.pdf_importer import PasswordError, PdfImporter, table_to_text
+from finbreak.models import ColumnMapping, ImportProfile, OfxAccountInfo
 from finbreak.services.accounts import AccountService
 from finbreak.services.auth import AuthService
 from finbreak.services.import_ import ImportPreview, ImportService
 from finbreak.services.transactions import read_minor_unit_exponent, to_display_decimal
+from finbreak.ui.password_dialog import PasswordDialog
 
 _STEP_PICK, _STEP_MAP, _STEP_PREVIEW = 0, 1, 2
 _ERROR_ROW_BRUSH = QBrush(QColor(122, 59, 59))  # muted red — flags a RowError row
@@ -68,6 +71,10 @@ class ImportWizardWidget(QWidget):
         # chooser can re-preview a selected one without re-parsing. Empty on the
         # CSV path (reset on every CSV pick).
         self._ofx_statements: list[tuple[OfxAccountInfo, ParseResult]] = []
+        # PDF only (FIBR-0009): the extracted candidate tables of the picked file,
+        # so the table chooser can re-serialise a selected one. Empty off the PDF
+        # path (reset on every pick).
+        self._pdf_candidates: list[list[list[str | None]]] = []
 
         self._stack = QStackedLayout()
         self._error = QLabel()
@@ -109,6 +116,12 @@ class ImportWizardWidget(QWidget):
     # -- step 1: map columns --------------------------------------------------
     def _build_map_step(self) -> QWidget:
         page = QWidget()
+        # PDF-only table chooser (FIBR-0009 D7) — shown only for a >1-table PDF,
+        # above the mapping combos; selecting an entry re-serialises that table
+        # into the preview text and re-runs profile matching.
+        self._pdf_table_combo = QComboBox()
+        self._pdf_table_combo.hide()
+        self._pdf_table_combo.currentIndexChanged.connect(self._on_pdf_table_changed)
         self._column_combos: dict[str, QComboBox] = {
             role: QComboBox()
             for role in ("date", "description", "amount", "debit", "credit")
@@ -146,6 +159,7 @@ class ImportWizardWidget(QWidget):
         buttons.addWidget(self._map_next_button)
 
         layout = QVBoxLayout(page)
+        layout.addWidget(self._pdf_table_combo)
         layout.addLayout(form)
         layout.addLayout(buttons)
 
@@ -213,7 +227,7 @@ class ImportWizardWidget(QWidget):
             self,
             self.tr("Choose a statement file"),
             "",
-            self.tr("Statement files (*.csv *.ofx *.qfx);;All files (*)"),
+            self.tr("Statement files (*.csv *.ofx *.qfx *.pdf);;All files (*)"),
         )
         if path:
             self._select_file(path)
@@ -221,22 +235,30 @@ class ImportWizardWidget(QWidget):
     def _select_file(self, path: str) -> None:
         """Load the picked file and route by format. **OFX** (FIBR-0008 D10):
         parse and jump straight to the preview, **skipping** the mapping step
-        (self-describing). **CSV** (FIBR-0007): an exact-signature match
+        (self-describing). **PDF** (FIBR-0009): extract candidate tables (locked
+        PDFs decrypted in memory, prompting for a password), then show the map
+        step with the table chooser. **CSV** (FIBR-0007): an exact-signature match
         auto-applies its profile and jumps to the preview (INV-10a); no match
         shows the mapping step (INV-10b)."""
         self._error.clear()
         self._source_path = path
         self._account_id = self._account_combo.currentData()
+        # Reset BOTH choosers before the format dispatch (FIBR-0009 D7), so no
+        # prior pick's chooser lingers on the shared map/preview steps — closing
+        # both leak directions (OFX->PDF and PDF->CSV/OFX) a one-sided reset would
+        # miss. Blocked clear() so the currentIndexChanged(-1) fires no slot.
+        self._ofx_statements = []
+        self._pdf_candidates = []
+        for combo in (self._ofx_statement_combo, self._pdf_table_combo):
+            with QSignalBlocker(combo):
+                combo.clear()
+            combo.hide()
         if self._looks_like_ofx(path):
             self._select_ofx(path)
             return
-        # CSV path — reset any OFX chooser state so a prior OFX pick's chooser
-        # never lingers when switching to a CSV file (FIBR-0008 wizard step 7).
-        # Clear THEN hide: the empty _ofx_statements makes the clear()'s
-        # currentIndexChanged(-1) a no-op in _on_ofx_statement_changed's guard.
-        self._ofx_statements = []
-        self._ofx_statement_combo.clear()
-        self._ofx_statement_combo.hide()
+        if self._looks_like_pdf(path):
+            self._select_pdf(path)
+            return
         try:
             text = self._imports.read_file(path)
             header = read_header(text)  # raises ValueError on an empty file
@@ -314,6 +336,150 @@ class ImportWizardWidget(QWidget):
         if 0 <= index < len(self._ofx_statements):
             self._error.clear()
             self._preview_ofx_statement(index)
+
+    @staticmethod
+    def _looks_like_pdf(path: str) -> bool:
+        """PDF detection (FIBR-0009 INV-7a): by ``.pdf`` extension, else a
+        **bounded** content-sniff (the first 512 bytes, ``lstrip``ped, tested for
+        the ``%PDF-`` magic — an ASCII literal, case-exact — never the whole file,
+        so the size cap can't be bypassed by the sniff). A CSV/OFX extension is
+        never PDF."""
+        lower = path.lower()
+        if lower.endswith(".pdf"):
+            return True
+        if lower.endswith((".csv", ".ofx", ".qfx")):
+            return False
+        try:
+            with Path(path).open("rb") as fh:
+                head = fh.read(512).lstrip()
+        except OSError:
+            return False  # a missing/unreadable file falls through to the CSV
+            # path, which re-reads it and surfaces the OSError as a message.
+        return head.startswith(b"%PDF-")
+
+    def _select_pdf(self, path: str) -> None:
+        """Read (size-capped, D10) + extract the PDF's candidate tables — locked
+        PDFs decrypted in memory, prompting for a password (D3/D11) — then show
+        the map step with the table chooser (D7). A single candidate matching a
+        saved profile jumps straight to preview (INV-7d); a Cancel or a friendly
+        error is handled by ``_extract_pdf_tables``."""
+        try:
+            data = self._imports.read_file_bytes(path)  # size-capped read (D10)
+        except (ValueError, OSError, FinbreakError) as exc:
+            self._error.setText(str(exc))
+            return
+        candidates = self._extract_pdf_tables(data)
+        if candidates is None:
+            return  # cancelled, or an error was already surfaced
+        self._pdf_candidates = candidates
+        default = self._default_pdf_index(candidates)
+        combo = self._pdf_table_combo
+        with QSignalBlocker(combo):  # populate without firing _on_pdf_table_changed
+            combo.clear()
+            for index, candidate in enumerate(candidates):
+                combo.addItem(
+                    self.tr("Table {n} ({rows} rows)").format(
+                        n=index + 1, rows=len(candidate) - 1
+                    ),
+                    index,
+                )
+            combo.setCurrentIndex(default)
+        combo.setVisible(len(candidates) > 1)  # shown only for >1 (D7)
+        matched = self._apply_pdf_table(default)
+        if matched is not None:
+            # A saved profile pre-fills the combos. A single candidate jumps to
+            # preview (FIBR-0007 INV-10a reused); with >1 candidate the map step
+            # is always shown so the user confirms the table (INV-6/INV-7d).
+            self._apply_profile_to_combos(matched)
+            if len(candidates) == 1:
+                self._run_preview(matched.column_mapping())
+                return
+        self._goto_step(_STEP_MAP)
+
+    def _extract_pdf_tables(self, data: bytes) -> list[list[list[str | None]]] | None:
+        """Extract candidate tables, prompting for a password on a locked PDF
+        (D3/D11). Returns the candidates, or ``None`` if the user cancelled or a
+        friendly error was surfaced. A **stored** password (INV-4) is auto-tried
+        on the first ``PasswordError`` before prompting; a wrong password
+        re-prompts (INV-3). The password is stored **only after** a successful
+        decrypt+extract (never a wrong/unverified one)."""
+        password: str | None = None
+        tried_stored = False
+        remember = False
+        while True:
+            try:
+                candidates = PdfImporter().candidate_tables(data, password)
+            except PasswordError:
+                stored = self._accounts.get_pdf_password(self._account_id)
+                if stored is not None and not tried_stored:
+                    tried_stored = True  # auto-try the remembered password once
+                    password = stored
+                    continue
+                dialog = PasswordDialog(self._account_name(), self)
+                if dialog.exec() != QDialog.DialogCode.Accepted:
+                    return None  # Cancel abandons the import cleanly
+                password = dialog.password()
+                remember = dialog.remember()
+                continue
+            except (ValueError, OSError, FinbreakError) as exc:
+                self._error.setText(str(exc))
+                return None
+            break
+        if remember and password:
+            self._accounts.set_pdf_password(self._account_id, password)
+        return candidates
+
+    @staticmethod
+    def _default_pdf_index(candidates: list[list[list[str | None]]]) -> int:
+        """The default table = the one with the most **data** rows (the
+        transactions table dwarfs a summary table); ties break by first-occurrence
+        order — page then table — which ``max`` keeps (D7)."""
+        return max(range(len(candidates)), key=lambda i: len(candidates[i]) - 1)
+
+    def _apply_pdf_table(self, index: int) -> ImportProfile | None:
+        """Serialise candidate ``index`` to CSV text, re-fill the mapping combos
+        from its header, and re-run profile matching (each candidate has its own
+        signature) — so Preview always imports the *chosen* table (D7). The
+        D13-uniquified header never trips ``match_profile``'s duplicate guard."""
+        table = self._pdf_candidates[index]
+        text = table_to_text(table)
+        header = read_header(text)
+        self._text = text
+        self._header = header
+        self._populate_mapping_combos(header)
+        return self._imports.match_profile(header)
+
+    @Slot(int)
+    def _on_pdf_table_changed(self, index: int) -> None:
+        if 0 <= index < len(self._pdf_candidates):
+            self._error.clear()
+            matched = self._apply_pdf_table(index)
+            if matched is not None:
+                self._apply_profile_to_combos(matched)
+
+    def _apply_profile_to_combos(self, profile: ImportProfile) -> None:
+        """Pre-fill the mapping combos from a matched profile (INV-7d), so a
+        >1-table PDF shows the map step with the columns already mapped for the
+        user to confirm."""
+        mapping = profile.column_mapping()
+        self._set_combo(self._column_combos["date"], mapping.date_column)
+        self._set_combo(self._column_combos["description"], mapping.description_column)
+        if mapping.amount_column is not None:
+            self._amount_style.setCurrentIndex(0)  # single
+            self._set_combo(self._column_combos["amount"], mapping.amount_column)
+        else:
+            self._amount_style.setCurrentIndex(1)  # separate debit / credit
+            self._set_combo(self._column_combos["debit"], mapping.debit_column)
+            self._set_combo(self._column_combos["credit"], mapping.credit_column)
+        self._date_format.setText(mapping.date_format)
+        self._invert_amount.setChecked(bool(mapping.invert_amount))
+
+    @staticmethod
+    def _set_combo(combo: QComboBox, value: str | None) -> None:
+        combo.setCurrentIndex(combo.findData(value))
+
+    def _account_name(self) -> str:
+        return self._account_combo.currentText()
 
     def _populate_mapping_combos(self, header: list[str]) -> None:
         for combo in self._column_combos.values():

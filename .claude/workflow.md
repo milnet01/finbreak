@@ -6,7 +6,7 @@
 |-------|-------|
 | **Project phase** | P07 — PDF statement import |
 | **Active item ID** | FIBR-0009 |
-| **Active step** | 3 (write failing tests → implement) |
+| **Active step** | 5 (implement DONE + gate green; next: `/audit` + `/indie-review`) |
 | **Blocked on** | — |
 | **Last update** | 2026-07-04 (FIBR-0009 **spec CONVERGED + signed off** — 8 `/cold-eyes` loops, 24 cold reviewers across 3 lanes; findings fell CRIT(loop 2 self-correction)→HIGH→MED→0-HIGH, design stable+clean since loop 2, lanes 1+3 clean the final 3 loops. Table-extraction approach: lift the transaction table via `pdfplumber` → serialise to CSV text → feed the existing CSV mapping→parse→preview→dedup→commit pipeline verbatim; in-memory `pikepdf` decrypt of locked PDFs (never to disk, INV-2); opt-in remembered password inside the vault (v5 nullable column); wrong password re-prompts. APIs empirically verified (pdfplumber 0.11.10 / pikepdf 10.9.1). Also: logged an Ants-MCP feedback re-verification (ANTS-3419 fixed; 3438/3439 still open)) |
 | **Next gate** | FIBR-0009 step 3 — write `tests/features/pdf_import/{spec.md,test_pdf_import.py}` red (INV-1/1a/2..11/7a-f), then implement the 9 Deliverables to green: `importers/pdf_importer.py`, `_migrate_to_v5`, accounts repo+service accessors, the `ImportService` D10 rename, the wizard PDF branch, `ui/password_dialog.py`, `pyproject` `pdfplumber==0.11.10`, `_selftest.py` leg. Then `/close-phase` |
@@ -23,8 +23,8 @@ becomes active.
 
 1. ✅ Verify spec (`docs/specs/FIBR-0009.md`) — drafted + `/cold-eyes` **converged** (8 loops, 2026-07-04)
 2. ✅ Verify dependencies on the roadmap DAG — depends on FIBR-0007 (✅); FIBR-0008 (✅) touched by the D10 rename
-3. 🚧 Write failing tests
-4. ⬜ Implement until tests pass
+3. ✅ Write failing tests (`tests/features/pdf_import/`, 40 tests, confirmed red)
+4. ✅ Implement until tests pass (gate green 239/1-skip, mypy 0, build smoke PASS)
 5. ⬜ Run `/audit`
 6. ⬜ Run `/indie-review`
 7. ⬜ Fold / fix actionable findings
@@ -87,6 +87,49 @@ journal); §2 is the only part that changes.
 ## §3. Session journal
 
 Append-only. Newest at the top.
+
+### 2026-07-04 — FIBR-0009 steps 3–4 (TDD + implement, gate + build smoke green)
+
+Built the P07 PDF-import stack test-first against the 8-loop cold-eyes-converged
+spec. Wrote `tests/features/pdf_import/{spec.md,test_pdf_import.py}` (40 tests,
+INV-1..11 + INV-1a + INV-7a–f) **red**, then implemented the 9 Deliverables to
+green: the pure-ish `importers/pdf_importer.py` (`candidate_tables` +
+`group_tables_by_header` D8 grouping / D13 uniquify + `table_to_text`, in-memory
+`pikepdf` normalise, page/row caps); `_migrate_to_v5` (nullable
+`accounts.statement_pdf_password`, atomic; `LATEST` 4→5); accounts repo+service
+`get/set_pdf_password` (kept off the `Account` object, D6); the D10 rename
+(`_MAX_OFX_BYTES`→`_MAX_IMPORT_BYTES`, format-neutral read + OFX call-sites);
+`ui/password_dialog.py`; the wizard PDF branch (`_select_pdf` +
+`_extract_pdf_tables` prompt/re-prompt loop, chooser-reset **hoisted** before the
+format dispatch, table chooser on the map step, profile pre-fill); and the
+`_selftest.py` pdfplumber leg (embedded gridded blob).
+
+**Fixture deviation surfaced (§14, not silent):** regenerated the three committed
+fixture blobs with a **`Description`** column (header `Date, Description, Money
+Out, Money In`) — the draft's `Date, Money Out, Money In` can't feed the reused
+CSV pipeline (a blank description is a `parse_transaction` `ValueError`), so
+INV-1/INV-7e would be untestable. Kept 3 data rows (cap tests intact). Annotated
+the FIBR-0009 spec Deliverable 8 + the pdf_import test spec with the correction.
+
+**Schema ripple:** the `== 4`/`LATEST_SCHEMA_VERSION == 4` "lands-at-latest"
+asserts across vault/accounts/categories/import_/ofx_import bumped to `== 5`; the
+`is_v4`/`at_v4` "current-latest" test names → `v5`; `test_INV8_v3_upgrades_to_v4`
+kept its name (the v4 table-creation still happens) but its assert+comment bumped;
+the OFX `no_schema_change` message re-expressed.
+
+Verify: `./scripts/ci-local.sh` green — **239 passed / 1 skipped**, ruff + format
++ bandit + pip-audit + gitleaks clean, **mypy 0**. FIBR-0003 build smoke
+(`build-smoke.sh`) **PASS** — both the onefile + AppImage print
+`FINBREAK_SELFTEST_OK` in the Python-free clean-room, proving the native PDF tree
+(Pillow, PDFium via `pypdfium2_raw`, cryptography) travels (`--collect-all` added).
+Also repointed the stale `.venv` console-script shebangs (the venv predated the
+Fin_Break→finbreak dir rename, so `ci-local.sh`'s bare tool calls hit "bad
+interpreter"). Logged an Ants-MCP re-verification (ANTS-3438 still reproduces via
+session_orient's codebase_index; ANTS-3439's Fin_Break repro now moot — dir
+renamed).
+
+Next: steps 5–9 — `/close-phase` (`/audit` + `/indie-review`, allowlist read
+first, fold findings, then close: ROADMAP→✅, CHANGELOG, journal, tag).
 
 ### 2026-07-04 — FIBR-0009 spec drafted + `/cold-eyes` CONVERGED (P07 PDF import, 8 loops)
 

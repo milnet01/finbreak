@@ -153,8 +153,8 @@ def test_INV4_v2_upgrades_to_v3_and_seeds_tree(paths):
     ).fetchall()
     before_acct = conn.execute("SELECT id, name, type FROM accounts").fetchall()
 
-    run_migrations(conn)  # v2 -> v3 -> v4 (run_migrations walks to LATEST)
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 4
+    run_migrations(conn)  # v2 -> v3 -> v4 -> v5 (run_migrations walks to LATEST)
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 5
 
     roots = _roots(conn)
     assert set(roots) == {"income", "expenditure"}
@@ -220,22 +220,22 @@ def test_INV4_idempotent_at_latest(paths):
     salt = bytes(range(SALT_LEN))
     build_v2_vault(vault_path, sidecar_path, salt, [])
     conn = keyed_connection(vault_path, salt)
-    run_migrations(conn)  # v2 -> v3 -> v4 (walks to LATEST)
+    run_migrations(conn)  # v2 -> v3 -> v4 -> v5 (walks to LATEST)
     roots_before = len(CategoryRepository(conn).children_of(None))
     total_before = len(CategoryRepository(conn).list_all())
 
-    run_migrations(conn)  # re-run: no-op at v4
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 4
+    run_migrations(conn)  # re-run: no-op at v5
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 5
     assert len(CategoryRepository(conn).children_of(None)) == roots_before == 2
     assert len(CategoryRepository(conn).list_all()) == total_before, "no duplicate seed"
     conn.close()
 
 
-def test_INV4_first_run_vault_is_v4_with_seeded_tree(service):
-    # Baseline-complete: a fresh first-run vault ends at v4 (import tables added
-    # at v3->v4); the category tree is still seeded at the v2->v3 step.
+def test_INV4_first_run_vault_is_v5_with_seeded_tree(service):
+    # Baseline-complete: a fresh first-run vault ends at v5 (the FIBR-0009 PDF
+    # password column at v4->v5); the category tree is still seeded at v2->v3.
     conn = service.vault.connection
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 4
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 5
     assert set(_roots(conn)) == {"income", "expenditure"}
 
 

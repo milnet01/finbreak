@@ -53,3 +53,21 @@ class AccountRepository:
 
     def count(self) -> int:
         return self._conn.execute("SELECT count(*) FROM accounts").fetchone()[0]
+
+    # -- remembered PDF password (v5, FIBR-0009 D6) ---------------------------
+    # Read/written by dedicated accessors, NOT selected into the broadly-passed
+    # ``Account`` dataclass, so a remembered credential never rides along with an
+    # account listing or a log line (credential hygiene, INV-8/INV-11).
+    def get_pdf_password(self, account_id: int) -> str | None:
+        row = self._conn.execute(
+            "SELECT statement_pdf_password FROM accounts WHERE id = ?",
+            (account_id,),
+        ).fetchone()
+        return row[0] if row is not None else None
+
+    def set_pdf_password(self, account_id: int, value: str | None) -> None:
+        self._conn.execute(
+            "UPDATE accounts SET statement_pdf_password = ? WHERE id = ?",
+            (value, account_id),
+        )
+        self._conn.commit()

@@ -66,9 +66,14 @@ echo "-- freezing --onefile --"
 # each needs help travelling into the frozen bundle. sqlcipher3/pikepdf use the
 # hidden-import + collect-binaries pair; argon2-cffi (native lib in the separate
 # _argon2_cffi_bindings package) and ofxparse's tree (bs4 + native lxml) use
-# --collect-all to pull submodules + data + binaries wholesale. Without these,
-# the clean-room launch fails with ModuleNotFoundError (FIBR-0004 argon2 gap;
-# FIBR-0008 adds ofxparse/lxml).
+# --collect-all to pull submodules + data + binaries wholesale. pdfplumber
+# (FIBR-0009) is likewise lazily imported and its tree is native-heavy: PDFium's
+# libpdfium.so ships in the SEPARATE top-level pypdfium2_raw package (a plain
+# --collect-all pypdfium2 would miss the binary — the exact DoD #2 failure), and
+# Pillow (PIL) + cryptography (via pdfminer.six) carry native/data payloads
+# PyInstaller does not follow by import alone. Without these, the clean-room
+# launch fails with ModuleNotFoundError (FIBR-0004 argon2 gap; FIBR-0008 adds
+# ofxparse/lxml; FIBR-0009 adds pdfplumber's tree).
 pyinstaller --onefile --name "$ONEFILE" \
     --paths /src/src \
     --hidden-import sqlcipher3 \
@@ -81,6 +86,12 @@ pyinstaller --onefile --name "$ONEFILE" \
     --collect-all ofxparse \
     --collect-all bs4 \
     --collect-all lxml \
+    --collect-all pdfplumber \
+    --collect-all pdfminer \
+    --collect-all pypdfium2 \
+    --collect-all pypdfium2_raw \
+    --collect-all PIL \
+    --collect-all cryptography \
     --distpath /out --workpath /tmp/build --specpath /tmp \
     /src/src/finbreak/__main__.py
 

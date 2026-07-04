@@ -25,4 +25,4 @@ is the FIBR-0007 first-run vault (already at v4 — no migration this phase, D9)
 | INV-7 | Import-wizard OFX round-trip (7a–f, `qtbot`): skip mapping, preview, import, all-duplicate re-import, multi-account chooser, quiet-month |
 | INV-8 | No network/secret/schema regression; OFX field text stored inert (INV-5a) |
 | INV-9 | The FIBR-0007 CSV import suite stays green (reuse, not fork) — the `ParseResult`/`RowError` relocation preserves both import sites |
-| INV-10 | OFX is resource-bounded: over-`_MAX_OFX_BYTES` file and over-`_MAX_OFX_TRANSACTIONS` file each refused with a `ValueError` |
+| INV-10 | OFX is resource-bounded: over-`_MAX_IMPORT_BYTES` file and over-`_MAX_OFX_TRANSACTIONS` file each refused with a `ValueError` |

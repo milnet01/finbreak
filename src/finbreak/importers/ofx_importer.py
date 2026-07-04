@@ -34,7 +34,7 @@ from finbreak.models import OfxAccountInfo, TransactionDraft
 from finbreak.services.transactions import parse_transaction
 
 # Whole-file transaction cap (D13/INV-10) — orders of magnitude above any real
-# personal statement. One-line-tunable; the size cap is _MAX_OFX_BYTES (import_).
+# personal statement. One-line-tunable; the byte cap is _MAX_IMPORT_BYTES (import_).
 _MAX_OFX_TRANSACTIONS = 100_000
 
 

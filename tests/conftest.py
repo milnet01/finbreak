@@ -22,7 +22,11 @@ from pathlib import Path  # noqa: E402
 from sqlcipher3 import dbapi2  # noqa: E402
 
 from finbreak.crypto import KEY_LEN, SALT_LEN, derive_key  # noqa: E402
-from finbreak.migrations import _migrate_to_v2, _migrate_to_v3  # noqa: E402
+from finbreak.migrations import (  # noqa: E402
+    _migrate_to_v2,
+    _migrate_to_v3,
+    _migrate_to_v4,
+)
 from finbreak.models import FORMAT_VERSION, KdfParams  # noqa: E402
 from finbreak.services.auth import (  # noqa: E402
     ARGON2_MEMORY_KIB,
@@ -108,4 +112,14 @@ def build_v3_vault(vault_path: Path, sidecar_path: Path, salt: bytes, rows) -> N
     build_v2_vault(vault_path, sidecar_path, salt, rows)
     conn = keyed_connection(vault_path, salt)
     _migrate_to_v3(conn)  # v2 -> v3 (categories tree)
+    conn.close()
+
+
+def build_v4_vault(vault_path: Path, sidecar_path: Path, salt: bytes, rows) -> None:
+    """A raw v4 vault: ``build_v3_vault`` taken one more step through the real
+    ``_migrate_to_v4`` (the two import tables). The v4->v5 migration suite's
+    upgrade-path fixture (FIBR-0009 INV-8)."""
+    build_v3_vault(vault_path, sidecar_path, salt, rows)
+    conn = keyed_connection(vault_path, salt)
+    _migrate_to_v4(conn)  # v3 -> v4 (import_profiles + statement_periods)
     conn.close()

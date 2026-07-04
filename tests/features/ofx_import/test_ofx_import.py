@@ -533,11 +533,14 @@ def test_INV7f_quiet_month_records_period(qtbot, service, tmp_path):
 def test_INV8_no_schema_change(service):
     from finbreak.migrations import LATEST_SCHEMA_VERSION
 
-    assert LATEST_SCHEMA_VERSION == 4, "OFX adds no migration (D9)"
+    # OFX itself added no migration (D9); a later phase (FIBR-0009) added v5, so
+    # this can no longer prove "OFX added nothing" — it now simply asserts a
+    # first-run vault lands at the latest schema (currently 5).
+    assert LATEST_SCHEMA_VERSION == 5
     version = service.vault.connection.execute(
         "SELECT version FROM schema_version"
     ).fetchone()[0]
-    assert version == 4
+    assert version == 5
 
 
 def test_INV8_no_network_import_in_ofx_module():
@@ -586,7 +589,7 @@ def test_INV10_oversized_file_refused_before_read(service, tmp_path, monkeypatch
     import finbreak.services.import_ as import_mod
 
     path = _write(tmp_path, "big.ofx", b"x" * 5000)
-    monkeypatch.setattr(import_mod, "_MAX_OFX_BYTES", 1000)
+    monkeypatch.setattr(import_mod, "_MAX_IMPORT_BYTES", 1000)
     with pytest.raises(ValueError):
         ImportService(service.vault).read_file_bytes(str(path))
 

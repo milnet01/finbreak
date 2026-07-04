@@ -8,8 +8,10 @@ exactly one sentinel line — ``FINBREAK_SELFTEST_OK`` on success, or
 
 The whole point is to prove — inside a Python-free bundle — that every native
 stack travels with the artifact: Qt, the SQLCipher native library, and qpdf
-(behind ``pikepdf``, FIBR-0003), Argon2 (FIBR-0004), and ofxparse's transitive
-tree incl. native lxml (FIBR-0008). See docs/specs/FIBR-0003.md.
+(behind ``pikepdf``, FIBR-0003), Argon2 (FIBR-0004), ofxparse's transitive tree
+incl. native lxml (FIBR-0008), and pdfplumber's native tree — Pillow, PDFium
+(``pypdfium2``/``pypdfium2_raw``), cryptography (FIBR-0009). See
+docs/specs/FIBR-0003.md.
 """
 
 from __future__ import annotations
@@ -115,8 +117,66 @@ def _check_ofxparse() -> None:
         raise RuntimeError("ofxparse did not parse the smoke statement")
 
 
+# A tiny gridded (ruled) single-table PDF (header A/B, one data row), base64,
+# frozen at authoring time. pdfplumber's table detection is line-based, so the
+# table MUST be ruled (an un-ruled table extracts as ``[]``). The bundle is
+# Python-free, so the blob is embedded — no reportlab generation (reportlab is
+# probe-only). Not real financial data (FIBR-0009 DoD #2).
+_SMOKE_PDF_B64 = (
+    b"JVBERi0xLjQKJZOMi54gUmVwb3J0TGFiIEdlbmVyYXRlZCBQREYgZG9jdW1lbnQgKG9wZW5zb3Vy"
+    b"Y2UpCjEgMCBvYmoKPDwKL0YxIDIgMCBSCj4+CmVuZG9iagoyIDAgb2JqCjw8Ci9CYXNlRm9udCAv"
+    b"SGVsdmV0aWNhIC9FbmNvZGluZyAvV2luQW5zaUVuY29kaW5nIC9OYW1lIC9GMSAvU3VidHlwZSAv"
+    b"VHlwZTEgL1R5cGUgL0ZvbnQKPj4KZW5kb2JqCjMgMCBvYmoKPDwKL0NvbnRlbnRzIDcgMCBSIC9N"
+    b"ZWRpYUJveCBbIDAgMCA1OTUuMjc1NiA4NDEuODg5OCBdIC9QYXJlbnQgNiAwIFIgL1Jlc291cmNl"
+    b"cyA8PAovRm9udCAxIDAgUiAvUHJvY1NldCBbIC9QREYgL1RleHQgL0ltYWdlQiAvSW1hZ2VDIC9J"
+    b"bWFnZUkgXQo+PiAvUm90YXRlIDAgL1RyYW5zIDw8Cgo+PiAKICAvVHlwZSAvUGFnZQo+PgplbmRv"
+    b"YmoKNCAwIG9iago8PAovUGFnZU1vZGUgL1VzZU5vbmUgL1BhZ2VzIDYgMCBSIC9UeXBlIC9DYXRh"
+    b"bG9nCj4+CmVuZG9iago1IDAgb2JqCjw8Ci9BdXRob3IgKFwoYW5vbnltb3VzXCkpIC9DcmVhdGlv"
+    b"bkRhdGUgKEQ6MjAyNjA3MDQxOTM1NTcrMDInMDAnKSAvQ3JlYXRvciAoXCh1bnNwZWNpZmllZFwp"
+    b"KSAvS2V5d29yZHMgKCkgL01vZERhdGUgKEQ6MjAyNjA3MDQxOTM1NTcrMDInMDAnKSAvUHJvZHVj"
+    b"ZXIgKFJlcG9ydExhYiBQREYgTGlicmFyeSAtIFwob3BlbnNvdXJjZVwpKSAKICAvU3ViamVjdCAo"
+    b"XCh1bnNwZWNpZmllZFwpKSAvVGl0bGUgKFwoYW5vbnltb3VzXCkpIC9UcmFwcGVkIC9GYWxzZQo+"
+    b"PgplbmRvYmoKNiAwIG9iago8PAovQ291bnQgMSAvS2lkcyBbIDMgMCBSIF0gL1R5cGUgL1BhZ2Vz"
+    b"Cj4+CmVuZG9iago3IDAgb2JqCjw8Ci9GaWx0ZXIgWyAvQVNDSUk4NURlY29kZSAvRmxhdGVEZWNv"
+    b"ZGUgXSAvTGVuZ3RoIDIzNAo+PgpzdHJlYW0KR2FzMkNibXFUNSY7OUw3YD5tRDFaOVdzXkQ1JkFz"
+    b"TW9tIStCW1g3N0hMXlkzJE0+ZCtmZyhqa0ReUG9ZS1ZFUlxIX0JuMkQ/cU5IMC1KTHNyI1RZIm1Z"
+    b"aW5NWGxIZ28lVFpkJD5qXUM1WVhQaT49Jm9yJThzIjxeVyRUNUUuZWsna2VKdTtXP2k5W3NGKDVV"
+    b"LDlKWmxRWktZYDdKQi82SHJhSFs9UyhCZkApN0w/UGxrVVliVFNLZ1hsLkMvPSx1b251cHNSKSIu"
+    b"ZV5lO1xQV2gnVFRZNVY3PT07U0lSalk5IV5VJ2c4LH4+ZW5kc3RyZWFtCmVuZG9iagp4cmVmCjAg"
+    b"OAowMDAwMDAwMDAwIDY1NTM1IGYgCjAwMDAwMDAwNjEgMDAwMDAgbiAKMDAwMDAwMDA5MiAwMDAw"
+    b"MCBuIAowMDAwMDAwMTk5IDAwMDAwIG4gCjAwMDAwMDA0MDIgMDAwMDAgbiAKMDAwMDAwMDQ3MCAw"
+    b"MDAwMCBuIAowMDAwMDAwNzUwIDAwMDAwIG4gCjAwMDAwMDA4MDkgMDAwMDAgbiAKdHJhaWxlcgo8"
+    b"PAovSUQgCls8MzFjYTY5MTQyOTM4Y2FmY2Q0YjYzYTE0YzdmOTFmM2M+PDMxY2E2OTE0MjkzOGNh"
+    b"ZmNkNGI2M2ExNGM3ZjkxZjNjPl0KJSBSZXBvcnRMYWIgZ2VuZXJhdGVkIFBERiBkb2N1bWVudCAt"
+    b"LSBkaWdlc3QgKG9wZW5zb3VyY2UpCgovSW5mbyA1IDAgUgovUm9vdCA0IDAgUgovU2l6ZSA4Cj4+"
+    b"CnN0YXJ0eHJlZgoxMTMzCiUlRU9GCg=="
+)
+
+
+def _check_pdfplumber() -> None:
+    """Normalise a tiny embedded gridded PDF through ``pikepdf`` and extract its
+    table with ``pdfplumber`` — the FIBR-0009 native chain (Pillow, PDFium via
+    ``pypdfium2_raw``, cryptography). ``--self-test`` imports only this module —
+    never ``finbreak.app`` — so without this leg the bundle would freeze the PDF
+    stacks in but never exercise them (mirrors the ofxparse leg)."""
+    import base64
+    import io
+
+    import pdfplumber
+    import pikepdf
+
+    raw = base64.b64decode(_SMOKE_PDF_B64)
+    with pikepdf.open(io.BytesIO(raw)) as pdf:  # in-memory normalise (D3)
+        normalised = io.BytesIO()
+        pdf.save(normalised)
+    with pdfplumber.open(io.BytesIO(normalised.getvalue())) as pdf:
+        tables = pdf.pages[0].extract_tables()
+    if not tables or tables[0][0] != ["A", "B"]:
+        raise RuntimeError("pdfplumber did not extract the smoke table")
+
+
 def run_self_test(out: TextIO | None = None) -> int:
-    """Run all three native-stack checks in order; print one sentinel line.
+    """Run every native-stack check in order; print one sentinel line.
 
     Returns 0 and prints ``FINBREAK_SELFTEST_OK`` if every stack loads;
     otherwise prints ``FINBREAK_SELFTEST_FAIL: <stack>`` for the first failure
@@ -130,6 +190,7 @@ def run_self_test(out: TextIO | None = None) -> int:
         ("pikepdf", _check_pikepdf),
         ("argon2", _check_argon2),
         ("ofxparse", _check_ofxparse),
+        ("pdfplumber", _check_pdfplumber),
     )
     for name, check in checks:
         try:

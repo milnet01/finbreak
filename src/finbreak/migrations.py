@@ -20,7 +20,7 @@ from finbreak.errors import SchemaVersionError
 
 log = logging.getLogger(__name__)
 
-LATEST_SCHEMA_VERSION = 4
+LATEST_SCHEMA_VERSION = 5
 
 # Seed data written by the v1->v2 migration (D8) — NOT a UI string, so never
 # run through tr(); the user renames it in the Accounts manager.
@@ -177,4 +177,29 @@ def _migrate_to_v4(conn: dbapi2.Connection) -> None:
         raise
 
 
-_MIGRATIONS = {2: _migrate_to_v2, 3: _migrate_to_v3, 4: _migrate_to_v4}
+def _migrate_to_v5(conn: dbapi2.Connection) -> None:
+    """v4->v5: add the **nullable** ``accounts.statement_pdf_password`` column for
+    FIBR-0009's opt-in remembered PDF password. A nullable ``ADD COLUMN`` is an
+    **in-place** change (SQLite backfills every existing row with ``NULL``) — no
+    table rebuild, unlike the v1->v2 NOT-NULL+FK case. Still one atomic unit
+    (INV-8): with the vault's ``isolation_level=""`` the driver does not
+    implicitly ``BEGIN`` around the DDL, so the explicit ``BEGIN`` — the step's
+    first statement, the ``UPDATE schema_version`` its last before ``COMMIT`` —
+    makes it all-or-nothing. ``NULL`` = "no remembered password" (the default for
+    every existing and new account)."""
+    conn.execute("BEGIN")  # first statement — own the transaction (D2)
+    try:
+        conn.execute("ALTER TABLE accounts ADD COLUMN statement_pdf_password TEXT")
+        conn.execute("UPDATE schema_version SET version = 5")
+        conn.commit()
+    except Exception:
+        conn.rollback()  # undoes the ADD COLUMN — leaves a re-openable v4 vault
+        raise
+
+
+_MIGRATIONS = {
+    2: _migrate_to_v2,
+    3: _migrate_to_v3,
+    4: _migrate_to_v4,
+    5: _migrate_to_v5,
+}

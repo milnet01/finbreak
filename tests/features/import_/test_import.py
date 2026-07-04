@@ -524,8 +524,8 @@ def test_INV8_v3_upgrades_to_v4_creates_tables_others_untouched(paths):
     before_acct = conn.execute("SELECT id, name, type FROM accounts").fetchall()
     before_cats = conn.execute("SELECT id, name, kind FROM categories").fetchall()
 
-    run_migrations(conn)  # v3 -> v4
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 4
+    run_migrations(conn)  # v3 -> v5 (full run_migrations now walks to LATEST)
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 5
     assert conn.execute("SELECT count(*) FROM import_profiles").fetchone()[0] == 0
     assert conn.execute("SELECT count(*) FROM statement_periods").fetchone()[0] == 0
 
@@ -577,26 +577,26 @@ def test_INV8_atomic_rollback_on_second_create_leaves_v3(paths):
     conn.close()
 
 
-def test_INV8_idempotent_at_v4(paths):
+def test_INV8_idempotent_at_v5(paths):
     vault_path, sidecar_path = paths
     salt = bytes(range(SALT_LEN))
     build_v3_vault(vault_path, sidecar_path, salt, [])
     conn = keyed_connection(vault_path, salt)
-    run_migrations(conn)  # v3 -> v4
-    run_migrations(conn)  # re-run: no-op at v4
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 4
+    run_migrations(conn)  # v3 -> v5
+    run_migrations(conn)  # re-run: no-op at v5
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 5
     conn.close()
 
 
-def test_INV8_first_run_vault_is_v4_with_empty_import_tables(service):
+def test_INV8_first_run_vault_is_v5_with_empty_import_tables(service):
     conn = service.vault.connection
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 4
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 5
     assert conn.execute("SELECT count(*) FROM import_profiles").fetchone()[0] == 0
     assert conn.execute("SELECT count(*) FROM statement_periods").fetchone()[0] == 0
 
 
-def test_INV8_latest_schema_version_is_4():
-    assert LATEST_SCHEMA_VERSION == 4
+def test_INV8_latest_schema_version_is_5():
+    assert LATEST_SCHEMA_VERSION == 5
 
 
 # --------------------------------------------------------------------------- #

@@ -35,11 +35,12 @@ log = logging.getLogger(__name__)
 
 _SIGNATURE_DELIMITER = "\x1f"  # unit separator — cannot occur in a CSV header
 
-# OFX file-size cap (FIBR-0008 D13/INV-10) — refused BEFORE the bytes are read
-# into memory (read_file_bytes). Orders of magnitude above any real personal
-# statement (KB–low-MB); one-line-tunable. The transaction-count cap
-# (_MAX_OFX_TRANSACTIONS) lives on the importer.
-_MAX_OFX_BYTES = 16 * 1024 * 1024  # 16 MiB
+# Import file-size cap (FIBR-0008 D13/INV-10; format-neutral since FIBR-0009 D10)
+# — refused BEFORE the bytes are read into memory (read_file_bytes). Shared by
+# OFX and PDF, both byte-read imports. Orders of magnitude above any real
+# personal statement (KB–low-MB); one-line-tunable. The per-format count caps
+# (_MAX_OFX_TRANSACTIONS, _MAX_PDF_ROWS) live on their importers.
+_MAX_IMPORT_BYTES = 16 * 1024 * 1024  # 16 MiB
 
 
 def signature_for(header: list[str]) -> str:
@@ -122,12 +123,13 @@ class ImportService:
         return Path(path).read_text(encoding="utf-8-sig")
 
     def read_file_bytes(self, path: str) -> bytes:
-        """Read a picked OFX file as raw bytes, refusing an oversized file
-        **before** loading it into memory (FIBR-0008 D13/INV-10) — the bytes
-        counterpart to ``read_file``. The stat-then-read window is a benign
-        TOCTOU for a local, user-picked, single-user file."""
-        if Path(path).stat().st_size > _MAX_OFX_BYTES:
-            raise ValueError("this file is too large to import as OFX")
+        """Read a picked file as raw bytes, refusing an oversized file **before**
+        loading it into memory (FIBR-0008 D13/INV-10) — the bytes counterpart to
+        ``read_file``. Format-neutral (FIBR-0009 D10): the OFX **and** PDF paths
+        both use it. The stat-then-read window is a benign TOCTOU for a local,
+        user-picked, single-user file."""
+        if Path(path).stat().st_size > _MAX_IMPORT_BYTES:
+            raise ValueError("this file is too large to import")
         return Path(path).read_bytes()
 
     def preview(

@@ -58,6 +58,20 @@ class AccountService:
         repo.delete(account_id)
         log.info("account deleted")
 
+    # -- remembered PDF password (FIBR-0009 D6) -------------------------------
+    def get_pdf_password(self, account_id: int) -> str | None:
+        """The account's remembered PDF password, or ``None`` if none is stored
+        (the default). Fetched only at the moment a PDF import needs it (INV-4);
+        the UI talks to the service, never the repo directly."""
+        return self._accounts().get_pdf_password(account_id)
+
+    def set_pdf_password(self, account_id: int, value: str | None) -> None:
+        """Store (opt-in) or clear (``None``) the account's remembered PDF
+        password (INV-4). Persisted inside the SQLCipher vault — encrypted at rest
+        by the master key, no redundant second layer (D5)."""
+        self._accounts().set_pdf_password(account_id, value)
+        log.info("account pdf password updated")
+
     def _validate(self, name: str, type: str, exclude_id: int | None = None) -> str:
         """Return the trimmed name, or raise ``ValueError`` (INV-2/INV-3)."""
         try:
