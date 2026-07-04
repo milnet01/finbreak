@@ -232,7 +232,10 @@ class ImportWizardWidget(QWidget):
             return
         # CSV path — reset any OFX chooser state so a prior OFX pick's chooser
         # never lingers when switching to a CSV file (FIBR-0008 wizard step 7).
+        # Clear THEN hide: the empty _ofx_statements makes the clear()'s
+        # currentIndexChanged(-1) a no-op in _on_ofx_statement_changed's guard.
         self._ofx_statements = []
+        self._ofx_statement_combo.clear()
         self._ofx_statement_combo.hide()
         try:
             text = self._imports.read_file(path)

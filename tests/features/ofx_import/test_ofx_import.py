@@ -260,8 +260,18 @@ def test_INV3_post_parse_errors_collected_valid_rows_import(service):
 # --------------------------------------------------------------------------- #
 def test_INV4_bad_transaction_aborts_whole_statement(service):
     # A structurally-malformed transaction (bad DTPOSTED) makes ofxparse abort the
-    # whole statement mid-parse (D15) -> a single friendly ValueError, not a RowError.
-    data = _ofx(_stmt([_txn("notadate", "-1.00", name="X", fitid="d1")]))
+    # WHOLE statement mid-parse (D15) -> a single friendly ValueError, not a
+    # RowError. The fixture pairs the bad row with a VALID sibling: a per-row-
+    # tolerant importer would return the good draft, so raising (rather than
+    # yielding the valid row) is what proves the good sibling is lost too (D15).
+    data = _ofx(
+        _stmt(
+            [
+                _txn("20260105", "-10.00", name="Valid", fitid="d0"),
+                _txn("notadate", "-1.00", name="X", fitid="d1"),
+            ]
+        )
+    )
     with pytest.raises(ValueError):
         OfxImporter().parse(data, _exp(service))
 
@@ -467,7 +477,10 @@ def test_INV7e_multi_account_chooser(qtbot, service, tmp_path):
     widget._ofx_statement_combo.setCurrentIndex(1)
     assert widget._preview_table.item(0, 3).text() == "Fuel"
     widget._import_button.click()
-    assert TransactionRepository(conn).count_for_account(acct) == 1, "only chosen stmt"
+    # Exactly the CHOSEN statement's row lands — assert its identity, not just
+    # the count (a wrong-statement off-by-one would still yield count 1).
+    rows = TransactionRepository(conn).list_all()
+    assert [(r.description, r.amount_minor) for r in rows] == [("Fuel", -2500)]
 
 
 def test_INV7e_single_statement_hides_chooser(qtbot, service, tmp_path):
@@ -480,6 +493,22 @@ def test_INV7e_single_statement_hides_chooser(qtbot, service, tmp_path):
     widget = _wizard(qtbot, service, acct)
     widget._select_file(str(path))
     assert widget._ofx_statement_combo.isHidden(), "single statement -> chooser hidden"
+
+
+def test_INV7_content_sniff_routes_misnamed_ofx(qtbot, service, tmp_path):
+    # A mis-named OFX file (no .ofx/.qfx extension) is still detected by the
+    # bounded 512-byte content sniff (D10) and takes the OFX path — the mapping
+    # step is skipped. Exercises _looks_like_ofx's non-extension branch.
+    acct = _acct(service)
+    path = _write(
+        tmp_path,
+        "statement.txt",
+        _ofx(_stmt([_txn("20260105", "-10.00", name="Coffee", fitid="a1")])),
+    )
+    widget = _wizard(qtbot, service, acct)
+    widget._select_file(str(path))
+    assert widget._stack.currentIndex() == 2, "sniffed OFX -> preview (mapping skipped)"
+    assert widget._preview_table.rowCount() == 1
 
 
 def test_INV7f_quiet_month_records_period(qtbot, service, tmp_path):

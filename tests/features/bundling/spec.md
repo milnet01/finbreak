@@ -10,18 +10,19 @@ Exercises the entry-point modes of `python -m finbreak` (INV-1 table):
 
 | Mode | Expected | Exit |
 |------|----------|------|
-| `--self-test`, all stacks load | `FINBREAK_SELFTEST_OK` (Qt + SQLCipher + qpdf + Argon2) | 0 |
+| `--self-test`, all stacks load | `FINBREAK_SELFTEST_OK` (Qt + SQLCipher + qpdf + Argon2 + ofxparse) | 0 |
 | `--self-test`, a stack fails | `FINBREAK_SELFTEST_FAIL: <stack>` | non-zero |
 | no args | routes to the GUI launcher (`finbreak.app.run`) | — |
 
 - **OK** runs the real CLI as a subprocess (`python -m finbreak --self-test`
   with `QT_QPA_PLATFORM=offscreen`), so it needs the runtime deps installed; it
-  asserts the **exact** sentinel line and exit 0 — now covering the fourth
-  (Argon2) native leg added by FIBR-0004.
+  asserts the **exact** sentinel line and exit 0 — now covering the fifth
+  (ofxparse) native leg added by FIBR-0008, after the fourth (Argon2, FIBR-0004).
 - **FAIL** is a unit test of `finbreak._selftest.run_self_test`: it monkeypatches
   the earlier checks to pass and one check to raise, asserting the emitted line
-  names that ordered `<stack>` token (`sqlcipher` and `argon2` cases) with a
-  non-zero return — independent of whether the heavy native deps are installed.
+  names that ordered `<stack>` token (`sqlcipher`, `argon2`, and `ofxparse`
+  cases) with a non-zero return — independent of whether the heavy native deps
+  are installed.
 - **no args** — the FIBR-0003 `FINBREAK_NOT_BUILT` placeholder is retired
   (superseded by FIBR-0004). `main([])` now routes to the GUI: the test asserts
   it calls `finbreak.app.run` (in-process, no event loop). The GUI screens

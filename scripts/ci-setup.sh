@@ -51,8 +51,9 @@ echo "== python: dev group + runtime deps =="
 # PEP 735 `--group` needs pip >= 25.1; the base image's pip may be older.
 python -m pip install --quiet --root-user-action=ignore --upgrade pip
 python -m pip install --quiet --root-user-action=ignore --group dev
-# Runtime deps (PySide6, sqlcipher3-binary, pikepdf) — the fast bundling
-# self-test guard (FIBR-0003 INV-6) imports them in the gate.
+# Runtime deps from pyproject (PySide6, sqlcipher3-binary, pikepdf, argon2-cffi,
+# ofxparse) — installed via `pip install .` so this list can never drift; the
+# self-test guard (FIBR-0003 INV-6) + the feature suites import them in the gate.
 python -m pip install --quiet --root-user-action=ignore .
 
 echo "CI environment ready."

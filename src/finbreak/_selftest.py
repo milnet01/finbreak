@@ -1,4 +1,4 @@
-"""FIBR-0003 INV-1 — self-test that loads the three native stacks.
+"""FIBR-0003 INV-1 — self-test that loads the bundled native stacks.
 
 Each ``_check_*`` imports its native dependency **lazily** (inside the
 function), so this module imports cleanly even when a dep is missing and so a
@@ -6,9 +6,10 @@ test can monkeypatch a check. ``run_self_test`` runs them in order and prints
 exactly one sentinel line — ``FINBREAK_SELFTEST_OK`` on success, or
 ``FINBREAK_SELFTEST_FAIL: <stack>`` on the first failing stack.
 
-The whole point is to prove — inside a Python-free bundle — that Qt, the
-SQLCipher native library, and qpdf (behind ``pikepdf``) all travel with the
-artifact. See docs/specs/FIBR-0003.md.
+The whole point is to prove — inside a Python-free bundle — that every native
+stack travels with the artifact: Qt, the SQLCipher native library, and qpdf
+(behind ``pikepdf``, FIBR-0003), Argon2 (FIBR-0004), and ofxparse's transitive
+tree incl. native lxml (FIBR-0008). See docs/specs/FIBR-0003.md.
 """
 
 from __future__ import annotations
@@ -84,6 +85,36 @@ def _check_argon2() -> None:
         raise RuntimeError("argon2 did not return the expected key length")
 
 
+def _check_ofxparse() -> None:
+    """Parse a tiny OFX document, proving ofxparse + its transitive tree
+    (beautifulsoup4, native lxml) travel with the bundle (FIBR-0008).
+
+    ``--self-test`` imports only this module — never ``finbreak.app`` — so
+    without this leg the bundle smoke-test would freeze ofxparse in but never
+    exercise it. ofxparse parses with the stdlib ``html.parser`` (not lxml), so
+    this also proves beautifulsoup4's package data travels. The document is a
+    minimal single-transaction statement, not real financial data.
+    """
+    import io
+
+    from ofxparse import OfxParser
+
+    doc = (
+        b"OFXHEADER:100\r\nDATA:OFXSGML\r\nVERSION:102\r\nSECURITY:NONE\r\n"
+        b"ENCODING:USASCII\r\nCHARSET:1252\r\nCOMPRESSION:NONE\r\nOLDFILEUID:NONE\r\n"
+        b"NEWFILEUID:NONE\r\n\r\n<OFX><BANKMSGSRSV1><STMTTRNRS><TRNUID>1"
+        b"<STATUS><CODE>0<SEVERITY>INFO</STATUS><STMTRS><CURDEF>ZAR"
+        b"<BANKACCTFROM><BANKID>1<ACCTID>1<ACCTTYPE>CHECKING</BANKACCTFROM>"
+        b"<BANKTRANLIST><DTSTART>20260101<DTEND>20260131<STMTTRN><TRNTYPE>DEBIT"
+        b"<DTPOSTED>20260105<TRNAMT>-1.00<FITID>1<NAME>Smoke</STMTTRN>"
+        b"</BANKTRANLIST><LEDGERBAL><BALAMT>0.00<DTASOF>20260131</LEDGERBAL>"
+        b"</STMTRS></STMTTRNRS></BANKMSGSRSV1></OFX>"
+    )
+    ofx = OfxParser.parse(io.BytesIO(doc))
+    if not ofx.accounts or len(ofx.account.statement.transactions) != 1:
+        raise RuntimeError("ofxparse did not parse the smoke statement")
+
+
 def run_self_test(out: TextIO | None = None) -> int:
     """Run all three native-stack checks in order; print one sentinel line.
 
@@ -98,6 +129,7 @@ def run_self_test(out: TextIO | None = None) -> int:
         ("sqlcipher", _check_sqlcipher),
         ("pikepdf", _check_pikepdf),
         ("argon2", _check_argon2),
+        ("ofxparse", _check_ofxparse),
     )
     for name, check in checks:
         try:

@@ -125,6 +125,30 @@ def test_INV1_selftest_fail_names_argon2(monkeypatch):
     )
 
 
+@pytest.mark.features
+def test_INV1_selftest_fail_names_ofxparse(monkeypatch):
+    """The FIBR-0008 ofxparse leg names itself on failure (all earlier stacks pass)."""
+    from finbreak import _selftest
+
+    monkeypatch.setattr(_selftest, "_check_qt", lambda: None)
+    monkeypatch.setattr(_selftest, "_check_sqlcipher", lambda: None)
+    monkeypatch.setattr(_selftest, "_check_pikepdf", lambda: None)
+    monkeypatch.setattr(_selftest, "_check_argon2", lambda: None)
+
+    def _boom() -> None:
+        raise RuntimeError("simulated ofxparse load failure")
+
+    monkeypatch.setattr(_selftest, "_check_ofxparse", _boom)
+
+    out = io.StringIO()
+    rc = _selftest.run_self_test(out)
+
+    assert rc != 0, "a failing stack must exit non-zero"
+    assert out.getvalue().splitlines() == ["FINBREAK_SELFTEST_FAIL: ofxparse"], (
+        f"expected the ofxparse FAIL line only; got:\n{out.getvalue()}"
+    )
+
+
 def _container_runtime() -> str | None:
     return shutil.which("podman") or shutil.which("docker")
 

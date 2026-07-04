@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Runs INSIDE the build container (invoked by scripts/build-smoke.sh). Freezes
 # `python -m finbreak --self-test` to a PyInstaller --onefile and wraps that same
-# binary in an AppImage. The image is python:3.12-slim-bookworm: it ships a
+# binary in an AppImage, proving every native stack travels: Qt (PySide6),
+# SQLCipher, qpdf (pikepdf), Argon2 (argon2-cffi), and ofxparse's tree incl.
+# native lxml. The image is python:3.12-slim-bookworm: it ships a
 # SHARED libpython (PyInstaller needs one — manylinux's is static) and an
 # older-than-host glibc (~2.36), which bounds the artifact's floor below the
 # debian:13-slim test target (FIBR-0003 INV-2/INV-4).
@@ -30,7 +32,7 @@ apt-get install -y -qq --no-install-recommends \
     libglib2.0-0 libgl1 libegl1 libdbus-1-3 libx11-6 libxkbcommon0 \
     libfreetype6 libfontconfig1 libbrotli1 libharfbuzz0b >/dev/null
 
-echo "-- provisioning PySide6-only build venv --"
+echo "-- provisioning the build venv from pyproject --"
 # Persist pip's download cache in /cache (a host bind-mount) so re-runs reuse
 # the ~250 MB PySide6 wheel instead of re-fetching it every build.
 export PIP_CACHE_DIR=/cache/pip
@@ -38,8 +40,17 @@ python3 -m venv "$VENV"
 # shellcheck disable=SC1091
 . "$VENV/bin/activate"
 python -m pip install --quiet --upgrade pip
-python -m pip install --quiet \
-    PySide6==6.11.1 sqlcipher3-binary==0.6.0 pikepdf==10.9.1 pyinstaller==6.21.0
+# Install the project's REAL runtime deps, read straight from pyproject (single
+# source of truth), NOT a hand-maintained list — that drift silently dropped
+# argon2-cffi from the bundle after FIBR-0004 and would have dropped ofxparse
+# (FIBR-0008). We read `[project].dependencies` and install exactly those
+# (PySide6, sqlcipher3-binary, pikepdf, argon2-cffi, ofxparse + its bs4/lxml/six
+# tree). We do NOT `pip install /src` (the finbreak package itself): PyInstaller
+# freezes the source directly via --paths /src/src, and building the sdist would
+# fail writing egg-info into the read-only /src mount. PyInstaller is a build
+# tool (pyproject `build` group), installed separately.
+mapfile -t RUNTIME_DEPS < <(python -c "import tomllib; [print(d) for d in tomllib.load(open('/src/pyproject.toml','rb'))['project']['dependencies']]")
+python -m pip install --quiet "${RUNTIME_DEPS[@]}" pyinstaller==6.21.0
 
 # INV-2: exactly one Qt binding must be present before freezing (PyInstaller
 # 6.x refuses to collect more than one).
@@ -51,6 +62,13 @@ if [ "$qt_count" != "1" ]; then
 fi
 
 echo "-- freezing --onefile --"
+# The self-test imports every native stack LAZILY (inside its _check_* fn), so
+# each needs help travelling into the frozen bundle. sqlcipher3/pikepdf use the
+# hidden-import + collect-binaries pair; argon2-cffi (native lib in the separate
+# _argon2_cffi_bindings package) and ofxparse's tree (bs4 + native lxml) use
+# --collect-all to pull submodules + data + binaries wholesale. Without these,
+# the clean-room launch fails with ModuleNotFoundError (FIBR-0004 argon2 gap;
+# FIBR-0008 adds ofxparse/lxml).
 pyinstaller --onefile --name "$ONEFILE" \
     --paths /src/src \
     --hidden-import sqlcipher3 \
@@ -58,6 +76,11 @@ pyinstaller --onefile --name "$ONEFILE" \
     --hidden-import PySide6.QtWidgets \
     --collect-binaries pikepdf \
     --collect-binaries sqlcipher3 \
+    --collect-all argon2 \
+    --collect-all _argon2_cffi_bindings \
+    --collect-all ofxparse \
+    --collect-all bs4 \
+    --collect-all lxml \
     --distpath /out --workpath /tmp/build --specpath /tmp \
     /src/src/finbreak/__main__.py
 

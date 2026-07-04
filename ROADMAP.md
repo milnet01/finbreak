@@ -566,6 +566,12 @@ because retrofitting them is a data migration.
   Kind: feature.
   Source: user-request-2026-07-03.
 
+- 📋 [FIBR-0042] **Preserve the as-posted local date for a timezone-bearing OFX <DTPOSTED>.**
+  Surfaced by the FIBR-0008 /indie-review (lane 1, 2026-07-04). `OfxImporter` uses `tx.date.date().isoformat()`; ofxparse normalises a timestamped `<DTPOSTED>` to UTC (`local - offset`), so a transaction posted in the evening of a negative-offset zone rolls to the next calendar day (verified: `20260105230000[-5:EST]` -> "2026-01-06"). Two consequences: (a) mis-assignment to the wrong day and, at a month boundary, the wrong statement period; (b) it can defeat INV-6 cross-source dedup (an OFX row keyed on occurred_on won't match a manually-entered copy if the OFX date shifted). Out of the FIBR-0008 contract (D4/INV-1b specify date-only DTPOSTED, and the fixtures use date-only, so nothing shipped is wrong). Blocked-ish: ofxparse discards the original tz offset, so the fix needs either raw-DTPOSTED reparsing or a product decision on whether local or UTC date is authoritative. Fix: decide the authoritative date, recover the local calendar date (or document UTC), add a tz-bearing DTPOSTED test.
+  **Layman:** Some bank OFX files stamp each transaction with a time and timezone; today an evening transaction can be filed under the wrong day, which can also stop it matching a manually-typed copy.
+  Kind: fix.
+  Source: indie-review-2026-07-04 FIBR-0008 lane-1.
+
 ### ⚡ Performance
 
 - 📋 [FIBR-0025] **Enable SQLite WAL mode.** Set
