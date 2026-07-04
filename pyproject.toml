@@ -33,6 +33,12 @@ dependencies = [
     # used as the parser), so no system lib is needed — the manylinux lxml wheel
     # is self-contained and travels into the FIBR-0003 bundle (spec § Dependencies).
     "ofxparse==0.21",
+    # PDF statement import (FIBR-0009). Native-heavy transitive tree — Pillow
+    # (compiled), pypdfium2 (its PDFium binary libpdfium.so lives in the separate
+    # pypdfium2_raw package), and cryptography (Rust, via pdfminer.six); all ship
+    # as self-contained manylinux wheels and must travel into the FIBR-0003 bundle
+    # (spec § Dependencies / D12 — build-smoke.sh --collect-all pypdfium2_raw).
+    "pdfplumber==0.11.10",
 ]
 
 # PEP 735 dev dependency group. Pinned EXACTLY (==) for a reproducible
