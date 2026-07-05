@@ -38,7 +38,12 @@ from finbreak.errors import FinbreakError
 from finbreak.importers.base import ParseResult
 from finbreak.importers.csv_importer import read_header
 from finbreak.importers.ofx_importer import OfxImporter
-from finbreak.importers.pdf_importer import PasswordError, PdfImporter, table_to_text
+from finbreak.importers.pdf_importer import (
+    PasswordError,
+    PdfError,
+    PdfImporter,
+    table_to_text,
+)
 from finbreak.importers.standard_bank import StandardBankImporter
 from finbreak.models import ColumnMapping, ImportProfile, OfxAccountInfo
 from finbreak.services.accounts import AccountService
@@ -386,7 +391,7 @@ class ImportWizardWidget(QWidget):
                     self._imports.preview_result(sb_result, self._account_id)
                 )
                 return
-        except (ValueError, FinbreakError) as exc:
+        except (PdfError, ValueError, FinbreakError) as exc:
             self._error.setText(str(exc))
             return
         candidates = self._extract_pdf_tables(plaintext)
@@ -442,11 +447,12 @@ class ImportWizardWidget(QWidget):
                 password = dialog.password()
                 remember = dialog.remember()
                 continue
-            except (ValueError, OSError, FinbreakError) as exc:
+            except (PdfError, ValueError, OSError, FinbreakError) as exc:
                 # A non-password decrypt failure (e.g. a corrupt file that passed the
-                # %PDF- sniff) surfaces a friendly message instead of crashing the Qt
-                # slot — the safety net the FIBR-0050 D6 refactor moved out from under
-                # `_extract_pdf_tables` (coding.md § 2; never crash the UI).
+                # %PDF- sniff — pikepdf.open raises PdfError, which is NOT a
+                # ValueError/OSError) surfaces a friendly message instead of crashing
+                # the Qt slot — the safety net the FIBR-0050 D6 refactor moved out
+                # from under `_extract_pdf_tables` (coding.md § 2; never crash the UI).
                 self._error.setText(str(exc))
                 return None
             break

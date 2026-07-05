@@ -168,6 +168,24 @@ def test_INV6a_family_c_keeps_embedded_price_amount_is_last_token():
     assert r.drafts[0].amount_minor == -9541  # 95.41 purchase -> budget negative
 
 
+def test_INV10_family_c_folds_zero_date_continuation_skips_section_header():
+    r = _parse_family_c(
+        [
+            "2 Apr 26 Fake Payment -100.00",
+            "*****9000740 06H54 ref",  # zero-date -> folds into the prior desc
+            "Credits Credits",  # section header -> skipped, NOT folded
+            "3 Apr 26 Fake Shop 50.00",
+        ],
+        2,
+        "us",
+    )
+    assert [d.description for d in r.drafts] == [
+        "Fake Payment *****9000740 06H54 ref",
+        "Fake Shop",
+    ]
+    assert [d.amount_minor for d in r.drafts] == [10000, -5000]
+
+
 # --------------------------------------------------------------------------- #
 # parse() per family (INV-1/3/4/5/6)
 # --------------------------------------------------------------------------- #
@@ -175,6 +193,14 @@ def test_INV3_family_a_current():
     r = _parse("family_a_current.pdf")
     assert [d.amount_minor for d in r.drafts] == [-10000, 25000, -5000]
     assert (r.period_start, r.period_end) == ("2026-05-01", "2026-05-31")
+
+
+def test_INV8_number_format_detected_from_region_not_footer():
+    # A US statement with a European-format token in the FOOTER (outside the
+    # transaction region) parses fine — detection is region-scoped (D9), so the
+    # footer token can't trip "mixes number formats".
+    r = _parse("mixed_footer_a.pdf")
+    assert [d.amount_minor for d in r.drafts] == [-10000, 25000]
 
 
 def test_INV3_family_a_rcp_european_with_rollover():
@@ -284,9 +310,12 @@ def test_INV12_wrong_password_raises_passworderror_without_leaking_secret(caplog
     enc = _encrypt(_fx("family_a_current.pdf"), user="sentinel-pw-42")
     with caplog.at_level(logging.DEBUG, logger="finbreak"):
         with pytest.raises(pikepdf.PasswordError) as exc:
-            StandardBankImporter().parse(enc, 2, "wrong-password")
-    assert "sentinel-pw-42" not in str(exc.value)
-    assert not any("sentinel-pw-42" in r.getMessage() for r in caplog.records)
+            StandardBankImporter().parse(enc, 2, "attempted-secret-99")
+    # Assert on the ATTEMPTED password — the value that actually flows through
+    # parse (the document's own "sentinel-pw-42" never reaches the code, so a
+    # test that checked it would be vacuous — pdf_import INV-11 analogue).
+    assert "attempted-secret-99" not in str(exc.value)
+    assert not any("attempted-secret-99" in r.getMessage() for r in caplog.records)
 
 
 # --------------------------------------------------------------------------- #
@@ -434,3 +463,18 @@ def test_INV13_wizard_sb_checksum_failure_shows_friendly_message(
     widget._select_file(str(path))
     assert widget._stack.currentIndex() == _STEP_PICK, "checksum fail stays on pick"
     assert "didn't add up" in widget._error.text()
+
+
+def test_INV13_wizard_corrupt_pdf_shows_message_not_crash(qtbot, service, tmp_path):
+    # A corrupt file that passes the %PDF- sniff makes pikepdf.open raise PdfError
+    # (NOT a ValueError/OSError) — the wizard must surface a shown message, never
+    # crash the Qt slot (coding.md § 2).
+    from finbreak.ui.import_wizard import _STEP_PICK
+
+    acct = _acct(service)
+    corrupt = b"%PDF-1.4\ngarbage not a real pdf trailer\n"
+    path = _write(tmp_path, "corrupt.pdf", corrupt)
+    widget = _wizard(qtbot, service, acct)
+    widget._select_file(str(path))  # must not raise
+    assert widget._stack.currentIndex() == _STEP_PICK, "stays on pick, no crash"
+    assert widget._error.text() != "", "a friendly message is shown"

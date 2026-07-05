@@ -29,8 +29,12 @@ import io
 import pikepdf
 
 # Re-exported so callers gate the password prompt on the module's own signal
-# rather than importing pikepdf themselves (INV-3).
+# rather than importing pikepdf themselves (INV-3). ``PdfError`` is the base qpdf
+# error (a corrupt/truncated but %PDF-sniffed file) — re-exported so the wizard's
+# error net can catch it without importing pikepdf (``PasswordError`` is NOT a
+# subclass of it, so the net must name both).
 PasswordError = pikepdf.PasswordError
+PdfError = pikepdf.PdfError
 
 # Page + row caps (INV-9, security-model INV-5b). Strict (``>``), matching the
 # byte cap. Orders of magnitude above any real personal statement; one-line

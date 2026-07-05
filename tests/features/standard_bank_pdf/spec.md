@@ -19,7 +19,9 @@ Coverage map:
   each family by its own signature + C-wins-over-A detection order (D4);
   `_span` B/D quiet-month fallback to the statement "Date" line (D8);
   `_parse_family_a` keeps an embedded `MM DD` in the description (INV-3a);
-  `_parse_family_c` keeps an embedded price, amount = last token (INV-6a).
+  `_parse_family_c` keeps an embedded price, amount = last token (INV-6a), and folds
+  a zero-date continuation line into the prior segment's description while skipping a
+  section header (INV-10).
 - **`parse()` per family** (INV-1/3/4/5/6): Current (US, closing), RCP (European +
   rollover), Home Loan (ISO, unsigned balance vs signed closing), Money Market
   (`R`-prefixed, page-2 interest schedule region-excluded), credit card
@@ -30,9 +32,13 @@ Coverage map:
   (unlike a closing-less Savings, which imports on the per-row gate alone); a
   credit card that doesn't reconcile rides the completeness gate alone; a
   reconciling quiet month returns an empty-draft `ParseResult` with the period.
+- **Number format (INV-8):** detection is scoped to the transaction **region** — a
+  European-format token in the footer (outside the region) does not trip the
+  "mixes number formats" refusal (`mixed_footer_a`).
 - **Security (INV-12):** an encrypted fixture decrypts in memory with the password;
-  a wrong password raises `PasswordError`; the password appears in no log record
-  (`caplog`) and no exception message.
+  a wrong password raises `PasswordError`; the **attempted** password (the value
+  that flows through `parse`) appears in no log record (`caplog`) and no exception
+  message.
 - **Bounds (INV-14):** monkeypatching `standard_bank._MAX_PDF_ROWS` /
   `_MAX_PDF_PAGES` small refuses an over-large statement.
 - **Wizard round-trip (INV-13, qtbot):** picking a recognised SB PDF lands on
@@ -40,4 +46,6 @@ Coverage map:
   second import previews all-duplicate and adds zero; a **locked** SB statement
   prompts (fake `PasswordDialog`), decrypts, then previews; a non-reconciling SB
   statement surfaces the friendly `ValueError` as a shown message and stays on the
-  pick step (never a crashed Qt slot).
+  pick step (never a crashed Qt slot); a **corrupt** file that passes the `%PDF-`
+  sniff (pikepdf raises `PdfError`, not a `ValueError`) also surfaces a message
+  rather than crashing the slot.

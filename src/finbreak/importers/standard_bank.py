@@ -649,12 +649,35 @@ def _parse_family_d(lines: list[str], exponent: int, fmt: Fmt) -> ParseResult:
     return ParseResult(drafts, [], None, None)
 
 
+def _is_cc_skip_line(line: str) -> bool:
+    """A zero-date Family-C line that is a **non-transaction**, not a continuation:
+    a section header (every word one of credit(s)/debit(s)) or the masked
+    "Account …" line (INV-10). These are skipped, not folded."""
+    low = line.strip().lower()
+    if low.startswith("account"):
+        return True
+    words = low.split()
+    return bool(words) and all(
+        w in {"credit", "credits", "debit", "debits"} for w in words
+    )
+
+
 def _parse_family_c(lines: list[str], exponent: int, fmt: Fmt) -> ParseResult:
-    """Family C (credit card) — de-interleave two columns; sign = -(printed)."""
-    drafts: list[TransactionDraft] = []
-    row = 0
+    """Family C (credit card) — de-interleave two columns; sign = -(printed). A
+    zero-date line inside the region folds into the prior segment's description
+    (INV-10); a section header / "Account …" line is skipped, and a zero-date line
+    before the first segment (no prior) is dropped."""
+    staged: list[tuple[str, str, Decimal]] = []  # date_iso, description, signed
     for line in lines:
-        for seg in _split_credit_card_line(line):
+        segs = _split_credit_card_line(line)
+        if not segs:
+            # No date on this line: fold it into the prior transaction's
+            # description, unless it is a section header / account line.
+            if staged and not _is_cc_skip_line(line):
+                date_iso, desc, signed = staged[-1]
+                staged[-1] = (date_iso, f"{desc} {line.strip()}".strip(), signed)
+            continue
+        for seg in segs:
             m = re.match(r"(\d{1,2} [A-Za-z]{3} \d{2})\s+(.*?)\s+(-?[\d.,]+)\s*$", seg)
             if not m:
                 continue
@@ -663,10 +686,13 @@ def _parse_family_c(lines: list[str], exponent: int, fmt: Fmt) -> ParseResult:
             if "balance brought forward" in low or "closing balance" in low:
                 continue
             printed = _parse_amount(amt_tok, fmt)
-            signed = -printed if not _is_negative(amt_tok) else printed
             # printed purchase (no sign) -> budget negative; printed credit (-) -> +.
-            row += 1
-            drafts.append(_draft(row, _cc_iso(date_s), signed, desc.strip(), exponent))
+            signed = -printed if not _is_negative(amt_tok) else printed
+            staged.append((_cc_iso(date_s), desc.strip(), signed))
+    drafts = [
+        _draft(i + 1, date_iso, signed, desc, exponent)
+        for i, (date_iso, desc, signed) in enumerate(staged)
+    ]
     return ParseResult(drafts, [], None, None)
 
 
@@ -710,12 +736,17 @@ class StandardBankImporter:
         if family is None:
             return None
 
-        fmt = _detect_number_format(full_text)
         period = _parse_period(full_text)
 
         region_lines: list[str] = []
         for page_lines in pages:
             region_lines.extend(page_lines[_table_region(page_lines, family)])
+
+        # Detect the decimal convention from the **transaction region** only (D9 /
+        # Deliverable 1) — not the whole document — so a stray opposite-convention
+        # money token in the footer / VAT summary / fee structure can't trip the
+        # "mixes number formats" refusal on an otherwise-consistent statement.
+        fmt = _detect_number_format("\n".join(region_lines))
 
         if family is Family.A:
             span = period or ("", "")
@@ -749,7 +780,15 @@ def _cc_opening(full_text: str, fmt: Fmt) -> Decimal:
         if "balance brought forward" in line.lower():
             toks = _money_tokens(line)
             if toks:
-                return _parse_amount(toks[-1], fmt)
+                bal = toks[-1]
+                # Honour the printed sign (as _capture_opening does) — a card that
+                # opens in credit prints a negative brought-forward, and the sole
+                # Family-C gate (opening - Σ == closing) needs the right sign.
+                return (
+                    -_parse_amount(bal, fmt)
+                    if _is_negative(bal)
+                    else _parse_amount(bal, fmt)
+                )
     raise ValueError("couldn't find the opening balance on this statement")
 
 
