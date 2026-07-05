@@ -614,7 +614,7 @@ because retrofitting them is a data migration.
   files) that parses the printed transaction lines and feeds the
   existing preview -> dedup -> commit pipeline; a recognised
   statement skips column-mapping (like OFX). Covers current,
-  savings, home-loan, revolving-credit-loan, and credit-card
+  savings, home-loan, revolving-credit-loan, credit-card, and money-market/investment
   statements. Signed amount from the running-balance delta
   (unifies the families incl. the home loan, which prints no
   per-amount sign); credit card uses the Debit/Credits section
@@ -630,7 +630,7 @@ because retrofitting them is a data migration.
   100% SYNTHETIC (no real PII/ID/statements committed).
   Dependencies: FIBR-0009.
   Lanes: importers, ui, tests.
-  **Layman:** Makes all your real Standard Bank statements — cheque, savings, home loan, personal loan and credit card — import cleanly, by teaching the app to read the printed statement lines the way you do.
+  **Layman:** Makes all your real Standard Bank statements — cheque, savings, home loan, personal loan, credit card and money-market — import cleanly, by teaching the app to read the printed statement lines the way you do.
   Kind: feature.
   Source: user-request-2026-07-05.
 
