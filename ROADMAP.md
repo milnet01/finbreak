@@ -214,6 +214,42 @@ lands on top.
 
 ---
 
+## P07.5 — App shell & first-run wizard (UX redesign)
+
+### 🎨 Features · 🖥️ UX
+
+---
+
+- 📋 [FIBR-0051] **P07.5: app-shell UX redesign — real app window (QMainWindow) with menubar / icon toolbar / status bar; first-run & unlock as popups.**
+  Replace the full-screen QStackedWidget swap model with a QMainWindow
+  shell: menubar (File / View / Help / Donate), an icon toolbar
+  (Manual entry / Import / Accounts / Categories / Lock, icon-above-
+  label), a central swappable content stack, and a status bar that
+  reports current activity (Ready / Importing… / Added transaction /
+  Vault locked) plus a persistent transaction count. First-run and
+  unlock become popup dialogs shown OVER the window (chrome greyed,
+  content shows a Welcome / 🔒 Locked placeholder); idle auto-lock
+  returns to the locked-shell state. Manual entry becomes a popup
+  Add-Transaction dialog. Home = getting-started panel when empty,
+  transaction table once populated (the P10 dashboard later replaces
+  Home's body). Donate menu opens the .github/FUNDING.yml links
+  (GitHub Sponsors / Patreon / PayBru) via QDesktopServices — a
+  user-initiated hand-off to the OS browser; the app itself still
+  makes no network calls (local-only holds). Reuses the existing
+  accounts / categories / import screens as content views. Preserves
+  FIBR-0004 security invariants: key wiped on quit, auto-lock fires,
+  NO transaction data shown while locked, corrupt/incomplete-install
+  guard at startup. Build order: this ships FIRST, then P08 rules +
+  category link, P09 transfer detection, P10 dashboard drop into the
+  ready-made content area. Out of scope (own phases): dashboard
+  charts (FIBR-0012), rules screen (FIBR-0010), transfer prompts
+  (FIBR-0011), branded app icon (FIBR-0037).
+  Dependencies: FIBR-0004, FIBR-0005, FIBR-0006, FIBR-0007, FIBR-0009.
+  **Layman:** Turn the bare password-box-then-form startup into a proper app window — menus, a toolbar of shortcuts, a status bar, and a first-run popup wizard — so it looks and feels like a real desktop app.
+  Kind: implement.
+  Lanes: ui, app, tests.
+  Source: user-request-2026-07-05.
+
 ## P08 — Auto-categorisation rules
 
 ### 🎨 Features

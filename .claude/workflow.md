@@ -4,12 +4,12 @@
 
 | Field | Value |
 |-------|-------|
-| **Project phase** | P08 — rules engine + manual override (FIBR-0010) |
-| **Active item ID** | FIBR-0010 (P08 rules engine + manual override; the transaction→category link deferred here from P04/FIBR-0006 D10) |
-| **Active step** | 1 (draft/expand `docs/specs/FIBR-0010.md`, then `/cold-eyes` to convergence before code) |
+| **Project phase** | P07.5 — App-shell UX redesign (FIBR-0051) |
+| **Active item ID** | FIBR-0051 (P07.5 app-shell UX redesign — QMainWindow chrome + first-run/unlock popups + status bar + Donate menu. First of a **4-piece body of work** the user approved 2026-07-05: **shell (FIBR-0051)** → P08 rules+category-link (FIBR-0010) → P09 transfers (FIBR-0011) → P10 dashboard (FIBR-0012). Shell-first so later features plug into the finished frame with no rewiring.) |
+| **Active step** | 1 (spec `docs/specs/FIBR-0051.md` **drafted 2026-07-05** after brainstorming + design-approval; `/cold-eyes` to convergence **pending** before code) |
 | **Blocked on** | — |
-| **Last update** | 2026-07-05 (FIBR-0050 **CLOSED** by `/close-phase` — one Standard Bank text-layer reader for all six account types shipped. Spec cold-eyes-converged (9 loops); TDD (36 tests); validated end-to-end on all 6 real statements. Close: `/audit` clean; `/indie-review` 2 cold rounds — round 1 fixed the code findings, a confirming re-review fixed 1 HIGH (corrupt-PDF Qt-slot crash) + 2 MED (region-scoped number detect, INV-12 test correction) + 2 LOW (Family-C fold, `_cc_opening` sign), final cold pair clean. Gate green 277 passed/1 skipped, mypy 0. Fixtures 100% synthetic. Journal `docs/journal/FIBR-0050.md`; tag `FIBR-0050-complete`.) — prior FIBR-0050 open: 2026-07-04 (FIBR-0009 **CLOSED** by `/close-phase` — P07 PDF import shipped. TDD: 41-test `tests/features/pdf_import/` + the extract-then-CSV-adapter `PdfImporter` (in-memory `pikepdf` decrypt, D8 grouping / D13 uniquify), the v5 migration, accounts credential accessors, the D10 rename, the wizard PDF branch + `password_dialog`, the `_selftest` pdfplumber leg. Schema ripple `==4`→`==5` across 5 suites. Gate green 240 passed/1 skipped, mypy 0; FIBR-0003 build smoke PASS. Close: `/audit` 0, `/indie-review` 3 cold lanes (2 clean, 1 LOW coverage-gap fixed inline). Also: repointed stale `.venv` shebangs (dir-rename fallout); created + pinned a `finbreak.desktop` launcher (runs current `src/`); Ants-MCP feedback re-verified (ANTS-3438 still reproduces; 3439 moot for this project). Tag `FIBR-0009-complete`) |
-| **Next gate** | FIBR-0010 step 1 — draft/expand `docs/specs/FIBR-0010.md` (P08 rules engine + manual override; the transaction→category link deferred here from P04/FIBR-0006 D10), then `/cold-eyes` to convergence before code |
+| **Last update** | 2026-07-05 (**NEW ACTIVE ITEM FIBR-0051** — app-shell UX redesign. User delegated "what's next"; chose the queued app-shell redesign → brainstormed (7 Qs: scope=full-dashboard-eventually, sequenced as 4 pieces, shell-first, locked-view=full-window+popup, manual-entry=popup dialog, +status bar, +Donate menu). Filed FIBR-0051 as new phase P07.5 (roadmap `features-ux` section, no downstream renumber). Verified all reshaped interfaces + PySide6 6.11.1 APIs empirically (§13). Wrote the spec (INV-1..10, D1..10, test-ripple named). Next: `/cold-eyes` → TDD → `/close-phase`.) — prior FIBR-0050 open: 2026-07-05 (FIBR-0050 **CLOSED** by `/close-phase` — one Standard Bank text-layer reader for all six account types shipped. Spec cold-eyes-converged (9 loops); TDD (36 tests); validated end-to-end on all 6 real statements. Close: `/audit` clean; `/indie-review` 2 cold rounds — round 1 fixed the code findings, a confirming re-review fixed 1 HIGH (corrupt-PDF Qt-slot crash) + 2 MED (region-scoped number detect, INV-12 test correction) + 2 LOW (Family-C fold, `_cc_opening` sign), final cold pair clean. Gate green 277 passed/1 skipped, mypy 0. Fixtures 100% synthetic. Journal `docs/journal/FIBR-0050.md`; tag `FIBR-0050-complete`.) — prior FIBR-0050 open: 2026-07-04 (FIBR-0009 **CLOSED** by `/close-phase` — P07 PDF import shipped. TDD: 41-test `tests/features/pdf_import/` + the extract-then-CSV-adapter `PdfImporter` (in-memory `pikepdf` decrypt, D8 grouping / D13 uniquify), the v5 migration, accounts credential accessors, the D10 rename, the wizard PDF branch + `password_dialog`, the `_selftest` pdfplumber leg. Schema ripple `==4`→`==5` across 5 suites. Gate green 240 passed/1 skipped, mypy 0; FIBR-0003 build smoke PASS. Close: `/audit` 0, `/indie-review` 3 cold lanes (2 clean, 1 LOW coverage-gap fixed inline). Also: repointed stale `.venv` shebangs (dir-rename fallout); created + pinned a `finbreak.desktop` launcher (runs current `src/`); Ants-MCP feedback re-verified (ANTS-3438 still reproduces; 3439 moot for this project). Tag `FIBR-0009-complete`) |
+| **Next gate** | FIBR-0051 step 1 — `/cold-eyes` `docs/specs/FIBR-0051.md` to convergence (global rule § 14), then TDD. (P08/FIBR-0010 rules engine follows the shell, per the approved 4-piece order.) |
 | **Convergence checkpoint** | 5 (consecutive `FP##` items immediately preceding any ✅-`implement`-Kind close in the active release block — see `~/.claude/commands/close-phase.md § 5a-6`) |
 | **Debt-sweep phase threshold** | 5 (auto-prompt for `/debt-sweep` after this many phases without one) |
 | **Last debt sweep** | (none yet) |
@@ -21,7 +21,7 @@ While an item is active, Claude marks the current step 🚧;
 completed steps flip to ✅. Resets to all ⬜ when a new item
 becomes active.
 
-1. ⬜ Verify spec (`docs/specs/FIBR-0010.md` — draft/expand, then `/cold-eyes` to convergence)
+1. 🚧 Verify spec (`docs/specs/FIBR-0051.md` — drafted; `/cold-eyes` to convergence)
 2. ⬜ Verify dependencies on the roadmap DAG
 3. ⬜ Write failing tests
 4. ⬜ Implement until tests pass
@@ -101,6 +101,41 @@ journal); §2 is the only part that changes.
 ## §3. Session journal
 
 Append-only. Newest at the top.
+
+### 2026-07-05 — FIBR-0051 opened: app-shell UX redesign brainstormed + spec drafted
+
+User delegated "what to tackle next"; I surfaced the two candidates (the queued
+app-shell redesign vs the phase-ordered P08 rules engine) and the user chose the
+**app-shell redesign**. Ran the brainstorming skill (design-approval gate applies).
+Seven decisions, one at a time: scope = *eventually the full dashboard* → but I
+**flagged the hard dependency** (the "spending by category" pie needs the
+transaction→category link deferred to P08, and correct totals need P09 transfer
+detection — neither built), so the user chose **"everything now, in order"** →
+**decomposed into 4 pieces** built as separate spec→cold-eyes→TDD cycles:
+**shell (FIBR-0051)** → P08 rules+category-link (FIBR-0010) → P09 transfers
+(FIBR-0011) → P10 dashboard (FIBR-0012). User confirmed **shell-first** (later
+features plug into the finished frame, no rewiring). Design: `QMainWindow` with
+menubar (File/View/Help/**Donate**) + icon toolbar + **status bar** (user-added
+request) + central content stack; first-run & unlock become **popup dialogs over
+the window** (locked view = full window, chrome greyed, 🔒 Locked placeholder +
+unlock popup); manual entry = **popup dialog**; Donate menu → the three
+`.github/FUNDING.yml` links via `QDesktopServices`. All design sections approved.
+
+Filed **FIBR-0051** as a new phase **P07.5** (roadmap `features-ux` section,
+inserted between P07 and P08 with a distinct sub-heading so the existing
+`features-N` slugs did **not** renumber; no downstream churn). Verified every
+reshaped interface (AuthService, FirstRun/Unlock widgets' signals,
+`presence_state` states, the content widgets' `done` signal, the routing
+test-ripple sites) **and** the PySide6 6.11.1 shell APIs (QAction in QtGui,
+QMainWindow/QStatusBar methods, QDesktopServices.openUrl, ToolButtonTextUnderIcon)
+empirically (§13). Wrote `docs/specs/FIBR-0051.md` — INV-1..10 (structure, 3-state
+routing, **no-data-while-locked** security, auto-lock returns to locked shell,
+key-lifetime untouched, content routing, status bar, Donate no-network,
+manual-entry round-trip, i18n/RTL), D1..10, Deliverables (incl. the named
+routing/`MainWindow` test ripple), **no schema change / no new dependency**.
+
+Next: `/cold-eyes` the spec to convergence (global rule § 14, loop 2+ cold), then
+TDD → `/close-phase`. Committed the roadmap item + spec draft as the checkpoint.
 
 ### 2026-07-05 — FIBR-0050 CLOSED by /close-phase (Standard Bank text-parser)
 
