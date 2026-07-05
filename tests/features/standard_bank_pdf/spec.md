@@ -15,16 +15,21 @@ Coverage map:
 
 - **Pure helpers (no PDF):** `_detect_number_format` US/EU (INV-8/8a); `_parse_amount`
   trailing/leading/`R` signs; `_infer_years` Dec→Jan + Nov→Feb-gap rollover (INV-9a);
-  `_split_credit_card_line`; `detect_standard_bank` → family / `None` (INV-2/2a);
+  `_split_credit_card_line`; `detect_standard_bank` → family / `None` (INV-2/2a),
+  each family by its own signature + C-wins-over-A detection order (D4);
+  `_span` B/D quiet-month fallback to the statement "Date" line (D8);
   `_parse_family_a` keeps an embedded `MM DD` in the description (INV-3a);
   `_parse_family_c` keeps an embedded price, amount = last token (INV-6a).
 - **`parse()` per family** (INV-1/3/4/5/6): Current (US, closing), RCP (European +
   rollover), Home Loan (ISO, unsigned balance vs signed closing), Money Market
   (`R`-prefixed, page-2 interest schedule region-excluded), credit card
-  (de-interleave + section flip).
-- **Integrity (INV-7b/11):** a corrupted-amount fixture raises the friendly
-  `ValueError`; a closing-less Savings statement imports on the per-row gate alone;
-  a reconciling quiet month returns an empty-draft `ParseResult` with the period.
+  (de-interleave + section flip) — dates asserted alongside amounts.
+- **Integrity (INV-7b/11):** the per-row gate (a corrupted amount) and the
+  completeness gate (rows reconcile but the printed closing disagrees) raise
+  **distinct** messages; a Home-Loan with its closing removed is all-or-nothing
+  (unlike a closing-less Savings, which imports on the per-row gate alone); a
+  credit card that doesn't reconcile rides the completeness gate alone; a
+  reconciling quiet month returns an empty-draft `ParseResult` with the period.
 - **Security (INV-12):** an encrypted fixture decrypts in memory with the password;
   a wrong password raises `PasswordError`; the password appears in no log record
   (`caplog`) and no exception message.
@@ -32,4 +37,7 @@ Coverage map:
   `_MAX_PDF_PAGES` small refuses an over-large statement.
 - **Wizard round-trip (INV-13, qtbot):** picking a recognised SB PDF lands on
   **preview** (no map step / table chooser); Import inserts the rows + period; a
-  second import previews all-duplicate and adds zero.
+  second import previews all-duplicate and adds zero; a **locked** SB statement
+  prompts (fake `PasswordDialog`), decrypts, then previews; a non-reconciling SB
+  statement surfaces the friendly `ValueError` as a shown message and stays on the
+  pick step (never a crashed Qt slot).

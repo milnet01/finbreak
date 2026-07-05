@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pikepdf
 import pytest
+from PySide6.QtWidgets import QDialog
 
 from conftest import _PW
 from finbreak.importers.standard_bank import (
@@ -24,6 +25,7 @@ from finbreak.importers.standard_bank import (
     _parse_amount,
     _parse_family_a,
     _parse_family_c,
+    _span,
     _split_credit_card_line,
     detect_standard_bank,
 )
@@ -102,6 +104,54 @@ def test_INV2a_detect_family_and_none():
     assert detect_standard_bank("Some Other Bank\nDate Description Amount") is None
 
 
+def test_INV2a_each_family_detected_by_its_own_signature():
+    marker = "\nThe Standard Bank of South Africa Limited"
+    assert (
+        detect_standard_bank("Posting Effective Cash\nDebit Credit Balance" + marker)
+        is Family.B
+    )
+    assert (
+        detect_standard_bank(
+            "Transaction description Withdrawals Deposits Interest rate Balance"
+            + marker
+        )
+        is Family.D
+    )
+    assert (
+        detect_standard_bank(
+            "Date Description Amount Date Description Amount\nTitanium Credit Card"
+            + marker
+        )
+        is Family.C
+    )
+
+
+def test_INV2a_credit_card_wins_over_family_a_detection_order():
+    # A statement carrying BOTH the Family-A header tokens AND the credit-card
+    # markers must resolve to C — most-specific-first C->D->B->A (D4).
+    text = (
+        "Date Description Amount\n"
+        "Titanium Credit Card\n"
+        "Debits Credits Date Balance\n"
+        "The Standard Bank of South Africa Limited"
+    )
+    assert detect_standard_bank(text) is Family.C
+
+
+def test_D8_span_quiet_bd_falls_back_to_statement_date():
+    # B/D print no "Statement from...to..." period; a quiet month (zero drafts)
+    # falls back to the statement "Date" line for the coverage span (both the
+    # YYYY MM DD and the D Month YYYY forms).
+    assert _span(Family.D, None, [], "Transaction details\nDate 2026 03 31\n") == (
+        "2026-03-31",
+        "2026-03-31",
+    )
+    assert _span(Family.B, None, [], "Statement\nDate 31 March 2026\n") == (
+        "2026-03-31",
+        "2026-03-31",
+    )
+
+
 def test_INV3a_family_a_keeps_embedded_mm_dd_in_description():
     lines = [
         "BALANCE BROUGHT FORWARD 08 19 1.000,00-",
@@ -137,25 +187,58 @@ def test_INV3_family_a_rcp_european_with_rollover():
 def test_INV4_family_b_homeloan_unsigned_balance_signed_closing():
     r = _parse("family_b_homeloan.pdf")
     assert [d.amount_minor for d in r.drafts] == [5000, -30000]
+    assert [d.occurred_on for d in r.drafts] == ["2025-03-02", "2025-03-05"]
 
 
 def test_INV5_family_d_moneymarket_page2_schedule_excluded():
     r = _parse("family_d_moneymarket.pdf")
     assert [d.amount_minor for d in r.drafts] == [-20000, 5000]  # withdrawal, interest
+    # only the two page-1 transactions — the page-2 interest schedule row (a
+    # YYYY MM DD line that is NOT a transaction) must be region-excluded, not a 3rd.
+    assert [d.occurred_on for d in r.drafts] == ["2026-03-02", "2026-03-03"]
 
 
 def test_INV6_family_c_creditcard_deinterleave_and_flip():
     r = _parse("family_c_creditcard.pdf")
     # credit -100 -> budget +100; purchases 50/30 -> budget -50/-30.
     assert [d.amount_minor for d in r.drafts] == [10000, -5000, -3000]
+    # de-interleave keeps both columns of the split line, in column order.
+    assert [d.occurred_on for d in r.drafts] == [
+        "2026-04-02",
+        "2026-04-03",
+        "2026-04-05",
+    ]
 
 
 # --------------------------------------------------------------------------- #
 # Integrity (INV-7b / INV-11 / D13)
 # --------------------------------------------------------------------------- #
 def test_INV11_checksum_failure_raises_and_imports_nothing():
-    with pytest.raises(ValueError, match="didn't add up"):
+    # The per-row gate: a printed amount whose magnitude != its balance change.
+    with pytest.raises(ValueError, match="amount doesn't match its balance change"):
         _parse("checksum_fail_a.pdf")
+
+
+def test_INV11a_completeness_gate_distinct_from_per_row():
+    # Every row reconciles (per-row gate passes) but the independently-printed
+    # closing figure disagrees with the running-balance endpoint — the completeness
+    # gate, a DISTINCT message from the per-row gate (a dropped trailing row).
+    with pytest.raises(ValueError, match="running balance and transactions disagree"):
+        _parse("completeness_fail_a.pdf")
+
+
+def test_INV11a_family_b_missing_closing_raises():
+    # Home Loan always prints a closing; its absence is all-or-nothing (unlike
+    # Savings, which legitimately prints none and rides the per-row gate).
+    with pytest.raises(ValueError, match="couldn't find the closing balance"):
+        _parse("family_b_no_closing.pdf")
+
+
+def test_INV11a_family_c_non_reconciling_raises():
+    # Credit card has no per-row running balance — it rides the completeness gate
+    # (opening - Σ signed) alone; a closing mismatch is the only integrity signal.
+    with pytest.raises(ValueError, match="running balance and transactions disagree"):
+        _parse("family_c_fail.pdf")
 
 
 def test_INV11_savings_no_closing_imports_on_per_row_gate():
@@ -241,6 +324,36 @@ def _write(tmp_path: Path, name: str, data: bytes) -> Path:
     return path
 
 
+def _patch_dialog(monkeypatch, responses):
+    """Replace ``import_wizard.PasswordDialog`` with a scripted fake (the same
+    pattern as tests/features/pdf_import). Each construction pops the next response
+    dict (``password``/``remember``/``accept``); returns the account-name labels."""
+    from finbreak.ui import import_wizard
+
+    seq = iter(responses)
+    shown: list[str] = []
+
+    class _Fake:
+        def __init__(self, account_name, parent=None):
+            self._r = next(seq)
+            shown.append(account_name)
+
+        def exec(self):
+            accepted = self._r.get("accept", True)
+            return (
+                QDialog.DialogCode.Accepted if accepted else QDialog.DialogCode.Rejected
+            )
+
+        def password(self):
+            return self._r.get("password", "")
+
+        def remember(self):
+            return self._r.get("remember", False)
+
+    monkeypatch.setattr(import_wizard, "PasswordDialog", _Fake)
+    return shown
+
+
 def test_INV1_end_to_end_preview_result_pipeline(service):
     exponent = read_minor_unit_exponent(service.vault.connection)
     acct = _acct(service)
@@ -285,3 +398,39 @@ def test_INV13_wizard_reimport_adds_zero(qtbot, service, tmp_path):
     assert w2._preview.new_count == 0
     w2._import_button.click()
     assert TransactionRepository(conn).count_for_account(acct) == 3, "no new rows"
+
+
+def test_INV13_wizard_encrypted_sb_prompts_then_previews(
+    qtbot, service, tmp_path, monkeypatch
+):
+    # A locked SB statement: the wizard's `_decrypt_pdf` password loop prompts,
+    # decrypts in memory, THEN the SB reader parses and lands on preview — proving
+    # the FIBR-0050 decrypt-once seam composes with the SB branch (not just the
+    # generic PDF path the FIBR-0009 suite covers).
+    from finbreak.ui.import_wizard import _STEP_PREVIEW
+
+    acct = _acct(service)
+    enc = _encrypt(_fx("family_a_current.pdf"), user="sentinel-pw-42")
+    path = _write(tmp_path, "locked.pdf", enc)
+    shown = _patch_dialog(monkeypatch, [{"password": "sentinel-pw-42"}])
+    widget = _wizard(qtbot, service, acct)
+    widget._select_file(str(path))
+    assert len(shown) == 1, "the locked SB statement prompted once"
+    assert widget._stack.currentIndex() == _STEP_PREVIEW, "decrypted SB -> preview"
+    assert widget._preview.new_count == 3
+
+
+def test_INV13_wizard_sb_checksum_failure_shows_friendly_message(
+    qtbot, service, tmp_path
+):
+    # A non-reconciling SB statement surfaces the all-or-nothing ValueError as a
+    # shown message (never a crashed Qt slot), and stays on the pick step so nothing
+    # is imported.
+    from finbreak.ui.import_wizard import _STEP_PICK
+
+    acct = _acct(service)
+    path = _write(tmp_path, "bad.pdf", _fx("checksum_fail_a.pdf"))
+    widget = _wizard(qtbot, service, acct)
+    widget._select_file(str(path))
+    assert widget._stack.currentIndex() == _STEP_PICK, "checksum fail stays on pick"
+    assert "didn't add up" in widget._error.text()
