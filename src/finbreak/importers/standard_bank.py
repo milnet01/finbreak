@@ -680,6 +680,10 @@ def _parse_family_c(lines: list[str], exponent: int, fmt: Fmt) -> ParseResult:
         for seg in segs:
             m = re.match(r"(\d{1,2} [A-Za-z]{3} \d{2})\s+(.*?)\s+(-?[\d.,]+)\s*$", seg)
             if not m:
+                # A dated segment with no amount is skipped (not raised, unlike the
+                # A/B/D _MISPARSE) because Family C has no per-row gate — its
+                # mandatory completeness gate (opening - Σ == closing) catches any
+                # dropped amount loudly, so a silent under-import is impossible.
                 continue
             date_s, desc, amt_tok = m.groups()
             low = desc.lower()

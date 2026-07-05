@@ -605,7 +605,7 @@ because retrofitting them is a data migration.
   Kind: ux.
   Source: user-request-2026-07-04.
 
-- 🚧 [FIBR-0050] **Standard Bank (SA) statement text-parser — one reader for all account types.**
+- ✅ [FIBR-0050] **Standard Bank (SA) statement text-parser — one reader for all account types.**
   Extends P07 (FIBR-0009). The generic ruled-table extractor
   mangles or misses several real Standard Bank layouts (the
   Current account collapses into one cell; the credit card's
@@ -633,6 +633,10 @@ because retrofitting them is a data migration.
   **Layman:** Makes all your real Standard Bank statements — cheque, savings, home loan, personal loan, credit card and money-market — import cleanly, by teaching the app to read the printed statement lines the way you do.
   Kind: feature.
   Source: user-request-2026-07-05.
+  Resolved (2026-07-05): shipped one Standard Bank text-layer reader (StandardBankImporter) for all six account types — current, savings, home loan, revolving-credit, credit card, money-market — family-dispatched inside one module. Validated end-to-end on all six real statements (checksums pass) + 13 synthetic fixtures. Spec cold-eyes-converged (9 loops); TDD (36 tests). Close: /audit clean; /indie-review (2 rounds, cold) — code findings (credit-card de-interleave HIGH, decrypt-crash net, INV-7b sign gate) + a confirming re-review round (1 HIGH corrupt-PDF Qt-slot crash, region-scoped number detection, Family-C continuation fold, _cc_opening sign, INV-12 test correction) all fixed inline; final cold pair clean. Gate green (277 passed/1 skipped, mypy 0). Fixtures 100% synthetic. Journal: docs/journal/FIBR-0050.md. Tag FIBR-0050-complete.</note>
+
+  <invoke name="mcp__ants__changelog_log">
+  /mnt/Games/Scripts/Linux/finbreak
 
 ### ⚡ Performance
 

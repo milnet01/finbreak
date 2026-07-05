@@ -4,11 +4,11 @@
 
 | Field | Value |
 |-------|-------|
-| **Project phase** | FIBR-0050 — Standard Bank statement text-parser (user-directed; jumps ahead of P08) |
-| **Active item ID** | FIBR-0050 (P08/FIBR-0010 auto-categorisation returns to the queue, untouched at step 1) |
-| **Active step** | 4→5 (TDD **GREEN** 2026-07-05 — gate 266/1, mypy 0, validated on all 6 real statements; next: `/close-phase`) |
+| **Project phase** | P08 — rules engine + manual override (FIBR-0010) |
+| **Active item ID** | FIBR-0010 (P08 rules engine + manual override; the transaction→category link deferred here from P04/FIBR-0006 D10) |
+| **Active step** | 1 (draft/expand `docs/specs/FIBR-0010.md`, then `/cold-eyes` to convergence before code) |
 | **Blocked on** | — |
-| **Last update** | 2026-07-05 (FIBR-0050 opened at user request: one Standard Bank text-layer reader for all account types — current/savings/home-loan/revolving-credit/credit-card. Design brainstormed + approved (balance-delta signs, credit-card section-flip, US/European numbers, MM-DD year inference, synthetic fixtures only). Spec `docs/specs/FIBR-0050.md` drafted (13 INVs, D1–D12, no schema change / no new dep) — grounded in the user's five real statements probed via pdfplumber. Next: `/cold-eyes`.) — prior: 2026-07-04 (FIBR-0009 **CLOSED** by `/close-phase` — P07 PDF import shipped. TDD: 41-test `tests/features/pdf_import/` + the extract-then-CSV-adapter `PdfImporter` (in-memory `pikepdf` decrypt, D8 grouping / D13 uniquify), the v5 migration, accounts credential accessors, the D10 rename, the wizard PDF branch + `password_dialog`, the `_selftest` pdfplumber leg. Schema ripple `==4`→`==5` across 5 suites. Gate green 240 passed/1 skipped, mypy 0; FIBR-0003 build smoke PASS. Close: `/audit` 0, `/indie-review` 3 cold lanes (2 clean, 1 LOW coverage-gap fixed inline). Also: repointed stale `.venv` shebangs (dir-rename fallout); created + pinned a `finbreak.desktop` launcher (runs current `src/`); Ants-MCP feedback re-verified (ANTS-3438 still reproduces; 3439 moot for this project). Tag `FIBR-0009-complete`) |
+| **Last update** | 2026-07-05 (FIBR-0050 **CLOSED** by `/close-phase` — one Standard Bank text-layer reader for all six account types shipped. Spec cold-eyes-converged (9 loops); TDD (36 tests); validated end-to-end on all 6 real statements. Close: `/audit` clean; `/indie-review` 2 cold rounds — round 1 fixed the code findings, a confirming re-review fixed 1 HIGH (corrupt-PDF Qt-slot crash) + 2 MED (region-scoped number detect, INV-12 test correction) + 2 LOW (Family-C fold, `_cc_opening` sign), final cold pair clean. Gate green 277 passed/1 skipped, mypy 0. Fixtures 100% synthetic. Journal `docs/journal/FIBR-0050.md`; tag `FIBR-0050-complete`.) — prior FIBR-0050 open: 2026-07-04 (FIBR-0009 **CLOSED** by `/close-phase` — P07 PDF import shipped. TDD: 41-test `tests/features/pdf_import/` + the extract-then-CSV-adapter `PdfImporter` (in-memory `pikepdf` decrypt, D8 grouping / D13 uniquify), the v5 migration, accounts credential accessors, the D10 rename, the wizard PDF branch + `password_dialog`, the `_selftest` pdfplumber leg. Schema ripple `==4`→`==5` across 5 suites. Gate green 240 passed/1 skipped, mypy 0; FIBR-0003 build smoke PASS. Close: `/audit` 0, `/indie-review` 3 cold lanes (2 clean, 1 LOW coverage-gap fixed inline). Also: repointed stale `.venv` shebangs (dir-rename fallout); created + pinned a `finbreak.desktop` launcher (runs current `src/`); Ants-MCP feedback re-verified (ANTS-3438 still reproduces; 3439 moot for this project). Tag `FIBR-0009-complete`) |
 | **Next gate** | FIBR-0010 step 1 — draft/expand `docs/specs/FIBR-0010.md` (P08 rules engine + manual override; the transaction→category link deferred here from P04/FIBR-0006 D10), then `/cold-eyes` to convergence before code |
 | **Convergence checkpoint** | 5 (consecutive `FP##` items immediately preceding any ✅-`implement`-Kind close in the active release block — see `~/.claude/commands/close-phase.md § 5a-6`) |
 | **Debt-sweep phase threshold** | 5 (auto-prompt for `/debt-sweep` after this many phases without one) |
@@ -21,10 +21,10 @@ While an item is active, Claude marks the current step 🚧;
 completed steps flip to ✅. Resets to all ⬜ when a new item
 becomes active.
 
-1. ✅ Verify spec (`docs/specs/FIBR-0050.md` — cold-eyes converged, 9 loops)
-2. ✅ Verify dependencies on the roadmap DAG (FIBR-0009 ✅)
-3. ✅ Write failing tests (`tests/features/standard_bank_pdf/`, 25 tests)
-4. ✅ Implement until tests pass (gate green 266/1; validated on 6 real statements)
+1. ⬜ Verify spec (`docs/specs/FIBR-0010.md` — draft/expand, then `/cold-eyes` to convergence)
+2. ⬜ Verify dependencies on the roadmap DAG
+3. ⬜ Write failing tests
+4. ⬜ Implement until tests pass
 5. ⬜ Run `/audit`
 6. ⬜ Run `/indie-review`
 7. ⬜ Fold / fix actionable findings
@@ -102,30 +102,29 @@ journal); §2 is the only part that changes.
 
 Append-only. Newest at the top.
 
-### 2026-07-05 — FIBR-0050 built + gate green; /close-phase IN PROGRESS (resume point)
+### 2026-07-05 — FIBR-0050 CLOSED by /close-phase (Standard Bank text-parser)
 
-Standard Bank text-parser (FIBR-0050) implemented + validated end-to-end on all
-**six real statements** (checksums pass) and 9 synthetic fixtures. Spec cold-eyes
-converged (9 loops). Gate green **266 passed / 1 skipped**, mypy 0. Pushed through
-`f49d726`.
+Standard Bank text-parser (FIBR-0050) shipped: one text-layer reader for all six
+account types, validated end-to-end on all **six real statements** (checksums pass)
++ 13 synthetic fixtures. Spec cold-eyes-converged (9 loops); TDD (36 tests).
 
-**`/close-phase` is mid-flight (task #13):** static `/audit` **clean**;
-`/indie-review` (2 cold lanes) found code + test findings. **Code findings FIXED
-inline + pushed** (`f49d726`): credit-card de-interleave month-validation + split
-anchoring + `_cc_iso` guard (HIGH); `_decrypt_pdf` corrupt-file crash net restored
-(W1); row-like-but-unmatched line now raises vs silent drop; INV-7b sign-agreement
-(`_verify_row`); `_money_tokens` `-R`; `_table_region` 2-line window.
-
-**REMAINING before clean close (do next):** add the review's TEST-coverage gaps —
-(1) wizard-level `_decrypt_pdf` password loop tests (wrong-password re-prompt,
-stored auto-apply, store-on-success, Cancel) via a monkeypatched `PasswordDialog`
-(pattern in `tests/features/pdf_import/test_pdf_import.py` `_patch_dialog`); (2) full
-INV-11a checksum cases (completeness-gate trailing-drop, closing-removed on B/D,
-Family-C non-reconciling) with DISTINCT error messages so a test can tell the gates
-apart; (3) INV-2a two-family detection order; (4) B/D quiet-month `_span`/Date-line
-fallback; (5) strengthen weak assertions (page-2-exclusion, assert dates). Then a
-cold re-review of the fixes, then close (ROADMAP ✅, CHANGELOG, journal
-`docs/journal/FIBR-0050.md`, tag `FIBR-0050-complete`, push).
+**Close (steps 5–9):** `/audit` **clean**; `/indie-review` ran **two cold rounds**.
+Round 1 fixed the code findings (credit-card de-interleave crash/mis-split HIGH,
+`_decrypt_pdf` crash net, INV-7b sign-agreement gate, row-like-but-unmatched →
+raise). A **confirming cold re-review** (2 independent reviewers, briefed cold)
+then found + fixed **1 HIGH** — a corrupt file passing the `%PDF-` sniff raises
+`pikepdf.PdfError` (NOT a `ValueError`/`OSError`, and NOT a `PasswordError`
+subclass), which escaped `_decrypt_pdf`'s net and crashed the Qt slot; reproduced,
+then added `PdfError` to the net — plus **2 MED** (`_detect_number_format` scoped to
+`full_text` not the region per D9; a vacuous INV-12 no-leak assertion checking the
+document password instead of the attempted one) and **2 LOW** (Family-C zero-date
+continuation now folds per INV-10; `_cc_opening` now honours the printed sign). One
+accepted fail-safe limitation documented (`_capture_closing` substring match —
+money-guarded, rejects-not-under-imports, not on real data). Final cold pair
+**clean, no actionable**. Gate green **277 passed / 1 skipped**, mypy 0. ROADMAP
+✅, CHANGELOG, `docs/journal/FIBR-0050.md`, tag `FIBR-0050-complete`. Allowlist
+unchanged. Commits: `f49d726` (round-1 code fixes) → test-coverage fold →
+`4f30e01` (re-review fixes) → close.
 
 **NEW user request (do AFTER FIBR-0050 close; user is compacting first, do NOT start
 building yet):** app-shell / dashboard UX redesign — replace the current bare

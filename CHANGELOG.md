@@ -23,6 +23,22 @@ signaling per
 
 ### Added
 
+- ****Import your Standard Bank statements directly — cheque, savings, home loan, personal loan, credit card and money-market.** (FIBR-0050)**
+  Standard Bank's real statements don't survive the generic PDF
+  table-reader — a cheque statement collapses into a single cell, and
+  the credit card's two-columns-per-page layout is unreadable. finbreak
+  now recognises a Standard Bank statement and reads the printed lines
+  the way you do, so all six of your account types import cleanly and
+  skip straight to the preview (no column-mapping needed, like OFX).
+  Money out shows negative, money in positive; it copes with both the
+  1,427.41 and the 239.206,04 number styles, works out the year from
+  the statement period, and every statement is cross-checked against its
+  own running balance and printed closing figure — if the numbers don't
+  add up it declines the whole import and points you to your bank's CSV
+  or OFX export rather than importing something wrong. Locked statements
+  are unlocked in memory only (never written to disk), and nothing about
+  your statement leaves your computer.
+
 - ****Import transactions from a PDF bank statement — including password-locked ones.** (FIBR-0009)**
   Many banks only give you a PDF. finbreak now reads the transaction
   table straight off the page: pick a `.pdf` and it lifts the rows out,
