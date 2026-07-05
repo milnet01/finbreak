@@ -6,8 +6,8 @@
 |-------|-------|
 | **Project phase** | FIBR-0050 — Standard Bank statement text-parser (user-directed; jumps ahead of P08) |
 | **Active item ID** | FIBR-0050 (P08/FIBR-0010 auto-categorisation returns to the queue, untouched at step 1) |
-| **Active step** | 2→3 (spec `/cold-eyes` **CONVERGED** 2026-07-05, 9 loops, cleared for code; next: TDD) |
-| **Blocked on** | — (optional: user spec review before TDD) |
+| **Active step** | 4→5 (TDD **GREEN** 2026-07-05 — gate 266/1, mypy 0, validated on all 6 real statements; next: `/close-phase`) |
+| **Blocked on** | — |
 | **Last update** | 2026-07-05 (FIBR-0050 opened at user request: one Standard Bank text-layer reader for all account types — current/savings/home-loan/revolving-credit/credit-card. Design brainstormed + approved (balance-delta signs, credit-card section-flip, US/European numbers, MM-DD year inference, synthetic fixtures only). Spec `docs/specs/FIBR-0050.md` drafted (13 INVs, D1–D12, no schema change / no new dep) — grounded in the user's five real statements probed via pdfplumber. Next: `/cold-eyes`.) — prior: 2026-07-04 (FIBR-0009 **CLOSED** by `/close-phase` — P07 PDF import shipped. TDD: 41-test `tests/features/pdf_import/` + the extract-then-CSV-adapter `PdfImporter` (in-memory `pikepdf` decrypt, D8 grouping / D13 uniquify), the v5 migration, accounts credential accessors, the D10 rename, the wizard PDF branch + `password_dialog`, the `_selftest` pdfplumber leg. Schema ripple `==4`→`==5` across 5 suites. Gate green 240 passed/1 skipped, mypy 0; FIBR-0003 build smoke PASS. Close: `/audit` 0, `/indie-review` 3 cold lanes (2 clean, 1 LOW coverage-gap fixed inline). Also: repointed stale `.venv` shebangs (dir-rename fallout); created + pinned a `finbreak.desktop` launcher (runs current `src/`); Ants-MCP feedback re-verified (ANTS-3438 still reproduces; 3439 moot for this project). Tag `FIBR-0009-complete`) |
 | **Next gate** | FIBR-0010 step 1 — draft/expand `docs/specs/FIBR-0010.md` (P08 rules engine + manual override; the transaction→category link deferred here from P04/FIBR-0006 D10), then `/cold-eyes` to convergence before code |
 | **Convergence checkpoint** | 5 (consecutive `FP##` items immediately preceding any ✅-`implement`-Kind close in the active release block — see `~/.claude/commands/close-phase.md § 5a-6`) |
@@ -22,9 +22,9 @@ completed steps flip to ✅. Resets to all ⬜ when a new item
 becomes active.
 
 1. ✅ Verify spec (`docs/specs/FIBR-0050.md` — cold-eyes converged, 9 loops)
-2. 🚧 Verify dependencies on the roadmap DAG (FIBR-0009 ✅)
-3. ⬜ Write failing tests
-4. ⬜ Implement until tests pass
+2. ✅ Verify dependencies on the roadmap DAG (FIBR-0009 ✅)
+3. ✅ Write failing tests (`tests/features/standard_bank_pdf/`, 25 tests)
+4. ✅ Implement until tests pass (gate green 266/1; validated on 6 real statements)
 5. ⬜ Run `/audit`
 6. ⬜ Run `/indie-review`
 7. ⬜ Fold / fix actionable findings
