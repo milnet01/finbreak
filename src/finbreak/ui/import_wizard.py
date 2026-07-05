@@ -442,6 +442,13 @@ class ImportWizardWidget(QWidget):
                 password = dialog.password()
                 remember = dialog.remember()
                 continue
+            except (ValueError, OSError, FinbreakError) as exc:
+                # A non-password decrypt failure (e.g. a corrupt file that passed the
+                # %PDF- sniff) surfaces a friendly message instead of crashing the Qt
+                # slot — the safety net the FIBR-0050 D6 refactor moved out from under
+                # `_extract_pdf_tables` (coding.md § 2; never crash the UI).
+                self._error.setText(str(exc))
+                return None
             break
         if remember and password:
             self._accounts.set_pdf_password(self._account_id, password)

@@ -122,6 +122,12 @@ _TERMINATORS = (
 
 _BROUGHT_FORWARD = "brought forward"  # anchor marker, matched case-insensitively
 
+# A line the region-fold classified as a transaction row (a date + balance tail) but
+# the strict family grammar rejects is a **mis-parse**, not a droppable line — raising
+# (all-or-nothing) rather than silently skipping is what keeps a mis-extracted row on
+# a closing-less statement (Savings) from becoming a silent under-import (INV-11).
+_MISPARSE = "this statement didn't parse cleanly — try your bank's CSV or OFX export"
+
 
 # --------------------------------------------------------------------------- #
 # Number handling (D9)
@@ -174,9 +180,14 @@ def _money_tokens(text: str) -> list[str]:
     for m in _MONEY.finditer(text):
         start, end = m.start(), m.end()
         tok = m.group()
-        # Re-attach an adjacent sign / R so the caller can read it.
-        if start > 0 and text[start - 1] in "-R":
-            tok = text[start - 1] + tok
+        # Re-attach an adjacent sign / R prefix so the caller can read the sign:
+        # a leading "-", an "R", or the "-R" combination (Family D negatives).
+        if start > 0 and text[start - 1] == "R":
+            tok = "R" + tok
+            if start > 1 and text[start - 2] == "-":
+                tok = "-" + tok
+        elif start > 0 and text[start - 1] == "-":
+            tok = "-" + tok
         if end < len(text) and text[end] == "-":
             tok = tok + "-"
         out.append(tok)
@@ -196,20 +207,34 @@ def _table_region(page_lines: list[str], family: Family) -> slice:
     (D11). The header line is family-specific; an empty slice means the page has no
     transactions (e.g. a summary-only page)."""
     header = -1
-    for i, line in enumerate(page_lines):
-        low = line.lower()
+    for i in range(len(page_lines)):
+        # A 2-line window so a header that wraps across lines (the Current-account
+        # "Details Service Date Balance" / "Debits Credits" split) is still found —
+        # the same wrap tolerance detection uses (D4). Region starts after the first
+        # header line; the extra wrap lines carry no transaction and are dropped.
+        window = (
+            page_lines[i] + " " + (page_lines[i + 1] if i + 1 < len(page_lines) else "")
+        )
+        low = window.lower()
         if family is Family.C:
             if "date" in low and "description" in low and "amount" in low:
                 header = i
                 break
-        elif "balance" in low and (
-            "debit" in low or "debits" in low or "withdrawals" in low or "date" in low
+        elif (
+            "balance" in low
+            and (
+                "debit" in low
+                or "debits" in low
+                or "withdrawals" in low
+                or "date" in low
+            )
+            # not the "Month-end Balance R…" summary line (it carries a money token);
+            # tested on the header line itself, not the window (whose next line is the
+            # first transaction and does carry money).
+            and not _MONEY.search(page_lines[i])
         ):
-            # The column-header row (not the "Month-end Balance R…" summary line,
-            # which has no other column label).
-            if not _MONEY.search(line):
-                header = i
-                break
+            header = i
+            break
     if header == -1:
         return slice(0, 0)
     end = len(page_lines)
@@ -220,18 +245,32 @@ def _table_region(page_lines: list[str], family: Family) -> slice:
     return slice(header + 1, end)
 
 
-_CC_DATE = re.compile(r"\d{1,2} [A-Za-z]{3} \d{2}")
+# A validated ``D[D] Mon YY`` date — the 3-letter month must be a real month (so a
+# random 3-letter token in a description is neither a split point nor reaches the
+# ``_cc_iso`` lookup, INV-6).
+_MON_RE = "(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)"
+_CC_DATE = re.compile(rf"\d{{1,2}} {_MON_RE} \d{{2}}")
+_AMOUNT_TAIL = re.compile(
+    r"-?[\d.,]+[.,]\d{2}$"
+)  # a segment ending in a 2-decimal amount
 
 
 def _split_credit_card_line(line: str) -> list[str]:
-    """Split a credit-card line into its 1–2 transaction segments at each
-    line-position ``D[D] Mon YY`` date (INV-6)."""
-    starts = [m.start() for m in _CC_DATE.finditer(line)]
-    if not starts:
+    """Split a credit-card line into its 1–2 transaction segments at each **column
+    boundary** date (INV-6). A date is a boundary only if it is line-leading or
+    immediately follows a previous segment's **amount** — so a ``D[D] Mon YY``
+    substring embedded inside a merchant description does **not** create a spurious
+    split (it stays in the description; the amount is still the segment's last)."""
+    matches = list(_CC_DATE.finditer(line))
+    if not matches:
         return []
+    boundaries: list[int] = []
+    for i, m in enumerate(matches):
+        if i == 0 or _AMOUNT_TAIL.search(line[: m.start()].rstrip()):
+            boundaries.append(m.start())
     segs = []
-    for k, s in enumerate(starts):
-        e = starts[k + 1] if k + 1 < len(starts) else len(line)
+    for k, s in enumerate(boundaries):
+        e = boundaries[k + 1] if k + 1 < len(boundaries) else len(line)
         segs.append(line[s:e].strip())
     return segs
 
@@ -461,6 +500,22 @@ def _draft(
     return TransactionDraft(row, occurred_on, amount_minor, description)
 
 
+def _verify_row(delta: Decimal, amt_tok: str, fmt: Fmt, *, check_sign: bool) -> None:
+    """The per-row INV-7b gate: the running-balance ``delta`` must equal the printed
+    amount in **magnitude** and (where a sign prints — A/D, not the sign-less B) in
+    **direction**. A mismatch is a mis-parse -> the all-or-nothing ``ValueError``."""
+    if abs(delta) != _parse_amount(amt_tok, fmt):
+        raise ValueError(
+            "this statement didn't add up — a transaction's amount doesn't match "
+            "its balance change; try your bank's CSV or OFX export"
+        )
+    if check_sign and _is_negative(amt_tok) != (delta < 0):
+        raise ValueError(
+            "this statement didn't add up — a transaction's sign doesn't match "
+            "its balance change; try your bank's CSV or OFX export"
+        )
+
+
 def _parse_family_a(
     lines: list[str], exponent: int, fmt: Fmt, period: tuple[str, str]
 ) -> ParseResult:
@@ -482,7 +537,7 @@ def _parse_family_a(
             line,
         )
         if not m:
-            continue
+            raise ValueError(_MISPARSE)
         desc, amt_tok, mm, dd, bal_tok = m.groups()
         balance = (
             -_parse_amount(bal_tok, fmt)
@@ -495,12 +550,7 @@ def _parse_family_a(
                 "try your bank's CSV or OFX export"
             )
         delta = balance - prev_balance
-        printed = _parse_amount(amt_tok, fmt)
-        if abs(delta) != printed:
-            raise ValueError(
-                "this statement didn't add up — a transaction's amount doesn't match "
-                "its balance change; try your bank's CSV or OFX export"
-            )
+        _verify_row(delta, amt_tok, fmt, check_sign=True)
         full_desc = " ".join([_clean_desc(desc)] + cont).strip()
         staged.append((full_desc, delta, "", balance))
         md_pairs.append((int(mm), int(dd)))
@@ -538,7 +588,7 @@ def _parse_family_b(lines: list[str], exponent: int, fmt: Fmt) -> ParseResult:
             line,
         )
         if not m:
-            continue
+            raise ValueError(_MISPARSE)
         posting, desc, amt_tok, bal_tok = m.groups()
         balance = (
             -_parse_amount(bal_tok, fmt)
@@ -551,12 +601,7 @@ def _parse_family_b(lines: list[str], exponent: int, fmt: Fmt) -> ParseResult:
                 "try your bank's CSV or OFX export"
             )
         delta = balance - prev_balance
-        printed = _parse_amount(amt_tok, fmt)
-        if abs(delta) != printed:
-            raise ValueError(
-                "this statement didn't add up — a transaction's amount doesn't match "
-                "its balance change; try your bank's CSV or OFX export"
-            )
+        _verify_row(delta, amt_tok, fmt, check_sign=False)  # B prints no amount sign
         row += 1
         full_desc = " ".join([_clean_desc(desc)] + cont).strip()
         drafts.append(_draft(row, posting, delta, full_desc, exponent))
@@ -581,7 +626,7 @@ def _parse_family_d(lines: list[str], exponent: int, fmt: Fmt) -> ParseResult:
             line,
         )
         if not m:
-            continue
+            raise ValueError(_MISPARSE)
         y, mo, d, desc, amt_tok, bal_tok = m.groups()
         balance = (
             -_parse_amount(bal_tok, fmt)
@@ -594,12 +639,7 @@ def _parse_family_d(lines: list[str], exponent: int, fmt: Fmt) -> ParseResult:
                 "try your bank's CSV or OFX export"
             )
         delta = balance - prev_balance
-        printed = _parse_amount(amt_tok, fmt)
-        if abs(delta) != printed:
-            raise ValueError(
-                "this statement didn't add up — a transaction's amount doesn't match "
-                "its balance change; try your bank's CSV or OFX export"
-            )
+        _verify_row(delta, amt_tok, fmt, check_sign=True)
         row += 1
         full_desc = " ".join([desc.strip()] + cont).strip()
         drafts.append(
@@ -632,7 +672,10 @@ def _parse_family_c(lines: list[str], exponent: int, fmt: Fmt) -> ParseResult:
 
 def _cc_iso(date_s: str) -> str:
     d, mon, yy = date_s.split()
-    return _iso(2000 + int(yy), _MON3[mon.lower()], int(d))
+    month = _MON3.get(mon.lower())
+    if month is None:  # defensive — the validated _CC_DATE regex should preclude it
+        raise ValueError(f"couldn't read the date {date_s!r}")
+    return _iso(2000 + int(yy), month, int(d))
 
 
 # --------------------------------------------------------------------------- #
