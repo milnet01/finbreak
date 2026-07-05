@@ -615,7 +615,7 @@ because retrofitting them is a data migration.
   existing preview -> dedup -> commit pipeline; a recognised
   statement skips column-mapping (like OFX). Covers current,
   savings, home-loan, revolving-credit-loan, credit-card, and money-market/investment
-  statements. Signed amount from the running-balance delta
+  statements. Signed amount = the printed figure signed by the running-balance delta
   (unifies the families incl. the home loan, which prints no
   per-amount sign); credit card uses the Debit/Credits section
   rule (flip to purchases-negative budget view). Handles both
