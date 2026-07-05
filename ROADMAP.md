@@ -605,6 +605,35 @@ because retrofitting them is a data migration.
   Kind: ux.
   Source: user-request-2026-07-04.
 
+- 🚧 [FIBR-0050] **Standard Bank (SA) statement text-parser — one reader for all account types.**
+  Extends P07 (FIBR-0009). The generic ruled-table extractor
+  mangles or misses several real Standard Bank layouts (the
+  Current account collapses into one cell; the credit card's
+  two-columns-per-line + gridline-less layout is unreadable). Add
+  ONE Standard Bank text-layer reader (not per-account-type
+  files) that parses the printed transaction lines and feeds the
+  existing preview -> dedup -> commit pipeline; a recognised
+  statement skips column-mapping (like OFX). Covers current,
+  savings, home-loan, revolving-credit-loan, and credit-card
+  statements. Signed amount from the running-balance delta
+  (unifies the families incl. the home loan, which prints no
+  per-amount sign); credit card uses the Debit/Credits section
+  rule (flip to purchases-negative budget view). Handles both
+  number formats (US 1,427.41 and European 239.206,04 — the RCP
+  loan), MM-DD dates with year inferred from the statement
+  period, full-ISO dates (home loan), multi-line descriptions,
+  per-page brought-forward continuation, and non-transaction row
+  skipping. Correctness check: opening balance + sum of parsed
+  amounts == printed closing balance. Loan-sign note: on a loan a
+  fee shows positive (debt up) under the balance-delta rule — a
+  user-facing loan-sign toggle is a possible follow-up. Fixtures
+  100% SYNTHETIC (no real PII/ID/statements committed).
+  Dependencies: FIBR-0009.
+  Lanes: importers, ui, tests.
+  **Layman:** Makes all your real Standard Bank statements — cheque, savings, home loan, personal loan and credit card — import cleanly, by teaching the app to read the printed statement lines the way you do.
+  Kind: feature.
+  Source: user-request-2026-07-05.
+
 ### ⚡ Performance
 
 - 📋 [FIBR-0025] **Enable SQLite WAL mode.** Set
