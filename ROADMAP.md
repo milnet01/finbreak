@@ -244,7 +244,7 @@ lands on top.
   ready-made content area. Out of scope (own phases): dashboard
   charts (FIBR-0012), rules screen (FIBR-0010), transfer prompts
   (FIBR-0011), branded app icon (FIBR-0037).
-  Dependencies: FIBR-0004, FIBR-0005, FIBR-0006, FIBR-0007, FIBR-0009.
+  Dependencies: FIBR-0004, FIBR-0005, FIBR-0006, FIBR-0007, FIBR-0008, FIBR-0009.
   **Layman:** Turn the bare password-box-then-form startup into a proper app window — menus, a toolbar of shortcuts, a status bar, and a first-run popup wizard — so it looks and feels like a real desktop app.
   Kind: implement.
   Lanes: ui, app, tests.
