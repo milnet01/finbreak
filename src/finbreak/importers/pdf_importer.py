@@ -161,6 +161,15 @@ class PdfImporter:
             )
         return candidates
 
+    @staticmethod
+    def decrypt_to_plaintext(data: bytes, password: str | None = None) -> bytes:
+        """In-memory-decrypt ``data`` to plaintext PDF bytes (FIBR-0050 D6), re-raising
+        ``pikepdf.PasswordError`` on a bad/absent user password. A thin public wrapper
+        over ``_normalise_to_plaintext`` so the wizard can decrypt **once** and hand
+        the plaintext to both the Standard Bank reader and the generic extractor
+        (whose own normalise is then a cheap idempotent re-save)."""
+        return _normalise_to_plaintext(data, password)
+
 
 def _normalise_to_plaintext(raw: bytes, password: str | None) -> bytes:
     """Open ``raw`` with ``pikepdf`` and re-save it to an in-memory ``BytesIO``,

@@ -39,6 +39,7 @@ from finbreak.importers.base import ParseResult
 from finbreak.importers.csv_importer import read_header
 from finbreak.importers.ofx_importer import OfxImporter
 from finbreak.importers.pdf_importer import PasswordError, PdfImporter, table_to_text
+from finbreak.importers.standard_bank import StandardBankImporter
 from finbreak.models import ColumnMapping, ImportProfile, OfxAccountInfo
 from finbreak.services.accounts import AccountService
 from finbreak.services.auth import AuthService
@@ -328,7 +329,7 @@ class ImportWizardWidget(QWidget):
     def _preview_ofx_statement(self, index: int) -> None:
         _info, result = self._ofx_statements[index]
         try:
-            preview = self._imports.preview_ofx(result, self._account_id)
+            preview = self._imports.preview_result(result, self._account_id)
         except (ValueError, FinbreakError) as exc:
             self._error.setText(str(exc))
             return
@@ -362,19 +363,35 @@ class ImportWizardWidget(QWidget):
         return head.startswith(b"%PDF-")
 
     def _select_pdf(self, path: str) -> None:
-        """Read (size-capped, D10) + extract the PDF's candidate tables — locked
-        PDFs decrypted in memory, prompting for a password (D3/D11) — then show
-        the map step with the table chooser (D7). A single candidate matching a
-        saved profile jumps straight to preview (INV-7d); a Cancel or a friendly
-        error is handled by ``_extract_pdf_tables``."""
+        """Read (size-capped, D10) + decrypt the PDF **once** (D6, FIBR-0050). A
+        recognised Standard Bank statement is parsed by the SB reader and jumps
+        straight to preview (skipping the map step + table chooser, like OFX); any
+        other PDF falls through to the generic table extractor + the map step (D7).
+        Locked PDFs prompt for a password (D3/D11); a Cancel or a friendly error is
+        surfaced as a shown message."""
         try:
             data = self._imports.read_file_bytes(path)  # size-capped read (D10)
         except (ValueError, OSError, FinbreakError) as exc:
             self._error.setText(str(exc))
             return
-        candidates = self._extract_pdf_tables(data)
-        if candidates is None:
+        plaintext = self._decrypt_pdf(data)
+        if plaintext is None:
             return  # cancelled, or an error was already surfaced
+        # FIBR-0050: a recognised SB statement skips mapping (self-describing, like
+        # OFX). The checksum/format ValueError shows the friendly message, not crash.
+        try:
+            sb_result = StandardBankImporter().parse(plaintext, self._exponent)
+            if sb_result is not None:
+                self._show_preview(
+                    self._imports.preview_result(sb_result, self._account_id)
+                )
+                return
+        except (ValueError, FinbreakError) as exc:
+            self._error.setText(str(exc))
+            return
+        candidates = self._extract_pdf_tables(plaintext)
+        if candidates is None:
+            return  # a friendly error was already surfaced
         self._pdf_candidates = candidates
         default = self._default_pdf_index(candidates)
         combo = self._pdf_table_combo
@@ -400,19 +417,19 @@ class ImportWizardWidget(QWidget):
                 return
         self._goto_step(_STEP_MAP)
 
-    def _extract_pdf_tables(self, data: bytes) -> list[list[list[str | None]]] | None:
-        """Extract candidate tables, prompting for a password on a locked PDF
-        (D3/D11). Returns the candidates, or ``None`` if the user cancelled or a
-        friendly error was surfaced. A **stored** password (INV-4) is auto-tried
-        on the first ``PasswordError`` before prompting; a wrong password
-        re-prompts (INV-3). The password is stored **only after** a successful
-        decrypt+extract (never a wrong/unverified one)."""
+    def _decrypt_pdf(self, data: bytes) -> bytes | None:
+        """Decrypt ``data`` to plaintext PDF bytes **once** (FIBR-0050 D6), running
+        the password loop: a **stored** password (INV-4) is auto-tried on the first
+        ``PasswordError`` before prompting; a wrong password re-prompts (INV-3);
+        the password is persisted **only after** a successful decrypt (a verified
+        password — decrypt success is exactly what proves it correct). Returns the
+        plaintext, or ``None`` on Cancel."""
         password: str | None = None
         tried_stored = False
         remember = False
         while True:
             try:
-                candidates = PdfImporter().candidate_tables(data, password)
+                plaintext = PdfImporter.decrypt_to_plaintext(data, password)
             except PasswordError:
                 stored = self._accounts.get_pdf_password(self._account_id)
                 if stored is not None and not tried_stored:
@@ -425,13 +442,22 @@ class ImportWizardWidget(QWidget):
                 password = dialog.password()
                 remember = dialog.remember()
                 continue
-            except (ValueError, OSError, FinbreakError) as exc:
-                self._error.setText(str(exc))
-                return None
             break
         if remember and password:
             self._accounts.set_pdf_password(self._account_id, password)
-        return candidates
+        return plaintext
+
+    def _extract_pdf_tables(
+        self, plaintext: bytes
+    ) -> list[list[list[str | None]]] | None:
+        """Extract the generic candidate tables from already-plaintext PDF bytes
+        (FIBR-0050 D6 — the password loop now lives in ``_decrypt_pdf``). Returns the
+        candidates, or ``None`` if a friendly "no usable table" error was surfaced."""
+        try:
+            return PdfImporter().candidate_tables(plaintext)
+        except (ValueError, OSError, FinbreakError) as exc:
+            self._error.setText(str(exc))
+            return None
 
     @staticmethod
     def _default_pdf_index(candidates: list[list[list[str | None]]]) -> int:

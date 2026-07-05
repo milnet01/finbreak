@@ -7,7 +7,7 @@ from `/cold-eyes`).
 
 The pure `OfxImporter` (OFX bytes → the same `ParseResult` a `CsvImporter`
 produces, one per statement), the `ImportService` reuse seam
-(`_preview_from_result` / `preview_ofx` / `read_file_bytes`), the shared
+(`_preview_from_result` / `preview_result` / `read_file_bytes`), the shared
 `importers/base.py` value objects, and the wizard's OFX branch. Headless layers
 are tested directly; the wizard round-trip (INV-7) uses the pytest-qt `qtbot`
 fixture. Every on-disk vault uses `tmp_path`; OFX fixtures are tiny in-repo SGML

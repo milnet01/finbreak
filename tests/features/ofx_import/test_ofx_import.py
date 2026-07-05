@@ -2,7 +2,7 @@
 
 The pure `OfxImporter` (OFX bytes -> a `ParseResult` per statement, reusing
 `parse_transaction`), the `ImportService` reuse seam (`_preview_from_result` /
-`preview_ofx` / `read_file_bytes`), the shared `importers/base.py` value
+`preview_result` / `read_file_bytes`), the shared `importers/base.py` value
 objects, and the wizard's OFX branch. Headless layers tested directly; the
 wizard round-trips (INV-7) use the pytest-qt `qtbot` fixture. Every on-disk
 vault uses `tmp_path`; OFX fixtures are tiny in-repo SGML strings — no real
@@ -314,7 +314,7 @@ def test_INV5_multi_account_surfaces_all_statements(service):
 # --------------------------------------------------------------------------- #
 # INV-6 — OFX feeds the same write pipeline (dedup + period + atomic)
 # --------------------------------------------------------------------------- #
-def test_INV6_preview_ofx_feeds_pipeline_and_reimport_adds_zero(service):
+def test_INV6_preview_result_feeds_pipeline_and_reimport_adds_zero(service):
     acct, conn = _acct(service), service.vault.connection
     data = _ofx(
         _stmt(
@@ -329,7 +329,7 @@ def test_INV6_preview_ofx_feeds_pipeline_and_reimport_adds_zero(service):
     imp = ImportService(service.vault)
     _, result = OfxImporter().parse(data, _exp(service))[0]
 
-    preview = imp.preview_ofx(result, acct)
+    preview = imp.preview_result(result, acct)
     assert preview.new_count == 2
     imp.commit_import(preview, preview.period_start, preview.period_end, "stmt.ofx")
     assert TransactionRepository(conn).count_for_account(acct) == 2
@@ -337,7 +337,7 @@ def test_INV6_preview_ofx_feeds_pipeline_and_reimport_adds_zero(service):
 
     # Re-import the same statement -> zero new rows, no second period row.
     _, result2 = OfxImporter().parse(data, _exp(service))[0]
-    preview2 = imp.preview_ofx(result2, acct)
+    preview2 = imp.preview_result(result2, acct)
     assert preview2.new_count == 0
     imp.commit_import(preview2, preview2.period_start, preview2.period_end, "stmt.ofx")
     assert TransactionRepository(conn).count_for_account(acct) == 2
@@ -355,7 +355,7 @@ def test_INV6_ofx_dedups_against_a_manual_transaction(service):
     data = _ofx(_stmt([_txn("20260105", "-10.00", name="Coffee", fitid="g1")]))
     imp = ImportService(service.vault)
     _, result = OfxImporter().parse(data, _exp(service))[0]
-    preview = imp.preview_ofx(result, acct)
+    preview = imp.preview_result(result, acct)
     assert preview.new_count == 0, "content-identical to the manual row -> deduped"
 
 
@@ -562,7 +562,7 @@ def test_INV8_formula_and_path_fields_stored_inert(service, caplog):
     imp = ImportService(service.vault)
     with caplog.at_level(logging.DEBUG):
         _, result = OfxImporter().parse(data, _exp(service))[0]
-        preview = imp.preview_ofx(result, acct)
+        preview = imp.preview_result(result, acct)
         imp.commit_import(preview, preview.period_start, preview.period_end, "x.ofx")
     stored = {
         r[0] for r in conn.execute("SELECT description FROM transactions").fetchall()

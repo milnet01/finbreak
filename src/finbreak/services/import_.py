@@ -142,7 +142,7 @@ class ImportService:
         result = CsvImporter().parse(text, mapping, exponent)
         return self._preview_from_result(result, account_id)
 
-    def preview_ofx(self, result: ParseResult, account_id: int) -> ImportPreview:
+    def preview_result(self, result: ParseResult, account_id: int) -> ImportPreview:
         """Dedup-analyse an OFX statement's pre-built ``ParseResult`` (FIBR-0008
         D2). The OFX parse runs in the wizard (it needs no vault); the DB-side
         dedup + period-carry is the shared ``_preview_from_result`` the CSV path
@@ -153,7 +153,7 @@ class ImportService:
         self, result: ParseResult, account_id: int
     ) -> ImportPreview:
         """The dedup-analysis + period-carry tail shared by ``preview`` (CSV) and
-        ``preview_ofx`` (FIBR-0008 D2): the multiset-delta dedup delta and the
+        ``preview_result`` (FIBR-0008 D2): the multiset-delta dedup delta and the
         ``ParseResult``'s coverage span carried into an ``ImportPreview``. No
         write; ``commit_import`` is unchanged and consumes either path's preview."""
         to_insert = self._dedup(
