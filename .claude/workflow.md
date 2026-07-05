@@ -102,6 +102,41 @@ journal); §2 is the only part that changes.
 
 Append-only. Newest at the top.
 
+### 2026-07-05 — FIBR-0050 built + gate green; /close-phase IN PROGRESS (resume point)
+
+Standard Bank text-parser (FIBR-0050) implemented + validated end-to-end on all
+**six real statements** (checksums pass) and 9 synthetic fixtures. Spec cold-eyes
+converged (9 loops). Gate green **266 passed / 1 skipped**, mypy 0. Pushed through
+`f49d726`.
+
+**`/close-phase` is mid-flight (task #13):** static `/audit` **clean**;
+`/indie-review` (2 cold lanes) found code + test findings. **Code findings FIXED
+inline + pushed** (`f49d726`): credit-card de-interleave month-validation + split
+anchoring + `_cc_iso` guard (HIGH); `_decrypt_pdf` corrupt-file crash net restored
+(W1); row-like-but-unmatched line now raises vs silent drop; INV-7b sign-agreement
+(`_verify_row`); `_money_tokens` `-R`; `_table_region` 2-line window.
+
+**REMAINING before clean close (do next):** add the review's TEST-coverage gaps —
+(1) wizard-level `_decrypt_pdf` password loop tests (wrong-password re-prompt,
+stored auto-apply, store-on-success, Cancel) via a monkeypatched `PasswordDialog`
+(pattern in `tests/features/pdf_import/test_pdf_import.py` `_patch_dialog`); (2) full
+INV-11a checksum cases (completeness-gate trailing-drop, closing-removed on B/D,
+Family-C non-reconciling) with DISTINCT error messages so a test can tell the gates
+apart; (3) INV-2a two-family detection order; (4) B/D quiet-month `_span`/Date-line
+fallback; (5) strengthen weak assertions (page-2-exclusion, assert dates). Then a
+cold re-review of the fixes, then close (ROADMAP ✅, CHANGELOG, journal
+`docs/journal/FIBR-0050.md`, tag `FIBR-0050-complete`, push).
+
+**NEW user request (do AFTER FIBR-0050 close; user is compacting first, do NOT start
+building yet):** app-shell / dashboard UX redesign — replace the current bare
+first-run (tiny password box → manual-entry form) with a **full app window** (title
+bar, menubar, a toolbar of icon shortcuts: import statement / manual entry / etc.,
+and a main content area showing next-steps or loaded statements/transactions +
+analysis). First run: show the whole app window, THEN a **first-run popup wizard**
+for password creation. This is a proper feature → file as a roadmap item, brainstorm
++ design with the user (design-approval gate applies), then spec → cold-eyes → TDD.
+Touches `ui/main_window.py`, `ui/first_run.py`, `ui/unlock.py`, `app.py`.
+
 ### 2026-07-04 — FIBR-0009 steps 3–4 (TDD + implement, gate + build smoke green)
 
 Built the P07 PDF-import stack test-first against the 8-loop cold-eyes-converged
