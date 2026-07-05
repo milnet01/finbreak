@@ -623,8 +623,8 @@ because retrofitting them is a data migration.
   loan), MM-DD dates with year inferred from the statement
   period, full-ISO dates (home loan), multi-line descriptions,
   per-page brought-forward continuation, and non-transaction row
-  skipping. Correctness check: opening balance + sum of parsed
-  amounts == printed closing balance. Loan-sign note: on a loan a
+  skipping. Correctness check: per-row balance-delta == printed amount (primary); additive opening balance + sum of parsed
+  amounts == printed closing balance where the statement prints one (Savings has none). Loan-sign note: on a loan a
   fee shows positive (debt up) under the balance-delta rule — a
   user-facing loan-sign toggle is a possible follow-up. Fixtures
   100% SYNTHETIC (no real PII/ID/statements committed).
