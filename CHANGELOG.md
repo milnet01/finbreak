@@ -170,6 +170,15 @@ signaling per
 - **Date pickers show unambiguous ISO YYYY/MM/DD, not the locale's M/D/YY.** (FIBR-0047)
   Dates now always read year/month/day (e.g. 2026/07/04) so there's no US-vs-rest-of-world confusion.
 
+### Fixed
+
+- **Import wizard: the destination account is now shown and correctable on the preview step, so a statement can no longer be silently imported into the wrong account (FIBR-0057).**
+  Previously the target account was fixed the moment you chose the file, with
+  no way to see or change it before the final Import — so a statement could
+  land on the default account (e.g. "Current") instead of the one you meant.
+  You can now confirm or change the account on the preview screen; a remembered
+  locked-PDF password follows the corrected account.
+
 ### Security
 
 - **Opening a vault from a newer version fails safely (FIBR-0005).** If a
