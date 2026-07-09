@@ -20,7 +20,7 @@ from finbreak.errors import SchemaVersionError
 
 log = logging.getLogger(__name__)
 
-LATEST_SCHEMA_VERSION = 5
+LATEST_SCHEMA_VERSION = 6
 
 # Seed data written by the v1->v2 migration (D8) — NOT a UI string, so never
 # run through tr(); the user renames it in the Accounts manager.
@@ -197,9 +197,60 @@ def _migrate_to_v5(conn: dbapi2.Connection) -> None:
         raise
 
 
+def _migrate_to_v6(conn: dbapi2.Connection) -> None:
+    """v5->v6: add the **nullable** ``transactions.statement_period_id`` FK (the
+    statement-provenance stamp, FIBR-0052 D8) and backfill pre-v6 rows the app
+    can attribute unambiguously (D9). A nullable ``ADD COLUMN`` with a plain
+    (non-cascade) ``REFERENCES`` is an in-place change — SQLite requires the
+    added FK column's default to be ``NULL`` (which it is), so no table rebuild.
+    Still one atomic unit (INV-8): the ``BEGIN`` is the step's first statement
+    and the column-add **and** the backfill share it, so a failure mid-backfill
+    leaves a re-openable v5 vault.
+
+    **The backfill** (D9): for each recorded ``statement_periods`` row, stamp
+    every un-attributed transaction of that account whose date falls in the span
+    — **but only if** no *other* period of the same account also covers that date
+    (the ``NOT EXISTS`` overlap guard, in the query, not a follow-up rule). So a
+    transaction under exactly one period is linked; one under zero or >=2 periods
+    stays ``NULL``, and an overlap never mis-attributes. The loop is
+    order-independent — the ``IS NULL`` guard stops a claimed row being re-touched
+    and a shared date is skipped by *every* period's ``NOT EXISTS``."""
+    conn.execute("BEGIN")  # first statement — own the transaction (D2)
+    try:
+        conn.execute(
+            "ALTER TABLE transactions "
+            "ADD COLUMN statement_period_id INTEGER REFERENCES statement_periods(id)"
+        )
+        for p_id, p_account, p_start, p_end in conn.execute(
+            "SELECT id, account_id, period_start, period_end FROM statement_periods"
+        ).fetchall():
+            conn.execute(
+                "UPDATE transactions SET statement_period_id = :p_id "
+                "WHERE account_id = :p_account "
+                "AND occurred_on BETWEEN :p_start AND :p_end "
+                "AND statement_period_id IS NULL "
+                # skip a date also covered by another period of this account
+                "AND NOT EXISTS (SELECT 1 FROM statement_periods q "
+                "WHERE q.account_id = transactions.account_id AND q.id <> :p_id "
+                "AND transactions.occurred_on BETWEEN q.period_start AND q.period_end)",
+                {
+                    "p_id": p_id,
+                    "p_account": p_account,
+                    "p_start": p_start,
+                    "p_end": p_end,
+                },
+            )
+        conn.execute("UPDATE schema_version SET version = 6")
+        conn.commit()
+    except Exception:
+        conn.rollback()  # undoes the ADD COLUMN + backfill — re-openable v5 vault
+        raise
+
+
 _MIGRATIONS = {
     2: _migrate_to_v2,
     3: _migrate_to_v3,
     4: _migrate_to_v4,
     5: _migrate_to_v5,
+    6: _migrate_to_v6,
 }

@@ -30,11 +30,8 @@ from finbreak.services.auth import AuthService
 from finbreak.services.transactions import TransactionService
 from finbreak.ui import main_window
 from finbreak.ui._worker import DeriveWorker
-from finbreak.ui.accounts import AccountsWidget
-from finbreak.ui.categories import CategoriesWidget
 from finbreak.ui.first_run import FirstRunDialog
 from finbreak.ui.home import HomeView, _format_amount
-from finbreak.ui.import_wizard import ImportWizardWidget
 from finbreak.ui.main_window import MainWindow
 from finbreak.ui.manual_entry import ManualEntryDialog
 from finbreak.ui.unlock import UnlockDialog
@@ -109,6 +106,10 @@ def test_INV1_chrome_parts_and_action_set(qtbot, service):
         "action_lock",
         "action_quit",
         "action_home",
+        # FIBR-0052: Statements nav + the vault-independent Window menu actions.
+        "action_statements",
+        "action_center_window",
+        "action_reset_layout",
         "action_about",
         "action_donate_github",
         "action_donate_patreon",
@@ -135,7 +136,9 @@ def test_INV2a_first_run_happy_path(qtbot, service):
         dlg._submit.click()
 
     assert window._toolbar.isEnabled()
-    assert isinstance(window.centralWidget().currentWidget(), HomeView)
+    workspace = window.centralWidget().currentWidget()
+    assert workspace.objectName() == "workspace"
+    assert workspace.currentWidget().objectName() == "tab_home"
 
 
 def test_INV2b_unlock_happy_path(qtbot, service):
@@ -161,7 +164,9 @@ def test_INV2b_unlock_happy_path(qtbot, service):
     with qtbot.waitSignal(dlg.unlocked, timeout=15000):
         dlg._unlock_button.click()
     assert window._toolbar.isEnabled()
-    assert isinstance(window.centralWidget().currentWidget(), HomeView)
+    workspace = window.centralWidget().currentWidget()
+    assert workspace.objectName() == "workspace"
+    assert workspace.currentWidget().objectName() == "tab_home"
 
 
 def test_INV2c_mixed_pair_raises_at_construction(qtbot, paths):
@@ -264,15 +269,19 @@ def test_INV3_no_transaction_data_while_locked(qtbot, service):
 # INV-4 — lock/auto-lock returns to the locked shell, window intact
 # --------------------------------------------------------------------------- #
 def test_INV4a_autolock_destroys_content_same_window(qtbot, service):
+    # FIBR-0052 reshape: the destroyed object is now the whole tabbed workspace
+    # (all four data tabs), not a single HomeView (INV-3).
     window = _unlocked_home_shell(qtbot, service)
-    home = window.centralWidget().currentWidget()
-    assert isinstance(home, HomeView)
+    workspace = window.centralWidget().currentWidget()
+    assert workspace.objectName() == "workspace"
 
     service._on_idle_timeout()  # production entry: lock() then on_auto_lock()
     assert service._key is None, "auto-lock wipes the key"
     _pump_deferred_delete()
 
-    assert not shiboken6.isValid(home), "the HomeView (decrypted rows) is destroyed"
+    assert not shiboken6.isValid(workspace), (
+        "the workspace (decrypted rows) is destroyed"
+    )
     assert window.centralWidget().currentWidget().objectName() == "placeholder_locked"
     assert not window._toolbar.isEnabled()
     count = window.findChild(QLabel, "status_txn_count")
@@ -308,18 +317,31 @@ def test_INV5_key_lifetime_untouched(qtbot, service):
 # --------------------------------------------------------------------------- #
 # INV-6 — content routing, done returns Home
 # --------------------------------------------------------------------------- #
-def test_INV6a_content_routing_returns_home(qtbot, service):
+def test_INV6a_content_routing_switches_tabs_stable_instances(qtbot, service):
+    # FIBR-0052 reshape (INV-2/INV-2a): the nav actions SWITCH the workspace's
+    # current tab (never rebuild it); the tab widget instances are stable across
+    # switches, unlike the old build-a-fresh-widget-then-done-returns-Home model.
     window = _unlocked_home_shell(qtbot, service)
-    for attr, widget_cls in (
-        ("_action_accounts", AccountsWidget),
-        ("_action_categories", CategoriesWidget),
-        ("_action_import", ImportWizardWidget),
+    workspace = window.centralWidget().currentWidget()
+    assert workspace.objectName() == "workspace"
+
+    for attr, object_name in (
+        ("_action_accounts", "tab_accounts"),
+        ("_action_categories", "tab_categories"),
+        ("_action_statements", "tab_statements"),
+        ("_action_home", "tab_home"),
     ):
         getattr(window, attr).trigger()
-        current = window.centralWidget().currentWidget()
-        assert isinstance(current, widget_cls), attr
-        current.done.emit()
-        assert isinstance(window.centralWidget().currentWidget(), HomeView), attr
+        assert workspace.currentWidget().objectName() == object_name, attr
+
+    # INV-2a: re-triggering returns the SAME instance (a switch, not a rebuild).
+    window._action_accounts.trigger()
+    first = workspace.currentWidget()
+    window._action_home.trigger()
+    window._action_accounts.trigger()
+    assert workspace.currentWidget() is first, (
+        "the Accounts tab is switched, not rebuilt"
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -408,13 +430,17 @@ def test_INV9_manual_entry_roundtrip_from_home(qtbot, service):
         dlg._add_button.click()
 
     assert len(txn.list_transactions()) == before + 1
-    assert isinstance(window.centralWidget().currentWidget(), HomeView)
+    workspace = window.centralWidget().currentWidget()
+    assert workspace.currentWidget().objectName() == "tab_home", (
+        "committing shows the refreshed Home tab"
+    )
 
 
 def test_INV9_manual_entry_roundtrip_from_non_home(qtbot, service):
     window = _unlocked_home_shell(qtbot, service)
+    workspace = window.centralWidget().currentWidget()
     window._action_accounts.trigger()
-    assert isinstance(window.centralWidget().currentWidget(), AccountsWidget)
+    assert workspace.currentWidget().objectName() == "tab_accounts"
 
     window._action_manual_entry.trigger()
     dlg = window._dialog
@@ -423,8 +449,8 @@ def test_INV9_manual_entry_roundtrip_from_non_home(qtbot, service):
     with qtbot.waitSignal(dlg.committed):
         dlg._add_button.click()
 
-    assert isinstance(window.centralWidget().currentWidget(), HomeView), (
-        "committing from a non-Home page navigates to a fresh Home"
+    assert workspace.currentWidget().objectName() == "tab_home", (
+        "committing from a non-Home tab shows the refreshed Home tab"
     )
 
 

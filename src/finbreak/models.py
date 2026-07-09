@@ -172,6 +172,24 @@ class StatementPeriod:
 
 
 @dataclass
+class StatementRow:
+    """One row of the Statements tab (FIBR-0052 INV-7) — a **view** row, distinct
+    from the persistence ``StatementPeriod``: it carries the joined account
+    ``name`` and the derived count of transactions currently linked to the
+    statement (``statement_period_id = id``), which ``StatementService`` assembles
+    with a ``LEFT JOIN`` + ``COUNT`` so a zero-linked statement still appears with
+    ``transaction_count`` 0. Not persisted; not a table row."""
+
+    id: int
+    account_name: str
+    period_start: str
+    period_end: str
+    source_filename: str | None
+    imported_at: str
+    transaction_count: int
+
+
+@dataclass
 class Category:
     """One node of the self-referential ``categories`` tree. ``parent_id`` is
     ``None`` for the two Type roots; ``kind`` is a ``CategoryKind`` token on the

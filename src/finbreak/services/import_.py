@@ -189,9 +189,23 @@ class ImportService:
         conn.execute("BEGIN")  # first statement — own the transaction (D7)
         try:
             to_insert = self._dedup(preview.account_id, preview.drafts, tx_repo)
-            span_exists = period_repo.exists(
+            # Resolve the period id FIRST so every inserted row can be stamped with
+            # it (FIBR-0052 INV-8/D8): reuse the existing span's id, else create the
+            # period row now and take its new id. ``period_recorded`` is true only
+            # for a new span (FIBR-0007 INV-6 semantics unchanged).
+            existing_id = period_repo.id_for_span(
                 preview.account_id, period_start, period_end
             )
+            period_recorded = existing_id is None
+            if existing_id is None:
+                period_id = period_repo.add(
+                    preview.account_id,
+                    period_start,
+                    period_end,
+                    Path(source_filename).name,  # store the basename, not the path
+                )
+            else:
+                period_id = existing_id
             if to_insert:
                 tx_repo.add_batch(
                     [
@@ -202,15 +216,8 @@ class ImportService:
                             d.description,
                         )
                         for d in to_insert
-                    ]
-                )
-            period_recorded = not span_exists
-            if period_recorded:
-                period_repo.add(
-                    preview.account_id,
-                    period_start,
-                    period_end,
-                    Path(source_filename).name,  # store the basename, not the path
+                    ],
+                    period_id,
                 )
             conn.commit()
         except Exception:

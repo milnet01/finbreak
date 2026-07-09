@@ -418,9 +418,9 @@ def test_INV5_first_run_creates_settings_and_both_files(service, paths):
         == "2"
     )
     # First-run now migrates the fresh v1 baseline straight to the latest
-    # schema (FIBR-0005 D1), so a new vault lands at v5 (FIBR-0009 PDF password
-    # column), not v1.
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 5
+    # schema (FIBR-0005 D1), so a new vault lands at v6 (FIBR-0052 statement
+    # provenance column), not v1.
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 6
     assert vault_path.exists() and sidecar_path.exists()
 
 
@@ -542,18 +542,20 @@ def test_main_window_date_field_renders_unambiguous_iso(qtbot, service):
 def test_INV6_idle_autolock_routes_ui_back_to_unlock(qtbot, service):
     # An idle auto-lock wipes the key + closes the vault; the shell must return
     # to the locked shell, else the next action hits a locked vault and crashes.
-    # Rewritten FIBR-0051 (INV-4a): AppShell/whole-window-swap → a persistent
-    # MainWindow(QMainWindow) whose *content widget* is destroyed and swapped for
-    # the 🔒 Locked placeholder + a re-opened UnlockDialog (same window instance).
-    from finbreak.ui.home import HomeView
+    # Rewritten FIBR-0051 (INV-4a) / reshaped FIBR-0052 (INV-3): AppShell/whole-
+    # window-swap → a persistent MainWindow(QMainWindow) whose *content widget*
+    # (now the tabbed workspace) is destroyed and swapped for the 🔒 Locked
+    # placeholder + a re-opened UnlockDialog (same window instance).
     from finbreak.ui.main_window import MainWindow
     from finbreak.ui.unlock import UnlockDialog
 
     service.first_run(bytearray(_PW), "ZAR")  # leaves the service unlocked
     window = MainWindow(service)
     qtbot.addWidget(window)
-    window._enter_unlocked()  # drive past locked-file routing to a live Home
-    assert isinstance(window.centralWidget().currentWidget(), HomeView)
+    window._enter_unlocked()  # drive past locked-file routing to a live workspace
+    workspace = window.centralWidget().currentWidget()
+    assert workspace.objectName() == "workspace"
+    assert workspace.currentWidget().objectName() == "tab_home"
 
     service._on_idle_timeout()  # the 10-minute idle timer fires
     assert service._key is None, "idle auto-lock wipes the key"

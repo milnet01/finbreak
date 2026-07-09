@@ -26,6 +26,7 @@ from finbreak.migrations import (  # noqa: E402
     _migrate_to_v2,
     _migrate_to_v3,
     _migrate_to_v4,
+    _migrate_to_v5,
 )
 from finbreak.models import FORMAT_VERSION, KdfParams  # noqa: E402
 from finbreak.services.auth import (  # noqa: E402
@@ -122,4 +123,14 @@ def build_v4_vault(vault_path: Path, sidecar_path: Path, salt: bytes, rows) -> N
     build_v3_vault(vault_path, sidecar_path, salt, rows)
     conn = keyed_connection(vault_path, salt)
     _migrate_to_v4(conn)  # v3 -> v4 (import_profiles + statement_periods)
+    conn.close()
+
+
+def build_v5_vault(vault_path: Path, sidecar_path: Path, salt: bytes, rows) -> None:
+    """A raw v5 vault: ``build_v4_vault`` taken one more step through the real
+    ``_migrate_to_v5`` (the nullable ``accounts.statement_pdf_password`` column).
+    The v5->v6 migration suite's upgrade-path fixture (FIBR-0052 INV-13a)."""
+    build_v4_vault(vault_path, sidecar_path, salt, rows)
+    conn = keyed_connection(vault_path, salt)
+    _migrate_to_v5(conn)  # v4 -> v5 (statement_pdf_password)
     conn.close()

@@ -22,7 +22,7 @@ import pikepdf
 import pytest
 from PySide6.QtWidgets import QDialog
 
-from conftest import _PW, build_v4_vault, keyed_connection
+from conftest import _PW, build_v4_vault, build_v5_vault, keyed_connection
 from finbreak.crypto import SALT_LEN
 from finbreak.importers.pdf_importer import (
     _MAX_PDF_PAGES,
@@ -484,13 +484,16 @@ def test_INV4_unencrypted_pdf_never_consults_stored_password(
 # --------------------------------------------------------------------------- #
 # INV-8 — v4->v5 migration + credential hygiene
 # --------------------------------------------------------------------------- #
-def test_INV8_v4_upgrades_to_v5_adds_nullable_column(paths):
+def test_INV8_v4_upgrades_through_v6_adds_nullable_column(paths):
+    # A v4 vault now migrates through v5 (PDF password) to v6 (statement
+    # provenance), so run_migrations lands it at 6 — but the v4->v5 column-add
+    # coverage is intact: statement_pdf_password still exists after the walk.
     vault_path, sidecar_path = paths
     salt = os.urandom(SALT_LEN)
     build_v4_vault(vault_path, sidecar_path, salt, [("2026-03-01", -1250, "Coffee")])
     conn = keyed_connection(vault_path, salt)
-    run_migrations(conn)  # v4 -> v5
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 5
+    run_migrations(conn)  # v4 -> v6
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 6
     cols = [r[1] for r in conn.execute("PRAGMA table_info(accounts)").fetchall()]
     assert "statement_pdf_password" in cols
     row = conn.execute("SELECT statement_pdf_password FROM accounts").fetchone()
@@ -498,26 +501,42 @@ def test_INV8_v4_upgrades_to_v5_adds_nullable_column(paths):
     conn.close()
 
 
-def test_INV8_idempotent_at_v5(paths):
+def test_INV8_idempotent_at_v6(paths):
     vault_path, sidecar_path = paths
     salt = os.urandom(SALT_LEN)
     build_v4_vault(vault_path, sidecar_path, salt, [])
     conn = keyed_connection(vault_path, salt)
-    run_migrations(conn)  # v4 -> v5
-    run_migrations(conn)  # re-run: no-op at v5
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 5
+    run_migrations(conn)  # v4 -> v6
+    run_migrations(conn)  # re-run: no-op at v6
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 6
     conn.close()
 
 
-def test_INV8_first_run_vault_is_v5(service):
+def test_INV8_first_run_vault_is_v6(service):
     version = service.vault.connection.execute(
         "SELECT version FROM schema_version"
     ).fetchone()[0]
-    assert version == 5
+    assert version == 6
 
 
-def test_INV8_latest_schema_version_is_5():
-    assert LATEST_SCHEMA_VERSION == 5
+def test_INV8_latest_schema_version_is_6():
+    assert LATEST_SCHEMA_VERSION == 6
+
+
+def test_INV8_v5_upgrades_to_v6_adds_provenance_column(paths):
+    # The single v5->v6 upgrade test (FIBR-0052 INV-13a): a v5 vault migrates to
+    # 6 and gains the nullable transactions.statement_period_id provenance column.
+    vault_path, sidecar_path = paths
+    salt = os.urandom(SALT_LEN)
+    build_v5_vault(vault_path, sidecar_path, salt, [("2026-03-01", -1250, "Coffee")])
+    conn = keyed_connection(vault_path, salt)
+    run_migrations(conn)  # v5 -> v6
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 6
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(transactions)").fetchall()]
+    assert "statement_period_id" in cols
+    row = conn.execute("SELECT statement_period_id FROM transactions").fetchone()
+    assert row[0] is None, "nullable, defaults to NULL for a pre-v6 row with no period"
+    conn.close()
 
 
 def test_INV8_password_not_on_account_object(service):

@@ -36,7 +36,13 @@ _ACCOUNT_TYPE_ROLE = Qt.ItemDataRole.UserRole + 2
 class AccountsWidget(QWidget):
     done = Signal()
 
-    def __init__(self, service: AuthService, parent: QWidget | None = None):
+    def __init__(
+        self,
+        service: AuthService,
+        parent: QWidget | None = None,
+        *,
+        show_done: bool = True,
+    ):
         super().__init__(parent)
         self._accounts = AccountService(service.vault)
 
@@ -63,7 +69,10 @@ class AccountsWidget(QWidget):
         self._add_button = QPushButton(self.tr("Add"))
         self._update_button = QPushButton(self.tr("Update selected"))
         self._delete_button = QPushButton(self.tr("Delete selected"))
-        self._done_button = QPushButton(self.tr("Done"))
+        # The "back to Home" Done button is meaningless when this widget is a
+        # permanent tab, so it is not built when show_done=False (FIBR-0052
+        # INV-12); the `done` signal stays (unfired) so no caller/test breaks.
+        self._done_button = QPushButton(self.tr("Done")) if show_done else None
         self._error = QLabel()
 
         add_row = QHBoxLayout()
@@ -75,7 +84,8 @@ class AccountsWidget(QWidget):
         actions = QHBoxLayout()
         actions.addWidget(self._delete_button)
         actions.addStretch()
-        actions.addWidget(self._done_button)
+        if self._done_button is not None:
+            actions.addWidget(self._done_button)
 
         layout = QVBoxLayout(self)
         layout.addWidget(self._list)
@@ -86,7 +96,8 @@ class AccountsWidget(QWidget):
         self._add_button.clicked.connect(self._on_add)
         self._update_button.clicked.connect(self._on_update)
         self._delete_button.clicked.connect(self._on_delete)
-        self._done_button.clicked.connect(self.done)
+        if self._done_button is not None:
+            self._done_button.clicked.connect(self.done)
         # Selecting an account loads its name + type into the form, so the same
         # two fields serve both Add (nothing selected) and Update (D8 — the
         # seeded Default account is renamed / retyped here).

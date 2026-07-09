@@ -59,22 +59,43 @@ class TransactionRepository:
         ).fetchall()
         return [row[0] for row in rows]
 
-    def add_batch(self, rows: Sequence[tuple[int, str, int, str]]) -> None:
+    def add_batch(
+        self, rows: Sequence[tuple[int, str, int, str]], statement_period_id: int
+    ) -> None:
         """Insert many ``(account_id, occurred_on, amount_minor, description)``
-        rows, stamping ``created_at`` — **commit-free**: invoked inside
-        ``ImportService``'s atomic import transaction, which owns the commit
-        (FIBR-0007 D7). The per-row-committing ``add()`` (manual entry) is
-        unchanged."""
+        rows, stamping ``created_at`` **and** ``statement_period_id`` (all rows of
+        one import share the one period id, FIBR-0052 INV-8) — **commit-free**:
+        invoked inside ``ImportService``'s atomic import transaction, which owns
+        the commit (FIBR-0007 D7). The per-row-committing ``add()`` (manual entry)
+        is unchanged and leaves ``statement_period_id`` ``NULL``."""
         now = datetime.now(UTC).isoformat()
         self._conn.executemany(
             "INSERT INTO transactions"
-            "(account_id, occurred_on, amount_minor, description, created_at) "
-            "VALUES (?, ?, ?, ?, ?)",
+            "(account_id, occurred_on, amount_minor, description, created_at, "
+            "statement_period_id) VALUES (?, ?, ?, ?, ?, ?)",
             [
-                (account_id, occurred_on, amount_minor, description, now)
+                (
+                    account_id,
+                    occurred_on,
+                    amount_minor,
+                    description,
+                    now,
+                    statement_period_id,
+                )
                 for account_id, occurred_on, amount_minor, description in rows
             ],
         )
+
+    def delete_for_statement(self, statement_period_id: int) -> int:
+        """Delete every transaction stamped with ``statement_period_id`` and return
+        the rowcount. **Commit-free** — invoked inside ``StatementService``'s owned
+        delete transaction, **before** the ``statement_periods`` row is removed, so
+        the plain FK is never violated (FIBR-0052 INV-9). ``NULL``-stamped (manual)
+        and other statements' rows are untouched."""
+        return self._conn.execute(
+            "DELETE FROM transactions WHERE statement_period_id = ?",
+            (statement_period_id,),
+        ).rowcount
 
     def count_for_account(self, account_id: int) -> int:
         return self._conn.execute(

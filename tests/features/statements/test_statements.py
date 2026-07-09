@@ -1,0 +1,589 @@
+"""FIBR-0052 — P07.6 tabbed workspace + statement provenance & delete.
+
+Enforces tests/features/statements/spec.md. The data layer (v6 migration +
+backfill, the provenance stamp, the atomic delete) is tested headless; the tab
+workspace, window geometry, the Window menu, and the Statements tab round-trip
+through the pytest-qt ``qtbot``. Every vault lives under ``tmp_path`` and the
+window INI is redirected to ``tmp_path`` (autouse) so no test touches the real
+data dir; CSV fixtures are tiny in-repo strings — no real data, no network.
+"""
+
+import pytest
+import shiboken6
+from PySide6.QtCore import QEvent, QSettings
+from PySide6.QtGui import QCloseEvent, QGuiApplication
+from PySide6.QtWidgets import QApplication, QMessageBox
+from sqlcipher3 import dbapi2
+
+from conftest import _PW, build_v5_vault, keyed_connection
+from finbreak.crypto import SALT_LEN
+from finbreak.migrations import run_migrations
+from finbreak.models import ColumnMapping
+from finbreak.repositories.statement_periods import StatementPeriodRepository
+from finbreak.repositories.transactions import TransactionRepository
+from finbreak.services.accounts import AccountService
+from finbreak.services.auth import AuthService
+from finbreak.services.import_ import ImportService
+from finbreak.services.statements import StatementService
+from finbreak.services.transactions import TransactionService
+from finbreak.ui import main_window
+from finbreak.ui.accounts import AccountsWidget
+from finbreak.ui.import_wizard import ImportWizardWidget
+from finbreak.ui.main_window import MainWindow
+from finbreak.ui.statements import StatementsWidget
+
+pytestmark = pytest.mark.features
+
+HEADER = ["Date", "Details", "Amount"]
+SINGLE = ColumnMapping("Date", "Details", "Amount", None, None, "%Y-%m-%d", False)
+
+
+# --------------------------------------------------------------------------- #
+# Fixtures + helpers
+# --------------------------------------------------------------------------- #
+@pytest.fixture
+def paths(tmp_path):
+    return tmp_path / "vault.db", tmp_path / "vault.kdf.json"
+
+
+@pytest.fixture
+def service(paths):
+    svc = AuthService(*paths)
+    svc.first_run(bytearray(_PW), "ZAR")  # first-run migrates straight to v6
+    yield svc
+    svc.lock()
+
+
+@pytest.fixture(autouse=True)
+def window_ini(tmp_path, monkeypatch):
+    """Redirect the window-geometry INI to tmp (autouse) so no test writes to the
+    real data dir; geometry tests request this fixture for the path (INV-5)."""
+    ini = tmp_path / "window.ini"
+    monkeypatch.setattr("finbreak.paths.window_settings_path", lambda: ini)
+    return ini
+
+
+def _csv(header, rows):
+    return "\n".join([",".join(header)] + [",".join(r) for r in rows]) + "\n"
+
+
+def _acct(service):
+    return AccountService(service.vault).list_accounts()[0].id
+
+
+def _do_import(imp, text, account_id, source="stmt.csv"):
+    preview = imp.preview(text, SINGLE, account_id)
+    assert preview.period_start is not None and preview.period_end is not None
+    return imp.commit_import(preview, preview.period_start, preview.period_end, source)
+
+
+def _pump_deferred_delete():
+    QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+
+
+def _shell(qtbot, service) -> MainWindow:
+    """An unlocked MainWindow driven past routing (as a real unlock success does).
+    ``first_run`` left the service unlocked; ``_enter_unlocked`` builds the live
+    workspace exactly as an unlock does."""
+    window = MainWindow(service)
+    qtbot.addWidget(window)
+    window._enter_unlocked()
+    return window
+
+
+def _seed_raw_v5(paths, salt):
+    """A raw v5 vault (pre-provenance-column) + a keyed connection, for the
+    backfill tests (INV-9d) — they run the real ``_migrate_to_v6``."""
+    vault_path, sidecar_path = paths
+    build_v5_vault(vault_path, sidecar_path, salt, [])
+    return keyed_connection(vault_path, salt)
+
+
+def _raw_period(conn, account_id, start, end):
+    return conn.execute(
+        "INSERT INTO statement_periods("
+        "account_id, period_start, period_end, source_filename, imported_at) "
+        "VALUES (?, ?, ?, 's.csv', '2026-01-01T00:00:00+00:00')",
+        (account_id, start, end),
+    ).lastrowid
+
+
+def _raw_txn(conn, account_id, occurred_on, amount_minor=-100, description="x"):
+    conn.execute(
+        "INSERT INTO transactions("
+        "account_id, occurred_on, amount_minor, description, created_at) "
+        "VALUES (?, ?, ?, ?, '2026-01-01T00:00:00+00:00')",
+        (account_id, occurred_on, amount_minor, description),
+    )
+
+
+# --------------------------------------------------------------------------- #
+# INV-8 — each imported row is stamped; manual entry stays NULL
+# --------------------------------------------------------------------------- #
+def test_INV8a_import_stamps_all_rows_manual_stays_null(service):
+    imp, acct, conn = (
+        ImportService(service.vault),
+        _acct(service),
+        service.vault.connection,
+    )
+    _do_import(
+        imp,
+        _csv(HEADER, [["2026-01-05", "a", "-1.00"], ["2026-01-20", "b", "-2.00"]]),
+        acct,
+    )
+    period_id = StatementPeriodRepository(conn).list_for_account(acct)[0].id
+    stamped = conn.execute("SELECT statement_period_id FROM transactions").fetchall()
+    assert [r[0] for r in stamped] == [period_id, period_id], (
+        "every imported row stamped"
+    )
+
+    TransactionService(service.vault).add_transaction(
+        acct, "2026-01-10", "-5.00", "manual"
+    )
+    manual = conn.execute(
+        "SELECT statement_period_id FROM transactions WHERE description = 'manual'"
+    ).fetchone()
+    assert manual[0] is None, "a manually-entered row belongs to no statement (NULL)"
+
+
+def test_INV8c_span_reuse_stamps_existing_period_id(service):
+    imp, acct, conn = (
+        ImportService(service.vault),
+        _acct(service),
+        service.vault.connection,
+    )
+    _do_import(
+        imp,
+        _csv(HEADER, [["2026-01-01", "a", "-1.00"], ["2026-01-31", "b", "-2.00"]]),
+        acct,
+    )
+    period_id = StatementPeriodRepository(conn).list_for_account(acct)[0].id
+
+    # Same span [01-01, 01-31], one new row inside it (FIBR-0007 INV-6 reuse path).
+    text2 = _csv(
+        HEADER,
+        [
+            ["2026-01-01", "a", "-1.00"],
+            ["2026-01-15", "c", "-3.00"],
+            ["2026-01-31", "b", "-2.00"],
+        ],
+    )
+    result = _do_import(imp, text2, acct)
+    assert result.inserted_count == 1 and result.period_recorded is False
+    assert len(StatementPeriodRepository(conn).list_for_account(acct)) == 1, (
+        "no 2nd period"
+    )
+    new = conn.execute(
+        "SELECT statement_period_id FROM transactions WHERE description = 'c'"
+    ).fetchone()
+    assert new[0] == period_id, "the reused span's new row carries the existing id"
+
+
+# --------------------------------------------------------------------------- #
+# INV-9 — delete is atomic, isolated, FK-guarded; backfill is unambiguous-only
+# --------------------------------------------------------------------------- #
+def test_INV9a_delete_removes_only_target_stamped_rows(service):
+    imp, acct, conn = (
+        ImportService(service.vault),
+        _acct(service),
+        service.vault.connection,
+    )
+    _do_import(
+        imp,
+        _csv(HEADER, [["2026-01-05", "a1", "-1.00"], ["2026-01-06", "a2", "-2.00"]]),
+        acct,
+    )
+    _do_import(imp, _csv(HEADER, [["2026-02-05", "b1", "-1.00"]]), acct)
+    TransactionService(service.vault).add_transaction(
+        acct, "2026-03-01", "-9.00", "manual"
+    )
+
+    periods = StatementPeriodRepository(conn).list_for_account(acct)
+    a = next(p for p in periods if p.period_start == "2026-01-05")
+    b = next(p for p in periods if p.period_start == "2026-02-05")
+
+    deleted = StatementService(service.vault).delete_statement(a.id)
+    assert deleted == 2, "exactly A's two stamped rows removed"
+    assert {t.description for t in TransactionRepository(conn).list_all()} == {
+        "b1",
+        "manual",
+    }
+    assert [p.id for p in StatementPeriodRepository(conn).list_for_account(acct)] == [
+        b.id
+    ]
+
+
+def test_INV9b_delete_atomic_rollback_between_deletes(service):
+    imp, acct, conn = (
+        ImportService(service.vault),
+        _acct(service),
+        service.vault.connection,
+    )
+    _do_import(imp, _csv(HEADER, [["2026-01-05", "a1", "-1.00"]]), acct)
+    period_id = StatementPeriodRepository(conn).list_for_account(acct)[0].id
+
+    class _FailAtPeriodDelete:
+        """Raise on the ``DELETE FROM statement_periods`` — after the transactions
+        delete — so the ROLLBACK must undo that transactions delete."""
+
+        def __init__(self, real):
+            self._real = real
+
+        def execute(self, sql, *a):
+            if "DELETE FROM statement_periods" in sql:
+                raise RuntimeError("injected failure between the two deletes")
+            return self._real.execute(sql, *a)
+
+        def __getattr__(self, name):
+            return getattr(self._real, name)
+
+    class _StandInVault:
+        def __init__(self, connection):
+            self._connection = connection
+
+        @property
+        def connection(self):
+            return self._connection
+
+    wedge = StatementService(_StandInVault(_FailAtPeriodDelete(conn)))
+    with pytest.raises(RuntimeError):
+        wedge.delete_statement(period_id)
+
+    # SAME connection, before any reopen: BOTH the transaction and the record remain.
+    assert TransactionRepository(conn).count_for_account(acct) == 1
+    assert len(StatementPeriodRepository(conn).list_for_account(acct)) == 1
+
+
+def test_INV9c_direct_period_delete_with_children_raises(service):
+    imp, acct, conn = (
+        ImportService(service.vault),
+        _acct(service),
+        service.vault.connection,
+    )
+    _do_import(imp, _csv(HEADER, [["2026-01-05", "a1", "-1.00"]]), acct)
+    period_id = StatementPeriodRepository(conn).list_for_account(acct)[0].id
+
+    # Deleting the period row directly (leaving stamped children) violates the FK —
+    # the plain (non-cascade) FK guards the unsafe path; the service's ordered
+    # two-step delete is the sanctioned route (INV-9).
+    with pytest.raises(dbapi2.IntegrityError):
+        StatementPeriodRepository(conn).delete(period_id)
+    conn.rollback()
+
+
+def test_INV9d_backfill_links_unambiguous_only(paths):
+    salt = bytes(range(SALT_LEN))
+    conn = _seed_raw_v5(paths, salt)
+    acct = conn.execute("SELECT id FROM accounts").fetchone()[0]
+    period_id = _raw_period(conn, acct, "2026-01-01", "2026-01-31")
+    for day in ("2026-01-05", "2026-01-10", "2026-01-20"):  # in-span
+        _raw_txn(conn, acct, day)
+    _raw_txn(conn, acct, "2026-02-15")  # out-of-span
+    _raw_txn(conn, acct, "2026-03-01")  # out-of-span ("manual"-like)
+    conn.commit()
+
+    run_migrations(conn)  # v5 -> v6, backfill inside the atomic step
+
+    for occurred_on, spid in conn.execute(
+        "SELECT occurred_on, statement_period_id FROM transactions"
+    ).fetchall():
+        if "2026-01-01" <= occurred_on <= "2026-01-31":
+            assert spid == period_id, f"{occurred_on} in-span should be linked"
+        else:
+            assert spid is None, f"{occurred_on} out-of-span stays NULL"
+    conn.close()
+
+
+def test_INV9d_backfill_overlap_stays_null(paths):
+    salt = bytes(range(SALT_LEN))
+    conn = _seed_raw_v5(paths, salt)
+    acct = conn.execute("SELECT id FROM accounts").fetchone()[0]
+    p1 = _raw_period(conn, acct, "2026-01-01", "2026-01-20")
+    _raw_period(conn, acct, "2026-01-10", "2026-01-31")  # overlaps p1 on 01-10..01-20
+    _raw_txn(conn, acct, "2026-01-15", description="shared")  # under BOTH periods
+    _raw_txn(conn, acct, "2026-01-05", description="single")  # under p1 only
+    conn.commit()
+
+    run_migrations(conn)  # v5 -> v6
+
+    shared = conn.execute(
+        "SELECT statement_period_id FROM transactions WHERE description = 'shared'"
+    ).fetchone()
+    assert shared[0] is None, "a date covered by two periods stays NULL (overlap guard)"
+    single = conn.execute(
+        "SELECT statement_period_id FROM transactions WHERE description = 'single'"
+    ).fetchone()
+    assert single[0] == p1, "a date under only one period is linked"
+    conn.close()
+
+
+# --------------------------------------------------------------------------- #
+# INV-1 / INV-2 / INV-2a — the four-tab workspace + tab-switching navigation
+# --------------------------------------------------------------------------- #
+def test_INV1_workspace_has_four_tabs_in_order(qtbot, service):
+    window = _shell(qtbot, service)
+    workspace = window.centralWidget().currentWidget()
+    assert workspace.objectName() == "workspace"
+    names = [workspace.widget(i).objectName() for i in range(workspace.count())]
+    assert names == ["tab_home", "tab_statements", "tab_accounts", "tab_categories"]
+
+
+def test_INV2_nav_actions_switch_the_workspace_tab(qtbot, service):
+    window = _shell(qtbot, service)
+    workspace = window._workspace
+    for attr, index in (
+        ("_action_statements", 1),
+        ("_action_accounts", 2),
+        ("_action_categories", 3),
+        ("_action_home", 0),
+    ):
+        getattr(window, attr).trigger()
+        assert workspace.currentIndex() == index, attr
+
+
+# --------------------------------------------------------------------------- #
+# INV-3a — a lock while importing destroys the wizard (no live import survives)
+# --------------------------------------------------------------------------- #
+def test_INV3a_lock_during_import_destroys_wizard(qtbot, service):
+    window = _shell(qtbot, service)
+    window._action_import.trigger()
+    wizard = window._live
+    assert isinstance(wizard, ImportWizardWidget)
+    assert window.centralWidget().currentWidget() is wizard
+
+    service._on_idle_timeout()  # idle auto-lock while the wizard is showing
+    _pump_deferred_delete()
+    assert not shiboken6.isValid(wizard), "the import wizard is destroyed on lock"
+    assert window.centralWidget().currentWidget().objectName() == "placeholder_locked"
+
+
+# --------------------------------------------------------------------------- #
+# INV-5 / INV-5a — geometry + last tab round-trip, outside the vault, no data
+# --------------------------------------------------------------------------- #
+def test_INV5a_geometry_and_tab_roundtrip_outside_vault(
+    qtbot, service, window_ini, paths
+):
+    TransactionService(service.vault).add_transaction(
+        _acct(service), "2026-07-01", "-42.42", "ZZTOPSECRETMEMO"
+    )
+    window = _shell(qtbot, service)
+    window.resize(820, 540)
+    window.move(60, 70)
+    window._workspace.setCurrentIndex(2)  # Accounts tab
+    before_bytes = bytes(window.saveGeometry())
+    window.closeEvent(QCloseEvent())  # persists geometry + state + last tab (D7)
+
+    assert window_ini.exists(), "geometry is persisted to the injected INI"
+    vault_path, _ = paths
+    assert window_ini != vault_path, "the INI is outside the vault file"
+    blob = window_ini.read_bytes()
+    assert b"ZZTOPSECRETMEMO" not in blob, (
+        "no transaction description in the plaintext INI"
+    )
+    assert b"4242" not in blob, "no transaction amount in the plaintext INI"
+
+    # The INI stored exactly the window's saveGeometry blob (persistence proven).
+    settings = QSettings(str(window_ini), QSettings.Format.IniFormat)
+    assert bytes(settings.value("geometry")) == before_bytes
+
+    window2 = MainWindow(service)  # reconstruct — geometry applied before unlock
+    qtbot.addWidget(window2)
+    # restoreGeometry applied it: the set height round-trips under the offscreen QPA
+    # (width/x are adjusted by frame margins on this headless platform, so height is
+    # the portable witness that the saved geometry was restored, not defaulted).
+    assert window2.height() == 540, "the saved geometry is restored on reconstruct"
+    assert window2.height() != main_window._DEFAULT_WINDOW_SIZE.height(), "not default"
+    window2._enter_unlocked()
+    assert window2._workspace.currentIndex() == 2, "the last-active tab is restored"
+
+
+# --------------------------------------------------------------------------- #
+# INV-6 — the Window menu: Center, Reset, both enabled while locked
+# --------------------------------------------------------------------------- #
+def test_INV6a_center_window(qtbot, service):
+    window = _shell(qtbot, service)
+    window._action_center_window.trigger()
+    screen = window.screen() or QGuiApplication.primaryScreen()
+    center = screen.availableGeometry().center()
+    frame_center = window.frameGeometry().center()
+    assert abs(frame_center.x() - center.x()) <= 1
+    assert abs(frame_center.y() - center.y()) <= 1
+
+
+def test_INV6b_reset_layout(qtbot, service, window_ini):
+    window = _shell(qtbot, service)
+    window.resize(900, 650)
+    window._action_reset_layout.trigger()
+    settings = QSettings(str(window_ini), QSettings.Format.IniFormat)
+    assert settings.value("geometry") is None, "reset clears the saved geometry key"
+    assert window.size() == main_window._DEFAULT_WINDOW_SIZE
+
+
+def test_INV6c_window_menu_enabled_while_locked(qtbot, service):
+    window = _shell(qtbot, service)
+    window._action_lock.trigger()
+    assert not window._menu_view.isEnabled(), "vault chrome is disabled while locked"
+    assert window._action_center_window.isEnabled(), "Center needs no vault"
+    assert window._action_reset_layout.isEnabled(), "Reset needs no vault"
+
+
+# --------------------------------------------------------------------------- #
+# INV-7 — the Statements tab lists imports with an exact linked-transaction count
+# --------------------------------------------------------------------------- #
+def test_INV7a_statements_tab_shows_exact_counts(qtbot, service):
+    imp, acct = ImportService(service.vault), _acct(service)
+    _do_import(
+        imp,
+        _csv(HEADER, [["2026-01-05", "a", "-1.00"], ["2026-01-06", "b", "-2.00"]]),
+        acct,
+    )
+    _do_import(imp, _csv(HEADER, [["2026-02-05", "c", "-1.00"]]), acct)
+
+    widget = StatementsWidget(service)
+    qtbot.addWidget(widget)
+    assert widget.statement_count() == 2
+    assert sorted(r.transaction_count for r in widget._rows) == [1, 2]
+
+    TransactionService(service.vault).add_transaction(
+        acct, "2026-03-01", "-9.00", "manual"
+    )
+    widget.refresh()
+    assert sorted(r.transaction_count for r in widget._rows) == [1, 2], (
+        "a manual (NULL-stamped) row changes no statement's count"
+    )
+
+
+def test_INV7b_zero_linked_statement_lists_as_zero(qtbot, service):
+    imp, acct = ImportService(service.vault), _acct(service)
+    rows = [["2026-01-05", "a", "-1.00"], ["2026-01-20", "b", "-2.00"]]
+    _do_import(imp, _csv(HEADER, rows), acct)  # records span [01-05, 01-20], 2 rows
+
+    # A NEW span whose every parsed row already exists -> a period row is created
+    # but zero rows are stamped (all dedup to zero) -> lists with count 0 (LEFT JOIN).
+    preview = imp.preview(_csv(HEADER, rows), SINGLE, acct)
+    assert preview.new_count == 0
+    result = imp.commit_import(preview, "2026-01-01", "2026-01-31", "s.csv")
+    assert result.inserted_count == 0 and result.period_recorded is True
+
+    widget = StatementsWidget(service)
+    qtbot.addWidget(widget)
+    zero = [r for r in widget._rows if r.period_start == "2026-01-01"]
+    assert len(zero) == 1 and zero[0].transaction_count == 0, (
+        "zero-linked still lists, count 0"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# INV-10 — delete is confirmed and refreshes; disabled without a selection
+# --------------------------------------------------------------------------- #
+def test_INV10_delete_disabled_without_selection(qtbot, service):
+    imp, acct = ImportService(service.vault), _acct(service)
+    _do_import(imp, _csv(HEADER, [["2026-01-05", "a", "-1.00"]]), acct)
+    widget = StatementsWidget(service)
+    qtbot.addWidget(widget)
+    assert widget.statement_count() == 1
+    assert not widget._delete_button.isEnabled(), "Delete is disabled with no selection"
+
+
+def test_INV10a_confirmed_delete_removes_and_emits(qtbot, service, monkeypatch):
+    imp, acct, conn = (
+        ImportService(service.vault),
+        _acct(service),
+        service.vault.connection,
+    )
+    _do_import(
+        imp,
+        _csv(HEADER, [["2026-01-05", "a", "-1.00"], ["2026-01-06", "b", "-2.00"]]),
+        acct,
+    )
+    widget = StatementsWidget(service)
+    qtbot.addWidget(widget)
+    widget._select_period(widget._rows[0].id)
+    assert widget._delete_button.isEnabled()
+
+    monkeypatch.setattr(
+        QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.Yes
+    )
+    emitted = []
+    widget.changed.connect(lambda: emitted.append(True))
+    widget._delete_button.click()
+
+    assert emitted == [True], "changed emitted after a successful delete"
+    assert widget.statement_count() == 0, "the row is gone"
+    assert TransactionRepository(conn).count_for_account(acct) == 0, (
+        "its transactions gone"
+    )
+
+
+def test_INV10b_cancelled_delete_does_nothing(qtbot, service, monkeypatch):
+    imp, acct, conn = (
+        ImportService(service.vault),
+        _acct(service),
+        service.vault.connection,
+    )
+    _do_import(imp, _csv(HEADER, [["2026-01-05", "a", "-1.00"]]), acct)
+    widget = StatementsWidget(service)
+    qtbot.addWidget(widget)
+    widget._select_period(widget._rows[0].id)
+
+    monkeypatch.setattr(
+        QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.No
+    )
+    widget._delete_button.click()
+
+    assert widget.statement_count() == 1, "Cancel deletes nothing"
+    assert TransactionRepository(conn).count_for_account(acct) == 1
+
+
+# --------------------------------------------------------------------------- #
+# INV-11a — a change reflects on the Home tab when it is next activated
+# --------------------------------------------------------------------------- #
+def test_INV11a_home_reflects_change_on_activation(qtbot, service):
+    window = _shell(qtbot, service)
+    before = window._home_tab.transaction_count()
+
+    TransactionService(service.vault).add_transaction(
+        _acct(service), "2026-01-01", "-5.00", "x"
+    )
+    window._workspace.setCurrentIndex(2)  # away to Accounts
+    window._workspace.setCurrentIndex(0)  # back to Home -> currentChanged refreshes
+
+    assert window._home_tab.transaction_count() == before + 1
+    assert str(before + 1) in window._count.text(), (
+        "the status count reflects the change"
+    )
+
+
+def test_INV11_statement_delete_refreshes_home_and_count(qtbot, service, monkeypatch):
+    window = _shell(qtbot, service)
+    imp, acct = ImportService(service.vault), _acct(service)
+    _do_import(
+        imp,
+        _csv(HEADER, [["2026-01-05", "a", "-1.00"], ["2026-01-06", "b", "-2.00"]]),
+        acct,
+    )
+    window._action_statements.trigger()  # activates + refreshes the Statements tab
+    statements = window._statements_tab
+    assert statements.statement_count() == 1
+
+    statements._select_period(statements._rows[0].id)
+    monkeypatch.setattr(
+        QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.Yes
+    )
+    statements._delete_button.click()
+
+    assert window._home_tab.transaction_count() == 0, "Home refreshed after the delete"
+    assert "0" in window._count.text(), "the status count refreshed after the delete"
+
+
+# --------------------------------------------------------------------------- #
+# INV-12a — Accounts/Categories in tab mode have no Done button
+# --------------------------------------------------------------------------- #
+def test_INV12a_tab_widgets_have_no_done_button(qtbot, service):
+    window = _shell(qtbot, service)
+    assert window._accounts_tab._done_button is None, "no Done on the Accounts tab"
+    assert window._categories_tab._done_button is None, "no Done on the Categories tab"
+
+    standalone = AccountsWidget(service)  # default show_done=True
+    qtbot.addWidget(standalone)
+    assert standalone._done_button is not None, "a standalone AccountsWidget keeps Done"

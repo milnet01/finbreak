@@ -30,10 +30,12 @@ class StatementPeriodRepository:
         period_start: str,
         period_end: str,
         source_filename: str | None,
-    ) -> None:
-        """Insert one coverage-period row, stamping ``imported_at`` (UTC ISO).
-        Commit-free — the caller's import transaction owns the commit (D7)."""
-        self._conn.execute(
+    ) -> int:
+        """Insert one coverage-period row, stamping ``imported_at`` (UTC ISO), and
+        return its new id (so ``commit_import`` can stamp the batch with it,
+        FIBR-0052 INV-8). Commit-free — the caller's import transaction owns the
+        commit (D7)."""
+        cursor = self._conn.execute(
             "INSERT INTO statement_periods("
             "account_id, period_start, period_end, source_filename, imported_at) "
             "VALUES (?, ?, ?, ?, ?)",
@@ -45,16 +47,21 @@ class StatementPeriodRepository:
                 datetime.now(UTC).isoformat(),
             ),
         )
+        return cursor.lastrowid
 
-    def exists(self, account_id: int, period_start: str, period_end: str) -> bool:
-        """Whether this exact ``(account_id, period_start, period_end)`` span is
-        already recorded (the span-dedup check, INV-6)."""
+    def id_for_span(
+        self, account_id: int, period_start: str, period_end: str
+    ) -> int | None:
+        """The id of the row for this exact ``(account_id, period_start,
+        period_end)`` span, or ``None`` if it is not yet recorded — the span-dedup
+        check (INV-6) that also yields the id for the reuse path (FIBR-0052 D8): a
+        non-``None`` return means the span exists and gives the id to stamp with."""
         row = self._conn.execute(
-            "SELECT 1 FROM statement_periods "
+            "SELECT id FROM statement_periods "
             "WHERE account_id = ? AND period_start = ? AND period_end = ? LIMIT 1",
             (account_id, period_start, period_end),
         ).fetchone()
-        return row is not None
+        return row[0] if row is not None else None
 
     def list_for_account(self, account_id: int) -> list[StatementPeriod]:
         rows = self._conn.execute(
@@ -64,3 +71,19 @@ class StatementPeriodRepository:
             (account_id,),
         ).fetchall()
         return [StatementPeriod(*row) for row in rows]
+
+    def list_all(self) -> list[StatementPeriod]:
+        """Every recorded coverage period across **all** accounts (the Statements
+        tab's read, FIBR-0052 INV-7), ordered by import recency then id."""
+        rows = self._conn.execute(
+            "SELECT id, account_id, period_start, period_end, source_filename, "
+            "imported_at FROM statement_periods ORDER BY imported_at, id"
+        ).fetchall()
+        return [StatementPeriod(*row) for row in rows]
+
+    def delete(self, period_id: int) -> None:
+        """Remove one coverage-period row. **Commit-free** — invoked inside
+        ``StatementService.delete_statement``'s owned transaction, **after** its
+        stamped transactions are removed, so the plain FK never trips (FIBR-0052
+        INV-9)."""
+        self._conn.execute("DELETE FROM statement_periods WHERE id = ?", (period_id,))
