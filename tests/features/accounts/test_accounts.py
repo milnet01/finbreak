@@ -369,8 +369,11 @@ def test_INV7a_type_picker_offers_seven_mapped_types(qtbot, service):
 
 
 def test_INV7bc_add_appears_in_list_and_main_picker(qtbot, service):
+    # Re-homed FIBR-0051: the transaction account picker moved from MainWindow
+    # into ManualEntryDialog (D3), so the "selectable in the picker" assertion
+    # re-points there.
     from finbreak.ui.accounts import AccountsWidget
-    from finbreak.ui.main_window import MainWindow
+    from finbreak.ui.manual_entry import ManualEntryDialog
 
     widget = AccountsWidget(service)
     qtbot.addWidget(widget)
@@ -380,25 +383,25 @@ def test_INV7bc_add_appears_in_list_and_main_picker(qtbot, service):
     listed = [widget._list.item(i).text() for i in range(widget._list.count())]
     assert any("Holiday" in text for text in listed), "added account shows in the list"
 
-    window = MainWindow(service)
-    qtbot.addWidget(window)
-    picker_names = [window._account.itemText(i) for i in range(window._account.count())]
+    dialog = ManualEntryDialog(service)
+    qtbot.addWidget(dialog)
+    picker_names = [dialog._account.itemText(i) for i in range(dialog._account.count())]
     assert any("Holiday" in n for n in picker_names), "selectable in the tx picker"
 
 
 def test_INV7c_transaction_shows_account_name_in_table(qtbot, service):
-    from finbreak.ui.main_window import MainWindow
+    # Re-homed FIBR-0051: the transaction table moved from MainWindow into
+    # HomeView (D3).
+    from finbreak.ui.home import HomeView
 
     default_id = _default_id(service.vault)
     TransactionService(service.vault).add_transaction(
         default_id, "2026-07-01", "-12.34", "coffee"
     )
-    window = MainWindow(service)
-    qtbot.addWidget(window)
-    assert window._table.rowCount() == 1
-    cells = [
-        window._table.item(0, c).text() for c in range(window._table.columnCount())
-    ]
+    home = HomeView(TransactionService(service.vault))
+    qtbot.addWidget(home)
+    assert home._table.rowCount() == 1
+    cells = [home._table.item(0, c).text() for c in range(home._table.columnCount())]
     assert any(DEFAULT_ACCOUNT_NAME in c for c in cells), "the account name is shown"
 
 

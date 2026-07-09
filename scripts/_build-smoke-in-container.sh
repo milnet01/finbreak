@@ -74,8 +74,15 @@ echo "-- freezing --onefile --"
 # PyInstaller does not follow by import alone. Without these, the clean-room
 # launch fails with ModuleNotFoundError (FIBR-0004 argon2 gap; FIBR-0008 adds
 # ofxparse/lxml; FIBR-0009 adds pdfplumber's tree).
+# The ui/icons/*.svg toolbar glyphs (FIBR-0051) are package data, not an import,
+# so PyInstaller does not follow them — --add-data places them at the same
+# package-relative path ui/icons.py resolves via Path(__file__).parent / "icons"
+# (the DoD #2 non-null-pixmap self-test leg fails the bundle if they don't
+# travel). The Qt SVG plugins (imageformats/qsvg + iconengines/qsvgicon) that
+# RENDER them are collected by PyInstaller's PySide6 hook by default.
 pyinstaller --onefile --name "$ONEFILE" \
     --paths /src/src \
+    --add-data "/src/src/finbreak/ui/icons:finbreak/ui/icons" \
     --hidden-import sqlcipher3 \
     --hidden-import pikepdf \
     --hidden-import PySide6.QtWidgets \

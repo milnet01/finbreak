@@ -462,7 +462,10 @@ def test_INV6_unlock_lock_roundtrip_headless(service):
 
 
 def test_INV6_unlock_widget_roundtrip(qtbot, service):
-    from finbreak.ui.unlock import UnlockWidget
+    # Re-homed FIBR-0051: UnlockWidget(QWidget) → UnlockDialog(QDialog); the
+    # signals + fields (._password/._unlock_button/.unlocked/.unlock_failed) are
+    # unchanged, so this round-trip is a mechanical rename.
+    from finbreak.ui.unlock import UnlockDialog
 
     service.first_run(bytearray(_PW), "ZAR")
     TransactionService(service._vault).add_transaction(
@@ -470,7 +473,7 @@ def test_INV6_unlock_widget_roundtrip(qtbot, service):
     )
     service.lock()
 
-    widget = UnlockWidget(service)
+    widget = UnlockDialog(service)
     qtbot.addWidget(widget)
 
     # 15 s, not 5 s: each click runs a real 47 MiB Argon2id derivation on a
@@ -490,11 +493,11 @@ def test_INV6_unlock_widget_roundtrip(qtbot, service):
 def test_INV6_unlock_ignores_reentrant_submit_while_deriving(qtbot, service):
     # A second submit while a derivation is in flight must be ignored — else it
     # would spawn a second worker and orphan the first (guard: unlock.py).
-    from finbreak.ui.unlock import UnlockWidget
+    from finbreak.ui.unlock import UnlockDialog
 
     service.first_run(bytearray(_PW), "ZAR")
     service.lock()
-    widget = UnlockWidget(service)
+    widget = UnlockDialog(service)
     qtbot.addWidget(widget)
 
     widget._password.setText(_PW.decode())
@@ -506,50 +509,57 @@ def test_INV6_unlock_ignores_reentrant_submit_while_deriving(qtbot, service):
 
 
 def test_INV6_main_window_lists_saved_transaction(qtbot, service):
-    from finbreak.ui.main_window import MainWindow
+    # Re-homed FIBR-0051: the transaction table moved from MainWindow into
+    # HomeView (D3), so the "saved transaction appears" assertion re-points there.
+    from finbreak.ui.home import HomeView
 
     service.first_run(bytearray(_PW), "ZAR")
     TransactionService(service._vault).add_transaction(
         _default_id(service), "2026-07-01", "-12.34", "coffee"
     )
 
-    window = MainWindow(service)
-    qtbot.addWidget(window)
-    assert window._table.rowCount() == 1, "the saved transaction appears in the table"
+    home = HomeView(TransactionService(service._vault))
+    qtbot.addWidget(home)
+    assert home._table.rowCount() == 1, "the saved transaction appears in the table"
 
 
 def test_main_window_date_field_renders_unambiguous_iso(qtbot, service):
     # The date picker shows YYYY/MM/DD, not the locale's ambiguous M/D/YY — a
     # 2026-07-04 date must read "2026/07/04" to any user regardless of locale.
+    # Re-homed FIBR-0051: the manual-entry form (incl. the date field) moved from
+    # MainWindow into ManualEntryDialog (D3).
     from PySide6.QtCore import QDate
 
-    from finbreak.ui.main_window import MainWindow
+    from finbreak.ui.manual_entry import ManualEntryDialog
 
     service.first_run(bytearray(_PW), "ZAR")
-    window = MainWindow(service)
-    qtbot.addWidget(window)
-    window._date.setDate(QDate(2026, 7, 4))
-    assert window._date.text() == "2026/07/04"
+    dialog = ManualEntryDialog(service)
+    qtbot.addWidget(dialog)
+    dialog._date.setDate(QDate(2026, 7, 4))
+    assert dialog._date.text() == "2026/07/04"
 
 
 def test_INV6_idle_autolock_routes_ui_back_to_unlock(qtbot, service):
-    # An idle auto-lock wipes the key + closes the vault; the shell must route
-    # back to the unlock screen, else the next action hits a locked vault and
-    # crashes (INV-3 idle-lock reflected through the UI).
-    from finbreak.app import AppShell
+    # An idle auto-lock wipes the key + closes the vault; the shell must return
+    # to the locked shell, else the next action hits a locked vault and crashes.
+    # Rewritten FIBR-0051 (INV-4a): AppShell/whole-window-swap → a persistent
+    # MainWindow(QMainWindow) whose *content widget* is destroyed and swapped for
+    # the 🔒 Locked placeholder + a re-opened UnlockDialog (same window instance).
+    from finbreak.ui.home import HomeView
     from finbreak.ui.main_window import MainWindow
-    from finbreak.ui.unlock import UnlockWidget
+    from finbreak.ui.unlock import UnlockDialog
 
     service.first_run(bytearray(_PW), "ZAR")  # leaves the service unlocked
-    shell = AppShell(service)
-    qtbot.addWidget(shell)
-    shell._show_main()
-    assert isinstance(shell.currentWidget(), MainWindow)
+    window = MainWindow(service)
+    qtbot.addWidget(window)
+    window._enter_unlocked()  # drive past locked-file routing to a live Home
+    assert isinstance(window.centralWidget().currentWidget(), HomeView)
 
     service._on_idle_timeout()  # the 10-minute idle timer fires
     assert service._key is None, "idle auto-lock wipes the key"
-    assert isinstance(shell.currentWidget(), UnlockWidget), (
-        "the UI routes back to unlock so no action reaches the locked vault"
+    assert window.centralWidget().currentWidget().objectName() == "placeholder_locked"
+    assert isinstance(window._dialog, UnlockDialog), (
+        "the UI returns to the locked shell so no action reaches the locked vault"
     )
 
 

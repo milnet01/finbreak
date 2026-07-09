@@ -1,14 +1,26 @@
-"""Unlock screen — password → (worker derives) → open vault (FIBR-0004 INV-6).
+"""Unlock dialog — password → (worker derives) → open vault (FIBR-0004 INV-6).
 
 A wrong password and a tampered vault are deliberately indistinguishable here:
 both surface as a failed unlock, because without the correct key the app cannot
 tell them apart (the HMAC that would prove tamper is itself keyed).
+
+Re-homed from a full-screen ``QWidget`` into a non-blocking application-modal
+``QDialog`` shown over the window (FIBR-0051 D2). It keeps ``unlocked`` /
+``unlock_failed``; the shell connects ``unlocked`` → the unlocked shell, and on
+``unlock_failed`` the dialog stays open for a retry. Cancel / window-close fires
+``reject()`` (the shell leaves the locked shell on screen). While a derivation is
+in flight **all three dismissal routes no-op** (Cancel disabled, ``reject()`` /
+``closeEvent`` return early) so the parented ``DeriveWorker`` ``QThread`` is never
+deleted mid-run (INV-2f).
 """
 
 from __future__ import annotations
 
 from PySide6.QtCore import Signal, Slot
+from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
+    QDialog,
+    QDialogButtonBox,
     QLabel,
     QLineEdit,
     QPushButton,
@@ -21,7 +33,7 @@ from finbreak.services.auth import AuthService
 from finbreak.ui._worker import DeriveWorker
 
 
-class UnlockWidget(QWidget):
+class UnlockDialog(QDialog):
     unlocked = Signal()
     unlock_failed = Signal()
 
@@ -29,6 +41,7 @@ class UnlockWidget(QWidget):
         super().__init__(parent)
         self._service = service
         self._worker: DeriveWorker | None = None
+        self.setWindowTitle(self.tr("Unlock finbreak"))
 
         self._password = QLineEdit()
         self._password.setEchoMode(QLineEdit.EchoMode.Password)
@@ -36,14 +49,30 @@ class UnlockWidget(QWidget):
         self._unlock_button = QPushButton(self.tr("Unlock"))
         self._error = QLabel()
 
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Cancel)
+        self._cancel = buttons.button(QDialogButtonBox.StandardButton.Cancel)
+        buttons.rejected.connect(self.reject)
+
         layout = QVBoxLayout(self)
         layout.addWidget(QLabel(self.tr("Enter your master password to unlock.")))
         layout.addWidget(self._password)
         layout.addWidget(self._unlock_button)
         layout.addWidget(self._error)
+        layout.addWidget(buttons)
 
         self._unlock_button.clicked.connect(self._on_unlock)
         self._password.returnPressed.connect(self._on_unlock)
+
+    def reject(self) -> None:
+        if self._worker is not None:
+            return  # a derivation is in flight — Escape / Cancel no-op (INV-2f)
+        super().reject()
+
+    def closeEvent(self, event: QCloseEvent) -> None:
+        if self._worker is not None:
+            event.ignore()  # the window [X] mid-derivation is a no-op too (INV-2f)
+            return
+        super().closeEvent(event)
 
     @Slot()
     def _on_unlock(self) -> None:
@@ -68,10 +97,12 @@ class UnlockWidget(QWidget):
         worker.start()
 
     def _set_busy(self, busy: bool) -> None:
-        # Disable the field too (not just the button) so a second Enter can't
-        # re-enter _on_unlock and orphan the running worker.
+        # Disable the field + Cancel too (not just the submit button): a second
+        # Enter can't re-enter _on_unlock and orphan the running worker, and a
+        # dismissal can't delete the parented worker mid-run (INV-2f).
         self._unlock_button.setEnabled(not busy)
         self._password.setEnabled(not busy)
+        self._cancel.setEnabled(not busy)
 
     @Slot(bytes)
     def _on_derived(self, raw: bytes) -> None:

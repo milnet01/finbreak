@@ -15,3 +15,10 @@ paths = [
   '''dist/''',
   '''build/''',
 ]
+# The default `generic-api-key` rule matches the high-entropy PySide6 API name
+# `shiboken6.isValid` where the FIBR-0051 spec / tests cite it in prose (the
+# "is this QObject deleted?" idiom). It is a documented public identifier, not a
+# secret — allowlist the exact string, not a broad path (FIBR-0051).
+regexes = [
+  '''shiboken6\.isValid''',
+]

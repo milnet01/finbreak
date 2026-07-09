@@ -39,6 +39,27 @@ def _check_qt() -> None:
         QApplication([])
 
 
+def _check_icons() -> None:
+    """Render one bundled toolbar SVG icon, proving the ``ui/icons/`` package data
+    **and** the Qt SVG plugins (``imageformats/qsvg`` + ``iconengines/qsvgicon``)
+    travel into the frozen bundle (FIBR-0051 Deliverable 9 / DoD #2).
+
+    A bare ``QIcon(path)`` is non-null even when the SVG is ABSENT, so only a
+    *rendered* 16 px pixmap proves the file loaded and the plugins are present.
+    Runs after ``_check_qt`` (it needs the QApplication).
+    """
+    from PySide6.QtCore import QSize
+
+    from finbreak.ui.icons import icon
+
+    pixmap = icon("lock").pixmap(QSize(16, 16))
+    if pixmap.isNull() or pixmap.size().isEmpty():
+        raise RuntimeError(
+            "bundled icon did not render — ui/icons/ package data or the Qt SVG "
+            "plugins did not travel with the bundle"
+        )
+
+
 def _check_sqlcipher() -> None:
     """Open a keyed SQLCipher DB and round-trip a row, proving the lib loads."""
     import sqlcipher3
@@ -186,6 +207,7 @@ def run_self_test(out: TextIO | None = None) -> int:
     stream = sys.stdout if out is None else out
     checks = (
         ("qt", _check_qt),
+        ("icons", _check_icons),
         ("sqlcipher", _check_sqlcipher),
         ("pikepdf", _check_pikepdf),
         ("argon2", _check_argon2),
