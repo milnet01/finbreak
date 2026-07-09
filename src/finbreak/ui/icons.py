@@ -19,8 +19,18 @@ from pathlib import Path
 from PySide6.QtGui import QIcon
 
 _ICON_DIR = Path(__file__).parent / "icons"
+_APP_ICON = _ICON_DIR / "app.png"
 
 
 def icon(name: str) -> QIcon:
     """The ``QIcon`` for the bundled glyph ``<name>.svg`` (e.g. ``"lock"``)."""
     return QIcon(str(_ICON_DIR / f"{name}.svg"))
+
+
+def app_icon() -> QIcon:
+    """The branded application/window icon (FIBR-0037) — a raster app tile,
+    package data alongside the toolbar glyphs (regenerated from
+    ``assets/icon/finbreak.png`` by ``scripts/make-icons.sh``). Set on the
+    ``QApplication`` so every window, dialog, and the OS taskbar entry carry it;
+    it travels into a frozen bundle via the same ``ui/icons/`` package data."""
+    return QIcon(str(_APP_ICON))

@@ -18,11 +18,13 @@ from PySide6.QtWidgets import QApplication, QMessageBox
 from finbreak import paths
 from finbreak.errors import VaultStateError
 from finbreak.services.auth import AuthService
+from finbreak.ui.icons import app_icon
 from finbreak.ui.main_window import MainWindow
 
 
 def run(argv: list[str] | None = None) -> int:
     app = QApplication(argv if argv is not None else sys.argv)
+    app.setWindowIcon(app_icon())  # branded icon on every window + the taskbar
     app.setLayoutDirection(QLocale().textDirection())
 
     service = AuthService(paths.vault_path(), paths.sidecar_path())

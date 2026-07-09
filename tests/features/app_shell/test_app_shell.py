@@ -518,3 +518,20 @@ def test_INV10_format_amount_localised(qtbot):
         assert "12.34" in rendered, "the amount renders via QLocale with 2 decimals"
     finally:
         QLocale.setDefault(previous)
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0037 — branded application/window icon
+# --------------------------------------------------------------------------- #
+def test_FIBR0037_app_icon_renders(qtbot):
+    from PySide6.QtCore import QSize
+
+    from finbreak.ui import icons
+    from finbreak.ui.icons import app_icon
+
+    # The raster app icon travels as package data in ui/icons/ beside the glyphs.
+    assert icons._APP_ICON.is_file()
+    # A non-null rendered pixmap proves the PNG actually loads (a broken/absent
+    # file yields a null pixmap even though QIcon(path) is non-null).
+    pixmap = app_icon().pixmap(QSize(64, 64))
+    assert not pixmap.isNull() and not pixmap.size().isEmpty()

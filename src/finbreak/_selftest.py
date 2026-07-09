@@ -52,13 +52,21 @@ def _check_icons() -> None:
     """
     from PySide6.QtCore import QSize
 
-    from finbreak.ui.icons import icon
+    from finbreak.ui.icons import app_icon, icon
 
     pixmap = icon("lock").pixmap(QSize(16, 16))
     if pixmap.isNull() or pixmap.size().isEmpty():
         raise RuntimeError(
             "bundled icon did not render — ui/icons/ package data or the Qt SVG "
             "plugins did not travel with the bundle"
+        )
+    # The branded raster app icon (FIBR-0037) travels as ui/icons/app.png; render
+    # it too so a dropped PNG (a different package-data glob than the SVGs) is caught.
+    app_pixmap = app_icon().pixmap(QSize(32, 32))
+    if app_pixmap.isNull() or app_pixmap.size().isEmpty():
+        raise RuntimeError(
+            "branded app icon did not render — ui/icons/app.png did not travel "
+            "with the bundle"
         )
 
 

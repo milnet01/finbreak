@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# Regenerate the finbreak icon set from the single master (FIBR-0037).
+#
+# One source of truth: assets/icon/finbreak.png (1024x1024). Everything else is
+# derived, so the platform icons can never drift from the master — rerun this
+# after replacing the master. Needs ImageMagick (`magick`) on PATH.
+#
+# Outputs:
+#   assets/icon/finbreak-<size>.png        Linux hicolor PNGs (16..512)
+#   assets/icon/finbreak.ico               Windows (multi-size embedded)
+#   assets/icon/finbreak.iconset/          macOS iconutil input (named PNGs)
+#   src/finbreak/ui/icons/app.png          the runtime window icon (512, package data)
+#
+# macOS .icns: generated at mac build time from finbreak.iconset via `iconutil -c
+# icns finbreak.iconset` (or `png2icns` on Linux). Not produced here because this
+# repo's build box has neither, and no macOS build exists yet (FIBR-0015).
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+MASTER="assets/icon/finbreak.png"
+OUT="assets/icon"
+[ -f "$MASTER" ] || { echo "master $MASTER missing" >&2; exit 1; }
+
+png() { magick "$MASTER" -resize "${1}x${1}" -strip "$2"; }
+
+# Linux hicolor PNGs.
+for s in 16 24 32 48 64 128 256 512; do
+  png "$s" "$OUT/finbreak-$s.png"
+done
+
+# Windows .ico — embed the common sizes in one file.
+magick "$MASTER" -define icon:auto-resize=256,128,64,48,32,24,16 "$OUT/finbreak.ico"
+
+# macOS .iconset — the named PNGs `iconutil` consumes (@2x = double the base).
+ICONSET="$OUT/finbreak.iconset"
+rm -rf "$ICONSET"; mkdir -p "$ICONSET"
+png 16   "$ICONSET/icon_16x16.png"
+png 32   "$ICONSET/icon_16x16@2x.png"
+png 32   "$ICONSET/icon_32x32.png"
+png 64   "$ICONSET/icon_32x32@2x.png"
+png 128  "$ICONSET/icon_128x128.png"
+png 256  "$ICONSET/icon_128x128@2x.png"
+png 256  "$ICONSET/icon_256x256.png"
+png 512  "$ICONSET/icon_256x256@2x.png"
+png 512  "$ICONSET/icon_512x512.png"
+cp "$MASTER" "$ICONSET/icon_512x512@2x.png"   # 1024, the master itself
+
+# The runtime window icon travels as package data (ui/icons/ ships in the wheel +
+# the PyInstaller bundle). 512 gives Qt a crisp source to scale to any title-bar/
+# taskbar size.
+png 512 "src/finbreak/ui/icons/app.png"
+
+echo "icons regenerated from $MASTER"

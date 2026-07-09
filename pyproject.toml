@@ -68,7 +68,7 @@ where = ["src"]
 # The toolbar glyphs (FIBR-0051 D7) ship as package data so the wheel/sdist carry
 # them; the PyInstaller freeze pulls them via --add-data (build-smoke.sh).
 [tool.setuptools.package-data]
-finbreak = ["ui/icons/*.svg"]
+finbreak = ["ui/icons/*.svg", "ui/icons/*.png"]
 
 [tool.ruff]
 target-version = "py312"
