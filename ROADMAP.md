@@ -220,7 +220,7 @@ lands on top.
 
 ---
 
-- 📋 [FIBR-0051] **P07.5: app-shell UX redesign — real app window (QMainWindow) with menubar / icon toolbar / status bar; first-run & unlock as popups.**
+- ✅ [FIBR-0051] **P07.5: app-shell UX redesign — real app window (QMainWindow) with menubar / icon toolbar / status bar; first-run & unlock as popups.**
   Replace the full-screen QStackedWidget swap model with a QMainWindow
   shell: menubar (File / View / Help / Donate), an icon toolbar
   (Manual entry / Import / Accounts / Categories / Lock, icon-above-
@@ -249,6 +249,7 @@ lands on top.
   Kind: implement.
   Lanes: ui, app, tests.
   Source: user-request-2026-07-05.
+  Resolved (2026-07-09): shipped by /close-phase. QMainWindow shell + popup first-run/unlock/manual-entry dialogs + status bar + Donate menu; content destroyed-on-lock (no decrypted rows survive). TDD: 22 tests/features/app_shell/ + D10 ripple re-home; gate green 299 passed/1 skipped, mypy 0; FIBR-0003 build smoke PASS (icons travel into the frozen bundle, DoD #2). /audit clean; /indie-review 2 cold lanes — no CRIT/HIGH/MED, 2 LOW (status-bar Ready restore, locale-hermetic amount test) + 1 INFO (QIcon-absent rationale) folded inline. Tag FIBR-0051-complete.
 
 ## P08 — Auto-categorisation rules
 
@@ -612,12 +613,13 @@ because retrofitting them is a data migration.
   Source: user-request-2026-07-03.
   Coordination note update: FIBR-0051 (P07.5) ships only a minimal About (QMessageBox.about) and puts donate links in their own Donate menu — it does NOT build the shared About/Help screen. So this bullet still owns building that screen (disclaimer + "Report an issue" link); the old "whichever of FIBR-0039/0040 ships first builds the screen" pact no longer applies.
 
-- 📋 [FIBR-0040] **In-app donate / support links.**
+- ✅ [FIBR-0040] **In-app donate / support links.**
   Clickable support links that open each FUNDING.yml sponsor page in the user's browser — GitHub Sponsors (milnet01), Patreon (AntsProjectsHub), and the Paybru tip URL (https://paybru.co.za/tip/ants-projects-hub). Surfaced in the About/Help dialog and a Help-menu entry. Keep the URLs in one place in sync with .github/FUNDING.yml (a small constants module or read at build time) so they never drift. Shares the About/Help screen with the disclaimer item.
   **Layman:** Buttons in the app that open the pages where people can support the project financially.
   Kind: feature.
   Source: user-request-2026-07-03.
   Being delivered by FIBR-0051 (P07.5 app-shell, spec in cold-eyes): its Donate menu ships all three FUNDING.yml links + the sync check (FIBR-0051 INV-8a). Flips ✅ when FIBR-0051 ships (FIBR-0051 DoD #6). Note the placement differs from this bullet's "About/Help dialog + Help menu" — FIBR-0051 uses a dedicated Donate menu.
+  Resolved (2026-07-09): delivered by FIBR-0051's Donate menu — the three .github/FUNDING.yml links (GitHub Sponsors/Patreon/PayBru) via QDesktopServices.openUrl + the INV-8a sync check that fails on drift. Placement is a dedicated Donate menu rather than the About/Help dialog; same substance.
 
 - 📋 [FIBR-0042] **Preserve the as-posted local date for a timezone-bearing OFX <DTPOSTED>.**
   Surfaced by the FIBR-0008 /indie-review (lane 1, 2026-07-04). `OfxImporter` uses `tx.date.date().isoformat()`; ofxparse normalises a timestamped `<DTPOSTED>` to UTC (`local - offset`), so a transaction posted in the evening of a negative-offset zone rolls to the next calendar day (verified: `20260105230000[-5:EST]` -> "2026-01-06"). Two consequences: (a) mis-assignment to the wrong day and, at a month boundary, the wrong statement period; (b) it can defeat INV-6 cross-source dedup (an OFX row keyed on occurred_on won't match a manually-entered copy if the OFX date shifted). Out of the FIBR-0008 contract (D4/INV-1b specify date-only DTPOSTED, and the fixtures use date-only, so nothing shipped is wrong). Blocked-ish: ofxparse discards the original tz offset, so the fix needs either raw-DTPOSTED reparsing or a product decision on whether local or UTC date is authoritative. Fix: decide the authoritative date, recover the local calendar date (or document UTC), add a tz-bearing DTPOSTED test.

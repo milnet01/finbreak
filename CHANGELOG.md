@@ -23,6 +23,9 @@ signaling per
 
 ### Added
 
+- **P07.5: app-shell UX redesign — real app window (QMainWindow) with menubar / icon toolbar / status bar; first-run & unlock as popups.** (FIBR-0051)
+  Turn the bare password-box-then-form startup into a proper app window — menus, a toolbar of shortcuts, a status bar, and a first-run popup wizard — so it looks and feels like a real desktop app.
+
 - ****Import your Standard Bank statements directly — cheque, savings, home loan, personal loan, credit card and money-market.** (FIBR-0050)**
   Standard Bank's real statements don't survive the generic PDF
   table-reader — a cheque statement collapses into a single cell, and
