@@ -105,9 +105,11 @@ def _center_supported() -> bool:
     return (not _is_wayland()) or _kde_wayland()
 
 
-# A KWin script (Plasma 5 & 6) that centres *our* window — matched by PID — in
-# its work area. The one way to position a window on Wayland, where the
-# compositor owns placement (FIBR-0060; technique from the SystemManager project).
+# A KWin script that centres *our* window — matched by PID — in its work area.
+# The one way to position a window on Wayland, where the compositor owns placement
+# (FIBR-0060; technique from the SystemManager project). Verified on Plasma 6; the
+# windowList/clientList branch also handles Plasma 5's enumeration. Best-effort, so
+# an API mismatch on an older KWin simply leaves the window where it is.
 _KWIN_CENTER_JS = """\
 var wins = workspace.windowList ? workspace.windowList() : workspace.clientList();
 for (var i = 0; i < wins.length; i++) {
@@ -621,8 +623,8 @@ class MainWindow(QMainWindow):
             with tempfile.NamedTemporaryFile(
                 mode="w", suffix=".js", prefix="finbreak_center_", delete=False
             ) as fh:
-                fh.write(script)
-                handle = fh.name
+                handle = fh.name  # capture before the write, so a failed write
+                fh.write(script)  # still cleans the just-created temp file up
             scripting = QDBusInterface(
                 "org.kde.KWin",
                 "/Scripting",
