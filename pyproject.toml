@@ -33,6 +33,12 @@ dependencies = [
     # used as the parser), so no system lib is needed — the manylinux lxml wheel
     # is self-contained and travels into the FIBR-0003 bundle (spec § Dependencies).
     "ofxparse==0.21",
+    # Cap beautifulsoup4 below 5.0 (FIBR-0058). ofxparse 0.21 (the latest release;
+    # effectively unmaintained) calls bs4's `findAll`, deprecated since bs4 4.0 and
+    # slated for removal in 5.0 — an unpinned bs4 5.x would break OFX import. bs4 is
+    # only reached transitively through ofxparse, so this is a compatibility guard,
+    # not a direct use. Revisit if ofxparse gains a `find_all` release or a fork.
+    "beautifulsoup4>=4.9,<5",
     # PDF statement import (FIBR-0009). Native-heavy transitive tree — Pillow
     # (compiled), pypdfium2 (its PDFium binary libpdfium.so lives in the separate
     # pypdfium2_raw package), and cryptography (Rust, via pdfminer.six); all ship
@@ -89,6 +95,15 @@ markers = [
     "features: end-to-end feature-conformance tests (testing.md § 3.2)",
     "integration: cross-component tests hitting a real DB/FS/subprocess (testing.md § 3.3)",
     "perf: performance/throughput tests, excluded from the gate (testing.md § 3.4)",
+]
+# Quiet ONE known third-party warning (FIBR-0058): ofxparse 0.21 (the latest,
+# unmaintained release) calls BeautifulSoup's deprecated `findAll` (~107 hits per
+# run). We cannot fix a dependency's internal call, so this ignores that specific
+# message only — NOT a blanket DeprecationWarning silence, so our own future
+# deprecations still surface. The beautifulsoup4<5 pin (above) guards the eventual
+# removal of `findAll`; drop this filter if ofxparse ships a `find_all` fix.
+filterwarnings = [
+    "ignore:Call to deprecated method findAll.*:DeprecationWarning",
 ]
 
 [tool.bandit]
