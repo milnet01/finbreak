@@ -251,6 +251,27 @@ lands on top.
   Source: user-request-2026-07-05.
   Resolved (2026-07-09): shipped by /close-phase. QMainWindow shell + popup first-run/unlock/manual-entry dialogs + status bar + Donate menu; content destroyed-on-lock (no decrypted rows survive). TDD: 22 tests/features/app_shell/ + D10 ripple re-home; gate green 299 passed/1 skipped, mypy 0; FIBR-0003 build smoke PASS (icons travel into the frozen bundle, DoD #2). /audit clean; /indie-review 2 cold lanes — no CRIT/HIGH/MED, 2 LOW (status-bar Ready restore, locale-hermetic amount test) + 1 INFO (QIcon-absent rationale) folded inline. Tag FIBR-0051-complete.
 
+- 📋 [FIBR-0052] **P07.6: tabbed main window + Home toolbar button + window geometry (shell v2).**
+  Round 1 of the tabbed-workspace evolution the user approved 2026-07-09 (design brainstormed + approved this session). Builds on the FIBR-0051 shell.
+
+  Scope (Round 1):
+  - Central content area becomes a QTabWidget with FIXED tabs: Home · Statements · Accounts · Categories. Same four mirrored under the View menu (both navigate). Reuses AccountsWidget/CategoriesWidget as tab pages; their now-redundant `done` "back to Home" affordance is retired in tab mode.
+  - Add a Home QAction to the toolbar (new house SVG glyph). Toolbar order: Home · Manual entry · Import · Accounts · Categories · Lock. Toolbar buttons switch tabs; Manual entry / Import still open their dialog / wizard (Import is a flow, NOT a tab).
+  - Statements tab is READ-ONLY this round: lists imported statements (account, period, imported-at, txn count) from the existing statement_periods import log — answers "what have I imported?". SPEC-TIME VERIFY: confirm every importer (CSV/OFX/PDF/Standard Bank) writes statement_periods; backfill any that don't. Per-statement transaction drill-down + undo-import is Round 2.
+  - Home tab: getting-started advice when empty; transaction table once populated (optionally a plain money-in/money-out line). Full categorised income/expenditure breakdown is Round 3.
+  - Window geometry: remember size + position (+ last-active tab) via QSettings in a plain config file OUTSIDE the encrypted vault (non-sensitive; needed before unlock). Add Center-window + Reset-layout actions (View or a Window menu).
+  - Security unchanged: lock tears down the whole tabbed workspace and shows the Locked placeholder (rebuilt on unlock) — preserves FIBR-0051 INV-3 (nothing decrypted survives a lock). The central QStackedWidget keeps [welcome, locked, tabbed-workspace] pages; the workspace is the "live content" destroyed on lock.
+
+  Staging (the rest, approved but separate items):
+  - Round 2: Statements first-class — add a per-transaction import-provenance stamp (schema change) → per-statement transaction view + undo/re-import.
+  - Round 3: Home dashboard — income/expenditure summary + category breakdown; BLOCKED on P08 (FIBR-0010 category link) + P09 (FIBR-0011 transfer detection) for correct totals (self-transfers must not double-count). This is FIBR-0012's dashboard, pulled onto Home.
+
+  Dependencies: FIBR-0051 (shell). Independent of P08/P09; runs before them.
+  **Layman:** Turn the single content area into tabs (Home · Statements · Accounts · Categories), add a Home button to the toolbar, and make the window remember its size and position (plus a Center-window action).
+  Kind: implement.
+  Lanes: ui, app, tests.
+  Source: user-request-2026-07-09.
+
 ## P08 — Auto-categorisation rules
 
 ### 🎨 Features
