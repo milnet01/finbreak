@@ -893,6 +893,27 @@ is a future error tomorrow.
   Kind: chore.
   Source: self-found-2026-07-09.
 
+- 📋 [FIBR-0060] **Window geometry restore + Center Window don't work on Wayland (FIBR-0052 was X11-assumed).**
+  Reported on KDE Wayland. Root cause: FIBR-0052 (INV-5 geometry persistence, INV-6
+  Center window) assumed X11 semantics. On Wayland the compositor owns window
+  placement — an app cannot set/restore its own POSITION, and move()/setGeometry-pos
+  is a no-op — so Center Window can never work and position-restore is impossible;
+  size-restore via restoreGeometry is also unreliable before first map. Verified:
+  saving works (~/.local/share/finbreak/window.ini has a geometry key), and
+  _restore_geometry calls restoreGeometry before show — but Wayland ignores the
+  position, and the FIBR-0052 tests only asserted the QSettings round-trip (offscreen
+  platform), never real WM behaviour, so they passed while the feature is broken for
+  the user. Fix plan: (a) restore SIZE explicitly via resize() (Wayland allows size
+  requests) and confirm it sticks; (b) on Wayland, disable/grey Center window +
+  position-restore with a tooltip (or drop them there) since the compositor centres
+  windows itself — keep them on X11 where they work; (c) detect the platform
+  (QGuiApplication.platformName()); (d) add a test that exercises the real behaviour,
+  not just the settings round-trip. My code (FIBR-0052) — own it. Related to the
+  sole-author no-Wayland-coverage gap.
+  **Layman:** The app doesn't remember its window size/position between runs, and Window → Center Window does nothing. On modern Linux (Wayland), apps aren't allowed to position their own windows, so parts of this can't work the way they were built.
+  Kind: fix.
+  Source: user-report-2026-07-09.
+
 ## How to add an item
 
 1. Allocate the next ID:
