@@ -53,6 +53,10 @@ class SettingsDialog(QDialog):
         self._combo.setObjectName("settings_auto_lock")
         for minutes in ALLOWED_AUTO_LOCK_MINUTES:
             self._combo.addItem(labels[minutes], minutes)  # userData is the int
+        # auto_lock_minutes() always returns a member of ALLOWED (INV-1 normalises
+        # absent/garbage/out-of-set to DEFAULT, which D6 pins in ALLOWED), so findData
+        # resolves. The >= 0 guard is belt-and-braces: a miss would safe-fail to index
+        # 0 (the most-aggressive lock), never a weaker one.
         current = self._combo.findData(service.auto_lock_minutes())
         if current >= 0:
             self._combo.setCurrentIndex(current)

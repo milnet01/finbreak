@@ -75,6 +75,11 @@ def _click_save(dialog: SettingsDialog) -> None:
     box.button(QDialogButtonBox.StandardButton.Ok).click()
 
 
+def _click_cancel(dialog: SettingsDialog) -> None:
+    box = dialog.findChild(QDialogButtonBox)
+    box.button(QDialogButtonBox.StandardButton.Cancel).click()
+
+
 # --------------------------------------------------------------------------- #
 # INV-1 — auto_lock_minutes() reads the vault with a guarded default
 # --------------------------------------------------------------------------- #
@@ -251,10 +256,14 @@ def test_INV9_cancel_changes_nothing(qtbot, service):
     window = _shell(qtbot, service)
     window._action_settings.trigger()
     dialog = window._dialog
+    fired = []
+    dialog.saved.connect(lambda: fired.append(1))
     combo = _combo(dialog)
     combo.setCurrentIndex(combo.findData(30))
-    dialog.reject()
+    _click_cancel(dialog)  # drive the real Cancel button (its rejected->reject wiring)
     assert service.auto_lock_minutes() == 5, "cancel writes nothing"
+    assert fired == [], "cancel does not emit saved"
+    assert window._dialog is None, "cancel tears the dialog down"
 
 
 def test_INV9_shell_passes_real_currency(qtbot, service):
