@@ -112,6 +112,38 @@ scariest unknown (native-library bundling) up front.
 
 ---
 
+- 📋 [FIBR-0054] **Optional in-app auto-update (check → prompt Later/Skip/Update now → download, install, relaunch).**
+  User request 2026-07-09: the app must offer (never force) updates. Flow:
+  on a new version, prompt the user with three choices — **Later** (re-ask next
+  launch), **Skip** (this version, don't re-prompt for it), **Update now**. On
+  "Update now": download the latest build, close the app, install the update, and
+  relaunch automatically.
+
+  Design notes (to settle when picked — needs its own brainstorm + spec →
+  /cold-eyes):
+  - **Per-platform mechanism** (no single cross-platform updater): Linux AppImage
+    → AppImageUpdate / zsync + delta; Flatpak/Flathub → the platform updates it
+    (an in-app updater would be redundant/blocked there — likely just deep-link to
+    the store or no-op); Windows .exe → a bundled updater (e.g. WinSparkle) or a
+    small helper that swaps the install after exit; macOS .app → Sparkle. The
+    "close → install → relaunch" hand-off is the platform-specific hard part.
+  - **Update source + integrity:** check GitHub Releases (the repo already
+    publishes there); verify a signature / checksum before installing (security —
+    never run an unverified downloaded binary). Respect the no-network default
+    elsewhere: the update CHECK is the one deliberate outbound call, opt-in via a
+    setting, off by default until the user consents.
+  - **UX:** a non-blocking prompt (not a modal that traps them); "Skip this
+    version" persists the skipped version (in the plaintext settings sibling, like
+    window geometry — not the vault); works while locked (no vault needed to
+    update). Show current vs available version + changelog link.
+  - **Depends on** the release pipeline (ADR-0007 / FIBR-0003 bundling) being able
+    to publish signed artifacts. Sequence after the core app is feature-complete;
+    not blocking FIBR-0052/P08/P09.
+  **Layman:** The app checks for a newer version and, if you choose, downloads and installs it for you and reopens — you're always in control (Later, Skip this version, or Update now).
+  Kind: feature.
+  Lanes: packaging, ui, services.
+  Source: user-request-2026-07-09.
+
 ## P02 — Vertical slice: the security spine (target: after P01)
 
 **Theme:** the smallest end-to-end feature that touches every
@@ -268,26 +300,26 @@ lands on top.
   Source: user-request-2026-07-05.
   Resolved (2026-07-09): shipped by /close-phase. QMainWindow shell + popup first-run/unlock/manual-entry dialogs + status bar + Donate menu; content destroyed-on-lock (no decrypted rows survive). TDD: 22 tests/features/app_shell/ + D10 ripple re-home; gate green 299 passed/1 skipped, mypy 0; FIBR-0003 build smoke PASS (icons travel into the frozen bundle, DoD #2). /audit clean; /indie-review 2 cold lanes — no CRIT/HIGH/MED, 2 LOW (status-bar Ready restore, locale-hermetic amount test) + 1 INFO (QIcon-absent rationale) folded inline. Tag FIBR-0051-complete.
 
-- 📋 [FIBR-0052] **P07.6: tabbed main window + Home toolbar button + window geometry (shell v2).**
+- 📋 [FIBR-0052] **P07.6: tabbed main window + statement provenance & delete (shell v2).**
   Tabbed-workspace evolution the user approved 2026-07-09 (design brainstormed + approved this session), EXPANDED the same day by two follow-ups — exact per-statement transaction count + delete-a-statement-and-its-transactions — which pull the statement-provenance data model (planned as "Round 2") into this phase (user chose "all in one phase", 2026-07-09). Builds on the FIBR-0051 shell. Full contract: docs/specs/FIBR-0052.md.
 
   Scope:
   - Central content area becomes a QTabWidget "workspace" with FIXED tabs: Home · Statements · Accounts · Categories. Mirrored under the View menu (both navigate); the tab widgets are PERSISTENT (a switch, not a rebuild). Reuses AccountsWidget/CategoriesWidget as tab pages via a `show_done` flag that retires their now-redundant "back to Home" button in tab mode.
   - Add a Home QAction to the toolbar (new house SVG glyph). Toolbar order: Home · Manual entry · Import · Accounts · Categories · Lock. Toolbar buttons switch tabs; Manual entry / Import still open their dialog / wizard (Import is a flow that replaces the workspace and returns to it, NOT a tab).
-  - **Statement provenance (v5→v6 migration):** add a nullable `transactions.statement_period_id` FK; `commit_import` stamps every imported row with its source statement; manual entries stay NULL. A one-time ambiguity-guarded backfill links statements imported before the column existed (stamp account+in-span rows, skip dates covered by >1 period). SPEC-TIME VERIFY resolved: every importer already writes statement_periods via the single commit_import path — no backfill of the record itself needed.
-  - **Statements tab (read + delete):** lists every imported statement (account · period · source file · imported-at · EXACT transaction count = rows stamped with that statement_period_id; pre-v6 unlinked → "—"). A Delete action removes the statement record AND its imported transactions in one atomic service transaction (manual/other-statement rows untouched), after a confirmation naming the exact count; refreshes Home + the status count. New StatementService (services/statements.py) + StatementsWidget (ui/statements.py).
+  - **Statement provenance (v5→v6 migration):** add a nullable `transactions.statement_period_id` FK; `commit_import` stamps every imported row with its source statement; manual entries stay NULL. A one-time ambiguity-guarded backfill links statements imported before the column existed (stamp account+in-span rows, skip dates covered by >1 period). Every importer already writes statement_periods via the single commit_import path, so no backfill of the record itself is needed.
+  - **Statements tab (read + delete):** lists every imported statement (account · period · source file · imported-at · transaction count = rows linked via statement_period_id — exact for v6 imports, backfill-linked for pre-v6 imports; a statement with no linked rows shows 0, not an em-dash). A Delete action removes the statement record AND its imported transactions in one atomic service transaction (manual/other-statement rows untouched), after a confirmation naming the count; refreshes Home + the status count. New StatementService (services/statements.py) + StatementsWidget (ui/statements.py).
   - Home tab: unchanged from FIBR-0051 (getting-started ↔ table). Full categorised income/expenditure breakdown is still FIBR-0012.
   - Window geometry: remember size + position + toolbar state + last-active tab via QSettings in a plain INI (paths.window_settings_path()) OUTSIDE the encrypted vault (non-sensitive; restored before unlock). Add Center-window + Reset-layout actions in a vault-independent Window menu.
   - Security preserved: lock tears down the whole tabbed workspace (and any open import wizard) and shows the Locked placeholder (rebuilt on unlock) — FIBR-0051 INV-3 (nothing decrypted survives a lock). The delete is a service-owned atomic transaction leaving a re-openable vault on failure; the plain FK (no cascade) blocks an unsafe period-only delete.
 
   Staging (the rest, approved but separate items):
   - Follow-up (cheap now the stamp exists, not requested yet): a dedicated per-statement transaction VIEW (double-click a statement → its transactions read-only). Undo-of-delete also deferred.
-  - Round 3: Home dashboard — income/expenditure summary + category breakdown; BLOCKED on P08 (FIBR-0010 category link) + P09 (FIBR-0011 transfer detection) for correct totals (self-transfers must not double-count). This is FIBR-0012's dashboard, pulled onto Home.
+  - Later (post-FIBR-0052): Home dashboard — income/expenditure summary + category breakdown; BLOCKED on P08 (FIBR-0010 category link) + P09 (FIBR-0011 transfer detection) for correct totals (self-transfers must not double-count). This is FIBR-0012's dashboard, pulled onto Home.
 
   Progress (2026-07-09): spec docs/specs/FIBR-0052.md written from the approved+expanded design; next /cold-eyes to convergence (rule §14) before TDD.
 
   Dependencies: FIBR-0051 (shell). Independent of P08/P09; runs before them.
-  **Layman:** Turn the single content area into tabs (Home · Statements · Accounts · Categories), add a Home button to the toolbar, and make the window remember its size and position (plus a Center-window action).
+  **Layman:** Turn the single content area into tabs (Home · Statements · Accounts · Categories), add a Home button to the toolbar, and make the window remember its size and position (plus a Center-window action). The Statements tab shows what you've imported with an exact transaction count and lets you delete a statement and all its transactions — which needs a small database change to tag each transaction with the statement it came from.
   Kind: implement.
   Lanes: ui, app, tests.
   Source: user-request-2026-07-09.

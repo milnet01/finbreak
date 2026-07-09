@@ -20,7 +20,7 @@ unavoidable it is glossed on first use.
 
 | # | Asset | Why it matters |
 |---|-------|----------------|
-| A1 | **The vault** — the SQLCipher database file holding every transaction, account, rule, and setting | The whole financial picture. Its disclosure is the worst case. |
+| A1 | **The vault** — the SQLCipher database file holding every transaction, account, rule, and financial setting (base currency, minor-unit exponent, stored PDF passwords). *Non-sensitive UI state — window geometry / toolbar state / last-active tab — deliberately lives in a plaintext `window.ini` sibling, not the vault (FIBR-0052 INV-5); it holds no financial data, so it is not an A1 asset.* | The whole financial picture. Its disclosure is the worst case. |
 | A2 | **The master password** | Unlocks everything. Never stored anywhere. |
 | A3 | **The derived key** — the key Argon2id produces from the master password, passed to SQLCipher as its **raw** key (so Argon2id, not SQLCipher's built-in PBKDF2, is the KDF) | Decrypts the vault; lives only in memory while unlocked. |
 | A4 | **Stored statement-PDF passwords** (optional, opt-in) | Bank-document passwords; only ever live *inside* the encrypted vault. |
