@@ -374,13 +374,14 @@ lands on top.
 
 ### 🎨 Features
 
-- 📋 [FIBR-0010] **P08: rules engine + manual override.**
+- 🚧 [FIBR-0010] **P08: rules engine + manual override.**
   `CategorizationService` applies a user-editable rule set to
   auto-assign categories; a manual override is the
   highest-priority signal and is never clobbered by re-import or
   a later rule. Rules-manager UI to view/add/edit. Dependencies:
   FIBR-0005, FIBR-0006, FIBR-0007, FIBR-0051, FIBR-0052. Lanes: services, ui, repo, tests. Kind: implement.
   Source: planned.
+  Scope note (2026-07-09, spec drafted): the spec (docs/specs/FIBR-0010.md) grows this bullet's "rules-manager (view/add/edit)" summary to the full P08 slice — the transaction→category link (v6→v7), first-match-by-priority rules run on import + an explicit "Apply rules now", a manual per-transaction override that is frozen (never clobbered by re-import or a rule run), a Home Category column + "Set category…", the rules-manager tab (add/edit/delete/move/apply), an atomic delete-category cascade with a blast-radius confirm, and the learn-from-corrections offer pulled forward from FIBR-0035 (see that bullet). Deps widened to FIBR-0005/0006/0007/0051/0052.
 
 ---
 

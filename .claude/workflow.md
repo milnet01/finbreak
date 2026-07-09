@@ -21,9 +21,9 @@ While an item is active, Claude marks the current step 🚧;
 completed steps flip to ✅. Resets to all ⬜ when a new item
 becomes active.
 
-1. ⬜ Write + cold-eyes spec
-2. ⬜ Verify dependencies on the roadmap DAG
-3. ⬜ Write failing tests
+1. ✅ Write + cold-eyes spec (FIBR-0010 converged loop 6, 2026-07-09)
+2. ✅ Verify dependencies (FIBR-0005/0006/0007/0051/0052 all ✅)
+3. 🚧 Write failing tests
 4. ⬜ Implement until tests pass
 5. ⬜ Run `/audit`
 6. ⬜ Run `/indie-review`
@@ -101,6 +101,43 @@ journal); §2 is the only part that changes.
 ## §3. Session journal
 
 Append-only. Newest at the top.
+
+### 2026-07-09 — FIBR-0010 (P08) opened: brainstormed + spec drafted + `/cold-eyes` CONVERGED (6 loops)
+
+Picked up P08 (rules engine + manual override) — the standing active item — after
+the user delegated "what's next". Ran the **brainstorming** skill (design-approval
+gate): the user chose **text-substring rules only** (per-account scope reserved as a
+future seam), **learn-from-corrections** = *offer to create a rule* (suggest-then-
+confirm), rules run **on import + an explicit "Apply rules now"**, and — from two
+sharp follow-up questions — a **delete-category cascade** that un-pins + re-files the
+affected transactions (and deletes the rules that targeted the category), with a
+**blast-radius confirmation**. Design approved section-by-section.
+
+Verified every seam against source before drafting (§13): `Transaction` is 6 fields
+(no category link today), `LATEST_SCHEMA_VERSION == 6`, the exact `list_all` SELECT,
+`PRAGMA foreign_keys = ON` (vault.py:142), `delete_category`'s guards, the 4-tab
+workspace, `HomeView`'s table, `commit_import`'s owned transaction, `_normalise`.
+Wrote `docs/specs/FIBR-0010.md` — schema **v6→v7** (`transactions.category_id` +
+`category_source`; new `categorization_rules` table); the **golden rule** (a row is
+manual-frozen or auto-derived; the engine never touches a manual row); first-match-
+by-priority; new-rules-win; the learning offer; the atomic delete cascade; 16 INVs,
+14 deliverables, the full test-ripple. **The learning half pulls FIBR-0035 forward**
+(reconciled — both bullets annotated).
+
+**`/cold-eyes`: 6 cold loops × 3 lanes = 18 reviews** (accuracy-vs-code ·
+implementability · cross-doc), each briefed cold. Trajectory C0 throughout;
+H3→3→0→1→0→0, M6→4→2→0→1→1. Design **stable + correct from loop 2**; loops 3–6
+refined accuracy + cross-doc + implementation-detail precision. Notable: loop 1
+fixed standards mis-citations (reuse §1.3 not §3; atomicity → design.md not coding.md
+§2) + pinned the **NULL-safe** auto-row predicate (`IS NULL OR <> 'manual'`, with a
+"what NOT to do" 3-valued-logic warning — the highest-blast-radius latent trap);
+loop 2 reconciled the design.md table name + the FIBR-0035 overlap; loop 4 made the
+`list_transactions` test-ripple **self-verifying** via grep (it kept being enumerated
+incompletely); loop 5 fixed a **layering** violation (INV-8 read repos from the UI →
+routed through a new `CategoryService.delete_blast_radius`); loop 6 closed an
+empty-pattern error path. **Lane A clean loops 5–6; Lane C INFO-only loops 5–6.**
+Signed off (global CLAUDE.md rule §14 + the standing spec-is-my-domain rule). ROADMAP
+FIBR-0010 → 🚧. Next: **step 3 — TDD** (`tests/features/categorisation/`).
 
 ### 2026-07-09 — FIBR-0061 CLOSED (mypy enforced by the gate + 4 test-tree type errors fixed)
 
