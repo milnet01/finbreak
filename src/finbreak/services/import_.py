@@ -149,6 +149,21 @@ class ImportService:
         also uses, so both importers reach the identical ``commit_import``."""
         return self._preview_from_result(result, account_id)
 
+    def retarget(self, preview: ImportPreview, account_id: int) -> ImportPreview:
+        """Re-run the dedup analysis of an already-built preview under a different
+        target account (FIBR-0057): the user correcting the destination on the
+        wizard's preview step. The drafts, per-row errors and coverage span are
+        account-independent (already parsed) — only the dedup delta and the baked
+        ``account_id`` change. No write; the returned preview feeds the unchanged
+        ``commit_import``, so the committed rows land on the chosen account."""
+        return self._build_preview(
+            account_id,
+            preview.drafts,
+            preview.errors,
+            preview.period_start,
+            preview.period_end,
+        )
+
     def _preview_from_result(
         self, result: ParseResult, account_id: int
     ) -> ImportPreview:
@@ -156,18 +171,36 @@ class ImportService:
         ``preview_result`` (FIBR-0008 D2): the multiset-delta dedup delta and the
         ``ParseResult``'s coverage span carried into an ``ImportPreview``. No
         write; ``commit_import`` is unchanged and consumes either path's preview."""
-        to_insert = self._dedup(
-            account_id, result.drafts, TransactionRepository(self._conn)
+        return self._build_preview(
+            account_id,
+            result.drafts,
+            result.errors,
+            result.period_start,
+            result.period_end,
         )
+
+    def _build_preview(
+        self,
+        account_id: int,
+        drafts: list[TransactionDraft],
+        errors: list[RowError],
+        period_start: str | None,
+        period_end: str | None,
+    ) -> ImportPreview:
+        """Run the multiset-delta dedup for ``account_id`` over ``drafts`` and pack
+        the counts + (account-independent) errors/span into an ``ImportPreview``.
+        The single construction point shared by a fresh parse
+        (``_preview_from_result``) and a re-target (``retarget``, FIBR-0057)."""
+        to_insert = self._dedup(account_id, drafts, TransactionRepository(self._conn))
         new_count = len(to_insert)
         return ImportPreview(
             account_id=account_id,
-            drafts=result.drafts,
-            errors=result.errors,
+            drafts=drafts,
+            errors=errors,
             new_count=new_count,
-            duplicate_count=len(result.drafts) - new_count,
-            period_start=result.period_start,
-            period_end=result.period_end,
+            duplicate_count=len(drafts) - new_count,
+            period_start=period_start,
+            period_end=period_end,
         )
 
     def commit_import(

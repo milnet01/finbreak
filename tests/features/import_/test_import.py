@@ -764,6 +764,94 @@ def test_INV10_import_disabled_when_no_drafts(qtbot, service, tmp_path):
 
 
 # --------------------------------------------------------------------------- #
+# FIBR-0057 — the destination account is confirmable + editable on the preview
+# step, so a wrong default can be corrected before the irreversible Import
+# (previously the account was snapshotted at file-select and never re-read).
+# --------------------------------------------------------------------------- #
+def _two_accounts(service) -> tuple[int, int]:
+    """A deterministic (Current, Credit Card) id pair, regardless of any seed."""
+    svc = AccountService(service.vault)
+    current = svc.add_account("Current acct", "current").id
+    credit = svc.add_account("Credit Card acct", "credit_card").id
+    return current, credit
+
+
+def test_FIBR0057_retarget_recomputes_dedup_for_new_account(service):
+    imp = ImportService(service.vault)
+    current, credit = _two_accounts(service)
+    rows = [["2026-01-05", "Coffee", "-10.00"]]
+    # Seed the row under Current so the dedup delta differs by account.
+    _do_import(imp, _csv(HEADER, rows), SINGLE, current)
+
+    under_current = imp.preview(_csv(HEADER, rows), SINGLE, current)
+    assert under_current.new_count == 0 and under_current.duplicate_count == 1
+
+    # Re-target the SAME preview to a fresh account: dedup is re-run, so the row
+    # is new there; the drafts/period (account-independent) are untouched.
+    under_credit = imp.retarget(under_current, credit)
+    assert under_credit.account_id == credit
+    assert under_credit.new_count == 1 and under_credit.duplicate_count == 0
+    assert under_credit.drafts == under_current.drafts
+    assert under_credit.period_start == under_current.period_start
+    assert under_credit.period_end == under_current.period_end
+
+
+def test_FIBR0057_preview_step_exposes_destination_account(qtbot, service, tmp_path):
+    from finbreak.ui.import_wizard import ImportWizardWidget
+
+    current, _credit = _two_accounts(service)
+    ImportService(service.vault).save_profile("MyBank", HEADER, SINGLE)
+    path = _write_csv(
+        tmp_path, "stmt.csv", HEADER, [["2026-01-05", "Coffee", "-10.00"]]
+    )
+
+    widget = ImportWizardWidget(service)
+    qtbot.addWidget(widget)
+    widget._account_combo.setCurrentIndex(widget._account_combo.findData(current))
+    widget._select_file(str(path))
+
+    assert widget._stack.currentIndex() == 2
+    # The preview step carries the destination account, seeded from step 0, so it
+    # is visible before the user presses Import.
+    assert widget._confirm_account_combo.currentData() == current
+    assert widget._preview.account_id == current
+
+
+def test_FIBR0057_changing_account_on_preview_retargets_the_commit(
+    qtbot, service, tmp_path
+):
+    from finbreak.ui.import_wizard import ImportWizardWidget
+
+    current, credit = _two_accounts(service)
+    conn = service.vault.connection
+    ImportService(service.vault).save_profile("MyBank", HEADER, SINGLE)
+    rows = [["2026-01-05", "Coffee", "-10.00"], ["2026-01-20", "Salary", "1000.00"]]
+    path = _write_csv(tmp_path, "stmt.csv", HEADER, rows)
+
+    widget = ImportWizardWidget(service)
+    qtbot.addWidget(widget)
+    # The user leaves step 0 at the default "Current" (the mis-link trap) ...
+    widget._account_combo.setCurrentIndex(widget._account_combo.findData(current))
+    widget._select_file(str(path))
+    assert widget._preview.account_id == current
+
+    # ... then corrects the destination on the preview step to "Credit Card".
+    widget._confirm_account_combo.setCurrentIndex(
+        widget._confirm_account_combo.findData(credit)
+    )
+    assert widget._preview.account_id == credit, (
+        "changing the account on the preview step re-targets the import"
+    )
+
+    widget._import_button.click()
+    # The statement + ALL its transactions land on Credit Card, not Current.
+    assert TransactionRepository(conn).count_for_account(credit) == 2
+    assert TransactionRepository(conn).count_for_account(current) == 0
+    assert len(StatementPeriodRepository(conn).list_for_account(credit)) == 1
+    assert len(StatementPeriodRepository(conn).list_for_account(current)) == 0
+
+
+# --------------------------------------------------------------------------- #
 # INV-11 — no secret logged across a match -> preview -> import cycle
 # --------------------------------------------------------------------------- #
 def test_INV11_import_cycle_logs_no_secret(service, caplog):

@@ -94,12 +94,18 @@ class ImportWizardWidget(QWidget):
 
         self._goto_step(_STEP_PICK)
 
+    def _fill_account_combo(self, combo: QComboBox) -> None:
+        """Populate an account picker (label = name, data = id). Shared by the
+        pick step and the preview step's destination picker (FIBR-0057), so both
+        list the same accounts in the same order."""
+        for account in self._accounts.list_accounts():
+            combo.addItem(account.name, account.id)
+
     # -- step 0: pick file + account -----------------------------------------
     def _build_pick_step(self) -> QWidget:
         page = QWidget()
         self._account_combo = QComboBox()
-        for account in self._accounts.list_accounts():
-            self._account_combo.addItem(account.name, account.id)
+        self._fill_account_combo(self._account_combo)
         self._pick_button = QPushButton(self.tr("Choose a statement file…"))
         cancel = QPushButton(self.tr("Cancel"))
 
@@ -176,6 +182,15 @@ class ImportWizardWidget(QWidget):
     # -- step 2: preview ------------------------------------------------------
     def _build_preview_step(self) -> QWidget:
         page = QWidget()
+        # Destination-account picker (FIBR-0057) — the import target, surfaced
+        # + editable on the final step so a wrong default (snapshotted at
+        # file-select) can be corrected before the irreversible Import; changing
+        # it re-runs the dedup so the counts match the chosen account.
+        self._confirm_account_combo = QComboBox()
+        self._fill_account_combo(self._confirm_account_combo)
+        self._confirm_account_combo.currentIndexChanged.connect(
+            self._on_confirm_account_changed
+        )
         # OFX-only statement chooser (FIBR-0008 D8) — shown only for a
         # multi-account file; selecting an entry re-previews that statement.
         self._ofx_statement_combo = QComboBox()
@@ -216,7 +231,11 @@ class ImportWizardWidget(QWidget):
         buttons.addStretch()
         buttons.addWidget(self._import_button)
 
+        destination = QFormLayout()
+        destination.addRow(self.tr("Import into account"), self._confirm_account_combo)
+
         layout = QVBoxLayout(page)
+        layout.addLayout(destination)
         layout.addWidget(self._ofx_statement_combo)
         layout.addWidget(self._preview_table)
         layout.addWidget(self._summary_label)
@@ -252,7 +271,15 @@ class ImportWizardWidget(QWidget):
         shows the mapping step (INV-10b)."""
         self._error.clear()
         self._source_path = path
-        self._account_id = self._account_combo.currentData()
+        # Seed the preview step's destination picker from the pick-step choice
+        # (FIBR-0057). The confirm combo is the single source of truth for the
+        # committed account from here on — every preview + the PDF-password
+        # lookup reads it via _target_account_id(), and the user can still
+        # correct it on the preview step. Blocked so seeding fires no re-dedup.
+        with QSignalBlocker(self._confirm_account_combo):
+            self._confirm_account_combo.setCurrentIndex(
+                self._confirm_account_combo.findData(self._account_combo.currentData())
+            )
         # Reset BOTH choosers before the format dispatch (FIBR-0009 D7), so no
         # prior pick's chooser lingers on the shared map/preview steps — closing
         # both leak directions (OFX->PDF and PDF->CSV/OFX) a one-sided reset would
@@ -334,7 +361,7 @@ class ImportWizardWidget(QWidget):
     def _preview_ofx_statement(self, index: int) -> None:
         _info, result = self._ofx_statements[index]
         try:
-            preview = self._imports.preview_result(result, self._account_id)
+            preview = self._imports.preview_result(result, self._target_account_id())
         except (ValueError, FinbreakError) as exc:
             self._error.setText(str(exc))
             return
@@ -388,7 +415,7 @@ class ImportWizardWidget(QWidget):
             sb_result = StandardBankImporter().parse(plaintext, self._exponent)
             if sb_result is not None:
                 self._show_preview(
-                    self._imports.preview_result(sb_result, self._account_id)
+                    self._imports.preview_result(sb_result, self._target_account_id())
                 )
                 return
         except (PdfError, ValueError, FinbreakError) as exc:
@@ -436,7 +463,7 @@ class ImportWizardWidget(QWidget):
             try:
                 plaintext = PdfImporter.decrypt_to_plaintext(data, password)
             except PasswordError:
-                stored = self._accounts.get_pdf_password(self._account_id)
+                stored = self._accounts.get_pdf_password(self._target_account_id())
                 if stored is not None and not tried_stored:
                     tried_stored = True  # auto-try the remembered password once
                     password = stored
@@ -457,7 +484,7 @@ class ImportWizardWidget(QWidget):
                 return None
             break
         if remember and password:
-            self._accounts.set_pdf_password(self._account_id, password)
+            self._accounts.set_pdf_password(self._target_account_id(), password)
         return plaintext
 
     def _extract_pdf_tables(
@@ -521,8 +548,14 @@ class ImportWizardWidget(QWidget):
     def _set_combo(combo: QComboBox, value: str | None) -> None:
         combo.setCurrentIndex(combo.findData(value))
 
+    def _target_account_id(self) -> int:
+        """The account the import will land on — the preview step's destination
+        picker, seeded from the pick step and user-correctable (FIBR-0057). The
+        single source of truth for every preview and the PDF-password lookup."""
+        return self._confirm_account_combo.currentData()
+
     def _account_name(self) -> str:
-        return self._account_combo.currentText()
+        return self._confirm_account_combo.currentText()
 
     def _populate_mapping_combos(self, header: list[str]) -> None:
         for combo in self._column_combos.values():
@@ -573,7 +606,7 @@ class ImportWizardWidget(QWidget):
         # _run_preview is only reached after _select_file loads the text (CSV).
         text = cast(str, self._text)
         try:
-            preview = self._imports.preview(text, mapping, self._account_id)
+            preview = self._imports.preview(text, mapping, self._target_account_id())
         except (ValueError, FinbreakError) as exc:
             self._error.setText(str(exc))
             return
@@ -586,6 +619,16 @@ class ImportWizardWidget(QWidget):
         ``_on_import`` reads (else an Import press would silently no-op)."""
         self._preview = preview
         self._fill_preview_table(preview)
+        self._set_period_defaults(preview)
+        self._apply_preview_counts(preview)
+        self._goto_step(_STEP_PREVIEW)
+
+    def _apply_preview_counts(self, preview: ImportPreview) -> None:
+        """Refresh the dedup-dependent parts of the preview — the
+        new/duplicate/error summary and the Import-enabled state. Shared by
+        ``_show_preview`` and the preview-step account re-target
+        (``_on_confirm_account_changed``, FIBR-0057), where the drafts, error
+        rows and period are unchanged and only the counts move."""
         self._summary_label.setText(
             self.tr("{new} new · {dup} duplicate · {err} error").format(
                 new=preview.new_count,
@@ -593,7 +636,6 @@ class ImportWizardWidget(QWidget):
                 err=len(preview.errors),
             )
         )
-        self._set_period_defaults(preview)
         # Import stays enabled when there are drafts OR a coverage period to
         # record — so an all-duplicate CSV and a quiet-month OFX (zero drafts,
         # embedded span, FIBR-0008 D14) both keep Import live. Equivalent for CSV
@@ -601,7 +643,22 @@ class ImportWizardWidget(QWidget):
         self._import_button.setEnabled(
             len(preview.drafts) > 0 or preview.period_start is not None
         )
-        self._goto_step(_STEP_PREVIEW)
+
+    @Slot(int)
+    def _on_confirm_account_changed(self, _index: int) -> None:
+        """Re-target the pending import to the account chosen on the preview step
+        (FIBR-0057): re-run the dedup under the new account and refresh the counts
+        so the committed account matches what is shown. Drafts, error rows and the
+        period are account-independent, so the table + period pickers are left
+        untouched (no reset of a hand-edited period)."""
+        if self._preview is None:
+            return
+        account_id = self._confirm_account_combo.currentData()
+        if account_id is None or account_id == self._preview.account_id:
+            return
+        self._error.clear()
+        self._preview = self._imports.retarget(self._preview, account_id)
+        self._apply_preview_counts(self._preview)
 
     def _fill_preview_table(self, preview: ImportPreview) -> None:
         # Interleave drafts + errors back into file order by row_number, so the
