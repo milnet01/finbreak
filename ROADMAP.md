@@ -95,6 +95,49 @@ scariest unknown (native-library bundling) up front.
   Lanes: ci, build.
   Source: user-request-2026-07-09 (CI failure email on a0cc895).
 
+- 📋 [FIBR-0055] **Settings screen — a Settings menu item whose first control is a user-configurable auto-lock timeout, plus core preferences.**
+  User request 2026-07-09: add a Settings menu item; the first thing to
+  include is a user-set timeout for the auto-lock (lockout) feature. Pulls the
+  Settings-screen + auto-lock-timeout portion of FIBR-0014 (P12) FORWARD as its
+  own near-term item (it only depends on what is already built — the FIBR-0004
+  auth/idle-lock spine and the FIBR-0052 shell); FIBR-0014 keeps the heavier
+  encrypted-backup export/import + dark-theme polish pass, and hosts the
+  FIBR-0017 language switcher.
+
+  Scope (settle exact list at spec time -> /cold-eyes before TDD):
+  - A **Settings** entry in the menubar (and/or a toolbar/Window-menu action)
+    opening a Settings screen — a tab or a modal dialog (decide at design;
+    a modal keeps it out of the tab rotation, a tab matches the workspace).
+  - **Auto-lock timeout (the priority):** the FIBR-0004 idle auto-lock currently
+    uses a FIXED inactivity timeout; make it user-configurable (e.g. 1/5/10/30
+    min, with a sensible floor; a "never" option only behind an explicit warning
+    since it defeats the security spine). Applied live to the running idle timer;
+    persisted so it survives a restart. Persistence home to settle: the vault
+    settings table (it is only needed while unlocked) vs the plaintext settings
+    sibling used for window geometry (non-sensitive) — likely the vault settings
+    table, read on unlock.
+  - **Other settings suggested (cheap, tie into what exists; trim at design):**
+    - Base / display currency (already a vault setting from FIBR-0004 — surface it).
+    - Theme: dark / light / follow-system toggle (the full polish pass stays in
+      FIBR-0014; the toggle can live here).
+    - Manage stored PDF passwords (FIBR-0009 stores per-account PDF passwords) —
+      view which accounts have one remembered + a "forget" button.
+    - "Confirm before deleting a statement" toggle (for the FIBR-0052 delete).
+    - Startup tab preference (which workspace tab opens on launch — ties to the
+      FIBR-0052 last-tab persistence).
+    - "Check for updates" on/off (the opt-in switch FIBR-0054 auto-update needs;
+      off by default per the no-network stance).
+    - Number / date format override (ties into QLocale; relates to FIBR-0017 i18n).
+  - Every new string tr()-wrapped, layouts (no fixed geometry) for RTL, amounts
+    via QLocale (coding.md §5.2), consistent with the rest of the UI.
+
+  Dependencies: FIBR-0004 (auth + idle auto-lock), FIBR-0052 (shell). Relates to
+  FIBR-0014 (P12 settings — narrowed to backup + theme polish + i18n host),
+  FIBR-0009 (stored PDF passwords), FIBR-0054 (update-check opt-in).
+  **Layman:** Adds a Settings menu where you can change how the app behaves — first and foremost, how long it waits before locking itself when you step away (right now that time is fixed). Also a home for a few other handy toggles.
+  Kind: feature.
+  Source: user-request-2026-07-09.
+
 ### 📦 Packaging
 
 - ✅ [FIBR-0003] **P01: bundling smoke-test (de-risk
@@ -404,6 +447,7 @@ lands on top.
   forgotten master password, per ADR-0003); dark-theme polish
   pass. Dependencies: FIBR-0004. Lanes: ui, services, security, tests.
   Kind: implement. Source: planned.
+  Note (2026-07-09): the Settings-screen scaffold + the user-configurable auto-lock timeout (+ base-currency display, stored-PDF-password management, theme toggle) are pulled FORWARD into FIBR-0055 (near-term, user-requested). This phase narrows to what remains: the encrypted-backup export/import (the only mitigation for a forgotten master password, ADR-0003), the dark-theme polish pass, and hosting the FIBR-0017 language switcher. If FIBR-0055 ships first, this becomes an extension of that Settings screen rather than a fresh one.
 
 ---
 
