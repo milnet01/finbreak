@@ -109,7 +109,7 @@ scariest unknown (native-library bundling) up front.
     opening a Settings screen — a tab or a modal dialog (decide at design;
     a modal keeps it out of the tab rotation, a tab matches the workspace).
   - **Auto-lock timeout (the priority):** the FIBR-0004 idle auto-lock currently
-    uses a FIXED inactivity timeout; make it user-configurable (e.g. 1/5/10/30
+    uses a FIXED inactivity timeout; make it user-configurable (e.g. 1/5/10/15/30
     min, with a sensible floor; a "never" option only behind an explicit warning
     since it defeats the security spine). Applied live to the running idle timer;
     persisted so it survives a restart. Persistence home to settle: the vault
@@ -118,8 +118,8 @@ scariest unknown (native-library bundling) up front.
     table, read on unlock.
   - **Other settings suggested (cheap, tie into what exists; trim at design):**
     - Base / display currency (already a vault setting from FIBR-0004 — surface it).
-    - Theme: dark / light / follow-system toggle (the full polish pass stays in
-      FIBR-0014; the toggle can live here).
+    - Theme: dark / light / follow-system toggle (deferred to FIBR-0014 at spec
+      time — the toggle needs the theme system that phase's polish pass builds).
     - Manage stored PDF passwords (FIBR-0009 stores per-account PDF passwords) —
       view which accounts have one remembered + a "forget" button.
     - "Confirm before deleting a statement" toggle (for the FIBR-0052 delete).
@@ -127,7 +127,8 @@ scariest unknown (native-library bundling) up front.
       FIBR-0052 last-tab persistence).
     - "Check for updates" on/off (the opt-in switch FIBR-0054 auto-update needs;
       off by default per the no-network stance).
-    - Number / date format override (ties into QLocale; relates to FIBR-0017 i18n).
+    - Number / date format override (deferred at spec time: locale *number*
+      formatting → FIBR-0017 i18n; user-chosen *date* format → FIBR-0048).
   - Every new string tr()-wrapped, layouts (no fixed geometry) for RTL, amounts
     via QLocale (coding.md §5.2), consistent with the rest of the UI.
 
@@ -447,7 +448,7 @@ lands on top.
   forgotten master password, per ADR-0003); dark-theme polish
   pass. Dependencies: FIBR-0004. Lanes: ui, services, security, tests.
   Kind: implement. Source: planned.
-  Note (2026-07-09): the Settings-screen scaffold + the user-configurable auto-lock timeout (+ base-currency display, stored-PDF-password management, theme toggle) are pulled FORWARD into FIBR-0055 (near-term, user-requested). This phase narrows to what remains: the encrypted-backup export/import (the only mitigation for a forgotten master password, ADR-0003), the dark-theme polish pass, and hosting the FIBR-0017 language switcher. If FIBR-0055 ships first, this becomes an extension of that Settings screen rather than a fresh one.
+  Note (2026-07-09): the Settings-screen scaffold + the user-configurable auto-lock timeout (+ base-currency read-only display) are pulled FORWARD into FIBR-0055 (near-term, user-requested); FIBR-0055's first cut delivers the scaffold + configurable auto-lock timeout + read-only currency only. This phase narrows to what remains: the encrypted-backup export/import (the only mitigation for a forgotten master password, ADR-0003), the dark-theme polish pass and its dark/light/follow-system theme toggle (a toggle needs the theme system this pass builds), stored-PDF-password management, and hosting the FIBR-0017 language switcher. If FIBR-0055 ships first, this becomes an extension of that Settings screen rather than a fresh one.
 
 ---
 
