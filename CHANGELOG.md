@@ -23,6 +23,18 @@ signaling per
 
 ### Added
 
+- ****P07.6: tabbed main window + a Statements tab that lists your imports and lets you delete one with all its transactions.**** (FIBR-0052)
+  The main window is now tabs — Home · Statements · Accounts ·
+  Categories — with a Home button on the toolbar, and it remembers its
+  size, position and last tab between runs (plus Center-window and
+  Reset-layout actions). The new Statements tab shows every statement
+  you've imported with an exact transaction count, and lets you delete a
+  statement and all of its transactions in one step (with a confirmation;
+  your manually-added transactions are left untouched). To count and
+  delete safely, finbreak now tags each imported transaction with the
+  statement it came from — a small automatic database upgrade, including a
+  one-time tidy-up for statements imported before this version.
+
 - **P07.5: app-shell UX redesign — real app window (QMainWindow) with menubar / icon toolbar / status bar; first-run & unlock as popups.** (FIBR-0051)
   Turn the bare password-box-then-form startup into a proper app window — menus, a toolbar of shortcuts, a status bar, and a first-run popup wizard — so it looks and feels like a real desktop app.
 
