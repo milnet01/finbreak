@@ -167,6 +167,13 @@ signaling per
 
 ### Changed
 
+- **Silenced ~107 noisy third-party deprecation warnings from the OFX importer and pinned its parser dependency to keep OFX import working on future releases (FIBR-0058).**
+  The OFX-file importer relies on ofxparse, which uses an old-style call into
+  BeautifulSoup that prints a deprecation warning many times per run. The
+  warnings are now suppressed (only that specific message), and the underlying
+  library is version-capped so a future BeautifulSoup release that removes the
+  old call can't silently break OFX import.
+
 - **Date pickers show unambiguous ISO YYYY/MM/DD, not the locale's M/D/YY.** (FIBR-0047)
   Dates now always read year/month/day (e.g. 2026/07/04) so there's no US-vs-rest-of-world confusion.
 
