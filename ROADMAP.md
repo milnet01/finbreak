@@ -894,7 +894,7 @@ is a future error tomorrow.
   Kind: chore.
   Source: self-found-2026-07-09.
 
-- 📋 [FIBR-0060] **Window geometry restore + Center Window don't work on Wayland (FIBR-0052 was X11-assumed).**
+- ✅ [FIBR-0060] **Window geometry restore + Center Window don't work on Wayland (FIBR-0052 was X11-assumed).**
   Reported on KDE Wayland. Root cause: FIBR-0052 (INV-5 geometry persistence, INV-6
   Center window) assumed X11 semantics. On Wayland the compositor owns window
   placement — an app cannot set/restore its own POSITION, and move()/setGeometry-pos
@@ -914,6 +914,7 @@ is a future error tomorrow.
   **Layman:** The app doesn't remember its window size/position between runs, and Window → Center Window does nothing. On modern Linux (Wayland), apps aren't allowed to position their own windows, so parts of this can't work the way they were built.
   Kind: fix.
   Source: user-report-2026-07-09.
+  Resolved (2026-07-09): platform-aware geometry. _is_wayland()/_kde_wayland()/_center_supported() gate behaviour. On Wayland the SIZE is restored via resize() from a bare window_size key (the compositor honours a size request; restoreGeometry's size is unreliable pre-map) — matching the SystemManager reference. Center window is IMPLEMENTED on KDE Wayland via KWin's scripting D-Bus API (QtDBus loadScript/start/unloadScript of a PID-matched centring script — the SystemManager technique, ported to QtDBus so no dbus-send subprocess); disabled with a tooltip on other Wayland compositors (no app-usable placement API); X11/Windows/macOS keep move(). Position-restore on launch stays compositor-owned on Wayland (as SystemManager also accepts). LIVE-VERIFIED on the user's KDE Wayland: window centres exactly (work-area offset dcx=0 dcy=0). Tests: FIBR0060 x4 (size restore; KWin dispatch on KDE; disabled+no-op on non-KDE; enabled off Wayland) via monkeypatched _is_wayland/XDG_CURRENT_DESKTOP. Cold-review fold: temp-file-leak-on-write-failure + Plasma-version doc accuracy. Gate green 352 passed/1 skipped, mypy 0, audit 0. Commits 36e0ea1 + review fold. Note: the FIBR-0052 INV-5/INV-6 tests only asserted the QSettings round-trip (offscreen), never real WM behaviour — now both platform branches are exercised.
 
 ## How to add an item
 

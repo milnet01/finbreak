@@ -172,6 +172,14 @@ signaling per
 
 ### Fixed
 
+- **The window now remembers its size, and Window → Center window works on Linux Wayland (KDE), not only X11 (FIBR-0060).**
+  On modern Linux desktops (Wayland) the system controls window placement, so
+  the previous X11-only code silently did nothing: the window size was forgotten
+  between runs and Center window had no effect. finbreak now restores the saved
+  size on Wayland and centers via KDE's KWin on demand (X11, Windows and macOS
+  are unchanged). On a non-KDE Wayland desktop, Center window is greyed out with
+  a note that the desktop positions windows itself.
+
 - **Import wizard: the destination account is now shown and correctable on the preview step, so a statement can no longer be silently imported into the wrong account (FIBR-0057).**
   Previously the target account was fixed the moment you chose the file, with
   no way to see or change it before the final Import — so a statement could
