@@ -341,6 +341,22 @@ def test_INV2_nav_actions_switch_the_workspace_tab(qtbot, service):
         assert workspace.currentIndex() == index, attr
 
 
+def test_INV2_toolbar_order_and_no_statements_button(qtbot, service):
+    window = _shell(qtbot, service)
+    names = [a.objectName() for a in window._toolbar.actions()]
+    assert names == [
+        "action_home",
+        "action_manual_entry",
+        "action_import",
+        "action_accounts",
+        "action_categories",
+        "action_lock",
+    ], "toolbar order: Home · Manual entry · Import · Accounts · Categories · Lock"
+    assert "action_statements" not in names, (
+        "Statements lives on the tab bar + View menu, not the toolbar (INV-2)"
+    )
+
+
 # --------------------------------------------------------------------------- #
 # INV-3a — a lock while importing destroys the wizard (no live import survives)
 # --------------------------------------------------------------------------- #
@@ -501,13 +517,19 @@ def test_INV10a_confirmed_delete_removes_and_emits(qtbot, service, monkeypatch):
     widget._select_period(widget._rows[0].id)
     assert widget._delete_button.isEnabled()
 
-    monkeypatch.setattr(
-        QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.Yes
-    )
+    # Capture the confirmation text to prove it NAMES the exact count (INV-10).
+    captured = {}
+
+    def _confirm_yes(parent, title, text, *a, **k):
+        captured["text"] = text
+        return QMessageBox.StandardButton.Yes
+
+    monkeypatch.setattr(QMessageBox, "question", _confirm_yes)
     emitted = []
     widget.changed.connect(lambda: emitted.append(True))
     widget._delete_button.click()
 
+    assert "2" in captured["text"], "the confirmation names the exact count (2 rows)"
     assert emitted == [True], "changed emitted after a successful delete"
     assert widget.statement_count() == 0, "the row is gone"
     assert TransactionRepository(conn).count_for_account(acct) == 0, (
@@ -574,6 +596,35 @@ def test_INV11_statement_delete_refreshes_home_and_count(qtbot, service, monkeyp
 
     assert window._home_tab.transaction_count() == 0, "Home refreshed after the delete"
     assert "0" in window._count.text(), "the status count refreshed after the delete"
+    assert window.statusBar().currentMessage() == "Statement deleted", (
+        "the shell reports the delete in the status bar (INV-10)"
+    )
+
+
+def test_INV11_import_done_rebuilds_workspace_lands_on_statements(qtbot, service):
+    # The import-flow done path (D5/INV-11): the wizard replaces the workspace,
+    # and on `done` the shell rebuilds a fresh workspace, lands on Statements, and
+    # refreshes Home + the count.
+    window = _shell(qtbot, service)
+    imp, acct = ImportService(service.vault), _acct(service)
+    _do_import(
+        imp,
+        _csv(HEADER, [["2026-01-05", "a", "-1.00"], ["2026-01-06", "b", "-2.00"]]),
+        acct,
+    )
+
+    window._action_import.trigger()  # the wizard replaces the workspace (INV-3/D5)
+    assert isinstance(window._live, ImportWizardWidget)
+    window._live.done.emit()  # the wizard signals completion
+
+    workspace = window.centralWidget().currentWidget()
+    assert workspace.objectName() == "workspace", "a fresh workspace is rebuilt"
+    assert workspace.currentIndex() == 1, "lands on the Statements tab"
+    assert window._statements_tab.statement_count() == 1, "the statement is listed"
+    assert window._home_tab.transaction_count() == 2, (
+        "Home refreshed to the imported rows"
+    )
+    assert "2" in window._count.text(), "the status count refreshed"
 
 
 # --------------------------------------------------------------------------- #

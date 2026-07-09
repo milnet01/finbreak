@@ -475,17 +475,20 @@ def test_INV7_atomic_write_rolls_back_both_tables(service):
     text = _csv(HEADER, [["2026-01-05", "a", "-1.00"], ["2026-01-20", "b", "-2.00"]])
     preview = imp.preview(text, SINGLE, acct)
 
-    class _FailAtPeriodInsert:
-        """Raise on the first `INSERT INTO statement_periods` — after BEGIN and
-        every transaction INSERT — so the ROLLBACK must undo those inserts."""
+    class _FailAtBatchInsert:
+        """Raise on the ``add_batch`` executemany (`INSERT INTO transactions`) —
+        which, after the FIBR-0052 commit_import reorder, runs AFTER BEGIN and the
+        `statement_periods` INSERT — so the ROLLBACK must undo the already-inserted
+        period row **and** whatever the batch began. (Failing on the period INSERT
+        would fire before any row was written and prove nothing.)"""
 
         def __init__(self, real):
             self._real = real
 
-        def execute(self, sql, *a):
-            if "INSERT INTO statement_periods" in sql:
-                raise RuntimeError("injected failure at statement_periods INSERT")
-            return self._real.execute(sql, *a)
+        def executemany(self, sql, *a):
+            if "INSERT INTO transactions" in sql:
+                raise RuntimeError("injected failure at the transactions batch INSERT")
+            return self._real.executemany(sql, *a)
 
         def __getattr__(self, name):
             return getattr(self._real, name)
@@ -498,11 +501,12 @@ def test_INV7_atomic_write_rolls_back_both_tables(service):
         def connection(self):
             return self._connection
 
-    wedge = ImportService(_StandInVault(_FailAtPeriodInsert(conn)))
+    wedge = ImportService(_StandInVault(_FailAtBatchInsert(conn)))
     with pytest.raises(RuntimeError):
         wedge.commit_import(preview, preview.period_start, preview.period_end, "s.csv")
 
-    # SAME connection, before any reopen: neither transactions nor a period row.
+    # SAME connection, before any reopen: neither transactions nor a period row —
+    # the period row inserted before the failing batch was rolled back too.
     assert TransactionRepository(conn).count_for_account(acct) == 0
     assert StatementPeriodRepository(conn).list_for_account(acct) == []
     # And a retry on the real service imports cleanly.

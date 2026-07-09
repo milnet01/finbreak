@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from finbreak.errors import VaultLockedError
 from finbreak.models import StatementRow
 from finbreak.services.auth import AuthService
 from finbreak.services.statements import StatementService
@@ -118,7 +119,15 @@ class StatementsWidget(QWidget):
         )
         if confirmed != QMessageBox.StandardButton.Yes:
             return
-        self._statements.delete_statement(statement.id)
+        try:
+            self._statements.delete_statement(statement.id)
+        except VaultLockedError:
+            # An idle auto-lock can fire while this (nested, untracked) confirm box
+            # is open — the vault is then closed and this whole workspace is being
+            # torn down (INV-3). There is nothing to delete against a locked vault;
+            # the next unlock rebuilds a fresh Statements tab. Catching the specific
+            # locked-vault error keeps the click from crashing the slot.
+            return
         self.refresh()
         self.changed.emit()
 
