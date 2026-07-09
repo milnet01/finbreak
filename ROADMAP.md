@@ -379,7 +379,7 @@ lands on top.
   auto-assign categories; a manual override is the
   highest-priority signal and is never clobbered by re-import or
   a later rule. Rules-manager UI to view/add/edit. Dependencies:
-  FIBR-0006, FIBR-0007. Lanes: services, ui, repo, tests. Kind: implement.
+  FIBR-0005, FIBR-0006, FIBR-0007, FIBR-0051, FIBR-0052. Lanes: services, ui, repo, tests. Kind: implement.
   Source: planned.
 
 ---
@@ -714,6 +714,7 @@ because retrofitting them is a data migration.
   over any learned rule (FIBR-0010's invariant). Target phase: P08
   (extends the rules engine). Dependencies: FIBR-0010. Lanes: services,
   ui, tests. Kind: feature. Source: user-request-2026-07-01.
+  Note (2026-07-09): the core learn-from-corrections behaviour (offer to *create* a rule from a manual correction; suggestion-only; manual override still wins) is pulled forward into FIBR-0010 (spec INV-5 / D11), per the 2026-07-09 user request. FIBR-0035's "*update* an existing rule" variant is subsumed by FIBR-0010 D6 (a learned rule inserts at top priority, beating the rule it corrects — no in-place update needed). Re-evaluate / close this bullet when FIBR-0010 ships.
 
 - 📋 [FIBR-0036] **Net-worth-over-time trend.** A dashboard line showing
   the running total across all accounts month to month — is the overall

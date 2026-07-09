@@ -242,7 +242,7 @@ UI state.
 - **Atomicity:** every import/edit is a single DB transaction — a failed import
   leaves no partial rows.
 - **Tables (high-level):** `accounts`, `transactions`, `categories` (self-
-  referential tree, `parent_id`), `rules`, `transfer_links` (links a confirmed
+  referential tree, `parent_id`), `categorization_rules`, `transfer_links` (links a confirmed
   transfer pair — success criterion 3), `import_profiles`, `statement_periods`
   (a statement's coverage period per import — success criterion for FIBR-0038),
   `secrets` (the opt-in stored PDF passwords — asset A4 in security-model.md),
