@@ -489,7 +489,7 @@ lands on top.
   predate the thing it publishes. Dependencies: FIBR-0015. Lanes:
   build, ci, packaging. Kind: chore. Source: planned.
 
-- 📋 [FIBR-0037] **P13: a proper branded app icon (not a flat
+- ✅ [FIBR-0037] **P13: a proper branded app icon (not a flat
   glyph).** Design a polished, richly-shaded application icon —
   the working concept is **money + an upward chart** (e.g. a
   banknote or coins fronting a rising line/bar graph), on a
@@ -509,6 +509,7 @@ lands on top.
   (packaging embeds it) and should harmonise with the FIBR-0023
   theme accent colour. Lanes: design, packaging. Kind: ux.
   Source: user-request-2026-07-01.
+  Resolved 2026-07-09 (FIBR-0037-complete): branded app icon shipped — a "spending by category" donut (green/blue/teal/orange segments) with a gold coin centre on a dark navy tile, chosen with the user after shrink-testing candidates for small-size legibility (holds at 24px). Single 1024 master assets/icon/finbreak.png; scripts/make-icons.sh derives the platform set (Linux PNGs 16-512, 7-size Windows .ico, macOS .iconset) so they can't drift. Runtime window icon travels as ui/icons/app.png package data, set via QApplication.setWindowIcon (every window/dialog + taskbar); --self-test renders it (bundle-travel proof). macOS .icns is a mac-build-time step from the .iconset (FIBR-0015). /audit 0, indie-review clean (1 stale-comment LOW folded). Gate green 344 passed/1 skipped, mypy 0. Unblocks FIBR-0015 (the builds need the icon).
 
 ---
 

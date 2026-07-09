@@ -74,12 +74,14 @@ echo "-- freezing --onefile --"
 # PyInstaller does not follow by import alone. Without these, the clean-room
 # launch fails with ModuleNotFoundError (FIBR-0004 argon2 gap; FIBR-0008 adds
 # ofxparse/lxml; FIBR-0009 adds pdfplumber's tree).
-# The ui/icons/*.svg toolbar glyphs (FIBR-0051) are package data, not an import,
-# so PyInstaller does not follow them — --add-data places them at the same
-# package-relative path ui/icons.py resolves via Path(__file__).parent / "icons"
-# (the DoD #2 non-null-pixmap self-test leg fails the bundle if they don't
-# travel). The Qt SVG plugins (imageformats/qsvg + iconengines/qsvgicon) that
-# RENDER them are collected by PyInstaller's PySide6 hook by default.
+# The ui/icons/ package data (FIBR-0051 SVG toolbar glyphs + the FIBR-0037 app.png
+# window icon) is data, not an import, so PyInstaller does not follow it — the
+# directory-level --add-data below places the WHOLE dir at the same package-relative
+# path ui/icons.py resolves via Path(__file__).parent / "icons" (the DoD #2
+# non-null-pixmap self-test legs fail the bundle if the SVG glyph OR app.png don't
+# travel). The Qt SVG plugins (imageformats/qsvg + iconengines/qsvgicon) that RENDER
+# the SVGs are collected by PyInstaller's PySide6 hook by default; PNG decoding is
+# built into Qt Gui, so app.png needs no extra plugin.
 pyinstaller --onefile --name "$ONEFILE" \
     --paths /src/src \
     --add-data "/src/src/finbreak/ui/icons:finbreak/ui/icons" \

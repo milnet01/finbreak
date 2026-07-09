@@ -23,6 +23,9 @@ signaling per
 
 ### Added
 
+- **A proper branded app icon (FIBR-0037).** (FIBR-0037)
+  finbreak now has a real app icon — a colourful "spending by category" donut chart with a gold coin in the middle — instead of no icon. You'll see it on the window, in your taskbar, and (once installers are built) as the app's icon on Windows, macOS and Linux.
+
 - **Settings screen — a Settings menu item whose first control is a user-configurable auto-lock timeout, plus core preferences.** (FIBR-0055)
   A new File → Settings… screen. Its first control lets you choose how long finbreak waits before it auto-locks when you step away (1, 5, 10, 15 or 30 minutes — it used to be a fixed 10). The choice takes effect immediately and is remembered (stored inside your encrypted vault). The screen also shows your vault's base currency. No database change.
 
