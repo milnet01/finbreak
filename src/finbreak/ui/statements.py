@@ -130,9 +130,13 @@ class StatementsWidget(QWidget):
         dialog = AccountPickerDialog(
             self._accounts.list_accounts(), statement.account_id, self
         )
-        if dialog.exec() != QDialog.DialogCode.Accepted:
-            return
+        accepted = dialog.exec() == QDialog.DialogCode.Accepted
         new_account_id = dialog.selected_account_id()
+        # Free the parented dialog rather than leave a hidden child alive until the
+        # tab is torn down — the delete path gets this free from a static QMessageBox.
+        dialog.deleteLater()
+        if not accepted:
+            return
         if new_account_id == statement.account_id:
             return  # same account — nothing to move (INV-5)
         try:

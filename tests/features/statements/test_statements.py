@@ -723,6 +723,9 @@ def _stub_picker(monkeypatch, account_id, accept=True):
         def selected_account_id(self):
             return account_id
 
+        def deleteLater(self):  # noqa: N802 — mimics the QDialog the slot disposes
+            pass
+
     monkeypatch.setattr(statements_mod, "AccountPickerDialog", _FakePicker)
 
 
