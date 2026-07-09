@@ -77,6 +77,19 @@ pip-audit, gitleaks, tests; FIBR-0001 INV-1/INV-2):
 ./scripts/ci-local.sh
 ```
 
+**Pre-push hook — the gate runs automatically before every `git push`.** CI
+(`ci.yml`) runs this exact script, so "green locally" already means "green in
+CI"; the only way a red push slips through is *forgetting to run the gate*. The
+version-controlled hook at `.githooks/pre-push` closes that gap. It is enabled
+in this clone; a **fresh clone must enable it once**:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+(A rare `pip-audit` pypi timeout can make the hook flake on a non-finding —
+retry, or `git push --no-verify` for that one transient case only.)
+
 **Reproduce GitHub CI EXACTLY before pushing** — the local gate runs on your
 desktop, which already has system libraries (Qt's `libGL`/`libEGL`/fontconfig,
 `git`) that a clean CI runner lacks, so a green local gate can still hide a red

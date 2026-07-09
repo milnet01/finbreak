@@ -78,6 +78,23 @@ scariest unknown (native-library bundling) up front.
   Source: planned.
   Resolved 2026-07-01: .gitignore extended to block financial data (*.db/*.sqlite/*.sqlite3 + SQLite -wal/-shm/-journal sidecars) and build/packaging/tooling output; regression-locked by tests/features/gitignore/ (INV-1..INV-3 via git check-ignore --no-index). Spec cold-eyes-clean (4 loops); /audit + /indie-review zero actionable on the close pass (one indie-review LOW — global-git-excludes coupling — fixed inline). Full ci-local.sh gate green. Tag FIBR-0002-complete.
 
+- ✅ [FIBR-0053] **Pre-push git hook runs the CI gate locally before every push.**
+  Prompted by a CI failure email (commit a0cc895: gitleaks flagged the
+  `shiboken6.isValid` false-positive in the FIBR-0051 spec prose; fixed in the
+  next commit via `.gitleaks.toml`, so main was already green). Root cause was
+  process, not drift: `ci.yml` already calls `scripts/ci-setup.sh` +
+  `scripts/ci-local.sh` (the identical gate a dev runs), so green-locally ==
+  green-in-CI — but that docs-only cold-eyes commit was pushed without running
+  the gate. `.githooks/pre-push` runs `scripts/ci-local.sh` on every push (venv
+  auto-activated), enabled via `git config core.hooksPath .githooks` (documented
+  in CLAUDE.md; a fresh clone enables it once). Faithful full-gate match; a rare
+  pypi timeout can flake pip-audit (retry / `--no-verify` for that transient
+  case).
+  **Layman:** Automatically checks your work before it leaves your machine, so a broken commit can't reach GitHub and trigger a failure email.
+  Kind: chore.
+  Lanes: ci, build.
+  Source: user-request-2026-07-09 (CI failure email on a0cc895).
+
 ### 📦 Packaging
 
 - ✅ [FIBR-0003] **P01: bundling smoke-test (de-risk

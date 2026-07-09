@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# finbreak pre-push gate — run the SAME gate CI runs, before the push leaves the
+# machine, so a red commit can't reach origin (and burn a CI failure email).
+#
+# Why this exists: .github/workflows/ci.yml runs scripts/ci-setup.sh then
+# scripts/ci-local.sh — the identical script below — so "green locally" already
+# means "green in CI". The only way a red push slipped through (e.g. the gitleaks
+# false-positive on a docs-only cold-eyes commit, a0cc895) was the gate not being
+# *run* before pushing. This hook removes that gap: `git push` runs it for you.
+#
+# Enable once per clone (already set for this repo):
+#     git config core.hooksPath .githooks
+#
+# Genuine emergency bypass (discouraged — global rule §1): git push --no-verify
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel)"
+
+# The gate's tools (ruff, bandit, pip-audit, pytest) live in the project venv. A
+# `git push` from a shell without it activated would otherwise fail on missing
+# tools rather than on a real finding — activate it here so the hook is faithful.
+if [ -z "${VIRTUAL_ENV:-}" ] && [ -f .venv/bin/activate ]; then
+    # shellcheck disable=SC1091
+    . .venv/bin/activate
+fi
+
+echo "== pre-push: running scripts/ci-local.sh (the CI gate) =="
+exec ./scripts/ci-local.sh
