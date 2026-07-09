@@ -21,7 +21,7 @@ handle to the encrypted database. This keeps each layer testable in isolation
 flowchart TB
     User([User]) --> UI
 
-    subgraph UI["UI layer (PySide6, dark theme)"]
+    subgraph UI["UI layer (PySide6)"]
         Unlock[Unlock / first-run setup]
         Dash[Dashboard: summary + pie/donut + trends]
         TxTable[Transaction table + filters]

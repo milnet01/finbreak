@@ -610,12 +610,14 @@ because retrofitting them is a data migration.
   **Layman:** A clear notice that the app isn't responsible for any incorrect figures it shows, with an easy button to report problems so they get fixed.
   Kind: feature.
   Source: user-request-2026-07-03.
+  Coordination note update: FIBR-0051 (P07.5) ships only a minimal About (QMessageBox.about) and puts donate links in their own Donate menu — it does NOT build the shared About/Help screen. So this bullet still owns building that screen (disclaimer + "Report an issue" link); the old "whichever of FIBR-0039/0040 ships first builds the screen" pact no longer applies.
 
 - 📋 [FIBR-0040] **In-app donate / support links.**
   Clickable support links that open each FUNDING.yml sponsor page in the user's browser — GitHub Sponsors (milnet01), Patreon (AntsProjectsHub), and the Paybru tip URL (https://paybru.co.za/tip/ants-projects-hub). Surfaced in the About/Help dialog and a Help-menu entry. Keep the URLs in one place in sync with .github/FUNDING.yml (a small constants module or read at build time) so they never drift. Shares the About/Help screen with the disclaimer item.
   **Layman:** Buttons in the app that open the pages where people can support the project financially.
   Kind: feature.
   Source: user-request-2026-07-03.
+  Being delivered by FIBR-0051 (P07.5 app-shell, spec in cold-eyes): its Donate menu ships all three FUNDING.yml links + the sync check (FIBR-0051 INV-8a). Flips ✅ when FIBR-0051 ships (FIBR-0051 DoD #6). Note the placement differs from this bullet's "About/Help dialog + Help menu" — FIBR-0051 uses a dedicated Donate menu.
 
 - 📋 [FIBR-0042] **Preserve the as-posted local date for a timezone-bearing OFX <DTPOSTED>.**
   Surfaced by the FIBR-0008 /indie-review (lane 1, 2026-07-04). `OfxImporter` uses `tx.date.date().isoformat()`; ofxparse normalises a timestamped `<DTPOSTED>` to UTC (`local - offset`), so a transaction posted in the evening of a negative-offset zone rolls to the next calendar day (verified: `20260105230000[-5:EST]` -> "2026-01-06"). Two consequences: (a) mis-assignment to the wrong day and, at a month boundary, the wrong statement period; (b) it can defeat INV-6 cross-source dedup (an OFX row keyed on occurred_on won't match a manually-entered copy if the OFX date shifted). Out of the FIBR-0008 contract (D4/INV-1b specify date-only DTPOSTED, and the fixtures use date-only, so nothing shipped is wrong). Blocked-ish: ofxparse discards the original tz offset, so the fix needs either raw-DTPOSTED reparsing or a product decision on whether local or UTC date is authoritative. Fix: decide the authoritative date, recover the local calendar date (or document UTC), add a tz-bearing DTPOSTED test.
@@ -640,6 +642,7 @@ because retrofitting them is a data migration.
   **Layman:** A friendly welcome for a brand-new user — 'import a statement, or add a transaction by hand' — instead of a bare form.
   Kind: ux.
   Source: user-request-2026-07-04.
+  Empty-state half delivered by FIBR-0051 (P07.5): the HomeView getting-started page is this bullet's "friendly welcome — import a statement or add a transaction". Remaining scope: the inline Amount/Description field hints on the manual-entry form (not in FIBR-0051). Stays open for those hints.
 
 - ✅ [FIBR-0050] **Standard Bank (SA) statement text-parser — one reader for all account types.**
   Extends P07 (FIBR-0009). The generic ruled-table extractor
