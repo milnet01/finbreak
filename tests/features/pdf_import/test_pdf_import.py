@@ -481,6 +481,37 @@ def test_INV4_unencrypted_pdf_never_consults_stored_password(
     ), "the stored password is neither consulted nor overwritten"
 
 
+def test_FIBR0057_remembered_pdf_password_follows_a_retarget(
+    qtbot, service, tmp_path, monkeypatch
+):
+    # A locked PDF is decrypted under the provisional (file-select) account, so
+    # "remember" persists there (INV-7f). If the user then corrects the
+    # destination on the preview step, the remembered password must also serve
+    # the account the rows land on — else the auto-apply is defeated in exactly
+    # the mis-link case FIBR-0057 exists to fix.
+    accounts = AccountService(service.vault)
+    current = accounts.add_account("Current acct", "current").id
+    credit = accounts.add_account("Credit Card acct", "credit_card").id
+    ImportService(service.vault).save_profile("bank", _PDF_HEADER, _PDF_MAPPING)
+    enc = _encrypt(_fixture("single_table.pdf"), user="secret")
+    path = _write(tmp_path, "locked.pdf", enc)
+    _patch_dialog(monkeypatch, [{"password": "secret", "remember": True}])
+
+    widget = _wizard(qtbot, service, current)
+    widget._select_file(str(path))
+    assert widget._stack.currentIndex() == 2, "profile + single table -> preview"
+    assert accounts.get_pdf_password(current) == "secret", "stored under provisional"
+
+    # The user corrects the destination to Credit Card, then imports.
+    widget._confirm_account_combo.setCurrentIndex(
+        widget._confirm_account_combo.findData(credit)
+    )
+    widget._import_button.click()
+    assert accounts.get_pdf_password(credit) == "secret", (
+        "the remembered password follows the corrected destination account"
+    )
+
+
 # --------------------------------------------------------------------------- #
 # INV-8 — v4->v5 migration + credential hygiene
 # --------------------------------------------------------------------------- #

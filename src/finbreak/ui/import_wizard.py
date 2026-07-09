@@ -81,6 +81,11 @@ class ImportWizardWidget(QWidget):
         # so the table chooser can re-serialise a selected one. Empty off the PDF
         # path (reset on every pick).
         self._pdf_candidates: list[list[list[str | None]]] = []
+        # PDF only (FIBR-0057): the (account_id, password) a "remember" persisted
+        # during THIS import, under the provisional file-select account. If the
+        # user then re-targets the import (preview step), the committed rows land
+        # on a different account, so the password is carried there too on commit.
+        self._stored_pw: tuple[int, str] | None = None
 
         self._stack = QStackedLayout()
         self._error = QLabel()
@@ -271,6 +276,7 @@ class ImportWizardWidget(QWidget):
         shows the mapping step (INV-10b)."""
         self._error.clear()
         self._source_path = path
+        self._stored_pw = None  # a fresh file — drop any prior pick's remembered pw
         # Seed the preview step's destination picker from the pick-step choice
         # (FIBR-0057). The confirm combo is the single source of truth for the
         # committed account from here on — every preview + the PDF-password
@@ -484,7 +490,11 @@ class ImportWizardWidget(QWidget):
                 return None
             break
         if remember and password:
-            self._accounts.set_pdf_password(self._target_account_id(), password)
+            account_id = self._target_account_id()
+            self._accounts.set_pdf_password(account_id, password)
+            # Remember which account we stored it under (the provisional
+            # file-select one), so a later re-target carries it across (FIBR-0057).
+            self._stored_pw = (account_id, password)
         return plaintext
 
     def _extract_pdf_tables(
@@ -725,4 +735,23 @@ class ImportWizardWidget(QWidget):
         except (ValueError, FinbreakError) as exc:
             self._error.setText(str(exc))
             return
+        self._carry_stored_pw_to_committed_account()
         self.done.emit()
+
+    def _carry_stored_pw_to_committed_account(self) -> None:
+        """If a PDF password was remembered during this import (persisted against
+        the provisional file-select account) and the user then re-targeted the
+        import to a different account (FIBR-0057), store it on the account the rows
+        actually landed on too — so its auto-apply works next time. Only fills an
+        empty slot (never clobbers a password already remembered for that account)
+        and leaves the provisional account's password intact (it may be that
+        account's own, since a stored-password auto-try that failed is exactly what
+        led to the manual prompt)."""
+        if self._stored_pw is None or self._preview is None:
+            return
+        stored_account, password = self._stored_pw
+        final_account = self._preview.account_id
+        if stored_account != final_account and (
+            self._accounts.get_pdf_password(final_account) is None
+        ):
+            self._accounts.set_pdf_password(final_account, password)
