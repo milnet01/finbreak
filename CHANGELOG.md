@@ -175,6 +175,12 @@ signaling per
 
 ### Changed
 
+- **The quality gate now runs `mypy` as a stage (both `ci-local.sh` and CI), so type errors fail the build instead of relying on ad-hoc manual runs. (FIBR-0061)**
+  Also fixed the 4 pre-existing type errors the newly-gated `mypy src
+  tests` surfaced in the test tree (None-guards on three `findChild`
+  helpers in the settings suite; an aligned `QThread.start` override
+  signature in the app-shell suite). Test-only typing, no runtime change.
+
 - **Silenced ~107 noisy third-party deprecation warnings from the OFX importer and pinned its parser dependency to keep OFX import working on future releases (FIBR-0058).**
   The OFX-file importer relies on ofxparse, which uses an old-style call into
   BeautifulSoup that prints a deprecation warning many times per run. The

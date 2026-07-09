@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 import shiboken6
-from PySide6.QtCore import QEvent
+from PySide6.QtCore import QEvent, QThread
 from PySide6.QtGui import QAction, QDesktopServices
 from PySide6.QtWidgets import (
     QApplication,
@@ -80,7 +80,9 @@ class _StubWorker(DeriveWorker):
     'derivation in flight' state the real ~1–2 s Argon2id can't be caught in
     (INV-2f). failed() is forced by the test to drive the completion path."""
 
-    def start(self) -> None:  # noqa: D401 — never runs; stays pending
+    def start(  # noqa: D401 — never runs; stays pending
+        self, priority: QThread.Priority = QThread.Priority.InheritPriority
+    ) -> None:
         pass
 
 

@@ -918,7 +918,7 @@ is a future error tomorrow.
   Source: user-report-2026-07-09.
   Resolved (2026-07-09): platform-aware geometry. _is_wayland()/_kde_wayland()/_center_supported() gate behaviour. On Wayland the SIZE is restored via resize() from a bare window_size key (the compositor honours a size request; restoreGeometry's size is unreliable pre-map) — matching the SystemManager reference. Center window is IMPLEMENTED on KDE Wayland via KWin's scripting D-Bus API (QtDBus loadScript/start/unloadScript of a PID-matched centring script — the SystemManager technique, ported to QtDBus so no dbus-send subprocess); disabled with a tooltip on other Wayland compositors (no app-usable placement API); X11/Windows/macOS keep move(). Position-restore on launch stays compositor-owned on Wayland (as SystemManager also accepts). LIVE-VERIFIED on the user's KDE Wayland: window centres exactly (work-area offset dcx=0 dcy=0). Tests: FIBR0060 x4 (size restore; KWin dispatch on KDE; disabled+no-op on non-KDE; enabled off Wayland) via monkeypatched _is_wayland/XDG_CURRENT_DESKTOP. Cold-review fold: temp-file-leak-on-write-failure + Plasma-version doc accuracy. Gate green 352 passed/1 skipped, mypy 0, audit 0. Commits 36e0ea1 + review fold. Note: the FIBR-0052 INV-5/INV-6 tests only asserted the QSettings round-trip (offscreen), never real WM behaviour — now both platform branches are exercised.
 
-- 📋 [FIBR-0061] **mypy is not enforced by the gate, and `mypy src tests` reports 4 pre-existing type errors in test files.**
+- ✅ [FIBR-0061] **mypy is not enforced by the gate, and `mypy src tests` reports 4 pre-existing type errors in test files.**
   Found while closing FIBR-0059. `scripts/ci-local.sh` (the gate, run by the
   pre-push hook + ci.yml) runs ruff / format / bandit / pip-audit / gitleaks /
   pytest but NOT mypy — so the journal's repeated "mypy 0" claims came from ad-hoc
@@ -935,6 +935,7 @@ is a future error tomorrow.
   **Layman:** The type-checker (mypy) that catches whole classes of bugs isn't actually run by the automated quality gate, and running it by hand turns up 4 small type issues in the test code that have gone unnoticed.
   Kind: chore.
   Source: self-found-2026-07-09.
+  Resolved (2026-07-09): added a `mypy` stage to `scripts/ci-local.sh` (after gitleaks, before pytest — bare `mypy` uses the config's `files = ["src","tests"]`), so CI (which invokes ci-local.sh) now enforces it too; the dev group already pins `mypy==2.1.0`. Fixed the 4 test-tree errors: `assert ... is not None` guards on `_combo`/`_click_save`/`_click_cancel` in `tests/features/settings/test_settings.py`, and aligned `_StubWorker.start` to the `QThread.start(self, priority=...)` signature in `tests/features/app_shell/test_app_shell.py`. Gate green: 366 passed / 1 skipped, mypy clean (59 files), shellcheck 0.
 
 ## How to add an item
 

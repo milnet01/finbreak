@@ -67,16 +67,20 @@ def _shell(qtbot, service) -> MainWindow:
 
 
 def _combo(dialog: SettingsDialog) -> QComboBox:
-    return dialog.findChild(QComboBox)
+    combo = dialog.findChild(QComboBox)
+    assert combo is not None
+    return combo
 
 
 def _click_save(dialog: SettingsDialog) -> None:
     box = dialog.findChild(QDialogButtonBox)
+    assert box is not None
     box.button(QDialogButtonBox.StandardButton.Ok).click()
 
 
 def _click_cancel(dialog: SettingsDialog) -> None:
     box = dialog.findChild(QDialogButtonBox)
+    assert box is not None
     box.button(QDialogButtonBox.StandardButton.Cancel).click()
 
 

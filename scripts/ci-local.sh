@@ -41,6 +41,9 @@ pip-audit
 echo "== gitleaks =="
 gitleaks dir . --no-banner --redact --config .gitleaks.toml
 
+echo "== mypy =="
+mypy
+
 if [ "${FINBREAK_BUILD_SMOKE:-}" = "1" ]; then
     echo "== pytest (excluding perf; +build smoke-test) =="
 else
