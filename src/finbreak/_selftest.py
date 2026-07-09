@@ -44,9 +44,11 @@ def _check_icons() -> None:
     **and** the Qt SVG plugins (``imageformats/qsvg`` + ``iconengines/qsvgicon``)
     travel into the frozen bundle (FIBR-0051 Deliverable 9 / DoD #2).
 
-    A bare ``QIcon(path)`` is non-null even when the SVG is ABSENT, so only a
-    *rendered* 16 px pixmap proves the file loaded and the plugins are present.
-    Runs after ``_check_qt`` (it needs the QApplication).
+    A *rendered* 16 px pixmap is the right proof: if the SVG travels but the Qt
+    SVG plugins are dropped, ``QIcon(path)`` is non-null (the icon object exists)
+    yet its pixmap renders **null** — so only a non-null pixmap proves both the
+    file **and** its renderer are present. Runs after ``_check_qt`` (needs the
+    QApplication).
     """
     from PySide6.QtCore import QSize
 

@@ -341,6 +341,10 @@ def test_INV7_status_bar_count_and_messages(qtbot, service):
 
     window._status("Working…")  # a transient message (a tr()-wrapped literal)
     assert window.statusBar().currentMessage() == "Working…"
+    # When the transient expires (simulated by clearing it), the bar settles back
+    # to the resting "Ready" rather than going blank (INV-7).
+    window.statusBar().clearMessage()
+    assert window.statusBar().currentMessage() == "Ready"
 
     window._action_lock.trigger()
     assert count.isHidden(), "the count is hidden while locked"
@@ -475,5 +479,15 @@ def test_INV10_no_fixed_geometry_in_new_ui():
 
 
 def test_INV10_format_amount_localised(qtbot):
-    rendered = _format_amount(Decimal("-12.34"), "ZAR")
-    assert "12.34" in rendered, "the amount renders via QLocale with 2 decimals"
+    from PySide6.QtCore import QLocale
+
+    # _format_amount renders via the DEFAULT QLocale, so pin the C locale (a "."
+    # decimal separator) for a hermetic assertion — else a comma-decimal system
+    # locale (e.g. de_DE → "12,34") would false-fail on the "." below.
+    previous = QLocale()
+    QLocale.setDefault(QLocale.c())
+    try:
+        rendered = _format_amount(Decimal("-12.34"), "ZAR")
+        assert "12.34" in rendered, "the amount renders via QLocale with 2 decimals"
+    finally:
+        QLocale.setDefault(previous)

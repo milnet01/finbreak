@@ -210,7 +210,15 @@ class MainWindow(QMainWindow):
         self._count.setObjectName("status_txn_count")
         self._count.setVisible(False)  # transaction metadata — hidden until unlocked
         self.statusBar().addPermanentWidget(self._count)
-        self.statusBar().showMessage(self.tr("Ready"))  # resting message
+        # A transient showMessage(text, timeout) clears to EMPTY when it expires,
+        # not back to a resting message — so restore "Ready" whenever the message
+        # area empties (INV-7 "auto-clearing back to a resting Ready").
+        self.statusBar().messageChanged.connect(self._on_status_message_changed)
+        self.statusBar().showMessage(self.tr("Ready"))
+
+    def _on_status_message_changed(self, text: str) -> None:
+        if not text:  # a transient message just expired — settle back to Ready
+            self.statusBar().showMessage(self.tr("Ready"))
 
     def _status(self, text: str) -> None:
         # Callers pass an already-tr()-wrapped literal; do NOT re-wrap here —
