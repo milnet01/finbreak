@@ -95,7 +95,7 @@ scariest unknown (native-library bundling) up front.
   Lanes: ci, build.
   Source: user-request-2026-07-09 (CI failure email on a0cc895).
 
-- 📋 [FIBR-0055] **Settings screen — a Settings menu item whose first control is a user-configurable auto-lock timeout, plus core preferences.**
+- ✅ [FIBR-0055] **Settings screen — a Settings menu item whose first control is a user-configurable auto-lock timeout, plus core preferences.**
   User request 2026-07-09: add a Settings menu item; the first thing to
   include is a user-set timeout for the auto-lock (lockout) feature. Pulls the
   Settings-screen + auto-lock-timeout portion of FIBR-0014 (P12) FORWARD as its
@@ -103,6 +103,7 @@ scariest unknown (native-library bundling) up front.
   auth/idle-lock spine and the FIBR-0052 shell); FIBR-0014 keeps the heavier
   encrypted-backup export/import + dark-theme polish pass, and hosts the
   FIBR-0017 language switcher.
+  Resolved 2026-07-09 (FIBR-0055-complete): Settings screen shipped — File → Settings… opens a modal SettingsDialog with a user-configurable auto-lock timeout (1/5/10/15/30 min, default 10, persisted in the vault settings table, applied live to the idle timer) + a read-only base-currency display. No schema change. Spec /cold-eyes-converged (4 loops); TDD (19-leg tests/features/settings/); /audit 0, /indie-review 3 cold lanes clean (2 test-fidelity LOWs folded). Gate green 343 passed/1 skipped, mypy 0. Theme toggle + stored-PDF-password management remain in FIBR-0014.
 
   Scope (settle exact list at spec time -> /cold-eyes before TDD):
   - A **Settings** entry in the menubar (and/or a toolbar/Window-menu action)

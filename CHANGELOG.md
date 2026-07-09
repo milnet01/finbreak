@@ -23,6 +23,9 @@ signaling per
 
 ### Added
 
+- **Settings screen — a Settings menu item whose first control is a user-configurable auto-lock timeout, plus core preferences.** (FIBR-0055)
+  A new File → Settings… screen. Its first control lets you choose how long finbreak waits before it auto-locks when you step away (1, 5, 10, 15 or 30 minutes — it used to be a fixed 10). The choice takes effect immediately and is remembered (stored inside your encrypted vault). The screen also shows your vault's base currency. No database change.
+
 - ****P07.6: tabbed main window + a Statements tab that lists your imports and lets you delete one with all its transactions.**** (FIBR-0052)
   The main window is now tabs — Home · Statements · Accounts ·
   Categories — with a Home button on the toolbar, and it remembers its
