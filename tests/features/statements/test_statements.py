@@ -12,7 +12,7 @@ import pytest
 import shiboken6
 from PySide6.QtCore import QEvent, QSettings
 from PySide6.QtGui import QCloseEvent, QGuiApplication
-from PySide6.QtWidgets import QApplication, QMessageBox
+from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
 from sqlcipher3 import dbapi2
 
 from conftest import _PW, build_v5_vault, keyed_connection
@@ -695,3 +695,350 @@ def test_INV12a_tab_widgets_have_no_done_button(qtbot, service):
     standalone = AccountsWidget(service)  # default show_done=True
     qtbot.addWidget(standalone)
     assert standalone._done_button is not None, "a standalone AccountsWidget keeps Done"
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0059 — edit a logged statement's account (re-point the period + its
+# transactions atomically); enforces docs/specs/FIBR-0059.md.
+# --------------------------------------------------------------------------- #
+def _second_account(service, name="Credit Card", type="credit_card") -> int:
+    """A second account id (the fixture seeds only the migration's 'Default')."""
+    return AccountService(service.vault).add_account(name, type).id
+
+
+def _stub_picker(monkeypatch, account_id, accept=True):
+    """Replace ``statements.AccountPickerDialog`` with a fake returning
+    ``Accepted`` (or ``Rejected``) + ``account_id`` — the modal picker's stand-in."""
+    from finbreak.ui import statements as statements_mod
+
+    class _FakePicker:
+        def __init__(self, accounts, current_account_id, parent=None):
+            pass
+
+        def exec(self):
+            return (
+                QDialog.DialogCode.Accepted if accept else QDialog.DialogCode.Rejected
+            )
+
+        def selected_account_id(self):
+            return account_id
+
+    monkeypatch.setattr(statements_mod, "AccountPickerDialog", _FakePicker)
+
+
+def _period_id(conn, account_id) -> int:
+    return StatementPeriodRepository(conn).list_for_account(account_id)[0].id
+
+
+# -- service: INV-1 atomic move + INV-4 count -------------------------------- #
+def test_FIBR0059_reassign_moves_period_and_all_transactions(service):
+    imp, a, conn = (
+        ImportService(service.vault),
+        _acct(service),
+        service.vault.connection,
+    )
+    b = _second_account(service)
+    _do_import(
+        imp,
+        _csv(HEADER, [["2026-01-05", "x", "-1.00"], ["2026-01-06", "y", "-2.00"]]),
+        a,
+    )
+    pid = _period_id(conn, a)
+
+    moved = StatementService(service.vault).reassign_account(pid, b)
+
+    assert moved == 2, "returns the number of transactions moved (INV-4)"
+    assert StatementPeriodRepository(conn).get(pid).account_id == b, "period re-pointed"
+    assert TransactionRepository(conn).count_for_account(b) == 2, (
+        "all txns on the new account"
+    )
+    assert TransactionRepository(conn).count_for_account(a) == 0, "none left on the old"
+
+
+def test_FIBR0059_reassign_atomic_rollback(service):
+    imp, a, conn = (
+        ImportService(service.vault),
+        _acct(service),
+        service.vault.connection,
+    )
+    b = _second_account(service)
+    _do_import(imp, _csv(HEADER, [["2026-01-05", "x", "-1.00"]]), a)
+    pid = _period_id(conn, a)
+
+    class _FailAtTxnUpdate:
+        """Raise on the transactions UPDATE (the second write) so the ROLLBACK
+        must undo the already-applied statement_periods UPDATE (INV-1)."""
+
+        def __init__(self, real):
+            self._real = real
+
+        def execute(self, sql, *a):
+            if "UPDATE transactions" in sql:
+                raise RuntimeError("injected failure after the period update")
+            return self._real.execute(sql, *a)
+
+        def __getattr__(self, name):
+            return getattr(self._real, name)
+
+    class _StandInVault:
+        def __init__(self, connection):
+            self._connection = connection
+
+        @property
+        def connection(self):
+            return self._connection
+
+    wedge = StatementService(_StandInVault(_FailAtTxnUpdate(conn)))
+    with pytest.raises(RuntimeError):
+        wedge.reassign_account(pid, b)
+
+    # SAME connection, before any reopen: NEITHER table changed.
+    assert StatementPeriodRepository(conn).get(pid).account_id == a, (
+        "period rolled back"
+    )
+    assert TransactionRepository(conn).count_for_account(a) == 1, "txn rolled back"
+    assert TransactionRepository(conn).count_for_account(b) == 0
+
+
+# -- service: INV-2 isolation ------------------------------------------------ #
+def test_FIBR0059_reassign_leaves_manual_and_other_statements(service):
+    imp, a, conn = (
+        ImportService(service.vault),
+        _acct(service),
+        service.vault.connection,
+    )
+    b = _second_account(service)
+    _do_import(imp, _csv(HEADER, [["2026-01-05", "s1", "-1.00"]]), a, source="s1.csv")
+    _do_import(imp, _csv(HEADER, [["2026-02-05", "s2", "-3.00"]]), a, source="s2.csv")
+    TransactionService(service.vault).add_transaction(
+        a, "2026-03-01", "-9.00", "manual"
+    )
+    s1 = [
+        p
+        for p in StatementPeriodRepository(conn).list_for_account(a)
+        if p.period_start == "2026-01-05"
+    ][0].id
+
+    StatementService(service.vault).reassign_account(s1, b)
+
+    # Only s1's one row moved; the manual row and s2's row stay on account a.
+    assert TransactionRepository(conn).count_for_account(b) == 1, "only s1 moved"
+    assert TransactionRepository(conn).count_for_account(a) == 2, (
+        "manual + s2 untouched"
+    )
+    rows = {
+        r[0]: r[1]
+        for r in conn.execute(
+            "SELECT description, statement_period_id FROM transactions"
+        ).fetchall()
+    }
+    assert rows["manual"] is None, "the manual (NULL-stamped) row is untouched"
+
+
+# -- service: INV-3 span guard (+ self-exclusion) ---------------------------- #
+def test_FIBR0059_reassign_refused_on_span_collision(service):
+    imp, a, conn = (
+        ImportService(service.vault),
+        _acct(service),
+        service.vault.connection,
+    )
+    b = _second_account(service)
+    span = [["2026-01-05", "x", "-1.00"]]
+    _do_import(imp, _csv(HEADER, span), a)  # a's statement for the span
+    _do_import(imp, _csv(HEADER, span), b)  # b ALREADY has one for the same span
+    pid_a = [p for p in StatementPeriodRepository(conn).list_for_account(a)][0].id
+
+    with pytest.raises(ValueError, match="already has a statement"):
+        StatementService(service.vault).reassign_account(pid_a, b)
+
+    # No change: a's statement + rows stay put.
+    assert StatementPeriodRepository(conn).get(pid_a).account_id == a
+    assert TransactionRepository(conn).count_for_account(a) == 1
+
+
+def test_FIBR0059_reassign_same_account_is_noop_returning_count(service):
+    imp, a, conn = (
+        ImportService(service.vault),
+        _acct(service),
+        service.vault.connection,
+    )
+    _do_import(
+        imp,
+        _csv(HEADER, [["2026-01-05", "x", "-1.00"], ["2026-01-06", "y", "-2.00"]]),
+        a,
+    )
+    pid = _period_id(conn, a)
+
+    # Same account: the self-exclusion (existing == period_id) must NOT refuse; the
+    # matched-row UPDATE returns the txn count, not 0 (INV-5).
+    moved = StatementService(service.vault).reassign_account(pid, a)
+    assert moved == 2
+    assert StatementPeriodRepository(conn).get(pid).account_id == a
+
+
+# -- service: INV-6 verbatim move (no dedup) + INV-4 zero -------------------- #
+def test_FIBR0059_reassign_moves_verbatim_no_dedup(service):
+    imp, a, conn = (
+        ImportService(service.vault),
+        _acct(service),
+        service.vault.connection,
+    )
+    b = _second_account(service)
+    # b already has a manual row identical to the one in a's statement.
+    TransactionService(service.vault).add_transaction(b, "2026-01-05", "-1.00", "x")
+    _do_import(imp, _csv(HEADER, [["2026-01-05", "x", "-1.00"]]), a)
+    pid = _period_id(conn, a)
+
+    moved = StatementService(service.vault).reassign_account(pid, b)
+
+    assert moved == 1, "the statement's row is moved, not deduped away"
+    assert TransactionRepository(conn).count_for_account(b) == 2, (
+        "both rows coexist on b"
+    )
+
+
+def test_FIBR0059_reassign_zero_txn_statement_returns_zero(service):
+    conn = service.vault.connection
+    a, b = _acct(service), _second_account(service)
+    # A statement period with no linked transactions.
+    pid = StatementPeriodRepository(conn).add(
+        a, "2026-05-01", "2026-05-31", "empty.csv"
+    )
+    conn.commit()
+
+    moved = StatementService(service.vault).reassign_account(pid, b)
+    assert moved == 0, "no transactions to move"
+    assert StatementPeriodRepository(conn).get(pid).account_id == b, (
+        "period still re-pointed"
+    )
+
+
+# -- UI (widget) ------------------------------------------------------------- #
+def test_FIBR0059_reassign_button_disabled_without_selection(qtbot, service):
+    imp, a = ImportService(service.vault), _acct(service)
+    _do_import(imp, _csv(HEADER, [["2026-01-05", "x", "-1.00"]]), a)
+    widget = StatementsWidget(service)
+    qtbot.addWidget(widget)
+    assert not widget._reassign_button.isEnabled(), (
+        "Change account disabled with no selection"
+    )
+
+
+def test_FIBR0059_picker_preselects_current_account(qtbot, service):
+    from finbreak.ui.account_picker import AccountPickerDialog
+
+    _second_account(service)
+    c = _second_account(service, "Savings", "savings")
+    accounts = AccountService(service.vault).list_accounts()
+    # Preselect the LAST account (c) — deliberately not index 0 — so a broken
+    # findData (which would leave index 0) fails the assertion (INV-9, non-vacuous).
+    assert accounts[0].id != c, "current is not at index 0"
+    dialog = AccountPickerDialog(accounts, c, None)
+    qtbot.addWidget(dialog)
+    assert dialog.selected_account_id() == c, (
+        "the picker preselects the current account"
+    )
+
+
+def test_FIBR0059_reassign_round_trip_changes_row_and_emits(
+    qtbot, service, monkeypatch
+):
+    imp, a = ImportService(service.vault), _acct(service)
+    b = _second_account(service)
+    _do_import(imp, _csv(HEADER, [["2026-01-05", "x", "-1.00"]]), a)
+    widget = StatementsWidget(service)
+    qtbot.addWidget(widget)
+    widget._select_period(widget._rows[0].id)
+
+    _stub_picker(monkeypatch, b)
+    emitted = []
+    widget.reassigned.connect(lambda: emitted.append(True))
+    widget._reassign_button.click()
+
+    assert emitted == [True], "reassigned emitted after a successful move"
+    assert widget._table.item(0, 0).text() == "Credit Card", (
+        "the row's Account column (col 0) shows the new account"
+    )
+
+
+def test_FIBR0059_same_account_pick_skips_service(qtbot, service, monkeypatch):
+    imp, a = ImportService(service.vault), _acct(service)
+    _second_account(service)
+    _do_import(imp, _csv(HEADER, [["2026-01-05", "x", "-1.00"]]), a)
+    widget = StatementsWidget(service)
+    qtbot.addWidget(widget)
+    widget._select_period(widget._rows[0].id)
+
+    # Pick the CURRENT account -> the widget must short-circuit (no service call).
+    _stub_picker(monkeypatch, a)
+    called = []
+    monkeypatch.setattr(
+        widget._statements, "reassign_account", lambda *a, **k: called.append(True)
+    )
+    emitted = []
+    widget.reassigned.connect(lambda: emitted.append(True))
+    widget._reassign_button.click()
+
+    assert called == [], "a same-account pick does not call the service (INV-5)"
+    assert emitted == [], "and does not emit reassigned"
+
+
+def test_FIBR0059_span_collision_shows_warning(qtbot, service, monkeypatch):
+    imp, a, conn = (
+        ImportService(service.vault),
+        _acct(service),
+        service.vault.connection,
+    )
+    b = _second_account(service)
+    span = [["2026-01-05", "x", "-1.00"]]
+    _do_import(imp, _csv(HEADER, span), a)
+    _do_import(imp, _csv(HEADER, span), b)  # b already has the same span
+    widget = StatementsWidget(service)
+    qtbot.addWidget(widget)
+    a_row = [r for r in widget._rows if r.account_id == a][0]  # move a's statement to b
+    widget._select_period(a_row.id)
+
+    _stub_picker(monkeypatch, b)
+    warned = []
+    monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: warned.append(True))
+    widget._reassign_button.click()
+
+    assert warned == [True], "a span collision surfaces a warning"
+    assert TransactionRepository(conn).count_for_account(a) == 1, "no change on a"
+
+
+def test_FIBR0059_reassign_autolock_caught(qtbot, service, monkeypatch):
+    from finbreak.errors import VaultLockedError
+
+    imp, a = ImportService(service.vault), _acct(service)
+    b = _second_account(service)
+    _do_import(imp, _csv(HEADER, [["2026-01-05", "x", "-1.00"]]), a)
+    widget = StatementsWidget(service)
+    qtbot.addWidget(widget)
+    widget._select_period(widget._rows[0].id)
+
+    _stub_picker(monkeypatch, b)
+
+    def _raise(*a, **k):
+        raise VaultLockedError("auto-locked mid-move")
+
+    monkeypatch.setattr(widget._statements, "reassign_account", _raise)
+    widget._reassign_button.click()  # must not raise out of the slot
+
+
+# -- UI (shell): INV-8 status message ---------------------------------------- #
+def test_FIBR0059_shell_reports_account_changed(qtbot, service, monkeypatch):
+    window = _shell(qtbot, service)
+    imp, a = ImportService(service.vault), _acct(service)
+    b = _second_account(service)
+    _do_import(imp, _csv(HEADER, [["2026-01-05", "x", "-1.00"]]), a)
+    window._action_statements.trigger()
+    statements = window._statements_tab
+    statements._select_period(statements._rows[0].id)
+
+    _stub_picker(monkeypatch, b)
+    statements._reassign_button.click()
+
+    assert window.statusBar().currentMessage() == "Statement account changed", (
+        "the shell reports the MOVE (not 'Statement deleted') in the status bar"
+    )

@@ -81,6 +81,25 @@ class StatementPeriodRepository:
         ).fetchall()
         return [StatementPeriod(*row) for row in rows]
 
+    def get(self, period_id: int) -> StatementPeriod | None:
+        """The single coverage-period row for ``period_id``, or ``None`` if absent
+        — the span read behind ``reassign_account``'s guard (FIBR-0059 D2)."""
+        row = self._conn.execute(
+            "SELECT id, account_id, period_start, period_end, source_filename, "
+            "imported_at FROM statement_periods WHERE id = ?",
+            (period_id,),
+        ).fetchone()
+        return StatementPeriod(*row) if row is not None else None
+
+    def set_account(self, period_id: int, account_id: int) -> None:
+        """Re-point one coverage-period row to another account. **Commit-free** —
+        invoked inside ``StatementService.reassign_account``'s owned transaction
+        (FIBR-0059 INV-1)."""
+        self._conn.execute(
+            "UPDATE statement_periods SET account_id = ? WHERE id = ?",
+            (account_id, period_id),
+        )
+
     def delete(self, period_id: int) -> None:
         """Remove one coverage-period row. **Commit-free** — invoked inside
         ``StatementService.delete_statement``'s owned transaction, **after** its

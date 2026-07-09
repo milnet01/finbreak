@@ -182,6 +182,7 @@ class StatementRow:
 
     id: int
     account_name: str
+    account_id: int
     period_start: str
     period_end: str
     source_filename: str | None

@@ -97,6 +97,16 @@ class TransactionRepository:
             (statement_period_id,),
         ).rowcount
 
+    def reassign_account(self, statement_period_id: int, account_id: int) -> int:
+        """Re-point every transaction stamped with ``statement_period_id`` to
+        ``account_id``, returning the rowcount. **Commit-free** — invoked inside
+        ``StatementService.reassign_account``'s owned transaction (FIBR-0059 INV-1).
+        ``NULL``-stamped (manual) and other statements' rows are untouched."""
+        return self._conn.execute(
+            "UPDATE transactions SET account_id = ? WHERE statement_period_id = ?",
+            (account_id, statement_period_id),
+        ).rowcount
+
     def count_for_account(self, account_id: int) -> int:
         return self._conn.execute(
             "SELECT count(*) FROM transactions WHERE account_id = ?",

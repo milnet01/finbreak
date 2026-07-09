@@ -414,6 +414,7 @@ class MainWindow(QMainWindow):
 
         self._statements_tab = StatementsWidget(self._service)  # sets tab_statements
         self._statements_tab.changed.connect(self._on_statement_changed)
+        self._statements_tab.reassigned.connect(self._on_statement_reassigned)
 
         self._accounts_tab = AccountsWidget(self._service, show_done=False)
         self._accounts_tab.setObjectName("tab_accounts")
@@ -530,13 +531,24 @@ class MainWindow(QMainWindow):
             self._home_tab.refresh()
             self._refresh_count(self._home_tab.transaction_count())
 
-    def _on_statement_changed(self) -> None:
-        # A statement delete changed the transaction set — refresh Home + the count
-        # even though the Statements tab is current (INV-10/INV-11).
+    def _refresh_after_statement_change(self) -> None:
+        # A statement delete/move changed the transaction set — refresh Home + the
+        # count even though the Statements tab is current (INV-10/INV-11). Shared by
+        # the delete and Change-account handlers (FIBR-0059); a move leaves the
+        # total count unchanged, so this is a no-op for it but kept for symmetry.
         if self._home_tab is not None:
             self._home_tab.refresh()
             self._refresh_count(self._home_tab.transaction_count())
+
+    def _on_statement_changed(self) -> None:
+        self._refresh_after_statement_change()
         self._status(self.tr("Statement deleted"))
+
+    def _on_statement_reassigned(self) -> None:
+        # A Change-account move (FIBR-0059) — its own status message, NOT the
+        # delete handler's "Statement deleted".
+        self._refresh_after_statement_change()
+        self._status(self.tr("Statement account changed"))
 
     def _open_url(self, url: str) -> None:
         # Hands the funding page to the OS browser — a user-initiated egress, not

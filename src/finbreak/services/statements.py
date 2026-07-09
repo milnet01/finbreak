@@ -14,8 +14,9 @@ failure. Constructed like the other services — takes a ``Vault``.
 from __future__ import annotations
 
 import logging
+from typing import cast
 
-from finbreak.models import StatementRow
+from finbreak.models import StatementPeriod, StatementRow
 from finbreak.repositories.statement_periods import StatementPeriodRepository
 from finbreak.repositories.transactions import TransactionRepository
 from finbreak.vault import Vault
@@ -39,13 +40,13 @@ class StatementService:
         transaction rows (0 when none link). Ordered by import recency then id, so
         the newest import sorts last (stable with ``list_all``)."""
         rows = self._conn.execute(
-            "SELECT p.id, a.name, p.period_start, p.period_end, p.source_filename, "
-            "p.imported_at, COUNT(t.id) "
+            "SELECT p.id, a.name, p.account_id, p.period_start, p.period_end, "
+            "p.source_filename, p.imported_at, COUNT(t.id) "
             "FROM statement_periods p "
             "JOIN accounts a ON a.id = p.account_id "
             "LEFT JOIN transactions t ON t.statement_period_id = p.id "
-            "GROUP BY p.id, a.name, p.period_start, p.period_end, p.source_filename, "
-            "p.imported_at "
+            "GROUP BY p.id, a.name, p.account_id, p.period_start, p.period_end, "
+            "p.source_filename, p.imported_at "
             "ORDER BY p.imported_at, p.id"
         ).fetchall()
         return [StatementRow(*row) for row in rows]
@@ -69,3 +70,39 @@ class StatementService:
             raise
         log.info("statement deleted")
         return deleted
+
+    def reassign_account(self, period_id: int, new_account_id: int) -> int:
+        """Atomically re-point statement ``period_id`` **and** every transaction
+        stamped with it to ``new_account_id``, returning the number of transactions
+        moved (FIBR-0059 INV-1/INV-4). The span guard runs first — a pure read +
+        refuse, **before** ``BEGIN`` (so a refusal opens no transaction) — then one
+        owned ``BEGIN … COMMIT``; any failure ``ROLLBACK``s both ``UPDATE``s to a
+        re-openable vault. Refuses with ``ValueError`` when the target account
+        already has a **different** statement for the same span (INV-3), which
+        would otherwise duplicate rows on a later import. Re-pointing to the
+        statement's current account is a no-op (the self-exclusion below), returning
+        the matched-row count (INV-5)."""
+        conn = self._conn
+        period_repo = StatementPeriodRepository(conn)
+        tx_repo = TransactionRepository(conn)
+        # The UI selection guarantees the period exists (cast, not a None-branch —
+        # the AccountService convention for a guaranteed-present row).
+        period = cast(StatementPeriod, period_repo.get(period_id))
+        existing = period_repo.id_for_span(
+            new_account_id, period.period_start, period.period_end
+        )
+        if existing not in (None, period_id):  # a DIFFERENT statement holds the span
+            raise ValueError(
+                "that account already has a statement for this period — "
+                "delete or move it first"
+            )
+        conn.execute("BEGIN")  # first statement — own the transaction (INV-1)
+        try:
+            period_repo.set_account(period_id, new_account_id)
+            moved = tx_repo.reassign_account(period_id, new_account_id)
+            conn.commit()
+        except Exception:
+            conn.rollback()  # both UPDATEs undone — leaves the vault re-openable
+            raise
+        log.info("statement account reassigned")
+        return moved

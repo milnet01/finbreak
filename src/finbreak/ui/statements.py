@@ -16,6 +16,7 @@ from __future__ import annotations
 from PySide6.QtCore import Signal, Slot
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QDialog,
     QHBoxLayout,
     QMessageBox,
     QPushButton,
@@ -27,8 +28,10 @@ from PySide6.QtWidgets import (
 
 from finbreak.errors import VaultLockedError
 from finbreak.models import StatementRow
+from finbreak.services.accounts import AccountService
 from finbreak.services.auth import AuthService
 from finbreak.services.statements import StatementService
+from finbreak.ui.account_picker import AccountPickerDialog
 
 # Fixed column indices (the table's shape; headers are the translated labels).
 _COL_ACCOUNT = 0
@@ -40,11 +43,15 @@ _COL_COUNT = 4
 
 class StatementsWidget(QWidget):
     changed = Signal()  # a delete succeeded — the shell refreshes Home + the count
+    reassigned = Signal()  # a Change-account move succeeded (FIBR-0059) — distinct
+    # from `changed` because the shell's `changed` handler reports "Statement
+    # deleted"; a move shows its own message.
 
     def __init__(self, service: AuthService, parent: QWidget | None = None):
         super().__init__(parent)
         self.setObjectName("tab_statements")
         self._statements = StatementService(service.vault)
+        self._accounts = AccountService(service.vault)  # for the Change-account picker
         self._rows: list[StatementRow] = []  # parallel to the table rows
 
         self.setWindowTitle(self.tr("Statements"))
@@ -63,18 +70,23 @@ class StatementsWidget(QWidget):
         self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
 
+        self._reassign_button = QPushButton(self.tr("Change account"))
+        self._reassign_button.setObjectName("button_reassign_statement")
+        self._reassign_button.setEnabled(False)  # no selection yet
         self._delete_button = QPushButton(self.tr("Delete selected"))
         self._delete_button.setObjectName("button_delete_statement")
         self._delete_button.setEnabled(False)  # no selection yet
 
         actions = QHBoxLayout()
         actions.addStretch()
+        actions.addWidget(self._reassign_button)
         actions.addWidget(self._delete_button)
 
         layout = QVBoxLayout(self)
         layout.addWidget(self._table)
         layout.addLayout(actions)
 
+        self._reassign_button.clicked.connect(self._on_reassign)
         self._delete_button.clicked.connect(self._on_delete)
         self._table.itemSelectionChanged.connect(self._on_selection_changed)
 
@@ -99,7 +111,46 @@ class StatementsWidget(QWidget):
 
     @Slot()
     def _on_selection_changed(self) -> None:
-        self._delete_button.setEnabled(self._selected_row() is not None)
+        has_selection = self._selected_row() is not None
+        self._reassign_button.setEnabled(has_selection)
+        self._delete_button.setEnabled(has_selection)
+
+    @Slot()
+    def _on_reassign(self) -> None:
+        """Move the selected statement to another account (FIBR-0059): open the
+        account picker (preselected to the current account), and on confirm — if
+        the chosen account differs — atomically re-point the period + its
+        transactions, then refresh + emit ``reassigned``. A same-account pick is
+        skipped (INV-5); a span collision surfaces a warning (INV-3); an idle
+        auto-lock mid-move is caught (INV-10, as in ``_on_delete``)."""
+        index = self._selected_row()
+        if index is None:
+            return
+        statement = self._rows[index]
+        dialog = AccountPickerDialog(
+            self._accounts.list_accounts(), statement.account_id, self
+        )
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        new_account_id = dialog.selected_account_id()
+        if new_account_id == statement.account_id:
+            return  # same account — nothing to move (INV-5)
+        try:
+            self._statements.reassign_account(statement.id, new_account_id)
+        except VaultLockedError:
+            return  # auto-lock fired mid-move; the workspace is being torn down
+        except ValueError:  # the target account already has this span (INV-3)
+            QMessageBox.warning(
+                self,
+                self.tr("Change account"),
+                self.tr(
+                    "That account already has a statement for this period. "
+                    "Delete or move it first."
+                ),
+            )
+            return
+        self.refresh()
+        self.reassigned.emit()
 
     @Slot()
     def _on_delete(self) -> None:
