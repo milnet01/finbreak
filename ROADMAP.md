@@ -816,6 +816,23 @@ because retrofitting them is a data migration.
   <invoke name="mcp__ants__changelog_log">
   /mnt/Games/Scripts/Linux/finbreak
 
+- 📋 [FIBR-0059] **Edit a logged statement — re-assign its account (and its transactions) to fix an import mistake.**
+  User request 2026-07-09: after importing an SBSA credit-card statement that got
+  linked to "Current", the user wants to correct an already-logged statement's account
+  in place. Scope: a "Change account" action on the Statements tab (FIBR-0052) that
+  opens an account picker and atomically re-points BOTH statement_periods.account_id
+  AND every linked transactions.account_id (WHERE statement_period_id = id) to the
+  chosen account — one service-owned BEGIN…COMMIT (mirrors delete_statement's atomic
+  pattern), leaving manual + other statements' rows untouched, ROLLBACK on failure.
+  Refreshes the Statements list + Home + the status count (changed signal). The target
+  account must exist (the user creates "Credit Card" in the Accounts tab first if
+  needed). Also the tool that lets the user fix any statement mis-linked by FIBR-0057
+  (the import account-snapshot bug). Deps: FIBR-0052 (Statements tab + provenance
+  column). Next: spec -> /cold-eyes -> TDD -> /close-phase.
+  **Layman:** Lets you correct a statement you already imported — e.g. change it from Current to Credit Card — without deleting and re-importing. It moves the statement and all of its transactions to the account you pick.
+  Kind: feature.
+  Source: user-request-2026-07-09.
+
 ### ⚡ Performance
 
 - 📋 [FIBR-0025] **Enable SQLite WAL mode.** Set
@@ -863,6 +880,18 @@ is a future error tomorrow.
   **Layman:** The OFX-import library prints ~100 harmless "this method is old" warnings whenever we run our tests; the app works fine, but the noisy warnings should be quietened or fixed at the source.
   Kind: investigate.
   Source: in-session-2026-07-04 FIBR-0008 build/test warnings.
+
+- 📋 [FIBR-0057] **Import wizard snapshots the target account at file-select — a later dropdown change is ignored.**
+  ui/import_wizard.py `_select_file` (line ~255) does `self._account_id = self._account_combo.currentData()` and bakes it into the preview; the account combo lives on step 0 only and changing it after a file is chosen does not re-read or re-preview. Combined with the combo defaulting to the first account, a user who doesn't set the account BEFORE choosing the file (or wants to change it after) silently imports under the wrong account. Fix options: (a) read the account at commit time (decouple from the snapshot); (b) keep the account picker editable through the flow and re-run dedup/preview on change; (c) at minimum, disable the combo once a file is picked + surface the chosen account on the preview step so it's visible before commit. Prefer (a)+(c). Needs a reproduction test. Related to the FIBR-00xx edit-statement-account feature (which lets a user fix a mis-link post-import).
+  **Layman:** When importing a statement, if you change which account it goes into AFTER picking the file, the app ignores the change and uses the first account (e.g. "Current"). This is how a credit-card statement can land on the wrong account.
+  Kind: fix.
+  Source: self-found-2026-07-09.
+
+- 📋 [FIBR-0058] **ofxparse emits BeautifulSoup findAll DeprecationWarnings (107 per test run).**
+  The gate run shows 107 `DeprecationWarning: Call to deprecated method findAll. (Replaced by find_all) -- Deprecated since version 4.0.0` from ofxparse (ofxparse.py:445/449/454/949), which calls BeautifulSoup's long-deprecated `findAll`. It is inside the ofxparse dependency, not our code, so we can't fix the call directly. Options: (a) pin/track ofxparse for an upstream fix or a maintained fork; (b) filterwarnings in pytest config to quiet the known-3rd-party warning (documented, not a blanket ignore); (c) evaluate replacing ofxparse if it stays unmaintained. BeautifulSoup will eventually remove `findAll`, which would then break OFX import — so this is a latent breakage, not just noise. Investigate + decide.
+  **Layman:** A dependency the app uses for one import format prints lots of "deprecated" warnings during tests. Harmless today, but noisy and a sign the dependency is aging.
+  Kind: chore.
+  Source: self-found-2026-07-09.
 
 ## How to add an item
 
