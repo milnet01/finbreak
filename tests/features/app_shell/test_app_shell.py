@@ -101,6 +101,7 @@ def test_INV1_chrome_parts_and_action_set(qtbot, service):
     for name in (
         "action_manual_entry",
         "action_import",
+        "action_settings",  # FIBR-0055: File → Settings…
         "action_accounts",
         "action_categories",
         "action_lock",

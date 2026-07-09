@@ -44,6 +44,7 @@ from finbreak.ui.home import HomeView
 from finbreak.ui.icons import icon
 from finbreak.ui.import_wizard import ImportWizardWidget
 from finbreak.ui.manual_entry import ManualEntryDialog
+from finbreak.ui.settings import SettingsDialog
 from finbreak.ui.statements import StatementsWidget
 from finbreak.ui.unlock import UnlockDialog
 
@@ -124,6 +125,9 @@ class MainWindow(QMainWindow):
         self._action_import = self._make_action(
             "action_import", self.tr("Import statement"), "import", self._open_import
         )
+        self._action_settings = self._make_action(
+            "action_settings", self.tr("Settings…"), None, self._open_settings
+        )
         self._action_accounts = self._make_action(
             "action_accounts", self.tr("Accounts"), "accounts", self._open_accounts
         )
@@ -171,6 +175,7 @@ class MainWindow(QMainWindow):
         self._menu_file = menu.addMenu(self.tr("File"))
         self._menu_file.addAction(self._action_manual_entry)
         self._menu_file.addAction(self._action_import)
+        self._menu_file.addAction(self._action_settings)
         self._menu_file.addSeparator()
         self._menu_file.addAction(self._action_lock)
         self._menu_file.addAction(self._action_quit)
@@ -428,6 +433,19 @@ class MainWindow(QMainWindow):
         self._teardown_dialog()
         self._status(self.tr("Added transaction"))
         self._show_home()  # refresh + show the Home tab, whatever was current (INV-9)
+
+    def _open_settings(self) -> None:
+        # Vault-dependent (File menu is disabled while locked, INV-6). The shell
+        # reads the currency and hands it to the dialog, which holds no vault ref.
+        currency = TransactionService(self._service.vault).base_currency()
+        dialog = SettingsDialog(self._service, currency, self)
+        dialog.saved.connect(self._on_settings_saved)
+        dialog.rejected.connect(self._teardown_dialog)  # cancel: no change
+        self._open_dialog(dialog, defer=False)
+
+    def _on_settings_saved(self) -> None:
+        self._teardown_dialog()
+        self._status(self.tr("Settings saved"))
 
     def _open_import(self) -> None:
         # Import wants the full content area — it REPLACES the workspace (via

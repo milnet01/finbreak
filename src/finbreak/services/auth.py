@@ -29,6 +29,7 @@ from finbreak.crypto import (
 )
 from finbreak.errors import VaultStateError
 from finbreak.models import FORMAT_VERSION, KdfParams
+from finbreak.repositories.settings import SettingsRepository
 from finbreak.vault import Vault
 
 log = logging.getLogger(__name__)
@@ -37,10 +38,16 @@ log = logging.getLogger(__name__)
 # the default. Extended (incl. 0-/3-decimal currencies) in a later phase.
 CURRENCY_EXPONENTS = {"ZAR": 2, "USD": 2, "EUR": 2, "GBP": 2, "AUD": 2, "CAD": 2}
 
-# Fixed lock-out timeout measured from unlock — NOT reset on user activity.
-# True idle-detection (activity-reset) + user configurability land with
-# FIBR-0014's Settings screen.
-AUTO_LOCK_MINUTES = 10
+# Idle lock-out timeout measured from unlock — NOT reset on user activity. Now
+# user-configurable (FIBR-0055): the value is read from the vault ``settings`` table
+# on each arm; DEFAULT applies when the key is absent (a fresh / pre-FIBR-0055 vault)
+# or holds a value outside the offered set. True activity-reset idle detection stays
+# in FIBR-0014.
+DEFAULT_AUTO_LOCK_MINUTES = 10
+# The offered choices (minutes) — a bounded set with a 1-minute floor. No "never"
+# option (it would defeat the security spine, FIBR-0055 D6); DEFAULT is a member so
+# it always resolves to a valid choice.
+ALLOWED_AUTO_LOCK_MINUTES = (1, 5, 10, 15, 30)
 
 
 def _wipe(buffer: bytearray | None) -> None:
@@ -200,7 +207,39 @@ class AuthService:
             self._timer = QTimer()
             self._timer.setSingleShot(True)
             self._timer.timeout.connect(self._on_idle_timeout)
-        self._timer.start(AUTO_LOCK_MINUTES * 60 * 1000)
+        self._timer.start(self.auto_lock_minutes() * 60 * 1000)
+
+    # --- auto-lock timeout config (FIBR-0055) ------------------------------ #
+    def auto_lock_minutes(self) -> int:
+        """The configured idle-lock timeout in minutes, read from the vault
+        settings. Falls back to ``DEFAULT_AUTO_LOCK_MINUTES`` for an absent key, a
+        non-integer stored value, or a value outside ``ALLOWED_AUTO_LOCK_MINUTES`` —
+        a corrupt / hand-edited value must not weaken or crash the lock (INV-1)."""
+        raw = SettingsRepository(self._vault.connection).get("auto_lock_minutes")
+        if raw is None:
+            return DEFAULT_AUTO_LOCK_MINUTES
+        try:
+            minutes = int(raw)
+        except ValueError:
+            return DEFAULT_AUTO_LOCK_MINUTES
+        return (
+            minutes
+            if minutes in ALLOWED_AUTO_LOCK_MINUTES
+            else DEFAULT_AUTO_LOCK_MINUTES
+        )
+
+    def set_auto_lock_minutes(self, minutes: int) -> None:
+        """Validate, persist, then re-arm the running timer (INV-2). Rejects a value
+        outside ``ALLOWED_AUTO_LOCK_MINUTES`` before any write; a locked vault raises
+        ``VaultLockedError`` from ``Vault.connection`` (INV-7 defence in depth)."""
+        if minutes not in ALLOWED_AUTO_LOCK_MINUTES:
+            raise ValueError(
+                f"auto-lock timeout must be one of {ALLOWED_AUTO_LOCK_MINUTES}"
+            )
+        SettingsRepository(self._vault.connection).set(
+            "auto_lock_minutes", str(minutes)
+        )
+        self._arm_timer()
 
     def _stop_timer(self) -> None:
         if self._timer is not None:
