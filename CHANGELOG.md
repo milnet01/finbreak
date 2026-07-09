@@ -23,6 +23,14 @@ signaling per
 
 ### Added
 
+- **Change a logged statement's account — the Statements tab can now move a statement (and all its transactions) to the correct account, fixing an import mistake without deleting and re-importing (FIBR-0059).**
+  Select a statement, click "Change account", pick the right account, and the
+  statement plus every transaction it contains move there together — all-or-
+  nothing. If the target account already has a statement for the same period, the
+  move is refused with an explanation (rather than silently duplicating rows). This
+  is also the tool for fixing anything mis-linked before the import-time fix
+  (FIBR-0057) shipped.
+
 - **A proper branded app icon (FIBR-0037).** (FIBR-0037)
   finbreak now has a real app icon — a colourful "spending by category" donut chart with a gold coin in the middle — instead of no icon. You'll see it on the window, in your taskbar, and (once installers are built) as the app's icon on Windows, macOS and Linux.
 

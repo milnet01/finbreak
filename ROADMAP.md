@@ -816,7 +816,7 @@ because retrofitting them is a data migration.
   <invoke name="mcp__ants__changelog_log">
   /mnt/Games/Scripts/Linux/finbreak
 
-- 📋 [FIBR-0059] **Edit a logged statement — re-assign its account (and its transactions) to fix an import mistake.**
+- ✅ [FIBR-0059] **Edit a logged statement — re-assign its account (and its transactions) to fix an import mistake.**
   User request 2026-07-09: after importing an SBSA credit-card statement that got
   linked to "Current", the user wants to correct an already-logged statement's account
   in place. Scope: a "Change account" action on the Statements tab (FIBR-0052) that
@@ -832,6 +832,7 @@ because retrofitting them is a data migration.
   **Layman:** Lets you correct a statement you already imported — e.g. change it from Current to Credit Card — without deleting and re-importing. It moves the statement and all of its transactions to the account you pick.
   Kind: feature.
   Source: user-request-2026-07-09.
+  Resolved (2026-07-09): a "Change account" action on the Statements tab. StatementService.reassign_account(period_id, new_account_id) atomically re-points statement_periods.account_id AND every transaction stamped with it (one owned BEGIN…COMMIT mirroring delete_statement; ROLLBACK to a re-openable vault). A span-collision guard runs BEFORE BEGIN (pure read + refuse) with a period_id self-exclusion, so a same-account pick is the INV-5 no-op, not a false refusal; a real collision (target already has that span) raises ValueError → a tr() warning. A DISTINCT reassigned signal (the changed handler hard-codes "Statement deleted") drives a "Statement account changed" status via a shared refresh helper. New AccountPickerDialog (preselects the current account, deleteLater'd). StatementRow += account_id; repos get()/set_account()/reassign_account() (commit-free); no schema change (reuses the v6 provenance stamp). Spec /cold-eyes-converged in 6 cold loops (2 lanes = 12 reviews; design stable since loop 2). TDD 14 tests. Close: /audit 0; /indie-review 2 cold lanes — data/service CLEAN, UI/shell 1 LOW (undisposed picker dialog) folded inline. Gate green 366 passed/1 skipped; FIBR-0059 src mypy-clean. Also filed FIBR-0061 (mypy not enforced in the gate + 4 pre-existing test-file type errors, found during this close). Commits 2fc5a42 + review fold.
 
 ### ⚡ Performance
 
@@ -916,6 +917,24 @@ is a future error tomorrow.
   Kind: fix.
   Source: user-report-2026-07-09.
   Resolved (2026-07-09): platform-aware geometry. _is_wayland()/_kde_wayland()/_center_supported() gate behaviour. On Wayland the SIZE is restored via resize() from a bare window_size key (the compositor honours a size request; restoreGeometry's size is unreliable pre-map) — matching the SystemManager reference. Center window is IMPLEMENTED on KDE Wayland via KWin's scripting D-Bus API (QtDBus loadScript/start/unloadScript of a PID-matched centring script — the SystemManager technique, ported to QtDBus so no dbus-send subprocess); disabled with a tooltip on other Wayland compositors (no app-usable placement API); X11/Windows/macOS keep move(). Position-restore on launch stays compositor-owned on Wayland (as SystemManager also accepts). LIVE-VERIFIED on the user's KDE Wayland: window centres exactly (work-area offset dcx=0 dcy=0). Tests: FIBR0060 x4 (size restore; KWin dispatch on KDE; disabled+no-op on non-KDE; enabled off Wayland) via monkeypatched _is_wayland/XDG_CURRENT_DESKTOP. Cold-review fold: temp-file-leak-on-write-failure + Plasma-version doc accuracy. Gate green 352 passed/1 skipped, mypy 0, audit 0. Commits 36e0ea1 + review fold. Note: the FIBR-0052 INV-5/INV-6 tests only asserted the QSettings round-trip (offscreen), never real WM behaviour — now both platform branches are exercised.
+
+- 📋 [FIBR-0061] **mypy is not enforced by the gate, and `mypy src tests` reports 4 pre-existing type errors in test files.**
+  Found while closing FIBR-0059. `scripts/ci-local.sh` (the gate, run by the
+  pre-push hook + ci.yml) runs ruff / format / bandit / pip-audit / gitleaks /
+  pytest but NOT mypy — so the journal's repeated "mypy 0" claims came from ad-hoc
+  manual runs (often `mypy src`, not the config's `files = ["src", "tests"]`), and
+  type errors in the test tree were never gated. `mypy src tests` (mypy 2.1.0)
+  currently reports 4: tests/features/settings/test_settings.py:70/75/80 (a
+  findChild helper returning QComboBox|None / QDialogButtonBox|None dereferenced
+  without a None-guard — FIBR-0055 code) and tests/features/app_shell/
+  test_app_shell.py:83 (a fake QThread subclass whose start() override signature is
+  incompatible). None are runtime bugs (test-only typing), but they hide real
+  regressions. Fix: (a) add a mypy stage to ci-local.sh so it's actually enforced;
+  (b) fix the 4 (cast/assert the findChild Optionals; align the fake start()
+  signature). My code (sole author). NB FIBR-0059's own new src is mypy-clean.
+  **Layman:** The type-checker (mypy) that catches whole classes of bugs isn't actually run by the automated quality gate, and running it by hand turns up 4 small type issues in the test code that have gone unnoticed.
+  Kind: chore.
+  Source: self-found-2026-07-09.
 
 ## How to add an item
 
