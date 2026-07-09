@@ -526,6 +526,22 @@ lands on top.
   Kind: package.
   Source: user-request-2026-07-04.
 
+- ✅ [FIBR-0056] **Desktop-launcher integration — running window groups under its launcher (single taskbar icon) + branded icon.**
+  Shipped 2026-07-09. A down-payment on FIBR-0015 desktop integration, done now at
+  the user's request. app.py sets applicationName + QGuiApplication.setDesktopFileName
+  = "finbreak", so the running window's Wayland app_id (X11 WM_CLASS) matches
+  finbreak.desktop (StartupWMClass=finbreak) — KDE/GNOME then group the window under
+  its launcher instead of showing a second, generic icon. On the user's machine: the
+  branded PNGs were installed into ~/.local/share/icons/hicolor/*/apps/finbreak.png and
+  the pinned finbreak.desktop's Icon= was pointed from wallet-open to finbreak (caches
+  rebuilt). Repo change is app.py only; the .desktop + icon-theme install are
+  per-machine (the canonical packaged .desktop + hicolor install belong to FIBR-0015).
+  Verified: gate green 344 passed/1 skipped, mypy 0; desktop-file-validate clean; app
+  launches with app_id/desktopFileName = finbreak.
+  **Layman:** Fixes the app showing a second, generic icon in the taskbar when open, and puts the new icon on the panel launcher.
+  Kind: implement.
+  Source: user-request-2026-07-09.
+
 ## Enhancements & performance backlog
 
 Ideas captured 2026-07-01 from a product / performance review

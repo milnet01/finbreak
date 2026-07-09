@@ -13,6 +13,7 @@ from __future__ import annotations
 import sys
 
 from PySide6.QtCore import QLocale
+from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from finbreak import paths
@@ -24,6 +25,13 @@ from finbreak.ui.main_window import MainWindow
 
 def run(argv: list[str] | None = None) -> int:
     app = QApplication(argv if argv is not None else sys.argv)
+    # Identify as "finbreak" so the running window's Wayland app_id (and X11
+    # WM_CLASS) matches finbreak.desktop (StartupWMClass=finbreak). Without this,
+    # a `python -m finbreak` launch reports the interpreter's name, so the desktop
+    # task manager can't associate the window with its launcher and shows a second,
+    # generic icon. desktopFileName is the app_id source on Wayland (Qt 6).
+    app.setApplicationName("finbreak")
+    QGuiApplication.setDesktopFileName("finbreak")
     app.setWindowIcon(app_icon())  # branded icon on every window + the taskbar
     app.setLayoutDirection(QLocale().textDirection())
 
