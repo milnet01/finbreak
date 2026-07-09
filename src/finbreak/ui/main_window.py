@@ -10,12 +10,18 @@ persistent tabs), built once per session and **destroyed on lock** so no
 decrypted rows survive (INV-3). An import temporarily replaces the workspace with
 the wizard (also destroyed on lock), rebuilding the workspace on ``done``. Window
 size/position/state + the last-active tab are persisted to a plain INI **outside**
-the vault (``paths.window_settings_path``, INV-5), restored before unlock. A
-``Window`` menu (Center / Reset) needs no vault and stays enabled while locked.
+the vault (``paths.window_settings_path``, INV-5), restored before unlock. On
+Wayland the compositor owns placement, so only the size is restored (via a
+resize the compositor honours) and Center window is driven through KWin's D-Bus
+API on KDE (disabled on other Wayland compositors, which expose no placement
+API); everything works fully on X11 / Windows / macOS (FIBR-0060). A ``Window``
+menu (Center / Reset) needs no vault and stays enabled while locked.
 """
 
 from __future__ import annotations
 
+import os
+import tempfile
 from collections.abc import Callable
 
 import shiboken6
@@ -70,7 +76,54 @@ _DEFAULT_WINDOW_SIZE = QSize(1000, 700)
 # QSettings keys in the window INI (INV-5).
 _KEY_GEOMETRY = "geometry"
 _KEY_STATE = "window_state"
+_KEY_SIZE = "window_size"  # size alone, for the Wayland resize-only path (FIBR-0060)
 _KEY_LAST_TAB = "last_tab"
+
+
+def _is_wayland() -> bool:
+    """True when running under a Wayland compositor (FIBR-0060). Wayland owns
+    window placement: an app cannot set or restore its own POSITION — ``move()``
+    and ``restoreGeometry``'s position are no-ops — and a size restored via
+    ``restoreGeometry`` before the first map is unreliable. So on Wayland we
+    restore only the size (via ``resize()``, which the compositor honours) and
+    centre via the compositor's own API. A module function so tests can
+    monkeypatch it to exercise both platform branches."""
+    return QGuiApplication.platformName().startswith("wayland")
+
+
+def _kde_wayland() -> bool:
+    """True on a KDE Plasma Wayland session — the one Wayland compositor finbreak
+    can centre a window on, via KWin's scripting D-Bus API (FIBR-0060). Other
+    Wayland compositors expose no app-usable placement API, so Center window is
+    disabled there rather than silently doing nothing."""
+    return _is_wayland() and "KDE" in os.environ.get("XDG_CURRENT_DESKTOP", "").upper()
+
+
+def _center_supported() -> bool:
+    """Whether Center window can actually place the window: always on X11 /
+    Windows / macOS (``move()`` works), and on KDE Wayland (via KWin)."""
+    return (not _is_wayland()) or _kde_wayland()
+
+
+# A KWin script (Plasma 5 & 6) that centres *our* window — matched by PID — in
+# its work area. The one way to position a window on Wayland, where the
+# compositor owns placement (FIBR-0060; technique from the SystemManager project).
+_KWIN_CENTER_JS = """\
+var wins = workspace.windowList ? workspace.windowList() : workspace.clientList();
+for (var i = 0; i < wins.length; i++) {
+    var c = wins[i];
+    if (c.pid === __PID__) {
+        var area = workspace.clientArea(workspace.PlacementArea, c);
+        c.frameGeometry = {
+            x: area.x + Math.round((area.width - c.frameGeometry.width) / 2),
+            y: area.y + Math.round((area.height - c.frameGeometry.height) / 2),
+            width: c.frameGeometry.width,
+            height: c.frameGeometry.height
+        };
+        break;
+    }
+}
+"""
 
 
 class MainWindow(QMainWindow):
@@ -146,6 +199,14 @@ class MainWindow(QMainWindow):
         self._action_center_window = self._make_action(
             "action_center_window", self.tr("Center window"), None, self._center_window
         )
+        if not _center_supported():
+            # A Wayland compositor with no app-usable placement API (i.e. not KDE):
+            # grey the action out with an explaining tooltip rather than offer a
+            # button that silently does nothing (FIBR-0060).
+            self._action_center_window.setEnabled(False)
+            self._action_center_window.setToolTip(
+                self.tr("Your desktop positions windows automatically here.")
+            )
         self._action_reset_layout = self._make_action(
             "action_reset_layout", self.tr("Reset layout"), None, self._reset_layout
         )
@@ -189,6 +250,8 @@ class MainWindow(QMainWindow):
         # Window: geometry actions that need no vault, so they stay enabled while
         # locked (INV-6/INV-6c) — never touched by _set_vault_chrome_enabled.
         self._menu_window = menu.addMenu(self.tr("Window"))
+        # Show the disabled-Center tooltip on Wayland (FIBR-0060).
+        self._menu_window.setToolTipsVisible(True)
         self._menu_window.addAction(self._action_center_window)
         self._menu_window.addAction(self._action_reset_layout)
 
@@ -491,13 +554,20 @@ class MainWindow(QMainWindow):
 
     def _restore_geometry(self) -> int:
         """Apply saved size/position/state; return the saved last-tab index (0 when
-        none). Called in __init__, before the window is shown (INV-5)."""
+        none). Called in __init__, before the window is shown (INV-5). On Wayland
+        (FIBR-0060) restore only the SIZE via ``resize()`` — the compositor owns
+        placement, so ``restoreGeometry``'s position is ignored and its size is
+        unreliable before the first map."""
         settings = self._settings()
-        geometry = settings.value(_KEY_GEOMETRY)
-        if geometry is not None:
-            self.restoreGeometry(geometry)
+        if _is_wayland():
+            size = settings.value(_KEY_SIZE)
+            self.resize(size if isinstance(size, QSize) else _DEFAULT_WINDOW_SIZE)
         else:
-            self.resize(_DEFAULT_WINDOW_SIZE)
+            geometry = settings.value(_KEY_GEOMETRY)
+            if geometry is not None:
+                self.restoreGeometry(geometry)
+            else:
+                self.resize(_DEFAULT_WINDOW_SIZE)
         window_state = settings.value(_KEY_STATE)
         if window_state is not None:
             self.restoreState(window_state)
@@ -508,6 +578,9 @@ class MainWindow(QMainWindow):
         settings = self._settings()
         settings.setValue(_KEY_GEOMETRY, self.saveGeometry())
         settings.setValue(_KEY_STATE, self.saveState())
+        # Save the bare size too, so the Wayland restore path has a size to apply
+        # without decoding the opaque saveGeometry blob (FIBR-0060).
+        settings.setValue(_KEY_SIZE, self.size())
         if self._workspace is not None and shiboken6.isValid(self._workspace):
             settings.setValue(_KEY_LAST_TAB, self._workspace.currentIndex())
         settings.sync()
@@ -517,19 +590,67 @@ class MainWindow(QMainWindow):
         super().closeEvent(event)
 
     def _center_window(self) -> None:
+        """Center the window on its screen. On X11 / Windows / macOS a plain
+        ``move()`` works; on KDE Wayland it dispatches to KWin's scripting API
+        (``move()`` is a no-op there). On any other Wayland compositor this is a
+        safe no-op — the action is disabled, but ``_reset_layout`` also calls it
+        (FIBR-0060)."""
+        if _is_wayland():
+            if _kde_wayland():
+                self._center_kwin()
+            return
         screen = self.screen() or QGuiApplication.primaryScreen()
         available = screen.availableGeometry()
         frame = self.frameGeometry()
         frame.moveCenter(available.center())
         self.move(frame.topLeft())
 
+    def _center_kwin(self) -> None:
+        """Center under KWin (KDE Plasma) via its scripting D-Bus API — the one
+        way to place a window on Wayland (FIBR-0060). Loads a tiny script that
+        moves our window (matched by PID) to its work-area centre, then unloads
+        it. Best-effort: any failure (no D-Bus / KWin, sandboxed, ImportError)
+        leaves the window where it is rather than crashing the slot."""
+        try:
+            from PySide6.QtDBus import QDBusConnection, QDBusInterface
+        except ImportError:
+            return
+        script = _KWIN_CENTER_JS.replace("__PID__", str(os.getpid()))
+        handle: str | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".js", prefix="finbreak_center_", delete=False
+            ) as fh:
+                fh.write(script)
+                handle = fh.name
+            scripting = QDBusInterface(
+                "org.kde.KWin",
+                "/Scripting",
+                "org.kde.kwin.Scripting",
+                QDBusConnection.sessionBus(),
+            )
+            if scripting.isValid():
+                # loadScript reads the file synchronously (returns a script id),
+                # start() runs it, unloadScript() disposes it — so the temp file
+                # is safe to delete immediately after.
+                scripting.call("loadScript", handle, "finbreak_center")
+                scripting.call("start")
+                scripting.call("unloadScript", "finbreak_center")
+        finally:
+            if handle is not None:
+                try:
+                    os.unlink(handle)
+                except OSError:
+                    pass
+
     def _reset_layout(self) -> None:
         settings = self._settings()
         settings.remove(_KEY_GEOMETRY)
         settings.remove(_KEY_STATE)
+        settings.remove(_KEY_SIZE)
         settings.sync()
         self.resize(_DEFAULT_WINDOW_SIZE)
-        self._center_window()
+        self._center_window()  # a no-op on Wayland; the resize above still applies
 
     # --- content-stack + dialog helpers ------------------------------------- #
     def _set_live(self, widget: QWidget) -> None:

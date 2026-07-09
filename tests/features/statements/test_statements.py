@@ -444,6 +444,63 @@ def test_INV6c_window_menu_enabled_while_locked(qtbot, service):
 
 
 # --------------------------------------------------------------------------- #
+# FIBR-0060 — Wayland: the compositor owns placement, so restore SIZE only (a
+# resize it honours) and centre via KWin on KDE (the only Wayland compositor
+# with an app-usable placement API); Center is disabled on other Wayland
+# compositors. Everything works fully on X11 / Windows / macOS.
+# --------------------------------------------------------------------------- #
+def test_FIBR0060_wayland_restores_size_via_resize(qtbot, service, monkeypatch):
+    monkeypatch.setattr(main_window, "_is_wayland", lambda: True)
+    window = _shell(qtbot, service)
+    window.resize(900, 650)
+    window.closeEvent(QCloseEvent())  # persists the size to the INI
+
+    window2 = MainWindow(service)  # reconstruct under Wayland
+    qtbot.addWidget(window2)
+    # Wayland ignores a restored POSITION, so the size is restored explicitly via
+    # resize() — both dimensions land exactly (no frame-margin fudge).
+    assert (window2.width(), window2.height()) == (900, 650), (
+        "the saved size is restored on Wayland (not defaulted)"
+    )
+
+
+def test_FIBR0060_center_dispatches_to_kwin_on_kde_wayland(qtbot, service, monkeypatch):
+    monkeypatch.setattr(main_window, "_is_wayland", lambda: True)
+    monkeypatch.setenv("XDG_CURRENT_DESKTOP", "KDE")
+    window = _shell(qtbot, service)
+    assert window._action_center_window.isEnabled(), (
+        "Center window is enabled on KDE Wayland (KWin can place it)"
+    )
+    called: list[bool] = []
+    monkeypatch.setattr(window, "_center_kwin", lambda: called.append(True))
+    window._action_center_window.trigger()
+    assert called == [True], "KDE Wayland routes Center through the KWin backend"
+
+
+def test_FIBR0060_center_disabled_on_non_kde_wayland(qtbot, service, monkeypatch):
+    monkeypatch.setattr(main_window, "_is_wayland", lambda: True)
+    monkeypatch.setenv("XDG_CURRENT_DESKTOP", "GNOME")
+    window = _shell(qtbot, service)
+    assert not window._action_center_window.isEnabled(), (
+        "no app-usable placement API on non-KDE Wayland -> Center disabled"
+    )
+    assert window._action_center_window.toolTip() != "", "disabled action explains why"
+    assert window._action_reset_layout.isEnabled(), "Reset still works (resizes)"
+    # _center_window is called by Reset, so it must be a safe no-op here.
+    before = window.pos()
+    window._center_window()
+    assert window.pos() == before, "center does not move the window here"
+
+
+def test_FIBR0060_center_window_enabled_off_wayland(qtbot, service, monkeypatch):
+    monkeypatch.setattr(main_window, "_is_wayland", lambda: False)
+    window = _shell(qtbot, service)
+    assert window._action_center_window.isEnabled(), (
+        "Center window works on X11 / Windows / macOS"
+    )
+
+
+# --------------------------------------------------------------------------- #
 # INV-7 — the Statements tab lists imports with an exact linked-transaction count
 # --------------------------------------------------------------------------- #
 def test_INV7a_statements_tab_shows_exact_counts(qtbot, service):
