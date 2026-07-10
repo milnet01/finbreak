@@ -622,8 +622,7 @@ def test_investment_statement_refused_not_crashed(service):
     not an unhandled AttributeError — InvestmentTransaction has no .payee/.date/
     .amount, and investment import is out of scope. (indie-review H-C)"""
     inv = (
-        _OFX_HEADER
-        + "<OFX><INVSTMTMSGSRSV1><INVSTMTTRNRS><INVSTMTRS>"
+        _OFX_HEADER + "<OFX><INVSTMTMSGSRSV1><INVSTMTTRNRS><INVSTMTRS>"
         "<DTASOF>20260101<CURDEF>USD"
         "<INVACCTFROM><BROKERID>x<ACCTID>123</INVACCTFROM>"
         "<INVTRANLIST><DTSTART>20260101<DTEND>20260131"
