@@ -201,6 +201,9 @@ signaling per
 
 ### Fixed
 
+- **More import and account-management crash-safety (loop-2 review fold)**
+  A Standard Bank statement with a non-English or garbled month name no longer crashes on import; deleting an account that has a quiet-month/all-duplicate imported statement (a period with no transactions) is now blocked with a clear message instead of crashing; and the Settings and Manual-entry dialogs (plus account/category add/edit) no longer error if the app auto-locks while they're open.
+
 - **Categorization and account-management correctness/UX fixes**
   Manual category picks are validated to a leaf category at the service boundary (not just the UI); the rule reorder (Move up/down) is now one atomic transaction; deleting an account now asks for confirmation like the other destructive actions; and the unlock screen gives a malformed KDF sidecar its own message instead of 'check your password'.
 
@@ -223,6 +226,9 @@ signaling per
   locked-PDF password follows the corrected account.
 
 ### Security
+
+- **Bounded file read defeats an endless-source import + complete vault-create cleanup**
+  The import size cap is now enforced by a bounded read, so a symlink to an endless source (e.g. /dev/zero) or a file that grows after the size check can't be read unbounded into memory. Vault creation now closes and resets on any failure across the whole build (not just the final steps), and the app-data directory is created owner-only from the outset.
 
 - **Hardened crypto/vault storage after a full-codebase review**
   Vault.create() no longer leaks an open, unlocked SQLCipher connection if a migration or sidecar write fails (it now mirrors open()'s close-and-reset); the app-data directory is created owner-only (0o700), not just the vault/sidecar files; the KDF sidecar's temp write refuses to follow a symlink (O_NOFOLLOW); and a first-run attempted over an existing vault now wipes the derived key on every exit path.

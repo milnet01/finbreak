@@ -1008,6 +1008,43 @@ is a future error tomorrow.
   list_all() has zero callers in src/ — the wizard only auto-matches by signature and saves. Either an intended 'manage saved import profiles' feature was never wired up, or it is dead weight. Decide feature-vs-delete.
   Kind: chore.
   Source: indie-review-2026-07-10 (M-data1).
+  Loop-2 review (2026-07-10): ImportProfileRepository.get() is also unwired in src/ (only test callers) — the other half of the never-built manage-profiles screen. Fold get() into this decision (wire both up, or remove both).
+
+- 📋 [FIBR-0075] **Bound PDF per-page decompressed content size (decompression-bomb / zip-bomb vector).**
+  Caps today are whole-file bytes (16 MiB), page count (500), and extracted row count (100k) — none bound the DECOMPRESSED size of a page's Flate-compressed content stream, so a small in-cap PDF can expand to GBs before extract_tables()/extract_text() returns (on the UI thread). security-model.md §5 explicitly names FIBR-0009 as responsible for THIS vector, but the code doesn't implement it — a real spec-vs-code gap. Non-trivial: pdfplumber/pdfminer don't easily expose a streaming size bound; likely needs a pdfminer-level limit or a subprocess with rlimits. Investigate + implement, or document the residual risk explicitly.
+  **Layman:** A small, valid PDF whose page decompresses to gigabytes could hang or OOM the app when imported.
+  Kind: security.
+  Source: indie-review-2026-07-10 loop-2 (statement H2).
+
+- 📋 [FIBR-0076] **Single-instance / busy_timeout handling so two app copies don't crash with a raw OperationalError.**
+  _connect sets PRAGMA key + foreign_keys only; SQLite default busy_timeout is 0. Two instances (or a slow backup/AV holding a read lock) make the second write raise sqlite3.OperationalError uncaught -> unhandled traceback. Add PRAGMA busy_timeout and/or an explicit single-instance guard (QLocalServer / lockfile) at the app layer.
+  Kind: fix.
+  Source: indie-review-2026-07-10 loop-2 (crypto M2).
+
+- 📋 [FIBR-0077] **Explicitly pin PRAGMA cipher_use_hmac = ON in _connect (defense-in-depth for INV-1 tamper-evidence).**
+  security-model.md INV-1 states tamper-detection as a code guarantee, but _connect never sets cipher_use_hmac — it rests entirely on sqlcipher3-binary==0.6.0's SQLCipher-4 default. A future dep bump changing the default would silently weaken it (global rule §5). NOTE: FIBR-0004 D4 deliberately chose to ASSERT the default rather than re-configure it (test-covered), so this is a spec-level decision to reconsider, not a drive-by — needs a D4 revisit before changing.
+  Kind: security.
+  Source: indie-review-2026-07-10 loop-2 (crypto M4, flagged x2).
+
+- 📋 [FIBR-0078] **Move the Standard Bank row cap before the per-family parse (bounds computation, not just the result).**
+  standard_bank.parse checks len(result.drafts) > _MAX_PDF_ROWS only AFTER _parse_family_* has run full regex + Decimal parsing over every region line — a crafted PDF with millions of transaction-shaped lines does all that work before rejection. pdf_importer.py checks its cap earlier (cheaper). Add a cheap pre-parse region-line count guard. NOTE: the current ordering is spec-consistent (FIBR-0050 Deliverable 1), so changing it needs a FIBR-0050 spec update.
+  Kind: perf.
+  Source: indie-review-2026-07-10 loop-2 (statement H3).
+
+- 📋 [FIBR-0079] **Gate RuleEditDialog OK on a selectable category (zero-leaf-categories edge) + honest selected_category_id return type.**
+  If a user deletes every leaf category, RuleEditDialog's combo is empty, selected_category_id() returns None (despite its -> int hint), and OK stays enabled -> add_rule(pattern, None) surfaces the confusing 'a category must be a leaf, not a Type' instead of 'create a category first'. Gate OK on combo.count() > 0 (or block Add/Edit when leaf_categories() is empty) and type selected_category_id() as int | None. FIBR-0010 D13's 'no ValueError reaches a caller through the dialog' silently fails to cover zero-leaves.
+  Kind: ux.
+  Source: indie-review-2026-07-10 loop-2 (core-services + ui-dialogs M2).
+
+- 📋 [FIBR-0080] **Route the two hand-rolled settings reads through SettingsRepository.get.**
+  services/transactions.py read_minor_unit_exponent + TransactionService.base_currency hand-roll SELECT value FROM settings WHERE key=... instead of SettingsRepository(conn).get(key) (already used by auth.py). Reuse-before-rewrite (CLAUDE.md §3); a typo'd key in one copy has no lint signal. read_minor_unit_exponent needs None/int-cast handling.
+  Kind: refactor.
+  Source: indie-review-2026-07-10 loop-2 (data M-1).
+
+- 📋 [FIBR-0081] **Small type/doc debt: _on_move Literal typing, _selected_row dedup, FIBR-0007 stale INV-7 insert-order narrative.**
+  (1) ui/rules.py _on_move takes direction:str + a type:ignore against move_rule's Literal['up','down'] — type the param as Literal to drop the workaround (global rule §1). (2) _selected_row is byte-identical in rules.py + statements.py (2 sites — extract on the 3rd). (3) FIBR-0007 spec's INV-7 test narrative describes the OLD insert order (transactions-before-period); FIBR-0052's statement_period_id FK reversed it (period-first) — update the spec text (or a FIBR-0052 addendum) so a reader doesn't reason about a stale order.
+  Kind: doc-fix.
+  Source: indie-review-2026-07-10 loop-2 (misc LOW).
 
 ## How to add an item
 

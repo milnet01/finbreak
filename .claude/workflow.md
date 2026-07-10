@@ -151,6 +151,25 @@ no-lanes finding + a re-verification datapoint pinned to the **pre-relaunch**
 build edbc3163). Active item stays **FIBR-0054** (auto-update) — though FIBR-0065
 should arguably go first.
 
+**Loop 2 (cold confirming pass — capped here per the user; `/indie-review` will
+run again later).** Re-dispatched the 7 changed lanes with **no fix-briefing**:
+**every Loop-1 fix held** (none re-raised). The pass found a fresh batch — mostly
+the same themes one layer deeper — folded with tests (gate green **434 passed/1
+skipped**): statement H1 (Afrikaans/garbled month `KeyError`, reproduced),
+`_read_capped` bounded read (endless-symlink/`/dev/zero` defeats the loop-1 cap),
+crypto M1 (pre-commit `create()` block still leaked a conn — completes H-A),
+crypto M3 (`mkdir` mode), **data H-1** (deleting an account with a quiet-month
+statement crashed on the FK — now blocked, wiring in the dead `list_for_account`),
+PasswordDialog leak + `PdfError` catch, and a **`VaultLockedError`-guard
+consistency cluster** (settings/manual-entry `exec`-less crashes + accounts/
+categories add/edit raw-message). Deferred → **FIBR-0075–0081** (PDF
+decompression-bomb bound [security-model gap], single-instance/`busy_timeout`,
+explicit `cipher_use_hmac` PRAGMA [vs FIBR-0004 D4], SB pre-parse cap [vs
+FIBR-0050], zero-leaf `RuleEditDialog` gate, settings-read reuse, small type/doc
+debt); FIBR-0070 annotated to cover the sibling `get()` zombie. CHANGELOG updated.
+The deferred H-B (**FIBR-0065**) was re-raised by two lanes — confirming it's real
+and correctly parked for its own fix-cycle.
+
 ### 2026-07-10 — FIBR-0010 CLOSED (P08 rules engine + manual override + learning)
 
 Built the P08 rules engine **test-first** against the cold-eyes-converged spec.
