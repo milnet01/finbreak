@@ -153,7 +153,7 @@ def test_INV4_v2_upgrades_to_v3_and_seeds_tree(paths):
     ).fetchall()
     before_acct = conn.execute("SELECT id, name, type FROM accounts").fetchall()
 
-    run_migrations(conn)  # v2 -> v3 -> ... -> v6 (run_migrations walks to LATEST)
+    run_migrations(conn)  # v2 -> v3 -> ... -> v7 (run_migrations walks to LATEST)
     assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 7
 
     roots = _roots(conn)
@@ -220,21 +220,21 @@ def test_INV4_idempotent_at_latest(paths):
     salt = bytes(range(SALT_LEN))
     build_v2_vault(vault_path, sidecar_path, salt, [])
     conn = keyed_connection(vault_path, salt)
-    run_migrations(conn)  # v2 -> v3 -> ... -> v6 (walks to LATEST)
+    run_migrations(conn)  # v2 -> v3 -> ... -> v7 (walks to LATEST)
     roots_before = len(CategoryRepository(conn).children_of(None))
     total_before = len(CategoryRepository(conn).list_all())
 
-    run_migrations(conn)  # re-run: no-op at v6
+    run_migrations(conn)  # re-run: no-op at v7
     assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 7
     assert len(CategoryRepository(conn).children_of(None)) == roots_before == 2
     assert len(CategoryRepository(conn).list_all()) == total_before, "no duplicate seed"
     conn.close()
 
 
-def test_INV4_first_run_vault_is_v6_with_seeded_tree(service):
-    # Baseline-complete: a fresh first-run vault ends at v6 (the FIBR-0052
-    # statement-provenance column at v5->v6); the category tree is still seeded
-    # at v2->v3.
+def test_INV4_first_run_vault_is_v7_with_seeded_tree(service):
+    # Baseline-complete: a fresh first-run vault ends at v7 (v5->v6 added the
+    # FIBR-0052 statement-provenance column, v6->v7 the FIBR-0010 category link);
+    # the category tree is still seeded at v2->v3.
     conn = service.vault.connection
     assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 7
     assert set(_roots(conn)) == {"income", "expenditure"}

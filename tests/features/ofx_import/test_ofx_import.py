@@ -533,9 +533,10 @@ def test_INV7f_quiet_month_records_period(qtbot, service, tmp_path):
 def test_INV8_no_schema_change(service):
     from finbreak.migrations import LATEST_SCHEMA_VERSION
 
-    # OFX itself added no migration (D9); later phases added v5 (FIBR-0009) and
-    # v6 (FIBR-0052), so this can no longer prove "OFX added nothing" — it now
-    # simply asserts a first-run vault lands at the latest schema (currently 6).
+    # OFX itself added no migration (D9); later phases added v5 (FIBR-0009),
+    # v6 (FIBR-0052) and v7 (FIBR-0010), so this can no longer prove "OFX added
+    # nothing" — it now asserts a first-run vault lands at the latest schema
+    # (currently 7).
     assert LATEST_SCHEMA_VERSION == 7
     version = service.vault.connection.execute(
         "SELECT version FROM schema_version"

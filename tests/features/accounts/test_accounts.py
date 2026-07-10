@@ -171,7 +171,7 @@ def test_INV4_v1_vault_upgrades_and_backfills(paths):
     svc.lock()
 
 
-def test_INV4_first_run_vault_is_v6_with_one_default(service):
+def test_INV4_first_run_vault_is_v7_with_one_default(service):
     conn = service.vault.connection
     assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 7
     accounts = AccountRepository(conn).list_all()

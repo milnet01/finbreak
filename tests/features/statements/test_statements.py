@@ -49,7 +49,7 @@ def paths(tmp_path):
 @pytest.fixture
 def service(paths):
     svc = AuthService(*paths)
-    svc.first_run(bytearray(_PW), "ZAR")  # first-run migrates straight to v6
+    svc.first_run(bytearray(_PW), "ZAR")  # first-run migrates straight to latest (v7)
     yield svc
     svc.lock()
 
@@ -282,7 +282,7 @@ def test_INV9d_backfill_links_unambiguous_only(paths):
     _raw_txn(conn, acct, "2026-03-01")  # out-of-span ("manual"-like)
     conn.commit()
 
-    run_migrations(conn)  # v5 -> v6, backfill inside the atomic step
+    run_migrations(conn)  # v5 -> v7, backfill inside the atomic step
 
     for occurred_on, spid in conn.execute(
         "SELECT occurred_on, statement_period_id FROM transactions"
@@ -304,7 +304,7 @@ def test_INV9d_backfill_overlap_stays_null(paths):
     _raw_txn(conn, acct, "2026-01-05", description="single")  # under p1 only
     conn.commit()
 
-    run_migrations(conn)  # v5 -> v6
+    run_migrations(conn)  # v5 -> v7
 
     shared = conn.execute(
         "SELECT statement_period_id FROM transactions WHERE description = 'shared'"

@@ -176,12 +176,17 @@ class HomeView(QWidget):
         dialog.deleteLater()
         if not accepted:
             return
+        # Set + learning + refresh share ONE lock guard: the learning offer's dialog
+        # pumps the event loop (via exec()), so an idle auto-lock can fire mid-flow.
+        # The trailing refresh() reads the (now-locked) vault, so it MUST sit inside
+        # the guard or it crashes the slot (INV-14) — the picker-only path returns
+        # before refresh, but the learning path does not.
         try:
             self._categorization.set_manual_category(txn.id, chosen)
+            self._maybe_offer_rule(txn.description, chosen)
+            self.refresh()
         except VaultLockedError:
-            return  # auto-lock fired mid-set; the workspace is being torn down
-        self._maybe_offer_rule(txn.description, chosen)
-        self.refresh()
+            return  # auto-lock fired mid-set / mid-learn — the workspace is torn down
 
     def _maybe_offer_rule(self, description: str, chosen: int | None) -> None:
         """Offer to learn a rule iff the manual choice is a leaf that disagrees with
@@ -200,11 +205,11 @@ class HomeView(QWidget):
         dialog.deleteLater()
         if not accepted:
             return
-        try:
-            self._categorization.add_rule(pattern, category_id)
-            self._categorization.apply_rules()  # propagate to other auto rows
-        except VaultLockedError:
-            return  # auto-lock fired mid-learn; nothing half-applied survives (D11)
+        # A VaultLockedError here (auto-lock fired while the offer was open)
+        # propagates to the single guard in _on_set_category; nothing half-applied
+        # survives — INV-4's next run re-applies the persisted rule (D11).
+        self._categorization.add_rule(pattern, category_id)
+        self._categorization.apply_rules()  # propagate to other auto rows
 
     # --- test / shell accessors -------------------------------------------- #
     def _selected_txn(self) -> Transaction | None:

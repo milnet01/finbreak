@@ -34,7 +34,6 @@ from finbreak.models import CategorizationRule, Category
 from finbreak.services.auth import AuthService
 from finbreak.services.categories import CategoryService
 from finbreak.services.categorization import CategorizationService
-from finbreak.ui.category_picker import leaf_categories
 
 _COL_PATTERN = 0
 _COL_CATEGORY = 1
@@ -168,7 +167,7 @@ class RulesWidget(QWidget):
     @Slot()
     def _on_add(self) -> None:
         self._error.clear()
-        dialog = RuleEditDialog(leaf_categories(self._categories), parent=self)
+        dialog = RuleEditDialog(self._categorization.leaf_categories(), parent=self)
         accepted = dialog.exec() == QDialog.DialogCode.Accepted
         pattern, category_id = dialog.pattern(), dialog.selected_category_id()
         dialog.deleteLater()
@@ -189,7 +188,10 @@ class RulesWidget(QWidget):
             return
         rule = self._rows[index]
         dialog = RuleEditDialog(
-            leaf_categories(self._categories), rule.pattern, rule.category_id, self
+            self._categorization.leaf_categories(),
+            rule.pattern,
+            rule.category_id,
+            self,
         )
         accepted = dialog.exec() == QDialog.DialogCode.Accepted
         pattern, category_id = dialog.pattern(), dialog.selected_category_id()

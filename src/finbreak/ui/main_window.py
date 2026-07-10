@@ -5,7 +5,7 @@ The top-level window: a menubar (File · View · Window · Help · Donate), an i
 toolbar, a central ``QStackedWidget`` content area, and a status bar. First-run
 and unlock are non-blocking application-modal dialogs shown *over* the window;
 manual entry is a modal dialog. When unlocked, the content slot holds a single
-**workspace** ``QTabWidget`` (Home · Statements · Accounts · Categories as
+**workspace** ``QTabWidget`` (Home · Statements · Accounts · Categories · Rules as
 persistent tabs), built once per session and **destroyed on lock** so no
 decrypted rows survive (INV-3). An import temporarily replaces the workspace with
 the wizard (also destroyed on lock), rebuilding the workspace on ``done``. Window
@@ -407,7 +407,7 @@ class MainWindow(QMainWindow):
 
     # --- workspace ---------------------------------------------------------- #
     def _build_workspace(self) -> QTabWidget:
-        """Build the four-tab workspace once and install it as the live content,
+        """Build the five-tab workspace once and install it as the live content,
         returning it. Each tab page self-refreshes on construction; navigation
         switches the current index (D1), never rebuilds a tab."""
         workspace = QTabWidget()

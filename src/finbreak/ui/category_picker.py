@@ -1,12 +1,11 @@
-"""CategoryPickerDialog + the shared ``leaf_categories`` helper (FIBR-0010 D10/D13).
+"""CategoryPickerDialog (FIBR-0010 D10).
 
 A small ``QDialog`` (one dialog per file, like ``ui/account_picker``): pick a
 **leaf** category for a transaction, with an explicit *Uncategorised* choice, +
 OK/Cancel. The dialog is "dumb" — it takes the already-fetched leaf list, not a
-service. ``leaf_categories`` is the one place the assignable (non-root) list is
-built from a ``CategoryService`` — shared by this picker and the Rules tab's rule
-editor, so there is a single leaf-list definition. All strings go through
-``tr()`` and every widget sits in a layout manager (coding.md § 5.2).
+service; callers get that list from ``CategorizationService.leaf_categories()``
+(the single definition of the assignable, non-root set — INV-9). All strings go
+through ``tr()`` and every widget sits in a layout manager (coding.md § 5.2).
 """
 
 from __future__ import annotations
@@ -21,13 +20,6 @@ from PySide6.QtWidgets import (
 )
 
 from finbreak.models import Category
-from finbreak.services.categories import CategoryService
-
-
-def leaf_categories(categories: CategoryService) -> list[Category]:
-    """The assignable (non-root) categories — every category with a parent. The two
-    Type roots (Income / Expenditure) are structural and never assignable (INV-9)."""
-    return [c for c in categories.list_all() if c.parent_id is not None]
 
 
 class CategoryPickerDialog(QDialog):

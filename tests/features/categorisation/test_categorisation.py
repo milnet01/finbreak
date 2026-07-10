@@ -100,10 +100,12 @@ def _csv(header: list[str], rows: list[list[str]]) -> str:
     return "\n".join([",".join(header)] + [",".join(r) for r in rows]) + "\n"
 
 
-def _do_import(imp: ImportService, text: str, account_id: int) -> None:
+def _do_import(imp: ImportService, text: str, account_id: int):
     preview = imp.preview(text, SINGLE, account_id)
     assert preview.period_start is not None and preview.period_end is not None
-    imp.commit_import(preview, preview.period_start, preview.period_end, "stmt.csv")
+    return imp.commit_import(
+        preview, preview.period_start, preview.period_end, "stmt.csv"
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -298,6 +300,28 @@ def test_INV3_manual_clear_stays_clear_after_apply(service):
     assert _txn_cat(service, txn) == (None, "manual"), "a cleared row is not re-filled"
 
 
+def test_INV3_manual_survives_a_reimport(service):
+    # The import-path half of INV-3 (distinct from apply): a manual row must
+    # survive a re-import of the same file (dedup keeps the row; commit_import's
+    # recategorize_auto_rows excludes manual rows, D9).
+    cs = CategorizationService(service.vault)
+    g, f = _leaf_id(service, "Groceries"), _leaf_id(service, "Fast food")
+    imp = ImportService(service.vault)
+    acct = _account_id(service)
+    csv = _csv(HEADER, [["2026-01-05", "PICK N PAY", "-50.00"]])
+    _do_import(imp, csv, acct)  # no rules yet -> the row lands auto/uncategorised
+
+    tid = service.vault.connection.execute(
+        "SELECT id FROM transactions WHERE description = 'PICK N PAY'"
+    ).fetchone()[0]
+    cs.set_manual_category(tid, g)  # freeze it under Groceries by hand
+    cs.add_rule("pick n pay", f)  # a rule that WOULD file it under Fast food
+
+    result = _do_import(imp, csv, acct)  # re-import the SAME file
+    assert result.inserted_count == 0, "the re-import inserts nothing (dedup keeps it)"
+    assert _txn_cat(service, tid) == (g, "manual"), "the manual row survives re-import"
+
+
 # --------------------------------------------------------------------------- #
 # INV-4 — when rules run: on import, and on explicit apply (not on edit)
 # --------------------------------------------------------------------------- #
@@ -399,7 +423,11 @@ def test_INV8_confirm_names_both_counts_and_deletes_on_yes(qtbot, service, monke
 
     cs = CategorizationService(service.vault)
     g = _leaf_id(service, "Groceries")
-    _add_txn(service, "PICK N PAY")
+    # DISTINCT counts (3 transactions, 1 rule) so the assertion is sensitive to a
+    # mutation that drops EITHER sentence — "1" alone (as with 1 txn + 1 rule)
+    # would pass even if the rule-count sentence were removed.
+    for i in range(3):
+        _add_txn(service, f"PICK N PAY {i}")
     cs.add_rule("pick n pay", g)
     cs.apply_rules()
 
@@ -416,7 +444,9 @@ def test_INV8_confirm_names_both_counts_and_deletes_on_yes(qtbot, service, monke
     monkeypatch.setattr(QMessageBox, "question", _confirm_yes)
     widget._delete_button.click()
 
-    assert "1" in captured["text"], "the confirmation names the affected counts"
+    # blast radius here is (3 transactions, 1 rule) — the text must name BOTH.
+    assert "3" in captured["text"], "the confirmation names the transaction count"
+    assert "1" in captured["text"], "the confirmation names the rule count"
     assert CategoryRepository(service.vault.connection).get(g) is None, "deleted on Yes"
 
 
@@ -819,6 +849,32 @@ def test_INV14_home_set_catches_vault_locked(qtbot, service, monkeypatch):
     monkeypatch.setattr(home._categorization, "set_manual_category", _raise)
     home._select_txn(txn)
     home._on_set_category()  # must not raise
+
+
+def test_INV14_learning_path_refresh_catches_vault_locked(qtbot, service, monkeypatch):
+    # The learning dialog pumps the event loop, so an auto-lock can fire while it
+    # is open; the trailing refresh() then reads a locked vault. Regression for the
+    # unguarded-refresh crash: patch list_transactions (what refresh() calls) to
+    # raise, drive the learning path, and assert the slot swallows it.
+    import finbreak.ui.home as home_mod
+
+    g, f = _leaf_id(service, "Groceries"), _leaf_id(service, "Fast food")
+    txn = _add_txn(service, "PICK N PAY")
+    cs = CategorizationService(service.vault)
+    cs.add_rule("pick n pay", f)  # so chosen (g) != would (f) -> the offer fires
+    cs.apply_rules()
+
+    home = _home(service)
+    qtbot.addWidget(home)
+    _stub_picker(monkeypatch, home_mod, g)  # correct it to Groceries
+    _spy_learning(monkeypatch, home_mod, accept=False)  # dismiss the offer
+
+    def _raise():
+        raise VaultLockedError("auto-lock fired while the learning offer was open")
+
+    monkeypatch.setattr(home._transactions, "list_transactions", _raise)
+    home._select_txn(txn)
+    home._on_set_category()  # must not raise — the refresh is inside the guard now
 
 
 def test_INV14_apply_catches_vault_locked(qtbot, service, monkeypatch):
