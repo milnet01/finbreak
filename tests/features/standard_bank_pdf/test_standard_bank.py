@@ -485,3 +485,21 @@ def test_INV13_wizard_corrupt_pdf_shows_message_not_crash(qtbot, service, tmp_pa
     widget._select_file(str(path))  # must not raise
     assert widget._stack.currentIndex() == _STEP_PICK, "stays on pick, no crash"
     assert widget._error.text() != "", "a friendly message is shown"
+
+
+def test_parse_maps_pdf_parse_error_to_value_error(monkeypatch):
+    """A PDF pikepdf can open but pdfplumber can't parse fails as a friendly
+    ValueError, not an unhandled non-ValueError crash. (indie-review H-D)"""
+    import pdfplumber
+    from pdfplumber.utils.exceptions import PdfminerException
+
+    import finbreak.importers.standard_bank as sb_mod
+
+    monkeypatch.setattr(sb_mod, "_normalise_to_plaintext", lambda raw, pw: raw)
+
+    def boom(*args, **kwargs):
+        raise PdfminerException("bad content stream")
+
+    monkeypatch.setattr(pdfplumber, "open", boom)
+    with pytest.raises(ValueError):
+        StandardBankImporter().parse(b"whatever", 2)

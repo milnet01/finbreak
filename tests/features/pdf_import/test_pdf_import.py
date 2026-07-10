@@ -655,3 +655,21 @@ def test_INV11_password_not_in_exception_message():
 def test_INV11_wizard_defines_no_password_attribute():
     src = Path("src/finbreak/ui/import_wizard.py").read_text()
     assert not re.search(r"self\._[A-Za-z0-9_]*password", src)
+
+
+def test_candidate_tables_maps_pdf_parse_error_to_value_error(monkeypatch):
+    """A PDF pikepdf can open but pdfplumber/pdfminer can't parse must fail as a
+    friendly ValueError, not an unhandled non-ValueError crash. (indie-review H-D)"""
+    import pdfplumber
+    from pdfplumber.utils.exceptions import PdfminerException
+
+    import finbreak.importers.pdf_importer as pdf_mod
+
+    monkeypatch.setattr(pdf_mod, "_normalise_to_plaintext", lambda raw, pw: raw)
+
+    def boom(*args, **kwargs):
+        raise PdfminerException("bad content stream")
+
+    monkeypatch.setattr(pdfplumber, "open", boom)
+    with pytest.raises(ValueError):
+        PdfImporter().candidate_tables(b"whatever")

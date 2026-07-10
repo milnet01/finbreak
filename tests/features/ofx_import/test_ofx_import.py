@@ -615,3 +615,22 @@ def test_INV10_too_many_transactions_refused(service, monkeypatch):
     with pytest.raises(ValueError):
         OfxImporter().parse(data, _exp(service))
     assert _MAX_OFX_TRANSACTIONS == 100_000, "the real cap constant is exported"
+
+
+def test_investment_statement_refused_not_crashed(service):
+    """An OFX investment/brokerage statement fails with a friendly ValueError,
+    not an unhandled AttributeError — InvestmentTransaction has no .payee/.date/
+    .amount, and investment import is out of scope. (indie-review H-C)"""
+    inv = (
+        _OFX_HEADER
+        + "<OFX><INVSTMTMSGSRSV1><INVSTMTTRNRS><INVSTMTRS>"
+        "<DTASOF>20260101<CURDEF>USD"
+        "<INVACCTFROM><BROKERID>x<ACCTID>123</INVACCTFROM>"
+        "<INVTRANLIST><DTSTART>20260101<DTEND>20260131"
+        "<BUYSTOCK><INVBUY><INVTRAN><FITID>1<DTTRADE>20260115</INVTRAN>"
+        "<SECID><UNIQUEID>us1<UNIQUEIDTYPE>CUSIP</SECID>"
+        "<UNITS>10<UNITPRICE>5<TOTAL>-50</INVBUY><BUYTYPE>BUY</BUYSTOCK>"
+        "</INVTRANLIST></INVSTMTRS></INVSTMTTRNRS></INVSTMTMSGSRSV1></OFX>"
+    ).encode()
+    with pytest.raises(ValueError):
+        OfxImporter().parse(inv, _exp(service))

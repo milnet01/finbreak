@@ -726,14 +726,25 @@ class StandardBankImporter:
 
         plaintext = _normalise_to_plaintext(pdf_bytes, password)
         pages: list[list[str]] = []
-        with pdfplumber.open(io.BytesIO(plaintext)) as pdf:
-            if len(pdf.pages) > _MAX_PDF_PAGES:
-                raise ValueError(
-                    "this PDF has too many pages to import — "
-                    "try your bank's CSV or OFX export"
-                )
-            for page in pdf.pages:
-                pages.append((page.extract_text() or "").splitlines())
+        # pdfplumber/pdfminer raise a broad, non-ValueError exception tree on a
+        # PDF it can't parse (past the pikepdf decrypt, which is upstream and
+        # unaffected). Mirror the OFX D7 boundary catch so an untrusted PDF fails
+        # as a friendly ValueError, never an unhandled Qt-slot crash. (H-D)
+        try:
+            with pdfplumber.open(io.BytesIO(plaintext)) as pdf:
+                if len(pdf.pages) > _MAX_PDF_PAGES:
+                    raise ValueError(
+                        "this PDF has too many pages to import — "
+                        "try your bank's CSV or OFX export"
+                    )
+                for page in pdf.pages:
+                    pages.append((page.extract_text() or "").splitlines())
+        except ValueError:
+            raise  # our own friendly guards (e.g. the page cap) pass through
+        except Exception as exc:  # noqa: BLE001 — untrusted-PDF boundary (mirror OFX D7)
+            raise ValueError(
+                "couldn't read this PDF — try your bank's CSV or OFX export"
+            ) from exc
         full_text = "\n".join("\n".join(p) for p in pages)
 
         family = detect_standard_bank(full_text)

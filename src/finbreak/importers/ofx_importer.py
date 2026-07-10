@@ -28,6 +28,7 @@ from __future__ import annotations
 import io
 
 from ofxparse import OfxParser
+from ofxparse.ofxparse import AccountType
 
 from finbreak.importers.base import ParseResult, RowError
 from finbreak.models import OfxAccountInfo, TransactionDraft
@@ -60,6 +61,23 @@ class OfxImporter:
         accounts = ofx.accounts
         if not accounts:
             raise ValueError("no statements were found in this OFX file")
+
+        # Investment/brokerage statements (<INVSTMTRS>) carry InvestmentTransaction
+        # objects, which have no .payee/.date/.amount — feeding them to
+        # _parse_statement would raise an *unhandled* AttributeError (past the D7
+        # boundary catch), crashing the wizard. Investment import is out of scope,
+        # so drop those accounts and, if that leaves nothing importable, raise the
+        # friendly ValueError INV-4 promises instead of crashing. (indie-review H-C)
+        accounts = [
+            acct
+            for acct in accounts
+            if getattr(acct, "type", AccountType.Unknown) != AccountType.Investment
+        ]
+        if not accounts:
+            raise ValueError(
+                "this OFX file has only investment/brokerage statements, which "
+                "aren't supported — pick a bank or credit-card statement"
+            )
 
         # Whole-file transaction-count cap (D13/INV-10) — after the boundary
         # catch, since it needs the parsed accounts to total the count.

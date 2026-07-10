@@ -122,8 +122,15 @@ class ImportService:
 
     # -- preview + commit -----------------------------------------------------
     def read_file(self, path: str) -> str:
-        """Decode a picked CSV file as ``utf-8-sig`` so a BOM is tolerated (D11)."""
-        return Path(path).read_text(encoding="utf-8-sig")
+        """Decode a picked CSV file as ``utf-8-sig`` so a BOM is tolerated (D11).
+
+        Refuses an oversized file **before** loading it into memory — the CSV
+        counterpart to ``read_file_bytes``' cap (FIBR-0041 / security-model
+        INV-5b: the CSV path previously loaded an arbitrarily large file whole).
+        Any OS read error (missing / permission-denied / removed mid-read) is
+        mapped to the friendly ``ValueError`` the wizard catches, matching this
+        module's ValueError-only boundary (indie-review H-F/H-G)."""
+        return self._read_capped(path).decode("utf-8-sig")
 
     def read_file_bytes(self, path: str) -> bytes:
         """Read a picked file as raw bytes, refusing an oversized file **before**
@@ -131,9 +138,20 @@ class ImportService:
         ``read_file``. Format-neutral (FIBR-0009 D10): the OFX **and** PDF paths
         both use it. The stat-then-read window is a benign TOCTOU for a local,
         user-picked, single-user file."""
-        if Path(path).stat().st_size > _MAX_IMPORT_BYTES:
-            raise ValueError("this file is too large to import")
-        return Path(path).read_bytes()
+        return self._read_capped(path)
+
+    @staticmethod
+    def _read_capped(path: str) -> bytes:
+        """Stat-cap then read a picked file as bytes, mapping any ``OSError`` to a
+        friendly ``ValueError`` (the module's boundary convention). Shared by the
+        text (CSV) and bytes (OFX/PDF) read paths so the cap + error mapping have
+        one definition (indie-review H-F/H-G)."""
+        try:
+            if Path(path).stat().st_size > _MAX_IMPORT_BYTES:
+                raise ValueError("this file is too large to import")
+            return Path(path).read_bytes()
+        except OSError as exc:
+            raise ValueError("this file could not be read") from exc
 
     def preview(
         self, text: str, mapping: ColumnMapping, account_id: int
@@ -339,6 +357,14 @@ class ImportService:
         missing = [col for col in mapped if col not in header]
         if missing:
             raise ValueError(f"mapped column(s) not in the file header: {missing}")
+        # Each role must map to a *distinct* column — else the same cell is read
+        # for two purposes (e.g. date == description), silently misrouting data
+        # rather than erroring. (indie-review M-csv-cols)
+        if len(set(mapped)) != len(mapped):
+            raise ValueError(
+                "each field must map to a different column — a column is mapped "
+                "to more than one role"
+            )
 
     @staticmethod
     def _validate_span(period_start: str, period_end: str) -> None:

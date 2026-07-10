@@ -141,15 +141,29 @@ class PdfImporter:
         import pdfplumber
 
         plaintext = _normalise_to_plaintext(pdf_bytes, password)
-        with pdfplumber.open(io.BytesIO(plaintext)) as pdf:
-            if len(pdf.pages) > _MAX_PDF_PAGES:
-                raise ValueError(
-                    "this PDF has too many pages to import — "
-                    "try your bank's CSV or OFX export"
-                )
-            raw_tables: list[_Table] = []
-            for page in pdf.pages:  # iterate, never index .pages[0] (INV-5)
-                raw_tables.extend(page.extract_tables())
+        # pdfplumber/pdfminer raise a broad, non-ValueError exception tree
+        # (PdfminerException et al.) on a content stream / font table / encoding
+        # they can't handle — a PDF that pikepdf could open + re-save but
+        # pdfminer chokes on. Mirror the OFX D7 boundary catch so an untrusted
+        # PDF fails as a friendly ValueError, never an unhandled Qt-slot crash;
+        # the pikepdf password signal is raised earlier (in _normalise_to_plaintext,
+        # outside this block) and is unaffected. (indie-review H-D)
+        try:
+            with pdfplumber.open(io.BytesIO(plaintext)) as pdf:
+                if len(pdf.pages) > _MAX_PDF_PAGES:
+                    raise ValueError(
+                        "this PDF has too many pages to import — "
+                        "try your bank's CSV or OFX export"
+                    )
+                raw_tables: list[_Table] = []
+                for page in pdf.pages:  # iterate, never index .pages[0] (INV-5)
+                    raw_tables.extend(page.extract_tables())
+        except ValueError:
+            raise  # our own friendly guards (e.g. the page cap) pass through
+        except Exception as exc:  # noqa: BLE001 — untrusted-PDF boundary (mirror OFX D7)
+            raise ValueError(
+                "couldn't read this PDF — try your bank's CSV or OFX export"
+            ) from exc
 
         candidates = [c for c in group_tables_by_header(raw_tables) if len(c) > 1]
         for candidate in candidates:

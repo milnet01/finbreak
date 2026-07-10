@@ -870,3 +870,33 @@ def test_INV11_import_cycle_logs_no_secret(service, caplog):
     params = service.load_params()
     key = derive_key(bytearray(_PW), params.salt, params)
     assert bytes(key).hex() not in joined, "the derived key (hex) must never be logged"
+
+
+def test_read_file_maps_os_error_to_value_error(service, tmp_path):
+    """A missing/unreadable file surfaces as the friendly ValueError the wizard
+    catches, not a raw OSError. (indie-review H-F)"""
+    missing = str(tmp_path / "nope.csv")
+    with pytest.raises(ValueError):
+        ImportService(service.vault).read_file(missing)
+    with pytest.raises(ValueError):
+        ImportService(service.vault).read_file_bytes(missing)
+
+
+def test_read_file_refuses_oversized_csv(service, tmp_path, monkeypatch):
+    """The CSV read path enforces the same size cap as the bytes path, so a
+    multi-GB mis-pick can't be loaded whole into memory (FIBR-0041). (H-G)"""
+    import finbreak.services.import_ as import_mod
+
+    big = tmp_path / "big.csv"
+    big.write_text("Date,Details,Amount\n" + "x,y,1.00\n" * 500)
+    monkeypatch.setattr(import_mod, "_MAX_IMPORT_BYTES", 100)
+    with pytest.raises(ValueError):
+        ImportService(service.vault).read_file(str(big))
+
+
+def test_validate_mapping_rejects_duplicate_column_roles():
+    """Two roles mapped to one column is refused, not silently misrouted.
+    (indie-review M-csv-cols)"""
+    dup = ColumnMapping("Date", "Date", "Amount", None, None, "%Y-%m-%d", False)
+    with pytest.raises(ValueError, match="different column"):
+        ImportService._validate_mapping(dup, ["Date", "Amount"])
