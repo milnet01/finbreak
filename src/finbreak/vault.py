@@ -65,40 +65,44 @@ class Vault:
         # presence_state() only routes here when neither file exists.
         os.close(os.open(self._vault_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600))
         conn = self._connect(key)
-        conn.execute("CREATE TABLE schema_version(version INTEGER NOT NULL)")
-        conn.execute(
-            "INSERT INTO schema_version(version) VALUES (?)", (SCHEMA_VERSION,)
-        )
-        conn.execute("CREATE TABLE settings(key TEXT PRIMARY KEY, value TEXT NOT NULL)")
-        conn.execute(
-            "INSERT INTO settings(key, value) VALUES ('base_currency', ?)",
-            (base_currency,),
-        )
-        conn.execute(
-            "INSERT INTO settings(key, value) VALUES ('minor_unit_exponent', ?)",
-            (str(exponent),),
-        )
-        conn.execute(
-            "CREATE TABLE transactions("
-            "id INTEGER PRIMARY KEY, occurred_on TEXT NOT NULL, "
-            "amount_minor INTEGER NOT NULL, description TEXT NOT NULL, "
-            "created_at TEXT NOT NULL)"
-        )
-        conn.commit()
-        self._conn = conn
-        # Bring the fresh v1 baseline to the latest schema, THEN write the
-        # sidecar last — so a migration failure leaves a vault-without-sidecar
-        # (the clean mixed-state retry, INV-5), never a sidecar over a
-        # half-migrated vault (FIBR-0005 D1/D2). The "DB durable before sidecar"
-        # half of that guarantee relies on SQLite's default per-commit fsync
-        # (synchronous=FULL); a later switch to WAL / synchronous=NORMAL would
-        # need the sidecar write deferred until the DB is durably flushed.
-        #
-        # Mirror open()'s close-and-reset: a failure here (a migration bug, or a
-        # disk-full OSError writing the sidecar) must NOT leave self._conn
-        # pointing at a live, unlocked connection — that silently defeats the
-        # VaultLockedError guard while the app still believes it's locked.
+        # Mirror open()'s close-and-reset over the WHOLE build: any failure — a
+        # CREATE/INSERT or the schema commit (e.g. a disk-full OSError from
+        # SQLite), a migration bug, or the sidecar write — must close the
+        # connection and reset self._conn, never leak an open fd / file-lock or
+        # (post-commit) a live unlocked connection that defeats the
+        # VaultLockedError guard. self._conn is set only after the schema commit,
+        # so it stays locked on any earlier failure either way.
         try:
+            conn.execute("CREATE TABLE schema_version(version INTEGER NOT NULL)")
+            conn.execute(
+                "INSERT INTO schema_version(version) VALUES (?)", (SCHEMA_VERSION,)
+            )
+            conn.execute(
+                "CREATE TABLE settings(key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+            )
+            conn.execute(
+                "INSERT INTO settings(key, value) VALUES ('base_currency', ?)",
+                (base_currency,),
+            )
+            conn.execute(
+                "INSERT INTO settings(key, value) VALUES ('minor_unit_exponent', ?)",
+                (str(exponent),),
+            )
+            conn.execute(
+                "CREATE TABLE transactions("
+                "id INTEGER PRIMARY KEY, occurred_on TEXT NOT NULL, "
+                "amount_minor INTEGER NOT NULL, description TEXT NOT NULL, "
+                "created_at TEXT NOT NULL)"
+            )
+            conn.commit()
+            self._conn = conn
+            # Bring the fresh v1 baseline to the latest schema, THEN write the
+            # sidecar last — so a migration failure leaves a vault-without-sidecar
+            # (the clean mixed-state retry, INV-5), never a sidecar over a
+            # half-migrated vault (FIBR-0005 D1/D2). The "DB durable before
+            # sidecar" half relies on SQLite's default per-commit fsync
+            # (synchronous=FULL); a later switch to WAL / synchronous=NORMAL would
+            # need the sidecar write deferred until the DB is durably flushed.
             run_migrations(conn)
             self._write_sidecar(params)
         except Exception:

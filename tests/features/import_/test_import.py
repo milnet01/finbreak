@@ -900,3 +900,18 @@ def test_validate_mapping_rejects_duplicate_column_roles():
     dup = ColumnMapping("Date", "Date", "Amount", None, None, "%Y-%m-%d", False)
     with pytest.raises(ValueError, match="different column"):
         ImportService._validate_mapping(dup, ["Date", "Amount"])
+
+
+def test_read_capped_bounds_read_against_endless_symlink(service, tmp_path):
+    """The size cap is enforced by a bounded read, so a symlink to an endless
+    source (/dev/zero) is refused as 'too large' rather than read unbounded into
+    memory — a stat-only cap sees st_size 0 and would slip through. (indie-review
+    hardening of the FIBR-0041 cap)"""
+    import os
+
+    if not (hasattr(os, "symlink") and os.path.exists("/dev/zero")):
+        pytest.skip("POSIX symlink + /dev/zero required")
+    link = tmp_path / "statement.csv"
+    os.symlink("/dev/zero", link)
+    with pytest.raises(ValueError):
+        ImportService(service.vault).read_file_bytes(str(link))

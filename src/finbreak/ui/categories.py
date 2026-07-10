@@ -116,6 +116,8 @@ class CategoriesWidget(QWidget):
         self._error.clear()
         try:
             self._categories.add_category(self._type.currentData(), self._name.text())
+        except VaultLockedError:
+            return  # auto-lock fired mid-edit — silent, like the delete handler
         except (ValueError, FinbreakError) as exc:
             self._error.setText(str(exc))
             return
@@ -132,6 +134,8 @@ class CategoriesWidget(QWidget):
             self._categories.update_category(
                 item.data(0, _ID_ROLE), self._name.text(), self._type.currentData()
             )
+        except VaultLockedError:
+            return  # auto-lock fired mid-edit — silent, like the delete handler
         except (ValueError, FinbreakError) as exc:
             self._error.setText(str(exc))
             return

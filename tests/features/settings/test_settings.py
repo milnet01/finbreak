@@ -268,3 +268,21 @@ def test_INV9_shell_passes_real_currency(qtbot, service):
     window._action_settings.trigger()
     currency = window._dialog.findChild(QLabel, "settings_currency")
     assert "ZAR" in currency.text()
+
+
+def test_on_save_swallows_vault_locked_silently(qtbot, service, monkeypatch):
+    """An auto-lock while Settings is open must not crash Save. (UI-dialogs H1)"""
+    from finbreak.errors import VaultLockedError
+    from finbreak.ui.settings import SettingsDialog
+
+    dialog = SettingsDialog(service, "ZAR")
+    qtbot.addWidget(dialog)
+    saved = []
+    dialog.saved.connect(lambda: saved.append(True))
+
+    def locked(*a, **k):
+        raise VaultLockedError("the vault is locked")
+
+    monkeypatch.setattr(dialog._service, "set_auto_lock_minutes", locked)
+    dialog._on_save()  # must not raise
+    assert saved == [], "saved is not emitted on a locked vault"

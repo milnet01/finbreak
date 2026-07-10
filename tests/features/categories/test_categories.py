@@ -437,3 +437,21 @@ def test_INV8_category_cycle_logs_no_secret(service, caplog):
     params = service.load_params()
     key = derive_key(bytearray(_PW), params.salt, params)
     assert bytes(key).hex() not in joined, "the derived key (hex) must never be logged"
+
+
+def test_add_category_swallows_vault_locked_silently(qtbot, service, monkeypatch):
+    """An auto-lock mid-add returns silently, matching the delete handler.
+    (indie-review UI-dialogs M1)"""
+    from finbreak.errors import VaultLockedError
+    from finbreak.ui.categories import CategoriesWidget
+
+    widget = CategoriesWidget(service)
+    qtbot.addWidget(widget)
+    widget._name.setText("New")
+
+    def locked(*a, **k):
+        raise VaultLockedError("the vault is locked")
+
+    monkeypatch.setattr(widget._categories, "add_category", locked)
+    widget._on_add()  # must not raise
+    assert widget._error.text() == "", "VaultLockedError is swallowed silently"

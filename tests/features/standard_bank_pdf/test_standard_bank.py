@@ -386,6 +386,9 @@ def _patch_dialog(monkeypatch, responses):
         def remember(self):
             return self._r.get("remember", False)
 
+        def deleteLater(self):  # the wizard disposes each attempt (indie-review M1)
+            pass
+
     monkeypatch.setattr(import_wizard, "PasswordDialog", _Fake)
     return shown
 
@@ -503,3 +506,17 @@ def test_parse_maps_pdf_parse_error_to_value_error(monkeypatch):
     monkeypatch.setattr(pdfplumber, "open", boom)
     with pytest.raises(ValueError):
         StandardBankImporter().parse(b"whatever", 2)
+
+
+def test_parse_period_bad_month_returns_none_not_keyerror():
+    """A non-English (Afrikaans "Januarie") or garbled month name in the period
+    line yields None, not a bare KeyError that would crash the wizard.
+    (indie-review H1)"""
+    from finbreak.importers.standard_bank import _parse_period
+
+    assert _parse_period("Statement from 1 January 2026 to 31 January 2026") == (
+        "2026-01-01",
+        "2026-01-31",
+    )
+    assert _parse_period("Statement from 1 Januarie 2026 to 31 Januarie 2026") is None
+    assert _parse_period("Statement from 1 Bogus 2026 to 2 Bogus 2026") is None

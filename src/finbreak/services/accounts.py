@@ -13,6 +13,7 @@ from typing import cast
 from finbreak.errors import AccountInUseError, LastAccountError
 from finbreak.models import Account, AccountType
 from finbreak.repositories.accounts import AccountRepository
+from finbreak.repositories.statement_periods import StatementPeriodRepository
 from finbreak.repositories.transactions import TransactionRepository
 from finbreak.vault import Vault
 
@@ -44,12 +45,22 @@ class AccountService:
 
     def delete_account(self, account_id: int) -> None:
         repo = self._accounts()
-        in_account = TransactionRepository(self._vault.connection).count_for_account(
-            account_id
-        )
+        conn = self._vault.connection
+        in_account = TransactionRepository(conn).count_for_account(account_id)
         if in_account > 0:
             raise AccountInUseError(
                 "this account still has transactions — move or remove them first"
+            )
+        # A statement period referencing this account also blocks deletion — a
+        # quiet-month / all-duplicate import records a period with ZERO
+        # transactions, so the transaction-count guard above passes but the
+        # statement_periods FK (no ON DELETE CASCADE, foreign_keys = ON) would
+        # otherwise raise a raw IntegrityError that escapes the FinbreakError
+        # taxonomy and crashes the delete slot. (indie-review data H-1; this also
+        # gives StatementPeriodRepository.list_for_account its first src caller)
+        if StatementPeriodRepository(conn).list_for_account(account_id):
+            raise AccountInUseError(
+                "this account still has imported statements — delete them first"
             )
         # "Last account" = the target actually exists AND is the only row; the
         # "exists" clause is what lets a missing id fall through to a no-op.

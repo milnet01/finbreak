@@ -526,3 +526,59 @@ def test_INV8_account_cycle_logs_no_secret(service, caplog):
     params = service.load_params()
     key = derive_key(bytearray(_PW), params.salt, params)
     assert bytes(key).hex() not in joined, "the derived key (hex) must never be logged"
+
+
+def test_delete_account_with_statement_but_no_txns_is_blocked(service):
+    """An account with a recorded statement period but ZERO transactions (a
+    quiet-month / all-duplicate import) is blocked with AccountInUseError, not a
+    raw IntegrityError FK crash. (indie-review data H-1)"""
+    from finbreak.repositories.statement_periods import StatementPeriodRepository
+
+    svc = AccountService(service.vault)
+    spare = svc.add_account("Spare", "other")
+    conn = service.vault.connection
+    conn.execute("BEGIN")
+    StatementPeriodRepository(conn).add(spare.id, "2026-01-01", "2026-01-31", "s.pdf")
+    conn.commit()
+
+    with pytest.raises(AccountInUseError):
+        svc.delete_account(spare.id)
+    assert any(a.id == spare.id for a in svc.list_accounts()), "nothing removed"
+
+
+def test_add_account_swallows_vault_locked_silently(qtbot, service, monkeypatch):
+    """An auto-lock mid-add returns silently, not a raw 'the vault is locked'
+    label — parity with the delete handler. (indie-review UI-dialogs M1)"""
+    from finbreak.errors import VaultLockedError
+    from finbreak.ui.accounts import AccountsWidget
+
+    widget = AccountsWidget(service)
+    qtbot.addWidget(widget)
+    widget._name.setText("New")
+
+    def locked(*a, **k):
+        raise VaultLockedError("the vault is locked")
+
+    monkeypatch.setattr(widget._accounts, "add_account", locked)
+    widget._on_add()  # must not raise
+    assert widget._error.text() == "", "VaultLockedError is swallowed silently"
+
+
+def test_manual_entry_add_swallows_vault_locked_silently(qtbot, service, monkeypatch):
+    """An auto-lock while Manual entry is open must not crash Add. (UI-dialogs H2)"""
+    from finbreak.errors import VaultLockedError
+    from finbreak.ui.manual_entry import ManualEntryDialog
+
+    dialog = ManualEntryDialog(service)
+    qtbot.addWidget(dialog)
+    dialog._amount.setText("-1.00")
+    dialog._description.setText("x")
+    committed = []
+    dialog.committed.connect(lambda: committed.append(True))
+
+    def locked(*a, **k):
+        raise VaultLockedError("the vault is locked")
+
+    monkeypatch.setattr(dialog._transactions, "add_transaction", locked)
+    dialog._on_add()  # must not raise
+    assert committed == [] and dialog._error.text() == ""

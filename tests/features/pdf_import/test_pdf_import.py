@@ -319,6 +319,9 @@ def _patch_dialog(monkeypatch, responses):
         def remember(self):
             return self._r.get("remember", False)
 
+        def deleteLater(self):  # the wizard disposes each attempt (indie-review M1)
+            pass
+
     monkeypatch.setattr(import_wizard, "PasswordDialog", _Fake)
     return shown
 

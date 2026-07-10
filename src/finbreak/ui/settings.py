@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from finbreak.errors import VaultLockedError
 from finbreak.services.auth import ALLOWED_AUTO_LOCK_MINUTES, AuthService
 
 
@@ -84,5 +85,12 @@ class SettingsDialog(QDialog):
 
     @Slot()
     def _on_save(self) -> None:
-        self._service.set_auto_lock_minutes(self._combo.currentData())
+        try:
+            self._service.set_auto_lock_minutes(self._combo.currentData())
+        except VaultLockedError:
+            # An idle auto-lock can fire while this non-modal dialog is open;
+            # set_auto_lock_minutes then reads a locked vault. Return silently
+            # (the shell tears the dialog down), matching every other handler
+            # instead of crashing the slot. (indie-review UI-dialogs H1)
+            return
         self.saved.emit()

@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from finbreak.errors import VaultLockedError
 from finbreak.services.accounts import AccountService
 from finbreak.services.auth import AuthService
 from finbreak.services.transactions import TransactionService
@@ -86,6 +87,11 @@ class ManualEntryDialog(QDialog):
             self._transactions.add_transaction(
                 account_id, occurred_on, self._amount.text(), self._description.text()
             )
+        except VaultLockedError:
+            # add_transaction reads the vault (the currency exponent) before
+            # parsing; an auto-lock while this dialog is open would otherwise
+            # crash the slot. Return silently, like every peer handler. (H2)
+            return
         except ValueError as exc:
             self._error.setText(str(exc))
             return

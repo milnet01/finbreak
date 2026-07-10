@@ -279,13 +279,22 @@ def _split_credit_card_line(line: str) -> list[str]:
 # Year inference (D8) + period
 # --------------------------------------------------------------------------- #
 def _parse_period(full_text: str) -> tuple[str, str] | None:
-    """The authoritative A/C statement span from the "Statement from … to …" line."""
+    """The authoritative A/C statement span from the "Statement from … to …" line.
+
+    The ``_PERIOD`` regex accepts any word as the month name, so a non-English
+    (e.g. Afrikaans "Januarie") or garbled month must not index ``_MONTHS``
+    directly — that raised a bare ``KeyError`` that crashed the wizard. An
+    unresolvable month yields ``None`` (a malformed period, handled by the
+    caller). (indie-review H1)"""
     m = _PERIOD.search(full_text)
     if not m:
         return None
     d1, mon1, y1, d2, mon2, y2 = m.groups()
-    start = _iso(int(y1), _MONTHS[mon1.lower()], int(d1))
-    end = _iso(int(y2), _MONTHS[mon2.lower()], int(d2))
+    month1, month2 = _MONTHS.get(mon1.lower()), _MONTHS.get(mon2.lower())
+    if month1 is None or month2 is None:
+        return None
+    start = _iso(int(y1), month1, int(d1))
+    end = _iso(int(y2), month2, int(d2))
     return start, end
 
 
@@ -764,8 +773,13 @@ class StandardBankImporter:
         fmt = _detect_number_format("\n".join(region_lines))
 
         if family is Family.A:
-            span = period or ("", "")
-            result = _parse_family_a(region_lines, exponent, fmt, span)
+            if period is None:
+                # Family A prints a "Statement from … to …" line and needs it for
+                # year inference; a missing / non-English / garbled one is a
+                # malformed statement, surfaced as the friendly mis-parse message
+                # rather than a raw int("") ValueError downstream. (H1/M1)
+                raise ValueError(_MISPARSE)
+            result = _parse_family_a(region_lines, exponent, fmt, period)
         elif family is Family.B:
             result = _parse_family_b(region_lines, exponent, fmt)
         elif family is Family.D:

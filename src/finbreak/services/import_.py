@@ -142,16 +142,24 @@ class ImportService:
 
     @staticmethod
     def _read_capped(path: str) -> bytes:
-        """Stat-cap then read a picked file as bytes, mapping any ``OSError`` to a
-        friendly ``ValueError`` (the module's boundary convention). Shared by the
-        text (CSV) and bytes (OFX/PDF) read paths so the cap + error mapping have
-        one definition (indie-review H-F/H-G)."""
+        """Read a picked file as bytes with an **enforced** size ceiling, mapping
+        any ``OSError`` to a friendly ``ValueError`` (the module's boundary
+        convention). Shared by the text (CSV) and bytes (OFX/PDF) read paths so the
+        cap + error mapping have one definition.
+
+        Reads ``cap + 1`` bytes rather than trusting ``stat().st_size``: a symlink
+        to an endless source (``/dev/zero``) reports size 0 and a file that grows
+        between the stat and the read would both slip an unbounded read past a
+        stat-only cap — the bounded read caps memory regardless. (indie-review
+        H-F/H-G, hardened after the loop-2 review)"""
         try:
-            if Path(path).stat().st_size > _MAX_IMPORT_BYTES:
-                raise ValueError("this file is too large to import")
-            return Path(path).read_bytes()
+            with open(path, "rb") as handle:
+                data = handle.read(_MAX_IMPORT_BYTES + 1)
         except OSError as exc:
             raise ValueError("this file could not be read") from exc
+        if len(data) > _MAX_IMPORT_BYTES:
+            raise ValueError("this file is too large to import")
+        return data
 
     def preview(
         self, text: str, mapping: ColumnMapping, account_id: int

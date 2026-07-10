@@ -116,6 +116,8 @@ class AccountsWidget(QWidget):
         self._error.clear()
         try:
             self._accounts.add_account(self._name.text(), self._type.currentData())
+        except VaultLockedError:
+            return  # auto-lock fired mid-edit — silent, like the delete handlers
         except (ValueError, FinbreakError) as exc:
             self._error.setText(str(exc))
             return
@@ -134,6 +136,8 @@ class AccountsWidget(QWidget):
                 self._name.text(),
                 self._type.currentData(),
             )
+        except VaultLockedError:
+            return  # auto-lock fired mid-edit — silent, like the delete handlers
         except (ValueError, FinbreakError) as exc:
             self._error.setText(str(exc))
             return

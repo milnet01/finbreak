@@ -26,12 +26,13 @@ def data_dir() -> Path:
         QStandardPaths.StandardLocation.AppDataLocation
     )
     directory = Path(location)
-    directory.mkdir(parents=True, exist_ok=True)
-    # Harden the (app-specific) data dir to owner-only. The vault + sidecar
-    # files are 0o600, but the containing dir otherwise defaults to the umask
-    # (commonly 0o755), leaking file existence/size/mtime metadata to other
-    # local users. chmod after mkdir because mkdir's own mode is umask-masked;
-    # POSIX-only (mirrors the vault/sidecar owner-only INV-7).
+    # Create the leaf owner-only from the outset (mode applies to the final
+    # component only, so shared parents keep their default perms), then chmod to
+    # enforce 0o700 even under a permissive umask that would loosen mkdir's mode.
+    # The vault + sidecar files are 0o600, but the containing dir otherwise
+    # defaults to the umask (commonly 0o755), leaking file existence/size/mtime
+    # metadata to other local users. POSIX-only (mirrors the owner-only INV-7).
+    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
     if hasattr(os, "getuid"):
         os.chmod(directory, 0o700)
     return directory

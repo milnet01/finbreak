@@ -475,10 +475,15 @@ class ImportWizardWidget(QWidget):
                     password = stored
                     continue
                 dialog = PasswordDialog(self._account_name(), self)
-                if dialog.exec() != QDialog.DialogCode.Accepted:
+                accepted = dialog.exec() == QDialog.DialogCode.Accepted
+                password = dialog.password() if accepted else None
+                remember = dialog.remember() if accepted else False
+                # Dispose each attempt's dialog so a wrong-password retry doesn't
+                # leave a live QDialog (holding the typed password in its field)
+                # parented to the long-lived wizard. (indie-review M1)
+                dialog.deleteLater()
+                if not accepted:
                     return None  # Cancel abandons the import cleanly
-                password = dialog.password()
-                remember = dialog.remember()
                 continue
             except (PdfError, ValueError, OSError, FinbreakError) as exc:
                 # A non-password decrypt failure (e.g. a corrupt file that passed the
@@ -505,7 +510,10 @@ class ImportWizardWidget(QWidget):
         candidates, or ``None`` if a friendly "no usable table" error was surfaced."""
         try:
             return PdfImporter().candidate_tables(plaintext)
-        except (ValueError, OSError, FinbreakError) as exc:
+        except (PdfError, ValueError, OSError, FinbreakError) as exc:
+            # candidate_tables re-runs the idempotent pikepdf normalise, which can
+            # raise PdfError — catch it here too, matching the sibling _decrypt_pdf
+            # net, so it never crashes the slot. (indie-review L1)
             self._error.setText(str(exc))
             return None
 
