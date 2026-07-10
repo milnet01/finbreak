@@ -1008,6 +1008,9 @@ def test_FIBR0059_reassign_autolock_caught(qtbot, service, monkeypatch):
 
     monkeypatch.setattr(widget._statements, "reassign_account", _raise)
     widget._reassign_button.click()  # must not raise out of the slot
+    assert TransactionRepository(service.vault.connection).count_for_account(a) == 1, (
+        "the guarded reassign left the transaction on account a"
+    )
 
 
 # -- UI (shell): INV-8 status message ---------------------------------------- #
@@ -1026,3 +1029,14 @@ def test_FIBR0059_shell_reports_account_changed(qtbot, service, monkeypatch):
     assert window.statusBar().currentMessage() == "Statement account changed", (
         "the shell reports the MOVE (not 'Statement deleted') in the status bar"
     )
+
+
+def test_list_statements_ordered_by_import_recency(service):
+    """list_statements orders by import recency then id (FIBR-0064): two imports
+    surface in insertion order."""
+    imp = ImportService(service.vault)
+    acct = _acct(service)
+    _do_import(imp, _csv(HEADER, [["2026-01-05", "a", "-1.00"]]), acct, "first.csv")
+    _do_import(imp, _csv(HEADER, [["2026-02-05", "b", "-1.00"]]), acct, "second.csv")
+    rows = StatementService(service.vault).list_statements()
+    assert [r.source_filename for r in rows] == ["first.csv", "second.csv"]

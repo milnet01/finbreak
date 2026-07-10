@@ -421,6 +421,19 @@ class ImportWizardWidget(QWidget):
             return
         self._begin_decrypt(data)
 
+    def _show_pdf_read_error(self, exc: Exception) -> None:
+        """A corrupt/unreadable PDF raises ``PdfError`` whose ``str`` is raw pikepdf
+        internals (e.g. "unable to find trailer dictionary while recovering damaged
+        file") — show OUR friendly message for it, not the library text (FIBR-0064).
+        Our own ``ValueError`` / ``FinbreakError`` (size cap, format, …) already
+        carry friendly messages, so those pass through unchanged."""
+        if isinstance(exc, PdfError):
+            self._error.setText(
+                self.tr("Couldn't read this PDF — try your bank's CSV or OFX export.")
+            )
+        else:
+            self._error.setText(str(exc))
+
     def _try_decrypt(
         self, data: bytes, password: str | None
     ) -> bytes | _NeedPassword | None:
@@ -437,8 +450,8 @@ class ImportWizardWidget(QWidget):
             # A non-password decrypt failure (e.g. a corrupt file that passed the
             # %PDF- sniff — pikepdf.open raises PdfError, NOT a ValueError/OSError)
             # surfaces a friendly message instead of crashing the slot (coding.md
-            # § 2; never crash the UI).
-            self._error.setText(str(exc))
+            # § 2; never crash the UI). PdfError's raw text is replaced (FIBR-0064).
+            self._show_pdf_read_error(exc)
             return None
 
     def _begin_decrypt(self, data: bytes) -> None:
@@ -507,7 +520,7 @@ class ImportWizardWidget(QWidget):
                 )
                 return
         except (PdfError, ValueError, FinbreakError) as exc:
-            self._error.setText(str(exc))
+            self._show_pdf_read_error(exc)
             return
         candidates = self._extract_pdf_tables(plaintext)
         if candidates is None:
@@ -550,7 +563,7 @@ class ImportWizardWidget(QWidget):
             # candidate_tables re-runs the idempotent pikepdf normalise, which can
             # raise PdfError — catch it here too, matching the sibling ``_try_decrypt``
             # net, so it never crashes the slot. (indie-review L1)
-            self._error.setText(str(exc))
+            self._show_pdf_read_error(exc)
             return None
 
     @staticmethod

@@ -480,7 +480,9 @@ def test_INV13_wizard_corrupt_pdf_shows_message_not_crash(qtbot, service, tmp_pa
     widget = _wizard(qtbot, service, acct)
     widget._select_file(str(path))  # must not raise
     assert widget._stack.currentIndex() == _STEP_PICK, "stays on pick, no crash"
-    assert widget._error.text() != "", "a friendly message is shown"
+    # Assert the friendly message itself (FIBR-0064), not merely that it is non-empty
+    # — so a regression to a raw exception string would fail here.
+    assert "couldn't read this pdf" in widget._error.text().lower()
 
 
 def test_parse_maps_pdf_parse_error_to_value_error(monkeypatch):

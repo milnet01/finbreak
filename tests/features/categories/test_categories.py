@@ -439,3 +439,12 @@ def test_add_category_swallows_vault_locked_silently(qtbot, service, monkeypatch
     monkeypatch.setattr(widget._categories, "add_category", locked)
     widget._on_add()  # must not raise
     assert widget._error.text() == "", "VaultLockedError is swallowed silently"
+
+
+def test_add_category_unknown_parent_raises(service):
+    """add_category under a non-existent parent id raises the _require_parent
+    'no category with id' ValueError (FIBR-0064) — distinct from the None-parent
+    'must have a parent Type' branch already covered."""
+    svc = CategoryService(service.vault)
+    with pytest.raises(ValueError, match="no category with id"):
+        svc.add_category(999999, "Orphan")

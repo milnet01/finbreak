@@ -838,6 +838,7 @@ def test_INV14_home_set_catches_vault_locked(qtbot, service, monkeypatch):
     monkeypatch.setattr(home._categorization, "set_manual_category", _raise)
     home._select_txn(txn)
     home._on_set_category()  # must not raise
+    assert _txn_cat(service, txn) == (None, None), "guarded set left the row unchanged"
 
 
 def test_INV14_learning_path_refresh_catches_vault_locked(qtbot, service, monkeypatch):
@@ -856,6 +857,9 @@ def test_INV14_learning_path_refresh_catches_vault_locked(qtbot, service, monkey
 
     monkeypatch.setattr(home._transactions, "list_transactions", _raise)
     home._apply_learned_rule(dialog)  # must not raise — refresh() is inside the guard
+    assert CategorizationService(service.vault).would_categorize("pick n pay") == g, (
+        "add_rule ran before the guarded refresh() hit the lock"
+    )
 
 
 def test_INV14_apply_catches_vault_locked(qtbot, service, monkeypatch):
@@ -869,6 +873,7 @@ def test_INV14_apply_catches_vault_locked(qtbot, service, monkeypatch):
 
     monkeypatch.setattr(widget._categorization, "apply_rules", _raise)
     widget._apply_button.click()  # must not raise
+    assert widget._error.text() == "", "VaultLockedError swallowed silently"
 
 
 def test_INV14_category_delete_catches_vault_locked(qtbot, service, monkeypatch):
@@ -887,6 +892,7 @@ def test_INV14_category_delete_catches_vault_locked(qtbot, service, monkeypatch)
 
     monkeypatch.setattr(widget._categories, "delete_category", _raise)
     widget._delete_button.click()  # must not raise
+    assert widget._error.text() == "", "VaultLockedError swallowed silently"
 
 
 def test_set_manual_category_rejects_a_root(service):
@@ -1021,3 +1027,15 @@ def test_add_rule_blocked_when_no_leaf_categories(qtbot, service, monkeypatch):
 
     assert opened == [], "no dialog opens when there are no leaf categories"
     assert "category" in widget._error.text().lower()
+
+
+def test_move_rule_unknown_id_is_noop(service):
+    """move_rule on a non-existent rule id returns cleanly (no raise) and leaves
+    the order untouched — the early-return branch (FIBR-0064)."""
+    cs = CategorizationService(service.vault)
+    g = _leaf_id(service, "Groceries")
+    cs.add_rule("a", g)
+    cs.add_rule("b", g)
+    before = [r.id for r in cs.list_rules()]
+    cs.move_rule(999999, "up")  # unknown id — no-op
+    assert [r.id for r in cs.list_rules()] == before

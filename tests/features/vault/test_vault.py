@@ -807,3 +807,66 @@ def test_INV6_unlock_distinct_message_for_malformed_sidecar(qtbot, service, path
     assert "password" not in message.lower(), (
         "a malformed sidecar must not be reported as a wrong password"
     )
+
+
+def test_unlock_wipes_password_on_load_failure(paths):
+    """AuthService.unlock zeroes the password bytearray when load_params fails (a
+    corrupt sidecar), so a failed unlock leaves no plaintext password in memory
+    (FIBR-0064 / security-model INV-3)."""
+    vault_path, sidecar_path = paths
+    svc = AuthService(vault_path, sidecar_path)
+    svc.first_run(bytearray(_PW), "ZAR")
+    svc.lock()
+    sidecar_path.write_text("not valid json{", encoding="utf-8")  # corrupt the sidecar
+    pw = bytearray(_PW)
+    with pytest.raises(KdfPolicyError):
+        svc.unlock(pw)
+    assert pw == bytearray(len(pw)), "the password buffer is zeroed on failure"
+
+
+def test_INV6_unlock_shows_schema_message_on_newer_vault(qtbot, service, monkeypatch):
+    """A vault written by a NEWER build raises SchemaVersionError on unlock; the
+    dialog shows its own 'newer version' message (distinct from the wrong-password
+    one) and emits unlock_failed. Driven via _on_derived to skip the real Argon2
+    worker (FIBR-0064)."""
+    from finbreak.errors import SchemaVersionError
+    from finbreak.ui.unlock import UnlockDialog
+
+    service.first_run(bytearray(_PW), "ZAR")
+    service.lock()
+    dialog = UnlockDialog(service)
+    qtbot.addWidget(dialog)
+
+    def _raise_newer(_raw):
+        raise SchemaVersionError("vault schema version 99 is newer than this build")
+
+    monkeypatch.setattr(service, "complete_unlock", _raise_newer)
+    failed: list[int] = []
+    dialog.unlock_failed.connect(lambda: failed.append(1))
+    dialog._on_derived(b"\x00" * 32)  # simulate the worker delivering a derived key
+
+    assert "newer version" in dialog._error.text().lower()
+    assert failed == [1], "unlock_failed emitted, not unlocked"
+
+
+def test_INV5_first_run_shows_message_on_create_failure(qtbot, service, monkeypatch):
+    """If vault creation fails, FirstRunDialog surfaces a 'Could not create the
+    vault' message instead of crashing the slot (FIBR-0064). State is seeded
+    directly so the real Argon2 worker never spins."""
+    from finbreak.ui.first_run import FirstRunDialog
+
+    dialog = FirstRunDialog(service)
+    qtbot.addWidget(dialog)
+    dialog._pending_params = _params(bytes(SALT_LEN))  # what _on_submit would set
+    dialog._pending_currency = "ZAR"
+
+    def _boom(*a, **k):
+        raise RuntimeError("disk full")
+
+    monkeypatch.setattr(service, "complete_first_run", _boom)
+    completed: list[int] = []
+    dialog.completed.connect(lambda: completed.append(1))
+    dialog._on_derived(b"\x00" * 32)  # worker delivers the key → complete_first_run
+
+    assert "could not create the vault" in dialog._error.text().lower()
+    assert completed == [], "completed is not emitted when creation fails"
