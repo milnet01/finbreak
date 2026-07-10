@@ -12,10 +12,13 @@
 
 ## Architecture
 
-A layered desktop app. The UI never touches storage directly — everything goes
-through a service layer, which goes through repositories, which own the only
-handle to the encrypted database. This keeps each layer testable in isolation
-(services tested with an in-memory repo; importers tested with sample files).
+A layered desktop app. The UI never touches storage directly — every
+**vault-touching** flow goes through a service layer, then repositories, which own
+the only handle to the encrypted database. (The one exception is the opt-in
+updater: `UpdateService` reads the plaintext `window.ini` and the network, never
+the vault — so it goes through no repository; FIBR-0054.) This keeps each layer
+testable in isolation (services tested with an in-memory repo; importers tested
+with sample files).
 
 ```mermaid
 flowchart TB
@@ -41,7 +44,7 @@ flowchart TB
         Transfer[TransferDetectionService<br/>suggest + confirm]
         Report[ReportingService<br/>aggregations]
         PdfOut[PdfExportService<br/>render + encrypt]
-        Update[UpdateService<br/>opt-in signed AppImage update — FIBR-0054]
+        Update[UpdateService<br/>opt-in signed update · no vault/Repo — FIBR-0054]
     end
 
     subgraph Importers["Importers (pluggable)"]

@@ -3,8 +3,10 @@
 > A private desktop app that breaks down where your money goes — from
 > your own bank statements, with no bank linking and none of your
 > financial data ever leaving your machine. The only network access is
-> an **opt-in, off-by-default** check for app updates (which you can
-> leave off).
+> an **opt-in, off-by-default** updater — turn it on and it checks
+> GitHub for a newer release and can download + install a
+> signature-verified update; leave it off (the default) and the app
+> never touches the network.
 
 [![Status](https://img.shields.io/badge/status-pre--alpha-orange)]()
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
