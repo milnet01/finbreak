@@ -7,14 +7,21 @@ no real signing key (a throwaway test key is monkeypatched in).
 
 from __future__ import annotations
 
+import os
+
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PrivateKey,
     Ed25519PublicKey,
 )
 
-from finbreak.errors import FinbreakError, UpdateVerificationError
+from finbreak.errors import FinbreakError, UpdateError, UpdateVerificationError
 from finbreak.services import update_key
+from finbreak.services.update_installer import (
+    AppImageInstaller,
+    detect_installer,
+    is_update_supported,
+)
 from finbreak.services.update import (
     _parse_version,
     _select_assets,
@@ -145,3 +152,80 @@ def test_INV4_placeholder_key_fails_closed():
     sig = priv.sign(b"finbreak-0.1.0")
     with pytest.raises(InvalidSignature):
         update_key.public_key().verify(sig, b"finbreak-0.1.0")
+
+
+# --------------------------------------------------------------------------- #
+# INV-7 / INV-5 / INV-6 — the AppImage installer (platform seam, D6/D8)
+# --------------------------------------------------------------------------- #
+def test_INV7_no_appimage_env_means_feature_inert(monkeypatch):
+    monkeypatch.delenv("APPIMAGE", raising=False)
+    assert detect_installer() is None
+    assert is_update_supported() is False
+
+
+def test_INV7_appimage_env_pointing_at_missing_file_is_inert(monkeypatch, tmp_path):
+    monkeypatch.setenv("APPIMAGE", str(tmp_path / "does-not-exist.AppImage"))
+    assert detect_installer() is None
+    assert is_update_supported() is False
+
+
+def test_INV7_real_appimage_env_yields_installer(monkeypatch, tmp_path):
+    appimage = tmp_path / "finbreak-0.1.0-x86_64.AppImage"
+    appimage.write_bytes(b"OLD-APP")
+    monkeypatch.setenv("APPIMAGE", str(appimage))
+    installer = detect_installer()
+    assert isinstance(installer, AppImageInstaller)
+    assert installer.target_path() == appimage
+    assert installer.can_self_update() is True
+    assert is_update_supported() is True
+
+
+def test_INV5_apply_swaps_bytes_and_marks_executable(monkeypatch, tmp_path):
+    appimage = tmp_path / "app.AppImage"
+    appimage.write_bytes(b"OLD-APP")
+    new_file = tmp_path / "finbreak-update-xyz.AppImage"
+    new_file.write_bytes(b"NEW-APP")
+    monkeypatch.setattr(os, "execv", lambda *a: None)
+
+    AppImageInstaller(appimage).apply(new_file, lambda: None)
+
+    assert appimage.read_bytes() == b"NEW-APP"
+    assert os.stat(appimage).st_mode & 0o111  # executable
+    assert not new_file.exists()  # moved, not copied
+
+
+def test_INV6_key_wiped_after_replace_before_execv(monkeypatch, tmp_path):
+    appimage = tmp_path / "app.AppImage"
+    appimage.write_bytes(b"OLD-APP")
+    new_file = tmp_path / "new.AppImage"
+    new_file.write_bytes(b"NEW-APP")
+    order: list[str] = []
+    monkeypatch.setattr(os, "execv", lambda *a: order.append("execv"))
+
+    AppImageInstaller(appimage).apply(new_file, lambda: order.append("wipe"))
+
+    assert order == ["wipe", "execv"]  # wipe strictly between replace and exec
+    assert appimage.read_bytes() == b"NEW-APP"  # the replace happened first
+
+
+def test_INV6_failed_replace_leaves_key_unwiped_and_original_intact(
+    monkeypatch, tmp_path
+):
+    appimage = tmp_path / "app.AppImage"
+    appimage.write_bytes(b"OLD-APP")
+    new_file = tmp_path / "new.AppImage"
+    new_file.write_bytes(b"NEW-APP")
+    order: list[str] = []
+    monkeypatch.setattr(os, "execv", lambda *a: order.append("execv"))
+
+    def boom(src, dst):
+        raise OSError("ENOSPC: no space left on device")
+
+    monkeypatch.setattr(os, "replace", boom)
+
+    with pytest.raises(UpdateError):
+        AppImageInstaller(appimage).apply(new_file, lambda: order.append("wipe"))
+
+    assert order == []  # neither the wipe nor the exec ran (INV-6/INV-11)
+    assert appimage.read_bytes() == b"OLD-APP"  # original byte-for-byte intact
+    assert not new_file.exists()  # the temp was cleaned up (INV-5)
