@@ -56,7 +56,7 @@ attacked. Each row: the threat → how finbreak stops it.
 | T2 | **Weak master password brute-forced** | **Argon2id** memory-hard key derivation with pinned parameters (§ 5 INV-2) makes guessing slow and GPU-resistant. Password strength is also surfaced at first-run (advisory, not an enforced INV). |
 | T3 | **Key or password recovered from memory / swap / a crash dump** | Key held only while unlocked; **wiped on lock and on exit**; auto-lock drops it after idle (INV-3). The plaintext password reference is cleared before the unlock routine returns. (Defending against the OS paging memory to swap is out of scope — see § 4.) |
 | T4 | **Decrypted bank statement leaks to disk** | Locked input PDFs are decrypted **in memory only**; no decrypted content is *deliberately* written to disk or temp files (A5, INV-4). (Defending against the OS paging memory to swap is out of scope — § 4.) |
-| T5 | **Malicious import file** (crafted CSV/OFX/PDF — parser crash, path traversal, zip-bomb-style resource exhaustion, formula injection) | Parsers run defensively: bounded resource use, no `eval`, no shell-out; CSV cells are treated as data, never spreadsheet formulas; per-row errors are reported, not fatal (INV-5a/5b/5c). |
+| T5 | **Malicious import file** (crafted CSV/OFX/PDF — parser crash, path traversal, zip-bomb-style resource exhaustion, formula injection) | Parsers run defensively: bounded resource use (file/page/row caps), no `eval`, no shell-out; CSV cells are treated as data, never spreadsheet formulas; per-row errors are reported, not fatal (INV-5a/5b/5c). **One documented residual:** the PDF **decompressed-page-size** vector is assessed + accepted, not bounded — see INV-5b / FIBR-0075. |
 | T6 | **Secret accidentally committed to the public repo** | `gitleaks` in CI **and** the local pre-push script; `.gitignore` excludes `*.db`/vault/build output; no real financial data in tests — only synthetic fixtures (INV-6, A7). |
 | T7 | **Vulnerable third-party dependency (known CVE)** | `pip-audit` in CI + local script fails the build on a known-vulnerable dependency; Dependabot raises bumps; latest-stable policy (global rule § 5). |
 | T8 | **Insecure code pattern introduced** (hardcoded secret, weak hash, `subprocess(shell=True)`, etc.) | `bandit` security linter in CI + local script. |
@@ -155,11 +155,27 @@ be checkable. Enforcement arrives in step with the code:
   no-content-derived-path legs are asserted by unit tests that land
   with the import specs (FIBR-0007+) — e.g. a fixture cell
   `=cmd|'/c calc'` must round-trip as literal text.
-- **INV-5b — Untrusted input is bounded.** Importers cap resource
-  use (max file size, row count, parse time); the concrete budget
-  is pinned in the import specs — FIBR-0007 (CSV), FIBR-0008 (OFX),
-  and especially FIBR-0009 (PDF, the decompression/zip-bomb vector).
-  This is the testable form of T5's "no zip-bomb-style exhaustion".
+- **INV-5b — Untrusted input is bounded (one documented residual).**
+  Importers cap resource use by **file size** (16 MiB,
+  `_MAX_IMPORT_BYTES`), **PDF page count** (500), and **row count**
+  (100 000); the concrete budget is pinned in the import specs —
+  FIBR-0007 (CSV), FIBR-0008 (OFX), FIBR-0009 (PDF). These bound the
+  *input* and *output* sizes and the testable form of T5's "no
+  zip-bomb-style exhaustion" holds **for those bounds**.
+  **Residual risk (FIBR-0075 — assessed + accepted 2026-07-10):** the
+  caps do **not** bound the *decompressed* size of a PDF page's
+  Flate-compressed content stream, so a small in-cap PDF whose page
+  expands to gigabytes could exhaust memory / hang the UI thread during
+  `extract_text`/`extract_tables`. This is **accepted, not fixed**: the
+  threat is a local single user opening a file **they** chose (not a
+  service ingesting untrusted uploads), and the only robust bound —
+  running extraction in a separate memory-capped process (POSIX
+  `RLIMIT_AS` / Windows Job Objects) — is disproportionate to that risk
+  on a cross-platform desktop app. `pdfplumber`/`pdfminer` expose no
+  streaming size limit to do it cheaply in-process. **Revisit if
+  finbreak ever ingests PDFs from an untrusted channel** (a shared inbox,
+  a sync folder, a server). The decompression bound is the documented
+  residual, not a silently-unmet claim.
 - **INV-5c — Per-row failure.** A malformed row is reported and
   skipped; the rest of the import proceeds. Owned by the import
   specs (FIBR-0007 / FIBR-0008 / FIBR-0009), **not** by P01.

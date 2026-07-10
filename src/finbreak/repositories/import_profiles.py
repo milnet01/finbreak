@@ -5,6 +5,15 @@ upsert-by-signature orchestration live in ``ImportService``. Each write is one
 explicit transaction, mirroring ``AccountRepository``'s commit seam. The SELECT
 column list is written literally so it shares the ``ImportProfile`` dataclass's
 field order — ``ImportProfile(*row)`` stays aligned.
+
+``get`` / ``list_all`` / ``update`` have **no production caller yet**: the import
+wizard only auto-matches by signature (``get_by_signature``) and saves (``add``).
+They are the intentional read/edit API for a future **"manage saved import
+profiles"** view (see / rename / delete the bank layouts a user accumulates) —
+the natural completion of the saved-profiles feature — and are kept + test-covered
+rather than removed, so that view needs no repository change when it is built
+(FIBR-0070, decided keep-not-delete 2026-07-10). Remove them only if that view is
+dropped from the roadmap.
 """
 
 from __future__ import annotations
