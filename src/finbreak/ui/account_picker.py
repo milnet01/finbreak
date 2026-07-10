@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 )
 
 from finbreak.models import Account
+from finbreak.ui._widgets import select_combo_data
 
 
 class AccountPickerDialog(QDialog):
@@ -35,9 +36,8 @@ class AccountPickerDialog(QDialog):
         self._combo = QComboBox()
         for account in accounts:
             self._combo.addItem(account.name, account.id)
-        index = self._combo.findData(current_account_id)
-        if index >= 0:  # preselect the current account (a safe default)
-            self._combo.setCurrentIndex(index)
+        # preselect the current account (a safe default)
+        select_combo_data(self._combo, current_account_id)
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel

@@ -36,6 +36,7 @@ from finbreak.models import CategorizationRule, Category
 from finbreak.services.auth import AuthService
 from finbreak.services.categories import CategoryService
 from finbreak.services.categorization import CategorizationService
+from finbreak.ui._widgets import select_combo_data
 from finbreak.ui.modal import show_modal
 
 _COL_PATTERN = 0
@@ -63,9 +64,7 @@ class RuleEditDialog(QDialog):
         for leaf in leaves:
             self._category.addItem(leaf.name, leaf.id)
         if category_id is not None:
-            index = self._category.findData(category_id)
-            if index >= 0:
-                self._category.setCurrentIndex(index)
+            select_combo_data(self._category, category_id)
 
         self._buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel

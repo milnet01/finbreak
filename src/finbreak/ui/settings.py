@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
 
 from finbreak.errors import VaultLockedError
 from finbreak.services.auth import ALLOWED_AUTO_LOCK_MINUTES, AuthService
+from finbreak.ui._widgets import select_combo_data
 
 
 class SettingsDialog(QDialog):
@@ -58,9 +59,7 @@ class SettingsDialog(QDialog):
         # absent/garbage/out-of-set to DEFAULT, which D6 pins in ALLOWED), so findData
         # resolves. The >= 0 guard is belt-and-braces: a miss would safe-fail to index
         # 0 (the most-aggressive lock), never a weaker one.
-        current = self._combo.findData(service.auto_lock_minutes())
-        if current >= 0:
-            self._combo.setCurrentIndex(current)
+        select_combo_data(self._combo, service.auto_lock_minutes())
 
         # Read-only display of the vault's base currency (a plain QLabel).
         self._currency = QLabel(base_currency)

@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 )
 
 from finbreak.models import Category
+from finbreak.ui._widgets import select_combo_data
 
 
 class CategoryPickerDialog(QDialog):
@@ -37,9 +38,7 @@ class CategoryPickerDialog(QDialog):
         for leaf in leaves:
             self._combo.addItem(leaf.name, leaf.id)
         if current_category_id is not None:
-            index = self._combo.findData(current_category_id)
-            if index >= 0:
-                self._combo.setCurrentIndex(index)
+            select_combo_data(self._combo, current_category_id)
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel

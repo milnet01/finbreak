@@ -30,6 +30,7 @@ from finbreak.errors import FinbreakError, VaultLockedError
 from finbreak.models import CategoryKind
 from finbreak.services.auth import AuthService
 from finbreak.services.categories import CategoryService
+from finbreak.ui._widgets import select_combo_data
 
 # Per-item data roles: the category id, its parent_id, and its kind token (set
 # on the two roots only — a non-None kind marks a structural Type header).
@@ -194,9 +195,7 @@ class CategoriesWidget(QWidget):
             return
         # Load the selected category into the shared form for an in-place edit.
         self._name.setText(item.text(0))
-        index = self._type.findData(item.data(0, _PARENT_ROLE))
-        if index != -1:
-            self._type.setCurrentIndex(index)
+        select_combo_data(self._type, item.data(0, _PARENT_ROLE))
 
     def _select_category(self, category_id: int) -> None:
         """Select the tree item (root or child) for ``category_id`` (UI tests)."""

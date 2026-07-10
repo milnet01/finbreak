@@ -1000,9 +1000,10 @@ is a future error tomorrow.
   Kind: fix.
   Source: indie-review-2026-07-10 (M-imp1).
 
-- 📋 [FIBR-0068] **Promote the _set_combo(combo, value) helper to a shared UI util and dedup the 7x findData+setCurrentIndex idiom.**
+- ✅ [FIBR-0068] **Promote the _set_combo(combo, value) helper to a shared UI util and dedup the 7x findData+setCurrentIndex idiom.**
   Kind: refactor.
   Source: indie-review-2026-07-10 (M-dlg4).
+  Resolved (2026-07-10): extracted the guarded combo-preselect idiom (index = combo.findData(v); if index >= 0: combo.setCurrentIndex(index)) into select_combo_data() in new src/finbreak/ui/_widgets.py, and converted the 6 sites (settings/accounts/categories type combos + rules/category_picker/account_picker id combos). IMPORTANT distinction surfaced, not forced: kept DISTINCT from ImportWizardWidget._set_combo, which is UNGUARDED by design — the wizard wants a saved-profile column absent from the current file to CLEAR the combo (force a re-pick), whereas the picker/dialog sites keep the current selection when a value isn't found. Merging them would have been a silent behavior change. mypy 0, 165 UI tests pass.
 
 - 📋 [FIBR-0069] **Extract a _signed_balance_from_tokens helper for the 4x duplicated Standard Bank balance-token parse.**
   Kind: refactor.

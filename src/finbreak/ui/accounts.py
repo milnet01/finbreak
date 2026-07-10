@@ -26,6 +26,7 @@ from finbreak.errors import FinbreakError, VaultLockedError
 from finbreak.models import AccountType
 from finbreak.services.accounts import AccountService
 from finbreak.services.auth import AuthService
+from finbreak.ui._widgets import select_combo_data
 
 _ACCOUNT_ID_ROLE = Qt.ItemDataRole.UserRole
 # The selected account's current name + token, stashed on the row so selecting
@@ -149,9 +150,7 @@ class AccountsWidget(QWidget):
         if item is None:
             return
         self._name.setText(item.data(_ACCOUNT_NAME_ROLE))
-        index = self._type.findData(item.data(_ACCOUNT_TYPE_ROLE))
-        if index != -1:
-            self._type.setCurrentIndex(index)
+        select_combo_data(self._type, item.data(_ACCOUNT_TYPE_ROLE))
 
     @Slot()
     def _on_delete(self) -> None:
