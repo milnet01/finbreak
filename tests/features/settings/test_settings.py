@@ -49,15 +49,6 @@ def service(paths):
     svc.lock()
 
 
-@pytest.fixture(autouse=True)
-def window_ini(tmp_path, monkeypatch):
-    """Redirect the window-geometry INI to tmp (autouse) so no UI test writes to
-    the real data dir (FIBR-0052 INV-5)."""
-    monkeypatch.setattr(
-        "finbreak.paths.window_settings_path", lambda: tmp_path / "window.ini"
-    )
-
-
 def _shell(qtbot, service) -> MainWindow:
     """An unlocked MainWindow driven past routing, as a real unlock success does."""
     window = MainWindow(service)

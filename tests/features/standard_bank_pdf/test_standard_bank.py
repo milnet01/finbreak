@@ -192,6 +192,13 @@ def test_INV10_family_c_folds_zero_date_continuation_skips_section_header():
 def test_INV3_family_a_current():
     r = _parse("family_a_current.pdf")
     assert [d.amount_minor for d in r.drafts] == [-10000, 25000, -5000]
+    # occurred_on asserted alongside amounts (matches every sibling family test):
+    # locks year-inference for the most common US-current-account case.
+    assert [d.occurred_on for d in r.drafts] == [
+        "2026-05-02",
+        "2026-05-03",
+        "2026-05-04",
+    ]
     assert (r.period_start, r.period_end) == ("2026-05-01", "2026-05-31")
 
 

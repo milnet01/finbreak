@@ -941,6 +941,24 @@ is a future error tomorrow.
   Source: self-found-2026-07-09.
   Resolved (2026-07-09): added a `mypy` stage to `scripts/ci-local.sh` (after gitleaks, before pytest — bare `mypy` uses the config's `files = ["src","tests"]`), so CI (which invokes ci-local.sh) now enforces it too; the dev group already pins `mypy==2.1.0`. Fixed the 4 test-tree errors: `assert ... is not None` guards on `_combo`/`_click_save`/`_click_cancel` in `tests/features/settings/test_settings.py`, and aligned `_StubWorker.start` to the `QThread.start(self, priority=...)` signature in `tests/features/app_shell/test_app_shell.py`. Gate green: 366 passed / 1 skipped, mypy clean (59 files), shellcheck 0.
 
+- 📋 [FIBR-0062] **Test-audit: hoist duplicated paths/service/_PW fixtures + connection-proxy helpers to shared conftest.**
+  All 4 /test-audit chunks flagged this. The identical `paths` fixture, `_PW` literal, `_FailAt*`/`_StandInVault` connection-proxy classes, and `_acct`/`_wizard`/`_default_id`/`_pump_deferred_delete`/`_two_accounts` helpers are copy-pasted across ~9 tests/features/* files (Rule-of-Three well exceeded). Extract to tests/conftest.py (paths + _PW import + a raising_proxy(real, trigger, message) factory). The window_ini autouse fixture was already hoisted 2026-07-10 as part of the CRITICAL isolation fix.
+  **Layman:** Lots of test files copy-paste the same setup code; move it to one shared place so a change only needs editing once.
+  Kind: test.
+  Source: test-audit-2026-07-10.
+
+- 📋 [FIBR-0063] **Test-audit: parametrize repeated single-assert tests + split multi-claim tests.**
+  Convert the four standard_bank INV11 checksum/completeness tests and the three INV2a per-family detection asserts to @pytest.mark.parametrize(ids=...) so one failure doesn't mask siblings; same for the import_ bad-mapping-config loop (test_import.py:263). Consider splitting statements INV5a's 7-claim test (esp. the plaintext-leak security checks).
+  **Layman:** Some tests bundle several checks in one; splitting/parametrizing them makes a failure point at the exact broken case.
+  Kind: test.
+  Source: test-audit-2026-07-10.
+
+- 📋 [FIBR-0064] **Test-audit: add tests for untested error branches surfaced by the audit.**
+  Untested branches: UnlockDialog SchemaVersionError (HIGH); FirstRunDialog create-failure except; AuthService.unlock() password-wipe-on-failure; CategoryService._require_parent ValueError; categorization.move_rule unknown rule_id; import_wizard _decrypt_pdf/_extract_pdf_tables friendly-error paths (wizard-level); StatementService.list_statements ordering contract; standard_bank corrupt-PDF wizard message (assert substring, not != ''); and the 5 auto-lock 'must not raise' tests should gain a concrete post-click state assertion.
+  **Layman:** A few error-handling paths in the app have no test; add regression tests so a future change can't silently break them.
+  Kind: test.
+  Source: test-audit-2026-07-10.
+
 ## How to add an item
 
 1. Allocate the next ID:

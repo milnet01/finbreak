@@ -10,6 +10,7 @@ vault uses `tmp_path`; no test touches the network or real financial data
 
 import logging
 from collections.abc import Iterator
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -73,7 +74,8 @@ def test_INV1_crud_roundtrip_and_order(service):
     repo = AccountRepository(service.vault.connection)
     got = repo.get(savings.id)
     assert got is not None and got.name == "Savings" and got.type == "savings"
-    assert got.created_at, "created_at is a well-formed timestamp"
+    # created_at is a well-formed ISO-8601 timestamp (fromisoformat raises if not).
+    datetime.fromisoformat(got.created_at)
 
     svc.update_account(current.id, "Cheque", "current")
     assert repo.get(current.id).name == "Cheque"
@@ -422,7 +424,9 @@ def test_INV7d_delete_in_use_shows_message_and_removes_nothing(qtbot, service):
     qtbot.addWidget(widget)
     widget._select_account(default_id)
     widget._delete_button.click()
-    assert widget._error.text() != "", "an in-use delete shows a clear message"
+    assert "still has transactions" in widget._error.text(), (
+        "an in-use delete shows the specific 'still has transactions' message"
+    )
     assert any(a.id == default_id for a in svc.list_accounts()), "nothing removed"
 
 

@@ -100,7 +100,7 @@ def paths(tmp_path) -> tuple[Path, Path]:
 @pytest.fixture
 def service(paths) -> Iterator[AuthService]:
     svc = AuthService(*paths)
-    svc.first_run(bytearray(_PW), "ZAR")  # first-run migrates straight to v4
+    svc.first_run(bytearray(_PW), "ZAR")  # first-run migrates straight to latest
     yield svc
     svc.lock()
 

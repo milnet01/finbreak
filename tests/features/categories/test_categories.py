@@ -10,6 +10,7 @@ round-trips (INV-7) use the pytest-qt `qtbot` fixture. Every on-disk vault uses
 
 import logging
 from collections.abc import Iterator
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -63,7 +64,8 @@ def test_INV1_crud_roundtrip_and_order(service):
     got = repo.get(bonus.id)
     assert got is not None and got.name == "Bonus" and got.parent_id == income.id
     assert got.kind is None, "a child carries kind = NULL"
-    assert got.created_at, "created_at is a well-formed timestamp"
+    # created_at is a well-formed ISO-8601 timestamp (fromisoformat raises if not).
+    datetime.fromisoformat(got.created_at)
 
     # children_of(parent) is ordered by name, case-insensitive.
     children = svc.children_of(income.id)

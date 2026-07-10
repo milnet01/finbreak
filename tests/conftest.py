@@ -19,6 +19,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import json  # noqa: E402
 from pathlib import Path  # noqa: E402
 
+import pytest  # noqa: E402
 from sqlcipher3 import dbapi2  # noqa: E402
 
 from finbreak.crypto import KEY_LEN, SALT_LEN, derive_key  # noqa: E402
@@ -38,6 +39,23 @@ from finbreak.services.auth import (  # noqa: E402
 
 # The test master password, shared by every migration/vault fixture.
 _PW = b"correct horse battery staple"
+
+
+@pytest.fixture(autouse=True)
+def window_ini(tmp_path, monkeypatch):
+    """Redirect the window-geometry INI to tmp for EVERY test so no UI test writes
+    to the real per-user data dir (``~/.local/share/finbreak/window.ini``).
+
+    Autouse + suite-wide: ``MainWindow`` reads/writes ``paths.window_settings_path()``
+    on construct + close, so any test that builds a ``MainWindow`` would otherwise
+    pollute the real data dir (and read stale host geometry — a non-deterministic
+    ``_initial_tab``). The settings + statements suites each carried a private copy
+    of this fixture; app_shell + vault did not, and leaked. Promoted here so every
+    suite is isolated automatically. Returns the path for tests that read the INI.
+    """
+    ini = tmp_path / "window.ini"
+    monkeypatch.setattr("finbreak.paths.window_settings_path", lambda: ini)
+    return ini
 
 
 def _params(salt: bytes) -> KdfParams:

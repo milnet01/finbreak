@@ -54,15 +54,6 @@ def service(paths):
     svc.lock()
 
 
-@pytest.fixture(autouse=True)
-def window_ini(tmp_path, monkeypatch):
-    """Redirect the window-geometry INI to tmp (autouse) so no test writes to the
-    real data dir; geometry tests request this fixture for the path (INV-5)."""
-    ini = tmp_path / "window.ini"
-    monkeypatch.setattr("finbreak.paths.window_settings_path", lambda: ini)
-    return ini
-
-
 def _csv(header, rows):
     return "\n".join([",".join(header)] + [",".join(r) for r in rows]) + "\n"
 

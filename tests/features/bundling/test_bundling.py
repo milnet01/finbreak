@@ -39,6 +39,10 @@ def _run_cli(*args: str) -> subprocess.CompletedProcess[str]:
         env=env,
         capture_output=True,
         text=True,
+        # Fail fast if the self-test subprocess hangs (e.g. a regression spins up
+        # a real event loop instead of exiting) — no pytest-timeout plugin is
+        # configured, so without this the whole gate blocks until the CI job cap.
+        timeout=60,
     )
 
 
