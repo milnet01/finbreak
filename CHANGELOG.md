@@ -211,6 +211,8 @@ signaling per
 
 ### Fixed
 
+- **Adding a categorisation rule when no categories exist now shows a clear "create a category first" message instead of opening a dialog that dead-ends on a confusing error.** (FIBR-0079)
+
 - **A second app instance or a slow backup holding a brief database lock no longer crashes with a raw error — connections now wait up to 5 seconds for the lock to clear.** (FIBR-0076)
 
 - **Auto-locking while a pop-up is open no longer crashes the app (FIBR-0065).**

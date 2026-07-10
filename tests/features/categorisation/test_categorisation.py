@@ -989,3 +989,50 @@ def test_edit_rule_swallows_vault_locked_silently(qtbot, service, monkeypatch):
     monkeypatch.setattr(widget._categorization, "update_rule", locked)
     widget._edit_button.click()  # must not raise, must not show an error label
     assert widget._error.text() == "", "a VaultLockedError is swallowed silently"
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0079 — RuleEditDialog handles the zero-leaf-categories edge
+# --------------------------------------------------------------------------- #
+def test_rule_dialog_ok_disabled_without_leaf_categories(qtbot):
+    """RuleEditDialog with no leaf categories keeps OK disabled even with a
+    non-empty pattern — its combo is empty so there is nothing to file the rule
+    as, and selected_category_id() would be None (FIBR-0079)."""
+    from PySide6.QtWidgets import QDialogButtonBox
+
+    from finbreak.ui.rules import RuleEditDialog
+
+    dialog = RuleEditDialog([], pattern="rent")
+    qtbot.addWidget(dialog)
+    ok = dialog.findChild(QDialogButtonBox).button(QDialogButtonBox.StandardButton.Ok)
+    assert ok is not None and not ok.isEnabled()
+    assert dialog.selected_category_id() is None
+
+
+def test_add_rule_blocked_when_no_leaf_categories(qtbot, service, monkeypatch):
+    """With every leaf category deleted, Add shows a 'create a category first'
+    message and opens no dialog — instead of a submittable dialog whose empty
+    combo makes add_rule reject with the confusing leaf error (FIBR-0079)."""
+    import finbreak.ui.rules as rules_mod
+    from finbreak.ui.rules import RulesWidget
+
+    cats = CategoryService(service.vault)
+    for leaf in CategorizationService(service.vault).leaf_categories():
+        cats.delete_category(leaf.id)
+
+    opened: list[int] = []
+
+    def factory(*a, **k):
+        opened.append(1)
+        d = QDialog()
+        qtbot.addWidget(d)
+        return d
+
+    monkeypatch.setattr(rules_mod, "RuleEditDialog", factory)
+
+    widget = RulesWidget(service)
+    qtbot.addWidget(widget)
+    widget._on_add()
+
+    assert opened == [], "no dialog opens when there are no leaf categories"
+    assert "category" in widget._error.text().lower()

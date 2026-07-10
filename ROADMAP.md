@@ -1039,10 +1039,11 @@ is a future error tomorrow.
   Kind: perf.
   Source: indie-review-2026-07-10 loop-2 (statement H3).
 
-- 📋 [FIBR-0079] **Gate RuleEditDialog OK on a selectable category (zero-leaf-categories edge) + honest selected_category_id return type.**
+- ✅ [FIBR-0079] **Gate RuleEditDialog OK on a selectable category (zero-leaf-categories edge) + honest selected_category_id return type.**
   If a user deletes every leaf category, RuleEditDialog's combo is empty, selected_category_id() returns None (despite its -> int hint), and OK stays enabled -> add_rule(pattern, None) surfaces the confusing 'a category must be a leaf, not a Type' instead of 'create a category first'. Gate OK on combo.count() > 0 (or block Add/Edit when leaf_categories() is empty) and type selected_category_id() as int | None. FIBR-0010 D13's 'no ValueError reaches a caller through the dialog' silently fails to cover zero-leaves.
   Kind: ux.
   Source: indie-review-2026-07-10 loop-2 (core-services + ui-dialogs M2).
+  Resolved (2026-07-10): RuleEditDialog._sync_ok now also requires self._category.count() > 0, so OK stays disabled with zero leaf categories; selected_category_id() typed int | None (honest). RulesWidget._on_add blocks up front with a "Create a category first, then add a rule." message when leaf_categories() is empty — the reachable path (the _on_edit + learning paths can't hit zero-leaves, since an existing rule / a manual pick both imply a live category). _apply_add/_apply_edit/_apply_learned_rule add a defensive None guard (narrows for the int-typed add_rule/update_rule). FIBR-0010 D13 spec updated to cover the edge. TDD: 2 red→green tests (dialog OK disabled with empty leaves + selected_category_id None; Add blocked + message shown). mypy 0, 74 tests pass.
 
 - ✅ [FIBR-0080] **Route the two hand-rolled settings reads through SettingsRepository.get.**
   services/transactions.py read_minor_unit_exponent + TransactionService.base_currency hand-roll SELECT value FROM settings WHERE key=... instead of SettingsRepository(conn).get(key) (already used by auth.py). Reuse-before-rewrite (CLAUDE.md §3); a typo'd key in one copy has no lint signal. read_minor_unit_exponent needs None/int-cast handling.

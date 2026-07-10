@@ -202,6 +202,8 @@ class HomeView(QWidget):
 
     def _apply_learned_rule(self, dialog: RuleEditDialog) -> None:
         pattern, category_id = dialog.pattern(), dialog.selected_category_id()
+        if category_id is None:
+            return  # OK is gated on a selectable category; defensive (FIBR-0079)
         try:
             self._categorization.add_rule(pattern, category_id)
             self._categorization.apply_rules()  # propagate to other auto rows

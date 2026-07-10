@@ -85,12 +85,18 @@ class RuleEditDialog(QDialog):
     @Slot()
     def _sync_ok(self) -> None:
         ok = self._buttons.button(QDialogButtonBox.StandardButton.Ok)
-        ok.setEnabled(bool(self._pattern.text().strip()))
+        # Require a non-empty pattern AND a selectable category: with zero leaf
+        # categories the combo is empty and selected_category_id() is None, which
+        # add_rule would reject with a confusing "must be a leaf" error (FIBR-0079).
+        ok.setEnabled(bool(self._pattern.text().strip()) and self._category.count() > 0)
 
     def pattern(self) -> str:
         return self._pattern.text()
 
-    def selected_category_id(self) -> int:
+    def selected_category_id(self) -> int | None:
+        """The chosen leaf's id, or ``None`` when the combo is empty (no leaf
+        categories exist). OK is disabled in that state, so a committed dialog
+        always yields an int (FIBR-0079)."""
         return self._category.currentData()
 
 
@@ -169,13 +175,21 @@ class RulesWidget(QWidget):
     @Slot()
     def _on_add(self) -> None:
         self._error.clear()
-        dialog = RuleEditDialog(self._categorization.leaf_categories(), parent=self)
+        leaves = self._categorization.leaf_categories()
+        if not leaves:
+            # Nothing to file a rule as — guide the user instead of opening a
+            # dialog whose empty combo dead-ends on the leaf error (FIBR-0079).
+            self._error.setText(self.tr("Create a category first, then add a rule."))
+            return
+        dialog = RuleEditDialog(leaves, parent=self)
         # Non-blocking (FIBR-0065): a lock while the dialog is open destroys it
         # before _apply_add runs, so no read hits a deleted C++ object.
         show_modal(dialog, lambda: self._apply_add(dialog))
 
     def _apply_add(self, dialog: RuleEditDialog) -> None:
         pattern, category_id = dialog.pattern(), dialog.selected_category_id()
+        if category_id is None:
+            return  # OK is gated on a selectable category; defensive (FIBR-0079)
         try:
             self._categorization.add_rule(pattern, category_id)
         except VaultLockedError:
@@ -202,6 +216,8 @@ class RulesWidget(QWidget):
 
     def _apply_edit(self, dialog: RuleEditDialog, rule_id: int) -> None:
         pattern, category_id = dialog.pattern(), dialog.selected_category_id()
+        if category_id is None:
+            return  # OK is gated on a selectable category; defensive (FIBR-0079)
         try:
             self._categorization.update_rule(rule_id, pattern, category_id)
         except VaultLockedError:
