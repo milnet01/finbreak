@@ -49,3 +49,14 @@ class ProtectedCategoryError(FinbreakError):
 class CategoryHasChildrenError(FinbreakError):
     """Deleting a category that still has sub-categories (FIBR-0006 INV-6);
     remove the children first."""
+
+
+class UpdateError(FinbreakError):
+    """A recoverable auto-update failure surfaced to the user on an explicit
+    **Update now** — an oversize/timed-out/dropped download or a disk error at
+    swap (FIBR-0054 INV-10/INV-11). The session stays on the current version."""
+
+
+class UpdateVerificationError(UpdateError):
+    """A downloaded AppImage failed its Ed25519 signature check — the *core*
+    integrity gate (FIBR-0054 INV-4). Nothing is installed; the temp is deleted."""

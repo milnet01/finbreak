@@ -8,7 +8,13 @@ no real signing key (a throwaway test key is monkeypatched in).
 from __future__ import annotations
 
 import pytest
+from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+    Ed25519PrivateKey,
+    Ed25519PublicKey,
+)
 
+from finbreak.errors import FinbreakError, UpdateVerificationError
+from finbreak.services import update_key
 from finbreak.services.update import (
     _parse_version,
     _select_assets,
@@ -115,3 +121,27 @@ def test_INV3_select_assets_none_when_two_appimages_match():
 
 def test_INV3_select_assets_none_on_empty():
     assert _select_assets([]) is None
+
+
+# --------------------------------------------------------------------------- #
+# INV-4 — the signature gate: the placeholder key + the error taxonomy
+# --------------------------------------------------------------------------- #
+def test_INV4_update_verification_error_is_a_finbreak_error():
+    assert issubclass(UpdateVerificationError, FinbreakError)
+
+
+def test_INV4_public_key_loads_an_ed25519_key():
+    key = update_key.public_key()
+    assert isinstance(key, Ed25519PublicKey)
+
+
+def test_INV4_placeholder_key_fails_closed():
+    """Until Phase 1's keygen fills the real key, the committed placeholder is
+    all-zero bytes: the module imports + ``public_key()`` loads, but no real
+    signature verifies against it (fail closed)."""
+    from cryptography.exceptions import InvalidSignature
+
+    priv = Ed25519PrivateKey.generate()
+    sig = priv.sign(b"finbreak-0.1.0")
+    with pytest.raises(InvalidSignature):
+        update_key.public_key().verify(sig, b"finbreak-0.1.0")
