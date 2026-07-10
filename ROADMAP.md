@@ -157,12 +157,13 @@ scariest unknown (native-library bundling) up front.
 
 ---
 
-- 📋 [FIBR-0054] **Optional in-app auto-update (check → prompt Later/Skip/Update now → download, install, relaunch).**
+- 🚧 [FIBR-0054] **Optional in-app auto-update (check → prompt Later/Skip/Update now → download, install, relaunch).**
   User request 2026-07-09: the app must offer (never force) updates. Flow:
   on a new version, prompt the user with three choices — **Later** (re-ask next
   launch), **Skip** (this version, don't re-prompt for it), **Update now**. On
   "Update now": download the latest build, close the app, install the update, and
   relaunch automatically.
+  Progress (2026-07-10): brainstormed + design approved. Scope = full in-app auto-update, Linux/AppImage first (Windows seam only, not built). Two phases: (1) real release infra — version 0.1.0, signed release AppImage, published v0.1.0 GitHub Release; (2) the updater — opt-in launch check → Later/Skip/Update-now prompt → download + Ed25519-signature-verify → atomic AppImage swap → relaunch. Integrity gate = Ed25519 signature verified via the already-bundled `cryptography` lib (no new runtime dep/tool). Next: write docs/specs/FIBR-0054.md → /cold-eyes.
 
   Design notes (to settle when picked — needs its own brainstorm + spec →
   /cold-eyes):
