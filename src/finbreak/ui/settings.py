@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import Signal, Slot
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -37,6 +38,9 @@ class SettingsDialog(QDialog):
         service: AuthService,
         base_currency: str,
         parent: QWidget | None = None,
+        *,
+        update_enabled: bool = False,
+        update_supported: bool = False,
     ):
         super().__init__(parent)
         self._service = service
@@ -65,9 +69,22 @@ class SettingsDialog(QDialog):
         self._currency = QLabel(base_currency)
         self._currency.setObjectName("settings_currency")
 
+        # The opt-in update check (FIBR-0054 D5). Disabled + explained off an
+        # AppImage, where self-update can't run (INV-7). The dialog holds NO
+        # UpdateService reference — it only reports the checkbox state on Save.
+        self._update_checkbox = QCheckBox(self.tr("Check for updates on startup"))
+        self._update_checkbox.setObjectName("settings_check_updates")
+        self._update_checkbox.setChecked(update_enabled)
+        if not update_supported:
+            self._update_checkbox.setEnabled(False)
+            self._update_checkbox.setToolTip(
+                self.tr("Automatic updates are available only in the AppImage build.")
+            )
+
         form = QFormLayout()
         form.addRow(self.tr("Auto-lock after"), self._combo)
         form.addRow(self.tr("Base currency"), self._currency)
+        form.addRow("", self._update_checkbox)
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
@@ -81,6 +98,12 @@ class SettingsDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.addLayout(form)
         layout.addWidget(buttons)
+
+    def update_enabled(self) -> bool:
+        """The checkbox state — read by the shell on Save to persist the opt-in
+        flag via ``UpdateService.set_enabled`` (D5). The dialog itself writes
+        nothing networked."""
+        return self._update_checkbox.isChecked()
 
     @Slot()
     def _on_save(self) -> None:

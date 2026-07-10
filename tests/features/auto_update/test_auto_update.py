@@ -656,3 +656,182 @@ def test_D7_download_worker_emits_failed(qtbot):
     worker.failed.connect(lambda exc: seen.append(exc))
     worker.run()
     assert isinstance(seen[0], UpdateVerificationError)
+
+
+# --------------------------------------------------------------------------- #
+# D15 / INV-9 — the shell's pending-offer lifecycle + Settings checkbox
+# --------------------------------------------------------------------------- #
+from PySide6.QtWidgets import QCheckBox  # noqa: E402
+
+from conftest import _PW  # noqa: E402
+from finbreak.services.auth import AuthService  # noqa: E402
+from finbreak.ui.main_window import MainWindow  # noqa: E402
+from finbreak.ui.settings import SettingsDialog  # noqa: E402
+from finbreak.ui.update_dialog import UpdateDialog  # noqa: E402
+
+
+@pytest.fixture
+def service(paths):
+    svc = AuthService(*paths)
+    svc.first_run(bytearray(_PW), "ZAR")
+    yield svc
+    svc.lock()
+
+
+class _FakeUpdateService:
+    """A stand-in UpdateService the shell can be built with — no network, no
+    QSettings — so the D15 lifecycle can be driven deterministically."""
+
+    def __init__(self, info=None, enabled=True, verified_path=None):
+        self._info = info
+        self._enabled = enabled
+        self._verified_path = verified_path
+        self.skipped: list[str] = []
+
+    def is_enabled(self):
+        return self._enabled
+
+    def set_enabled(self, enabled):
+        self._enabled = enabled
+
+    def check_for_update(self):
+        return self._info
+
+    def skip_version(self, version):
+        self.skipped.append(version)
+
+    def download_and_verify(self, info):
+        return self._verified_path
+
+
+class _FakeInstaller:
+    def __init__(self, target):
+        self._target = target
+        self.applied: list = []
+
+    def can_self_update(self):
+        return True
+
+    def target_path(self):
+        return self._target
+
+    def apply(self, new_file, on_before_exec):
+        self.applied.append((new_file, on_before_exec))
+
+
+def _updater_shell(qtbot, service, *, info=None, enabled=True, installer=None):
+    updater = _FakeUpdateService(info=info, enabled=enabled)
+    window = MainWindow(service, update_service=updater, installer=installer)
+    qtbot.addWidget(window)
+    return window, updater
+
+
+def _sample_info():
+    return UpdateInfo(
+        version="0.1.1",
+        appimage_url="https://dl/app",
+        sig_url="https://dl/sig",
+        notes_url="https://notes",
+    )
+
+
+def test_D15_found_while_locked_defers_offer_until_unlock(qtbot, service, tmp_path):
+    info = _sample_info()
+    installer = _FakeInstaller(tmp_path / "app.AppImage")
+    window, _ = _updater_shell(qtbot, service, info=info, installer=installer)
+
+    # a found result arrives while the shell is still locked (unlock dialog open)
+    window._on_update_found(info)
+    assert window._pending_update is info
+    assert not isinstance(window._dialog, UpdateDialog)  # no prompt over the lock
+
+    # unlocking releases the held offer
+    window._enter_unlocked()
+    assert isinstance(window._dialog, UpdateDialog)
+    assert window._pending_update is None  # shown at most once
+
+
+def test_D15_skip_persists_and_no_reprompt_after_relock(qtbot, service, tmp_path):
+    info = _sample_info()
+    installer = _FakeInstaller(tmp_path / "app.AppImage")
+    window, updater = _updater_shell(qtbot, service, info=info, installer=installer)
+
+    window._enter_unlocked()
+    window._on_update_found(info)
+    assert isinstance(window._dialog, UpdateDialog)
+    window._on_update_skip()
+    assert updater.skipped == ["0.1.1"]
+    assert not isinstance(window._dialog, UpdateDialog)  # torn down
+
+    # The offer was cleared on skip, so the next unlock's offer check (the tail of
+    # _enter_unlocked) re-shows nothing this launch (D15 — shown at most once).
+    assert window._pending_update is None
+    window._maybe_show_pending_offer()
+    assert not isinstance(window._dialog, UpdateDialog)
+
+
+def test_INV9_download_ready_after_prompt_gone_does_not_apply(qtbot, service, tmp_path):
+    info = _sample_info()
+    installer = _FakeInstaller(tmp_path / "app.AppImage")
+    verified = tmp_path / "finbreak-update-abc.AppImage"
+    verified.write_bytes(b"NEW")
+    window, _ = _updater_shell(qtbot, service, info=info, installer=installer)
+
+    window._enter_unlocked()
+    window._on_update_found(info)
+    prompt = window._dialog
+    window._teardown_dialog()  # an auto-lock tears the prompt down mid-download
+
+    window._on_download_ready(verified, prompt)
+    assert installer.applied == []  # INV-9: the stale result is dropped
+    assert not verified.exists()  # ...and the orphan temp is unlinked
+
+
+def test_INV6_download_ready_applies_with_key_wipe_callback(qtbot, service, tmp_path):
+    info = _sample_info()
+    installer = _FakeInstaller(tmp_path / "app.AppImage")
+    verified = tmp_path / "finbreak-update-abc.AppImage"
+    verified.write_bytes(b"NEW")
+    window, _ = _updater_shell(qtbot, service, info=info, installer=installer)
+
+    window._enter_unlocked()
+    window._on_update_found(info)
+    prompt = window._dialog
+
+    window._on_download_ready(verified, prompt)
+    assert len(installer.applied) == 1
+    new_file, on_before_exec = installer.applied[0]
+    assert new_file == verified
+    assert on_before_exec == service.on_about_to_quit  # the key-wipe (INV-6)
+
+
+def test_INV7_settings_checkbox_disabled_when_unsupported(qtbot, service):
+    dialog = SettingsDialog(
+        service, "ZAR", update_enabled=False, update_supported=False
+    )
+    qtbot.addWidget(dialog)
+    checkbox = dialog.findChild(QCheckBox, "settings_check_updates")
+    assert checkbox is not None
+    assert not checkbox.isEnabled()
+    assert checkbox.toolTip() != ""
+
+
+def test_settings_checkbox_reflects_and_exposes_state(qtbot, service):
+    dialog = SettingsDialog(service, "ZAR", update_enabled=True, update_supported=True)
+    qtbot.addWidget(dialog)
+    checkbox = dialog.findChild(QCheckBox, "settings_check_updates")
+    assert checkbox.isEnabled()
+    assert checkbox.isChecked()
+    assert dialog.update_enabled() is True
+
+
+def test_settings_save_persists_update_flag(qtbot, service, tmp_path):
+    info = _sample_info()
+    window, updater = _updater_shell(qtbot, service, info=info, enabled=False)
+    window._enter_unlocked()
+    window._open_settings()
+    dialog = window._dialog
+    checkbox = dialog.findChild(QCheckBox, "settings_check_updates")
+    checkbox.setChecked(True)
+    dialog._on_save()
+    assert updater.is_enabled() is True  # the shell persisted the toggle

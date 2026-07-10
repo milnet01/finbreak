@@ -23,6 +23,7 @@ from __future__ import annotations
 import os
 import tempfile
 from collections.abc import Callable
+from pathlib import Path
 
 import shiboken6
 from PySide6.QtCore import QSettings, QSize, Qt, QTimer, QUrl
@@ -40,10 +41,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from finbreak import paths
+from finbreak import __version__, paths
 from finbreak.services.auth import AuthService
 from finbreak.services.categorization import CategorizationService
 from finbreak.services.transactions import TransactionService
+from finbreak.services.update import UpdateInfo, UpdateService
+from finbreak.services.update_installer import Installer, detect_installer
+from finbreak.ui._update_worker import DownloadWorker, UpdateCheckWorker
 from finbreak.ui.accounts import AccountsWidget
 from finbreak.ui.categories import CategoriesWidget
 from finbreak.ui.first_run import FirstRunDialog
@@ -55,6 +59,7 @@ from finbreak.ui.rules import RulesWidget
 from finbreak.ui.settings import SettingsDialog
 from finbreak.ui.statements import StatementsWidget
 from finbreak.ui.unlock import UnlockDialog
+from finbreak.ui.update_dialog import UpdateDialog
 
 # The three .github/FUNDING.yml donate URLs (D6/INV-8). Kept in sync with that
 # file by hand — the INV-8a test reads FUNDING.yml and fails on any drift.
@@ -132,9 +137,29 @@ for (var i = 0; i < wins.length; i++) {
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, service: AuthService, parent: QWidget | None = None):
+    def __init__(
+        self,
+        service: AuthService,
+        parent: QWidget | None = None,
+        *,
+        update_service: UpdateService | None = None,
+        installer: Installer | None = None,
+    ):
         super().__init__(parent)
         self._service = service
+        # The opt-in updater (FIBR-0054). Resolve the installer ONCE and hand the
+        # same instance to the service + use it for apply (D6/Deliverable 9). Tests
+        # inject a fake service + installer; production builds the real pair.
+        if update_service is None:
+            installer = detect_installer()
+            update_service = UpdateService(paths.window_settings_path(), installer)
+        self._installer = installer
+        self._update_service = update_service
+        self._pending_update: UpdateInfo | None = None  # a found offer, held (D15)
+        self._offered_update: UpdateInfo | None = None  # the one currently prompted
+        self._unlocked = False  # gates the pending offer (D15)
+        self._update_check_worker: UpdateCheckWorker | None = None
+        self._download_worker: DownloadWorker | None = None
         self._dialog: QDialog | None = None  # the current modal dialog, if any
         self._live: QWidget | None = None  # the current content widget, if any
         self._workspace: QTabWidget | None = None  # the tabbed workspace, when live
@@ -166,6 +191,10 @@ class MainWindow(QMainWindow):
             self._show_first_run()
         else:
             self._show_unlock()
+
+        # Arm the opt-in update check once the event loop is up (the window is
+        # shown, still locked). Gated inside on support + the opt-in flag (D7).
+        QTimer.singleShot(0, self, self._maybe_check_for_update)
 
     # --- chrome ------------------------------------------------------------- #
     def _build_chrome(self) -> None:
@@ -381,6 +410,7 @@ class MainWindow(QMainWindow):
         self._open_dialog(dialog)
 
     def _enter_unlocked(self) -> None:
+        self._unlocked = True  # set BEFORE the pending-offer call at the end (D15)
         self._teardown_dialog()
         self._set_vault_chrome_enabled(True)
         workspace = self._build_workspace()
@@ -389,8 +419,12 @@ class MainWindow(QMainWindow):
         if self._home_tab is not None:
             self._refresh_count(self._home_tab.transaction_count())
         self._status(self.tr("Unlocked"))
+        # Show a held update offer now that we're unlocked + idle — after the
+        # teardown + workspace build, so it never tears down the prompt it opens.
+        self._maybe_show_pending_offer()
 
     def _lock(self) -> None:
+        self._unlocked = False  # a held offer must wait for the next unlock (D15)
         # (1) close any open modal dialog so no post-lock write can fire (INV-4b).
         self._teardown_dialog()
         # (2) close the vault + wipe the key (idempotent after an auto-lock lock()).
@@ -525,14 +559,116 @@ class MainWindow(QMainWindow):
         # Vault-dependent (File menu is disabled while locked, INV-6). The shell
         # reads the currency and hands it to the dialog, which holds no vault ref.
         currency = TransactionService(self._service.vault).base_currency()
-        dialog = SettingsDialog(self._service, currency, self)
+        dialog = SettingsDialog(
+            self._service,
+            currency,
+            self,
+            update_enabled=self._update_service.is_enabled(),
+            update_supported=self._installer is not None,
+        )
         dialog.saved.connect(self._on_settings_saved)
         dialog.rejected.connect(self._teardown_dialog)  # cancel: no change
         self._open_dialog(dialog, defer=False)
 
     def _on_settings_saved(self) -> None:
+        # Persist the opt-in update flag from the checkbox (D5) — the auto-lock
+        # value the dialog already wrote to the vault in its own _on_save.
+        dialog = self._dialog
+        if isinstance(dialog, SettingsDialog):
+            self._update_service.set_enabled(dialog.update_enabled())
         self._teardown_dialog()
         self._status(self.tr("Settings saved"))
+
+    # --- opt-in auto-update (FIBR-0054 D7/D15) ------------------------------ #
+    def _maybe_check_for_update(self) -> None:
+        # Off an AppImage, or opted out, the feature is inert (INV-1/INV-7). One
+        # bounded check per launch, on a worker so the network never blocks the UI.
+        if self._installer is None or not self._update_service.is_enabled():
+            return
+        worker = UpdateCheckWorker(self._update_service, self)
+        worker.found.connect(self._on_update_found)
+        # none/failed: stay silent — proceed exactly as if up to date (INV-11).
+        worker.none.connect(lambda: None)
+        worker.failed.connect(lambda _exc: None)
+        worker.finished.connect(worker.deleteLater)
+        self._update_check_worker = worker
+        worker.start()
+
+    def _on_update_found(self, info: UpdateInfo) -> None:
+        # Hold the offer; show it only once unlocked + idle (D15). The network
+        # usually returns AFTER the user has unlocked, so this commonly shows now.
+        self._pending_update = info
+        self._maybe_show_pending_offer()
+
+    def _maybe_show_pending_offer(self) -> None:
+        info = self._pending_update
+        # Only when we hold an offer, are unlocked, and no other dialog is up —
+        # two app-modals cannot share the single self._dialog slot (D15).
+        if info is None or not self._unlocked or self._dialog is not None:
+            return
+        self._pending_update = None  # shown at most once per launch (D15)
+        self._offered_update = info
+        dialog = UpdateDialog(__version__, info.version, info.notes_url, self)
+        dialog.later.connect(self._on_update_later)
+        dialog.skip.connect(self._on_update_skip)
+        dialog.update_now.connect(self._on_update_now)
+        dialog.notes_requested.connect(self._on_update_notes)
+        self._open_dialog(dialog, defer=False)
+
+    def _on_update_later(self) -> None:
+        self._teardown_dialog()  # re-ask next launch; nothing persisted (INV-8)
+
+    def _on_update_skip(self) -> None:
+        if self._offered_update is not None:
+            self._update_service.skip_version(self._offered_update.version)  # INV-8
+        self._teardown_dialog()
+
+    def _on_update_notes(self) -> None:
+        # The "What's new" link — hand the release-notes page to the OS browser
+        # (a user-initiated egress, not an app socket), reusing _open_url.
+        if self._offered_update is not None:
+            self._open_url(self._offered_update.notes_url)
+
+    def _on_update_now(self) -> None:
+        info = self._offered_update
+        if info is None:
+            return
+        # Capture THIS prompt: if an auto-lock tears it down before the download
+        # finishes, the stale result is dropped (INV-9). The dialog is already in
+        # its busy state (it entered it on the click).
+        prompt = self._dialog
+        worker = DownloadWorker(self._update_service, info, self)
+        worker.ready.connect(lambda path: self._on_download_ready(path, prompt))
+        worker.failed.connect(self._on_download_failed)
+        worker.finished.connect(worker.deleteLater)
+        self._download_worker = worker
+        worker.start()
+
+    def _on_download_ready(self, path: Path, prompt: QDialog | None) -> None:
+        prompt_live = (
+            self._dialog is prompt and prompt is not None and shiboken6.isValid(prompt)
+        )
+        if prompt_live and self._installer is not None:
+            # Swap + relaunch; the key is wiped after the successful replace and
+            # before execv (INV-6). apply() does not return.
+            self._installer.apply(path, on_before_exec=self._service.on_about_to_quit)
+        else:
+            # The prompt was torn down (auto-lock) — drop the verified temp so it
+            # doesn't orphan next to $APPIMAGE (INV-9).
+            Path(path).unlink(missing_ok=True)
+
+    def _on_download_failed(self, _exc: object) -> None:
+        # Any verify/oversize/timeout/disk failure surfaces here and stays on the
+        # current version (INV-11). Close the busy prompt, then explain.
+        self._teardown_dialog()
+        QMessageBox.warning(
+            self,
+            self.tr("Update failed"),
+            self.tr(
+                "The update could not be installed. You are still on the "
+                "current version."
+            ),
+        )
 
     def _open_import(self) -> None:
         # Import wants the full content area — it REPLACES the workspace (via
