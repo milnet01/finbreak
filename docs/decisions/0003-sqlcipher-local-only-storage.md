@@ -5,6 +5,15 @@
 - **Deciders:** Project lead, Claude
 - **Related:** [docs/discovery.md](../discovery.md), [docs/design.md](../design.md) (Security)
 
+> **Superseded in part by [FIBR-0054](../specs/FIBR-0054.md).** This ADR's
+> "no network surface" / "no network connections" absolutes (below) predate the
+> opt-in, off-by-default update check FIBR-0054 adds. The **storage** decision
+> here is unchanged, and the **threat model still excludes a network attacker**:
+> the update check pulls a signed release *in* and never sends financial data
+> *out*, so "no third party ever holds the data" holds. Read the two no-network
+> phrases as "no network access other than that one consented, signature-gated
+> update check."
+
 ## Context
 
 The app holds a person's complete financial history — among the most sensitive

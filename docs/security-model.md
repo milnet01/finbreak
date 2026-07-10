@@ -20,7 +20,7 @@ unavoidable it is glossed on first use.
 
 | # | Asset | Why it matters |
 |---|-------|----------------|
-| A1 | **The vault** — the SQLCipher database file holding every transaction, account, rule, and financial setting (base currency, minor-unit exponent, stored PDF passwords). *Non-sensitive UI state — window geometry / toolbar state / last-active tab — deliberately lives in a plaintext `window.ini` sibling, not the vault (FIBR-0052 INV-5); it holds no financial data, so it is not an A1 asset.* | The whole financial picture. Its disclosure is the worst case. |
+| A1 | **The vault** — the SQLCipher database file holding every transaction, account, rule, and financial setting (base currency, minor-unit exponent, stored PDF passwords). *Non-sensitive UI state — window geometry / toolbar state / last-active tab, plus the opt-in update-check flag and any skipped-update version (FIBR-0054) — deliberately lives in a plaintext `window.ini` sibling, not the vault (FIBR-0052 INV-5, FIBR-0054 D4); it holds no financial data, so it is not an A1 asset.* | The whole financial picture. Its disclosure is the worst case. |
 | A2 | **The master password** | Unlocks everything. Never stored anywhere. |
 | A3 | **The derived key** — the key Argon2id produces from the master password, passed to SQLCipher as its **raw** key (so Argon2id, not SQLCipher's built-in PBKDF2, is the KDF) | Decrypts the vault; lives only in memory while unlocked. |
 | A4 | **Stored statement-PDF passwords** (optional, opt-in) | Bank-document passwords; only ever live *inside* the encrypted vault. |
@@ -36,12 +36,17 @@ unavoidable it is glossed on first use.
   against a root-level attacker on the same machine or a
   hardware key-logger — that is out of scope for a local
   desktop app and stated as such.
-- **Everything off the machine is untrusted — and unreachable.**
-  The **shipped application** opens **no sockets and makes no
-  outbound call of any kind** (success criterion 4). There is no
-  network attack surface because there is no network code. (Dev/CI
-  tooling such as `pip-audit` and Dependabot run in GitHub's
-  infrastructure, never in the shipped app — INV-8.)
+- **Everything off the machine is untrusted — and unreachable
+  except for one opt-in, off-by-default call.** The **shipped
+  application** makes **exactly one** kind of outbound call — an
+  **opt-in, off-by-default** update check to the GitHub Releases API,
+  confined to `services/update_fetch.py` and never made without
+  explicit user consent (FIBR-0054 INV-8). No other network access
+  exists; a downloaded update is installed only if its Ed25519
+  signature verifies (INV-2). The near-total absence of network code
+  keeps the attack surface minimal. (Dev/CI tooling such as
+  `pip-audit` and Dependabot run in GitHub's infrastructure, never in
+  the shipped app — INV-8.)
 - **Imported files are untrusted input.** CSV/OFX/PDF files come
   from outside and are parsed defensively (§ 4, T5).
 
@@ -93,12 +98,15 @@ be checkable. Enforcement arrives in step with the code:
   INV-2, INV-3, INV-4, INV-5b, INV-5c, INV-7, INV-9 — asserted by
   tests that land alongside the vault, crypto, import, export, and
   logging paths (none of which exist yet at P01).
-- **INV-8 (no network)** is enforced two ways: no networking
+- **INV-8 (single opt-in egress)** is enforced two ways: no networking
   dependency is declared in `pyproject.toml` (verifiable from P01),
   and a forbidden-import check (no `socket` / `http` / `requests` /
-  `urllib` in `src/finbreak/`) lands with the first runtime code.
-  The § 6 scanners do **not** detect network use, so INV-8 does not
-  rely on them.
+  `urllib` / `ftplib` in `src/finbreak/`) lands with the first runtime
+  code. Since FIBR-0054 that check **allowlists `urllib` in exactly
+  one file** — `services/update_fetch.py`, the opt-in updater's sole
+  networked module — while every other banned name stays banned there
+  and `urllib` stays banned everywhere else. The § 6 scanners do
+  **not** detect network use, so INV-8 does not rely on them.
 
 - **INV-1 — Encrypted at rest.** No code path writes
   unencrypted vault contents to disk. Opening the file without
@@ -187,9 +195,13 @@ be checkable. Enforcement arrives in step with the code:
   unencrypted report file is ever produced — the FIBR-0013 spec
   must assert the render-then-encrypt path never stages a plaintext
   PDF in a temp file, reconciling with INV-4).
-- **INV-8 — No network.** The shipped app opens no socket and
-  makes no outbound request; there is no networking dependency in
-  the runtime bundle.
+- **INV-8 — One opt-in outbound call.** The shipped app makes
+  **exactly one** kind of outbound request — an opt-in,
+  off-by-default update check to the GitHub Releases API, confined to
+  `services/update_fetch.py` and never made without explicit user
+  consent (FIBR-0054). No other network access exists; there is no
+  networking *dependency* in the runtime bundle (the check uses stdlib
+  `urllib`).
 - **INV-9 — Logs are clean.** The local log file never records
   transaction contents, passwords, keys, or decrypted data.
 

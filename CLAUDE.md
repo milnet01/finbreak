@@ -48,7 +48,9 @@ for the full table and reasoning):
   [`docs/security-model.md`](docs/security-model.md))
 - **Packaging:** PyInstaller (Windows `.exe`, macOS `.app`/`.dmg`),
   AppImage + Flatpak/Flathub (Linux) (ADR-0007)
-- **License:** MIT; local-only, no network.
+- **License:** MIT; local-only apart from an opt-in, off-by-default
+  update check (FIBR-0054; stdlib `urllib`, confined to
+  `services/update_fetch.py`).
 
 ## Build and test
 

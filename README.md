@@ -1,8 +1,10 @@
 # finbreak
 
-> A private, offline desktop app that breaks down where your money
-> goes — from your own bank statements, with no bank linking and
-> nothing ever leaving your machine.
+> A private desktop app that breaks down where your money goes — from
+> your own bank statements, with no bank linking and none of your
+> financial data ever leaving your machine. The only network access is
+> an **opt-in, off-by-default** check for app updates (which you can
+> leave off).
 
 [![Status](https://img.shields.io/badge/status-pre--alpha-orange)]()
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)

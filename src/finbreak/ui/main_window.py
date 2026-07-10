@@ -708,8 +708,10 @@ class MainWindow(QMainWindow):
         self._status(self.tr("Statement account changed"))
 
     def _open_url(self, url: str) -> None:
-        # Hands the funding page to the OS browser — a user-initiated egress, not
-        # an app network call (the app opens no socket; INV-8).
+        # Hands a page (a funding link, or the update "What's new" notes) to the
+        # OS browser — a user-initiated egress, not an app network call. The app's
+        # ONE app-made call is the opt-in update check (FIBR-0054), confined to
+        # services/update_fetch.py; opening the browser here is not that.
         QDesktopServices.openUrl(QUrl(url))
 
     def _show_about(self) -> None:

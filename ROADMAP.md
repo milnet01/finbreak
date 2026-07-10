@@ -329,8 +329,10 @@ lands on top.
   transaction table once populated (the P10 dashboard later replaces
   Home's body). Donate menu opens the .github/FUNDING.yml links
   (GitHub Sponsors / Patreon / PayBru) via QDesktopServices — a
-  user-initiated hand-off to the OS browser; the app itself still
-  makes no network calls (local-only holds). Reuses the existing
+  user-initiated hand-off to the OS browser; the app itself made no
+  network calls at the time of this bullet (FIBR-0054 later added the
+  one opt-in, off-by-default update check — your financial data still
+  never leaves the machine). Reuses the existing
   accounts / categories / import screens as content views. Preserves
   FIBR-0004 security invariants: key wiped on quit, auto-lock fires,
   NO transaction data shown while locked, corrupt/incomplete-install

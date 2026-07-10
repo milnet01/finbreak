@@ -192,9 +192,12 @@ architecture-level view; `security-model.md` is authoritative, and every
 - **Key derivation.** The master password is stretched with **Argon2id**
   (memory-hard) into the DB key. The password and derived key are never
   persisted; the key lives in memory only while unlocked and is cleared on lock.
-- **No network, ever.** The app opens no sockets, bundles no networking client,
-  and makes no outbound calls. (Dependabot/CI run in GitHub's infrastructure,
-  not in the shipped app.)
+- **One opt-in network call.** The app bundles no networking client and makes
+  no outbound calls **except** an opt-in, off-by-default update check to the
+  GitHub Releases API (stdlib `urllib`, confined to `services/update_fetch.py`;
+  a downloaded update installs only if its Ed25519 signature verifies —
+  FIBR-0054). (Dependabot/CI run in GitHub's infrastructure, not in the shipped
+  app.)
 - **Per-OS-user isolation.** Data lives in the current OS user's app-data
   directory; different logins are naturally separate, each behind its own master
   password.
