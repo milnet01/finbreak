@@ -1,6 +1,6 @@
 # ADR-0003: SQLCipher + Argon2id, local-only, per-OS-user storage
 
-- **Status:** Accepted
+- **Status:** Accepted (superseded in part by FIBR-0054 — see banner)
 - **Date:** 2026-06-30
 - **Deciders:** Project lead, Claude
 - **Related:** [docs/discovery.md](../discovery.md), [docs/design.md](../design.md) (Security)
@@ -8,11 +8,13 @@
 > **Superseded in part by [FIBR-0054](../specs/FIBR-0054.md).** This ADR's
 > "no network surface" / "no network connections" absolutes (below) predate the
 > opt-in, off-by-default update check FIBR-0054 adds. The **storage** decision
-> here is unchanged, and the **threat model still excludes a network attacker**:
-> the update check pulls a signed release *in* and never sends financial data
-> *out*, so "no third party ever holds the data" holds. Read the two no-network
-> phrases as "no network access other than that one consented, signature-gated
-> update check."
+> here is unchanged, and the threat model's **confidentiality** guarantee holds
+> unchanged — the update flow pulls a signed release *in* and never sends
+> financial data *out*, so "no third party ever holds the data" still holds. The
+> one new **integrity** concern — a tampered release — is not excluded but
+> **mitigated**: a download is installed only if its Ed25519 signature verifies
+> (FIBR-0054 INV-4). Read the two no-network phrases as "no network access other
+> than that one consented, signature-gated update check."
 
 ## Context
 

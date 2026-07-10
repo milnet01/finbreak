@@ -167,8 +167,12 @@ scariest unknown (native-library bundling) up front.
 
   Design notes (to settle when picked — needs its own brainstorm + spec →
   /cold-eyes):
-  - **Per-platform mechanism** (no single cross-platform updater): Linux AppImage
-    → AppImageUpdate / zsync + delta; Flatpak/Flathub → the platform updates it
+  - **Per-platform mechanism** (no single cross-platform updater). *FIBR-0054
+    has since settled the **Linux AppImage** slice: full-file download + atomic
+    replace + Ed25519 verify (D2 rejected zsync/delta; D1 chose Ed25519 via the
+    bundled `cryptography`, not AppImageUpdate). The other platforms below remain
+    to-settle.* Linux AppImage → AppImageUpdate / zsync + delta; Flatpak/Flathub
+    → the platform updates it
     (an in-app updater would be redundant/blocked there — likely just deep-link to
     the store or no-op); Windows .exe → a bundled updater (e.g. WinSparkle) or a
     small helper that swaps the install after exit; macOS .app → Sparkle. The

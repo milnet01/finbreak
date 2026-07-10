@@ -42,8 +42,8 @@ unavoidable it is glossed on first use.
   **opt-in, off-by-default** update flow that reads the GitHub
   Releases API and, only on the user's explicit request, downloads the
   signed release assets (the AppImage + its `.sig`) — all over
-  `https://`, confined to `services/update_fetch.py` and never begun
-  without explicit user consent (FIBR-0054 INV-1). No other network
+  `https://`, confined to `services/update_fetch.py` (FIBR-0054 INV-12)
+  and never begun without explicit user consent (FIBR-0054 INV-1). No other network
   access exists; a downloaded update is installed only if its Ed25519
   signature verifies (FIBR-0054 INV-4). The near-total absence of
   network code keeps the attack surface minimal. (Dev/CI tooling such
@@ -200,8 +200,9 @@ be checkable. Enforcement arrives in step with the code:
 - **INV-8 — One opt-in outbound flow.** The shipped app makes
   **exactly one** kind of outbound request — an opt-in, off-by-default
   update flow that reads the GitHub Releases API and downloads the
-  signed release assets, confined to `services/update_fetch.py` and
-  never begun without explicit user consent (FIBR-0054 INV-1). That
+  signed release assets, confined to `services/update_fetch.py`
+  (FIBR-0054 INV-12) and never begun without explicit user consent
+  (FIBR-0054 INV-1). That
   download is **signature-gated and resource-bounded**: a release is
   installed only if its Ed25519 signature verifies, and the fetch is
   abandoned if it exceeds its size cap or times out (FIBR-0054
