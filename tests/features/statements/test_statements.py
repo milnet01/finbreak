@@ -355,12 +355,24 @@ def test_INV3a_lock_during_import_destroys_wizard(qtbot, service):
 # --------------------------------------------------------------------------- #
 # INV-5 / INV-5a — geometry + last tab round-trip, outside the vault, no data
 # --------------------------------------------------------------------------- #
-def test_INV5a_geometry_and_tab_roundtrip_outside_vault(
-    qtbot, service, window_ini, paths
-):
+def test_INV5a_no_transaction_data_leaks_to_plaintext_ini(qtbot, service, window_ini):
+    """Split out of the geometry round-trip (FIBR-0063): the window-geometry INI
+    lives OUTSIDE the encrypted vault, so it must never carry transaction data. In
+    its own test so a geometry-persistence regression can't mask a data leak."""
     TransactionService(service.vault).add_transaction(
         _acct(service), "2026-07-01", "-42.42", "ZZTOPSECRETMEMO"
     )
+    window = _shell(qtbot, service)
+    window.closeEvent(QCloseEvent())  # persists the INI
+
+    blob = window_ini.read_bytes()
+    assert b"ZZTOPSECRETMEMO" not in blob, "no transaction description in the INI"
+    assert b"4242" not in blob, "no transaction amount in the INI"
+
+
+def test_INV5a_geometry_and_tab_roundtrip_outside_vault(
+    qtbot, service, window_ini, paths
+):
     window = _shell(qtbot, service)
     window.resize(820, 540)
     window.move(60, 70)
@@ -371,11 +383,6 @@ def test_INV5a_geometry_and_tab_roundtrip_outside_vault(
     assert window_ini.exists(), "geometry is persisted to the injected INI"
     vault_path, _ = paths
     assert window_ini != vault_path, "the INI is outside the vault file"
-    blob = window_ini.read_bytes()
-    assert b"ZZTOPSECRETMEMO" not in blob, (
-        "no transaction description in the plaintext INI"
-    )
-    assert b"4242" not in blob, "no transaction amount in the plaintext INI"
 
     # The INI stored exactly the window's saveGeometry blob (persistence proven).
     settings = QSettings(str(window_ini), QSettings.Format.IniFormat)

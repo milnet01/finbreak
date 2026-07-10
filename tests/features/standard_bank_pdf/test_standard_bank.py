@@ -103,26 +103,26 @@ def test_INV2a_detect_family_and_none():
     assert detect_standard_bank("Some Other Bank\nDate Description Amount") is None
 
 
-def test_INV2a_each_family_detected_by_its_own_signature():
+@pytest.mark.parametrize(
+    "header, expected",
+    [
+        ("Posting Effective Cash\nDebit Credit Balance", Family.B),
+        (
+            "Transaction description Withdrawals Deposits Interest rate Balance",
+            Family.D,
+        ),
+        (
+            "Date Description Amount Date Description Amount\nTitanium Credit Card",
+            Family.C,
+        ),
+    ],
+    ids=["family_b", "family_d", "family_c"],
+)
+def test_INV2a_each_family_detected_by_its_own_signature(header, expected):
+    # Parametrized (FIBR-0063) so a regression in one family's signature doesn't
+    # mask the others behind a single bundled-assert failure.
     marker = "\nThe Standard Bank of South Africa Limited"
-    assert (
-        detect_standard_bank("Posting Effective Cash\nDebit Credit Balance" + marker)
-        is Family.B
-    )
-    assert (
-        detect_standard_bank(
-            "Transaction description Withdrawals Deposits Interest rate Balance"
-            + marker
-        )
-        is Family.D
-    )
-    assert (
-        detect_standard_bank(
-            "Date Description Amount Date Description Amount\nTitanium Credit Card"
-            + marker
-        )
-        is Family.C
-    )
+    assert detect_standard_bank(header + marker) is expected
 
 
 def test_INV2a_credit_card_wins_over_family_a_detection_order():

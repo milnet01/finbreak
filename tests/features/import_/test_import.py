@@ -258,22 +258,33 @@ def test_read_header_returns_fieldnames():
 # --------------------------------------------------------------------------- #
 # Service-layer mapping-config validation (D3/D5/D10)
 # --------------------------------------------------------------------------- #
-def test_service_rejects_bad_mapping_config(service):
+_NO_STYLE = ColumnMapping("Date", "Details", None, None, None, "%Y-%m-%d", False)
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        _NO_STYLE,
+        ColumnMapping("Date", "Details", "Missing", None, None, "%Y-%m-%d", False),
+        ColumnMapping(
+            "Date", "Details", "Amount", "Debit", "Credit", "%Y-%m-%d", False
+        ),
+    ],
+    ids=["no_amount_style", "missing_column", "both_styles"],
+)
+def test_service_preview_rejects_bad_mapping_config(service, bad):
+    # Parametrized (FIBR-0063) so one bad-config's failure can't mask the others.
     imp = ImportService(service.vault)
     acct = _acct(service)
     text = _csv(HEADER, [["2026-01-05", "a", "-1.00"]])
-    no_style = ColumnMapping("Date", "Details", None, None, None, "%Y-%m-%d", False)
-    missing_col = ColumnMapping(
-        "Date", "Details", "Missing", None, None, "%Y-%m-%d", False
-    )
-    both_styles = ColumnMapping(
-        "Date", "Details", "Amount", "Debit", "Credit", "%Y-%m-%d", False
-    )
-    for bad in (no_style, missing_col, both_styles):
-        with pytest.raises(ValueError):
-            imp.preview(text, bad, acct)
     with pytest.raises(ValueError):
-        imp.save_profile("bad", HEADER, no_style)
+        imp.preview(text, bad, acct)
+
+
+def test_service_save_profile_rejects_no_amount_style(service):
+    # A distinct code path from preview() validation (FIBR-0063 split).
+    with pytest.raises(ValueError):
+        ImportService(service.vault).save_profile("bad", HEADER, _NO_STYLE)
 
 
 # --------------------------------------------------------------------------- #
