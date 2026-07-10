@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 from typing import cast
 
+from finbreak.db import owned_transaction
 from finbreak.errors import CategoryHasChildrenError, ProtectedCategoryError
 from finbreak.models import Category
 from finbreak.repositories.categories import CategoryRepository
@@ -81,18 +82,15 @@ class CategoryService:
                 "this category still has sub-categories — remove them first"
             )
         conn = self._vault.connection
-        conn.execute("BEGIN")  # first statement — own the whole cascade
-        try:
+        # The whole cascade is one owned unit; any failure rolls back to a
+        # re-openable vault (INV-7).
+        with owned_transaction(conn):
             TransactionRepository(conn).clear_category_for(category_id)
             CategorizationRuleRepository(conn).delete_for_category(category_id)
             # repo.delete() commits, which would end this transaction early; issue
             # the delete in-line (commit-free) so all four steps are one atomic unit.
             conn.execute("DELETE FROM categories WHERE id = ?", (category_id,))
             recategorize_auto_rows(conn)
-            conn.commit()
-        except Exception:
-            conn.rollback()  # nothing changed — a re-openable vault (INV-7)
-            raise
         log.info("category deleted")
 
     def delete_blast_radius(self, category_id: int) -> tuple[int, int]:

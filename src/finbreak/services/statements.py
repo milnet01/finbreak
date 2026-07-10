@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 from typing import cast
 
+from finbreak.db import owned_transaction
 from finbreak.models import StatementPeriod, StatementRow
 from finbreak.repositories.statement_periods import StatementPeriodRepository
 from finbreak.repositories.transactions import TransactionRepository
@@ -60,14 +61,11 @@ class StatementService:
         conn = self._conn
         tx_repo = TransactionRepository(conn)
         period_repo = StatementPeriodRepository(conn)
-        conn.execute("BEGIN")  # first statement — own the transaction (INV-9)
-        try:
+        # Delete the children **then** the parent (so the plain FK never trips);
+        # any failure rolls back both to a re-openable vault (INV-9).
+        with owned_transaction(conn):
             deleted = tx_repo.delete_for_statement(period_id)
             period_repo.delete(period_id)
-            conn.commit()
-        except Exception:
-            conn.rollback()  # both deletes undone — leaves the vault re-openable
-            raise
         log.info("statement deleted")
         return deleted
 
@@ -96,13 +94,10 @@ class StatementService:
                 "that account already has a statement for this period — "
                 "delete or move it first"
             )
-        conn.execute("BEGIN")  # first statement — own the transaction (INV-1)
-        try:
+        # Both UPDATEs are one owned unit; any failure rolls both back to a
+        # re-openable vault (FIBR-0059 INV-1).
+        with owned_transaction(conn):
             period_repo.set_account(period_id, new_account_id)
             moved = tx_repo.reassign_account(period_id, new_account_id)
-            conn.commit()
-        except Exception:
-            conn.rollback()  # both UPDATEs undone — leaves the vault re-openable
-            raise
         log.info("statement account reassigned")
         return moved

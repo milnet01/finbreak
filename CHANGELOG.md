@@ -183,6 +183,8 @@ signaling per
 
 ### Changed
 
+- **Consolidated the 13 hand-copied database transaction blocks (BEGIN/COMMIT/ROLLBACK) into one shared `owned_transaction` helper, so a future database write can't accidentally use a subtly-wrong rollback path.** (FIBR-0066)
+
 - **Typed the rules Move up/down handler with a `Literal` (dropping a type-ignore) and corrected the FIBR-0007 INV-7 spec narrative to match the FIBR-0052 period-first insert order.** (FIBR-0081)
 
 - **Settings reads (base currency, minor-unit exponent) now flow through the shared `SettingsRepository` seam instead of hand-rolled SQL, so a mistyped key can't silently read the wrong value.** (FIBR-0080)

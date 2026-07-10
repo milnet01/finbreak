@@ -16,6 +16,7 @@ from datetime import UTC, datetime
 
 from sqlcipher3 import dbapi2
 
+from finbreak.db import owned_transaction
 from finbreak.errors import SchemaVersionError
 
 log = logging.getLogger(__name__)
@@ -67,8 +68,7 @@ def _migrate_to_v2(conn: dbapi2.Connection) -> None:
     """v1->v2: add ``accounts``, seed one Default, and rebuild ``transactions``
     with a required ``account_id`` foreign key, backfilling every existing row
     to the Default account. One atomic unit (INV-4)."""
-    conn.execute("BEGIN")  # first statement — own the transaction (D2)
-    try:
+    with owned_transaction(conn):
         conn.execute(
             "CREATE TABLE accounts("
             "id INTEGER PRIMARY KEY, name TEXT NOT NULL, "
@@ -98,10 +98,6 @@ def _migrate_to_v2(conn: dbapi2.Connection) -> None:
         conn.execute("DROP TABLE transactions")
         conn.execute("ALTER TABLE transactions_new RENAME TO transactions")
         conn.execute("UPDATE schema_version SET version = 2")
-        conn.commit()
-    except Exception:
-        conn.rollback()  # undoes the DROP — leaves a re-openable v1 vault
-        raise
 
 
 def _migrate_to_v3(conn: dbapi2.Connection) -> None:
@@ -116,8 +112,7 @@ def _migrate_to_v3(conn: dbapi2.Connection) -> None:
     makes it all-or-nothing: either v3 with the tree fully seeded, or still v2
     with no ``categories`` table."""
     now = datetime.now(UTC).isoformat()
-    conn.execute("BEGIN")  # first statement — own the transaction (D2)
-    try:
+    with owned_transaction(conn):
         conn.execute(
             "CREATE TABLE categories("
             "id INTEGER PRIMARY KEY, "
@@ -137,10 +132,6 @@ def _migrate_to_v3(conn: dbapi2.Connection) -> None:
                     (root_id, child_name, now),
                 )
         conn.execute("UPDATE schema_version SET version = 3")
-        conn.commit()
-    except Exception:
-        conn.rollback()  # undoes the CREATE — leaves a re-openable v2 vault
-        raise
 
 
 def _migrate_to_v4(conn: dbapi2.Connection) -> None:
@@ -152,8 +143,7 @@ def _migrate_to_v4(conn: dbapi2.Connection) -> None:
     so a failure between the two ``CREATE``s could leave a half-built v3.5. The
     explicit ``BEGIN`` — the step's first statement, discrete ``execute`` calls
     so the runner owns the transaction — makes it all-or-nothing (INV-8)."""
-    conn.execute("BEGIN")  # first statement — own the transaction (D2)
-    try:
+    with owned_transaction(conn):
         conn.execute(
             "CREATE TABLE import_profiles("
             "id INTEGER PRIMARY KEY, name TEXT NOT NULL, "
@@ -171,10 +161,6 @@ def _migrate_to_v4(conn: dbapi2.Connection) -> None:
             "source_filename TEXT, imported_at TEXT NOT NULL)"
         )
         conn.execute("UPDATE schema_version SET version = 4")
-        conn.commit()
-    except Exception:
-        conn.rollback()  # undoes the first CREATE — leaves a re-openable v3 vault
-        raise
 
 
 def _migrate_to_v5(conn: dbapi2.Connection) -> None:
@@ -187,14 +173,9 @@ def _migrate_to_v5(conn: dbapi2.Connection) -> None:
     first statement, the ``UPDATE schema_version`` its last before ``COMMIT`` —
     makes it all-or-nothing. ``NULL`` = "no remembered password" (the default for
     every existing and new account)."""
-    conn.execute("BEGIN")  # first statement — own the transaction (D2)
-    try:
+    with owned_transaction(conn):
         conn.execute("ALTER TABLE accounts ADD COLUMN statement_pdf_password TEXT")
         conn.execute("UPDATE schema_version SET version = 5")
-        conn.commit()
-    except Exception:
-        conn.rollback()  # undoes the ADD COLUMN — leaves a re-openable v4 vault
-        raise
 
 
 def _migrate_to_v6(conn: dbapi2.Connection) -> None:
@@ -215,8 +196,7 @@ def _migrate_to_v6(conn: dbapi2.Connection) -> None:
     stays ``NULL``, and an overlap never mis-attributes. The loop is
     order-independent — the ``IS NULL`` guard stops a claimed row being re-touched
     and a shared date is skipped by *every* period's ``NOT EXISTS``."""
-    conn.execute("BEGIN")  # first statement — own the transaction (D2)
-    try:
+    with owned_transaction(conn):
         conn.execute(
             "ALTER TABLE transactions "
             "ADD COLUMN statement_period_id INTEGER REFERENCES statement_periods(id)"
@@ -241,10 +221,6 @@ def _migrate_to_v6(conn: dbapi2.Connection) -> None:
                 },
             )
         conn.execute("UPDATE schema_version SET version = 6")
-        conn.commit()
-    except Exception:
-        conn.rollback()  # undoes the ADD COLUMN + backfill — re-openable v5 vault
-        raise
 
 
 def _migrate_to_v7(conn: dbapi2.Connection) -> None:
@@ -261,8 +237,7 @@ def _migrate_to_v7(conn: dbapi2.Connection) -> None:
     so the explicit ``BEGIN`` — the step's first statement, ``UPDATE
     schema_version`` its last — makes it all-or-nothing (a mid-step failure leaves a
     re-openable v6)."""
-    conn.execute("BEGIN")  # first statement — own the transaction (D2)
-    try:
+    with owned_transaction(conn):
         conn.execute(
             "ALTER TABLE transactions "
             "ADD COLUMN category_id INTEGER REFERENCES categories(id)"
@@ -275,10 +250,6 @@ def _migrate_to_v7(conn: dbapi2.Connection) -> None:
             "priority INTEGER NOT NULL, created_at TEXT NOT NULL)"
         )
         conn.execute("UPDATE schema_version SET version = 7")
-        conn.commit()
-    except Exception:
-        conn.rollback()  # undoes the ADD COLUMNs + CREATE — re-openable v6 vault
-        raise
 
 
 _MIGRATIONS = {

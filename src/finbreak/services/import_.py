@@ -22,6 +22,7 @@ from datetime import date
 from pathlib import Path
 from typing import cast
 
+from finbreak.db import owned_transaction
 from finbreak.importers.base import ParseResult, RowError
 from finbreak.importers.csv_importer import CsvImporter, read_header
 from finbreak.models import ColumnMapping, ImportProfile, TransactionDraft
@@ -248,8 +249,7 @@ class ImportService:
         conn = self._conn
         tx_repo = TransactionRepository(conn)
         period_repo = StatementPeriodRepository(conn)
-        conn.execute("BEGIN")  # first statement — own the transaction (D7)
-        try:
+        with owned_transaction(conn):
             to_insert = self._dedup(preview.account_id, preview.drafts, tx_repo)
             # Resolve the period id FIRST so every inserted row can be stamped with
             # it (FIBR-0052 INV-8/D8): reuse the existing span's id, else create the
@@ -286,10 +286,6 @@ class ImportService:
             # so a fresh import arrives categorised with no uncategorised flash and no
             # second transaction. Manual rows are excluded, so INV-3 holds.
             recategorize_auto_rows(conn)
-            conn.commit()
-        except Exception:
-            conn.rollback()  # undoes the batch inserts — leaves the vault re-openable
-            raise
         log.info("import committed")
         return ImportResult(
             inserted_count=len(to_insert),

@@ -22,6 +22,7 @@ from typing import Literal, cast
 
 from sqlcipher3 import dbapi2
 
+from finbreak.db import owned_transaction
 from finbreak.models import CategorizationRule, Category, CategorySource
 from finbreak.repositories.categories import CategoryRepository
 from finbreak.repositories.categorization_rules import CategorizationRuleRepository
@@ -124,26 +125,16 @@ class CategorizationService:
         # failure can't leave two rules sharing a priority (indie-review M-C1).
         conn = self._conn
         repo = CategorizationRuleRepository(conn)
-        conn.execute("BEGIN")  # first statement — own the transaction
-        try:
+        with owned_transaction(conn):
             repo.set_priority(this.id, other.priority)
             repo.set_priority(other.id, this.priority)
-            conn.commit()
-        except Exception:
-            conn.rollback()
-            raise
 
     def apply_rules(self) -> int:
         """Re-file every auto row from the current rules, in one owned transaction,
         and return the changed-row count (INV-4/INV-13)."""
         conn = self._conn
-        conn.execute("BEGIN")  # first statement — own the transaction
-        try:
+        with owned_transaction(conn):
             changed = recategorize_auto_rows(conn)
-            conn.commit()
-        except Exception:
-            conn.rollback()
-            raise
         log.info("rules applied")
         return changed
 
@@ -159,13 +150,8 @@ class CategorizationService:
             self._require_leaf(category_id)
         conn = self._conn
         tx_repo = TransactionRepository(conn)
-        conn.execute("BEGIN")  # first statement — own the transaction
-        try:
+        with owned_transaction(conn):
             tx_repo.set_category(txn_id, category_id, CategorySource.MANUAL.value)
-            conn.commit()
-        except Exception:
-            conn.rollback()
-            raise
         log.info("transaction category set manually")
 
     # -- helpers --------------------------------------------------------------
