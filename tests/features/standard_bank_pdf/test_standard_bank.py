@@ -445,7 +445,7 @@ def test_INV13_wizard_reimport_adds_zero(qtbot, service, tmp_path):
 def test_INV13_wizard_encrypted_sb_prompts_then_previews(
     qtbot, service, tmp_path, monkeypatch
 ):
-    # A locked SB statement: the wizard's `_decrypt_pdf` password loop prompts,
+    # A locked SB statement: the wizard's `_try_decrypt` password state machine prompts,
     # decrypts in memory, THEN the SB reader parses and lands on preview — proving
     # the FIBR-0050 decrypt-once seam composes with the SB branch (not just the
     # generic PDF path the FIBR-0009 suite covers).

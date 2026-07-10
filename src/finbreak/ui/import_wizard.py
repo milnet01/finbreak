@@ -541,13 +541,14 @@ class ImportWizardWidget(QWidget):
         self, plaintext: bytes
     ) -> list[list[list[str | None]]] | None:
         """Extract the generic candidate tables from already-plaintext PDF bytes
-        (FIBR-0050 D6 — the password loop now lives in ``_decrypt_pdf``). Returns the
-        candidates, or ``None`` if a friendly "no usable table" error was surfaced."""
+        (FIBR-0050 D6 — the password loop lives in the ``_try_decrypt`` state
+        machine, FIBR-0065). Returns the candidates, or ``None`` if a friendly "no
+        usable table" error was surfaced."""
         try:
             return PdfImporter().candidate_tables(plaintext)
         except (PdfError, ValueError, OSError, FinbreakError) as exc:
             # candidate_tables re-runs the idempotent pikepdf normalise, which can
-            # raise PdfError — catch it here too, matching the sibling _decrypt_pdf
+            # raise PdfError — catch it here too, matching the sibling ``_try_decrypt``
             # net, so it never crashes the slot. (indie-review L1)
             self._error.setText(str(exc))
             return None

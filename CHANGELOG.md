@@ -201,6 +201,13 @@ signaling per
 
 ### Fixed
 
+- **Auto-locking while a pop-up is open no longer crashes the app (FIBR-0065).**
+  If the app auto-locked itself while a small pop-up was open (pick a
+  category, add/edit a rule, change a statement's account, or type a
+  PDF password), it could crash instead of locking cleanly. Those
+  pop-ups are now non-blocking, so the app always returns to the
+  locked screen safely.
+
 - **More import and account-management crash-safety (loop-2 review fold)**
   A Standard Bank statement with a non-English or garbled month name no longer crashes on import; deleting an account that has a quiet-month/all-duplicate imported statement (a period with no transactions) is now blocked with a clear message instead of crashing; and the Settings and Manual-entry dialogs (plus account/category add/edit) no longer error if the app auto-locks while they're open.
 

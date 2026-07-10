@@ -1,8 +1,8 @@
 """Non-blocking modal helper (FIBR-0065 D1).
 
-``show_modal`` replaces ``dialog.exec()`` at the content-widget call sites so an
-idle auto-lock that destroys the parent widget mid-flow can never crash a
-post-``exec()`` read of a deleted C++ object (the H-B crash class). The dialog is
+``show_modal`` replaces the blocking ``exec()`` call at the content-widget call
+sites so an idle auto-lock that destroys the parent widget mid-flow can never crash
+a post-``exec()`` read of a deleted C++ object (the H-B crash class). The dialog is
 shown application-modal but **without** a nested event loop; the caller reacts in
 an ``on_accept`` slot instead of reading a return value.
 """

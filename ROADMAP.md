@@ -980,12 +980,13 @@ is a future error tomorrow.
   Kind: test.
   Source: test-audit-2026-07-10.
 
-- 🚧 [FIBR-0065] **Fix the auto-lock-during-modal-dialog crash (reproduced HIGH).**
+- ✅ [FIBR-0065] **Fix the auto-lock-during-modal-dialog crash (reproduced HIGH).**
   REPRODUCED (Qt DeferredDelete is processed inside a nested exec() loop): an idle auto-lock fires while a content-widget dialog is exec()-blocking; MainWindow._lock() -> _clear_live() -> workspace.deleteLater() destroys the dialog's parent chain during that nested loop, so the post-exec() call (home.py CategoryPickerDialog.selected_category_id(); import_wizard.py PasswordDialog.password()/remember(); also statements.py, rules.py) hits a deleted C++ object -> RuntimeError, which the VaultLockedError guards do NOT catch. The existing guards only cover 'dialog closes BEFORE lock', not 'lock DURING exec()'. Needs its own spec+cold-eyes+TDD cycle (lifecycle-critical security code). Proposed approach: either convert content-widget dialogs to the shell's non-blocking setModal(True)+show() pattern (FIBR-0051 D2 rejected exec() for exactly this), OR a MainWindow modal-registry that wipes the key immediately (security preserved) but defers the UI teardown until the nested loop unwinds. Recommend prioritising ABOVE FIBR-0054.
   **Layman:** If the app auto-locks itself while a small pop-up (pick a category, edit a rule, enter a PDF password) is open, it can crash instead of locking cleanly.
   Kind: fix.
   Source: indie-review-2026-07-10 (full-codebase sweep, H-B).
   Started 2026-07-10. Approach chosen with the user: convert the remaining blocking exec() content-dialogs to the shell's non-blocking setModal(True)+show()+signal pattern (matches FIBR-0051 D2). Spec → cold-eyes → TDD next.
+  Resolved 2026-07-10. Converted the 6 blocking exec() content-widget pop-ups (home set-category + learning offer, rules add/edit, statements reassign, import-wizard PDF password) to the non-blocking show_modal (setModal+show()+signal) pattern; PDF password loop → the _try_decrypt state machine. Spec /cold-eyes-converged (5 loops); TDD: dialog_lifecycle INV-1 grep + a real _lock()-during-open-PDF-prompt regression (INV-2 guard-less path) + parity ripple. Gate green 437 passed/1 skipped, mypy 0; /audit 0; a cold code-review lane confirmed the D5 semantics faithful (doc-nits only, folded). Tag FIBR-0065-complete.
 
 - 📋 [FIBR-0066] **Refactor the 6x duplicated BEGIN/COMMIT/ROLLBACK transaction boilerplate into one owned-transaction helper.**
   Identical BEGIN / try:...commit() / except: rollback(); raise appears 6x in services (categorization apply_rules/set_manual_category/move_rule, categories delete_category, import_ commit_import, statements delete/reassign) and 6x in migrations.py. A vault.owned_transaction() context manager would collapse both and remove the risk a 7th call site copies it with a subtly wrong exception class. Load-bearing atomicity code — do carefully with tests.
