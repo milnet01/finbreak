@@ -14,11 +14,12 @@
 
 A layered desktop app. The UI never touches storage directly — every
 **vault-touching** flow goes through a service layer, then repositories, which own
-the only handle to the encrypted database. (The one exception is the opt-in
-updater: `UpdateService` reads the plaintext `window.ini` and the network, never
-the vault — so it goes through no repository; FIBR-0054.) This keeps each layer
-testable in isolation (services tested with an in-memory repo; importers tested
-with sample files).
+the only handle to the encrypted database. This keeps each layer testable in
+isolation (services tested with an in-memory repo; importers tested with sample
+files). The `Svc --> Repo` arrow below is representative, not universal: the opt-in
+updater (`UpdateService`, FIBR-0054) never touches the vault at all — it reads the
+plaintext `window.ini` and the GitHub Releases API (its own drawn edge), so no
+repository sits under it.
 
 ```mermaid
 flowchart TB
@@ -56,6 +57,7 @@ flowchart TB
 
     Import --> Importers
     Svc --> Repo
+    Update -->|opt-in, https| Releases([GitHub Releases API])
 
     subgraph Repo["Repository layer"]
         AccRepo[Accounts]
