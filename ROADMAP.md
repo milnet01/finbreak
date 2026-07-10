@@ -838,6 +838,22 @@ because retrofitting them is a data migration.
   Source: user-request-2026-07-09.
   Resolved (2026-07-09): a "Change account" action on the Statements tab. StatementService.reassign_account(period_id, new_account_id) atomically re-points statement_periods.account_id AND every transaction stamped with it (one owned BEGIN…COMMIT mirroring delete_statement; ROLLBACK to a re-openable vault). A span-collision guard runs BEFORE BEGIN (pure read + refuse) with a period_id self-exclusion, so a same-account pick is the INV-5 no-op, not a false refusal; a real collision (target already has that span) raises ValueError → a tr() warning. A DISTINCT reassigned signal (the changed handler hard-codes "Statement deleted") drives a "Statement account changed" status via a shared refresh helper. New AccountPickerDialog (preselects the current account, deleteLater'd). StatementRow += account_id; repos get()/set_account()/reassign_account() (commit-free); no schema change (reuses the v6 provenance stamp). Spec /cold-eyes-converged in 6 cold loops (2 lanes = 12 reviews; design stable since loop 2). TDD 14 tests. Close: /audit 0; /indie-review 2 cold lanes — data/service CLEAN, UI/shell 1 LOW (undisposed picker dialog) folded inline. Gate green 366 passed/1 skipped; FIBR-0059 src mypy-clean. Also filed FIBR-0061 (mypy not enforced in the gate + 4 pre-existing test-file type errors, found during this close). Commits 2fc5a42 + review fold.
 
+- 📋 [FIBR-0072] **Warn (or disable chrome) when navigating away from an in-progress import.**
+  main_window._open_import() never disables the toolbar/menu, so clicking Home/Statements/Accounts/Categories/Rules mid-import silently rebuilds the workspace and destroys the in-progress wizard (chosen file, column mapping, unsaved preview) with no confirmation. Either confirm before discarding, or disable navigation chrome during an import (as locked states do).
+  Kind: ux.
+  Source: indie-review-2026-07-10 (M-shell1).
+
+- 📋 [FIBR-0073] **Add keyboard mnemonics to menus + dialog labels (a11y sweep).**
+  Menu titles (File/View/Window/Help/Donate) have no '&' Alt-accelerators; no dialog uses label mnemonics. Weakens keyboard-only navigation vs a typical desktop app (WCAG-adjacent). One focused sweep across main_window + the dialogs.
+  Kind: accessibility.
+  Source: indie-review-2026-07-10 (shell L1 + dialog INFO).
+
+- 📋 [FIBR-0074] **Dedicated per-bank PDF readers for ABSA / Nedbank / FNB (needs real anonymised sample statements).**
+  Today ABSA/Nedbank/FNB statements CAN already be imported two ways: (1) their CSV/OFX exports (most reliable), and (2) the generic PDF table-extractor (pdf_importer.py) for any PDF with ruled transaction tables, via the column-mapping step. A DEDICATED zero-config text-layer reader like standard_bank.py (auto-detect + no mapping) needs REAL anonymised sample statements per bank to build and validate — the SB reader (FIBR-0050) required 6 real statements to catch layout edge cases; synthetic dummy PDFs exercise code paths but don't validate real-world layouts. Blocked on the user providing (or the project sourcing) a few real anonymised statements per bank. Until then, the generic extractor + CSV/OFX cover these banks.
+  **Layman:** Zero-config PDF import for the other big SA banks, the way Standard Bank statements already import without mapping columns.
+  Kind: feature.
+  Source: user-request-2026-07-10.
+
 ### ⚡ Performance
 
 - 📋 [FIBR-0025] **Enable SQLite WAL mode.** Set
@@ -872,6 +888,11 @@ because retrofitting them is a data migration.
   Kind: perf. Source: user-request-2026-07-01.
 
 ---
+
+- 📋 [FIBR-0071] **Add DB indexes for the import-dedup + count lookups (full-table scans today).**
+  No CREATE INDEX anywhere in migrations.py. TransactionRepository.existing_for() (WHERE account_id, occurred_on, amount_minor) runs once per distinct (date, amount) bucket inside every import — N full scans; same for count_for_account / count_for_category / rules count_for_category. Fine at today's personal scale (design.md accepts it) but a multi-year vault degrades. A composite index on transactions(account_id, occurred_on, amount_minor) plus single-column indexes on account_id/category_id/statement_period_id would flatten it. Overlaps FIBR-0026 (indexed dedup lookup).
+  Kind: perf.
+  Source: indie-review-2026-07-10 (M-data3).
 
 ### 🧹 Warnings & tech debt
 
@@ -958,6 +979,35 @@ is a future error tomorrow.
   **Layman:** A few error-handling paths in the app have no test; add regression tests so a future change can't silently break them.
   Kind: test.
   Source: test-audit-2026-07-10.
+
+- 📋 [FIBR-0065] **Fix the auto-lock-during-modal-dialog crash (reproduced HIGH).**
+  REPRODUCED (Qt DeferredDelete is processed inside a nested exec() loop): an idle auto-lock fires while a content-widget dialog is exec()-blocking; MainWindow._lock() -> _clear_live() -> workspace.deleteLater() destroys the dialog's parent chain during that nested loop, so the post-exec() call (home.py CategoryPickerDialog.selected_category_id(); import_wizard.py PasswordDialog.password()/remember(); also statements.py, rules.py) hits a deleted C++ object -> RuntimeError, which the VaultLockedError guards do NOT catch. The existing guards only cover 'dialog closes BEFORE lock', not 'lock DURING exec()'. Needs its own spec+cold-eyes+TDD cycle (lifecycle-critical security code). Proposed approach: either convert content-widget dialogs to the shell's non-blocking setModal(True)+show() pattern (FIBR-0051 D2 rejected exec() for exactly this), OR a MainWindow modal-registry that wipes the key immediately (security preserved) but defers the UI teardown until the nested loop unwinds. Recommend prioritising ABOVE FIBR-0054.
+  **Layman:** If the app auto-locks itself while a small pop-up (pick a category, edit a rule, enter a PDF password) is open, it can crash instead of locking cleanly.
+  Kind: fix.
+  Source: indie-review-2026-07-10 (full-codebase sweep, H-B).
+
+- 📋 [FIBR-0066] **Refactor the 6x duplicated BEGIN/COMMIT/ROLLBACK transaction boilerplate into one owned-transaction helper.**
+  Identical BEGIN / try:...commit() / except: rollback(); raise appears 6x in services (categorization apply_rules/set_manual_category/move_rule, categories delete_category, import_ commit_import, statements delete/reassign) and 6x in migrations.py. A vault.owned_transaction() context manager would collapse both and remove the risk a 7th call site copies it with a subtly wrong exception class. Load-bearing atomicity code — do carefully with tests.
+  Kind: refactor.
+  Source: indie-review-2026-07-10 (M-C3, corroborated x2: crypto-vault migrations.py + core-services).
+
+- 📋 [FIBR-0067] **Widen the Standard Bank _MONEY regex to accept ungrouped 4+-digit amounts, then re-validate against the real statements.**
+  standard_bank.py _MONEY = r'(?<![\d.,])\d{1,3}(?:[.,]\d{3})*[.,]\d{2}(?!\d)' fails to match an amount >= 1000 printed WITHOUT a thousands separator (e.g. '1500.00' -> no match), so a statement with an ungrouped opening/closing balance fails with the generic mis-parse. Degrades SAFELY (friendly error, no corruption); none of the 6 validated real statements exhibit it. NOT folded in the audit sweep: the naive fix (\d{1,3}->\d+) risks a NEW false positive (a dotted date like 2026.07.15 -> spurious '2026.07' token), and this parser was validated end-to-end on a real-statement corpus not available in-session. Fix + re-validate against all 6 real statements as its own item.
+  Kind: fix.
+  Source: indie-review-2026-07-10 (M-imp1).
+
+- 📋 [FIBR-0068] **Promote the _set_combo(combo, value) helper to a shared UI util and dedup the 7x findData+setCurrentIndex idiom.**
+  Kind: refactor.
+  Source: indie-review-2026-07-10 (M-dlg4).
+
+- 📋 [FIBR-0069] **Extract a _signed_balance_from_tokens helper for the 4x duplicated Standard Bank balance-token parse.**
+  Kind: refactor.
+  Source: indie-review-2026-07-10 (M-imp3).
+
+- 📋 [FIBR-0070] **Decide the fate of the unwired ImportProfileRepository.list_all() (build a manage-saved-profiles screen, or remove it).**
+  list_all() has zero callers in src/ — the wizard only auto-matches by signature and saves. Either an intended 'manage saved import profiles' feature was never wired up, or it is dead weight. Decide feature-vs-delete.
+  Kind: chore.
+  Source: indie-review-2026-07-10 (M-data1).
 
 ## How to add an item
 

@@ -201,6 +201,12 @@ signaling per
 
 ### Fixed
 
+- **Categorization and account-management correctness/UX fixes**
+  Manual category picks are validated to a leaf category at the service boundary (not just the UI); the rule reorder (Move up/down) is now one atomic transaction; deleting an account now asks for confirmation like the other destructive actions; and the unlock screen gives a malformed KDF sidecar its own message instead of 'check your password'.
+
+- **Import now fails gracefully on malformed/unsupported statement files instead of crashing**
+  An OFX investment/brokerage statement, a PDF pdfplumber can't parse, a missing/permission-denied file, and an over-large CSV all now surface a friendly message rather than an unhandled crash. The CSV path gained the same size cap the OFX/PDF paths already had, and a column mapping can no longer assign two roles to one column.
+
 - **The window now remembers its size, and Window → Center window works on Linux Wayland (KDE), not only X11 (FIBR-0060).**
   On modern Linux desktops (Wayland) the system controls window placement, so
   the previous X11-only code silently did nothing: the window size was forgotten
@@ -217,6 +223,9 @@ signaling per
   locked-PDF password follows the corrected account.
 
 ### Security
+
+- **Hardened crypto/vault storage after a full-codebase review**
+  Vault.create() no longer leaks an open, unlocked SQLCipher connection if a migration or sidecar write fails (it now mirrors open()'s close-and-reset); the app-data directory is created owner-only (0o700), not just the vault/sidecar files; the KDF sidecar's temp write refuses to follow a symlink (O_NOFOLLOW); and a first-run attempted over an existing vault now wipes the derived key on every exit path.
 
 - **Opening a vault from a newer version fails safely (FIBR-0005).** If a
   future build upgrades your vault's format and you then open it with an older

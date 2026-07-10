@@ -102,6 +102,55 @@ journal); §2 is the only part that changes.
 
 Append-only. Newest at the top.
 
+### 2026-07-10 — Full-codebase /audit + /indie-review sweep (user-requested, out-of-band)
+
+Ran a whole-project audit at the user's request (not a phase close). **Static
+layer fully clean**: `audit_run` (ruff/bandit/semgrep/gitleaks/shellcheck, full
+tree) 0; deps-installed mypy 0 (65 files); pip-audit 0. `/indie-review` fanned
+out **8 cold lanes** (crypto-vault · auth · repositories · CSV-import ·
+statement-importers · core-services · UI-shell · UI-dialogs), Sonnet reviewers,
+all severities. Corroborations (≥2 lanes): move_rule non-atomic, `_stored_pw`
+vs INV-11 docstring, txn boilerplate ×6, RulesWidget lock guard, auto-lock
+during nested `exec()`.
+
+**Every actionable finding verified against source before any fix** (two
+reproduced empirically). **Folded inline with regression tests (4 commits, gate
+green 427 passed/1 skipped):**
+- *crypto/vault:* H-A `Vault.create()` conn-leak on post-`_conn` failure →
+  close-and-reset like `open()`; M-crypto2 app-data dir → 0o700; M-crypto3
+  sidecar `.tmp` → `O_NOFOLLOW`.
+- *import pipeline:* H-C OFX **investment** statement `AttributeError` (repro'd)
+  → filter + friendly `ValueError`; H-D `pdfplumber` `PdfminerException`
+  uncaught → boundary catch in both PDF readers; H-F `read_file*` `OSError` →
+  `ValueError`; H-G CSV size cap (closes **FIBR-0041**); M-csv-cols column
+  distinctness.
+- *services:* M-auth2 `complete_first_run` key-wipe on the guard path; M-core1
+  `set_manual_category` leaf guard (INV-9); M-C1 `move_rule` atomic swap.
+- *UI/docs:* H-E accounts delete confirmation; M-auth1 distinct `KdfPolicyError`
+  message; M-C4 `RulesWidget` lock guards; M-dlg3 accessible names; M-C2
+  password-dialog docstring; M-data2 `design.md` phantom `secrets` table.
+
+**H-B (reproduced HIGH) deliberately NOT patched inline** — auto-lock firing
+during a content-widget `exec()` dialog destroys the dialog's parent chain
+mid-nested-loop → `RuntimeError` the `VaultLockedError` guards miss (empirical
+repro in scratchpad). The correct fix is architectural (non-blocking dialogs, or
+a modal-registry with deferred teardown that keeps the key-wipe-on-lock
+invariant) and needs its own spec+cold-eyes+TDD cycle. Filed as **FIBR-0065**
+(top priority, ahead of FIBR-0054) with the repro + proposed approach.
+
+**Deferred → ROADMAP (FIBR-0065–0074):** H-B crash, txn-boilerplate refactor,
+`_MONEY` ungrouped-amount fix (deferred: validated parser, no real-statement
+corpus in-session; naive fix risks a dotted-date false positive), `_set_combo` +
+balance-parse dedup, unwired `list_all()` decision, DB indexes, navigate-away-mid-
+import UX, a11y mnemonics sweep, and (user ask) dedicated ABSA/Nedbank/FNB PDF
+readers (**FIBR-0074** — blocked on real anonymised sample statements; the
+generic extractor + CSV/OFX already cover these banks). One false positive logged
+(`CategoryRepository.delete()` "dead code" — actually tested + intentional).
+CHANGELOG updated; Ants-MCP feedback appended (new `indie_review_orchestrate`
+no-lanes finding + a re-verification datapoint pinned to the **pre-relaunch**
+build edbc3163). Active item stays **FIBR-0054** (auto-update) — though FIBR-0065
+should arguably go first.
+
 ### 2026-07-10 — FIBR-0010 CLOSED (P08 rules engine + manual override + learning)
 
 Built the P08 rules engine **test-first** against the cold-eyes-converged spec.
