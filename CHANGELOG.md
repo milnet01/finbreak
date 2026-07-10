@@ -205,6 +205,8 @@ signaling per
 
 ### Fixed
 
+- **A second app instance or a slow backup holding a brief database lock no longer crashes with a raw error — connections now wait up to 5 seconds for the lock to clear.** (FIBR-0076)
+
 - **Auto-locking while a pop-up is open no longer crashes the app (FIBR-0065).**
   If the app auto-locked itself while a small pop-up was open (pick a
   category, add/edit a rule, change a statement's account, or type a
@@ -237,6 +239,8 @@ signaling per
   locked-PDF password follows the corrected account.
 
 ### Security
+
+- **Vault connections now explicitly pin per-page HMAC integrity ON (defense-in-depth for tamper detection) instead of relying on the encryption library's default.** (FIBR-0077)
 
 - **Bounded file read defeats an endless-source import + complete vault-create cleanup**
   The import size cap is now enforced by a bounded read, so a symlink to an endless source (e.g. /dev/zero) or a file that grows after the size check can't be read unbounded into memory. Vault creation now closes and resets on any failure across the whole build (not just the final steps), and the app-data directory is created owner-only from the outset.

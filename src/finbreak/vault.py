@@ -150,10 +150,23 @@ class Vault:
         # accepted best-effort gap, consistent with the D5 stance on the other
         # immutable key/password intermediates.
         conn.execute(f"PRAGMA key = \"x'{key.hex()}'\"")
+        # Pin per-page HMAC integrity ON explicitly (FIBR-0077, revisiting
+        # FIBR-0004 D4 which only *asserted* the SQLCipher-4 default). AES gives
+        # confidentiality, not integrity; the HMAC is what makes a tampered page
+        # fail to open (security-model INV-1/T9). Every vault is created with the
+        # default ON, so pinning ON here can never mismatch an existing file — it
+        # only removes the reliance on a dep default a future bump could flip
+        # (global rule §5). Must be issued right after PRAGMA key, before the
+        # first read, as a cipher-configuration statement.
+        conn.execute("PRAGMA cipher_use_hmac = ON")
         # Enforce the transactions->accounts foreign key (FIBR-0005 D4). Set on
         # a fresh connection before its first statement: a *change* to
         # foreign_keys is a no-op mid-transaction, but once ON it stays enforced.
         conn.execute("PRAGMA foreign_keys = ON")
+        # Wait up to 5s for a held lock instead of raising OperationalError
+        # immediately (FIBR-0076): a second app instance or a slow backup/AV
+        # holding a transient read lock serialises rather than crashing the UI.
+        conn.execute("PRAGMA busy_timeout = 5000")
         return conn
 
     def _write_sidecar(self, params: KdfParams) -> None:

@@ -1019,15 +1019,17 @@ is a future error tomorrow.
   Kind: security.
   Source: indie-review-2026-07-10 loop-2 (statement H2).
 
-- 📋 [FIBR-0076] **Single-instance / busy_timeout handling so two app copies don't crash with a raw OperationalError.**
+- ✅ [FIBR-0076] **Single-instance / busy_timeout handling so two app copies don't crash with a raw OperationalError.**
   _connect sets PRAGMA key + foreign_keys only; SQLite default busy_timeout is 0. Two instances (or a slow backup/AV holding a read lock) make the second write raise sqlite3.OperationalError uncaught -> unhandled traceback. Add PRAGMA busy_timeout and/or an explicit single-instance guard (QLocalServer / lockfile) at the app layer.
   Kind: fix.
   Source: indie-review-2026-07-10 loop-2 (crypto M2).
+  Resolved (2026-07-10): _connect now issues `PRAGMA busy_timeout = 5000` (vault.py) — a second instance or a slow backup/AV holding a transient lock now serialises via SQLite's locking (waiting up to 5s) instead of the second write raising a raw sqlite3.OperationalError. This fixes the reported crash symptom; SQLite's file locking already guarantees no corruption under concurrent access, so the busy_timeout is sufficient. A QLocalServer/lockfile single-instance guard (preventing two windows at all) was considered but is a UX nicety, not required for crash-safety — deliberately NOT built (simplicity-first). Regression test asserts the PRAGMA value.
 
-- 📋 [FIBR-0077] **Explicitly pin PRAGMA cipher_use_hmac = ON in _connect (defense-in-depth for INV-1 tamper-evidence).**
+- ✅ [FIBR-0077] **Explicitly pin PRAGMA cipher_use_hmac = ON in _connect (defense-in-depth for INV-1 tamper-evidence).**
   security-model.md INV-1 states tamper-detection as a code guarantee, but _connect never sets cipher_use_hmac — it rests entirely on sqlcipher3-binary==0.6.0's SQLCipher-4 default. A future dep bump changing the default would silently weaken it (global rule §5). NOTE: FIBR-0004 D4 deliberately chose to ASSERT the default rather than re-configure it (test-covered), so this is a spec-level decision to reconsider, not a drive-by — needs a D4 revisit before changing.
   Kind: security.
   Source: indie-review-2026-07-10 loop-2 (crypto M4, flagged x2).
+  Resolved (2026-07-10): D4 revisit conclusion — pin it. _connect now issues `PRAGMA cipher_use_hmac = ON` explicitly right after `PRAGMA key` (vault.py), so INV-1 tamper-evidence is correct-by-construction rather than resting on sqlcipher3-binary's SQLCipher-4 default (which a future dep bump could flip, global rule §5). Every vault is created with the default ON, so pinning ON can never mismatch an existing file. FIBR-0004 D4 spec text updated with the revisit note; the existing INV-1 assert stays as the regression check. New test_connection_pins_hmac_and_busy_timeout covers it. Gate green.
 
 - 📋 [FIBR-0078] **Move the Standard Bank row cap before the per-family parse (bounds computation, not just the result).**
   standard_bank.parse checks len(result.drafts) > _MAX_PDF_ROWS only AFTER _parse_family_* has run full regex + Decimal parsing over every region line — a crafted PDF with millions of transaction-shaped lines does all that work before rejection. pdf_importer.py checks its cap earlier (cheaper). Add a cheap pre-parse region-line count guard. NOTE: the current ordering is spec-consistent (FIBR-0050 Deliverable 1), so changing it needs a FIBR-0050 spec update.

@@ -125,6 +125,28 @@ def test_INV1_encrypted_at_rest_hmac_and_tamper_detection(paths):
         Vault(vault_path, sidecar_path).open(derive_key(bytearray(_PW), salt, params))
 
 
+def test_connection_pins_hmac_and_busy_timeout(paths):
+    """Every connection pins the defense-in-depth PRAGMAs: HMAC integrity is set
+    explicitly ON (FIBR-0077, not left resting on the SQLCipher-4 default a dep
+    bump could flip) and a 5s busy_timeout is applied so a transient lock (a
+    second instance, a slow backup/AV) waits instead of raising a raw
+    OperationalError (FIBR-0076)."""
+    vault_path, sidecar_path = paths
+    salt = bytes(range(SALT_LEN))
+    params = _params(salt)
+
+    v = Vault(vault_path, sidecar_path)
+    v.create(derive_key(bytearray(_PW), salt, params), params, "ZAR", 2)
+    v.close()
+
+    reopened = Vault(vault_path, sidecar_path)
+    reopened.open(derive_key(bytearray(_PW), salt, params))
+    conn = reopened.connection
+    assert conn.execute("PRAGMA cipher_use_hmac").fetchone()[0] == "1"
+    assert conn.execute("PRAGMA busy_timeout").fetchone()[0] == 5000
+    reopened.close()
+
+
 # --------------------------------------------------------------------------- #
 # INV-2 — strong, pinned, non-downgradeable KDF
 # --------------------------------------------------------------------------- #
