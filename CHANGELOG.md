@@ -183,6 +183,8 @@ signaling per
 
 ### Changed
 
+- **Consolidated the Standard Bank statement signed-balance parsing (repeated 7 times across the account families) into one helper.** (FIBR-0069)
+
 - **Deduplicated the drop-down preselect logic shared across the account, category, and type pickers into one helper.** (FIBR-0068)
 
 - **Consolidated the 13 hand-copied database transaction blocks (BEGIN/COMMIT/ROLLBACK) into one shared `owned_transaction` helper, so a future database write can't accidentally use a subtly-wrong rollback path.** (FIBR-0066)

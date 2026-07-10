@@ -173,6 +173,15 @@ def _is_negative(token: str) -> bool:
     return "-" in token
 
 
+def _signed_balance(token: str, fmt: Fmt) -> Decimal:
+    """A balance token as a signed ``Decimal``: negative when the token carries the
+    trailing ``-`` Standard Bank prints for a negative balance, positive otherwise.
+    The single home of the ``-parse if negative else parse`` idiom (FIBR-0069) —
+    every family's opening/row balance goes through it."""
+    magnitude = _parse_amount(token, fmt)
+    return -magnitude if _is_negative(token) else magnitude
+
+
 def _money_tokens(text: str) -> list[str]:
     """The money figures on a line, in print order (with any trailing/leading
     ``-`` re-attached so ``_is_negative`` can see it)."""
@@ -385,11 +394,7 @@ def _capture_opening(region_lines: list[str], fmt: Fmt) -> Decimal:
             toks = _money_tokens(line)
             if toks:
                 bal = toks[-1]
-                return (
-                    -_parse_amount(bal, fmt)
-                    if _is_negative(bal)
-                    else _parse_amount(bal, fmt)
-                )
+                return _signed_balance(bal, fmt)
     raise ValueError("couldn't find the opening balance on this statement")
 
 
@@ -404,11 +409,7 @@ def _capture_closing(full_text: str, family: Family, fmt: Fmt) -> Decimal | None
                 toks = _money_tokens(line)
                 if toks:
                     bal = toks[-1]
-                    return (
-                        -_parse_amount(bal, fmt)
-                        if _is_negative(bal)
-                        else _parse_amount(bal, fmt)
-                    )
+                    return _signed_balance(bal, fmt)
     return None
 
 
@@ -497,7 +498,7 @@ def _anchor_balance(line: str, fmt: Fmt) -> Decimal | None:
     if not toks:
         return None
     bal = toks[-1]
-    return -_parse_amount(bal, fmt) if _is_negative(bal) else _parse_amount(bal, fmt)
+    return _signed_balance(bal, fmt)
 
 
 def _draft(
@@ -548,11 +549,7 @@ def _parse_family_a(
         if not m:
             raise ValueError(_MISPARSE)
         desc, amt_tok, mm, dd, bal_tok = m.groups()
-        balance = (
-            -_parse_amount(bal_tok, fmt)
-            if _is_negative(bal_tok)
-            else _parse_amount(bal_tok, fmt)
-        )
+        balance = _signed_balance(bal_tok, fmt)
         if prev_balance is None:
             raise ValueError(
                 "couldn't find the opening balance on this statement — "
@@ -599,11 +596,7 @@ def _parse_family_b(lines: list[str], exponent: int, fmt: Fmt) -> ParseResult:
         if not m:
             raise ValueError(_MISPARSE)
         posting, desc, amt_tok, bal_tok = m.groups()
-        balance = (
-            -_parse_amount(bal_tok, fmt)
-            if _is_negative(bal_tok)
-            else _parse_amount(bal_tok, fmt)
-        )
+        balance = _signed_balance(bal_tok, fmt)
         if prev_balance is None:
             raise ValueError(
                 "couldn't find the opening balance on this statement — "
@@ -637,11 +630,7 @@ def _parse_family_d(lines: list[str], exponent: int, fmt: Fmt) -> ParseResult:
         if not m:
             raise ValueError(_MISPARSE)
         y, mo, d, desc, amt_tok, bal_tok = m.groups()
-        balance = (
-            -_parse_amount(bal_tok, fmt)
-            if _is_negative(bal_tok)
-            else _parse_amount(bal_tok, fmt)
-        )
+        balance = _signed_balance(bal_tok, fmt)
         if prev_balance is None:
             raise ValueError(
                 "couldn't find the opening balance on this statement — "
@@ -813,11 +802,7 @@ def _cc_opening(full_text: str, fmt: Fmt) -> Decimal:
                 # Honour the printed sign (as _capture_opening does) — a card that
                 # opens in credit prints a negative brought-forward, and the sole
                 # Family-C gate (opening - Σ == closing) needs the right sign.
-                return (
-                    -_parse_amount(bal, fmt)
-                    if _is_negative(bal)
-                    else _parse_amount(bal, fmt)
-                )
+                return _signed_balance(bal, fmt)
     raise ValueError("couldn't find the opening balance on this statement")
 
 

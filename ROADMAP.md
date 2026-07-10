@@ -1005,9 +1005,10 @@ is a future error tomorrow.
   Source: indie-review-2026-07-10 (M-dlg4).
   Resolved (2026-07-10): extracted the guarded combo-preselect idiom (index = combo.findData(v); if index >= 0: combo.setCurrentIndex(index)) into select_combo_data() in new src/finbreak/ui/_widgets.py, and converted the 6 sites (settings/accounts/categories type combos + rules/category_picker/account_picker id combos). IMPORTANT distinction surfaced, not forced: kept DISTINCT from ImportWizardWidget._set_combo, which is UNGUARDED by design — the wizard wants a saved-profile column absent from the current file to CLEAR the combo (force a re-pick), whereas the picker/dialog sites keep the current selection when a value isn't found. Merging them would have been a silent behavior change. mypy 0, 165 UI tests pass.
 
-- 📋 [FIBR-0069] **Extract a _signed_balance_from_tokens helper for the 4x duplicated Standard Bank balance-token parse.**
+- ✅ [FIBR-0069] **Extract a _signed_balance_from_tokens helper for the 4x duplicated Standard Bank balance-token parse.**
   Kind: refactor.
   Source: indie-review-2026-07-10 (M-imp3).
+  Resolved (2026-07-10): extracted _signed_balance(token, fmt) in standard_bank.py — the single home of the '-parse if _is_negative else parse' idiom. Replaced 7 occurrences (the reviewer's 'x4' undercounted): the brought-forward/opening captures (_capture_opening x2, credit-card opening, _anchor_balance) + the per-row balance in Families A/B/D. Named _signed_balance (a single token) rather than the tentative _signed_balance_from_tokens, since every site passes one token. No behavior change — all family checksums + per-row sign gates stay green (83 SB/PDF tests). ruff/mypy 0.
 
 - 📋 [FIBR-0070] **Decide the fate of the unwired ImportProfileRepository.list_all() (build a manage-saved-profiles screen, or remove it).**
   list_all() has zero callers in src/ — the wizard only auto-matches by signature and saves. Either an intended 'manage saved import profiles' feature was never wired up, or it is dead weight. Decide feature-vs-delete.
