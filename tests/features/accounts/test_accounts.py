@@ -33,6 +33,7 @@ from finbreak.repositories.accounts import AccountRepository
 from finbreak.repositories.transactions import TransactionRepository
 from finbreak.services.accounts import AccountService
 from finbreak.services.auth import AuthService
+from finbreak.services.categorization import CategorizationService
 from finbreak.services.transactions import TransactionService
 
 pytestmark = pytest.mark.features
@@ -157,7 +158,7 @@ def test_INV4_v1_vault_upgrades_and_backfills(paths):
     svc = AuthService(vault_path, sidecar_path)
     assert svc.unlock(bytearray(_PW)) is True  # unlock runs the migration
     conn = svc.vault.connection
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 6
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 7
 
     accounts = AccountRepository(conn).list_all()
     assert [a.name for a in accounts] == [DEFAULT_ACCOUNT_NAME]
@@ -172,7 +173,7 @@ def test_INV4_v1_vault_upgrades_and_backfills(paths):
 
 def test_INV4_first_run_vault_is_v6_with_one_default(service):
     conn = service.vault.connection
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 6
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 7
     accounts = AccountRepository(conn).list_all()
     assert [a.name for a in accounts] == [DEFAULT_ACCOUNT_NAME]
     assert accounts[0].type == "current"
@@ -182,7 +183,7 @@ def test_INV4_idempotent_at_latest(service):
     # Re-running migrations on an already-latest vault changes nothing.
     conn = service.vault.connection
     run_migrations(conn)
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 6
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 7
     assert len(AccountRepository(conn).list_all()) == 1, "Default not duplicated"
 
 
@@ -292,7 +293,7 @@ def test_INV5_transaction_carries_account_and_name(service):
 
     rows = txs.list_transactions()
     assert len(rows) == 1
-    transaction, display, account_name = rows[0]
+    transaction, display, account_name, _category = rows[0]
     assert transaction.account_id == default_id
     assert account_name == DEFAULT_ACCOUNT_NAME, "the id->name join is correct"
 
@@ -310,7 +311,7 @@ def test_INV5_account_id_and_row_id_are_independent(service):
     savings = svc.add_account("Savings", "savings")
     txs = TransactionService(service.vault)
     txs.add_transaction(savings.id, "2026-07-01", "-5.00", "under savings")
-    transaction, _display, name = txs.list_transactions()[0]
+    transaction, _display, name, _category = txs.list_transactions()[0]
     assert transaction.account_id == savings.id
     assert transaction.id != transaction.account_id, "id and account_id are distinct"
     assert name == "Savings"
@@ -398,7 +399,9 @@ def test_INV7c_transaction_shows_account_name_in_table(qtbot, service):
     TransactionService(service.vault).add_transaction(
         default_id, "2026-07-01", "-12.34", "coffee"
     )
-    home = HomeView(TransactionService(service.vault))
+    home = HomeView(
+        TransactionService(service.vault), CategorizationService(service.vault)
+    )
     qtbot.addWidget(home)
     assert home._table.rowCount() == 1
     cells = [home._table.item(0, c).text() for c in range(home._table.columnCount())]

@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPushButton,
     QTreeWidget,
     QTreeWidgetItem,
@@ -25,7 +26,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from finbreak.errors import FinbreakError
+from finbreak.errors import FinbreakError, VaultLockedError
 from finbreak.models import CategoryKind
 from finbreak.services.auth import AuthService
 from finbreak.services.categories import CategoryService
@@ -138,8 +139,36 @@ class CategoriesWidget(QWidget):
         item = self._tree.currentItem()
         if item is None:
             return
+        category_id = item.data(0, _ID_ROLE)
+        # Name the blast radius BEFORE deleting so a non-technical user is never
+        # surprised by a mass move (FIBR-0010 INV-8). Two tr() sentences — Qt allows
+        # only one %n numerus per translated string. The counts are read pre-delete
+        # (before the cascade's step-1 reset) via the service, never a repo.
+        txn_count, rule_count = self._categories.delete_blast_radius(category_id)
+        confirmed = QMessageBox.question(
+            self,
+            self.tr("Delete category"),
+            self.tr(
+                "Deleting this category will make %n transaction(s) automatic again.",
+                "",
+                txn_count,
+            )
+            + " "
+            + self.tr(
+                "It will also remove %n rule(s) that file into it. Continue?",
+                "",
+                rule_count,
+            ),
+        )
+        if confirmed != QMessageBox.StandardButton.Yes:
+            return
         try:
-            self._categories.delete_category(item.data(0, _ID_ROLE))
+            self._categories.delete_category(category_id)
+        except VaultLockedError:
+            # An idle auto-lock can fire while the confirm box is open — the vault is
+            # then closed and this workspace is being torn down (INV-14). Nothing to
+            # delete against a locked vault; the next unlock rebuilds fresh chrome.
+            return
         except FinbreakError as exc:
             # ProtectedCategoryError / CategoryHasChildrenError — show the
             # message, remove nothing (INV-6 reflected through the UI).

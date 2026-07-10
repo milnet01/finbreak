@@ -58,13 +58,44 @@ class Account:
     created_at: str
 
 
+class CategorySource(StrEnum):
+    """How a transaction's category was set (FIBR-0010). ``MANUAL`` is frozen —
+    the rule engine never touches it; ``RULE`` was set by a rule and is recomputed
+    on every apply. A ``None`` source is a never-touched auto row. The ``.value``
+    is the stored, non-translated token."""
+
+    RULE = "rule"
+    MANUAL = "manual"
+
+
 @dataclass
 class Transaction:
+    """One row of the ``transactions`` table. ``category_id`` / ``category_source``
+    (appended after ``created_at`` at v7, FIBR-0010) are the category link: the
+    ``list_all`` SELECT names all eight columns in this order so ``Transaction(*row)``
+    stays aligned. ``category_source`` is a ``CategorySource`` token or ``None``."""
+
     id: int
     account_id: int
     occurred_on: str
     amount_minor: int
     description: str
+    created_at: str
+    category_id: int | None
+    category_source: str | None
+
+
+@dataclass
+class CategorizationRule:
+    """One auto-categorisation rule (FIBR-0010): ``pattern`` (a text substring,
+    normalised via ``normalise_text``) → ``category_id`` (a leaf), ordered by
+    ascending ``priority`` (then ``id``) for first-match. The repository SELECT
+    shares this field order so ``CategorizationRule(*row)`` stays aligned."""
+
+    id: int
+    pattern: str
+    category_id: int
+    priority: int
     created_at: str
 
 

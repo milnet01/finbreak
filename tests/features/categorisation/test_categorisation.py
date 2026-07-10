@@ -1,0 +1,852 @@
+"""FIBR-0010 — P08 rules engine + manual override + learning.
+
+Enforces tests/features/categorisation/spec.md. The pure matcher
+(`categorize`), the commit-free apply routine (`recategorize_auto_rows`), the
+`CategorizationService` (rules CRUD + reorder + manual set + would/apply), the
+`CategorizationRuleRepository`, the extended `TransactionRepository`, the atomic
+delete-category cascade + blast-radius on `CategoryService`, the shared text
+normaliser, and the v6->v7 migration. Headless layers are tested directly; the
+Home category column / context set, the learning offer, the Rules tab, and the
+blast-radius confirm use the pytest-qt `qtbot` fixture. Every on-disk vault uses
+`tmp_path`; no test touches the network or real financial data (testing.md § 6).
+"""
+
+from collections.abc import Iterator
+from pathlib import Path
+
+import pytest
+from PySide6.QtWidgets import QDialog, QMessageBox
+
+from conftest import _PW, build_v6_vault, keyed_connection
+from finbreak.crypto import SALT_LEN
+from finbreak.errors import VaultLockedError
+from finbreak.migrations import LATEST_SCHEMA_VERSION, run_migrations
+from finbreak.models import CategorizationRule, ColumnMapping
+from finbreak.repositories.accounts import AccountRepository
+from finbreak.repositories.categories import CategoryRepository
+from finbreak.repositories.transactions import TransactionRepository
+from finbreak.services.auth import AuthService
+from finbreak.services.categories import CategoryService
+from finbreak.services.categorization import (
+    CategorizationService,
+    categorize,
+)
+from finbreak.services.import_ import ImportService
+from finbreak.services.transactions import TransactionService
+from finbreak.text import normalise_text
+
+pytestmark = pytest.mark.features
+
+HEADER = ["Date", "Details", "Amount"]
+SINGLE = ColumnMapping("Date", "Details", "Amount", None, None, "%Y-%m-%d", False)
+
+
+@pytest.fixture
+def paths(tmp_path) -> tuple[Path, Path]:
+    return tmp_path / "vault.db", tmp_path / "vault.kdf.json"
+
+
+@pytest.fixture
+def service(paths) -> Iterator[AuthService]:
+    svc = AuthService(*paths)
+    svc.first_run(bytearray(_PW), "ZAR")  # first-run migrates straight to v7
+    yield svc
+    svc.lock()
+
+
+# --------------------------------------------------------------------------- #
+# helpers
+# --------------------------------------------------------------------------- #
+def _roots(conn) -> dict[str, object]:
+    roots = CategoryRepository(conn).children_of(None)
+    return {r.kind: r for r in roots if r.kind is not None}
+
+
+def _leaf_id(service: AuthService, name: str) -> int:
+    """The id of a seeded leaf category by name (e.g. 'Groceries')."""
+    for c in CategoryService(service.vault).list_all():
+        if c.parent_id is not None and c.name == name:
+            return c.id
+    raise AssertionError(f"no leaf category named {name!r}")
+
+
+def _account_id(service: AuthService) -> int:
+    return AccountRepository(service.vault.connection).list_all()[0].id
+
+
+def _add_txn(
+    service: AuthService,
+    description: str,
+    amount: int = -100,
+    occurred: str = "2026-01-05",
+) -> int:
+    """Insert one raw transaction (auto / uncategorised) and return its id. Uses
+    the repo directly so a whitespace-only description can be seeded (the service
+    validator would reject it) — the engine must still leave it uncategorised."""
+    conn = service.vault.connection
+    return TransactionRepository(conn).add(
+        _account_id(service), occurred, amount, description
+    )
+
+
+def _txn_cat(service: AuthService, txn_id: int) -> tuple[int | None, str | None]:
+    row = service.vault.connection.execute(
+        "SELECT category_id, category_source FROM transactions WHERE id = ?", (txn_id,)
+    ).fetchone()
+    return (row[0], row[1])
+
+
+def _csv(header: list[str], rows: list[list[str]]) -> str:
+    return "\n".join([",".join(header)] + [",".join(r) for r in rows]) + "\n"
+
+
+def _do_import(imp: ImportService, text: str, account_id: int) -> None:
+    preview = imp.preview(text, SINGLE, account_id)
+    assert preview.period_start is not None and preview.period_end is not None
+    imp.commit_import(preview, preview.period_start, preview.period_end, "stmt.csv")
+
+
+# --------------------------------------------------------------------------- #
+# INV-15 — schema v6 -> v7
+# --------------------------------------------------------------------------- #
+def test_INV15_latest_schema_version_is_7():
+    assert LATEST_SCHEMA_VERSION == 7
+
+
+def test_INV15_v6_upgrades_to_v7(paths):
+    vault_path, sidecar = paths
+    salt = bytes(range(SALT_LEN))
+    build_v6_vault(vault_path, sidecar, salt, [("2026-01-01", -100, "a")])
+
+    conn = keyed_connection(vault_path, salt)
+    before = conn.execute(
+        "SELECT id, amount_minor, description FROM transactions"
+    ).fetchall()
+
+    run_migrations(conn)  # v6 -> v7 (walks to LATEST)
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 7
+
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(transactions)").fetchall()}
+    assert {"category_id", "category_source"} <= cols
+    assert (
+        conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' "
+            "AND name='categorization_rules'"
+        ).fetchone()
+        is not None
+    )
+    # transactions preserved; pre-v7 rows are auto/uncategorised (NULL/NULL).
+    assert (
+        conn.execute(
+            "SELECT id, amount_minor, description FROM transactions"
+        ).fetchall()
+        == before
+    )
+    assert conn.execute(
+        "SELECT category_id, category_source FROM transactions"
+    ).fetchall() == [(None, None)]
+    conn.close()
+
+
+def test_INV15_atomic_rollback_leaves_v6(paths):
+    vault_path, sidecar = paths
+    salt = bytes(range(SALT_LEN))
+    build_v6_vault(vault_path, sidecar, salt, [])
+
+    conn = keyed_connection(vault_path, salt)
+
+    class _FailAtRulesCreate:
+        """Raise on `CREATE TABLE categorization_rules`, AFTER the two ADD COLUMNs
+        — so the ROLLBACK must undo the column adds too."""
+
+        def __init__(self, real):
+            self._real = real
+
+        def execute(self, sql, *a):
+            if "CREATE TABLE categorization_rules" in sql:
+                raise RuntimeError("injected failure at the rules-table CREATE")
+            return self._real.execute(sql, *a)
+
+        def __getattr__(self, name):
+            return getattr(self._real, name)
+
+    with pytest.raises(RuntimeError):
+        run_migrations(_FailAtRulesCreate(conn))
+
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 6
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(transactions)").fetchall()}
+    assert "category_id" not in cols, "the ADD COLUMN was rolled back"
+    conn.close()
+
+
+def test_INV15_idempotent_at_v7(paths):
+    vault_path, sidecar = paths
+    salt = bytes(range(SALT_LEN))
+    build_v6_vault(vault_path, sidecar, salt, [])
+    conn = keyed_connection(vault_path, salt)
+    run_migrations(conn)
+    run_migrations(conn)  # re-run: no-op at v7
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 7
+    conn.close()
+
+
+def test_INV15_first_run_vault_is_v7(service):
+    conn = service.vault.connection
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 7
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(transactions)").fetchall()}
+    assert {"category_id", "category_source"} <= cols
+
+
+# --------------------------------------------------------------------------- #
+# shared text normaliser (D2)
+# --------------------------------------------------------------------------- #
+def test_normalise_text_collapses_whitespace_and_casefolds():
+    assert normalise_text("  Foo   BAR ") == "foo bar"
+
+
+def test_import_normalise_delegates_to_text():
+    # ImportService._normalise must become a byte-identical delegator (D2), so the
+    # dedup behaviour is unchanged.
+    sample = "  Pick   N Pay  123 "
+    assert ImportService._normalise(sample) == normalise_text(sample)
+
+
+# --------------------------------------------------------------------------- #
+# INV-2 — the pure matcher: first-match by priority, substring, normalised
+# --------------------------------------------------------------------------- #
+def test_INV2_first_match_in_priority_order():
+    # The matcher walks the rules in the order given — which is `list_all`'s
+    # ascending-priority order (the repo owns the sort, D3). Two both match; the
+    # first (higher-priority) one wins.
+    rules = [
+        CategorizationRule(2, "coffee shop", 10, 3, "t"),  # priority 3 — first
+        CategorizationRule(1, "coffee", 20, 5, "t"),  # priority 5 — also matches
+    ]
+    assert categorize("THE COFFEE SHOP", rules) == 10, "the first match in order wins"
+
+
+def test_INV2_no_match_and_empty_rule_set_return_none():
+    assert categorize("anything at all", []) is None
+    assert categorize("anything", [CategorizationRule(1, "zzz", 9, 0, "t")]) is None
+
+
+def test_INV2_normalises_both_pattern_and_description():
+    rules = [CategorizationRule(1, "  Pick   N Pay ", 7, 0, "t")]
+    assert categorize("EFT PICK N PAY  555", rules) == 7
+
+
+def test_INV2_id_breaks_priority_ties(service):
+    # Equal priorities are ordered by id (D7), so the list order is deterministic.
+    cs = CategorizationService(service.vault)
+    g, f = _leaf_id(service, "Groceries"), _leaf_id(service, "Fast food")
+    r1 = cs.add_rule("x", g)
+    r2 = cs.add_rule("x", f)
+    # Force the two priorities equal to exercise the id tiebreak.
+    conn = service.vault.connection
+    conn.execute("UPDATE categorization_rules SET priority = 0")
+    conn.commit()
+    ordered = cs.list_rules()
+    assert [r.id for r in ordered] == sorted([r1.id, r2.id])
+
+
+# --------------------------------------------------------------------------- #
+# INV-6 — new rules insert at the top (highest priority) and win
+# --------------------------------------------------------------------------- #
+def test_INV6_new_rule_inserts_at_top_and_wins(service):
+    cs = CategorizationService(service.vault)
+    g, f = _leaf_id(service, "Groceries"), _leaf_id(service, "Fast food")
+    cs.add_rule("shop", g)  # a broad rule that also matches "coffee shop"
+    specific = cs.add_rule("coffee shop", f)  # added later -> sorts first
+    rules = cs.list_rules()
+    assert rules[0].id == specific.id, "the newest rule is highest priority"
+    assert categorize("COFFEE SHOP", rules) == f, "the new specific rule wins"
+
+
+# --------------------------------------------------------------------------- #
+# INV-1 — the golden rule
+# --------------------------------------------------------------------------- #
+def test_INV1_apply_leaves_a_manual_row_untouched(service):
+    cs = CategorizationService(service.vault)
+    g, f = _leaf_id(service, "Groceries"), _leaf_id(service, "Fast food")
+    txn = _add_txn(service, "COFFEE SHOP")
+    cs.set_manual_category(txn, g)  # manual -> Groceries (frozen)
+    cs.add_rule("coffee", f)  # a rule that WOULD match it -> Fast food
+    cs.apply_rules()
+    assert _txn_cat(service, txn) == (g, "manual"), "a manual row is never touched"
+
+
+def test_INV1_apply_refiles_auto_rows(service):
+    cs = CategorizationService(service.vault)
+    f = _leaf_id(service, "Fast food")
+    txn = _add_txn(service, "COFFEE SHOP")  # auto (NULL/NULL)
+    cs.add_rule("coffee", f)
+    assert cs.apply_rules() == 1
+    assert _txn_cat(service, txn) == (f, "rule")
+
+
+# --------------------------------------------------------------------------- #
+# INV-3 — manual survives everything (incl. a deliberate clear)
+# --------------------------------------------------------------------------- #
+def test_INV3_manual_clear_stays_clear_after_apply(service):
+    cs = CategorizationService(service.vault)
+    f = _leaf_id(service, "Fast food")
+    txn = _add_txn(service, "COFFEE SHOP")
+    cs.set_manual_category(txn, None)  # a deliberate clear -> NULL / 'manual'
+    assert _txn_cat(service, txn) == (None, "manual")
+    cs.add_rule("coffee", f)
+    cs.apply_rules()
+    assert _txn_cat(service, txn) == (None, "manual"), "a cleared row is not re-filled"
+
+
+# --------------------------------------------------------------------------- #
+# INV-4 — when rules run: on import, and on explicit apply (not on edit)
+# --------------------------------------------------------------------------- #
+def test_INV4_import_categorises_new_rows(service):
+    cs = CategorizationService(service.vault)
+    g = _leaf_id(service, "Groceries")
+    cs.add_rule("pick n pay", g)
+    imp = ImportService(service.vault)
+    _do_import(
+        imp,
+        _csv(HEADER, [["2026-01-05", "PICK N PAY 123", "-50.00"]]),
+        _account_id(service),
+    )
+    row = service.vault.connection.execute(
+        "SELECT category_id, category_source FROM transactions "
+        "WHERE description = 'PICK N PAY 123'"
+    ).fetchone()
+    assert (row[0], row[1]) == (g, "rule"), "import categorises new rows in one go"
+
+
+def test_INV4_add_rule_does_not_refile_until_apply(service):
+    cs = CategorizationService(service.vault)
+    f = _leaf_id(service, "Fast food")
+    txn = _add_txn(service, "COFFEE SHOP")
+    cs.add_rule("coffee", f)
+    assert _txn_cat(service, txn) == (None, None), "add_rule does not silently re-file"
+    cs.apply_rules()
+    assert _txn_cat(service, txn) == (f, "rule"), "the explicit apply re-files"
+
+
+# --------------------------------------------------------------------------- #
+# INV-5 — the learning "differs" signal (service half; UI offer below)
+# --------------------------------------------------------------------------- #
+def test_INV5_would_categorize_reflects_current_rules(service):
+    cs = CategorizationService(service.vault)
+    f = _leaf_id(service, "Fast food")
+    assert cs.would_categorize("COFFEE SHOP") is None
+    cs.add_rule("coffee", f)
+    assert cs.would_categorize("COFFEE SHOP") == f
+
+
+# --------------------------------------------------------------------------- #
+# INV-7 — the atomic delete-category cascade
+# --------------------------------------------------------------------------- #
+def test_INV7_delete_cascade_refiles_and_removes_rules(service):
+    cs = CategorizationService(service.vault)
+    catsvc = CategoryService(service.vault)
+    g, f = _leaf_id(service, "Groceries"), _leaf_id(service, "Fast food")
+
+    t_rule = _add_txn(service, "PICK N PAY")
+    t_manual = _add_txn(service, "MANUAL ONE")
+    cs.add_rule("pick", f)  # a *remaining* rule (bottom) that reclaims t_rule later
+    cs.add_rule("pick n pay", g)  # targets Groceries (top) -> t_rule files here now
+    cs.apply_rules()
+    assert _txn_cat(service, t_rule) == (g, "rule")
+    cs.set_manual_category(t_manual, g)
+    assert _txn_cat(service, t_manual) == (g, "manual")
+
+    assert catsvc.delete_blast_radius(g) == (2, 1), "both txns + the one rule count"
+    catsvc.delete_category(g)
+
+    assert CategoryRepository(service.vault.connection).get(g) is None, "category gone"
+    assert [r.category_id for r in cs.list_rules()] == [f], "the Groceries rule is gone"
+    assert _txn_cat(service, t_rule) == (f, "rule"), "reclaimed by the remaining rule"
+    assert _txn_cat(service, t_manual) == (None, None), "manual->auto, matches nothing"
+
+
+def test_INV7_delete_cascade_rolls_back_on_failure(service, monkeypatch):
+    import finbreak.services.categories as cats_mod
+
+    cs = CategorizationService(service.vault)
+    catsvc = CategoryService(service.vault)
+    g = _leaf_id(service, "Groceries")
+    t = _add_txn(service, "PICK N PAY")
+    cs.add_rule("pick n pay", g)
+    cs.apply_rules()
+    assert _txn_cat(service, t) == (g, "rule")
+
+    def _boom(_conn):
+        raise RuntimeError("wedged re-apply")
+
+    monkeypatch.setattr(cats_mod, "recategorize_auto_rows", _boom)
+    with pytest.raises(RuntimeError):
+        catsvc.delete_category(g)
+
+    # Nothing changed — the whole cascade rolled back.
+    assert CategoryRepository(service.vault.connection).get(g) is not None
+    assert len(cs.list_rules()) == 1
+    assert _txn_cat(service, t) == (g, "rule")
+    # The vault is still writable (the rollback left it re-openable).
+    _add_txn(service, "AFTER ROLLBACK")
+
+
+# --------------------------------------------------------------------------- #
+# INV-8 — blast-radius (service + the net-new UI confirm)
+# --------------------------------------------------------------------------- #
+def test_INV8_confirm_names_both_counts_and_deletes_on_yes(qtbot, service, monkeypatch):
+    from finbreak.ui.categories import CategoriesWidget
+
+    cs = CategorizationService(service.vault)
+    g = _leaf_id(service, "Groceries")
+    _add_txn(service, "PICK N PAY")
+    cs.add_rule("pick n pay", g)
+    cs.apply_rules()
+
+    widget = CategoriesWidget(service)
+    qtbot.addWidget(widget)
+    widget._select_category(g)
+
+    captured: dict[str, str] = {}
+
+    def _confirm_yes(parent, title, text, *a, **k):
+        captured["text"] = text
+        return QMessageBox.StandardButton.Yes
+
+    monkeypatch.setattr(QMessageBox, "question", _confirm_yes)
+    widget._delete_button.click()
+
+    assert "1" in captured["text"], "the confirmation names the affected counts"
+    assert CategoryRepository(service.vault.connection).get(g) is None, "deleted on Yes"
+
+
+def test_INV8_cancel_deletes_nothing(qtbot, service, monkeypatch):
+    from finbreak.ui.categories import CategoriesWidget
+
+    g = _leaf_id(service, "Groceries")
+    widget = CategoriesWidget(service)
+    qtbot.addWidget(widget)
+    widget._select_category(g)
+    monkeypatch.setattr(
+        QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.No
+    )
+    widget._delete_button.click()
+    assert CategoryRepository(service.vault.connection).get(g) is not None, "No: kept"
+
+
+# --------------------------------------------------------------------------- #
+# INV-9 — rules target leaves only
+# --------------------------------------------------------------------------- #
+def test_INV9_add_and_update_reject_a_root(service):
+    cs = CategorizationService(service.vault)
+    income = _roots(service.vault.connection)["income"]
+    g = _leaf_id(service, "Groceries")
+    with pytest.raises(ValueError):
+        cs.add_rule("x", income.id)
+    rule = cs.add_rule("x", g)
+    with pytest.raises(ValueError):
+        cs.update_rule(rule.id, "x", income.id)
+
+
+def test_INV9_add_rule_rejects_empty_pattern(service):
+    cs = CategorizationService(service.vault)
+    g = _leaf_id(service, "Groceries")
+    with pytest.raises(ValueError):
+        cs.add_rule("   ", g)
+
+
+def test_INV9_leaf_categories_excludes_the_roots(service):
+    cs = CategorizationService(service.vault)
+    leaves = cs.leaf_categories()
+    assert leaves and all(c.parent_id is not None for c in leaves)
+    root_ids = {
+        r.id for r in CategoryRepository(service.vault.connection).children_of(None)
+    }
+    assert not (root_ids & {c.id for c in leaves}), "no Type root is offered"
+
+
+# --------------------------------------------------------------------------- #
+# INV-12 / INV-13 — no re-dedup; idempotent apply
+# --------------------------------------------------------------------------- #
+def test_INV12_apply_only_updates_never_changes_row_count(service):
+    cs = CategorizationService(service.vault)
+    g = _leaf_id(service, "Groceries")
+    for i in range(3):
+        _add_txn(service, f"PICK N PAY {i}")
+    cs.add_rule("pick n pay", g)
+    conn = service.vault.connection
+    before = conn.execute("SELECT count(*) FROM transactions").fetchone()[0]
+    cs.apply_rules()
+    after = conn.execute("SELECT count(*) FROM transactions").fetchone()[0]
+    assert before == after == 3, "re-categorising inserts/deletes nothing"
+
+
+def test_INV13_second_apply_with_unchanged_rules_returns_zero(service):
+    cs = CategorizationService(service.vault)
+    g = _leaf_id(service, "Groceries")
+    _add_txn(service, "PICK N PAY")
+    cs.add_rule("pick n pay", g)
+    assert cs.apply_rules() == 1
+    assert cs.apply_rules() == 0, "a second apply with unchanged rules is a no-op"
+
+
+# --------------------------------------------------------------------------- #
+# Edges — empty rule set, delete-all-rules, empty description
+# --------------------------------------------------------------------------- #
+def test_edge_delete_all_rules_then_apply_blanks_auto_rows_only(service):
+    cs = CategorizationService(service.vault)
+    g = _leaf_id(service, "Groceries")
+    t_auto = _add_txn(service, "PICK N PAY")
+    rule = cs.add_rule("pick n pay", g)
+    cs.apply_rules()
+    assert _txn_cat(service, t_auto) == (g, "rule")
+    t_manual = _add_txn(service, "MANUAL")
+    cs.set_manual_category(t_manual, g)
+
+    cs.delete_rule(rule.id)
+    assert cs.apply_rules() == 1, "one auto row went blank"
+    assert _txn_cat(service, t_auto) == (None, None), "the rule row is blanked"
+    assert _txn_cat(service, t_manual) == (g, "manual"), "the manual row stays"
+
+
+def test_edge_empty_description_row_stays_uncategorised(service):
+    cs = CategorizationService(service.vault)
+    g = _leaf_id(service, "Groceries")
+    tid = _add_txn(service, "   ")  # whitespace-only description
+    cs.add_rule("pick n pay", g)
+    cs.apply_rules()
+    assert _txn_cat(service, tid) == (None, None)
+
+
+# --------------------------------------------------------------------------- #
+# INV-10 — Home category column + context-menu manual set (qtbot)
+# --------------------------------------------------------------------------- #
+def _home(service: AuthService):
+    from finbreak.ui.home import HomeView
+
+    return HomeView(
+        TransactionService(service.vault), CategorizationService(service.vault)
+    )
+
+
+def _home_category_cell(home, description: str) -> str:
+    for r in range(home._table.rowCount()):
+        if home._table.item(r, 2).text() == description:
+            return home._table.item(r, 4).text()
+    raise AssertionError(f"no row for {description!r}")
+
+
+def _stub_picker(monkeypatch, home_mod, selected_id, accept=True):
+    class _FakePicker:
+        def __init__(self, leaves, current, parent=None):
+            pass
+
+        def exec(self):
+            return (
+                QDialog.DialogCode.Accepted if accept else QDialog.DialogCode.Rejected
+            )
+
+        def selected_category_id(self):
+            return selected_id
+
+        def deleteLater(self):
+            pass
+
+    monkeypatch.setattr(home_mod, "CategoryPickerDialog", _FakePicker)
+
+
+def _spy_learning(monkeypatch, home_mod, *, accept, ret_pattern="", ret_cat=None):
+    calls: list[bool] = []
+
+    class _FakeRule:
+        def __init__(self, *a, **k):
+            calls.append(True)
+
+        def exec(self):
+            return (
+                QDialog.DialogCode.Accepted if accept else QDialog.DialogCode.Rejected
+            )
+
+        def pattern(self):
+            return ret_pattern
+
+        def selected_category_id(self):
+            return ret_cat
+
+        def deleteLater(self):
+            pass
+
+    monkeypatch.setattr(home_mod, "RuleEditDialog", _FakeRule)
+    return calls
+
+
+def test_INV10_home_renders_category_and_context_set(qtbot, service, monkeypatch):
+    import finbreak.ui.home as home_mod
+
+    cs = CategorizationService(service.vault)
+    g, f = _leaf_id(service, "Groceries"), _leaf_id(service, "Fast food")
+    txn = _add_txn(service, "PICK N PAY")
+    cs.add_rule("pick n pay", g)
+    cs.apply_rules()
+
+    home = _home(service)
+    qtbot.addWidget(home)
+    assert _home_category_cell(home, "PICK N PAY") == "Groceries", "category column"
+
+    _stub_picker(monkeypatch, home_mod, f)  # correct it to Fast food
+    _spy_learning(monkeypatch, home_mod, accept=False)  # dismiss the learning offer
+    home._select_txn(txn)
+    home._on_set_category()
+
+    assert _txn_cat(service, txn) == (f, "manual"), "the row is now manual"
+    assert _home_category_cell(home, "PICK N PAY") == "Fast food", "the cell updated"
+
+
+# --------------------------------------------------------------------------- #
+# INV-5 — the learning offer through the Home flow (qtbot)
+# --------------------------------------------------------------------------- #
+def test_INV5a_offer_shown_correcting_a_rule_row(qtbot, service, monkeypatch):
+    import finbreak.ui.home as home_mod
+
+    cs = CategorizationService(service.vault)
+    g, f = _leaf_id(service, "Groceries"), _leaf_id(service, "Fast food")
+    txn = _add_txn(service, "PICK N PAY")
+    cs.add_rule("pick n pay", g)
+    cs.apply_rules()
+
+    home = _home(service)
+    qtbot.addWidget(home)
+    _stub_picker(monkeypatch, home_mod, f)  # choose a leaf DIFFERENT from the rule
+    calls = _spy_learning(monkeypatch, home_mod, accept=False)
+    home._select_txn(txn)
+    home._on_set_category()
+    assert calls == [True], "the learning offer is shown"
+
+
+def test_INV5b_offer_shown_for_blank_row_no_rule(qtbot, service, monkeypatch):
+    import finbreak.ui.home as home_mod
+
+    g = _leaf_id(service, "Groceries")
+    txn = _add_txn(service, "MYSTERY MERCHANT")  # no rule matches
+
+    home = _home(service)
+    qtbot.addWidget(home)
+    _stub_picker(monkeypatch, home_mod, g)
+    calls = _spy_learning(monkeypatch, home_mod, accept=False)
+    home._select_txn(txn)
+    home._on_set_category()
+    assert calls == [True], "categorising a blank row offers a rule"
+
+
+def test_INV5c_no_offer_when_choice_matches_rules(qtbot, service, monkeypatch):
+    import finbreak.ui.home as home_mod
+
+    cs = CategorizationService(service.vault)
+    g = _leaf_id(service, "Groceries")
+    txn = _add_txn(service, "PICK N PAY")
+    cs.add_rule("pick n pay", g)
+    cs.apply_rules()
+
+    home = _home(service)
+    qtbot.addWidget(home)
+    _stub_picker(monkeypatch, home_mod, g)  # the SAME leaf the rules already produce
+    calls = _spy_learning(monkeypatch, home_mod, accept=False)
+    home._select_txn(txn)
+    home._on_set_category()
+    assert calls == [], "no offer when the pick already agrees with the rules"
+
+
+def test_INV5d_no_offer_on_a_manual_clear(qtbot, service, monkeypatch):
+    import finbreak.ui.home as home_mod
+
+    txn = _add_txn(service, "PICK N PAY")
+    home = _home(service)
+    qtbot.addWidget(home)
+    _stub_picker(monkeypatch, home_mod, None)  # Uncategorised (a clear)
+    calls = _spy_learning(monkeypatch, home_mod, accept=False)
+    home._select_txn(txn)
+    home._on_set_category()
+    assert calls == [], "a clear is not a rule to learn"
+
+
+def test_INV5_accepting_the_offer_creates_a_rule_and_refiles(
+    qtbot, service, monkeypatch
+):
+    import finbreak.ui.home as home_mod
+
+    cs = CategorizationService(service.vault)
+    g = _leaf_id(service, "Groceries")
+    t1 = _add_txn(service, "PICK N PAY 1")
+    t2 = _add_txn(service, "PICK N PAY 2")  # a sibling the learned rule should reach
+
+    home = _home(service)
+    qtbot.addWidget(home)
+    _stub_picker(monkeypatch, home_mod, g)
+    _spy_learning(
+        monkeypatch, home_mod, accept=True, ret_pattern="pick n pay", ret_cat=g
+    )
+    home._select_txn(t1)
+    home._on_set_category()
+
+    assert len(cs.list_rules()) == 1, "the rule was created"
+    assert _txn_cat(service, t1) == (g, "manual"), "the corrected row is frozen manual"
+    assert _txn_cat(service, t2) == (g, "rule"), "the sibling auto row was re-filed"
+
+
+# --------------------------------------------------------------------------- #
+# INV-11 — the Rules tab (qtbot)
+# --------------------------------------------------------------------------- #
+def _stub_rule_dialog(monkeypatch, rules_mod, *, pattern, category_id, accept=True):
+    class _FakeRule:
+        def __init__(self, *a, **k):
+            pass
+
+        def exec(self):
+            return (
+                QDialog.DialogCode.Accepted if accept else QDialog.DialogCode.Rejected
+            )
+
+        def pattern(self):
+            return pattern
+
+        def selected_category_id(self):
+            return category_id
+
+        def deleteLater(self):
+            pass
+
+    monkeypatch.setattr(rules_mod, "RuleEditDialog", _FakeRule)
+
+
+def test_INV11_add_lists_and_apply_reports_count(qtbot, service, monkeypatch):
+    import finbreak.ui.rules as rules_mod
+    from finbreak.ui.rules import RulesWidget
+
+    g = _leaf_id(service, "Groceries")
+    t = _add_txn(service, "PICK N PAY")
+    widget = RulesWidget(service)
+    qtbot.addWidget(widget)
+
+    _stub_rule_dialog(monkeypatch, rules_mod, pattern="pick n pay", category_id=g)
+    widget._add_button.click()
+    rules = CategorizationService(service.vault).list_rules()
+    assert len(rules) == 1 and rules[0].pattern == "pick n pay"
+    assert widget._table.rowCount() == 1, "the new rule is listed"
+
+    widget._apply_button.click()
+    assert _txn_cat(service, t) == (g, "rule"), "Apply re-files the matching row"
+    assert "1" in widget._status.text(), "Apply reports the re-filed count"
+    widget._apply_button.click()
+    assert "0" in widget._status.text(), "a second Apply reports 0 (idempotent)"
+
+
+def test_INV11_move_up_reorders_the_list(qtbot, service):
+    from finbreak.ui.rules import RulesWidget
+
+    cs = CategorizationService(service.vault)
+    g, f = _leaf_id(service, "Groceries"), _leaf_id(service, "Fast food")
+    a = cs.add_rule("aaa", g)
+    b = cs.add_rule("bbb", f)  # added last -> top; order is [b, a]
+    assert [r.id for r in cs.list_rules()] == [b.id, a.id]
+
+    widget = RulesWidget(service)
+    qtbot.addWidget(widget)
+    widget._select_rule(a.id)
+    widget._move_up_button.click()
+    assert [r.id for r in cs.list_rules()] == [a.id, b.id], "a moved above b"
+
+
+def test_INV11_move_down_and_ends_are_noops(service):
+    cs = CategorizationService(service.vault)
+    g, f = _leaf_id(service, "Groceries"), _leaf_id(service, "Fast food")
+    a = cs.add_rule("aaa", g)
+    b = cs.add_rule("bbb", f)  # order [b, a]
+    cs.move_rule(b.id, "up")  # already at top -> no-op
+    assert [r.id for r in cs.list_rules()] == [b.id, a.id]
+    cs.move_rule(a.id, "down")  # already at bottom -> no-op
+    assert [r.id for r in cs.list_rules()] == [b.id, a.id]
+    cs.move_rule(b.id, "down")  # swap -> [a, b]
+    assert [r.id for r in cs.list_rules()] == [a.id, b.id]
+
+
+def test_INV11_delete_removes_the_rule(qtbot, service):
+    from finbreak.ui.rules import RulesWidget
+
+    cs = CategorizationService(service.vault)
+    r = cs.add_rule("x", _leaf_id(service, "Groceries"))
+    widget = RulesWidget(service)
+    qtbot.addWidget(widget)
+    widget._select_rule(r.id)
+    widget._delete_button.click()
+    assert cs.list_rules() == [], "the rule is gone"
+
+
+def test_INV11_edit_updates_pattern_without_reprioritising(qtbot, service, monkeypatch):
+    import finbreak.ui.rules as rules_mod
+    from finbreak.ui.rules import RulesWidget
+
+    cs = CategorizationService(service.vault)
+    g, f = _leaf_id(service, "Groceries"), _leaf_id(service, "Fast food")
+    a = cs.add_rule("aaa", g)
+    b = cs.add_rule("bbb", f)  # order [b, a]
+
+    widget = RulesWidget(service)
+    qtbot.addWidget(widget)
+    widget._select_rule(a.id)
+    _stub_rule_dialog(monkeypatch, rules_mod, pattern="aaa-edited", category_id=g)
+    widget._edit_button.click()
+
+    ordered = cs.list_rules()
+    assert [r.id for r in ordered] == [b.id, a.id], "an edit does not re-prioritise"
+    assert next(r for r in ordered if r.id == a.id).pattern == "aaa-edited"
+
+
+# --------------------------------------------------------------------------- #
+# INV-14 — auto-lock safety (the new slots swallow VaultLockedError)
+# --------------------------------------------------------------------------- #
+def test_INV14_home_set_catches_vault_locked(qtbot, service, monkeypatch):
+    import finbreak.ui.home as home_mod
+
+    g = _leaf_id(service, "Groceries")
+    txn = _add_txn(service, "X")
+    home = _home(service)
+    qtbot.addWidget(home)
+    _stub_picker(monkeypatch, home_mod, g)
+
+    def _raise(*a, **k):
+        raise VaultLockedError("auto-lock fired mid-set")
+
+    monkeypatch.setattr(home._categorization, "set_manual_category", _raise)
+    home._select_txn(txn)
+    home._on_set_category()  # must not raise
+
+
+def test_INV14_apply_catches_vault_locked(qtbot, service, monkeypatch):
+    from finbreak.ui.rules import RulesWidget
+
+    widget = RulesWidget(service)
+    qtbot.addWidget(widget)
+
+    def _raise(*a, **k):
+        raise VaultLockedError("auto-lock fired mid-apply")
+
+    monkeypatch.setattr(widget._categorization, "apply_rules", _raise)
+    widget._apply_button.click()  # must not raise
+
+
+def test_INV14_category_delete_catches_vault_locked(qtbot, service, monkeypatch):
+    from finbreak.ui.categories import CategoriesWidget
+
+    g = _leaf_id(service, "Groceries")
+    widget = CategoriesWidget(service)
+    qtbot.addWidget(widget)
+    widget._select_category(g)
+    monkeypatch.setattr(
+        QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.Yes
+    )
+
+    def _raise(*a, **k):
+        raise VaultLockedError("auto-lock fired mid-delete")
+
+    monkeypatch.setattr(widget._categories, "delete_category", _raise)
+    widget._delete_button.click()  # must not raise

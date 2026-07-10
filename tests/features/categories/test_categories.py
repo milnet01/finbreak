@@ -154,7 +154,7 @@ def test_INV4_v2_upgrades_to_v3_and_seeds_tree(paths):
     before_acct = conn.execute("SELECT id, name, type FROM accounts").fetchall()
 
     run_migrations(conn)  # v2 -> v3 -> ... -> v6 (run_migrations walks to LATEST)
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 6
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 7
 
     roots = _roots(conn)
     assert set(roots) == {"income", "expenditure"}
@@ -225,7 +225,7 @@ def test_INV4_idempotent_at_latest(paths):
     total_before = len(CategoryRepository(conn).list_all())
 
     run_migrations(conn)  # re-run: no-op at v6
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 6
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 7
     assert len(CategoryRepository(conn).children_of(None)) == roots_before == 2
     assert len(CategoryRepository(conn).list_all()) == total_before, "no duplicate seed"
     conn.close()
@@ -236,7 +236,7 @@ def test_INV4_first_run_vault_is_v6_with_seeded_tree(service):
     # statement-provenance column at v5->v6); the category tree is still seeded
     # at v2->v3.
     conn = service.vault.connection
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 6
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 7
     assert set(_roots(conn)) == {"income", "expenditure"}
 
 
@@ -379,7 +379,9 @@ def test_INV7cd_select_loads_form_and_update_reparents(qtbot, service):
     assert edited.name == "Sundries" and edited.parent_id == expenditure.id
 
 
-def test_INV7e_delete_childless_removes_from_tree(qtbot, service):
+def test_INV7e_delete_childless_removes_from_tree(qtbot, service, monkeypatch):
+    from PySide6.QtWidgets import QMessageBox
+
     from finbreak.ui.categories import CategoriesWidget
 
     svc = CategoryService(service.vault)
@@ -389,6 +391,10 @@ def test_INV7e_delete_childless_removes_from_tree(qtbot, service):
     widget = CategoriesWidget(service)
     qtbot.addWidget(widget)
     widget._select_category(leaf.id)
+    # A delete now asks for confirmation (the FIBR-0010 blast-radius prompt); accept.
+    monkeypatch.setattr(
+        QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.Yes
+    )
     widget._delete_button.click()
     assert widget._error.text() == ""
     assert CategoryRepository(service.vault.connection).get(leaf.id) is None

@@ -20,7 +20,7 @@ from finbreak.errors import SchemaVersionError
 
 log = logging.getLogger(__name__)
 
-LATEST_SCHEMA_VERSION = 6
+LATEST_SCHEMA_VERSION = 7
 
 # Seed data written by the v1->v2 migration (D8) — NOT a UI string, so never
 # run through tr(); the user renames it in the Accounts manager.
@@ -247,10 +247,45 @@ def _migrate_to_v6(conn: dbapi2.Connection) -> None:
         raise
 
 
+def _migrate_to_v7(conn: dbapi2.Connection) -> None:
+    """v6->v7: add the transaction->category link for FIBR-0010 auto-categorisation
+    — two **nullable** ``ADD COLUMN``s on ``transactions`` (``category_id``, a plain
+    non-cascade ``REFERENCES categories(id)`` whose default ``NULL`` keeps it an
+    in-place add; ``category_source`` TEXT: ``'rule'`` / ``'manual'`` / ``NULL``) —
+    and the new ``categorization_rules`` table. **No ``ON DELETE`` clause**: the
+    delete-category cascade is service-owned (FIBR-0010 INV-7), clearing references
+    explicitly so it can also reset the source + re-apply. **No backfill** — pre-v7
+    rows are all auto/uncategorised (``NULL``/``NULL``), exactly correct; the first
+    rule run categorises them. One atomic unit (INV-15): with the vault's
+    ``isolation_level=""`` the driver does not implicitly ``BEGIN`` around the DDL,
+    so the explicit ``BEGIN`` — the step's first statement, ``UPDATE
+    schema_version`` its last — makes it all-or-nothing (a mid-step failure leaves a
+    re-openable v6)."""
+    conn.execute("BEGIN")  # first statement — own the transaction (D2)
+    try:
+        conn.execute(
+            "ALTER TABLE transactions "
+            "ADD COLUMN category_id INTEGER REFERENCES categories(id)"
+        )
+        conn.execute("ALTER TABLE transactions ADD COLUMN category_source TEXT")
+        conn.execute(
+            "CREATE TABLE categorization_rules("
+            "id INTEGER PRIMARY KEY, pattern TEXT NOT NULL, "
+            "category_id INTEGER NOT NULL REFERENCES categories(id), "
+            "priority INTEGER NOT NULL, created_at TEXT NOT NULL)"
+        )
+        conn.execute("UPDATE schema_version SET version = 7")
+        conn.commit()
+    except Exception:
+        conn.rollback()  # undoes the ADD COLUMNs + CREATE — re-openable v6 vault
+        raise
+
+
 _MIGRATIONS = {
     2: _migrate_to_v2,
     3: _migrate_to_v3,
     4: _migrate_to_v4,
     5: _migrate_to_v5,
     6: _migrate_to_v6,
+    7: _migrate_to_v7,
 }

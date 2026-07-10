@@ -524,7 +524,7 @@ def test_INV8_v4_upgrades_through_v6_adds_nullable_column(paths):
     build_v4_vault(vault_path, sidecar_path, salt, [("2026-03-01", -1250, "Coffee")])
     conn = keyed_connection(vault_path, salt)
     run_migrations(conn)  # v4 -> v6
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 6
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 7
     cols = [r[1] for r in conn.execute("PRAGMA table_info(accounts)").fetchall()]
     assert "statement_pdf_password" in cols
     row = conn.execute("SELECT statement_pdf_password FROM accounts").fetchone()
@@ -539,7 +539,7 @@ def test_INV8_idempotent_at_v6(paths):
     conn = keyed_connection(vault_path, salt)
     run_migrations(conn)  # v4 -> v6
     run_migrations(conn)  # re-run: no-op at v6
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 6
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 7
     conn.close()
 
 
@@ -547,11 +547,11 @@ def test_INV8_first_run_vault_is_v6(service):
     version = service.vault.connection.execute(
         "SELECT version FROM schema_version"
     ).fetchone()[0]
-    assert version == 6
+    assert version == 7
 
 
 def test_INV8_latest_schema_version_is_6():
-    assert LATEST_SCHEMA_VERSION == 6
+    assert LATEST_SCHEMA_VERSION == 7
 
 
 def test_INV8_v5_upgrades_to_v6_adds_provenance_column(paths):
@@ -562,7 +562,7 @@ def test_INV8_v5_upgrades_to_v6_adds_provenance_column(paths):
     build_v5_vault(vault_path, sidecar_path, salt, [("2026-03-01", -1250, "Coffee")])
     conn = keyed_connection(vault_path, salt)
     run_migrations(conn)  # v5 -> v6
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 6
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 7
     cols = [r[1] for r in conn.execute("PRAGMA table_info(transactions)").fetchall()]
     assert "statement_period_id" in cols
     row = conn.execute("SELECT statement_period_id FROM transactions").fetchone()

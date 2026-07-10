@@ -23,9 +23,9 @@ becomes active.
 
 1. ✅ Write + cold-eyes spec (FIBR-0010 converged loop 6, 2026-07-09)
 2. ✅ Verify dependencies (FIBR-0005/0006/0007/0051/0052 all ✅)
-3. 🚧 Write failing tests
-4. ⬜ Implement until tests pass
-5. ⬜ Run `/audit`
+3. ✅ Write failing tests (tests/features/categorisation/, 43 tests)
+4. ✅ Implement until tests pass (gate green 409/1, mypy 0)
+5. 🚧 Run `/audit`
 6. ⬜ Run `/indie-review`
 7. ⬜ Fold / fix actionable findings
 8. ⬜ Update CHANGELOG / ROADMAP / journal

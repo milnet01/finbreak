@@ -42,6 +42,7 @@ from PySide6.QtWidgets import (
 
 from finbreak import paths
 from finbreak.services.auth import AuthService
+from finbreak.services.categorization import CategorizationService
 from finbreak.services.transactions import TransactionService
 from finbreak.ui.accounts import AccountsWidget
 from finbreak.ui.categories import CategoriesWidget
@@ -50,6 +51,7 @@ from finbreak.ui.home import HomeView
 from finbreak.ui.icons import icon
 from finbreak.ui.import_wizard import ImportWizardWidget
 from finbreak.ui.manual_entry import ManualEntryDialog
+from finbreak.ui.rules import RulesWidget
 from finbreak.ui.settings import SettingsDialog
 from finbreak.ui.statements import StatementsWidget
 from finbreak.ui.unlock import UnlockDialog
@@ -68,6 +70,7 @@ _TAB_HOME = 0
 _TAB_STATEMENTS = 1
 _TAB_ACCOUNTS = 2
 _TAB_CATEGORIES = 3
+_TAB_RULES = 4
 
 # The fallback window size when no geometry is saved, and the size Reset restores
 # to (INV-6/INV-6b) — the one numeric window default this shell pins.
@@ -139,6 +142,7 @@ class MainWindow(QMainWindow):
         self._statements_tab: StatementsWidget | None = None
         self._accounts_tab: AccountsWidget | None = None
         self._categories_tab: CategoriesWidget | None = None
+        self._rules_tab: RulesWidget | None = None
         self.setWindowTitle(self.tr("finbreak"))
 
         # Read routing FIRST — a mixed vault/sidecar pair raises VaultStateError
@@ -191,6 +195,9 @@ class MainWindow(QMainWindow):
             self.tr("Categories"),
             "categories",
             self._open_categories,
+        )
+        self._action_rules = self._make_action(
+            "action_rules", self.tr("Rules"), None, self._open_rules
         )
         self._action_lock = self._make_action(
             "action_lock", self.tr("Lock"), "lock", self._lock
@@ -248,6 +255,7 @@ class MainWindow(QMainWindow):
         self._menu_view.addAction(self._action_statements)
         self._menu_view.addAction(self._action_accounts)
         self._menu_view.addAction(self._action_categories)
+        self._menu_view.addAction(self._action_rules)
 
         # Window: geometry actions that need no vault, so they stay enabled while
         # locked (INV-6/INV-6c) — never touched by _set_vault_chrome_enabled.
@@ -278,6 +286,7 @@ class MainWindow(QMainWindow):
             self._action_import,
             self._action_accounts,
             self._action_categories,
+            self._action_rules,
             self._action_lock,
         ):
             self._toolbar.addAction(action)
@@ -404,7 +413,10 @@ class MainWindow(QMainWindow):
         workspace = QTabWidget()
         workspace.setObjectName("workspace")
 
-        self._home_tab = HomeView(TransactionService(self._service.vault))
+        self._home_tab = HomeView(
+            TransactionService(self._service.vault),
+            CategorizationService(self._service.vault),
+        )
         self._home_tab.setObjectName("tab_home")
         self._home_tab.add_account_requested.connect(self._action_accounts.trigger)
         self._home_tab.import_requested.connect(self._action_import.trigger)
@@ -422,10 +434,13 @@ class MainWindow(QMainWindow):
         self._categories_tab = CategoriesWidget(self._service, show_done=False)
         self._categories_tab.setObjectName("tab_categories")
 
+        self._rules_tab = RulesWidget(self._service)  # sets tab_rules
+
         workspace.addTab(self._home_tab, self.tr("Home"))
         workspace.addTab(self._statements_tab, self.tr("Statements"))
         workspace.addTab(self._accounts_tab, self.tr("Accounts"))
         workspace.addTab(self._categories_tab, self.tr("Categories"))
+        workspace.addTab(self._rules_tab, self.tr("Rules"))
 
         # Connect AFTER the tabs are added, so building fires no spurious refresh.
         workspace.currentChanged.connect(self._on_tab_changed)
@@ -460,6 +475,8 @@ class MainWindow(QMainWindow):
             self._accounts_tab._refresh()
         elif index == _TAB_CATEGORIES and self._categories_tab is not None:
             self._categories_tab._refresh()
+        elif index == _TAB_RULES and self._rules_tab is not None:
+            self._rules_tab._refresh()
 
     def _refresh_count(self, count: int) -> None:
         self._count.setText(self.tr("%n transaction(s)", "", count))
@@ -488,6 +505,10 @@ class MainWindow(QMainWindow):
     def _open_categories(self) -> None:
         self._ensure_workspace().setCurrentIndex(_TAB_CATEGORIES)
         self._status(self.tr("Categories"))
+
+    def _open_rules(self) -> None:
+        self._ensure_workspace().setCurrentIndex(_TAB_RULES)
+        self._status(self.tr("Rules"))
 
     def _open_manual_entry(self) -> None:
         dialog = ManualEntryDialog(self._service, self)
@@ -685,6 +706,7 @@ class MainWindow(QMainWindow):
                 self._statements_tab = None
                 self._accounts_tab = None
                 self._categories_tab = None
+                self._rules_tab = None
             self._content.removeWidget(self._live)
             self._live.deleteLater()
             self._live = None

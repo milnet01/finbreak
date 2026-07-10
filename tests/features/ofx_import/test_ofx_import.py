@@ -536,11 +536,11 @@ def test_INV8_no_schema_change(service):
     # OFX itself added no migration (D9); later phases added v5 (FIBR-0009) and
     # v6 (FIBR-0052), so this can no longer prove "OFX added nothing" — it now
     # simply asserts a first-run vault lands at the latest schema (currently 6).
-    assert LATEST_SCHEMA_VERSION == 6
+    assert LATEST_SCHEMA_VERSION == 7
     version = service.vault.connection.execute(
         "SELECT version FROM schema_version"
     ).fetchone()[0]
-    assert version == 6
+    assert version == 7
 
 
 def test_INV8_no_network_import_in_ofx_module():

@@ -1,17 +1,18 @@
-"""HomeView — the Home content page (FIBR-0051 D3).
+"""HomeView — the Home content page (FIBR-0051 D3; category column + manual set +
+learning added by FIBR-0010 D10/D11).
 
 An internal ``QStackedWidget`` toggling between a **getting-started** page (shown
 when the vault holds zero transactions) and the **transaction table** (shown once
 there is data). The toggle is observable via ``current_page().objectName()``
-(``home_page_empty`` / ``home_page_table``, INV-9a) so the branch is tested by a
-stable handle, not by translated button text (INV-10).
+(``home_page_empty`` / ``home_page_table``, INV-9a).
 
-``HomeView`` holds **only** a ``TransactionService`` — no ``AccountService``,
-because account count can never gate anything (any open vault holds ≥1 account,
-INV-9a). ``refresh()`` re-reads the vault and selects the current page;
-``transaction_count()`` feeds the status bar (INV-7). The getting-started buttons
-are pure navigation affordances — they emit signals the shell routes to its own
-actions, so they need no vault data to render.
+The table has a **Category** column and a right-click **Set category…** that sets
+a row **manual** (highest-priority, never re-filed) and — when the manual choice
+disagrees with the current rules — offers to learn a rule (D11). ``HomeView``
+holds a ``TransactionService`` **and** a ``CategorizationService`` (category
+assignment genuinely needs category data — the FIBR-0051 "Home holds only
+TransactionService" note is superseded here). ``refresh()`` re-reads the vault and
+selects the current page; ``transaction_count()`` feeds the status bar (INV-7).
 """
 
 from __future__ import annotations
@@ -19,10 +20,13 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import cast
 
-from PySide6.QtCore import QLocale, Signal
+from PySide6.QtCore import QLocale, QPoint, Qt, Signal
 from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QDialog,
     QHeaderView,
     QLabel,
+    QMenu,
     QPushButton,
     QStackedWidget,
     QTableWidget,
@@ -31,7 +35,19 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from finbreak.errors import VaultLockedError
+from finbreak.models import Transaction
+from finbreak.services.categorization import CategorizationService
 from finbreak.services.transactions import TransactionService
+from finbreak.ui.category_picker import CategoryPickerDialog
+from finbreak.ui.rules import RuleEditDialog
+
+# Fixed column indices (the table's shape; headers are the translated labels).
+_COL_DATE = 0
+_COL_AMOUNT = 1
+_COL_DESCRIPTION = 2
+_COL_ACCOUNT = 3
+_COL_CATEGORY = 4
 
 
 class HomeView(QWidget):
@@ -39,10 +55,19 @@ class HomeView(QWidget):
     import_requested = Signal()
     add_transaction_requested = Signal()
 
-    def __init__(self, transactions: TransactionService, parent: QWidget | None = None):
+    def __init__(
+        self,
+        transactions: TransactionService,
+        categorization: CategorizationService,
+        parent: QWidget | None = None,
+    ):
         super().__init__(parent)
         self._transactions = transactions
+        self._categorization = categorization
         self._count = 0
+        # The rendered rows, parallel to the table rows (the row -> transaction map
+        # is the table's row order, same order as list_transactions).
+        self._rows: list[tuple[Transaction, Decimal, str, str]] = []
 
         self._stack = QStackedWidget()
         self._stack.addWidget(self._build_getting_started())
@@ -78,19 +103,25 @@ class HomeView(QWidget):
         page = QWidget()
         page.setObjectName("home_page_table")
 
-        self._table = QTableWidget(0, 4)
+        self._table = QTableWidget(0, 5)
         self._table.setHorizontalHeaderLabels(
             [
                 self.tr("Date"),
                 self.tr("Amount"),
                 self.tr("Description"),
                 self.tr("Account"),
+                self.tr("Category"),
             ]
         )
         self._table.horizontalHeader().setSectionResizeMode(
             QHeaderView.ResizeMode.Stretch
         )
         self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        # Right-click a row to set its category (INV-10).
+        self._table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self._table.customContextMenuRequested.connect(self._show_context_menu)
 
         layout = QVBoxLayout(page)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -104,19 +135,89 @@ class HomeView(QWidget):
         return self._count
 
     def refresh(self) -> None:
-        rows = self._transactions.list_transactions()
+        self._rows = self._transactions.list_transactions()
         symbol = self._transactions.base_currency()
-        self._count = len(rows)
-        self._table.setRowCount(len(rows))
-        for row, (transaction, display, account_name) in enumerate(rows):
-            self._table.setItem(row, 0, QTableWidgetItem(transaction.occurred_on))
+        self._count = len(self._rows)
+        self._table.setRowCount(len(self._rows))
+        for row, (transaction, display, account_name, category_name) in enumerate(
+            self._rows
+        ):
             self._table.setItem(
-                row, 1, QTableWidgetItem(_format_amount(display, symbol))
+                row, _COL_DATE, QTableWidgetItem(transaction.occurred_on)
             )
-            self._table.setItem(row, 2, QTableWidgetItem(transaction.description))
-            self._table.setItem(row, 3, QTableWidgetItem(account_name))
+            self._table.setItem(
+                row, _COL_AMOUNT, QTableWidgetItem(_format_amount(display, symbol))
+            )
+            self._table.setItem(
+                row, _COL_DESCRIPTION, QTableWidgetItem(transaction.description)
+            )
+            self._table.setItem(row, _COL_ACCOUNT, QTableWidgetItem(account_name))
+            self._table.setItem(row, _COL_CATEGORY, QTableWidgetItem(category_name))
         # Getting-started iff zero transactions, else the table (INV-9a).
-        self._stack.setCurrentIndex(1 if rows else 0)
+        self._stack.setCurrentIndex(1 if self._rows else 0)
+
+    # --- category set + learning (INV-10/INV-11) --------------------------- #
+    def _show_context_menu(self, pos: QPoint) -> None:
+        if self._selected_txn() is None:
+            return
+        menu = QMenu(self)
+        action = menu.addAction(self.tr("Set category…"))
+        action.triggered.connect(self._on_set_category)
+        menu.exec(self._table.viewport().mapToGlobal(pos))
+
+    def _on_set_category(self) -> None:
+        txn = self._selected_txn()
+        if txn is None:
+            return
+        leaves = self._categorization.leaf_categories()
+        dialog = CategoryPickerDialog(leaves, txn.category_id, self)
+        accepted = dialog.exec() == QDialog.DialogCode.Accepted
+        chosen = dialog.selected_category_id()
+        dialog.deleteLater()
+        if not accepted:
+            return
+        try:
+            self._categorization.set_manual_category(txn.id, chosen)
+        except VaultLockedError:
+            return  # auto-lock fired mid-set; the workspace is being torn down
+        self._maybe_offer_rule(txn.description, chosen)
+        self.refresh()
+
+    def _maybe_offer_rule(self, description: str, chosen: int | None) -> None:
+        """Offer to learn a rule iff the manual choice is a leaf that disagrees with
+        what the current rules would produce (D11). Accept → create the rule (top
+        priority) + re-apply; dismiss → only the one corrected row changed. ``would``
+        is read against the rules as they stand, before any new rule is added."""
+        if chosen is None:
+            return  # a manual clear is not a rule to learn
+        if chosen == self._categorization.would_categorize(description):
+            return  # the rules already agree — no nag
+        dialog = RuleEditDialog(
+            self._categorization.leaf_categories(), description, chosen, self
+        )
+        accepted = dialog.exec() == QDialog.DialogCode.Accepted
+        pattern, category_id = dialog.pattern(), dialog.selected_category_id()
+        dialog.deleteLater()
+        if not accepted:
+            return
+        try:
+            self._categorization.add_rule(pattern, category_id)
+            self._categorization.apply_rules()  # propagate to other auto rows
+        except VaultLockedError:
+            return  # auto-lock fired mid-learn; nothing half-applied survives (D11)
+
+    # --- test / shell accessors -------------------------------------------- #
+    def _selected_txn(self) -> Transaction | None:
+        rows = {i.row() for i in self._table.selectedItems()}
+        if len(rows) != 1:
+            return None
+        return self._rows[next(iter(rows))][0]
+
+    def _select_txn(self, txn_id: int) -> None:
+        for i, row in enumerate(self._rows):
+            if row[0].id == txn_id:
+                self._table.selectRow(i)
+                return
 
 
 def _format_amount(display: Decimal, symbol: str) -> str:

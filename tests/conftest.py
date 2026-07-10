@@ -27,6 +27,7 @@ from finbreak.migrations import (  # noqa: E402
     _migrate_to_v3,
     _migrate_to_v4,
     _migrate_to_v5,
+    _migrate_to_v6,
 )
 from finbreak.models import FORMAT_VERSION, KdfParams  # noqa: E402
 from finbreak.services.auth import (  # noqa: E402
@@ -133,4 +134,14 @@ def build_v5_vault(vault_path: Path, sidecar_path: Path, salt: bytes, rows) -> N
     build_v4_vault(vault_path, sidecar_path, salt, rows)
     conn = keyed_connection(vault_path, salt)
     _migrate_to_v5(conn)  # v4 -> v5 (statement_pdf_password)
+    conn.close()
+
+
+def build_v6_vault(vault_path: Path, sidecar_path: Path, salt: bytes, rows) -> None:
+    """A raw v6 vault: ``build_v5_vault`` taken one more step through the real
+    ``_migrate_to_v6`` (the nullable ``transactions.statement_period_id`` stamp).
+    The v6->v7 migration suite's upgrade-path fixture (FIBR-0010 INV-15)."""
+    build_v5_vault(vault_path, sidecar_path, salt, rows)
+    conn = keyed_connection(vault_path, salt)
+    _migrate_to_v6(conn)  # v5 -> v6 (statement_period_id)
     conn.close()

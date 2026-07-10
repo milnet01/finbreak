@@ -33,6 +33,7 @@ from finbreak.migrations import DEFAULT_ACCOUNT_NAME
 from finbreak.models import FORMAT_VERSION, KdfParams
 from finbreak.repositories.accounts import AccountRepository
 from finbreak.services.auth import AuthService
+from finbreak.services.categorization import CategorizationService
 from finbreak.services.transactions import (
     TransactionService,
     parse_transaction,
@@ -319,7 +320,7 @@ def test_INV4a_money_round_trips_exactly(service):
 
     rows = txs.list_transactions()
     assert len(rows) == 1
-    transaction, display, _account = rows[0]
+    transaction, display, _account, _category = rows[0]
     assert transaction.amount_minor == -1234, (
         "money is stored as signed integer minor units"
     )
@@ -420,7 +421,7 @@ def test_INV5_first_run_creates_settings_and_both_files(service, paths):
     # First-run now migrates the fresh v1 baseline straight to the latest
     # schema (FIBR-0005 D1), so a new vault lands at v6 (FIBR-0052 statement
     # provenance column), not v1.
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 6
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 7
     assert vault_path.exists() and sidecar_path.exists()
 
 
@@ -518,7 +519,9 @@ def test_INV6_main_window_lists_saved_transaction(qtbot, service):
         _default_id(service), "2026-07-01", "-12.34", "coffee"
     )
 
-    home = HomeView(TransactionService(service._vault))
+    home = HomeView(
+        TransactionService(service._vault), CategorizationService(service._vault)
+    )
     qtbot.addWidget(home)
     assert home._table.rowCount() == 1, "the saved transaction appears in the table"
 

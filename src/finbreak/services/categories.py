@@ -16,6 +16,9 @@ from typing import cast
 from finbreak.errors import CategoryHasChildrenError, ProtectedCategoryError
 from finbreak.models import Category
 from finbreak.repositories.categories import CategoryRepository
+from finbreak.repositories.categorization_rules import CategorizationRuleRepository
+from finbreak.repositories.transactions import TransactionRepository
+from finbreak.services.categorization import recategorize_auto_rows
 from finbreak.vault import Vault
 
 log = logging.getLogger(__name__)
@@ -60,6 +63,13 @@ class CategoryService:
         log.info("category updated")
 
     def delete_category(self, category_id: int) -> None:
+        """Delete a leaf category and cleanly unwind everything that pointed at it,
+        in **one** owned transaction (FIBR-0010 INV-7): (1) clear + reset its
+        transactions to auto, (2) delete its rules, (3) delete the category, (4)
+        re-apply so the freed auto rows are re-filed (or blanked). ``ROLLBACK`` on
+        any failure leaves a re-openable vault. Order matters — the references are
+        cleared before the category row is deleted, so ``foreign_keys = ON`` permits
+        it."""
         repo = self._categories()
         target = repo.get(category_id)
         if target is not None and target.parent_id is None:
@@ -70,8 +80,29 @@ class CategoryService:
             raise CategoryHasChildrenError(
                 "this category still has sub-categories — remove them first"
             )
-        repo.delete(category_id)
+        conn = self._vault.connection
+        conn.execute("BEGIN")  # first statement — own the whole cascade
+        try:
+            TransactionRepository(conn).clear_category_for(category_id)
+            CategorizationRuleRepository(conn).delete_for_category(category_id)
+            # repo.delete() commits, which would end this transaction early; issue
+            # the delete in-line (commit-free) so all four steps are one atomic unit.
+            conn.execute("DELETE FROM categories WHERE id = ?", (category_id,))
+            recategorize_auto_rows(conn)
+            conn.commit()
+        except Exception:
+            conn.rollback()  # nothing changed — a re-openable vault (INV-7)
+            raise
         log.info("category deleted")
+
+    def delete_blast_radius(self, category_id: int) -> tuple[int, int]:
+        """The ``(transaction_count, rule_count)`` a delete would touch (INV-8) —
+        read pre-delete via the two repos so the confirmation can name both counts.
+        The UI calls this, never a repository (the codebase's layering)."""
+        conn = self._vault.connection
+        txn_count = TransactionRepository(conn).count_for_category(category_id)
+        rule_count = CategorizationRuleRepository(conn).count_for_category(category_id)
+        return (txn_count, rule_count)
 
     def _require_parent(
         self, parent_id: int | None, repo: CategoryRepository

@@ -27,6 +27,7 @@ from finbreak.errors import VaultStateError
 from finbreak.migrations import DEFAULT_ACCOUNT_NAME
 from finbreak.repositories.accounts import AccountRepository
 from finbreak.services.auth import AuthService
+from finbreak.services.categorization import CategorizationService
 from finbreak.services.transactions import TransactionService
 from finbreak.ui import main_window
 from finbreak.ui._worker import DeriveWorker
@@ -479,7 +480,7 @@ def test_INV9_manual_entry_cancel_and_invalid(qtbot, service):
 def test_INV9a_home_toggles_empty_and_table(qtbot, service):
     service.first_run(bytearray(_PW), "ZAR")
     txn = TransactionService(service.vault)
-    home = HomeView(txn)
+    home = HomeView(txn, CategorizationService(service.vault))
     qtbot.addWidget(home)
 
     assert home.current_page().objectName() == "home_page_empty"

@@ -529,7 +529,7 @@ def test_INV8_v3_upgrades_to_v4_creates_tables_others_untouched(paths):
     before_cats = conn.execute("SELECT id, name, kind FROM categories").fetchall()
 
     run_migrations(conn)  # v3 -> v6 (full run_migrations now walks to LATEST)
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 6
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 7
     assert conn.execute("SELECT count(*) FROM import_profiles").fetchone()[0] == 0
     assert conn.execute("SELECT count(*) FROM statement_periods").fetchone()[0] == 0
 
@@ -588,19 +588,19 @@ def test_INV8_idempotent_at_v6(paths):
     conn = keyed_connection(vault_path, salt)
     run_migrations(conn)  # v3 -> v6
     run_migrations(conn)  # re-run: no-op at v6
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 6
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 7
     conn.close()
 
 
 def test_INV8_first_run_vault_is_v6_with_empty_import_tables(service):
     conn = service.vault.connection
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 6
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 7
     assert conn.execute("SELECT count(*) FROM import_profiles").fetchone()[0] == 0
     assert conn.execute("SELECT count(*) FROM statement_periods").fetchone()[0] == 0
 
 
 def test_INV8_latest_schema_version_is_6():
-    assert LATEST_SCHEMA_VERSION == 6
+    assert LATEST_SCHEMA_VERSION == 7
 
 
 # --------------------------------------------------------------------------- #

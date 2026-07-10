@@ -17,6 +17,7 @@ from sqlcipher3 import dbapi2
 
 from finbreak.models import Transaction
 from finbreak.repositories.accounts import AccountRepository
+from finbreak.repositories.categories import CategoryRepository
 from finbreak.repositories.transactions import TransactionRepository
 from finbreak.vault import Vault
 
@@ -104,18 +105,23 @@ class TransactionService:
             account_id, occurred_on, amount_minor, description
         )
 
-    def list_transactions(self) -> list[tuple[Transaction, Decimal, str]]:
-        """Each row + its display amount + its account name (id->name resolved
-        once, not per row)."""
+    def list_transactions(self) -> list[tuple[Transaction, Decimal, str, str]]:
+        """Each row + its display amount + its account name + its category name
+        (both id->name maps resolved once, not per row; FIBR-0010 D12). The
+        category name is the leaf's name, or ``""`` for an uncategorised row."""
         exponent = self._exponent()
         conn = self._vault.connection
-        names = {a.id: a.name for a in AccountRepository(conn).list_all()}
+        account_names = {a.id: a.name for a in AccountRepository(conn).list_all()}
+        category_names = {c.id: c.name for c in CategoryRepository(conn).list_all()}
         rows = TransactionRepository(conn).list_all()
         return [
             (
                 row,
                 to_display_decimal(row.amount_minor, exponent),
-                names.get(row.account_id, ""),
+                account_names.get(row.account_id, ""),
+                ""
+                if row.category_id is None
+                else category_names.get(row.category_id, ""),
             )
             for row in rows
         ]

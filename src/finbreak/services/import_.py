@@ -28,7 +28,9 @@ from finbreak.models import ColumnMapping, ImportProfile, TransactionDraft
 from finbreak.repositories.import_profiles import ImportProfileRepository
 from finbreak.repositories.statement_periods import StatementPeriodRepository
 from finbreak.repositories.transactions import TransactionRepository
+from finbreak.services.categorization import recategorize_auto_rows
 from finbreak.services.transactions import read_minor_unit_exponent
+from finbreak.text import normalise_text
 from finbreak.vault import Vault
 
 log = logging.getLogger(__name__)
@@ -87,9 +89,10 @@ class ImportService:
 
     @staticmethod
     def _normalise(text: str) -> str:
-        """The dedup transform (D6, description-only): fold whitespace, then case
-        (``str.casefold``). Distinct from ``signature_for``'s exact fingerprint."""
-        return " ".join(text.split()).casefold()
+        """The dedup transform (D6, description-only): the shared ``normalise_text``
+        (FIBR-0010 D2) — fold whitespace, then casefold, byte-identical to before.
+        Distinct from ``signature_for``'s exact fingerprint."""
+        return normalise_text(text)
 
     # -- profiles -------------------------------------------------------------
     def match_profile(self, header: list[str]) -> ImportProfile | None:
@@ -252,6 +255,11 @@ class ImportService:
                     ],
                     period_id,
                 )
+            # Last step before commit (FIBR-0010 D9): categorise the just-inserted
+            # rows (auto/NULL) from the current rules, inside this same transaction —
+            # so a fresh import arrives categorised with no uncategorised flash and no
+            # second transaction. Manual rows are excluded, so INV-3 holds.
+            recategorize_auto_rows(conn)
             conn.commit()
         except Exception:
             conn.rollback()  # undoes the batch inserts — leaves the vault re-openable

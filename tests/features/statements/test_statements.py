@@ -320,12 +320,19 @@ def test_INV9d_backfill_overlap_stays_null(paths):
 # --------------------------------------------------------------------------- #
 # INV-1 / INV-2 / INV-2a — the four-tab workspace + tab-switching navigation
 # --------------------------------------------------------------------------- #
-def test_INV1_workspace_has_four_tabs_in_order(qtbot, service):
+def test_INV1_workspace_has_five_tabs_in_order(qtbot, service):
     window = _shell(qtbot, service)
     workspace = window.centralWidget().currentWidget()
     assert workspace.objectName() == "workspace"
     names = [workspace.widget(i).objectName() for i in range(workspace.count())]
-    assert names == ["tab_home", "tab_statements", "tab_accounts", "tab_categories"]
+    # The Rules tab (FIBR-0010) joins as the 5th tab.
+    assert names == [
+        "tab_home",
+        "tab_statements",
+        "tab_accounts",
+        "tab_categories",
+        "tab_rules",
+    ]
 
 
 def test_INV2_nav_actions_switch_the_workspace_tab(qtbot, service):
@@ -350,8 +357,9 @@ def test_INV2_toolbar_order_and_no_statements_button(qtbot, service):
         "action_import",
         "action_accounts",
         "action_categories",
+        "action_rules",
         "action_lock",
-    ], "toolbar order: Home · Manual entry · Import · Accounts · Categories · Lock"
+    ], "toolbar order: Home, Manual entry, Import, Accounts, Categories, Rules, Lock"
     assert "action_statements" not in names, (
         "Statements lives on the tab bar + View menu, not the toolbar (INV-2)"
     )
