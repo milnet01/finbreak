@@ -1002,6 +1002,7 @@ is a future error tomorrow.
   standard_bank.py _MONEY = r'(?<![\d.,])\d{1,3}(?:[.,]\d{3})*[.,]\d{2}(?!\d)' fails to match an amount >= 1000 printed WITHOUT a thousands separator (e.g. '1500.00' -> no match), so a statement with an ungrouped opening/closing balance fails with the generic mis-parse. Degrades SAFELY (friendly error, no corruption); none of the 6 validated real statements exhibit it. NOT folded in the audit sweep: the naive fix (\d{1,3}->\d+) risks a NEW false positive (a dotted date like 2026.07.15 -> spurious '2026.07' token), and this parser was validated end-to-end on a real-statement corpus not available in-session. Fix + re-validate against all 6 real statements as its own item.
   Kind: fix.
   Source: indie-review-2026-07-10 (M-imp1).
+  Blocked (2026-07-10): deliberately NOT fixed in the audit-fix sweep — the SB _MONEY regex is a validated parser and there is no real-statement corpus in-session to re-validate against. A naive widening to accept ungrouped 4+-digit amounts risks a dotted-date false positive (e.g. matching a date fragment as money), which would silently mis-parse. Needs real anonymised sample statements (same blocker as FIBR-0074's dedicated ABSA/Nedbank/FNB readers) to widen + re-run the six-statement checksum corpus. Keep planned; revisit when sample statements are available.
 
 - ✅ [FIBR-0068] **Promote the _set_combo(combo, value) helper to a shared UI util and dedup the 7x findData+setCurrentIndex idiom.**
   Kind: refactor.
