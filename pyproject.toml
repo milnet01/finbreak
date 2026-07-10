@@ -45,6 +45,12 @@ dependencies = [
     # as self-contained manylinux wheels and must travel into the FIBR-0003 bundle
     # (spec § Dependencies / D12 — build-smoke.sh --collect-all pypdfium2_raw).
     "pdfplumber==0.11.10",
+    # Ed25519 verification of downloaded updates (FIBR-0054 D1). Already present
+    # transitively (pdfplumber -> pdfminer.six); PROMOTED to an explicit runtime
+    # dep because update.py now imports it directly — so a future pdfplumber that
+    # drops pdfminer.six can't silently remove our signature gate (dependencies.md;
+    # cryptography is NOT a network package, so test_INV8 runtime-deps is unaffected).
+    "cryptography==49.0.0",
 ]
 
 # PEP 735 dev dependency group. Pinned EXACTLY (==) for a reproducible

@@ -772,11 +772,9 @@ def test_INV12_urllib_allowed_only_in_update_fetch() -> None:
     """The amended allowlist waves `urllib` through ONLY at the exact relative
     path `services/update_fetch.py` — not by basename, not elsewhere (INV-12)."""
     # the one allowed case: urllib, in update_fetch.py
-    assert _network_offenders("services/update_fetch.py", "import urllib.request") == []
-    assert (
-        _network_offenders("services/update_fetch.py", 'import_module("urllib.request")')
-        == []
-    )
+    fetch = "services/update_fetch.py"
+    assert _network_offenders(fetch, "import urllib.request") == []
+    assert _network_offenders(fetch, 'import_module("urllib.request")') == []
     # still banned there: every other network module
     assert _network_offenders("services/update_fetch.py", "import socket")
     # still banned everywhere else: urllib itself (static, from, and dynamic)

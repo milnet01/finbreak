@@ -17,7 +17,13 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 
 from finbreak.errors import FinbreakError, UpdateError, UpdateVerificationError
 from finbreak.services import update_fetch, update_key
-from finbreak.services.update import UpdateInfo, UpdateService
+from finbreak.services.update import (
+    UpdateInfo,
+    UpdateService,
+    _parse_version,
+    _select_assets,
+    _version_gt,
+)
 from finbreak.services.update_installer import (
     AppImageInstaller,
     detect_installer,
@@ -71,11 +77,7 @@ def _service(tmp_path, *, installer=None, fetcher=None, current="0.1.0"):
         fetcher=fetcher,
         current_version=current,
     )
-from finbreak.services.update import (
-    _parse_version,
-    _select_assets,
-    _version_gt,
-)
+
 
 # --------------------------------------------------------------------------- #
 # D13 — version grammar + comparison (fail-safe, dependency-free)
@@ -301,8 +303,8 @@ class _FakeHTTPResponse:
     def __enter__(self) -> _FakeHTTPResponse:
         return self
 
-    def __exit__(self, *exc) -> bool:
-        return False
+    def __exit__(self, *exc) -> None:
+        return None
 
 
 def _fake_urlopen(payload: bytes):
@@ -466,7 +468,6 @@ def _signing_setup(monkeypatch, blob: bytes, *, sign: bytes | None = None):
 
 def test_INV4_good_signature_returns_verified_path(monkeypatch, tmp_path):
     blob = b"REAL-APPIMAGE-BYTES"
-    info = _release("v0.1.1")
     sig = _signing_setup(monkeypatch, blob)
     fetcher = _FakeFetcher(
         blobs={

@@ -56,7 +56,10 @@ class AppImageInstaller:
         # completes leaves the original $APPIMAGE byte-for-byte intact; drop the
         # temp and surface it, WITHOUT wiping the key (INV-5/INV-6/INV-11).
         try:
-            os.chmod(new_file, 0o755)
+            # 0o755 is the mandatory AppImage mode — the file is unlaunchable
+            # without the execute bit, and it replaces a $APPIMAGE that was
+            # already 0o755. Not a permissive-mask smell (bandit B103).
+            os.chmod(new_file, 0o755)  # nosec B103
             os.replace(new_file, self._appimage_path)
         except OSError as exc:
             new_file.unlink(missing_ok=True)
@@ -65,8 +68,11 @@ class AppImageInstaller:
         # over, since os.execv replaces the image and never runs Qt's aboutToQuit
         # (INV-6). Then relaunch the new binary in place.
         on_before_exec()
+        # Relaunch the just-swapped AppImage in place. No shell is involved
+        # (that is the point — no shell-injection surface); the argv is our own
+        # verified path, not user input (bandit B606, D8).
         path = str(self._appimage_path)
-        os.execv(path, [path])
+        os.execv(path, [path])  # nosec B606
 
 
 def detect_installer() -> Installer | None:
