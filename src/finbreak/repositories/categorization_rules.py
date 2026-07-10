@@ -65,12 +65,14 @@ class CategorizationRuleRepository:
         self._conn.commit()
 
     def set_priority(self, rule_id: int, priority: int) -> None:
-        """Set one rule's priority (the two-row swap behind Move up/down, D7)."""
+        """Set one rule's priority (the two-row swap behind Move up/down, D7).
+        **Commit-free** — the owning ``CategorizationService.move_rule``
+        transaction commits, so the two-row swap is one atomic unit and a
+        mid-swap failure rolls back cleanly (indie-review M-C1)."""
         self._conn.execute(
             "UPDATE categorization_rules SET priority = ? WHERE id = ?",
             (priority, rule_id),
         )
-        self._conn.commit()
 
     def min_priority(self) -> int | None:
         """The smallest (top) priority, or ``None`` when there are no rules — the

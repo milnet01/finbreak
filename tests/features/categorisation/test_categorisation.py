@@ -906,3 +906,48 @@ def test_INV14_category_delete_catches_vault_locked(qtbot, service, monkeypatch)
 
     monkeypatch.setattr(widget._categories, "delete_category", _raise)
     widget._delete_button.click()  # must not raise
+
+
+def test_set_manual_category_rejects_a_root(service):
+    """A manual pick, like a rule, must target a leaf — never a Type root; the
+    service enforces INV-9 at its boundary, not just the picker UI. A root id is
+    a valid FK, so only this guard catches it. (indie-review M-core1)"""
+    cs = CategorizationService(service.vault)
+    income = _roots(service.vault.connection)["income"]
+    t = _add_txn(service, "SOMETHING")
+    with pytest.raises(ValueError):
+        cs.set_manual_category(t, income.id)
+    # a leaf still works, and None (a deliberate clear) still works
+    cs.set_manual_category(t, _leaf_id(service, "Groceries"))
+    cs.set_manual_category(t, None)
+
+
+def test_move_rule_swap_is_atomic_on_failure(service, monkeypatch):
+    """If the second priority write fails mid-swap, the first is rolled back —
+    the reorder is one atomic transaction, not two separate commits.
+    (indie-review M-C1)"""
+    from finbreak.repositories.categorization_rules import (
+        CategorizationRuleRepository,
+    )
+
+    cs = CategorizationService(service.vault)
+    g = _leaf_id(service, "Groceries")
+    r1 = cs.add_rule("aaa", g)
+    cs.add_rule("bbb", g)  # inserted on top (new rules win)
+    before = {r.id: r.priority for r in cs.list_rules()}
+
+    real = CategorizationRuleRepository.set_priority
+    calls = {"n": 0}
+
+    def flaky(self, rule_id, priority):
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise RuntimeError("simulated mid-swap failure")
+        return real(self, rule_id, priority)
+
+    monkeypatch.setattr(CategorizationRuleRepository, "set_priority", flaky)
+    with pytest.raises(RuntimeError):
+        cs.move_rule(r1.id, "up")
+
+    after = {r.id: r.priority for r in cs.list_rules()}
+    assert after == before, "a failed swap must roll back, not half-apply"

@@ -120,9 +120,18 @@ class CategorizationService:
         if neighbour < 0 or neighbour >= len(ordered):
             return  # already at the end
         this, other = ordered[index], ordered[neighbour]
-        repo = self._rules()
-        repo.set_priority(this.id, other.priority)
-        repo.set_priority(other.id, this.priority)
+        # One owned transaction so the two-row swap is atomic — a mid-swap
+        # failure can't leave two rules sharing a priority (indie-review M-C1).
+        conn = self._conn
+        repo = CategorizationRuleRepository(conn)
+        conn.execute("BEGIN")  # first statement — own the transaction
+        try:
+            repo.set_priority(this.id, other.priority)
+            repo.set_priority(other.id, this.priority)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
 
     def apply_rules(self) -> int:
         """Re-file every auto row from the current rules, in one owned transaction,
@@ -142,6 +151,12 @@ class CategorizationService:
         """Freeze a transaction's category by hand (INV-1): set ``category_id`` +
         ``'manual'`` in one owned transaction. ``None`` is a deliberate clear
         (``NULL``/``'manual'``), which no rule run re-fills (INV-3)."""
+        # INV-9: a manual pick, like a rule target, must be a leaf — never a Type
+        # root. The picker UI only offers leaves, but enforce it at the service
+        # boundary too so no other caller can pin a root (a root's id is a valid
+        # FK, so SQLite won't catch it). None is a deliberate clear. (M-core1)
+        if category_id is not None:
+            self._require_leaf(category_id)
         conn = self._conn
         tx_repo = TransactionRepository(conn)
         conn.execute("BEGIN")  # first statement — own the transaction
@@ -156,12 +171,17 @@ class CategorizationService:
     # -- helpers --------------------------------------------------------------
     def _validate(self, pattern: str, category_id: int) -> str:
         """The trimmed pattern, or ``ValueError``: non-empty pattern + an existing
-        **leaf** (non-root) target (INV-9). Mirrors ``CategoryService``'s root check
-        (a valid child is ``parent_id is not None``)."""
+        **leaf** (non-root) target (INV-9)."""
         pattern = pattern.strip()
         if not pattern:
             raise ValueError("a rule pattern must not be empty")
+        self._require_leaf(category_id)
+        return pattern
+
+    def _require_leaf(self, category_id: int) -> None:
+        """The shared INV-9 guard for a rule target AND a manual pick: the category
+        exists and is a leaf (``parent_id is not None``), never a Type root. Mirrors
+        ``CategoryService``'s root check."""
         category = CategoryRepository(self._conn).get(category_id)
         if category is None or category.parent_id is None:
-            raise ValueError("a rule must target a category, not a Type")
-        return pattern
+            raise ValueError("a category must be a leaf, not a Type")

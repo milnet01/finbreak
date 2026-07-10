@@ -128,15 +128,20 @@ class AuthService:
         self, raw: bytes, params: KdfParams, base_currency: str
     ) -> None:
         """Main-thread step: create the vault and take ownership of the key."""
-        if self._vault.presence_state() != "first_run":
-            raise VaultStateError("cannot first-run over an existing vault")
+        # Copy the derived key into a wipeable buffer BEFORE the presence-state
+        # guard, so *every* failure path — including "vault already exists"
+        # (two instances racing first-run) — wipes it, not just the create()
+        # failure. Previously the guard raised with the key copy un-wiped
+        # (INV-3 leak). (indie-review M-auth2)
         key = bytearray(raw)
         try:
+            if self._vault.presence_state() != "first_run":
+                raise VaultStateError("cannot first-run over an existing vault")
             self._vault.create(
                 key, params, base_currency, CURRENCY_EXPONENTS[base_currency]
             )
         except Exception:
-            _wipe(key)  # don't leave the key in memory if creation failed
+            _wipe(key)  # don't leave the key in memory on any failure
             raise
         self._key = key
         self._arm_timer()

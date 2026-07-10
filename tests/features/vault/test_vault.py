@@ -744,3 +744,30 @@ def test_INV8_no_network_package_in_runtime_deps():
     }
     intruders = names & _BANNED_NETWORK
     assert not intruders, f"network package in runtime deps: {intruders}"
+
+
+def test_complete_first_run_over_existing_vault_wipes_key(paths):
+    """A first-run attempted over an existing vault (two instances racing) must
+    still wipe the derived-key copy, not leave it for GC. (indie-review M-auth2)"""
+    import finbreak.services.auth as auth_mod
+
+    svc = AuthService(*paths)
+    svc.first_run(bytearray(_PW), "ZAR")  # the vault now exists
+    svc.lock()
+
+    wiped: list[int] = []
+    real = auth_mod._wipe
+
+    def spy(buf):
+        if buf:
+            wiped.append(len(buf))
+        real(buf)
+
+    auth_mod._wipe = spy
+    try:
+        other = AuthService(*paths)
+        with pytest.raises(VaultStateError):
+            other.complete_first_run(b"\x01" * KEY_LEN, other.new_params(), "ZAR")
+    finally:
+        auth_mod._wipe = real
+    assert KEY_LEN in wiped, "the derived key copy is wiped even when the guard fires"
