@@ -482,6 +482,7 @@ lands on top.
   (FIBR-0004 through FIBR-0012), so P13 cannot start until the app
   is feature-complete. Lanes: build, ci, packaging.
   Kind: chore. Source: planned.
+  Note (2026-07-10): FIBR-0054 (in-app auto-update) pulls the **Linux AppImage** slice forward — it adds `scripts/build-release-appimage.sh` (a real release AppImage, reusing the FIBR-0003 build machinery) + Ed25519 signing + a published `v0.1.0` release. When FIBR-0015 lands, reuse that script rather than rebuilding it; FIBR-0015 remains owner of the Windows `.exe`, macOS `.app`/`.dmg`, and the Flatpak/Flathub manifest.
 
 - 📋 [FIBR-0016] **P13: `scripts/publish-release.sh` +
   release automation.** One committed script builds every
@@ -491,6 +492,7 @@ lands on top.
   `docs/specs/`, cold-eyes-reviewed) — a publish script can't
   predate the thing it publishes. Dependencies: FIBR-0015. Lanes:
   build, ci, packaging. Kind: chore. Source: planned.
+  Note (2026-07-10): FIBR-0054 pulls a **Linux-only** slice of release automation forward — a thin `scripts/publish-release.sh` (or `gh release create`) that publishes the signed AppImage + `.sig` as GitHub Release `v0.1.0`, so the in-app updater has a real release to check/download. FIBR-0016 remains owner of the full multi-artifact publish + the Flathub submission/update flow; extend the Linux slice rather than replacing it.
 
 - ✅ [FIBR-0037] **P13: a proper branded app icon (not a flat
   glyph).** Design a polished, richly-shaded application icon —
