@@ -127,7 +127,7 @@ scariest unknown (native-library bundling) up front.
     - Startup tab preference (which workspace tab opens on launch — ties to the
       FIBR-0052 last-tab persistence).
     - "Check for updates" on/off (the opt-in switch FIBR-0054 auto-update needs;
-      off by default per the no-network stance).
+      off by default — the update check is the one deliberate, consented egress).
     - Number / date format override (deferred at spec time: locale *number*
       formatting → FIBR-0017 i18n; user-chosen *date* format → FIBR-0048).
   - Every new string tr()-wrapped, layouts (no fixed geometry) for RTL, amounts

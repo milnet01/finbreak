@@ -37,16 +37,18 @@ unavoidable it is glossed on first use.
   hardware key-logger — that is out of scope for a local
   desktop app and stated as such.
 - **Everything off the machine is untrusted — and unreachable
-  except for one opt-in, off-by-default call.** The **shipped
-  application** makes **exactly one** kind of outbound call — an
-  **opt-in, off-by-default** update check to the GitHub Releases API,
-  confined to `services/update_fetch.py` and never made without
-  explicit user consent (FIBR-0054 INV-8). No other network access
-  exists; a downloaded update is installed only if its Ed25519
-  signature verifies (INV-2). The near-total absence of network code
-  keeps the attack surface minimal. (Dev/CI tooling such as
-  `pip-audit` and Dependabot run in GitHub's infrastructure, never in
-  the shipped app — INV-8.)
+  except for one opt-in, off-by-default flow.** The **shipped
+  application** makes **exactly one** kind of outbound access — an
+  **opt-in, off-by-default** update flow that reads the GitHub
+  Releases API and, only on the user's explicit request, downloads the
+  signed release assets (the AppImage + its `.sig`) — all over
+  `https://`, confined to `services/update_fetch.py` and never begun
+  without explicit user consent (FIBR-0054 INV-1). No other network
+  access exists; a downloaded update is installed only if its Ed25519
+  signature verifies (FIBR-0054 INV-4). The near-total absence of
+  network code keeps the attack surface minimal. (Dev/CI tooling such
+  as `pip-audit` and Dependabot run in GitHub's infrastructure, never
+  in the shipped app — INV-8.)
 - **Imported files are untrusted input.** CSV/OFX/PDF files come
   from outside and are parsed defensively (§ 4, T5).
 
@@ -195,12 +197,16 @@ be checkable. Enforcement arrives in step with the code:
   unencrypted report file is ever produced — the FIBR-0013 spec
   must assert the render-then-encrypt path never stages a plaintext
   PDF in a temp file, reconciling with INV-4).
-- **INV-8 — One opt-in outbound call.** The shipped app makes
-  **exactly one** kind of outbound request — an opt-in,
-  off-by-default update check to the GitHub Releases API, confined to
-  `services/update_fetch.py` and never made without explicit user
-  consent (FIBR-0054). No other network access exists; there is no
-  networking *dependency* in the runtime bundle (the check uses stdlib
+- **INV-8 — One opt-in outbound flow.** The shipped app makes
+  **exactly one** kind of outbound request — an opt-in, off-by-default
+  update flow that reads the GitHub Releases API and downloads the
+  signed release assets, confined to `services/update_fetch.py` and
+  never begun without explicit user consent (FIBR-0054 INV-1). That
+  download is **signature-gated and resource-bounded**: a release is
+  installed only if its Ed25519 signature verifies, and the fetch is
+  abandoned if it exceeds its size cap or times out (FIBR-0054
+  INV-4/INV-10/INV-11). No other network access exists; there is no
+  networking *dependency* in the runtime bundle (the flow uses stdlib
   `urllib`).
 - **INV-9 — Logs are clean.** The local log file never records
   transaction contents, passwords, keys, or decrypted data.

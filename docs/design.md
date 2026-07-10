@@ -41,6 +41,7 @@ flowchart TB
         Transfer[TransferDetectionService<br/>suggest + confirm]
         Report[ReportingService<br/>aggregations]
         PdfOut[PdfExportService<br/>render + encrypt]
+        Update[UpdateService<br/>opt-in signed AppImage update — FIBR-0054]
     end
 
     subgraph Importers["Importers (pluggable)"]

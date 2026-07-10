@@ -270,7 +270,9 @@ code change, with a single commit referencing the ROADMAP ID.
 - ❌ Tests that print "FAIL" but exit 0.
 - ❌ Tests that depend on machine timing / CPU speed / FPU
   determinism.
-- ❌ Tests that touch the network without an explicit opt-in flag.
+- ❌ Tests that touch the network at all — even the shipped update
+  check is exercised through an injected fake fetcher, never a real
+  socket (§ 6).
 - ❌ Tests with named functions like `test_works_correctly` —
   what's the *contract*?
 - ❌ Tests committed in a "WIP" / failing state.
