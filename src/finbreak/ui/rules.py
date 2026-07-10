@@ -12,6 +12,8 @@ All strings go through ``tr()`` and every widget sits in a layout manager
 
 from __future__ import annotations
 
+from typing import Literal
+
 from PySide6.QtCore import Slot
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -222,13 +224,13 @@ class RulesWidget(QWidget):
             return  # auto-lock fired; the workspace is being torn down (INV-14)
         self._refresh()
 
-    def _on_move(self, direction: str) -> None:
+    def _on_move(self, direction: Literal["up", "down"]) -> None:
         index = self._selected_row()
         if index is None:
             return
         rule_id = self._rows[index].id
         try:
-            self._categorization.move_rule(rule_id, direction)  # type: ignore[arg-type]
+            self._categorization.move_rule(rule_id, direction)
         except VaultLockedError:
             return
         self._refresh()

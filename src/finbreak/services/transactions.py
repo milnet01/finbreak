@@ -18,6 +18,7 @@ from sqlcipher3 import dbapi2
 from finbreak.models import Transaction
 from finbreak.repositories.accounts import AccountRepository
 from finbreak.repositories.categories import CategoryRepository
+from finbreak.repositories.settings import SettingsRepository
 from finbreak.repositories.transactions import TransactionRepository
 from finbreak.vault import Vault
 
@@ -27,10 +28,12 @@ def read_minor_unit_exponent(conn: dbapi2.Connection) -> int:
     source both ``TransactionService`` and ``ImportService`` (FIBR-0007) read,
     so the key string and its cast live in one place (a typo would silently
     read the wrong money scale)."""
-    row = conn.execute(
-        "SELECT value FROM settings WHERE key = 'minor_unit_exponent'"
-    ).fetchone()
-    return int(row[0])
+    # Route through the SettingsRepository seam (FIBR-0080) so the key string
+    # isn't hand-rolled in a second place. The value is a v1 invariant (written
+    # at first-run), so ``cast`` mirrors the repo convention of asserting presence
+    # over a can't-happen error path (coding.md § 2).
+    value = SettingsRepository(conn).get("minor_unit_exponent")
+    return int(cast(str, value))
 
 
 def parse_transaction(
@@ -86,10 +89,10 @@ class TransactionService:
         return read_minor_unit_exponent(self._vault.connection)
 
     def base_currency(self) -> str:
-        row = self._vault.connection.execute(
-            "SELECT value FROM settings WHERE key = 'base_currency'"
-        ).fetchone()
-        return str(row[0])
+        # Same SettingsRepository seam as read_minor_unit_exponent (FIBR-0080);
+        # base_currency is a v1 invariant so ``cast`` asserts its presence.
+        value = SettingsRepository(self._vault.connection).get("base_currency")
+        return cast(str, value)
 
     def add_transaction(
         self,

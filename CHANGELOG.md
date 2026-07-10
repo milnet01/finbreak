@@ -183,6 +183,10 @@ signaling per
 
 ### Changed
 
+- **Typed the rules Move up/down handler with a `Literal` (dropping a type-ignore) and corrected the FIBR-0007 INV-7 spec narrative to match the FIBR-0052 period-first insert order.** (FIBR-0081)
+
+- **Settings reads (base currency, minor-unit exponent) now flow through the shared `SettingsRepository` seam instead of hand-rolled SQL, so a mistyped key can't silently read the wrong value.** (FIBR-0080)
+
 - **The quality gate now runs `mypy` as a stage (both `ci-local.sh` and CI), so type errors fail the build instead of relying on ad-hoc manual runs. (FIBR-0061)**
   Also fixed the 4 pre-existing type errors the newly-gated `mypy src
   tests` surfaced in the test tree (None-guards on three `findChild`

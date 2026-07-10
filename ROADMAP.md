@@ -901,11 +901,12 @@ dependencies, review — is filed here (or the most fitting section) for later
 investigation/resolution, even when third-party or non-blocking. A warning today
 is a future error tomorrow.
 
-- 📋 [FIBR-0043] **Silence/resolve ofxparse's bs4 findAll DeprecationWarning noise in the test run.**
+- ✅ [FIBR-0043] **Silence/resolve ofxparse's bs4 findAll DeprecationWarning noise in the test run.**
   Surfaced by FIBR-0008 (2026-07-04). Running `tests/features/ofx_import/` emits ~100 `DeprecationWarning: Call to deprecated method findAll. (Replaced by find_all)` — raised INSIDE `ofxparse` 0.21 (`ofxparse.py` calling BeautifulSoup's deprecated `findAll`), not our code. Harmless today (tests pass), but: (a) it's log noise that masks real warnings, and (b) a future bs4 major could turn `findAll` into a hard error, breaking OFX import. ofxparse 0.21 is the current latest (lightly maintained), so there's no newer release to bump to. Options: a scoped pytest `filterwarnings` ignore for ofxparse's DeprecationWarning (documented, so it doesn't hide OUR deprecations); upstream a PR to ofxparse (findAll -> find_all); or, if bs4 ever breaks it, migrate to a maintained parser (ofxtools) — the escape hatch already noted in FIBR-0008 § Dependencies. Decide + apply.
   **Layman:** The OFX-import library prints ~100 harmless "this method is old" warnings whenever we run our tests; the app works fine, but the noisy warnings should be quietened or fixed at the source.
   Kind: investigate.
   Source: in-session-2026-07-04 FIBR-0008 build/test warnings.
+  Resolved (2026-07-10): already delivered by FIBR-0058 — the scoped pytest `filterwarnings` ignore for "Call to deprecated method findAll.*" plus the `beautifulsoup4>=4.9,<5` pin are both live in pyproject.toml. This was the investigate twin of the FIBR-0058 chore; no additional code needed. Closing as superseded.
 
 - ✅ [FIBR-0057] **Import wizard snapshots the target account at file-select — a later dropdown change is ignored.**
   ui/import_wizard.py `_select_file` (line ~255) does `self._account_id = self._account_combo.currentData()` and bakes it into the preview; the account combo lives on step 0 only and changing it after a file is chosen does not re-read or re-preview. Combined with the combo defaulting to the first account, a user who doesn't set the account BEFORE choosing the file (or wants to change it after) silently imports under the wrong account. Fix options: (a) read the account at commit time (decouple from the snapshot); (b) keep the account picker editable through the flow and re-run dedup/preview on change; (c) at minimum, disable the combo once a file is picked + surface the chosen account on the preview step so it's visible before commit. Prefer (a)+(c). Needs a reproduction test. Related to the FIBR-00xx edit-statement-account feature (which lets a user fix a mis-link post-import).
@@ -1038,15 +1039,17 @@ is a future error tomorrow.
   Kind: ux.
   Source: indie-review-2026-07-10 loop-2 (core-services + ui-dialogs M2).
 
-- 📋 [FIBR-0080] **Route the two hand-rolled settings reads through SettingsRepository.get.**
+- ✅ [FIBR-0080] **Route the two hand-rolled settings reads through SettingsRepository.get.**
   services/transactions.py read_minor_unit_exponent + TransactionService.base_currency hand-roll SELECT value FROM settings WHERE key=... instead of SettingsRepository(conn).get(key) (already used by auth.py). Reuse-before-rewrite (CLAUDE.md §3); a typo'd key in one copy has no lint signal. read_minor_unit_exponent needs None/int-cast handling.
   Kind: refactor.
   Source: indie-review-2026-07-10 loop-2 (data M-1).
+  Resolved (2026-07-10): read_minor_unit_exponent + TransactionService.base_currency now route through SettingsRepository(conn).get(key) (services/transactions.py) instead of hand-rolling the SELECT — one seam for the key strings (reuse, CLAUDE.md §3). cast(str, value) preserves the v1-invariant 'always present' assumption per the repo's assert-over-can't-happen convention. mypy 0, 171 affected tests pass.
 
-- 📋 [FIBR-0081] **Small type/doc debt: _on_move Literal typing, _selected_row dedup, FIBR-0007 stale INV-7 insert-order narrative.**
+- ✅ [FIBR-0081] **Small type/doc debt: _on_move Literal typing, _selected_row dedup, FIBR-0007 stale INV-7 insert-order narrative.**
   (1) ui/rules.py _on_move takes direction:str + a type:ignore against move_rule's Literal['up','down'] — type the param as Literal to drop the workaround (global rule §1). (2) _selected_row is byte-identical in rules.py + statements.py (2 sites — extract on the 3rd). (3) FIBR-0007 spec's INV-7 test narrative describes the OLD insert order (transactions-before-period); FIBR-0052's statement_period_id FK reversed it (period-first) — update the spec text (or a FIBR-0052 addendum) so a reader doesn't reason about a stale order.
   Kind: doc-fix.
   Source: indie-review-2026-07-10 loop-2 (misc LOW).
+  Resolved (2026-07-10): (1) ui/rules.py _on_move now types direction as Literal['up','down'], dropping the # type: ignore[arg-type] against move_rule. (3) FIBR-0007 spec INV-7 narrative corrected with a FIBR-0052 addendum — commit_import inserts the period row first (statement_period_id FK) then the transactions batch, and the wedge test raises on the transactions INSERT. (2) _selected_row dedup deliberately NOT done — only 2 sites, Rule-of-Three defers extraction to the 3rd (CLAUDE.md §3).
 
 ## How to add an item
 
