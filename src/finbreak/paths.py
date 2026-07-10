@@ -7,6 +7,7 @@ Tests inject explicit ``tmp_path`` locations instead of calling these.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from PySide6.QtCore import QCoreApplication, QStandardPaths
@@ -26,6 +27,13 @@ def data_dir() -> Path:
     )
     directory = Path(location)
     directory.mkdir(parents=True, exist_ok=True)
+    # Harden the (app-specific) data dir to owner-only. The vault + sidecar
+    # files are 0o600, but the containing dir otherwise defaults to the umask
+    # (commonly 0o755), leaking file existence/size/mtime metadata to other
+    # local users. chmod after mkdir because mkdir's own mode is umask-masked;
+    # POSIX-only (mirrors the vault/sidecar owner-only INV-7).
+    if hasattr(os, "getuid"):
+        os.chmod(directory, 0o700)
     return directory
 
 

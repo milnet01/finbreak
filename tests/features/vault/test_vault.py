@@ -9,6 +9,7 @@ main window) use the pytest-qt `qtbot` fixture. Every on-disk vault lives under
 import ast
 import json
 import logging
+import os
 import re
 from collections.abc import Iterator
 from decimal import Decimal
@@ -425,6 +426,27 @@ def test_INV5_first_run_creates_settings_and_both_files(service, paths):
     assert vault_path.exists() and sidecar_path.exists()
 
 
+def test_create_failure_after_conn_live_resets_lock_state(paths, monkeypatch):
+    """A failure in run_migrations / _write_sidecar — after the connection is
+    live — must close it and reset the vault to locked, never leak an open,
+    unlocked connection (which silently defeats the VaultLockedError guard).
+    Mirrors open()'s existing close-and-reset. (indie-review H-A)"""
+    vault_path, sidecar_path = paths
+    salt = bytes(range(SALT_LEN))
+    params = _params(salt)
+
+    def boom(self, _params):
+        raise RuntimeError("simulated failure after the connection is live")
+
+    monkeypatch.setattr(Vault, "_write_sidecar", boom)
+    vault = Vault(vault_path, sidecar_path)
+    with pytest.raises(RuntimeError):
+        vault.create(derive_key(bytearray(_PW), salt, params), params, "ZAR", 2)
+
+    with pytest.raises(VaultLockedError):
+        _ = vault.connection  # the leaked connection must be gone → locked
+
+
 def test_INV5_first_run_writes_vault_before_sidecar(service, paths, monkeypatch):
     vault_path, sidecar_path = paths
 
@@ -620,6 +642,43 @@ def test_INV7_vault_and_sidecar_are_owner_only(service, paths):
     service.first_run(bytearray(_PW), "ZAR")
     assert vault_path.stat().st_mode & 0o777 == 0o600
     assert sidecar_path.stat().st_mode & 0o777 == 0o600
+
+
+@pytest.mark.skipif(not hasattr(os, "getuid"), reason="POSIX mode bits only")
+def test_INV7_data_dir_is_owner_only(tmp_path, monkeypatch):
+    """The app-data directory itself is owner-only, not just the two files
+    inside it — else another local user can stat the dir and read file
+    existence/size/mtime metadata. (indie-review M-crypto2)"""
+    from PySide6.QtCore import QStandardPaths
+
+    from finbreak import paths as paths_mod
+
+    target = tmp_path / "appdata" / "finbreak"
+    monkeypatch.setattr(
+        QStandardPaths, "writableLocation", staticmethod(lambda _loc: str(target))
+    )
+    created = paths_mod.data_dir()
+    assert created == target
+    assert created.stat().st_mode & 0o777 == 0o700
+
+
+@pytest.mark.skipif(
+    not (hasattr(os, "symlink") and hasattr(os, "O_NOFOLLOW")),
+    reason="POSIX symlink + O_NOFOLLOW",
+)
+def test_INV7_sidecar_write_refuses_to_follow_symlink(paths, tmp_path):
+    """The sidecar's temp-file write refuses to follow a pre-planted symlink at
+    its .tmp path, rather than truncating/writing through it. (indie-review
+    M-crypto3)"""
+    vault_path, sidecar_path = paths
+    target = tmp_path / "evil-target"
+    tmp_link = sidecar_path.with_name(sidecar_path.name + ".tmp")
+    os.symlink(target, tmp_link)
+
+    vault = Vault(vault_path, sidecar_path)
+    with pytest.raises(OSError):
+        vault._write_sidecar(_params(bytes(SALT_LEN)))
+    assert not target.exists(), "the write must not follow the symlink to its target"
 
 
 # --------------------------------------------------------------------------- #

@@ -93,8 +93,18 @@ class Vault:
         # half of that guarantee relies on SQLite's default per-commit fsync
         # (synchronous=FULL); a later switch to WAL / synchronous=NORMAL would
         # need the sidecar write deferred until the DB is durably flushed.
-        run_migrations(conn)
-        self._write_sidecar(params)
+        #
+        # Mirror open()'s close-and-reset: a failure here (a migration bug, or a
+        # disk-full OSError writing the sidecar) must NOT leave self._conn
+        # pointing at a live, unlocked connection — that silently defeats the
+        # VaultLockedError guard while the app still believes it's locked.
+        try:
+            run_migrations(conn)
+            self._write_sidecar(params)
+        except Exception:
+            self._conn = None
+            conn.close()
+            raise
 
     def open(self, key: bytearray) -> None:
         """Open the vault with the raw key; a wrong key / tamper raises here."""
@@ -146,7 +156,14 @@ class Vault:
         """Atomically write the plaintext sidecar as owner-only (coding.md § 7)."""
         payload = json.dumps(params.to_sidecar_dict(), indent=2)
         tmp_path = self._sidecar_path.with_name(self._sidecar_path.name + ".tmp")
-        fd = os.open(tmp_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        # O_NOFOLLOW refuses to open through a symlink planted at the .tmp path,
+        # so the write can't be redirected to truncate/overwrite an attacker's
+        # target (0 on Windows, where the flag is absent — a no-op there).
+        fd = os.open(
+            tmp_path,
+            os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0),
+            0o600,
+        )
         with os.fdopen(fd, "w") as handle:
             handle.write(payload)
         os.replace(tmp_path, self._sidecar_path)
