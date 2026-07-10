@@ -755,6 +755,17 @@ class StandardBankImporter:
         for page_lines in pages:
             region_lines.extend(page_lines[_table_region(page_lines, family)])
 
+        # Bound the computation, not just the result (FIBR-0078): every region line
+        # is at most a couple of drafts, so len(region_lines) > _MAX_PDF_ROWS means a
+        # crafted PDF is trying to make the per-family regex + Decimal parse run over
+        # a huge region. Reject here, before that work — the exact post-parse
+        # len(result.drafts) cap below still holds (FIBR-0050 Deliverable 1).
+        if len(region_lines) > _MAX_PDF_ROWS:
+            raise ValueError(
+                "this statement has too many transactions to import — "
+                "try your bank's CSV or OFX export"
+            )
+
         # Detect the decimal convention from the **transaction region** only (D9 /
         # Deliverable 1) — not the whole document — so a stray opposite-convention
         # money token in the footer / VAT summary / fee structure can't trip the

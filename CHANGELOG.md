@@ -183,6 +183,8 @@ signaling per
 
 ### Changed
 
+- **An oversized Standard Bank PDF is now rejected before the heavy parsing runs, not after, so a deliberately huge file can't burn work before being turned away.** (FIBR-0078)
+
 - **Consolidated the Standard Bank statement signed-balance parsing (repeated 7 times across the account families) into one helper.** (FIBR-0069)
 
 - **Deduplicated the drop-down preselect logic shared across the account, category, and type pickers into one helper.** (FIBR-0068)
