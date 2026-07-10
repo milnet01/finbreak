@@ -29,7 +29,7 @@ becomes active.
 6. ✅ Run `/indie-review` (one focused cold code-review lane — clean, doc-nits folded)
 7. ✅ Fold / fix actionable findings
 8. ✅ Update CHANGELOG / ROADMAP / journal
-9. 🚧 Commit, tag `<ID>-complete` (clean close only), push
+9. ✅ Commit, tag `<ID>-complete` (clean close only), push (`a5b230c`, tag pushed)
 
 ### FIBR-0009 close record (P07, closed 2026-07-04)
 
