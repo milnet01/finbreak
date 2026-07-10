@@ -83,11 +83,16 @@ _MONTHS = {
 }
 _MON3 = {m[:3]: i for m, i in _MONTHS.items()}
 
-# A money figure printed to exactly two decimals (SB always does), optionally
-# grouped in thousands. Used to detect the decimal separator (D9) and to pull the
-# balance/amount off a line. Excludes 3-decimal rates (7.050%) and refs by the
-# exact 2-digit tail with no trailing digit.
-_MONEY = re.compile(r"(?<![\d.,])\d{1,3}(?:[.,]\d{3})*[.,]\d{2}(?!\d)")
+# A money figure printed to exactly two decimals (SB always does), EITHER
+# thousands-grouped (``1,234.56``) OR an ungrouped run (``1234.56`` — FIBR-0067;
+# validated against all six real statement families, which always group, so the
+# ungrouped alternative adds zero matches there — no regression — but a bank that
+# prints ungrouped no longer fails the strict grammar). Used to detect the decimal
+# separator (D9) and to pull the balance/amount off a line. Excludes 3-decimal
+# rates (7.050%) and refs by the 2-digit tail, and — via the ``(?![.,]?\d)`` guard
+# — a dotted-date fragment like ``2025.07.21`` (no digit, grouped or not, may
+# follow the two-decimal tail).
+_MONEY = re.compile(r"(?<![\d.,])(?:\d{1,3}(?:[.,]\d{3})*|\d{4,})[.,]\d{2}(?![.,]?\d)")
 
 # A transaction "Statement from D Month YYYY to D Month YYYY" period line (A/C).
 _PERIOD = re.compile(

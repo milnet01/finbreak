@@ -18,6 +18,7 @@ from PySide6.QtWidgets import QDialog
 
 from conftest import _PW, _acct
 from finbreak.importers.standard_bank import (
+    _MONEY,
     Family,
     StandardBankImporter,
     _detect_number_format,
@@ -56,6 +57,41 @@ def _encrypt(raw: bytes, *, user: str, owner: str = "owner-pw") -> bytes:
 # --------------------------------------------------------------------------- #
 # Pure helpers (no PDF)
 # --------------------------------------------------------------------------- #
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        # Grouped (SB's actual format) — unchanged.
+        ("bal 1,234.56 amt 78.90", ["1,234.56", "78.90"]),
+        ("12.34", ["12.34"]),
+        ("1,234,567.89", ["1,234,567.89"]),
+        # FIBR-0067: ungrouped 4+-digit runs are now accepted.
+        ("1234.56", ["1234.56"]),
+        ("1234567.89", ["1234567.89"]),
+        # Still excluded: 3-decimal rates, and — via the tail guard — a
+        # dotted-date fragment. ISO/spaced dates carry no two-decimal tail.
+        ("interest rate 7.050%", []),
+        ("2025.07.21", []),
+        ("2025-07-21", []),
+    ],
+    ids=[
+        "grouped_pair",
+        "small",
+        "grouped_millions",
+        "ungrouped_4digit",
+        "ungrouped_7digit",
+        "reject_3dp_rate",
+        "reject_dotted_date",
+        "iso_date_no_tail",
+    ],
+)
+def test_FIBR0067_money_regex_accepts_ungrouped_rejects_dates(text, expected):
+    """_MONEY now matches ungrouped 4+-digit amounts (FIBR-0067) while still
+    excluding 3-decimal rates and dotted-date fragments (the (?![.,]?\\d) guard).
+    Validated end-to-end against all six real statement families (throwaway, never
+    committed) — they always group, so this widening added zero matches there."""
+    assert _MONEY.findall(text) == expected
+
+
 def test_INV8_number_format_us_and_eu():
     assert _detect_number_format("1,427.41 730.55- 12.10") == "us"
     assert _detect_number_format("239.206,04- 1.910,76-") == "eu"

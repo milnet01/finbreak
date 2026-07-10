@@ -183,6 +183,8 @@ signaling per
 
 ### Changed
 
+- **Standard Bank PDF import now also reads amounts printed without thousands separators (e.g. 1234.56), not just grouped ones (1,234.56) — validated against all six real statement families with no change to their results.** (FIBR-0067)
+
 - **An oversized Standard Bank PDF is now rejected before the heavy parsing runs, not after, so a deliberately huge file can't burn work before being turned away.** (FIBR-0078)
 
 - **Consolidated the Standard Bank statement signed-balance parsing (repeated 7 times across the account families) into one helper.** (FIBR-0069)
