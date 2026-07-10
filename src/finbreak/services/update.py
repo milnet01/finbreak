@@ -10,6 +10,7 @@ hand-off is delegated to the injected ``Installer`` (D6). The version grammar
 
 from __future__ import annotations
 
+
 # --------------------------------------------------------------------------- #
 # D13 — version grammar + comparison (fail-safe, dependency-free)
 # --------------------------------------------------------------------------- #

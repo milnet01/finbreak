@@ -16,7 +16,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 )
 
 from finbreak.errors import FinbreakError, UpdateError, UpdateVerificationError
-from finbreak.services import update_key
+from finbreak.services import update_fetch, update_key
 from finbreak.services.update_installer import (
     AppImageInstaller,
     detect_installer,
@@ -229,3 +229,81 @@ def test_INV6_failed_replace_leaves_key_unwiped_and_original_intact(
     assert order == []  # neither the wipe nor the exec ran (INV-6/INV-11)
     assert appimage.read_bytes() == b"OLD-APP"  # original byte-for-byte intact
     assert not new_file.exists()  # the temp was cleaned up (INV-5)
+
+
+# --------------------------------------------------------------------------- #
+# INV-10 — update_fetch (the sole networked module): resource-bounded, https-only
+# --------------------------------------------------------------------------- #
+class _FakeHTTPResponse:
+    """A minimal urlopen() stand-in: a context manager whose read(n) yields the
+    payload in <=n-byte slices (so the byte-cap logic sees a real stream)."""
+
+    def __init__(self, payload: bytes):
+        self._payload = payload
+        self._offset = 0
+
+    def read(self, size: int = -1) -> bytes:
+        if size is None or size < 0:
+            size = len(self._payload) - self._offset
+        chunk = self._payload[self._offset : self._offset + size]
+        self._offset += len(chunk)
+        return chunk
+
+    def __enter__(self) -> _FakeHTTPResponse:
+        return self
+
+    def __exit__(self, *exc) -> bool:
+        return False
+
+
+def _fake_urlopen(payload: bytes):
+    def opener(request, timeout=None):
+        return _FakeHTTPResponse(payload)
+
+    return opener
+
+
+def test_download_writes_bytes_under_cap(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        update_fetch.urllib.request, "urlopen", _fake_urlopen(b"HELLO-APPIMAGE")
+    )
+    dest = tmp_path / "out.AppImage"
+    update_fetch.download(
+        "https://dl/finbreak.AppImage", dest, max_bytes=1024, timeout=5
+    )
+    assert dest.read_bytes() == b"HELLO-APPIMAGE"
+
+
+def test_INV10_download_aborts_over_cap_and_cleans_temp(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        update_fetch.urllib.request, "urlopen", _fake_urlopen(b"X" * 500)
+    )
+    dest = tmp_path / "out.AppImage"
+    with pytest.raises(ValueError):
+        update_fetch.download("https://dl/big", dest, max_bytes=200, timeout=5)
+    assert not dest.exists()  # the partial temp is deleted on abort
+
+
+def test_INV10_download_refuses_non_https(tmp_path):
+    with pytest.raises(ValueError):
+        update_fetch.download(
+            "http://dl/insecure", tmp_path / "x", max_bytes=200, timeout=5
+        )
+
+
+def test_fetch_latest_release_parses_json(monkeypatch):
+    payload = b'{"tag_name": "v0.1.0", "assets": []}'
+    monkeypatch.setattr(update_fetch.urllib.request, "urlopen", _fake_urlopen(payload))
+    result = update_fetch.fetch_latest_release(
+        "milnet01", "finbreak", timeout=5, max_bytes=1024
+    )
+    assert result["tag_name"] == "v0.1.0"
+
+
+def test_INV10_fetch_latest_release_aborts_over_cap(monkeypatch):
+    payload = b'{"tag_name": "v0.1.0"}' + b" " * 500
+    monkeypatch.setattr(update_fetch.urllib.request, "urlopen", _fake_urlopen(payload))
+    with pytest.raises(ValueError):
+        update_fetch.fetch_latest_release(
+            "milnet01", "finbreak", timeout=5, max_bytes=50
+        )
