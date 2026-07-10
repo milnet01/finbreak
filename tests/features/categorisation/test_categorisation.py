@@ -12,12 +12,11 @@ blast-radius confirm use the pytest-qt `qtbot` fixture. Every on-disk vault uses
 """
 
 from collections.abc import Iterator
-from pathlib import Path
 
 import pytest
 from PySide6.QtWidgets import QDialog, QMessageBox
 
-from conftest import _PW, build_v6_vault, keyed_connection
+from conftest import _PW, build_v6_vault, keyed_connection, raising_conn
 from finbreak.crypto import SALT_LEN
 from finbreak.errors import VaultLockedError
 from finbreak.migrations import LATEST_SCHEMA_VERSION, run_migrations
@@ -39,11 +38,6 @@ pytestmark = pytest.mark.features
 
 HEADER = ["Date", "Details", "Amount"]
 SINGLE = ColumnMapping("Date", "Details", "Amount", None, None, "%Y-%m-%d", False)
-
-
-@pytest.fixture
-def paths(tmp_path) -> tuple[Path, Path]:
-    return tmp_path / "vault.db", tmp_path / "vault.kdf.json"
 
 
 @pytest.fixture
@@ -157,23 +151,14 @@ def test_INV15_atomic_rollback_leaves_v6(paths):
 
     conn = keyed_connection(vault_path, salt)
 
-    class _FailAtRulesCreate:
-        """Raise on `CREATE TABLE categorization_rules`, AFTER the two ADD COLUMNs
-        — so the ROLLBACK must undo the column adds too."""
-
-        def __init__(self, real):
-            self._real = real
-
-        def execute(self, sql, *a):
-            if "CREATE TABLE categorization_rules" in sql:
-                raise RuntimeError("injected failure at the rules-table CREATE")
-            return self._real.execute(sql, *a)
-
-        def __getattr__(self, name):
-            return getattr(self._real, name)
-
     with pytest.raises(RuntimeError):
-        run_migrations(_FailAtRulesCreate(conn))
+        run_migrations(
+            raising_conn(
+                conn,
+                "CREATE TABLE categorization_rules",
+                "injected failure at the rules-table CREATE",
+            )
+        )
 
     assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 6
     cols = {r[1] for r in conn.execute("PRAGMA table_info(transactions)").fetchall()}

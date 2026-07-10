@@ -10,12 +10,20 @@ data dir; CSV fixtures are tiny in-repo strings — no real data, no network.
 
 import pytest
 import shiboken6
-from PySide6.QtCore import QEvent, QSettings
+from PySide6.QtCore import QSettings
 from PySide6.QtGui import QCloseEvent, QGuiApplication
-from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
+from PySide6.QtWidgets import QDialog, QMessageBox
 from sqlcipher3 import dbapi2
 
-from conftest import _PW, build_v5_vault, keyed_connection
+from conftest import (
+    _PW,
+    StandInVault,
+    _acct,
+    _pump_deferred_delete,
+    build_v5_vault,
+    keyed_connection,
+    raising_conn,
+)
 from finbreak.crypto import SALT_LEN
 from finbreak.migrations import run_migrations
 from finbreak.models import ColumnMapping
@@ -42,11 +50,6 @@ SINGLE = ColumnMapping("Date", "Details", "Amount", None, None, "%Y-%m-%d", Fals
 # Fixtures + helpers
 # --------------------------------------------------------------------------- #
 @pytest.fixture
-def paths(tmp_path):
-    return tmp_path / "vault.db", tmp_path / "vault.kdf.json"
-
-
-@pytest.fixture
 def service(paths):
     svc = AuthService(*paths)
     svc.first_run(bytearray(_PW), "ZAR")  # first-run migrates straight to latest (v7)
@@ -58,18 +61,10 @@ def _csv(header, rows):
     return "\n".join([",".join(header)] + [",".join(r) for r in rows]) + "\n"
 
 
-def _acct(service):
-    return AccountService(service.vault).list_accounts()[0].id
-
-
 def _do_import(imp, text, account_id, source="stmt.csv"):
     preview = imp.preview(text, SINGLE, account_id)
     assert preview.period_start is not None and preview.period_end is not None
     return imp.commit_import(preview, preview.period_start, preview.period_end, source)
-
-
-def _pump_deferred_delete():
-    QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 
 
 def _shell(qtbot, service) -> MainWindow:
@@ -213,30 +208,15 @@ def test_INV9b_delete_atomic_rollback_between_deletes(service):
     _do_import(imp, _csv(HEADER, [["2026-01-05", "a1", "-1.00"]]), acct)
     period_id = StatementPeriodRepository(conn).list_for_account(acct)[0].id
 
-    class _FailAtPeriodDelete:
-        """Raise on the ``DELETE FROM statement_periods`` — after the transactions
-        delete — so the ROLLBACK must undo that transactions delete."""
-
-        def __init__(self, real):
-            self._real = real
-
-        def execute(self, sql, *a):
-            if "DELETE FROM statement_periods" in sql:
-                raise RuntimeError("injected failure between the two deletes")
-            return self._real.execute(sql, *a)
-
-        def __getattr__(self, name):
-            return getattr(self._real, name)
-
-    class _StandInVault:
-        def __init__(self, connection):
-            self._connection = connection
-
-        @property
-        def connection(self):
-            return self._connection
-
-    wedge = StatementService(_StandInVault(_FailAtPeriodDelete(conn)))
+    wedge = StatementService(
+        StandInVault(
+            raising_conn(
+                conn,
+                "DELETE FROM statement_periods",
+                "injected failure between the two deletes",
+            )
+        )
+    )
     with pytest.raises(RuntimeError):
         wedge.delete_statement(period_id)
 
@@ -779,30 +759,13 @@ def test_FIBR0059_reassign_atomic_rollback(service):
     _do_import(imp, _csv(HEADER, [["2026-01-05", "x", "-1.00"]]), a)
     pid = _period_id(conn, a)
 
-    class _FailAtTxnUpdate:
-        """Raise on the transactions UPDATE (the second write) so the ROLLBACK
-        must undo the already-applied statement_periods UPDATE (INV-1)."""
-
-        def __init__(self, real):
-            self._real = real
-
-        def execute(self, sql, *a):
-            if "UPDATE transactions" in sql:
-                raise RuntimeError("injected failure after the period update")
-            return self._real.execute(sql, *a)
-
-        def __getattr__(self, name):
-            return getattr(self._real, name)
-
-    class _StandInVault:
-        def __init__(self, connection):
-            self._connection = connection
-
-        @property
-        def connection(self):
-            return self._connection
-
-    wedge = StatementService(_StandInVault(_FailAtTxnUpdate(conn)))
+    wedge = StatementService(
+        StandInVault(
+            raising_conn(
+                conn, "UPDATE transactions", "injected failure after the period update"
+            )
+        )
+    )
     with pytest.raises(RuntimeError):
         wedge.reassign_account(pid, b)
 

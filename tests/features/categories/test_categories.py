@@ -11,12 +11,11 @@ round-trips (INV-7) use the pytest-qt `qtbot` fixture. Every on-disk vault uses
 import logging
 from collections.abc import Iterator
 from datetime import datetime
-from pathlib import Path
 
 import pytest
 from sqlcipher3.dbapi2 import IntegrityError
 
-from conftest import _PW, build_v2_vault, keyed_connection
+from conftest import _PW, build_v2_vault, keyed_connection, raising_conn
 from finbreak.crypto import SALT_LEN, derive_key
 from finbreak.errors import CategoryHasChildrenError, ProtectedCategoryError
 from finbreak.migrations import (
@@ -30,11 +29,6 @@ from finbreak.services.auth import AuthService
 from finbreak.services.categories import CategoryService
 
 pytestmark = pytest.mark.features
-
-
-@pytest.fixture
-def paths(tmp_path) -> tuple[Path, Path]:
-    return tmp_path / "vault.db", tmp_path / "vault.kdf.json"
 
 
 @pytest.fixture
@@ -187,24 +181,14 @@ def test_INV4_atomic_rollback_leaves_v2_no_categories_table(paths):
 
     conn = keyed_connection(vault_path, salt)
 
-    class _FailAtFirstCategoryInsert:
-        """Raise on the first `INSERT INTO categories` (the first root seed),
-        after `CREATE TABLE categories` — so the ROLLBACK must undo the CREATE.
-        Everything else (BEGIN, CREATE, ROLLBACK) forwards to the real conn."""
-
-        def __init__(self, real):
-            self._real = real
-
-        def execute(self, sql, *a):
-            if "INSERT INTO categories" in sql:
-                raise RuntimeError("injected failure at first category INSERT")
-            return self._real.execute(sql, *a)
-
-        def __getattr__(self, name):
-            return getattr(self._real, name)
-
     with pytest.raises(RuntimeError):
-        run_migrations(_FailAtFirstCategoryInsert(conn))
+        run_migrations(
+            raising_conn(
+                conn,
+                "INSERT INTO categories",
+                "injected failure at first category INSERT",
+            )
+        )
 
     # On the SAME connection, before any reopen: still v2, no categories table.
     assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 2

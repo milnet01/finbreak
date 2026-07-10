@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 from PySide6.QtCore import Qt
 
-from conftest import _PW
+from conftest import _PW, _acct
 from finbreak.importers.base import ParseResult
 from finbreak.importers.ofx_importer import (
     _MAX_OFX_TRANSACTIONS,
@@ -26,7 +26,6 @@ from finbreak.importers.ofx_importer import (
 from finbreak.models import OfxAccountInfo
 from finbreak.repositories.statement_periods import StatementPeriodRepository
 from finbreak.repositories.transactions import TransactionRepository
-from finbreak.services.accounts import AccountService
 from finbreak.services.auth import AuthService
 from finbreak.services.import_ import ImportService
 from finbreak.services.transactions import read_minor_unit_exponent
@@ -93,20 +92,11 @@ def _ofx(*statements) -> bytes:
 
 
 @pytest.fixture
-def paths(tmp_path) -> tuple[Path, Path]:
-    return tmp_path / "vault.db", tmp_path / "vault.kdf.json"
-
-
-@pytest.fixture
 def service(paths) -> Iterator[AuthService]:
     svc = AuthService(*paths)
     svc.first_run(bytearray(_PW), "ZAR")  # first-run migrates straight to latest
     yield svc
     svc.lock()
-
-
-def _acct(service: AuthService) -> int:
-    return AccountService(service.vault).list_accounts()[0].id
 
 
 def _exp(service: AuthService) -> int:

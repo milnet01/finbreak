@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
 )
 
+from conftest import _PW
 from finbreak.errors import VaultLockedError
 from finbreak.repositories.settings import SettingsRepository
 from finbreak.services.auth import (
@@ -30,17 +31,10 @@ from finbreak.ui.settings import SettingsDialog
 
 pytestmark = pytest.mark.features
 
-_PW = b"correct horse battery staple"
-
 
 # --------------------------------------------------------------------------- #
 # Fixtures + helpers
 # --------------------------------------------------------------------------- #
-@pytest.fixture
-def paths(tmp_path):
-    return tmp_path / "vault.db", tmp_path / "vault.kdf.json"
-
-
 @pytest.fixture
 def service(paths):
     svc = AuthService(*paths)

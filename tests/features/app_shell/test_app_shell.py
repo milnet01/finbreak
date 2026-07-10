@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 import shiboken6
-from PySide6.QtCore import QEvent, QThread
+from PySide6.QtCore import QThread
 from PySide6.QtGui import QAction, QDesktopServices
 from PySide6.QtWidgets import (
     QApplication,
@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QToolBar,
 )
 
+from conftest import _PW, _pump_deferred_delete
 from finbreak.errors import VaultStateError
 from finbreak.migrations import DEFAULT_ACCOUNT_NAME
 from finbreak.repositories.accounts import AccountRepository
@@ -39,13 +40,6 @@ from finbreak.ui.unlock import UnlockDialog
 
 pytestmark = pytest.mark.features
 
-_PW = b"correct horse battery staple"
-
-
-@pytest.fixture
-def paths(tmp_path):
-    return tmp_path / "vault.db", tmp_path / "vault.kdf.json"
-
 
 @pytest.fixture
 def service(paths):
@@ -57,12 +51,6 @@ def service(paths):
 def _default_id(service: AuthService) -> int:
     accounts = AccountRepository(service.vault.connection).list_all()
     return next(a.id for a in accounts if a.name == DEFAULT_ACCOUNT_NAME)
-
-
-def _pump_deferred_delete() -> None:
-    # A bare processEvents() does not reliably flush a same-level deleteLater();
-    # sendPostedEvents with the DeferredDelete type does (INV-4a).
-    QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 
 
 def _unlocked_home_shell(qtbot, service) -> MainWindow:

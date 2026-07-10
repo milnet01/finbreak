@@ -16,7 +16,7 @@ import pikepdf
 import pytest
 from PySide6.QtWidgets import QDialog
 
-from conftest import _PW
+from conftest import _PW, _acct
 from finbreak.importers.standard_bank import (
     Family,
     StandardBankImporter,
@@ -29,7 +29,6 @@ from finbreak.importers.standard_bank import (
     _split_credit_card_line,
     detect_standard_bank,
 )
-from finbreak.services.accounts import AccountService
 from finbreak.services.auth import AuthService
 from finbreak.services.import_ import ImportService
 from finbreak.services.transactions import read_minor_unit_exponent
@@ -329,20 +328,11 @@ def test_INV12_wrong_password_raises_passworderror_without_leaking_secret(caplog
 # Wizard round-trip (INV-13, qtbot) — skips mapping like OFX
 # --------------------------------------------------------------------------- #
 @pytest.fixture
-def paths(tmp_path) -> tuple[Path, Path]:
-    return tmp_path / "vault.db", tmp_path / "vault.kdf.json"
-
-
-@pytest.fixture
 def service(paths) -> Iterator[AuthService]:
     svc = AuthService(*paths)
     svc.first_run(bytearray(_PW), "ZAR")
     yield svc
     svc.lock()
-
-
-def _acct(service: AuthService) -> int:
-    return AccountService(service.vault).list_accounts()[0].id
 
 
 def _wizard(qtbot, service, acct):

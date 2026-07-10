@@ -21,10 +21,16 @@ from pathlib import Path
 import pikepdf
 import pytest
 import shiboken6
-from PySide6.QtCore import QEvent
-from PySide6.QtWidgets import QApplication, QDialog
+from PySide6.QtWidgets import QDialog
 
-from conftest import _PW, build_v4_vault, build_v5_vault, keyed_connection
+from conftest import (
+    _PW,
+    _acct,
+    _pump_deferred_delete,
+    build_v4_vault,
+    build_v5_vault,
+    keyed_connection,
+)
 from finbreak.crypto import SALT_LEN
 from finbreak.importers.pdf_importer import (
     _MAX_PDF_PAGES,
@@ -90,20 +96,11 @@ def _write(tmp_path: Path, name: str, data: bytes) -> Path:
 
 
 @pytest.fixture
-def paths(tmp_path) -> tuple[Path, Path]:
-    return tmp_path / "vault.db", tmp_path / "vault.kdf.json"
-
-
-@pytest.fixture
 def service(paths) -> Iterator[AuthService]:
     svc = AuthService(*paths)
     svc.first_run(bytearray(_PW), "ZAR")  # first-run migrates straight to the latest
     yield svc
     svc.lock()
-
-
-def _acct(service: AuthService) -> int:
-    return AccountService(service.vault).list_accounts()[0].id
 
 
 # --------------------------------------------------------------------------- #
@@ -370,10 +367,6 @@ def test_INV7b_cancel_abandons_import(qtbot, service, tmp_path, monkeypatch):
     widget._select_file(str(path))
     assert widget._stack.currentIndex() == 0, "Cancel abandons cleanly (stays on pick)"
     assert widget._error.text() == ""
-
-
-def _pump_deferred_delete():
-    QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 
 
 def _shell(qtbot, service) -> MainWindow:

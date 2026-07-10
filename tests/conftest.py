@@ -41,6 +41,65 @@ from finbreak.services.auth import (  # noqa: E402
 _PW = b"correct horse battery staple"
 
 
+@pytest.fixture
+def paths(tmp_path) -> tuple[Path, Path]:
+    """The ``(vault, sidecar)`` path pair every suite builds an ``AuthService`` /
+    ``Vault`` from — was copy-pasted into ~11 feature suites (FIBR-0062)."""
+    return tmp_path / "vault.db", tmp_path / "vault.kdf.json"
+
+
+class StandInVault:
+    """A minimal ``Vault`` stand-in exposing only ``.connection``, so a service can
+    be driven against a wedged connection in the atomicity/rollback tests — was
+    re-declared in the import + statements suites (FIBR-0062)."""
+
+    def __init__(self, connection: dbapi2.Connection):
+        self._connection = connection
+
+    @property
+    def connection(self) -> dbapi2.Connection:
+        return self._connection
+
+
+def _acct(service) -> int:
+    """The seeded/first account's id — the ``account_id`` the import + statement
+    suites stamp fixtures onto. Was copy-pasted into 5 suites (FIBR-0062)."""
+    from finbreak.services.accounts import AccountService
+
+    return AccountService(service.vault).list_accounts()[0].id
+
+
+def _pump_deferred_delete() -> None:
+    """Flush a same-level ``deleteLater()``: a bare ``processEvents()`` does not
+    reliably do it, but ``sendPostedEvents`` with ``DeferredDelete`` does (INV-4a).
+    Was copy-pasted into 3 GUI suites (FIBR-0062)."""
+    from PySide6.QtCore import QEvent
+    from PySide6.QtWidgets import QApplication
+
+    QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+
+
+def raising_conn(real, trigger: str, message: str, *, on: str = "execute"):
+    """A connection proxy that raises ``RuntimeError(message)`` when ``trigger``
+    appears in the SQL of an ``on`` call (``"execute"`` or ``"executemany"``) and
+    delegates every other attribute to ``real``. The shared atomicity-rollback
+    wedge — was a bespoke ``_FailAt*`` class per test (FIBR-0062)."""
+
+    class _Raising:
+        def __getattr__(self, name):
+            return getattr(real, name)
+
+    proxy = _Raising()
+
+    def _guard(sql, *a, **k):
+        if trigger in sql:
+            raise RuntimeError(message)
+        return getattr(real, on)(sql, *a, **k)
+
+    setattr(proxy, on, _guard)
+    return proxy
+
+
 @pytest.fixture(autouse=True)
 def window_ini(tmp_path, monkeypatch):
     """Redirect the window-geometry INI to tmp for EVERY test so no UI test writes

@@ -19,6 +19,7 @@ import pytest
 from sqlcipher3.dbapi2 import DatabaseError
 
 import finbreak
+from conftest import _PW
 from finbreak.crypto import (
     ARGON2_MEMORY_KIB,
     ARGON2_PARALLELISM,
@@ -42,11 +43,6 @@ from finbreak.services.transactions import (
 )
 from finbreak.vault import Vault
 
-# A throwaway, obviously-fake password used only in-process by the tests. Not a
-# secret and guards nothing (security-model INV-6). bytes so each use can build
-# a fresh wipeable bytearray.
-_PW = b"correct horse battery staple"
-
 # These enforce tests/features/vault/spec.md, so the whole module is a
 # feature-conformance suite — without the marker `pytest -m features` would
 # silently run zero security-spine tests (testing.md § 3.2).
@@ -64,11 +60,6 @@ def _params(salt: bytes) -> KdfParams:
         salt_len=SALT_LEN,
         salt=salt,
     )
-
-
-@pytest.fixture
-def paths(tmp_path) -> tuple[Path, Path]:
-    return tmp_path / "vault.db", tmp_path / "vault.kdf.json"
 
 
 @pytest.fixture

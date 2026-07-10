@@ -11,13 +11,12 @@ vault uses `tmp_path`; no test touches the network or real financial data
 import logging
 from collections.abc import Iterator
 from datetime import datetime
-from pathlib import Path
 
 import pytest
 from sqlcipher3 import dbapi2
 from sqlcipher3.dbapi2 import IntegrityError
 
-from conftest import _PW, _params, build_v1_vault
+from conftest import _PW, _params, build_v1_vault, raising_conn
 from finbreak.crypto import SALT_LEN, derive_key
 from finbreak.errors import (
     AccountInUseError,
@@ -38,11 +37,6 @@ from finbreak.services.categorization import CategorizationService
 from finbreak.services.transactions import TransactionService
 
 pytestmark = pytest.mark.features
-
-
-@pytest.fixture
-def paths(tmp_path) -> tuple[Path, Path]:
-    return tmp_path / "vault.db", tmp_path / "vault.kdf.json"
 
 
 @pytest.fixture
@@ -199,25 +193,8 @@ def test_INV4_rolls_back_on_failure(paths):
     conn = dbapi2.connect(str(vault_path))
     conn.execute(f"PRAGMA key = \"x'{bytes(key).hex()}'\"")
 
-    class _FailAtRename:
-        """Proxy that raises on the RENAME only (the migration wedge point),
-        forwarding BEGIN/DROP/INSERT/UPDATE/ROLLBACK through."""
-
-        def __init__(self, real):
-            self._real = real
-
-        def execute(self, sql, *a):
-            if "RENAME" in sql.upper():
-                raise RuntimeError("injected failure at RENAME")
-            return self._real.execute(sql, *a)
-
-        def __getattr__(self, name):
-            # Forward everything else (commit, rollback, cursor, ...) to the real
-            # connection, so the ONLY injected fault is the RENAME.
-            return getattr(self._real, name)
-
     with pytest.raises(RuntimeError):
-        run_migrations(_FailAtRename(conn))
+        run_migrations(raising_conn(conn, "RENAME", "injected failure at RENAME"))
 
     # Prove the ROLLBACK, not just recoverability: on the SAME connection —
     # before any reopen re-runs the migration — the failed v1->v2 step must have

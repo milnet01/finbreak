@@ -17,7 +17,14 @@ from pathlib import Path
 import pytest
 from PySide6.QtCore import Qt
 
-from conftest import _PW, build_v3_vault, keyed_connection
+from conftest import (
+    _PW,
+    StandInVault,
+    _acct,
+    build_v3_vault,
+    keyed_connection,
+    raising_conn,
+)
 from finbreak.crypto import SALT_LEN, derive_key
 from finbreak.importers.csv_importer import CsvImporter, read_header
 from finbreak.migrations import LATEST_SCHEMA_VERSION, run_migrations
@@ -41,11 +48,6 @@ DEBIT_CREDIT = ColumnMapping(
 
 
 @pytest.fixture
-def paths(tmp_path) -> tuple[Path, Path]:
-    return tmp_path / "vault.db", tmp_path / "vault.kdf.json"
-
-
-@pytest.fixture
 def service(paths) -> Iterator[AuthService]:
     svc = AuthService(*paths)
     svc.first_run(bytearray(_PW), "ZAR")  # first-run migrates straight to latest
@@ -55,10 +57,6 @@ def service(paths) -> Iterator[AuthService]:
 
 def _csv(header: list[str], rows: list[list[str]]) -> str:
     return "\n".join([",".join(header)] + [",".join(r) for r in rows]) + "\n"
-
-
-def _acct(service: AuthService) -> int:
-    return AccountService(service.vault).list_accounts()[0].id
 
 
 def _do_import(imp: ImportService, text: str, mapping, account_id, source="stmt.csv"):
@@ -475,33 +473,16 @@ def test_INV7_atomic_write_rolls_back_both_tables(service):
     text = _csv(HEADER, [["2026-01-05", "a", "-1.00"], ["2026-01-20", "b", "-2.00"]])
     preview = imp.preview(text, SINGLE, acct)
 
-    class _FailAtBatchInsert:
-        """Raise on the ``add_batch`` executemany (`INSERT INTO transactions`) —
-        which, after the FIBR-0052 commit_import reorder, runs AFTER BEGIN and the
-        `statement_periods` INSERT — so the ROLLBACK must undo the already-inserted
-        period row **and** whatever the batch began. (Failing on the period INSERT
-        would fire before any row was written and prove nothing.)"""
-
-        def __init__(self, real):
-            self._real = real
-
-        def executemany(self, sql, *a):
-            if "INSERT INTO transactions" in sql:
-                raise RuntimeError("injected failure at the transactions batch INSERT")
-            return self._real.executemany(sql, *a)
-
-        def __getattr__(self, name):
-            return getattr(self._real, name)
-
-    class _StandInVault:
-        def __init__(self, connection):
-            self._connection = connection
-
-        @property
-        def connection(self):
-            return self._connection
-
-    wedge = ImportService(_StandInVault(_FailAtBatchInsert(conn)))
+    wedge = ImportService(
+        StandInVault(
+            raising_conn(
+                conn,
+                "INSERT INTO transactions",
+                "injected failure at the transactions batch INSERT",
+                on="executemany",
+            )
+        )
+    )
     with pytest.raises(RuntimeError):
         wedge.commit_import(preview, preview.period_start, preview.period_end, "s.csv")
 
@@ -552,23 +533,14 @@ def test_INV8_atomic_rollback_on_second_create_leaves_v3(paths):
     build_v3_vault(vault_path, sidecar_path, salt, [])
     conn = keyed_connection(vault_path, salt)
 
-    class _FailAtStatementPeriods:
-        """Raise on `CREATE TABLE statement_periods` (the 2nd CREATE), after the
-        1st CREATE — so the ROLLBACK must undo the import_profiles CREATE."""
-
-        def __init__(self, real):
-            self._real = real
-
-        def execute(self, sql, *a):
-            if "CREATE TABLE statement_periods" in sql:
-                raise RuntimeError("injected failure at statement_periods CREATE")
-            return self._real.execute(sql, *a)
-
-        def __getattr__(self, name):
-            return getattr(self._real, name)
-
     with pytest.raises(RuntimeError):
-        run_migrations(_FailAtStatementPeriods(conn))
+        run_migrations(
+            raising_conn(
+                conn,
+                "CREATE TABLE statement_periods",
+                "injected failure at statement_periods CREATE",
+            )
+        )
 
     assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 3
     for table in ("import_profiles", "statement_periods"):
