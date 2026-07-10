@@ -544,6 +544,19 @@ lands on top.
   Kind: implement.
   Source: user-request-2026-07-09.
 
+- 📋 [FIBR-0082] **Generate app screenshots from synthetic dummy data for the GitHub README + antsprojectshub.co.za.**
+  A reproducible way to populate a THROWAWAY vault with realistic-but-fake dummy data (a spread of accounts, a month or two of categorised transactions, a couple of imported statements, a few rules) and capture screenshots of the key screens for the GitHub README and https://antsprojectshub.co.za/.
+
+  Scope: a scripted seeder (e.g. scripts/seed-demo-vault.py) that first-runs a vault and inserts synthetic transactions/categories/accounts/rules, plus a documented capture flow for the main views — first-run, unlock, Home, Statements tab, Categories, Rules, the import wizard, and (once P10/FIBR-0012 lands) the spending-by-category dashboard, which is the most compelling shot.
+
+  HARD constraint (security-model INV-6 / testing.md §6): screenshots use ONLY synthetic dummy data — never real financial data, never a real statement, never a committed vault. The seeded vault + captured PNGs are throwaway artifacts (or committed only as marketing PNGs under a docs/ or assets/ path, never the vault/data itself).
+
+  Not blocked: the current shell (Home/Statements/Accounts/Categories/Rules tabs, import wizard) can already be captured now; re-run after the dashboard (FIBR-0012) ships to add the headline dashboard shot. Pairs naturally with a P13 release.
+  **Layman:** Create polished screenshots of the app filled with realistic fake sample data — for the GitHub page and the portfolio site — so people can see what it looks like without installing it.
+  Kind: marketing.
+  Lanes: docs, ui, marketing.
+  Source: user-request-2026-07-10.
+
 ## Enhancements & performance backlog
 
 Ideas captured 2026-07-01 from a product / performance review

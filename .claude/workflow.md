@@ -102,6 +102,25 @@ journal); §2 is the only part that changes.
 
 Append-only. Newest at the top.
 
+### 2026-07-10 — FIBR-0067 CLOSED (real statements arrived) + FIBR-0082 filed (screenshots)
+
+The user supplied the **six real Standard Bank statements** (one per family) + the
+password, unblocking **FIBR-0067** (the last tech-debt item). Reproduced first: all
+six PASS on the current regex and print **zero** ungrouped 4+-digit amounts (SB always
+groups thousands). Widened `_MONEY` to accept an ungrouped run
+(`\d{4,}[.,]\d{2}`) with a `(?![.,]?\d)` tail guard that rejects the dotted-date false
+positive the earlier defer warned about. **Re-validated in a throwaway scratchpad
+harness against all six — identical txn counts (53/82/27/20/30/3), zero regression.**
+Added a synthetic parametrized `_MONEY` unit test. **Real statements + password NEVER
+committed** (scratchpad deleted; committed test is synthetic strings only,
+testing.md §6). Gate green 460 passed/1 skipped. Commit `d97e167`. **The
+`warnings-tech-debt` section is now fully empty — 16/16 done.**
+
+Also filed **FIBR-0082** (user request): generate app screenshots from synthetic dummy
+data for the GitHub README + antsprojectshub.co.za (packaging-2 / marketing; a scripted
+demo-vault seeder + capture flow; synthetic data only; not blocked, but the dashboard
+FIBR-0012 will make the headline shot).
+
 ### 2026-07-10 — Tech-debt backlog CLEARED (15 audit-fix items, out-of-band)
 
 User directive: **"ensure all outstanding fixes are in first"** (before any new
