@@ -23,6 +23,14 @@ signaling per
 
 ### Added
 
+- **Auto-categorisation: user-editable rules file transactions into categories by themselves, with a manual per-transaction override that always wins, learning from corrections, and a clean delete-category cascade (FIBR-0010).**
+  Rules run on import and on an explicit "Apply rules now". Correct an
+  auto-filed transaction and finbreak offers to make a rule. A new Rules
+  tab manages the rule list; the Home table gains a Category column and a
+  right-click "Set category…". Deleting a category re-files its
+  transactions and removes the rules that pointed at it, after a
+  confirmation that names the blast radius. Encrypted-vault schema v6 → v7.
+
 - **Change a logged statement's account — the Statements tab can now move a statement (and all its transactions) to the correct account, fixing an import mistake without deleting and re-importing (FIBR-0059).**
   Select a statement, click "Change account", pick the right account, and the
   statement plus every transaction it contains move there together — all-or-

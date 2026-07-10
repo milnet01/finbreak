@@ -374,7 +374,7 @@ lands on top.
 
 ### 🎨 Features
 
-- 🚧 [FIBR-0010] **P08: rules engine + manual override.**
+- ✅ [FIBR-0010] **P08: rules engine + manual override.**
   `CategorizationService` applies a user-editable rule set to
   auto-assign categories; a manual override is the
   highest-priority signal and is never clobbered by re-import or
@@ -382,6 +382,7 @@ lands on top.
   FIBR-0005, FIBR-0006, FIBR-0007, FIBR-0051, FIBR-0052. Lanes: services, ui, repo, tests. Kind: implement.
   Source: planned.
   Scope note (2026-07-09, spec drafted): the spec (docs/specs/FIBR-0010.md) grows this bullet's "rules-manager (view/add/edit)" summary to the full P08 slice — the transaction→category link (v6→v7), first-match-by-priority rules run on import + an explicit "Apply rules now", a manual per-transaction override that is frozen (never clobbered by re-import or a rule run), a Home Category column + "Set category…", the rules-manager tab (add/edit/delete/move/apply), an atomic delete-category cascade with a blast-radius confirm, and the learn-from-corrections offer pulled forward from FIBR-0035 (see that bullet). Deps widened to FIBR-0005/0006/0007/0051/0052.
+  Resolved (2026-07-10): shipped. Rules engine + manual override + learning + delete-category cascade; schema v6->v7. TDD 45 tests; /audit 0, /indie-review 3 cold lanes + confirming pass (1 HIGH auto-lock + 3 MED test-coverage/naming + 1 LOW dedup-helper folded inline). Gate green 411/1, mypy 0. Tag FIBR-0010-complete; journal docs/journal/FIBR-0010.md.
 
 ---
 
@@ -706,7 +707,7 @@ because retrofitting them is a data migration.
   FIBR-0007. Lanes: services, ui, repo, tests. Kind: feature.
   Source: user-request-2026-07-01.
 
-- 📋 [FIBR-0035] **Auto-categorisation that learns from corrections.**
+- ✅ [FIBR-0035] **Auto-categorisation that learns from corrections.**
   Extends the FIBR-0010 rules engine: when the user manually re-files a
   transaction (e.g. "TESCO" → Groceries), offer to create or update a rule
   so similar future transactions self-categorise — the tedious part gets
@@ -716,6 +717,7 @@ because retrofitting them is a data migration.
   (extends the rules engine). Dependencies: FIBR-0010. Lanes: services,
   ui, tests. Kind: feature. Source: user-request-2026-07-01.
   Note (2026-07-09): the core learn-from-corrections behaviour (offer to *create* a rule from a manual correction; suggestion-only; manual override still wins) is pulled forward into FIBR-0010 (spec INV-5 / D11), per the 2026-07-09 user request. FIBR-0035's "*update* an existing rule" variant is subsumed by FIBR-0010 D6 (a learned rule inserts at top priority, beating the rule it corrects — no in-place update needed). Re-evaluate / close this bullet when FIBR-0010 ships.
+  Resolved (2026-07-10): fully delivered by FIBR-0010. The create-a-rule-from-a-correction learning is FIBR-0010 INV-5/D11; the update-an-existing-rule variant is subsumed by D6 (a learned correction inserts at top priority, beating the rule it corrects — no in-place update needed). Suggestion-only + manual-override-wins guarantees both hold. No separate work remains.
 
 - 📋 [FIBR-0036] **Net-worth-over-time trend.** A dashboard line showing
   the running total across all accounts month to month — is the overall
