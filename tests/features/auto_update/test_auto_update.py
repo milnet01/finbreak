@@ -17,11 +17,60 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 
 from finbreak.errors import FinbreakError, UpdateError, UpdateVerificationError
 from finbreak.services import update_fetch, update_key
+from finbreak.services.update import UpdateInfo, UpdateService
 from finbreak.services.update_installer import (
     AppImageInstaller,
     detect_installer,
     is_update_supported,
 )
+
+
+# --------------------------------------------------------------------------- #
+# Fakes shared by the UpdateService legs (no network, no real key)
+# --------------------------------------------------------------------------- #
+class _FakeFetcher:
+    """Stands in for the ``update_fetch`` module: hands back a canned release
+    dict and writes canned bytes per URL. Records fetch calls so INV-1 can assert
+    the disabled service never phones home."""
+
+    def __init__(self, release=None, blobs=None, fetch_error=None):
+        self.release = release
+        self.blobs = blobs or {}
+        self.fetch_error = fetch_error
+        self.fetch_calls = 0
+
+    def fetch_latest_release(self, owner, repo, *, timeout, max_bytes):
+        self.fetch_calls += 1
+        if self.fetch_error is not None:
+            raise self.fetch_error
+        return self.release
+
+    def download(self, url, dest, *, max_bytes, timeout):
+        from pathlib import Path
+
+        Path(dest).write_bytes(self.blobs[url])
+
+
+def _release(tag: str) -> dict:
+    version = tag[1:] if tag[:1] in ("v", "V") else tag
+    app = f"finbreak-{version}-x86_64.AppImage"
+    return {
+        "tag_name": tag,
+        "html_url": f"https://github.com/milnet01/finbreak/releases/tag/{tag}",
+        "assets": [
+            {"name": app, "browser_download_url": f"https://dl/{app}"},
+            {"name": app + ".sig", "browser_download_url": f"https://dl/{app}.sig"},
+        ],
+    }
+
+
+def _service(tmp_path, *, installer=None, fetcher=None, current="0.1.0"):
+    return UpdateService(
+        tmp_path / "window.ini",
+        installer,
+        fetcher=fetcher,
+        current_version=current,
+    )
 from finbreak.services.update import (
     _parse_version,
     _select_assets,
@@ -307,3 +356,170 @@ def test_INV10_fetch_latest_release_aborts_over_cap(monkeypatch):
         update_fetch.fetch_latest_release(
             "milnet01", "finbreak", timeout=5, max_bytes=50
         )
+
+
+# --------------------------------------------------------------------------- #
+# INV-1 / INV-2 — opt-in, no vault; the check is the only deliberate egress
+# --------------------------------------------------------------------------- #
+def test_INV1_disabled_service_never_calls_fetcher(tmp_path):
+    fetcher = _FakeFetcher(release=_release("v0.1.1"))
+    svc = _service(tmp_path, fetcher=fetcher)  # check_for_updates absent -> off
+    assert svc.is_enabled() is False
+    assert svc.check_for_update() is None
+    assert fetcher.fetch_calls == 0  # a fresh install never phones home
+
+
+def test_INV1_enabled_service_calls_fetcher_and_persists_flag(tmp_path):
+    fetcher = _FakeFetcher(release=_release("v0.1.1"))
+    svc = _service(tmp_path, fetcher=fetcher)
+    svc.set_enabled(True)
+    assert svc.is_enabled() is True
+    assert svc.check_for_update() is not None
+    assert fetcher.fetch_calls == 1
+    # persisted to the plaintext INI — a fresh service over the same file agrees
+    assert _service(tmp_path, fetcher=fetcher).is_enabled() is True
+
+
+@pytest.mark.parametrize("bad", ["false", "yes", "1", ""])
+def test_INV1_malformed_or_false_flag_is_off(tmp_path, bad):
+    from PySide6.QtCore import QSettings
+
+    settings = QSettings(str(tmp_path / "window.ini"), QSettings.Format.IniFormat)
+    settings.setValue("check_for_updates", bad)
+    settings.sync()
+    assert _service(tmp_path, fetcher=_FakeFetcher()).is_enabled() is False
+
+
+def test_INV2_check_needs_no_vault_reference(tmp_path):
+    # UpdateService is constructed with NO AuthService/vault — the check runs on
+    # the plaintext INI + injected fetcher alone (it can run while locked).
+    fetcher = _FakeFetcher(release=_release("v0.1.1"))
+    svc = _service(tmp_path, fetcher=fetcher)
+    svc.set_enabled(True)
+    assert svc.check_for_update() is not None
+    assert not hasattr(svc, "vault")
+    assert not hasattr(svc, "_vault")
+
+
+# --------------------------------------------------------------------------- #
+# INV-3 / INV-8 / INV-11 — the check's decision + skip persistence + safe failure
+# --------------------------------------------------------------------------- #
+def _enabled_service(tmp_path, release, current="0.1.0"):
+    svc = _service(tmp_path, fetcher=_FakeFetcher(release=release), current=current)
+    svc.set_enabled(True)
+    return svc
+
+
+def test_INV3_newer_release_is_offered(tmp_path):
+    info = _enabled_service(tmp_path, _release("v0.1.1")).check_for_update()
+    assert isinstance(info, UpdateInfo)
+    assert info.version == "0.1.1"  # leading v stripped
+    assert info.appimage_url == "https://dl/finbreak-0.1.1-x86_64.AppImage"
+    assert info.sig_url == "https://dl/finbreak-0.1.1-x86_64.AppImage.sig"
+    assert info.notes_url.endswith("/releases/tag/v0.1.1")
+
+
+def test_INV3_equal_and_older_are_not_offered(tmp_path):
+    assert _enabled_service(tmp_path, _release("v0.1.0")).check_for_update() is None
+    assert _enabled_service(tmp_path, _release("v0.0.9")).check_for_update() is None
+
+
+def test_INV3_malformed_tag_is_not_offered(tmp_path):
+    assert _enabled_service(tmp_path, _release("v1.2-rc1")).check_for_update() is None
+
+
+def test_INV3_missing_sig_asset_is_not_offered(tmp_path):
+    release = _release("v0.1.1")
+    release["assets"] = [release["assets"][0]]  # drop the .sig
+    assert _enabled_service(tmp_path, release).check_for_update() is None
+
+
+def test_INV8_skip_persists_later_does_not(tmp_path):
+    svc = _enabled_service(tmp_path, _release("v0.1.1"))
+    assert svc.check_for_update() is not None  # offered before skipping
+    svc.skip_version("0.1.1")
+    assert svc.check_for_update() is None  # same version now suppressed
+    # a fresh service over the same INI still suppresses it (persisted)
+    assert _enabled_service(tmp_path, _release("v0.1.1")).check_for_update() is None
+    # ...but a newer version is still offered
+    assert _enabled_service(tmp_path, _release("v0.1.2")).check_for_update() is not None
+
+
+def test_INV11_check_swallows_fetcher_errors(tmp_path):
+    fetcher = _FakeFetcher(fetch_error=OSError("name resolution failed"))
+    svc = _service(tmp_path, fetcher=fetcher)
+    svc.set_enabled(True)
+    assert svc.check_for_update() is None  # no propagation
+    assert fetcher.fetch_calls == 1
+
+
+# --------------------------------------------------------------------------- #
+# INV-4 — download_and_verify: only an Ed25519-signed download is returned
+# --------------------------------------------------------------------------- #
+def _signing_setup(monkeypatch, blob: bytes, *, sign: bytes | None = None):
+    """A throwaway keypair with its public half monkeypatched in; sign *blob*
+    (or *sign* if given, to forge a mismatch)."""
+    priv = Ed25519PrivateKey.generate()
+    monkeypatch.setattr(update_key, "public_key", lambda: priv.public_key())
+    return priv.sign(sign if sign is not None else blob)
+
+
+def test_INV4_good_signature_returns_verified_path(monkeypatch, tmp_path):
+    blob = b"REAL-APPIMAGE-BYTES"
+    info = _release("v0.1.1")
+    sig = _signing_setup(monkeypatch, blob)
+    fetcher = _FakeFetcher(
+        blobs={
+            "https://dl/finbreak-0.1.1-x86_64.AppImage": blob,
+            "https://dl/finbreak-0.1.1-x86_64.AppImage.sig": sig,
+        }
+    )
+    installer = AppImageInstaller(tmp_path / "app.AppImage")
+    svc = _service(tmp_path, installer=installer, fetcher=fetcher)
+    update_info = UpdateInfo(
+        version="0.1.1",
+        appimage_url="https://dl/finbreak-0.1.1-x86_64.AppImage",
+        sig_url="https://dl/finbreak-0.1.1-x86_64.AppImage.sig",
+        notes_url="https://x",
+    )
+    verified = svc.download_and_verify(update_info)
+    assert verified.read_bytes() == blob
+    assert verified.parent == tmp_path  # staged next to $APPIMAGE (same fs, INV-5)
+
+
+def _dv_service(monkeypatch, tmp_path, blob, sig):
+    fetcher = _FakeFetcher(
+        blobs={
+            "https://dl/app": blob,
+            "https://dl/sig": sig,
+        }
+    )
+    installer = AppImageInstaller(tmp_path / "app.AppImage")
+    svc = _service(tmp_path, installer=installer, fetcher=fetcher)
+    info = UpdateInfo(
+        version="0.1.1",
+        appimage_url="https://dl/app",
+        sig_url="https://dl/sig",
+        notes_url="https://x",
+    )
+    return svc, info
+
+
+def test_INV4_tampered_blob_rejected_and_temp_removed(monkeypatch, tmp_path):
+    blob = b"REAL-APPIMAGE-BYTES"
+    sig = _signing_setup(monkeypatch, blob)
+    svc, info = _dv_service(monkeypatch, tmp_path, blob + b"!", sig)  # 1-byte tamper
+    with pytest.raises(UpdateVerificationError):
+        svc.download_and_verify(info)
+    # no temp left behind in the $APPIMAGE directory
+    assert list(tmp_path.glob("finbreak-update-*")) == []
+
+
+def test_INV4_tampered_signature_rejected(monkeypatch, tmp_path):
+    blob = b"REAL-APPIMAGE-BYTES"
+    sig = _signing_setup(monkeypatch, blob)
+    forged = bytes((sig[0] ^ 0x01,)) + sig[1:]  # flip one sig bit
+    svc, info = _dv_service(monkeypatch, tmp_path, blob, forged)
+    with pytest.raises(UpdateVerificationError):
+        svc.download_and_verify(info)
+    assert list(tmp_path.glob("finbreak-update-*")) == []
