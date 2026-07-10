@@ -524,3 +524,135 @@ def test_INV4_tampered_signature_rejected(monkeypatch, tmp_path):
     with pytest.raises(UpdateVerificationError):
         svc.download_and_verify(info)
     assert list(tmp_path.glob("finbreak-update-*")) == []
+
+
+# --------------------------------------------------------------------------- #
+# INV-9 / D7 — the prompt (non-blocking, three signals, busy state) + workers
+# --------------------------------------------------------------------------- #
+def test_INV9_update_dialog_never_uses_exec():
+    """The FIBR-0065 grep leg: the prompt must never open a nested event loop."""
+    from pathlib import Path
+
+    import finbreak.ui.update_dialog as module
+
+    source = Path(module.__file__).read_text()
+    assert ".exec(" not in source
+
+
+def _prompt(qtbot):
+    from finbreak.ui.update_dialog import UpdateDialog
+
+    dialog = UpdateDialog("0.1.0", "0.1.1", "https://notes", None)
+    qtbot.addWidget(dialog)
+    return dialog
+
+
+def test_prompt_later_emits_and_does_not_persist(qtbot):
+    dialog = _prompt(qtbot)
+    with qtbot.waitSignal(dialog.later, timeout=1000):
+        dialog._on_later()
+
+
+def test_prompt_skip_emits(qtbot):
+    dialog = _prompt(qtbot)
+    with qtbot.waitSignal(dialog.skip, timeout=1000):
+        dialog._on_skip()
+
+
+def test_INV9_prompt_update_now_emits_and_stays_open_busy(qtbot):
+    dialog = _prompt(qtbot)
+    with qtbot.waitSignal(dialog.update_now, timeout=1000):
+        dialog._on_update_now()
+    # it does NOT accept()/reject() — it stays open in the busy state (D15)
+    assert dialog.result() == 0  # neither Accepted nor Rejected
+    assert not dialog._later_button.isEnabled()  # buttons disabled while busy
+    assert not dialog._update_button.isEnabled()
+
+
+def test_prompt_shows_both_versions(qtbot):
+    from PySide6.QtWidgets import QLabel
+
+    dialog = _prompt(qtbot)
+    texts = " ".join(label.text() for label in dialog.findChildren(QLabel))
+    assert "0.1.0" in texts and "0.1.1" in texts
+
+
+class _StubCheckService:
+    def __init__(self, result=None, error=None):
+        self._result = result
+        self._error = error
+
+    def check_for_update(self):
+        if self._error is not None:
+            raise self._error
+        return self._result
+
+
+def test_D7_check_worker_emits_found(qtbot):
+    from finbreak.ui._update_worker import UpdateCheckWorker
+
+    info = UpdateInfo("0.1.1", "a", "b", "c")
+    worker = UpdateCheckWorker(_StubCheckService(result=info))
+    seen: list = []
+    worker.found.connect(lambda i: seen.append(("found", i)))
+    worker.none.connect(lambda: seen.append(("none",)))
+    worker.run()
+    assert seen == [("found", info)]
+
+
+def test_D7_check_worker_emits_none(qtbot):
+    from finbreak.ui._update_worker import UpdateCheckWorker
+
+    worker = UpdateCheckWorker(_StubCheckService(result=None))
+    seen: list = []
+    worker.found.connect(lambda i: seen.append("found"))
+    worker.none.connect(lambda: seen.append("none"))
+    worker.run()
+    assert seen == ["none"]
+
+
+def test_D7_check_worker_emits_failed_on_unexpected_error(qtbot):
+    from finbreak.ui._update_worker import UpdateCheckWorker
+
+    worker = UpdateCheckWorker(_StubCheckService(error=RuntimeError("boom")))
+    seen: list = []
+    worker.failed.connect(lambda exc: seen.append(exc))
+    worker.run()
+    assert isinstance(seen[0], RuntimeError)
+
+
+class _StubDownloadService:
+    def __init__(self, path=None, error=None):
+        self._path = path
+        self._error = error
+
+    def download_and_verify(self, info):
+        if self._error is not None:
+            raise self._error
+        return self._path
+
+
+def test_D7_download_worker_emits_ready(qtbot, tmp_path):
+    from finbreak.ui._update_worker import DownloadWorker
+
+    verified = tmp_path / "verified.AppImage"
+    worker = DownloadWorker(
+        _StubDownloadService(path=verified), UpdateInfo("0.1.1", "", "", "")
+    )
+    seen: list = []
+    worker.ready.connect(lambda p: seen.append(p))
+    worker.run()
+    assert seen == [verified]
+
+
+def test_D7_download_worker_emits_failed(qtbot):
+    from finbreak.ui._update_worker import DownloadWorker
+
+    worker = DownloadWorker(
+        _StubDownloadService(error=UpdateVerificationError("bad")),
+        UpdateInfo("0.1.1", "", "", ""),
+    )
+    seen: list = []
+    worker.failed.connect(lambda exc: seen.append(exc))
+    worker.run()
+    assert isinstance(seen[0], UpdateVerificationError)
