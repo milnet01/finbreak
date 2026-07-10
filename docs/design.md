@@ -136,9 +136,10 @@ logic. Notable screens:
   encrypt/decrypt. Main responsibility: own all cryptographic operations in one
   auditable place.
 - **UpdateService** — the opt-in, off-by-default AppImage updater (FIBR-0054):
-  reads the GitHub Releases API, Ed25519-verifies a downloaded release, and hands
-  off the atomic swap + relaunch. Main responsibility: keep the app up to date
-  without ever installing an unverified binary.
+  reads its opt-in flag from the plaintext `window.ini`, checks the GitHub Releases
+  API, Ed25519-verifies a downloaded release, and hands off the atomic swap +
+  relaunch. Main responsibility: keep the app up to date without ever installing an
+  unverified binary.
 
 **Importers (pluggable)** — `ManualEntry`, `CsvImporter` (+ mapping profile),
 `OfxImporter`, `PdfImporter` (decrypts in memory first). Each exposes the same

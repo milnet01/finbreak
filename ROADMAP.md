@@ -180,8 +180,8 @@ scariest unknown (native-library bundling) up front.
   - **Update source + integrity:** check GitHub Releases (the repo already
     publishes there); verify a signature / checksum before installing (security —
     never run an unverified downloaded binary). Respect the no-network default
-    elsewhere: the update CHECK is the one deliberate outbound call, opt-in via a
-    setting, off by default until the user consents.
+    elsewhere: the update check + signed download are the one deliberate outbound
+    flow, opt-in via a setting, off by default until the user consents.
   - **UX:** a non-blocking prompt (not a modal that traps them); "Skip this
     version" persists the skipped version (in the plaintext settings sibling, like
     window geometry — not the vault); works while locked (no vault needed to

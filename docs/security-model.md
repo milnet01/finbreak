@@ -1,7 +1,8 @@
 # finbreak — Security model & threat model
 
-> **Status:** Draft — part of the Phase C doc set; runs through
-> the Phase D `/cold-eyes` loop with the rest.
+> **Status:** Live — the project's authoritative security & threat
+> model; amended through FIBR-0054 (2026-07-10) and re-run through
+> `/cold-eyes` on each material edit.
 > **Why this exists:** finbreak holds **personal financial
 > data**. Security is the load-bearing concern, so it gets its
 > own document — a single place that names what we protect, what
@@ -47,8 +48,8 @@ unavoidable it is glossed on first use.
   access exists; a downloaded update is installed only if its Ed25519
   signature verifies (FIBR-0054 INV-4). The near-total absence of
   network code keeps the attack surface minimal. (Dev/CI tooling such
-  as `pip-audit` and Dependabot run in GitHub's infrastructure, never
-  in the shipped app — INV-8.)
+  as `pip-audit` and Dependabot run in CI and the local dev gate,
+  never in the shipped app — INV-8.)
 - **Imported files are untrusted input.** CSV/OFX/PDF files come
   from outside and are parsed defensively (§ 4, T5).
 

@@ -2,8 +2,8 @@
 
 > A private desktop app that breaks down where your money goes — from
 > your own bank statements, with no bank linking and none of your
-> financial data ever leaving your machine. The only network access is
-> an **opt-in, off-by-default** updater — turn it on and (on the Linux
+> financial data ever leaving your machine. The only network access the
+> app makes itself is an **opt-in, off-by-default** updater — turn it on and (on the Linux
 > AppImage build) it checks GitHub for a newer release and can download
 > + install a signature-verified update; leave it off (the default) and
 > the app makes no network connections of its own.

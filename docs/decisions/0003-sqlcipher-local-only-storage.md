@@ -10,7 +10,9 @@
 > opt-in, off-by-default update check FIBR-0054 adds. The **storage** decision
 > here is unchanged, and the threat model's **confidentiality** guarantee holds
 > unchanged — the update flow pulls a signed release *in* and never sends
-> financial data *out*, so "no third party ever holds the data" still holds. The
+> financial data *out* (GitHub sees only the request's connection metadata — IP,
+> timing, User-Agent — never vault contents), so "no third party ever holds the
+> data" still holds. The
 > one new **integrity** concern — a tampered release — is not excluded but
 > **mitigated**: a download is installed only if its Ed25519 signature verifies
 > (FIBR-0054 INV-4). Read the two no-network phrases as "no network access other
