@@ -771,3 +771,26 @@ def test_complete_first_run_over_existing_vault_wipes_key(paths):
     finally:
         auth_mod._wipe = real
     assert KEY_LEN in wiped, "the derived key copy is wiped even when the guard fires"
+
+
+def test_INV6_unlock_distinct_message_for_malformed_sidecar(qtbot, service, paths):
+    """A malformed / below-floor KDF sidecar (KdfPolicyError) gets its own
+    message, not the generic 'check your password' — a user with the correct
+    password must be able to tell the difference. (indie-review M-auth1)"""
+    from finbreak.ui.unlock import UnlockDialog
+
+    _, sidecar_path = paths
+    service.first_run(bytearray(_PW), "ZAR")
+    service.lock()
+    sidecar_path.write_text("{ not valid json")  # KdfPolicyError on load_params
+
+    widget = UnlockDialog(service)
+    qtbot.addWidget(widget)
+    widget._password.setText(_PW.decode())
+    with qtbot.waitSignal(widget.unlock_failed, timeout=5000):
+        widget._unlock_button.click()
+    message = widget._error.text()
+    assert message != "", "a malformed sidecar shows a diagnostic message"
+    assert "password" not in message.lower(), (
+        "a malformed sidecar must not be reported as a wrong password"
+    )

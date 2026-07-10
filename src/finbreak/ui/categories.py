@@ -64,7 +64,11 @@ class CategoriesWidget(QWidget):
         self._tree.setHeaderHidden(True)
         self._name = QLineEdit()
         self._name.setPlaceholderText(self.tr("Category name"))
+        # An explicit accessible name so a screen reader announces the field even
+        # after the placeholder vanishes (WCAG 1.3.1/3.3.2). (indie-review M-dlg3)
+        self._name.setAccessibleName(self.tr("Category name"))
         self._type = QComboBox()  # (re)filled in _refresh — needs the roots' ids
+        self._type.setAccessibleName(self.tr("Category type"))
         self._add_button = QPushButton(self.tr("Add"))
         self._update_button = QPushButton(self.tr("Update selected"))
         self._delete_button = QPushButton(self.tr("Delete selected"))

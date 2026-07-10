@@ -82,7 +82,20 @@ class UnlockDialog(QDialog):
         try:
             params = self._service.load_params()
         except KdfPolicyError:
-            self._show_failure()
+            # NOT a wrong password — no password has been checked yet. The KDF
+            # sidecar is missing / malformed / below the pinned strength floor.
+            # Give it its own message (like SchemaVersionError) so a user with
+            # the *correct* password isn't told to re-check it forever. Only the
+            # HMAC-tamper case is meant to be indistinguishable from a wrong
+            # password (security-model), not this. (indie-review M-auth1)
+            self._error.setText(
+                self.tr(
+                    "finbreak can't read this vault's security-settings file "
+                    "(it's missing or damaged), so it can't be unlocked. If you "
+                    "have a backup of your vault folder, restore it."
+                )
+            )
+            self.unlock_failed.emit()
             return
 
         password = bytearray(self._password.text().encode("utf-8"))

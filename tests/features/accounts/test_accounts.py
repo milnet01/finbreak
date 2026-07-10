@@ -410,9 +410,16 @@ def test_INV7c_transaction_shows_account_name_in_table(qtbot, service):
     assert any(DEFAULT_ACCOUNT_NAME in c for c in cells), "the account name is shown"
 
 
-def test_INV7d_delete_in_use_shows_message_and_removes_nothing(qtbot, service):
+def test_INV7d_delete_in_use_shows_message_and_removes_nothing(
+    qtbot, service, monkeypatch
+):
+    from PySide6.QtWidgets import QMessageBox
+
     from finbreak.ui.accounts import AccountsWidget
 
+    monkeypatch.setattr(  # H-E: delete now confirms first — auto-confirm here
+        QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.Yes
+    )
     default_id = _default_id(service.vault)
     TransactionService(service.vault).add_transaction(
         default_id, "2026-07-01", "-1.00", "x"
@@ -430,9 +437,14 @@ def test_INV7d_delete_in_use_shows_message_and_removes_nothing(qtbot, service):
     assert any(a.id == default_id for a in svc.list_accounts()), "nothing removed"
 
 
-def test_INV7e_delete_empty_nonlast_removes_from_list(qtbot, service):
+def test_INV7e_delete_empty_nonlast_removes_from_list(qtbot, service, monkeypatch):
+    from PySide6.QtWidgets import QMessageBox
+
     from finbreak.ui.accounts import AccountsWidget
 
+    monkeypatch.setattr(  # H-E: auto-confirm the delete
+        QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.Yes
+    )
     svc = AccountService(service.vault)
     spare = svc.add_account("Spare", "other")
     widget = AccountsWidget(service)
@@ -441,6 +453,38 @@ def test_INV7e_delete_empty_nonlast_removes_from_list(qtbot, service):
     widget._delete_button.click()
     listed = [widget._list.item(i).text() for i in range(widget._list.count())]
     assert not any("Spare" in text for text in listed), "empty non-last account gone"
+
+
+def test_delete_confirmation_no_keeps_the_account(qtbot, service, monkeypatch):
+    """Declining the delete confirmation removes nothing — the confirm actually
+    gates the destructive action. (indie-review H-E)"""
+    from PySide6.QtWidgets import QMessageBox
+
+    from finbreak.ui.accounts import AccountsWidget
+
+    monkeypatch.setattr(
+        QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.No
+    )
+    svc = AccountService(service.vault)
+    spare = svc.add_account("Spare", "other")
+    widget = AccountsWidget(service)
+    qtbot.addWidget(widget)
+    widget._select_account(spare.id)
+    widget._delete_button.click()
+    assert any(a.id == spare.id for a in svc.list_accounts()), (
+        "declining the confirm keeps the account"
+    )
+
+
+def test_add_fields_have_accessible_names(qtbot, service):
+    """The name field + type combo carry accessible names for screen readers,
+    not just a vanishing placeholder. (indie-review M-dlg3)"""
+    from finbreak.ui.accounts import AccountsWidget
+
+    widget = AccountsWidget(service)
+    qtbot.addWidget(widget)
+    assert widget._name.accessibleName() != ""
+    assert widget._type.accessibleName() != ""
 
 
 def test_INV7f_edit_selected_account_updates_it(qtbot, service):

@@ -951,3 +951,23 @@ def test_move_rule_swap_is_atomic_on_failure(service, monkeypatch):
 
     after = {r.id: r.priority for r in cs.list_rules()}
     assert after == before, "a failed swap must roll back, not half-apply"
+
+
+def test_add_rule_swallows_vault_locked_silently(qtbot, service, monkeypatch):
+    """If an idle auto-lock fires while the rule dialog was open, _on_add returns
+    silently — matching Delete/Move/Apply in the same widget — not a raw
+    'the vault is locked' error label. (indie-review M-C4)"""
+    import finbreak.ui.rules as rules_mod
+    from finbreak.ui.rules import RulesWidget
+
+    g = _leaf_id(service, "Groceries")
+    widget = RulesWidget(service)
+    qtbot.addWidget(widget)
+    _stub_rule_dialog(monkeypatch, rules_mod, pattern="x", category_id=g)
+
+    def locked(*a, **k):
+        raise VaultLockedError("the vault is locked")
+
+    monkeypatch.setattr(widget._categorization, "add_rule", locked)
+    widget._add_button.click()  # must not raise, must not show an error label
+    assert widget._error.text() == "", "a VaultLockedError is swallowed silently"

@@ -175,6 +175,8 @@ class RulesWidget(QWidget):
             return
         try:
             self._categorization.add_rule(pattern, category_id)
+        except VaultLockedError:
+            return  # auto-lock fired while the dialog was open (INV-14)
         except (ValueError, FinbreakError) as exc:
             self._error.setText(str(exc))
             return
@@ -200,6 +202,8 @@ class RulesWidget(QWidget):
             return
         try:
             self._categorization.update_rule(rule.id, pattern, category_id)
+        except VaultLockedError:
+            return  # auto-lock fired while the dialog was open (INV-14)
         except (ValueError, FinbreakError) as exc:
             self._error.setText(str(exc))
             return

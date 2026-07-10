@@ -5,9 +5,14 @@ the "remember" checkbox): a masked field + a "Remember this password for
 <account>" checkbox (unchecked by default) + OK/Cancel. Re-shown by the wizard on
 a wrong password (INV-3); Cancel abandons the import cleanly.
 
-It lives in its **own** module (not ``import_wizard``) so the password only ever
-sits on this dialog's field, never on an ``ImportWizardWidget`` attribute
-(INV-11). All strings go through ``tr()`` (coding.md § 5.2).
+It lives in its **own** module (not ``import_wizard``) so the *entered* password
+sits only on this dialog's field while the prompt is open, not smeared across the
+wizard. NOTE: the remember-for-this-account flow added later (FIBR-0057) does
+briefly hold a **confirmed** password on ``ImportWizardWidget._stored_pw`` after a
+successful decrypt — a deliberate, bounded widening of FIBR-0009 INV-11's original
+"never on a wizard attribute", so a re-target can carry the password to the
+committed account; it is cleared on the next file pick. All strings go through
+``tr()`` (coding.md § 5.2).
 """
 
 from __future__ import annotations

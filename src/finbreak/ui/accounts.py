@@ -16,12 +16,13 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
+    QMessageBox,
     QPushButton,
     QVBoxLayout,
     QWidget,
 )
 
-from finbreak.errors import FinbreakError
+from finbreak.errors import FinbreakError, VaultLockedError
 from finbreak.models import AccountType
 from finbreak.services.accounts import AccountService
 from finbreak.services.auth import AuthService
@@ -63,7 +64,12 @@ class AccountsWidget(QWidget):
         self._list = QListWidget()
         self._name = QLineEdit()
         self._name.setPlaceholderText(self.tr("Account name"))
+        # A placeholder vanishes once the user types and is not a reliable
+        # accessible-name source; set an explicit accessible name so a screen
+        # reader announces both fields (WCAG 1.3.1/3.3.2). (indie-review M-dlg3)
+        self._name.setAccessibleName(self.tr("Account name"))
         self._type = QComboBox()
+        self._type.setAccessibleName(self.tr("Account type"))
         for token, label in self._type_labels.items():
             self._type.addItem(label, token)
         self._add_button = QPushButton(self.tr("Add"))
@@ -149,8 +155,26 @@ class AccountsWidget(QWidget):
         item = self._list.currentItem()
         if item is None:
             return
+        # Confirm before deleting — parity with the Categories/Statements delete
+        # actions, which all confirm (indie-review H-E). An in-use account is
+        # refused by the service anyway (AccountInUseError), so the worst case is
+        # losing an empty account; a plain confirm matches what users now expect.
+        if (
+            QMessageBox.question(
+                self,
+                self.tr("Delete account"),
+                self.tr("Delete the account “{name}”?").format(
+                    name=item.data(_ACCOUNT_NAME_ROLE)
+                ),
+            )
+            != QMessageBox.StandardButton.Yes
+        ):
+            return
         try:
             self._accounts.delete_account(item.data(_ACCOUNT_ID_ROLE))
+        except VaultLockedError:
+            # An idle auto-lock can fire while the confirm box is open (INV-14).
+            return
         except FinbreakError as exc:
             # AccountInUseError / LastAccountError — show the message, remove
             # nothing (INV-6 reflected through the UI).

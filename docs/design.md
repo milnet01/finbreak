@@ -245,8 +245,10 @@ UI state.
   referential tree, `parent_id`), `categorization_rules`, `transfer_links` (links a confirmed
   transfer pair — success criterion 3), `import_profiles`, `statement_periods`
   (a statement's coverage period per import — success criterion for FIBR-0038),
-  `secrets` (the opt-in stored PDF passwords — asset A4 in security-model.md),
-  `settings`, `schema_version`. Exact columns are fixed in each item's spec.
+  `settings`, `schema_version`. The opt-in stored PDF passwords (asset A4 in
+  security-model.md) are **not** a separate table — they live in the
+  `accounts.statement_pdf_password` column (FIBR-0009), still inside the
+  encrypted vault. Exact columns are fixed in each item's spec.
 
 ### Concurrency
 
