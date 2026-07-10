@@ -722,25 +722,69 @@ def _banned_string_arg(node: ast.Call) -> str | None:
     return None
 
 
+# The ONE file allowed to import `urllib` — the opt-in update check's sole
+# networked module (FIBR-0054 INV-12/D12). Keyed on the package-relative POSIX
+# path, NOT the basename, so a stray `update_fetch.py` elsewhere is not waved
+# through. Every OTHER banned name stays banned here; `urllib` stays banned in
+# every other file.
+_URLLIB_ALLOWLISTED_REL_PATH = "services/update_fetch.py"
+
+
+def _allowed(rel_path: str, banned_top: str) -> bool:
+    """Whether importing *banned_top* is the single consented exception (INV-12):
+    `urllib`, and only in `services/update_fetch.py`."""
+    return banned_top == "urllib" and rel_path == _URLLIB_ALLOWLISTED_REL_PATH
+
+
+def _network_offenders(rel_path: str, source: str) -> list[str]:
+    """Banned network imports in one file's *source*, honouring the single
+    `urllib`-in-update_fetch allowlist (FIBR-0054 INV-12). *rel_path* is the file's
+    path relative to the package root, POSIX-separated. Covers static
+    `import`/`from` and the dynamic `__import__`/`import_module(...)` forms."""
+    offenders: list[str] = []
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                top = alias.name.split(".")[0]
+                if top in _BANNED_NETWORK and not _allowed(rel_path, top):
+                    offenders.append(f"{rel_path}: import {alias.name}")
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            top = node.module.split(".")[0]
+            if top in _BANNED_NETWORK and not _allowed(rel_path, top):
+                offenders.append(f"{rel_path}: from {node.module}")
+        elif isinstance(node, ast.Call):
+            banned = _banned_string_arg(node)
+            if banned and not _allowed(rel_path, banned):
+                offenders.append(f"{rel_path}: dynamic import {banned}")
+    return offenders
+
+
 def test_INV8_no_network_imports_under_src() -> None:
     package_root = Path(finbreak.__file__).parent
     offenders: list[str] = []
     for py in package_root.rglob("*.py"):
-        tree = ast.parse(py.read_text())
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Import):
-                offenders += [
-                    f"{py.name}: import {alias.name}"
-                    for alias in node.names
-                    if alias.name.split(".")[0] in _BANNED_NETWORK
-                ]
-            elif isinstance(node, ast.ImportFrom) and node.module:
-                if node.module.split(".")[0] in _BANNED_NETWORK:
-                    offenders.append(f"{py.name}: from {node.module}")
-            elif isinstance(node, ast.Call):
-                if banned := _banned_string_arg(node):
-                    offenders.append(f"{py.name}: dynamic import {banned}")
+        rel_path = py.relative_to(package_root).as_posix()
+        offenders += _network_offenders(rel_path, py.read_text())
     assert not offenders, f"network imports found under src/finbreak/: {offenders}"
+
+
+def test_INV12_urllib_allowed_only_in_update_fetch() -> None:
+    """The amended allowlist waves `urllib` through ONLY at the exact relative
+    path `services/update_fetch.py` — not by basename, not elsewhere (INV-12)."""
+    # the one allowed case: urllib, in update_fetch.py
+    assert _network_offenders("services/update_fetch.py", "import urllib.request") == []
+    assert (
+        _network_offenders("services/update_fetch.py", 'import_module("urllib.request")')
+        == []
+    )
+    # still banned there: every other network module
+    assert _network_offenders("services/update_fetch.py", "import socket")
+    # still banned everywhere else: urllib itself (static, from, and dynamic)
+    assert _network_offenders("services/other.py", "import urllib.request")
+    assert _network_offenders("services/other.py", "from urllib import request")
+    assert _network_offenders("services/other.py", 'import_module("socket")')
+    # a same-basename file at a DIFFERENT path is NOT waved through
+    assert _network_offenders("ui/update_fetch.py", "import urllib.request")
 
 
 def test_INV8_no_network_package_in_runtime_deps():
