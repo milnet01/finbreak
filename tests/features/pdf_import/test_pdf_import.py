@@ -20,7 +20,9 @@ from pathlib import Path
 
 import pikepdf
 import pytest
-from PySide6.QtWidgets import QDialog
+import shiboken6
+from PySide6.QtCore import QEvent
+from PySide6.QtWidgets import QApplication, QDialog
 
 from conftest import _PW, build_v4_vault, build_v5_vault, keyed_connection
 from finbreak.crypto import SALT_LEN
@@ -38,6 +40,8 @@ from finbreak.repositories.transactions import TransactionRepository
 from finbreak.services.accounts import AccountService
 from finbreak.services.auth import AuthService
 from finbreak.services.import_ import ImportService, signature_for
+from finbreak.ui.main_window import MainWindow
+from finbreak.ui.password_dialog import PasswordDialog
 
 pytestmark = pytest.mark.features
 
@@ -302,25 +306,29 @@ def _patch_dialog(monkeypatch, responses):
     seq = iter(responses)
     shown: list[str] = []
 
-    class _Fake:
+    class _Fake(QDialog):
+        """Real QDialog stand-in: auto-accepts (with the scripted password/remember)
+        or rejects on show(), so the async _on_pdf_password slot runs through
+        show_modal's real wiring. A wrong-password re-prompt constructs a fresh
+        _Fake (pops the next response), driving the multi-attempt loop (FIBR-0065)."""
+
         def __init__(self, account_name, parent=None):
+            super().__init__(parent)
             self._r = next(seq)
             shown.append(account_name)
 
-        def exec(self):
-            accepted = self._r.get("accept", True)
-            return (
-                QDialog.DialogCode.Accepted if accepted else QDialog.DialogCode.Rejected
-            )
+        def show(self):
+            super().show()
+            if self._r.get("accept", True):
+                self.accept()
+            else:
+                self.reject()
 
         def password(self):
             return self._r.get("password", "")
 
         def remember(self):
             return self._r.get("remember", False)
-
-        def deleteLater(self):  # the wizard disposes each attempt (indie-review M1)
-            pass
 
     monkeypatch.setattr(import_wizard, "PasswordDialog", _Fake)
     return shown
@@ -362,6 +370,46 @@ def test_INV7b_cancel_abandons_import(qtbot, service, tmp_path, monkeypatch):
     widget._select_file(str(path))
     assert widget._stack.currentIndex() == 0, "Cancel abandons cleanly (stays on pick)"
     assert widget._error.text() == ""
+
+
+def _pump_deferred_delete():
+    QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+
+
+def _shell(qtbot, service) -> MainWindow:
+    """An unlocked MainWindow past routing (mirrors the statements suite helper)."""
+    window = MainWindow(service)
+    qtbot.addWidget(window)
+    window._enter_unlocked()
+    return window
+
+
+def test_INV2_lock_during_pdf_password_prompt_destroys_wizard_no_crash(
+    qtbot, service, tmp_path
+):
+    """FIBR-0065 INV-2 — the one guard-less path: an idle auto-lock while the PDF
+    password prompt is open. A **real** (parented) PasswordDialog is shown via
+    show_modal; firing the real auto-lock must destroy the wizard **and** the open
+    dialog with no exception (the accept slot never fires — the H-B crash class)."""
+    enc = _encrypt(_fixture("single_table.pdf"), user="secret")
+    path = _write(tmp_path, "locked.pdf", enc)
+    window = _shell(qtbot, service)
+    window._action_import.trigger()
+    wizard = window._live
+    wizard._account_combo.setCurrentIndex(
+        wizard._account_combo.findData(_acct(service))
+    )
+    wizard._select_file(str(path))  # locked PDF -> a real PasswordDialog is shown
+
+    dialog = wizard.findChild(PasswordDialog)
+    assert dialog is not None and shiboken6.isValid(dialog), "the prompt is open"
+
+    service._on_idle_timeout()  # auto-lock while the guard-less prompt is open
+    _pump_deferred_delete()
+
+    assert not shiboken6.isValid(wizard), "the wizard is destroyed on lock"
+    assert not shiboken6.isValid(dialog), "the open password dialog is destroyed too"
+    assert window.centralWidget().currentWidget().objectName() == "placeholder_locked"
 
 
 def test_INV7c_multi_table_chooser_default_largest_and_switch_repopulates(
@@ -656,8 +704,14 @@ def test_INV11_password_not_in_exception_message():
 
 
 def test_INV11_wizard_defines_no_password_attribute():
+    # Credential-hygiene backstop (FIBR-0009 INV-11): the wizard holds no
+    # password-named *attribute* (a stored credential value). The `(?!\()` excludes
+    # method *calls* — FIBR-0065's state machine has `self._prompt_pdf_password(...)`
+    # / `self._on_pdf_password(...)` methods, which carry the password only as a
+    # local/param, never on the long-lived wizard. `self._stored_pw` (the FIBR-0057
+    # re-target carry) uses "pw", not "password", so it is out of scope by name.
     src = Path("src/finbreak/ui/import_wizard.py").read_text()
-    assert not re.search(r"self\._[A-Za-z0-9_]*password", src)
+    assert not re.search(r"self\._[A-Za-z0-9_]*password(?!\()", src)
 
 
 def test_candidate_tables_maps_pdf_parse_error_to_value_error(monkeypatch):

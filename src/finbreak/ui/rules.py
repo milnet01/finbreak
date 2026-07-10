@@ -34,6 +34,7 @@ from finbreak.models import CategorizationRule, Category
 from finbreak.services.auth import AuthService
 from finbreak.services.categories import CategoryService
 from finbreak.services.categorization import CategorizationService
+from finbreak.ui.modal import show_modal
 
 _COL_PATTERN = 0
 _COL_CATEGORY = 1
@@ -168,15 +169,16 @@ class RulesWidget(QWidget):
     def _on_add(self) -> None:
         self._error.clear()
         dialog = RuleEditDialog(self._categorization.leaf_categories(), parent=self)
-        accepted = dialog.exec() == QDialog.DialogCode.Accepted
+        # Non-blocking (FIBR-0065): a lock while the dialog is open destroys it
+        # before _apply_add runs, so no read hits a deleted C++ object.
+        show_modal(dialog, lambda: self._apply_add(dialog))
+
+    def _apply_add(self, dialog: RuleEditDialog) -> None:
         pattern, category_id = dialog.pattern(), dialog.selected_category_id()
-        dialog.deleteLater()
-        if not accepted:
-            return
         try:
             self._categorization.add_rule(pattern, category_id)
         except VaultLockedError:
-            return  # auto-lock fired while the dialog was open (INV-14)
+            return  # defense-in-depth; INV-2 destroys the dialog before this slot
         except (ValueError, FinbreakError) as exc:
             self._error.setText(str(exc))
             return
@@ -195,15 +197,14 @@ class RulesWidget(QWidget):
             rule.category_id,
             self,
         )
-        accepted = dialog.exec() == QDialog.DialogCode.Accepted
+        show_modal(dialog, lambda: self._apply_edit(dialog, rule.id))
+
+    def _apply_edit(self, dialog: RuleEditDialog, rule_id: int) -> None:
         pattern, category_id = dialog.pattern(), dialog.selected_category_id()
-        dialog.deleteLater()
-        if not accepted:
-            return
         try:
-            self._categorization.update_rule(rule.id, pattern, category_id)
+            self._categorization.update_rule(rule_id, pattern, category_id)
         except VaultLockedError:
-            return  # auto-lock fired while the dialog was open (INV-14)
+            return  # defense-in-depth; INV-2 destroys the dialog before this slot
         except (ValueError, FinbreakError) as exc:
             self._error.setText(str(exc))
             return

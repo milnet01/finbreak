@@ -369,25 +369,28 @@ def _patch_dialog(monkeypatch, responses):
     seq = iter(responses)
     shown: list[str] = []
 
-    class _Fake:
+    class _Fake(QDialog):
+        """Real QDialog stand-in: auto-accepts (with the scripted password/remember)
+        or rejects on show(), so the async _on_pdf_password slot runs through
+        show_modal's real wiring (FIBR-0065 INV-5)."""
+
         def __init__(self, account_name, parent=None):
+            super().__init__(parent)
             self._r = next(seq)
             shown.append(account_name)
 
-        def exec(self):
-            accepted = self._r.get("accept", True)
-            return (
-                QDialog.DialogCode.Accepted if accepted else QDialog.DialogCode.Rejected
-            )
+        def show(self):
+            super().show()
+            if self._r.get("accept", True):
+                self.accept()
+            else:
+                self.reject()
 
         def password(self):
             return self._r.get("password", "")
 
         def remember(self):
             return self._r.get("remember", False)
-
-        def deleteLater(self):  # the wizard disposes each attempt (indie-review M1)
-            pass
 
     monkeypatch.setattr(import_wizard, "PasswordDialog", _Fake)
     return shown

@@ -23,7 +23,6 @@ from typing import cast
 from PySide6.QtCore import QLocale, QPoint, Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
-    QDialog,
     QHeaderView,
     QLabel,
     QMenu,
@@ -40,6 +39,7 @@ from finbreak.models import Transaction
 from finbreak.services.categorization import CategorizationService
 from finbreak.services.transactions import TransactionService
 from finbreak.ui.category_picker import CategoryPickerDialog
+from finbreak.ui.modal import show_modal
 from finbreak.ui.rules import RuleEditDialog
 
 # Fixed column indices (the table's shape; headers are the translated labels).
@@ -171,22 +171,20 @@ class HomeView(QWidget):
             return
         leaves = self._categorization.leaf_categories()
         dialog = CategoryPickerDialog(leaves, txn.category_id, self)
-        accepted = dialog.exec() == QDialog.DialogCode.Accepted
+        # Non-blocking (FIBR-0065): a lock while the picker is open destroys it
+        # before _apply_category can run, so no read hits a deleted C++ object.
+        show_modal(dialog, lambda: self._apply_category(dialog, txn))
+
+    def _apply_category(self, dialog: CategoryPickerDialog, txn: Transaction) -> None:
         chosen = dialog.selected_category_id()
-        dialog.deleteLater()
-        if not accepted:
-            return
-        # Set + learning + refresh share ONE lock guard: the learning offer's dialog
-        # pumps the event loop (via exec()), so an idle auto-lock can fire mid-flow.
-        # The trailing refresh() reads the (now-locked) vault, so it MUST sit inside
-        # the guard or it crashes the slot (INV-14) — the picker-only path returns
-        # before refresh, but the learning path does not.
+        # The VaultLockedError guard is now defense-in-depth: the non-blocking
+        # conversion (INV-2) means a lock destroys the picker before this slot runs.
         try:
             self._categorization.set_manual_category(txn.id, chosen)
+            self.refresh()  # the manual change is visible immediately
             self._maybe_offer_rule(txn.description, chosen)
-            self.refresh()
         except VaultLockedError:
-            return  # auto-lock fired mid-set / mid-learn — the workspace is torn down
+            return
 
     def _maybe_offer_rule(self, description: str, chosen: int | None) -> None:
         """Offer to learn a rule iff the manual choice is a leaf that disagrees with
@@ -200,16 +198,16 @@ class HomeView(QWidget):
         dialog = RuleEditDialog(
             self._categorization.leaf_categories(), description, chosen, self
         )
-        accepted = dialog.exec() == QDialog.DialogCode.Accepted
+        show_modal(dialog, lambda: self._apply_learned_rule(dialog))
+
+    def _apply_learned_rule(self, dialog: RuleEditDialog) -> None:
         pattern, category_id = dialog.pattern(), dialog.selected_category_id()
-        dialog.deleteLater()
-        if not accepted:
+        try:
+            self._categorization.add_rule(pattern, category_id)
+            self._categorization.apply_rules()  # propagate to other auto rows
+            self.refresh()  # the propagation to other auto rows is now visible
+        except VaultLockedError:
             return
-        # A VaultLockedError here (auto-lock fired while the offer was open)
-        # propagates to the single guard in _on_set_category; nothing half-applied
-        # survives — INV-4's next run re-applies the persisted rule (D11).
-        self._categorization.add_rule(pattern, category_id)
-        self._categorization.apply_rules()  # propagate to other auto rows
 
     # --- test / shell accessors -------------------------------------------- #
     def _selected_txn(self) -> Transaction | None:

@@ -20,7 +20,6 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDateEdit,
-    QDialog,
     QFileDialog,
     QFormLayout,
     QHBoxLayout,
@@ -50,10 +49,20 @@ from finbreak.services.accounts import AccountService
 from finbreak.services.auth import AuthService
 from finbreak.services.import_ import ImportPreview, ImportService
 from finbreak.services.transactions import read_minor_unit_exponent, to_display_decimal
+from finbreak.ui.modal import show_modal
 from finbreak.ui.password_dialog import PasswordDialog
 
 _STEP_PICK, _STEP_MAP, _STEP_PREVIEW = 0, 1, 2
 _ERROR_ROW_BRUSH = QBrush(QColor(122, 59, 59))  # muted red — flags a RowError row
+
+
+class _NeedPassword:
+    """Sentinel type for ``_try_decrypt`` — returned when a password is needed. A
+    distinct type (not ``object()``) so ``bytes | _NeedPassword | None`` resolves
+    under mypy with ``from __future__ import annotations`` (FIBR-0065 D5)."""
+
+
+_NEED_PASSWORD = _NeedPassword()
 
 
 class ImportWizardWidget(QWidget):
@@ -401,20 +410,93 @@ class ImportWizardWidget(QWidget):
         return head.startswith(b"%PDF-")
 
     def _select_pdf(self, path: str) -> None:
-        """Read (size-capped, D10) + decrypt the PDF **once** (D6, FIBR-0050). A
-        recognised Standard Bank statement is parsed by the SB reader and jumps
-        straight to preview (skipping the map step + table chooser, like OFX); any
-        other PDF falls through to the generic table extractor + the map step (D7).
-        Locked PDFs prompt for a password (D3/D11); a Cancel or a friendly error is
-        surfaced as a shown message."""
+        """Read (size-capped, D10) + kick off the decrypt state machine (FIBR-0065
+        D5). Locked PDFs prompt for a password **non-blocking**, so an idle
+        auto-lock can never crash a post-prompt read; the flow continues in
+        ``_continue_after_decrypt`` once plaintext is in hand."""
         try:
             data = self._imports.read_file_bytes(path)  # size-capped read (D10)
         except (ValueError, OSError, FinbreakError) as exc:
             self._error.setText(str(exc))
             return
-        plaintext = self._decrypt_pdf(data)
-        if plaintext is None:
-            return  # cancelled, or an error was already surfaced
+        self._begin_decrypt(data)
+
+    def _try_decrypt(
+        self, data: bytes, password: str | None
+    ) -> bytes | _NeedPassword | None:
+        """One decrypt attempt — the single shared attempt+dispatch (FIBR-0065 D5).
+        Returns the plaintext on success, the ``_NEED_PASSWORD`` sentinel on a
+        bad/absent password, or ``None`` after surfacing a friendly message on any
+        non-password error. The non-password-error catch lives **only** here, so
+        every attempt (initial / stored / prompted) is covered by one test."""
+        try:
+            return PdfImporter.decrypt_to_plaintext(data, password)
+        except PasswordError:
+            return _NEED_PASSWORD
+        except (PdfError, ValueError, OSError, FinbreakError) as exc:
+            # A non-password decrypt failure (e.g. a corrupt file that passed the
+            # %PDF- sniff — pikepdf.open raises PdfError, NOT a ValueError/OSError)
+            # surfaces a friendly message instead of crashing the slot (coding.md
+            # § 2; never crash the UI).
+            self._error.setText(str(exc))
+            return None
+
+    def _begin_decrypt(self, data: bytes) -> None:
+        """First decrypt attempt: no password, then the **stored** password once
+        (FIBR-0009 INV-4), then prompt. Trying the stored password only here (entered
+        once per import) structurally guarantees it is attempted at most once — never
+        re-tried on a wrong-password re-prompt, which never re-enters this method."""
+        result = self._try_decrypt(data, None)
+        if isinstance(result, bytes):
+            self._after_decrypt(result, None, remember=False)
+        elif result is _NEED_PASSWORD:
+            stored = self._accounts.get_pdf_password(self._target_account_id())
+            if stored is None:
+                self._prompt_pdf_password(data)
+                return
+            retry = self._try_decrypt(data, stored)
+            if isinstance(retry, bytes):
+                self._after_decrypt(retry, stored, remember=False)
+            elif retry is _NEED_PASSWORD:
+                self._prompt_pdf_password(data)
+            # retry is None → a friendly message was already shown; stop
+        # result is None → a friendly message was already shown; stop
+
+    def _prompt_pdf_password(self, data: bytes) -> None:
+        """Show the password dialog **non-blocking** (FIBR-0065). Cancel needs no
+        slot — ``finished→deleteLater`` frees the dialog and the wizard stays on the
+        pick step (the old 'cancel abandons the import cleanly'), storing nothing."""
+        dialog = PasswordDialog(self._account_name(), self)
+        show_modal(dialog, lambda: self._on_pdf_password(dialog, data))
+
+    def _on_pdf_password(self, dialog: PasswordDialog, data: bytes) -> None:
+        password, remember = dialog.password(), dialog.remember()
+        result = self._try_decrypt(data, password)
+        if isinstance(result, bytes):
+            self._after_decrypt(result, password, remember)
+        elif result is _NEED_PASSWORD:
+            self._prompt_pdf_password(data)  # wrong password → re-prompt (INV-3)
+        # result is None → a friendly message was already shown; stop
+
+    def _after_decrypt(
+        self, plaintext: bytes, password: str | None, remember: bool
+    ) -> None:
+        """Persist a **verified** password (decrypt just succeeded) iff the user
+        asked to remember it — both writes inside the one ``remember and password``
+        branch, so no ``(account_id, None)`` is ever stashed — then continue."""
+        if remember and password:
+            account_id = self._target_account_id()
+            self._accounts.set_pdf_password(account_id, password)
+            # Remember which account we stored it under (the provisional
+            # file-select one), so a later re-target carries it across (FIBR-0057).
+            self._stored_pw = (account_id, password)
+        self._continue_after_decrypt(plaintext)
+
+    def _continue_after_decrypt(self, plaintext: bytes) -> None:
+        """Once plaintext is in hand: a recognised Standard Bank statement is parsed
+        by the SB reader and jumps straight to preview (skipping the map step, like
+        OFX); any other PDF falls through to the generic table extractor + the map
+        step (D7)."""
         # FIBR-0050: a recognised SB statement skips mapping (self-describing, like
         # OFX). The checksum/format ValueError shows the friendly message, not crash.
         try:
@@ -454,53 +536,6 @@ class ImportWizardWidget(QWidget):
                 self._run_preview(matched.column_mapping())
                 return
         self._goto_step(_STEP_MAP)
-
-    def _decrypt_pdf(self, data: bytes) -> bytes | None:
-        """Decrypt ``data`` to plaintext PDF bytes **once** (FIBR-0050 D6), running
-        the password loop: a **stored** password (INV-4) is auto-tried on the first
-        ``PasswordError`` before prompting; a wrong password re-prompts (INV-3);
-        the password is persisted **only after** a successful decrypt (a verified
-        password — decrypt success is exactly what proves it correct). Returns the
-        plaintext, or ``None`` on Cancel."""
-        password: str | None = None
-        tried_stored = False
-        remember = False
-        while True:
-            try:
-                plaintext = PdfImporter.decrypt_to_plaintext(data, password)
-            except PasswordError:
-                stored = self._accounts.get_pdf_password(self._target_account_id())
-                if stored is not None and not tried_stored:
-                    tried_stored = True  # auto-try the remembered password once
-                    password = stored
-                    continue
-                dialog = PasswordDialog(self._account_name(), self)
-                accepted = dialog.exec() == QDialog.DialogCode.Accepted
-                password = dialog.password() if accepted else None
-                remember = dialog.remember() if accepted else False
-                # Dispose each attempt's dialog so a wrong-password retry doesn't
-                # leave a live QDialog (holding the typed password in its field)
-                # parented to the long-lived wizard. (indie-review M1)
-                dialog.deleteLater()
-                if not accepted:
-                    return None  # Cancel abandons the import cleanly
-                continue
-            except (PdfError, ValueError, OSError, FinbreakError) as exc:
-                # A non-password decrypt failure (e.g. a corrupt file that passed the
-                # %PDF- sniff — pikepdf.open raises PdfError, which is NOT a
-                # ValueError/OSError) surfaces a friendly message instead of crashing
-                # the Qt slot — the safety net the FIBR-0050 D6 refactor moved out
-                # from under `_extract_pdf_tables` (coding.md § 2; never crash the UI).
-                self._error.setText(str(exc))
-                return None
-            break
-        if remember and password:
-            account_id = self._target_account_id()
-            self._accounts.set_pdf_password(account_id, password)
-            # Remember which account we stored it under (the provisional
-            # file-select one), so a later re-target carries it across (FIBR-0057).
-            self._stored_pw = (account_id, password)
-        return plaintext
 
     def _extract_pdf_tables(
         self, plaintext: bytes

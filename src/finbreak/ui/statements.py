@@ -16,7 +16,6 @@ from __future__ import annotations
 from PySide6.QtCore import Signal, Slot
 from PySide6.QtWidgets import (
     QAbstractItemView,
-    QDialog,
     QHBoxLayout,
     QMessageBox,
     QPushButton,
@@ -32,6 +31,7 @@ from finbreak.services.accounts import AccountService
 from finbreak.services.auth import AuthService
 from finbreak.services.statements import StatementService
 from finbreak.ui.account_picker import AccountPickerDialog
+from finbreak.ui.modal import show_modal
 
 # Fixed column indices (the table's shape; headers are the translated labels).
 _COL_ACCOUNT = 0
@@ -130,19 +130,20 @@ class StatementsWidget(QWidget):
         dialog = AccountPickerDialog(
             self._accounts.list_accounts(), statement.account_id, self
         )
-        accepted = dialog.exec() == QDialog.DialogCode.Accepted
+        # Non-blocking (FIBR-0065): a lock while the picker is open destroys it
+        # before _apply_reassign runs, so no read hits a deleted C++ object.
+        show_modal(dialog, lambda: self._apply_reassign(dialog, statement))
+
+    def _apply_reassign(
+        self, dialog: AccountPickerDialog, statement: StatementRow
+    ) -> None:
         new_account_id = dialog.selected_account_id()
-        # Free the parented dialog rather than leave a hidden child alive until the
-        # tab is torn down — the delete path gets this free from a static QMessageBox.
-        dialog.deleteLater()
-        if not accepted:
-            return
         if new_account_id == statement.account_id:
             return  # same account — nothing to move (INV-5)
         try:
             self._statements.reassign_account(statement.id, new_account_id)
         except VaultLockedError:
-            return  # auto-lock fired mid-move; the workspace is being torn down
+            return  # defense-in-depth; INV-2 destroys the dialog before this slot
         except ValueError:  # the target account already has this span (INV-3)
             QMessageBox.warning(
                 self,

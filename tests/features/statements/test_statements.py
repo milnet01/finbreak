@@ -705,27 +705,39 @@ def _second_account(service, name="Credit Card", type="credit_card") -> int:
     return AccountService(service.vault).add_account(name, type).id
 
 
+class _AccountPickerStub(QDialog):
+    """Real QDialog stand-in for AccountPickerDialog: auto-accepts (or rejects) on
+    show() so the async _apply_reassign slot runs synchronously through show_modal's
+    real setModal/accepted/finished wiring (FIBR-0065 INV-5)."""
+
+    def __init__(self, parent, account_id, accept):
+        super().__init__(parent)
+        self._account_id = account_id
+        self._accept = accept
+
+    def show(self):
+        super().show()
+        if self._accept:
+            self.accept()
+        else:
+            self.reject()
+
+    def selected_account_id(self):
+        return self._account_id
+
+
 def _stub_picker(monkeypatch, account_id, accept=True):
-    """Replace ``statements.AccountPickerDialog`` with a fake returning
-    ``Accepted`` (or ``Rejected``) + ``account_id`` — the modal picker's stand-in."""
+    """Replace ``statements.AccountPickerDialog`` with a real auto-driving QDialog
+    stand-in returning ``account_id`` (the modal picker's stand-in)."""
     from finbreak.ui import statements as statements_mod
 
-    class _FakePicker:
-        def __init__(self, accounts, current_account_id, parent=None):
-            pass
-
-        def exec(self):
-            return (
-                QDialog.DialogCode.Accepted if accept else QDialog.DialogCode.Rejected
-            )
-
-        def selected_account_id(self):
-            return account_id
-
-        def deleteLater(self):  # noqa: N802 — mimics the QDialog the slot disposes
-            pass
-
-    monkeypatch.setattr(statements_mod, "AccountPickerDialog", _FakePicker)
+    monkeypatch.setattr(
+        statements_mod,
+        "AccountPickerDialog",
+        lambda accounts, current, parent=None: _AccountPickerStub(
+            parent, account_id, accept
+        ),
+    )
 
 
 def _period_id(conn, account_id) -> int:

@@ -566,47 +566,66 @@ def _home_category_cell(home, description: str) -> str:
     raise AssertionError(f"no row for {description!r}")
 
 
+class _PickerStub(QDialog):
+    """Real QDialog stand-in for CategoryPickerDialog: auto-accepts (or rejects) on
+    show() so the async _apply_category slot runs synchronously through show_modal's
+    real setModal/accepted/finished wiring (FIBR-0065 INV-5)."""
+
+    def __init__(self, parent, selected_id, accept):
+        super().__init__(parent)
+        self._selected_id = selected_id
+        self._accept = accept
+
+    def show(self):
+        super().show()
+        if self._accept:
+            self.accept()
+        else:
+            self.reject()
+
+    def selected_category_id(self):
+        return self._selected_id
+
+
+class _RuleStub(QDialog):
+    """Real QDialog stand-in for RuleEditDialog (same auto-drive as _PickerStub)."""
+
+    def __init__(self, parent, pattern, category_id, accept):
+        super().__init__(parent)
+        self._pattern = pattern
+        self._category_id = category_id
+        self._accept = accept
+
+    def show(self):
+        super().show()
+        if self._accept:
+            self.accept()
+        else:
+            self.reject()
+
+    def pattern(self):
+        return self._pattern
+
+    def selected_category_id(self):
+        return self._category_id
+
+
 def _stub_picker(monkeypatch, home_mod, selected_id, accept=True):
-    class _FakePicker:
-        def __init__(self, leaves, current, parent=None):
-            pass
-
-        def exec(self):
-            return (
-                QDialog.DialogCode.Accepted if accept else QDialog.DialogCode.Rejected
-            )
-
-        def selected_category_id(self):
-            return selected_id
-
-        def deleteLater(self):
-            pass
-
-    monkeypatch.setattr(home_mod, "CategoryPickerDialog", _FakePicker)
+    monkeypatch.setattr(
+        home_mod,
+        "CategoryPickerDialog",
+        lambda leaves, current, parent=None: _PickerStub(parent, selected_id, accept),
+    )
 
 
 def _spy_learning(monkeypatch, home_mod, *, accept, ret_pattern="", ret_cat=None):
     calls: list[bool] = []
 
-    class _FakeRule:
-        def __init__(self, *a, **k):
-            calls.append(True)
+    def factory(leaves, description, category_id, parent=None):
+        calls.append(True)
+        return _RuleStub(parent, ret_pattern, ret_cat, accept)
 
-        def exec(self):
-            return (
-                QDialog.DialogCode.Accepted if accept else QDialog.DialogCode.Rejected
-            )
-
-        def pattern(self):
-            return ret_pattern
-
-        def selected_category_id(self):
-            return ret_cat
-
-        def deleteLater(self):
-            pass
-
-    monkeypatch.setattr(home_mod, "RuleEditDialog", _FakeRule)
+    monkeypatch.setattr(home_mod, "RuleEditDialog", factory)
     return calls
 
 
@@ -727,25 +746,10 @@ def test_INV5_accepting_the_offer_creates_a_rule_and_refiles(
 # INV-11 — the Rules tab (qtbot)
 # --------------------------------------------------------------------------- #
 def _stub_rule_dialog(monkeypatch, rules_mod, *, pattern, category_id, accept=True):
-    class _FakeRule:
-        def __init__(self, *a, **k):
-            pass
+    def factory(leaves, pat="", cat=None, parent=None):
+        return _RuleStub(parent, pattern, category_id, accept)
 
-        def exec(self):
-            return (
-                QDialog.DialogCode.Accepted if accept else QDialog.DialogCode.Rejected
-            )
-
-        def pattern(self):
-            return pattern
-
-        def selected_category_id(self):
-            return category_id
-
-        def deleteLater(self):
-            pass
-
-    monkeypatch.setattr(rules_mod, "RuleEditDialog", _FakeRule)
+    monkeypatch.setattr(rules_mod, "RuleEditDialog", factory)
 
 
 def test_INV11_add_lists_and_apply_reports_count(qtbot, service, monkeypatch):
@@ -852,29 +856,21 @@ def test_INV14_home_set_catches_vault_locked(qtbot, service, monkeypatch):
 
 
 def test_INV14_learning_path_refresh_catches_vault_locked(qtbot, service, monkeypatch):
-    # The learning dialog pumps the event loop, so an auto-lock can fire while it
-    # is open; the trailing refresh() then reads a locked vault. Regression for the
-    # unguarded-refresh crash: patch list_transactions (what refresh() calls) to
-    # raise, drive the learning path, and assert the slot swallows it.
-    import finbreak.ui.home as home_mod
-
-    g, f = _leaf_id(service, "Groceries"), _leaf_id(service, "Fast food")
-    txn = _add_txn(service, "PICK N PAY")
-    cs = CategorizationService(service.vault)
-    cs.add_rule("pick n pay", f)  # so chosen (g) != would (f) -> the offer fires
-    cs.apply_rules()
-
+    # The learning-offer accept slot (_apply_learned_rule) ends with refresh(); if
+    # an auto-lock fired while the offer was open, that refresh reads a locked vault.
+    # Drive _apply_learned_rule DIRECTLY: _apply_category's earlier refresh() would
+    # pre-empt the full chain, so only the direct call exercises THIS guard
+    # (FIBR-0065 INV-3 vacuous-pass trap).
+    g = _leaf_id(service, "Groceries")
     home = _home(service)
     qtbot.addWidget(home)
-    _stub_picker(monkeypatch, home_mod, g)  # correct it to Groceries
-    _spy_learning(monkeypatch, home_mod, accept=False)  # dismiss the offer
+    dialog = _RuleStub(home, "pick n pay", g, accept=True)
 
     def _raise():
         raise VaultLockedError("auto-lock fired while the learning offer was open")
 
     monkeypatch.setattr(home._transactions, "list_transactions", _raise)
-    home._select_txn(txn)
-    home._on_set_category()  # must not raise — the refresh is inside the guard now
+    home._apply_learned_rule(dialog)  # must not raise — refresh() is inside the guard
 
 
 def test_INV14_apply_catches_vault_locked(qtbot, service, monkeypatch):
@@ -970,4 +966,26 @@ def test_add_rule_swallows_vault_locked_silently(qtbot, service, monkeypatch):
 
     monkeypatch.setattr(widget._categorization, "add_rule", locked)
     widget._add_button.click()  # must not raise, must not show an error label
+    assert widget._error.text() == "", "a VaultLockedError is swallowed silently"
+
+
+def test_edit_rule_swallows_vault_locked_silently(qtbot, service, monkeypatch):
+    """FIBR-0065: an auto-lock while the edit dialog was open → _apply_edit returns
+    silently (parity with _apply_add). Edit had no guard test before FIBR-0065."""
+    import finbreak.ui.rules as rules_mod
+    from finbreak.ui.rules import RulesWidget
+
+    cs = CategorizationService(service.vault)
+    g = _leaf_id(service, "Groceries")
+    r = cs.add_rule("aaa", g)
+    widget = RulesWidget(service)
+    qtbot.addWidget(widget)
+    widget._select_rule(r.id)
+    _stub_rule_dialog(monkeypatch, rules_mod, pattern="aaa-edited", category_id=g)
+
+    def locked(*a, **k):
+        raise VaultLockedError("the vault is locked")
+
+    monkeypatch.setattr(widget._categorization, "update_rule", locked)
+    widget._edit_button.click()  # must not raise, must not show an error label
     assert widget._error.text() == "", "a VaultLockedError is swallowed silently"
