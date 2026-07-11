@@ -6,6 +6,8 @@ the UI legs (INV-6..9) drive the shell + ``SettingsDialog`` via ``qtbot``. Every
 vault lives under ``tmp_path``; no network, no real data.
 """
 
+from dataclasses import FrozenInstanceError
+
 import pytest
 import shiboken6
 from PySide6.QtCore import QEvent
@@ -24,6 +26,7 @@ from finbreak.services.auth import (
     ALLOWED_AUTO_LOCK_MINUTES,
     DEFAULT_AUTO_LOCK_MINUTES,
     AuthService,
+    DateTimePrefs,
 )
 from finbreak.services.transactions import TransactionService
 from finbreak.ui.main_window import MainWindow
@@ -280,3 +283,36 @@ def test_on_save_swallows_vault_locked_silently(qtbot, service, monkeypatch):
     monkeypatch.setattr(dialog._service, "set_auto_lock_minutes", locked)
     dialog._on_save()  # must not raise
     assert saved == [], "saved is not emitted on a locked vault"
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0083 — datetime prefs round-trip (INV-5): timezone/date_format/time_format
+# --------------------------------------------------------------------------- #
+def test_datetime_prefs_default_to_system_when_absent(service):
+    assert service.datetime_prefs() == DateTimePrefs("system", "system", "system")
+
+
+def test_datetime_prefs_round_trip(service):
+    prefs = DateTimePrefs("Africa/Johannesburg", "yyyy/MM/dd", "HH:mm")
+    service.set_datetime_prefs(prefs)
+    assert service.datetime_prefs() == prefs
+
+
+def test_datetime_prefs_each_key_defaults_independently(service):
+    # Only the timezone key present -> the other two still resolve to "system".
+    SettingsRepository(service.vault.connection).set("timezone", "Europe/Paris")
+    assert service.datetime_prefs() == DateTimePrefs("Europe/Paris", "system", "system")
+
+
+def test_set_datetime_prefs_writes_the_three_named_keys(service):
+    service.set_datetime_prefs(DateTimePrefs("UTC", "dd/MM/yyyy", "h:mm AP"))
+    repo = SettingsRepository(service.vault.connection)
+    assert repo.get("timezone") == "UTC"
+    assert repo.get("date_format") == "dd/MM/yyyy"
+    assert repo.get("time_format") == "h:mm AP"
+
+
+def test_datetime_prefs_is_frozen(service):
+    prefs = service.datetime_prefs()
+    with pytest.raises(FrozenInstanceError):
+        prefs.timezone = "UTC"  # type: ignore[misc]

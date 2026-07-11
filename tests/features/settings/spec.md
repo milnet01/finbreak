@@ -25,3 +25,15 @@ along.
 INV-10 (i18n) is covered by the existing `test_INV10_no_fixed_geometry_in_new_ui`
 source-scan (globs all `ui/*.py`, so `ui/settings.py` is included); `tr()`-wrapping
 is a review-checklist item per `coding.md § 5.2`.
+
+## FIBR-0083 — datetime display prefs (added coverage)
+
+The Settings screen also hosts the [FIBR-0083](../../../docs/specs/FIBR-0083.md)
+timezone / date-format / time-format controls, and `AuthService` gains the
+`DateTimePrefs` round-trip these persist through (same vault `settings` pattern
+as auto-lock, no schema change). Service-level legs live here (the dialog combos
+land alongside them when that slice ships):
+
+| INV | What it pins |
+|-----|--------------|
+| FIBR-0083 INV-5 | `AuthService.datetime_prefs()` defaults each of the three keys to `"system"` when absent, reads each independently, and round-trips a `set_datetime_prefs(DateTimePrefs(...))` write to the named `timezone` / `date_format` / `time_format` keys. `DateTimePrefs` is a frozen dataclass (display never mutates stored prefs, INV-1). |

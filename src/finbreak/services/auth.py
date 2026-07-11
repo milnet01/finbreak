@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 import secrets
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 from PySide6.QtCore import QCoreApplication, QTimer
@@ -48,6 +49,22 @@ DEFAULT_AUTO_LOCK_MINUTES = 10
 # option (it would defeat the security spine, FIBR-0055 D6); DEFAULT is a member so
 # it always resolves to a valid choice.
 ALLOWED_AUTO_LOCK_MINUTES = (1, 5, 10, 15, 30)
+
+# The datetime display prefs (FIBR-0083) share one sentinel: "system" means
+# resolve dynamically at display time (follow the OS); a concrete value pins it.
+DATETIME_SYSTEM = "system"
+
+
+@dataclass(frozen=True)
+class DateTimePrefs:
+    """The user's display prefs — each a stored string (an IANA zone id / a Qt
+    format token, or the ``"system"`` sentinel). Frozen: display formatting reads
+    but never mutates them (FIBR-0083 INV-1). Persisted by ``AuthService`` in the
+    vault ``settings`` table, mirroring ``auto_lock_minutes``."""
+
+    timezone: str
+    date_format: str
+    time_format: str
 
 
 def _wipe(buffer: bytearray | None) -> None:
@@ -245,6 +262,28 @@ class AuthService:
             "auto_lock_minutes", str(minutes)
         )
         self._arm_timer()
+
+    # --- datetime display prefs config (FIBR-0083) ------------------------- #
+    def datetime_prefs(self) -> DateTimePrefs:
+        """Read the three display prefs from the vault settings, each defaulting
+        to ``"system"`` when absent (a fresh / pre-FIBR-0083 vault). The
+        ``"system"`` sentinel is kept verbatim — expanded to a concrete
+        zone/locale only at display time (D4)."""
+        repo = SettingsRepository(self._vault.connection)
+        return DateTimePrefs(
+            timezone=repo.get("timezone") or DATETIME_SYSTEM,
+            date_format=repo.get("date_format") or DATETIME_SYSTEM,
+            time_format=repo.get("time_format") or DATETIME_SYSTEM,
+        )
+
+    def set_datetime_prefs(self, prefs: DateTimePrefs) -> None:
+        """Persist the three display prefs (mirrors ``set_auto_lock_minutes``). A
+        locked vault raises ``VaultLockedError`` from ``Vault.connection`` — the
+        write is guarded dialog-side, like auto-lock (INV-5 defence in depth)."""
+        repo = SettingsRepository(self._vault.connection)
+        repo.set("timezone", prefs.timezone)
+        repo.set("date_format", prefs.date_format)
+        repo.set("time_format", prefs.time_format)
 
     def _stop_timer(self) -> None:
         if self._timer is not None:
