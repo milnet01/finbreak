@@ -29,6 +29,18 @@ Read these in order on every session start:
 Run **`/close-phase`** once steps 1–4 of the per-phase loop
 are done — see SKILL.md for the full description.
 
+## Cold-eyes review cadence (project override)
+
+finbreak is **correctness-critical** — it handles people's money, and a
+wrong-day / wrong-zone / wrong-total bug is exactly the class of error users
+won't forgive. So specs get more room to settle before code: run **`/cold-eyes`
+with `--max-loops 7`** for this project (not the skill's default of 5) — i.e.
+allow up to **7** convergence loops before pausing to ask how to proceed.
+Convergence is unchanged (a pass with no *substantive* structural / mechanical /
+architectural findings — polish-only converges); the higher cap simply gives the
+loop headroom to settle on this project's specs rather than hitting the ceiling
+mid-refinement. (User directive 2026-07-11.)
+
 ## Tech stack
 
 Chosen in Phase A (see [`docs/discovery.md`](docs/discovery.md)
