@@ -21,6 +21,7 @@ from decimal import Decimal
 from typing import cast
 
 from PySide6.QtCore import QLocale, QPoint, Qt, Signal
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QHeaderView,
@@ -37,7 +38,11 @@ from PySide6.QtWidgets import (
 from finbreak.datetime_format import format_date
 from finbreak.errors import VaultLockedError
 from finbreak.models import Transaction
-from finbreak.services.auth import DATETIME_SYSTEM, DateTimePrefs
+from finbreak.services.auth import (
+    DATETIME_SYSTEM,
+    AmountPrefs,
+    DateTimePrefs,
+)
 from finbreak.services.categorization import CategorizationService
 from finbreak.services.transactions import TransactionService
 from finbreak.ui.category_picker import CategoryPickerDialog
@@ -51,6 +56,12 @@ _COL_DESCRIPTION = 2
 _COL_ACCOUNT = 3
 _COL_CATEGORY = 4
 
+# Direction tints for the Amount column when colour is on (FIBR-0105 D3). Fixed
+# mid-tones chosen to read on the dark-default theme (ADR-0002) and stay legible
+# on light; palette-adaptive re-tinting is FIBR-0014.
+_NEGATIVE_TEXT = QColor(224, 108, 117)  # soft red — money out
+_POSITIVE_TEXT = QColor(152, 195, 121)  # soft green — money in
+
 
 class HomeView(QWidget):
     add_account_requested = Signal()
@@ -62,6 +73,7 @@ class HomeView(QWidget):
         transactions: TransactionService,
         categorization: CategorizationService,
         prefs: DateTimePrefs | None = None,
+        amount_prefs: AmountPrefs | None = None,
         parent: QWidget | None = None,
     ):
         super().__init__(parent)
@@ -72,6 +84,9 @@ class HomeView(QWidget):
         self._prefs = prefs or DateTimePrefs(
             DATETIME_SYSTEM, DATETIME_SYSTEM, DATETIME_SYSTEM
         )
+        # Display-only amount formatting input (FIBR-0105); absent -> the
+        # friendly default (minus + colour on). The shell passes the vault's prefs.
+        self._amount_prefs = amount_prefs or AmountPrefs("minus", True)
         self._count = 0
         # The rendered rows, parallel to the table rows (the row -> transaction map
         # is the table's row order, same order as list_transactions).
@@ -157,9 +172,19 @@ class HomeView(QWidget):
                     format_date(transaction.occurred_on, self._prefs.date_format)
                 ),
             )
-            self._table.setItem(
-                row, _COL_AMOUNT, QTableWidgetItem(_format_amount(display, symbol))
+            amount_item = QTableWidgetItem(
+                _format_amount(display, symbol, self._amount_prefs.negative_style)
             )
+            # Colour marks direction only when the pref is on; a fresh item per
+            # render means a colour-off pass leaves no stale foreground (INV-4).
+            # Zero is left at the default colour (and can't occur via the service,
+            # which rejects zero amounts — this is the defensive branch).
+            if self._amount_prefs.colour:
+                if display < 0:
+                    amount_item.setForeground(_NEGATIVE_TEXT)
+                elif display > 0:
+                    amount_item.setForeground(_POSITIVE_TEXT)
+            self._table.setItem(row, _COL_AMOUNT, amount_item)
             self._table.setItem(
                 row, _COL_DESCRIPTION, QTableWidgetItem(transaction.description)
             )
@@ -228,6 +253,11 @@ class HomeView(QWidget):
         self._prefs = prefs
         self.refresh()
 
+    def set_amount_prefs(self, prefs: AmountPrefs) -> None:
+        """Adopt new amount-display prefs and re-render (FIBR-0105 D1)."""
+        self._amount_prefs = prefs
+        self.refresh()
+
     # --- test / shell accessors -------------------------------------------- #
     def _selected_txn(self) -> Transaction | None:
         rows = {i.row() for i in self._table.selectedItems()}
@@ -242,12 +272,21 @@ class HomeView(QWidget):
                 return
 
 
-def _format_amount(display: Decimal, symbol: str) -> str:
+def _format_amount(display: Decimal, symbol: str, negative_style: str = "minus") -> str:
     # Currency → QLocale.toCurrencyString with the base-currency symbol, so the
     # amount carries its currency and isn't reformatted to the locale's own
     # (coding.md § 5.2). A stored amount reconstructs to a finite Decimal, so its
     # exponent is an int. toCurrencyString has no Decimal overload, so the float()
     # is a DISPLAY-ONLY, bounded conversion — storage/computation stay exact
     # Decimal (D1); only the on-screen string crosses to float.
+    #
+    # Both styles format the MAGNITUDE via QLocale (grouping / decimal separator /
+    # symbol placement stay locale-correct), then the sign notation is applied
+    # EXPLICITLY for a negative (FIBR-0105 D2) — NOT delegated to QLocale's
+    # negative-currency pattern, which is parentheses only on some locales and a
+    # minus sign on the C locale + others, making "brackets" non-deterministic.
     decimals = max(0, -cast(int, display.as_tuple().exponent))
-    return QLocale().toCurrencyString(float(display), symbol, decimals)
+    magnitude = QLocale().toCurrencyString(float(abs(display)), symbol, decimals)
+    if display < 0:
+        return f"({magnitude})" if negative_style == "brackets" else f"-{magnitude}"
+    return magnitude

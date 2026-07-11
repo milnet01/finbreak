@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 import shiboken6
-from PySide6.QtCore import QThread
+from PySide6.QtCore import QLocale, Qt, QThread
 from PySide6.QtGui import QAction, QDesktopServices
 from PySide6.QtWidgets import (
     QApplication,
@@ -26,14 +26,22 @@ from PySide6.QtWidgets import (
 from conftest import _PW, _pump_deferred_delete
 from finbreak.errors import VaultStateError
 from finbreak.migrations import DEFAULT_ACCOUNT_NAME
+from finbreak.models import Transaction
 from finbreak.repositories.accounts import AccountRepository
-from finbreak.services.auth import AuthService
+from finbreak.services.auth import AmountPrefs, AuthService
 from finbreak.services.categorization import CategorizationService
 from finbreak.services.transactions import TransactionService
 from finbreak.ui import main_window
 from finbreak.ui._worker import DeriveWorker
 from finbreak.ui.first_run import FirstRunDialog
-from finbreak.ui.home import HomeView, _format_amount
+from finbreak.ui.home import (
+    _COL_AMOUNT,
+    _COL_DATE,
+    _NEGATIVE_TEXT,
+    _POSITIVE_TEXT,
+    HomeView,
+    _format_amount,
+)
 from finbreak.ui.main_window import MainWindow
 from finbreak.ui.manual_entry import ManualEntryDialog
 from finbreak.ui.unlock import UnlockDialog
@@ -510,6 +518,118 @@ def test_INV10_format_amount_localised(qtbot):
         assert "12.34" in rendered, "the amount renders via QLocale with 2 decimals"
     finally:
         QLocale.setDefault(previous)
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0105 — amount display: negative sign style (INV-3) + colour (INV-4/1)
+# --------------------------------------------------------------------------- #
+def test_FIBR0105_format_amount_sign_styles_are_locale_independent(qtbot):
+    # Hermetic under any locale (incl. the CI C locale): the sign notation is
+    # built by the formatter, not delegated to QLocale's negative pattern (INV-3).
+    previous = QLocale()
+    QLocale.setDefault(QLocale.c())
+    try:
+        minus = _format_amount(Decimal("-25000"), "ZAR", "minus")
+        assert minus.startswith("-") and "(" not in minus and ")" not in minus
+
+        brackets = _format_amount(Decimal("-25000"), "ZAR", "brackets")
+        assert "(" in brackets and ")" in brackets and not brackets.startswith("-")
+
+        # Positives and zero (incl. -0.00, which is not < 0) are bare under both.
+        for style in ("minus", "brackets"):
+            for value in (Decimal("69"), Decimal("0.00"), Decimal("-0.00")):
+                bare = _format_amount(value, "ZAR", style)
+                assert not bare.startswith("-")
+                assert "(" not in bare and ")" not in bare
+    finally:
+        QLocale.setDefault(previous)
+
+
+def test_FIBR0105_format_amount_defaults_to_minus(qtbot):
+    # The 2-arg default keeps the existing caller valid AND is the minus style.
+    previous = QLocale()
+    QLocale.setDefault(QLocale.c())
+    try:
+        assert _format_amount(Decimal("-5"), "ZAR").startswith("-")
+    finally:
+        QLocale.setDefault(previous)
+
+
+def _stub_home(service, monkeypatch, displays, amount_prefs):
+    """A HomeView over controlled display Decimals — the only way to render a
+    zero-amount row (the service rejects zero amounts), so all three colour
+    branches (neg/pos/zero) are exercised deterministically (INV-4)."""
+    txn = TransactionService(service.vault)
+    rows = [
+        (
+            Transaction(
+                i + 1, 1, "2026-07-01", 0, f"row{i}", "2026-07-01T00:00:00", None, None
+            ),
+            display,
+            "Account",
+            "",
+        )
+        for i, display in enumerate(displays)
+    ]
+    monkeypatch.setattr(txn, "list_transactions", lambda: rows)
+    monkeypatch.setattr(txn, "base_currency", lambda: "ZAR")
+    home = HomeView(
+        txn, CategorizationService(service.vault), amount_prefs=amount_prefs
+    )
+    return home
+
+
+def test_FIBR0105_amount_colour_marks_direction_when_on(qtbot, service, monkeypatch):
+    service.first_run(bytearray(_PW), "ZAR")
+    home = _stub_home(
+        service,
+        monkeypatch,
+        [Decimal("-25000.00"), Decimal("100.00"), Decimal("0.00")],
+        AmountPrefs("minus", True),
+    )
+    qtbot.addWidget(home)
+    table = home._table
+
+    # negative -> red, positive -> green (unwrap the QBrush to its QColor).
+    assert table.item(0, _COL_AMOUNT).foreground().color() == _NEGATIVE_TEXT
+    assert table.item(1, _COL_AMOUNT).foreground().color() == _POSITIVE_TEXT
+    # zero -> no per-cell foreground override.
+    assert table.item(2, _COL_AMOUNT).data(Qt.ItemDataRole.ForegroundRole) is None
+    # Amount cell only: the negative row's Date cell stays default even with colour on.
+    assert table.item(0, _COL_DATE).data(Qt.ItemDataRole.ForegroundRole) is None
+
+
+def test_FIBR0105_amount_colour_off_sets_no_foreground(qtbot, service, monkeypatch):
+    service.first_run(bytearray(_PW), "ZAR")
+    home = _stub_home(
+        service,
+        monkeypatch,
+        [Decimal("-25000.00"), Decimal("100.00")],
+        AmountPrefs("minus", True),
+    )
+    qtbot.addWidget(home)
+    table = home._table
+    assert table.item(0, _COL_AMOUNT).foreground().color() == _NEGATIVE_TEXT
+
+    # Toggle colour OFF + re-render: a fresh item per row leaves no stale colour.
+    home.set_amount_prefs(AmountPrefs("minus", False))
+    assert table.item(0, _COL_AMOUNT).data(Qt.ItemDataRole.ForegroundRole) is None
+    assert table.item(1, _COL_AMOUNT).data(Qt.ItemDataRole.ForegroundRole) is None
+
+
+def test_FIBR0105_display_does_not_mutate_stored_amount(qtbot, service):
+    # INV-1: sign/colour are display-only; the stored amount is untouched.
+    service.first_run(bytearray(_PW), "ZAR")
+    txn = TransactionService(service.vault)
+    txn.add_transaction(_default_id(service), "2026-07-01", "-25000.00", "rent")
+    home = HomeView(
+        txn,
+        CategorizationService(service.vault),
+        amount_prefs=AmountPrefs("brackets", True),
+    )
+    qtbot.addWidget(home)
+    (_, display, _, _) = txn.list_transactions()[0]
+    assert display == Decimal("-25000.00")
 
 
 # --------------------------------------------------------------------------- #
