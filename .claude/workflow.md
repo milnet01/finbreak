@@ -32,7 +32,11 @@ becomes active.
 8. ⬜ Update CHANGELOG / ROADMAP / journal
 9. ⬜ Commit, tag `FIBR-0054-complete`, push
 
-*(Awaiting the user's live self-update test `0.1.0`→`0.1.1` before `/close-phase`; the feature is code-complete and released regardless.)*
+*(Awaiting the user's live self-update test before `/close-phase`; the feature is
+code-complete and released regardless. **Update-test target is now `0.1.2`→`0.1.3`**
+— `v0.1.3` published 2026-07-11 carrying the new **FIBR-0083** feature, the release
+the user's installed build self-updates to. `.sig` verified against the committed
+public key before publish.)*
 
 ### FIBR-0009 close record (P07, closed 2026-07-04)
 
@@ -104,6 +108,51 @@ journal); §2 is the only part that changes.
 ## §3. Session journal
 
 Append-only. Newest at the top.
+
+### 2026-07-11 — FIBR-0083 SHIPPED (timezone + date/time format) + v0.1.3 released
+
+Built **FIBR-0083** (user-configurable timezone + date/time display format) end-to-end
+**test-first**, then cut **v0.1.3** — the release the user's installed build
+self-updates to (the culminating step of the FIBR-0054 dogfood plan: build an extra
+feature → publish → live update test → close FIBR-0054).
+
+Spec was `/cold-eyes`-converged at loop 8 (project `--max-loops 7` + 1 user-chosen
+confirming loop) the prior session. TDD in **4 red→green slices**, each committed +
+pushed gate-green:
+- **Slice 1** — `src/finbreak/datetime_format.py` (pure, Qt-core only): `format_date`
+  (reformat, no tz shift, INV-2) / `format_timestamp` (UTC→zone then format the date +
+  time halves independently, INV-3/D5) / `DATE_PRESETS`+`TIME_PRESETS` / the `"system"`
+  sentinel + INV-6 fallbacks. 16 hermetic tests (`"system"` legs by delegation to
+  `QLocale.system()`/`systemTimeZoneId()` so no locale/CI flake; token legs fixed — Qt
+  renders MMM/AP names in English regardless of locale, verified).
+- **Slice 2** — `DateTimePrefs` (frozen dataclass) + `AuthService.datetime_prefs()`/
+  `set_datetime_prefs()` over the vault `settings` table (no schema change), mirroring
+  auto-lock. 5 round-trip tests in the settings suite.
+- **Slice 3** — the Settings + first-run combos, built by one shared
+  `ui/_datetime_prefs.py` (`populate_datetime_combos` + `read_datetime_prefs` with the
+  editable-timezone free-text recovery, D3/D4). Settings persists under the same
+  `VaultLockedError` guard as auto-lock; first-run persists at its post-create
+  `_on_derived` site (D6, INV-8 via a synchronous `DeriveWorker` stand-in). New
+  `tests/features/first_run/` + 5 settings-combo legs; narrowed one FIBR-0055
+  no-QLineEdit assertion (the editable tz combo legitimately adds a search box).
+- **Slice 4** — display wiring: `StatementsWidget` Period/Imported + `HomeView` Date
+  render through the formatter under a held `DateTimePrefs` (param before `parent`,
+  defaulted all-`"system"` so ~12 direct-construction tests are untouched); shell reads
+  prefs once post-unlock, passes to both tabs, and pushes new prefs live on Settings
+  Save (D7). New `tests/features/datetime_display/` (D5/D6/D7 + INV-1 no-mutation).
+  Docs (Deliverable 9): ROADMAP **FIBR-0048 + FIBR-0083 → ✅** (0048 subsumed);
+  FIBR-0014 date-format TODO comments repointed here; CHANGELOG Added; spec → SHIPPED.
+
+Full gate green throughout (final **576 passed / 1 skipped**), mypy 0 across 61 files,
+ruff/format clean. Then **v0.1.3**: bumped version (pyproject/`__version__`/smoke/README),
+rolled CHANGELOG `[Unreleased]`→`[0.1.3]`, built + clean-room-proved + signed the
+AppImage via `build-release-appimage.sh`, **verified the `.sig` against the committed
+`RELEASE_PUBLIC_KEY_B64`** before publishing, `gh release create v0.1.3` (non-prerelease,
+both assets — `/releases/latest` resolves to it). Commits through `2af2812`, pushed.
+
+**Next: the user runs the live self-update `0.1.2`→`0.1.3` in their installed AppImage;
+on success, `/close-phase` FIBR-0054** (steps 5–9: `/audit` + `/indie-review` → fold →
+tag `FIBR-0054-complete`).
 
 ### 2026-07-10 — FIBR-0054 opened: brainstormed + spec drafted + `/cold-eyes` CONVERGED (5 loops)
 
