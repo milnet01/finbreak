@@ -21,6 +21,8 @@ signaling per
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-07-11
+
 ### Fixed
 
 - **The app now reopens itself after installing an update.** (FIBR-0054)
