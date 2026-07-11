@@ -49,7 +49,7 @@ class UpdateInfo:
     version: str
     appimage_url: str
     sig_url: str
-    notes_url: str
+    notes: str  # the release body (markdown), shown inline in the update prompt
 
 
 # --------------------------------------------------------------------------- #
@@ -207,7 +207,7 @@ class UpdateService:
                 version=version,
                 appimage_url=appimage_url,
                 sig_url=sig_url,
-                notes_url=release.get("html_url") or "",
+                notes=release.get("body") or "",
             )
         except Exception as exc:  # DNS/HTTP/JSON/anything — stay silent + safe
             log.debug("update check failed: %r", exc)

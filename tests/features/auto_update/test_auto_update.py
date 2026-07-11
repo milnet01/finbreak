@@ -63,6 +63,7 @@ def _release(tag: str) -> dict:
     return {
         "tag_name": tag,
         "html_url": f"https://github.com/milnet01/finbreak/releases/tag/{tag}",
+        "body": f"### Fixed\n- release notes for {tag}",
         "assets": [
             {"name": app, "browser_download_url": f"https://dl/{app}"},
             {"name": app + ".sig", "browser_download_url": f"https://dl/{app}.sig"},
@@ -482,7 +483,7 @@ def test_INV3_newer_release_is_offered(tmp_path):
     assert info.version == "0.1.1"  # leading v stripped
     assert info.appimage_url == "https://dl/finbreak-0.1.1-x86_64.AppImage"
     assert info.sig_url == "https://dl/finbreak-0.1.1-x86_64.AppImage.sig"
-    assert info.notes_url.endswith("/releases/tag/v0.1.1")
+    assert info.notes == "### Fixed\n- release notes for v0.1.1"  # the release body
 
 
 def test_INV3_equal_and_older_are_not_offered(tmp_path):
@@ -545,7 +546,7 @@ def test_INV4_good_signature_returns_verified_path(monkeypatch, tmp_path):
         version="0.1.1",
         appimage_url="https://dl/finbreak-0.1.1-x86_64.AppImage",
         sig_url="https://dl/finbreak-0.1.1-x86_64.AppImage.sig",
-        notes_url="https://x",
+        notes="notes",
     )
     verified = svc.download_and_verify(update_info)
     assert verified.read_bytes() == blob
@@ -565,7 +566,7 @@ def _dv_service(monkeypatch, tmp_path, blob, sig):
         version="0.1.1",
         appimage_url="https://dl/app",
         sig_url="https://dl/sig",
-        notes_url="https://x",
+        notes="notes",
     )
     return svc, info
 
@@ -606,7 +607,7 @@ def test_INV9_update_dialog_never_uses_exec():
 def _prompt(qtbot):
     from finbreak.ui.update_dialog import UpdateDialog
 
-    dialog = UpdateDialog("0.1.0", "0.1.1", "https://notes", None)
+    dialog = UpdateDialog("0.1.0", "0.1.1", "notes", None)
     qtbot.addWidget(dialog)
     return dialog
 
@@ -621,6 +622,35 @@ def test_prompt_skip_emits(qtbot):
     dialog = _prompt(qtbot)
     with qtbot.waitSignal(dialog.skip, timeout=1000):
         dialog._on_skip()
+
+
+def test_prompt_shows_release_notes_inline(qtbot):
+    from PySide6.QtWidgets import QPushButton, QTextBrowser
+
+    from finbreak.ui.update_dialog import UpdateDialog
+
+    dialog = UpdateDialog("0.1.4", "0.1.5", "### Fixed\n- Reopens itself now", None)
+    qtbot.addWidget(dialog)
+
+    notes = dialog.findChild(QTextBrowser, "update_notes")
+    assert notes is not None
+    assert "Reopens itself now" in notes.toPlainText()  # the body is shown inline
+    assert not notes.isHidden()
+    assert notes.openExternalLinks() is False  # read-only, no egress on a link click
+    # the old "What's new" browser button is gone
+    assert all(b.text() != "What's new" for b in dialog.findChildren(QPushButton))
+
+
+def test_prompt_hides_notes_when_body_empty(qtbot):
+    from PySide6.QtWidgets import QTextBrowser
+
+    from finbreak.ui.update_dialog import UpdateDialog
+
+    dialog = UpdateDialog("0.1.4", "0.1.5", "   ", None)  # blank/whitespace body
+    qtbot.addWidget(dialog)
+
+    notes = dialog.findChild(QTextBrowser, "update_notes")
+    assert notes is None or notes.isHidden()  # no empty panel
 
 
 def test_INV9_prompt_update_now_emits_and_stays_open_busy(qtbot):
@@ -795,7 +825,7 @@ def _sample_info():
         version="0.1.1",
         appimage_url="https://dl/app",
         sig_url="https://dl/sig",
-        notes_url="https://notes",
+        notes="notes",
     )
 
 

@@ -21,6 +21,15 @@ signaling per
 
 ## [Unreleased]
 
+### Changed
+
+- **The update prompt now shows "what's new" inline.** (FIBR-0054)
+  The "a new version is available" box now shows the release notes right
+  there in the window (a short, scrollable panel), instead of a "What's new"
+  button that opened the release page in your browser. No extra internet
+  access — the notes already come with the update information finbreak
+  downloads.
+
 ## [0.1.4] - 2026-07-11
 
 ### Fixed

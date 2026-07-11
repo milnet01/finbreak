@@ -2,14 +2,15 @@
 
 A non-blocking dialog (opened by the shell's tracked ``_open_dialog`` path, never
 ``exec()`` — INV-9) offering **Later** / **Skip this version** / **Update now**,
-plus a "What's new" link to the release notes (routed through the shell's
-``_open_url``). On **Update now** it disables the buttons and **stays open** in an
-indeterminate "Downloading…" busy state — it does not ``accept()``/``reject()``
-until the install relaunches the app or the shell surfaces an error and tears it
-down. Its three custom signals + stay-open lifecycle are why it can't use the
-vanilla ``show_modal`` single-accept contract (D15). All visible strings are
-``tr()`` literals; version numbers ride in via ``str.format`` on a literal
-template so lupdate still extracts it (INV-13).
+with the release notes ("What's new") shown **inline** in a compact read-only
+panel (no browser round-trip). On **Update now** it disables the buttons and
+**stays open** in an indeterminate "Downloading…" busy state — it does not
+``accept()``/``reject()`` until the install relaunches the app or the shell
+surfaces an error and tears it down. Its three custom signals + stay-open
+lifecycle are why it can't use the vanilla ``show_modal`` single-accept contract
+(D15). All fixed strings are ``tr()`` literals; version numbers ride in via
+``str.format`` on a literal template so lupdate still extracts it (INV-13). The
+release notes are release data, shown verbatim — never ``tr()``-wrapped.
 """
 
 from __future__ import annotations
@@ -18,10 +19,10 @@ from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
-    QHBoxLayout,
     QLabel,
     QProgressBar,
     QPushButton,
+    QTextBrowser,
     QVBoxLayout,
     QWidget,
 )
@@ -31,17 +32,15 @@ class UpdateDialog(QDialog):
     later = Signal()
     skip = Signal()
     update_now = Signal()
-    notes_requested = Signal()
 
     def __init__(
         self,
         current: str,
         available: str,
-        notes_url: str,
+        notes: str,
         parent: QWidget | None = None,
     ):
         super().__init__(parent)
-        self._notes_url = notes_url
         self.setWindowTitle(self.tr("Update available"))
 
         heading = QLabel(self.tr("A new version of finbreak is available."))
@@ -55,9 +54,23 @@ class UpdateDialog(QDialog):
         )
         versions.setObjectName("update_versions")
 
-        self._notes_button = QPushButton(self.tr("What's new"))
-        self._notes_button.setObjectName("update_notes")
-        self._notes_button.clicked.connect(lambda *_: self.notes_requested.emit())
+        # "What's new" — the release notes shown inline in a compact, read-only,
+        # scrollable panel (markdown rendered). Hidden entirely when a release
+        # ships no notes. Link-opening is OFF so a note that contains a URL can
+        # never trigger a navigation/egress on click (offline posture, INV-12).
+        self._notes_label = QLabel(self.tr("What's new"))
+        self._notes_label.setObjectName("update_notes_label")
+        self._notes = QTextBrowser()
+        self._notes.setObjectName("update_notes")
+        self._notes.setOpenExternalLinks(False)
+        self._notes.setOpenLinks(False)
+        self._notes.setMaximumHeight(120)  # compact; scrolls if notes are long
+        body = notes.strip()
+        if body:
+            self._notes.setMarkdown(body)
+        else:
+            self._notes_label.setVisible(False)
+            self._notes.setVisible(False)
 
         # Indeterminate busy indicator — hidden until Update now (D2: no byte
         # percentage, the asset is one small file).
@@ -85,14 +98,11 @@ class UpdateDialog(QDialog):
         buttons.addButton(self._skip_button, QDialogButtonBox.ButtonRole.ActionRole)
         buttons.addButton(self._update_button, QDialogButtonBox.ButtonRole.AcceptRole)
 
-        notes_row = QHBoxLayout()
-        notes_row.addWidget(self._notes_button)
-        notes_row.addStretch()
-
         layout = QVBoxLayout(self)
         layout.addWidget(heading)
         layout.addWidget(versions)
-        layout.addLayout(notes_row)
+        layout.addWidget(self._notes_label)
+        layout.addWidget(self._notes)
         layout.addWidget(self._busy_label)
         layout.addWidget(self._busy)
         layout.addWidget(buttons)

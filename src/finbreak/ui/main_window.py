@@ -634,11 +634,10 @@ class MainWindow(QMainWindow):
             return
         self._pending_update = None  # shown at most once per launch (D15)
         self._offered_update = info
-        dialog = UpdateDialog(__version__, info.version, info.notes_url, self)
+        dialog = UpdateDialog(__version__, info.version, info.notes, self)
         dialog.later.connect(self._on_update_later)
         dialog.skip.connect(self._on_update_skip)
         dialog.update_now.connect(self._on_update_now)
-        dialog.notes_requested.connect(self._on_update_notes)
         self._open_dialog(dialog, defer=False)
 
     def _check_for_updates_now(self) -> None:
@@ -690,12 +689,6 @@ class MainWindow(QMainWindow):
         if self._offered_update is not None:
             self._update_service.skip_version(self._offered_update.version)  # INV-8
         self._teardown_dialog()
-
-    def _on_update_notes(self) -> None:
-        # The "What's new" link — hand the release-notes page to the OS browser
-        # (a user-initiated egress, not an app socket), reusing _open_url.
-        if self._offered_update is not None:
-            self._open_url(self._offered_update.notes_url)
 
     def _on_update_now(self) -> None:
         info = self._offered_update
@@ -776,8 +769,8 @@ class MainWindow(QMainWindow):
         self._status(self.tr("Statement account changed"))
 
     def _open_url(self, url: str) -> None:
-        # Hands a page (a funding link, or the update "What's new" notes) to the
-        # OS browser — a user-initiated egress, not an app network call. The app's
+        # Hands a page (a funding link) to the OS browser — a user-initiated
+        # egress, not an app network call. The app's
         # ONE app-made call is the opt-in update check (FIBR-0054), confined to
         # services/update_fetch.py; opening the browser here is not that.
         QDesktopServices.openUrl(QUrl(url))
