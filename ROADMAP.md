@@ -990,6 +990,24 @@ because retrofitting them is a data migration.
   Source: user-request-2026-07-11 (dogfooding v0.1.4: "why are some values in brackets?" → make it a Settings choice).
   Resolved (2026-07-11): TDD-built in 4 slices — AmountPrefs + AuthService.amount_prefs/set_amount_prefs (INV-2/5); _format_amount explicit sign (- / ()) locale-independent + _NEGATIVE_TEXT/_POSITIVE_TEXT colour in HomeView (INV-1/3/4); Settings combo + colour checkbox and first-run mirror (INV-6/7); shell reads/passes/re-pushes on Save. 19 new tests; full gate green (598 passed). Lands on main; publishes in v0.1.5 (bundled with the inline update notes).
 
+- 🚧 [FIBR-0106] **Credit-card (Family C) import: opening balance mis-read from a prose "brought forward" decoy line.**
+  Root-caused (verified against a real SBSA CC statement, synthetic fixture to
+  follow — real file/password never committed). `_cc_opening` (standard_bank.py
+  :812) returns the LAST money token on the FIRST line containing "balance
+  brought forward". A credit-in-hand statement prints a prose summary line
+  "...has a credit balance. Balance brought forward on this statement -251.85"
+  BEFORE the real opening line "21 Jul 25 Balance Brought Forward 6,849.68", so
+  it grabs -251.85 (which is actually the CLOSING balance carried to the next
+  statement). Checksum then fails: reconciled = opening - Σ = -251.85 - 7101.53
+  vs closing -251.85. With the correct opening 6,849.68 it reconciles exactly
+  (6849.68 - 7101.53 = -251.85 = closing). Fix: anchor the match so the phrase
+  is at line start (optionally after a `DD Mon YY` date) with the amount
+  immediately after — the prose sentence won't match. TDD with a synthetic
+  fixture carrying the decoy line + a real opening + a reconciling body.
+  **Layman:** A real Standard Bank credit-card statement refused to import ("didn't add up") because the importer read the wrong opening balance.
+  Kind: fix.
+  Source: dogfooding-2026-07-11.
+
 ### ⚡ Performance
 
 - 📋 [FIBR-0025] **Enable SQLite WAL mode.** Set
