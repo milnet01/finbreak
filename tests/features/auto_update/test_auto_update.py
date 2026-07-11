@@ -308,10 +308,26 @@ class _FakeHTTPResponse:
 
 
 def _fake_urlopen(payload: bytes):
-    def opener(request, timeout=None):
+    def opener(request, timeout=None, context=None):
         return _FakeHTTPResponse(payload)
 
     return opener
+
+
+def test_ssl_context_uses_bundled_ca_regardless_of_system_paths(monkeypatch):
+    """The frozen AppImage must verify TLS on ANY distro: the SSL context loads
+    CAs from the BUNDLED certifi set, not the host's (possibly absent or
+    differently-placed) store. Regression for the v0.1.0 no-update-prompt bug —
+    the AppImage was frozen on Debian, whose OpenSSL cert path openSUSE lacks, so
+    the HTTPS check failed cert verification and INV-11 silently swallowed it."""
+    import ssl as _ssl
+
+    monkeypatch.setenv("SSL_CERT_FILE", "/nonexistent/nope.pem")
+    monkeypatch.setenv("SSL_CERT_DIR", "/nonexistent")
+    ctx = update_fetch._ssl_context()
+    assert isinstance(ctx, _ssl.SSLContext)
+    # CAs are loaded despite the broken system paths (they came from certifi).
+    assert ctx.cert_store_stats()["x509"] > 0
 
 
 def test_download_writes_bytes_under_cap(monkeypatch, tmp_path):

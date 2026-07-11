@@ -101,6 +101,7 @@ pyinstaller --onefile --name "$ONEFILE" \
     --collect-all pypdfium2_raw \
     --collect-all PIL \
     --collect-all cryptography \
+    --collect-all certifi \
     --distpath /out --workpath /tmp/build --specpath /tmp \
     /src/src/finbreak/__main__.py
 

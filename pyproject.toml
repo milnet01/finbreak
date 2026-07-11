@@ -51,6 +51,14 @@ dependencies = [
     # drops pdfminer.six can't silently remove our signature gate (dependencies.md;
     # cryptography is NOT a network package, so test_INV8 runtime-deps is unaffected).
     "cryptography==49.0.0",
+    # Bundled CA certificate set for the update check's HTTPS (FIBR-0054). The
+    # frozen AppImage runs on any distro whose system CA store may sit at a path
+    # the frozen OpenSSL wasn't built for (the v0.1.0 no-prompt bug: built on
+    # Debian, run on openSUSE); update_fetch._ssl_context verifies against THIS
+    # bundle instead, so TLS works host-layout-independently. Collected into the
+    # bundle via build-smoke.sh --collect-all certifi. Not a network package
+    # (just a .pem CA set), so test_INV8 runtime-deps is unaffected.
+    "certifi>=2024.2.2",
 ]
 
 # PEP 735 dev dependency group. Pinned EXACTLY (==) for a reproducible

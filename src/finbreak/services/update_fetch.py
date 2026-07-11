@@ -11,14 +11,34 @@ compare, signature verify) lives in ``update.py``; this module just moves bytes.
 
 from __future__ import annotations
 
+import functools
 import json
+import ssl
 import urllib.request
 from pathlib import Path
+
+import certifi
 
 _API_URL_TEMPLATE = "https://api.github.com/repos/{owner}/{repo}/releases/latest"
 _USER_AGENT = "finbreak-updater"
 _ACCEPT_GITHUB_JSON = "application/vnd.github+json"
 _DOWNLOAD_CHUNK_BYTES = 64 * 1024
+
+
+@functools.lru_cache(maxsize=1)
+def _ssl_context() -> ssl.SSLContext:
+    """A TLS context that verifies against the **bundled** certifi CA set rather
+    than the host's system store.
+
+    The frozen AppImage runs on any Linux distro, whose CA bundle may sit at a
+    path the frozen OpenSSL was not built for — the v0.1.0 no-update-prompt bug:
+    built on Debian (certs at ``/usr/lib/ssl/…``), run on openSUSE (certs at
+    ``/var/lib/ca-certificates/…``), so the default context found no CAs, the
+    HTTPS check raised ``SSLCertVerificationError``, and INV-11 swallowed it
+    silently. Shipping our own CA set (certifi) makes verification independent of
+    the host's cert layout, so the check works on every distro.
+    """
+    return ssl.create_default_context(cafile=certifi.where())
 
 
 def _require_https(url: str) -> None:
@@ -42,7 +62,9 @@ def fetch_latest_release(
     request = urllib.request.Request(
         url, headers={"User-Agent": _USER_AGENT, "Accept": _ACCEPT_GITHUB_JSON}
     )
-    with urllib.request.urlopen(request, timeout=timeout) as response:  # nosec B310
+    with urllib.request.urlopen(  # nosec B310
+        request, timeout=timeout, context=_ssl_context()
+    ) as response:
         raw = response.read(max_bytes + 1)
     if len(raw) > max_bytes:
         raise ValueError("release API response exceeds the size cap")
@@ -58,7 +80,9 @@ def download(url: str, dest: Path, *, max_bytes: int, timeout: float) -> None:
     total = 0
     try:
         with (
-            urllib.request.urlopen(request, timeout=timeout) as response,  # nosec B310
+            urllib.request.urlopen(  # nosec B310
+                request, timeout=timeout, context=_ssl_context()
+            ) as response,
             open(dest, "wb") as handle,
         ):
             while True:
