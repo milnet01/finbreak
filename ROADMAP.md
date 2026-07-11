@@ -977,6 +977,18 @@ because retrofitting them is a data migration.
   Kind: ux.
   Source: claude-suggestion-2026-07-11.
 
+- 🚧 [FIBR-0105] **User-configurable amount display: negative sign style + colour (Settings).**
+  Two independent prefs persisted in the vault settings (mirrors FIBR-0083
+  DateTimePrefs / FIBR-0055 auto-lock): (1) negative-amount style — "minus"
+  (−ZAR25,000.00) vs "brackets" ((ZAR25,000.00), today's QLocale default); (2)
+  colour amounts on/off — money-out red, money-in green. Settings + first-run
+  controls; applied at the Home transactions table's Amount column (the only
+  amount display today). Default: minus + colour ON. Display-only (never mutates
+  stored data). Ships in v0.1.5 alongside the inline update notes.
+  **Layman:** Let a person choose how money amounts look — negatives as a minus sign (−R25) or in brackets (R25), and turn on/off colouring money-out red and money-in green — so the transaction list reads the way they prefer.
+  Kind: feature.
+  Source: user-request-2026-07-11 (dogfooding v0.1.4: "why are some values in brackets?" → make it a Settings choice).
+
 ### ⚡ Performance
 
 - 📋 [FIBR-0025] **Enable SQLite WAL mode.** Set
