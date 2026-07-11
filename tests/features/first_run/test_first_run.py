@@ -7,10 +7,10 @@ QThread event-loop wait is skipped). Vault under ``tmp_path``; no network.
 
 import pytest
 from PySide6.QtCore import QThread
-from PySide6.QtWidgets import QComboBox
+from PySide6.QtWidgets import QCheckBox, QComboBox
 
 from conftest import _PW
-from finbreak.services.auth import AuthService, DateTimePrefs
+from finbreak.services.auth import AmountPrefs, AuthService, DateTimePrefs
 from finbreak.ui._worker import DeriveWorker
 from finbreak.ui.first_run import FirstRunDialog
 
@@ -83,3 +83,50 @@ def test_first_run_cancel_never_persists(qtbot, service, monkeypatch):
     qtbot.addWidget(dialog)
     dialog.reject()  # cancel with no derivation in flight -> no vault, no persist
     assert calls == [], "a cancelled first-run persists nothing"
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0105 — first-run amount controls (INV-7): pre-fill + persist-on-create
+# --------------------------------------------------------------------------- #
+def _amount_controls(dialog):
+    return (
+        dialog.findChild(QComboBox, "first_run_amount_negative"),
+        dialog.findChild(QCheckBox, "first_run_amount_colour"),
+    )
+
+
+def test_first_run_amount_controls_prefilled_with_defaults(qtbot, service):
+    dialog = FirstRunDialog(service)
+    qtbot.addWidget(dialog)
+    negative, colour = _amount_controls(dialog)
+    assert negative is not None and colour is not None
+    assert negative.currentData() == "minus"  # friendly default
+    assert colour.isChecked()
+
+
+def test_first_run_persists_selected_amount_prefs(qtbot, service, monkeypatch):
+    import finbreak.ui.first_run as module
+
+    monkeypatch.setattr(module, "DeriveWorker", _SyncDeriveWorker)
+    dialog = FirstRunDialog(service)
+    qtbot.addWidget(dialog)
+    negative, colour = _amount_controls(dialog)
+    negative.setCurrentIndex(negative.findData("brackets"))
+    colour.setChecked(False)
+
+    dialog._password.setText(_PW.decode())
+    dialog._confirm.setText(_PW.decode())
+    dialog._submit.click()  # synchronous stub -> _on_derived runs inline
+
+    assert service.amount_prefs() == AmountPrefs("brackets", False)
+
+
+def test_first_run_cancel_never_persists_amount(qtbot, service, monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        AuthService, "set_amount_prefs", lambda self, prefs: calls.append(prefs)
+    )
+    dialog = FirstRunDialog(service)
+    qtbot.addWidget(dialog)
+    dialog.reject()
+    assert calls == [], "a cancelled first-run persists no amount prefs"

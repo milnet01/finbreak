@@ -13,6 +13,7 @@ import shiboken6
 from PySide6.QtCore import QEvent
 from PySide6.QtWidgets import (
     QApplication,
+    QCheckBox,
     QComboBox,
     QDialogButtonBox,
     QLabel,
@@ -365,6 +366,50 @@ def test_amount_prefs_is_frozen(service):
     prefs = service.amount_prefs()
     with pytest.raises(FrozenInstanceError):
         prefs.colour = False  # type: ignore[misc]
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0105 — the Settings amount sign combo + colour checkbox (qtbot)
+# --------------------------------------------------------------------------- #
+def _amount_controls(dialog):
+    return (
+        dialog.findChild(QComboBox, "settings_amount_negative"),
+        dialog.findChild(QCheckBox, "settings_amount_colour"),
+    )
+
+
+def test_amount_controls_present_and_default(qtbot, service):
+    dialog = SettingsDialog(service, "ZAR")
+    qtbot.addWidget(dialog)
+    negative, colour = _amount_controls(dialog)
+    assert negative is not None and colour is not None
+    # Fresh vault -> the friendly default: minus preselected, colour ON.
+    assert negative.currentData() == "minus"
+    assert colour.isChecked()
+    # Both styles are offered as data-carrying items.
+    assert {negative.itemData(i) for i in range(negative.count())} == {
+        "minus",
+        "brackets",
+    }
+
+
+def test_amount_controls_preselect_current_prefs(qtbot, service):
+    service.set_amount_prefs(AmountPrefs("brackets", False))
+    dialog = SettingsDialog(service, "ZAR")
+    qtbot.addWidget(dialog)
+    negative, colour = _amount_controls(dialog)
+    assert negative.currentData() == "brackets"
+    assert not colour.isChecked()
+
+
+def test_amount_controls_persist_on_save(qtbot, service):
+    dialog = SettingsDialog(service, "ZAR")
+    qtbot.addWidget(dialog)
+    negative, colour = _amount_controls(dialog)
+    negative.setCurrentIndex(negative.findData("brackets"))
+    colour.setChecked(False)
+    dialog._on_save()
+    assert service.amount_prefs() == AmountPrefs("brackets", False)
 
 
 # --------------------------------------------------------------------------- #

@@ -17,6 +17,7 @@ from __future__ import annotations
 from PySide6.QtCore import Signal, Slot
 from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -33,6 +34,7 @@ from finbreak.models import KdfParams
 from finbreak.services.auth import (
     CURRENCY_EXPONENTS,
     DATETIME_SYSTEM,
+    AmountPrefs,
     AuthService,
     DateTimePrefs,
 )
@@ -88,6 +90,16 @@ class FirstRunDialog(QDialog):
             current=DateTimePrefs(DATETIME_SYSTEM, DATETIME_SYSTEM, DATETIME_SYSTEM),
         )
 
+        # The FIBR-0105 amount-display controls, pre-filled with the defaults (no
+        # vault to read yet — INV-7): minus + colour on. Same idiom as Settings.
+        self._amount_negative = QComboBox()
+        self._amount_negative.setObjectName("first_run_amount_negative")
+        self._amount_negative.addItem(self.tr("Minus (-)"), "minus")
+        self._amount_negative.addItem(self.tr("Brackets ( )"), "brackets")
+        self._amount_colour = QCheckBox(self.tr("Colour amounts red/green"))
+        self._amount_colour.setObjectName("first_run_amount_colour")
+        self._amount_colour.setChecked(True)
+
         self._submit = QPushButton(self.tr("Create vault"))
         self._error = QLabel()
 
@@ -98,6 +110,8 @@ class FirstRunDialog(QDialog):
         form.addRow(self.tr("Time zone"), self._timezone)
         form.addRow(self.tr("Date format"), self._date_format)
         form.addRow(self.tr("Time format"), self._time_format)
+        form.addRow(self.tr("Negative amounts"), self._amount_negative)
+        form.addRow("", self._amount_colour)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Cancel)
         self._cancel = buttons.button(QDialogButtonBox.StandardButton.Cancel)
@@ -183,6 +197,12 @@ class FirstRunDialog(QDialog):
             self._service.set_datetime_prefs(
                 read_datetime_prefs(
                     self._timezone, self._date_format, self._time_format
+                )
+            )
+            self._service.set_amount_prefs(
+                AmountPrefs(
+                    self._amount_negative.currentData(),
+                    self._amount_colour.isChecked(),
                 )
             )
         except Exception as exc:  # vault creation failed — surface, don't crash

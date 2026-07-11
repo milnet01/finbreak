@@ -27,7 +27,11 @@ from PySide6.QtWidgets import (
 
 from finbreak.datetime_format import system_timezone_id
 from finbreak.errors import VaultLockedError
-from finbreak.services.auth import ALLOWED_AUTO_LOCK_MINUTES, AuthService
+from finbreak.services.auth import (
+    ALLOWED_AUTO_LOCK_MINUTES,
+    AmountPrefs,
+    AuthService,
+)
 from finbreak.ui._datetime_prefs import (
     populate_datetime_combos,
     read_datetime_prefs,
@@ -97,6 +101,20 @@ class SettingsDialog(QDialog):
             current=service.datetime_prefs(),
         )
 
+        # The FIBR-0105 amount-display controls: a 2-item combo for the negative
+        # sign style (userData = the stored token, preselected to the current pref)
+        # and a colour checkbox. The combo labels use the ASCII hyphen-minus, the
+        # same glyph the formatter emits, so the advert matches the cell (D4).
+        amount = service.amount_prefs()
+        self._amount_negative = QComboBox()
+        self._amount_negative.setObjectName("settings_amount_negative")
+        self._amount_negative.addItem(self.tr("Minus (-)"), "minus")
+        self._amount_negative.addItem(self.tr("Brackets ( )"), "brackets")
+        select_combo_data(self._amount_negative, amount.negative_style)
+        self._amount_colour = QCheckBox(self.tr("Colour amounts red/green"))
+        self._amount_colour.setObjectName("settings_amount_colour")
+        self._amount_colour.setChecked(amount.colour)
+
         # Read-only display of the vault's base currency (a plain QLabel).
         self._currency = QLabel(base_currency)
         self._currency.setObjectName("settings_currency")
@@ -118,6 +136,8 @@ class SettingsDialog(QDialog):
         form.addRow(self.tr("Time zone"), self._timezone)
         form.addRow(self.tr("Date format"), self._date_format)
         form.addRow(self.tr("Time format"), self._time_format)
+        form.addRow(self.tr("Negative amounts"), self._amount_negative)
+        form.addRow("", self._amount_colour)
         form.addRow(self.tr("Base currency"), self._currency)
         form.addRow("", self._update_checkbox)
 
@@ -147,6 +167,12 @@ class SettingsDialog(QDialog):
             self._service.set_datetime_prefs(
                 read_datetime_prefs(
                     self._timezone, self._date_format, self._time_format
+                )
+            )
+            self._service.set_amount_prefs(
+                AmountPrefs(
+                    self._amount_negative.currentData(),
+                    self._amount_colour.isChecked(),
                 )
             )
         except VaultLockedError:
