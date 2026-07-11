@@ -45,8 +45,9 @@ class ManualEntryDialog(QDialog):
             self._account.addItem(account.name, account.id)
         self._date = QDateEdit(QDate.currentDate())
         self._date.setCalendarPopup(True)
-        # Unambiguous ISO-style YYYY/MM/DD, not the locale's ambiguous M/D/YY
-        # (a user-configurable format is a Settings-phase concern, FIBR-0014).
+        # Unambiguous ISO-style YYYY/MM/DD, not the locale's ambiguous M/D/YY.
+        # Date *input* stays fixed; the user-configurable *display* format shipped
+        # in FIBR-0083 (Settings), which owns this now (not FIBR-0014).
         self._date.setDisplayFormat("yyyy/MM/dd")
         self._amount = QLineEdit()
         self._amount.setPlaceholderText(self.tr("e.g. -12.34"))

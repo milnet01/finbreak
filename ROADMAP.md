@@ -810,11 +810,12 @@ because retrofitting them is a data migration.
   Kind: ux.
   Source: user-request-2026-07-04.
 
-- 📋 [FIBR-0048] **User-configurable date-display format (Settings).**
+- ✅ [FIBR-0048] **User-configurable date-display format (Settings).**
   Belongs with FIBR-0014 (P12 Settings). The ISO yyyy/MM/dd default already shipped; this promotes it to a user choice persisted in the vault settings.
   **Layman:** Let the user pick how dates are shown (e.g. DD/MM/YYYY, YYYY-MM-DD) instead of the fixed ISO default.
   Kind: feature.
   Source: user-request-2026-07-04.
+  Resolved (2026-07-11): subsumed by FIBR-0083, which shipped the user-configurable date-display format (plus timezone + time format) as its date half. No separate work remains.
 
 - 📋 [FIBR-0049] **First-run onboarding / empty-state guidance on the home screen.**
   The home screen opens on the manual add-transaction form with cryptic fields (Amount, Description) and no guidance, which confused a real non-technical tester. Add empty-state help + inline field hints (Amount = money in/out, negative = out; Description = what it was for).
@@ -890,11 +891,12 @@ because retrofitting them is a data migration.
   Kind: feature.
   Source: user-request-2026-07-10.
 
-- 📋 [FIBR-0083] **User-configurable timezone + date/time display format (Settings).**
+- ✅ [FIBR-0083] **User-configurable timezone + date/time display format (Settings).**
   Motivated by dogfooding v0.1.0: the Statements tab 'Imported' column shows a raw ISO UTC timestamp (e.g. 2026-07-11T06:49:15.506928+00:00). Extends FIBR-0048 (user-chosen DATE-display format) to also cover the user's TIME ZONE and TIME-of-day format, so any timestamp renders in the user's zone + preferred format. Belongs with FIBR-0014 / FIBR-0055 Settings; the prefs persist in the vault settings (like the auto-lock timeout). Render via QDateTime + QTimeZone + QLocale (coding.md 5.2), consistent with FIBR-0017 QLocale formatting. Ships together with / absorbs FIBR-0048 (date half).
   **Layman:** Let a person pick their time zone and how dates and times are shown, so timestamps (like a statement's 'Imported' time) read in their local time and chosen format instead of a raw UTC value.
   Kind: feature.
   Source: user-request-2026-07-11 (dogfooding v0.1.0).
+  Resolved (2026-07-11): shipped via TDD in 4 slices — pure datetime_format formatter (format_date/format_timestamp, presets, "system" sentinel + INV-6 fallbacks); DateTimePrefs + AuthService persistence (vault settings, no schema change); Settings + first-run combos (shared ui/_datetime_prefs.py); display wiring (Statements Period/Imported, Home Date) + live push on Settings Save. 8 cold-eyes loops on the spec; full gate green.
 
 - 📋 [FIBR-0084] **User-customisable table columns — resize, reorder, and remember per tab.**
   Motivated by dogfooding v0.1.0. Extends FIBR-0052 (which already remembers window geometry + last-active tab in the plaintext window.ini sibling) to per-table column state. Make each QTableView/QTreeView header user-resizable AND movable (QHeaderView.setSectionsMovable(True)); persist each table's full header state (column widths + order) via QHeaderView.saveState()/restoreState(), keyed per tab, in the plaintext window.ini (non-sensitive UI state, like geometry — FIBR-0052 INV-5; NOT the vault). Covers every relevant table: Statements, Home transactions, Accounts, Categories, Rules. A Reset-layout action (FIBR-0052) should also clear saved column state.

@@ -34,8 +34,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from finbreak.datetime_format import format_date
 from finbreak.errors import VaultLockedError
 from finbreak.models import Transaction
+from finbreak.services.auth import DATETIME_SYSTEM, DateTimePrefs
 from finbreak.services.categorization import CategorizationService
 from finbreak.services.transactions import TransactionService
 from finbreak.ui.category_picker import CategoryPickerDialog
@@ -59,11 +61,17 @@ class HomeView(QWidget):
         self,
         transactions: TransactionService,
         categorization: CategorizationService,
+        prefs: DateTimePrefs | None = None,
         parent: QWidget | None = None,
     ):
         super().__init__(parent)
         self._transactions = transactions
         self._categorization = categorization
+        # Display-only date formatting input (FIBR-0083 D6); absent -> the
+        # zero-config all-"system" default. The shell passes the vault's prefs.
+        self._prefs = prefs or DateTimePrefs(
+            DATETIME_SYSTEM, DATETIME_SYSTEM, DATETIME_SYSTEM
+        )
         self._count = 0
         # The rendered rows, parallel to the table rows (the row -> transaction map
         # is the table's row order, same order as list_transactions).
@@ -143,7 +151,11 @@ class HomeView(QWidget):
             self._rows
         ):
             self._table.setItem(
-                row, _COL_DATE, QTableWidgetItem(transaction.occurred_on)
+                row,
+                _COL_DATE,
+                QTableWidgetItem(
+                    format_date(transaction.occurred_on, self._prefs.date_format)
+                ),
             )
             self._table.setItem(
                 row, _COL_AMOUNT, QTableWidgetItem(_format_amount(display, symbol))
@@ -210,6 +222,11 @@ class HomeView(QWidget):
             self.refresh()  # the propagation to other auto rows is now visible
         except VaultLockedError:
             return
+
+    def set_datetime_prefs(self, prefs: DateTimePrefs) -> None:
+        """Adopt new display prefs and re-render (FIBR-0083 D7)."""
+        self._prefs = prefs
+        self.refresh()
 
     # --- test / shell accessors -------------------------------------------- #
     def _selected_txn(self) -> Transaction | None:

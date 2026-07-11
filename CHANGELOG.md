@@ -21,6 +21,16 @@ signaling per
 
 ## [Unreleased]
 
+### Added
+
+- **Choose your time zone and date/time format (Settings + first-run).** (FIBR-0083)
+  Statement timestamps (the "Imported" column) now show in your own time
+  zone instead of a raw UTC value, and you can pick how dates and times are
+  written (e.g. 2026/07/11 vs 11 July 2026, 24-hour vs 2:30 PM). Set it in
+  Settings or when first creating your vault; leave it on "System default" and
+  finbreak follows your computer's settings automatically. Changes apply
+  immediately — no restart. (Subsumes FIBR-0048.)
+
 ## [0.1.2] - 2026-07-11
 
 ### Fixed

@@ -25,10 +25,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from finbreak.datetime_format import format_date, format_timestamp
 from finbreak.errors import VaultLockedError
 from finbreak.models import StatementRow
 from finbreak.services.accounts import AccountService
-from finbreak.services.auth import AuthService
+from finbreak.services.auth import DATETIME_SYSTEM, AuthService, DateTimePrefs
 from finbreak.services.statements import StatementService
 from finbreak.ui.account_picker import AccountPickerDialog
 from finbreak.ui.modal import show_modal
@@ -47,11 +48,21 @@ class StatementsWidget(QWidget):
     # from `changed` because the shell's `changed` handler reports "Statement
     # deleted"; a move shows its own message.
 
-    def __init__(self, service: AuthService, parent: QWidget | None = None):
+    def __init__(
+        self,
+        service: AuthService,
+        prefs: DateTimePrefs | None = None,
+        parent: QWidget | None = None,
+    ):
         super().__init__(parent)
         self.setObjectName("tab_statements")
         self._statements = StatementService(service.vault)
         self._accounts = AccountService(service.vault)  # for the Change-account picker
+        # Display-only formatting input (FIBR-0083). Absent -> the zero-config
+        # all-"system" default; the shell passes the vault's stored prefs (D7).
+        self._prefs = prefs or DateTimePrefs(
+            DATETIME_SYSTEM, DATETIME_SYSTEM, DATETIME_SYSTEM
+        )
         self._rows: list[StatementRow] = []  # parallel to the table rows
 
         self.setWindowTitle(self.tr("Statements"))
@@ -97,12 +108,21 @@ class StatementsWidget(QWidget):
         self._rows = self._statements.list_statements()
         self._table.setRowCount(len(self._rows))
         for row, statement in enumerate(self._rows):
-            period = f"{statement.period_start} – {statement.period_end}"
+            # Period: reformat each calendar endpoint (no tz shift), same en-dash
+            # separator. Imported: convert the stored UTC instant into the user's
+            # zone + format (FIBR-0083 D5). Both are display-only (INV-1).
+            start = format_date(statement.period_start, self._prefs.date_format)
+            end = format_date(statement.period_end, self._prefs.date_format)
             values = {
                 _COL_ACCOUNT: statement.account_name,
-                _COL_PERIOD: period,
+                _COL_PERIOD: f"{start} – {end}",
                 _COL_FILE: statement.source_filename or "",
-                _COL_IMPORTED: statement.imported_at,
+                _COL_IMPORTED: format_timestamp(
+                    statement.imported_at,
+                    self._prefs.timezone,
+                    self._prefs.date_format,
+                    self._prefs.time_format,
+                ),
                 _COL_COUNT: str(statement.transaction_count),
             }
             for col, text in values.items():
@@ -186,6 +206,12 @@ class StatementsWidget(QWidget):
             return
         self.refresh()
         self.changed.emit()
+
+    def set_datetime_prefs(self, prefs: DateTimePrefs) -> None:
+        """Adopt new display prefs and re-render, so a Settings change takes
+        effect without a relaunch (FIBR-0083 D7)."""
+        self._prefs = prefs
+        self.refresh()
 
     # --- test / shell accessors -------------------------------------------- #
     def statement_count(self) -> int:
