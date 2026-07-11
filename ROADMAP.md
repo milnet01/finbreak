@@ -664,6 +664,18 @@ because retrofitting them is a data migration.
   Lanes: importers, services, tests.
   Source: cold-eyes-2026-07-03 FIBR-0008 lane-C.
 
+- 📋 [FIBR-0095] **Unlock throttling — backoff after repeated failed master-password attempts.**
+  Verified 2026-07-11: services/auth.py applies NO delay/backoff on a failed unlock. Add an increasing backoff (and/or a short lockout window) after consecutive failed unlock attempts — defence-in-depth against offline brute-force on a stolen vault, atop Argon2id's already-slow KDF (security-model INV-2). Track the attempt count / last-fail time in the plaintext window.ini (pre-unlock, non-sensitive) or in-memory per session; UX = a friendly 'try again in N seconds'. Deps: FIBR-0004 (unlock path).
+  **Layman:** After several wrong master-password tries, finbreak briefly slows further attempts — extra protection if someone gets hold of your vault file.
+  Kind: security.
+  Source: claude-suggestion-2026-07-11.
+
+- 📋 [FIBR-0096] **Per-release SHA256SUMS + generated SBOM alongside the signed AppImage.**
+  The release AppImage is already Ed25519-signed (FIBR-0054 INV-14). Add, per release: a SHA256SUMS file (artifact checksums) and a generated SBOM (CycloneDX via cyclonedx-py, or pip-audit output) listing the bundled dependency versions — supply-chain transparency + a second integrity signal for users who verify manually rather than via the in-app updater. Wire into build-release-appimage.sh / the publish step. Deps: FIBR-0054 (release pipeline).
+  **Layman:** Each download comes with a checksum file and a parts-list, so anyone can verify what's inside and that it wasn't tampered with.
+  Kind: security.
+  Source: claude-suggestion-2026-07-11.
+
 ### 🎨 Features & accessibility
 
 - ✅ [FIBR-0021] **Multi-currency decision (ADR).** Decide single- vs
@@ -951,6 +963,18 @@ because retrofitting them is a data migration.
   Kind: feature.
   Source: claude-suggestion-2026-07-11.
 
+- 📋 [FIBR-0100] **Undo for destructive actions (delete statement / delete category).**
+  Today destructive actions are confirm-only (Statements delete with its transactions, FIBR-0052; category delete-cascade, FIBR-0010). Add a short-lived undo — a status-bar 'Deleted — Undo' for a few seconds, or Edit -> Undo — that restores the deleted rows within the same session. Friendlier than confirm-only; reduces fear of the delete buttons. Design: soft-delete or an in-memory undo stack + a re-insert. Deps: FIBR-0052, FIBR-0010.
+  **Layman:** An 'undo' right after deleting a statement or category, so a misclick isn't permanent.
+  Kind: ux.
+  Source: claude-suggestion-2026-07-11.
+
+- 📋 [FIBR-0101] **Keyboard-first categorising — shortcuts for fast triage of a big import.**
+  Add keyboard shortcuts to the transaction table: set-category (opens the picker), jump-to-next-uncategorised, and quick-assign recent categories. Speeds triaging a large import. Pairs with FIBR-0092 (bulk re-categorize) and FIBR-0010 (rules); cleaner once FIBR-0097 (model/view) lands. Mostly UI. Deps: FIBR-0010.
+  **Layman:** Categorise a large import quickly with the keyboard — set a category and jump to the next one without reaching for the mouse.
+  Kind: ux.
+  Source: claude-suggestion-2026-07-11.
+
 ### ⚡ Performance
 
 - 📋 [FIBR-0025] **Enable SQLite WAL mode.** Set
@@ -990,6 +1014,24 @@ because retrofitting them is a data migration.
   No CREATE INDEX anywhere in migrations.py. TransactionRepository.existing_for() (WHERE account_id, occurred_on, amount_minor) runs once per distinct (date, amount) bucket inside every import — N full scans; same for count_for_account / count_for_category / rules count_for_category. Fine at today's personal scale (design.md accepts it) but a multi-year vault degrades. A composite index on transactions(account_id, occurred_on, amount_minor) plus single-column indexes on account_id/category_id/statement_period_id would flatten it. Overlaps FIBR-0026 (indexed dedup lookup).
   Kind: perf.
   Source: indie-review-2026-07-10 (M-data3).
+
+- 📋 [FIBR-0097] **Virtualize the transaction tables — QTableWidget → QTableView + QAbstractTableModel.**
+  Verified 2026-07-11: Home, Statements, and Rules use QTableWidget (ui/home.py, ui/statements.py, ui/rules.py), which builds a widget for EVERY cell — fine at 50 rows, sluggish at thousands. Migrate to QTableView + a QAbstractTableModel so rendering is virtualized (only visible rows built). Also a cleaner data/view separation that FIBR-0012 (sort/filter) and FIBR-0084 (movable/resizable columns) build on naturally. Sizeable refactor; own spec. Deps: FIBR-0051/0052 (the current widgets).
+  **Layman:** Keep the transaction lists fast even with thousands of rows by only drawing the rows you can actually see.
+  Kind: perf.
+  Source: claude-suggestion-2026-07-11.
+
+- 📋 [FIBR-0098] **Add database indexes on the hot query columns.**
+  Verified 2026-07-11: the schema (migrations.py) declares NO indexes. Add them on the frequently-queried columns — transactions(occurred_on), transactions(account_id), transactions(category_id), transactions(statement_period_id) (+ any dedup/lookup key). A forward migration (current v7 -> v8). Speeds listing, filtering (FIBR-0012), cross-source dedup, and delete-cascade. Cheap, high-value. Deps: FIBR-0005/0006/0010/0052 (the columns).
+  **Layman:** Add quick-lookup indexes so finbreak finds and filters transactions fast as your history grows.
+  Kind: perf.
+  Source: claude-suggestion-2026-07-11.
+
+- 📋 [FIBR-0099] **Faster cold start — PyInstaller --onedir inside the AppImage (skip per-launch extraction).**
+  Verified 2026-07-11: the release build uses PyInstaller --onefile (scripts/_build-smoke-in-container.sh:85), which re-extracts the whole bundle to /tmp on EVERY launch (adds seconds of cold-start latency). Since the AppImage is ITSELF a self-contained mounted container, freeze with --onedir and place the dir inside the AppDir — the app then runs directly, no per-launch extraction. Transparent to the user; measure before/after start time and confirm the FIBR-0003 clean-room bundling proof still passes. Deps: FIBR-0003/FIBR-0054 (build pipeline).
+  **Layman:** Make the app open faster by not unpacking itself every single time you launch it.
+  Kind: perf.
+  Source: claude-suggestion-2026-07-11.
 
 ### 🧹 Warnings & tech debt
 
@@ -1161,6 +1203,18 @@ is a future error tomorrow.
   Kind: doc-fix.
   Source: indie-review-2026-07-10 loop-2 (misc LOW).
   Resolved (2026-07-10): (1) ui/rules.py _on_move now types direction as Literal['up','down'], dropping the # type: ignore[arg-type] against move_rule. (3) FIBR-0007 spec INV-7 narrative corrected with a FIBR-0052 addendum — commit_import inserts the period row first (statement_period_id FK) then the transactions batch, and the wedge test raises on the transactions INSERT. (2) _selected_row dedup deliberately NOT done — only 2 sites, Rule-of-Three defers extraction to the 3rd (CLAUDE.md §3).
+
+- 📋 [FIBR-0102] **Tighten mypy toward strict.**
+  Verified 2026-07-11: [tool.mypy] sets only python_version + per-module stub-ignores — NOT strict. Enable strict (or stage it: disallow_untyped_defs, warn_return_any, disallow_any_generics, no_implicit_optional) to catch a class of bugs at the type layer — valuable for a money app. Incremental: turn flags on one at a time, fix the fallout, keep the gate green each step. Deps: none (gate/CI config).
+  **Layman:** Turn on stricter automatic type-checking to catch more bugs before they ship.
+  Kind: refactor.
+  Source: claude-suggestion-2026-07-11.
+
+- 📋 [FIBR-0103] **Consolidate presentation formatting into one module.**
+  FIBR-0083 introduces src/finbreak/datetime_format.py (date/time display). Fold the existing amount/currency QLocale formatting (ui/home.py::_format_amount -> QLocale.toCurrencyString) into a shared formatting package alongside it, so all presentation logic is centralised + unit-tested in one place (Rule of Three: date + currency + future). Deps: FIBR-0083 (lands the first formatter). Small refactor; do AFTER FIBR-0083 ships.
+  **Layman:** Keep all the 'how numbers and dates look' code in one tidy, tested place.
+  Kind: refactor.
+  Source: claude-suggestion-2026-07-11.
 
 ## How to add an item
 
