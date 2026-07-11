@@ -1009,6 +1009,12 @@ because retrofitting them is a data migration.
   Source: dogfooding-2026-07-11.
   Resolved (2026-07-11): anchored _cc_opening on a new _CC_BROUGHT_FORWARD regex requiring a money amount to IMMEDIATELY follow the "balance brought forward" phrase (optional -/R sign), and take the first money token in the tail from the phrase onward. The prose decoy ("...credit balance. Balance brought forward on this statement -251.85") has narrative text between phrase and figure, so it no longer matches; the real anchor "21 Jul 25 Balance Brought Forward 6,849.68" does. TDD: 2 pure unit tests (decoy-rejection + printed-negative-sign preservation) in tests/features/standard_bank_pdf; full SB suite (50) green, no regression on the 6 validated real statements. Gate green (600 passed/1 skipped). Synthetic figures only — real file/password never touched disk.
 
+- ✅ [FIBR-0107] **Self-update relaunch: wait for the old AppImage to exit before launching the new one.**
+  The 0.1.4→0.1.5 relaunch (detached Popen + PYINSTALLER_RESET_ENVIRONMENT, then immediate os._exit) still raced the old AppImage's teardown: the fresh onefile bootloader started while the old image's FUSE mount + _MEI extraction dir were still live and died ("closed but didn't reopen"). Fix (update_installer.py): spawn a detached /bin/sh WAITER (new session) that polls `kill -0 <old-pid>` until this process has fully exited — FUSE unmounted, _MEI cleaned — and only THEN execs the swapped image with the reset env. Hard ~60s cap (600 × 0.1s) so a wedged old process can never hang the relaunch. Same pattern robust self-relaunching Qt AppImages (RPCS3, PCSX2) use. Added a diagnostic relaunch log (data-dir sibling of the vault) capturing the waiter's + relaunched image's output so a future silent failure leaves evidence. TDD: pure _relaunch_command builder test (waits on pid, quoted exec after the loop), detached-session/env test updated to the waiter contract, log-write test; plus a real-process smoke proving the waiter blocks until the old pid dies then execs. Gate green (602 passed/1 skipped). NOTE (two-cycle trap): this code ships in 0.1.6 but only RUNS on the 0.1.6→next update — 0.1.5→0.1.6 still relaunches via the old 0.1.5 logic, so one manual reopen is still expected for that hop.
+  **Layman:** After an update the app closed but didn't reopen; now it reliably restarts itself.
+  Kind: fix.
+  Source: dogfooding-2026-07-11.
+
 ### ⚡ Performance
 
 - 📋 [FIBR-0025] **Enable SQLite WAL mode.** Set

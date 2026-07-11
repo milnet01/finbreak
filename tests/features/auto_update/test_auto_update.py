@@ -26,6 +26,7 @@ from finbreak.services.update import (
 )
 from finbreak.services.update_installer import (
     AppImageInstaller,
+    _relaunch_command,
     detect_installer,
     is_update_supported,
 )
@@ -250,6 +251,9 @@ def _capture_relaunch(monkeypatch) -> dict:
 
     monkeypatch.setattr(update_installer.subprocess, "Popen", fake_popen)
     monkeypatch.setattr(os, "_exit", fake_exit)
+    # Default: logless + hermetic — no write to the real per-user data dir. The
+    # dedicated logging test overrides this with a tmp path.
+    monkeypatch.setattr(update_installer, "_relaunch_log_path", lambda: None)
     return record
 
 
@@ -282,10 +286,11 @@ def test_INV6_key_wiped_after_replace_before_relaunch(monkeypatch, tmp_path):
 
 
 def test_relaunch_is_detached_new_session_with_pyinstaller_reset(monkeypatch, tmp_path):
-    # The relaunch spawns the swapped $APPIMAGE in a NEW SESSION with a reset
+    # The relaunch spawns a DETACHED WAITER (in a NEW SESSION) that blocks until
+    # this process has fully exited, then execs the swapped $APPIMAGE with a reset
     # PyInstaller environment + the AppImage markers dropped, so the new onefile
-    # re-extracts instead of dying as a "worker subprocess" (the closed-but-
-    # didn't-reopen bug).
+    # re-extracts cleanly instead of dying as a "worker subprocess" against the
+    # still-mounted old image (the closed-but-didn't-reopen bug).
     appimage = tmp_path / "app.AppImage"
     appimage.write_bytes(b"OLD-APP")
     new_file = tmp_path / "new.AppImage"
@@ -297,7 +302,11 @@ def test_relaunch_is_detached_new_session_with_pyinstaller_reset(monkeypatch, tm
 
     AppImageInstaller(appimage).apply(new_file, lambda: None)
 
-    assert record["argv"] == [str(appimage)]  # relaunch the swapped image itself
+    # A /bin/sh waiter, not the image directly — the script waits on THIS pid then
+    # execs the swapped image (asserted in detail by the pure _relaunch_command test).
+    argv = record["argv"]
+    assert argv[:2] == ["/bin/sh", "-c"]
+    assert str(appimage) in argv[2] and f"kill -0 {os.getpid()}" in argv[2]
     kwargs = record["kwargs"]
     assert kwargs["start_new_session"] is True  # survives this process's exit
     env = kwargs["env"]
@@ -305,6 +314,38 @@ def test_relaunch_is_detached_new_session_with_pyinstaller_reset(monkeypatch, tm
     assert "APPDIR" not in env and "APPIMAGE" not in env and "ARGV0" not in env
     assert env["HOME"] == "/home/keep"  # unrelated vars are preserved
     assert record["exit_code"] == 0  # hard-exit this process after spawning
+
+
+def test_relaunch_command_waits_for_old_pid_then_execs_quoted_image():
+    # The waiter: poll `kill -0 <pid>` until the old process is gone (its FUSE
+    # mount unmounted + PyInstaller _MEI dir cleaned), THEN exec the image. The
+    # path is shell-quoted so a space in the AppImage path can't break the script.
+    cmd = _relaunch_command("/opt/My Apps/finbreak.AppImage", 4242)
+    assert cmd[:2] == ["/bin/sh", "-c"]
+    script = cmd[2]
+    assert "kill -0 4242" in script  # blocks on the OLD pid
+    assert script.rstrip().count("exec ") == 1  # replaces sh with the image
+    # exec target is quoted (space-bearing path survives) and comes AFTER the loop.
+    assert "'/opt/My Apps/finbreak.AppImage'" in script
+    assert script.index("kill -0 4242") < script.index("exec ")
+
+
+def test_relaunch_writes_diagnostic_log(monkeypatch, tmp_path):
+    # A future silent relaunch failure must leave evidence: apply() appends a
+    # timestamped line to the relaunch log naming the pid it waits on and the image.
+    appimage = tmp_path / "app.AppImage"
+    appimage.write_bytes(b"OLD-APP")
+    new_file = tmp_path / "new.AppImage"
+    new_file.write_bytes(b"NEW-APP")
+    log = tmp_path / "update-relaunch.log"
+    record = _capture_relaunch(monkeypatch)
+    monkeypatch.setattr(update_installer, "_relaunch_log_path", lambda: log)
+
+    AppImageInstaller(appimage).apply(new_file, lambda: None)
+
+    assert record["order"] == ["relaunch", "exit"]  # still relaunched + exited
+    text = log.read_text()
+    assert str(appimage) in text and str(os.getpid()) in text
 
 
 def test_INV6_failed_replace_leaves_key_unwiped_and_original_intact(

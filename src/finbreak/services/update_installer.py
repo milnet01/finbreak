@@ -15,10 +15,12 @@ UI (D6); Windows is *designed for*, not built (Out of scope).
 from __future__ import annotations
 
 import os
-import subprocess  # nosec B404 — fixed-argv, no-shell relaunch only (see apply)
+import shlex
+import subprocess  # nosec B404 — fixed-argv /bin/sh waiter, no user input (see apply)
+import time
 from collections.abc import Callable
 from pathlib import Path
-from typing import NoReturn, Protocol, runtime_checkable
+from typing import NoReturn, Protocol, TextIO, runtime_checkable
 
 from finbreak.errors import UpdateError
 
@@ -44,6 +46,59 @@ def _relaunch_env() -> dict[str, str]:
     for key in _STALE_APPIMAGE_ENV:
         env.pop(key, None)
     return env
+
+
+def _relaunch_command(appimage: str, pid: int) -> list[str]:
+    """A detached ``/bin/sh`` waiter: block until the OLD process (*pid*) has fully
+    exited — so the AppImage's FUSE mount is unmounted and its PyInstaller ``_MEI``
+    extraction dir is cleaned — THEN ``exec`` the swapped image.
+
+    Launching the new image *before* the old one tears down is the "closed but
+    didn't reopen" race (0.1.2→0.1.3, 0.1.4→0.1.5): the fresh onefile bootloader
+    collides with the still-mounted old image and dies. Robust self-relaunching
+    AppImages (RPCS3, PCSX2) all wait for the old process first — this is that
+    wait. A hard ~60s cap (600 × 0.1s) means a wedged old process can never hang
+    the relaunch forever. ``/bin/sh`` is universal on Linux (the only AppImage
+    platform); the image path is ``shlex.quote``-d so a space can't break the
+    script, and the argv is our own verified ``$APPIMAGE`` path — never user input.
+    """
+    quoted = shlex.quote(appimage)
+    script = (
+        f'echo "[finbreak] waiting for pid {pid} to exit before relaunch"; '
+        f"i=0; "
+        f"while kill -0 {pid} 2>/dev/null; do "
+        f'i=$((i+1)); [ "$i" -ge 600 ] && break; sleep 0.1; '
+        f"done; "
+        f'echo "[finbreak] launching {quoted}"; '
+        f"exec {quoted}"
+    )
+    return ["/bin/sh", "-c", script]
+
+
+def _relaunch_log_path() -> Path | None:
+    """The relaunch diagnostics log — a sibling of the vault in the per-user data
+    dir. Returns ``None`` (relaunch proceeds without a log) if the location can't
+    be resolved; diagnostics must never block the relaunch."""
+    try:
+        from finbreak.paths import data_dir
+
+        return data_dir() / "update-relaunch.log"
+    except Exception:  # noqa: BLE001 — logging must never block the relaunch
+        return None
+
+
+def _relaunch_log_handle() -> TextIO | None:
+    """An append handle to the relaunch log, or ``None`` if unavailable. The handle
+    is intentionally NOT closed here: it becomes the detached waiter's stdout/stderr
+    (via ``apply``), so the waiter's — and the relaunched image's — output is
+    captured for post-mortem if a future relaunch fails silently."""
+    path = _relaunch_log_path()
+    if path is None:
+        return None
+    try:
+        return path.open("a", encoding="utf-8")
+    except OSError:  # logging must never block the relaunch
+        return None
 
 
 @runtime_checkable
@@ -94,21 +149,30 @@ class AppImageInstaller:
         # over, since the relaunch replaces this process and never runs Qt's
         # aboutToQuit (INV-6). Then relaunch the just-swapped AppImage.
         on_before_exec()
-        # Relaunch as a fresh, DETACHED process, then hard-exit this one. Re-
-        # exec'ing the AppImage in place fails (the observed 0.1.2→0.1.3 "closed
-        # but didn't reopen"): the busy FUSE mount of the running image can't be
-        # cleanly replaced, and the onefile bootloader treats an in-place re-exec
-        # as a worker subprocess. A NEW SESSION (start_new_session) lets the old
-        # image exit + unmount cleanly while the swapped binary starts
-        # independently with a reset environment (see _relaunch_env). No shell is
-        # involved; the argv is our own verified path, not user input (B603/B606).
-        path = str(self._appimage_path)
-        subprocess.Popen(  # noqa: S603  # nosec B603
-            [path],
+        # Relaunch via a DETACHED WAITER, then hard-exit this one. Spawning the new
+        # image and immediately exiting (the 0.1.4→0.1.5 attempt) still raced the
+        # old image's teardown: the fresh onefile bootloader collided with the
+        # still-mounted FUSE image and died ("closed but didn't reopen"). Instead we
+        # spawn a tiny /bin/sh that WAITS for this process to fully exit — FUSE
+        # unmounted, _MEI extraction dir cleaned — and only THEN execs the swapped
+        # image with a reset environment (see _relaunch_env / _relaunch_command). A
+        # NEW SESSION lets the waiter outlive this process's exit. Any output is
+        # captured to the relaunch log so a future silent failure leaves evidence.
+        pid = os.getpid()
+        log = _relaunch_log_handle()
+        if log is not None:
+            log.write(
+                f"{time.strftime('%Y-%m-%d %H:%M:%S')} relaunch: swapped in "
+                f"{self._appimage_path}; waiting on pid {pid} then exec\n"
+            )
+            log.flush()
+        stdio: TextIO | int = log if log is not None else subprocess.DEVNULL
+        subprocess.Popen(  # noqa: S603  # nosec B603 — fixed /bin/sh waiter, our own argv
+            _relaunch_command(str(self._appimage_path), pid),
             env=_relaunch_env(),
             stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stdout=stdio,
+            stderr=subprocess.STDOUT,
             start_new_session=True,
             close_fds=True,
         )

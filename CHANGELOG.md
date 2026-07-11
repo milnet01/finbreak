@@ -23,6 +23,15 @@ signaling per
 
 ### Fixed
 
+- **After installing an update, finbreak now reliably reopens itself.** (FIBR-0054)
+  Previously the app could close after updating without coming back — it tried to
+  start the new version before the old one had fully shut down, and the new copy
+  died in the collision. It now waits for the old version to exit completely, then
+  launches the new one, and records a small diagnostic log so any future hiccup
+  leaves a trace. (Note: because the fix lives in the update machinery, it only
+  takes effect from the NEXT update after this one — the update into this version
+  may still need one manual reopen.)
+
 - **Credit-card statements that open in credit now import correctly.** (FIBR-0106)
   Some Standard Bank credit-card statements print a plain-English sentence
   mentioning the "balance brought forward" before the real opening-balance row.
