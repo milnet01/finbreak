@@ -3,7 +3,9 @@
 ``Installer`` is the protocol the updater talks to; ``AppImageInstaller`` is the
 only implementation built here — a Linux AppImage swaps itself in place: the
 running binary knows its own path via ``$APPIMAGE``, so "install" is *replace one
-file and re-exec*. ``detect_installer()`` returns an installer **only** off a real
+file, spawn a fresh detached copy, and exit* (a plain in-place re-exec can't
+replace a busy FUSE mount — see ``apply``). ``detect_installer()`` returns an
+installer **only** off a real
 AppImage (``$APPIMAGE`` set + present), so a ``python -m finbreak`` run, a Flatpak,
 or a future un-wired Windows build is inert (INV-7). A ``WindowsInstaller`` is the
 future plug-in point — it registers here with no change to ``UpdateService`` or the
@@ -13,11 +15,35 @@ UI (D6); Windows is *designed for*, not built (Out of scope).
 from __future__ import annotations
 
 import os
+import subprocess  # nosec B404 — fixed-argv, no-shell relaunch only (see apply)
 from collections.abc import Callable
 from pathlib import Path
 from typing import NoReturn, Protocol, runtime_checkable
 
 from finbreak.errors import UpdateError
+
+# AppImage-runtime markers of the *currently running* image. Dropped so the
+# relaunched image's outer runtime re-mounts + re-derives them from scratch,
+# rather than short-circuiting on the old (soon-unmounted) values.
+_STALE_APPIMAGE_ENV = ("APPDIR", "APPIMAGE", "ARGV0")
+
+
+def _relaunch_env() -> dict[str, str]:
+    """The environment for the relaunched AppImage.
+
+    ``PYINSTALLER_RESET_ENVIRONMENT=1`` is PyInstaller 6.10+'s **official**
+    restart signal: it makes the new onefile bootloader reset its own internal
+    ``_PYI_*`` state and treat itself as a fresh top-level instance (re-extract),
+    instead of assuming it is a worker subprocess of the old one and reusing the
+    now-deleted extraction dir — the root cause of "closed but didn't reopen".
+    (Per the PyInstaller docs we must NOT hand-edit the private ``_PYI_*`` vars;
+    this flag is the supported mechanism.) We additionally drop the AppImage
+    runtime's own markers so the outer runtime re-mounts cleanly."""
+    env = dict(os.environ)
+    env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+    for key in _STALE_APPIMAGE_ENV:
+        env.pop(key, None)
+    return env
 
 
 @runtime_checkable
@@ -34,13 +60,13 @@ class Installer(Protocol):
 
     def apply(self, new_file: Path, on_before_exec: Callable[[], None]) -> NoReturn:
         """Install *new_file* (already signature-verified) and relaunch. Runs
-        *on_before_exec* (the key-wipe) **after** the swap and **before** the exec
-        (INV-6). Does not return."""
+        *on_before_exec* (the key-wipe) **after** the swap and **before** the
+        relaunch (INV-6). Does not return."""
         ...
 
 
 class AppImageInstaller:
-    """Swap ``$APPIMAGE`` for a verified download, then re-exec it (D8)."""
+    """Swap ``$APPIMAGE`` for a verified download, then relaunch it detached (D8)."""
 
     def __init__(self, appimage_path: Path):
         self._appimage_path = appimage_path
@@ -65,14 +91,28 @@ class AppImageInstaller:
             new_file.unlink(missing_ok=True)
             raise UpdateError(f"could not install the update: {exc}") from exc
         # The swap succeeded — wipe the derived key before we hand the process
-        # over, since os.execv replaces the image and never runs Qt's aboutToQuit
-        # (INV-6). Then relaunch the new binary in place.
+        # over, since the relaunch replaces this process and never runs Qt's
+        # aboutToQuit (INV-6). Then relaunch the just-swapped AppImage.
         on_before_exec()
-        # Relaunch the just-swapped AppImage in place. No shell is involved
-        # (that is the point — no shell-injection surface); the argv is our own
-        # verified path, not user input (bandit B606, D8).
+        # Relaunch as a fresh, DETACHED process, then hard-exit this one. Re-
+        # exec'ing the AppImage in place fails (the observed 0.1.2→0.1.3 "closed
+        # but didn't reopen"): the busy FUSE mount of the running image can't be
+        # cleanly replaced, and the onefile bootloader treats an in-place re-exec
+        # as a worker subprocess. A NEW SESSION (start_new_session) lets the old
+        # image exit + unmount cleanly while the swapped binary starts
+        # independently with a reset environment (see _relaunch_env). No shell is
+        # involved; the argv is our own verified path, not user input (B603/B606).
         path = str(self._appimage_path)
-        os.execv(path, [path])  # nosec B606
+        subprocess.Popen(  # noqa: S603  # nosec B603
+            [path],
+            env=_relaunch_env(),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+            close_fds=True,
+        )
+        os._exit(0)
 
 
 def detect_installer() -> Installer | None:

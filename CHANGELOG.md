@@ -21,6 +21,18 @@ signaling per
 
 ## [Unreleased]
 
+### Fixed
+
+- **The app now reopens itself after installing an update.** (FIBR-0054)
+  Previously, after an update installed, finbreak closed but did not
+  relaunch — you had to reopen it manually. The relaunch now spawns a fresh,
+  detached copy of the updated app (with the PyInstaller restart signal set)
+  and exits the old one, instead of re-executing in place, which could not
+  replace the still-mounted AppImage. Note: because the *old* running version
+  performs the relaunch, this fix takes effect from the first updated build
+  onward — the update that installs this fix is the last one that won't
+  auto-reopen.
+
 ## [0.1.3] - 2026-07-11
 
 ### Added

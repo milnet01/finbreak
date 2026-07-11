@@ -16,7 +16,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 )
 
 from finbreak.errors import FinbreakError, UpdateError, UpdateVerificationError
-from finbreak.services import update_fetch, update_key
+from finbreak.services import update_fetch, update_installer, update_key
 from finbreak.services.update import (
     UpdateInfo,
     UpdateService,
@@ -231,12 +231,33 @@ def test_INV7_real_appimage_env_yields_installer(monkeypatch, tmp_path):
     assert is_update_supported() is True
 
 
+def _capture_relaunch(monkeypatch) -> dict:
+    """Stub the detached relaunch (``subprocess.Popen``) + the hard exit
+    (``os._exit``) so ``apply()``'s post-swap steps are observable without
+    spawning a process or killing pytest. Records call order + the Popen args."""
+    record: dict = {"order": []}
+
+    def fake_popen(argv, **kwargs):
+        record["argv"] = argv
+        record["kwargs"] = kwargs
+        record["order"].append("relaunch")
+        return object()
+
+    def fake_exit(code):
+        record["exit_code"] = code
+        record["order"].append("exit")
+
+    monkeypatch.setattr(update_installer.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(os, "_exit", fake_exit)
+    return record
+
+
 def test_INV5_apply_swaps_bytes_and_marks_executable(monkeypatch, tmp_path):
     appimage = tmp_path / "app.AppImage"
     appimage.write_bytes(b"OLD-APP")
     new_file = tmp_path / "finbreak-update-xyz.AppImage"
     new_file.write_bytes(b"NEW-APP")
-    monkeypatch.setattr(os, "execv", lambda *a: None)
+    _capture_relaunch(monkeypatch)
 
     AppImageInstaller(appimage).apply(new_file, lambda: None)
 
@@ -245,18 +266,44 @@ def test_INV5_apply_swaps_bytes_and_marks_executable(monkeypatch, tmp_path):
     assert not new_file.exists()  # moved, not copied
 
 
-def test_INV6_key_wiped_after_replace_before_execv(monkeypatch, tmp_path):
+def test_INV6_key_wiped_after_replace_before_relaunch(monkeypatch, tmp_path):
     appimage = tmp_path / "app.AppImage"
     appimage.write_bytes(b"OLD-APP")
     new_file = tmp_path / "new.AppImage"
     new_file.write_bytes(b"NEW-APP")
-    order: list[str] = []
-    monkeypatch.setattr(os, "execv", lambda *a: order.append("execv"))
+    record = _capture_relaunch(monkeypatch)
 
-    AppImageInstaller(appimage).apply(new_file, lambda: order.append("wipe"))
+    AppImageInstaller(appimage).apply(new_file, lambda: record["order"].append("wipe"))
 
-    assert order == ["wipe", "execv"]  # wipe strictly between replace and exec
+    # wipe strictly between the replace and the relaunch, then the hard exit.
+    assert record["order"] == ["wipe", "relaunch", "exit"]
     assert appimage.read_bytes() == b"NEW-APP"  # the replace happened first
+
+
+def test_relaunch_is_detached_new_session_with_pyinstaller_reset(monkeypatch, tmp_path):
+    # The relaunch spawns the swapped $APPIMAGE in a NEW SESSION with a reset
+    # PyInstaller environment + the AppImage markers dropped, so the new onefile
+    # re-extracts instead of dying as a "worker subprocess" (the closed-but-
+    # didn't-reopen bug).
+    appimage = tmp_path / "app.AppImage"
+    appimage.write_bytes(b"OLD-APP")
+    new_file = tmp_path / "new.AppImage"
+    new_file.write_bytes(b"NEW-APP")
+    for stale in ("APPDIR", "APPIMAGE", "ARGV0"):
+        monkeypatch.setenv(stale, "/old/mount/value")
+    monkeypatch.setenv("HOME", "/home/keep")  # an unrelated var must pass through
+    record = _capture_relaunch(monkeypatch)
+
+    AppImageInstaller(appimage).apply(new_file, lambda: None)
+
+    assert record["argv"] == [str(appimage)]  # relaunch the swapped image itself
+    kwargs = record["kwargs"]
+    assert kwargs["start_new_session"] is True  # survives this process's exit
+    env = kwargs["env"]
+    assert env["PYINSTALLER_RESET_ENVIRONMENT"] == "1"  # official restart signal
+    assert "APPDIR" not in env and "APPIMAGE" not in env and "ARGV0" not in env
+    assert env["HOME"] == "/home/keep"  # unrelated vars are preserved
+    assert record["exit_code"] == 0  # hard-exit this process after spawning
 
 
 def test_INV6_failed_replace_leaves_key_unwiped_and_original_intact(
@@ -266,8 +313,7 @@ def test_INV6_failed_replace_leaves_key_unwiped_and_original_intact(
     appimage.write_bytes(b"OLD-APP")
     new_file = tmp_path / "new.AppImage"
     new_file.write_bytes(b"NEW-APP")
-    order: list[str] = []
-    monkeypatch.setattr(os, "execv", lambda *a: order.append("execv"))
+    record = _capture_relaunch(monkeypatch)
 
     def boom(src, dst):
         raise OSError("ENOSPC: no space left on device")
@@ -275,9 +321,11 @@ def test_INV6_failed_replace_leaves_key_unwiped_and_original_intact(
     monkeypatch.setattr(os, "replace", boom)
 
     with pytest.raises(UpdateError):
-        AppImageInstaller(appimage).apply(new_file, lambda: order.append("wipe"))
+        AppImageInstaller(appimage).apply(
+            new_file, lambda: record["order"].append("wipe")
+        )
 
-    assert order == []  # neither the wipe nor the exec ran (INV-6/INV-11)
+    assert record["order"] == []  # neither wipe, relaunch, nor exit ran (INV-6/11)
     assert appimage.read_bytes() == b"OLD-APP"  # original byte-for-byte intact
     assert not new_file.exists()  # the temp was cleaned up (INV-5)
 
