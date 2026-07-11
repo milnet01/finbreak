@@ -428,6 +428,7 @@ lands on top.
   FIBR-0007 is pulled in transitively, so all of CSV/OFX/PDF are
   consolidated — SC1 names all three). Lanes: services, ui, tests. Kind: implement.
   Source: planned.
+  UX (user, 2026-07-11, dogfooding v0.1.2): the Home tab currently shows the raw transaction table (interim from FIBR-0051). The user confirms Home should be the income/expenditure SUMMARY (this dashboard), NOT the transaction list. So this item also owns relocating the transaction table off Home into its own view/tab (e.g. a "Transactions" tab) — carrying the full search + filters this item already promises — leaving Home for the summary + charts.
 
 ---
 
