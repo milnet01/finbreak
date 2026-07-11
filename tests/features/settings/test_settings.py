@@ -25,6 +25,7 @@ from finbreak.repositories.settings import SettingsRepository
 from finbreak.services.auth import (
     ALLOWED_AUTO_LOCK_MINUTES,
     DEFAULT_AUTO_LOCK_MINUTES,
+    AmountPrefs,
     AuthService,
     DateTimePrefs,
 )
@@ -323,6 +324,47 @@ def test_datetime_prefs_is_frozen(service):
     prefs = service.datetime_prefs()
     with pytest.raises(FrozenInstanceError):
         prefs.timezone = "UTC"  # type: ignore[misc]
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0105 — amount display prefs round-trip (INV-2/5): sign style + colour
+# --------------------------------------------------------------------------- #
+def test_amount_prefs_default_when_absent(service):
+    # Fresh / pre-FIBR-0105 vault -> friendly default: minus + colour ON.
+    assert service.amount_prefs() == AmountPrefs("minus", True)
+
+
+def test_amount_prefs_round_trip(service):
+    prefs = AmountPrefs("brackets", False)
+    service.set_amount_prefs(prefs)
+    assert service.amount_prefs() == prefs
+
+
+def test_set_amount_prefs_writes_the_named_keys(service):
+    service.set_amount_prefs(AmountPrefs("brackets", False))
+    repo = SettingsRepository(service.vault.connection)
+    assert repo.get("amount_negative_style") == "brackets"
+    assert repo.get("amount_colour") == "false"  # bool -> "true"/"false" token
+
+
+def test_amount_prefs_bad_negative_style_falls_back_to_minus(service):
+    # INV-5: an unknown stored sign style resolves to the default, never crashes.
+    SettingsRepository(service.vault.connection).set(
+        "amount_negative_style", "octagons"
+    )
+    assert service.amount_prefs().negative_style == "minus"
+
+
+def test_amount_prefs_bad_colour_falls_back_to_true(service):
+    # INV-5: an unknown stored colour token resolves to ON (True), independently.
+    SettingsRepository(service.vault.connection).set("amount_colour", "maybe")
+    assert service.amount_prefs().colour is True
+
+
+def test_amount_prefs_is_frozen(service):
+    prefs = service.amount_prefs()
+    with pytest.raises(FrozenInstanceError):
+        prefs.colour = False  # type: ignore[misc]
 
 
 # --------------------------------------------------------------------------- #

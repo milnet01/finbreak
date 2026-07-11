@@ -54,6 +54,13 @@ ALLOWED_AUTO_LOCK_MINUTES = (1, 5, 10, 15, 30)
 # resolve dynamically at display time (follow the OS); a concrete value pins it.
 DATETIME_SYSTEM = "system"
 
+# Amount display prefs (FIBR-0105) — how the Home Amount column renders negatives.
+# Two independent, defaulted keys in the vault ``settings`` table (no schema
+# change). Defaults (absent key) are the friendly non-accountant choice.
+ALLOWED_NEGATIVE_STYLES = ("minus", "brackets")
+DEFAULT_NEGATIVE_STYLE = "minus"
+DEFAULT_AMOUNT_COLOUR = True
+
 
 @dataclass(frozen=True)
 class DateTimePrefs:
@@ -65,6 +72,17 @@ class DateTimePrefs:
     timezone: str
     date_format: str
     time_format: str
+
+
+@dataclass(frozen=True)
+class AmountPrefs:
+    """How the Home Amount column renders negatives (FIBR-0105). ``negative_style``
+    is ``"minus"`` or ``"brackets"``; ``colour`` toggles red/green direction tint.
+    Frozen: the display layer reads but never mutates these (INV-1). Persisted by
+    ``AuthService`` in the vault ``settings`` table, mirroring ``DateTimePrefs``."""
+
+    negative_style: str
+    colour: bool
 
 
 def _wipe(buffer: bytearray | None) -> None:
@@ -284,6 +302,33 @@ class AuthService:
         repo.set("timezone", prefs.timezone)
         repo.set("date_format", prefs.date_format)
         repo.set("time_format", prefs.time_format)
+
+    # --- amount display prefs config (FIBR-0105) --------------------------- #
+    def amount_prefs(self) -> AmountPrefs:
+        """Read the two amount-display prefs from the vault settings. Each falls
+        back to its default independently (INV-5): an ``amount_negative_style``
+        outside ``ALLOWED_NEGATIVE_STYLES`` resolves to ``"minus"``; an
+        ``amount_colour`` that isn't exactly ``"true"`` / ``"false"`` resolves to
+        ON — a bad/absent stored value never crashes the display."""
+        repo = SettingsRepository(self._vault.connection)
+        style = repo.get("amount_negative_style")
+        if style not in ALLOWED_NEGATIVE_STYLES:
+            style = DEFAULT_NEGATIVE_STYLE
+        stored_colour = repo.get("amount_colour")
+        if stored_colour in ("true", "false"):
+            colour = stored_colour == "true"
+        else:
+            colour = DEFAULT_AMOUNT_COLOUR
+        return AmountPrefs(negative_style=style, colour=colour)
+
+    def set_amount_prefs(self, prefs: AmountPrefs) -> None:
+        """Persist both amount-display prefs (mirrors ``set_datetime_prefs``); the
+        bool ``colour`` is stored as the ``"true"`` / ``"false"`` token. A locked
+        vault raises ``VaultLockedError`` from ``Vault.connection`` — guarded
+        dialog-side, like auto-lock (INV-2 defence in depth)."""
+        repo = SettingsRepository(self._vault.connection)
+        repo.set("amount_negative_style", prefs.negative_style)
+        repo.set("amount_colour", "true" if prefs.colour else "false")
 
     def _stop_timer(self) -> None:
         if self._timer is not None:
