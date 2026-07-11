@@ -15,9 +15,11 @@ import base64
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
-# PLACEHOLDER — 32 zero bytes. Phase 1's gen-signing-key.py prints the real
-# 32-byte public key as the base64 to paste here (D1/Deliverable 3).
-RELEASE_PUBLIC_KEY_B64 = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+# The real release-signing public key (32 bytes, base64), generated
+# 2026-07-11 by scripts/gen-signing-key.py. The matching private key lives only
+# on the maintainer's machine (git-ignored release/finbreak-signing.key); the
+# updater installs a download only if its .sig verifies against this key (INV-4).
+RELEASE_PUBLIC_KEY_B64 = "h+YTi4bgziBOwwSSt4fcJLghYQ/zfp44WS2jbG/CQBw="
 
 
 def public_key() -> Ed25519PublicKey:

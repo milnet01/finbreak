@@ -14,6 +14,12 @@ paths = [
   '''\.git/''',
   '''dist/''',
   '''build/''',
+  # release/ holds ONLY the maintainer's local, git-ignored Ed25519 signing
+  # *private* key (scripts/gen-signing-key.py). `gitleaks dir .` scans disk
+  # regardless of .gitignore, so it would flag that key on every push. It can
+  # never be committed (git-ignored + the INV-14 test scans tracked files), so
+  # scanning this local-only path is noise — same rationale as .venv/ (FIBR-0054).
+  '''release/''',
 ]
 # The default `generic-api-key` rule matches the high-entropy PySide6 API name
 # `shiboken6.isValid` where the FIBR-0051 spec / tests cite it in prose (the
