@@ -915,6 +915,42 @@ because retrofitting them is a data migration.
   Kind: feature.
   Source: user-request-2026-07-11 (dogfooding v0.1.0).
 
+- 📋 [FIBR-0089] **Backup safety nudge — first-run emphasis + a 'last backup was N days ago' reminder.**
+  The encrypted-backup MECHANISM is planned in FIBR-0014; this is the SAFETY UX around it. ADR-0003: no password recovery = permanent data loss, so a backup is the only mitigation. Add (a) first-run copy stressing 'back this up somewhere safe', and (b) a gentle, non-blocking reminder when the last backup (tracked via a vault-settings timestamp) is older than a threshold. Depends on / complements FIBR-0014 (the export itself). Highest-value safety improvement per the 2026-07-11 review.
+  **Layman:** Because a forgotten master password means your data is gone for good, finbreak reminds you to keep a backup — stressed at first run and gently nudged if it's been a while.
+  Kind: ux.
+  Source: claude-suggestion-2026-07-11.
+
+- 📋 [FIBR-0090] **Split a transaction across multiple categories.**
+  A personal-finance staple. One transaction carries N category allocations summing to its amount. Affects the categorization model (per-transaction allocations, not a single category_id) and the dashboard totals (aggregate by allocation, not whole-transaction). Schema change (an allocations/splits table). Deps: FIBR-0006 (categories), FIBR-0010 (categorization), FIBR-0012 (dashboard totals must respect splits). Own spec.
+  **Layman:** Split one purchase across categories — e.g. a R1,200 shop = R900 groceries + R300 household — so your breakdowns are accurate.
+  Kind: feature.
+  Source: claude-suggestion-2026-07-11.
+
+- 📋 [FIBR-0091] **Free-text notes + tags on transactions.**
+  A free-text note and/or tags (labels) per transaction, orthogonal to the category tree. Enables richer filtering/reporting in the dashboard's filterable table (FIBR-0012). Schema: a note column + a tags table (many-to-many). Deps: FIBR-0012 (filters), FIBR-0052 (transactions). Own spec.
+  **Layman:** Attach a note or tag ('reimbursable', 'holiday 2026') to a transaction for context the category tree can't hold, and to filter/report on.
+  Kind: feature.
+  Source: claude-suggestion-2026-07-11.
+
+- 📋 [FIBR-0092] **Rule preview (what will it match?) + bulk re-categorize selected transactions.**
+  Enhances FIBR-0010's rules engine + the categorization UX. (a) Rule preview: on rule create/edit, show the matching transactions (the would_categorize primitive already exists, FIBR-0010) before commit. (b) Bulk action: multi-select rows in the Home/transactions table -> set category (and optionally offer to make a rule). Pairs with FIBR-0084 (column/row UX) and FIBR-0012 (filterable table). Deps: FIBR-0010. Mostly UI + reuse of existing services.
+  **Layman:** When you write a categorisation rule, see which transactions it'll catch before saving; and select many rows to set their category at once.
+  Kind: enhancement.
+  Source: claude-suggestion-2026-07-11.
+
+- 📋 [FIBR-0093] **Plain data export — CSV / spreadsheet of your categorised transactions.**
+  A 'File -> Export data' that writes the (filtered) transactions — date, amount, description, account, category, notes/tags — to CSV (and optionally XLSX). Complements the report-style PDF export (FIBR-0013): this is RAW DATA for spreadsheets, not a formatted report. Local file write, no network (offline posture holds). Deps: FIBR-0007/0008/0009 (the data), FIBR-0012 (filters define the export scope). Own small spec.
+  **Layman:** Export your categorised transactions to a CSV/spreadsheet for your own analysis or your accountant.
+  Kind: feature.
+  Source: claude-suggestion-2026-07-11.
+
+- 📋 [FIBR-0094] **Account balances + net-worth over time (opening balance + running balance).**
+  Today finbreak tracks TRANSACTIONS, not balances. Add a per-account opening balance (+ as-of date); derive a running balance per transaction; surface an account-balance and consolidated net-worth trend on the dashboard. Interacts with FIBR-0011 (transfers — moving money between your own accounts must not change net worth) and FIBR-0087 (multi-currency net worth needs the FX decision). Schema: opening_balance on accounts. Deps: FIBR-0011, FIBR-0012, FIBR-0087. Bigger; own spec + likely an ADR on balance derivation.
+  **Layman:** Track each account's balance over time — set an opening balance and finbreak shows running balances and your overall net-worth trend, beyond just spending-by-category.
+  Kind: feature.
+  Source: claude-suggestion-2026-07-11.
+
 ### ⚡ Performance
 
 - 📋 [FIBR-0025] **Enable SQLite WAL mode.** Set
