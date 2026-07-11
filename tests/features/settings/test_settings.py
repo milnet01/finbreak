@@ -412,6 +412,24 @@ def test_amount_controls_persist_on_save(qtbot, service):
     assert service.amount_prefs() == AmountPrefs("brackets", False)
 
 
+def test_shell_passes_stored_amount_prefs_to_home(qtbot, service):
+    # Build-time read: the shell reads amount_prefs once post-unlock and hands it
+    # to the Home tab (beside the FIBR-0083 datetime read).
+    service.set_amount_prefs(AmountPrefs("brackets", False))
+    window = _shell(qtbot, service)
+    assert window._home_tab._amount_prefs == AmountPrefs("brackets", False)
+
+
+def test_shell_repushes_amount_prefs_to_home_on_save(qtbot, service):
+    # Live push: changing the pref + Save updates the open Home tab without a
+    # relaunch (mirrors the datetime live push).
+    window = _shell(qtbot, service)
+    assert window._home_tab._amount_prefs == AmountPrefs("minus", True)  # default
+    service.set_amount_prefs(AmountPrefs("brackets", False))
+    window._on_settings_saved()
+    assert window._home_tab._amount_prefs == AmountPrefs("brackets", False)
+
+
 # --------------------------------------------------------------------------- #
 # FIBR-0083 — the Settings timezone/date/time combos (qtbot)
 # --------------------------------------------------------------------------- #

@@ -42,7 +42,12 @@ from PySide6.QtWidgets import (
 )
 
 from finbreak import __version__, paths
-from finbreak.services.auth import DATETIME_SYSTEM, AuthService, DateTimePrefs
+from finbreak.services.auth import (
+    DATETIME_SYSTEM,
+    AmountPrefs,
+    AuthService,
+    DateTimePrefs,
+)
 from finbreak.services.categorization import CategorizationService
 from finbreak.services.transactions import TransactionService
 from finbreak.services.update import UpdateInfo, UpdateService
@@ -172,6 +177,9 @@ class MainWindow(QMainWindow):
         # The display prefs, read once post-unlock (the vault is locked here) and
         # passed to the display tabs (FIBR-0083 D7). All-"system" until then.
         self._prefs = DateTimePrefs(DATETIME_SYSTEM, DATETIME_SYSTEM, DATETIME_SYSTEM)
+        # The amount-display prefs, likewise read once post-unlock (FIBR-0105).
+        # The friendly default (minus + colour on) applies until then.
+        self._amount_prefs = AmountPrefs("minus", True)
         self.setWindowTitle(self.tr("finbreak"))
 
         # Read routing FIRST — a mixed vault/sidecar pair raises VaultStateError
@@ -462,11 +470,13 @@ class MainWindow(QMainWindow):
         # Read the stored display prefs once, before building the tabs (D7). The
         # "system" sentinels are kept verbatim (expanded only at display time).
         self._prefs = self._service.datetime_prefs()
+        self._amount_prefs = self._service.amount_prefs()
 
         self._home_tab = HomeView(
             TransactionService(self._service.vault),
             CategorizationService(self._service.vault),
             self._prefs,
+            self._amount_prefs,
         )
         self._home_tab.setObjectName("tab_home")
         self._home_tab.add_account_requested.connect(self._action_accounts.trigger)
@@ -598,8 +608,10 @@ class MainWindow(QMainWindow):
         # Re-read the datetime prefs and push them to the open display tabs, so a
         # format/zone change takes effect live without a relaunch (FIBR-0083 D7).
         self._prefs = self._service.datetime_prefs()
+        self._amount_prefs = self._service.amount_prefs()
         if self._home_tab is not None:
             self._home_tab.set_datetime_prefs(self._prefs)
+            self._home_tab.set_amount_prefs(self._amount_prefs)
         if self._statements_tab is not None:
             self._statements_tab.set_datetime_prefs(self._prefs)
         self._teardown_dialog()

@@ -23,6 +23,18 @@ signaling per
 
 ## [0.1.5] - 2026-07-11
 
+### Added
+
+- **You can now choose how negative amounts look.** (FIBR-0105)
+  In **Settings** (and when first creating your vault) there are two new
+  options for the Home amount column: show money-out either with a **minus
+  sign** (`-25,000.00`) or in **accounting brackets** (`(25,000.00)`), and
+  turn **red/green colouring** on or off (money out in red, money in green).
+  The friendly default is minus with colour on; brackets are there so anyone
+  used to accounting statements keeps the familiar look. It's display-only —
+  your stored amounts never change — and switching either option updates the
+  open Home tab straight away.
+
 ### Changed
 
 - **The update prompt now shows "what's new" inline.** (FIBR-0054)
