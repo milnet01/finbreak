@@ -20,10 +20,33 @@ CACHE="$DIST/.build-cache"
 BUILD_IMAGE="docker.io/library/python:3.12-slim-bookworm"
 TEST_IMAGE="docker.io/library/debian:13-slim"
 CLEANROOM_IMAGE="localhost/finbreak-cleanroom:13"
-ONEFILE="finbreak-selftest"
-APPIMAGE="finbreak-selftest-x86_64.AppImage"
 SENTINEL="FINBREAK_SELFTEST_OK"
 CONTAINER_PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+# --- mode: self-test smoke (default) vs the real signed release (FIBR-0054) --
+# `--release` freezes the SAME GUI entry (python -m finbreak — the frozen binary
+# already contains the full app; --self-test is only a runtime arg) but names it
+# finbreak-<version>-x86_64.AppImage with real desktop metadata + the app icon,
+# and signs it after the clean-room proof (INV-14/INV-15, Deliverable 5). The
+# smoke path is byte-for-byte unchanged when --release is absent.
+MODE="smoke"
+if [ "${1:-}" = "--release" ]; then
+    MODE="release"
+fi
+
+if [ "$MODE" = "release" ]; then
+    VERSION="$(python3 -c "import re, pathlib; print(re.search(r'__version__ = \"([^\"]+)\"', pathlib.Path('$ROOT/src/finbreak/__init__.py').read_text()).group(1))")"
+    ONEFILE="finbreak-$VERSION"
+    APPIMAGE="finbreak-$VERSION-x86_64.AppImage"
+    export APP_DISPLAY_NAME="finbreak"
+    export APP_TERMINAL="false"
+    export APP_CATEGORIES="Office;Finance;Utility;"
+    export APP_ICON_SRC="/src/src/finbreak/ui/icons/app.png"
+    echo "== build-release: version=$VERSION artifact=$APPIMAGE =="
+else
+    ONEFILE="finbreak-selftest"
+    APPIMAGE="finbreak-selftest-x86_64.AppImage"
+fi
 
 # --- pick a container runtime (podman preferred; docker fallback) -----------
 if command -v podman >/dev/null 2>&1; then
@@ -52,6 +75,10 @@ echo "== build-smoke: freezing in $BUILD_IMAGE (this takes a few minutes) =="
     -v "$CACHE":/cache \
     -e "ONEFILE=$ONEFILE" \
     -e "APPIMAGE=$APPIMAGE" \
+    -e "APP_DISPLAY_NAME=${APP_DISPLAY_NAME:-}" \
+    -e "APP_TERMINAL=${APP_TERMINAL:-}" \
+    -e "APP_CATEGORIES=${APP_CATEGORIES:-}" \
+    -e "APP_ICON_SRC=${APP_ICON_SRC:-}" \
     "$BUILD_IMAGE" bash /src/scripts/_build-smoke-in-container.sh
 
 [ -x "$DIST/$ONEFILE" ] || { echo "build-smoke: onefile not produced" >&2; exit 1; }
@@ -97,7 +124,34 @@ run_clean_room() {
     echo "build-smoke: [$label] OK"
 }
 
+# The frozen binary is identical for both modes (it IS the GUI app; --self-test
+# is a runtime arg), so the release AppImage proves it loads Python-free through
+# the exact same sentinel check — that is the INV-15 clean-room proof for it.
 run_clean_room "onefile" "/artifact/$ONEFILE" --self-test
 run_clean_room "AppImage" "/artifact/$APPIMAGE" --self-test
 
 echo "== build-smoke: PASS — both artifacts ran with no Python installed =="
+
+# --- release only: sign the AppImage on the HOST (the private key never enters
+# the build container), then print the publish command (INV-14, D11/D14). ------
+if [ "$MODE" = "release" ]; then
+    KEY="${FINBREAK_SIGNING_KEY:-$ROOT/release/finbreak-signing.key}"
+    if [ -f "$KEY" ]; then
+        echo "== build-release: signing $APPIMAGE with $KEY =="
+        # Run with the project venv active so cryptography is importable.
+        python3 "$ROOT/scripts/sign-release.py" --key "$KEY" "$DIST/$APPIMAGE"
+    else
+        echo "== build-release: NO signing key at $KEY — AppImage is UNSIGNED ==" >&2
+        echo "   Run scripts/gen-signing-key.py first (once), then re-run this," >&2
+        echo "   or sign manually: python scripts/sign-release.py $DIST/$APPIMAGE" >&2
+    fi
+    echo ""
+    echo "Release artifacts in $DIST:"
+    echo "    $APPIMAGE"
+    [ -f "$DIST/$APPIMAGE.sig" ] && echo "    $APPIMAGE.sig"
+    echo ""
+    echo "Publish as a NON-prerelease (D11 — /releases/latest skips prereleases):"
+    echo "    gh release create v$VERSION \\"
+    echo "        \"$DIST/$APPIMAGE\" \"$DIST/$APPIMAGE.sig\" \\"
+    echo "        --title \"finbreak v$VERSION\" --notes \"First public release.\""
+fi

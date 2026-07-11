@@ -835,3 +835,78 @@ def test_settings_save_persists_update_flag(qtbot, service, tmp_path):
     checkbox.setChecked(True)
     dialog._on_save()
     assert updater.is_enabled() is True  # the shell persisted the toggle
+
+
+# --------------------------------------------------------------------------- #
+# INV-14 (Phase 1) — the signing scripts round-trip through the app's gate,
+# and no private-key material is ever tracked in the repo.
+# --------------------------------------------------------------------------- #
+import base64  # noqa: E402
+import importlib.util  # noqa: E402
+import subprocess  # noqa: E402
+from pathlib import Path  # noqa: E402
+
+from cryptography.exceptions import InvalidSignature  # noqa: E402
+
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_SCRIPTS_DIR = _REPO_ROOT / "scripts"
+
+
+def _load_script(filename: str):
+    """Import a ``scripts/*.py`` helper by path (they aren't a package); their
+    keygen/sign side effects live under ``if __name__ == '__main__'`` so import
+    is pure."""
+    path = _SCRIPTS_DIR / filename
+    mod_name = "finbreak_script_" + filename.replace("-", "_").removesuffix(".py")
+    spec = importlib.util.spec_from_file_location(mod_name, path)
+    assert spec and spec.loader
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_INV14_signing_scripts_roundtrip(tmp_path):
+    """gen-signing-key.py's public key + sign-release.py's ``.sig`` verify
+    through the EXACT primitives the app uses (``update_key`` b64-decode +
+    ``from_public_bytes``; ``.verify(sig, data)``) — a tamper is rejected."""
+    gen = _load_script("gen-signing-key.py")
+    sign = _load_script("sign-release.py")
+
+    key_path = tmp_path / "finbreak-signing.key"
+    pub_b64 = gen.generate_keypair(key_path)
+
+    # The public key is exactly what services/update_key.py decodes + loads.
+    pub_raw = base64.b64decode(pub_b64)
+    assert len(pub_raw) == 32
+    public_key = Ed25519PublicKey.from_public_bytes(pub_raw)
+
+    artifact = tmp_path / "finbreak-0.1.0-x86_64.AppImage"
+    artifact.write_bytes(b"pretend appimage bytes " * 100)
+    sig_path = sign.sign_artifact(key_path, artifact)
+
+    # D1/D14: the sig sits at <artifact>.sig and is the raw 64-byte Ed25519 sig.
+    assert sig_path.name == artifact.name + ".sig"
+    sig = sig_path.read_bytes()
+    assert len(sig) == 64
+
+    public_key.verify(sig, artifact.read_bytes())  # the app's gate accepts it
+    with pytest.raises(InvalidSignature):
+        public_key.verify(sig, b"tampered bytes")
+
+
+def test_INV14_no_private_key_material_is_tracked():
+    """No ``*.key`` file and no PEM private-key block is git-tracked (the private
+    signing key must never enter the repo). Marker assembled at runtime so this
+    test file itself doesn't trip the scan."""
+    tracked = subprocess.run(
+        ["git", "ls-files"],
+        cwd=_REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.splitlines()
+    pem_marker = ("-----BEGIN " + "PRIVATE KEY-----").encode()
+    for rel in tracked:
+        assert not rel.endswith(".key"), f"private-key file is tracked: {rel}"
+        data = (_REPO_ROOT / rel).read_bytes()
+        assert pem_marker not in data, f"PEM private-key block tracked in: {rel}"

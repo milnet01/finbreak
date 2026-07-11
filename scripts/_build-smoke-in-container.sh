@@ -123,17 +123,29 @@ HERE="\$(dirname "\$(readlink -f "\$0")")"
 exec "\$HERE/usr/bin/$ONEFILE" "\$@"
 EOF
 chmod +x "$APPDIR/AppRun"
+# Desktop metadata is env-driven so the same freeze serves both the self-test
+# smoke stub (defaults below) and the real release build (build-smoke.sh
+# --release exports APP_DISPLAY_NAME=finbreak, APP_TERMINAL=false, a real icon).
+APP_DISPLAY_NAME="${APP_DISPLAY_NAME:-finbreak-selftest}"
+APP_TERMINAL="${APP_TERMINAL:-true}"
+APP_CATEGORIES="${APP_CATEGORIES:-Utility;}"
 cat > "$APPDIR/$ONEFILE.desktop" <<EOF
 [Desktop Entry]
 Type=Application
-Name=finbreak-selftest
+Name=$APP_DISPLAY_NAME
 Exec=$ONEFILE
 Icon=$ONEFILE
-Categories=Utility;
-Terminal=true
+Categories=$APP_CATEGORIES
+Terminal=$APP_TERMINAL
 EOF
-# appimagetool requires an icon; Pillow is present (a pikepdf dependency).
-python -c "from PIL import Image; Image.new('RGBA', (64, 64), (30, 120, 80, 255)).save('$APPDIR/$ONEFILE.png')"
+# appimagetool requires an icon. A release build points APP_ICON_SRC at the real
+# app.png (FIBR-0037); the smoke stub has none, so generate a placeholder square
+# (Pillow is present — a pikepdf dependency).
+if [ -n "${APP_ICON_SRC:-}" ] && [ -f "$APP_ICON_SRC" ]; then
+    cp "$APP_ICON_SRC" "$APPDIR/$ONEFILE.png"
+else
+    python -c "from PIL import Image; Image.new('RGBA', (64, 64), (30, 120, 80, 255)).save('$APPDIR/$ONEFILE.png')"
+fi
 
 echo "-- building AppImage --"
 # Containers lack /dev/fuse, so extract-and-run instead of mounting; skip the

@@ -36,6 +36,14 @@ dist/
 *.flatpak
 .flatpak-builder/
 
+# Release-signing private key — the Ed25519 key scripts/gen-signing-key.py
+# writes (release/finbreak-signing.key) and any other private-key material must
+# NEVER be committed (FIBR-0054 INV-14; only the public key lives in
+# services/update_key.py). A test (test_INV14_no_private_key_material_is_tracked)
+# fails the gate if a *.key or PEM private-key block is ever tracked.
+release/
+*.key
+
 # OS
 .DS_Store
 Thumbs.db
