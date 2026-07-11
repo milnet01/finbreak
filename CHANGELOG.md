@@ -21,6 +21,8 @@ signaling per
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-07-11
+
 ### Added
 
 - **Choose your time zone and date/time format (Settings + first-run).** (FIBR-0083)
