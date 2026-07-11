@@ -21,6 +21,25 @@ signaling per
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-07-11
+
+### Fixed
+
+- **The update check now works on every Linux distribution.** On v0.1.0/v0.1.1
+  the "check for updates" step could silently do nothing — no prompt ever
+  appeared — on any distro whose system security-certificate location differs
+  from the one the app was built on. finbreak now ships its own trusted
+  certificate set and uses it directly, so checking for and installing updates
+  works regardless of where your distro keeps its certificates.
+- **The Rules button on the toolbar now has an icon** (it was text-only).
+
+### Added
+
+- **Help → Check for updates…** — check for a new version on demand, with a
+  clear result every time (an update is offered, you're up to date, or it
+  couldn't reach the internet). Works even if automatic update checks are turned
+  off — clicking it is your go-ahead for that one check.
+
 ## [0.1.1] - 2026-07-11
 
 ### Changed
