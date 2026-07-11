@@ -889,6 +889,12 @@ because retrofitting them is a data migration.
   Kind: feature.
   Source: user-request-2026-07-11 (dogfooding v0.1.0).
 
+- 📋 [FIBR-0085] **Batch statement import — import several statement files in one go.**
+  Motivated by dogfooding v0.1.0. Today the import wizard handles ONE file per run (FIBR-0007 CSV / FIBR-0008 OFX / FIBR-0009 PDF). Add multi-file selection that runs each file through the existing preview -> dedup -> commit pipeline, with per-file semantics (a bad/duplicate file is reported and skipped, never aborting the batch) and a summary dialog listing each file's outcome (imported N / skipped-duplicate / failed-why) + transaction counts. Mixed formats (CSV/OFX/PDF) allowed in one batch; per-file mapping where the format needs it (CSV mapping profile selection, PDF password prompt). Reuses the existing importers + FIBR-0052 statement provenance; the new work is the multi-file wizard flow + aggregate reporting. Deps: FIBR-0007/0008/0009 (importers), FIBR-0052 (per-statement provenance so each imported file is a distinct statement row).
+  **Layman:** Let a person select and import many statement files at once (e.g. a whole folder of monthly PDFs) instead of importing them one at a time.
+  Kind: feature.
+  Source: user-request-2026-07-11 (dogfooding v0.1.0).
+
 ### ⚡ Performance
 
 - 📋 [FIBR-0025] **Enable SQLite WAL mode.** Set
