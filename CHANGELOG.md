@@ -21,6 +21,13 @@ signaling per
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-07-11
+
+First public release — an early preview. Establishes the signed update
+channel (opt-in, off by default) and ships the working core: an encrypted
+vault, CSV/OFX/PDF statement import, accounts, a category tree, and
+auto-categorisation.
+
 ### Added
 
 - **Auto-categorisation: user-editable rules file transactions into categories by themselves, with a manual per-transaction override that always wins, learning from corrections, and a clean delete-category cascade (FIBR-0010).**

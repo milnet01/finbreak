@@ -11,39 +11,81 @@
 [![Status](https://img.shields.io/badge/status-pre--alpha-orange)]()
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-Current version: **0.0.0** — see [CHANGELOG](CHANGELOG.md) for shipped
-work, [ROADMAP](ROADMAP.md) for what's coming, and
-[docs/standards/](docs/standards/) for the six shareable v1
-standards (coding · naming · dependencies · documentation · testing ·
-commits) the project follows.
+Current version: **0.1.0** — the first public release. **[⬇ Download the
+latest release](https://github.com/milnet01/finbreak/releases/latest)**, or
+see [CHANGELOG](CHANGELOG.md) for what's shipped and [ROADMAP](ROADMAP.md)
+for what's coming.
 
 ## Status
 
-In active development (pre-alpha — nothing released yet). The encrypted
-security spine (**P02**) and the accounts + category-tree + forward-migration
-layers (**P03–P04**) have shipped; **P05 — CSV import** is underway (its
-spec is `/cold-eyes`-converged and the test-first build is starting). See
-[ROADMAP.md](ROADMAP.md) for the full P01–P13 build order,
-[CHANGELOG.md](CHANGELOG.md) for what's shipped, and
-[.claude/workflow.md](.claude/workflow.md) for live state.
+finbreak is in **early development** — `0.1.0` is the first public release,
+an early preview with rough edges. The core already works end-to-end:
+
+- a private, password-protected place to keep your finances (an encrypted
+  vault),
+- importing statements from **CSV, OFX, and PDF** files (including
+  password-protected PDFs),
+- organising them into **accounts** and a **category tree**, and
+- **automatically sorting** transactions into categories, with rules you
+  can edit and corrections it learns from.
+
+Still to come: a **dashboard** with charts and summaries, automatic
+**transfer detection** (spotting money moving between your own accounts),
+and **password-protected PDF export**. See the [ROADMAP](ROADMAP.md) for
+the full plan.
+
+## Install
+
+**Linux (x86_64)** — everything is bundled, so you don't need Python or any
+libraries installed:
+
+1. Download `finbreak-0.1.0-x86_64.AppImage` from the
+   **[latest release](https://github.com/milnet01/finbreak/releases/latest)**.
+2. Make it runnable (once):
+   ```bash
+   chmod +x finbreak-0.1.0-x86_64.AppImage
+   ```
+3. Launch it — double-click in your file manager, or run
+   `./finbreak-0.1.0-x86_64.AppImage`.
+
+Each release also ships a `.sig` file next to the AppImage — that's the
+signature finbreak uses to check updates are genuine; you don't need to do
+anything with it yourself.
+
+**Windows and macOS** — packaged installers are on the way (see
+[ROADMAP](ROADMAP.md) → P13). Until then, you can run from source with
+Python 3.12+ (see [CLAUDE.md](CLAUDE.md) "Build and test").
+
+## Quickstart
+
+1. **Launch finbreak.** The first time, you'll create your vault by
+   choosing a **master password**. This password encrypts everything — keep
+   it safe, because there is **no way to recover your data if you forget
+   it**.
+2. **Add an account** (for example, your current account).
+3. **Import a statement** — point finbreak at a CSV, OFX, or PDF file from
+   your bank. It reads the transactions and files them into categories.
+4. **Fix anything it got wrong.** Change a transaction's category and
+   finbreak can turn your correction into a rule, so it gets it right next
+   time.
+5. **Lock it when you're done.** finbreak also locks itself automatically
+   after a period of inactivity (you can set how long in **Settings**).
+
+### Staying up to date (optional)
+
+Automatic updates are **off by default**. If you'd like finbreak to check
+for new versions, turn on **"Check for updates on startup"** in
+**Settings**. When it's on, finbreak checks GitHub at launch and, if there's
+a newer release, offers to download and install it — but only after
+verifying the download's signature, so a tampered update can never be
+installed. Leave it off and finbreak makes no network connections at all.
+
+## For maintainers
 
 **To resume work:** open a terminal in this directory and run `claude`,
 then type `continue`. Claude will summarise current state back to you
 before doing any work — confirm or correct that summary; never let Claude
 resume work without it.
-
-## Features
-
-(filled out once features ship; reflects shipped capability, not
-intent — nothing has shipped at v0.0.0)
-
-## Install
-
-(filled out once there's an installable artifact — P13 packaging)
-
-## Quickstart
-
-(filled out at P02 — Vertical slice)
 
 ## Documentation
 
