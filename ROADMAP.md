@@ -908,6 +908,12 @@ because retrofitting them is a data migration.
   Kind: feature.
   Source: user-request-2026-07-11 (dogfooding v0.1.0).
 
+- 📋 [FIBR-0088] **Detect an already-imported statement up front (content hash) — warn before re-importing.**
+  User wants an early 'already imported?' check that short-circuits BEFORE the per-transaction dedup (saving redundant work). Partly plumbed already: statements store source_filename and statement_periods has id_for_span (account+period existence check). Robust key = a CONTENT HASH (SHA-256 of the file bytes): detects a re-import of the IDENTICAL file regardless of filename — filename alone is unreliable (same file renamed; or two different files both named 'statement.pdf'). Add a file_hash column (schema migration, currently v7), compute it at import start, and if it matches a prior import WARN the user with an import-anyway option (a corrected re-issue is a legit re-import) rather than silently skipping. The existing account+period match (id_for_span) is a softer secondary signal. COMPLEMENTS, not replaces, transaction dedup (INV-6), which still catches overlapping-but-different files. Primarily a UX safeguard against accidental re-import; the CPU saving is a bonus. Also gives FIBR-0085 (batch import) its per-file 'already imported -> skipped' outcome. Deps: FIBR-0007/0008/0009 (importers), FIBR-0052 (statement provenance).
+  **Layman:** When you import a statement finbreak has already seen, it tells you up front ('looks like you already imported this') instead of silently re-processing it.
+  Kind: feature.
+  Source: user-request-2026-07-11 (dogfooding v0.1.0).
+
 ### ⚡ Performance
 
 - 📋 [FIBR-0025] **Enable SQLite WAL mode.** Set
