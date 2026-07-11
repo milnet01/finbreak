@@ -1033,6 +1033,12 @@ because retrofitting them is a data migration.
   Kind: perf.
   Source: claude-suggestion-2026-07-11.
 
+- 📋 [FIBR-0104] **Move slow statement import onto a worker thread (responsive UI + native overlap).**
+  User idea (multi-threading for performance). Honest framing: Python's GIL means threading helps RESPONSIVENESS + native-code overlap, NOT pure-Python CPU parallelism. The app already threads its two slow blocking ops correctly (Argon2 key derivation via DeriveWorker; network via UpdateCheck/DownloadWorker — both native/GIL-releasing). Best next win: move IMPORT (pdfplumber text extraction, in-memory pikepdf decrypt, CSV/OFX parse, dedup + commit) onto a QThread worker (reuse the ui/_worker.py DeriveWorker pattern) with a progress indicator — today it runs ON THE UI THREAD (security-model / FIBR-0075 note: pdfplumber extract runs on the UI thread), so a large statement freezes the window. These ops are native-heavy (pdfplumber/pikepdf C++, SQLCipher C) so they RELEASE the GIL → genuine overlap with the GUI. CAVEAT: SQLite/SQLCipher connections are NOT shareable across threads — the worker needs its OWN connection to the vault (or marshal results back via signals). Pure-Python CPU hotspots (rule matching) won't benefit (GIL) — indexes (FIBR-0098) + virtualized tables (FIBR-0097) are the levers there. Deps: FIBR-0007/0008/0009 (import), reuses the QThread worker pattern; pairs with FIBR-0065 (non-blocking dialog discipline)."
+  **Layman:** When importing a big statement, do the heavy reading on a background thread with a progress bar so the window stays responsive instead of freezing.
+  Kind: perf.
+  Source: user-suggestion-2026-07-11.
+
 ### 🧹 Warnings & tech debt
 
 Every warning or error found during any work — tests, gate, build, tooling,
