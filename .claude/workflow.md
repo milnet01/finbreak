@@ -33,10 +33,19 @@ becomes active.
 9. ⬜ Commit, tag `FIBR-0054-complete`, push
 
 *(Awaiting the user's live self-update test before `/close-phase`; the feature is
-code-complete and released regardless. **Update-test target is now `0.1.2`→`0.1.3`**
-— `v0.1.3` published 2026-07-11 carrying the new **FIBR-0083** feature, the release
-the user's installed build self-updates to. `.sig` verified against the committed
-public key before publish.)*
+code-complete and released regardless. **Live update proven `0.1.2`→`0.1.3`
+2026-07-11** — download + Ed25519-verify + swap + version-bump all worked (About
+showed 0.1.3). **One field bug found + fixed:** the app closed but did NOT
+auto-relaunch. Root cause — `AppImageInstaller.apply` re-exec'd in place via
+`os.execv`, which can't replace a PyInstaller-onefile AppImage's busy FUSE mount
+(the onefile bootloader treats the re-exec as a worker subprocess). Fixed to a
+detached `subprocess.Popen` + `os._exit`, env `PYINSTALLER_RESET_ENVIRONMENT=1`
+(PyInstaller 6.10+ official restart signal) + stale AppImage vars dropped;
+spec D8/INV-6 field-corrected, tests reworked. **`v0.1.4` published 2026-07-11**
+with the fix (`.sig` verified pre-publish). **Caveat: the fix only proves out on
+the NEXT update after 0.1.4** — the *running* (old) version performs each
+relaunch, so `0.1.3`→`0.1.4` still needs one manual reopen; `0.1.4`→(next feature
+release) is the true auto-relaunch test, which then closes FIBR-0054.)*
 
 ### FIBR-0009 close record (P07, closed 2026-07-04)
 
@@ -108,6 +117,35 @@ journal); §2 is the only part that changes.
 ## §3. Session journal
 
 Append-only. Newest at the top.
+
+### 2026-07-11 — Live self-update proven (0.1.2→0.1.3); relaunch bug fixed → v0.1.4
+
+The user ran the live self-update on their installed AppImage: **download →
+Ed25519-verify → swap → version-bump all worked** (About showed 0.1.3) — the whole
+FIBR-0054 updater proven end-to-end in the field. **One bug:** the app closed but
+didn't auto-relaunch (manual reopen needed).
+
+**Researched (user asked) + root-caused.** In-place `os.execv($APPIMAGE)` can't
+relaunch a PyInstaller-onefile AppImage from within itself: the running image's FUSE
+mount is busy, and — per PyInstaller 6.10+ docs — the onefile bootloader treats an
+in-place re-exec as a *worker subprocess* (reusing the now-deleted `_MEI`
+extraction), so it dies. **Fix (official mechanism):** relaunch as a fresh DETACHED
+process — `subprocess.Popen([$APPIMAGE], start_new_session=True, stdio=DEVNULL,
+env=_relaunch_env())` then `os._exit(0)`. `_relaunch_env()` sets
+`PYINSTALLER_RESET_ENVIRONMENT=1` (the supported "restart the frozen app" signal so
+the new onefile re-extracts) and drops the stale AppImage `APPDIR`/`APPIMAGE`/`ARGV0`.
+Key-wipe still runs after the swap + before the spawn (INV-6). Reworked the INV-5/6
+installer tests to the new contract (Popen + `os._exit` monkeypatched) + a leg
+asserting detached/new-session/reset-env; field-corrected FIBR-0054 spec **D8 +
+INV-6 + deliverable** (execv → detached relaunch) and `auto_update` spec.md; CHANGELOG
+Fixed. Gate green 577/1, bandit/mypy/ruff clean. Commit `91f21d7`.
+
+**Published `v0.1.4`** (bump `d12b8a3`; built + clean-room-proved + signed;
+`.sig` verified vs the committed public key pre-publish; non-prerelease, latest).
+**Key operational caveat (see status header):** the *running* version does each
+relaunch, so `0.1.3`→`0.1.4` still needs one manual reopen — `0.1.4`→(next release)
+is the real auto-relaunch test. User chose to verify on the next natural feature
+release rather than cut a throwaway 0.1.5. That test, once green, closes FIBR-0054.
 
 ### 2026-07-11 — FIBR-0083 SHIPPED (timezone + date/time format) + v0.1.3 released
 
