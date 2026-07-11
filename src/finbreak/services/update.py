@@ -170,14 +170,17 @@ class UpdateService:
         settings.sync()
 
     # --- the launch check (INV-1/2/3/8/11) ---------------------------------- #
-    def check_for_update(self) -> UpdateInfo | None:
+    def check_for_update(self, *, force: bool = False) -> UpdateInfo | None:
         """Return a newer, signed, non-skipped release to offer, or ``None``.
 
         The opt-in gate is checked first, so a disabled service never calls the
-        fetcher (INV-1). Every failure — disabled, malformed version, network
+        fetcher on the silent startup path (INV-1). A *forced* check (the manual
+        Help → Check-for-updates action — an explicit click is its own consent)
+        bypasses only that gate; every other guard (version compare, skip, asset
+        predicate) still applies. Every failure — malformed version, network
         error, missing asset, not-newer, skipped — yields ``None`` and never
         propagates (INV-3/INV-11)."""
-        if not self.is_enabled():
+        if not force and not self.is_enabled():
             return None
         try:
             current = _parse_version(self._current_version)

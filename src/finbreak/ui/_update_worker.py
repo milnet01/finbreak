@@ -21,13 +21,14 @@ class UpdateCheckWorker(QThread):
     none = Signal()
     failed = Signal(object)  # an exception (unexpected — the check is fail-safe)
 
-    def __init__(self, service: UpdateService, parent=None):
+    def __init__(self, service: UpdateService, parent=None, *, force: bool = False):
         super().__init__(parent)
         self._service = service
+        self._force = force  # a manual Help→Check check bypasses the opt-in gate
 
     def run(self) -> None:
         try:
-            info = self._service.check_for_update()
+            info = self._service.check_for_update(force=self._force)
         except Exception as exc:  # check_for_update is fail-safe; this is defensive
             self.failed.emit(exc)
             return

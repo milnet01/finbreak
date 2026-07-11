@@ -159,6 +159,7 @@ class MainWindow(QMainWindow):
         self._offered_update: UpdateInfo | None = None  # the one currently prompted
         self._unlocked = False  # gates the pending offer (D15)
         self._update_check_worker: UpdateCheckWorker | None = None
+        self._manual_check_worker: UpdateCheckWorker | None = None  # Help→Check
         self._download_worker: DownloadWorker | None = None
         self._dialog: QDialog | None = None  # the current modal dialog, if any
         self._live: QWidget | None = None  # the current content widget, if any
@@ -226,7 +227,7 @@ class MainWindow(QMainWindow):
             self._open_categories,
         )
         self._action_rules = self._make_action(
-            "action_rules", self.tr("Rules"), None, self._open_rules
+            "action_rules", self.tr("Rules"), "rules", self._open_rules
         )
         self._action_lock = self._make_action(
             "action_lock", self.tr("Lock"), "lock", self._lock
@@ -247,6 +248,12 @@ class MainWindow(QMainWindow):
             )
         self._action_reset_layout = self._make_action(
             "action_reset_layout", self.tr("Reset layout"), None, self._reset_layout
+        )
+        self._action_check_updates = self._make_action(
+            "action_check_updates",
+            self.tr("Check for updates…"),
+            None,
+            self._check_for_updates_now,
         )
         self._action_about = self._make_action(
             "action_about", self.tr("About finbreak"), None, self._show_about
@@ -295,6 +302,8 @@ class MainWindow(QMainWindow):
         self._menu_window.addAction(self._action_reset_layout)
 
         menu_help = menu.addMenu(self.tr("Help"))
+        menu_help.addAction(self._action_check_updates)
+        menu_help.addSeparator()
         menu_help.addAction(self._action_about)
 
         menu_donate = menu.addMenu(self.tr("Donate"))
@@ -614,6 +623,48 @@ class MainWindow(QMainWindow):
         dialog.update_now.connect(self._on_update_now)
         dialog.notes_requested.connect(self._on_update_notes)
         self._open_dialog(dialog, defer=False)
+
+    def _check_for_updates_now(self) -> None:
+        # Help → Check for updates: an explicit, on-demand check that gives
+        # feedback on EVERY outcome (unlike the silent startup check, INV-11).
+        # The click is its own consent, so it runs even if the startup opt-in is
+        # off (force=True). A found offer reuses the D15 prompt via
+        # _on_update_found (we're unlocked + idle when the menu is used).
+        if self._installer is None:
+            QMessageBox.information(
+                self,
+                self.tr("Check for updates"),
+                self.tr(
+                    "Automatic updates aren't available for this build of finbreak."
+                ),
+            )
+            return
+        worker = UpdateCheckWorker(self._update_service, self, force=True)
+        worker.found.connect(self._on_update_found)
+        worker.none.connect(self._on_manual_check_up_to_date)
+        worker.failed.connect(self._on_manual_check_error)
+        worker.finished.connect(worker.deleteLater)
+        self._manual_check_worker = worker
+        worker.start()
+
+    def _on_manual_check_up_to_date(self) -> None:
+        QMessageBox.information(
+            self,
+            self.tr("Check for updates"),
+            self.tr("You're on the latest version ({version}).").format(
+                version=__version__
+            ),
+        )
+
+    def _on_manual_check_error(self, _exc: object) -> None:
+        QMessageBox.warning(
+            self,
+            self.tr("Check for updates"),
+            self.tr(
+                "Couldn't check for updates. Check your internet connection and "
+                "try again."
+            ),
+        )
 
     def _on_update_later(self) -> None:
         self._teardown_dialog()  # re-ask next launch; nothing persisted (INV-8)

@@ -103,6 +103,7 @@ def test_INV1_chrome_parts_and_action_set(qtbot, service):
         "action_center_window",
         "action_reset_layout",
         "action_about",
+        "action_check_updates",  # FIBR-0054: Help → Check for updates…
         "action_donate_github",
         "action_donate_patreon",
         "action_donate_paybru",
@@ -526,6 +527,22 @@ def test_FIBR0037_app_icon_renders(qtbot):
     # file yields a null pixmap even though QIcon(path) is non-null).
     pixmap = app_icon().pixmap(QSize(64, 64))
     assert not pixmap.isNull() and not pixmap.size().isEmpty()
+
+
+def test_rules_toolbar_action_has_a_rendering_icon(qtbot, service):
+    """The Rules action sits on the toolbar (text-under-icon), so it needs a
+    glyph like its neighbours — it shipped text-only (no icon_name, no rules.svg),
+    surfaced dogfooding v0.1.0. A non-null rendered pixmap proves the SVG loads."""
+    from PySide6.QtCore import QSize
+
+    service.first_run(bytearray(_PW), "ZAR")
+    service.lock()
+    window = MainWindow(service)
+    qtbot.addWidget(window)
+
+    action = window.findChild(QAction, "action_rules")
+    assert action is not None
+    assert not action.icon().pixmap(QSize(24, 24)).isNull(), "Rules needs an icon"
 
 
 def test_about_text_shows_version(qtbot, service):

@@ -598,7 +598,7 @@ class _StubCheckService:
         self._result = result
         self._error = error
 
-    def check_for_update(self):
+    def check_for_update(self, *, force=False):
         if self._error is not None:
             raise self._error
         return self._result
@@ -710,7 +710,7 @@ class _FakeUpdateService:
     def set_enabled(self, enabled):
         self._enabled = enabled
 
-    def check_for_update(self):
+    def check_for_update(self, *, force=False):
         return self._info
 
     def skip_version(self, version):
@@ -926,3 +926,68 @@ def test_INV14_no_private_key_material_is_tracked():
         assert not rel.endswith(".key"), f"private-key file is tracked: {rel}"
         data = (_REPO_ROOT / rel).read_bytes()
         assert pem_marker not in data, f"PEM private-key block tracked in: {rel}"
+
+
+# --------------------------------------------------------------------------- #
+# Help → Check for updates — a manual, on-demand check that gives feedback on
+# every outcome and runs even if the startup setting is off (the click is
+# consent). Surfaced dogfooding v0.1.0.
+# --------------------------------------------------------------------------- #
+def test_manual_check_forces_past_the_disabled_gate(tmp_path):
+    """A forced check queries even when the startup opt-in is off — an explicit
+    Help → Check-for-updates click is its own consent (still no fetch on the
+    silent startup path when disabled, INV-1)."""
+    fetcher = _FakeFetcher(release=_release("v0.1.1"))
+    svc = _service(tmp_path, fetcher=fetcher, current="0.1.0")
+    assert svc.is_enabled() is False
+    assert svc.check_for_update() is None  # startup path stays gated (INV-1)
+    assert fetcher.fetch_calls == 0
+    info = svc.check_for_update(force=True)  # manual path bypasses the gate
+    assert info is not None and info.version == "0.1.1"
+    assert fetcher.fetch_calls == 1
+
+
+def test_manual_check_unsupported_build_tells_the_user(qtbot, service, monkeypatch):
+    window, _ = _updater_shell(qtbot, service, installer=None)  # not an AppImage
+    shown = []
+    monkeypatch.setattr(
+        "finbreak.ui.main_window.QMessageBox.information",
+        lambda *a, **k: shown.append(a),
+    )
+    window._check_for_updates_now()
+    assert shown, "an unsupported build should say updates aren't available"
+
+
+def test_manual_check_supported_starts_a_worker(qtbot, service, tmp_path, monkeypatch):
+    # Silence the async "up to date" info dialog (the fake returns no update) so
+    # the worker thread's outcome doesn't block on a real modal.
+    monkeypatch.setattr(
+        "finbreak.ui.main_window.QMessageBox.information", lambda *a, **k: None
+    )
+    installer = _FakeInstaller(tmp_path / "app.AppImage")
+    window, _ = _updater_shell(qtbot, service, info=None, installer=installer)
+    window._check_for_updates_now()
+    assert window._manual_check_worker is not None  # an off-thread check started
+    window._manual_check_worker.wait(2000)  # let the thread finish cleanly
+
+
+def test_manual_check_up_to_date_shows_info(qtbot, service, monkeypatch):
+    window, _ = _updater_shell(qtbot, service)
+    shown = []
+    monkeypatch.setattr(
+        "finbreak.ui.main_window.QMessageBox.information",
+        lambda *a, **k: shown.append(a),
+    )
+    window._on_manual_check_up_to_date()
+    assert shown, "an up-to-date result should be reported to the user"
+
+
+def test_manual_check_error_warns(qtbot, service, monkeypatch):
+    window, _ = _updater_shell(qtbot, service)
+    warned = []
+    monkeypatch.setattr(
+        "finbreak.ui.main_window.QMessageBox.warning",
+        lambda *a, **k: warned.append(a),
+    )
+    window._on_manual_check_error(RuntimeError("boom"))
+    assert warned, "a failed manual check should warn the user"
