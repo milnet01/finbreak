@@ -902,6 +902,12 @@ because retrofitting them is a data migration.
   Kind: feature.
   Source: user-request-2026-07-11 (dogfooding v0.1.0).
 
+- 📋 [FIBR-0087] **Per-account currency — support offshore/foreign-currency accounts in the portfolio (revisits FIBR-0021).**
+  The user wants to include an offshore account in their portfolio — the "real multi-currency need" FIBR-0021 deferred to (it chose single base_currency for v1, set at first-run, and said revisit when this arises). Per FIBR-0021's own "if revisited" note: add a currency column on accounts (default = the vault base currency), CHOOSE the currency when ADDING an account (the user's ask), QLocale-format each amount in its account's currency, and enforce that the dashboard NEVER sums across currencies without explicit conversion. Needs its OWN design/spec — the hard decisions: (a) consolidated totals across currencies — NO live FX rates (that would widen the network surface beyond the one FIBR-0054 update egress), so either per-currency subtotals or a user-entered/stored conversion rate; (b) how the dashboard presents mixed currencies (per-currency subtotals vs one converted total). Schema migration (currently v7 -> v8). Deps: FIBR-0005 (accounts), FIBR-0012 (dashboard totals). Kept SEPARATE from FIBR-0083 (date/time formatting).
+  **Layman:** Let each account have its own currency (e.g. a USD offshore account alongside your ZAR accounts), chosen when you create the account, so foreign accounts show and total correctly.
+  Kind: feature.
+  Source: user-request-2026-07-11 (dogfooding v0.1.0).
+
 ### ⚡ Performance
 
 - 📋 [FIBR-0025] **Enable SQLite WAL mode.** Set
