@@ -28,8 +28,20 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from finbreak.datetime_format import system_timezone_id
 from finbreak.models import KdfParams
-from finbreak.services.auth import CURRENCY_EXPONENTS, AuthService
+from finbreak.services.auth import (
+    CURRENCY_EXPONENTS,
+    DATETIME_SYSTEM,
+    AuthService,
+    DateTimePrefs,
+)
+from finbreak.ui._datetime_prefs import (
+    populate_datetime_combos,
+    read_datetime_prefs,
+    system_date_sample_label,
+    system_time_sample_label,
+)
 from finbreak.ui._worker import DeriveWorker
 
 
@@ -50,6 +62,32 @@ class FirstRunDialog(QDialog):
         self._confirm.setEchoMode(QLineEdit.EchoMode.Password)
         self._currency = QComboBox()
         self._currency.addItems(list(CURRENCY_EXPONENTS))
+
+        # The FIBR-0083 timezone / date / time controls, pre-filled with the
+        # detected "system" defaults (there is no vault to read yet — D6). The
+        # System-default label is the only tr()-wrapped text (INV-7).
+        self._timezone = QComboBox()
+        self._timezone.setObjectName("first_run_timezone")
+        self._date_format = QComboBox()
+        self._date_format.setObjectName("first_run_date_format")
+        self._time_format = QComboBox()
+        self._time_format.setObjectName("first_run_time_format")
+        populate_datetime_combos(
+            self._timezone,
+            self._date_format,
+            self._time_format,
+            system_tz_label=self.tr("System default ({detected})").format(
+                detected=system_timezone_id()
+            ),
+            system_date_label=self.tr("System default ({detected})").format(
+                detected=system_date_sample_label()
+            ),
+            system_time_label=self.tr("System default ({detected})").format(
+                detected=system_time_sample_label()
+            ),
+            current=DateTimePrefs(DATETIME_SYSTEM, DATETIME_SYSTEM, DATETIME_SYSTEM),
+        )
+
         self._submit = QPushButton(self.tr("Create vault"))
         self._error = QLabel()
 
@@ -57,6 +95,9 @@ class FirstRunDialog(QDialog):
         form.addRow(self.tr("Master password"), self._password)
         form.addRow(self.tr("Confirm password"), self._confirm)
         form.addRow(self.tr("Base currency"), self._currency)
+        form.addRow(self.tr("Time zone"), self._timezone)
+        form.addRow(self.tr("Date format"), self._date_format)
+        form.addRow(self.tr("Time format"), self._time_format)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Cancel)
         self._cancel = buttons.button(QDialogButtonBox.StandardButton.Cancel)
@@ -137,6 +178,13 @@ class FirstRunDialog(QDialog):
             return
         try:
             self._service.complete_first_run(raw, params, currency)
+            # The vault now exists — persist the datetime prefs at this post-create
+            # site (D6), on the same guarded path as vault creation.
+            self._service.set_datetime_prefs(
+                read_datetime_prefs(
+                    self._timezone, self._date_format, self._time_format
+                )
+            )
         except Exception as exc:  # vault creation failed — surface, don't crash
             self._error.setText(
                 self.tr("Could not create the vault: {error}").format(error=exc)

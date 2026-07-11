@@ -55,7 +55,9 @@ def _shell(qtbot, service) -> MainWindow:
 
 
 def _combo(dialog: SettingsDialog) -> QComboBox:
-    combo = dialog.findChild(QComboBox)
+    # Pinned to the auto-lock combo by objectName — the dialog now holds several
+    # combos (FIBR-0083 added timezone/date/time), so a bare findChild is ambiguous.
+    combo = dialog.findChild(QComboBox, "settings_auto_lock")
     assert combo is not None
     return combo
 
@@ -218,7 +220,12 @@ def test_INV8_preselect_and_readonly_currency(qtbot, service):
 
     currency = dialog.findChild(QLabel, "settings_currency")
     assert currency is not None and "ZAR" in currency.text()
-    assert dialog.findChild(QLineEdit) is None, "currency is read-only, no edit field"
+    # Currency stays a read-only QLabel; the only edit field in the dialog is the
+    # FIBR-0083 editable timezone combo's internal search box (type-to-search).
+    timezone = dialog.findChild(QComboBox, "settings_timezone")
+    assert dialog.findChildren(QLineEdit) == [timezone.lineEdit()], (
+        "currency is read-only, no edit field of its own"
+    )
 
 
 def test_INV8_out_of_set_preselects_default(qtbot, service):
@@ -316,3 +323,75 @@ def test_datetime_prefs_is_frozen(service):
     prefs = service.datetime_prefs()
     with pytest.raises(FrozenInstanceError):
         prefs.timezone = "UTC"  # type: ignore[misc]
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0083 — the Settings timezone/date/time combos (qtbot)
+# --------------------------------------------------------------------------- #
+def _dt_combos(dialog):
+    return (
+        dialog.findChild(QComboBox, "settings_timezone"),
+        dialog.findChild(QComboBox, "settings_date_format"),
+        dialog.findChild(QComboBox, "settings_time_format"),
+    )
+
+
+def test_datetime_combos_present_and_default_to_system(qtbot, service):
+    dialog = SettingsDialog(service, "ZAR")
+    qtbot.addWidget(dialog)
+    tz, date, time = _dt_combos(dialog)
+    assert tz is not None and date is not None and time is not None
+    # each combo's first item is the System sentinel, preselected on a fresh vault
+    for combo in (tz, date, time):
+        assert combo.itemData(0) == "system"
+        assert combo.currentData() == "system"
+    # only the timezone combo is editable (type-to-search over 643 ids)
+    assert tz.isEditable()
+    assert not date.isEditable() and not time.isEditable()
+
+
+def test_datetime_combos_preselect_current_prefs(qtbot, service):
+    service.set_datetime_prefs(
+        DateTimePrefs("Africa/Johannesburg", "yyyy/MM/dd", "HH:mm")
+    )
+    dialog = SettingsDialog(service, "ZAR")
+    qtbot.addWidget(dialog)
+    tz, date, time = _dt_combos(dialog)
+    assert tz.currentData() == "Africa/Johannesburg"
+    assert date.currentData() == "yyyy/MM/dd"
+    assert time.currentData() == "HH:mm"
+
+
+def test_datetime_combos_persist_selection_on_save(qtbot, service):
+    dialog = SettingsDialog(service, "ZAR")
+    qtbot.addWidget(dialog)
+    tz, date, time = _dt_combos(dialog)
+    tz.setCurrentIndex(tz.findData("Africa/Johannesburg"))
+    date.setCurrentIndex(date.findData("yyyy/MM/dd"))
+    time.setCurrentIndex(time.findData("HH:mm"))
+    dialog._on_save()
+    assert service.datetime_prefs() == DateTimePrefs(
+        "Africa/Johannesburg", "yyyy/MM/dd", "HH:mm"
+    )
+
+
+def test_datetime_freetyped_valid_zone_recovered_on_save(qtbot, service):
+    # A real id typed into the editable combo without clicking the list (D4
+    # "override to pin") leaves currentData() non-str -> recover via currentText().
+    dialog = SettingsDialog(service, "ZAR")
+    qtbot.addWidget(dialog)
+    tz, _date, _time = _dt_combos(dialog)
+    tz.setCurrentIndex(-1)
+    tz.setEditText("Europe/Paris")
+    dialog._on_save()
+    assert service.datetime_prefs().timezone == "Europe/Paris"
+
+
+def test_datetime_freetyped_garbage_zone_falls_back_to_system(qtbot, service):
+    dialog = SettingsDialog(service, "ZAR")
+    qtbot.addWidget(dialog)
+    tz, _date, _time = _dt_combos(dialog)
+    tz.setCurrentIndex(-1)
+    tz.setEditText("Not A Zone")
+    dialog._on_save()
+    assert service.datetime_prefs().timezone == "system"

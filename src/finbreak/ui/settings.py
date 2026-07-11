@@ -25,8 +25,15 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from finbreak.datetime_format import system_timezone_id
 from finbreak.errors import VaultLockedError
 from finbreak.services.auth import ALLOWED_AUTO_LOCK_MINUTES, AuthService
+from finbreak.ui._datetime_prefs import (
+    populate_datetime_combos,
+    read_datetime_prefs,
+    system_date_sample_label,
+    system_time_sample_label,
+)
 from finbreak.ui._widgets import select_combo_data
 
 
@@ -65,6 +72,31 @@ class SettingsDialog(QDialog):
         # 0 (the most-aggressive lock), never a weaker one.
         select_combo_data(self._combo, service.auto_lock_minutes())
 
+        # The FIBR-0083 timezone / date / time controls. The System-default label
+        # is the only tr()-wrapped text (the detected value interpolated via a
+        # placeholder, never self.tr(variable) — INV-7); every other item is data.
+        self._timezone = QComboBox()
+        self._timezone.setObjectName("settings_timezone")
+        self._date_format = QComboBox()
+        self._date_format.setObjectName("settings_date_format")
+        self._time_format = QComboBox()
+        self._time_format.setObjectName("settings_time_format")
+        populate_datetime_combos(
+            self._timezone,
+            self._date_format,
+            self._time_format,
+            system_tz_label=self.tr("System default ({detected})").format(
+                detected=system_timezone_id()
+            ),
+            system_date_label=self.tr("System default ({detected})").format(
+                detected=system_date_sample_label()
+            ),
+            system_time_label=self.tr("System default ({detected})").format(
+                detected=system_time_sample_label()
+            ),
+            current=service.datetime_prefs(),
+        )
+
         # Read-only display of the vault's base currency (a plain QLabel).
         self._currency = QLabel(base_currency)
         self._currency.setObjectName("settings_currency")
@@ -83,6 +115,9 @@ class SettingsDialog(QDialog):
 
         form = QFormLayout()
         form.addRow(self.tr("Auto-lock after"), self._combo)
+        form.addRow(self.tr("Time zone"), self._timezone)
+        form.addRow(self.tr("Date format"), self._date_format)
+        form.addRow(self.tr("Time format"), self._time_format)
         form.addRow(self.tr("Base currency"), self._currency)
         form.addRow("", self._update_checkbox)
 
@@ -109,10 +144,15 @@ class SettingsDialog(QDialog):
     def _on_save(self) -> None:
         try:
             self._service.set_auto_lock_minutes(self._combo.currentData())
+            self._service.set_datetime_prefs(
+                read_datetime_prefs(
+                    self._timezone, self._date_format, self._time_format
+                )
+            )
         except VaultLockedError:
-            # An idle auto-lock can fire while this non-modal dialog is open;
-            # set_auto_lock_minutes then reads a locked vault. Return silently
-            # (the shell tears the dialog down), matching every other handler
-            # instead of crashing the slot. (indie-review UI-dialogs H1)
+            # An idle auto-lock can fire while this non-modal dialog is open; a
+            # settings write then reads a locked vault. Return silently (the shell
+            # tears the dialog down), matching every other handler instead of
+            # crashing the slot. (indie-review UI-dialogs H1; FIBR-0083 D3)
             return
         self.saved.emit()
