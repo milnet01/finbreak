@@ -127,6 +127,16 @@ _TERMINATORS = (
 
 _BROUGHT_FORWARD = "brought forward"  # anchor marker, matched case-insensitively
 
+# Family-C brought-forward anchor: the phrase IMMEDIATELY followed by the balance
+# (e.g. "21 Jul 25 Balance Brought Forward 6,849.68"). Requiring the amount to abut
+# the phrase rejects a prose decoy — "...has a credit balance. Balance brought
+# forward on this statement -251.85" — whose figure is separated from the phrase by
+# narrative text (FIBR-0106). The optional -/R lets a card that opens in credit
+# still match its signed brought-forward.
+_CC_BROUGHT_FORWARD = re.compile(
+    rf"{_BROUGHT_FORWARD}\s+-?R?{_MONEY.pattern}", re.IGNORECASE
+)
+
 # A line the region-fold classified as a transaction row (a date + balance tail) but
 # the strict family grammar rejects is a **mis-parse**, not a droppable line — raising
 # (all-or-nothing) rather than silently skipping is what keeps a mis-extracted row on
@@ -811,14 +821,18 @@ class StandardBankImporter:
 
 def _cc_opening(full_text: str, fmt: Fmt) -> Decimal:
     for line in full_text.splitlines():
-        if "balance brought forward" in line.lower():
-            toks = _money_tokens(line)
+        m = _CC_BROUGHT_FORWARD.search(line)
+        if m:
+            # The balance printed right after the anchor phrase — the first money
+            # token in the tail from the phrase onward (the anchored regex guarantees
+            # it abuts the phrase, so a prose decoy whose figure trails narrative
+            # text never reaches here, FIBR-0106). Honour the printed sign (as
+            # _capture_opening does) — a card that opens in credit prints a negative
+            # brought-forward, and the sole Family-C gate (opening - Σ == closing)
+            # needs the right sign.
+            toks = _money_tokens(line[m.start() :])
             if toks:
-                bal = toks[-1]
-                # Honour the printed sign (as _capture_opening does) — a card that
-                # opens in credit prints a negative brought-forward, and the sole
-                # Family-C gate (opening - Σ == closing) needs the right sign.
-                return _signed_balance(bal, fmt)
+                return _signed_balance(toks[0], fmt)
     raise ValueError("couldn't find the opening balance on this statement")
 
 

@@ -21,6 +21,15 @@ signaling per
 
 ## [Unreleased]
 
+### Fixed
+
+- **Credit-card statements that open in credit now import correctly.** (FIBR-0106)
+  Some Standard Bank credit-card statements print a plain-English sentence
+  mentioning the "balance brought forward" before the real opening-balance row.
+  finbreak was reading the figure from that sentence (which is actually the
+  closing amount), so the statement failed to import with "this statement didn't
+  add up." It now reads the true opening balance and imports as expected.
+
 ## [0.1.5] - 2026-07-11
 
 ### Added

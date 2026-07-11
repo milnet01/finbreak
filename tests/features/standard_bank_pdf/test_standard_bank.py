@@ -21,6 +21,7 @@ from finbreak.importers.standard_bank import (
     _MONEY,
     Family,
     StandardBankImporter,
+    _cc_opening,
     _detect_number_format,
     _infer_years,
     _parse_amount,
@@ -201,6 +202,27 @@ def test_INV6a_family_c_keeps_embedded_price_amount_is_last_token():
     r = _parse_family_c(["24 Apr 26 Patreon Membership 5.75 95.41"], 2, "us")
     assert r.drafts[0].description == "Patreon Membership 5.75"
     assert r.drafts[0].amount_minor == -9541  # 95.41 purchase -> budget negative
+
+
+def test_FIBR0106_cc_opening_ignores_prose_decoy_before_real_anchor():
+    # A credit-card statement can print a prose sentence that CONTAINS the phrase
+    # "balance brought forward" — narrating the *closing* position — BEFORE the real
+    # brought-forward anchor row. The reader must skip the decoy (its amount is
+    # separated from the phrase by narrative text) and read the real opening, whose
+    # balance sits immediately after the phrase. (FIBR-0106; synthetic figures.)
+    text = (
+        "You have a credit balance. Balance brought forward on this statement -251.85\n"
+        "21 Jul 25 Balance Brought Forward 6,849.68\n"
+        "22 Jul 25 Fake Shop 100.00 6,949.68\n"
+    )
+    assert _cc_opening(text, "us") == Decimal("6849.68")
+
+
+def test_FIBR0106_cc_opening_honours_printed_negative_sign():
+    # A card that opens in credit prints a trailing-minus brought-forward; the
+    # anchor fix must still route through _signed_balance so that sign survives.
+    text = "21 Jul 25 Balance Brought Forward 4,200.00-\n"
+    assert _cc_opening(text, "us") == Decimal("-4200.00")
 
 
 def test_INV10_family_c_folds_zero_date_continuation_skips_section_header():

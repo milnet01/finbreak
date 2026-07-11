@@ -990,7 +990,7 @@ because retrofitting them is a data migration.
   Source: user-request-2026-07-11 (dogfooding v0.1.4: "why are some values in brackets?" → make it a Settings choice).
   Resolved (2026-07-11): TDD-built in 4 slices — AmountPrefs + AuthService.amount_prefs/set_amount_prefs (INV-2/5); _format_amount explicit sign (- / ()) locale-independent + _NEGATIVE_TEXT/_POSITIVE_TEXT colour in HomeView (INV-1/3/4); Settings combo + colour checkbox and first-run mirror (INV-6/7); shell reads/passes/re-pushes on Save. 19 new tests; full gate green (598 passed). Lands on main; publishes in v0.1.5 (bundled with the inline update notes).
 
-- 🚧 [FIBR-0106] **Credit-card (Family C) import: opening balance mis-read from a prose "brought forward" decoy line.**
+- ✅ [FIBR-0106] **Credit-card (Family C) import: opening balance mis-read from a prose "brought forward" decoy line.**
   Root-caused (verified against a real SBSA CC statement, synthetic fixture to
   follow — real file/password never committed). `_cc_opening` (standard_bank.py
   :812) returns the LAST money token on the FIRST line containing "balance
@@ -1007,6 +1007,7 @@ because retrofitting them is a data migration.
   **Layman:** A real Standard Bank credit-card statement refused to import ("didn't add up") because the importer read the wrong opening balance.
   Kind: fix.
   Source: dogfooding-2026-07-11.
+  Resolved (2026-07-11): anchored _cc_opening on a new _CC_BROUGHT_FORWARD regex requiring a money amount to IMMEDIATELY follow the "balance brought forward" phrase (optional -/R sign), and take the first money token in the tail from the phrase onward. The prose decoy ("...credit balance. Balance brought forward on this statement -251.85") has narrative text between phrase and figure, so it no longer matches; the real anchor "21 Jul 25 Balance Brought Forward 6,849.68" does. TDD: 2 pure unit tests (decoy-rejection + printed-negative-sign preservation) in tests/features/standard_bank_pdf; full SB suite (50) green, no regression on the 6 validated real statements. Gate green (600 passed/1 skipped). Synthetic figures only — real file/password never touched disk.
 
 ### ⚡ Performance
 
