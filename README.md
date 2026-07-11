@@ -11,10 +11,10 @@
 [![Status](https://img.shields.io/badge/status-pre--alpha-orange)]()
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-Current version: **0.1.0** — the first public release. **[⬇ Download the
-latest release](https://github.com/milnet01/finbreak/releases/latest)**, or
-see [CHANGELOG](CHANGELOG.md) for what's shipped and [ROADMAP](ROADMAP.md)
-for what's coming.
+Current version: **0.1.1** (early preview). **[⬇ Download the latest
+release](https://github.com/milnet01/finbreak/releases/latest)**, or see
+[CHANGELOG](CHANGELOG.md) for what's shipped and [ROADMAP](ROADMAP.md) for
+what's coming.
 
 ## Status
 
@@ -39,14 +39,14 @@ the full plan.
 **Linux (x86_64)** — everything is bundled, so you don't need Python or any
 libraries installed:
 
-1. Download `finbreak-0.1.0-x86_64.AppImage` from the
+1. Download the `finbreak-*-x86_64.AppImage` from the
    **[latest release](https://github.com/milnet01/finbreak/releases/latest)**.
 2. Make it runnable (once):
    ```bash
-   chmod +x finbreak-0.1.0-x86_64.AppImage
+   chmod +x finbreak-*-x86_64.AppImage
    ```
 3. Launch it — double-click in your file manager, or run
-   `./finbreak-0.1.0-x86_64.AppImage`.
+   `./finbreak-*-x86_64.AppImage`.
 
 Each release also ships a `.sig` file next to the AppImage — that's the
 signature finbreak uses to check updates are genuine; you don't need to do

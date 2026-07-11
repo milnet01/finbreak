@@ -526,3 +526,18 @@ def test_FIBR0037_app_icon_renders(qtbot):
     # file yields a null pixmap even though QIcon(path) is non-null).
     pixmap = app_icon().pixmap(QSize(64, 64))
     assert not pixmap.isNull() and not pixmap.size().isEmpty()
+
+
+def test_about_text_shows_version(qtbot, service):
+    """The About box states the running version so a user can tell which build
+    they're on (surfaced dogfooding v0.1.0 — the About box showed no version)."""
+    from finbreak import __version__
+
+    service.first_run(bytearray(_PW), "ZAR")
+    service.lock()
+    window = MainWindow(service)
+    qtbot.addWidget(window)
+
+    text = window._about_text()
+    assert __version__ in text, f"About text {text!r} omits version {__version__}"
+    assert "finbreak" in text

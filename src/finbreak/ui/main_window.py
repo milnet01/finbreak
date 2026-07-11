@@ -714,12 +714,16 @@ class MainWindow(QMainWindow):
         # services/update_fetch.py; opening the browser here is not that.
         QDesktopServices.openUrl(QUrl(url))
 
+    def _about_text(self) -> str:
+        # Includes the running version so a user can tell which build they're on
+        # (FIBR-0054 dogfooding: the About box previously showed no version).
+        # tr() takes a literal; the version is interpolated (coding.md § 5.2).
+        return self.tr(
+            "finbreak {version} — a private, offline personal-finance vault."
+        ).format(version=__version__)
+
     def _show_about(self) -> None:
-        QMessageBox.about(
-            self,
-            self.tr("About finbreak"),
-            self.tr("finbreak — a private, offline personal-finance vault."),
-        )
+        QMessageBox.about(self, self.tr("About finbreak"), self._about_text())
 
     # --- window geometry (INV-5/INV-6) -------------------------------------- #
     def _settings(self) -> QSettings:

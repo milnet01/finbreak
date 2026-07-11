@@ -21,6 +21,14 @@ signaling per
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-07-11
+
+### Changed
+
+- **The About box now shows the running version** (e.g. "finbreak 0.1.1 — …"),
+  so you can tell at a glance which build you're on — and confirm an update
+  actually took effect.
+
 ## [0.1.0] - 2026-07-11
 
 First public release — an early preview. Establishes the signed update
