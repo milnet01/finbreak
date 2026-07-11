@@ -11,7 +11,7 @@
 [![Status](https://img.shields.io/badge/status-pre--alpha-orange)]()
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-Current version: **0.1.4** (early preview). **[⬇ Download the latest
+Current version: **0.1.5** (early preview). **[⬇ Download the latest
 release](https://github.com/milnet01/finbreak/releases/latest)**, or see
 [CHANGELOG](CHANGELOG.md) for what's shipped and [ROADMAP](ROADMAP.md) for
 what's coming.

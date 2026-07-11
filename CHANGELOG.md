@@ -21,6 +21,8 @@ signaling per
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-07-11
+
 ### Changed
 
 - **The update prompt now shows "what's new" inline.** (FIBR-0054)
