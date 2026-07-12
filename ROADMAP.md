@@ -1015,6 +1015,12 @@ because retrofitting them is a data migration.
   Kind: fix.
   Source: dogfooding-2026-07-11.
 
+- 📋 [FIBR-0108] **Update download: show real progress instead of a permanently-full indeterminate bar.**
+  The "Downloading…" bar in the update dialog is hardcoded to indeterminate (busy) mode — ui/update_dialog.py:79 `self._busy.setRange(0, 0)` — so it shows a moving/striped full bar the entire download rather than actual percent-complete. The fix is feasible without new deps: services/update_fetch.py `download()` already streams the body in 64 KiB chunks (`_DOWNLOAD_CHUNK_BYTES`, line 89), so it can (a) read the total from the response `Content-Length` header and (b) accept an optional progress callback invoked per chunk with (received, total). Then the DownloadWorker (ui/_update_worker.py) emits a progress signal and the dialog switches the bar to determinate (`setRange(0, total)` + `setValue(received)`), falling back to indeterminate only when Content-Length is absent/zero. Keep the byte-cap (max_bytes) guard intact. TDD: unit-test the callback fires with monotonic received ≤ total and a missing-Content-Length fallback; a qtbot test that the bar goes determinate on a known-size download. Kind: enhancement.
+  **Layman:** While an update downloads, the progress bar looks full/striped the whole time instead of filling up as it downloads.
+  Kind: enhancement.
+  Source: dogfooding-2026-07-12.
+
 ### ⚡ Performance
 
 - 📋 [FIBR-0025] **Enable SQLite WAL mode.** Set
