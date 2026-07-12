@@ -21,6 +21,8 @@ signaling per
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-07-12
+
 ### Fixed
 
 - **After installing an update, finbreak now reliably reopens itself.** (FIBR-0054)
