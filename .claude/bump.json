@@ -1,0 +1,29 @@
+{
+  "_comment": "Version-bump recipe for /bump and /release (see ~/.claude/skills/bump). Source of truth is src/finbreak/__init__.py __version__. 'files' are mechanical exact-string edits; the CHANGELOG entry cuts the accumulated [Unreleased] block into a dated section (bodies are authored during dev via changelog_log, so no todo is needed). post_check asserts every version-bearing file agrees. NOTE: this recipe covers the version bump only -- the signed AppImage build + publish is a separate manual step (scripts/build-release-appimage.sh, verify the .sig against RELEASE_PUBLIC_KEY_B64, then gh release create v<NEW> with the AppImage + .sig attached).",
+  "version_source": "src/finbreak/__init__.py",
+  "version_pattern": "__version__ = \"([0-9]+\\.[0-9]+\\.[0-9]+)\"",
+  "files": [
+    {
+      "path": "src/finbreak/__init__.py",
+      "pattern": "__version__ = \"{OLD}\"",
+      "replace": "__version__ = \"{NEW}\""
+    },
+    {
+      "path": "pyproject.toml",
+      "pattern": "version = \"{OLD}\"",
+      "replace": "version = \"{NEW}\""
+    },
+    {
+      "path": "tests/test_smoke.py",
+      "pattern": "__version__ == \"{OLD}\"",
+      "replace": "__version__ == \"{NEW}\""
+    },
+    {
+      "path": "CHANGELOG.md",
+      "pattern": "## [Unreleased]\n\n",
+      "replace": "## [Unreleased]\n\n## [{NEW}] - {TODAY}\n\n"
+    }
+  ],
+  "post_check": "V=$(sed -n 's/^__version__ = \"\\([0-9.]*\\)\"/\\1/p' src/finbreak/__init__.py); test -n \"$V\" && grep -q \"^version = \\\"$V\\\"$\" pyproject.toml && grep -q \"__version__ == \\\"$V\\\"\" tests/test_smoke.py && grep -q \"^## \\[$V\\] - \" CHANGELOG.md && echo \"version lockstep OK: $V\" || { echo \"VERSION DRIFT: expected $V across __init__.py, pyproject.toml, tests/test_smoke.py, and a dated CHANGELOG section\"; exit 1; }",
+  "tag": "v{NEW}"
+}
