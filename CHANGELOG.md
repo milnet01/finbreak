@@ -152,7 +152,7 @@ auto-categorisation.
 
 ### Added
 
-- **Auto-categorisation: user-editable rules file transactions into categories by themselves, with a manual per-transaction override that always wins, learning from corrections, and a clean delete-category cascade (FIBR-0010).**
+- **Automatic categorising — finbreak sorts your transactions into categories for you.** (FIBR-0010)
   Rules run on import and on an explicit "Apply rules now". Correct an
   auto-filed transaction and finbreak offers to make a rule. A new Rules
   tab manages the rule list; the Home table gains a Category column and a
@@ -168,13 +168,13 @@ auto-categorisation.
   is also the tool for fixing anything mis-linked before the import-time fix
   (FIBR-0057) shipped.
 
-- **A proper branded app icon (FIBR-0037).** (FIBR-0037)
+- **A proper branded app icon.** (FIBR-0037)
   finbreak now has a real app icon — a colourful "spending by category" donut chart with a gold coin in the middle — instead of no icon. You'll see it on the window, in your taskbar, and (once installers are built) as the app's icon on Windows, macOS and Linux.
 
 - **Settings screen — a Settings menu item whose first control is a user-configurable auto-lock timeout, plus core preferences.** (FIBR-0055)
   A new File → Settings… screen. Its first control lets you choose how long finbreak waits before it auto-locks when you step away (1, 5, 10, 15 or 30 minutes — it used to be a fixed 10). The choice takes effect immediately and is remembered (stored inside your encrypted vault). The screen also shows your vault's base currency. No database change.
 
-- ****P07.6: tabbed main window + a Statements tab that lists your imports and lets you delete one with all its transactions.**** (FIBR-0052)
+- **A tabbed main window, and a Statements tab that lists your imports and lets you delete one (with all its transactions).** (FIBR-0052)
   The main window is now tabs — Home · Statements · Accounts ·
   Categories — with a Home button on the toolbar, and it remembers its
   size, position and last tab between runs (plus Center-window and
@@ -186,8 +186,8 @@ auto-categorisation.
   statement it came from — a small automatic database upgrade, including a
   one-time tidy-up for statements imported before this version.
 
-- **P07.5: app-shell UX redesign — real app window (QMainWindow) with menubar / icon toolbar / status bar; first-run & unlock as popups.** (FIBR-0051)
-  Turn the bare password-box-then-form startup into a proper app window — menus, a toolbar of shortcuts, a status bar, and a first-run popup wizard — so it looks and feels like a real desktop app.
+- **A proper app window — menus, a toolbar, and a status bar.** (FIBR-0051)
+  finbreak went from a bare password box and form to a real desktop-app window: a menu bar, a toolbar of shortcuts, a status bar, and a friendly first-run setup pop-up — so it looks and feels like a real desktop app.
 
 - **Import your Standard Bank statements directly — cheque, savings, home loan, personal loan, credit card and money-market.** (FIBR-0050)
   Standard Bank's real statements don't survive the generic PDF
@@ -316,21 +316,17 @@ auto-categorisation.
 
 - **An oversized Standard Bank PDF is now rejected before the heavy parsing runs, not after, so a deliberately huge file can't burn work before being turned away.** (FIBR-0078)
 
-- **Consolidated the Standard Bank statement signed-balance parsing (repeated 7 times across the account families) into one helper.** (FIBR-0069)
+- **Behind the scenes: tidied up repeated code in the Standard Bank statement reader** so the balance-reading logic lives in one place — less room for a future bug. (FIBR-0069)
 
-- **Deduplicated the drop-down preselect logic shared across the account, category, and type pickers into one helper.** (FIBR-0068)
+- **Behind the scenes: merged the duplicated drop-down selection code** used by the account, category and type pickers into one shared piece. (FIBR-0068)
 
-- **Consolidated the 13 hand-copied database transaction blocks (BEGIN/COMMIT/ROLLBACK) into one shared `owned_transaction` helper, so a future database write can't accidentally use a subtly-wrong rollback path.** (FIBR-0066)
+- **Behind the scenes: unified how the app saves to its database** (13 near-identical blocks became one shared routine), so a future change can't accidentally use a wrong save/undo path. (FIBR-0066)
 
-- **Typed the rules Move up/down handler with a `Literal` (dropping a type-ignore) and corrected the FIBR-0007 INV-7 spec narrative to match the FIBR-0052 period-first insert order.** (FIBR-0081)
+- **Behind the scenes: an internal type-safety tidy-up** on the rule Move up/down code, plus a documentation correction. (FIBR-0081)
 
-- **Settings reads (base currency, minor-unit exponent) now flow through the shared `SettingsRepository` seam instead of hand-rolled SQL, so a mistyped key can't silently read the wrong value.** (FIBR-0080)
+- **Behind the scenes: settings values (currency, decimal places) now go through one shared accessor** instead of hand-written database queries, so a typo can't read the wrong value. (FIBR-0080)
 
-- **The quality gate now runs `mypy` as a stage (both `ci-local.sh` and CI), so type errors fail the build instead of relying on ad-hoc manual runs. (FIBR-0061)**
-  Also fixed the 4 pre-existing type errors the newly-gated `mypy src
-  tests` surfaced in the test tree (None-guards on three `findChild`
-  helpers in the settings suite; an aligned `QThread.start` override
-  signature in the app-shell suite). Test-only typing, no runtime change.
+- **Behind the scenes: the build now type-checks the code automatically** (mypy), catching a class of mistakes before release instead of relying on manual checks. (FIBR-0061)
 
 - **Silenced ~107 noisy third-party deprecation warnings from the OFX importer and pinned its parser dependency to keep OFX import working on future releases (FIBR-0058).**
   The OFX-file importer relies on ofxparse, which uses an old-style call into
@@ -383,9 +379,9 @@ auto-categorisation.
 
 ### Security
 
-- **Vault connections now explicitly pin per-page HMAC integrity ON (defense-in-depth for tamper detection) instead of relying on the encryption library's default.** (FIBR-0077)
+- **Extra tamper-detection is now turned on explicitly for the encrypted vault** (rather than relying on the encryption library's default) — a belt-and-braces safeguard. (FIBR-0077)
 
-- **Bounded file read defeats an endless-source import + complete vault-create cleanup**
+- **Safer file handling on import, and a complete clean-up if vault creation fails**
   The import size cap is now enforced by a bounded read, so a symlink to an endless source (e.g. /dev/zero) or a file that grows after the size check can't be read unbounded into memory. Vault creation now closes and resets on any failure across the whole build (not just the final steps), and the app-data directory is created owner-only from the outset.
 
 - **Hardened crypto/vault storage after a full-codebase review**

@@ -1,7 +1,7 @@
 <!-- ants-roadmap-format: 1 -->
 # finbreak — Roadmap
 
-> **Current version:** 0.0.0 (scaffolded 2026-06-30). See
+> **Current version:** 0.1.7 (released 2026-07-12). See
 > [CHANGELOG.md](CHANGELOG.md) for what's shipped; this file
 > covers what's **planned**.
 >
@@ -431,6 +431,7 @@ lands on top.
   consolidated — SC1 names all three). Lanes: services, ui, tests. Kind: implement.
   Source: planned.
   UX (user, 2026-07-11, dogfooding v0.1.2): the Home tab currently shows the raw transaction table (interim from FIBR-0051). The user confirms Home should be the income/expenditure SUMMARY (this dashboard), NOT the transaction list. So this item also owns relocating the transaction table off Home into its own view/tab (e.g. a "Transactions" tab) — carrying the full search + filters this item already promises — leaving Home for the summary + charts.
+  **Layman:** The Home screen becomes a proper dashboard — a plain income-vs-spending summary, a pie chart of where your money goes, and month-by-month trends — while the transaction list moves to its own searchable, filterable tab.
 
 ---
 
@@ -446,6 +447,7 @@ lands on top.
   period + sets password (success criterion 5). Dependencies:
   FIBR-0012. Lanes: services, ui, security, tests. Kind: implement.
   Source: planned.
+  **Layman:** Save a password-protected PDF report of your finances — pick which parts to include (summary, charts, transactions) and the date range, and set a password so only you can open it.
 
 ---
 
@@ -461,6 +463,7 @@ lands on top.
   forgotten master password, per ADR-0003); dark-theme polish
   pass. Dependencies: FIBR-0004. Lanes: ui, services, security, tests.
   Kind: implement. Source: planned.
+  **Layman:** A full Settings screen plus an encrypted backup you can export and restore — your one safety net if you ever forget your master password — and a light/dark theme choice.
   Note (2026-07-09): the Settings-screen scaffold + the user-configurable auto-lock timeout (+ base-currency read-only display) are pulled FORWARD into FIBR-0055 (near-term, user-requested); FIBR-0055's first cut delivers the scaffold + configurable auto-lock timeout + read-only currency only. This phase narrows to what remains: the encrypted-backup export/import (the only mitigation for a forgotten master password, ADR-0003), the dark-theme polish pass and its dark/light/follow-system theme toggle (a toggle needs the theme system this pass builds), stored-PDF-password management, and hosting the FIBR-0017 language switcher. If FIBR-0055 ships first, this becomes an extension of that Settings screen rather than a fresh one.
 
 ---
