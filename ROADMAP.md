@@ -397,7 +397,7 @@ lands on top.
 
 ### 🎨 Features
 
-- 🚧 [FIBR-0011] **P09: transfer detection
+- ✅ [FIBR-0011] **P09: transfer detection
   (suggest-then-confirm).** `TransferDetectionService` matches a
   debit in one account against a credit in another (same amount,
   short date window) and **proposes** the pair; only
@@ -407,6 +407,7 @@ lands on top.
   auto-hides a real expense. Dependencies: FIBR-0005, FIBR-0007. Lanes:
   services, ui, repo, tests. Kind: implement. Source: planned.
   Progress (2026-07-12): design brainstormed + approved by user. Chose ±3-day match window, a dedicated Transfers tab (no post-import pop-up), and a single decision table (v7→v8) recording confirmed/rejected pairs (pending candidates recomputed live). Next: write docs/specs/FIBR-0011.md → /cold-eyes (7-loop cap) → TDD.
+  Resolved (2026-07-12): shipped by TDD. Schema v7→v8 (transfer_pairs decision table, dual ON DELETE CASCADE, canonical UNIQUE); TransferRepository (candidate self-join — equal-magnitude/opposite-sign/different-account/±TRANSFER_WINDOW_DAYS=3, per-decision commits); TransferDetectionService (candidates/confirm/reject/unlink/confirmed_transfers/confirmed_transfer_txn_ids [the FIBR-0012 exclusion primitive]/confirm_all); the 6th Transfers tab (suggested+confirmed tables, Confirm/Reject/Confirm all/Unlink, VaultLockedError-guarded). tests/features/transfers/ one case per INV-1..12 + edges (window 0/3/4, off-by-one, two-debits, same-account, Cartesian, empty-vault); schema-version + tab-count ripple across 9 suites. Spec /cold-eyes-converged loop 4. Close: /audit 0 in the new code (3 pre-existing FIBR-0054 updater semgrep warnings out of scope); /indie-review 2 cold lanes — data/logic CLEAN, UI/shell 2 LOW (auto-lock test parametrized over all 4 slots; stale tab-count docstrings) folded inline. Gate green 645/1, mypy 0. Unblocks FIBR-0012 (dashboard).
 
 ---
 
@@ -1083,6 +1084,13 @@ because retrofitting them is a data migration.
   **Layman:** Let the tables (Statements, and the other lists) remember how wide you've dragged each column, and let you click a column heading to sort by it — click again to flip between ascending and descending.
   Kind: enhancement.
   Lanes: ui.
+  Source: user-request-2026-07-12.
+
+- 📋 [FIBR-0118] **App icon: transparent (rounded) corners instead of a hard square tile.**
+  User request 2026-07-12 (About-box screenshot): the app/window icon (the donut-on-dark-navy tile) has hard square corners that read as a solid block against the dialog background. Make the corners transparent — a rounded-rectangle alpha mask so the four corners are see-through. Regenerate the whole icon set from the 1024 master: apply the rounded-corner alpha to assets/icon/finbreak.png (or add the mask step in scripts/make-icons.sh), then re-run make-icons.sh to rebuild the Linux PNGs (16-512), the Windows .ico, the macOS .iconset, and the runtime src/finbreak/ui/icons/app.png. Keep the corner radius modest (~15-20% of the tile) so it matches platform icon conventions. Verify the About box + taskbar show transparent corners (QIcon/PNG alpha travels). Requested alongside the v0.1.7 polish batch. Related: FIBR-0037 (the branded app icon) + FIBR-0116 (toolbar-glyph colour).
+  **Layman:** Round off the corners of the app icon so it doesn't show as a solid square block — the corners become see-through and blend into whatever's behind it.
+  Kind: ux.
+  Lanes: ui, packaging.
   Source: user-request-2026-07-12.
 
 ### ⚡ Performance
