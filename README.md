@@ -1,38 +1,43 @@
 # finbreak
 
-> A private desktop app that breaks down where your money goes — from
-> your own bank statements, with no bank linking and none of your
-> financial data ever leaving your machine. The only network access the
-> app makes itself is an **opt-in, off-by-default** updater — turn it on and (on the Linux
-> AppImage build) it checks GitHub for a newer release and can download
-> + install a signature-verified update; leave it off (the default) and
-> the app makes no network connections of its own.
+> A private desktop app that shows you where your money goes — read
+> straight from your own bank statements. There's no bank linking, no
+> account to sign up for, and none of your financial data ever leaves your
+> computer.
+>
+> The one exception is an **opt-in, off-by-default** update check: switch
+> it on and finbreak looks for a newer version and can install it for you
+> (after confirming the download is genuinely signed). Leave it off — the
+> default — and the app never touches the internet at all.
 
 [![Status](https://img.shields.io/badge/status-pre--alpha-orange)]()
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-Current version: **0.1.5** (early preview). **[⬇ Download the latest
+Current version: **0.1.7** (early preview). **[⬇ Download the latest
 release](https://github.com/milnet01/finbreak/releases/latest)**, or see
 [CHANGELOG](CHANGELOG.md) for what's shipped and [ROADMAP](ROADMAP.md) for
 what's coming.
 
 ## Status
 
-finbreak is in **early development** — `0.1.0` is the first public release,
-an early preview with rough edges. The core already works end-to-end:
+finbreak is in **early development** — an early preview that already does a
+lot, with more polish and features to come. What works today:
 
 - a private, password-protected place to keep your finances (an encrypted
   vault),
 - importing statements from **CSV, OFX, and PDF** files (including
   password-protected PDFs),
-- organising them into **accounts** and a **category tree**, and
+- organising them into **accounts** and into **categories** you can group
+  and rename,
 - **automatically sorting** transactions into categories, with rules you
-  can edit and corrections it learns from.
+  can edit and corrections it learns from, and
+- **spotting transfers between your own accounts** — money you move from,
+  say, your current account to savings is flagged so it isn't mistaken for
+  spending or income (you confirm each one).
 
-Still to come: a **dashboard** with charts and summaries, automatic
-**transfer detection** (spotting money moving between your own accounts),
-and **password-protected PDF export**. See the [ROADMAP](ROADMAP.md) for
-the full plan.
+Still to come: a **dashboard** with charts and a spending summary, and
+**password-protected PDF export**. See the [ROADMAP](ROADMAP.md) for the
+full plan.
 
 ## Install
 
@@ -68,7 +73,10 @@ Python 3.12+ (see [CLAUDE.md](CLAUDE.md) "Build and test").
 4. **Fix anything it got wrong.** Change a transaction's category and
    finbreak can turn your correction into a rule, so it gets it right next
    time.
-5. **Lock it when you're done.** finbreak also locks itself automatically
+5. **Confirm any transfers.** If you move money between your own accounts,
+   finbreak spots the matching pair and lists it under the **Transfers**
+   tab — confirm it so it isn't counted as spending or income.
+6. **Lock it when you're done.** finbreak also locks itself automatically
    after a period of inactivity (you can set how long in **Settings**).
 
 ### Staying up to date (optional)
