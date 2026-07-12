@@ -264,6 +264,37 @@ def test_INV3_idle_timeout_noop_when_already_locked(service):
     assert fired == [], "must not route/notify the UI when there is no key held"
 
 
+class _SpyTimer:
+    """A stand-in QTimer that records start() calls (FIBR-0114)."""
+
+    def __init__(self) -> None:
+        self.starts = 0
+
+    def start(self, *args: object) -> None:
+        self.starts += 1
+
+    def stop(self) -> None:
+        pass
+
+
+def test_FIBR0114_notify_activity_restarts_running_idle_timer(service):
+    # The auto-lock is an INACTIVITY timer: user activity must RESET the countdown so
+    # the timeout is measured from the last interaction, not from unlock (FIBR-0114).
+    service.first_run(bytearray(_PW), "ZAR")  # unlock -> _key held
+    service._timer = _SpyTimer()  # stand in for the armed timer (headless has none)
+    service.notify_activity()
+    assert service._timer.starts == 1, "activity must re-arm the idle countdown"
+
+
+def test_FIBR0114_notify_activity_noop_when_locked(service):
+    # A stray input event after the vault locks must not touch a (non-existent) timer.
+    service.first_run(bytearray(_PW), "ZAR")
+    service.lock()
+    service._timer = _SpyTimer()
+    service.notify_activity()
+    assert service._timer.starts == 0, "no key held -> no re-arm"
+
+
 def test_INV3_exit_handler_wipes_and_is_noop_when_locked(service):
     service.first_run(bytearray(_PW), "ZAR")
     key_buffer = service._key

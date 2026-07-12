@@ -23,6 +23,9 @@ signaling per
 
 ### Fixed
 
+- **Auto-lock now resets on activity (inactivity timer), so it no longer locks mid-use.** (FIBR-0114)
+  The screen auto-lock counted a fixed time from unlock, ignoring whether you were actively using the app — so it could lock while you were mid-task. It is now an inactivity timer: the countdown restarts on every mouse/keyboard interaction and only fires after that many minutes of genuine idleness.
+
 - **Credit-card statements whose transactions continue onto a page without a repeated column header no longer fail to import.** (FIBR-0112)
   A multi-page Standard Bank credit-card statement can carry its transaction table onto a final page that does not reprint the "Date Description Amount" column header. Those rows were silently dropped, so the statement failed its completeness check ("this statement didn't add up") and was refused. The importer now recognises a header-less continuation page and captures its transactions.
 

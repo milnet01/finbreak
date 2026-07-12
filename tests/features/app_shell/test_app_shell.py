@@ -13,8 +13,8 @@ from pathlib import Path
 
 import pytest
 import shiboken6
-from PySide6.QtCore import QLocale, Qt, QThread
-from PySide6.QtGui import QAction, QDesktopServices
+from PySide6.QtCore import QEvent, QLocale, Qt, QThread
+from PySide6.QtGui import QAction, QDesktopServices, QKeyEvent
 from PySide6.QtWidgets import (
     QApplication,
     QLabel,
@@ -81,6 +81,18 @@ class _StubWorker(DeriveWorker):
         self, priority: QThread.Priority = QThread.Priority.InheritPriority
     ) -> None:
         pass
+
+
+def test_FIBR0114_user_input_resets_idle_timer(qtbot, service, monkeypatch):
+    # The shell must treat user activity as "still using the app": a key/mouse event
+    # anywhere re-arms the idle-lock countdown via AuthService.notify_activity, so the
+    # timeout is measured from the last interaction, not from unlock (FIBR-0114).
+    window = _unlocked_home_shell(qtbot, service)
+    calls: list[bool] = []
+    monkeypatch.setattr(service, "notify_activity", lambda: calls.append(True))
+    key = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_A, Qt.KeyboardModifier.NoModifier)
+    QApplication.sendEvent(window, key)
+    assert calls, "a user-input event must reset the idle-lock countdown"
 
 
 # --------------------------------------------------------------------------- #

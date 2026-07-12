@@ -249,6 +249,15 @@ class AuthService:
             self._timer.timeout.connect(self._on_idle_timeout)
         self._timer.start(self.auto_lock_minutes() * 60 * 1000)
 
+    def notify_activity(self) -> None:
+        """Reset the idle-lock countdown on user interaction, so the timeout is
+        measured from the LAST activity rather than from unlock — an inactivity
+        timer (FIBR-0114). Restarts the running timer with the interval set at arm
+        time; deliberately does **not** re-read the setting, since this fires on
+        every input event. A no-op when locked (no key) or headless (no timer)."""
+        if self._key is not None and self._timer is not None:
+            self._timer.start()  # restart from now, reusing the armed interval
+
     # --- auto-lock timeout config (FIBR-0055) ------------------------------ #
     def auto_lock_minutes(self) -> int:
         """The configured idle-lock timeout in minutes, read from the vault

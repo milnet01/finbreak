@@ -26,7 +26,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 import shiboken6
-from PySide6.QtCore import QSettings, QSize, Qt, QTimer, QUrl
+from PySide6.QtCore import QEvent, QObject, QSettings, QSize, Qt, QTimer, QUrl
 from PySide6.QtGui import QAction, QCloseEvent, QDesktopServices, QGuiApplication
 from PySide6.QtWidgets import (
     QApplication,
@@ -81,6 +81,16 @@ _TAB_STATEMENTS = 1
 _TAB_ACCOUNTS = 2
 _TAB_CATEGORIES = 3
 _TAB_RULES = 4
+
+# User-input event types that count as activity for the idle-lock reset (FIBR-0114).
+_ACTIVITY_EVENTS = frozenset(
+    {
+        QEvent.Type.MouseButtonPress,
+        QEvent.Type.MouseMove,
+        QEvent.Type.KeyPress,
+        QEvent.Type.Wheel,
+    }
+)
 
 # The fallback window size when no geometry is saved, and the size Reset restores
 # to (INV-6/INV-6b) — the one numeric window default this shell pins.
@@ -198,6 +208,13 @@ class MainWindow(QMainWindow):
         # An idle auto-lock wipes the key + closes the vault; route back to the
         # locked shell so the next action can't hit a closed connection (INV-4).
         service.on_auto_lock = self._lock
+
+        # Treat user input anywhere in the app as activity that resets the idle-lock
+        # countdown, so the timeout is measured from the last interaction rather than
+        # from unlock (FIBR-0114). notify_activity() no-ops while locked.
+        app = QApplication.instance()
+        if app is not None:
+            app.installEventFilter(self)
 
         if state == "first_run":
             self._show_first_run()
@@ -458,6 +475,14 @@ class MainWindow(QMainWindow):
         self._status(self.tr("Vault locked"))
         # (5) re-open the UnlockDialog — window intact.
         self._open_unlock_dialog()
+
+    def eventFilter(self, obj: QObject, event: QEvent) -> bool:
+        # Application-wide input events reset the idle-lock countdown (FIBR-0114); the
+        # service call no-ops while locked. Never consume the event — always defer to
+        # the base filter so normal delivery is unaffected.
+        if event.type() in _ACTIVITY_EVENTS:
+            self._service.notify_activity()
+        return super().eventFilter(obj, event)
 
     # --- workspace ---------------------------------------------------------- #
     def _build_workspace(self) -> QTabWidget:
