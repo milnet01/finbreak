@@ -1078,6 +1078,13 @@ because retrofitting them is a data migration.
   Lanes: ui.
   Source: user-request-2026-07-12.
 
+- 📋 [FIBR-0117] **Data tables: remember column widths + click-header-to-sort (toggle order on re-click).**
+  User request 2026-07-12 (screenshot, Statements tab): the QTableWidget-based data tables should (1) REMEMBER column widths across sessions, and (2) allow clicking a column header to sort by that column, with a second click on the same header toggling ascending/descending. Applies to the Statements table and the other list tables (Rules, the FIBR-0011 Transfers tables, the FIBR-0113 Accounts table, Home). Approach: QTableWidget.setSortingEnabled(True) gives click-to-sort with the asc/desc toggle for free (note: with sorting on, populate rows then enable, and key numeric/date columns with a sortable value — e.g. QTableWidgetItem data role or zero-padded/ISO text — so "112" doesn't sort before "69" and dates sort chronologically). Persist column widths via QHeaderView.saveState()/restoreState() into the window INI (paths.window_settings_path, same store as geometry, NOT the vault — it is non-secret view state), keyed per-table by objectName. Requested for inclusion in the v0.1.7 release alongside FIBR-0011. Related: the columnar tables in FIBR-0111/FIBR-0113.
+  **Layman:** Let the tables (Statements, and the other lists) remember how wide you've dragged each column, and let you click a column heading to sort by it — click again to flip between ascending and descending.
+  Kind: enhancement.
+  Lanes: ui.
+  Source: user-request-2026-07-12.
+
 ### ⚡ Performance
 
 - 📋 [FIBR-0025] **Enable SQLite WAL mode.** Set
