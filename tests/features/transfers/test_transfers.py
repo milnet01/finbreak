@@ -495,19 +495,38 @@ def test_INV10_tab_from_to_and_amount_cells(qtbot, service):
     assert "500.00" in widget._suggested.item(0, 1).text()
 
 
-def test_INV10_confirm_slot_catches_vault_locked(qtbot, service, monkeypatch):
+@pytest.mark.parametrize(
+    "method, button",
+    [
+        ("confirm", "_confirm_button"),
+        ("reject", "_reject_button"),
+        ("confirm_all", "_confirm_all_button"),
+        ("unlink", "_unlink_button"),
+    ],
+)
+def test_INV10_every_slot_catches_vault_locked(
+    qtbot, service, monkeypatch, method, button
+):
+    """INV-10: every action slot catches a VaultLockedError raised mid-click and
+    returns without crashing (an auto-lock can fire at any moment)."""
     from finbreak.ui.transfers import TransfersWidget
 
     _pair(service)
     widget = TransfersWidget(service)
     qtbot.addWidget(widget)
-    widget._suggested.selectRow(0)
+    if method == "unlink":
+        # Unlink needs a confirmed row selected — confirm one for real first.
+        widget._suggested.selectRow(0)
+        widget._confirm_button.click()
+        widget._confirmed_table.selectRow(0)
+    elif method != "confirm_all":  # confirm_all needs no selection
+        widget._suggested.selectRow(0)
 
     def _boom(*a, **k):
         raise VaultLockedError("locked mid-click")
 
-    monkeypatch.setattr(widget._detection, "confirm", _boom)
-    widget._confirm_button.click()  # must not raise
+    monkeypatch.setattr(widget._detection, method, _boom)
+    getattr(widget, button).click()  # must not raise
 
 
 def test_INV10_transfers_toolbar_action_has_a_rendering_icon(qtbot, service):
