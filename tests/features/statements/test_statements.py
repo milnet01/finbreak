@@ -291,14 +291,16 @@ def test_INV9d_backfill_overlap_stays_null(paths):
 # --------------------------------------------------------------------------- #
 # INV-1 / INV-2 / INV-2a — the four-tab workspace + tab-switching navigation
 # --------------------------------------------------------------------------- #
-def test_INV1_workspace_has_six_tabs_in_order(qtbot, service):
+def test_INV1_workspace_has_seven_tabs_in_order(qtbot, service):
     window = _shell(qtbot, service)
     workspace = window.centralWidget().currentWidget()
     assert workspace.objectName() == "workspace"
     names = [workspace.widget(i).objectName() for i in range(workspace.count())]
-    # The Rules tab (FIBR-0010) joined as the 5th tab; Transfers (FIBR-0011) is 6th.
+    # Rules (FIBR-0010) is 6th, Transfers (FIBR-0011) 7th; Transactions (FIBR-0012)
+    # is inserted 2nd, right after Home.
     assert names == [
         "tab_home",
+        "tab_transactions",
         "tab_statements",
         "tab_accounts",
         "tab_categories",
@@ -311,9 +313,10 @@ def test_INV2_nav_actions_switch_the_workspace_tab(qtbot, service):
     window = _shell(qtbot, service)
     workspace = window._workspace
     for attr, index in (
-        ("_action_statements", 1),
-        ("_action_accounts", 2),
-        ("_action_categories", 3),
+        ("_action_transactions", 1),
+        ("_action_statements", 2),
+        ("_action_accounts", 3),
+        ("_action_categories", 4),
         ("_action_home", 0),
     ):
         getattr(window, attr).trigger()
@@ -325,6 +328,7 @@ def test_INV2_toolbar_order_and_no_statements_button(qtbot, service):
     names = [a.objectName() for a in window._toolbar.actions()]
     assert names == [
         "action_home",
+        "action_transactions",
         "action_manual_entry",
         "action_import",
         "action_accounts",
@@ -333,8 +337,8 @@ def test_INV2_toolbar_order_and_no_statements_button(qtbot, service):
         "action_transfers",
         "action_lock",
     ], (
-        "toolbar order: Home, Manual entry, Import, Accounts, Categories, Rules, "
-        "Transfers, Lock"
+        "toolbar order: Home, Transactions, Manual entry, Import, Accounts, "
+        "Categories, Rules, Transfers, Lock"
     )
     assert "action_statements" not in names, (
         "Statements lives on the tab bar + View menu, not the toolbar (INV-2)"
@@ -667,7 +671,9 @@ def test_INV11_import_done_rebuilds_workspace_lands_on_statements(qtbot, service
 
     workspace = window.centralWidget().currentWidget()
     assert workspace.objectName() == "workspace", "a fresh workspace is rebuilt"
-    assert workspace.currentIndex() == 1, "lands on the Statements tab"
+    assert workspace.currentWidget().objectName() == "tab_statements", (
+        "lands on the Statements tab"
+    )
     assert window._statements_tab.statement_count() == 1, "the statement is listed"
     assert window._home_tab.transaction_count() == 2, (
         "Home refreshed to the imported rows"

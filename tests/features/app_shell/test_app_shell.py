@@ -26,22 +26,13 @@ from PySide6.QtWidgets import (
 from conftest import _PW, _pump_deferred_delete
 from finbreak.errors import VaultStateError
 from finbreak.migrations import DEFAULT_ACCOUNT_NAME
-from finbreak.models import Transaction
 from finbreak.repositories.accounts import AccountRepository
-from finbreak.services.auth import AmountPrefs, AuthService
-from finbreak.services.categorization import CategorizationService
+from finbreak.services.auth import AuthService
 from finbreak.services.transactions import TransactionService
 from finbreak.ui import main_window
+from finbreak.ui._amount import _format_amount
 from finbreak.ui._worker import DeriveWorker
 from finbreak.ui.first_run import FirstRunDialog
-from finbreak.ui.home import (
-    _COL_AMOUNT,
-    _COL_DATE,
-    _NEGATIVE_TEXT,
-    _POSITIVE_TEXT,
-    HomeView,
-    _format_amount,
-)
 from finbreak.ui.main_window import MainWindow
 from finbreak.ui.manual_entry import ManualEntryDialog
 from finbreak.ui.unlock import UnlockDialog
@@ -274,7 +265,10 @@ def test_INV3_no_transaction_data_while_locked(qtbot, service):
     qtbot.addWidget(window)
     current = window.centralWidget().currentWidget()
     assert current.objectName() == "placeholder_locked"
-    assert not isinstance(current, HomeView)
+    # No data-bearing widget (the relocated transaction table) survives the lock.
+    from finbreak.ui.transactions import TransactionsView
+
+    assert not isinstance(current, TransactionsView)
     assert window._live is None, "no content widget holds decrypted rows while locked"
 
 
@@ -339,6 +333,7 @@ def test_INV6a_content_routing_switches_tabs_stable_instances(qtbot, service):
     assert workspace.objectName() == "workspace"
 
     for attr, object_name in (
+        ("_action_transactions", "tab_transactions"),
         ("_action_accounts", "tab_accounts"),
         ("_action_categories", "tab_categories"),
         ("_action_statements", "tab_statements"),
@@ -444,8 +439,8 @@ def test_INV9_manual_entry_roundtrip_from_home(qtbot, service):
 
     assert len(txn.list_transactions()) == before + 1
     workspace = window.centralWidget().currentWidget()
-    assert workspace.currentWidget().objectName() == "tab_home", (
-        "committing shows the refreshed Home tab"
+    assert workspace.currentWidget().objectName() == "tab_transactions", (
+        "committing lands on the Transactions tab so the new row is visible (D11)"
     )
 
 
@@ -462,8 +457,8 @@ def test_INV9_manual_entry_roundtrip_from_non_home(qtbot, service):
     with qtbot.waitSignal(dlg.committed):
         dlg._add_button.click()
 
-    assert workspace.currentWidget().objectName() == "tab_home", (
-        "committing from a non-Home tab shows the refreshed Home tab"
+    assert workspace.currentWidget().objectName() == "tab_transactions", (
+        "committing from any tab lands on Transactions so the new row is visible (D11)"
     )
 
 
@@ -486,19 +481,9 @@ def test_INV9_manual_entry_cancel_and_invalid(qtbot, service):
     assert len(txn.list_transactions()) == before, "Cancel inserts nothing"
 
 
-def test_INV9a_home_toggles_empty_and_table(qtbot, service):
-    service.first_run(bytearray(_PW), "ZAR")
-    txn = TransactionService(service.vault)
-    home = HomeView(txn, CategorizationService(service.vault))
-    qtbot.addWidget(home)
-
-    assert home.current_page().objectName() == "home_page_empty"
-    assert home.transaction_count() == 0
-
-    txn.add_transaction(_default_id(service), "2026-07-01", "-12.34", "coffee")
-    home.refresh()
-    assert home.current_page().objectName() == "home_page_table"
-    assert home.transaction_count() == 1
+# The Home empty/data page toggle moved to the dashboard suite when Home became
+# the dashboard (FIBR-0012): tests/features/dashboard/test_dashboard.py
+# (test_INV7_empty_vault_shows_getting_started + _with_data_shows_dashboard).
 
 
 # --------------------------------------------------------------------------- #
@@ -567,81 +552,10 @@ def test_FIBR0105_format_amount_defaults_to_minus(qtbot):
         QLocale.setDefault(previous)
 
 
-def _stub_home(service, monkeypatch, displays, amount_prefs):
-    """A HomeView over controlled display Decimals — the only way to render a
-    zero-amount row (the service rejects zero amounts), so all three colour
-    branches (neg/pos/zero) are exercised deterministically (INV-4)."""
-    txn = TransactionService(service.vault)
-    rows = [
-        (
-            Transaction(
-                i + 1, 1, "2026-07-01", 0, f"row{i}", "2026-07-01T00:00:00", None, None
-            ),
-            display,
-            "Account",
-            "",
-        )
-        for i, display in enumerate(displays)
-    ]
-    monkeypatch.setattr(txn, "list_transactions", lambda: rows)
-    monkeypatch.setattr(txn, "base_currency", lambda: "ZAR")
-    home = HomeView(
-        txn, CategorizationService(service.vault), amount_prefs=amount_prefs
-    )
-    return home
-
-
-def test_FIBR0105_amount_colour_marks_direction_when_on(qtbot, service, monkeypatch):
-    service.first_run(bytearray(_PW), "ZAR")
-    home = _stub_home(
-        service,
-        monkeypatch,
-        [Decimal("-25000.00"), Decimal("100.00"), Decimal("0.00")],
-        AmountPrefs("minus", True),
-    )
-    qtbot.addWidget(home)
-    table = home._table
-
-    # negative -> red, positive -> green (unwrap the QBrush to its QColor).
-    assert table.item(0, _COL_AMOUNT).foreground().color() == _NEGATIVE_TEXT
-    assert table.item(1, _COL_AMOUNT).foreground().color() == _POSITIVE_TEXT
-    # zero -> no per-cell foreground override.
-    assert table.item(2, _COL_AMOUNT).data(Qt.ItemDataRole.ForegroundRole) is None
-    # Amount cell only: the negative row's Date cell stays default even with colour on.
-    assert table.item(0, _COL_DATE).data(Qt.ItemDataRole.ForegroundRole) is None
-
-
-def test_FIBR0105_amount_colour_off_sets_no_foreground(qtbot, service, monkeypatch):
-    service.first_run(bytearray(_PW), "ZAR")
-    home = _stub_home(
-        service,
-        monkeypatch,
-        [Decimal("-25000.00"), Decimal("100.00")],
-        AmountPrefs("minus", True),
-    )
-    qtbot.addWidget(home)
-    table = home._table
-    assert table.item(0, _COL_AMOUNT).foreground().color() == _NEGATIVE_TEXT
-
-    # Toggle colour OFF + re-render: a fresh item per row leaves no stale colour.
-    home.set_amount_prefs(AmountPrefs("minus", False))
-    assert table.item(0, _COL_AMOUNT).data(Qt.ItemDataRole.ForegroundRole) is None
-    assert table.item(1, _COL_AMOUNT).data(Qt.ItemDataRole.ForegroundRole) is None
-
-
-def test_FIBR0105_display_does_not_mutate_stored_amount(qtbot, service):
-    # INV-1: sign/colour are display-only; the stored amount is untouched.
-    service.first_run(bytearray(_PW), "ZAR")
-    txn = TransactionService(service.vault)
-    txn.add_transaction(_default_id(service), "2026-07-01", "-25000.00", "rent")
-    home = HomeView(
-        txn,
-        CategorizationService(service.vault),
-        amount_prefs=AmountPrefs("brackets", True),
-    )
-    qtbot.addWidget(home)
-    (_, display, _, _) = txn.list_transactions()[0]
-    assert display == Decimal("-25000.00")
+# The Amount-column colour/direction rendering tests moved with the transaction
+# table to the Transactions tab (FIBR-0012): see
+# tests/features/transactions_tab/test_transactions_tab.py. The pure
+# _format_amount tests above stay here (the shared formatter is shell-wide).
 
 
 # --------------------------------------------------------------------------- #
@@ -723,6 +637,23 @@ def test_rules_toolbar_action_has_a_rendering_icon(qtbot, service):
     action = window.findChild(QAction, "action_rules")
     assert action is not None
     assert not action.icon().pixmap(QSize(24, 24)).isNull(), "Rules needs an icon"
+
+
+def test_transactions_toolbar_action_has_a_rendering_icon(qtbot, service):
+    """The Transactions action (FIBR-0012) sits on the toolbar, so it needs a glyph
+    (ui/icons/transactions.svg). A non-null rendered pixmap proves the SVG loads."""
+    from PySide6.QtCore import QSize
+
+    service.first_run(bytearray(_PW), "ZAR")
+    service.lock()
+    window = MainWindow(service)
+    qtbot.addWidget(window)
+
+    action = window.findChild(QAction, "action_transactions")
+    assert action is not None
+    assert not action.icon().pixmap(QSize(24, 24)).isNull(), (
+        "Transactions needs an icon"
+    )
 
 
 def test_about_text_shows_version(qtbot, service):

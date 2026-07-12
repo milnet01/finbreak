@@ -576,20 +576,20 @@ def test_INV6_unlock_ignores_reentrant_submit_while_deriving(qtbot, service):
 
 
 def test_INV6_main_window_lists_saved_transaction(qtbot, service):
-    # Re-homed FIBR-0051: the transaction table moved from MainWindow into
-    # HomeView (D3), so the "saved transaction appears" assertion re-points there.
-    from finbreak.ui.home import HomeView
+    # Re-homed FIBR-0051 into HomeView, then relocated to the Transactions tab when
+    # Home became the dashboard (FIBR-0012 D7); the assertion re-points there.
+    from finbreak.ui.transactions import TransactionsView
 
     service.first_run(bytearray(_PW), "ZAR")
     TransactionService(service._vault).add_transaction(
         _default_id(service), "2026-07-01", "-12.34", "coffee"
     )
 
-    home = HomeView(
+    view = TransactionsView(
         TransactionService(service._vault), CategorizationService(service._vault)
     )
-    qtbot.addWidget(home)
-    assert home._table.rowCount() == 1, "the saved transaction appears in the table"
+    qtbot.addWidget(view)
+    assert view._table.rowCount() == 1, "the saved transaction appears in the table"
 
 
 def test_main_window_date_field_renders_unambiguous_iso(qtbot, service):

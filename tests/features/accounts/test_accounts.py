@@ -370,20 +370,20 @@ def test_INV7bc_add_appears_in_list_and_main_picker(qtbot, service):
 
 
 def test_INV7c_transaction_shows_account_name_in_table(qtbot, service):
-    # Re-homed FIBR-0051: the transaction table moved from MainWindow into
-    # HomeView (D3).
-    from finbreak.ui.home import HomeView
+    # Re-homed FIBR-0051 into HomeView, then relocated to the Transactions tab when
+    # Home became the dashboard (FIBR-0012 D7).
+    from finbreak.ui.transactions import TransactionsView
 
     default_id = _default_id(service.vault)
     TransactionService(service.vault).add_transaction(
         default_id, "2026-07-01", "-12.34", "coffee"
     )
-    home = HomeView(
+    view = TransactionsView(
         TransactionService(service.vault), CategorizationService(service.vault)
     )
-    qtbot.addWidget(home)
-    assert home._table.rowCount() == 1
-    cells = [home._table.item(0, c).text() for c in range(home._table.columnCount())]
+    qtbot.addWidget(view)
+    assert view._table.rowCount() == 1
+    cells = [view._table.item(0, c).text() for c in range(view._table.columnCount())]
     assert any(DEFAULT_ACCOUNT_NAME in c for c in cells), "the account name is shown"
 
 

@@ -31,6 +31,14 @@ from finbreak.crypto import (
 from finbreak.errors import VaultStateError
 from finbreak.models import FORMAT_VERSION, KdfParams
 from finbreak.repositories.settings import SettingsRepository
+from finbreak.services.reporting import (
+    MODE_CURRENT_MONTH,
+    MODE_PREVIOUS_MONTH,
+    MODE_SPECIFIC_MONTH,
+    MODE_SPECIFIC_YEAR,
+    MODE_YEAR_TO_DATE,
+    ReportPrefs,
+)
 from finbreak.vault import Vault
 
 log = logging.getLogger(__name__)
@@ -60,6 +68,30 @@ DATETIME_SYSTEM = "system"
 ALLOWED_NEGATIVE_STYLES = ("minus", "brackets")
 DEFAULT_NEGATIVE_STYLE = "minus"
 DEFAULT_AMOUNT_COLOUR = True
+
+# The five valid dashboard period modes (FIBR-0012 D2). A stored mode outside this
+# set falls back to previous-month in ``report_prefs`` — a corrupt / hand-edited
+# value must not crash the dashboard (INV-2).
+_REPORT_MODES = frozenset(
+    {
+        MODE_PREVIOUS_MONTH,
+        MODE_CURRENT_MONTH,
+        MODE_SPECIFIC_MONTH,
+        MODE_YEAR_TO_DATE,
+        MODE_SPECIFIC_YEAR,
+    }
+)
+
+
+def _parse_optional_int(raw: str | None) -> int | None:
+    """An ``int`` from a stored settings string, or ``None`` for an empty / absent
+    / non-integer value (the year/month keys are empty strings for relative modes)."""
+    if not raw:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        return None
 
 
 @dataclass(frozen=True)
@@ -338,6 +370,39 @@ class AuthService:
         repo = SettingsRepository(self._vault.connection)
         repo.set("amount_negative_style", prefs.negative_style)
         repo.set("amount_colour", "true" if prefs.colour else "false")
+
+    # --- dashboard period prefs config (FIBR-0012) ------------------------- #
+    def report_prefs(self) -> ReportPrefs:
+        """Read the persisted dashboard period from the vault settings, mirroring
+        ``amount_prefs`` / ``datetime_prefs`` — each of the three keys parsed
+        defensively (INV-2). An unknown ``report_period_mode`` → previous-month;
+        an empty / absent / non-int ``year`` / ``month`` → ``None``; a month
+        outside 1–12 → ``None``. A **specific** mode read back with its required
+        field missing / unparseable downgrades to previous-month, so
+        ``resolve_period`` never sees a specific mode with a ``None`` field (D2)."""
+        repo = SettingsRepository(self._vault.connection)
+        mode = repo.get("report_period_mode")
+        if mode not in _REPORT_MODES:
+            return ReportPrefs(MODE_PREVIOUS_MONTH)
+        year = _parse_optional_int(repo.get("report_period_year"))
+        raw_month = _parse_optional_int(repo.get("report_period_month"))
+        month = raw_month if raw_month is not None and 1 <= raw_month <= 12 else None
+        if mode == MODE_SPECIFIC_MONTH and (year is None or month is None):
+            return ReportPrefs(MODE_PREVIOUS_MONTH)
+        if mode == MODE_SPECIFIC_YEAR and year is None:
+            return ReportPrefs(MODE_PREVIOUS_MONTH)
+        return ReportPrefs(mode=mode, year=year, month=month)
+
+    def set_report_prefs(self, prefs: ReportPrefs) -> None:
+        """Persist the dashboard period across the three ``settings`` keys (mirrors
+        ``set_amount_prefs``). ``year`` / ``month`` are written as **empty strings**
+        for a mode that carries neither (the three relative modes), so the
+        round-trip is total (INV-2). A locked vault raises ``VaultLockedError`` from
+        ``Vault.connection`` — guarded dialog-side, like auto-lock."""
+        repo = SettingsRepository(self._vault.connection)
+        repo.set("report_period_mode", prefs.mode)
+        repo.set("report_period_year", "" if prefs.year is None else str(prefs.year))
+        repo.set("report_period_month", "" if prefs.month is None else str(prefs.month))
 
     def _stop_timer(self) -> None:
         if self._timer is not None:

@@ -500,3 +500,91 @@ def test_datetime_freetyped_garbage_zone_falls_back_to_system(qtbot, service):
     tz.setEditText("Not A Zone")
     dialog._on_save()
     assert service.datetime_prefs().timezone == "system"
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0012 INV-2 — report_prefs round-trip + defensive fallback
+# --------------------------------------------------------------------------- #
+def test_report_prefs_default_previous_month_when_absent(service):
+    from finbreak.services.reporting import MODE_PREVIOUS_MONTH, ReportPrefs
+
+    assert service.report_prefs() == ReportPrefs(MODE_PREVIOUS_MONTH)
+
+
+def test_report_prefs_round_trip_specific_year(service):
+    from finbreak.services.reporting import MODE_SPECIFIC_YEAR, ReportPrefs
+
+    service.set_report_prefs(ReportPrefs(MODE_SPECIFIC_YEAR, year=2025))
+    assert service.report_prefs() == ReportPrefs(
+        MODE_SPECIFIC_YEAR, year=2025, month=None
+    )
+
+
+def test_report_prefs_round_trip_specific_month(service):
+    from finbreak.services.reporting import MODE_SPECIFIC_MONTH, ReportPrefs
+
+    service.set_report_prefs(ReportPrefs(MODE_SPECIFIC_MONTH, year=2024, month=2))
+    assert service.report_prefs() == ReportPrefs(
+        MODE_SPECIFIC_MONTH, year=2024, month=2
+    )
+
+
+def test_report_prefs_persists_across_fresh_authservice(service, paths):
+    from finbreak.services.auth import AuthService
+    from finbreak.services.reporting import MODE_YEAR_TO_DATE, ReportPrefs
+
+    service.set_report_prefs(ReportPrefs(MODE_YEAR_TO_DATE))
+    service.lock()
+    fresh = AuthService(*paths)  # a real restart over the same vault files
+    assert fresh.unlock(bytearray(_PW)) is True
+    try:
+        assert fresh.report_prefs() == ReportPrefs(MODE_YEAR_TO_DATE)
+    finally:
+        fresh.lock()
+
+
+def test_report_prefs_garbage_mode_falls_back_to_previous_month(service):
+    from finbreak.services.reporting import MODE_PREVIOUS_MONTH, ReportPrefs
+
+    SettingsRepository(service.vault.connection).set("report_period_mode", "nonsense")
+    assert service.report_prefs() == ReportPrefs(MODE_PREVIOUS_MONTH)
+
+
+def test_report_prefs_specific_month_missing_field_downgrades(service):
+    """A persisted specific-month with no month (corrupt) downgrades to
+    previous-month, so resolve_period never sees a specific mode with a None field."""
+    from finbreak.services.reporting import MODE_PREVIOUS_MONTH, ReportPrefs
+
+    repo = SettingsRepository(service.vault.connection)
+    repo.set("report_period_mode", "specific_month")
+    repo.set("report_period_year", "2025")
+    repo.set("report_period_month", "")  # missing required field
+    assert service.report_prefs() == ReportPrefs(MODE_PREVIOUS_MONTH)
+
+
+def test_report_prefs_out_of_range_month_downgrades(service):
+    from finbreak.services.reporting import MODE_PREVIOUS_MONTH, ReportPrefs
+
+    repo = SettingsRepository(service.vault.connection)
+    repo.set("report_period_mode", "specific_month")
+    repo.set("report_period_year", "2025")
+    repo.set("report_period_month", "13")  # out of 1..12 -> None -> downgrade
+    assert service.report_prefs() == ReportPrefs(MODE_PREVIOUS_MONTH)
+
+
+def test_set_report_prefs_writes_empty_year_month_for_relative_mode(service):
+    from finbreak.services.reporting import MODE_CURRENT_MONTH, ReportPrefs
+
+    service.set_report_prefs(ReportPrefs(MODE_CURRENT_MONTH))
+    repo = SettingsRepository(service.vault.connection)
+    assert repo.get("report_period_mode") == "current_month"
+    assert repo.get("report_period_year") == ""
+    assert repo.get("report_period_month") == ""
+
+
+def test_set_report_prefs_on_locked_raises(service):
+    from finbreak.services.reporting import MODE_CURRENT_MONTH, ReportPrefs
+
+    service.lock()
+    with pytest.raises(VaultLockedError):
+        service.set_report_prefs(ReportPrefs(MODE_CURRENT_MONTH))

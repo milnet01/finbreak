@@ -13,9 +13,9 @@ from finbreak.datetime_format import format_date, format_timestamp
 from finbreak.services.auth import AuthService, DateTimePrefs
 from finbreak.services.categorization import CategorizationService
 from finbreak.services.transactions import TransactionService
-from finbreak.ui.home import HomeView
 from finbreak.ui.main_window import MainWindow
 from finbreak.ui.statements import StatementsWidget
+from finbreak.ui.transactions import TransactionsView
 
 pytestmark = pytest.mark.features
 
@@ -63,20 +63,20 @@ def test_statements_period_and_imported_use_prefs(qtbot, service):
     assert widget._table.item(0, _COL_IMPORTED).text() == "2026/07/11 08:49"
 
 
-# ---- D6: Home Date ----------------------------------------------------------
+# ---- D6: Transactions-tab Date (moved off Home when it became the dashboard) --
 
 
-def test_home_date_uses_prefs(qtbot, service):
+def test_transactions_date_uses_prefs(qtbot, service):
     TransactionService(service.vault).add_transaction(
         _acct(service), "2026-06-19", "-1.00", "coffee"
     )
-    home = HomeView(
+    view = TransactionsView(
         TransactionService(service.vault),
         CategorizationService(service.vault),
         DateTimePrefs("system", "yyyy/MM/dd", "system"),
     )
-    qtbot.addWidget(home)
-    assert home._table.item(0, 0).text() == "2026/06/19"
+    qtbot.addWidget(view)
+    assert view._table.item(0, 0).text() == "2026/06/19"
 
 
 # ---- INV-1: display-only, stored rows unchanged -----------------------------
@@ -93,12 +93,12 @@ def test_render_does_not_mutate_stored_rows(qtbot, service):
 
     sw = StatementsWidget(service, _JHB)
     qtbot.addWidget(sw)
-    hv = HomeView(
+    tv = TransactionsView(
         TransactionService(service.vault),
         CategorizationService(service.vault),
         _JHB,
     )
-    qtbot.addWidget(hv)
+    qtbot.addWidget(tv)
 
     assert (
         conn.execute(_STMT_SQL, (pid,)).fetchone()
@@ -144,8 +144,9 @@ def test_settings_save_pushes_prefs_to_open_tabs(qtbot, service):
     dialog._on_save()  # emits saved -> _on_settings_saved re-reads + pushes
 
     assert window._prefs.date_format == "yyyy/MM/dd"
+    # The Date column lives on the Transactions tab now (Home is the dashboard).
     assert (
-        window._home_tab._table.item(0, 0).text()
+        window._transactions_tab._table.item(0, 0).text()
         == format_date("2026-06-19", "yyyy/MM/dd")
         == "2026/06/19"
     )

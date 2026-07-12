@@ -7,7 +7,8 @@ exactly one sentinel line — ``FINBREAK_SELFTEST_OK`` on success, or
 ``FINBREAK_SELFTEST_FAIL: <stack>`` on the first failing stack.
 
 The whole point is to prove — inside a Python-free bundle — that every native
-stack travels with the artifact: Qt, the SQLCipher native library, and qpdf
+stack travels with the artifact: Qt, QtCharts (``Qt6Charts``, the dashboard's
+donut + trend, FIBR-0012), the SQLCipher native library, and qpdf
 (behind ``pikepdf``, FIBR-0003), Argon2 (FIBR-0004), ofxparse's transitive tree
 incl. native lxml (FIBR-0008), and pdfplumber's native tree — Pillow, PDFium
 (``pypdfium2``/``pypdfium2_raw``), cryptography (FIBR-0009). See
@@ -37,6 +38,21 @@ def _check_qt() -> None:
 
     if QApplication.instance() is None:
         QApplication([])
+
+
+def _check_qtcharts() -> None:
+    """Import ``PySide6.QtCharts`` and construct a series object, proving the
+    ``Qt6Charts`` native library travels into the frozen bundle (FIBR-0012 D12 /
+    INV-11). The dashboard's donut + trend are QtCharts, so a bundle missing this
+    module must fail the FIBR-0003 build smoke, not a user launch. Uses ``QBarSet``
+    (a plain ``QObject``, not a ``QGraphicsWidget`` like ``QChart``) so the check
+    needs no ``QApplication`` — the FAIL unit test patches ``_check_qt`` away."""
+    from PySide6.QtCharts import QBarSet
+
+    bar_set = QBarSet("smoke")
+    bar_set.append(1.0)
+    if bar_set.count() != 1:
+        raise RuntimeError("QtCharts did not load — Qt6Charts missing from the bundle")
 
 
 def _check_icons() -> None:
@@ -217,6 +233,7 @@ def run_self_test(out: TextIO | None = None) -> int:
     stream = sys.stdout if out is None else out
     checks = (
         ("qt", _check_qt),
+        ("qtcharts", _check_qtcharts),
         ("icons", _check_icons),
         ("sqlcipher", _check_sqlcipher),
         ("pikepdf", _check_pikepdf),

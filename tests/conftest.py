@@ -20,6 +20,7 @@ import json  # noqa: E402
 from pathlib import Path  # noqa: E402
 
 import pytest  # noqa: E402
+from PySide6.QtWidgets import QDialog  # noqa: E402
 from sqlcipher3 import dbapi2  # noqa: E402
 
 from finbreak.crypto import KEY_LEN, SALT_LEN, derive_key  # noqa: E402
@@ -116,6 +117,69 @@ def window_ini(tmp_path, monkeypatch):
     ini = tmp_path / "window.ini"
     monkeypatch.setattr("finbreak.paths.window_settings_path", lambda: ini)
     return ini
+
+
+class PickerStub(QDialog):
+    """Real QDialog stand-in for CategoryPickerDialog: auto-accepts (or rejects) on
+    show() so the async ``_apply_category`` slot runs synchronously through
+    ``show_modal``'s real setModal/accepted/finished wiring (FIBR-0065 INV-5). Shared
+    by the categorisation + transactions_tab suites (FIBR-0012 relocated the
+    set-category flow to the Transactions tab)."""
+
+    def __init__(self, parent, selected_id, accept):
+        super().__init__(parent)
+        self._selected_id = selected_id
+        self._accept = accept
+
+    def show(self):
+        super().show()
+        self.accept() if self._accept else self.reject()
+
+    def selected_category_id(self):
+        return self._selected_id
+
+
+class RuleStub(QDialog):
+    """Real QDialog stand-in for RuleEditDialog (same auto-drive as ``PickerStub``).
+    Shared by the categorisation (Rules tab) + transactions_tab (learn) suites."""
+
+    def __init__(self, parent, pattern, category_id, accept):
+        super().__init__(parent)
+        self._pattern = pattern
+        self._category_id = category_id
+        self._accept = accept
+
+    def show(self):
+        super().show()
+        self.accept() if self._accept else self.reject()
+
+    def pattern(self):
+        return self._pattern
+
+    def selected_category_id(self):
+        return self._category_id
+
+
+def stub_picker(monkeypatch, ui_mod, selected_id, accept=True):
+    """Patch ``ui_mod.CategoryPickerDialog`` with an auto-driven ``PickerStub``."""
+    monkeypatch.setattr(
+        ui_mod,
+        "CategoryPickerDialog",
+        lambda leaves, current, parent=None: PickerStub(parent, selected_id, accept),
+    )
+
+
+def spy_learning(monkeypatch, ui_mod, *, accept, ret_pattern="", ret_cat=None):
+    """Patch ``ui_mod.RuleEditDialog`` with a ``RuleStub`` and return a call log, so a
+    test can assert whether the learn-a-rule offer was shown."""
+    calls: list[bool] = []
+
+    def factory(leaves, description, category_id, parent=None):
+        calls.append(True)
+        return RuleStub(parent, ret_pattern, ret_cat, accept)
+
+    monkeypatch.setattr(ui_mod, "RuleEditDialog", factory)
+    return calls
 
 
 def _params(salt: bytes) -> KdfParams:

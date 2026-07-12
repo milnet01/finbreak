@@ -290,3 +290,41 @@ class ConfirmedTransfer:
     display_amount: Decimal
     from_account: str
     to_account: str
+
+
+@dataclass
+class Summary:
+    """The dashboard's income-vs-spending tiles (FIBR-0012 D5). All three are
+    display ``Decimal``s (positive magnitudes for income/expenditure; ``net`` may
+    be negative). Computed on integer ``amount_minor``; only these final values
+    cross to ``Decimal`` (INV-13). Field order pinned so the widget + tests agree."""
+
+    income: Decimal
+    expenditure: Decimal
+    net: Decimal
+
+
+@dataclass
+class CategorySpend:
+    """One category-donut slice (FIBR-0012 D5): a positive spending magnitude.
+    ``category_id is None`` marks the synthetic **Uncategorised** bucket, so the UI
+    identifies it by **id, not the display name** — a real leaf a user names
+    "Uncategorised" stays a distinct slice (INV-5). For the ``None`` bucket
+    ``name`` is ``""`` (a non-displayed sentinel); the UI renders its label via
+    ``tr("Uncategorised")`` (a non-``QObject`` service can't translate, INV-12).
+    Real categories carry their stored leaf name, shown as-is."""
+
+    category_id: int | None
+    name: str
+    amount: Decimal
+
+
+@dataclass
+class MonthlyTotal:
+    """One trend-chart month (FIBR-0012 D5). ``label`` is the display month tag
+    (e.g. ``"2026-06"``; the axis renders it — formatting is a UI concern, not
+    stored). ``income`` / ``expenditure`` are positive display magnitudes."""
+
+    label: str
+    income: Decimal
+    expenditure: Decimal

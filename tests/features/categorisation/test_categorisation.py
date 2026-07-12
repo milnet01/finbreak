@@ -16,7 +16,7 @@ from collections.abc import Iterator
 import pytest
 from PySide6.QtWidgets import QDialog, QMessageBox
 
-from conftest import _PW, build_v6_vault, keyed_connection, raising_conn
+from conftest import _PW, RuleStub, build_v6_vault, keyed_connection, raising_conn
 from finbreak.crypto import SALT_LEN
 from finbreak.errors import VaultLockedError
 from finbreak.migrations import LATEST_SCHEMA_VERSION, run_migrations
@@ -31,7 +31,6 @@ from finbreak.services.categorization import (
     categorize,
 )
 from finbreak.services.import_ import ImportService
-from finbreak.services.transactions import TransactionService
 from finbreak.text import normalise_text
 
 pytestmark = pytest.mark.features
@@ -534,205 +533,11 @@ def test_edge_empty_description_row_stays_uncategorised(service):
 
 
 # --------------------------------------------------------------------------- #
-# INV-10 — Home category column + context-menu manual set (qtbot)
-# --------------------------------------------------------------------------- #
-def _home(service: AuthService):
-    from finbreak.ui.home import HomeView
-
-    return HomeView(
-        TransactionService(service.vault), CategorizationService(service.vault)
-    )
-
-
-def _home_category_cell(home, description: str) -> str:
-    for r in range(home._table.rowCount()):
-        if home._table.item(r, 2).text() == description:
-            return home._table.item(r, 4).text()
-    raise AssertionError(f"no row for {description!r}")
-
-
-class _PickerStub(QDialog):
-    """Real QDialog stand-in for CategoryPickerDialog: auto-accepts (or rejects) on
-    show() so the async _apply_category slot runs synchronously through show_modal's
-    real setModal/accepted/finished wiring (FIBR-0065 INV-5)."""
-
-    def __init__(self, parent, selected_id, accept):
-        super().__init__(parent)
-        self._selected_id = selected_id
-        self._accept = accept
-
-    def show(self):
-        super().show()
-        if self._accept:
-            self.accept()
-        else:
-            self.reject()
-
-    def selected_category_id(self):
-        return self._selected_id
-
-
-class _RuleStub(QDialog):
-    """Real QDialog stand-in for RuleEditDialog (same auto-drive as _PickerStub)."""
-
-    def __init__(self, parent, pattern, category_id, accept):
-        super().__init__(parent)
-        self._pattern = pattern
-        self._category_id = category_id
-        self._accept = accept
-
-    def show(self):
-        super().show()
-        if self._accept:
-            self.accept()
-        else:
-            self.reject()
-
-    def pattern(self):
-        return self._pattern
-
-    def selected_category_id(self):
-        return self._category_id
-
-
-def _stub_picker(monkeypatch, home_mod, selected_id, accept=True):
-    monkeypatch.setattr(
-        home_mod,
-        "CategoryPickerDialog",
-        lambda leaves, current, parent=None: _PickerStub(parent, selected_id, accept),
-    )
-
-
-def _spy_learning(monkeypatch, home_mod, *, accept, ret_pattern="", ret_cat=None):
-    calls: list[bool] = []
-
-    def factory(leaves, description, category_id, parent=None):
-        calls.append(True)
-        return _RuleStub(parent, ret_pattern, ret_cat, accept)
-
-    monkeypatch.setattr(home_mod, "RuleEditDialog", factory)
-    return calls
-
-
-def test_INV10_home_renders_category_and_context_set(qtbot, service, monkeypatch):
-    import finbreak.ui.home as home_mod
-
-    cs = CategorizationService(service.vault)
-    g, f = _leaf_id(service, "Groceries"), _leaf_id(service, "Fast food")
-    txn = _add_txn(service, "PICK N PAY")
-    cs.add_rule("pick n pay", g)
-    cs.apply_rules()
-
-    home = _home(service)
-    qtbot.addWidget(home)
-    assert _home_category_cell(home, "PICK N PAY") == "Groceries", "category column"
-
-    _stub_picker(monkeypatch, home_mod, f)  # correct it to Fast food
-    _spy_learning(monkeypatch, home_mod, accept=False)  # dismiss the learning offer
-    home._select_txn(txn)
-    home._on_set_category()
-
-    assert _txn_cat(service, txn) == (f, "manual"), "the row is now manual"
-    assert _home_category_cell(home, "PICK N PAY") == "Fast food", "the cell updated"
-
-
-# --------------------------------------------------------------------------- #
-# INV-5 — the learning offer through the Home flow (qtbot)
-# --------------------------------------------------------------------------- #
-def test_INV5a_offer_shown_correcting_a_rule_row(qtbot, service, monkeypatch):
-    import finbreak.ui.home as home_mod
-
-    cs = CategorizationService(service.vault)
-    g, f = _leaf_id(service, "Groceries"), _leaf_id(service, "Fast food")
-    txn = _add_txn(service, "PICK N PAY")
-    cs.add_rule("pick n pay", g)
-    cs.apply_rules()
-
-    home = _home(service)
-    qtbot.addWidget(home)
-    _stub_picker(monkeypatch, home_mod, f)  # choose a leaf DIFFERENT from the rule
-    calls = _spy_learning(monkeypatch, home_mod, accept=False)
-    home._select_txn(txn)
-    home._on_set_category()
-    assert calls == [True], "the learning offer is shown"
-
-
-def test_INV5b_offer_shown_for_blank_row_no_rule(qtbot, service, monkeypatch):
-    import finbreak.ui.home as home_mod
-
-    g = _leaf_id(service, "Groceries")
-    txn = _add_txn(service, "MYSTERY MERCHANT")  # no rule matches
-
-    home = _home(service)
-    qtbot.addWidget(home)
-    _stub_picker(monkeypatch, home_mod, g)
-    calls = _spy_learning(monkeypatch, home_mod, accept=False)
-    home._select_txn(txn)
-    home._on_set_category()
-    assert calls == [True], "categorising a blank row offers a rule"
-
-
-def test_INV5c_no_offer_when_choice_matches_rules(qtbot, service, monkeypatch):
-    import finbreak.ui.home as home_mod
-
-    cs = CategorizationService(service.vault)
-    g = _leaf_id(service, "Groceries")
-    txn = _add_txn(service, "PICK N PAY")
-    cs.add_rule("pick n pay", g)
-    cs.apply_rules()
-
-    home = _home(service)
-    qtbot.addWidget(home)
-    _stub_picker(monkeypatch, home_mod, g)  # the SAME leaf the rules already produce
-    calls = _spy_learning(monkeypatch, home_mod, accept=False)
-    home._select_txn(txn)
-    home._on_set_category()
-    assert calls == [], "no offer when the pick already agrees with the rules"
-
-
-def test_INV5d_no_offer_on_a_manual_clear(qtbot, service, monkeypatch):
-    import finbreak.ui.home as home_mod
-
-    txn = _add_txn(service, "PICK N PAY")
-    home = _home(service)
-    qtbot.addWidget(home)
-    _stub_picker(monkeypatch, home_mod, None)  # Uncategorised (a clear)
-    calls = _spy_learning(monkeypatch, home_mod, accept=False)
-    home._select_txn(txn)
-    home._on_set_category()
-    assert calls == [], "a clear is not a rule to learn"
-
-
-def test_INV5_accepting_the_offer_creates_a_rule_and_refiles(
-    qtbot, service, monkeypatch
-):
-    import finbreak.ui.home as home_mod
-
-    cs = CategorizationService(service.vault)
-    g = _leaf_id(service, "Groceries")
-    t1 = _add_txn(service, "PICK N PAY 1")
-    t2 = _add_txn(service, "PICK N PAY 2")  # a sibling the learned rule should reach
-
-    home = _home(service)
-    qtbot.addWidget(home)
-    _stub_picker(monkeypatch, home_mod, g)
-    _spy_learning(
-        monkeypatch, home_mod, accept=True, ret_pattern="pick n pay", ret_cat=g
-    )
-    home._select_txn(t1)
-    home._on_set_category()
-
-    assert len(cs.list_rules()) == 1, "the rule was created"
-    assert _txn_cat(service, t1) == (g, "manual"), "the corrected row is frozen manual"
-    assert _txn_cat(service, t2) == (g, "rule"), "the sibling auto row was re-filed"
-
-
-# --------------------------------------------------------------------------- #
 # INV-11 — the Rules tab (qtbot)
 # --------------------------------------------------------------------------- #
 def _stub_rule_dialog(monkeypatch, rules_mod, *, pattern, category_id, accept=True):
     def factory(leaves, pat="", cat=None, parent=None):
-        return _RuleStub(parent, pattern, category_id, accept)
+        return RuleStub(parent, pattern, category_id, accept)
 
     monkeypatch.setattr(rules_mod, "RuleEditDialog", factory)
 
@@ -823,43 +628,6 @@ def test_INV11_edit_updates_pattern_without_reprioritising(qtbot, service, monke
 # --------------------------------------------------------------------------- #
 # INV-14 — auto-lock safety (the new slots swallow VaultLockedError)
 # --------------------------------------------------------------------------- #
-def test_INV14_home_set_catches_vault_locked(qtbot, service, monkeypatch):
-    import finbreak.ui.home as home_mod
-
-    g = _leaf_id(service, "Groceries")
-    txn = _add_txn(service, "X")
-    home = _home(service)
-    qtbot.addWidget(home)
-    _stub_picker(monkeypatch, home_mod, g)
-
-    def _raise(*a, **k):
-        raise VaultLockedError("auto-lock fired mid-set")
-
-    monkeypatch.setattr(home._categorization, "set_manual_category", _raise)
-    home._select_txn(txn)
-    home._on_set_category()  # must not raise
-    assert _txn_cat(service, txn) == (None, None), "guarded set left the row unchanged"
-
-
-def test_INV14_learning_path_refresh_catches_vault_locked(qtbot, service, monkeypatch):
-    # The learning-offer accept slot (_apply_learned_rule) ends with refresh(); if
-    # an auto-lock fired while the offer was open, that refresh reads a locked vault.
-    # Drive _apply_learned_rule DIRECTLY: _apply_category's earlier refresh() would
-    # pre-empt the full chain, so only the direct call exercises THIS guard
-    # (FIBR-0065 INV-3 vacuous-pass trap).
-    g = _leaf_id(service, "Groceries")
-    home = _home(service)
-    qtbot.addWidget(home)
-    dialog = _RuleStub(home, "pick n pay", g, accept=True)
-
-    def _raise():
-        raise VaultLockedError("auto-lock fired while the learning offer was open")
-
-    monkeypatch.setattr(home._transactions, "list_transactions", _raise)
-    home._apply_learned_rule(dialog)  # must not raise — refresh() is inside the guard
-    assert CategorizationService(service.vault).would_categorize("pick n pay") == g, (
-        "add_rule ran before the guarded refresh() hit the lock"
-    )
 
 
 def test_INV14_apply_catches_vault_locked(qtbot, service, monkeypatch):

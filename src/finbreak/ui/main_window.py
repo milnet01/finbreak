@@ -5,8 +5,9 @@ The top-level window: a menubar (File · View · Window · Help · Donate), an i
 toolbar, a central ``QStackedWidget`` content area, and a status bar. First-run
 and unlock are non-blocking application-modal dialogs shown *over* the window;
 manual entry is a modal dialog. When unlocked, the content slot holds a single
-**workspace** ``QTabWidget`` (Home · Statements · Accounts · Categories · Rules ·
-Transfers as persistent tabs), built once per session and **destroyed on lock** so no
+**workspace** ``QTabWidget`` (Home · Transactions · Statements · Accounts ·
+Categories · Rules · Transfers as persistent tabs), built once per session and
+**destroyed on lock** so no
 decrypted rows survive (INV-3). An import temporarily replaces the workspace with
 the wizard (also destroyed on lock), rebuilding the workspace on ``done``. Window
 size/position/state + the last-active tab are persisted to a plain INI **outside**
@@ -42,6 +43,7 @@ from PySide6.QtWidgets import (
 )
 
 from finbreak import __version__, paths
+from finbreak.services.accounts import AccountService
 from finbreak.services.auth import (
     DATETIME_SYSTEM,
     AmountPrefs,
@@ -49,6 +51,7 @@ from finbreak.services.auth import (
     DateTimePrefs,
 )
 from finbreak.services.categorization import CategorizationService
+from finbreak.services.reporting import ReportingService
 from finbreak.services.transactions import TransactionService
 from finbreak.services.update import UpdateInfo, UpdateService
 from finbreak.services.update_installer import Installer, detect_installer
@@ -63,6 +66,7 @@ from finbreak.ui.manual_entry import ManualEntryDialog
 from finbreak.ui.rules import RulesWidget
 from finbreak.ui.settings import SettingsDialog
 from finbreak.ui.statements import StatementsWidget
+from finbreak.ui.transactions import TransactionsView
 from finbreak.ui.transfers import TransfersWidget
 from finbreak.ui.unlock import UnlockDialog
 from finbreak.ui.update_dialog import UpdateDialog
@@ -75,14 +79,15 @@ DONATE_PAYBRU = "https://paybru.co.za/tip/ants-projects-hub"
 
 _STATUS_TIMEOUT_MS = 4000
 
-# The workspace tab order (FIBR-0052 INV-1). Fixed; the navigation actions and the
-# import-done landing key on these indices.
+# The workspace tab order (FIBR-0052 INV-1; Transactions inserted 2nd by FIBR-0012).
+# Fixed; the navigation actions and the import-done landing key on these indices.
 _TAB_HOME = 0
-_TAB_STATEMENTS = 1
-_TAB_ACCOUNTS = 2
-_TAB_CATEGORIES = 3
-_TAB_RULES = 4
-_TAB_TRANSFERS = 5
+_TAB_TRANSACTIONS = 1
+_TAB_STATEMENTS = 2
+_TAB_ACCOUNTS = 3
+_TAB_CATEGORIES = 4
+_TAB_RULES = 5
+_TAB_TRANSFERS = 6
 
 # User-input event types that count as activity for the idle-lock reset (FIBR-0114).
 _ACTIVITY_EVENTS = frozenset(
@@ -182,6 +187,7 @@ class MainWindow(QMainWindow):
         self._live: QWidget | None = None  # the current content widget, if any
         self._workspace: QTabWidget | None = None  # the tabbed workspace, when live
         self._home_tab: HomeView | None = None
+        self._transactions_tab: TransactionsView | None = None
         self._statements_tab: StatementsWidget | None = None
         self._accounts_tab: AccountsWidget | None = None
         self._categories_tab: CategoriesWidget | None = None
@@ -232,6 +238,12 @@ class MainWindow(QMainWindow):
     def _build_chrome(self) -> None:
         self._action_home = self._make_action(
             "action_home", self.tr("Home"), "home", self._show_home
+        )
+        self._action_transactions = self._make_action(
+            "action_transactions",
+            self.tr("Transactions"),
+            "transactions",
+            self._open_transactions,
         )
         self._action_statements = self._make_action(
             "action_statements", self.tr("Statements"), None, self._open_statements
@@ -322,6 +334,7 @@ class MainWindow(QMainWindow):
 
         self._menu_view = menu.addMenu(self.tr("View"))
         self._menu_view.addAction(self._action_home)
+        self._menu_view.addAction(self._action_transactions)
         self._menu_view.addAction(self._action_statements)
         self._menu_view.addAction(self._action_accounts)
         self._menu_view.addAction(self._action_categories)
@@ -355,6 +368,7 @@ class MainWindow(QMainWindow):
         self._toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
         for action in (
             self._action_home,
+            self._action_transactions,
             self._action_manual_entry,
             self._action_import,
             self._action_accounts,
@@ -496,7 +510,7 @@ class MainWindow(QMainWindow):
 
     # --- workspace ---------------------------------------------------------- #
     def _build_workspace(self) -> QTabWidget:
-        """Build the six-tab workspace once and install it as the live content,
+        """Build the seven-tab workspace once and install it as the live content,
         returning it. Each tab page self-refreshes on construction; navigation
         switches the current index (D1), never rebuilds a tab."""
         workspace = QTabWidget()
@@ -507,10 +521,12 @@ class MainWindow(QMainWindow):
         self._prefs = self._service.datetime_prefs()
         self._amount_prefs = self._service.amount_prefs()
 
+        # Home is now the dashboard (FIBR-0012 D6): reporting aggregates, the account
+        # list, and the AuthService (for the persisted report-period prefs).
         self._home_tab = HomeView(
-            TransactionService(self._service.vault),
-            CategorizationService(self._service.vault),
-            self._prefs,
+            ReportingService(self._service.vault),
+            AccountService(self._service.vault),
+            self._service,
             self._amount_prefs,
         )
         self._home_tab.setObjectName("tab_home")
@@ -518,6 +534,15 @@ class MainWindow(QMainWindow):
         self._home_tab.import_requested.connect(self._action_import.trigger)
         self._home_tab.add_transaction_requested.connect(
             self._action_manual_entry.trigger
+        )
+
+        # The relocated transaction table + filters (FIBR-0012 D7); sets
+        # tab_transactions.
+        self._transactions_tab = TransactionsView(
+            TransactionService(self._service.vault),
+            CategorizationService(self._service.vault),
+            self._prefs,
+            self._amount_prefs,
         )
 
         self._statements_tab = StatementsWidget(
@@ -537,6 +562,7 @@ class MainWindow(QMainWindow):
         self._transfers_tab = TransfersWidget(self._service)  # sets tab_transfers
 
         workspace.addTab(self._home_tab, self.tr("Home"))
+        workspace.addTab(self._transactions_tab, self.tr("Transactions"))
         workspace.addTab(self._statements_tab, self.tr("Statements"))
         workspace.addTab(self._accounts_tab, self.tr("Accounts"))
         workspace.addTab(self._categories_tab, self.tr("Categories"))
@@ -570,6 +596,8 @@ class MainWindow(QMainWindow):
         if index == _TAB_HOME and self._home_tab is not None:
             self._home_tab.refresh()
             self._refresh_count(self._home_tab.transaction_count())
+        elif index == _TAB_TRANSACTIONS and self._transactions_tab is not None:
+            self._transactions_tab.refresh()
         elif index == _TAB_STATEMENTS and self._statements_tab is not None:
             self._statements_tab.refresh()
         elif index == _TAB_ACCOUNTS and self._accounts_tab is not None:
@@ -596,6 +624,10 @@ class MainWindow(QMainWindow):
             self._home_tab.refresh()
             self._refresh_count(self._home_tab.transaction_count())
         workspace.setCurrentIndex(_TAB_HOME)
+
+    def _open_transactions(self) -> None:
+        self._ensure_workspace().setCurrentIndex(_TAB_TRANSACTIONS)
+        self._status(self.tr("Transactions"))
 
     def _open_statements(self) -> None:
         self._ensure_workspace().setCurrentIndex(_TAB_STATEMENTS)
@@ -624,9 +656,17 @@ class MainWindow(QMainWindow):
         self._open_dialog(dialog, defer=False)
 
     def _on_manual_committed(self) -> None:
+        # Land on Transactions so the just-added row is visible (FIBR-0012 D11), and
+        # refresh the live count from Home's ReportingService (decoupled from tab
+        # nav, so an add from any tab keeps the status bar current, INV-14).
         self._teardown_dialog()
         self._status(self.tr("Added transaction"))
-        self._show_home()  # refresh + show the Home tab, whatever was current (INV-9)
+        workspace = self._ensure_workspace()
+        if self._transactions_tab is not None:
+            self._transactions_tab.refresh()
+        if self._home_tab is not None:
+            self._refresh_count(self._home_tab.transaction_count())
+        workspace.setCurrentIndex(_TAB_TRANSACTIONS)
 
     def _open_settings(self) -> None:
         # Vault-dependent (File menu is disabled while locked, INV-6). The shell
@@ -653,9 +693,13 @@ class MainWindow(QMainWindow):
         # format/zone change takes effect live without a relaunch (FIBR-0083 D7).
         self._prefs = self._service.datetime_prefs()
         self._amount_prefs = self._service.amount_prefs()
+        # Home is the dashboard now — it shows amounts (tiles) but no dates, so only
+        # the amount prefs apply; the Transactions table shows both (FIBR-0012 D6/D7).
         if self._home_tab is not None:
-            self._home_tab.set_datetime_prefs(self._prefs)
             self._home_tab.set_amount_prefs(self._amount_prefs)
+        if self._transactions_tab is not None:
+            self._transactions_tab.set_datetime_prefs(self._prefs)
+            self._transactions_tab.set_amount_prefs(self._amount_prefs)
         if self._statements_tab is not None:
             self._statements_tab.set_datetime_prefs(self._prefs)
         self._teardown_dialog()
@@ -962,6 +1006,7 @@ class MainWindow(QMainWindow):
             if self._live is self._workspace:
                 self._workspace = None
                 self._home_tab = None
+                self._transactions_tab = None
                 self._statements_tab = None
                 self._accounts_tab = None
                 self._categories_tab = None

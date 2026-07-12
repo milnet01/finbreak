@@ -543,12 +543,12 @@ def test_INV10_transfers_toolbar_action_has_a_rendering_icon(qtbot, service):
     assert not action.icon().pixmap(QSize(24, 24)).isNull(), "Transfers needs an icon"
 
 
-def test_INV10_workspace_has_six_tabs(qtbot, service):
+def test_INV10_workspace_has_seven_tabs(qtbot, service):
     from finbreak.ui.main_window import MainWindow
 
     window = MainWindow(service)
     qtbot.addWidget(window)
     window._enter_unlocked()
     assert window._workspace is not None
-    assert window._workspace.count() == 6
+    assert window._workspace.count() == 7  # + Transactions (FIBR-0012)
     assert window._transfers_tab is not None

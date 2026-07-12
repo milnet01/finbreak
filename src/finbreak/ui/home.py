@@ -1,75 +1,103 @@
-"""HomeView — the Home content page (FIBR-0051 D3; category column + manual set +
-learning added by FIBR-0010 D10/D11).
+"""HomeView — the Home **dashboard** (FIBR-0012 D6, superseding the FIBR-0051 table).
 
-An internal ``QStackedWidget`` toggling between a **getting-started** page (shown
-when the vault holds zero transactions) and the **transaction table** (shown once
-there is data). The toggle is observable via ``current_page().objectName()``
-(``home_page_empty`` / ``home_page_table``, INV-9a).
+An internal ``QStackedWidget`` toggling between the **getting-started** page (shown
+when the vault holds zero transactions) and the **dashboard** (shown once there is
+data). The toggle is observable via ``current_page().objectName()``
+(``home_page_empty`` / ``home_page_dashboard``, INV-7).
 
-The table has a **Category** column and a right-click **Set category…** that sets
-a row **manual** (highest-priority, never re-filed) and — when the manual choice
-disagrees with the current rules — offers to learn a rule (D11). ``HomeView``
-holds a ``TransactionService`` **and** a ``CategorizationService`` (category
-assignment genuinely needs category data — the FIBR-0051 "Home holds only
-TransactionService" note is superseded here). ``refresh()`` re-reads the vault and
-selects the current page; ``transaction_count()`` feeds the status bar (INV-7).
+The dashboard shows, for a chosen period (defaulting to last month, persisted): a
+period + account selector, three summary tiles (income / expenditure / net), a
+category **donut**, and a 12-month income-vs-expenditure **trend** bar chart —
+all with confirmed transfers excluded (the ``ReportingService`` does the
+exclusion). Money moved between the user's own accounts never counts. The raw
+transaction table moved to the Transactions tab (``ui/transactions.py``).
 """
 
 from __future__ import annotations
 
 from decimal import Decimal
-from typing import cast
 
-from PySide6.QtCore import QLocale, QPoint, Qt, Signal
-from PySide6.QtGui import QColor
+from PySide6.QtCharts import (
+    QBarCategoryAxis,
+    QBarSeries,
+    QBarSet,
+    QChart,
+    QChartView,
+    QPieSeries,
+    QValueAxis,
+)
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import (
-    QAbstractItemView,
-    QHeaderView,
+    QComboBox,
+    QHBoxLayout,
     QLabel,
-    QMenu,
     QPushButton,
+    QSpinBox,
     QStackedWidget,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
-from finbreak.datetime_format import format_date
-from finbreak.errors import VaultLockedError
-from finbreak.models import Transaction
-from finbreak.services.auth import (
-    DATETIME_SYSTEM,
-    AmountPrefs,
-    DateTimePrefs,
+from finbreak.models import CategorySpend, MonthlyTotal, Summary
+from finbreak.services.accounts import AccountService
+from finbreak.services.auth import AmountPrefs, AuthService
+from finbreak.services.reporting import (
+    MODE_CURRENT_MONTH,
+    MODE_PREVIOUS_MONTH,
+    MODE_SPECIFIC_MONTH,
+    MODE_SPECIFIC_YEAR,
+    MODE_YEAR_TO_DATE,
+    ReportingService,
+    ReportPrefs,
 )
-from finbreak.services.categorization import CategorizationService
-from finbreak.services.transactions import TransactionService
-from finbreak.ui._table_state import (
-    SortableItem,
-    enable_sorting,
-    fill_guard,
-    remember_columns,
-    select_by_index,
-    selected_index,
-    tag_row,
-)
-from finbreak.ui.category_picker import CategoryPickerDialog
-from finbreak.ui.modal import show_modal
-from finbreak.ui.rules import RuleEditDialog
+from finbreak.ui._amount import _NEGATIVE_TEXT, _POSITIVE_TEXT, _format_amount
 
-# Fixed column indices (the table's shape; headers are the translated labels).
-_COL_DATE = 0
-_COL_AMOUNT = 1
-_COL_DESCRIPTION = 2
-_COL_ACCOUNT = 3
-_COL_CATEGORY = 4
+# The ordered categorical palette for the coloured (categorised) donut wedges
+# (FIBR-0012 D9) — accessible on the dark default, the app-icon family extended.
+_DONUT_PALETTE = [
+    QColor("#4E9F3D"),  # green
+    QColor("#3D7EA6"),  # blue
+    QColor("#2FA4A0"),  # teal
+    QColor("#D98A29"),  # orange
+    QColor("#8E6FBE"),  # purple
+    QColor("#C0504D"),  # red
+    QColor("#C9A227"),  # gold
+    QColor("#7FB069"),  # light green
+]
+# The two synthetic buckets are pinned neutrals, regardless of rank (D9).
+_UNCAT_COLOUR = QColor("#9AA6B2")  # light slate — Uncategorised
+_OTHER_COLOUR = QColor("#5B6570")  # darker slate — Other
+_MAX_WEDGES = 8  # counting Uncategorised and any Other
 
-# Direction tints for the Amount column when colour is on (FIBR-0105 D3). Fixed
-# mid-tones chosen to read on the dark-default theme (ADR-0002) and stay legible
-# on light; palette-adaptive re-tinting is FIBR-0014.
-_NEGATIVE_TEXT = QColor(224, 108, 117)  # soft red — money out
-_POSITIVE_TEXT = QColor(152, 195, 121)  # soft green — money in
+
+def _donut_wedges(
+    spending: list[CategorySpend], uncat_label: str, other_label: str
+) -> list[tuple[str, Decimal, QColor]]:
+    """The ≤8-wedge donut render list (FIBR-0012 D9), from the full sorted
+    ``spending_by_category`` output. Splits off the Uncategorised slice
+    (``category_id is None``), caps the categorised remainder, and synthesises an
+    **Other** wedge locally from the collapsed tail — so Other is a UI construct,
+    distinct from Uncategorised by construction. Order: coloured categorised (desc)
+    → Uncategorised (if present) → Other (if present)."""
+    categorised = [c for c in spending if c.category_id is not None]
+    uncat = [c for c in spending if c.category_id is None]  # 0 or 1
+    has_uncat = bool(uncat)
+    if len(categorised) + (1 if has_uncat else 0) <= _MAX_WEDGES:
+        keep, tail = categorised, []
+    else:
+        # Reserve one wedge for Other, and one for Uncategorised if present.
+        n_keep = _MAX_WEDGES - 1 - (1 if has_uncat else 0)
+        keep, tail = categorised[:n_keep], categorised[n_keep:]
+    wedges: list[tuple[str, Decimal, QColor]] = [
+        (c.name, c.amount, _DONUT_PALETTE[i]) for i, c in enumerate(keep)
+    ]
+    if has_uncat:
+        wedges.append((uncat_label, uncat[0].amount, _UNCAT_COLOUR))
+    if tail:
+        other_amount = sum((c.amount for c in tail), Decimal(0))
+        wedges.append((other_label, other_amount, _OTHER_COLOUR))
+    return wedges
 
 
 class HomeView(QWidget):
@@ -79,38 +107,32 @@ class HomeView(QWidget):
 
     def __init__(
         self,
-        transactions: TransactionService,
-        categorization: CategorizationService,
-        prefs: DateTimePrefs | None = None,
+        reporting: ReportingService,
+        accounts: AccountService,
+        auth: AuthService,
         amount_prefs: AmountPrefs | None = None,
         parent: QWidget | None = None,
     ):
         super().__init__(parent)
-        self._transactions = transactions
-        self._categorization = categorization
-        # Display-only date formatting input (FIBR-0083 D6); absent -> the
-        # zero-config all-"system" default. The shell passes the vault's prefs.
-        self._prefs = prefs or DateTimePrefs(
-            DATETIME_SYSTEM, DATETIME_SYSTEM, DATETIME_SYSTEM
-        )
-        # Display-only amount formatting input (FIBR-0105); absent -> the
-        # friendly default (minus + colour on). The shell passes the vault's prefs.
+        self._reporting = reporting
+        self._accounts = accounts
+        self._auth = auth
         self._amount_prefs = amount_prefs or AmountPrefs("minus", True)
-        self._count = 0
-        # The rendered rows, parallel to the table rows (the row -> transaction map
-        # is the table's row order, same order as list_transactions).
-        self._rows: list[tuple[Transaction, Decimal, str, str]] = []
+        # Guards the programmatic selector loads from re-triggering a persist.
+        self._loading = False
 
         self._stack = QStackedWidget()
         self._stack.addWidget(self._build_getting_started())
-        self._stack.addWidget(self._build_table_page())
+        self._stack.addWidget(self._build_dashboard())
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self._stack)
 
+        self._load_prefs_into_selectors(self._auth.report_prefs())
         self.refresh()
 
+    # --- construction ------------------------------------------------------ #
     def _build_getting_started(self) -> QWidget:
         page = QWidget()
         page.setObjectName("home_page_empty")
@@ -131,184 +153,250 @@ class HomeView(QWidget):
         layout.addStretch()
         return page
 
-    def _build_table_page(self) -> QWidget:
+    def _build_dashboard(self) -> QWidget:
         page = QWidget()
-        page.setObjectName("home_page_table")
-
-        self._table = QTableWidget(0, 5)
-        self._table.setHorizontalHeaderLabels(
-            [
-                self.tr("Date"),
-                self.tr("Amount"),
-                self.tr("Description"),
-                self.tr("Account"),
-                self.tr("Category"),
-            ]
-        )
-        # Interactive (user-resizable) columns so their widths can be remembered
-        # (FIBR-0117); the last section still stretches to fill the table width, so
-        # it reads full-width like the previous all-Stretch layout.
-        self._table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.ResizeMode.Interactive
-        )
-        self._table.horizontalHeader().setStretchLastSection(True)
-        self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        enable_sorting(self._table)  # click a header to sort; second click toggles
-        remember_columns(self._table)  # persist column widths across sessions
-        # Right-click a row to set its category (INV-10).
-        self._table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self._table.customContextMenuRequested.connect(self._show_context_menu)
-
+        page.setObjectName("home_page_dashboard")
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(self._table)
+
+        layout.addLayout(self._build_selectors())
+        layout.addLayout(self._build_tiles())
+
+        # Category donut + its empty-state placeholder (only one is visible).
+        self._category_chart = QChartView()
+        self._category_chart.setObjectName("dashboard_category_chart")
+        self._category_chart.setRenderHint(QPainter.RenderHint.Antialiasing)
+        self._category_empty = QLabel(self.tr("No spending in this period"))
+        self._category_empty.setObjectName("dashboard_category_empty")
+        self._category_empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self._category_chart)
+        layout.addWidget(self._category_empty)
+
+        self._trend_chart = QChartView()
+        self._trend_chart.setObjectName("dashboard_trend_chart")
+        self._trend_chart.setRenderHint(QPainter.RenderHint.Antialiasing)
+        layout.addWidget(self._trend_chart)
         return page
 
+    def _build_selectors(self) -> QHBoxLayout:
+        row = QHBoxLayout()
+
+        self._period_selector = QComboBox()
+        self._period_selector.setObjectName("period_selector")
+        for label, mode in (
+            (self.tr("Previous month"), MODE_PREVIOUS_MONTH),
+            (self.tr("Current month"), MODE_CURRENT_MONTH),
+            (self.tr("Specific month"), MODE_SPECIFIC_MONTH),
+            (self.tr("Year to date"), MODE_YEAR_TO_DATE),
+            (self.tr("Specific year"), MODE_SPECIFIC_YEAR),
+        ):
+            self._period_selector.addItem(label, mode)
+        self._period_selector.currentIndexChanged.connect(self._on_period_changed)
+
+        self._month_picker = QComboBox()
+        self._month_picker.setObjectName("period_month")
+        for month in range(1, 13):
+            self._month_picker.addItem(f"{month:02d}", month)
+        self._month_picker.currentIndexChanged.connect(self._on_period_changed)
+
+        self._year_picker = QSpinBox()
+        self._year_picker.setObjectName("period_year")
+        self._year_picker.setRange(1970, 9999)
+        self._year_picker.valueChanged.connect(self._on_period_changed)
+
+        self._account_selector = QComboBox()
+        self._account_selector.setObjectName("account_selector")
+        self._account_selector.currentIndexChanged.connect(self._on_account_changed)
+
+        row.addWidget(self._period_selector)
+        row.addWidget(self._month_picker)
+        row.addWidget(self._year_picker)
+        row.addStretch()
+        row.addWidget(self._account_selector)
+        return row
+
+    def _build_tiles(self) -> QHBoxLayout:
+        row = QHBoxLayout()
+        self._income_value = self._make_tile(row, self.tr("Income"), "dashboard_income")
+        self._expenditure_value = self._make_tile(
+            row, self.tr("Spending"), "dashboard_expenditure"
+        )
+        self._net_value = self._make_tile(row, self.tr("Net"), "dashboard_net")
+        return row
+
+    def _make_tile(self, row: QHBoxLayout, title: str, object_name: str) -> QLabel:
+        tile = QWidget()
+        tile_layout = QVBoxLayout(tile)
+        tile_layout.addWidget(QLabel(title))
+        value = QLabel("")
+        value.setObjectName(object_name)
+        tile_layout.addWidget(value)
+        row.addWidget(tile)
+        return value
+
+    # --- selector state ---------------------------------------------------- #
+    def _load_prefs_into_selectors(self, prefs: ReportPrefs) -> None:
+        """Set the period + secondary pickers from a stored ``ReportPrefs`` without
+        re-triggering a persist. Specific pickers default to the stored value, else
+        the current calendar month / year."""
+        from datetime import date
+
+        self._loading = True
+        try:
+            index = self._period_selector.findData(prefs.mode)
+            self._period_selector.setCurrentIndex(max(0, index))
+            today = date.today()
+            self._year_picker.setValue(prefs.year or today.year)
+            month_index = self._month_picker.findData(prefs.month or today.month)
+            self._month_picker.setCurrentIndex(max(0, month_index))
+            self._sync_picker_visibility()
+        finally:
+            self._loading = False
+
+    def _sync_picker_visibility(self) -> None:
+        mode = self._period_selector.currentData()
+        self._month_picker.setVisible(mode == MODE_SPECIFIC_MONTH)
+        self._year_picker.setVisible(mode in (MODE_SPECIFIC_MONTH, MODE_SPECIFIC_YEAR))
+
+    def _current_prefs(self) -> ReportPrefs:
+        mode = self._period_selector.currentData()
+        if mode == MODE_SPECIFIC_MONTH:
+            return ReportPrefs(
+                mode,
+                year=self._year_picker.value(),
+                month=self._month_picker.currentData(),
+            )
+        if mode == MODE_SPECIFIC_YEAR:
+            return ReportPrefs(mode, year=self._year_picker.value())
+        return ReportPrefs(mode)
+
+    def _selected_account_id(self) -> int | None:
+        return self._account_selector.currentData()
+
+    # --- signals ----------------------------------------------------------- #
+    def _on_period_changed(self) -> None:
+        if self._loading:
+            return
+        self._sync_picker_visibility()
+        # Persist the new period (the account is NOT persisted, D6), then re-render.
+        try:
+            self._auth.set_report_prefs(self._current_prefs())
+        except Exception:
+            # A locked vault (auto-lock mid-interaction) — never crash the UI.
+            return
+        self.refresh()
+
+    def _on_account_changed(self) -> None:
+        if self._loading:
+            return
+        self.refresh()  # account is session-only, not persisted (D6)
+
+    # --- shell / test accessors -------------------------------------------- #
     def current_page(self) -> QWidget:
         return self._stack.currentWidget()
 
     def transaction_count(self) -> int:
-        return self._count
-
-    def refresh(self) -> None:
-        self._rows = self._transactions.list_transactions()
-        symbol = self._transactions.base_currency()
-        self._count = len(self._rows)
-        with fill_guard(self._table):
-            self._table.setRowCount(len(self._rows))
-            for row, (transaction, display, account_name, category_name) in enumerate(
-                self._rows
-            ):
-                # Date sorts on the ISO occurred_on (not the possibly DD/MM/YYYY
-                # display); Amount sorts numerically on the signed Decimal.
-                self._table.setItem(
-                    row,
-                    _COL_DATE,
-                    SortableItem(
-                        format_date(transaction.occurred_on, self._prefs.date_format),
-                        transaction.occurred_on,
-                    ),
-                )
-                amount_item = SortableItem(
-                    _format_amount(display, symbol, self._amount_prefs.negative_style),
-                    display,
-                )
-                # Colour marks direction only when the pref is on; a fresh item per
-                # render means a colour-off pass leaves no stale foreground (INV-4).
-                # Zero is left at the default colour (and can't occur via the service,
-                # which rejects zero amounts — this is the defensive branch).
-                if self._amount_prefs.colour:
-                    if display < 0:
-                        amount_item.setForeground(_NEGATIVE_TEXT)
-                    elif display > 0:
-                        amount_item.setForeground(_POSITIVE_TEXT)
-                self._table.setItem(row, _COL_AMOUNT, amount_item)
-                self._table.setItem(
-                    row, _COL_DESCRIPTION, QTableWidgetItem(transaction.description)
-                )
-                self._table.setItem(row, _COL_ACCOUNT, QTableWidgetItem(account_name))
-                self._table.setItem(row, _COL_CATEGORY, QTableWidgetItem(category_name))
-                tag_row(
-                    self._table, row, row
-                )  # col-0 tag = insertion index (sort-safe)
-        # Getting-started iff zero transactions, else the table (INV-9a).
-        self._stack.setCurrentIndex(1 if self._rows else 0)
-
-    # --- category set + learning (INV-10/INV-11) --------------------------- #
-    def _show_context_menu(self, pos: QPoint) -> None:
-        if self._selected_txn() is None:
-            return
-        menu = QMenu(self)
-        action = menu.addAction(self.tr("Set category…"))
-        action.triggered.connect(self._on_set_category)
-        menu.exec(self._table.viewport().mapToGlobal(pos))
-
-    def _on_set_category(self) -> None:
-        txn = self._selected_txn()
-        if txn is None:
-            return
-        leaves = self._categorization.leaf_categories()
-        dialog = CategoryPickerDialog(leaves, txn.category_id, self)
-        # Non-blocking (FIBR-0065): a lock while the picker is open destroys it
-        # before _apply_category can run, so no read hits a deleted C++ object.
-        show_modal(dialog, lambda: self._apply_category(dialog, txn))
-
-    def _apply_category(self, dialog: CategoryPickerDialog, txn: Transaction) -> None:
-        chosen = dialog.selected_category_id()
-        # The VaultLockedError guard is now defense-in-depth: the non-blocking
-        # conversion (INV-2) means a lock destroys the picker before this slot runs.
-        try:
-            self._categorization.set_manual_category(txn.id, chosen)
-            self.refresh()  # the manual change is visible immediately
-            self._maybe_offer_rule(txn.description, chosen)
-        except VaultLockedError:
-            return
-
-    def _maybe_offer_rule(self, description: str, chosen: int | None) -> None:
-        """Offer to learn a rule iff the manual choice is a leaf that disagrees with
-        what the current rules would produce (D11). Accept → create the rule (top
-        priority) + re-apply; dismiss → only the one corrected row changed. ``would``
-        is read against the rules as they stand, before any new rule is added."""
-        if chosen is None:
-            return  # a manual clear is not a rule to learn
-        if chosen == self._categorization.would_categorize(description):
-            return  # the rules already agree — no nag
-        dialog = RuleEditDialog(
-            self._categorization.leaf_categories(), description, chosen, self
-        )
-        show_modal(dialog, lambda: self._apply_learned_rule(dialog))
-
-    def _apply_learned_rule(self, dialog: RuleEditDialog) -> None:
-        pattern, category_id = dialog.pattern(), dialog.selected_category_id()
-        if category_id is None:
-            return  # OK is gated on a selectable category; defensive (FIBR-0079)
-        try:
-            self._categorization.add_rule(pattern, category_id)
-            self._categorization.apply_rules()  # propagate to other auto rows
-            self.refresh()  # the propagation to other auto rows is now visible
-        except VaultLockedError:
-            return
-
-    def set_datetime_prefs(self, prefs: DateTimePrefs) -> None:
-        """Adopt new display prefs and re-render (FIBR-0083 D7)."""
-        self._prefs = prefs
-        self.refresh()
+        """Live whole-vault count — the shell's status-bar source (D6/D11)."""
+        return self._reporting.transaction_count()
 
     def set_amount_prefs(self, prefs: AmountPrefs) -> None:
-        """Adopt new amount-display prefs and re-render (FIBR-0105 D1)."""
+        """Adopt new amount-display prefs and re-render (the tiles reformat)."""
         self._amount_prefs = prefs
         self.refresh()
 
-    # --- test / shell accessors -------------------------------------------- #
-    def _selected_txn(self) -> Transaction | None:
-        # The tagged parallel-list index of the selection — correct after a re-sort.
-        index = selected_index(self._table)
-        return None if index is None else self._rows[index][0]
+    # --- render ------------------------------------------------------------ #
+    def refresh(self) -> None:
+        # Getting-started iff the vault holds zero transactions (INV-7).
+        if self._reporting.transaction_count() == 0:
+            self._stack.setCurrentIndex(0)
+            return
+        self._rebuild_account_selector()
+        prefs = self._current_prefs()
+        account_id = self._selected_account_id()
+        symbol = self._reporting.base_currency()
 
-    def _select_txn(self, txn_id: int) -> None:
-        for i, row in enumerate(self._rows):
-            if row[0].id == txn_id:
-                select_by_index(self._table, i)  # visual row for insertion index i
-                return
+        self._render_tiles(self._reporting.summary(prefs, account_id), symbol)
+        self._render_donut(self._reporting.spending_by_category(prefs, account_id))
+        self._render_trend(self._reporting.monthly_trend(prefs, account_id))
+        self._stack.setCurrentIndex(1)
 
+    def _rebuild_account_selector(self) -> None:
+        """Rebuild the account combo preserving the current in-session selection —
+        re-select the held account id if it still exists, else "All accounts"."""
+        held = self._selected_account_id()
+        self._loading = True
+        try:
+            self._account_selector.clear()
+            self._account_selector.addItem(self.tr("All accounts"), None)
+            for account in self._accounts.list_accounts():
+                self._account_selector.addItem(account.name, account.id)
+            index = self._account_selector.findData(held)
+            self._account_selector.setCurrentIndex(max(0, index))
+        finally:
+            self._loading = False
 
-def _format_amount(display: Decimal, symbol: str, negative_style: str = "minus") -> str:
-    # Currency → QLocale.toCurrencyString with the base-currency symbol, so the
-    # amount carries its currency and isn't reformatted to the locale's own
-    # (coding.md § 5.2). A stored amount reconstructs to a finite Decimal, so its
-    # exponent is an int. toCurrencyString has no Decimal overload, so the float()
-    # is a DISPLAY-ONLY, bounded conversion — storage/computation stay exact
-    # Decimal (D1); only the on-screen string crosses to float.
-    #
-    # Both styles format the MAGNITUDE via QLocale (grouping / decimal separator /
-    # symbol placement stay locale-correct), then the sign notation is applied
-    # EXPLICITLY for a negative (FIBR-0105 D2) — NOT delegated to QLocale's
-    # negative-currency pattern, which is parentheses only on some locales and a
-    # minus sign on the C locale + others, making "brackets" non-deterministic.
-    decimals = max(0, -cast(int, display.as_tuple().exponent))
-    magnitude = QLocale().toCurrencyString(float(abs(display)), symbol, decimals)
-    if display < 0:
-        return f"({magnitude})" if negative_style == "brackets" else f"-{magnitude}"
-    return magnitude
+    def _render_tiles(self, summary: Summary, symbol: str) -> None:
+        style = self._amount_prefs.negative_style
+        self._income_value.setText(_format_amount(summary.income, symbol, style))
+        self._expenditure_value.setText(
+            _format_amount(summary.expenditure, symbol, style)
+        )
+        self._net_value.setText(_format_amount(summary.net, symbol, style))
+        if self._amount_prefs.colour:
+            self._income_value.setStyleSheet(f"color: {_POSITIVE_TEXT.name()}")
+            self._expenditure_value.setStyleSheet(f"color: {_NEGATIVE_TEXT.name()}")
+            net_colour = _POSITIVE_TEXT if summary.net >= 0 else _NEGATIVE_TEXT
+            self._net_value.setStyleSheet(f"color: {net_colour.name()}")
+        else:
+            for value in (self._income_value, self._expenditure_value, self._net_value):
+                value.setStyleSheet("")
+
+    def _render_donut(self, spending: list[CategorySpend]) -> None:
+        wedges = _donut_wedges(spending, self.tr("Uncategorised"), self.tr("Other"))
+        if not wedges:
+            # No spending in the period — hide the chart, show the placeholder (D9).
+            self._category_chart.setVisible(False)
+            self._category_empty.setVisible(True)
+            self._category_chart.setChart(QChart())  # release the old series
+            return
+        self._category_empty.setVisible(False)
+        self._category_chart.setVisible(True)
+        series = QPieSeries()
+        series.setHoleSize(0.4)  # a non-zero hole makes it a donut
+        for label, amount, colour in wedges:
+            slice_ = series.append(label, float(amount))
+            slice_.setColor(colour)
+        self._category_chart.setChart(self._themed_chart(series))
+
+    def _render_trend(self, trend: list[MonthlyTotal]) -> None:
+        income_set = QBarSet(self.tr("Income"))
+        income_set.setColor(_POSITIVE_TEXT)
+        expenditure_set = QBarSet(self.tr("Spending"))
+        expenditure_set.setColor(_NEGATIVE_TEXT)
+        for month in trend:
+            income_set.append(float(month.income))
+            expenditure_set.append(float(month.expenditure))
+        series = QBarSeries()
+        series.append(income_set)
+        series.append(expenditure_set)
+        chart = self._themed_chart(series)
+        axis_x = QBarCategoryAxis()
+        axis_x.append([month.label for month in trend])
+        chart.addAxis(axis_x, Qt.AlignmentFlag.AlignBottom)
+        series.attachAxis(axis_x)
+        axis_y = QValueAxis()
+        chart.addAxis(axis_y, Qt.AlignmentFlag.AlignLeft)
+        series.attachAxis(axis_y)
+        self._trend_chart.setChart(chart)
+
+    def _themed_chart(self, series: QPieSeries | QBarSeries) -> QChart:
+        """A chart with a transparent background (the app panel shows through) and
+        palette-driven text (ADR-0002 dark default, D9)."""
+        chart = QChart()
+        chart.addSeries(series)
+        chart.setBackgroundVisible(False)
+        chart.legend().setVisible(True)
+        chart.legend().setAlignment(Qt.AlignmentFlag.AlignBottom)
+        text_colour = self.palette().text().color()
+        chart.legend().setLabelColor(text_colour)
+        chart.setTitleBrush(text_colour)
+        return chart
