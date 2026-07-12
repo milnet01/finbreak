@@ -1,5 +1,5 @@
 {
-  "_comment": "Version-bump recipe for /bump and /release (see ~/.claude/skills/bump). Source of truth is src/finbreak/__init__.py __version__. 'files' are mechanical exact-string edits; the CHANGELOG entry cuts the accumulated [Unreleased] block into a dated section (bodies are authored during dev via changelog_log, so no todo is needed). post_check asserts every version-bearing file agrees. NOTE: this recipe covers the version bump only -- the signed AppImage build + publish is a separate manual step (scripts/build-release-appimage.sh, verify the .sig against RELEASE_PUBLIC_KEY_B64, then gh release create v<NEW> with the AppImage + .sig attached).",
+  "_comment": "Version-bump recipe for /bump and /release (see ~/.claude/skills/bump). Source of truth is src/finbreak/__init__.py __version__. 'files' are mechanical exact-string edits; the CHANGELOG entry cuts the accumulated [Unreleased] block into a dated section (bodies are authored during dev via changelog_log, so no todo is needed). post_check asserts every version-bearing file agrees. README.md's 'Current version' line is bumped mechanically (files) and drift-gated (post_check); its feature/'what's new' prose is refreshed via a todo at bump time so it stays layman-friendly (user directive 2026-07-12). NOTE: this recipe covers the version bump only -- the signed AppImage build + publish is a separate manual step (scripts/build-release-appimage.sh, verify the .sig against RELEASE_PUBLIC_KEY_B64, then gh release create v<NEW> with the AppImage + .sig attached).",
   "version_source": "src/finbreak/__init__.py",
   "version_pattern": "__version__ = \"([0-9]+\\.[0-9]+\\.[0-9]+)\"",
   "files": [
@@ -19,11 +19,19 @@
       "replace": "__version__ == \"{NEW}\""
     },
     {
+      "path": "README.md",
+      "pattern": "Current version: **{OLD}**",
+      "replace": "Current version: **{NEW}**"
+    },
+    {
       "path": "CHANGELOG.md",
       "pattern": "## [Unreleased]\n\n",
       "replace": "## [Unreleased]\n\n## [{NEW}] - {TODAY}\n\n"
     }
   ],
-  "post_check": "V=$(sed -n 's/^__version__ = \"\\([0-9.]*\\)\"/\\1/p' src/finbreak/__init__.py); test -n \"$V\" && grep -q \"^version = \\\"$V\\\"$\" pyproject.toml && grep -q \"__version__ == \\\"$V\\\"\" tests/test_smoke.py && grep -q \"^## \\[$V\\] - \" CHANGELOG.md && echo \"version lockstep OK: $V\" || { echo \"VERSION DRIFT: expected $V across __init__.py, pyproject.toml, tests/test_smoke.py, and a dated CHANGELOG section\"; exit 1; }",
+  "post_check": "V=$(sed -n 's/^__version__ = \"\\([0-9.]*\\)\"/\\1/p' src/finbreak/__init__.py); test -n \"$V\" && grep -q \"^version = \\\"$V\\\"$\" pyproject.toml && grep -q \"__version__ == \\\"$V\\\"\" tests/test_smoke.py && grep -q \"^## \\[$V\\] - \" CHANGELOG.md && grep -qF \"Current version: **$V**\" README.md && echo \"version lockstep OK: $V\" || { echo \"VERSION DRIFT: expected $V across __init__.py, pyproject.toml, tests/test_smoke.py, README.md, and a dated CHANGELOG section\"; exit 1; }",
+  "todos": [
+    "Refresh README.md for v{NEW} so it stays LAYMAN-FRIENDLY (plain language, no jargon): update the feature list / 'what's new' wording to reflect the user-visible changes in the new [{NEW}] CHANGELOG section. The 'Current version' line is bumped mechanically by the files step (so just confirm it reads {NEW}); this todo is only the prose. Keep it short and outcome-focused -- what the app now does for the user, not how it works internally."
+  ],
   "tag": "v{NEW}"
 }
