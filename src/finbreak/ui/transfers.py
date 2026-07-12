@@ -30,6 +30,14 @@ from finbreak.errors import VaultLockedError
 from finbreak.models import ConfirmedTransfer, TransferCandidate
 from finbreak.services.auth import AuthService
 from finbreak.services.transfer_detection import TransferDetectionService
+from finbreak.ui._table_state import (
+    SortableItem,
+    enable_sorting,
+    fill_guard,
+    remember_columns,
+    selected_index,
+    tag_row,
+)
 
 # Column order is fixed so the qtbot cells are deterministically assertable (D9).
 _COL_DATE = 0
@@ -106,6 +114,8 @@ class TransfersWidget(QWidget):
         table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        enable_sorting(table)  # click a header to sort; second click toggles order
+        remember_columns(table)  # persist column widths across sessions (FIBR-0117)
         return table
 
     def _refresh(self) -> None:
@@ -120,15 +130,23 @@ class TransfersWidget(QWidget):
         table: QTableWidget,
         rows: Sequence[TransferCandidate | ConfirmedTransfer],
     ) -> None:
-        table.setRowCount(len(rows))
-        for row, item in enumerate(rows):
-            from_to = f"{item.from_account} {_ARROW} {item.to_account}"
-            table.setItem(row, _COL_DATE, QTableWidgetItem(item.debit.occurred_on))
-            table.setItem(row, _COL_AMOUNT, QTableWidgetItem(str(item.display_amount)))
-            table.setItem(row, _COL_FROM_TO, QTableWidgetItem(from_to))
-            table.setItem(
-                row, _COL_DESCRIPTION, QTableWidgetItem(item.debit.description)
-            )
+        with fill_guard(table):
+            table.setRowCount(len(rows))
+            for row, item in enumerate(rows):
+                from_to = f"{item.from_account} {_ARROW} {item.to_account}"
+                table.setItem(
+                    row, _COL_DATE, QTableWidgetItem(item.debit.occurred_on)
+                )  # occurred_on is ISO (YYYY-MM-DD) — sorts chronologically as text
+                table.setItem(
+                    row,
+                    _COL_AMOUNT,
+                    SortableItem(str(item.display_amount), item.display_amount),
+                )
+                table.setItem(row, _COL_FROM_TO, QTableWidgetItem(from_to))
+                table.setItem(
+                    row, _COL_DESCRIPTION, QTableWidgetItem(item.debit.description)
+                )
+                tag_row(table, row, row)  # col-0 tag = insertion index (sort-safe)
 
     @Slot()
     def _on_selection_changed(self) -> None:
@@ -192,5 +210,6 @@ class TransfersWidget(QWidget):
         return len(self._candidates)
 
     def _selected_row(self, table: QTableWidget) -> int | None:
-        rows = {i.row() for i in table.selectedItems()}
-        return next(iter(rows)) if len(rows) == 1 else None
+        # The tagged parallel-list index of the selection — correct after a re-sort
+        # (the visual row order can differ from _candidates/_confirmed order).
+        return selected_index(table)

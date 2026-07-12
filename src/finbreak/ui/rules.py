@@ -36,6 +36,7 @@ from finbreak.models import CategorizationRule, Category
 from finbreak.services.auth import AuthService
 from finbreak.services.categories import CategoryService
 from finbreak.services.categorization import CategorizationService
+from finbreak.ui._table_state import remember_columns
 from finbreak.ui._widgets import select_combo_data
 from finbreak.ui.modal import show_modal
 
@@ -115,6 +116,9 @@ class RulesWidget(QWidget):
         self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        # No click-sort — the row order IS the rule priority (Move up/down). Column
+        # widths are still remembered across sessions (FIBR-0117).
+        remember_columns(self._table)
 
         self._add_button = QPushButton(self.tr("Add"))
         self._edit_button = QPushButton(self.tr("Edit"))

@@ -45,6 +45,15 @@ from finbreak.services.auth import (
 )
 from finbreak.services.categorization import CategorizationService
 from finbreak.services.transactions import TransactionService
+from finbreak.ui._table_state import (
+    SortableItem,
+    enable_sorting,
+    fill_guard,
+    remember_columns,
+    select_by_index,
+    selected_index,
+    tag_row,
+)
 from finbreak.ui.category_picker import CategoryPickerDialog
 from finbreak.ui.modal import show_modal
 from finbreak.ui.rules import RuleEditDialog
@@ -136,12 +145,18 @@ class HomeView(QWidget):
                 self.tr("Category"),
             ]
         )
+        # Interactive (user-resizable) columns so their widths can be remembered
+        # (FIBR-0117); the last section still stretches to fill the table width, so
+        # it reads full-width like the previous all-Stretch layout.
         self._table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.ResizeMode.Stretch
+            QHeaderView.ResizeMode.Interactive
         )
+        self._table.horizontalHeader().setStretchLastSection(True)
         self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        enable_sorting(self._table)  # click a header to sort; second click toggles
+        remember_columns(self._table)  # persist column widths across sessions
         # Right-click a row to set its category (INV-10).
         self._table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._table.customContextMenuRequested.connect(self._show_context_menu)
@@ -161,35 +176,43 @@ class HomeView(QWidget):
         self._rows = self._transactions.list_transactions()
         symbol = self._transactions.base_currency()
         self._count = len(self._rows)
-        self._table.setRowCount(len(self._rows))
-        for row, (transaction, display, account_name, category_name) in enumerate(
-            self._rows
-        ):
-            self._table.setItem(
-                row,
-                _COL_DATE,
-                QTableWidgetItem(
-                    format_date(transaction.occurred_on, self._prefs.date_format)
-                ),
-            )
-            amount_item = QTableWidgetItem(
-                _format_amount(display, symbol, self._amount_prefs.negative_style)
-            )
-            # Colour marks direction only when the pref is on; a fresh item per
-            # render means a colour-off pass leaves no stale foreground (INV-4).
-            # Zero is left at the default colour (and can't occur via the service,
-            # which rejects zero amounts — this is the defensive branch).
-            if self._amount_prefs.colour:
-                if display < 0:
-                    amount_item.setForeground(_NEGATIVE_TEXT)
-                elif display > 0:
-                    amount_item.setForeground(_POSITIVE_TEXT)
-            self._table.setItem(row, _COL_AMOUNT, amount_item)
-            self._table.setItem(
-                row, _COL_DESCRIPTION, QTableWidgetItem(transaction.description)
-            )
-            self._table.setItem(row, _COL_ACCOUNT, QTableWidgetItem(account_name))
-            self._table.setItem(row, _COL_CATEGORY, QTableWidgetItem(category_name))
+        with fill_guard(self._table):
+            self._table.setRowCount(len(self._rows))
+            for row, (transaction, display, account_name, category_name) in enumerate(
+                self._rows
+            ):
+                # Date sorts on the ISO occurred_on (not the possibly DD/MM/YYYY
+                # display); Amount sorts numerically on the signed Decimal.
+                self._table.setItem(
+                    row,
+                    _COL_DATE,
+                    SortableItem(
+                        format_date(transaction.occurred_on, self._prefs.date_format),
+                        transaction.occurred_on,
+                    ),
+                )
+                amount_item = SortableItem(
+                    _format_amount(display, symbol, self._amount_prefs.negative_style),
+                    display,
+                )
+                # Colour marks direction only when the pref is on; a fresh item per
+                # render means a colour-off pass leaves no stale foreground (INV-4).
+                # Zero is left at the default colour (and can't occur via the service,
+                # which rejects zero amounts — this is the defensive branch).
+                if self._amount_prefs.colour:
+                    if display < 0:
+                        amount_item.setForeground(_NEGATIVE_TEXT)
+                    elif display > 0:
+                        amount_item.setForeground(_POSITIVE_TEXT)
+                self._table.setItem(row, _COL_AMOUNT, amount_item)
+                self._table.setItem(
+                    row, _COL_DESCRIPTION, QTableWidgetItem(transaction.description)
+                )
+                self._table.setItem(row, _COL_ACCOUNT, QTableWidgetItem(account_name))
+                self._table.setItem(row, _COL_CATEGORY, QTableWidgetItem(category_name))
+                tag_row(
+                    self._table, row, row
+                )  # col-0 tag = insertion index (sort-safe)
         # Getting-started iff zero transactions, else the table (INV-9a).
         self._stack.setCurrentIndex(1 if self._rows else 0)
 
@@ -260,15 +283,14 @@ class HomeView(QWidget):
 
     # --- test / shell accessors -------------------------------------------- #
     def _selected_txn(self) -> Transaction | None:
-        rows = {i.row() for i in self._table.selectedItems()}
-        if len(rows) != 1:
-            return None
-        return self._rows[next(iter(rows))][0]
+        # The tagged parallel-list index of the selection — correct after a re-sort.
+        index = selected_index(self._table)
+        return None if index is None else self._rows[index][0]
 
     def _select_txn(self, txn_id: int) -> None:
         for i, row in enumerate(self._rows):
             if row[0].id == txn_id:
-                self._table.selectRow(i)
+                select_by_index(self._table, i)  # visual row for insertion index i
                 return
 
 

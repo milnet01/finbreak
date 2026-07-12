@@ -31,6 +31,15 @@ from finbreak.models import StatementRow
 from finbreak.services.accounts import AccountService
 from finbreak.services.auth import DATETIME_SYSTEM, AuthService, DateTimePrefs
 from finbreak.services.statements import StatementService
+from finbreak.ui._table_state import (
+    SortableItem,
+    enable_sorting,
+    fill_guard,
+    remember_columns,
+    select_by_index,
+    selected_index,
+    tag_row,
+)
 from finbreak.ui.account_picker import AccountPickerDialog
 from finbreak.ui.modal import show_modal
 
@@ -80,6 +89,8 @@ class StatementsWidget(QWidget):
         self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        enable_sorting(self._table)  # click a header to sort; second click toggles
+        remember_columns(self._table)  # persist column widths across sessions
 
         self._reassign_button = QPushButton(self.tr("Change account"))
         self._reassign_button.setObjectName("button_reassign_statement")
@@ -106,27 +117,37 @@ class StatementsWidget(QWidget):
     def refresh(self) -> None:
         """Re-list every recorded statement (all accounts) with its live count."""
         self._rows = self._statements.list_statements()
-        self._table.setRowCount(len(self._rows))
-        for row, statement in enumerate(self._rows):
-            # Period: reformat each calendar endpoint (no tz shift), same en-dash
-            # separator. Imported: convert the stored UTC instant into the user's
-            # zone + format (FIBR-0083 D5). Both are display-only (INV-1).
-            start = format_date(statement.period_start, self._prefs.date_format)
-            end = format_date(statement.period_end, self._prefs.date_format)
-            values = {
-                _COL_ACCOUNT: statement.account_name,
-                _COL_PERIOD: f"{start} – {end}",
-                _COL_FILE: statement.source_filename or "",
-                _COL_IMPORTED: format_timestamp(
+        with fill_guard(self._table):
+            self._table.setRowCount(len(self._rows))
+            for row, statement in enumerate(self._rows):
+                # Period: reformat each calendar endpoint (no tz shift), same en-dash
+                # separator. Imported: convert the stored UTC instant into the user's
+                # zone + format (FIBR-0083 D5). Both are display-only (INV-1). Period
+                # and Imported SORT on the underlying ISO instant (not the possibly
+                # DD/MM/YYYY display string); the count sorts numerically.
+                start = format_date(statement.period_start, self._prefs.date_format)
+                end = format_date(statement.period_end, self._prefs.date_format)
+                imported = format_timestamp(
                     statement.imported_at,
                     self._prefs.timezone,
                     self._prefs.date_format,
                     self._prefs.time_format,
-                ),
-                _COL_COUNT: str(statement.transaction_count),
-            }
-            for col, text in values.items():
-                self._table.setItem(row, col, QTableWidgetItem(text))
+                )
+                items = {
+                    _COL_ACCOUNT: QTableWidgetItem(statement.account_name),
+                    _COL_PERIOD: SortableItem(
+                        f"{start} – {end}", statement.period_start
+                    ),
+                    _COL_FILE: QTableWidgetItem(statement.source_filename or ""),
+                    _COL_IMPORTED: SortableItem(imported, statement.imported_at),
+                    _COL_COUNT: SortableItem(
+                        str(statement.transaction_count),
+                        statement.transaction_count,
+                    ),
+                }
+                for col, item in items.items():
+                    self._table.setItem(row, col, item)
+                tag_row(self._table, row, row)
         self._on_selection_changed()
 
     @Slot()
@@ -219,8 +240,8 @@ class StatementsWidget(QWidget):
         return len(self._rows)
 
     def _selected_row(self) -> int | None:
-        rows = {i.row() for i in self._table.selectedItems()}
-        return next(iter(rows)) if len(rows) == 1 else None
+        # The tagged parallel-list index of the selection — correct after a re-sort.
+        return selected_index(self._table)
 
     def selected_period_id(self) -> int | None:
         """The id of the selected statement, or ``None`` with no selection."""
@@ -231,5 +252,5 @@ class StatementsWidget(QWidget):
         """Select the row for ``period_id`` (used by the UI tests)."""
         for i, statement in enumerate(self._rows):
             if statement.id == period_id:
-                self._table.selectRow(i)
+                select_by_index(self._table, i)  # visual row for insertion index i
                 return
