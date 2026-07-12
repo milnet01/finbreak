@@ -57,7 +57,7 @@ from finbreak.ui.accounts import AccountsWidget
 from finbreak.ui.categories import CategoriesWidget
 from finbreak.ui.first_run import FirstRunDialog
 from finbreak.ui.home import HomeView
-from finbreak.ui.icons import icon
+from finbreak.ui.icons import toolbar_icon
 from finbreak.ui.import_wizard import ImportWizardWidget
 from finbreak.ui.manual_entry import ManualEntryDialog
 from finbreak.ui.rules import RulesWidget
@@ -375,7 +375,9 @@ class MainWindow(QMainWindow):
         action = QAction(text, self)
         action.setObjectName(object_name)
         if icon_name is not None:
-            action.setIcon(icon(icon_name))
+            # Coloured, hover-brightening, theme-aware glyph on the toolbar + menus
+            # (FIBR-0116): muted at rest, vibrant under the cursor.
+            action.setIcon(toolbar_icon(icon_name))
         # triggered emits a `checked` bool; drop it — every handler is zero-arg.
         action.triggered.connect(lambda *_, h=handler: h())
         return action

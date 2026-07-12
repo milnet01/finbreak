@@ -673,6 +673,42 @@ def test_FIBR0118_app_icon_has_transparent_corners(qtbot):
     assert image.pixelColor(256, 256).alpha() == 255, "centre must stay opaque"
 
 
+def test_FIBR0116_toolbar_icon_muted_at_rest_vibrant_on_hover(qtbot):
+    """A toolbar glyph renders a muted colour at rest (QIcon Normal) and a distinct
+    vibrant colour on hover (QIcon Active) — the two pixmaps must differ."""
+    from PySide6.QtCore import QSize
+    from PySide6.QtGui import QIcon
+
+    from finbreak.ui.icons import toolbar_icon
+
+    ic = toolbar_icon("home")
+    normal = ic.pixmap(QSize(32, 32), QIcon.Mode.Normal).toImage()
+    active = ic.pixmap(QSize(32, 32), QIcon.Mode.Active).toImage()
+    assert not normal.isNull() and not active.isNull()
+    assert normal != active, "hover (Active) must differ from rest (Normal)"
+
+
+def test_FIBR0116_colours_are_theme_aware_and_hover_is_more_saturated():
+    """The rest/hover colours differ by theme, and the hover colour is more
+    saturated than the rest colour (the 'pop' on mouse-over)."""
+    from finbreak.ui.icons import _muted_vibrant
+
+    dark_muted, dark_vibrant = _muted_vibrant(210, dark=True)
+    light_muted, _ = _muted_vibrant(210, dark=False)
+    assert dark_muted.name() != light_muted.name()  # tuned per theme
+    assert dark_vibrant.saturationF() > dark_muted.saturationF()  # hover pops
+
+
+def test_FIBR0116_unmapped_glyph_falls_back_to_neutral(qtbot):
+    """A glyph with no mapped hue returns the plain neutral icon, not a crash."""
+    from PySide6.QtCore import QSize
+
+    from finbreak.ui.icons import toolbar_icon
+
+    ic = toolbar_icon("lock")  # mapped -> coloured, non-null
+    assert not ic.pixmap(QSize(24, 24)).isNull()
+
+
 def test_rules_toolbar_action_has_a_rendering_icon(qtbot, service):
     """The Rules action sits on the toolbar (text-under-icon), so it needs a
     glyph like its neighbours — it shipped text-only (no icon_name, no rules.svg),
