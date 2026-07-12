@@ -1065,6 +1065,12 @@ because retrofitting them is a data migration.
   Source: dogfooding-2026-07-12.
   Resolved (2026-07-12): added AuthService.notify_activity() — restarts the running idle timer with its armed interval (no settings re-read; no-op when locked/headless) — and MainWindow now installs an application-wide event filter that calls it on MouseButtonPress/MouseMove/KeyPress/Wheel. The auto-lock now counts from the last interaction, not from unlock. TDD: 2 service-level tests (restart-when-unlocked via a spy timer; no-op-when-locked) + 1 shell-level test (a KeyPress through the app filter calls notify_activity). Gate green (607 passed/1 skipped), mypy/ruff/bandit/gitleaks clean.
 
+- 📋 [FIBR-0115] **Credit-card import: strip the "Continued on next page" footer from the last transaction's description.**
+  Surfaced while fixing FIBR-0112 (not that bug — amounts/checksum are unaffected). On a multi-page Family-C statement, the in-region "NNNN Continued on next page......" line has no transaction date, so _fold/_parse_family_c folds it into the PRECEDING transaction's description (e.g. "# International Txn Fee 0453155796 Continued on next page......"). Cosmetic data-quality issue affecting one row per page break. Fix: treat a line matching a "Continued on next page" / bare account-number footer as a skip line (like the "Debit"/"Credits" section headers in _is_cc_skip_line), not a description continuation. TDD with a synthetic fixture line.
+  **Layman:** On multi-page credit-card statements, one transaction's description gets a stray "Continued on next page..." tacked onto it. Cosmetic only — the amounts are correct.
+  Kind: fix.
+  Source: dogfooding-2026-07-12.
+
 ### ⚡ Performance
 
 - 📋 [FIBR-0025] **Enable SQLite WAL mode.** Set
