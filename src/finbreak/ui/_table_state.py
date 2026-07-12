@@ -112,9 +112,16 @@ def _settings() -> QSettings:
 def remember_columns(table: QTableWidget) -> None:
     """Restore ``table``'s saved column layout (widths / order / sort) and re-save it
     on every resize, reorder, or sort. Keyed by ``objectName`` in the window INI —
-    call once, after the table has its ``objectName`` and columns."""
+    call once, after the table has its ``objectName`` and columns.
+
+    Columns are made **drag-reorderable** (``setSectionsMovable``); the new visual
+    order is persisted via the same ``saveState`` restored here (the header state
+    carries section positions as well as widths, FIBR-0012 user request). Reordering
+    is visual-only — the parallel-list row tag lives on **logical** column 0, so
+    ``selected_index`` / sorting stay correct whatever the column order (INV-9)."""
     key = f"columns/{table.objectName()}"
     header = table.horizontalHeader()
+    header.setSectionsMovable(True)
     state = _settings().value(key)
     if state is not None:
         header.restoreState(state)

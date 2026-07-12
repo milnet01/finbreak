@@ -21,6 +21,11 @@ signaling per
 
 ## [Unreleased]
 
+### Added
+
+- **Data tables: drag-to-reorder columns, with the order persisted across sessions.** (FIBR-0120)
+  You can now drag a table's column headings to rearrange them (e.g. put Amount before Date), and the app remembers your arrangement next time — on the Transactions, Statements, Rules and Transfers tables.
+
 ### Fixed
 
 - **Home Loan statement import no longer glues the page footer (bank address, phone/fax, column headers) onto a transaction's description.** (FIBR-0119)

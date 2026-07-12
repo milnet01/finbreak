@@ -1109,6 +1109,16 @@ because retrofitting them is a data migration.
   Source: dogfooding-2026-07-12.
   Resolved (2026-07-12): added a shared `_is_boilerplate()` predicate (bare account/reference number; SB registered-office/contact markers — "standard bank centre"/"standardbank.co.za"/"P O Box"/"switchboard"/"fax"/registration/FSP; a repeated column-header line whose tokens are ALL table-header words) that `_fold` drops instead of folding into the preceding transaction — generalising the Family-C `_is_cc_skip_line` rule; the header-token set deliberately excludes ambiguous words (service/details/description/amount/reference) so a genuine wrapped description isn't mistaken for a header. TDD: pure synthetic `_parse_family_b` test (footer+letterhead+repeated-header block between two rows → clean descriptions). Re-validated the two real Home Loan statements (27 / 54 drafts, all descriptions clean incl. the formerly-polluted 2025-11-03 "Insurance Premium") + the full synthetic A/B/C/D suite. Gate green 656/1. The "27 new · 27 duplicate" the user saw was CORRECT (the 2026-02 statement restarts at 2025-03-01: 54 drafts = 27 overlapping the first import (deduped) + 27 new) — no dedup change.
 
+- ✅ [FIBR-0120] **Data tables: drag-to-reorder columns, with the order persisted across sessions.**
+  Extends the shared _table_state.remember_columns seam (FIBR-0117, which already
+  saved/restored full header state incl. section order): enables setSectionsMovable
+  on every table that calls it, so drag-reorder + persistence light up across all
+  four data tables at once. Reordering is visual-only — the parallel-list row tag
+  lives on logical column 0, so selection + sorting stay correct whatever the order.
+  **Layman:** You can now drag a table's column headings to rearrange them (e.g. put Amount before Date), and the app remembers your arrangement next time — on the Transactions, Statements, Rules and Transfers tables.
+  Kind: enhancement.
+  Source: user-request-2026-07-12.
+
 ### ⚡ Performance
 
 - 📋 [FIBR-0025] **Enable SQLite WAL mode.** Set

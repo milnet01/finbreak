@@ -140,6 +140,36 @@ def test_sort_order_persists_across_rebuild(qtbot, service):
 
 
 # --------------------------------------------------------------------------- #
+# 4c — columns are drag-reorderable AND the new order persists (FIBR-0012 request)
+# --------------------------------------------------------------------------- #
+def test_columns_are_movable_and_order_persists_across_rebuild(qtbot, service):
+    """remember_columns makes header sections movable, and the moved visual order
+    round-trips through a rebuild via the same saveState it restores. Verified on
+    the Transactions table (the four data tables share the one helper)."""
+    from finbreak.services.categorization import CategorizationService
+    from finbreak.services.transactions import TransactionService
+    from finbreak.ui.transactions import TransactionsView
+
+    first = TransactionsView(
+        TransactionService(service.vault), CategorizationService(service.vault)
+    )
+    qtbot.addWidget(first)
+    header = first._table.horizontalHeader()
+    assert header.sectionsMovable(), "columns can be dragged to reorder"
+    # Move logical column 0 (Date) to visual position 2 — the user reorders.
+    header.moveSection(0, 2)
+    assert header.visualIndex(0) == 2
+
+    rebuilt = TransactionsView(  # a fresh session / tab rebuild
+        TransactionService(service.vault), CategorizationService(service.vault)
+    )
+    qtbot.addWidget(rebuilt)
+    assert rebuilt._table.horizontalHeader().visualIndex(0) == 2, (
+        "the reordered column layout is restored"
+    )
+
+
+# --------------------------------------------------------------------------- #
 # 5 — the priority-ordered Rules table is NOT click-sortable (but persists widths)
 # --------------------------------------------------------------------------- #
 def test_rules_table_is_not_sortable_but_persists_widths(qtbot, service):
