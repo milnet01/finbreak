@@ -1071,6 +1071,13 @@ because retrofitting them is a data migration.
   Kind: fix.
   Source: dogfooding-2026-07-12.
 
+- 📋 [FIBR-0116] **Toolbar icons: muted theme-aware colour that brightens to vibrant on hover.**
+  User request 2026-07-12: the toolbar glyphs are currently a single flat mid-grey (#808080, hand-authored monochrome SVGs loaded by ui/icons.py `icon()`; the toolbar is ToolButtonTextUnderIcon). Wanted: (1) each icon a MUTED colour by default, (2) the icon brightening to a VIBRANT version of that same hue while the mouse hovers, reverting on leave, and (3) colours chosen per the active theme (light/dark). Approach sketch: give each glyph a semantic accent colour, then re-tint at load time — either recolour the SVG per state (parse `stroke="#808080"` → muted/vibrant/theme variants and build a QIcon with Normal/Active pixmaps so Qt swaps to the Active pixmap on hover automatically), or drive it via a QProxyStyle / event-filter on the toolbar buttons. Theme-awareness ties into the theme system FIBR-0014 builds (dark/light/follow-system) — coordinate so the muted/vibrant palettes have a light AND dark variant. Related: FIBR-0014 (palette-adaptive re-tinting / dark-theme polish) — this is the specific hover-brighten behaviour, keep them cross-referenced. Icons live in src/finbreak/ui/icons/*.svg; loader is src/finbreak/ui/icons.py.
+  **Layman:** Give the toolbar buttons gentle colour that lights up brightly when you point at one, and dims back when you move away — and pick colours that suit the current light or dark theme.
+  Kind: enhancement.
+  Lanes: ui.
+  Source: user-request-2026-07-12.
+
 ### ⚡ Performance
 
 - 📋 [FIBR-0025] **Enable SQLite WAL mode.** Set
