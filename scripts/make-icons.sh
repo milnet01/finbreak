@@ -21,7 +21,22 @@ MASTER="assets/icon/finbreak.png"
 OUT="assets/icon"
 [ -f "$MASTER" ] || { echo "master $MASTER missing" >&2; exit 1; }
 
-png() { magick "$MASTER" -resize "${1}x${1}" -strip "$2"; }
+# Rounded corners (FIBR-0118): the committed master is a hard square; round its
+# corners so the app/window icon shows transparent corners instead of a solid
+# tile. Do it ONCE at master resolution into a temp, then derive every size from
+# the rounded temp — the master stays a pristine square source. Radius is 18% of
+# the master edge (a modest rounded-rectangle, matching platform icon convention).
+ROUNDED="$(mktemp --suffix=.png)"
+MASK="$(mktemp --suffix=.png)"
+trap 'rm -f "$ROUNDED" "$MASK"' EXIT
+EDGE=$(magick identify -format '%w' "$MASTER")
+RADIUS=$(( EDGE * 18 / 100 ))
+magick -size "${EDGE}x${EDGE}" xc:black -fill white \
+  -draw "roundrectangle 0,0,$((EDGE-1)),$((EDGE-1)),$RADIUS,$RADIUS" "$MASK"
+magick "$MASTER" "$MASK" -alpha off -compose CopyOpacity -composite "$ROUNDED"
+SRC="$ROUNDED"   # every derived output rounds via this; the master stays square
+
+png() { magick "$SRC" -resize "${1}x${1}" -strip "$2"; }
 
 # Linux hicolor PNGs.
 for s in 16 24 32 48 64 128 256 512; do
@@ -29,7 +44,7 @@ for s in 16 24 32 48 64 128 256 512; do
 done
 
 # Windows .ico — embed the common sizes in one file.
-magick "$MASTER" -define icon:auto-resize=256,128,64,48,32,24,16 "$OUT/finbreak.ico"
+magick "$SRC" -define icon:auto-resize=256,128,64,48,32,24,16 "$OUT/finbreak.ico"
 
 # macOS .iconset — the named PNGs `iconutil` consumes (@2x = double the base).
 ICONSET="$OUT/finbreak.iconset"
@@ -43,7 +58,7 @@ png 256  "$ICONSET/icon_128x128@2x.png"
 png 256  "$ICONSET/icon_256x256.png"
 png 512  "$ICONSET/icon_256x256@2x.png"
 png 512  "$ICONSET/icon_512x512.png"
-cp "$MASTER" "$ICONSET/icon_512x512@2x.png"   # 1024, the master itself
+cp "$SRC" "$ICONSET/icon_512x512@2x.png"   # 1024, the rounded master
 
 # The runtime window icon travels as package data (ui/icons/ ships in the wheel +
 # the PyInstaller bundle). 512 gives Qt a crisp source to scale to any title-bar/

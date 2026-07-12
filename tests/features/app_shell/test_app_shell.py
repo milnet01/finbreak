@@ -661,6 +661,18 @@ def test_FIBR0037_app_icon_renders(qtbot):
     assert not pixmap.isNull() and not pixmap.size().isEmpty()
 
 
+def test_FIBR0118_app_icon_has_transparent_corners(qtbot):
+    """The app icon's corners are transparent (rounded tile), not a hard square, so
+    the About box / taskbar don't show a solid block. A corner pixel must be fully
+    transparent while the centre stays opaque."""
+    from finbreak.ui.icons import app_icon
+
+    image = app_icon().pixmap(512, 512).toImage()
+    assert image.pixelColor(0, 0).alpha() == 0, "top-left corner must be transparent"
+    assert image.pixelColor(511, 511).alpha() == 0, "corner must be transparent"
+    assert image.pixelColor(256, 256).alpha() == 255, "centre must stay opaque"
+
+
 def test_rules_toolbar_action_has_a_rendering_icon(qtbot, service):
     """The Rules action sits on the toolbar (text-under-icon), so it needs a
     glyph like its neighbours — it shipped text-only (no icon_name, no rules.svg),
