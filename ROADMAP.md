@@ -1037,6 +1037,27 @@ because retrofitting them is a data migration.
   Lanes: ui.
   Source: user-request-2026-07-12.
 
+- 📋 [FIBR-0111] **Show the currency in its own column, separate from the amount value.**
+  User request 2026-07-12 (screenshot): the Home Amount column renders "ZAR69.00" / "-ZAR25,000.00" with the currency crammed against the number, hard to read. Give the currency its own column (or right-align the bare number and show the currency code separately), so the value column holds just the formatted number + sign. Touches HomeView._format_amount / the Amount column layout (FIBR-0105 amount-display work) and should carry through to the future dedicated Transactions tab (FIBR-0109). Keep the negative-style (minus/brackets) + red/green colour prefs (FIBR-0105) working on the value column.
+  **Layman:** Put the currency code (e.g. ZAR) in its own column so the number is easy to read, instead of "ZAR69.00" crammed together.
+  Kind: ux.
+  Lanes: ui.
+  Source: user-request-2026-07-12.
+
+- ✅ [FIBR-0112] **Credit-card (Family C) import: continuation page without a column header drops its transactions.**
+  Root-caused against a real SBSA CC statement (2025-10-20; real file/password never committed, synthetic fixture/tests to follow). A 3-page statement: page 1 = summary, page 2 = transaction table WITH the "Date Description Amount" column header, page 3 = continuation transactions with NO column header (opens straight into a "Debit Debit" section). _table_region (standard_bank.py:229) locates the Family-C region only by that column header, so page 3's region is empty and its 3 transactions (Checkers 514.21 + Cash Finance Charge 23.05 + Tips 10.00 = 547.26) are silently dropped. The completeness checksum then fails (opening 1348.95 - Σ = 1421.51 vs closing 1968.77; the 547.26 gap is exactly the dropped rows) and the whole statement is refused. Fix: when a Family-C page has no column header, fall back to starting the region at the first real transaction row (a CC segment ending in a 2-decimal amount) — which excludes summary-page date spans like "Statement Period 20 Sep 25 to 20 Oct 25" that carry no 2-decimal tail. TDD: pure _table_region unit tests (header-less continuation page captured; header-less summary page stays empty) + reconciliation; validated end-to-end against the real statement in a throwaway scratchpad.
+  **Layman:** Another real Standard Bank credit-card statement refused to import ("didn't add up") because the last page's transactions were being skipped.
+  Kind: fix.
+  Source: dogfooding-2026-07-12.
+  Resolved (2026-07-12): _table_region now falls back, on a Family-C page with no "Date Description Amount" column header, to starting the region at the first real transaction row (a CC segment ending in a 2-decimal amount — which excludes summary-page date spans like "Statement Period 20 Sep 25 to 20 Oct 25"). TDD: 2 pure _table_region unit tests (header-less continuation page captured; header-less summary page stays empty). Validated end-to-end on the real SBSA 2025-10-20 statement in a throwaway scratchpad: now 72 drafts, reconciles exactly (1348.95 - (-619.82) = 1968.77 = closing); the 3 previously-dropped page-3 rows (Checkers 514.21, Cash Finance Charge 23.05, Tips 10.00 = 547.26) are captured. Full SB suite + gate green (604 passed/1 skipped). Real file/password never committed; tests are synthetic. Note: a pre-existing cosmetic issue remains (a "Continued on next page......" line folds into the last page-N transaction's description) — filed separately, not this fix.
+
+- 📋 [FIBR-0113] **Accounts tab: show accounts in columns (Name / Type / Account number / Note) instead of one line.**
+  User request 2026-07-12 (screenshot): the Accounts tab lists each account as one line "Credit Card — Credit card" (name — type). Move to a columnar QTableWidget with columns: Name, Type of account, Account number, Note (optional). Requires two NEW nullable account fields — account_number and note (schema bump) — plus the add/edit form growing those inputs and the AccountsWidget becoming a table (mirrors the Rules/Statements tab table shape). Account number is display/reference only (not used for matching). Dovetails with the columnar direction of FIBR-0109 (Transactions tab) and the account credential accessors already on the accounts repo (FIBR-0009).
+  **Layman:** Show accounts in a proper table (Name, Type, Account number, and an optional Note) instead of a single cramped "Name — Type" line each.
+  Kind: feature.
+  Lanes: ui, repo.
+  Source: user-request-2026-07-12.
+
 ### ⚡ Performance
 
 - 📋 [FIBR-0025] **Enable SQLite WAL mode.** Set

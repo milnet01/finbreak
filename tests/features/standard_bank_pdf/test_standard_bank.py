@@ -29,6 +29,7 @@ from finbreak.importers.standard_bank import (
     _parse_family_c,
     _span,
     _split_credit_card_line,
+    _table_region,
     detect_standard_bank,
 )
 from finbreak.services.auth import AuthService
@@ -241,6 +242,42 @@ def test_INV10_family_c_folds_zero_date_continuation_skips_section_header():
         "Fake Shop",
     ]
     assert [d.amount_minor for d in r.drafts] == [10000, -5000]
+
+
+def test_FIBR0112_family_c_continuation_page_without_column_header_is_captured():
+    # A real 3-page SBSA credit-card statement carries the transaction table onto a
+    # final page that reprints NO "Date Description Amount" column header — it opens
+    # straight into a "Debit Debit" section. The region must still be found, else the
+    # page's transactions are silently dropped and the completeness checksum fails
+    # ("didn't add up" — FIBR-0112). Region ends at the "Closing balance" terminator.
+    page = [
+        "Titanium Credit Card",
+        "MR A SPECIMEN Page 3 of 3",
+        "Tax Invoice",
+        "Debit Debit",
+        "20 Oct 25 Fake Shop 514.21 20 Oct 25 Fake Fee 23.05",
+        "20 Oct 25 Fake Shop Tips 10.00",
+        "Closing balance 1,968.77",
+    ]
+    region = page[_table_region(page, Family.C)]
+    assert "20 Oct 25 Fake Shop 514.21 20 Oct 25 Fake Fee 23.05" in region
+    assert "20 Oct 25 Fake Shop Tips 10.00" in region
+    assert "Closing balance 1,968.77" not in region  # terminator ends the region
+
+
+def test_FIBR0112_family_c_headerless_summary_page_stays_empty():
+    # The header-less fallback must NOT fire on the summary page (also header-less):
+    # its only date-bearing lines are spans like "Statement Period 20 Sep 25 to 20 Oct
+    # 25" whose trailing token has no 2-decimal amount, so they are not transactions
+    # and must not be mistaken for a region (which would fabricate bogus drafts).
+    page = [
+        "Titanium Credit Card",
+        "Statement Period 20 Sep 25 to 20 Oct 25",
+        "Statement Date 20 Oct 25",
+        "Balance brought forward 1,348.95",
+        "Total amount outstanding on this statement 1,968.77",
+    ]
+    assert _table_region(page, Family.C) == slice(0, 0)
 
 
 # --------------------------------------------------------------------------- #

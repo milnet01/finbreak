@@ -259,14 +259,28 @@ def _table_region(page_lines: list[str], family: Family) -> slice:
         ):
             header = i
             break
-    if header == -1:
+    start = header + 1 if header != -1 else -1
+    if start == -1 and family is Family.C:
+        # A continuation page can carry the credit-card table onward WITHOUT
+        # reprinting the "Date Description Amount" column header — the final page of a
+        # multi-page statement opens straight into a "Debit"/"Credits" section. Fall
+        # back to the first real transaction row so those rows aren't dropped (a drop
+        # fails the mandatory Family-C completeness checksum, refusing the whole
+        # statement — FIBR-0112). "Real row" = a CC segment ending in a 2-decimal
+        # amount, which excludes summary-page date spans ("Statement Period 20 Sep 25
+        # to 20 Oct 25") whose trailing token carries no cents.
+        for i, line in enumerate(page_lines):
+            if any(_AMOUNT_TAIL.search(seg) for seg in _split_credit_card_line(line)):
+                start = i
+                break
+    if start == -1:
         return slice(0, 0)
     end = len(page_lines)
-    for j in range(header + 1, len(page_lines)):
+    for j in range(start, len(page_lines)):
         if _is_terminator(page_lines[j]):
             end = j
             break
-    return slice(header + 1, end)
+    return slice(start, end)
 
 
 # A validated ``D[D] Mon YY`` date — the 3-letter month must be a real month (so a

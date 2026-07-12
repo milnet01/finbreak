@@ -21,6 +21,11 @@ signaling per
 
 ## [Unreleased]
 
+### Fixed
+
+- **Credit-card statements whose transactions continue onto a page without a repeated column header no longer fail to import.** (FIBR-0112)
+  A multi-page Standard Bank credit-card statement can carry its transaction table onto a final page that does not reprint the "Date Description Amount" column header. Those rows were silently dropped, so the statement failed its completeness check ("this statement didn't add up") and was refused. The importer now recognises a header-less continuation page and captures its transactions.
+
 ## [0.1.6] - 2026-07-12
 
 ### Fixed
