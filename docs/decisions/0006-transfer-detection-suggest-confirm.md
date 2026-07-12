@@ -50,3 +50,6 @@ income/expenditure totals. Nothing is auto-hidden.
 
 - The matching tolerance (date window, amount exactness) is tunable and recorded
   in the transfer-detection spec; tightening it trades recall for precision.
+- **As implemented (FIBR-0011):** the date window is the tunable
+  `TRANSFER_WINDOW_DAYS` (= 3 days); amount matching ships **exact-magnitude only**,
+  with a fee/near-amount tolerance deferred as a clean future follow-up.
