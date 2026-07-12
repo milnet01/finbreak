@@ -26,6 +26,7 @@ from finbreak.importers.standard_bank import (
     _infer_years,
     _parse_amount,
     _parse_family_a,
+    _parse_family_b,
     _parse_family_c,
     _span,
     _split_credit_card_line,
@@ -315,6 +316,34 @@ def test_INV4_family_b_homeloan_unsigned_balance_signed_closing():
     r = _parse("family_b_homeloan.pdf")
     assert [d.amount_minor for d in r.drafts] == [5000, -30000]
     assert [d.occurred_on for d in r.drafts] == ["2025-03-02", "2025-03-05"]
+
+
+def test_family_b_page_break_boilerplate_not_folded_into_description():
+    # FIBR-0119: a Home-Loan page break reprints the registered-office letterhead
+    # (bare account number, address, contact) + a repeated column header BETWEEN two
+    # transactions. None of those lines carries a date+amount, so _fold used to glue
+    # the whole block onto the preceding transaction's description. They must be
+    # dropped, leaving the transaction description clean. Balances self-reconcile so
+    # the per-row gate passes (the bug corrupts only the description, not the money).
+    lines = [
+        "2025-11-01 BROUGHT FORWARD 1,000.00",
+        "2025-11-01 2025-11-01 Service HL 69.00 1,069.00",
+        "2025-11-03 2025-11-02 Insurance Premium 855.14 1,924.14",
+        "0453155796",
+        "Standard Bank Centre 1st Floor 5 Simmonds Street Johannesburg 2001",
+        "P O Box 61690 Marshalltown 2107 South Africa www.standardbank.co.za",
+        "Tel. Switchboard: +27 (0)11 636-9112 Fax: +27 (0)11 636-6299",
+        "Debit Credit Balance",
+        "Date Date Fee",
+        "2025-11-20 2025-11-20 Debit Order 100.00 1,824.14",
+    ]
+    r = _parse_family_b(lines, 2, "us")
+    assert [d.description for d in r.drafts] == [
+        "Service HL",
+        "Insurance Premium",
+        "Debit Order",
+    ]
+    assert [d.amount_minor for d in r.drafts] == [6900, 85514, -10000]
 
 
 def test_INV5_family_d_moneymarket_page2_schedule_excluded():

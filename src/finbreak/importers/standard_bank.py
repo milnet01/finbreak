@@ -486,15 +486,76 @@ def _verify_checksum(
 # --------------------------------------------------------------------------- #
 # Per-family row parsers (each returns drafts only; ``parse`` sets the span)
 # --------------------------------------------------------------------------- #
+# Registered-office / contact markers Standard Bank reprints in the page-break
+# footer (every page). None appears in a transaction description, so a line
+# carrying one is page boilerplate, not a continuation (FIBR-0119).
+_SB_LETTERHEAD = re.compile(
+    r"standard bank centre"
+    r"|standardbank\.co\.za"
+    r"|\bp\s?o\s+box\b"
+    r"|switchboard"
+    r"|\bfax\b"
+    r"|registration\s+(?:no|number)"
+    r"|authorised financial services",
+    re.IGNORECASE,
+)
+
+# The words a repeated column header is made of (the Family-A/B/D header wraps as
+# e.g. "Debit Credit Balance" / "Date Date Fee"). Deliberately EXCLUDES ambiguous
+# words that also start real descriptions ("service", "details", "description",
+# "amount", "reference") so a genuine wrapped description isn't mistaken for a
+# header (FIBR-0119; generalises the Family-C ``_is_cc_skip_line`` rule).
+_HEADER_TOKENS = frozenset(
+    {
+        "date",
+        "fee",
+        "credit",
+        "credits",
+        "debit",
+        "debits",
+        "balance",
+        "withdrawal",
+        "withdrawals",
+        "deposit",
+        "deposits",
+        "cash",
+        "posting",
+        "effective",
+    }
+)
+
+
+def _is_boilerplate(line: str) -> bool:
+    """A page-break footer / letterhead / repeated column-header line that must NOT
+    be folded into the preceding transaction's description (FIBR-0119). On a
+    multi-page statement SB reprints the registered-office block + the column header
+    at every break; those lines carry no date+amount, so ``_fold`` would otherwise
+    glue them to the last transaction. Matches: a bare account/reference number; a
+    registered-office / contact line; a line whose tokens are ALL table-header words
+    (a repeated column header)."""
+    s = line.strip()
+    if not s:
+        return False  # blank lines are handled by _fold's own skip
+    if s.isdigit():  # a bare account / page / reference number in the footer
+        return True
+    if _SB_LETTERHEAD.search(s):
+        return True
+    toks = s.split()  # a repeated column header, e.g. "Debit Credit Balance"
+    return len(toks) >= 2 and all(t.lower() in _HEADER_TOKENS for t in toks)
+
+
 def _fold(lines: list[str]) -> list[tuple[str, list[str]]]:
     """Group region lines into (transaction line, [continuation lines]) — a
     continuation is any in-region line with no date+amount tail, folded into the
-    preceding transaction's description (INV-10). Lines before the first transaction
-    are dropped."""
+    preceding transaction's description (INV-10). Lines before the first transaction,
+    blank lines, and page-break boilerplate (``_is_boilerplate``, FIBR-0119) are
+    dropped."""
     groups: list[tuple[str, list[str]]] = []
     for line in lines:
         if not line.strip():
             continue
+        if _is_boilerplate(line):
+            continue  # page footer / letterhead / repeated header — never folded
         if _looks_like_row(line):
             groups.append((line, []))
         elif groups:

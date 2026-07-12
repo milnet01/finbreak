@@ -21,6 +21,10 @@ signaling per
 
 ## [Unreleased]
 
+### Fixed
+
+- **Home Loan statement import no longer glues the page footer (bank address, phone/fax, column headers) onto a transaction's description.** (FIBR-0119)
+
 ## [0.1.7] - 2026-07-12
 
 ### Added
