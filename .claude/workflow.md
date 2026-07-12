@@ -118,6 +118,41 @@ journal); §2 is the only part that changes.
 
 Append-only. Newest at the top.
 
+### 2026-07-12 — FIBR-0011 spec CONVERGED + two dogfooding fixes (FIBR-0112/0114)
+
+Long multi-thread session (user delegated "what's next", then dogfingered several
+bugs mid-turn). Outcomes:
+
+- **NEW ACTIVE ITEM: FIBR-0011** (P09 transfer detection). Brainstormed + user-approved
+  the design (±3-day match window, dedicated Transfers tab, single `transfer_pairs`
+  decision table). Wrote `docs/specs/FIBR-0011.md`; `/cold-eyes` ran **4 cold loops ×
+  3 lanes (12 reviews)** → **CONVERGED (polish) at loop 4**. Trajectory C0 / H2→0→0→1 /
+  M6→3→5→0; loop-4 accuracy+implementability lanes clean, the lone HIGH a self-inflicted
+  loop-3 citation typo (FIBR-0107→FIBR-0086 v8-collision note). Notable catches: the
+  Context "no transaction-edit surface" claim was false (`reassign_account` edits a
+  matching field — documented the benign stale-pair case); a Deliverable-8 ripple that
+  cited non-existent app_shell assertions; the `confirm_all` contract; the
+  window-constant layer. Spec **CLEARED FOR CODE**. **Next: TDD** (`tests/features/transfers/`)
+  → `/close-phase`. Commits `0d20aa5`→`5a2575c`.
+- **FIBR-0112 SHIPPED** (code) — credit-card import refused a real SBSA statement
+  ("didn't add up"). Root cause: a 3-page statement whose final page carries the
+  transaction table with NO repeated "Date Description Amount" column header → its rows
+  were dropped → checksum failed. Fix: `_table_region` falls back to the first real
+  transaction row on a header-less Family-C page. TDD (2 `_table_region` unit tests);
+  **validated all 12 real statements parse + reconcile**. Real file/password never
+  committed. Commit `f6426a1`.
+- **FIBR-0114 SHIPPED** (code) — auto-lock counted from unlock, not activity. Added
+  `AuthService.notify_activity()` (restarts the running timer) + a MainWindow app-level
+  event filter on input events → inactivity timer. TDD (2 service + 1 shell test).
+  Commit `b1703d4`.
+- **Roadmapped (user requests):** FIBR-0109 (Transactions tab + filters), FIBR-0110
+  (typed-or-picker dates), FIBR-0111 (currency column), FIBR-0113 (Accounts columns),
+  FIBR-0115 ("Continued on next page" description strip — cosmetic).
+- **Ants-MCP feedback** re-verified on build 251e1f3d (ANTS-3481 confirmed shipped;
+  3468 still open; 3480 deferred).
+- Gate green throughout (final **607 passed / 1 skipped**). **FIBR-0112/0114 are on main
+  but UNRELEASED** — user chose not to cut a release this session.
+
 ### 2026-07-11 — Live self-update proven (0.1.2→0.1.3); relaunch bug fixed → v0.1.4
 
 The user ran the live self-update on their installed AppImage: **download →
