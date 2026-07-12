@@ -1086,12 +1086,13 @@ because retrofitting them is a data migration.
   Lanes: ui.
   Source: user-request-2026-07-12.
 
-- 📋 [FIBR-0118] **App icon: transparent (rounded) corners instead of a hard square tile.**
+- ✅ [FIBR-0118] **App icon: transparent (rounded) corners instead of a hard square tile.**
   User request 2026-07-12 (About-box screenshot): the app/window icon (the donut-on-dark-navy tile) has hard square corners that read as a solid block against the dialog background. Make the corners transparent — a rounded-rectangle alpha mask so the four corners are see-through. Regenerate the whole icon set from the 1024 master: apply the rounded-corner alpha to assets/icon/finbreak.png (or add the mask step in scripts/make-icons.sh), then re-run make-icons.sh to rebuild the Linux PNGs (16-512), the Windows .ico, the macOS .iconset, and the runtime src/finbreak/ui/icons/app.png. Keep the corner radius modest (~15-20% of the tile) so it matches platform icon conventions. Verify the About box + taskbar show transparent corners (QIcon/PNG alpha travels). Requested alongside the v0.1.7 polish batch. Related: FIBR-0037 (the branded app icon) + FIBR-0116 (toolbar-glyph colour).
   **Layman:** Round off the corners of the app icon so it doesn't show as a solid square block — the corners become see-through and blend into whatever's behind it.
   Kind: ux.
   Lanes: ui, packaging.
   Source: user-request-2026-07-12.
+  Resolved (2026-07-12): make-icons.sh applies an 18%-radius rounded-rectangle alpha mask to the master once, deriving every size (Linux hicolor PNGs, Windows .ico, macOS .iconset, runtime app.png) from the rounded temp; master stays square. Regenerated the set; regression test asserts transparent corners + opaque centre. Refreshed the dogfood install's hicolor icons so the launcher shows it now; the About-box (embedded app.png) rounds on the v0.1.7 install. Ships in v0.1.7.
 
 ### ⚡ Performance
 

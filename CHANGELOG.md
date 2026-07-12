@@ -26,6 +26,11 @@ signaling per
 - ****Transfers tab — finbreak now spots money you move between your own accounts and asks you to confirm it.** (FIBR-0011)**
   Moving money between your own accounts — paying a credit card from your current account, shifting cash to savings — shows up as two lines: money out of one account and the same amount into another. finbreak now finds these matched pairs and lists them under a new **Transfers** tab, where you Confirm or Reject each one. Only pairs you confirm stop counting as spending or income; nothing is hidden without your say-so, and rejected pairs are remembered so they aren't offered again. (This is the foundation the upcoming spending dashboard needs so a transfer to savings isn't double-counted as both income and expenditure.)
 
+### Changed
+
+- ****The app icon now has softly rounded, transparent corners instead of a hard square tile.** (FIBR-0118)**
+  In the About box, taskbar, and app launcher the icon showed as a solid square block. Its corners are now transparent (a gently rounded tile), so it sits cleanly on any background.
+
 ### Fixed
 
 - **Auto-lock now resets on activity (inactivity timer), so it no longer locks mid-use.** (FIBR-0114)
