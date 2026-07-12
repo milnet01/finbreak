@@ -559,16 +559,16 @@ def test_FIBR0057_remembered_pdf_password_follows_a_retarget(
 # --------------------------------------------------------------------------- #
 # INV-8 — v4->v5 migration + credential hygiene
 # --------------------------------------------------------------------------- #
-def test_INV8_v4_upgrades_through_v7_adds_nullable_column(paths):
+def test_INV8_v4_upgrades_through_v8_adds_nullable_column(paths):
     # A v4 vault now migrates through v5 (PDF password), v6 (statement provenance)
-    # and v7 (category link), so run_migrations lands it at 7 — but the v4->v5
+    # and v7 (category link), so run_migrations lands it at 8 — but the v4->v5
     # column-add coverage is intact: statement_pdf_password still exists after the walk.
     vault_path, sidecar_path = paths
     salt = os.urandom(SALT_LEN)
     build_v4_vault(vault_path, sidecar_path, salt, [("2026-03-01", -1250, "Coffee")])
     conn = keyed_connection(vault_path, salt)
-    run_migrations(conn)  # v4 -> v7
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 7
+    run_migrations(conn)  # v4 -> v8
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 8
     cols = [r[1] for r in conn.execute("PRAGMA table_info(accounts)").fetchall()]
     assert "statement_pdf_password" in cols
     row = conn.execute("SELECT statement_pdf_password FROM accounts").fetchone()
@@ -576,29 +576,29 @@ def test_INV8_v4_upgrades_through_v7_adds_nullable_column(paths):
     conn.close()
 
 
-def test_INV8_idempotent_at_v7(paths):
+def test_INV8_idempotent_at_v8(paths):
     vault_path, sidecar_path = paths
     salt = os.urandom(SALT_LEN)
     build_v4_vault(vault_path, sidecar_path, salt, [])
     conn = keyed_connection(vault_path, salt)
-    run_migrations(conn)  # v4 -> v7
-    run_migrations(conn)  # re-run: no-op at v7
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 7
+    run_migrations(conn)  # v4 -> v8
+    run_migrations(conn)  # re-run: no-op at v8
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 8
     conn.close()
 
 
-def test_INV8_first_run_vault_is_v7(service):
+def test_INV8_first_run_vault_is_v8(service):
     version = service.vault.connection.execute(
         "SELECT version FROM schema_version"
     ).fetchone()[0]
-    assert version == 7
+    assert version == 8
 
 
-def test_INV8_latest_schema_version_is_7():
-    assert LATEST_SCHEMA_VERSION == 7
+def test_INV8_latest_schema_version_is_8():
+    assert LATEST_SCHEMA_VERSION == 8
 
 
-def test_INV8_v5_upgrades_through_v7_adds_provenance_column(paths):
+def test_INV8_v5_upgrades_through_v8_adds_provenance_column(paths):
     # The v5->v6 provenance-column coverage (FIBR-0052 INV-13a): a v5 vault walks to
     # v7 and, along the way at v5->v6, gains the nullable
     # transactions.statement_period_id provenance column.
@@ -606,8 +606,8 @@ def test_INV8_v5_upgrades_through_v7_adds_provenance_column(paths):
     salt = os.urandom(SALT_LEN)
     build_v5_vault(vault_path, sidecar_path, salt, [("2026-03-01", -1250, "Coffee")])
     conn = keyed_connection(vault_path, salt)
-    run_migrations(conn)  # v5 -> v7
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 7
+    run_migrations(conn)  # v5 -> v8
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 8
     cols = [r[1] for r in conn.execute("PRAGMA table_info(transactions)").fetchall()]
     assert "statement_period_id" in cols
     row = conn.execute("SELECT statement_period_id FROM transactions").fetchone()

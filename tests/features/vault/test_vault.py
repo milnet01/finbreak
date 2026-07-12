@@ -464,9 +464,9 @@ def test_INV5_first_run_creates_settings_and_both_files(service, paths):
         == "2"
     )
     # First-run now migrates the fresh v1 baseline straight to the latest
-    # schema (FIBR-0005 D1), so a new vault lands at v6 (FIBR-0052 statement
-    # provenance column), not v1.
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 7
+    # schema (FIBR-0005 D1), so a new vault lands at v8 (FIBR-0011 transfer_pairs
+    # table), not v1.
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 8
     assert vault_path.exists() and sidecar_path.exists()
 
 

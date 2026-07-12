@@ -63,6 +63,7 @@ from finbreak.ui.manual_entry import ManualEntryDialog
 from finbreak.ui.rules import RulesWidget
 from finbreak.ui.settings import SettingsDialog
 from finbreak.ui.statements import StatementsWidget
+from finbreak.ui.transfers import TransfersWidget
 from finbreak.ui.unlock import UnlockDialog
 from finbreak.ui.update_dialog import UpdateDialog
 
@@ -81,6 +82,7 @@ _TAB_STATEMENTS = 1
 _TAB_ACCOUNTS = 2
 _TAB_CATEGORIES = 3
 _TAB_RULES = 4
+_TAB_TRANSFERS = 5
 
 # User-input event types that count as activity for the idle-lock reset (FIBR-0114).
 _ACTIVITY_EVENTS = frozenset(
@@ -184,6 +186,7 @@ class MainWindow(QMainWindow):
         self._accounts_tab: AccountsWidget | None = None
         self._categories_tab: CategoriesWidget | None = None
         self._rules_tab: RulesWidget | None = None
+        self._transfers_tab: TransfersWidget | None = None
         # The display prefs, read once post-unlock (the vault is locked here) and
         # passed to the display tabs (FIBR-0083 D7). All-"system" until then.
         self._prefs = DateTimePrefs(DATETIME_SYSTEM, DATETIME_SYSTEM, DATETIME_SYSTEM)
@@ -257,6 +260,9 @@ class MainWindow(QMainWindow):
         self._action_rules = self._make_action(
             "action_rules", self.tr("Rules"), "rules", self._open_rules
         )
+        self._action_transfers = self._make_action(
+            "action_transfers", self.tr("Transfers"), "transfers", self._open_transfers
+        )
         self._action_lock = self._make_action(
             "action_lock", self.tr("Lock"), "lock", self._lock
         )
@@ -320,6 +326,7 @@ class MainWindow(QMainWindow):
         self._menu_view.addAction(self._action_accounts)
         self._menu_view.addAction(self._action_categories)
         self._menu_view.addAction(self._action_rules)
+        self._menu_view.addAction(self._action_transfers)
 
         # Window: geometry actions that need no vault, so they stay enabled while
         # locked (INV-6/INV-6c) — never touched by _set_vault_chrome_enabled.
@@ -353,6 +360,7 @@ class MainWindow(QMainWindow):
             self._action_accounts,
             self._action_categories,
             self._action_rules,
+            self._action_transfers,
             self._action_lock,
         ):
             self._toolbar.addAction(action)
@@ -524,11 +532,14 @@ class MainWindow(QMainWindow):
 
         self._rules_tab = RulesWidget(self._service)  # sets tab_rules
 
+        self._transfers_tab = TransfersWidget(self._service)  # sets tab_transfers
+
         workspace.addTab(self._home_tab, self.tr("Home"))
         workspace.addTab(self._statements_tab, self.tr("Statements"))
         workspace.addTab(self._accounts_tab, self.tr("Accounts"))
         workspace.addTab(self._categories_tab, self.tr("Categories"))
         workspace.addTab(self._rules_tab, self.tr("Rules"))
+        workspace.addTab(self._transfers_tab, self.tr("Transfers"))
 
         # Connect AFTER the tabs are added, so building fires no spurious refresh.
         workspace.currentChanged.connect(self._on_tab_changed)
@@ -565,6 +576,8 @@ class MainWindow(QMainWindow):
             self._categories_tab._refresh()
         elif index == _TAB_RULES and self._rules_tab is not None:
             self._rules_tab._refresh()
+        elif index == _TAB_TRANSFERS and self._transfers_tab is not None:
+            self._transfers_tab._refresh()
 
     def _refresh_count(self, count: int) -> None:
         self._count.setText(self.tr("%n transaction(s)", "", count))
@@ -597,6 +610,10 @@ class MainWindow(QMainWindow):
     def _open_rules(self) -> None:
         self._ensure_workspace().setCurrentIndex(_TAB_RULES)
         self._status(self.tr("Rules"))
+
+    def _open_transfers(self) -> None:
+        self._ensure_workspace().setCurrentIndex(_TAB_TRANSFERS)
+        self._status(self.tr("Transfers"))
 
     def _open_manual_entry(self) -> None:
         dialog = ManualEntryDialog(self._service, self)
@@ -947,6 +964,7 @@ class MainWindow(QMainWindow):
                 self._accounts_tab = None
                 self._categories_tab = None
                 self._rules_tab = None
+                self._transfers_tab = None
             self._content.removeWidget(self._live)
             self._live.deleteLater()
             self._live = None

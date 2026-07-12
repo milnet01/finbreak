@@ -21,7 +21,7 @@ from finbreak.errors import SchemaVersionError
 
 log = logging.getLogger(__name__)
 
-LATEST_SCHEMA_VERSION = 7
+LATEST_SCHEMA_VERSION = 8
 
 # Seed data written by the v1->v2 migration (D8) — NOT a UI string, so never
 # run through tr(); the user renames it in the Accounts manager.
@@ -252,6 +252,32 @@ def _migrate_to_v7(conn: dbapi2.Connection) -> None:
         conn.execute("UPDATE schema_version SET version = 7")
 
 
+def _migrate_to_v8(conn: dbapi2.Connection) -> None:
+    """v7->v8: add the ``transfer_pairs`` table for FIBR-0011 transfer detection —
+    one ``CREATE TABLE`` recording each user decision (confirm/reject) about a
+    candidate transfer pair. Both FKs are ``ON DELETE CASCADE`` (unlike FIBR-0010's
+    service-owned category cascade): removing the row is the *entire* cleanup when a
+    referenced transaction is deleted (no source-reset, no re-apply), so the FK does
+    it automatically and ``delete_for_statement`` needs no change (INV-8). Canonical
+    ordering (``txn_a_id`` < ``txn_b_id``, D4) + ``UNIQUE(txn_a_id, txn_b_id)`` give
+    each pair one representation across both statuses. **No backfill** — a fresh
+    table. One atomic unit (INV-9): with the vault's ``isolation_level=""`` the
+    driver does not implicitly ``BEGIN`` around the DDL, so the explicit ``BEGIN`` —
+    the step's first statement, ``UPDATE schema_version`` its last — makes it
+    all-or-nothing (a mid-step failure leaves a re-openable v7)."""
+    with owned_transaction(conn):
+        conn.execute(
+            "CREATE TABLE transfer_pairs("
+            "id INTEGER PRIMARY KEY, "
+            "txn_a_id INTEGER NOT NULL REFERENCES transactions(id) ON DELETE CASCADE, "
+            "txn_b_id INTEGER NOT NULL REFERENCES transactions(id) ON DELETE CASCADE, "
+            "status TEXT NOT NULL, "  # 'confirmed' | 'rejected'
+            "created_at TEXT NOT NULL, "
+            "UNIQUE(txn_a_id, txn_b_id))"
+        )
+        conn.execute("UPDATE schema_version SET version = 8")
+
+
 _MIGRATIONS = {
     2: _migrate_to_v2,
     3: _migrate_to_v3,
@@ -259,4 +285,5 @@ _MIGRATIONS = {
     5: _migrate_to_v5,
     6: _migrate_to_v6,
     7: _migrate_to_v7,
+    8: _migrate_to_v8,
 }

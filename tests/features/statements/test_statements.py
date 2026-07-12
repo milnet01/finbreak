@@ -253,7 +253,7 @@ def test_INV9d_backfill_links_unambiguous_only(paths):
     _raw_txn(conn, acct, "2026-03-01")  # out-of-span ("manual"-like)
     conn.commit()
 
-    run_migrations(conn)  # v5 -> v7, backfill inside the atomic step
+    run_migrations(conn)  # v5 -> v8 (walks to LATEST); backfill inside the atomic step
 
     for occurred_on, spid in conn.execute(
         "SELECT occurred_on, statement_period_id FROM transactions"
@@ -275,7 +275,7 @@ def test_INV9d_backfill_overlap_stays_null(paths):
     _raw_txn(conn, acct, "2026-01-05", description="single")  # under p1 only
     conn.commit()
 
-    run_migrations(conn)  # v5 -> v7
+    run_migrations(conn)  # v5 -> v8 (walks to LATEST)
 
     shared = conn.execute(
         "SELECT statement_period_id FROM transactions WHERE description = 'shared'"
@@ -291,18 +291,19 @@ def test_INV9d_backfill_overlap_stays_null(paths):
 # --------------------------------------------------------------------------- #
 # INV-1 / INV-2 / INV-2a — the four-tab workspace + tab-switching navigation
 # --------------------------------------------------------------------------- #
-def test_INV1_workspace_has_five_tabs_in_order(qtbot, service):
+def test_INV1_workspace_has_six_tabs_in_order(qtbot, service):
     window = _shell(qtbot, service)
     workspace = window.centralWidget().currentWidget()
     assert workspace.objectName() == "workspace"
     names = [workspace.widget(i).objectName() for i in range(workspace.count())]
-    # The Rules tab (FIBR-0010) joins as the 5th tab.
+    # The Rules tab (FIBR-0010) joined as the 5th tab; Transfers (FIBR-0011) is 6th.
     assert names == [
         "tab_home",
         "tab_statements",
         "tab_accounts",
         "tab_categories",
         "tab_rules",
+        "tab_transfers",
     ]
 
 
@@ -329,8 +330,12 @@ def test_INV2_toolbar_order_and_no_statements_button(qtbot, service):
         "action_accounts",
         "action_categories",
         "action_rules",
+        "action_transfers",
         "action_lock",
-    ], "toolbar order: Home, Manual entry, Import, Accounts, Categories, Rules, Lock"
+    ], (
+        "toolbar order: Home, Manual entry, Import, Accounts, Categories, Rules, "
+        "Transfers, Lock"
+    )
     assert "action_statements" not in names, (
         "Statements lives on the tab bar + View menu, not the toolbar (INV-2)"
     )

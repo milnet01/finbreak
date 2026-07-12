@@ -8,6 +8,7 @@ type). ``Transaction`` is one row of the ``transactions`` table.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from decimal import Decimal
 from enum import StrEnum
 
 # Sidecar schema version. Bumped only when the on-disk KDF record layout changes.
@@ -235,3 +236,57 @@ class Category:
     name: str
     kind: str | None
     created_at: str
+
+
+class TransferStatus(StrEnum):
+    """The two decisions a user can record about a candidate transfer pair
+    (FIBR-0011). The ``.value`` is the stored, non-translated token in
+    ``transfer_pairs.status``; ``CONFIRMED`` excludes the pair from totals,
+    ``REJECTED`` merely remembers the dismissal so it is never re-offered."""
+
+    CONFIRMED = "confirmed"
+    REJECTED = "rejected"
+
+
+@dataclass
+class TransferPair:
+    """One row of the ``transfer_pairs`` table (FIBR-0011): an ordered transaction
+    pair (canonical ``txn_a_id`` < ``txn_b_id``, D4) plus its decision. The
+    repository ``SELECT`` shares this field order so ``TransferPair(*row)`` stays
+    aligned. Direction (which side is debit/credit) is not stored — it is recovered
+    from each transaction's sign at read time."""
+
+    id: int
+    txn_a_id: int
+    txn_b_id: int
+    status: str
+    created_at: str
+
+
+@dataclass
+class TransferCandidate:
+    """A suggested (not-yet-decided) transfer: the two matched rows named by
+    direction — ``debit`` (the negative side, money out) and ``credit`` (the
+    positive side, money in) — plus the shared positive ``display_amount`` and the
+    debit's / credit's account names (``from_account`` / ``to_account``). Field
+    order pinned so the widget + tests can't diverge (FIBR-0011 Deliverable 1)."""
+
+    debit: Transaction
+    credit: Transaction
+    display_amount: Decimal
+    from_account: str
+    to_account: str
+
+
+@dataclass
+class ConfirmedTransfer:
+    """A confirmed transfer for the tab's Confirmed table + Unlink: the
+    ``TransferCandidate`` shape plus the ``pair_id`` Unlink deletes by. Field order
+    pinned (FIBR-0011 Deliverable 1)."""
+
+    pair_id: int
+    debit: Transaction
+    credit: Transaction
+    display_amount: Decimal
+    from_account: str
+    to_account: str

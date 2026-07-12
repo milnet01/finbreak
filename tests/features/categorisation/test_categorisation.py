@@ -43,7 +43,7 @@ SINGLE = ColumnMapping("Date", "Details", "Amount", None, None, "%Y-%m-%d", Fals
 @pytest.fixture
 def service(paths) -> Iterator[AuthService]:
     svc = AuthService(*paths)
-    svc.first_run(bytearray(_PW), "ZAR")  # first-run migrates straight to v7
+    svc.first_run(bytearray(_PW), "ZAR")  # first-run migrates straight to v8
     yield svc
     svc.lock()
 
@@ -105,11 +105,11 @@ def _do_import(imp: ImportService, text: str, account_id: int):
 # --------------------------------------------------------------------------- #
 # INV-15 — schema v6 -> v7
 # --------------------------------------------------------------------------- #
-def test_INV15_latest_schema_version_is_7():
-    assert LATEST_SCHEMA_VERSION == 7
+def test_INV15_latest_schema_version_is_8():
+    assert LATEST_SCHEMA_VERSION == 8
 
 
-def test_INV15_v6_upgrades_to_v7(paths):
+def test_INV15_v6_upgrades_to_v8(paths):
     vault_path, sidecar = paths
     salt = bytes(range(SALT_LEN))
     build_v6_vault(vault_path, sidecar, salt, [("2026-01-01", -100, "a")])
@@ -119,8 +119,8 @@ def test_INV15_v6_upgrades_to_v7(paths):
         "SELECT id, amount_minor, description FROM transactions"
     ).fetchall()
 
-    run_migrations(conn)  # v6 -> v7 (walks to LATEST)
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 7
+    run_migrations(conn)  # v6 -> v8 (walks to LATEST)
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 8
 
     cols = {r[1] for r in conn.execute("PRAGMA table_info(transactions)").fetchall()}
     assert {"category_id", "category_source"} <= cols
@@ -166,20 +166,20 @@ def test_INV15_atomic_rollback_leaves_v6(paths):
     conn.close()
 
 
-def test_INV15_idempotent_at_v7(paths):
+def test_INV15_idempotent_at_v8(paths):
     vault_path, sidecar = paths
     salt = bytes(range(SALT_LEN))
     build_v6_vault(vault_path, sidecar, salt, [])
     conn = keyed_connection(vault_path, salt)
     run_migrations(conn)
-    run_migrations(conn)  # re-run: no-op at v7
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 7
+    run_migrations(conn)  # re-run: no-op at v8
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 8
     conn.close()
 
 
-def test_INV15_first_run_vault_is_v7(service):
+def test_INV15_first_run_vault_is_v8(service):
     conn = service.vault.connection
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 7
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 8
     cols = {r[1] for r in conn.execute("PRAGMA table_info(transactions)").fetchall()}
     assert {"category_id", "category_source"} <= cols
 
