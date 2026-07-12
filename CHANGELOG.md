@@ -31,6 +31,9 @@ signaling per
 
 ### Changed
 
+- ****The toolbar icons now have gentle colour that brightens when you hover over them.** (FIBR-0116)**
+  Each toolbar button used to be a flat grey glyph. Every icon now has its own soft, muted colour at rest and lights up to a vibrant version when you move the mouse over it, dimming back when you move away. The colours are chosen to suit your current light or dark theme.
+
 - ****The app icon now has softly rounded, transparent corners instead of a hard square tile.** (FIBR-0118)**
   In the About box, taskbar, and app launcher the icon showed as a solid square block. Its corners are now transparent (a gently rounded tile), so it sits cleanly on any background.
 
