@@ -21,20 +21,22 @@ signaling per
 
 ## [Unreleased]
 
+## [0.1.7] - 2026-07-12
+
 ### Added
 
-- ****Data tables now sort on a column click and remember your column widths.** (FIBR-0117)**
+- **Data tables now sort on a column click and remember your column widths.** (FIBR-0117)
   Click a column heading (Statements, Transfers, Home) to sort by it; click the same heading again to flip between ascending and descending. Amounts and dates sort by their real value, not as text (so 112 no longer sorts before 69). Each table also remembers how wide you've dragged its columns and which column you last sorted by, restoring them next time you open the app. The Rules table stays in its priority order (that order is what it means) but likewise remembers its column widths.
 
-- ****Transfers tab — finbreak now spots money you move between your own accounts and asks you to confirm it.** (FIBR-0011)**
+- **Transfers tab — finbreak now spots money you move between your own accounts and asks you to confirm it.** (FIBR-0011)
   Moving money between your own accounts — paying a credit card from your current account, shifting cash to savings — shows up as two lines: money out of one account and the same amount into another. finbreak now finds these matched pairs and lists them under a new **Transfers** tab, where you Confirm or Reject each one. Only pairs you confirm stop counting as spending or income; nothing is hidden without your say-so, and rejected pairs are remembered so they aren't offered again. (This is the foundation the upcoming spending dashboard needs so a transfer to savings isn't double-counted as both income and expenditure.)
 
 ### Changed
 
-- ****The toolbar icons now have gentle colour that brightens when you hover over them.** (FIBR-0116)**
+- **The toolbar icons now have gentle colour that brightens when you hover over them.** (FIBR-0116)
   Each toolbar button used to be a flat grey glyph. Every icon now has its own soft, muted colour at rest and lights up to a vibrant version when you move the mouse over it, dimming back when you move away. The colours are chosen to suit your current light or dark theme.
 
-- ****The app icon now has softly rounded, transparent corners instead of a hard square tile.** (FIBR-0118)**
+- **The app icon now has softly rounded, transparent corners instead of a hard square tile.** (FIBR-0118)
   In the About box, taskbar, and app launcher the icon showed as a solid square block. Its corners are now transparent (a gently rounded tile), so it sits cleanly on any background.
 
 ### Fixed
@@ -187,7 +189,7 @@ auto-categorisation.
 - **P07.5: app-shell UX redesign — real app window (QMainWindow) with menubar / icon toolbar / status bar; first-run & unlock as popups.** (FIBR-0051)
   Turn the bare password-box-then-form startup into a proper app window — menus, a toolbar of shortcuts, a status bar, and a first-run popup wizard — so it looks and feels like a real desktop app.
 
-- ****Import your Standard Bank statements directly — cheque, savings, home loan, personal loan, credit card and money-market.** (FIBR-0050)**
+- **Import your Standard Bank statements directly — cheque, savings, home loan, personal loan, credit card and money-market.** (FIBR-0050)
   Standard Bank's real statements don't survive the generic PDF
   table-reader — a cheque statement collapses into a single cell, and
   the credit card's two-columns-per-page layout is unreadable. finbreak
@@ -203,7 +205,7 @@ auto-categorisation.
   are unlocked in memory only (never written to disk), and nothing about
   your statement leaves your computer.
 
-- ****Import transactions from a PDF bank statement — including password-locked ones.** (FIBR-0009)**
+- **Import transactions from a PDF bank statement — including password-locked ones.** (FIBR-0009)
   Many banks only give you a PDF. finbreak now reads the transaction
   table straight off the page: pick a `.pdf` and it lifts the rows out,
   then hands you the same familiar column-mapping and preview screens as a
