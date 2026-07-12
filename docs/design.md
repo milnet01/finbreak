@@ -348,6 +348,7 @@ Non-obvious choices are recorded as ADRs in [docs/decisions/](decisions/):
 - **ADR-0005** — Generic per-bank CSV mapping profiles over hard-coded parsers.
 - **ADR-0006** — Transfer detection is suggest-then-confirm, never auto-applied.
 - **ADR-0007** — Self-contained bundled releases (no runtime prerequisites).
+- **ADR-0008** — QtCharts for the reporting dashboard charts (bundled, PDF-capable).
 
 Domain terms introduced here (transfer, mapping profile, draft, vault) are
 recorded in [docs/glossary.md](glossary.md).

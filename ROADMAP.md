@@ -1035,6 +1035,7 @@ because retrofitting them is a data migration.
   Kind: feature.
   Lanes: ui.
   Source: user-request-2026-07-12.
+  Absorbed into FIBR-0012 (P10 dashboard) 2026-07-12: the Transactions tab is built there with search + date-range + account + category filters (all combinable). The amount-range (min/max) filter this bullet originally named was NOT chosen in the FIBR-0012 brainstorm and is DEFERRED (recorded in docs/specs/FIBR-0012.md Out-of-scope) — a clean future follow-up. Close this bullet when FIBR-0012 ships; re-open a fresh item only if the amount-range filter is still wanted.
 
 - 📋 [FIBR-0110] **Every date input accepts typed entry (validated) or a date picker.**
   User request 2026-07-12. Cross-cutting UX: wherever a date is entered — the manual-entry dialog, the future Transactions filters (above), any settings/import date field — offer both a typed field (ISO-validated, the existing parse_transaction date check) and a QDateEdit-style calendar picker, so neither typists nor mouse users are forced. A shared date-input widget/helper so the two modes stay consistent (Rule-of-Three: extract on the third site).
