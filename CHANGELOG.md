@@ -23,6 +23,9 @@ signaling per
 
 ### Added
 
+- ****Data tables now sort on a column click and remember your column widths.** (FIBR-0117)**
+  Click a column heading (Statements, Transfers, Home) to sort by it; click the same heading again to flip between ascending and descending. Amounts and dates sort by their real value, not as text (so 112 no longer sorts before 69). Each table also remembers how wide you've dragged its columns and which column you last sorted by, restoring them next time you open the app. The Rules table stays in its priority order (that order is what it means) but likewise remembers its column widths.
+
 - ****Transfers tab — finbreak now spots money you move between your own accounts and asks you to confirm it.** (FIBR-0011)**
   Moving money between your own accounts — paying a credit card from your current account, shifting cash to savings — shows up as two lines: money out of one account and the same amount into another. finbreak now finds these matched pairs and lists them under a new **Transfers** tab, where you Confirm or Reject each one. Only pairs you confirm stop counting as spending or income; nothing is hidden without your say-so, and rejected pairs are remembered so they aren't offered again. (This is the foundation the upcoming spending dashboard needs so a transfer to savings isn't double-counted as both income and expenditure.)
 
