@@ -397,7 +397,7 @@ lands on top.
 
 ### 🎨 Features
 
-- 📋 [FIBR-0011] **P09: transfer detection
+- 🚧 [FIBR-0011] **P09: transfer detection
   (suggest-then-confirm).** `TransferDetectionService` matches a
   debit in one account against a credit in another (same amount,
   short date window) and **proposes** the pair; only
@@ -406,6 +406,7 @@ lands on top.
   Rejected pairs are remembered so they don't re-surface. Never
   auto-hides a real expense. Dependencies: FIBR-0005, FIBR-0007. Lanes:
   services, ui, repo, tests. Kind: implement. Source: planned.
+  Progress (2026-07-12): design brainstormed + approved by user. Chose ±3-day match window, a dedicated Transfers tab (no post-import pop-up), and a single decision table (v7→v8) recording confirmed/rejected pairs (pending candidates recomputed live). Next: write docs/specs/FIBR-0011.md → /cold-eyes (7-loop cap) → TDD.
 
 ---
 
@@ -1021,6 +1022,20 @@ because retrofitting them is a data migration.
   **Layman:** While an update downloads, the progress bar looks full/striped the whole time instead of filling up as it downloads.
   Kind: enhancement.
   Source: dogfooding-2026-07-12.
+
+- 📋 [FIBR-0109] **Move the Home transaction list to a dedicated Transactions tab with account / date-range / amount-range filters.**
+  User request 2026-07-12. Today Home is the transaction table (HomeView). Move that table to its own Transactions tab and add filters: by account, by date range (from/to), and/or by amount range (min/max), combinable. This dovetails with FIBR-0012 (the dashboard's "filterable table" + Home-as-summary vision) and complements FIBR-0011 (a confirmed-transfer marker could later show here). Reuses the existing list_transactions read; the filter is a query/where layer. Dates in the filter follow the typed-or-picker rule below.
+  **Layman:** Give the transaction list its own tab with filters for account, date range and amount, so the Home tab is freed to become a summary/dashboard.
+  Kind: feature.
+  Lanes: ui.
+  Source: user-request-2026-07-12.
+
+- 📋 [FIBR-0110] **Every date input accepts typed entry (validated) or a date picker.**
+  User request 2026-07-12. Cross-cutting UX: wherever a date is entered — the manual-entry dialog, the future Transactions filters (above), any settings/import date field — offer both a typed field (ISO-validated, the existing parse_transaction date check) and a QDateEdit-style calendar picker, so neither typists nor mouse users are forced. A shared date-input widget/helper so the two modes stay consistent (Rule-of-Three: extract on the third site).
+  **Layman:** Anywhere you enter a date in the app, you can either type it (with a check that it's a real date) or pick it from a small calendar.
+  Kind: ux.
+  Lanes: ui.
+  Source: user-request-2026-07-12.
 
 ### ⚡ Performance
 
