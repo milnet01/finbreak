@@ -319,6 +319,31 @@ def test_INV9_category_filter_and_uncategorised(qtbot, service):
     assert descriptions == {"Rent payment", "Coffee beans"}
 
 
+def test_FIBR0123_filter_groups_present_categories(qtbot, service):
+    _seed_mixed(service)  # one Expenditure category present; no income category
+    view = _view(service)
+    qtbot.addWidget(view)
+    combo = view._category
+    texts = [combo.itemText(i) for i in range(combo.count())]
+    assert texts[0] == "All categories"
+    assert texts[1] == "Uncategorised", "the special rows stay above headers (INV-5)"
+    assert "Expenditure" in texts, "the present category's section header shows"
+    assert any(t.endswith("(Expenditure)") for t in texts), "present rows are tagged"
+    assert "Income" not in texts, "no income category present -> its section omitted"
+
+
+def test_FIBR0123_filter_uncategorised_survives_refresh(qtbot, service):
+    _seed_mixed(service)
+    view = _view(service)
+    qtbot.addWidget(view)
+    view._category.setCurrentIndex(view._category.findData(None))
+    assert view._category.currentText() == "Uncategorised"
+    view.refresh()
+    # findData(None) must resolve to Uncategorised, never a header (also data None).
+    assert view._category.currentData() is None
+    assert view._category.currentText() == "Uncategorised", "not a header after refresh"
+
+
 def test_INV9_all_filters_combine_AND(qtbot, service):
     a, _b, groceries = _seed_mixed(service)
     view = _view(service)

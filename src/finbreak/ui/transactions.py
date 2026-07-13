@@ -46,6 +46,7 @@ from finbreak.ui._table_state import (
     selected_index,
     tag_row,
 )
+from finbreak.ui._widgets import add_grouped_categories
 from finbreak.ui.category_picker import CategoryPickerDialog
 from finbreak.ui.modal import show_modal
 from finbreak.ui.rules import RuleEditDialog
@@ -191,8 +192,21 @@ class TransactionsView(QWidget):
             self._category.clear()
             self._category.addItem(self.tr("All categories"), _FILTER_ALL)
             self._category.addItem(self.tr("Uncategorised"), None)
-            for category_id, name in self._unique_categories():
-                self._category.addItem(name, category_id)
+            # The special rows stay ABOVE the grouped section headers: a header
+            # also carries userData None, so findData(None) must resolve to
+            # Uncategorised, not a header (INV-5). Render only the categories
+            # present in the visible rows, grouped/tagged; the helper drops any
+            # section left empty by the intersection.
+            present = {
+                t.category_id
+                for t, _d, _a, _c in self._master
+                if t.category_id is not None
+            }
+            grouped = self._categorization.leaf_categories_grouped()
+            filtered = [
+                (token, [c for c in cats if c.id in present]) for token, cats in grouped
+            ]
+            add_grouped_categories(self._category, filtered)
             self._select_data(self._category, held_category)
         finally:
             self._loading = False
@@ -200,15 +214,6 @@ class TransactionsView(QWidget):
     def _unique_accounts(self) -> list[tuple[int, str]]:
         """The (account_id, name) pairs present in the master list, name-sorted."""
         seen = {t.account_id: name for t, _d, name, _c in self._master}
-        return sorted(seen.items(), key=lambda pair: pair[1].casefold())
-
-    def _unique_categories(self) -> list[tuple[int, str]]:
-        """The (category_id, name) pairs of categorised rows, name-sorted."""
-        seen = {
-            t.category_id: name
-            for t, _d, _a, name in self._master
-            if t.category_id is not None
-        }
         return sorted(seen.items(), key=lambda pair: pair[1].casefold())
 
     def _select_data(self, combo: QComboBox, data: object) -> None:
