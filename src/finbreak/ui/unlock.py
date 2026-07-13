@@ -36,6 +36,9 @@ from finbreak.ui._worker import DeriveWorker
 class UnlockDialog(QDialog):
     unlocked = Signal()
     unlock_failed = Signal()
+    # "Forgot password? Restore from a backup" — the shell owns the pre-login
+    # restore flow (FIBR-0014 INV-8/D5).
+    restore_requested = Signal()
 
     def __init__(self, service: AuthService, parent: QWidget | None = None):
         super().__init__(parent)
@@ -48,6 +51,11 @@ class UnlockDialog(QDialog):
         self._password.setPlaceholderText(self.tr("Master password"))
         self._unlock_button = QPushButton(self.tr("Unlock"))
         self._error = QLabel()
+        self._restore_button = QPushButton(
+            self.tr("Forgot password? Restore from a backup…")
+        )
+        self._restore_button.setObjectName("unlock_restore")
+        self._restore_button.setFlat(True)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Cancel)
         self._cancel = buttons.button(QDialogButtonBox.StandardButton.Cancel)
@@ -58,10 +66,12 @@ class UnlockDialog(QDialog):
         layout.addWidget(self._password)
         layout.addWidget(self._unlock_button)
         layout.addWidget(self._error)
+        layout.addWidget(self._restore_button)
         layout.addWidget(buttons)
 
         self._unlock_button.clicked.connect(self._on_unlock)
         self._password.returnPressed.connect(self._on_unlock)
+        self._restore_button.clicked.connect(self.restore_requested)
 
     def reject(self) -> None:
         if self._worker is not None:
@@ -116,6 +126,9 @@ class UnlockDialog(QDialog):
         self._unlock_button.setEnabled(not busy)
         self._password.setEnabled(not busy)
         self._cancel.setEnabled(not busy)
+        # Restore is a dismissal-like route (it tears down this dialog); disable it
+        # mid-derivation too so the parented worker is never deleted under it.
+        self._restore_button.setEnabled(not busy)
 
     @Slot(bytes)
     def _on_derived(self, raw: bytes) -> None:

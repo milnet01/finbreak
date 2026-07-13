@@ -45,7 +45,7 @@ from PySide6.QtWidgets import (
 )
 
 from finbreak import __version__, paths
-from finbreak.errors import VaultLockedError
+from finbreak.errors import BackupError, VaultLockedError
 from finbreak.services.accounts import AccountService
 from finbreak.services.auth import (
     DATETIME_SYSTEM,
@@ -53,6 +53,7 @@ from finbreak.services.auth import (
     AuthService,
     DateTimePrefs,
 )
+from finbreak.services.backup import BackupService
 from finbreak.services.categorization import CategorizationService
 from finbreak.services.pdf_export import PdfExportService, period_filename_slug
 from finbreak.services.reporting import ReportingService
@@ -61,6 +62,8 @@ from finbreak.services.update import UpdateInfo, UpdateService
 from finbreak.services.update_installer import Installer, detect_installer
 from finbreak.ui._update_worker import DownloadWorker, UpdateCheckWorker
 from finbreak.ui.accounts import AccountsWidget
+from finbreak.ui.backup_export import BackupExportDialog
+from finbreak.ui.backup_restore import BackupRestoreDialog
 from finbreak.ui.categories import CategoriesWidget
 from finbreak.ui.export_dialog import ExportDialog
 from finbreak.ui.first_run import FirstRunDialog
@@ -466,6 +469,7 @@ class MainWindow(QMainWindow):
         self._set_vault_chrome_enabled(False)
         dialog = FirstRunDialog(self._service, self)
         dialog.completed.connect(self._enter_unlocked)
+        dialog.restore_requested.connect(self._open_restore)
         dialog.rejected.connect(self._on_first_run_rejected)
         self._open_dialog(dialog)
 
@@ -480,6 +484,7 @@ class MainWindow(QMainWindow):
     def _open_unlock_dialog(self) -> None:
         dialog = UnlockDialog(self._service, self)
         dialog.unlocked.connect(self._enter_unlocked)
+        dialog.restore_requested.connect(self._open_restore)
         dialog.rejected.connect(self._teardown_dialog)  # cancel: stay locked
         self._open_dialog(dialog)
 
@@ -693,6 +698,7 @@ class MainWindow(QMainWindow):
             update_supported=self._installer is not None,
         )
         dialog.saved.connect(self._on_settings_saved)
+        dialog.export_backup_requested.connect(self._open_backup_export)
         dialog.rejected.connect(self._teardown_dialog)  # cancel: no change
         self._open_dialog(dialog, defer=False)
 
@@ -756,6 +762,105 @@ class MainWindow(QMainWindow):
         QApplication.restoreOverrideCursor()
         self._teardown_dialog()
         self._status(self.tr("Report exported"))
+
+    # --- encrypted backup export / restore (FIBR-0014) ---------------------- #
+    def _open_backup_export(self) -> None:
+        # Reached from the Settings "Export backup…" button (INV-8). Replace Settings
+        # with the small backup-password dialog; the shell owns the save + export.
+        dialog = BackupExportDialog(self)
+        dialog.export_requested.connect(self._on_backup_export_requested)
+        dialog.rejected.connect(self._teardown_dialog)
+        self._open_dialog(dialog, defer=False)
+
+    def _on_backup_export_requested(self) -> None:
+        # Ask where to save, then export SYNCHRONOUSLY on the main thread under a
+        # wait cursor (INV-9): the blocked event loop means the auto-lock timer
+        # cannot fire mid-export. The dialog stays open on cancel/failure to retry.
+        from datetime import date
+
+        dialog = self._dialog
+        if not isinstance(dialog, BackupExportDialog):
+            return
+        default_name = f"finbreak-backup-{date.today().isoformat()}.fbk"
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            self.tr("Save encrypted backup"),
+            default_name,
+            self.tr("finbreak backups (*.fbk)"),
+        )
+        if not path:
+            return  # cancelled the save dialog — clean no-op, dialog stays open
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            BackupService(self._service.vault, self._service).export_backup(
+                Path(path), dialog.password()
+            )
+        except (VaultLockedError, OSError, ValueError):
+            QApplication.restoreOverrideCursor()
+            QMessageBox.warning(
+                self,
+                self.tr("Backup failed"),
+                self.tr(
+                    "Sorry, the backup couldn't be saved there. Please choose "
+                    "another location and try again."
+                ),
+            )
+            return
+        QApplication.restoreOverrideCursor()
+        self._teardown_dialog()
+        self._status(self.tr("Backup saved"))
+
+    def _open_restore(self) -> None:
+        # Pre-login restore, reachable from first-run + unlock (INV-8). On cancel,
+        # route back to whichever pre-login surface the vault state calls for.
+        dialog = BackupRestoreDialog(self)
+        dialog.restore_requested.connect(self._on_restore_requested)
+        dialog.rejected.connect(self._route_pre_login)
+        self._open_dialog(dialog)
+
+    def _route_pre_login(self) -> None:
+        """Return to the correct pre-login surface (first-run when no vault, unlock
+        when one exists) — used when a restore is cancelled."""
+        if self._service.state() == "first_run":
+            self._show_first_run()
+        else:
+            self._show_unlock()
+
+    def _on_restore_requested(self) -> None:
+        # Restore SYNCHRONOUSLY under a wait cursor, then re-enter the unlocked shell
+        # under the new master password (D5). A failed restore keeps the dialog open
+        # and changes nothing on disk (INV-4).
+        dialog = self._dialog
+        if not isinstance(dialog, BackupRestoreDialog):
+            return
+        source = dialog.source_path()
+        if source is None:
+            return
+        new_master = dialog.new_master_password()
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            BackupService(self._service.vault, self._service).restore_backup(
+                source, dialog.backup_password(), new_master
+            )
+        except (BackupError, ValueError):
+            QApplication.restoreOverrideCursor()
+            QMessageBox.warning(
+                self,
+                self.tr("Restore failed"),
+                self.tr(
+                    "That backup couldn't be restored. Check the file and the "
+                    "backup password, then try again."
+                ),
+            )
+            return  # on-disk vault unchanged; dialog stays open to retry
+        # Open the freshly-restored vault under the new master and enter the shell.
+        unlocked = self._service.unlock(bytearray(new_master, "utf-8"))
+        QApplication.restoreOverrideCursor()
+        if unlocked:
+            self._status(self.tr("Backup restored"))
+            self._enter_unlocked()
+        else:  # should not happen — we just re-keyed to this password
+            self._route_pre_login()
 
     def _on_settings_saved(self) -> None:
         # Persist the opt-in update flag from the checkbox (D5) — the auto-lock

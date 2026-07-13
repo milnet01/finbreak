@@ -49,6 +49,9 @@ from finbreak.ui._worker import DeriveWorker
 
 class FirstRunDialog(QDialog):
     completed = Signal()
+    # "Restore from a backup instead" — a user with an existing `.fbk` restores it
+    # rather than creating a fresh vault (FIBR-0014 INV-8/D5). The shell owns it.
+    restore_requested = Signal()
 
     def __init__(self, service: AuthService, parent: QWidget | None = None):
         super().__init__(parent)
@@ -102,6 +105,9 @@ class FirstRunDialog(QDialog):
 
         self._submit = QPushButton(self.tr("Create vault"))
         self._error = QLabel()
+        self._restore_button = QPushButton(self.tr("Restore from a backup instead…"))
+        self._restore_button.setObjectName("first_run_restore")
+        self._restore_button.setFlat(True)
 
         form = QFormLayout()
         form.addRow(self.tr("Master password"), self._password)
@@ -129,15 +135,18 @@ class FirstRunDialog(QDialog):
         layout.addLayout(form)
         layout.addWidget(self._submit)
         layout.addWidget(self._error)
+        layout.addWidget(self._restore_button)
         layout.addWidget(buttons)
 
         self._submit.clicked.connect(self._on_submit)
+        self._restore_button.clicked.connect(self.restore_requested)
 
     def _set_busy(self, busy: bool) -> None:
         # Disabling Cancel (with the reject()/closeEvent guards below) is what
         # keeps a dismissal from deleting the parented worker mid-run (INV-2f).
         self._submit.setEnabled(not busy)
         self._cancel.setEnabled(not busy)
+        self._restore_button.setEnabled(not busy)  # dismissal-like route (INV-2f)
 
     def reject(self) -> None:
         if self._worker is not None:

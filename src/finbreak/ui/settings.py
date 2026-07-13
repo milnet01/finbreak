@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QFormLayout,
     QLabel,
+    QPushButton,
     QVBoxLayout,
     QWidget,
 )
@@ -43,6 +44,9 @@ from finbreak.ui._widgets import select_combo_data
 
 class SettingsDialog(QDialog):
     saved = Signal()
+    # "Export backup…" was clicked; the shell owns the password dialog + the
+    # synchronous export (FIBR-0014 D3 — export lives only in Settings, INV-8).
+    export_backup_requested = Signal()
 
     def __init__(
         self,
@@ -140,6 +144,14 @@ class SettingsDialog(QDialog):
         form.addRow("", self._amount_colour)
         form.addRow(self.tr("Base currency"), self._currency)
         form.addRow("", self._update_checkbox)
+
+        # Encrypted backup export (FIBR-0014 D3). The button only signals intent;
+        # the shell collects the backup password and runs the export, so Settings
+        # keeps no BackupService reference.
+        self._export_backup = QPushButton(self.tr("Export backup…"))
+        self._export_backup.setObjectName("settings_export_backup")
+        self._export_backup.clicked.connect(self.export_backup_requested)
+        form.addRow(self.tr("Encrypted backup"), self._export_backup)
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
