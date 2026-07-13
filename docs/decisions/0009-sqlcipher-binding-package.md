@@ -8,13 +8,12 @@
   (the bundling requirement that motivates it),
   [FIBR-0015](../specs/FIBR-0015.md) (the item that made the swap)
 
-This is the binding-package decision **FIBR-0003 anticipated but never wrote**.
-FIBR-0003 pinned `sqlcipher3-binary` provisionally, recording it as "the
-maintained package" and pointing a future ADR (expected via FIBR-0004) at
-formalising the choice. That ADR is this one; it also records the swap to the
-cross-platform fork.
-
 ## Context
+
+This is the binding-package decision **FIBR-0003 anticipated but never wrote** —
+FIBR-0003 pinned `sqlcipher3-binary` provisionally as "the maintained package"
+and pointed a future ADR (expected via FIBR-0004) at formalising it. This is that
+ADR, and it also records the swap to the cross-platform fork.
 
 ADR-0003 stores all data in a **SQLCipher** database keyed by an Argon2id-derived
 raw key. SQLCipher reaches Python through a binding package, and ADR-0007 requires
@@ -43,13 +42,17 @@ Alternatives considered:
 - **`sqlcipher3-wheels` on every OS (a project-wide swap).** One package, one
   crypto engine everywhere, one pin to bump. Chosen.
 
-The swap was validated **empirically before adoption** (FIBR-0015): both packages
-report `PRAGMA cipher_version` = `4.12.0 community`; a raw-hex-keyed,
-`cipher_compatibility=4`, HMAC-on vault created under one **opens and reads
-correctly under the other, both directions**; and `sqlcipher_export` + `PRAGMA
-rekey` (the FIBR-0014 backup binding surface) round-trip under `sqlcipher3-wheels`.
-A committed old-package fixture regression-locks the upgrade path
-(`tests/features/windows_build/`).
+The swap was validated **empirically before adoption** (FIBR-0015):
+
+- Both packages report `PRAGMA cipher_version` = `4.12.0 community`.
+- A raw-hex-keyed, `cipher_compatibility=4`, HMAC-on vault created under one
+  **opens and reads correctly under the other, both directions**.
+- `sqlcipher_export` + `PRAGMA rekey` (the FIBR-0014 backup binding surface)
+  round-trip under `sqlcipher3-wheels`.
+
+A committed old-package fixture regression-locks the upgrade path — the test lives
+in `tests/features/windows_build/`, the `-binary`-written fixture data in
+`tests/fixtures/windows_build/`.
 
 ## Decision
 
@@ -68,8 +71,8 @@ compilation.
 
 - The Windows `.exe` (and a future macOS `.dmg`) is unblocked with no vendored
   DLL and no cross-compile — the same wheel supplies the engine on all three OSes.
-- One crypto engine everywhere ⇒ a vault is portable across OSes by construction
-  (same 4.12.0 build), and there is one pin to bump.
+- A vault is now **portable across OSes by construction** (the same 4.12.0 build
+  everywhere) — a guarantee the two-package alternative could not make.
 
 **Negative:**
 
@@ -80,8 +83,9 @@ compilation.
   fork author. The vendored-native advisory watch therefore moves to the fork's
   release cadence. If the fork lags a SQLCipher/OpenSSL CVE, the fallback is to
   build the wheel from the fork's source (its README documents a conan-based
-  OpenSSL build) or revert Windows to a compile path — logged in
-  `docs/known-issues.md` (§5) until it ships.
+  OpenSSL build) or revert Windows to a compile path. Such a lag would be filed
+  in `docs/known-issues.md` (per the `dependencies.md` §5 "Sweep posture" policy)
+  until it ships.
 - A future Python-runtime bump past the fork's wheel matrix (currently cp38–cp314)
   would need a wheel refresh first — a non-issue for the cp312-pinned build.
 
@@ -92,5 +96,18 @@ compilation.
 
 ## Cold-eyes loop log
 
-_Recorded per global rule §14 (this ADR is a design document). Filled in after the
-`/cold-eyes` run below._
+Reviewed per global rule §14 (this ADR is a design document); filling this log is
+part of reaching **Accepted** (see the ADR-0001 template note).
+
+**Loop 1 (2026-07-13) — 3 lanes (accuracy / cross-doc / internal-structure).**
+`CRITICAL 0 · HIGH 2 · MEDIUM 3 · LOW 2 · INFO ~3` (all verified). Fixed: the
+broken `docs/known-issues.md (§5)` cross-reference — that file has no numbered
+sections, so it now cites the `dependencies.md §5` "Sweep posture" policy; the
+FIBR-0003-anticipated provenance folded from an orphan pre-`Context` preamble into
+`## Context` (restoring Nygard shape + satisfying FIBR-0015 Deliverable 8); the
+empirical-validation paragraph broken into a bullet list and its two >40-word
+sentences split; the fixture citation now names both the test dir
+(`tests/features/windows_build/`) and the `-binary` fixture-data dir
+(`tests/fixtures/windows_build/`); the positive-consequence bullet trimmed of its
+overlap with the selection rationale; and `ADR-0001`'s template updated to define
+the `## Cold-eyes loop log` section + the one post-acceptance edit it permits.

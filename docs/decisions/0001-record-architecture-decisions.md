@@ -52,6 +52,12 @@ What changes — positive, negative, neutral. Be honest about the
 trade-offs the decision accepts.
 ```
 
+A design ADR additionally carries a `## Cold-eyes loop log` section
+recording its `/cold-eyes` convergence (global rule §14). That log is
+filled as part of reaching **Accepted** — reconciling with
+"never edited after acceptance", populating it is the one edit the rule
+permits once the `Status:` line reads Accepted.
+
 Files are checked in to `docs/decisions/`. The folder's
 [README.md](README.md) explains the lifecycle and when to write
 one.
