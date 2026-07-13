@@ -407,3 +407,232 @@ def test_INV5_failure_after_move_aside_leaves_recoverable_old_pair(tmp_path):
     assert not (tmp_path / "dest" / "vault.db").exists(), (
         "the original vault.db is safely moved aside, not overwritten in place"
     )
+
+
+# --------------------------------------------------------------------------- #
+# Slice 4 — restore fail-closed + safe-zip + INV-11 / INV-13
+#
+# The guards these pin (safe-zip read, manifest version/compat gates, KDF-floor
+# re-validation) landed on the restore critical path in slice 3; slice 4 locks in
+# the fail-closed + no-disk-change behaviour explicitly (money/crypto surface).
+# --------------------------------------------------------------------------- #
+def _rebuild_fbk(src: Path, dest: Path, *, manifest=None, params=None, extra=None):
+    """Copy ``src`` into ``dest`` with optional manifest/params field overrides and
+    optional extra entries, to synthesise a tampered `.fbk`."""
+    with zipfile.ZipFile(src) as zf:
+        m = json.loads(zf.read("manifest.json"))
+        p = json.loads(zf.read("params.json"))
+        db = zf.read("vault.db")
+    if manifest:
+        m.update(manifest)
+    if params:
+        p.update(params)
+    with zipfile.ZipFile(dest, "w") as zf:
+        zf.writestr("manifest.json", json.dumps(m))
+        zf.writestr("params.json", json.dumps(p))
+        zf.writestr("vault.db", db, compress_type=zipfile.ZIP_STORED)
+        for name, data in (extra or {}).items():
+            zf.writestr(name, data)
+
+
+def _dest_with_vault(tmp_path, name="dest"):
+    """A dest location holding a pre-existing first-run vault. Returns
+    (auth, dest_dir, vault_bytes, sidecar_bytes) for byte-identity assertions."""
+    d = tmp_path / name
+    d.mkdir()
+    auth = AuthService(d / "vault.db", d / "vault.kdf.json")
+    auth.first_run(bytearray(b"the original dest master"), "USD")
+    auth.lock()
+    return (
+        auth,
+        d,
+        (d / "vault.db").read_bytes(),
+        (d / "vault.kdf.json").read_bytes(),
+    )
+
+
+def _assert_unchanged(dest_dir, vault_bytes, sidecar_bytes):
+    assert (dest_dir / "vault.db").read_bytes() == vault_bytes, (
+        "vault.db is byte-identical"
+    )
+    assert (dest_dir / "vault.kdf.json").read_bytes() == sidecar_bytes, (
+        "sidecar unchanged"
+    )
+    assert list(dest_dir.glob("*.old")) == [], "no move-aside on a failed restore"
+
+
+def test_INV4_wrong_backup_password_fails_closed(tmp_path):
+    from finbreak.errors import BackupError
+
+    fbk, _snap = _export_from_seed(tmp_path)
+    auth, d, vb, sb = _dest_with_vault(tmp_path)
+    with pytest.raises(BackupError):
+        BackupService(auth.vault, auth).restore_backup(fbk, "wrong-backup-pw!!", _M2)
+    _assert_unchanged(d, vb, sb)
+
+
+@pytest.mark.parametrize(
+    "corrupt",
+    [
+        lambda p: p.write_bytes(b"not a zip at all"),
+        lambda p: p.write_bytes(p.read_bytes()[: len(p.read_bytes()) // 2]),  # truncate
+    ],
+    ids=["non-zip", "truncated"],
+)
+def test_INV4_corrupt_or_truncated_fails_closed(tmp_path, corrupt):
+    from finbreak.errors import BackupError
+
+    fbk, _snap = _export_from_seed(tmp_path)
+    corrupt(fbk)
+    auth, d, vb, sb = _dest_with_vault(tmp_path)
+    with pytest.raises(BackupError):
+        BackupService(auth.vault, auth).restore_backup(fbk, _BACKUP_PW, _M2)
+    _assert_unchanged(d, vb, sb)
+
+
+def test_INV4_bad_format_version_fails_closed(tmp_path):
+    from finbreak.errors import BackupError
+
+    fbk, _snap = _export_from_seed(tmp_path)
+    bad = tmp_path / "bad.fbk"
+    _rebuild_fbk(fbk, bad, manifest={"format_version": MANIFEST_FORMAT_VERSION + 1})
+    auth, d, vb, sb = _dest_with_vault(tmp_path)
+    with pytest.raises(BackupError):
+        BackupService(auth.vault, auth).restore_backup(bad, _BACKUP_PW, _M2)
+    _assert_unchanged(d, vb, sb)
+
+
+def test_INV6a_newer_schema_manifest_refused_before_disk_change(tmp_path):
+    from finbreak.errors import BackupError
+    from finbreak.migrations import LATEST_SCHEMA_VERSION
+
+    fbk, _snap = _export_from_seed(tmp_path)
+    newer = tmp_path / "newer.fbk"
+    _rebuild_fbk(fbk, newer, manifest={"schema_version": LATEST_SCHEMA_VERSION + 1})
+    auth, d, vb, sb = _dest_with_vault(tmp_path)
+    with pytest.raises(BackupError):
+        BackupService(auth.vault, auth).restore_backup(newer, _BACKUP_PW, _M2)
+    _assert_unchanged(d, vb, sb)
+
+
+def test_INV11_below_floor_params_refused_before_any_key(tmp_path):
+    from finbreak.errors import BackupError
+    from finbreak.services.auth import ARGON2_MEMORY_KIB
+
+    fbk, _snap = _export_from_seed(tmp_path)
+    weak = tmp_path / "weak.fbk"
+    _rebuild_fbk(fbk, weak, params={"memory_kib": ARGON2_MEMORY_KIB - 1})
+    auth, d, vb, sb = _dest_with_vault(tmp_path)
+    captured: list[str] = []
+    with pytest.raises(BackupError):
+        BackupService(auth.vault, auth).restore_backup(
+            weak, _BACKUP_PW, _M2, on_key=lambda role, buf: captured.append(role)
+        )
+    assert captured == [], "no key is derived when the params are below the floor"
+    _assert_unchanged(d, vb, sb)
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        {"../evil.txt": b"traversal"},
+        {"extra.txt": b"an unexpected fourth entry"},
+    ],
+    ids=["traversal", "extra-entry"],
+)
+def test_INV12_unsafe_zip_refused(tmp_path, extra):
+    from finbreak.errors import BackupError
+
+    fbk, _snap = _export_from_seed(tmp_path)
+    bad = tmp_path / "bad.fbk"
+    _rebuild_fbk(fbk, bad, extra=extra)
+    auth, d, vb, sb = _dest_with_vault(tmp_path)
+    with pytest.raises(BackupError):
+        BackupService(auth.vault, auth).restore_backup(bad, _BACKUP_PW, _M2)
+    _assert_unchanged(d, vb, sb)
+
+
+def test_INV12_oversized_manifest_entry_refused(tmp_path):
+    from finbreak.errors import BackupError
+    from finbreak.services.backup import MAX_MANIFEST_BYTES
+
+    fbk, _snap = _export_from_seed(tmp_path)
+    bad = tmp_path / "bomb.fbk"
+    # A params.json padded past the tight manifest cap (the real bomb vector).
+    _rebuild_fbk(fbk, bad, params={"pad": "A" * (MAX_MANIFEST_BYTES + 1)})
+    auth, d, vb, sb = _dest_with_vault(tmp_path)
+    with pytest.raises(BackupError):
+        BackupService(auth.vault, auth).restore_backup(bad, _BACKUP_PW, _M2)
+    _assert_unchanged(d, vb, sb)
+
+
+def test_INV12_large_legit_db_restores(tmp_path):
+    from finbreak.services.backup import MAX_MANIFEST_BYTES
+
+    # Seed a vault whose DB exceeds the TIGHT manifest cap, proving vault.db is read
+    # under the generous MAX_BACKUP_DB_BYTES, not the manifest cap.
+    src = tmp_path / "src"
+    src.mkdir()
+    auth = _seeded_auth((src / "vault.db", src / "vault.kdf.json"))
+    conn = auth.vault.connection
+    acct = conn.execute("SELECT id FROM accounts LIMIT 1").fetchone()[0]
+    for i in range(400):
+        conn.execute(
+            "INSERT INTO transactions"
+            "(account_id, occurred_on, amount_minor, description, created_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (acct, "2026-07-01", i, "x" * 400, "2026-01-01T00:00:00+00:00"),
+        )
+    conn.commit()
+    fbk = tmp_path / "big.fbk"
+    BackupService(auth.vault, auth).export_backup(fbk, _BACKUP_PW)
+    auth.lock()
+    with zipfile.ZipFile(fbk) as zf:
+        assert zf.getinfo("vault.db").file_size > MAX_MANIFEST_BYTES, (
+            "DB exceeds tight cap"
+        )
+
+    dest = _dest_auth(tmp_path, "big-dest")
+    BackupService(dest.vault, dest).restore_backup(fbk, _BACKUP_PW, _M2)
+    assert dest.unlock(bytearray(_M2, "utf-8")) is True
+    dest.lock()
+
+
+def test_INV13_wrong_cipher_compat_refused(tmp_path):
+    from finbreak.errors import BackupError
+
+    fbk, _snap = _export_from_seed(tmp_path)
+    bad = tmp_path / "compat3.fbk"
+    _rebuild_fbk(
+        fbk, bad, manifest={"sqlcipher_compat": 3}
+    )  # a lower level resets HMAC
+    auth, d, vb, sb = _dest_with_vault(tmp_path)
+    with pytest.raises(BackupError):
+        BackupService(auth.vault, auth).restore_backup(bad, _BACKUP_PW, _M2)
+    _assert_unchanged(d, vb, sb)
+
+
+def test_INV13_restore_under_forced_different_process_default(tmp_path):
+    import sqlcipher3
+
+    fbk, _snap = _export_from_seed(tmp_path)
+    dest = _dest_auth(tmp_path)
+    # Force the process-wide default cipher_compatibility to a DIFFERENT level; the
+    # restore must still open the compat-4 backup because it applies the recorded
+    # level explicitly (INV-13). Reset the default afterwards for test isolation.
+    sqlcipher3.dbapi2.connect(":memory:").execute(
+        "PRAGMA cipher_default_compatibility = 3"
+    )
+    try:
+        # The INV-13 exercise: the compat-4 backup restores even though the process
+        # default is now 3 — restore reads it by applying the recorded level
+        # explicitly. (If it relied on the default it would HMAC-fail here.)
+        BackupService(dest.vault, dest).restore_backup(fbk, _BACKUP_PW, _M2)
+    finally:
+        # Restore the normal-app default before the verification unlock (a real
+        # unlock never runs under a forced-different default).
+        sqlcipher3.dbapi2.connect(":memory:").execute(
+            "PRAGMA cipher_default_compatibility = 4"
+        )
+    assert dest.unlock(bytearray(_M2, "utf-8")) is True, "restored data is intact"
+    dest.lock()
