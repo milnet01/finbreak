@@ -23,7 +23,7 @@ from typing import Literal, cast
 from sqlcipher3 import dbapi2
 
 from finbreak.db import owned_transaction
-from finbreak.models import CategorizationRule, Category, CategorySource
+from finbreak.models import CategorizationRule, Category, CategoryKind, CategorySource
 from finbreak.repositories.categories import CategoryRepository
 from finbreak.repositories.categorization_rules import CategorizationRuleRepository
 from finbreak.repositories.transactions import TransactionRepository
@@ -80,6 +80,37 @@ class CategorizationService:
             c
             for c in CategoryRepository(self._conn).list_all()
             if c.parent_id is not None
+        ]
+
+    def leaf_categories_grouped(self) -> list[tuple[str, list[Category]]]:
+        """The assignable categories grouped by Type — income section then
+        expenditure, each name-sorted (casefold), an empty section omitted
+        (FIBR-0123 INV-1/INV-2). Each category's Type is the ``kind`` of the root
+        reached by ascending ``parent_id`` (D3, depth-safe — never a one-hop
+        lookup that would drop a deeper node). The tuple's first element is the
+        untranslated ``CategoryKind`` token (``"income"`` / ``"expenditure"``),
+        never a display label — labelling belongs to the UI layer (INV-4)."""
+        all_categories = CategoryRepository(self._conn).list_all()
+        by_id = {c.id: c for c in all_categories}
+        buckets: dict[str, list[Category]] = {
+            CategoryKind.INCOME.value: [],
+            CategoryKind.EXPENDITURE.value: [],
+        }
+        for category in all_categories:
+            if category.parent_id is None:
+                continue  # a Type root is not itself assignable
+            root = category
+            while root.parent_id is not None:
+                root = by_id[root.parent_id]
+            # The ascent always terminates at a Type root, and the only two roots
+            # (FIBR-0006 INV-5) both carry a kind — so root.kind is a real token
+            # here (D3). cast narrows str|None -> str without a runtime guard,
+            # matching the codebase's known-non-None idiom (no assert in src).
+            buckets[cast(str, root.kind)].append(category)
+        return [
+            (token, sorted(cats, key=lambda c: c.name.casefold()))
+            for token, cats in buckets.items()
+            if cats
         ]
 
     def would_categorize(self, description: str) -> int | None:

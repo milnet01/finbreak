@@ -20,7 +20,7 @@ from conftest import _PW, RuleStub, build_v6_vault, keyed_connection, raising_co
 from finbreak.crypto import SALT_LEN
 from finbreak.errors import VaultLockedError
 from finbreak.migrations import LATEST_SCHEMA_VERSION, run_migrations
-from finbreak.models import CategorizationRule, ColumnMapping
+from finbreak.models import CategorizationRule, CategoryKind, ColumnMapping
 from finbreak.repositories.accounts import AccountRepository
 from finbreak.repositories.categories import CategoryRepository
 from finbreak.repositories.transactions import TransactionRepository
@@ -477,6 +477,74 @@ def test_INV9_leaf_categories_excludes_the_roots(service):
         r.id for r in CategoryRepository(service.vault.connection).children_of(None)
     }
     assert not (root_ids & {c.id for c in leaves}), "no Type root is offered"
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0123 INV-1 / INV-2 — leaf_categories_grouped (service grouping)
+# --------------------------------------------------------------------------- #
+def test_INV1_grouped_income_before_expenditure_name_sorted(service):
+    cs = CategorizationService(service.vault)
+    grouped = cs.leaf_categories_grouped()
+
+    tokens = [tok for tok, _ in grouped]
+    assert tokens == [CategoryKind.INCOME.value, CategoryKind.EXPENDITURE.value], (
+        "income section precedes expenditure; the tuple key is the untranslated token"
+    )
+    for _tok, cats in grouped:
+        names = [c.name for c in cats]
+        assert names == sorted(names, key=str.casefold), "name-sorted within a section"
+    income = dict(grouped)[CategoryKind.INCOME.value]
+    assert [c.name for c in income] == sorted(
+        ["Salary", "Sales", "Interest", "Gifts", "Lottery", "Other income"],
+        key=str.casefold,
+    )
+
+
+def test_INV2_grouped_flatten_equals_leaf_categories_multiset(service):
+    cs = CategorizationService(service.vault)
+    grouped = cs.leaf_categories_grouped()
+    flat_ids = [c.id for _tok, cats in grouped for c in cats]
+    leaf_ids = [c.id for c in cs.leaf_categories()]
+    # Category is unhashable and the two orders differ, so compare by id as a
+    # multiset — pins no-drop / no-dup (INV-2).
+    assert sorted(flat_ids) == sorted(leaf_ids)
+
+
+def test_INV1_grouped_omits_an_empty_section(service):
+    cs = CategorizationService(service.vault)
+    catsvc = CategoryService(service.vault)
+    # Empty the income root by deleting every income leaf (no txns/rules point at
+    # them yet), so its section must be omitted, leaving only expenditure.
+    for cat in catsvc.list_all():
+        if cat.parent_id is not None and cat.name in (
+            "Salary",
+            "Sales",
+            "Interest",
+            "Gifts",
+            "Lottery",
+            "Other income",
+        ):
+            catsvc.delete_category(cat.id)
+    grouped = cs.leaf_categories_grouped()
+    assert [tok for tok, _ in grouped] == [CategoryKind.EXPENDITURE.value], (
+        "a section with no categories is omitted, header and all"
+    )
+
+
+def test_INV2_grouped_resolves_type_by_ascending_to_root(service):
+    cs = CategorizationService(service.vault)
+    catsvc = CategoryService(service.vault)
+    # A 3-level branch: Expenditure → Groceries → "Bakery". _require_parent permits
+    # parenting under a leaf, so the grandchild must group under its ancestor ROOT
+    # (Expenditure), not be dropped by a one-hop parent->root lookup (D3).
+    groceries_id = _leaf_id(service, "Groceries")
+    bakery = catsvc.add_category(groceries_id, "Bakery")
+    grouped = cs.leaf_categories_grouped()
+    exp_ids = {c.id for c in dict(grouped)[CategoryKind.EXPENDITURE.value]}
+    assert bakery.id in exp_ids, "the grandchild lands under its ancestor root section"
+    assert bakery.id not in {
+        c.id for c in dict(grouped).get(CategoryKind.INCOME.value, [])
+    }
 
 
 # --------------------------------------------------------------------------- #
