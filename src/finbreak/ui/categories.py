@@ -27,10 +27,9 @@ from PySide6.QtWidgets import (
 )
 
 from finbreak.errors import FinbreakError, VaultLockedError
-from finbreak.models import CategoryKind
 from finbreak.services.auth import AuthService
 from finbreak.services.categories import CategoryService
-from finbreak.ui._widgets import select_combo_data
+from finbreak.ui._widgets import category_type_labels, select_combo_data
 
 # Per-item data roles: the category id, its parent_id, and its kind token (set
 # on the two roots only — a non-None kind marks a structural Type header).
@@ -55,11 +54,9 @@ class CategoriesWidget(QWidget):
         self.setWindowTitle(self.tr("Categories"))
 
         # kind token -> translated Type label (display only; the token is the
-        # structural identifier, never translated).
-        self._type_labels = {
-            CategoryKind.INCOME.value: self.tr("Income"),
-            CategoryKind.EXPENDITURE.value: self.tr("Expenditure"),
-        }
+        # structural identifier, never translated). Sourced from the one shared
+        # helper so the manager and the pickers can't drift (FIBR-0123 INV-4).
+        self._type_labels = category_type_labels()
 
         self._tree = QTreeWidget()
         self._tree.setHeaderHidden(True)

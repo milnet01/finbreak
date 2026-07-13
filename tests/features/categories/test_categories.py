@@ -330,6 +330,26 @@ def test_INV7a_tree_shows_two_types_with_seeded_children(qtbot, service):
     )
 
 
+def test_FIBR0123_manager_sources_type_labels_from_shared_helper(
+    qtbot, service, monkeypatch
+):
+    """INV-4: the manager's Type labels come from the shared category_type_labels()
+    (one label source, no drift with the pickers) — not an inline dict. Proven by
+    monkeypatching the helper and seeing the root labels follow."""
+    import finbreak.ui.categories as categories_mod
+
+    monkeypatch.setattr(
+        categories_mod,
+        "category_type_labels",
+        lambda: {"income": "INC!", "expenditure": "EXP!"},
+    )
+    widget = categories_mod.CategoriesWidget(service)
+    qtbot.addWidget(widget)
+    tree = widget._tree
+    labels = {tree.topLevelItem(i).text(0) for i in range(2)}
+    assert labels == {"INC!", "EXP!"}, "root labels follow the shared helper"
+
+
 def test_INV7b_add_under_a_type_appears_in_that_branch(qtbot, service):
     from finbreak.ui.categories import CategoriesWidget
 
