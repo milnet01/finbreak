@@ -21,6 +21,8 @@ signaling per
 
 ## [Unreleased]
 
+## [0.1.8] - 2026-07-13
+
 ### Added
 
 - **Reporting dashboard + Transactions tab (P10, FIBR-0012).**

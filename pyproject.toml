@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "finbreak"
-version = "0.1.7"
+version = "0.1.8"
 description = "Private, offline desktop app for understanding your personal finances."
 readme = "README.md"
 requires-python = ">=3.12"

@@ -13,7 +13,7 @@
 [![Status](https://img.shields.io/badge/status-pre--alpha-orange)]()
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-Current version: **0.1.7** (early preview). **[⬇ Download the latest
+Current version: **0.1.8** (early preview). **[⬇ Download the latest
 release](https://github.com/milnet01/finbreak/releases/latest)**, or see
 [CHANGELOG](CHANGELOG.md) for what's shipped and [ROADMAP](ROADMAP.md) for
 what's coming.
@@ -30,14 +30,21 @@ lot, with more polish and features to come. What works today:
 - organising them into **accounts** and into **categories** you can group
   and rename,
 - **automatically sorting** transactions into categories, with rules you
-  can edit and corrections it learns from, and
+  can edit and corrections it learns from,
 - **spotting transfers between your own accounts** — money you move from,
   say, your current account to savings is flagged so it isn't mistaken for
-  spending or income (you confirm each one).
+  spending or income (you confirm each one),
+- a **dashboard** on the Home screen — an income-vs-spending summary for a
+  period you choose (it defaults to last month and remembers your choice), a
+  pie chart of where your money went by category, and a month-by-month trend
+  chart; money moved between your own accounts never counts as spending or
+  income, and
+- a searchable, filterable **Transactions tab** — find rows by description
+  and filter by date range, account, and category (any or all at once), with
+  columns you can drag to reorder and resize (it remembers your layout).
 
-Still to come: a **dashboard** with charts and a spending summary, and
-**password-protected PDF export**. See the [ROADMAP](ROADMAP.md) for the
-full plan.
+Still to come: **password-protected PDF export**. See the
+[ROADMAP](ROADMAP.md) for the full plan.
 
 ## Install
 
