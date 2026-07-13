@@ -2,12 +2,14 @@
 (FIBR-0012 D4).
 
 A read, no commit. ``occurred_on`` is an ISO-8601 ``TEXT`` date, so a date range
-is a plain lexicographic ``BETWEEN`` (ISO dates sort as text). The ``account_id``
-argument is ``None`` for the consolidated (all-accounts) view or an id for one
-account — the ``(? IS NULL OR account_id = ?)`` predicate covers both in one
-prepared statement. Returns raw ``(id, occurred_on, amount_minor, category_id)``
-tuples; the service owns the transfer-exclusion, the sign split, and the
-minor→Decimal scaling.
+is a plain lexicographic ``BETWEEN`` (ISO dates sort as text). The ``account_ids``
+argument (FIBR-0013 D4) is ``None`` for the consolidated (all-accounts) view, a
+**non-empty** ``frozenset`` for a chosen subset (an ``account_id IN (…)`` clause of
+integer placeholders only), or an **empty** ``frozenset`` for *no* accounts — which
+short-circuits to an empty result rather than emitting invalid ``IN ()`` SQL, so a
+stray empty set never silently means "all". Returns raw ``(id, occurred_on,
+amount_minor, category_id)`` tuples; the service owns the transfer-exclusion, the
+sign split, and the minor→Decimal scaling.
 """
 
 from __future__ import annotations
@@ -20,16 +22,23 @@ class ReportingRepository:
         self._conn = connection
 
     def rows_in_range(
-        self, start_iso: str, end_iso: str, account_id: int | None
+        self, start_iso: str, end_iso: str, account_ids: frozenset[int] | None
     ) -> list[tuple[int, str, int, int | None]]:
         """``(id, occurred_on, amount_minor, category_id)`` for rows whose
-        ``occurred_on`` is in ``[start_iso, end_iso]`` (inclusive) and, when
-        ``account_id`` is not ``None``, that account only."""
-        rows = self._conn.execute(
+        ``occurred_on`` is in ``[start_iso, end_iso]`` (inclusive), scoped to
+        ``account_ids`` (``None`` ⇒ all; a non-empty set ⇒ those accounts;
+        an empty set ⇒ no rows — FIBR-0013 D4)."""
+        if account_ids is not None and not account_ids:
+            return []  # empty selection ⇒ empty result (never invalid IN ())
+        sql = (
             "SELECT id, occurred_on, amount_minor, category_id "
             "FROM transactions "
-            "WHERE occurred_on BETWEEN ? AND ? "
-            "AND (? IS NULL OR account_id = ?)",
-            (start_iso, end_iso, account_id, account_id),
-        ).fetchall()
+            "WHERE occurred_on BETWEEN ? AND ?"
+        )
+        params: list[str | int] = [start_iso, end_iso]
+        if account_ids is not None:
+            placeholders = ",".join("?" * len(account_ids))
+            sql += f" AND account_id IN ({placeholders})"
+            params.extend(sorted(account_ids))  # sorted ⇒ deterministic binding
+        rows = self._conn.execute(sql, params).fetchall()
         return [(row[0], row[1], row[2], row[3]) for row in rows]

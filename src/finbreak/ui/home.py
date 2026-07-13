@@ -318,11 +318,14 @@ class HomeView(QWidget):
         self._rebuild_account_selector()
         prefs = self._current_prefs()
         account_id = self._selected_account_id()
+        # FIBR-0013 D4: the reporting layer now takes an account *set* (None ⇒ all);
+        # Home's single-or-all selection wraps to None or a one-element frozenset.
+        account_ids = None if account_id is None else frozenset({account_id})
         symbol = self._reporting.base_currency()
 
-        self._render_tiles(self._reporting.summary(prefs, account_id), symbol)
-        self._render_donut(self._reporting.spending_by_category(prefs, account_id))
-        self._render_trend(self._reporting.monthly_trend(prefs, account_id))
+        self._render_tiles(self._reporting.summary(prefs, account_ids), symbol)
+        self._render_donut(self._reporting.spending_by_category(prefs, account_ids))
+        self._render_trend(self._reporting.monthly_trend(prefs, account_ids))
         self._stack.setCurrentIndex(1)
 
     def _rebuild_account_selector(self) -> None:

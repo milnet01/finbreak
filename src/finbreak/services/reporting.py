@@ -137,7 +137,10 @@ class ReportingService:
         return TransferDetectionService(self._vault).confirmed_transfer_txn_ids()
 
     def summary(
-        self, prefs: ReportPrefs, account_id: int | None, today: date | None = None
+        self,
+        prefs: ReportPrefs,
+        account_ids: frozenset[int] | None,
+        today: date | None = None,
     ) -> Summary:
         """Income / expenditure / net over the period's non-transfer rows (INV-4).
         All arithmetic on integer ``amount_minor``; only the returned ``Decimal``s
@@ -149,7 +152,7 @@ class ReportingService:
         expenditure_minor = 0
         for txn_id, _occurred, amount_minor, _cat in ReportingRepository(
             self._conn
-        ).rows_in_range(start.isoformat(), end.isoformat(), account_id):
+        ).rows_in_range(start.isoformat(), end.isoformat(), account_ids):
             if txn_id in excluded:
                 continue
             if amount_minor > 0:
@@ -163,7 +166,10 @@ class ReportingService:
         return Summary(income=income, expenditure=expenditure, net=net)
 
     def spending_by_category(
-        self, prefs: ReportPrefs, account_id: int | None, today: date | None = None
+        self,
+        prefs: ReportPrefs,
+        account_ids: frozenset[int] | None,
+        today: date | None = None,
     ) -> list[CategorySpend]:
         """The category donut feed: expenditure (negative, non-transfer) rows
         grouped by ``category_id`` (INV-5). Categorised buckets sorted
@@ -177,7 +183,7 @@ class ReportingService:
         by_id: dict[int | None, int] = {}
         for txn_id, _occurred, amount_minor, category_id in ReportingRepository(
             self._conn
-        ).rows_in_range(start.isoformat(), end.isoformat(), account_id):
+        ).rows_in_range(start.isoformat(), end.isoformat(), account_ids):
             if txn_id in excluded or amount_minor >= 0:
                 continue
             by_id[category_id] = by_id.get(category_id, 0) + -amount_minor
@@ -211,7 +217,10 @@ class ReportingService:
         return result
 
     def monthly_trend(
-        self, prefs: ReportPrefs, account_id: int | None, today: date | None = None
+        self,
+        prefs: ReportPrefs,
+        account_ids: frozenset[int] | None,
+        today: date | None = None,
     ) -> list[MonthlyTotal]:
         """Exactly 12 ``(month, income, expenditure)`` points, oldest first, ending
         at the period's end month; an empty month is a **zero** point, not omitted
@@ -225,7 +234,7 @@ class ReportingService:
         expenditure_by_month: dict[str, int] = {}
         for txn_id, occurred_on, amount_minor, _cat in ReportingRepository(
             self._conn
-        ).rows_in_range(start.isoformat(), end.isoformat(), account_id):
+        ).rows_in_range(start.isoformat(), end.isoformat(), account_ids):
             if txn_id in excluded:
                 continue
             key = occurred_on[:7]

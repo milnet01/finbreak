@@ -98,8 +98,8 @@ def test_INV4_single_account_view_excludes_the_other_account(service):
     _add(service, a, 100000, "2026-01-03")  # account A income
     _add(service, b, 200000, "2026-01-03")  # account B income
     reporting = ReportingService(service.vault)
-    assert reporting.summary(_JAN, a, _TODAY).income == Decimal("1000.00")
-    assert reporting.summary(_JAN, b, _TODAY).income == Decimal("2000.00")
+    assert reporting.summary(_JAN, frozenset({a}), _TODAY).income == Decimal("1000.00")
+    assert reporting.summary(_JAN, frozenset({b}), _TODAY).income == Decimal("2000.00")
     assert reporting.summary(_JAN, None, _TODAY).income == Decimal("3000.00")
 
 
@@ -110,6 +110,47 @@ def test_INV4_out_of_period_rows_are_excluded(service):
     assert ReportingService(service.vault).summary(
         _JAN, None, _TODAY
     ).income == Decimal("1000.00")
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0013 D4 — account-set widening (account_ids: frozenset[int] | None)
+# --------------------------------------------------------------------------- #
+def test_D4_account_subset_combines_exactly_those_accounts(service):
+    """A frozenset selects exactly its accounts, excluding others (combined)."""
+    a, b = _two_accounts(service)
+    c = AccountService(service.vault).add_account("Third", "current").id
+    _add(service, a, 100000, "2026-01-03")  # 1000.00
+    _add(service, b, 200000, "2026-01-03")  # 2000.00
+    _add(service, c, 400000, "2026-01-03")  # excluded
+    got = ReportingService(service.vault).summary(_JAN, frozenset({a, b}), _TODAY)
+    assert got.income == Decimal("3000.00")
+
+
+def test_D4_none_account_ids_is_all_accounts(service):
+    a, b = _two_accounts(service)
+    _add(service, a, 100000, "2026-01-03")
+    _add(service, b, 200000, "2026-01-03")
+    assert ReportingService(service.vault).summary(
+        _JAN, None, _TODAY
+    ).income == Decimal("3000.00")
+
+
+def test_D4_empty_account_set_is_empty_not_all(service):
+    """An empty frozenset selects NO accounts -> empty report, never 'all'
+    (the D4 privacy guard; no invalid ``IN ()`` SQL)."""
+    a, _b = _two_accounts(service)
+    _add(service, a, 100000, "2026-01-03")
+    got = ReportingService(service.vault).summary(_JAN, frozenset(), _TODAY)
+    assert got.income == Decimal("0.00")
+
+
+def test_D4_single_element_set_matches_single_account(service):
+    a, b = _two_accounts(service)
+    _add(service, a, 100000, "2026-01-03")
+    _add(service, b, 200000, "2026-01-03")
+    reporting = ReportingService(service.vault)
+    assert reporting.summary(_JAN, frozenset({a}), _TODAY).income == Decimal("1000.00")
+    assert reporting.summary(_JAN, frozenset({b}), _TODAY).income == Decimal("2000.00")
 
 
 # --------------------------------------------------------------------------- #
