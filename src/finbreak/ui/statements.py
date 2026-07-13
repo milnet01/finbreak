@@ -77,6 +77,9 @@ class StatementsWidget(QWidget):
         self.setWindowTitle(self.tr("Statements"))
 
         self._table = QTableWidget(0, 5)
+        # Distinct objectName so remember_columns keys this table uniquely and it
+        # can't collide with the (also 5-column) Transactions table (FIBR-0012).
+        self._table.setObjectName("statements_table")
         self._table.setHorizontalHeaderLabels(
             [
                 self.tr("Account"),

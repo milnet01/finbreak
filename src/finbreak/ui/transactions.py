@@ -134,6 +134,11 @@ class TransactionsView(QWidget):
 
     def _build_table(self) -> QTableWidget:
         self._table = QTableWidget(0, 5)
+        # A distinct objectName so remember_columns keys this table's saved layout
+        # uniquely — without it, this 5-column table and the (also 5-column)
+        # Statements table share the empty "columns/" key and cross-corrupt each
+        # other's widths + drag-reorder order (FIBR-0012 indie-review).
+        self._table.setObjectName("transactions_table")
         self._table.setHorizontalHeaderLabels(
             [
                 self.tr("Date"),

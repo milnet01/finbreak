@@ -169,6 +169,29 @@ def test_columns_are_movable_and_order_persists_across_rebuild(qtbot, service):
     )
 
 
+def test_transactions_and_statements_tables_have_distinct_column_keys(qtbot, service):
+    """Both tables are 5-column; without distinct objectNames they'd share the empty
+    "columns/" key and cross-corrupt each other's widths + drag order (FIBR-0012
+    indie-review). Reordering one must NOT move the other's columns."""
+    from finbreak.services.categorization import CategorizationService
+    from finbreak.services.transactions import TransactionService
+    from finbreak.ui.statements import StatementsWidget
+    from finbreak.ui.transactions import TransactionsView
+
+    txns = TransactionsView(
+        TransactionService(service.vault), CategorizationService(service.vault)
+    )
+    qtbot.addWidget(txns)
+    assert txns._table.objectName() == "transactions_table"
+    txns._table.horizontalHeader().moveSection(0, 3)  # reorder the Transactions table
+
+    stmts = StatementsWidget(service)
+    qtbot.addWidget(stmts)
+    assert stmts._table.objectName() == "statements_table"
+    # The Statements table keeps its natural order — it did not inherit the move.
+    assert stmts._table.horizontalHeader().visualIndex(0) == 0
+
+
 # --------------------------------------------------------------------------- #
 # 5 — the priority-ordered Rules table is NOT click-sortable (but persists widths)
 # --------------------------------------------------------------------------- #

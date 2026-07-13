@@ -376,15 +376,22 @@ class AuthService:
         """Read the persisted dashboard period from the vault settings, mirroring
         ``amount_prefs`` / ``datetime_prefs`` — each of the three keys parsed
         defensively (INV-2). An unknown ``report_period_mode`` → previous-month;
-        an empty / absent / non-int ``year`` / ``month`` → ``None``; a month
-        outside 1–12 → ``None``. A **specific** mode read back with its required
-        field missing / unparseable downgrades to previous-month, so
-        ``resolve_period`` never sees a specific mode with a ``None`` field (D2)."""
+        an empty / absent / non-int ``year`` / ``month`` → ``None``; a year outside
+        1–9999 or a month outside 1–12 → ``None`` (either would make
+        ``resolve_period``'s ``date(...)`` raise). A **specific** mode read back with
+        its required field missing / unparseable / out-of-range downgrades to
+        previous-month, so ``resolve_period`` never sees a specific mode with a
+        ``None`` field (D2)."""
         repo = SettingsRepository(self._vault.connection)
         mode = repo.get("report_period_mode")
         if mode not in _REPORT_MODES:
             return ReportPrefs(MODE_PREVIOUS_MONTH)
-        year = _parse_optional_int(repo.get("report_period_year"))
+        # Bound BOTH fields to date-constructible ranges (year 1–9999, month 1–12):
+        # an out-of-range year (0 / negative / >9999) parses as an int but would make
+        # resolve_period's date(...) raise, so it must downgrade like a missing field
+        # (INV-2 "never an error"), not just a bad month.
+        raw_year = _parse_optional_int(repo.get("report_period_year"))
+        year = raw_year if raw_year is not None and 1 <= raw_year <= 9999 else None
         raw_month = _parse_optional_int(repo.get("report_period_month"))
         month = raw_month if raw_month is not None and 1 <= raw_month <= 12 else None
         if mode == MODE_SPECIFIC_MONTH and (year is None or month is None):

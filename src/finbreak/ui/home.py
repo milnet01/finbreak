@@ -39,6 +39,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from finbreak.errors import VaultLockedError
 from finbreak.models import CategorySpend, MonthlyTotal, Summary
 from finbreak.services.accounts import AccountService
 from finbreak.services.auth import AmountPrefs, AuthService
@@ -278,17 +279,22 @@ class HomeView(QWidget):
             return
         self._sync_picker_visibility()
         # Persist the new period (the account is NOT persisted, D6), then re-render.
+        # An auto-lock mid-interaction surfaces as VaultLockedError from the write or
+        # a subsequent vault read — caught (specifically, not a bare except) so the UI
+        # never crashes, matching the other tabs' slot guards (coding.md § 2).
         try:
             self._auth.set_report_prefs(self._current_prefs())
-        except Exception:
-            # A locked vault (auto-lock mid-interaction) — never crash the UI.
+            self.refresh()
+        except VaultLockedError:
             return
-        self.refresh()
 
     def _on_account_changed(self) -> None:
         if self._loading:
             return
-        self.refresh()  # account is session-only, not persisted (D6)
+        try:
+            self.refresh()  # account is session-only, not persisted (D6)
+        except VaultLockedError:
+            return
 
     # --- shell / test accessors -------------------------------------------- #
     def current_page(self) -> QWidget:

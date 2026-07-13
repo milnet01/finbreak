@@ -112,6 +112,9 @@ class RulesWidget(QWidget):
         self.setWindowTitle(self.tr("Rules"))
 
         self._table = QTableWidget(0, 2)
+        # Distinct objectName so remember_columns keys this table uniquely (parity
+        # with the other data tables; FIBR-0012 indie-review).
+        self._table.setObjectName("rules_table")
         self._table.setHorizontalHeaderLabels([self.tr("Pattern"), self.tr("Category")])
         self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)

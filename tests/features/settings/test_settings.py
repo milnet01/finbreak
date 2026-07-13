@@ -588,3 +588,16 @@ def test_set_report_prefs_on_locked_raises(service):
     service.lock()
     with pytest.raises(VaultLockedError):
         service.set_report_prefs(ReportPrefs(MODE_CURRENT_MONTH))
+
+
+def test_report_prefs_out_of_range_year_downgrades(service):
+    """A stored year outside 1..9999 parses as an int but would make date(...) raise;
+    it must downgrade to previous-month, not crash the dashboard (INV-2)."""
+    from finbreak.services.reporting import MODE_PREVIOUS_MONTH, ReportPrefs
+
+    repo = SettingsRepository(service.vault.connection)
+    for bad_year in ("0", "-5", "10000"):
+        repo.set("report_period_mode", "specific_year")
+        repo.set("report_period_year", bad_year)
+        repo.set("report_period_month", "")
+        assert service.report_prefs() == ReportPrefs(MODE_PREVIOUS_MONTH), bad_year
