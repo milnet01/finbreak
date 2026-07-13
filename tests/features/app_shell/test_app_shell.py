@@ -104,6 +104,7 @@ def test_INV1_chrome_parts_and_action_set(qtbot, service):
         "action_manual_entry",
         "action_import",
         "action_settings",  # FIBR-0055: File → Settings…
+        "action_export",  # FIBR-0013: File → Export report as PDF…
         "action_accounts",
         "action_categories",
         "action_lock",
@@ -654,6 +655,99 @@ def test_transactions_toolbar_action_has_a_rendering_icon(qtbot, service):
     assert not action.icon().pixmap(QSize(24, 24)).isNull(), (
         "Transactions needs an icon"
     )
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0013 — Export report as PDF (menu + toolbar entry, save flow)
+# --------------------------------------------------------------------------- #
+def test_FIBR0013_export_action_on_menu_toolbar_and_vault_gated(qtbot, service):
+    from PySide6.QtCore import QSize
+
+    window = _unlocked_home_shell(qtbot, service)
+    export = window._action_export
+    assert export in window._menu_file.actions()
+    assert export in window._toolbar.actions()
+    assert export.shortcut().isEmpty()  # no accelerator to bypass a disabled menu
+    assert not export.icon().pixmap(QSize(24, 24)).isNull()  # export.svg renders
+    window._action_lock.trigger()  # locking disables the whole File menu + toolbar
+    assert not window._menu_file.isEnabled()
+    assert not window._toolbar.isEnabled()
+
+
+def test_FIBR0013_open_export_opens_a_prefilled_dialog(qtbot, service):
+    from finbreak.ui.export_dialog import ExportDialog
+
+    window = _unlocked_home_shell(qtbot, service)
+    window._action_export.trigger()
+    dialog = window._dialog
+    assert isinstance(dialog, ExportDialog)
+    # Home defaults to All accounts (selected id None) ⇒ All-accounts ticked (D7).
+    assert dialog._all_accounts_check.isChecked()
+
+
+def test_FIBR0013_export_writes_a_pdf_via_the_shell(
+    qtbot, service, tmp_path, monkeypatch
+):
+    import pikepdf
+
+    window = _unlocked_home_shell(qtbot, service)
+    out = tmp_path / "report.pdf"
+    monkeypatch.setattr(
+        main_window.QFileDialog,
+        "getSaveFileName",
+        staticmethod(lambda *a, **k: (str(out), "PDF files (*.pdf)")),
+    )
+    window._action_export.trigger()
+    dialog = window._dialog
+    dialog.export_requested.emit()  # as if Export… were clicked
+    with pikepdf.open(str(out)) as doc:  # a real, valid PDF landed at the path
+        assert len(doc.pages) >= 1
+    assert window._dialog is None  # success tears the dialog down
+
+
+def test_FIBR0013_cancel_save_is_a_noop(qtbot, service, tmp_path, monkeypatch):
+    window = _unlocked_home_shell(qtbot, service)
+    monkeypatch.setattr(
+        main_window.QFileDialog,
+        "getSaveFileName",
+        staticmethod(lambda *a, **k: ("", "")),  # user cancelled the save dialog
+    )
+    window._action_export.trigger()
+    dialog = window._dialog
+    dialog.export_requested.emit()
+    assert not list(tmp_path.glob("*.pdf"))  # no report written
+    assert window._dialog is dialog  # the export dialog stays open (D9)
+
+
+def test_FIBR0013_export_failure_shows_message_and_keeps_dialog(
+    qtbot, service, tmp_path, monkeypatch
+):
+    from finbreak.services import pdf_export
+
+    window = _unlocked_home_shell(qtbot, service)
+    out = tmp_path / "report.pdf"
+    monkeypatch.setattr(
+        main_window.QFileDialog,
+        "getSaveFileName",
+        staticmethod(lambda *a, **k: (str(out), "PDF files (*.pdf)")),
+    )
+
+    def _boom(self, options, path, today=None):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(pdf_export.PdfExportService, "export", _boom)
+    warnings: list[object] = []
+    monkeypatch.setattr(
+        main_window.QMessageBox,
+        "warning",
+        staticmethod(lambda *a, **k: warnings.append(a)),
+    )
+    window._action_export.trigger()
+    dialog = window._dialog
+    dialog.export_requested.emit()
+    assert warnings  # a friendly message was shown (INV-12)
+    assert not out.exists()  # no partial file
+    assert window._dialog is dialog  # dialog stays open to retry
 
 
 def test_about_text_shows_version(qtbot, service):

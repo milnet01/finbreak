@@ -32,6 +32,7 @@ from PySide6.QtGui import QAction, QCloseEvent, QDesktopServices, QGuiApplicatio
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
+    QFileDialog,
     QLabel,
     QMainWindow,
     QMessageBox,
@@ -51,6 +52,7 @@ from finbreak.services.auth import (
     DateTimePrefs,
 )
 from finbreak.services.categorization import CategorizationService
+from finbreak.services.pdf_export import PdfExportService, period_filename_slug
 from finbreak.services.reporting import ReportingService
 from finbreak.services.transactions import TransactionService
 from finbreak.services.update import UpdateInfo, UpdateService
@@ -58,6 +60,7 @@ from finbreak.services.update_installer import Installer, detect_installer
 from finbreak.ui._update_worker import DownloadWorker, UpdateCheckWorker
 from finbreak.ui.accounts import AccountsWidget
 from finbreak.ui.categories import CategoriesWidget
+from finbreak.ui.export_dialog import ExportDialog
 from finbreak.ui.first_run import FirstRunDialog
 from finbreak.ui.home import HomeView
 from finbreak.ui.icons import toolbar_icon
@@ -260,6 +263,12 @@ class MainWindow(QMainWindow):
         self._action_settings = self._make_action(
             "action_settings", self.tr("Settings…"), None, self._open_settings
         )
+        self._action_export = self._make_action(
+            "action_export",
+            self.tr("Export report as PDF…"),
+            "export",
+            self._open_export,
+        )
         self._action_accounts = self._make_action(
             "action_accounts", self.tr("Accounts"), "accounts", self._open_accounts
         )
@@ -328,6 +337,7 @@ class MainWindow(QMainWindow):
         self._menu_file.addAction(self._action_manual_entry)
         self._menu_file.addAction(self._action_import)
         self._menu_file.addAction(self._action_settings)
+        self._menu_file.addAction(self._action_export)  # FIBR-0013, after Settings…
         self._menu_file.addSeparator()
         self._menu_file.addAction(self._action_lock)
         self._menu_file.addAction(self._action_quit)
@@ -375,6 +385,7 @@ class MainWindow(QMainWindow):
             self._action_categories,
             self._action_rules,
             self._action_transfers,
+            self._action_export,  # FIBR-0013, before Lock (Lock stays last)
             self._action_lock,
         ):
             self._toolbar.addAction(action)
@@ -682,6 +693,64 @@ class MainWindow(QMainWindow):
         dialog.saved.connect(self._on_settings_saved)
         dialog.rejected.connect(self._teardown_dialog)  # cancel: no change
         self._open_dialog(dialog, defer=False)
+
+    def _open_export(self) -> None:
+        # Vault-dependent (File menu disabled while locked, INV-11). The dialog
+        # holds no vault ref — it is handed the account list + Home's pre-fill.
+        if self._home_tab is None:  # only reachable unlocked, but keep it total
+            return
+        accounts = AccountService(self._service.vault).list_accounts()
+        dialog = ExportDialog(
+            accounts,
+            self._home_tab.current_prefs(),
+            self._home_tab.selected_account_id(),
+            self,
+        )
+        dialog.export_requested.connect(self._on_export_requested)
+        dialog.rejected.connect(self._teardown_dialog)  # Cancel: no export
+        self._open_dialog(dialog, defer=False)
+
+    def _on_export_requested(self) -> None:
+        # Ask where to save, then render+write under a wait cursor. The export
+        # dialog stays open throughout (it never accept()s), so a cancelled save or
+        # a failed write leaves the user on the dialog to retry (D9/INV-12).
+        from datetime import date
+
+        dialog = self._dialog
+        if not isinstance(dialog, ExportDialog):
+            return
+        options = dialog.options()
+        default_name = (
+            f"finbreak-report-{period_filename_slug(options.prefs, date.today())}.pdf"
+        )
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            self.tr("Export report as PDF"),
+            default_name,
+            self.tr("PDF files (*.pdf)"),
+        )
+        if not path:
+            return  # Cancelled the save dialog — a clean no-op (dialog stays open).
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            PdfExportService(self._service.vault).export(options, path)
+        except Exception:
+            # A vault auto-lock, an unwritable path, or an encryption failure
+            # (INV-12) — export() left no partial/unencrypted file; keep the dialog
+            # open so the user can retry or pick another location.
+            QApplication.restoreOverrideCursor()
+            QMessageBox.warning(
+                self,
+                self.tr("Export failed"),
+                self.tr(
+                    "Sorry, the report couldn't be saved there. Please choose "
+                    "another location and try again."
+                ),
+            )
+            return
+        QApplication.restoreOverrideCursor()
+        self._teardown_dialog()
+        self._status(self.tr("Report exported"))
 
     def _on_settings_saved(self) -> None:
         # Persist the opt-in update flag from the checkbox (D5) — the auto-lock

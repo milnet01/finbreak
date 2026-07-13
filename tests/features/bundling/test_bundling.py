@@ -114,6 +114,7 @@ def test_INV1_selftest_fail_names_argon2(monkeypatch):
     monkeypatch.setattr(_selftest, "_check_qt", lambda: None)
     monkeypatch.setattr(_selftest, "_check_sqlcipher", lambda: None)
     monkeypatch.setattr(_selftest, "_check_pikepdf", lambda: None)
+    monkeypatch.setattr(_selftest, "_check_pdf_encrypt", lambda: None)
 
     def _boom() -> None:
         raise RuntimeError("simulated Argon2 load failure")
@@ -130,6 +131,30 @@ def test_INV1_selftest_fail_names_argon2(monkeypatch):
 
 
 @pytest.mark.features
+def test_INV1_selftest_fail_names_pdf_encrypt(monkeypatch):
+    """The FIBR-0013 encrypt-export leg (QPdfWriter + pikepdf.Encryption) names
+    itself on failure (all earlier stacks pass)."""
+    from finbreak import _selftest
+
+    monkeypatch.setattr(_selftest, "_check_qt", lambda: None)
+    monkeypatch.setattr(_selftest, "_check_sqlcipher", lambda: None)
+    monkeypatch.setattr(_selftest, "_check_pikepdf", lambda: None)
+
+    def _boom() -> None:
+        raise RuntimeError("simulated encrypt-export failure")
+
+    monkeypatch.setattr(_selftest, "_check_pdf_encrypt", _boom)
+
+    out = io.StringIO()
+    rc = _selftest.run_self_test(out)
+
+    assert rc != 0, "a failing stack must exit non-zero"
+    assert out.getvalue().splitlines() == ["FINBREAK_SELFTEST_FAIL: pdf_encrypt"], (
+        f"expected the pdf_encrypt FAIL line only; got:\n{out.getvalue()}"
+    )
+
+
+@pytest.mark.features
 def test_INV1_selftest_fail_names_ofxparse(monkeypatch):
     """The FIBR-0008 ofxparse leg names itself on failure (all earlier stacks pass)."""
     from finbreak import _selftest
@@ -137,6 +162,7 @@ def test_INV1_selftest_fail_names_ofxparse(monkeypatch):
     monkeypatch.setattr(_selftest, "_check_qt", lambda: None)
     monkeypatch.setattr(_selftest, "_check_sqlcipher", lambda: None)
     monkeypatch.setattr(_selftest, "_check_pikepdf", lambda: None)
+    monkeypatch.setattr(_selftest, "_check_pdf_encrypt", lambda: None)
     monkeypatch.setattr(_selftest, "_check_argon2", lambda: None)
 
     def _boom() -> None:

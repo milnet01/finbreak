@@ -335,6 +335,7 @@ def test_INV2_toolbar_order_and_no_statements_button(qtbot, service):
         "action_categories",
         "action_rules",
         "action_transfers",
+        "action_export",  # FIBR-0013: before Lock (Lock stays last)
         "action_lock",
     ], (
         "toolbar order: Home, Transactions, Manual entry, Import, Accounts, "

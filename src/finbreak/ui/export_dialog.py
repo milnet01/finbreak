@@ -17,6 +17,7 @@ carries the one-line reason as its tooltip.
 
 from __future__ import annotations
 
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
@@ -50,6 +51,11 @@ MIN_EXPORT_PASSWORD_LEN = 8
 
 
 class ExportDialog(QDialog):
+    # Emitted when Export… is clicked. The shell pops the save dialog and runs the
+    # export; the dialog stays open until that succeeds (D9), so — like
+    # SettingsDialog's `saved` — Ok does NOT auto-accept/close.
+    export_requested = Signal()
+
     def __init__(
         self,
         accounts: list[Account],
@@ -73,7 +79,7 @@ class ExportDialog(QDialog):
         )
         self._export_btn = self._buttons.button(QDialogButtonBox.StandardButton.Ok)
         self._export_btn.setText(self.tr("Export…"))
-        self._buttons.accepted.connect(self.accept)
+        self._buttons.accepted.connect(self.export_requested)  # not accept() — D9
         self._buttons.rejected.connect(self.reject)
         layout.addWidget(self._buttons)
 

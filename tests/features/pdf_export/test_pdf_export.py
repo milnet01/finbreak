@@ -378,6 +378,19 @@ def test_render_with_password_writes_nothing_to_disk(qapp, service, monkeypatch)
     pikepdf.open(BytesIO(pdf), password="secret12").close()  # really encrypted
 
 
+def test_stale_account_id_drops_out_no_crash(qapp, service):
+    # D5: an id in account_ids that no longer exists (deleted after the dialog
+    # snapshot) simply drops out — it matches no rows and adds no per-account line.
+    a = _accounts(service)[0].id
+    _add(service, a, 100_00)
+    html, _ = _svc(service)._build_html(
+        _options(account_ids=frozenset({a, 424242})), _TODAY
+    )
+    # Only one live account is in scope ⇒ a single-account export (no By-account
+    # block), and no crash from the phantom id.
+    assert "By account" not in html
+
+
 def test_period_filename_slug_per_mode():
     from finbreak.services.pdf_export import period_filename_slug
     from finbreak.services.reporting import MODE_SPECIFIC_YEAR, MODE_YEAR_TO_DATE

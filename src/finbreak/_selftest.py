@@ -31,6 +31,11 @@ from typing import TextIO
 # read as SQL injection.
 _SMOKE_KEY_PRAGMA = "PRAGMA key = 'finbreak-smoke-test-not-a-real-key'"
 
+# A fixed, obviously-fake passphrase used only to prove the pikepdf AES-256
+# ENCRYPT path (FIBR-0013) loads in the bundle. Not a real key and guards no real
+# data — named ``*_KEY`` (not ``*_password``) so it reads as a smoke constant.
+_SMOKE_EXPORT_KEY = "finbreak-smoke-export-not-a-real-key"
+
 
 def _check_qt() -> None:
     """Construct a headless QApplication (offscreen), proving Qt loads."""
@@ -111,6 +116,42 @@ def _check_pikepdf() -> None:
     pdf.add_blank_page()
     if len(pdf.pages) != 1:
         raise RuntimeError("pikepdf did not create the expected single page")
+
+
+def _check_pdf_encrypt() -> None:
+    """Write a one-page PDF with ``QPdfWriter`` (QtGui) and AES-256 **encrypt** it
+    with ``pikepdf.Encryption(user, owner, R=6)`` in memory, then re-open it with
+    the key — proving the FIBR-0013 encrypt-export path travels into the bundle:
+    the QtGui PDF writer **and** the pikepdf ENCRYPT direction (distinct from the
+    import-side decrypt, FIBR-0009). Runs after ``_check_qt`` (QPdfWriter needs the
+    Qt libs + a QApplication for text layout)."""
+    import io
+
+    import pikepdf
+    from PySide6.QtCore import QBuffer, QIODevice
+    from PySide6.QtGui import QPageSize, QPdfWriter, QTextDocument
+
+    buffer = QBuffer()
+    buffer.open(QIODevice.OpenModeFlag.WriteOnly)
+    writer = QPdfWriter(buffer)
+    writer.setPageSize(QPageSize(QPageSize.PageSizeId.A4))
+    doc = QTextDocument()
+    doc.setHtml("<h1>finbreak export smoke</h1>")
+    doc.print_(writer)
+    buffer.close()
+    with pikepdf.open(io.BytesIO(bytes(buffer.data().data()))) as pdf:
+        encrypted = io.BytesIO()
+        pdf.save(
+            encrypted,
+            encryption=pikepdf.Encryption(
+                user=_SMOKE_EXPORT_KEY, owner=_SMOKE_EXPORT_KEY, R=6
+            ),
+        )
+    with pikepdf.open(
+        io.BytesIO(encrypted.getvalue()), password=_SMOKE_EXPORT_KEY
+    ) as reopened:
+        if len(reopened.pages) != 1:
+            raise RuntimeError("encrypted export PDF did not round-trip one page")
 
 
 def _check_argon2() -> None:
@@ -237,6 +278,7 @@ def run_self_test(out: TextIO | None = None) -> int:
         ("icons", _check_icons),
         ("sqlcipher", _check_sqlcipher),
         ("pikepdf", _check_pikepdf),
+        ("pdf_encrypt", _check_pdf_encrypt),
         ("argon2", _check_argon2),
         ("ofxparse", _check_ofxparse),
         ("pdfplumber", _check_pdfplumber),
