@@ -464,7 +464,7 @@ lands on top.
   encrypted backup.** Settings screen (base currency display,
   auto-lock timeout, manage stored PDF passwords, theme);
   inactivity **auto-lock** drops the key and returns to unlock;
-  **encrypted backup export/import** (the only mitigation for a
+  **encrypted backup export/restore** (the only mitigation for a
   forgotten master password, per ADR-0003); dark-theme polish
   pass. Dependencies: FIBR-0004. Lanes: ui, services, security, tests.
   Kind: implement. Source: planned.
