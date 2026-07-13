@@ -26,6 +26,7 @@ import tempfile
 from collections.abc import Callable
 from pathlib import Path
 
+import pikepdf
 import shiboken6
 from PySide6.QtCore import QEvent, QObject, QSettings, QSize, Qt, QTimer, QUrl
 from PySide6.QtGui import QAction, QCloseEvent, QDesktopServices, QGuiApplication
@@ -44,6 +45,7 @@ from PySide6.QtWidgets import (
 )
 
 from finbreak import __version__, paths
+from finbreak.errors import VaultLockedError
 from finbreak.services.accounts import AccountService
 from finbreak.services.auth import (
     DATETIME_SYSTEM,
@@ -734,10 +736,13 @@ class MainWindow(QMainWindow):
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
             PdfExportService(self._service.vault).export(options, path)
-        except Exception:
-            # A vault auto-lock, an unwritable path, or an encryption failure
-            # (INV-12) — export() left no partial/unencrypted file; keep the dialog
-            # open so the user can retry or pick another location.
+        except (VaultLockedError, OSError, pikepdf.PdfError):
+            # The INV-12 failure set: a vault auto-lock mid-export, an unwritable
+            # path / disk-full (OSError), or a pikepdf encryption error. export()
+            # left no partial/unencrypted file; keep the dialog open so the user can
+            # retry or pick another location. Anything else is a genuine bug and is
+            # left to propagate (coding.md § 2) rather than mis-reported as a save
+            # error.
             QApplication.restoreOverrideCursor()
             QMessageBox.warning(
                 self,

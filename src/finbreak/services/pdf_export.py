@@ -290,9 +290,11 @@ class PdfExportService:
         return html
 
     def _summary_table(self, s: Summary, symbol: str) -> str:
-        inc = _format_amount(s.income, symbol)
-        spend = _format_amount(s.expenditure, symbol)
-        net = _format_amount(s.net, symbol)
+        # escape() the formatted amount too (defence in depth): the currency symbol
+        # is a fixed whitelist today, but the header escapes it, so the cells match.
+        inc = escape(_format_amount(s.income, symbol))
+        spend = escape(_format_amount(s.expenditure, symbol))
+        net = escape(_format_amount(s.net, symbol))
         return (
             "<table>"
             f"<tr><td>{_tr('Income')}</td><td>{inc}</td></tr>"
@@ -312,9 +314,9 @@ class PdfExportService:
         s = reporting.summary(prefs, frozenset({acct.id}), today)
         return (
             f"<tr><td>{escape(acct.name)}</td>"
-            f"<td>{_format_amount(s.income, symbol)}</td>"
-            f"<td>{_format_amount(s.expenditure, symbol)}</td>"
-            f"<td>{_format_amount(s.net, symbol)}</td></tr>"
+            f"<td>{escape(_format_amount(s.income, symbol))}</td>"
+            f"<td>{escape(_format_amount(s.expenditure, symbol))}</td>"
+            f"<td>{escape(_format_amount(s.net, symbol))}</td></tr>"
         )
 
     def _charts_html(
@@ -328,22 +330,25 @@ class PdfExportService:
             options.prefs, options.account_ids, today
         )
         trend = reporting.monthly_trend(options.prefs, options.account_ids, today)
-        donut = build_donut_chart(
-            spending, _tr("Uncategorised"), _tr("Other"), theme.chart
-        )
+        images: list[tuple[str, QImage]] = []
+        parts = [f"<h2>{_tr('Charts')}</h2>"]
+        if spending:
+            donut = build_donut_chart(
+                spending, _tr("Uncategorised"), _tr("Other"), theme.chart
+            )
+            images.append(("finbreak://chart/donut", self._rasterise(donut)))
+            parts.append('<img src="finbreak://chart/donut" width="500">')
+        else:
+            # Empty period: the on-screen dashboard shows a placeholder label, not a
+            # slice-less blank donut — mirror that per-surface here (INV-13). The
+            # trend still renders (an all-zero bar chart is a valid, non-error view).
+            parts.append(f"<p>{_tr('No spending in this period')}</p>")
         trend_chart = build_trend_chart(
             trend, _tr("Income"), _tr("Spending"), theme.chart
         )
-        images = [
-            ("finbreak://chart/donut", self._rasterise(donut)),
-            ("finbreak://chart/trend", self._rasterise(trend_chart)),
-        ]
-        html = (
-            f"<h2>{_tr('Charts')}</h2>"
-            '<img src="finbreak://chart/donut" width="500">'
-            '<img src="finbreak://chart/trend" width="500">'
-        )
-        return html, images
+        images.append(("finbreak://chart/trend", self._rasterise(trend_chart)))
+        parts.append('<img src="finbreak://chart/trend" width="500">')
+        return "".join(parts), images
 
     def _transactions_html(
         self, options: ExportOptions, today: date, symbol: str
@@ -380,7 +385,7 @@ class PdfExportService:
                 cells.append(f"<td>{escape(acct)}</td>")
             cells.append(f"<td>{escape(txn.description)}</td>")
             cells.append(f"<td>{category_cell}</td>")
-            cells.append(f"<td>{_format_amount(disp, symbol)}</td>")
+            cells.append(f"<td>{escape(_format_amount(disp, symbol))}</td>")
             body_rows.append("<tr>" + "".join(cells) + "</tr>")
         footnote_text = _tr(
             "Summary and charts exclude money moved between your own "

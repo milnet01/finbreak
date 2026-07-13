@@ -268,6 +268,21 @@ def test_empty_period_still_valid_pdf(qapp, service):
     assert pdf[:5] == b"%PDF-"
 
 
+def test_empty_period_charts_shows_placeholder_not_blank_donut(qapp, service):
+    # INV-13: an empty period draws the per-surface empty placeholder (mirroring
+    # the on-screen dashboard), not a slice-less blank donut.
+    a = _accounts(service)[0].id
+    _add(service, a, 100_00)  # January income; export empty March 2020
+    empty = ReportPrefs(MODE_SPECIFIC_MONTH, year=2020, month=3)
+    html, imgs = _svc(service)._build_html(
+        _options(prefs=empty, include_summary=False, include_transactions=False),
+        _TODAY,
+    )
+    assert "No spending in this period" in html
+    # Only the trend chart is embedded — no blank-donut image.
+    assert [url for url, _ in imgs] == ["finbreak://chart/trend"]
+
+
 def test_empty_account_set_is_empty_report_not_all(qapp, service):
     a = _accounts(service)[0].id
     _add(service, a, 100_00)
