@@ -285,8 +285,8 @@ class TransactionsView(QWidget):
         txn = self._selected_txn()
         if txn is None:
             return
-        leaves = self._categorization.leaf_categories()
-        dialog = CategoryPickerDialog(leaves, txn.category_id, self)
+        grouped = self._categorization.leaf_categories_grouped()
+        dialog = CategoryPickerDialog(grouped, txn.category_id, self)
         show_modal(dialog, lambda: self._apply_category(dialog, txn))
 
     def _apply_category(self, dialog: CategoryPickerDialog, txn: Transaction) -> None:

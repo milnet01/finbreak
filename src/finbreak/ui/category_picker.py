@@ -2,10 +2,11 @@
 
 A small ``QDialog`` (one dialog per file, like ``ui/account_picker``): pick a
 **leaf** category for a transaction, with an explicit *Uncategorised* choice, +
-OK/Cancel. The dialog is "dumb" — it takes the already-fetched leaf list, not a
-service; callers get that list from ``CategorizationService.leaf_categories()``
-(the single definition of the assignable, non-root set — INV-9). All strings go
-through ``tr()`` and every widget sits in a layout manager (coding.md § 5.2).
+OK/Cancel. The dialog is "dumb" — it takes the already-grouped category list, not
+a service; callers get that from ``CategorizationService.leaf_categories_grouped()``
+(FIBR-0123 D4 — the leaves can't re-derive their Type, so grouping is done once in
+the service). All strings go through ``tr()`` and every widget sits in a layout
+manager (coding.md § 5.2).
 """
 
 from __future__ import annotations
@@ -20,13 +21,13 @@ from PySide6.QtWidgets import (
 )
 
 from finbreak.models import Category
-from finbreak.ui._widgets import select_combo_data
+from finbreak.ui._widgets import add_grouped_categories, select_combo_data
 
 
 class CategoryPickerDialog(QDialog):
     def __init__(
         self,
-        leaves: list[Category],
+        grouped: list[tuple[str, list[Category]]],
         current_category_id: int | None,
         parent: QWidget | None = None,
     ):
@@ -35,8 +36,7 @@ class CategoryPickerDialog(QDialog):
 
         self._combo = QComboBox()
         self._combo.addItem(self.tr("Uncategorised"), None)  # index 0 — the default
-        for leaf in leaves:
-            self._combo.addItem(leaf.name, leaf.id)
+        add_grouped_categories(self._combo, grouped)
         if current_category_id is not None:
             select_combo_data(self._combo, current_category_id)
 

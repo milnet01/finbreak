@@ -215,6 +215,42 @@ def test_INV8_learning_path_refresh_catches_vault_locked(qtbot, service, monkeyp
 
 
 # --------------------------------------------------------------------------- #
+# FIBR-0123 INV-1/INV-3/INV-7 — CategoryPickerDialog now takes grouped data
+# --------------------------------------------------------------------------- #
+def test_FIBR0123_picker_rests_on_uncategorised(qtbot, service):
+    from finbreak.ui.category_picker import CategoryPickerDialog
+
+    grouped = CategorizationService(service.vault).leaf_categories_grouped()
+    dialog = CategoryPickerDialog(grouped, None)
+    qtbot.addWidget(dialog)
+    assert dialog._combo.currentIndex() == 0
+    assert dialog.selected_category_id() is None, "the default rests on Uncategorised"
+
+
+def test_FIBR0123_picker_prefills_stored_category(qtbot, service):
+    from finbreak.ui.category_picker import CategoryPickerDialog
+
+    grouped = CategorizationService(service.vault).leaf_categories_grouped()
+    leaf_id = grouped[0][1][0].id
+    dialog = CategoryPickerDialog(grouped, leaf_id)
+    qtbot.addWidget(dialog)
+    assert dialog.selected_category_id() == leaf_id, "prefill selects the stored id"
+
+
+def test_FIBR0123_picker_groups_under_headers(qtbot, service):
+    from finbreak.ui.category_picker import CategoryPickerDialog
+
+    grouped = CategorizationService(service.vault).leaf_categories_grouped()
+    dialog = CategoryPickerDialog(grouped, None)
+    qtbot.addWidget(dialog)
+    combo = dialog._combo
+    texts = [combo.itemText(i) for i in range(combo.count())]
+    assert texts[0] == "Uncategorised", "the special row stays at index 0"
+    assert "Income" in texts and "Expenditure" in texts, "section headers present"
+    assert any(t.endswith("(Income)") for t in texts), "rows carry the Type tag"
+
+
+# --------------------------------------------------------------------------- #
 # INV-9 — the four filters, alone and combined
 # --------------------------------------------------------------------------- #
 def _seed_mixed(service):
