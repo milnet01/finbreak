@@ -172,3 +172,39 @@ def test_restore_from_shell_enters_unlocked_under_new_master(qtbot, tmp_path):
     # The restored data is present (the source's single seeded account survived).
     assert (dest / "vault.db").exists() and (dest / "vault.kdf.json").exists()
     service.lock()
+
+
+# --------------------------------------------------------------------------- #
+# INV-5/D4 — an interrupted restore is reconciled at next launch, not a dead-end
+# --------------------------------------------------------------------------- #
+def test_interrupted_restore_recovers_old_pair_at_launch(qtbot, tmp_path):
+    from finbreak.ui.main_window import MainWindow
+
+    dest = tmp_path / "dest"
+    dest.mkdir()
+    vault_p, sidecar_p = dest / "vault.db", dest / "vault.kdf.json"
+    # Simulate a crash between the two install os.replace calls: the NEW vault.db
+    # is installed but the sidecar isn't (a mixed live state), and the original
+    # pair sits in timestamped *.old copies (the move-aside completed).
+    original_auth = AuthService(vault_p, sidecar_p)
+    original_auth.first_run(bytearray(b"the original master"), "USD")
+    original_auth.lock()
+    original_vault_bytes = vault_p.read_bytes()
+    original_sidecar_bytes = sidecar_p.read_bytes()
+    vault_p.rename(dest / "vault.db.20260101T000000.old")
+    sidecar_p.rename(dest / "vault.kdf.json.20260101T000000.old")
+    vault_p.write_bytes(b"a half-installed new vault with no sidecar yet")  # orphan
+
+    service = AuthService(vault_p, sidecar_p)
+    window = MainWindow(service)  # must NOT hard-error on the mixed state
+    qtbot.addWidget(window)
+
+    # The original pair is recovered into place, and the app lands on unlock (which
+    # carries the restore affordance — no dead-end).
+    assert vault_p.read_bytes() == original_vault_bytes, (
+        "the original vault is recovered"
+    )
+    assert sidecar_p.read_bytes() == original_sidecar_bytes, "the original sidecar too"
+    assert isinstance(window._dialog, UnlockDialog), "lands on unlock, not a hard error"
+    assert service.unlock(bytearray(b"the original master")) is True
+    service.lock()

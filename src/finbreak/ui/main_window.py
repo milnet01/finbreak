@@ -45,7 +45,7 @@ from PySide6.QtWidgets import (
 )
 
 from finbreak import __version__, paths
-from finbreak.errors import BackupError, VaultLockedError
+from finbreak.errors import BackupError, VaultLockedError, VaultStateError
 from finbreak.services.accounts import AccountService
 from finbreak.services.auth import (
     DATETIME_SYSTEM,
@@ -208,6 +208,12 @@ class MainWindow(QMainWindow):
         # The friendly default (minus + colour on) applies until then.
         self._amount_prefs = AmountPrefs("minus", True)
         self.setWindowTitle(self.tr("finbreak"))
+
+        # Recover from a restore interrupted mid-install BEFORE routing: a crash
+        # between the two install renames leaves a mixed live pair while the
+        # original sits in *.old copies — recover it so the app never dead-ends on
+        # the mixed-state error (FIBR-0014 D4/INV-5).
+        self._reconcile_interrupted_restore()
 
         # Read routing FIRST — a mixed vault/sidecar pair raises VaultStateError
         # here and propagates to run()'s guard; the window is never shown (INV-2c).
@@ -817,6 +823,34 @@ class MainWindow(QMainWindow):
         dialog.restore_requested.connect(self._on_restore_requested)
         dialog.rejected.connect(self._route_pre_login)
         self._open_dialog(dialog)
+
+    def _reconcile_interrupted_restore(self) -> None:
+        """If a restore crashed mid-install, recover the original vault from its
+        ``*.old`` copies (FIBR-0014 D4/INV-5). A restore moves the existing pair
+        aside to timestamped ``*.old`` and installs ``vault.db`` then the sidecar; a
+        crash between those two renames leaves a **mixed** live pair. This acts ONLY
+        on that exact signature — a mixed live state AND ``*.old`` copies present —
+        which never occurs in normal operation, so a healthy or clean-first-run
+        vault is untouched. The original is restored into place (the half-installed
+        orphan discarded); the user lands on the unlock screen, whose 'Restore from
+        a backup' affordance lets them retry if they were locked out."""
+        vault_path = self._service.vault.vault_path
+        sidecar_path = self._service.vault.sidecar_path
+        olds = sorted(vault_path.parent.glob(f"{vault_path.name}.*.old"))
+        old_sidecars = sorted(sidecar_path.parent.glob(f"{sidecar_path.name}.*.old"))
+        if not (olds and old_sidecars):
+            return  # no interrupted-restore signature — leave routing to state()
+        try:
+            self._service.state()
+            return  # a clean live pair — the *.old are just kept-for-safety leftovers
+        except VaultStateError:
+            pass  # mixed live pair + *.old present → an interrupted restore
+        # Put the most-recent original pair back, discarding the half-installed
+        # orphan. Both files land owner-only (the *.old inherit 0o600 via rename).
+        vault_path.unlink(missing_ok=True)
+        sidecar_path.unlink(missing_ok=True)
+        os.replace(olds[-1], vault_path)
+        os.replace(old_sidecars[-1], sidecar_path)
 
     def _route_pre_login(self) -> None:
         """Return to the correct pre-login surface (first-run when no vault, unlock
