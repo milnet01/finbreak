@@ -1,0 +1,9 @@
+{
+  "format_version": 1,
+  "memory_kib": 47104,
+  "time_cost": 1,
+  "parallelism": 1,
+  "key_len": 32,
+  "salt_len": 16,
+  "salt_hex": "0e0b007f68e713ac8932df6bcb3a0b88"
+}

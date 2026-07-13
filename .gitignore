@@ -17,6 +17,10 @@ __pycache__/
 *.sqlite3
 *.db-*
 *.sqlite-*
+# Exception: the FIBR-0015 cross-package upgrade-path fixture is a SYNTHETIC,
+# throwaway vault (documented test keys, no real financial data) committed on
+# purpose so a test proves an old-package vault still opens after the swap.
+!tests/fixtures/windows_build/vault.db
 *.sqlite3-*
 
 # Tooling caches
