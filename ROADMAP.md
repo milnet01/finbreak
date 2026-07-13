@@ -441,7 +441,7 @@ lands on top.
 
 ### 🎨 Features · 🔒 Security
 
-- 🚧 [FIBR-0013] **P11: locked PDF export with section
+- ✅ [FIBR-0013] **P11: locked PDF export with section
   selection.** `PdfExportService` renders chosen sections
   (summary / charts / transactions) for a chosen period via the
   Qt PDF engine, then encrypts with a password set at export
@@ -452,6 +452,7 @@ lands on top.
   **Layman:** Save a password-protected PDF report of your finances — pick which parts to include (summary, charts, transactions) and the date range, and set a password so only you can open it.
   UX (user, 2026-07-12): the export password must be OPTIONAL — the user can choose to add one, but an unprotected PDF export is a first-class supported outcome (not forced). So the "locked" in the headline is opt-in: the section-selection export flow offers an optional password field; empty → a normal unencrypted PDF, non-empty → the pikepdf AES-256 export-lock (ADR-0004). Design the dialog around that choice.
   In-progress 2026-07-13: spec docs/specs/FIBR-0013.md drafted (brainstorm-approved) and in /cold-eyes (project cap 7). Export password OPTIONAL per user; SC5 relaxed accordingly (discovery.md updated).
+  Resolved 2026-07-13: P11 locked-PDF export SHIPPED by TDD (7 slices). PdfExportService (in-memory render → optional pikepdf AES-256, atomic export); ui/charts.py shared builders; ReportingService widened to an account set; ExportDialog (INV-14 gating + master-toggle state machine); File-menu + toolbar entry; --self-test encrypt leg. Close: /audit 0 in-scope; /indie-review 2 cold lanes → no CRIT/HIGH/MED, 3 LOW fixed inline (empty-donut placeholder, currency-symbol escaping, narrowed export except). Gate green 779/1. Tag FIBR-0013-complete.
 
 ---
 

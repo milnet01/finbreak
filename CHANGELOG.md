@@ -21,6 +21,17 @@ signaling per
 
 ## [Unreleased]
 
+### Added
+
+- **Export a password-protected PDF report (FIBR-0013).** (FIBR-0013)
+  File → Export report as PDF… (and the toolbar) opens a dialog to choose which
+  sections to include (summary / charts / transactions), the period, and which
+  accounts (all or a chosen subset — with combined totals plus a per-account
+  summary line). Optionally set a password to AES-256-lock the file so only you can
+  open it; leave it blank for a normal unencrypted PDF. Pick a Light or Dark theme.
+  Confirmed internal transfers are excluded from the summary and charts but shown
+  and marked in the transaction list.
+
 ## [0.1.8] - 2026-07-13
 
 ### Added
