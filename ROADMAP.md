@@ -470,6 +470,7 @@ lands on top.
   Kind: implement. Source: planned.
   **Layman:** A full Settings screen plus an encrypted backup you can export and restore — your one safety net if you ever forget your master password — and a light/dark theme choice.
   Note (2026-07-09): the Settings-screen scaffold + the user-configurable auto-lock timeout (+ base-currency read-only display) are pulled FORWARD into FIBR-0055 (near-term, user-requested); FIBR-0055's first cut delivers the scaffold + configurable auto-lock timeout + read-only currency only. This phase narrows to what remains: the encrypted-backup export/import (the only mitigation for a forgotten master password, ADR-0003), the dark-theme polish pass and its dark/light/follow-system theme toggle (a toggle needs the theme system this pass builds), stored-PDF-password management, and hosting the FIBR-0017 language switcher. If FIBR-0055 ships first, this becomes an extension of that Settings screen rather than a fresh one.
+  Split (2026-07-13, in-session, user-approved): P12 bundled four independent pieces. Auto-lock is already shipped (mechanism FIBR-0114; user-configurable timeout + Settings scaffold + read-only currency via FIBR-0055). This item is now NARROWED to the encrypted backup export/restore only — the ADR-0003 forgotten-master-password mitigation, keyed by a SEPARATE backup password so it can actually recover a forgotten master password. The other three pieces are split into their own items: app-wide theme system -> FIBR-0127; stored-PDF-password management UI -> FIBR-0128; language-switcher hosting -> FIBR-0129 (note: overlaps FIBR-0017, which already owns the i18n picker — reconcile when either is specced). Build order: backup (this) first, then 0127, 0128, 0129. Spec: docs/specs/FIBR-0014.md (encrypted backup).
 
 ---
 
@@ -480,6 +481,27 @@ lands on top.
   Lanes: ui, i18n, services, tests.
   Source: user-request-2026-07-01.
   Deferred from FIBR-0004 (P02) per user decision 2026-07-02: the three P02 screens (first_run, unlock, main_window) build their strings once in __init__ and do NOT implement live language switching (changeEvent → retranslateUi). coding.md §5.2 asks for this "from P02"; the FIBR-0004 spec deliverable required only tr() strings + RTL layouts + QLocale amounts (all shipped), and there are no translations to switch yet. When this phase lands, add changeEvent/retranslateUi to those three screens (and every screen built between P02 and here) so the language switcher takes effect without a relaunch.
+
+- 📋 [FIBR-0127] **App-wide light/dark/follow-system theme system + dark-theme polish.**
+  Split from FIBR-0014 (P12). Nothing exists today: the app rides the system/Qt default palette (dark by convention) with NO stylesheet, no QPalette install, no theme setting key, no toggle (app.py sets no palette). This builds the theme system from scratch: a `theme` settings key (light/dark/system), palette application at the app entry point / main_window, and follow-system detection, plus a dark-theme polish pass. Widgets already READ the live palette (ui/icons.py _is_dark_theme, home.py ChartTheme from palette().text(), _amount.py fixed mid-tones) so they adapt once a palette is installed. Unblocks FIBR-0116 (live icon re-tint on theme switch) and the _amount.py palette-adaptive re-tinting both deferred here. Hosted in the FIBR-0055 Settings dialog. Note: code cites ADR-0002 for the dark theme but that ADR is actually PySide6-vs-PyQt6 — reconcile / write a real theme ADR when specced.
+  **Layman:** A proper light/dark mode you can choose (or have it follow your operating system), instead of the app being dark-only.
+  Kind: implement.
+  Lanes: ui.
+  Source: split-from-FIBR-0014-2026-07-13.
+
+- 📋 [FIBR-0128] **Manage stored PDF statement passwords (view / clear per-account).**
+  Split from FIBR-0014 (P12). The store already EXISTS (FIBR-0009, schema v5): accounts.statement_pdf_password (nullable, vault-encrypted at rest, deliberately not selected into the Account dataclass for credential hygiene), with AccountsRepository.get_pdf_password / set_pdf_password. It is written implicitly during import and auto-tried; there is NO management UI. This item adds the Settings-hosted screen to list accounts with a remembered statement password and clear/update it. (Distinct from the FIBR-0013 export password, which is ephemeral and never stored.)
+  **Layman:** A screen to see and clear the bank-statement passwords the app remembered while importing locked PDF statements.
+  Kind: implement.
+  Lanes: ui, security.
+  Source: split-from-FIBR-0014-2026-07-13.
+
+- 📋 [FIBR-0129] **Host the language switcher in Settings (picker widget + language setting key).**
+  Split from FIBR-0014 (P12). Strings are tr()-wrapped throughout and RTL-ready (app.setLayoutDirection), but there is NO QTranslator, no .ts/.qm, no language setting key, no picker. This provides the language-picker widget in the FIBR-0055 Settings dialog + a `language` settings key. The translation pipeline itself (lupdate -> .ts -> .qm -> QTranslator at startup + live retranslateUi) is FIBR-0017; gate the picker's usefulness on that, or ship the widget writing the key now and wire it when FIBR-0017 lands.
+  **Layman:** A place in Settings to pick your language. The actual translations arrive with FIBR-0017; this just provides the chooser and remembers your pick.
+  Kind: implement.
+  Lanes: ui, i18n.
+  Source: split-from-FIBR-0014-2026-07-13.
 
 ## P13 — Packaging & release
 
