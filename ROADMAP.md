@@ -508,23 +508,25 @@ lands on top.
 
 ### 📦 Packaging
 
-- 📋 [FIBR-0015] **P13: self-contained multi-platform
-  builds.** PyInstaller → Windows `.exe` and unsigned macOS
-  `.app` in a `.dmg`; **AppImage** (built on an old base image
-  for glibc compatibility); **Flatpak** manifest for Flathub.
-  Each artifact bundles the CPython runtime and **all** native
-  deps (SQLCipher, the needed Qt plugins, qpdf); the **exit
-  criterion** is a launch on a clean VM/container with **no
-  Python installed** (ADR-0007). Builds on the P01 smoke-test.
+- ✅ [FIBR-0015] **P13: Windows self-contained `.exe` build.**
+  PyInstaller freezes `finbreak.exe` (bundled CPython + all native
+  deps — SQLCipher, the needed Qt plugins, qpdf) on a
+  `windows-latest` runner via `.github/workflows/windows-build.yml`
+  (`workflow_dispatch`), clean-roomed with Python off `PATH`
+  (`--self-test` → `FINBREAK_SELFTEST_OK`) and uploaded as a CI
+  artifact for testers. Unsigned, manual-update, no installer.
+  Builds on the P01 smoke-test.
   Dependencies: FIBR-0013, FIBR-0014, FIBR-0003 (direct
   predecessors). Walking the dependency edges, FIBR-0013 and
   FIBR-0014 transitively pull in the entire P02–P12 feature stack
   (FIBR-0004 through FIBR-0012), so P13 cannot start until the app
   is feature-complete. Lanes: build, ci, packaging.
   Kind: chore. Source: planned.
-  Note (2026-07-10): FIBR-0054 (in-app auto-update) pulls the **Linux AppImage** slice forward — it adds `scripts/build-release-appimage.sh` (a real release AppImage, reusing the FIBR-0003 build machinery) + Ed25519 signing + a published `v0.1.0` release. When FIBR-0015 lands, reuse that script rather than rebuilding it; FIBR-0015 remains owner of the Windows `.exe`, macOS `.app`/`.dmg`, and the Flatpak/Flathub manifest.
-  Windows-build readiness scan (2026-07-13, user asked "how far from a Windows .exe"): the app code is cross-platform and 6/7 native deps ship Windows wheels (PySide6, pikepdf, argon2-cffi-bindings, pypdfium2, cryptography, lxml). THE ONE BLOCKER: sqlcipher3-binary==0.6.0 (the SQLCipher encrypted-vault engine, ADR-0003) has LINUX-ONLY wheels — no Windows (or macOS) wheel on PyPI. So a Windows build needs SQLCipher-on-Windows solved first: either compile SQLCipher + the sqlcipher3 extension against OpenSSL in a windows-latest CI job, or vendor a prebuilt SQLCipher DLL and build the binding against it. This touches the security spine → spec + cold-eyes before coding. Second constraint: PyInstaller can't cross-compile — the .exe must be built ON Windows (GitHub Actions windows-latest is free for this public repo), then the artifact fetched. Auto-update on Windows is NOT built (WindowsInstaller is a designed-for seam only, FIBR-0054 out-of-scope), so an initial Windows .exe is manual-update — fine for testing. User has a Windows test machine + a drop share (/mnt/Games/Scripts/Apps/finbreak/) ready.
-  Wine build path (user, 2026-07-13): this Linux dev machine has Wine installed AND MSVC available under Wine. This changes the "PyInstaller can't cross-compile" constraint — the plan can build + TEST a Windows .exe LOCALLY before any GitHub CI: run a Windows Python under Wine, pip-install the (already-Windows-available) wheels, use MSVC-on-Wine to compile SQLCipher + the sqlcipher3 binding (the one Linux-only dep), PyInstaller-freeze to finbreak-<ver>-x86_64.exe, and smoke-test it launches under Wine. Local iteration beats CI round-trips for the SQLCipher-Windows bring-up. GitHub windows-latest CI stays the reproducible/official build once it works locally. User is fine installing whatever is needed. Deliver the test .exe to the drop share /mnt/Games/Scripts/Apps/finbreak/ for the real Windows machine. ORDER CONFIRMED: FIBR-0013 (PDF export) -> FIBR-0014 -> FIBR-0015 (Windows).
+  Resolved 2026-07-13 (FIBR-0015-complete): the Windows `.exe` shipped by TDD (fixture-first cross-package regression + the INV-3 parity guard + the freeze driver). The one-time blocker — `sqlcipher3-binary` shipped Linux/macOS wheels only — was dissolved by swapping to `sqlcipher3-wheels` (the cross-platform fork, same SQLCipher 4.12.0 engine; ADR-0009), proven vault-portable both directions before the swap. `/audit` 0 actionable; `/indie-review` 2 cold lanes 0 defects; gate green 851/1. See docs/journal/FIBR-0015.md.
+  Scope: this item delivered **only the Windows `.exe`**. The **Linux AppImage** already shipped under FIBR-0054 (`scripts/build-release-appimage.sh`); **macOS `.app`/`.dmg` + Flatpak/Flathub** are split to **FIBR-0130** (packaging-only — the `sqlcipher3-wheels` swap already cleared their SQLCipher blocker too). Superseded: the 2026-07-13 "compile SQLCipher on Windows" readiness-scan blocker and the "Wine + MSVC" local-build note — the Windows wheel makes both moot.
+
+- 📋 [FIBR-0130] **P13: macOS `.dmg` + Flatpak/Flathub packaging.**
+  The macOS `.app`-in-`.dmg` and the Flatpak manifest for Flathub — the packaging remainder split out of FIBR-0015 when its Windows `.exe` slice closed (2026-07-13). The SQLCipher crypto blocker is already cleared for both (the `sqlcipher3-wheels` fork ships macOS + Linux wheels of the same 4.12.0 engine, ADR-0009), so this is packaging-only: freeze the macOS app on a `macos-latest` runner (reusing the FIBR-0015 `windows_freeze_flags.py` collection list + `--self-test` clean-room) and author the Flatpak manifest; each artifact still meets ADR-0007's "no Python installed" launch bar. Dependencies: FIBR-0015 (freeze tooling), FIBR-0037 (icon → `.icns` / Flatpak icon). Lanes: build, ci, packaging. Kind: chore. Source: split-from-FIBR-0015-2026-07-13.
 
 - 📋 [FIBR-0016] **P13: `scripts/publish-release.sh` +
   release automation.** One committed script builds every

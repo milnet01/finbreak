@@ -23,6 +23,15 @@ signaling per
 
 ### Added
 
+- **Windows build (testing) — a self-contained `finbreak.exe`.** (FIBR-0015)
+  finbreak can now be packaged into a single Windows `.exe` (no Python needed) by
+  the on-demand `windows-build` CI workflow, so friends can test it on Windows.
+  The SQLCipher vault engine moved to a cross-platform wheel (`sqlcipher3-wheels`,
+  the same SQLCipher 4.12.0), so your existing vaults and backups open unchanged.
+  The `.exe` is **unsigned** for now — Windows SmartScreen may warn ("More info →
+  Run anyway") — and there is **no auto-update on Windows** yet (replace the old
+  `.exe` to update).
+
 - ****Encrypted backup export & restore** — save a portable, password-protected `.fbk` backup of your vault and restore it later.** (FIBR-0014)
   Export a `.fbk` from Settings, keyed by a **separate backup password** you
   choose. If you ever forget your master password, restore the backup from the
