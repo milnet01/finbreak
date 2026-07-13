@@ -27,4 +27,11 @@ paths = [
 # secret — allowlist the exact string, not a broad path (FIBR-0051).
 regexes = [
   '''shiboken6\.isValid''',
+  # `cipher_compatibility=4` is a SQLCipher PRAGMA *compatibility level* (the
+  # integer 4 — the on-disk cipher profile), cited throughout the FIBR-0015 spec
+  # next to words like "key"/"raw-hex-keyed", which trips the default
+  # `generic-api-key` rule. The value is a fixed public constant, not a secret —
+  # allowlist the exact token, not a broad path (same pattern as shiboken6.isValid,
+  # FIBR-0015).
+  '''cipher_compatibility=4''',
 ]
