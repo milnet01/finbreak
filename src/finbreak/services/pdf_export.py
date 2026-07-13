@@ -14,6 +14,7 @@ QWidget), so a `QApplication` must exist when rendering (always true in the app)
 
 from __future__ import annotations
 
+import calendar
 import os
 from dataclasses import dataclass
 from datetime import date
@@ -23,18 +24,36 @@ from pathlib import Path
 
 import pikepdf
 from PySide6.QtCharts import QChart, QChartView
-from PySide6.QtCore import QBuffer, QIODevice, QUrl
+from PySide6.QtCore import QBuffer, QCoreApplication, QIODevice, QUrl
 from PySide6.QtGui import QColor, QImage, QPageSize, QPdfWriter, QTextDocument
 
+from finbreak.datetime_format import format_date
+from finbreak.models import Account, Summary
+from finbreak.repositories.settings import SettingsRepository
+from finbreak.services.accounts import AccountService
+from finbreak.services.auth import DATETIME_SYSTEM
 from finbreak.services.reporting import (
+    MODE_CURRENT_MONTH,
+    MODE_PREVIOUS_MONTH,
+    MODE_SPECIFIC_YEAR,
+    MODE_YEAR_TO_DATE,
     ReportingService,
     ReportPrefs,
     resolve_period,
 )
 from finbreak.services.transactions import TransactionService
+from finbreak.services.transfer_detection import TransferDetectionService
 from finbreak.ui._amount import _NEGATIVE_TEXT, _POSITIVE_TEXT, _format_amount
 from finbreak.ui.charts import ChartTheme, build_donut_chart, build_trend_chart
 from finbreak.vault import Vault
+
+
+def _tr(text: str) -> str:
+    """Translate outside a QObject (the service isn't one). No ``.qm`` is loaded
+    yet, so this returns the source string — the `tr()` convention that keeps every
+    user-facing string translatable (coding.md § 5.2), the non-widget analogue of
+    ``self.tr()``."""
+    return QCoreApplication.translate("PdfExport", text)
 
 
 @dataclass(frozen=True)
@@ -155,7 +174,7 @@ class PdfExportService:
         reporting = ReportingService(self._vault)
         symbol = reporting.base_currency()
         images: list[tuple[str, QImage]] = []
-        parts = ["<h1>Financial report</h1>"]
+        parts = [self._header_html(options, today, symbol)]
         if options.include_summary:
             parts.append(self._summary_html(reporting, options, today, symbol))
         if options.include_charts:
@@ -173,6 +192,66 @@ class PdfExportService:
         )
         return html, images
 
+    # -- header ---------------------------------------------------------------
+
+    def _date_pref(self) -> str:
+        return (
+            SettingsRepository(self._vault.connection).get("date_format")
+            or DATETIME_SYSTEM
+        )
+
+    def _accounts_in_scope(self, options: ExportOptions) -> list[Account]:
+        """The live accounts the export covers, **sorted by name** (INV-5). ``None``
+        ⇒ every account; a subset ⇒ those still-present (a stale id drops out, D5)."""
+        accounts = AccountService(self._vault).list_accounts()
+        if options.account_ids is not None:
+            accounts = [a for a in accounts if a.id in options.account_ids]
+        return sorted(accounts, key=lambda a: a.name)
+
+    def _account_names(self, options: ExportOptions) -> str:
+        """``All accounts`` for ``None``; the names comma-joined for ≤ 3; ``{n}
+        accounts`` beyond 3 (a bounded header string, D2)."""
+        if options.account_ids is None:
+            return _tr("All accounts")
+        names = [a.name for a in self._accounts_in_scope(options)]
+        if len(names) > 3:
+            return _tr("{n} accounts").format(n=len(names))
+        return ", ".join(names)
+
+    def _period_label(self, options: ExportOptions, today: date) -> str:
+        """The human-readable period line per mode (D2), distinct from D9's terse
+        filename slug."""
+        prefs = options.prefs
+        start, end = resolve_period(prefs, today)
+        if prefs.mode == MODE_SPECIFIC_YEAR:
+            return str(end.year)
+        if prefs.mode == MODE_YEAR_TO_DATE:
+            pref = self._date_pref()
+            return _tr("Year to date ({start} – {end})").format(
+                start=format_date(start.isoformat(), pref),
+                end=format_date(end.isoformat(), pref),
+            )
+        month = f"{calendar.month_name[end.month]} {end.year}"
+        if prefs.mode == MODE_CURRENT_MONTH:
+            return _tr("This month ({label})").format(label=month)
+        if prefs.mode == MODE_PREVIOUS_MONTH:
+            return _tr("Previous month ({label})").format(label=month)
+        return month  # SPECIFIC_MONTH — the month alone, no redundant parenthetical
+
+    def _header_html(self, options: ExportOptions, today: date, symbol: str) -> str:
+        title = _tr("finbreak — Financial Report")
+        generated = _tr("Generated {date} · Accounts: {names} · {currency}").format(
+            date=escape(format_date(today.isoformat(), self._date_pref())),
+            names=escape(self._account_names(options)),
+            currency=escape(symbol),
+        )
+        period = _tr("Period: {label}").format(
+            label=escape(self._period_label(options, today))
+        )
+        return f"<h1>{escape(title)}</h1><p>{generated}</p><p>{period}</p>"
+
+    # -- sections -------------------------------------------------------------
+
     def _summary_html(
         self,
         reporting: ReportingService,
@@ -180,16 +259,51 @@ class PdfExportService:
         today: date,
         symbol: str,
     ) -> str:
-        s = reporting.summary(options.prefs, options.account_ids, today)
+        combined = reporting.summary(options.prefs, options.account_ids, today)
+        html = f"<h2>{_tr('Summary')}</h2>" + self._summary_table(combined, symbol)
+        in_scope = self._accounts_in_scope(options)
+        if len(in_scope) > 1:
+            # Per-account lines (multi-account only, INV-5): each over its own set,
+            # so combined = Σ per-account (accounts disjoint). Sorted by name.
+            rows = "".join(
+                self._per_account_row(reporting, options.prefs, today, symbol, acct)
+                for acct in in_scope
+            )
+            html += (
+                f"<h3>{_tr('By account')}</h3><table>"
+                f"<tr><th></th><th>{_tr('Income')}</th>"
+                f"<th>{_tr('Spending')}</th><th>{_tr('Net')}</th></tr>"
+                f"{rows}</table>"
+            )
+        return html
+
+    def _summary_table(self, s: Summary, symbol: str) -> str:
         inc = _format_amount(s.income, symbol)
         spend = _format_amount(s.expenditure, symbol)
         net = _format_amount(s.net, symbol)
-        rows = (
-            f"<tr><td>Income</td><td>{inc}</td></tr>"
-            f"<tr><td>Spending</td><td>{spend}</td></tr>"
-            f"<tr><td>Net</td><td>{net}</td></tr>"
+        return (
+            "<table>"
+            f"<tr><td>{_tr('Income')}</td><td>{inc}</td></tr>"
+            f"<tr><td>{_tr('Spending')}</td><td>{spend}</td></tr>"
+            f"<tr><td>{_tr('Net')}</td><td>{net}</td></tr>"
+            "</table>"
         )
-        return f"<h2>Summary</h2><table>{rows}</table>"
+
+    def _per_account_row(
+        self,
+        reporting: ReportingService,
+        prefs: ReportPrefs,
+        today: date,
+        symbol: str,
+        acct: Account,
+    ) -> str:
+        s = reporting.summary(prefs, frozenset({acct.id}), today)
+        return (
+            f"<tr><td>{escape(acct.name)}</td>"
+            f"<td>{_format_amount(s.income, symbol)}</td>"
+            f"<td>{_format_amount(s.expenditure, symbol)}</td>"
+            f"<td>{_format_amount(s.net, symbol)}</td></tr>"
+        )
 
     def _charts_html(
         self,
@@ -202,14 +316,18 @@ class PdfExportService:
             options.prefs, options.account_ids, today
         )
         trend = reporting.monthly_trend(options.prefs, options.account_ids, today)
-        donut = build_donut_chart(spending, "Uncategorised", "Other", theme.chart)
-        trend_chart = build_trend_chart(trend, "Income", "Spending", theme.chart)
+        donut = build_donut_chart(
+            spending, _tr("Uncategorised"), _tr("Other"), theme.chart
+        )
+        trend_chart = build_trend_chart(
+            trend, _tr("Income"), _tr("Spending"), theme.chart
+        )
         images = [
             ("finbreak://chart/donut", self._rasterise(donut)),
             ("finbreak://chart/trend", self._rasterise(trend_chart)),
         ]
         html = (
-            "<h2>Charts</h2>"
+            f"<h2>{_tr('Charts')}</h2>"
             '<img src="finbreak://chart/donut" width="500">'
             '<img src="finbreak://chart/trend" width="500">'
         )
@@ -220,6 +338,9 @@ class PdfExportService:
     ) -> str:
         start, end = resolve_period(options.prefs, today)
         start_iso, end_iso = start.isoformat(), end.isoformat()
+        transfer_ids = TransferDetectionService(
+            self._vault
+        ).confirmed_transfer_txn_ids()
         rows = TransactionService(self._vault).list_transactions()
         selected = [
             (txn, disp, acct, cat)
@@ -227,13 +348,37 @@ class PdfExportService:
             if start_iso <= txn.occurred_on <= end_iso
             and (options.account_ids is None or txn.account_id in options.account_ids)
         ]
-        selected.sort(key=lambda r: r[0].occurred_on)
-        body = "".join(
-            f"<tr><td>{escape(txn.occurred_on)}</td><td>{escape(txn.description)}</td>"
-            f"<td>{escape(cat)}</td><td>{_format_amount(disp, symbol)}</td></tr>"
-            for (txn, disp, acct, cat) in selected
+        # (occurred_on, id) — id tiebreak keeps same-date rows reproducible (INV-6).
+        selected.sort(key=lambda r: (r[0].occurred_on, r[0].id))
+        show_account = len(self._accounts_in_scope(options)) > 1
+        header = f"<tr><th>{_tr('Date')}</th>"
+        if show_account:
+            header += f"<th>{_tr('Account')}</th>"
+        header += (
+            f"<th>{_tr('Description')}</th><th>{_tr('Category')}</th>"
+            f"<th>{_tr('Amount')}</th></tr>"
         )
-        return f"<h2>Transactions</h2><table>{body}</table>"
+        body_rows = []
+        for txn, disp, acct, cat in selected:
+            # Marker keyed on the transfer-id SET, not a category name, so a real
+            # category literally named "Transfer" is unaffected (INV-6).
+            category_cell = _tr("⇄ Transfer") if txn.id in transfer_ids else escape(cat)
+            cells = [f"<td>{escape(txn.occurred_on)}</td>"]
+            if show_account:
+                cells.append(f"<td>{escape(acct)}</td>")
+            cells.append(f"<td>{escape(txn.description)}</td>")
+            cells.append(f"<td>{category_cell}</td>")
+            cells.append(f"<td>{_format_amount(disp, symbol)}</td>")
+            body_rows.append("<tr>" + "".join(cells) + "</tr>")
+        footnote_text = _tr(
+            "Summary and charts exclude money moved between your own "
+            "accounts (transfers)."
+        )
+        return (
+            f"<h2>{_tr('Transactions')}</h2>"
+            f"<table>{header}{''.join(body_rows)}</table>"
+            f"<p>{footnote_text}</p>"
+        )
 
     @staticmethod
     def _rasterise(chart: QChart, width: int = 500, height: int = 320) -> QImage:
