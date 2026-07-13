@@ -64,9 +64,11 @@ Each is demonstrable by doing, not just by reading code.
 4. **Private by construction.** The data file is encrypted at rest; opening the
    app requires the master password; the app makes **no network connection of
    any kind**. Different OS logins see only their own password-locked data.
-5. **Shareable locked PDF.** A user can export a PDF report, choosing which
-   sections to include (summary / charts / transactions), that **opens only
-   with a password** they set at export time.
+5. **Shareable PDF, optionally locked.** A user can export a PDF report,
+   choosing which sections to include (summary / charts / transactions) and
+   which accounts, that can **optionally** be locked with a password set at
+   export time (optional per user directive 2026-07-12 — see FIBR-0013; an
+   unprotected export is a first-class supported outcome).
 6. **Runs everywhere, fully self-contained.** The same codebase produces a
    working **Windows** executable, an **unsigned macOS** `.app` (in a `.dmg`),
    and a **Linux AppImage**, plus a **Flatpak published on Flathub** — each
