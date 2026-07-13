@@ -24,7 +24,12 @@ becomes active.
 **FIBR-0015 (active):** Windows build (PyInstaller `.exe`; SQLCipher-on-Windows is
 the known blocker — `sqlcipher3-binary` is Linux-only, needs a Wine+MSVC local
 compile per the FIBR-0015 roadmap note).
-1. ⬜ Brainstorm + write/confirm spec (`docs/specs/FIBR-0015.md`)
+1. 🚧 Brainstorm + write/confirm spec (`docs/specs/FIBR-0015.md`) — **spec DRAFTED
+   2026-07-13.** Blocker dissolved: `sqlcipher3-wheels` (fork of coleifer/sqlcipher3)
+   ships a cp312 win_amd64 wheel with the identical `sqlcipher3` import + SQLCipher
+   4.12.0; cross-package vault round-trip proven both directions. Scope locked to
+   the Windows `.exe` only (user-approved); package swap project-wide (user-approved
+   "same fork everywhere"); build on GitHub Actions `windows-latest`. NEXT: `/cold-eyes`.
 2. ⬜ `/cold-eyes` the spec (project cap 7)
 3. ⬜ Write failing tests / build harness
 4. ⬜ Implement until tests pass
