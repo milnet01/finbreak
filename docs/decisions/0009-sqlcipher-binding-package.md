@@ -10,25 +10,24 @@
 
 ## Context
 
-This is the binding-package decision **FIBR-0003 anticipated but never wrote** —
-FIBR-0003 pinned `sqlcipher3-binary` provisionally as "the maintained package"
-and pointed a future ADR (expected via FIBR-0004) at formalising it. This is that
-ADR, and it also records the swap to the cross-platform fork.
+ADR-0003 stores all data in a SQLCipher database keyed by an Argon2id-derived raw
+key. SQLCipher reaches Python through a binding package, and ADR-0007 requires
+every release to be a self-contained bundle — the binding must ship the SQLCipher
+engine *inside its wheel* (no system `libsqlcipher`) on every target OS.
 
-ADR-0003 stores all data in a **SQLCipher** database keyed by an Argon2id-derived
-raw key. SQLCipher reaches Python through a binding package, and ADR-0007 requires
-every release to be a **self-contained bundle** — the binding must ship the
-SQLCipher engine *inside its wheel* (no system `libsqlcipher`) on every target OS.
+The package pinned at FIBR-0003, `sqlcipher3-binary==0.6.0`, publishes Linux/macOS
+wheels only — no Windows wheel on any version (PyPI JSON, 2026-07-13). PyInstaller
+cannot cross-compile, so a Windows `.exe` appeared to need a hand-compiled
+SQLCipher (Wine + MSVC, or a vendored DLL). That premise was stale: a sister
+distribution, **`sqlcipher3-wheels`**, publishes the same project (a fork,
+`github.com/laggykiller/sqlcipher3`, of `coleifer/sqlcipher3`) with a CI matrix
+that builds Windows, macOS, and Linux wheels, including `cp312-cp312-win_amd64`. It
+exposes the identical `sqlcipher3` import package and bundles the identical
+SQLCipher 4.12.0 community engine.
 
-The package pinned at FIBR-0003, `sqlcipher3-binary==0.6.0`, publishes
-**Linux/macOS wheels only** — no Windows wheel on any version (PyPI JSON,
-2026-07-13). PyInstaller cannot cross-compile, so a Windows `.exe` appeared to
-need a hand-compiled SQLCipher (Wine + MSVC, or a vendored DLL). That premise was
-stale: a sister distribution — **`sqlcipher3-wheels`** — publishes the **same
-project** (a fork, `github.com/laggykiller/sqlcipher3`, of `coleifer/sqlcipher3`)
-with a CI matrix that builds **Windows, macOS, and Linux** wheels, including
-`cp312-cp312-win_amd64`. It exposes the **identical `sqlcipher3` import package**
-and bundles the **identical SQLCipher 4.12.0 community** engine.
+This is also the binding-package decision FIBR-0003 anticipated but never wrote:
+FIBR-0003 pinned `sqlcipher3-binary` provisionally as "the maintained package" and
+pointed a future ADR (expected via FIBR-0004) at formalising it. This is that ADR.
 
 Alternatives considered:
 
@@ -56,14 +55,18 @@ in `tests/features/windows_build/`, the `-binary`-written fixture data in
 
 ## Decision
 
-Depend on **`sqlcipher3-wheels`** (pinned `==0.5.7`, its latest stable) on **every
-OS**. It is a drop-in for `sqlcipher3-binary` on the identical `sqlcipher3` import,
+Depend on **`sqlcipher3-wheels`** (pinned `==0.5.7`, its latest stable) on every
+OS. It is a drop-in for `sqlcipher3-binary` on the identical `sqlcipher3` import,
 so **no application code changes** — every DB-touching module keeps its
-`from sqlcipher3 import dbapi2`. The two packages carry **independent version
-lineages** (0.6.0 for `-binary`, 0.5.7 for `-wheels`); the lower `-wheels` number
-is **not** a downgrade of a shared package. The Windows `.exe` is then a
-dependency swap plus a PyInstaller job on a `windows-latest` runner — no crypto
-compilation.
+`sqlcipher3` import unchanged. The two packages carry independent version lineages
+(0.6.0 for `-binary`, 0.5.7 for `-wheels`); the lower `-wheels` number is **not** a
+downgrade of a shared package. The Windows `.exe` is then a dependency swap plus a
+PyInstaller job on a `windows-latest` runner — no crypto compilation.
+
+|            | Package             | Pin   | Bundled engine             | Wheels                |
+|------------|---------------------|-------|----------------------------|-----------------------|
+| **Before** | `sqlcipher3-binary` | 0.6.0 | SQLCipher 4.12.0 community  | Linux, macOS          |
+| **After**  | `sqlcipher3-wheels` | 0.5.7 | SQLCipher 4.12.0 community  | Linux, macOS, Windows |
 
 ## Consequences
 
@@ -78,14 +81,17 @@ compilation.
 
 - The binding is now a **community fork** rather than the upstream `-binary`
   package. Per `dependencies.md` §2, `pip-audit` cannot see a CVE inside a
-  **vendored native lib** (SQLCipher + SQLite + OpenSSL) — the advisory only
-  clears when the *wheel maintainer* re-releases, and that maintainer is now the
-  fork author. The vendored-native advisory watch therefore moves to the fork's
-  release cadence. If the fork lags a SQLCipher/OpenSSL CVE, the fallback is to
-  build the wheel from the fork's source (its README documents a conan-based
-  OpenSSL build) or revert Windows to a compile path. Such a lag would be filed
-  in `docs/known-issues.md` (per the `dependencies.md` §5 "Sweep posture" policy)
-  until it ships.
+  vendored native lib (SQLCipher + SQLite + OpenSSL) — the advisory only clears
+  when the *wheel maintainer* re-releases, and that maintainer is now the fork
+  author. The vendored-native advisory watch therefore moves to the fork's release
+  cadence. If the fork lags a SQLCipher/OpenSSL CVE, the fallback is to build the
+  wheel from the fork's source (its README documents a conan-based OpenSSL build)
+  or revert Windows to a compile path — filed in `docs/known-issues.md` per the
+  `dependencies.md` §2 vendored-native policy (which forwards to §5) until it ships.
+- The fork is **single-maintainer** (`laggykiller`), so abandonment is a
+  bus-factor risk. Its mitigation is the same build-from-source / revert-to-compile
+  fallback; because the swap changes no application code, reverting is a one-line
+  pin change.
 - A future Python-runtime bump past the fork's wheel matrix (currently cp38–cp314)
   would need a wheel refresh first — a non-issue for the cp312-pinned build.
 
@@ -111,3 +117,19 @@ sentences split; the fixture citation now names both the test dir
 (`tests/fixtures/windows_build/`); the positive-consequence bullet trimmed of its
 overlap with the selection rationale; and `ADR-0001`'s template updated to define
 the `## Cold-eyes loop log` section + the one post-acceptance edit it permits.
+
+**Loop 2 (2026-07-13) — same 3 lanes, cold. CONVERGED (polish).**
+`CRITICAL 0 · HIGH 0 · MEDIUM 0 · LOW ~5 · INFO ~4` — no structural / mechanical /
+architectural finding, and no loop-1 fix resurfaced (the `§5` repoint, the
+Context fold, and the sentence splits all held; accuracy + cross-doc lanes
+re-verified every pin / link / cite clean). Polish folded: reworded the
+"every module keeps its `from sqlcipher3 import dbapi2`" line to "keeps its
+`sqlcipher3` import unchanged" (3 modules use `from sqlcipher3.dbapi2 import
+DatabaseError`); repointed the known-issues cite to `dependencies.md` §2 (the
+primary vendored-native policy, which forwards to §5); reordered `## Context` to
+open with the technical forces and trail the FIBR-0003 provenance; trimmed the
+over-bolding; added a single-sourced before/after pins table; named the
+single-maintainer fork-abandonment risk as its own Negative bullet; and aligned
+the `decisions/README.md` Index gloss with this ADR's title. The two lanes that
+raised a HIGH/MEDIUM did so only for the *missing* converged-pass log entry — this
+entry closes it (EC7). **CLEARED — converged at loop 2** (of the project cap 7).
