@@ -313,8 +313,10 @@ def _snapshot_tables(conn) -> dict[str, list]:
             "AND name NOT LIKE 'sqlite_%'"
         ).fetchall()
     ]
+    # nosec B608: `n` is a table name read from sqlite_master (never user input) —
+    # the dynamic enumeration INV-2 mandates; not an injectable interpolation.
     return {
-        n: sorted(map(str, conn.execute(f"SELECT * FROM {n}").fetchall()))
+        n: sorted(map(str, conn.execute(f"SELECT * FROM {n}").fetchall()))  # nosec B608
         for n in names
     }
 
@@ -636,3 +638,49 @@ def test_INV13_restore_under_forced_different_process_default(tmp_path):
         )
     assert dest.unlock(bytearray(_M2, "utf-8")) is True, "restored data is intact"
     dest.lock()
+
+
+# --------------------------------------------------------------------------- #
+# Review fixes — restore fail-closed normalises non-UTF-8 / corrupt-DEFLATE
+# entries too (INV-4: no raw traceback escapes on crafted input)
+# --------------------------------------------------------------------------- #
+def test_INV4_non_utf8_manifest_fails_closed(tmp_path):
+    from finbreak.errors import BackupError
+
+    fbk, _snap = _export_from_seed(tmp_path)
+    with zipfile.ZipFile(fbk) as zf:
+        params, db = zf.read("params.json"), zf.read("vault.db")
+    bad = tmp_path / "bad.fbk"
+    with zipfile.ZipFile(bad, "w") as zf:
+        zf.writestr(
+            "manifest.json", b"\xff\xfe not valid utf-8"
+        )  # -> UnicodeDecodeError
+        zf.writestr("params.json", params)
+        zf.writestr("vault.db", db, compress_type=zipfile.ZIP_STORED)
+    auth, d, vb, sb = _dest_with_vault(tmp_path)
+    with pytest.raises(BackupError):  # not a raw UnicodeDecodeError
+        BackupService(auth.vault, auth).restore_backup(bad, _BACKUP_PW, _M2)
+    _assert_unchanged(d, vb, sb)
+
+
+def test_INV4_corrupt_deflate_entry_fails_closed(tmp_path):
+    from finbreak.errors import BackupError
+
+    fbk, _snap = _export_from_seed(tmp_path)
+    with zipfile.ZipFile(fbk) as zf:
+        params, db = zf.read("params.json"), zf.read("vault.db")
+    bad = tmp_path / "bad.fbk"
+    # manifest.json DEFLATED (the first entry), then corrupt its deflate stream.
+    with zipfile.ZipFile(bad, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("manifest.json", json.dumps({"format_version": 1}) + " " * 200)
+        zf.writestr("params.json", params)
+        zf.writestr("vault.db", db, compress_type=zipfile.ZIP_STORED)
+    raw = bytearray(bad.read_bytes())
+    namelen = int.from_bytes(raw[26:28], "little")
+    extralen = int.from_bytes(raw[28:30], "little")
+    raw[30 + namelen + extralen] = 0xFF  # invalid deflate block type -> zlib.error
+    bad.write_bytes(raw)
+    auth, d, vb, sb = _dest_with_vault(tmp_path)
+    with pytest.raises(BackupError):  # not a raw zlib.error
+        BackupService(auth.vault, auth).restore_backup(bad, _BACKUP_PW, _M2)
+    _assert_unchanged(d, vb, sb)

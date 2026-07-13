@@ -43,6 +43,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from sqlcipher3.dbapi2 import DatabaseError
 
 from finbreak import __version__, paths
 from finbreak.errors import BackupError, VaultLockedError, VaultStateError
@@ -771,8 +772,10 @@ class MainWindow(QMainWindow):
 
     # --- encrypted backup export / restore (FIBR-0014) ---------------------- #
     def _open_backup_export(self) -> None:
-        # Reached from the Settings "Export backup…" button (INV-8). Replace Settings
-        # with the small backup-password dialog; the shell owns the save + export.
+        # Reached from the Settings "Export backup…" button (INV-8). Tear down the
+        # Settings dialog FIRST — the single _dialog slot holds one app-modal at a
+        # time; leaving Settings shown would trap input over the new dialog.
+        self._teardown_dialog()
         dialog = BackupExportDialog(self)
         dialog.export_requested.connect(self._on_backup_export_requested)
         dialog.rejected.connect(self._teardown_dialog)
@@ -801,8 +804,11 @@ class MainWindow(QMainWindow):
             BackupService(self._service.vault, self._service).export_backup(
                 Path(path), dialog.password()
             )
-        except (VaultLockedError, OSError, ValueError):
-            QApplication.restoreOverrideCursor()
+        except (VaultLockedError, OSError, ValueError, DatabaseError):
+            # A vault auto-lock mid-export (VaultLockedError), an unwritable path /
+            # disk-full (OSError), or a SQLCipher engine error while sqlcipher_export
+            # writes the intermediate DB (DatabaseError — an OperationalError isn't an
+            # OSError). export_backup left no partial .fbk; keep the dialog open.
             QMessageBox.warning(
                 self,
                 self.tr("Backup failed"),
@@ -812,13 +818,19 @@ class MainWindow(QMainWindow):
                 ),
             )
             return
-        QApplication.restoreOverrideCursor()
+        finally:
+            # Restore on EVERY path — success, the caught set, or an uncaught bug —
+            # so a stuck wait cursor never survives the export.
+            QApplication.restoreOverrideCursor()
         self._teardown_dialog()
         self._status(self.tr("Backup saved"))
 
     def _open_restore(self) -> None:
-        # Pre-login restore, reachable from first-run + unlock (INV-8). On cancel,
-        # route back to whichever pre-login surface the vault state calls for.
+        # Pre-login restore, reachable from first-run + unlock (INV-8). Tear down the
+        # originating first-run/unlock dialog FIRST (one app-modal per _dialog slot);
+        # hide()+deleteLater doesn't re-emit rejected, so first-run won't quit. On
+        # cancel, route back to whichever pre-login surface the vault state calls for.
+        self._teardown_dialog()
         dialog = BackupRestoreDialog(self)
         dialog.restore_requested.connect(self._on_restore_requested)
         dialog.rejected.connect(self._route_pre_login)
@@ -836,21 +848,35 @@ class MainWindow(QMainWindow):
         a backup' affordance lets them retry if they were locked out."""
         vault_path = self._service.vault.vault_path
         sidecar_path = self._service.vault.sidecar_path
-        olds = sorted(vault_path.parent.glob(f"{vault_path.name}.*.old"))
-        old_sidecars = sorted(sidecar_path.parent.glob(f"{sidecar_path.name}.*.old"))
-        if not (olds and old_sidecars):
-            return  # no interrupted-restore signature — leave routing to state()
+
+        def _by_stamp(directory: Path, base: str) -> dict[str, Path]:
+            # base.<stamp>.old → {stamp: path}; the stamp is the slice between the
+            # base filename and the ".old" suffix.
+            return {
+                p.name[len(base) + 1 : -len(".old")]: p
+                for p in directory.glob(f"{base}.*.old")
+            }
+
+        db_olds = _by_stamp(vault_path.parent, vault_path.name)
+        sidecar_olds = _by_stamp(sidecar_path.parent, sidecar_path.name)
+        # A restore moves BOTH files aside under one stamp, so only a shared stamp is
+        # a real original pair — pairing db[-1] with sidecar[-1] independently could
+        # mismatch a db with an unrelated sidecar (wrong salt → un-openable).
+        common = sorted(set(db_olds) & set(sidecar_olds))
+        if not common:
+            return  # no complete *.old pair — leave routing to state()
         try:
             self._service.state()
             return  # a clean live pair — the *.old are just kept-for-safety leftovers
         except VaultStateError:
-            pass  # mixed live pair + *.old present → an interrupted restore
-        # Put the most-recent original pair back, discarding the half-installed
-        # orphan. Both files land owner-only (the *.old inherit 0o600 via rename).
+            pass  # mixed live pair + a paired *.old present → an interrupted restore
+        # Put the most-recent complete original pair back, discarding the
+        # half-installed orphan (the *.old kept their 0o600 through the rename).
+        stamp = common[-1]
         vault_path.unlink(missing_ok=True)
         sidecar_path.unlink(missing_ok=True)
-        os.replace(olds[-1], vault_path)
-        os.replace(old_sidecars[-1], sidecar_path)
+        os.replace(db_olds[stamp], vault_path)
+        os.replace(sidecar_olds[stamp], sidecar_path)
 
     def _route_pre_login(self) -> None:
         """Return to the correct pre-login surface (first-run when no vault, unlock
@@ -876,8 +902,10 @@ class MainWindow(QMainWindow):
             BackupService(self._service.vault, self._service).restore_backup(
                 source, dialog.backup_password(), new_master
             )
+            # Open the freshly-restored vault under the new master (both derives run
+            # under the one wait cursor).
+            unlocked = self._service.unlock(bytearray(new_master, "utf-8"))
         except (BackupError, ValueError):
-            QApplication.restoreOverrideCursor()
             QMessageBox.warning(
                 self,
                 self.tr("Restore failed"),
@@ -887,9 +915,9 @@ class MainWindow(QMainWindow):
                 ),
             )
             return  # on-disk vault unchanged; dialog stays open to retry
-        # Open the freshly-restored vault under the new master and enter the shell.
-        unlocked = self._service.unlock(bytearray(new_master, "utf-8"))
-        QApplication.restoreOverrideCursor()
+        finally:
+            # Restore on every path (incl. an unlock that raises) — no stuck cursor.
+            QApplication.restoreOverrideCursor()
         if unlocked:
             self._status(self.tr("Backup restored"))
             self._enter_unlocked()

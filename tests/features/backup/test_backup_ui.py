@@ -208,3 +208,88 @@ def test_interrupted_restore_recovers_old_pair_at_launch(qtbot, tmp_path):
     assert isinstance(window._dialog, UnlockDialog), "lands on unlock, not a hard error"
     assert service.unlock(bytearray(b"the original master")) is True
     service.lock()
+
+
+# --------------------------------------------------------------------------- #
+# Review fixes — UI robustness
+# --------------------------------------------------------------------------- #
+def test_open_restore_tears_down_originating_dialog(qtbot, paths):
+    from finbreak.ui.main_window import MainWindow
+
+    auth = _seeded(paths)
+    auth.lock()
+    window = MainWindow(auth)
+    qtbot.addWidget(window)
+    qtbot.wait(10)  # let the deferred show fire
+    unlock_dialog = window._dialog
+    assert isinstance(unlock_dialog, UnlockDialog) and unlock_dialog.isVisible()
+
+    window._open_restore()
+    assert isinstance(window._dialog, BackupRestoreDialog), "restore takes the slot"
+    assert not unlock_dialog.isVisible(), (
+        "the originating unlock dialog is torn down, not left modal over the new one"
+    )
+
+
+def test_export_recovers_cursor_on_engine_error(qtbot, paths, monkeypatch):
+    from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox
+    from sqlcipher3.dbapi2 import DatabaseError
+
+    from finbreak.ui.main_window import MainWindow
+
+    auth = _seeded(paths)
+    window = MainWindow(auth)
+    qtbot.addWidget(window)
+    window._enter_unlocked()
+    window._open_backup_export()
+    window._dialog._password.setText(_BACKUP_PW)
+    window._dialog._confirm.setText(_BACKUP_PW)
+
+    monkeypatch.setattr(
+        QFileDialog,
+        "getSaveFileName",
+        staticmethod(lambda *a, **k: (str(paths[0].parent / "x.fbk"), "")),
+    )
+    warned: list[int] = []
+    monkeypatch.setattr(
+        QMessageBox, "warning", staticmethod(lambda *a, **k: warned.append(1))
+    )
+
+    def boom(self, dest, pw, **k):
+        raise DatabaseError("disk full while sqlcipher_export ran")
+
+    monkeypatch.setattr(BackupService, "export_backup", boom)
+
+    window._on_backup_export_requested()
+    assert warned == [1], "a SQLCipher engine error is caught and warned, not crashed"
+    assert QApplication.overrideCursor() is None, "the wait cursor is always restored"
+    auth.lock()
+
+
+def test_reconcile_pairs_old_files_by_stamp(qtbot, tmp_path):
+    from finbreak.ui.main_window import MainWindow
+
+    dest = tmp_path / "dest"
+    dest.mkdir()
+    vp, sp = dest / "vault.db", dest / "vault.kdf.json"
+    orig = AuthService(vp, sp)
+    orig.first_run(bytearray(b"orig master"), "USD")
+    orig.lock()
+    ovb, osb = vp.read_bytes(), sp.read_bytes()
+
+    # A stale UNPAIRED db-old at a LATER stamp (from a prior mixed restore), plus the
+    # real paired original at an EARLIER stamp. Reconcile must pair by shared stamp,
+    # not pick db[-1] (the stale T2) with sidecar[-1] (T1) — that would mismatch.
+    (dest / "vault.db.20260102T000000.old").write_bytes(b"stale unpaired newer db-old")
+    vp.rename(dest / "vault.db.20260101T000000.old")
+    sp.rename(dest / "vault.kdf.json.20260101T000000.old")
+    vp.write_bytes(b"a half-installed orphan with no sidecar")  # mixed live state
+
+    service = AuthService(vp, sp)
+    window = MainWindow(service)
+    qtbot.addWidget(window)
+
+    assert vp.read_bytes() == ovb, "recovered the correctly-paired original vault.db"
+    assert sp.read_bytes() == osb, "recovered its matching sidecar (same stamp)"
+    assert service.unlock(bytearray(b"orig master")) is True, "the recovered pair opens"
+    service.lock()

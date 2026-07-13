@@ -20,6 +20,7 @@ import logging
 import os
 import tempfile
 import zipfile
+import zlib
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -171,10 +172,12 @@ class BackupService:
                 # Open + migrate the backup DB (a wrong backup password fails page-1
                 # here; a newer embedded schema raises SchemaVersionError, INV-6b).
                 backup_vault = Vault(tmp_db, tmp_sidecar)
+                # Pass the derived key itself, NOT a bytearray(...) copy: open() only
+                # reads key.hex() (never mutates), so a copy would be an un-wiped
+                # second reference to live key material outside the finally wipe set
+                # (INV-7). Same for rekey below.
                 backup_vault.open(
-                    bytearray(backup_key),
-                    in_memory_temp=True,
-                    cipher_compat=SQLCIPHER_COMPAT,
+                    backup_key, in_memory_temp=True, cipher_compat=SQLCIPHER_COMPAT
                 )
                 try:
                     # Mint the new master's params FIRST, derive its key from THAT
@@ -186,7 +189,7 @@ class BackupService:
                         master_pw, master_params.salt, master_params
                     )
                     on_key("master", master_key)
-                    backup_vault.rekey(bytearray(master_key))
+                    backup_vault.rekey(master_key)  # not a copy — see open() above
                     backup_vault._write_sidecar(master_params)
                 finally:
                     backup_vault.close()
@@ -271,7 +274,13 @@ class BackupService:
                     zf, by_name[_DB_ENTRY], MAX_BACKUP_DB_BYTES
                 )
             manifest = json.loads(manifest_bytes)
-        except (zipfile.BadZipFile, OSError, json.JSONDecodeError) as exc:
+        except (
+            zipfile.BadZipFile,
+            OSError,
+            json.JSONDecodeError,
+            UnicodeDecodeError,  # a non-UTF-8 manifest.json (json.loads raises this)
+            zlib.error,  # a corrupt DEFLATE stream in any entry (zf.open read)
+        ) as exc:
             raise BackupError(f"unreadable backup: {exc}") from exc
         if not isinstance(manifest, dict):
             raise BackupError("backup manifest is not a JSON object")
