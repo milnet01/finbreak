@@ -460,7 +460,7 @@ lands on top.
 
 ### 🔒 Security · 🎨 Features
 
-- 📋 [FIBR-0014] **P12: settings, inactivity auto-lock,
+- ✅ [FIBR-0014] **P12: settings, inactivity auto-lock,
   encrypted backup.** Settings screen (base currency display,
   auto-lock timeout, manage stored PDF passwords, theme);
   inactivity **auto-lock** drops the key and returns to unlock;
@@ -471,6 +471,7 @@ lands on top.
   **Layman:** A full Settings screen plus an encrypted backup you can export and restore — your one safety net if you ever forget your master password — and a light/dark theme choice.
   Note (2026-07-09): the Settings-screen scaffold + the user-configurable auto-lock timeout (+ base-currency read-only display) are pulled FORWARD into FIBR-0055 (near-term, user-requested); FIBR-0055's first cut delivers the scaffold + configurable auto-lock timeout + read-only currency only. This phase narrows to what remains: the encrypted-backup export/import (the only mitigation for a forgotten master password, ADR-0003), the dark-theme polish pass and its dark/light/follow-system theme toggle (a toggle needs the theme system this pass builds), stored-PDF-password management, and hosting the FIBR-0017 language switcher. If FIBR-0055 ships first, this becomes an extension of that Settings screen rather than a fresh one.
   Split (2026-07-13, in-session, user-approved): P12 bundled four independent pieces. Auto-lock is already shipped (mechanism FIBR-0114; user-configurable timeout + Settings scaffold + read-only currency via FIBR-0055). This item is now NARROWED to the encrypted backup export/restore only — the ADR-0003 forgotten-master-password mitigation, keyed by a SEPARATE backup password so it can actually recover a forgotten master password. The other three pieces are split into their own items: app-wide theme system -> FIBR-0127; stored-PDF-password management UI -> FIBR-0128; language-switcher hosting -> FIBR-0129 (note: overlaps FIBR-0017, which already owns the i18n picker — reconcile when either is specced). Build order: backup (this) first, then 0127, 0128, 0129. Spec: docs/specs/FIBR-0014.md (encrypted backup).
+  Resolved 2026-07-13 (/close-phase). Shipped by TDD in 7 red→green slices + a fold-in of 6 cold-review findings. D2 SQLCipher mechanics (sqlcipher_export / PRAGMA rekey / cipher_compatibility / HMAC-on / no-plaintext-temp) validated by a throwaway spike on sqlcipher3-binary 0.6.0 (SQLCipher 4.12.0) before any code. BackupService(vault, auth) export/restore over a stdlib-zip .fbk (manifest.json + params.json + vault.db); separate backup password (fresh salt), INV-1..13. UI: Settings Export + pre-login Restore on unlock & first-run; synchronous main-thread export (INV-9); interrupted-restore reconciliation (INV-5). /audit 0 actionable (1 bandit B608 FP suppressed on a test); 2 cold review lanes → 6 findings (2 HIGH crypto/UI, 2 HIGH/MED, LOW) all fixed inline with regression tests. security-model.md T11 hedge dropped + .fbk untrusted surface added (cold-eyes clean). Gate green 841/1, mypy 0. Tag FIBR-0014-complete.
 
 ---
 

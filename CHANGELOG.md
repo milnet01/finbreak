@@ -23,6 +23,14 @@ signaling per
 
 ### Added
 
+- ****Encrypted backup export & restore** — save a portable, password-protected `.fbk` backup of your vault and restore it later.** (FIBR-0014)
+  Export a `.fbk` from Settings, keyed by a **separate backup password** you
+  choose. If you ever forget your master password, restore the backup from the
+  unlock or first-run screen with the backup password plus a **new** master
+  password — you never need the old one. The backup is fully encrypted (AES-256);
+  restoring an existing vault moves the old one safely aside rather than deleting
+  it.
+
 - **Export a password-protected PDF report (FIBR-0013).** (FIBR-0013)
   File → Export report as PDF… (and the toolbar) opens a dialog to choose which
   sections to include (summary / charts / transactions), the period, and which
