@@ -254,6 +254,16 @@ class HomeView(QWidget):
         self._amount_prefs = prefs
         self.refresh()
 
+    def current_prefs(self) -> ReportPrefs:
+        """The dashboard's live period selection — the export dialog's pre-fill
+        (D7). Thin public wrapper over the private selector read."""
+        return self._current_prefs()
+
+    def selected_account_id(self) -> int | None:
+        """The dashboard's selected account (``None`` = All accounts) — the export
+        dialog's account pre-fill (D7)."""
+        return self._selected_account_id()
+
     # --- render ------------------------------------------------------------ #
     def refresh(self) -> None:
         # Getting-started iff the vault holds zero transactions (INV-7).

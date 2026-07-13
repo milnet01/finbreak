@@ -378,6 +378,20 @@ def test_render_with_password_writes_nothing_to_disk(qapp, service, monkeypatch)
     pikepdf.open(BytesIO(pdf), password="secret12").close()  # really encrypted
 
 
+def test_period_filename_slug_per_mode():
+    from finbreak.services.pdf_export import period_filename_slug
+    from finbreak.services.reporting import MODE_SPECIFIC_YEAR, MODE_YEAR_TO_DATE
+
+    today = date(2026, 7, 13)
+    month = ReportPrefs(MODE_SPECIFIC_MONTH, year=2026, month=6)
+    assert period_filename_slug(month, today) == "2026-06"
+    assert (
+        period_filename_slug(ReportPrefs(MODE_SPECIFIC_YEAR, year=2025), today)
+        == "2025"
+    )
+    assert period_filename_slug(ReportPrefs(MODE_YEAR_TO_DATE), today) == "2026-ytd"
+
+
 def test_rasterise_returns_non_empty_image(qapp):
     # INV-8: the offscreen chart raster is a real, non-null image.
     from PySide6.QtGui import QColor

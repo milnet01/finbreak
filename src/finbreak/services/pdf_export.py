@@ -56,6 +56,18 @@ def _tr(text: str) -> str:
     return QCoreApplication.translate("PdfExport", text)
 
 
+def period_filename_slug(prefs: ReportPrefs, today: date) -> str:
+    """The terse **filename** slug for the default save name (D9): ``YYYY-MM`` for
+    the month modes (the period's end month), ``YYYY-ytd`` for year-to-date,
+    ``YYYY`` for a specific year. Distinct from D2's human-readable period line."""
+    _, end = resolve_period(prefs, today)
+    if prefs.mode == MODE_YEAR_TO_DATE:
+        return f"{end.year}-ytd"
+    if prefs.mode == MODE_SPECIFIC_YEAR:
+        return str(end.year)
+    return f"{end.year:04d}-{end.month:02d}"
+
+
 @dataclass(frozen=True)
 class ExportOptions:
     """The user's export selection (from the dialog, D7). ``account_ids`` is
