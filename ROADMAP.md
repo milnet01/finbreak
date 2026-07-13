@@ -1184,11 +1184,12 @@ because retrofitting them is a data migration.
   Kind: fix.
   Source: user-report-2026-07-13 (0.1.6→0.1.7 did not auto-relaunch).
 
-- 📋 [FIBR-0123] **Group category pickers by Income/Expenditure type (disambiguate same-named categories).**
+- ✅ [FIBR-0123] **Group category pickers by Income/Expenditure type (disambiguate same-named categories).**
   The category pickers (Set-category dialog `ui/category_picker.py`, the Rules editor `ui/rules.py`, and the Transactions category filter) flatten the two-root Income/Expenditure category tree (FIBR-0006) into one flat combo, so: (1) you can't tell an income category from an expenditure one at pick time, and (2) two categories that share a name under different Type roots are indistinguishable — real dogfooding case 2026-07-13: the seeded income "Lottery" plus a user-added expenditure "Lottery" render as two identical rows. Fix: group each combo under non-selectable "Income" / "Expenditure" section headers (or an equivalent grouped/indented presentation) so the Type is obvious and same-named siblings are unambiguous. The category *manager* already shows the tree grouped; this is only the flat picker combos. Known-deferred shortcut, recorded at the FIBR-0010 close ("category selectors are flat combos, grouping deferred").
   **Layman:** When you pick a category, show which options are income and which are expenditure — and make two categories that share a name (e.g. an income "Lottery" for winnings and an expenditure "Lottery" for tickets) tell-apart-able instead of two identical rows.
   Kind: ux.
   Source: dogfooding-2026-07-13.
+  Resolved (2026-07-13): shipped by TDD (6 slices) + 1 indie-review LOW fixed inline (parent-cycle guard). Grouped pickers/filter under Income/Expenditure headers, Name (Type) tag; audit 0, gate green. Tag FIBR-0123-complete.
 
 ### ⚡ Performance
 
