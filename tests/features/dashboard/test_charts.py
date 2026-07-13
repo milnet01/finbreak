@@ -69,6 +69,22 @@ def test_build_donut_chart_transparent_background_when_none(qapp):
     assert chart.isBackgroundVisible() is False
 
 
+def test_chart_colours_come_from_theme_not_ambient_palette(qapp):
+    """INV-9: an offscreen render depends on the `ChartTheme`, not the live
+    `QApplication` palette — swapping the ambient palette to a garish colour does
+    not change the chart's themed text colour."""
+    from PySide6.QtGui import QPalette
+
+    original = qapp.palette()
+    try:
+        garish = QPalette(QColor("#ff00ff"))
+        qapp.setPalette(garish)
+        chart = build_donut_chart([_spend(1, 50)], "Uncategorised", "Other", _THEME)
+        assert chart.legend().labelColor() == _THEME.text  # theme wins, not #ff00ff
+    finally:
+        qapp.setPalette(original)
+
+
 def test_build_trend_chart_two_barsets_coloured_by_theme(qapp):
     """Income + Spending bar sets, labelled and coloured from the theme, with the
     per-month values and a category axis of month labels."""

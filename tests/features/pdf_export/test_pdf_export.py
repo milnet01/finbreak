@@ -10,11 +10,13 @@ import inspect
 from datetime import date
 from decimal import Decimal
 from io import BytesIO
+from pathlib import Path
 
 import pikepdf
 import pytest
 
 from conftest import _PW
+from finbreak.errors import VaultLockedError
 from finbreak.repositories.transactions import TransactionRepository
 from finbreak.services.accounts import AccountService
 from finbreak.services.auth import AuthService
@@ -296,3 +298,97 @@ def test_known_total_appears_in_summary(qapp, service):
         _options(include_charts=False, include_transactions=False), _TODAY
     )
     assert _format_amount(Decimal("200.00"), _symbol(service)) in html
+
+
+# --------------------------------------------------------------------------- #
+# export() atomicity + INV-12 failure modes + INV-2 no-plaintext-to-disk guard.
+# --------------------------------------------------------------------------- #
+def test_export_writes_valid_pdf_and_cleans_temp(qapp, service, tmp_path):
+    a = _accounts(service)[0].id
+    _add(service, a, 100_00)
+    out = tmp_path / "report.pdf"
+    _svc(service).export(_options(), out)
+    with pikepdf.open(str(out)) as doc:
+        assert len(doc.pages) >= 1
+    assert not (tmp_path / "report.pdf.part").exists()  # temp removed after replace
+
+
+def test_export_encrypted_file_opens_only_with_password(qapp, service, tmp_path):
+    a = _accounts(service)[0].id
+    _add(service, a, 100_00)
+    out = tmp_path / "locked.pdf"
+    _svc(service).export(_options(password="secret12"), out)
+    pikepdf.open(str(out), password="secret12").close()
+    with pytest.raises(pikepdf.PasswordError):
+        pikepdf.open(str(out))
+
+
+def test_export_write_error_leaves_no_file(qapp, service, tmp_path):
+    # INV-12(a): an unwritable path — the temp write raises before os.replace.
+    a = _accounts(service)[0].id
+    _add(service, a, 100_00)
+    out = tmp_path / "missing_dir" / "report.pdf"  # parent does not exist
+    with pytest.raises(OSError):
+        _svc(service).export(_options(), out)
+    assert not out.exists()
+    assert not out.with_name("report.pdf.part").exists()
+
+
+def test_export_vault_locked_leaves_no_file(qapp, service, tmp_path):
+    # INV-12(b): a vault lock mid-export — render raises before any write.
+    a = _accounts(service)[0].id
+    _add(service, a, 100_00)
+    out = tmp_path / "report.pdf"
+    svc = _svc(service)
+    service.lock()
+    with pytest.raises(VaultLockedError):
+        svc.export(_options(), out)
+    assert not out.exists()
+    assert not (tmp_path / "report.pdf.part").exists()
+
+
+def test_export_encryption_error_leaves_no_file(qapp, service, tmp_path, monkeypatch):
+    # INV-12(c): a pikepdf encryption failure — render raises before any write, so
+    # no partial and (crucially) no UNENCRYPTED fallback file is left (INV-2).
+    import finbreak.services.pdf_export as mod
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("encryption boom")
+
+    monkeypatch.setattr(mod.pikepdf, "Encryption", _boom)
+    a = _accounts(service)[0].id
+    _add(service, a, 100_00)
+    out = tmp_path / "report.pdf"
+    with pytest.raises(RuntimeError):
+        _svc(service).export(_options(password="secret12"), out)
+    assert not out.exists()
+    assert not (tmp_path / "report.pdf.part").exists()
+
+
+def test_render_with_password_writes_nothing_to_disk(qapp, service, monkeypatch):
+    # INV-2 (behavioural): render+encrypt is pure in-memory — no Path.write_bytes.
+    a = _accounts(service)[0].id
+    _add(service, a, 100_00)
+    writes: list[str] = []
+    monkeypatch.setattr(
+        Path, "write_bytes", lambda self, data: writes.append(str(self))
+    )
+    pdf = _svc(service).render_pdf_bytes(_options(password="secret12"))
+    assert writes == []
+    pikepdf.open(BytesIO(pdf), password="secret12").close()  # really encrypted
+
+
+def test_rasterise_returns_non_empty_image(qapp):
+    # INV-8: the offscreen chart raster is a real, non-null image.
+    from PySide6.QtGui import QColor
+
+    from finbreak.models import CategorySpend
+    from finbreak.ui.charts import ChartTheme, build_donut_chart
+
+    theme = ChartTheme(QColor("#000000"), QColor("#00ff00"), QColor("#ff0000"), None)
+    chart = build_donut_chart(
+        [CategorySpend(1, "Food", Decimal("10"))], "Uncat", "Other", theme
+    )
+    img = PdfExportService._rasterise(chart)
+    assert not img.isNull()
+    assert img.width() > 0 and img.height() > 0
