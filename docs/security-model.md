@@ -52,6 +52,15 @@ unavoidable it is glossed on first use.
   never in the shipped app — INV-8.)
 - **Imported files are untrusted input.** CSV/OFX/PDF files come
   from outside and are parsed defensively (§ 4, T5).
+- **A restore backup (`.fbk`) is untrusted input parsed _pre-login_.**
+  The encrypted backup a user restores (FIBR-0014) is an off-device zip
+  opened **before** any authentication — a distinct, higher-risk surface
+  than the CSV/OFX/PDF importers. It is read with safe-zip handling (only
+  the three fixed entry names, per-entry size caps checked **before**
+  inflating, never `extractall`, traversal/extra/duplicate entries
+  rejected), and its KDF params are re-validated against the pinned
+  Argon2 floor **before any key is derived** (§ 4, T5; FIBR-0014
+  INV-11/INV-12).
 
 ## 3. Threats and mitigations (STRIDE-lite)
 
@@ -64,13 +73,13 @@ attacked. Each row: the threat → how finbreak stops it.
 | T2 | **Weak master password brute-forced** | **Argon2id** memory-hard key derivation with pinned parameters (§ 5 INV-2) makes guessing slow and GPU-resistant. Password strength is also surfaced at first-run (advisory, not an enforced INV). |
 | T3 | **Key or password recovered from memory / swap / a crash dump** | Key held only while unlocked; **wiped on lock and on exit**; auto-lock drops it after idle (INV-3). The plaintext password reference is cleared before the unlock routine returns. (Defending against the OS paging memory to swap is out of scope — see § 4.) |
 | T4 | **Decrypted bank statement leaks to disk** | Locked input PDFs are decrypted **in memory only**; no decrypted content is *deliberately* written to disk or temp files (A5, INV-4). (Defending against the OS paging memory to swap is out of scope — § 4.) |
-| T5 | **Malicious import file** (crafted CSV/OFX/PDF — parser crash, path traversal, zip-bomb-style resource exhaustion, formula injection) | Parsers run defensively: bounded resource use (file/page/row caps), no `eval`, no shell-out; CSV cells are treated as data, never spreadsheet formulas; per-row errors are reported, not fatal (INV-5a/5b/5c). **One documented residual:** the PDF **decompressed-page-size** vector is assessed + accepted, not bounded — see INV-5b / FIBR-0075. |
+| T5 | **Malicious import file** (crafted CSV/OFX/PDF — parser crash, path traversal, zip-bomb-style resource exhaustion, formula injection) **or a crafted restore `.fbk`** (a zip parsed **pre-login**) | Parsers run defensively: bounded resource use (file/page/row caps), no `eval`, no shell-out; CSV cells are treated as data, never spreadsheet formulas; per-row errors are reported, not fatal (INV-5a/5b/5c). The restore `.fbk` — parsed before any authentication — reads only the three fixed entry names with per-entry caps checked **before** inflating (never `extractall`), rejects traversal/extra/duplicate entries, and re-validates the embedded KDF params against the pinned floor before deriving any key (FIBR-0014 INV-11/INV-12). **One documented residual:** the PDF **decompressed-page-size** vector is assessed + accepted, not bounded — see INV-5b / FIBR-0075. |
 | T6 | **Secret accidentally committed to the public repo** | `gitleaks` in CI **and** the local pre-push script; `.gitignore` excludes `*.db`/vault/build output; no real financial data in tests — only synthetic fixtures (INV-6, A7). |
 | T7 | **Vulnerable third-party dependency (known CVE)** | `pip-audit` in CI + local script fails the build on a known-vulnerable dependency; Dependabot raises bumps; latest-stable policy (global rule § 5). |
 | T8 | **Insecure code pattern introduced** (hardcoded secret, weak hash, `subprocess(shell=True)`, etc.) | `bandit` security linter in CI + local script. |
 | T9 | **Tampered vault / downgrade of crypto settings** | SQLCipher authenticates **each page with a per-page HMAC** (HMAC-SHA512 by default) — tamper-evident. AES gives confidentiality, **not** integrity, so the HMAC must stay enabled; a tampered page fails to open (INV-1). The recorded KDF parameters can't be downgraded **below the pinned floor** on open (INV-2). Both are asserted by the FIBR-0004 (P02) spec's tests. |
 | T10 | **Exported report shared, then read by the wrong person** | Export is password-locked with AES-256 (`pikepdf`) using a password the user sets at export time (A6, INV-7). The user is reminded the password is theirs to share safely. |
-| T11 | **Forgotten master password** | By design there is **no backdoor** (a backdoor is a vulnerability). The mitigation is the **encrypted backup** (FIBR-0014 — **in progress**, in cold-eyes; this row loses the "in progress" marker when it ships), keyed by a **separate backup password** the user keeps safe: restoring needs the backup password + a **new** master password, **never** the forgotten one, so the backup **does** recover a forgotten master password. It is "only as recoverable as its own secret" — if **both** the master **and** the backup password are lost, the data is unrecoverable (the deliberate confidentiality-over-availability trade). The backup's own KDF params are re-validated against the pinned floor on restore (INV-2), so a tampered `.fbk` can't force a weak KDF. *The recovery path is testable (FIBR-0014 INV-3); the no-backdoor stance is not.* |
+| T11 | **Forgotten master password** | By design there is **no backdoor** (a backdoor is a vulnerability). The mitigation is the **encrypted backup** (FIBR-0014), keyed by a **separate backup password** the user keeps safe: restoring needs the backup password + a **new** master password, **never** the forgotten one, so the backup **does** recover a forgotten master password. It is "only as recoverable as its own secret" — if **both** the master **and** the backup password are lost, the data is unrecoverable (the deliberate confidentiality-over-availability trade). The backup's own KDF params are re-validated against the pinned floor on restore (INV-2), so a tampered `.fbk` can't force a weak KDF. *The recovery path is testable (FIBR-0014 INV-3); the no-backdoor stance is not.* |
 | T12 | **Sensitive data leaked via the log file** | The local rotating log never records transaction contents, passwords, keys, or decrypted data (INV-9). |
 
 ## 4. Out of scope (stated honestly)
@@ -116,6 +125,12 @@ be checkable. Enforcement arrives in step with the code:
   the correct key fails, and the vault is opened with per-page
   HMAC integrity enabled (`cipher_use_hmac = ON`, SQLCipher 4) so a
   tampered page fails to open rather than returning corrupt data.
+  The **encrypted backup** (FIBR-0014) upholds this too: the exported
+  `.fbk`'s `vault.db` is a SQLCipher AES-256 file with HMAC on; during
+  export or restore no plaintext vault contents spill to any temp store
+  (`temp_store=MEMORY`), and the backup DB's rollback journal is itself
+  SQLCipher-encrypted (a distinct `journal_mode` guarantee, not governed
+  by `temp_store`) — FIBR-0014 INV-1/INV-1b.
 - **INV-2 — Strong, pinned KDF.** The master password is
   stretched with Argon2id using these pinned parameters:
   **memory = 47104 KiB (46 MiB), iterations (time cost) = 1,
