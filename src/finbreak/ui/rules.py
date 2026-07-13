@@ -37,7 +37,7 @@ from finbreak.services.auth import AuthService
 from finbreak.services.categories import CategoryService
 from finbreak.services.categorization import CategorizationService
 from finbreak.ui._table_state import remember_columns
-from finbreak.ui._widgets import select_combo_data
+from finbreak.ui._widgets import add_grouped_categories, select_combo_data
 from finbreak.ui.modal import show_modal
 
 _COL_PATTERN = 0
@@ -51,7 +51,7 @@ class RuleEditDialog(QDialog):
 
     def __init__(
         self,
-        leaves: list[Category],
+        grouped: list[tuple[str, list[Category]]],
         pattern: str = "",
         category_id: int | None = None,
         parent: QWidget | None = None,
@@ -62,8 +62,7 @@ class RuleEditDialog(QDialog):
         self._pattern = QLineEdit(pattern)
         self._pattern.setPlaceholderText(self.tr("Text to look for in the description"))
         self._category = QComboBox()
-        for leaf in leaves:
-            self._category.addItem(leaf.name, leaf.id)
+        add_grouped_categories(self._category, grouped)
         if category_id is not None:
             select_combo_data(self._category, category_id)
 
@@ -86,10 +85,15 @@ class RuleEditDialog(QDialog):
     @Slot()
     def _sync_ok(self) -> None:
         ok = self._buttons.button(QDialogButtonBox.StandardButton.Ok)
-        # Require a non-empty pattern AND a selectable category: with zero leaf
-        # categories the combo is empty and selected_category_id() is None, which
-        # add_rule would reject with a confusing "must be a leaf" error (FIBR-0079).
-        ok.setEnabled(bool(self._pattern.text().strip()) and self._category.count() > 0)
+        # Require a non-empty pattern AND that a real leaf is selected (D5). The
+        # combo now carries non-selectable section headers whose currentData() is
+        # None, so gate on currentData() (header-safe) rather than count() > 0:
+        # with zero leaves there are zero headers, currentData() is None, and OK
+        # stays disabled — preserving FIBR-0079.
+        ok.setEnabled(
+            bool(self._pattern.text().strip())
+            and self._category.currentData() is not None
+        )
 
     def pattern(self) -> str:
         return self._pattern.text()
@@ -182,13 +186,14 @@ class RulesWidget(QWidget):
     @Slot()
     def _on_add(self) -> None:
         self._error.clear()
-        leaves = self._categorization.leaf_categories()
-        if not leaves:
+        grouped = self._categorization.leaf_categories_grouped()
+        if not grouped:
             # Nothing to file a rule as — guide the user instead of opening a
             # dialog whose empty combo dead-ends on the leaf error (FIBR-0079).
+            # grouped is empty exactly when no leaves exist (every section omitted).
             self._error.setText(self.tr("Create a category first, then add a rule."))
             return
-        dialog = RuleEditDialog(leaves, parent=self)
+        dialog = RuleEditDialog(grouped, parent=self)
         # Non-blocking (FIBR-0065): a lock while the dialog is open destroys it
         # before _apply_add runs, so no read hits a deleted C++ object.
         show_modal(dialog, lambda: self._apply_add(dialog))
@@ -214,7 +219,7 @@ class RulesWidget(QWidget):
             return
         rule = self._rows[index]
         dialog = RuleEditDialog(
-            self._categorization.leaf_categories(),
+            self._categorization.leaf_categories_grouped(),
             rule.pattern,
             rule.category_id,
             self,

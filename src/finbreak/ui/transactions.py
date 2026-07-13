@@ -304,7 +304,7 @@ class TransactionsView(QWidget):
         if chosen == self._categorization.would_categorize(description):
             return
         dialog = RuleEditDialog(
-            self._categorization.leaf_categories(), description, chosen, self
+            self._categorization.leaf_categories_grouped(), description, chosen, self
         )
         show_modal(dialog, lambda: self._apply_learned_rule(dialog))
 

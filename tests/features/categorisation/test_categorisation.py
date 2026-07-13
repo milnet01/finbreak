@@ -923,11 +923,63 @@ def test_rule_dialog_ok_disabled_without_leaf_categories(qtbot):
 
     from finbreak.ui.rules import RuleEditDialog
 
-    dialog = RuleEditDialog([], pattern="rent")
+    dialog = RuleEditDialog([], pattern="rent")  # [] == an empty grouped list
     qtbot.addWidget(dialog)
     ok = dialog.findChild(QDialogButtonBox).button(QDialogButtonBox.StandardButton.Ok)
     assert ok is not None and not ok.isEnabled()
     assert dialog.selected_category_id() is None
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0123 INV-1/INV-3/INV-7 — RuleEditDialog takes grouped data + D5 OK-gate
+# --------------------------------------------------------------------------- #
+def _ok_button(dialog):
+    from PySide6.QtWidgets import QDialogButtonBox
+
+    return dialog.findChild(QDialogButtonBox).button(QDialogButtonBox.StandardButton.Ok)
+
+
+def test_FIBR0123_rule_dialog_ok_enabled_with_pattern_and_leaf(qtbot, service):
+    from finbreak.ui.rules import RuleEditDialog
+
+    grouped = CategorizationService(service.vault).leaf_categories_grouped()
+    dialog = RuleEditDialog(grouped, pattern="rent")
+    qtbot.addWidget(dialog)
+    ok = _ok_button(dialog)
+    assert ok is not None and ok.isEnabled()
+    assert dialog.selected_category_id() is not None, "rests on a leaf, never a header"
+
+
+def test_FIBR0123_rule_dialog_ok_disabled_with_empty_pattern(qtbot, service):
+    from finbreak.ui.rules import RuleEditDialog
+
+    grouped = CategorizationService(service.vault).leaf_categories_grouped()
+    dialog = RuleEditDialog(grouped)  # default empty pattern — the D5 pattern gate
+    qtbot.addWidget(dialog)
+    ok = _ok_button(dialog)
+    assert ok is not None and not ok.isEnabled()
+
+
+def test_FIBR0123_rule_dialog_prefills_category(qtbot, service):
+    from finbreak.ui.rules import RuleEditDialog
+
+    grouped = CategorizationService(service.vault).leaf_categories_grouped()
+    leaf_id = grouped[0][1][0].id
+    dialog = RuleEditDialog(grouped, pattern="x", category_id=leaf_id)
+    qtbot.addWidget(dialog)
+    assert dialog.selected_category_id() == leaf_id
+
+
+def test_FIBR0123_rule_dialog_groups_rows_under_headers(qtbot, service):
+    from finbreak.ui.rules import RuleEditDialog
+
+    grouped = CategorizationService(service.vault).leaf_categories_grouped()
+    dialog = RuleEditDialog(grouped)
+    qtbot.addWidget(dialog)
+    combo = dialog._category
+    texts = [combo.itemText(i) for i in range(combo.count())]
+    assert "Income" in texts and "Expenditure" in texts
+    assert any(t.endswith("(Income)") for t in texts)
 
 
 def test_add_rule_blocked_when_no_leaf_categories(qtbot, service, monkeypatch):
