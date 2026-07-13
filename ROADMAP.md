@@ -1119,6 +1119,26 @@ because retrofitting them is a data migration.
   Kind: enhancement.
   Source: user-request-2026-07-12.
 
+- 📋 [FIBR-0121] **Loan-account sign display: show debt-reducing amounts as positive on loan-type accounts.**
+  Approach APPROVED by user (2026-07-13): DISPLAY-ONLY, display-time inversion for
+  loan-type accounts (AccountType.HOME_LOAN / PERSONAL_LOAN). Keep amount_minor
+  stored canonical (FIBR-0007: debit negative / credit positive) so the exact-money
+  math, transfer detection, and the FIBR-0012 dashboard totals are all undisturbed;
+  only the on-screen sign + direction colour flip for loan accounts. Scope is
+  display-only for now (NOT changing how loan flows count in dashboard totals) — a
+  deeper "interest-as-expense / repayment-as-transfer" semantic is a possible later
+  follow-up.
+    Needs its own spec + the project's 7-loop cold-eyes (correctness-critical money
+  display). OPEN QUESTION to verify during that spec (do NOT assume): how the
+  importer currently signs loan-statement debit/credit columns, and whether transfers
+  INTO a loan are being detected at all (the loan-payment leg and its current-account
+  leg may currently share a sign, which opposite-sign transfer matching would miss).
+  If a real detection gap exists, split it out as a bug-fix. Touches ui/_amount.py +
+  the Transactions table render; the account type is on models.Account.type.
+  **Layman:** On home-loan / personal-loan accounts, your payments (which reduce what you owe) will read as positive/green and interest &amp; fees (which increase what you owe) as negative/red — the natural way round, instead of the current back-to-front look.
+  Kind: feature.
+  Source: user-request-2026-07-12 (approved 2026-07-13).
+
 ### ⚡ Performance
 
 - 📋 [FIBR-0025] **Enable SQLite WAL mode.** Set
