@@ -32,6 +32,16 @@ signaling per
   Confirmed internal transfers are excluded from the summary and charts but shown
   and marked in the transaction list.
 
+### Changed
+
+- ****Category pickers now group by Income / Expenditure type.**** (FIBR-0123)
+  The Set-category and Rule dialogs and the Transactions category
+  filter now list categories under non-selectable Income /
+  Expenditure headers and tag every row "Name (Type)", so two
+  same-named categories under different Types (e.g. an income vs an
+  expenditure "Lottery") are distinguishable both in the open
+  dropdown and the collapsed box.
+
 ## [0.1.8] - 2026-07-13
 
 ### Added
