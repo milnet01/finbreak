@@ -20,7 +20,7 @@ from conftest import _PW, RuleStub, build_v6_vault, keyed_connection, raising_co
 from finbreak.crypto import SALT_LEN
 from finbreak.errors import VaultLockedError
 from finbreak.migrations import LATEST_SCHEMA_VERSION, run_migrations
-from finbreak.models import CategorizationRule, CategoryKind, ColumnMapping
+from finbreak.models import CategorizationRule, Category, CategoryKind, ColumnMapping
 from finbreak.repositories.accounts import AccountRepository
 from finbreak.repositories.categories import CategoryRepository
 from finbreak.repositories.transactions import TransactionRepository
@@ -545,6 +545,100 @@ def test_INV2_grouped_resolves_type_by_ascending_to_root(service):
     assert bakery.id not in {
         c.id for c in dict(grouped).get(CategoryKind.INCOME.value, [])
     }
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0123 INV-1/INV-3/INV-4 — _widgets grouping helpers (combo rendering)
+# --------------------------------------------------------------------------- #
+def _cat(cid: int, parent_id: int, name: str) -> Category:
+    """A lightweight leaf Category for combo-rendering tests (kind is None on a
+    leaf; Type comes from the grouped tuple's token, not the row)."""
+    return Category(cid, parent_id, name, None, "2026-01-01T00:00:00")
+
+
+def test_INV4_category_type_labels_maps_both_tokens(qtbot):
+    from finbreak.ui._widgets import category_type_labels
+
+    labels = category_type_labels()
+    # No .qm catalog is loaded (FIBR-0017), so translate returns the source text.
+    assert labels[CategoryKind.INCOME.value] == "Income"
+    assert labels[CategoryKind.EXPENDITURE.value] == "Expenditure"
+
+
+def test_INV1_add_grouped_categories_headers_rows_and_order(qtbot):
+    from PySide6.QtGui import QStandardItemModel
+    from PySide6.QtWidgets import QComboBox
+
+    from finbreak.ui._widgets import add_grouped_categories
+
+    combo = QComboBox()
+    # Deliberately expenditure-first to prove the helper PRESERVES the given order
+    # (ordering is the service's job; the helper renders what it is handed).
+    grouped = [
+        (CategoryKind.EXPENDITURE.value, [_cat(2, 20, "Groceries")]),
+        (CategoryKind.INCOME.value, [_cat(1, 10, "Salary")]),
+    ]
+    add_grouped_categories(combo, grouped)
+
+    assert combo.count() == 4
+    assert combo.itemText(0) == "Expenditure"
+    assert combo.itemData(0) is None, "a header carries no id"
+    assert combo.itemText(1) == "Groceries (Expenditure)"
+    assert combo.itemData(1) == 2
+    assert combo.itemText(2) == "Income"
+    assert combo.itemText(3) == "Salary (Income)"
+    assert combo.itemData(3) == 1
+
+    from PySide6.QtCore import Qt
+
+    model = combo.model()
+    assert isinstance(model, QStandardItemModel)
+    header = model.item(0)
+    assert header is not None
+    assert not (header.flags() & Qt.ItemFlag.ItemIsSelectable)
+    assert not (header.flags() & Qt.ItemFlag.ItemIsEnabled)
+
+
+def test_INV3_add_grouped_categories_rests_on_first_enabled_row(qtbot):
+    from PySide6.QtWidgets import QComboBox
+
+    from finbreak.ui._widgets import add_grouped_categories
+
+    combo = QComboBox()
+    add_grouped_categories(
+        combo, [(CategoryKind.INCOME.value, [_cat(1, 10, "Salary")])]
+    )
+    # index 0 is a disabled header — the resting selection must move to the row.
+    assert combo.currentIndex() == 1
+    assert combo.currentData() == 1
+
+
+def test_INV3_add_grouped_categories_keeps_a_selectable_current(qtbot):
+    from PySide6.QtWidgets import QComboBox
+
+    from finbreak.ui._widgets import add_grouped_categories
+
+    combo = QComboBox()
+    combo.addItem("Uncategorised", None)  # a selectable row already at index 0
+    add_grouped_categories(
+        combo, [(CategoryKind.INCOME.value, [_cat(1, 10, "Salary")])]
+    )
+    assert combo.currentIndex() == 0, "an already-selectable current is left alone"
+
+
+def test_INV1_add_grouped_categories_omits_an_empty_section(qtbot):
+    from PySide6.QtWidgets import QComboBox
+
+    from finbreak.ui._widgets import add_grouped_categories
+
+    combo = QComboBox()
+    grouped = [
+        (CategoryKind.INCOME.value, []),  # empty after a filter intersection
+        (CategoryKind.EXPENDITURE.value, [_cat(2, 20, "Groceries")]),
+    ]
+    add_grouped_categories(combo, grouped)
+    assert combo.count() == 2, "the empty income section adds no header"
+    assert combo.itemText(0) == "Expenditure"
 
 
 # --------------------------------------------------------------------------- #
