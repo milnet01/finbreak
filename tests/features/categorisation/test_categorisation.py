@@ -547,6 +547,20 @@ def test_INV2_grouped_resolves_type_by_ascending_to_root(service):
     }
 
 
+def test_INV2_grouped_fails_loud_on_a_parent_cycle(service):
+    # The category service permits reparenting a leaf under any existing parent
+    # (the UI only ever offers roots, but a direct call does not), so a corrupt
+    # A->B->A cycle is constructible. The ascent must fail loud, never hang.
+    cs = CategorizationService(service.vault)
+    catsvc = CategoryService(service.vault)
+    salary = _leaf_id(service, "Salary")
+    sales = _leaf_id(service, "Sales")
+    catsvc.update_category(salary, "Salary", sales)  # Salary -> Sales
+    catsvc.update_category(sales, "Sales", salary)  # Sales -> Salary (cycle)
+    with pytest.raises(ValueError):
+        cs.leaf_categories_grouped()
+
+
 # --------------------------------------------------------------------------- #
 # FIBR-0123 INV-1/INV-3/INV-4 — _widgets grouping helpers (combo rendering)
 # --------------------------------------------------------------------------- #

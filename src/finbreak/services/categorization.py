@@ -100,8 +100,17 @@ class CategorizationService:
             if category.parent_id is None:
                 continue  # a Type root is not itself assignable
             root = category
+            seen: set[int] = set()
             while root.parent_id is not None:
+                seen.add(root.id)
                 root = by_id[root.parent_id]
+                if root.id in seen:
+                    # A well-formed tree ascends to a root in a few hops; a cycle
+                    # (only reachable by a direct reparent, not via the UI) would
+                    # otherwise loop forever. Fail loud on corrupt data.
+                    raise ValueError(
+                        "category parent chain contains a cycle; cannot resolve Type"
+                    )
             # The ascent always terminates at a Type root, and the only two roots
             # (FIBR-0006 INV-5) both carry a kind — so root.kind is a real token
             # here (D3). cast narrows str|None -> str without a runtime guard,
