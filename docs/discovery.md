@@ -42,8 +42,8 @@ them in; the app never touches the bank and nothing leaves the machine.
    the app and needs to set up *their own* bank's statement layout and *their
    own* currency — so the app must not hard-code any single bank or country.
 3. **A person preparing to share finances with an institution** — e.g. a loan
-   or bond application — who needs a clean, **password-protected PDF** summary
-   to hand to a bank or financial advisor.
+   or bond application — who needs a clean PDF summary (**optionally
+   password-protected**) to hand to a bank or financial advisor.
 
 
 ## Success criteria
