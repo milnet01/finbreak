@@ -27,6 +27,7 @@ from finbreak.services.update import (
 from finbreak.services.update_installer import (
     AppImageInstaller,
     _relaunch_command,
+    _relaunch_env,
     detect_installer,
     is_update_supported,
 )
@@ -314,6 +315,32 @@ def test_relaunch_is_detached_new_session_with_pyinstaller_reset(monkeypatch, tm
     assert "APPDIR" not in env and "APPIMAGE" not in env and "ARGV0" not in env
     assert env["HOME"] == "/home/keep"  # unrelated vars are preserved
     assert record["exit_code"] == 0  # hard-exit this process after spawning
+
+
+def test_relaunch_env_restores_leaked_loader_path_from_orig(monkeypatch):
+    # The frozen onefile app runs with LD_LIBRARY_PATH pointing at its private _MEI
+    # bundle dir; inherited by the /bin/sh waiter, the SYSTEM shell then loads the
+    # app's bundled libs (an incompatible libreadline) and dies on a symbol lookup —
+    # the real 0.1.6->0.1.7 "closed but didn't reopen" (relaunch log evidence).
+    # PyInstaller saves the pre-launch value in LD_LIBRARY_PATH_ORIG; restore it so
+    # the waiter runs against the SYSTEM libraries.
+    monkeypatch.setenv("LD_LIBRARY_PATH", "/tmp/_MEIabc123")
+    monkeypatch.setenv("LD_LIBRARY_PATH_ORIG", "/usr/lib:/usr/local/lib")
+    env = _relaunch_env()
+    assert env["LD_LIBRARY_PATH"] == "/usr/lib:/usr/local/lib"
+    assert "LD_LIBRARY_PATH_ORIG" not in env
+
+
+def test_relaunch_env_drops_leaked_loader_path_when_no_original(monkeypatch):
+    # No <VAR>_ORIG (there was no LD_LIBRARY_PATH / LD_PRELOAD before the frozen app
+    # set it) -> drop it entirely, so the system /bin/sh loads system libraries.
+    monkeypatch.setenv("LD_LIBRARY_PATH", "/tmp/_MEIabc123")
+    monkeypatch.delenv("LD_LIBRARY_PATH_ORIG", raising=False)
+    monkeypatch.setenv("LD_PRELOAD", "/tmp/_MEIabc123/libpreload.so")
+    monkeypatch.delenv("LD_PRELOAD_ORIG", raising=False)
+    env = _relaunch_env()
+    assert "LD_LIBRARY_PATH" not in env
+    assert "LD_PRELOAD" not in env
 
 
 def test_relaunch_command_waits_for_old_pid_then_execs_quoted_image():

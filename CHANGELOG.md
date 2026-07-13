@@ -37,6 +37,14 @@ signaling per
 
 ### Fixed
 
+- **Auto-update now reliably reopens the app after installing (FIBR-0122).**
+  The helper that relaunches finbreak after an update was inheriting the packaged
+  app's private library path, so the system shell tried to load the app's bundled
+  libraries, failed, and never reopened the app. It now runs with the system
+  libraries. (The version performing the relaunch is the one you're updating *from*,
+  so one more manual reopen is expected on the very next update; the update after
+  that reopens on its own.)
+
 - **Home Loan statement import no longer glues the page footer (bank address, phone/fax, column headers) onto a transaction's description.** (FIBR-0119)
 
 ## [0.1.7] - 2026-07-12

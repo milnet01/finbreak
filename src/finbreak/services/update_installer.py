@@ -29,22 +29,43 @@ from finbreak.errors import UpdateError
 # rather than short-circuiting on the old (soon-unmounted) values.
 _STALE_APPIMAGE_ENV = ("APPDIR", "APPIMAGE", "ARGV0")
 
+# Dynamic-loader vars the PyInstaller onefile bootloader repoints at its private
+# ``_MEI`` bundle dir. They must be restored to the SYSTEM values before spawning
+# ``/bin/sh`` — see _relaunch_env. AppImage is Linux-only, so only the Linux pair.
+_LOADER_ENV = ("LD_LIBRARY_PATH", "LD_PRELOAD")
+
 
 def _relaunch_env() -> dict[str, str]:
-    """The environment for the relaunched AppImage.
+    """The environment for the ``/bin/sh`` relaunch waiter (and the image it execs).
 
     ``PYINSTALLER_RESET_ENVIRONMENT=1`` is PyInstaller 6.10+'s **official**
     restart signal: it makes the new onefile bootloader reset its own internal
     ``_PYI_*`` state and treat itself as a fresh top-level instance (re-extract),
     instead of assuming it is a worker subprocess of the old one and reusing the
-    now-deleted extraction dir — the root cause of "closed but didn't reopen".
-    (Per the PyInstaller docs we must NOT hand-edit the private ``_PYI_*`` vars;
-    this flag is the supported mechanism.) We additionally drop the AppImage
-    runtime's own markers so the outer runtime re-mounts cleanly."""
+    now-deleted extraction dir. (Per the PyInstaller docs we must NOT hand-edit the
+    private ``_PYI_*`` vars; this flag is the supported mechanism.) We additionally
+    drop the AppImage runtime's own markers so the outer runtime re-mounts cleanly.
+
+    **Loader-path restoration (the real 0.1.6→0.1.7 "closed but didn't reopen"):**
+    the frozen onefile app runs with ``LD_LIBRARY_PATH`` (and possibly
+    ``LD_PRELOAD``) pointing at its private ``_MEI`` extraction dir so it finds its
+    *bundled* libs. Inherited by the ``/bin/sh`` waiter, the **system** shell then
+    loads those bundled libs — e.g. an ``_MEI`` ``libreadline.so.8`` incompatible
+    with the system ``/bin/sh`` — and dies on a symbol lookup *before it can
+    relaunch* (evidenced in ``update-relaunch.log``). PyInstaller preserves the
+    pre-launch value in ``<VAR>_ORIG``; we restore each loader var to that (or drop
+    it when there was none), so the waiter runs against the SYSTEM libraries. The
+    exec'd AppImage sets up its own loader path via its runtime, so this is safe."""
     env = dict(os.environ)
     env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
     for key in _STALE_APPIMAGE_ENV:
         env.pop(key, None)
+    for var in _LOADER_ENV:
+        original = env.pop(f"{var}_ORIG", None)
+        if original:  # a real pre-launch value → restore it; empty/absent → drop
+            env[var] = original
+        else:
+            env.pop(var, None)
     return env
 
 

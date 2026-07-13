@@ -1140,6 +1140,22 @@ because retrofitting them is a data migration.
   Kind: feature.
   Source: user-request-2026-07-12 (approved 2026-07-13).
 
+- ✅ [FIBR-0122] **Auto-update relaunch: stop the /bin/sh waiter inheriting the frozen app's bundled-library path.**
+  Root cause (from update-relaunch.log): the relaunch /bin/sh waiter inherited the
+  PyInstaller onefile app's LD_LIBRARY_PATH pointing at its private _MEI extraction
+  dir, so the SYSTEM /bin/sh loaded the app's bundled libreadline.so.8 and died on a
+  symbol lookup (rl_completion_rewrite_hook) BEFORE it could relaunch — the real cause
+  of "closed but didn't reopen". Fix: _relaunch_env restores LD_LIBRARY_PATH / LD_PRELOAD
+  to the pre-launch value PyInstaller preserves in <VAR>_ORIG (or drops them when there
+  was none), so the waiter runs against system libraries; the exec'd AppImage sets up
+  its own loader path. TDD: 2 unit tests (restore-from-ORIG + drop-when-absent). Ships
+  in the next release. TWO-CYCLE CAVEAT: the *running* (old) version performs each
+  relaunch, so 0.1.7→(this release) still needs one manual reopen; the update AFTER it
+  is the true auto-relaunch test — same caveat as the earlier relaunch fixes (FIBR-0054).
+  **Layman:** After an update the app should reopen itself; it was silently failing to. Fixed so the little helper that reopens it runs with the system's own libraries instead of the app's bundled ones.
+  Kind: fix.
+  Source: user-report-2026-07-13 (0.1.6→0.1.7 did not auto-relaunch).
+
 ### ⚡ Performance
 
 - 📋 [FIBR-0025] **Enable SQLite WAL mode.** Set
