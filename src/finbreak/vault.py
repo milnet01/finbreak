@@ -23,6 +23,16 @@ from finbreak.models import KdfParams
 # from-version (FIBR-0005 INV-4, Baseline-complete).
 SCHEMA_VERSION = 1
 
+# The SQLCipher cipher-compatibility level the backup DB is written under
+# (FIBR-0014 INV-13). Pinned so a `.fbk` made today still opens after a
+# sqlcipher3-binary bump that changes the page/HMAC/KDF-iter defaults: export
+# writes at this level and records it in the manifest; restore re-applies the
+# recorded level (validated against this one-element allowlist in
+# services/backup.py). Lives HERE — the module that issues the PRAGMA — because
+# vault.py cannot import it from services/backup.py without a circular import;
+# backup.py imports it from here (spec placed it in backup.py, refined).
+SQLCIPHER_COMPAT = 4
+
 
 class Vault:
     def __init__(self, vault_path: Path, sidecar_path: Path):
@@ -110,9 +120,23 @@ class Vault:
             conn.close()
             raise
 
-    def open(self, key: bytearray) -> None:
-        """Open the vault with the raw key; a wrong key / tamper raises here."""
-        conn = self._connect(key)
+    def open(
+        self,
+        key: bytearray,
+        *,
+        in_memory_temp: bool = False,
+        cipher_compat: int | None = None,
+    ) -> None:
+        """Open the vault with the raw key; a wrong key / tamper raises here.
+
+        ``in_memory_temp`` sets ``temp_store=MEMORY`` on the connection *before*
+        ``run_migrations`` runs, so a restore's migration rebuilds spill no
+        plaintext to a temp store (FIBR-0014 INV-1b). ``cipher_compat`` applies a
+        recorded ``cipher_compatibility`` level (before ``cipher_use_hmac=ON``) so
+        an older `.fbk` opens under a library whose default differs (INV-13)."""
+        conn = self._connect(
+            key, in_memory_temp=in_memory_temp, cipher_compat=cipher_compat
+        )
         try:
             # First read forces SQLCipher to decrypt + HMAC-check page 1: a wrong
             # key or a flipped body byte raises DatabaseError rather than
@@ -138,7 +162,13 @@ class Vault:
             self._conn.close()
             self._conn = None
 
-    def _connect(self, key: bytearray) -> dbapi2.Connection:
+    def _connect(
+        self,
+        key: bytearray,
+        *,
+        in_memory_temp: bool = False,
+        cipher_compat: int | None = None,
+    ) -> dbapi2.Connection:
         # Default isolation_level "" → manual-commit (DBAPI), so writes are
         # delimited by an explicit commit() (INV-4a).
         conn = dbapi2.connect(str(self._vault_path))
@@ -150,6 +180,13 @@ class Vault:
         # accepted best-effort gap, consistent with the D5 stance on the other
         # immutable key/password intermediates.
         conn.execute(f"PRAGMA key = \"x'{key.hex()}'\"")
+        # Apply a recorded cipher_compatibility level (FIBR-0014 INV-13) right
+        # after PRAGMA key and BEFORE cipher_use_hmac — a lower level resets the
+        # per-page HMAC off, so setting it first then forcing HMAC ON means HMAC
+        # can never be left disabled. cipher_compat is an int the caller has
+        # already allowlist-validated (services/backup.py), never user text.
+        if cipher_compat is not None:
+            conn.execute(f"PRAGMA cipher_compatibility = {int(cipher_compat)}")
         # Pin per-page HMAC integrity ON explicitly (FIBR-0077, revisiting
         # FIBR-0004 D4 which only *asserted* the SQLCipher-4 default). AES gives
         # confidentiality, not integrity; the HMAC is what makes a tampered page
@@ -167,7 +204,56 @@ class Vault:
         # immediately (FIBR-0076): a second app instance or a slow backup/AV
         # holding a transient read lock serialises rather than crashing the UI.
         conn.execute("PRAGMA busy_timeout = 5000")
+        # Keep temp tables / migration-rebuild scratch in memory so a restore's
+        # v1→v2 transactions rebuild spills no plaintext to a temp file (INV-1b).
+        # Set here, before the first read/migration, so it covers run_migrations.
+        if in_memory_temp:
+            conn.execute("PRAGMA temp_store = MEMORY")
         return conn
+
+    def rekey(self, new_key: bytearray) -> None:
+        """Re-key the open vault in place to ``new_key`` (``PRAGMA rekey``, FIBR-0014
+        D4). After it the old key no longer opens the file and the new key does,
+        with data intact (spike-proven). Raises ``VaultLockedError`` if locked."""
+        # new_key.hex() is 64 hex chars from Argon2 output (never user text), so
+        # this interpolation has no injection surface — same posture as PRAGMA key.
+        self.connection.execute(f"PRAGMA rekey = \"x'{new_key.hex()}'\"")
+
+    def export_to(self, dest_db: Path, backup_key: bytearray) -> None:
+        """ATTACH ``dest_db`` (keyed by ``backup_key``) onto the live, master-keyed
+        connection and ``sqlcipher_export`` the whole vault into it (FIBR-0014 D2).
+
+        Runs on the already-unlocked connection because only it holds the master
+        key that can read the source vault. Pre-creates the target ``0o600`` (so
+        SQLite doesn't create it umask-readable), sets ``temp_store=MEMORY`` so no
+        plaintext spills (INV-1b), writes the backup at ``SQLCIPHER_COMPAT`` with
+        HMAC on (INV-13/INV-4), DETACHes, and restores the connection's prior
+        ``temp_store``. Raises ``VaultLockedError`` if locked."""
+        conn = self.connection  # VaultLockedError if locked
+        # Create the ATTACH target owner-only before SQLCipher writes ciphertext,
+        # so it never sits at the process umask (world-readable), mirroring
+        # create()'s O_EXCL 0o600 posture (INV-7).
+        os.close(os.open(dest_db, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600))
+        prior_temp_store = conn.execute("PRAGMA temp_store").fetchone()[0]
+        attached = False
+        try:
+            conn.execute("PRAGMA temp_store = MEMORY")
+            conn.execute(
+                f"ATTACH DATABASE '{dest_db}' AS backup KEY \"x'{backup_key.hex()}'\""
+            )
+            attached = True
+            # cipher_compatibility BEFORE cipher_use_hmac (INV-13) so HMAC-on can't
+            # be reset by the level change; both on the attached `backup` schema.
+            conn.execute(f"PRAGMA backup.cipher_compatibility = {SQLCIPHER_COMPAT}")
+            conn.execute("PRAGMA backup.cipher_use_hmac = ON")
+            conn.execute("SELECT sqlcipher_export('backup')")
+        finally:
+            # Always DETACH a successful ATTACH and restore temp_store, even on a
+            # mid-export failure — else a dangling `backup` schema / changed
+            # temp_store would corrupt the still-open live session.
+            if attached:
+                conn.execute("DETACH DATABASE backup")
+            conn.execute(f"PRAGMA temp_store = {prior_temp_store}")
 
     def _write_sidecar(self, params: KdfParams) -> None:
         """Atomically write the plaintext sidecar as owner-only (coding.md § 7)."""
