@@ -13,7 +13,7 @@
 [![Status](https://img.shields.io/badge/status-pre--alpha-orange)]()
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-Current version: **0.1.8** (early preview). **[⬇ Download the latest
+Current version: **0.1.9** (early preview). **[⬇ Download the latest
 release](https://github.com/milnet01/finbreak/releases/latest)**, or see
 [CHANGELOG](CHANGELOG.md) for what's shipped and [ROADMAP](ROADMAP.md) for
 what's coming.
@@ -41,9 +41,16 @@ lot, with more polish and features to come. What works today:
   income, and
 - a searchable, filterable **Transactions tab** — find rows by description
   and filter by date range, account, and category (any or all at once), with
-  columns you can drag to reorder and resize (it remembers your layout).
+  columns you can drag to reorder and resize (it remembers your layout),
+- **exporting a PDF report** — choose the sections (summary, charts,
+  transactions), the accounts and period, and a light or dark theme, and
+  optionally lock the file with a password so only you can open it, and
+- **encrypted backups** — save a portable, password-protected backup of your
+  whole vault and restore it later, even onto a new master password if you've
+  forgotten the old one.
 
-Still to come: **password-protected PDF export**. See the
+finbreak now also runs on **Windows** as a self-contained `.exe` (for testing
+— see Install below). Still to come: a packaged macOS app. See the
 [ROADMAP](ROADMAP.md) for the full plan.
 
 ## Install

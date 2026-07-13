@@ -21,6 +21,8 @@ signaling per
 
 ## [Unreleased]
 
+## [0.1.9] - 2026-07-13
+
 ### Added
 
 - **Windows build (testing) — a self-contained `finbreak.exe`.** (FIBR-0015)
