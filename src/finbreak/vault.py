@@ -46,6 +46,17 @@ class Vault:
             raise VaultLockedError("the vault is locked")
         return self._conn
 
+    @property
+    def vault_path(self) -> Path:
+        """The on-disk vault DB path — the install target a restore writes to
+        (readable while locked, so restore works pre-login; FIBR-0014)."""
+        return self._vault_path
+
+    @property
+    def sidecar_path(self) -> Path:
+        """The on-disk KDF sidecar path — the restore's second install target."""
+        return self._sidecar_path
+
     def presence_state(self) -> str:
         """Route by file presence; a mixed pair raises ``VaultStateError``."""
         vault_there = self._vault_path.exists()

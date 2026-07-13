@@ -11,6 +11,7 @@ import json
 import os
 import secrets
 import zipfile
+from pathlib import Path
 
 import pytest
 from sqlcipher3.dbapi2 import DatabaseError
@@ -294,3 +295,115 @@ def test_INV8_export_requires_unlocked_vault(paths, tmp_path):
     auth.lock()  # now locked
     with pytest.raises(VaultLockedError):
         service.export_backup(tmp_path / "my.fbk", _BACKUP_PW)
+
+
+# --------------------------------------------------------------------------- #
+# Slice 3 — BackupService.restore_backup happy path (INV-2 / INV-3 / INV-5)
+# --------------------------------------------------------------------------- #
+_M2 = "new-master-pass-9876"
+
+
+def _snapshot_tables(conn) -> dict[str, list]:
+    """Every application table's full, order-independent row-set — the dynamic
+    enumeration INV-2 compares (excludes sqlite_% internal tables)."""
+    names = [
+        r[0]
+        for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' "
+            "AND name NOT LIKE 'sqlite_%'"
+        ).fetchall()
+    ]
+    return {
+        n: sorted(map(str, conn.execute(f"SELECT * FROM {n}").fetchall()))
+        for n in names
+    }
+
+
+def _export_from_seed(tmp_path) -> tuple[Path, dict[str, list]]:
+    """First-run + seed a source vault under tmp_path/src, export a `.fbk`, snapshot
+    its tables, and lock it. Returns (fbk_path, source-table-snapshot)."""
+    src = tmp_path / "src"
+    src.mkdir()
+    src_paths = (src / "vault.db", src / "vault.kdf.json")
+    auth = _seeded_auth(src_paths)
+    snapshot = _snapshot_tables(auth.vault.connection)
+    fbk = tmp_path / "backup.fbk"
+    BackupService(auth.vault, auth).export_backup(fbk, _BACKUP_PW)
+    auth.lock()
+    return fbk, snapshot
+
+
+def _dest_auth(tmp_path, name="dest") -> AuthService:
+    d = tmp_path / name
+    d.mkdir()
+    return AuthService(d / "vault.db", d / "vault.kdf.json")
+
+
+def test_INV2_restore_reproduces_every_table(tmp_path):
+    fbk, snapshot = _export_from_seed(tmp_path)
+    dest = _dest_auth(tmp_path)  # empty location, no vault yet
+    BackupService(dest.vault, dest).restore_backup(fbk, _BACKUP_PW, _M2)
+
+    assert dest.unlock(bytearray(_M2, "utf-8")) is True
+    try:
+        assert _snapshot_tables(dest.vault.connection) == snapshot, (
+            "every table's row-set is reproduced exactly"
+        )
+    finally:
+        dest.lock()
+
+
+def test_INV3_separate_password_recovers_without_old_master(tmp_path):
+    fbk, _snapshot = _export_from_seed(tmp_path)
+    dest = _dest_auth(tmp_path)
+    BackupService(dest.vault, dest).restore_backup(fbk, _BACKUP_PW, _M2)
+
+    # The restored vault opens under the NEW master, and the OLD master fails.
+    assert dest.unlock(bytearray(_M2, "utf-8")) is True
+    dest.lock()
+    assert dest.unlock(bytearray(_PW)) is False, (
+        "the old master never opens the restore"
+    )
+    assert dest._key is None
+
+
+def test_INV5_existing_vault_moved_aside_not_destroyed(tmp_path):
+    fbk, _snapshot = _export_from_seed(tmp_path)
+    dest = _dest_auth(tmp_path)
+    # Give dest its OWN pre-existing vault first (a different master), then restore.
+    dest.first_run(bytearray(b"the original dest master"), "USD")
+    dest.lock()
+
+    BackupService(dest.vault, dest).restore_backup(fbk, _BACKUP_PW, _M2)
+
+    olds = list((tmp_path / "dest").glob("*.old"))
+    assert len(olds) == 2, f"the old vault.db + sidecar are kept as *.old: {olds}"
+    # The active vault is the RESTORED one: opens under M2, the old dest master fails.
+    assert dest.unlock(bytearray(_M2, "utf-8")) is True
+    dest.lock()
+    assert dest.unlock(bytearray(b"the original dest master")) is False
+
+
+def test_INV5_failure_after_move_aside_leaves_recoverable_old_pair(tmp_path):
+    fbk, _snapshot = _export_from_seed(tmp_path)
+    dest = _dest_auth(tmp_path)
+    dest.first_run(bytearray(b"the original dest master"), "USD")
+    dest.lock()
+
+    def boom(role: str, buf: bytearray) -> None:
+        if role == "post_move_aside":
+            raise RuntimeError("injected failure right after the move-aside")
+
+    with pytest.raises(RuntimeError):
+        BackupService(dest.vault, dest).restore_backup(
+            fbk, _BACKUP_PW, _M2, on_key=boom
+        )
+
+    olds = sorted((tmp_path / "dest").glob("*.old"))
+    assert len(olds) == 2, "the old vault is recoverable from the *.old pair"
+    assert all(p.stat().st_size > 0 for p in olds), "the *.old copies are intact"
+    # The failure fired after move-aside, before install, so the live vault.db was
+    # renamed to *.old and no new one installed — nothing silently lost (INV-5).
+    assert not (tmp_path / "dest" / "vault.db").exists(), (
+        "the original vault.db is safely moved aside, not overwritten in place"
+    )
