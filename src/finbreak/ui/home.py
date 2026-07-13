@@ -15,19 +15,9 @@ transaction table moved to the Transactions tab (``ui/transactions.py``).
 
 from __future__ import annotations
 
-from decimal import Decimal
-
-from PySide6.QtCharts import (
-    QBarCategoryAxis,
-    QBarSeries,
-    QBarSet,
-    QChart,
-    QChartView,
-    QPieSeries,
-    QValueAxis,
-)
+from PySide6.QtCharts import QChart, QChartView
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QColor, QPainter
+from PySide6.QtGui import QPainter
 from PySide6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
@@ -53,52 +43,7 @@ from finbreak.services.reporting import (
     ReportPrefs,
 )
 from finbreak.ui._amount import _NEGATIVE_TEXT, _POSITIVE_TEXT, _format_amount
-
-# The ordered categorical palette for the coloured (categorised) donut wedges
-# (FIBR-0012 D9) — accessible on the dark default, the app-icon family extended.
-_DONUT_PALETTE = [
-    QColor("#4E9F3D"),  # green
-    QColor("#3D7EA6"),  # blue
-    QColor("#2FA4A0"),  # teal
-    QColor("#D98A29"),  # orange
-    QColor("#8E6FBE"),  # purple
-    QColor("#C0504D"),  # red
-    QColor("#C9A227"),  # gold
-    QColor("#7FB069"),  # light green
-]
-# The two synthetic buckets are pinned neutrals, regardless of rank (D9).
-_UNCAT_COLOUR = QColor("#9AA6B2")  # light slate — Uncategorised
-_OTHER_COLOUR = QColor("#5B6570")  # darker slate — Other
-_MAX_WEDGES = 8  # counting Uncategorised and any Other
-
-
-def _donut_wedges(
-    spending: list[CategorySpend], uncat_label: str, other_label: str
-) -> list[tuple[str, Decimal, QColor]]:
-    """The ≤8-wedge donut render list (FIBR-0012 D9), from the full sorted
-    ``spending_by_category`` output. Splits off the Uncategorised slice
-    (``category_id is None``), caps the categorised remainder, and synthesises an
-    **Other** wedge locally from the collapsed tail — so Other is a UI construct,
-    distinct from Uncategorised by construction. Order: coloured categorised (desc)
-    → Uncategorised (if present) → Other (if present)."""
-    categorised = [c for c in spending if c.category_id is not None]
-    uncat = [c for c in spending if c.category_id is None]  # 0 or 1
-    has_uncat = bool(uncat)
-    if len(categorised) + (1 if has_uncat else 0) <= _MAX_WEDGES:
-        keep, tail = categorised, []
-    else:
-        # Reserve one wedge for Other, and one for Uncategorised if present.
-        n_keep = _MAX_WEDGES - 1 - (1 if has_uncat else 0)
-        keep, tail = categorised[:n_keep], categorised[n_keep:]
-    wedges: list[tuple[str, Decimal, QColor]] = [
-        (c.name, c.amount, _DONUT_PALETTE[i]) for i, c in enumerate(keep)
-    ]
-    if has_uncat:
-        wedges.append((uncat_label, uncat[0].amount, _UNCAT_COLOUR))
-    if tail:
-        other_amount = sum((c.amount for c in tail), Decimal(0))
-        wedges.append((other_label, other_amount, _OTHER_COLOUR))
-    return wedges
+from finbreak.ui.charts import ChartTheme, build_donut_chart, build_trend_chart
 
 
 class HomeView(QWidget):
@@ -359,9 +304,19 @@ class HomeView(QWidget):
             for value in (self._income_value, self._expenditure_value, self._net_value):
                 value.setStyleSheet("")
 
+    def _chart_theme(self) -> ChartTheme:
+        """The on-screen theme: text from the live palette (ADR-0002 dark default),
+        the fixed FIBR-0105 positive/negative colours, transparent background — so
+        the shared builders reproduce the FIBR-0012 dashboard exactly (D3)."""
+        return ChartTheme(
+            text=self.palette().text().color(),
+            positive=_POSITIVE_TEXT,
+            negative=_NEGATIVE_TEXT,
+            background=None,
+        )
+
     def _render_donut(self, spending: list[CategorySpend]) -> None:
-        wedges = _donut_wedges(spending, self.tr("Uncategorised"), self.tr("Other"))
-        if not wedges:
+        if not spending:
             # No spending in the period — hide the chart, show the placeholder (D9).
             self._category_chart.setVisible(False)
             self._category_empty.setVisible(True)
@@ -369,43 +324,21 @@ class HomeView(QWidget):
             return
         self._category_empty.setVisible(False)
         self._category_chart.setVisible(True)
-        series = QPieSeries()
-        series.setHoleSize(0.4)  # a non-zero hole makes it a donut
-        for label, amount, colour in wedges:
-            slice_ = series.append(label, float(amount))
-            slice_.setColor(colour)
-        self._category_chart.setChart(self._themed_chart(series))
+        self._category_chart.setChart(
+            build_donut_chart(
+                spending,
+                self.tr("Uncategorised"),
+                self.tr("Other"),
+                self._chart_theme(),
+            )
+        )
 
     def _render_trend(self, trend: list[MonthlyTotal]) -> None:
-        income_set = QBarSet(self.tr("Income"))
-        income_set.setColor(_POSITIVE_TEXT)
-        expenditure_set = QBarSet(self.tr("Spending"))
-        expenditure_set.setColor(_NEGATIVE_TEXT)
-        for month in trend:
-            income_set.append(float(month.income))
-            expenditure_set.append(float(month.expenditure))
-        series = QBarSeries()
-        series.append(income_set)
-        series.append(expenditure_set)
-        chart = self._themed_chart(series)
-        axis_x = QBarCategoryAxis()
-        axis_x.append([month.label for month in trend])
-        chart.addAxis(axis_x, Qt.AlignmentFlag.AlignBottom)
-        series.attachAxis(axis_x)
-        axis_y = QValueAxis()
-        chart.addAxis(axis_y, Qt.AlignmentFlag.AlignLeft)
-        series.attachAxis(axis_y)
-        self._trend_chart.setChart(chart)
-
-    def _themed_chart(self, series: QPieSeries | QBarSeries) -> QChart:
-        """A chart with a transparent background (the app panel shows through) and
-        palette-driven text (ADR-0002 dark default, D9)."""
-        chart = QChart()
-        chart.addSeries(series)
-        chart.setBackgroundVisible(False)
-        chart.legend().setVisible(True)
-        chart.legend().setAlignment(Qt.AlignmentFlag.AlignBottom)
-        text_colour = self.palette().text().color()
-        chart.legend().setLabelColor(text_colour)
-        chart.setTitleBrush(text_colour)
-        return chart
+        self._trend_chart.setChart(
+            build_trend_chart(
+                trend,
+                self.tr("Income"),
+                self.tr("Spending"),
+                self._chart_theme(),
+            )
+        )

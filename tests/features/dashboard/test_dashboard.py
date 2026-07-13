@@ -77,7 +77,7 @@ def _spend(cat_id, amount):
 
 
 def test_donut_wedges_all_shown_when_within_cap():
-    from finbreak.ui.home import _donut_wedges
+    from finbreak.ui.charts import _donut_wedges
 
     spending = [_spend(i, 100 - i) for i in range(1, 6)]  # 5 categorised
     wedges = _donut_wedges(spending, "Uncategorised", "Other")
@@ -87,7 +87,7 @@ def test_donut_wedges_all_shown_when_within_cap():
 def test_donut_wedges_collapse_ten_plus_uncategorised():
     """10 categorised + Uncategorised -> 6 coloured + Uncategorised + Other,
     in that order (D9 >8 collapse; Uncategorised before Other, both pinned last)."""
-    from finbreak.ui.home import _OTHER_COLOUR, _UNCAT_COLOUR, _donut_wedges
+    from finbreak.ui.charts import _OTHER_COLOUR, _UNCAT_COLOUR, _donut_wedges
 
     spending = [_spend(i, 1000 - i) for i in range(1, 11)]  # 10 categorised, desc
     spending.append(CategorySpend(None, "", Decimal("5")))  # Uncategorised bucket
@@ -104,7 +104,7 @@ def test_donut_wedges_collapse_ten_plus_uncategorised():
 
 
 def test_donut_wedges_empty_spending_is_no_wedges():
-    from finbreak.ui.home import _donut_wedges
+    from finbreak.ui.charts import _donut_wedges
 
     assert _donut_wedges([], "Uncategorised", "Other") == []
 
