@@ -24,14 +24,23 @@ becomes active.
 **FIBR-0015 (active):** Windows build (PyInstaller `.exe`; SQLCipher-on-Windows is
 the known blocker — `sqlcipher3-binary` is Linux-only, needs a Wine+MSVC local
 compile per the FIBR-0015 roadmap note).
-1. 🚧 Brainstorm + write/confirm spec (`docs/specs/FIBR-0015.md`) — **spec DRAFTED
+1. ✅ Brainstorm + write/confirm spec (`docs/specs/FIBR-0015.md`) — **spec DRAFTED
    2026-07-13.** Blocker dissolved: `sqlcipher3-wheels` (fork of coleifer/sqlcipher3)
    ships a cp312 win_amd64 wheel with the identical `sqlcipher3` import + SQLCipher
-   4.12.0; cross-package vault round-trip proven both directions. Scope locked to
-   the Windows `.exe` only (user-approved); package swap project-wide (user-approved
-   "same fork everywhere"); build on GitHub Actions `windows-latest`. NEXT: `/cold-eyes`.
-2. ⬜ `/cold-eyes` the spec (project cap 7)
-3. ⬜ Write failing tests / build harness
+   4.12.0; cross-package vault round-trip proven both directions + `sqlcipher_export`/
+   `rekey` binding surface. Scope locked to the Windows `.exe` only (user-approved);
+   package swap project-wide (user-approved "same fork everywhere"); build on GitHub
+   Actions `windows-latest`.
+2. ✅ `/cold-eyes` the spec (project cap 7) — **CONVERGED at loop 6** (polish; HIGH
+   3→3→1→0→1→0, Lanes A+C ended clean). Spec CLEARED FOR CODE. Commits `fdc04f3`
+   (draft) → `011edf3` (converged). NEXT: TDD.
+3. 🚧 Write failing tests / build harness — **NEXT.** Deliverables: pyproject dep
+   swap → `sqlcipher3-wheels==0.5.7` + comment refresh; `scripts/windows_freeze_flags.py`
+   + `scripts/build-windows-exe.py`; `.github/workflows/windows-build.yml`;
+   `tests/features/windows_build/` (INV-1 same-pkg + `-binary`-fixture cross-pkg
+   regression, INV-3 parity guard, freeze-shape); dependencies.md §2; README note;
+   ROADMAP annotation+split; ADR-0009. **Generate the `-binary` fixture FIRST (before
+   the pyproject swap removes `-binary`).**
 4. ⬜ Implement until tests pass
 5. ⬜ Run `/audit`
 6. ⬜ Run `/indie-review`
