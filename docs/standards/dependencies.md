@@ -35,8 +35,15 @@ documented on **both** ends (§3).
 Everything the project does not itself author, in every manifest:
 
 - **Runtime libraries** — `pyproject.toml` `dependencies` (currently
-  PySide6, sqlcipher3-binary, pikepdf, argon2-cffi; the OFX/PDF parsers
-  `ofxparse`/`pdfplumber` join when P06/P07 add them, ADR-0005).
+  PySide6, sqlcipher3-wheels, pikepdf, argon2-cffi, `ofxparse`,
+  `pdfplumber`, ADR-0005). The SQLCipher binding is `sqlcipher3-wheels`
+  (the cross-platform fork `laggykiller/sqlcipher3`), swapped in from
+  `sqlcipher3-binary` at FIBR-0015 to unblock the Windows `.exe`: it ships
+  Windows/macOS/Linux wheels of the **same SQLCipher 4.12.0** engine, is a
+  drop-in on the identical `sqlcipher3` import, and is pinned to its latest
+  stable (0.5.7) — the two packages carry independent version lineages, so
+  the lower number is not a downgrade (ADR-0009). Its native surface is
+  advisory-watched on the fork's release cadence (see below).
   **Transitive** dependencies count too: when `pip-audit` flags a
   vulnerable transitive package, fix it by bumping the direct dep that
   pulls it in, or — if none can — pin it as a **direct** dependency in
@@ -45,8 +52,9 @@ Everything the project does not itself author, in every manifest:
   `pyproject.toml`), register-tracked (§4) only if that pin holds it
   *below* latest for a break.
 - **Vendored native libraries** — a blind spot to track by hand. Several
-  wheels bundle a C library *inside* the wheel: `sqlcipher3-binary`
-  (SQLCipher + SQLite), `pikepdf` (qpdf), `argon2-cffi-bindings` (Argon2).
+  wheels bundle a C library *inside* the wheel: `sqlcipher3-wheels`
+  (SQLCipher + SQLite + OpenSSL — SQLCipher links a crypto provider),
+  `pikepdf` (qpdf), `argon2-cffi-bindings` (Argon2).
   `pip-audit` scans Python-package metadata, so it **cannot** see a CVE in
   a vendored native lib — the advisory only clears when the *wheel
   maintainer* re-releases. Because these are the app's security-critical

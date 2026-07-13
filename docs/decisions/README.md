@@ -67,6 +67,7 @@ captured in a new ADR.
 | [0006](0006-transfer-detection-suggest-confirm.md) | Transfer detection: suggest-then-confirm |
 | [0007](0007-self-contained-bundled-releases.md) | Self-contained bundled releases |
 | [0008](0008-qtcharts-for-reporting.md) | QtCharts for the reporting dashboard charts |
+| [0009](0009-sqlcipher-binding-package.md) | SQLCipher binding package: `sqlcipher3-wheels` (cross-platform fork) |
 
 ## Template
 

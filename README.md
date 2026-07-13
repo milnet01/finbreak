@@ -64,9 +64,16 @@ Each release also ships a `.sig` file next to the AppImage — that's the
 signature finbreak uses to check updates are genuine; you don't need to do
 anything with it yourself.
 
-**Windows and macOS** — packaged installers are on the way (see
-[ROADMAP](ROADMAP.md) → P13). Until then, you can run from source with
-Python 3.12+ (see [CLAUDE.md](CLAUDE.md) "Build and test").
+**Windows (testing)** — a self-contained `finbreak.exe` (no Python needed) is
+built on demand by the `windows-build` CI workflow and shared with testers as a
+build artifact. It is **not code-signed yet**, so Windows SmartScreen will show an
+"unknown publisher" warning the first time you run it — choose **More info → Run
+anyway**. There is **no auto-update on Windows** (that's Linux/AppImage-only for
+now); to update, just replace the old `.exe` with the newer one.
+
+**macOS** — a packaged `.dmg` is still on the way (see [ROADMAP](ROADMAP.md)). Until
+then, you can run from source with Python 3.12+ (see
+[CLAUDE.md](CLAUDE.md) "Build and test").
 
 ## Quickstart
 
