@@ -620,6 +620,7 @@ because retrofitting them is a data migration.
   failure or lost laptop doesn't mean lost data. Target phase: P12 (its
   heading already lists "backup"). Dependencies: FIBR-0004. Lanes:
   crypto, ux. Kind: feature. Source: user-request-2026-07-01.
+  Merged into FIBR-0014 (2026-07-13): FIBR-0018 and the narrowed FIBR-0014 both describe the encrypted vault backup & restore. FIBR-0014 (docs/specs/FIBR-0014.md) is the IMPLEMENTATION spec; track the work there. The backup safety nudge is FIBR-0089; restore-verification is FIBR-0033. This item stays as the original provenance record — flip it ✅ alongside FIBR-0014 when the backup ships.
 
 - 📋 [FIBR-0019] **Master-password recovery via recovery key
   (key-wrapping).** At vault creation, generate a high-entropy recovery
@@ -691,6 +692,7 @@ because retrofitting them is a data migration.
   test-restored is a guess, not a safety net. Target phase: P12.
   Dependencies: FIBR-0018. Lanes: crypto, ux. Kind: feature.
   Source: user-request-2026-07-01.
+  Dependency re-points: FIBR-0018 (the backup mechanism) is merged into and implemented by FIBR-0014, so this restore-verification builds on FIBR-0014's .fbk export/restore (docs/specs/FIBR-0014.md), not a separate FIBR-0018 deliverable.
 
 - 📋 [FIBR-0041] **Back-fill the CSV import path with the INV-5b resource-size cap.**
   security-model.md INV-5b binds an import resource budget (max file size / row count / parse time) to the import specs — naming FIBR-0007 (CSV) and FIBR-0008 (OFX) by id. FIBR-0008 pins the cap for the OFX path (D13: read_file_bytes stat-checks against _MAX_OFX_BYTES before read; a transaction-count cap). But FIBR-0007's CSV path (ImportService.read_file -> str) shipped WITHOUT a size cap, so security-model INV-5b's FIBR-0007 claim is currently unmet. Back-fill: apply the same size stat-check to read_file (or a shared bounded reader), pick a _MAX_CSV_BYTES constant, add a test (monkeypatch the cap down). Surfaced by the FIBR-0008 /cold-eyes (lane C, 2026-07-03).
