@@ -44,7 +44,7 @@ python -m pip install --quiet --upgrade pip
 # source of truth), NOT a hand-maintained list — that drift silently dropped
 # argon2-cffi from the bundle after FIBR-0004 and would have dropped ofxparse
 # (FIBR-0008). We read `[project].dependencies` and install exactly those
-# (PySide6, sqlcipher3-binary, pikepdf, argon2-cffi, ofxparse + its bs4/lxml/six
+# (PySide6, sqlcipher3-wheels, pikepdf, argon2-cffi, ofxparse + its bs4/lxml/six
 # tree). We do NOT `pip install /src` (the finbreak package itself): PyInstaller
 # freezes the source directly via --paths /src/src, and building the sdist would
 # fail writing egg-info into the read-only /src mount. PyInstaller is a build

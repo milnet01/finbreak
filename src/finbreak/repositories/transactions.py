@@ -14,6 +14,7 @@ from datetime import UTC, datetime
 from sqlcipher3 import dbapi2
 
 from finbreak.models import Transaction
+from finbreak.repositories import last_insert_id
 
 
 class TransactionRepository:
@@ -36,7 +37,7 @@ class TransactionRepository:
             ),
         )
         self._commit()
-        return cursor.lastrowid
+        return last_insert_id(cursor)
 
     def list_all(self) -> list[Transaction]:
         # The category_id/category_source columns (v7, FIBR-0010) are appended

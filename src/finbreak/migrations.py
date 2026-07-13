@@ -5,7 +5,7 @@ DBAPI driver does not implicitly ``BEGIN`` around DDL, so an un-wrapped
 ``DROP``/``RENAME`` would autocommit and a mid-migration failure could not roll
 back. Each step therefore wraps itself in an explicit ``BEGIN … COMMIT`` with a
 ``ROLLBACK`` on any exception — the explicit ``BEGIN`` as the step's first
-statement (verified against sqlcipher3-binary 0.6.0). Forward-only: no
+statement (verified against sqlcipher3-wheels 0.5.7, SQLCipher 4.12.0). Forward-only: no
 downgrade; a vault newer than this build is refused, not silently downgraded.
 """
 

@@ -15,6 +15,7 @@ from datetime import UTC, datetime
 from sqlcipher3 import dbapi2
 
 from finbreak.models import Category
+from finbreak.repositories import last_insert_id
 
 # The SELECT column list is written literally in each query (not interpolated)
 # so it shares the ``Category`` dataclass's field order — ``id, parent_id, name,
@@ -33,7 +34,7 @@ class CategoryRepository:
             (parent_id, name, datetime.now(UTC).isoformat()),
         )
         self._conn.commit()
-        return cursor.lastrowid
+        return last_insert_id(cursor)
 
     def list_all(self) -> list[Category]:
         # NULL parent_id (the roots) sorts first under SQLite's default ASC.

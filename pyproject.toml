@@ -13,9 +13,12 @@ authors = [{ name = "Anthony Schemel" }]
 
 # Runtime dependencies. Introduced early at P01 (FIBR-0003) so the bundling
 # smoke-test can prove the three NATIVE stacks freeze + travel: Qt (PySide6),
-# the SQLCipher library (sqlcipher3-binary bundles it in-wheel — no system
+# the SQLCipher library (sqlcipher3-wheels bundles it in-wheel — no system
 # libsqlcipher), and qpdf (behind pikepdf, also bundled in-wheel). Pinned
-# EXACTLY per FIBR-0003 INV-4. The wheels' own glibc floor is the max across
+# EXACTLY per FIBR-0003 INV-4. sqlcipher3-wheels is the cross-platform fork
+# (laggykiller/sqlcipher3) carrying Windows/macOS/Linux wheels of the SAME
+# SQLCipher 4.12.0 engine — the FIBR-0015 swap that unblocks the Windows .exe
+# (ADR-0009). The wheels' own glibc floor is the max across
 # their manylinux tags — measured 2.34 (PySide6's manylinux_2_34 wheel governs)
 # — but the artifact's EFFECTIVE floor is the build image's glibc: build-smoke.sh
 # freezes in a python:3.12-slim-bookworm container (~2.36), whose libpython links
@@ -23,7 +26,7 @@ authors = [{ name = "Anthony Schemel" }]
 # PyInstaller can't freeze; python:*-slim provides the shared libpython.)
 dependencies = [
     "PySide6==6.11.1",
-    "sqlcipher3-binary==0.6.0",
+    "sqlcipher3-wheels==0.5.7",
     "pikepdf==10.9.1",
     # Argon2id KDF (FIBR-0004). argon2-cffi-bindings vendors the native Argon2
     # library in-wheel, so no system lib is needed (bundling-first, ADR-0007).

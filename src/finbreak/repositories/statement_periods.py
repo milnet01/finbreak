@@ -14,6 +14,7 @@ from datetime import UTC, datetime
 from sqlcipher3 import dbapi2
 
 from finbreak.models import StatementPeriod
+from finbreak.repositories import last_insert_id
 
 # The SELECT column list is written literally (not interpolated) so it shares the
 # ``StatementPeriod`` dataclass's field order — matching the codebase convention
@@ -47,7 +48,7 @@ class StatementPeriodRepository:
                 datetime.now(UTC).isoformat(),
             ),
         )
-        return cursor.lastrowid
+        return last_insert_id(cursor)
 
     def id_for_span(
         self, account_id: int, period_start: str, period_end: str

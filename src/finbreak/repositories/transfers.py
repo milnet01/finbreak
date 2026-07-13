@@ -16,6 +16,7 @@ from datetime import UTC, datetime
 from sqlcipher3 import dbapi2
 
 from finbreak.models import TransferPair
+from finbreak.repositories import last_insert_id
 
 # The inclusive ±day window an inter-account debit and credit may differ by and
 # still pair (INV-2 / ADR-0006). Its ONE home — ``candidate_pairs`` reads this
@@ -78,7 +79,7 @@ class TransferRepository:
             (low, high, status, datetime.now(UTC).isoformat()),
         )
         self._conn.commit()
-        return cursor.lastrowid
+        return last_insert_id(cursor)
 
     def delete_confirmed(self, pair_id: int) -> int:
         """Delete a **confirmed** pair by id (unlink, INV-6), returning the rowcount.

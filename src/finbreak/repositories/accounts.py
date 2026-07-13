@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 from sqlcipher3 import dbapi2
 
 from finbreak.models import Account
+from finbreak.repositories import last_insert_id
 
 
 class AccountRepository:
@@ -24,7 +25,7 @@ class AccountRepository:
             (name, type, datetime.now(UTC).isoformat()),
         )
         self._conn.commit()
-        return cursor.lastrowid
+        return last_insert_id(cursor)
 
     def list_all(self) -> list[Account]:
         rows = self._conn.execute(

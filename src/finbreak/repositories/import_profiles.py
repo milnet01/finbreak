@@ -23,6 +23,7 @@ from datetime import UTC, datetime
 from sqlcipher3 import dbapi2
 
 from finbreak.models import ColumnMapping, ImportProfile
+from finbreak.repositories import last_insert_id
 
 # The SELECT column list is written literally in each query (not interpolated)
 # so it shares the ``ImportProfile`` dataclass's field order — matching the
@@ -54,7 +55,7 @@ class ImportProfileRepository:
             ),
         )
         self._conn.commit()
-        return cursor.lastrowid
+        return last_insert_id(cursor)
 
     def update(self, profile_id: int, name: str, mapping: ColumnMapping) -> None:
         """Overwrite the name + mapping in place; ``signature`` and ``created_at``

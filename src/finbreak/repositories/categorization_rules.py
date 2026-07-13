@@ -15,6 +15,7 @@ from datetime import UTC, datetime
 from sqlcipher3 import dbapi2
 
 from finbreak.models import CategorizationRule
+from finbreak.repositories import last_insert_id
 
 # The SELECT column list is written literally in each query so it shares the
 # ``CategorizationRule`` dataclass field order — ``id, pattern, category_id,
@@ -49,7 +50,7 @@ class CategorizationRuleRepository:
             (pattern, category_id, priority, datetime.now(UTC).isoformat()),
         )
         self._conn.commit()
-        return cursor.lastrowid
+        return last_insert_id(cursor)
 
     def update(self, rule_id: int, pattern: str, category_id: int) -> None:
         """Edit a rule's pattern + target leaf, leaving ``priority`` untouched (an

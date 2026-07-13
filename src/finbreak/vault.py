@@ -25,7 +25,7 @@ SCHEMA_VERSION = 1
 
 # The SQLCipher cipher-compatibility level the backup DB is written under
 # (FIBR-0014 INV-13). Pinned so a `.fbk` made today still opens after a
-# sqlcipher3-binary bump that changes the page/HMAC/KDF-iter defaults: export
+# sqlcipher3-wheels bump that changes the page/HMAC/KDF-iter defaults: export
 # writes at this level and records it in the manifest; restore re-applies the
 # recorded level (validated against this one-element allowlist in
 # services/backup.py). Lives HERE — the module that issues the PRAGMA — because
