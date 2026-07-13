@@ -1,0 +1,69 @@
+name: windows-build
+
+# FIBR-0015 — freeze the self-contained Windows `finbreak.exe` and clean-room it.
+# workflow_dispatch ONLY (no schedule) so it never slows the per-push gate
+# (INV-7); PyInstaller can't cross-compile, so this must run on a Windows runner.
+# Public repo ⇒ windows-latest minutes are free.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-build:
+    name: freeze + clean-room finbreak.exe
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # Pin the runner interpreter to 3.12 — the cp312 sqlcipher3-wheels wheel is
+      # the verified Windows wheel (FIBR-0015). The driver installs the runtime
+      # deps + PyInstaller itself (manifest-driven, INV-6).
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      # build-windows-exe.py: manifest-driven dep install (INV-6), single-Qt guard
+      # (INV-2), then the PyInstaller onefile freeze with the canonical collection
+      # flags (INV-3) and an os.pathsep --add-data (INV-5). Produces dist/finbreak.exe.
+      - name: Freeze finbreak.exe
+        run: python scripts/build-windows-exe.py
+
+      # EC3 (the D4 REQUIRED gate): launch the frozen .exe with python AND py
+      # removed from PATH and assert the FINBREAK_SELFTEST_OK sentinel — proving
+      # it loads all 9 native stacks (INV-4) without touching any interpreter. A
+      # PyInstaller onefile bundles its own CPython + the MSVC C runtime, so
+      # system-Python-independence holds by construction.
+      - name: Clean-room self-test (Python off PATH)
+        shell: pwsh
+        run: |
+          $env:PATH = ($env:PATH -split ';' | Where-Object {
+            $_ -and -not (Test-Path (Join-Path $_ 'python.exe')) `
+                 -and -not (Test-Path (Join-Path $_ 'py.exe'))
+          }) -join ';'
+          if (Get-Command python -ErrorAction SilentlyContinue) { throw 'python still on PATH' }
+          if (Get-Command py -ErrorAction SilentlyContinue) { throw 'py still on PATH' }
+          $out = & .\dist\finbreak.exe --self-test 2>&1 | Out-String
+          Write-Host $out
+          if ($out -notmatch 'FINBREAK_SELFTEST_OK') { throw 'FINBREAK_SELFTEST_OK sentinel missing' }
+
+      # Optional stretch (D4): the same .exe inside a truly Python-free Windows
+      # container, for parity with the Linux debian:13-slim clean-room. Not
+      # required to pass — servercore's base-DLL surface is unproven for Qt and
+      # Windows containers on hosted runners are heavy (continue-on-error).
+      - name: Clean-room self-test in a Python-free container (optional stretch)
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          docker run --rm -v "${{ github.workspace }}:C:\ws" `
+            mcr.microsoft.com/windows/servercore:ltsc2022 `
+            C:\ws\dist\finbreak.exe --self-test
+
+      - name: Upload finbreak.exe
+        uses: actions/upload-artifact@v7
+        with:
+          name: finbreak-windows-exe
+          path: dist/finbreak.exe
+          if-no-files-found: error
