@@ -23,6 +23,15 @@ signaling per
 
 ### Added
 
+- **Reporting dashboard + Transactions tab (P10, FIBR-0012).**
+  The Home screen is now a dashboard: an income-vs-spending summary for a chosen
+  period (defaults to last month and remembers your choice — current/previous month,
+  a specific month, year-to-date, or a specific year), a donut of where your money
+  went by category, and a 12-month income-vs-spending trend chart. Money moved between
+  your own accounts (confirmed transfers) never counts as income or spending. The
+  transaction list moves to its own Transactions tab where you can search by
+  description and filter by date range, account, and category — any or all at once.
+
 - **Data tables: drag-to-reorder columns, with the order persisted across sessions.** (FIBR-0120)
   You can now drag a table's column headings to rearrange them (e.g. put Amount before Date), and the app remembers your arrangement next time — on the Transactions, Statements, Rules and Transfers tables.
 

@@ -415,7 +415,7 @@ lands on top.
 
 ### 🎨 Features
 
-- 🚧 [FIBR-0012] **P10: dashboard — summary, pie/donut,
+- ✅ [FIBR-0012] **P10: dashboard — summary, pie/donut,
   trends, filterable table.** `ReportingService` aggregates by
   category / account / period; the dashboard shows the
   income-vs-expenditure summary, a category pie/donut, and
@@ -433,6 +433,7 @@ lands on top.
   UX (user, 2026-07-11, dogfooding v0.1.2): the Home tab currently shows the raw transaction table (interim from FIBR-0051). The user confirms Home should be the income/expenditure SUMMARY (this dashboard), NOT the transaction list. So this item also owns relocating the transaction table off Home into its own view/tab (e.g. a "Transactions" tab) — carrying the full search + filters this item already promises — leaving Home for the summary + charts.
   **Layman:** The Home screen becomes a proper dashboard — a plain income-vs-spending summary, a pie chart of where your money goes, and month-by-month trends — while the transaction list moves to its own searchable, filterable tab.
   Design approved 2026-07-12 (brainstorming). Scope locked: QtCharts (ADR-0008, no new dep); ReportingService (period model default=previous month, persisted ReportPrefs; transfers never counted as income/expenditure anywhere); Home dashboard (period+account selectors, income/expenditure/net tiles, spending-by-category donut, monthly income-vs-expenditure grouped-bar trend); new Transactions tab absorbing FIBR-0109 (search + date-range + account + category filters, all combinable) with the transaction table relocated off Home. Tab order → Home·Transactions·Statements·Accounts·Categories·Rules·Transfers. Next: ADR-0008 + spec → /cold-eyes.
+  Resolved 2026-07-13: shipped by TDD across 11 slices. ReportingService (pure period model + summary/spending_by_category/monthly_trend, transfers excluded, integer-exact) + ReportPrefs persistence; Home reworked into the QtCharts dashboard (donut + 12-month trend, ≤8-wedge collapse, empty-state placeholder); new Transactions tab with search+date+account+category filters (absorbs FIBR-0109); 7-tab shell, count live from Home's ReportingService, QtCharts self-test leg. Close: /audit 0 actionable; /indie-review 2 cold lanes → 3 findings all fixed inline (report_prefs year bound INV-2; per-table column-key objectNames; VaultLockedError-specific slot guards) + 2 regression tests. Gate green 712/1, mypy 0. Tag FIBR-0012-complete.
 
 ---
 
