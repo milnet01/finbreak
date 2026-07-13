@@ -51,6 +51,15 @@ class CategoryHasChildrenError(FinbreakError):
     remove the children first."""
 
 
+class BackupError(FinbreakError):
+    """A backup restore failed — a wrong backup password, a corrupt / truncated /
+    entry-missing / traversal / oversized `.fbk`, an unknown container
+    ``format_version``, a below-floor KDF params record, or a newer embedded
+    schema. Restore normalises the underlying ``KdfPolicyError`` /
+    ``SchemaVersionError`` / ``DatabaseError`` / ``zipfile.BadZipFile`` to this one
+    type, and changes nothing on disk (FIBR-0014 INV-4/11/12)."""
+
+
 class UpdateError(FinbreakError):
     """A recoverable auto-update failure surfaced to the user on an explicit
     **Update now** — an oversize/timed-out/dropped download or a disk error at

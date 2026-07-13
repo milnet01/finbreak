@@ -7,12 +7,15 @@ slices add ``BackupService`` export/restore and the UI. Every vault lives under
 ``tmp_path``; no network, no real financial data (testing.md § 6).
 """
 
+import json
 import os
 import secrets
+import zipfile
 
 import pytest
 from sqlcipher3.dbapi2 import DatabaseError
 
+import finbreak
 from conftest import _PW
 from finbreak.crypto import SALT_LEN, derive_key
 from finbreak.errors import VaultLockedError
@@ -21,6 +24,12 @@ from finbreak.services.auth import (
     ARGON2_MEMORY_KIB,
     ARGON2_PARALLELISM,
     ARGON2_TIME_COST,
+    AuthService,
+)
+from finbreak.services.backup import (
+    MANIFEST_FORMAT_VERSION,
+    MIN_BACKUP_PASSWORD_LEN,
+    BackupService,
 )
 from finbreak.vault import SQLCIPHER_COMPAT, Vault
 
@@ -28,6 +37,24 @@ pytestmark = pytest.mark.features
 
 KEY_LEN = 32
 _SENTINEL = "SENTINEL-" + secrets.token_hex(6)
+_BACKUP_PW = "backup-pass-1234"
+
+
+def _seeded_auth(paths) -> AuthService:
+    """A first-run, unlocked ``AuthService`` with a sentinel transaction seeded, so a
+    backup's fidelity + no-plaintext can be checked. Locked by the caller/teardown."""
+    auth = AuthService(*paths)
+    auth.first_run(bytearray(_PW), "ZAR")
+    conn = auth.vault.connection
+    acct = conn.execute("SELECT id FROM accounts LIMIT 1").fetchone()[0]
+    conn.execute(
+        "INSERT INTO transactions"
+        "(account_id, occurred_on, amount_minor, description, created_at) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (acct, "2026-07-01", -1234, _SENTINEL, "2026-01-01T00:00:00+00:00"),
+    )
+    conn.commit()
+    return auth
 
 
 def _params(salt: bytes) -> KdfParams:
@@ -162,3 +189,108 @@ def test_open_in_memory_temp_sets_temp_store_before_migrations(paths):
     reopened.open(bytearray(key), in_memory_temp=True)
     assert reopened.connection.execute("PRAGMA temp_store").fetchone()[0] == 2  # MEMORY
     reopened.close()
+
+
+# --------------------------------------------------------------------------- #
+# Slice 2 — BackupService.export_backup (INV-1 / INV-1b / INV-7)
+# --------------------------------------------------------------------------- #
+def test_INV1_fbk_is_three_entry_zip_with_no_plaintext(paths, tmp_path):
+    auth = _seeded_auth(paths)
+    try:
+        dest = tmp_path / "my.fbk"
+        BackupService(auth.vault, auth).export_backup(dest, _BACKUP_PW)
+
+        assert zipfile.is_zipfile(dest)
+        with zipfile.ZipFile(dest) as zf:
+            assert set(zf.namelist()) == {"manifest.json", "params.json", "vault.db"}
+            vault_bytes = zf.read("vault.db")
+        assert vault_bytes[:16] != b"SQLite format 3\x00", "backup DB is ciphertext"
+        assert _SENTINEL.encode() not in dest.read_bytes(), (
+            "no seeded plaintext sentinel anywhere in the .fbk"
+        )
+    finally:
+        auth.lock()
+
+
+def test_INV1_manifest_records_schema_app_and_compat(paths, tmp_path):
+    auth = _seeded_auth(paths)
+    try:
+        dest = tmp_path / "my.fbk"
+        BackupService(auth.vault, auth).export_backup(dest, _BACKUP_PW)
+        with zipfile.ZipFile(dest) as zf:
+            manifest = json.loads(zf.read("manifest.json"))
+            params = json.loads(zf.read("params.json"))
+        assert manifest["format_version"] == MANIFEST_FORMAT_VERSION
+        assert manifest["app_version"] == finbreak.__version__
+        assert manifest["schema_version"] == 8  # LATEST_SCHEMA_VERSION today
+        assert manifest["sqlcipher_compat"] == SQLCIPHER_COMPAT
+        # params.json carries a fresh per-backup salt, not the master sidecar's.
+        assert set(params) == {
+            "format_version",
+            "memory_kib",
+            "time_cost",
+            "parallelism",
+            "key_len",
+            "salt_len",
+            "salt_hex",
+        }
+        assert params["salt_hex"] != auth.load_params().salt.hex(), (
+            "the backup salt is freshly minted (INV-3), not the master salt"
+        )
+    finally:
+        auth.lock()
+
+
+def test_INV7_export_enforces_min_backup_password(paths, tmp_path):
+    auth = _seeded_auth(paths)
+    try:
+        dest = tmp_path / "my.fbk"
+        short = "x" * (MIN_BACKUP_PASSWORD_LEN - 1)
+        with pytest.raises(ValueError):
+            BackupService(auth.vault, auth).export_backup(dest, short)
+        assert not dest.exists(), "a rejected export writes no file"
+    finally:
+        auth.lock()
+
+
+def test_INV7_export_wipes_backup_key_via_on_key_seam(paths, tmp_path):
+    auth = _seeded_auth(paths)
+    try:
+        captured: list[tuple[str, bytearray]] = []
+        dest = tmp_path / "my.fbk"
+        BackupService(auth.vault, auth).export_backup(
+            dest, _BACKUP_PW, on_key=lambda role, buf: captured.append((role, buf))
+        )
+        roles = [role for role, _ in captured]
+        assert roles == ["backup"], "export derives only the backup key (no master)"
+        _, key_buf = captured[0]
+        assert bytes(key_buf) == bytes(len(key_buf)), (
+            "the backup key buffer is zeroed after export returns"
+        )
+    finally:
+        auth.lock()
+
+
+def test_INV7_export_is_atomic_no_partial_on_failure(paths, tmp_path):
+    auth = _seeded_auth(paths)
+    try:
+        dest = tmp_path / "my.fbk"
+
+        def boom(role: str, buf: bytearray) -> None:
+            raise RuntimeError("injected mid-export failure")
+
+        with pytest.raises(RuntimeError):
+            BackupService(auth.vault, auth).export_backup(dest, _BACKUP_PW, on_key=boom)
+        assert not dest.exists(), "no partial .fbk on failure"
+        leftovers = list(tmp_path.glob("*.tmp")) + list(tmp_path.glob("*.fbk*"))
+        assert leftovers == [], f"no leftover temp files: {leftovers}"
+    finally:
+        auth.lock()
+
+
+def test_INV8_export_requires_unlocked_vault(paths, tmp_path):
+    auth = _seeded_auth(paths)
+    service = BackupService(auth.vault, auth)
+    auth.lock()  # now locked
+    with pytest.raises(VaultLockedError):
+        service.export_backup(tmp_path / "my.fbk", _BACKUP_PW)
