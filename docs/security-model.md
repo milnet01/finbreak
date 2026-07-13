@@ -1,8 +1,8 @@
 # finbreak — Security model & threat model
 
 > **Status:** Live — the project's authoritative security & threat
-> model; amended through FIBR-0054 (2026-07-10) and re-run through
-> `/cold-eyes` on each material edit.
+> model; amended through FIBR-0014 (2026-07-13 — T11: separate-password
+> backup recovery) and re-run through `/cold-eyes` on each material edit.
 > **Why this exists:** finbreak holds **personal financial
 > data**. Security is the load-bearing concern, so it gets its
 > own document — a single place that names what we protect, what
