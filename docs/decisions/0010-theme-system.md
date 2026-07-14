@@ -48,8 +48,8 @@ Options for the mechanism:
 - **Fusion style + token-driven `QPalette` + `QSS`** — set the built-in **Fusion**
   style (identical rendering on every OS), install a per-theme `QPalette` built
   from a small set of semantic colour **tokens**, plus one token-driven stylesheet
-  for the modern polish. Full colour control; a new theme costs ~10 tokens, not a
-  wall of code; applicable pre-unlock; live-switchable.
+  for the modern polish. Full colour control; a new theme costs ~8 semantic
+  colours, not a wall of code; applicable pre-unlock; live-switchable.
 - **Hand-written per-theme QSS files** — maximum control, but every theme is a
   large hand-maintained stylesheet: heavy, error-prone, no shared structure
   (fights the DRY / "shortest correct" house rules).
