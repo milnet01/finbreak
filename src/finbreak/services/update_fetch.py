@@ -62,7 +62,7 @@ def fetch_latest_release(
     request = urllib.request.Request(
         url, headers={"User-Agent": _USER_AGENT, "Accept": _ACCEPT_GITHUB_JSON}
     )
-    with urllib.request.urlopen(  # nosec B310
+    with urllib.request.urlopen(  # nosec B310  # nosemgrep: dynamic-urllib-use-detected
         request, timeout=timeout, context=_ssl_context()
     ) as response:
         raw = response.read(max_bytes + 1)
@@ -80,7 +80,7 @@ def download(url: str, dest: Path, *, max_bytes: int, timeout: float) -> None:
     total = 0
     try:
         with (
-            urllib.request.urlopen(  # nosec B310
+            urllib.request.urlopen(  # nosec B310  # nosemgrep: dynamic-urllib-use-detected
                 request, timeout=timeout, context=_ssl_context()
             ) as response,
             open(dest, "wb") as handle,

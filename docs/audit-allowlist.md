@@ -76,8 +76,30 @@ Do not delete revoked entries — the history is the value.
 
 ## Entries
 
-(none yet — numbered sequentially as they're added; numbers
-never reused, including for revoked entries)
+## allowlist-001 — semgrep:dynamic-urllib-use-detected in the sole allowlisted network module
+
+- **Status:** active
+- **Tool / rule:**
+  semgrep:python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
+- **Location:** `src/finbreak/services/update_fetch.py` — the two
+  `urllib.request.urlopen(...)` calls (`fetch_latest_release` and `download`).
+- **Why this is a false positive:** the rule warns that a `urllib` call may use
+  an attacker-controlled (dynamic) URL. `update_fetch.py` is the **one** module
+  the FIBR-0054 design *deliberately* allows to import `urllib` (INV-12 / D9 /
+  D12) — the entire network surface of the app. The two URLs are not arbitrary:
+  the API URL is built from a hard-coded owner/repo template
+  (`_API_URL_TEMPLATE.format(...)`), the download URLs come from the GitHub
+  Releases JSON, and **every** call is gated by `_require_https()` (https-only),
+  a byte cap + socket timeout (INV-10), and — for the downloaded AppImage — an
+  Ed25519 signature verified over the exact bytes against the committed public
+  key *before anything is installed* (INV-4). The SSRF concern the rule models is
+  structurally answered by the design, not by luck. The companion bandit B310 on
+  the same lines is already suppressed for the same reason (`# nosec B310`).
+- **Suppression applied:** inline —
+  `# nosemgrep: dynamic-urllib-use-detected` appended on both `urlopen` lines
+  (alongside the existing `# nosec B310`).
+- **Logged:** 2026-07-14
+- **Confirmed by phase:** FIBR-0054 (close)
 
 
 ## What does NOT belong here

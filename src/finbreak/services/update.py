@@ -124,6 +124,13 @@ def _stage_temp(directory: Path, suffix: str) -> Path:
     return Path(name)
 
 
+def _unlink(path: Path | None) -> None:
+    """Best-effort remove a maybe-unstaged temp (``None`` if ``mkstemp`` itself
+    never ran, so a staging failure orphans nothing — INV-5)."""
+    if path is not None:
+        path.unlink(missing_ok=True)
+
+
 class UpdateService:
     """Orchestrates the opt-in check + the signature-verified download.
 
@@ -224,9 +231,14 @@ class UpdateService:
         if self._installer is None:
             raise UpdateError("self-update is not supported on this platform")
         directory = self._installer.target_path().parent
-        appimage_tmp = _stage_temp(directory, ".AppImage")
-        sig_tmp = _stage_temp(directory, ".sig")
+        # Stage inside the try so a mkstemp failure (read-only / full $APPIMAGE
+        # dir) is caught, cleaned up, and re-raised as UpdateError like any other
+        # failure — not leaked as a raw OSError with the first temp orphaned.
+        appimage_tmp: Path | None = None
+        sig_tmp: Path | None = None
         try:
+            appimage_tmp = _stage_temp(directory, ".AppImage")
+            sig_tmp = _stage_temp(directory, ".sig")
             self._fetcher.download(
                 info.appimage_url,
                 appimage_tmp,
@@ -244,13 +256,13 @@ class UpdateService:
                 raise UpdateVerificationError(
                     "the update's signature did not verify"
                 ) from exc
+            sig_tmp.unlink(missing_ok=True)  # only the verified AppImage is installed
+            return appimage_tmp
         except UpdateVerificationError:
-            appimage_tmp.unlink(missing_ok=True)
-            sig_tmp.unlink(missing_ok=True)
+            _unlink(appimage_tmp)
+            _unlink(sig_tmp)
             raise
-        except Exception as exc:  # oversize / timeout / dropped / disk
-            appimage_tmp.unlink(missing_ok=True)
-            sig_tmp.unlink(missing_ok=True)
+        except Exception as exc:  # staging / oversize / timeout / dropped / disk
+            _unlink(appimage_tmp)
+            _unlink(sig_tmp)
             raise UpdateError(f"could not download the update: {exc}") from exc
-        sig_tmp.unlink(missing_ok=True)  # only the verified AppImage is installed
-        return appimage_tmp

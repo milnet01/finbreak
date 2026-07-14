@@ -924,11 +924,16 @@ def test_D15_skip_persists_and_no_reprompt_after_relock(qtbot, service, tmp_path
     window._on_update_skip()
     assert updater.skipped == ["0.1.1"]
     assert not isinstance(window._dialog, UpdateDialog)  # torn down
+    assert window._pending_update is None  # cleared on skip
 
-    # The offer was cleared on skip, so the next unlock's offer check (the tail of
-    # _enter_unlocked) re-shows nothing this launch (D15 — shown at most once).
+    # A REAL re-lock / re-unlock round-trip must re-show nothing this launch (D15 —
+    # shown at most once; the found result was consumed on skip). Drive the full
+    # cycle, not just _maybe_show_pending_offer(), so the _enter_unlocked tail is
+    # what proves the silence.
+    window._lock()
+    assert service.unlock(bytearray(_PW)) is True
+    window._enter_unlocked()  # its tail calls _maybe_show_pending_offer()
     assert window._pending_update is None
-    window._maybe_show_pending_offer()
     assert not isinstance(window._dialog, UpdateDialog)
 
 
@@ -947,6 +952,51 @@ def test_INV9_download_ready_after_prompt_gone_does_not_apply(qtbot, service, tm
     window._on_download_ready(verified, prompt)
     assert installer.applied == []  # INV-9: the stale result is dropped
     assert not verified.exists()  # ...and the orphan temp is unlinked
+
+
+def test_download_failed_while_prompt_live_warns_and_closes(
+    qtbot, service, tmp_path, monkeypatch
+):
+    info = _sample_info()
+    installer = _FakeInstaller(tmp_path / "app.AppImage")
+    window, _ = _updater_shell(qtbot, service, info=info, installer=installer)
+    warned: list = []
+    monkeypatch.setattr(
+        "finbreak.ui.main_window.QMessageBox.warning", lambda *a, **k: warned.append(a)
+    )
+
+    window._enter_unlocked()
+    window._on_update_found(info)
+    prompt = window._dialog
+
+    window._on_download_failed(RuntimeError("boom"), prompt)
+    assert warned  # the user is told they're still on the current version (INV-11)
+    assert not isinstance(window._dialog, UpdateDialog)  # the busy prompt is closed
+
+
+def test_download_failed_after_autolock_teardown_stays_silent(
+    qtbot, service, tmp_path, monkeypatch
+):
+    """A download that fails AFTER an auto-lock tore the busy prompt down must not
+    destroy the re-opened dialog or pop a stray warning over the lock screen — it
+    mirrors the _on_download_ready dialog-gone guard (INV-9 / INV-11)."""
+    info = _sample_info()
+    installer = _FakeInstaller(tmp_path / "app.AppImage")
+    window, _ = _updater_shell(qtbot, service, info=info, installer=installer)
+    warned: list = []
+    monkeypatch.setattr(
+        "finbreak.ui.main_window.QMessageBox.warning", lambda *a, **k: warned.append(a)
+    )
+
+    window._enter_unlocked()
+    window._on_update_found(info)
+    prompt = window._dialog
+    window._teardown_dialog()  # an auto-lock tears the prompt down mid-download
+    current = window._dialog
+
+    window._on_download_failed(RuntimeError("boom"), prompt)
+    assert warned == []  # no stray warning while the prompt is gone
+    assert window._dialog is current  # the current dialog is left untouched
 
 
 def test_INV6_download_ready_applies_with_key_wipe_callback(qtbot, service, tmp_path):

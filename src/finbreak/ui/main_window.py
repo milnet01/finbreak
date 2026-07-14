@@ -1041,7 +1041,7 @@ class MainWindow(QMainWindow):
         prompt = self._dialog
         worker = DownloadWorker(self._update_service, info, self)
         worker.ready.connect(lambda path: self._on_download_ready(path, prompt))
-        worker.failed.connect(self._on_download_failed)
+        worker.failed.connect(lambda exc: self._on_download_failed(exc, prompt))
         worker.finished.connect(worker.deleteLater)
         self._download_worker = worker
         worker.start()
@@ -1059,9 +1059,18 @@ class MainWindow(QMainWindow):
             # doesn't orphan next to $APPIMAGE (INV-9).
             Path(path).unlink(missing_ok=True)
 
-    def _on_download_failed(self, _exc: object) -> None:
+    def _on_download_failed(self, _exc: object, prompt: QDialog | None) -> None:
         # Any verify/oversize/timeout/disk failure surfaces here and stays on the
-        # current version (INV-11). Close the busy prompt, then explain.
+        # current version (INV-11). Mirror _on_download_ready's guard: if an
+        # auto-lock tore the busy prompt down mid-download (self._dialog is now
+        # the re-opened UnlockDialog), stay silent — destroying that dialog and
+        # popping a warning over the lock screen would be a jarring glitch, and
+        # INV-11 already holds. Only close + explain when our prompt is still up.
+        prompt_live = (
+            self._dialog is prompt and prompt is not None and shiboken6.isValid(prompt)
+        )
+        if not prompt_live:
+            return
         self._teardown_dialog()
         QMessageBox.warning(
             self,
