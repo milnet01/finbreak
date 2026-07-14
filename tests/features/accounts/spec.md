@@ -47,8 +47,35 @@ or real financial data (testing.md § 6).
   account add→delete cycle (covered by the vault-suite whole-`src/` scan plus a
   `caplog` capture here). Source: FIBR-0005 INV-8.
 
+## FIBR-0128 — forget remembered statement passwords (Accounts screen)
+
+Test-side contract for [`docs/specs/FIBR-0128.md`](../../../docs/specs/FIBR-0128.md);
+each `INV-N` below maps to that spec's invariant of the same number (a separate
+numbering from the FIBR-0005 invariants above). The remembered PDF password
+(`accounts.statement_pdf_password`, FIBR-0009) is presented + cleared here, never
+displayed.
+
+- **INV-1** — The saved password never crosses into the UI: `AccountRepository
+  .ids_with_pdf_password()` / `AccountService.account_ids_with_pdf_password()`
+  return an **id-set** (empty by default), never the secret; the widget never calls
+  `get_pdf_password` during render, and a stored sentinel appears in no row
+  text/tooltip/item-data. Source: FIBR-0128 INV-1.
+- **INV-2** — A per-account marker (the phrase "statement password saved") shows on
+  exactly the rows whose account has a saved password. Source: FIBR-0128 INV-2.
+- **INV-3** — The **Forget statement password** button is disabled with no selection
+  and for an account without a saved password, enabled only for a selected account
+  that has one, and disabled again after a Forget clears the selection. Source:
+  FIBR-0128 INV-3.
+- **INV-4** — Confirming Forget clears only the selected account's password (marker
+  drops; other accounts untouched); declining the confirm keeps it. Source:
+  FIBR-0128 INV-4.
+- **INV-5** — An auto-lock during the clear (`VaultLockedError`) returns silently —
+  no crash, no error text — like the add/delete handlers. Source: FIBR-0128 INV-5.
+
 ## Out of scope
 
 Editing an existing transaction's account; reassigning/bulk-moving transactions;
 per-account currency/opening-balance/institution; import/categorisation/
-dashboard/export. See FIBR-0005 § "Out of scope".
+dashboard/export. See FIBR-0005 § "Out of scope". **FIBR-0128:** revealing the
+stored password; setting/changing it by hand (re-learned on the next locked
+import); Settings-screen placement; Business/Personal grouping (FIBR-0137).

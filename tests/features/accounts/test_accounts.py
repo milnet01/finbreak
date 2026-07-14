@@ -559,3 +559,207 @@ def test_manual_entry_add_swallows_vault_locked_silently(qtbot, service, monkeyp
     monkeypatch.setattr(dialog._transactions, "add_transaction", locked)
     dialog._on_add()  # must not raise
     assert committed == [] and dialog._error.text() == ""
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0128 — forget remembered statement passwords (Accounts screen)
+# --------------------------------------------------------------------------- #
+_SENTINEL_PW = "SENTINEL-PW-123"
+_PW_MARKER_PHRASE = "statement password saved"
+
+
+def test_INV1_repo_ids_with_pdf_password_presence_only(service):
+    """The repo exposes WHICH accounts have a saved password as an id-set, never
+    the secret; empty by default (FIBR-0128 INV-1)."""
+    repo = AccountRepository(service.vault.connection)
+    default_id = _default_id(service.vault)
+    assert repo.ids_with_pdf_password() == set(), "empty by default"
+    repo.set_pdf_password(default_id, _SENTINEL_PW)
+    assert repo.ids_with_pdf_password() == {default_id}
+
+
+def test_INV1_service_presence_is_ids_only_and_empty_default(service):
+    """account_ids_with_pdf_password returns the id-set and set() when none —
+    the plaintext never leaves the service layer (FIBR-0128 INV-1)."""
+    svc = AccountService(service.vault)
+    assert svc.account_ids_with_pdf_password() == set()
+    default_id = _default_id(service.vault)
+    svc.set_pdf_password(default_id, _SENTINEL_PW)
+    assert svc.account_ids_with_pdf_password() == {default_id}
+
+
+def test_INV1_widget_never_renders_or_reads_the_secret(qtbot, service, monkeypatch):
+    """The saved password never crosses into the UI: the widget never calls
+    get_pdf_password during render, and the sentinel is in no row text/tooltip/
+    item-data (FIBR-0128 INV-1)."""
+    from PySide6.QtCore import Qt
+
+    from finbreak.ui.accounts import AccountsWidget
+
+    svc = AccountService(service.vault)
+    default_id = _default_id(service.vault)
+    svc.set_pdf_password(default_id, _SENTINEL_PW)
+
+    widget = AccountsWidget(service)
+    qtbot.addWidget(widget)
+
+    # Primary falsifier (a): the listing path must not read the plaintext.
+    calls: list = []
+    orig = widget._accounts.get_pdf_password
+    monkeypatch.setattr(
+        widget._accounts,
+        "get_pdf_password",
+        lambda *a, **k: (calls.append(a), orig(*a, **k))[1],
+    )
+    widget._refresh()
+    assert calls == [], "the listing path must not read the plaintext password"
+
+    # Primary falsifier (b) + defense-in-depth: the sentinel is nowhere in the UI.
+    roles = [
+        Qt.ItemDataRole.AccessibleTextRole,
+        Qt.ItemDataRole.UserRole,
+        Qt.ItemDataRole.UserRole + 1,
+        Qt.ItemDataRole.UserRole + 2,
+        Qt.ItemDataRole.UserRole + 3,
+    ]
+    for i in range(widget._list.count()):
+        item = widget._list.item(i)
+        assert _SENTINEL_PW not in item.text()
+        assert _SENTINEL_PW not in (item.toolTip() or "")
+        for role in roles:
+            assert _SENTINEL_PW != str(item.data(role))
+
+
+def test_INV2_marker_flags_exactly_accounts_with_a_saved_password(qtbot, service):
+    """The marker shows only for accounts with a saved password (FIBR-0128 INV-2)."""
+    from PySide6.QtCore import Qt
+
+    from finbreak.ui.accounts import AccountsWidget
+
+    svc = AccountService(service.vault)
+    default_id = _default_id(service.vault)
+    spare = svc.add_account("Spare", "other")
+    svc.set_pdf_password(default_id, _SENTINEL_PW)  # only default has one
+
+    widget = AccountsWidget(service)
+    qtbot.addWidget(widget)
+
+    marked = {
+        widget._list.item(i).data(Qt.ItemDataRole.UserRole): (
+            _PW_MARKER_PHRASE in widget._list.item(i).text()
+        )
+        for i in range(widget._list.count())
+    }
+    assert marked[default_id] is True, "the account with a saved password is marked"
+    assert marked[spare.id] is False, "the account without one is not marked"
+
+
+def test_INV3_forget_enabled_only_for_saved_password(qtbot, service, monkeypatch):
+    """Forget is disabled with no selection / no saved password, enabled only for a
+    selected account that has one, and disabled again after a Forget clears the
+    selection (FIBR-0128 INV-3)."""
+    from PySide6.QtWidgets import QMessageBox
+
+    from finbreak.ui.accounts import AccountsWidget
+
+    svc = AccountService(service.vault)
+    default_id = _default_id(service.vault)
+    spare = svc.add_account("Spare", "other")
+    svc.set_pdf_password(spare.id, _SENTINEL_PW)
+
+    widget = AccountsWidget(service)
+    qtbot.addWidget(widget)
+    assert not widget._forget_pw_button.isEnabled(), "starts disabled (no selection)"
+
+    widget._select_account(default_id)  # no saved password
+    assert not widget._forget_pw_button.isEnabled(), "no saved password -> disabled"
+
+    widget._select_account(spare.id)  # has one
+    assert widget._forget_pw_button.isEnabled(), "saved password -> enabled"
+
+    monkeypatch.setattr(
+        QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.Yes
+    )
+    widget._forget_pw_button.click()
+    assert not widget._forget_pw_button.isEnabled(), "disabled again after Forget"
+
+
+def test_INV4_forget_clears_only_selected_when_confirmed(qtbot, service, monkeypatch):
+    """Confirming Forget clears only the selected account's password; the marker
+    drops; other accounts are untouched (FIBR-0128 INV-4)."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QMessageBox
+
+    from finbreak.ui.accounts import AccountsWidget
+
+    svc = AccountService(service.vault)
+    a = _default_id(service.vault)
+    b = svc.add_account("Spare", "other").id
+    svc.set_pdf_password(a, "PW-A")
+    svc.set_pdf_password(b, "PW-B")
+
+    monkeypatch.setattr(
+        QMessageBox, "question", lambda *args, **k: QMessageBox.StandardButton.Yes
+    )
+    widget = AccountsWidget(service)
+    qtbot.addWidget(widget)
+    widget._select_account(a)
+    widget._forget_pw_button.click()
+
+    assert svc.get_pdf_password(a) is None, "the selected account's password is cleared"
+    assert svc.get_pdf_password(b) == "PW-B", "other account's password untouched"
+    marks = {
+        widget._list.item(i).data(Qt.ItemDataRole.UserRole): (
+            _PW_MARKER_PHRASE in widget._list.item(i).text()
+        )
+        for i in range(widget._list.count())
+    }
+    assert marks[a] is False and marks[b] is True, "only cleared row loses its marker"
+
+
+def test_INV4_forget_declined_keeps_the_password(qtbot, service, monkeypatch):
+    """Declining the Forget confirm leaves the password stored (FIBR-0128 INV-4)."""
+    from PySide6.QtWidgets import QMessageBox
+
+    from finbreak.ui.accounts import AccountsWidget
+
+    svc = AccountService(service.vault)
+    a = _default_id(service.vault)
+    svc.set_pdf_password(a, "PW-A")
+
+    monkeypatch.setattr(
+        QMessageBox, "question", lambda *args, **k: QMessageBox.StandardButton.No
+    )
+    widget = AccountsWidget(service)
+    qtbot.addWidget(widget)
+    widget._select_account(a)
+    widget._forget_pw_button.click()
+    assert svc.get_pdf_password(a) == "PW-A", "declining the confirm keeps the password"
+
+
+def test_INV5_forget_swallows_vault_locked_silently(qtbot, service, monkeypatch):
+    """An auto-lock during the clear returns silently, not a raw error label —
+    parity with the add/delete handlers (FIBR-0128 INV-5)."""
+    from PySide6.QtWidgets import QMessageBox
+
+    from finbreak.errors import VaultLockedError
+    from finbreak.ui.accounts import AccountsWidget
+
+    svc = AccountService(service.vault)
+    a = _default_id(service.vault)
+    svc.set_pdf_password(a, "PW-A")
+
+    widget = AccountsWidget(service)
+    qtbot.addWidget(widget)
+    widget._select_account(a)
+
+    monkeypatch.setattr(
+        QMessageBox, "question", lambda *args, **k: QMessageBox.StandardButton.Yes
+    )
+
+    def locked(*a, **k):
+        raise VaultLockedError("the vault is locked")
+
+    monkeypatch.setattr(widget._accounts, "set_pdf_password", locked)
+    widget._on_forget_password()  # must not raise
+    assert widget._error.text() == "", "VaultLockedError is swallowed silently"

@@ -83,6 +83,13 @@ class AccountService:
         self._accounts().set_pdf_password(account_id, value)
         log.info("account pdf password updated")
 
+    def account_ids_with_pdf_password(self) -> set[int]:
+        """The set of account ids that have a remembered PDF password — presence
+        only, never the secret itself (FIBR-0128 INV-1). Backs the Accounts-screen
+        marker and the Forget button's enabled state; the UI talks to the service,
+        never the repo directly."""
+        return self._accounts().ids_with_pdf_password()
+
     def _validate(self, name: str, type: str, exclude_id: int | None = None) -> str:
         """Return the trimmed name, or raise ``ValueError`` (INV-2/INV-3)."""
         try:

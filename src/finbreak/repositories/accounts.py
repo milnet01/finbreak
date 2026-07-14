@@ -72,3 +72,12 @@ class AccountRepository:
             (value, account_id),
         )
         self._conn.commit()
+
+    def ids_with_pdf_password(self) -> set[int]:
+        """The ids of accounts that have a remembered PDF password — presence
+        only. Selects the id column, NOT the secret, so a listing never pulls the
+        plaintext into memory (FIBR-0128 INV-1)."""
+        rows = self._conn.execute(
+            "SELECT id FROM accounts WHERE statement_pdf_password IS NOT NULL"
+        ).fetchall()
+        return {row[0] for row in rows}
