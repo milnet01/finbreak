@@ -1255,6 +1255,7 @@ because retrofitting them is a data migration.
 - 🚧 [FIBR-0138] **Expandable dashboard drill-down (Income / Spending / Transfers → categories → merchant → transactions).**
   Designed in-session 2026-07-14 (three user-approved brainstorm decisions). Enhances the FIBR-0012 dashboard: keep the donut + 12-month trend charts as the snapshot, add an expanding tree below them that drills the numbers.
   Spec written (docs/specs/FIBR-0138.md) 2026-07-14; /cold-eyes next.
+  Spec CLEARED FOR CODE 2026-07-14 — /cold-eyes converged loop 5 (5 loops × 3 cold lanes = 15 reviews; accuracy lane clean from loop 4). Next: TDD tests/features/dashboard_drilldown/ (INV-1..9) → /close-phase.
 
   D1 Presentation: an expanding tree (QTreeWidget-style), NOT a click-to-drill donut. The three totals (Income / Spending / Transfers) are the top rows.
   D2 Spending/Income drill follows the existing category tree (parent->child, any depth) to a leaf category; at a leaf, group its transactions by merchant with a x count, then expand a merchant to the individual transactions (date + amount).
