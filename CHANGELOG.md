@@ -21,7 +21,15 @@ signaling per
 
 ## [Unreleased]
 
+### Added
+
+- **Auto-lock can now be set to "Never" — the app won't lock itself while idle.**
+  Settings → Auto-lock after → Never disables the idle timer. The password is still required when you open the app, and you can still lock any time with the Lock button (FIBR-0135).
+
 ### Fixed
+
+- **Statements now has a toolbar button with an icon (was reachable only from the View menu).**
+  Added a Statements glyph to the toolbar, placed after Transactions to match the tab order (FIBR-0136).
 
 - **Auto-update: a download that fails after an idle auto-lock no longer disrupts the lock screen.**
   If the vault auto-locked while an update was downloading and the download then failed, the app would close the re-opened unlock prompt and show a stray "Update failed" box over the lock screen. The failure handler now stays silent once its prompt is gone (FIBR-0054 close).

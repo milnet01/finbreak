@@ -525,6 +525,13 @@ lands on top.
   Lanes: ui, i18n.
   Source: split-from-FIBR-0014-2026-07-13.
 
+- ✅ [FIBR-0135] **Auto-lock "Never" option — let the user disable the idle timer entirely.**
+  User lives alone / rarely has visitors and doesn't want the idle auto-lock. Added 0="Never" to ALLOWED_AUTO_LOCK_MINUTES (listed LAST so a corrupt/absent value still falls back to the 1-minute floor, never to "Never" — the INV-1 safe-fail is preserved). _arm_timer stops the timer instead of starting it when Never; notify_activity gains an isActive() guard so user activity can't silently re-arm a disabled timer. Settings combo gains a "Never" label. Password-on-open and manual Lock button are unchanged; the key is still wiped on lock and exit. security-model.md T3 amended to record the accepted residual risk (an unattended unlocked session stays unlocked — a user choice, not a silent default). Reverses the FIBR-0055 D6 "no never option" decision by explicit user request. Kind: enhancement.
+  **Layman:** Add a "Never" choice to the auto-lock setting so the app won't lock itself while you're away — you still type your password when you open it and can lock it any time with the Lock button.
+  Kind: enhancement.
+  Source: user-request-2026-07-14.
+  Resolved (2026-07-14) — commit b915254. Auto-lock "Never" (0) added; _arm_timer stops on it, notify_activity isActive()-guarded, combo label + security-model T3 note. Gate green 862/1.
+
 ## P13 — Packaging & release
 
 ### 📦 Packaging
@@ -1217,6 +1224,13 @@ because retrofitting them is a data migration.
   Kind: ux.
   Source: dogfooding-2026-07-13.
   Resolved (2026-07-13): shipped by TDD (6 slices) + 1 indie-review LOW fixed inline (parent-cycle guard). Grouped pickers/filter under Income/Expenditure headers, Name (Type) tag; audit 0, gate green. Tag FIBR-0123-complete.
+
+- ✅ [FIBR-0136] **Add the missing Statements toolbar icon + button.**
+  Statements shipped (FIBR-0052) text-only and absent from the toolbar — reachable only via the View menu, where it also lacked a glyph unlike its neighbours. Added ui/icons/statements.svg (Feather file-text style matching the icon set), wired it into _action_statements (was icon=None), and added the action to the toolbar after Transactions to mirror the workspace tab order. Reverses the FIBR-0052 "Statements not on the toolbar" test assertion by explicit user request; the statements/app_shell tests were updated (toolbar order now includes action_statements; a rendering-icon + toolbar-membership test added). Kind: fix.
+  **Layman:** Give the Statements screen its own button with an icon in the toolbar (it was only reachable from the View menu before, and even there it had no icon).
+  Kind: fix.
+  Source: user-request-2026-07-14.
+  Resolved (2026-07-14) — commit eb52443. statements.svg added, wired into _action_statements + the toolbar after Transactions; tests updated. Gate green 862/1.
 
 ### ⚡ Performance
 
