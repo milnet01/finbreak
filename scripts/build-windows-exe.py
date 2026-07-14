@@ -28,6 +28,7 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 _PYPROJECT = _REPO_ROOT / "pyproject.toml"
 _SRC = _REPO_ROOT / "src"
 _ICONS_SRC = _SRC / "finbreak" / "ui" / "icons"
+_DATA_SRC = _SRC / "finbreak" / "data"  # the FIBR-0139 category library ships here
 _ENTRY = _SRC / "finbreak" / "__main__.py"
 # The multi-size Windows icon (FIBR-0037) PyInstaller embeds into the .exe so
 # Explorer shows the finbreak donut, not PyInstaller's default console stub.
@@ -78,6 +79,7 @@ def main() -> None:
         raise SystemExit(f"build-windows-exe: expected the app icon {_ICO}, not found")
 
     add_data = f"{_ICONS_SRC}{os.pathsep}{flags.ADD_DATA_TARGET}"
+    data_add_data = f"{_DATA_SRC}{os.pathsep}{flags.DATA_ADD_DATA_TARGET}"
     cmd = [
         sys.executable,
         "-m",
@@ -101,6 +103,8 @@ def main() -> None:
         str(_SRC),
         "--add-data",
         add_data,
+        "--add-data",
+        data_add_data,
         *flags.pyinstaller_flags(),
         "--distpath",
         str(_REPO_ROOT / "dist"),

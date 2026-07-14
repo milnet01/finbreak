@@ -60,13 +60,16 @@ class Account:
 
 
 class CategorySource(StrEnum):
-    """How a transaction's category was set (FIBR-0010). ``MANUAL`` is frozen —
-    the rule engine never touches it; ``RULE`` was set by a rule and is recomputed
-    on every apply. A ``None`` source is a never-touched auto row. The ``.value``
-    is the stored, non-translated token."""
+    """How a transaction's category was set (FIBR-0010/0139). ``MANUAL`` is frozen —
+    the rule engine never touches it; ``RULE`` was set by a user rule and ``LIBRARY``
+    by the built-in category library (FIBR-0139), both recomputed on every apply
+    (rule beats library, INV-2). A ``None`` source is a never-touched auto row. The
+    ``.value`` is the stored, non-translated token; ``category_source`` is free-text
+    ``TEXT`` (v7, no ``CHECK``), so ``'library'`` needs no migration."""
 
     RULE = "rule"
     MANUAL = "manual"
+    LIBRARY = "library"
 
 
 @dataclass

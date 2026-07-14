@@ -32,7 +32,7 @@ from PySide6.QtWidgets import (
 
 from finbreak.datetime_format import format_date
 from finbreak.errors import VaultLockedError
-from finbreak.models import Transaction
+from finbreak.models import CategorySource, Transaction
 from finbreak.services.auth import DATETIME_SYSTEM, AmountPrefs, DateTimePrefs
 from finbreak.services.categorization import CategorizationService
 from finbreak.services.transactions import TransactionService
@@ -252,7 +252,9 @@ class TransactionsView(QWidget):
                     row, _COL_DESCRIPTION, QTableWidgetItem(transaction.description)
                 )
                 self._table.setItem(row, _COL_ACCOUNT, QTableWidgetItem(account_name))
-                self._table.setItem(row, _COL_CATEGORY, QTableWidgetItem(category_name))
+                self._table.setItem(
+                    row, _COL_CATEGORY, self._category_cell(transaction, category_name)
+                )
                 tag_row(self._table, row, row)  # tag = filtered-list index (sort-safe)
 
     def _matches(self, row: tuple[Transaction, Decimal, str, str]) -> bool:
@@ -276,6 +278,35 @@ class TransactionsView(QWidget):
         ):
             return False
         return True
+
+    def _category_cell(
+        self, transaction: Transaction, category_name: str
+    ) -> SortableItem:
+        """The Category cell (FIBR-0139 D7). **Every** cell is a ``SortableItem`` keyed
+        on the **bare** ``category_name`` — so a guessed row sorts *with* its
+        plain-named siblings (``SortableItem.__lt__`` uses the sort key only when
+        *both* items carry one; a mix of ``SortableItem`` and plain items would fall
+        back to a display-text compare and split the group). A ``'library'`` row (a
+        built-in guess) shows a "~ guess" marker + tooltip; a rule / manual /
+        uncategorised row shows the plain name. Display-only: the sort key (bare name)
+        and the id-keyed filter are unaffected (INV-9)."""
+        is_guess = transaction.category_source == CategorySource.LIBRARY.value and bool(
+            category_name
+        )
+        display = (
+            self.tr("{category} ~ guess").format(category=category_name)
+            if is_guess
+            else category_name
+        )
+        item = SortableItem(display, category_name)
+        if is_guess:
+            item.setToolTip(
+                self.tr(
+                    "Guessed from the built-in library — right-click to confirm "
+                    "or change."
+                )
+            )
+        return item
 
     # --- category set + learning (moved verbatim from HomeView) ------------ #
     def _show_context_menu(self, pos: QPoint) -> None:

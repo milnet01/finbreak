@@ -91,7 +91,7 @@ where = ["src"]
 # The toolbar glyphs (FIBR-0051 D7) ship as package data so the wheel/sdist carry
 # them; the PyInstaller freeze pulls them via --add-data (build-smoke.sh).
 [tool.setuptools.package-data]
-finbreak = ["ui/icons/*.svg", "ui/icons/*.png"]
+finbreak = ["ui/icons/*.svg", "ui/icons/*.png", "data/*.json"]
 
 [tool.ruff]
 target-version = "py312"
@@ -112,6 +112,7 @@ markers = [
     "features: end-to-end feature-conformance tests (testing.md § 3.2)",
     "integration: cross-component tests hitting a real DB/FS/subprocess (testing.md § 3.3)",
     "perf: performance/throughput tests, excluded from the gate (testing.md § 3.4)",
+    "real_library: opt out of the autouse category-library neutralise fixture so the real loader runs (FIBR-0139)",
 ]
 # Quiet ONE known third-party warning (FIBR-0058): ofxparse 0.21 (the latest,
 # unmaintained release) calls BeautifulSoup's deprecated `findAll` (~107 hits per

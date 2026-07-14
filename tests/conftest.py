@@ -119,6 +119,26 @@ def window_ini(tmp_path, monkeypatch):
     return ini
 
 
+@pytest.fixture(autouse=True)
+def _neutralise_category_library(request, monkeypatch):
+    """Neutralise the built-in category library for EVERY test by default (FIBR-0139):
+    replace ``category_library.load_library`` with ``lambda: []`` so no suite is coupled
+    to the shipped file's contents (a synthetic description that happens to contain a
+    real library substring — e.g. ``"pick n pay"`` in the transactions_tab suite — would
+    else perturb category assertions once the library defaults ON).
+
+    **Marker-gated opt-out:** a test marked ``@pytest.mark.real_library`` is left
+    un-neutralised, so the file-layer fail-safe leg drives the GENUINE ``load_library``
+    (which the ``lambda`` — having no ``.cache_clear`` — would break, and whose real
+    ``OSError`` / ``UnicodeDecodeError`` branches would never run: a vacuous green).
+    The ``category_library`` suite opts back IN to a fixture library by monkeypatching
+    ``load_library`` **in the test body** (after this autouse patch, so
+    last-write-wins)."""
+    if request.node.get_closest_marker("real_library"):
+        return
+    monkeypatch.setattr("finbreak.category_library.load_library", lambda: [])
+
+
 class PickerStub(QDialog):
     """Real QDialog stand-in for CategoryPickerDialog: auto-accepts (or rejects) on
     show() so the async ``_apply_category`` slot runs synchronously through

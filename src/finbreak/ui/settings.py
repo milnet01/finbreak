@@ -57,6 +57,7 @@ class SettingsDialog(QDialog):
         *,
         update_enabled: bool = False,
         update_supported: bool = False,
+        library_enabled: bool = True,
         theme_controller: theme.ThemeController | None = None,
     ):
         super().__init__(parent)
@@ -142,6 +143,15 @@ class SettingsDialog(QDialog):
                 )
             )
 
+        # The FIBR-0139 built-in category-library toggle (D6). Like the update
+        # checkbox, the dialog holds NO service ref — it only reports the state on
+        # Save; the shell persists via CategorizationService.set_library_enabled.
+        self._library_checkbox = QCheckBox(
+            self.tr("Guess categories for new transactions")
+        )
+        self._library_checkbox.setObjectName("settings_category_library")
+        self._library_checkbox.setChecked(library_enabled)
+
         # The FIBR-0127 theme picker — an immediate-apply control (not Save/Cancel
         # data, D4): "Follow system" then the six themes grouped Light-then-Dark by
         # is_dark (INV-9), preselected to the current pref. Present only when the
@@ -171,6 +181,7 @@ class SettingsDialog(QDialog):
         form.addRow("", self._amount_colour)
         form.addRow(self.tr("Base currency"), self._currency)
         form.addRow("", self._update_checkbox)
+        form.addRow("", self._library_checkbox)
 
         # Encrypted backup export (FIBR-0014 D3). The button only signals intent;
         # the shell collects the backup password and runs the export, so Settings
@@ -198,6 +209,12 @@ class SettingsDialog(QDialog):
         flag via ``UpdateService.set_enabled`` (D5). The dialog itself writes
         nothing networked."""
         return self._update_checkbox.isChecked()
+
+    def library_enabled(self) -> bool:
+        """The category-library checkbox state — read by the shell on Save to persist
+        via ``CategorizationService.set_library_enabled`` (FIBR-0139 D6). Mirrors
+        ``update_enabled``; the dialog holds no service ref."""
+        return self._library_checkbox.isChecked()
 
     @Slot(int)
     def _on_theme_changed(self, _index: int) -> None:

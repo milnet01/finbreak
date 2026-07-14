@@ -22,15 +22,21 @@ from typing import Literal, cast
 
 from sqlcipher3 import dbapi2
 
+from finbreak import category_library
 from finbreak.db import owned_transaction
 from finbreak.models import CategorizationRule, Category, CategoryKind, CategorySource
 from finbreak.repositories.categories import CategoryRepository
 from finbreak.repositories.categorization_rules import CategorizationRuleRepository
+from finbreak.repositories.settings import SettingsRepository
 from finbreak.repositories.transactions import TransactionRepository
 from finbreak.text import normalise_text
 from finbreak.vault import Vault
 
 log = logging.getLogger(__name__)
+
+# The vault setting that gates the built-in category library (FIBR-0139 D6). Default
+# ON: absent, or any value but the string ``"false"``, reads as enabled.
+LIBRARY_ENABLED_KEY = "auto_category_library"
 
 
 def categorize(description: str, rules: Sequence[CategorizationRule]) -> int | None:
@@ -44,17 +50,83 @@ def categorize(description: str, rules: Sequence[CategorizationRule]) -> int | N
     return None
 
 
-def recategorize_auto_rows(conn: dbapi2.Connection) -> int:
-    """Recompute every **auto** row from the current rules; write only the rows that
-    change; return that changed count (INV-1/INV-4/INV-13). Commit-free — the caller
-    (``apply_rules`` / ``commit_import`` / the delete cascade) owns the transaction."""
+def library_enabled(conn: dbapi2.Connection) -> bool:
+    """Whether the built-in category library is consulted (FIBR-0139 INV-7). Default
+    **ON**: an absent key, or any value but the string ``"false"``, reads as enabled.
+    The settings table stores the boolean as ``"true"``/``"false"`` (the
+    ``amount_prefs`` idiom); ``!= "false"`` is the simplest default-ON form. A module
+    helper so the
+    ``conn``-only ``recategorize_auto_rows`` can read it directly (D6)."""
+    return SettingsRepository(conn).get(LIBRARY_ENABLED_KEY) != "false"
+
+
+def _leaf_name_to_id(conn: dbapi2.Connection) -> dict[str, int]:
+    """A ``{leaf category name: id}`` map over the assignable (non-root, ``parent_id
+    is not None``) categories, keyed by the **exact stored name, case-sensitive** —
+    only merchant *patterns* are folded, not category names (FIBR-0139 D5). On a
+    duplicate name, **first by ``list_all`` order wins** via ``setdefault`` (a plain
+    comprehension would be last-wins), giving a deterministic first-wins over
+    ``list_all``'s ``ORDER BY parent_id, name COLLATE NOCASE, id`` (INV-6). Re-expressed
+    here as a module function (no ``self``) — a noted 3-line duplication of the
+    ``leaf_categories`` leaf predicate (coding.md § 1.3)."""
+    name_to_id: dict[str, int] = {}
+    for category in CategoryRepository(conn).list_all():
+        if category.parent_id is not None:
+            name_to_id.setdefault(category.name, category.id)
+    return name_to_id
+
+
+def categorize_with_library(
+    description: str,
+    rules: Sequence[CategorizationRule],
+    entries: list[category_library.LibraryEntry],
+    name_to_id: dict[str, int],
+) -> tuple[int | None, str | None]:
+    """The ``(category_id, category_source)`` for ``description``: a matching **user
+    rule** wins (INV-2), else a **library** guess, else ``(None, None)``. Reuses
+    ``categorize`` for the rule layer so the two layers can never diverge — the single
+    place they compose, called by both the apply path and ``would_categorize`` (D2)."""
+    rule_match = categorize(description, rules)
+    if rule_match is not None:
+        return rule_match, CategorySource.RULE.value
+    library_match = category_library.match_library(description, entries, name_to_id)
+    if library_match is not None:
+        return library_match, CategorySource.LIBRARY.value
+    return None, None
+
+
+def _match_inputs(
+    conn: dbapi2.Connection,
+) -> tuple[
+    list[CategorizationRule], list[category_library.LibraryEntry], dict[str, int]
+]:
+    """The **single** toggle-gated input source for both recompute paths (D2): always
+    the rules (slot 1); the library pair (``entries``, ``name_to_id``) **iff** the
+    toggle is on, else ``([], {})``. Routing both ``recategorize_auto_rows`` and
+    ``would_categorize`` through this helper means the *gating* (off → empty library)
+    can't drift between them — ``categorize_with_library`` guarantees match consistency,
+    ``_match_inputs`` guarantees toggle consistency."""
     rules = CategorizationRuleRepository(conn).list_all()
+    if library_enabled(conn):
+        return rules, category_library.load_library(), _leaf_name_to_id(conn)
+    return rules, [], {}
+
+
+def recategorize_auto_rows(conn: dbapi2.Connection) -> int:
+    """Recompute every **auto** row from the current rules **and** the toggle-gated
+    built-in library; write only the rows that change; return that changed count
+    (INV-1/INV-4/INV-10/INV-13). Commit-free — the caller (``apply_rules`` /
+    ``commit_import`` / the delete cascade) owns the transaction. When the library is
+    off, ``entries`` is empty → every previously-``'library'`` row recomputes to
+    ``(None, None)`` (reverted to Uncategorised, INV-7)."""
+    rules, entries, name_to_id = _match_inputs(conn)
     tx_repo = TransactionRepository(conn)
     changed = 0
     for txn_id, description in tx_repo.auto_rows():
-        match = categorize(description, rules)
-        source = CategorySource.RULE.value if match is not None else None
-        changed += tx_repo.set_category(txn_id, match, source)
+        category_id, source = categorize_with_library(
+            description, rules, entries, name_to_id
+        )
+        changed += tx_repo.set_category(txn_id, category_id, source)
     return changed
 
 
@@ -123,9 +195,27 @@ class CategorizationService:
         ]
 
     def would_categorize(self, description: str) -> int | None:
-        """The category the **current** rules would assign to ``description`` (the
-        learning "differs" check, D11) — computed against the rules as they stand."""
-        return categorize(description, self._rules().list_all())
+        """The category the current **rules or built-in library** would assign to
+        ``description`` (the learning "differs" check, D11) — computed against the
+        rules **and** the toggle-gated library as they stand (FIBR-0139 D4). This
+        supersedes FIBR-0010 INV-5's rules-only phrasing: confirming a library guess
+        (``chosen == would``) raises **no** learning nag; overriding one still offers
+        the rule, which then outranks the library next apply (INV-2)."""
+        rules, entries, name_to_id = _match_inputs(self._conn)
+        return categorize_with_library(description, rules, entries, name_to_id)[0]
+
+    def library_enabled(self) -> bool:
+        """Whether the built-in category library is consulted (FIBR-0139 INV-7,
+        default ON) — delegates to the module helper."""
+        return library_enabled(self._conn)
+
+    def set_library_enabled(self, enabled: bool) -> None:
+        """Persist the library toggle (FIBR-0139 INV-7) via ``SettingsRepository``,
+        which owns its commit. Stored as the string ``"true"``/``"false"``. Takes
+        effect on the next import / Apply — toggling does not itself re-file."""
+        SettingsRepository(self._conn).set(
+            LIBRARY_ENABLED_KEY, "true" if enabled else "false"
+        )
 
     # -- rule management (each write is one owned transaction) ----------------
     def add_rule(self, pattern: str, category_id: int) -> CategorizationRule:

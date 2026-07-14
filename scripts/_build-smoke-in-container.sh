@@ -85,6 +85,7 @@ echo "-- freezing --onefile --"
 pyinstaller --onefile --name "$ONEFILE" \
     --paths /src/src \
     --add-data "/src/src/finbreak/ui/icons:finbreak/ui/icons" \
+    --add-data "/src/src/finbreak/data:finbreak/data" \
     --hidden-import sqlcipher3 \
     --hidden-import pikepdf \
     --hidden-import PySide6.QtWidgets \

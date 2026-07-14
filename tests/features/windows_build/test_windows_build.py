@@ -198,18 +198,21 @@ def _scrape_linux_freeze():
     hidden = set(re.findall(r"--hidden-import\s+(\S+)", text))
     collect_bin = set(re.findall(r"--collect-binaries\s+(\S+)", text))
     collect_all = set(re.findall(r"--collect-all\s+(\S+)", text))
-    add_data = re.search(r"--add-data\s+(\S+)", text).group(1)
-    target = add_data.rsplit(":", 1)[-1].strip("\"'")
-    return hidden, collect_bin, collect_all, target
+    # ALL --add-data pairs (icons AND the FIBR-0139 data lib), as a set of the
+    # package-relative targets — a second pair must sit INSIDE the parity guard, not
+    # slip past a first-match-only scrape (FIBR-0139 Deliverable 9).
+    add_data = re.findall(r"--add-data\s+(\S+)", text)
+    targets = {pair.rsplit(":", 1)[-1].strip("\"'") for pair in add_data}
+    return hidden, collect_bin, collect_all, targets
 
 
 def test_windows_flags_match_linux_freeze():
     flags = _load_by_path("windows_freeze_flags", _FLAGS_FILE)
-    hidden, collect_bin, collect_all, target = _scrape_linux_freeze()
+    hidden, collect_bin, collect_all, targets = _scrape_linux_freeze()
     assert set(flags.HIDDEN_IMPORTS) == hidden
     assert set(flags.COLLECT_BINARIES) == collect_bin
     assert set(flags.COLLECT_ALL) == collect_all
-    assert flags.ADD_DATA_TARGET == target
+    assert targets == {flags.ADD_DATA_TARGET, flags.DATA_ADD_DATA_TARGET}
 
 
 # --- INV-2/5/6: Windows freeze driver shape ----------------------------------

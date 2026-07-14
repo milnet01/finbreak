@@ -29,9 +29,14 @@ INV-5, INV-6). The runner-only behaviour (EC2/EC3 — `.exe` builds green,
   flags actually passed to `pyinstaller` in the Linux freeze
   (`scripts/_build-smoke-in-container.sh`) are **equal** as sets:
   `--hidden-import`, `--collect-binaries`, `--collect-all`, and the `--add-data`
-  package-relative **target**. The scrape is scoped to the `pyinstaller … \`
-  invocation block, matches flags anywhere on a continued line, ignores `#`
-  comments, and strips the trailing quote off the `--add-data` target (per D3).
+  package-relative **targets**. There are now **two** `--add-data` pairs — the
+  `ui/icons` glyphs and the FIBR-0139 `data/` category library — so the guard scrapes
+  **all** `--add-data` targets (`re.findall`) and asserts the **set** equals
+  `{ADD_DATA_TARGET, DATA_ADD_DATA_TARGET}`; a new data pair therefore sits *inside*
+  the parity guard rather than slipping past a first-match-only scrape. The scrape is
+  scoped to the `pyinstaller … \` invocation block, matches flags anywhere on a
+  continued line, ignores `#` comments, and strips the trailing quote off each
+  `--add-data` target (per D3).
 
 ## INV-2 / INV-5 / INV-6 — Windows freeze driver shape
 

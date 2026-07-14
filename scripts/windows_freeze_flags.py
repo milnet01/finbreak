@@ -55,6 +55,13 @@ COLLECT_ALL = [
 # parity-checked against the Linux freeze's --add-data target.
 ADD_DATA_TARGET = "finbreak/ui/icons"
 
+# The bundled category library (FIBR-0139) is a SECOND package-data directory that
+# travels exactly like ui/icons: data, not an import, so PyInstaller does not follow
+# it — it needs its own --add-data. Same parity treatment (the package-relative TARGET
+# is checked against the Linux freeze; the OS-specific SOURCE is not). Both freeze
+# sites emit BOTH --add-data pairs, and the parity guard set-checks all targets.
+DATA_ADD_DATA_TARGET = "finbreak/data"
+
 
 def pyinstaller_flags() -> list[str]:
     """The collection flags, expanded to a flat argv fragment (order is stable so

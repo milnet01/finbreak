@@ -737,6 +737,9 @@ class MainWindow(QMainWindow):
             self,
             update_enabled=self._update_service.is_enabled(),
             update_supported=self._installer is not None,
+            library_enabled=CategorizationService(
+                self._service.vault
+            ).library_enabled(),
             theme_controller=self._theme,
         )
         dialog.saved.connect(self._on_settings_saved)
@@ -965,6 +968,12 @@ class MainWindow(QMainWindow):
         dialog = self._dialog
         if isinstance(dialog, SettingsDialog):
             self._update_service.set_enabled(dialog.update_enabled())
+            # Persist the built-in category-library toggle (FIBR-0139 D6). Built on
+            # demand — cheap, stateless; no new shell member. Takes effect on the next
+            # import / Apply, not an immediate re-file (INV-7).
+            CategorizationService(self._service.vault).set_library_enabled(
+                dialog.library_enabled()
+            )
         # Re-read the datetime prefs and push them to the open display tabs, so a
         # format/zone change takes effect live without a relaunch (FIBR-0083 D7).
         self._prefs = self._service.datetime_prefs()
