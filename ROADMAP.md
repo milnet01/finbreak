@@ -1268,6 +1268,27 @@ because retrofitting them is a data migration.
   Lanes: reporting, ui.
   Source: user-request-2026-07-14.
 
+- 🚧 [FIBR-0139] **Built-in category library — smarter auto-categorise out of the box.**
+  Fixes the cold-start: today auto-categorise only matches USER-written rules (FIBR-0010), so a fresh vault imports everything Uncategorised. Design (brainstorm-approved 2026-07-14):
+  D1 Ship a bundled, per-release-updateable data file src/finbreak/data/category_library.json — list of {pattern, category} entries, SA-first (Pick n Pay/Checkers/Woolworths/Shoprite/Shell/Engen/Dis-Chem/Vodacom/MTN/Eskom...) + universal (Netflix/Spotify/Uber/Steam/Apple...), mapping to the v3-seeded default categories (Groceries/Transport/Bills & utilities/Entertainment/Medical/Salary/...). Travels like ui/icons (pyproject glob + PyInstaller --add-data). Missing/malformed file => empty library, app runs (fail-safe).
+  D2 Matching order: user rules FIRST, then library. categorize() already substring-matches (contains, normalise_text-folded) — no wildcards. Manual pick always wins (golden rule INV-1 untouched).
+  D3 New CategorySource.LIBRARY = 'library' — NO schema migration (category_source is free-text TEXT; auto_rows predicate 'IS NULL OR <> manual' already recomputes library rows). categorize/recategorize_auto_rows extended to return WHICH source matched so set_category stamps 'rule' vs 'library'.
+  D4 Runs on the EXISTING paths — import auto-categorise + Rules-tab Apply — both now include the library. NO new button.
+  D5 Settings toggle (default ON), reuse SettingsRepository (non-schema). Off => library not consulted; next apply/import reverts library rows to uncategorised.
+  D6 Small '~ guess' tag beside library-guessed category in Home + Transactions tables (row[0].category_source == 'library'); overridable.
+  D7 Library binds category by NAME; a renamed default category => entries fall through to Uncategorised (never mis-filed). Structural binding is a future enhancement (out of scope).
+  INV money-safety: only sets category, never reads/alters an amount; grand-book total + amount_minor multiset identical before+after (per-category sums change by design — see spec INV-1). Deps: FIBR-0010. Lanes: services, ui, repo, tests. Next: spec docs/specs/<id>.md -> /cold-eyes (max-loops 7) -> TDD.
+  **Layman:** finbreak ships with a built-in list of common shops so imported transactions get sensible categories automatically, without you writing a rule for every merchant.
+  Kind: feature.
+  Source: user-request-2026-07-14.
+  Active 2026-07-14 — brainstorm complete + user-approved (all decisions D1-D7 locked: bundled JSON library, user-rules-first, CategorySource.LIBRARY no-migration, existing import+Apply paths, Settings toggle default-ON, '~ guess' tag, rename falls through safely). NEXT: write spec docs/specs/FIBR-0139.md -> /cold-eyes (max-loops 7) -> TDD.
+
+- 📋 [FIBR-0140] **Auto-categorise learns from your own history (statistical, no hand-written rule).**
+  The 'later' half of the 2026-07-14 'both' decision (library now, learning later). Distinct from FIBR-0035 (offer-to-MAKE-a-rule, shipped) and FIBR-0092 (bulk re-categorize + rule preview): this auto-applies a category learned from the user's OWN past manual picks (merchant-keyed), ranked with/near the library, still overridable, manual always wins. Deps: the built-in category library item + FIBR-0010. Design TBD in its own brainstorm.
+  **Layman:** Once you've categorised a shop by hand a few times, finbreak remembers and auto-applies that to future transactions from the same shop — without you writing a rule.
+  Kind: enhancement.
+  Source: user-request-2026-07-14.
+
 ### ⚡ Performance
 
 - 📋 [FIBR-0025] **Enable SQLite WAL mode.** Set
