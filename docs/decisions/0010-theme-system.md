@@ -1,8 +1,7 @@
 # ADR-0010: App-wide theme system — Fusion style + token-driven palettes & stylesheet, non-vault theme preference
 
-- **Status:** Proposed (flips to Accepted when FIBR-0127's spec clears its
-  `/cold-eyes` convergence — held Proposed so a loop that alters the theme
-  architecture is absorbed here, not in a superseding ADR)
+- **Status:** Accepted (FIBR-0127's spec cleared `/cold-eyes` — converged at
+  loop 6, 2026-07-14 — with the theme architecture in this ADR unchanged)
 - **Date:** 2026-07-14
 - **Deciders:** Project lead, Claude
 - **Related:** [docs/specs/FIBR-0127.md](../specs/FIBR-0127.md) (the theme
