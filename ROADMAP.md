@@ -207,6 +207,7 @@ scariest unknown (native-library bundling) up front.
   **Layman:** Get finbreak's Windows app officially signed for free so Windows stops showing "unknown publisher" warnings.
   Kind: package.
   Source: user-request-2026-07-14.
+  Scope boundary (2026-07-14): "promote the .exe to a signed release asset" above means the AUTHENTICODE/publisher signature only. The Ed25519-signed .exe release asset (the sidecar the in-app updater verifies) is FIBR-0131's D5, not this item. FIBR-0133 adds the Authenticode signature to that already-attached .exe once SignPath approves.
 
 - ✅ [FIBR-0134] **Embed the finbreak icon in the Windows .exe (was PyInstaller's default console-stub icon).**
   The published v0.1.9 finbreak-0.1.9-x86_64.exe showed PyInstaller's default console-stub icon in Explorer/taskbar because scripts/build-windows-exe.py never passed --icon to the freeze. Fixed by adding `--icon assets/icon/finbreak.ico` (the committed multi-size 16..256 Windows icon from FIBR-0037) to the PyInstaller command, plus a fail-loud guard that the .ico exists and a windows_build regression test asserting the driver passes --icon and the .ico is a real MS icon. Driver flag only (like --windowed/FIBR-0132), so the Linux parity guard is untouched; the Linux AppImage icon travels separately via appimagetool. The icon-bearing .exe appears on the NEXT Windows build/release — the already-published v0.1.9 asset is not rewritten.
