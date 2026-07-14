@@ -133,7 +133,10 @@ class SettingsDialog(QDialog):
         if not update_supported:
             self._update_checkbox.setEnabled(False)
             self._update_checkbox.setToolTip(
-                self.tr("Automatic updates are available only in the AppImage build.")
+                self.tr(
+                    "Automatic updates are available only in the packaged "
+                    "app (the Linux AppImage or the Windows build)."
+                )
             )
 
         form = QFormLayout()

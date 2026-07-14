@@ -8,6 +8,8 @@ no real signing key (a throwaway test key is monkeypatched in).
 from __future__ import annotations
 
 import os
+import sys
+from pathlib import Path
 
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import (
@@ -26,11 +28,21 @@ from finbreak.services.update import (
 )
 from finbreak.services.update_installer import (
     AppImageInstaller,
+    WindowsInstaller,
+    _powershell_path,
+    _ps_single_quote,
     _relaunch_command,
     _relaunch_env,
+    _windows_relaunch_command,
+    _windows_relaunch_env,
     detect_installer,
     is_update_supported,
 )
+
+# The Linux/Windows release-asset suffixes, sourced from the installers so a
+# suffix change follows through (FIBR-0131 D2).
+_LINUX_SUFFIX = AppImageInstaller(Path("/x")).asset_suffix()
+_WINDOWS_SUFFIX = WindowsInstaller(Path("/x")).asset_suffix()
 
 
 # --------------------------------------------------------------------------- #
@@ -74,12 +86,23 @@ def _release(tag: str) -> dict:
 
 
 def _service(tmp_path, *, installer=None, fetcher=None, current="0.1.0"):
+    # check_for_update now short-circuits to None with no installer (FIBR-0131
+    # INV-2), and sources the asset suffix from it — so a check-path service needs
+    # one. Default to an AppImageInstaller (its asset_suffix drives the picker); a
+    # test wanting the no-installer path passes installer=_NO_INSTALLER.
+    if installer is None:
+        installer = AppImageInstaller(tmp_path / "app.AppImage")
     return UpdateService(
         tmp_path / "window.ini",
-        installer,
+        None if installer is _NO_INSTALLER else installer,
         fetcher=fetcher,
         current_version=current,
     )
+
+
+# Sentinel: pass installer=_NO_INSTALLER to _service to build a service whose
+# installer really is None (the inert-platform path), distinct from the default.
+_NO_INSTALLER = object()
 
 
 # --------------------------------------------------------------------------- #
@@ -153,7 +176,7 @@ def test_INV3_select_assets_picks_appimage_and_matching_sig():
         _asset("finbreak-0.1.0-x86_64.AppImage.sig"),
         _asset("some-other-file.txt"),
     ]
-    result = _select_assets(assets)
+    result = _select_assets(assets, _LINUX_SUFFIX)
     assert result == (
         "https://dl/finbreak-0.1.0-x86_64.AppImage",
         "https://dl/finbreak-0.1.0-x86_64.AppImage.sig",
@@ -162,12 +185,12 @@ def test_INV3_select_assets_picks_appimage_and_matching_sig():
 
 def test_INV3_select_assets_none_when_sig_absent():
     assets = [_asset("finbreak-0.1.0-x86_64.AppImage")]
-    assert _select_assets(assets) is None
+    assert _select_assets(assets, _LINUX_SUFFIX) is None
 
 
 def test_INV3_select_assets_none_when_appimage_absent():
     assets = [_asset("finbreak-0.1.0-x86_64.AppImage.sig")]
-    assert _select_assets(assets) is None
+    assert _select_assets(assets, _LINUX_SUFFIX) is None
 
 
 def test_INV3_select_assets_none_when_two_appimages_match():
@@ -177,11 +200,49 @@ def test_INV3_select_assets_none_when_two_appimages_match():
         _asset("finbreak-0.2.0-x86_64.AppImage"),
         _asset("finbreak-0.2.0-x86_64.AppImage.sig"),
     ]
-    assert _select_assets(assets) is None
+    assert _select_assets(assets, _LINUX_SUFFIX) is None
 
 
 def test_INV3_select_assets_none_on_empty():
-    assert _select_assets([]) is None
+    assert _select_assets([], _LINUX_SUFFIX) is None
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0131 INV-2 — the asset-picker is installer-driven (platform-aware)
+# --------------------------------------------------------------------------- #
+def test_FIBR0131_asset_suffix_per_platform():
+    assert AppImageInstaller(Path("/x")).asset_suffix() == "-x86_64.AppImage"
+    assert WindowsInstaller(Path("/x")).asset_suffix() == "-x86_64.exe"
+
+
+def test_FIBR0131_select_assets_picks_per_suffix_when_both_present():
+    # A release that carries BOTH the AppImage and the .exe (+ each .sig): the
+    # Windows suffix picks the .exe pair, the Linux suffix picks the AppImage pair.
+    assets = [
+        _asset("finbreak-0.2.0-x86_64.AppImage"),
+        _asset("finbreak-0.2.0-x86_64.AppImage.sig"),
+        _asset("finbreak-0.2.0-x86_64.exe"),
+        _asset("finbreak-0.2.0-x86_64.exe.sig"),
+    ]
+    assert _select_assets(assets, _WINDOWS_SUFFIX) == (
+        "https://dl/finbreak-0.2.0-x86_64.exe",
+        "https://dl/finbreak-0.2.0-x86_64.exe.sig",
+    )
+    assert _select_assets(assets, _LINUX_SUFFIX) == (
+        "https://dl/finbreak-0.2.0-x86_64.AppImage",
+        "https://dl/finbreak-0.2.0-x86_64.AppImage.sig",
+    )
+
+
+def test_FIBR0131_select_assets_exe_none_when_exe_sig_absent():
+    # The .exe asset present but its .sig missing -> None (fail safe): the exact
+    # v0.1.9 state (finbreak-0.1.9-x86_64.exe attached, no .exe.sig) must NOT offer.
+    assets = [
+        _asset("finbreak-0.1.9-x86_64.exe"),
+        _asset("finbreak-0.1.9-x86_64.AppImage"),
+        _asset("finbreak-0.1.9-x86_64.AppImage.sig"),
+    ]
+    assert _select_assets(assets, _WINDOWS_SUFFIX) is None
 
 
 # --------------------------------------------------------------------------- #
@@ -400,6 +461,174 @@ def test_INV6_failed_replace_leaves_key_unwiped_and_original_intact(
 
 
 # --------------------------------------------------------------------------- #
+# FIBR-0131 — the Windows installer (image-path swap+relaunch, INV-1/3/4/5)
+# --------------------------------------------------------------------------- #
+def test_FIBR0131_detect_installer_windows_frozen(monkeypatch, tmp_path):
+    exe = tmp_path / "finbreak.exe"
+    exe.write_bytes(b"OLD-EXE")
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(exe))
+    monkeypatch.delenv("APPIMAGE", raising=False)
+    installer = detect_installer()
+    assert isinstance(installer, WindowsInstaller)
+    assert installer.target_path() == exe
+    assert installer.can_self_update() is True
+    assert installer.asset_suffix() == "-x86_64.exe"
+    assert is_update_supported() is True
+
+
+def test_FIBR0131_detect_installer_windows_not_frozen_is_inert(monkeypatch):
+    # A non-frozen `python -m finbreak` run on Windows is inert (INV-1) — no
+    # $APPIMAGE either, so no installer resolves.
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setattr(sys, "frozen", False, raising=False)
+    monkeypatch.delenv("APPIMAGE", raising=False)
+    assert detect_installer() is None
+    assert is_update_supported() is False
+
+
+def test_FIBR0131_windows_relaunch_env_sets_reset_flag_only(monkeypatch):
+    # The reset flag is PyInstaller's official restart signal; unrelated vars pass
+    # through; no POSIX loader-path fixups (that's the Linux _relaunch_env).
+    monkeypatch.setenv("HOME", "/home/keep")
+    monkeypatch.delenv("PYINSTALLER_RESET_ENVIRONMENT", raising=False)
+    env = _windows_relaunch_env()
+    assert env["PYINSTALLER_RESET_ENVIRONMENT"] == "1"
+    assert env["HOME"] == "/home/keep"
+
+
+def test_FIBR0131_ps_single_quote_doubles_embedded_quotes():
+    assert _ps_single_quote("plain") == "'plain'"
+    assert _ps_single_quote("a'b") == "'a''b'"
+
+
+def test_FIBR0131_powershell_path_resolves_absolute_from_systemroot(
+    monkeypatch, tmp_path
+):
+    # A DETACHED_PROCESS child can run with a stripped PATH, so we resolve an
+    # ABSOLUTE powershell.exe from %SystemRoot%, never a bare "powershell".
+    ps = tmp_path / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+    ps.parent.mkdir(parents=True)
+    ps.write_bytes(b"")
+    monkeypatch.setenv("SystemRoot", str(tmp_path))
+    assert _powershell_path() == str(ps)
+
+
+def test_FIBR0131_relaunch_command_waits_by_image_path_not_pid():
+    # The waiter polls the exe IMAGE PATH (tree-agnostic + PID-recycling-proof),
+    # aborts (removing the temp, no relaunch) if the image never frees, else moves
+    # + relaunches. Paths with a space / apostrophe are single-quote-escaped.
+    cmd = _windows_relaunch_command(
+        r"C:\Program Files\My App\finbreak's.exe", r"C:\tmp\finbreak-update-xyz.exe"
+    )
+    assert cmd[0].endswith("powershell.exe") and not cmd[0].endswith(
+        os.sep + "powershell"
+    )
+    assert cmd[1:4] == ["-NoProfile", "-NonInteractive", "-Command"]
+    script = cmd[4]
+    # image-path poll, never a PID wait
+    assert "Get-Process" in script and "$_.Path -eq $exe" in script
+    assert "Wait-Process" not in script and "-Id " not in script
+    # abort branch removes the staged temp and doesn't relaunch
+    assert "Remove-Item" in script and "exit 1" in script
+    # move (retry) then relaunch
+    assert "Move-Item" in script and "Start-Process" in script
+    assert script.index("Move-Item") < script.index("Start-Process")
+    # single-quote-escaped (the apostrophe is doubled inside the literal)
+    assert "'C:\\Program Files\\My App\\finbreak''s.exe'" in script
+
+
+def test_FIBR0131_windows_apply_wipes_then_spawns_detached_no_in_process_move(
+    monkeypatch, tmp_path
+):
+    exe = tmp_path / "finbreak.exe"
+    exe.write_bytes(b"OLD-EXE")
+    new_file = tmp_path / "finbreak-update-xyz.exe"
+    new_file.write_bytes(b"NEW-EXE")
+    record = _capture_relaunch(monkeypatch)
+
+    WindowsInstaller(exe).apply(new_file, lambda: record["order"].append("wipe"))
+
+    # wipe -> spawn -> hard exit; the physical move happens OUT of process (in the
+    # helper, after exit), so neither file is touched in-process here.
+    assert record["order"] == ["wipe", "relaunch", "exit"]
+    assert exe.read_bytes() == b"OLD-EXE"  # not replaced in-process
+    assert new_file.read_bytes() == b"NEW-EXE"  # not moved in-process
+    argv = record["argv"]
+    assert argv[0].endswith("powershell.exe")
+    assert str(exe) in argv[4] and str(new_file) in argv[4]
+    kwargs = record["kwargs"]
+    # getattr(subprocess, "DETACHED_PROCESS", 0) == 0 off Windows — the point is
+    # apply() LOADS + RUNS on Linux (no AttributeError) and reaches the Popen.
+    assert "creationflags" in kwargs
+    assert kwargs["close_fds"] is True
+    assert kwargs["env"]["PYINSTALLER_RESET_ENVIRONMENT"] == "1"
+    assert record["exit_code"] == 0
+
+
+def test_FIBR0131_windows_download_stages_exe_extension_temp(monkeypatch, tmp_path):
+    # download_and_verify stages its temp with the installer-derived extension
+    # (.exe on Windows), so a Windows download isn't a misleadingly-named *.AppImage.
+    blob = b"REAL-EXE-BYTES"
+    sig = _signing_setup(monkeypatch, blob)
+    fetcher = _FakeFetcher(blobs={"https://dl/app.exe": blob, "https://dl/sig": sig})
+    svc = _service(
+        tmp_path, installer=WindowsInstaller(tmp_path / "finbreak.exe"), fetcher=fetcher
+    )
+    info = UpdateInfo(
+        version="0.2.0",
+        asset_url="https://dl/app.exe",
+        sig_url="https://dl/sig",
+        notes="notes",
+    )
+    verified = svc.download_and_verify(info)
+    assert verified.read_bytes() == blob
+    assert verified.suffix == ".exe"  # installer-derived, not .AppImage
+    assert verified.parent == tmp_path
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0131 INV-2 — check_for_update: installer-driven + inert with no installer
+# --------------------------------------------------------------------------- #
+def _release_both(tag: str) -> dict:
+    version = tag[1:] if tag[:1] in ("v", "V") else tag
+    names = [
+        f"finbreak-{version}-x86_64.AppImage",
+        f"finbreak-{version}-x86_64.AppImage.sig",
+        f"finbreak-{version}-x86_64.exe",
+        f"finbreak-{version}-x86_64.exe.sig",
+    ]
+    return {
+        "tag_name": tag,
+        "body": f"notes for {tag}",
+        "assets": [
+            {"name": n, "browser_download_url": f"https://dl/{n}"} for n in names
+        ],
+    }
+
+
+def test_FIBR0131_check_returns_none_and_skips_fetch_with_no_installer(tmp_path):
+    fetcher = _FakeFetcher(release=_release("v0.1.1"))
+    svc = _service(tmp_path, installer=_NO_INSTALLER, fetcher=fetcher)
+    svc.set_enabled(True)
+    assert svc.check_for_update(force=True) is None  # nothing installable
+    assert fetcher.fetch_calls == 0  # short-circuit is ABOVE any fetch (INV-2)
+
+
+def test_FIBR0131_windows_check_picks_the_exe_asset(tmp_path):
+    fetcher = _FakeFetcher(release=_release_both("v0.2.0"))
+    svc = _service(
+        tmp_path, installer=WindowsInstaller(tmp_path / "finbreak.exe"), fetcher=fetcher
+    )
+    svc.set_enabled(True)
+    info = svc.check_for_update()
+    assert info is not None
+    assert info.asset_url == "https://dl/finbreak-0.2.0-x86_64.exe"
+    assert info.sig_url == "https://dl/finbreak-0.2.0-x86_64.exe.sig"
+
+
+# --------------------------------------------------------------------------- #
 # INV-10 — update_fetch (the sole networked module): resource-bounded, https-only
 # --------------------------------------------------------------------------- #
 class _FakeHTTPResponse:
@@ -549,7 +778,7 @@ def test_INV3_newer_release_is_offered(tmp_path):
     info = _enabled_service(tmp_path, _release("v0.1.1")).check_for_update()
     assert isinstance(info, UpdateInfo)
     assert info.version == "0.1.1"  # leading v stripped
-    assert info.appimage_url == "https://dl/finbreak-0.1.1-x86_64.AppImage"
+    assert info.asset_url == "https://dl/finbreak-0.1.1-x86_64.AppImage"
     assert info.sig_url == "https://dl/finbreak-0.1.1-x86_64.AppImage.sig"
     assert info.notes == "### Fixed\n- release notes for v0.1.1"  # the release body
 
@@ -612,7 +841,7 @@ def test_INV4_good_signature_returns_verified_path(monkeypatch, tmp_path):
     svc = _service(tmp_path, installer=installer, fetcher=fetcher)
     update_info = UpdateInfo(
         version="0.1.1",
-        appimage_url="https://dl/finbreak-0.1.1-x86_64.AppImage",
+        asset_url="https://dl/finbreak-0.1.1-x86_64.AppImage",
         sig_url="https://dl/finbreak-0.1.1-x86_64.AppImage.sig",
         notes="notes",
     )
@@ -632,7 +861,7 @@ def _dv_service(monkeypatch, tmp_path, blob, sig):
     svc = _service(tmp_path, installer=installer, fetcher=fetcher)
     info = UpdateInfo(
         version="0.1.1",
-        appimage_url="https://dl/app",
+        asset_url="https://dl/app",
         sig_url="https://dl/sig",
         notes="notes",
     )
@@ -891,7 +1120,7 @@ def _updater_shell(qtbot, service, *, info=None, enabled=True, installer=None):
 def _sample_info():
     return UpdateInfo(
         version="0.1.1",
-        appimage_url="https://dl/app",
+        asset_url="https://dl/app",
         sig_url="https://dl/sig",
         notes="notes",
     )

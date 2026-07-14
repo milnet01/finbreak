@@ -30,7 +30,20 @@ monkeypatched in per INV-4/14, `testing.md § 3.5`).
 | INV-13 | The new dialog is RTL-safe: covered by the existing `test_INV10_no_fixed_geometry_in_new_ui` source-scan (globs `ui/*.py`); `tr()`-wrapping is a review-checklist item per `coding.md § 5.2`. |
 | INV-14 | The signature round-trips: a fixture blob signed with a test key verifies against that key; a repo-scan asserts no private-key material (`*.key` / a PEM `PRIVATE KEY` marker) is tracked. |
 | D13 | Version grammar: leading `v`/`V` stripped; every segment `isascii() and isdigit()`; comparison zero-pads the shorter tuple. |
-| D14 | Asset predicate: the AppImage asset ends `-x86_64.AppImage`; its signature is that name + `.sig`; absent-or-duplicate either → `None`. |
+| D14 | Asset predicate: the picker takes the suffix as a parameter; the asset ends in it; its signature is that name + `.sig`; absent-or-duplicate either → `None`. |
+
+The FIBR-0054 rows above number INV-1…14; the **FIBR-0131** rows below are
+prefixed so the two specs' invariants don't collide (see `docs/specs/FIBR-0131.md`).
+
+| INV | What it pins (FIBR-0131 — Windows in-app auto-update) |
+|-----|--------------|
+| FIBR-0131 INV-1 | Platform detection: `win32 + sys.frozen` → `WindowsInstaller(sys.executable)`; `win32` not-frozen → `None`; non-Windows unaffected. Off an installer the feature is inert (Settings disabled; Help→Check reports "not available"). |
+| FIBR-0131 INV-2 | Installer-driven asset-picker: `_select_assets(assets, suffix)` picks the `.exe` under `WindowsInstaller.asset_suffix()` and the `.AppImage` under `AppImageInstaller`'s, each + `.sig` (a release carrying both picks per-platform); `check_for_update` short-circuits to `None` with **zero** fetcher calls when there's no installer. |
+| FIBR-0131 INV-3 | The Windows swap is out-of-process, by **image path**: `_windows_relaunch_command` polls `Get-Process … $_.Path -eq $exe` (no `-Id`/PID), aborts (`Remove-Item` the temp, no relaunch) if the image never frees, else retries `Move-Item` then `Start-Process`; the argv[0] is an absolute `powershell.exe` (not bare `powershell`); paths single-quote-escaped. |
+| FIBR-0131 INV-4 | `WindowsInstaller.apply` wipes the key **before** spawning the detached helper and `os._exit`s — no in-process file move; the Windows-only `creationflags` are `getattr`-guarded so `apply` loads + runs on the Linux gate. |
+| FIBR-0131 INV-5 | `_windows_relaunch_env` sets `PYINSTALLER_RESET_ENVIRONMENT=1` (+ passes unrelated vars through); no POSIX `LD_*` fixups. |
+| FIBR-0131 INV-6 | `download_and_verify` stages the temp with the installer-derived extension (`.exe`), so a Windows download isn't a misnamed `*.AppImage`. |
+| FIBR-0131 INV-7 | The `.exe` rides the same byte-agnostic Ed25519 gate (covered transitively by the FIBR-0054 tamper leg; the new coverage is the picker feeding `.exe` bytes through it). |
 
 INV-13/INV-9 grep legs and the Settings/shell `qtbot` legs live in the Qt section
 of `test_auto_update.py`; the pure service/installer/version/asset legs need no

@@ -1055,8 +1055,10 @@ class MainWindow(QMainWindow):
             self._dialog is prompt and prompt is not None and shiboken6.isValid(prompt)
         )
         if prompt_live and self._installer is not None:
-            # Swap + relaunch; the key is wiped after the successful replace and
-            # before execv (INV-6). apply() does not return.
+            # Swap + relaunch; the key is wiped as this process commits to being
+            # replaced and before the relaunch (INV-6) — in-process after os.replace
+            # on Linux, before the detached swap helper on Windows. apply() does not
+            # return.
             self._installer.apply(path, on_before_exec=self._service.on_about_to_quit)
         else:
             # The prompt was torn down (auto-lock) — drop the verified temp so it

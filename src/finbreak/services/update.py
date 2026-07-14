@@ -1,11 +1,13 @@
-"""UpdateService — the opt-in AppImage updater's orchestration (FIBR-0054).
+"""UpdateService — the opt-in self-updater's orchestration (FIBR-0054/FIBR-0131).
 
 Owns the plaintext-INI opt-in / skip prefs (D4), the launch check
 (``check_for_update``, INV-1/2/3/8/11), and the signature-verified download
 (``download_and_verify``, INV-4/5/10). All network access is delegated to the
 injected ``update_fetch`` module (the sole networked file, D9/D12); the install
-hand-off is delegated to the injected ``Installer`` (D6). The version grammar
-(D13) and asset predicate (D14) are the small, dependency-free helpers below.
+hand-off is delegated to the injected ``Installer`` (D6) — an ``AppImageInstaller``
+on Linux, a ``WindowsInstaller`` on a frozen Windows build. The picker matches the
+active installer's ``asset_suffix()`` (FIBR-0131 D2). The version grammar (D13) is
+the small, dependency-free helper below.
 """
 
 from __future__ import annotations
@@ -47,7 +49,7 @@ class UpdateInfo:
     """A newer, signed, non-skipped release the user may install (INV-3)."""
 
     version: str
-    appimage_url: str
+    asset_url: str  # the platform binary asset (.AppImage on Linux, .exe on Windows)
     sig_url: str
     notes: str  # the release body (markdown), shown inline in the update prompt
 
@@ -85,29 +87,27 @@ def _version_gt(latest: tuple[int, ...], current: tuple[int, ...]) -> bool:
 
 
 # --------------------------------------------------------------------------- #
-# D14 — asset-selection predicate
+# D14 / FIBR-0131 D2 — asset-selection predicate (installer-driven suffix)
 # --------------------------------------------------------------------------- #
-_APPIMAGE_SUFFIX = "-x86_64.AppImage"
-
-
-def _select_assets(assets: list[dict]) -> tuple[str, str] | None:
-    """From a release's ``assets[]`` return ``(appimage_url, sig_url)`` — the
-    lone asset whose name ends ``-x86_64.AppImage`` plus the asset named exactly
-    that + ``.sig`` — or ``None`` if either is absent or the AppImage suffix
-    matches more than one asset (fail safe, INV-3/D14)."""
-    appimages = [a for a in assets if a.get("name", "").endswith(_APPIMAGE_SUFFIX)]
-    if len(appimages) != 1:
+def _select_assets(assets: list[dict], suffix: str) -> tuple[str, str] | None:
+    """From a release's ``assets[]`` return ``(asset_url, sig_url)`` — the lone
+    asset whose name ends in *suffix* (``-x86_64.AppImage`` on Linux,
+    ``-x86_64.exe`` on Windows — the active installer's ``asset_suffix()``) plus the
+    asset named exactly that + ``.sig`` — or ``None`` if either is absent or the
+    suffix matches more than one asset (fail safe, INV-3/D14/FIBR-0131 INV-2)."""
+    matches = [a for a in assets if a.get("name", "").endswith(suffix)]
+    if len(matches) != 1:
         return None
-    appimage = appimages[0]
-    sig_name = appimage["name"] + ".sig"
+    asset = matches[0]
+    sig_name = asset["name"] + ".sig"
     sigs = [a for a in assets if a.get("name") == sig_name]
     if len(sigs) != 1:
         return None
-    appimage_url = appimage.get("browser_download_url")
+    asset_url = asset.get("browser_download_url")
     sig_url = sigs[0].get("browser_download_url")
-    if not appimage_url or not sig_url:
+    if not asset_url or not sig_url:
         return None
-    return appimage_url, sig_url
+    return asset_url, sig_url
 
 
 def _version_string(tag: str) -> str:
@@ -117,8 +117,9 @@ def _version_string(tag: str) -> str:
 
 
 def _stage_temp(directory: Path, suffix: str) -> Path:
-    """An empty temp file next to ``$APPIMAGE`` (same filesystem, so the eventual
-    ``os.replace`` is atomic — INV-5). Named so a dropped download is greppable."""
+    """An empty temp file next to the running binary (same filesystem/directory as
+    ``target_path()``, so the eventual swap is a local same-dir move — INV-5).
+    Named so a dropped download is greppable."""
     fd, name = tempfile.mkstemp(dir=directory, prefix="finbreak-update-", suffix=suffix)
     os.close(fd)
     return Path(name)
@@ -180,13 +181,17 @@ class UpdateService:
     def check_for_update(self, *, force: bool = False) -> UpdateInfo | None:
         """Return a newer, signed, non-skipped release to offer, or ``None``.
 
-        The opt-in gate is checked first, so a disabled service never calls the
-        fetcher on the silent startup path (INV-1). A *forced* check (the manual
-        Help → Check-for-updates action — an explicit click is its own consent)
-        bypasses only that gate; every other guard (version compare, skip, asset
-        predicate) still applies. Every failure — malformed version, network
-        error, missing asset, not-newer, skipped — yields ``None`` and never
-        propagates (INV-3/INV-11)."""
+        With no installer the feature is inert (FIBR-0131 INV-2), so this returns
+        ``None`` up front — before the opt-in gate and before any fetch — since
+        nothing is installable on this platform. Otherwise the opt-in gate is
+        checked, so a disabled service never calls the fetcher on the silent startup
+        path (INV-1). A *forced* check (the manual Help → Check-for-updates action —
+        an explicit click is its own consent) bypasses only that gate; every other
+        guard (version compare, skip, the installer-driven asset predicate) still
+        applies. Every failure — malformed version, network error, missing asset,
+        not-newer, skipped — yields ``None`` and never propagates (INV-3/INV-11)."""
+        if self._installer is None:
+            return None
         if not force and not self.is_enabled():
             return None
         try:
@@ -206,13 +211,15 @@ class UpdateService:
             version = _version_string(tag)
             if self.is_skipped(version):
                 return None
-            urls = _select_assets(release.get("assets") or [])
+            urls = _select_assets(
+                release.get("assets") or [], self._installer.asset_suffix()
+            )
             if urls is None:
                 return None
-            appimage_url, sig_url = urls
+            asset_url, sig_url = urls
             return UpdateInfo(
                 version=version,
-                appimage_url=appimage_url,
+                asset_url=asset_url,
                 sig_url=sig_url,
                 notes=release.get("body") or "",
             )
@@ -222,33 +229,38 @@ class UpdateService:
 
     # --- the signature-verified download (INV-4/5/10) ----------------------- #
     def download_and_verify(self, info: UpdateInfo) -> Path:
-        """Download the AppImage + its ``.sig`` into the ``$APPIMAGE`` directory
-        and verify the Ed25519 signature over the **exact** downloaded bytes
-        against the committed public key. Return the verified temp path (the
-        caller installs it); on **any** failure delete the temps and raise —
-        ``UpdateVerificationError`` for a bad signature, ``UpdateError`` for an
-        oversize / timed-out / dropped download (INV-4/INV-10/INV-11)."""
+        """Download the platform binary asset + its ``.sig`` into the running
+        binary's directory (``target_path().parent``) and verify the Ed25519
+        signature over the **exact** downloaded bytes against the committed public
+        key. Return the verified temp path (the caller installs it); on **any**
+        failure delete the temps and raise — ``UpdateVerificationError`` for a bad
+        signature, ``UpdateError`` for an oversize / timed-out / dropped download
+        (INV-4/INV-10/INV-11)."""
         if self._installer is None:
             raise UpdateError("self-update is not supported on this platform")
         directory = self._installer.target_path().parent
-        # Stage inside the try so a mkstemp failure (read-only / full $APPIMAGE
-        # dir) is caught, cleaned up, and re-raised as UpdateError like any other
-        # failure — not leaked as a raw OSError with the first temp orphaned.
-        appimage_tmp: Path | None = None
+        # The staged temp carries the platform's own file extension (.exe / .AppImage,
+        # derived from the installer's asset suffix) so a Windows download isn't a
+        # misleadingly-named *.AppImage temp (FIBR-0131 D2).
+        asset_ext = Path(self._installer.asset_suffix()).suffix
+        # Stage inside the try so a mkstemp failure (read-only / full target dir) is
+        # caught, cleaned up, and re-raised as UpdateError like any other failure —
+        # not leaked as a raw OSError with the first temp orphaned.
+        asset_tmp: Path | None = None
         sig_tmp: Path | None = None
         try:
-            appimage_tmp = _stage_temp(directory, ".AppImage")
+            asset_tmp = _stage_temp(directory, asset_ext)
             sig_tmp = _stage_temp(directory, ".sig")
             self._fetcher.download(
-                info.appimage_url,
-                appimage_tmp,
+                info.asset_url,
+                asset_tmp,
                 max_bytes=_MAX_UPDATE_BYTES,
                 timeout=_TIMEOUT_S,
             )
             self._fetcher.download(
                 info.sig_url, sig_tmp, max_bytes=_MAX_SIG_BYTES, timeout=_TIMEOUT_S
             )
-            data = appimage_tmp.read_bytes()
+            data = asset_tmp.read_bytes()
             signature = sig_tmp.read_bytes()
             try:
                 update_key.public_key().verify(signature, data)
@@ -256,13 +268,13 @@ class UpdateService:
                 raise UpdateVerificationError(
                     "the update's signature did not verify"
                 ) from exc
-            sig_tmp.unlink(missing_ok=True)  # only the verified AppImage is installed
-            return appimage_tmp
+            sig_tmp.unlink(missing_ok=True)  # only the verified binary is installed
+            return asset_tmp
         except UpdateVerificationError:
-            _unlink(appimage_tmp)
+            _unlink(asset_tmp)
             _unlink(sig_tmp)
             raise
         except Exception as exc:  # staging / oversize / timeout / dropped / disk
-            _unlink(appimage_tmp)
+            _unlink(asset_tmp)
             _unlink(sig_tmp)
             raise UpdateError(f"could not download the update: {exc}") from exc

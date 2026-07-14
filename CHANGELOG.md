@@ -23,6 +23,13 @@ signaling per
 
 ### Added
 
+- ****Windows in-app auto-update** — the Windows app now offers, verifies, and installs a new version, then reopens itself, matching the Linux AppImage.** (FIBR-0131)
+  Opt-in and off by default, like on Linux. Each download is checked against
+  finbreak's own signature before anything runs. Because a running Windows program
+  can't overwrite its own file, a tiny helper waits for finbreak to close, swaps in
+  the new version, and reopens it. (Windows may still show a one-time "unknown
+  publisher" notice until the separate code-signing step lands.)
+
 - **Auto-lock can now be set to "Never" — the app won't lock itself while idle.**
   Settings → Auto-lock after → Never disables the idle timer. The password is still required when you open the app, and you can still lock any time with the Lock button (FIBR-0135).
 

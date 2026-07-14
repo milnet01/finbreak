@@ -42,13 +42,20 @@ unavoidable it is glossed on first use.
   application** makes **exactly one** kind of outbound access — an
   **opt-in, off-by-default** update flow that reads the GitHub
   Releases API and, only on the user's explicit request, downloads the
-  signed release assets (the AppImage + its `.sig`) — all over
-  `https://`, confined to `services/update_fetch.py` (FIBR-0054 INV-12)
-  and never begun without explicit user consent (FIBR-0054 INV-1). No other network
+  signed release assets — the platform binary (the Linux AppImage or the
+  Windows `.exe`) and its `.sig` — all over `https://`, confined to
+  `services/update_fetch.py` (FIBR-0054 INV-12) and never begun without
+  explicit user consent (FIBR-0054 INV-1). No other network
   access exists; a downloaded update is installed only if its Ed25519
-  signature verifies (FIBR-0054 INV-4). The near-total absence of
-  network code keeps the attack surface minimal. (Dev/CI tooling such
-  as `pip-audit` and Dependabot run in CI and the local dev gate,
+  signature verifies over the exact bytes (FIBR-0054 INV-4) — the **same**
+  gate for both platforms, so the Windows self-swapping `.exe` (FIBR-0131)
+  runs no unverified code. **Windows "unknown publisher" (Authenticode)
+  trust is a separate, orthogonal concern (FIBR-0133) — its absence does
+  not weaken this integrity gate.** The Windows install hand-off spawns a
+  local helper process (a PowerShell waiter that swaps the `.exe` after
+  finbreak exits); it opens no socket and touches no vault. The near-total
+  absence of network code keeps the attack surface minimal. (Dev/CI tooling
+  such as `pip-audit` and Dependabot run in CI and the local dev gate,
   never in the shipped app — INV-8.)
 - **Imported files are untrusted input.** CSV/OFX/PDF files come
   from outside and are parsed defensively (§ 4, T5).
