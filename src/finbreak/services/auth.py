@@ -53,10 +53,14 @@ CURRENCY_EXPONENTS = {"ZAR": 2, "USD": 2, "EUR": 2, "GBP": 2, "AUD": 2, "CAD": 2
 # or holds a value outside the offered set. True activity-reset idle detection stays
 # in FIBR-0014.
 DEFAULT_AUTO_LOCK_MINUTES = 10
-# The offered choices (minutes) — a bounded set with a 1-minute floor. No "never"
-# option (it would defeat the security spine, FIBR-0055 D6); DEFAULT is a member so
-# it always resolves to a valid choice.
-ALLOWED_AUTO_LOCK_MINUTES = (1, 5, 10, 15, 30)
+# 0 == "Never": idle auto-lock off (FIBR-0135, user request — the vault still needs
+# the password on open and still locks via the manual Lock button and on exit; only
+# the idle timer is disabled). It is listed LAST so a select_combo_data miss / the
+# INV-1 fallback resolves to index 0 (the 1-minute floor, the MOST-aggressive lock),
+# never to "Never" — a corrupt/absent value must never silently disable the lock.
+AUTO_LOCK_NEVER = 0
+# The offered choices (minutes); DEFAULT is a member so it always resolves.
+ALLOWED_AUTO_LOCK_MINUTES = (1, 5, 10, 15, 30, AUTO_LOCK_NEVER)
 
 # The datetime display prefs (FIBR-0083) share one sentinel: "system" means
 # resolve dynamically at display time (follow the OS); a concrete value pins it.
@@ -279,15 +283,21 @@ class AuthService:
             self._timer = QTimer()
             self._timer.setSingleShot(True)
             self._timer.timeout.connect(self._on_idle_timeout)
-        self._timer.start(self.auto_lock_minutes() * 60 * 1000)
+        minutes = self.auto_lock_minutes()
+        if minutes == AUTO_LOCK_NEVER:
+            self._timer.stop()  # "Never" — no idle lock (FIBR-0135); manual lock holds
+            return
+        self._timer.start(minutes * 60 * 1000)
 
     def notify_activity(self) -> None:
         """Reset the idle-lock countdown on user interaction, so the timeout is
         measured from the LAST activity rather than from unlock — an inactivity
         timer (FIBR-0114). Restarts the running timer with the interval set at arm
         time; deliberately does **not** re-read the setting, since this fires on
-        every input event. A no-op when locked (no key) or headless (no timer)."""
-        if self._key is not None and self._timer is not None:
+        every input event. A no-op when locked (no key) or headless (no timer).
+        The ``isActive()`` guard means "Never" (a stopped timer, FIBR-0135) stays
+        off — activity must not silently re-arm an idle-lock the user disabled."""
+        if self._key is not None and self._timer is not None and self._timer.isActive():
             self._timer.start()  # restart from now, reusing the armed interval
 
     # --- auto-lock timeout config (FIBR-0055) ------------------------------ #

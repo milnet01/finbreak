@@ -131,6 +131,47 @@ def test_INV3_arm_timer_uses_value(qtbot, service):
 
 
 # --------------------------------------------------------------------------- #
+# FIBR-0135 — "Never" (0) disables the idle timer; lock-on-exit + manual lock hold
+# --------------------------------------------------------------------------- #
+def test_never_is_offered_but_last_so_the_fallback_stays_aggressive():
+    # 0 == Never is a valid choice, but it must be LAST so a select_combo_data miss
+    # safe-fails to index 0 (the most-aggressive lock), never to "Never".
+    assert 0 in ALLOWED_AUTO_LOCK_MINUTES
+    assert ALLOWED_AUTO_LOCK_MINUTES[0] == 1
+    assert ALLOWED_AUTO_LOCK_MINUTES[-1] == 0
+
+
+def test_never_stops_the_idle_timer(qtbot, service):
+    service.set_auto_lock_minutes(0)
+    assert service.auto_lock_minutes() == 0
+    assert service._timer is not None
+    assert not service._timer.isActive()  # armed to "Never" => the timer is stopped
+
+
+def test_activity_does_not_rearm_when_never(qtbot, service):
+    # User interaction must NOT silently re-enable idle-lock once "Never" is chosen.
+    service.set_auto_lock_minutes(0)
+    service.notify_activity()
+    assert not service._timer.isActive()
+
+
+def test_switching_from_never_back_to_a_timeout_rearms(qtbot, service):
+    service.set_auto_lock_minutes(0)
+    assert not service._timer.isActive()
+    service.set_auto_lock_minutes(5)
+    assert service._timer.isActive()
+    assert service._timer.interval() == 5 * 60 * 1000
+
+
+def test_settings_combo_offers_never(qtbot, service):
+    dialog = SettingsDialog(service, "ZAR")
+    qtbot.addWidget(dialog)
+    combo = _combo(dialog)
+    data = [combo.itemData(i) for i in range(combo.count())]
+    assert 0 in data, "the auto-lock combo must offer a 'Never' choice"
+
+
+# --------------------------------------------------------------------------- #
 # INV-4 — the setting persists across a lock/unlock cycle and a real restart
 # --------------------------------------------------------------------------- #
 def test_INV4_persists_across_lock_unlock(service):

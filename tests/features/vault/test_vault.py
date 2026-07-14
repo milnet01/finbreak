@@ -265,16 +265,23 @@ def test_INV3_idle_timeout_noop_when_already_locked(service):
 
 
 class _SpyTimer:
-    """A stand-in QTimer that records start() calls (FIBR-0114)."""
+    """A stand-in QTimer that records start() calls and models active state — it
+    stands in for an ARMED timer, so isActive() is True until stop() (FIBR-0114;
+    the isActive() gate is FIBR-0135's "Never" guard in notify_activity)."""
 
     def __init__(self) -> None:
         self.starts = 0
+        self._active = True
 
     def start(self, *args: object) -> None:
         self.starts += 1
+        self._active = True
 
     def stop(self) -> None:
-        pass
+        self._active = False
+
+    def isActive(self) -> bool:
+        return self._active
 
 
 def test_FIBR0114_notify_activity_restarts_running_idle_timer(service):

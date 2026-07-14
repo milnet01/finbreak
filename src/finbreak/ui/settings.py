@@ -69,6 +69,7 @@ class SettingsDialog(QDialog):
             10: self.tr("10 minutes"),
             15: self.tr("15 minutes"),
             30: self.tr("30 minutes"),
+            0: self.tr("Never"),  # FIBR-0135 — idle auto-lock off (manual lock holds)
         }
         self._combo = QComboBox()
         self._combo.setObjectName("settings_auto_lock")
