@@ -21,6 +21,12 @@ signaling per
 
 ## [Unreleased]
 
+### Fixed
+
+- **Windows: the app no longer flashes a console (command-prompt) window on launch.** (FIBR-0132)
+  The Windows `.exe` is now frozen as a GUI app (`--windowed`) instead of a
+  console app, so no black cmd window appears before the window opens.
+
 ## [0.1.9] - 2026-07-13
 
 ### Added

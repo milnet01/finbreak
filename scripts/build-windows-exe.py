@@ -77,6 +77,13 @@ def main() -> None:
         "-m",
         "PyInstaller",
         "--onefile",
+        # GUI app: /SUBSYSTEM:WINDOWS, no attached console (FIBR-0132). Without
+        # this PyInstaller defaults to a console build and a cmd window flashes up
+        # before the GUI. Windows-only — the Linux freeze stays console (its
+        # clean-room reads the --self-test sentinel from stdout, and a headless
+        # AppImage has no window nuisance). --windowed nulls sys.stdout/stderr on
+        # Windows, so the clean-room reads the sentinel from FINBREAK_SELFTEST_OUT.
+        "--windowed",
         "--name",
         "finbreak",
         "--paths",

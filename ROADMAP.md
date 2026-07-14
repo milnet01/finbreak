@@ -194,6 +194,13 @@ scariest unknown (native-library bundling) up front.
   Lanes: packaging, ui, services.
   Source: user-request-2026-07-09.
 
+- ✅ [FIBR-0132] **Windows `.exe` launches with a console window — build `--windowed` to suppress it.**
+  FIBR-0015 froze the .exe with `--onefile` but not `--windowed`, so PyInstaller attaches a console (the black cmd window the user saw before the GUI). Fix: add `--windowed` in build-windows-exe.py. Wrinkle: `--windowed` sets sys.stdout/stderr to None on Windows (PyInstaller docs), so the windows-build.yml `--self-test` sentinel read (FINBREAK_SELFTEST_OK) goes blind — reroute the sentinel to a file via a FINBREAK_SELFTEST_OUT env var (run_self_test already takes an `out` stream) and have the workflow read the file + Start-Process -Wait for the now-GUI process. Regression-lock with a windows_build feature test asserting the driver builds --windowed.
+  **Layman:** Stops the black command-prompt window from flashing up before the app opens on Windows.
+  Kind: fix.
+  Source: user-report-2026-07-14.
+  Resolved 2026-07-14: `build-windows-exe.py` now freezes `--windowed`; self-test sentinel rerouted to FINBREAK_SELFTEST_OUT file so the clean-room read survives the None stdout; windows-build.yml reads the file via Start-Process -Wait. Regression-locked (test_driver_freezes_windowed_gui_exe + test_selftest_can_redirect_sentinel_to_a_file). Gate green 853/1. Ships in the next Windows release build.
+
 ## P02 — Vertical slice: the security spine (target: after P01)
 
 **Theme:** the smallest end-to-end feature that touches every

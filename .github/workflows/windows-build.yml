@@ -36,6 +36,11 @@ jobs:
       # it loads all 9 native stacks (INV-4) without touching any interpreter. A
       # PyInstaller onefile bundles its own CPython + the MSVC C runtime, so
       # system-Python-independence holds by construction.
+      #
+      # The .exe is a `--windowed` GUI build (FIBR-0132), so it has no console:
+      # sys.stdout/stderr are None and PowerShell does not wait for a GUI-subsystem
+      # process. So run it via Start-Process -Wait and read the sentinel from the
+      # FINBREAK_SELFTEST_OUT file the self-test writes, not from stdout.
       - name: Clean-room self-test (Python off PATH)
         shell: pwsh
         run: |
@@ -45,9 +50,14 @@ jobs:
           }) -join ';'
           if (Get-Command python -ErrorAction SilentlyContinue) { throw 'python still on PATH' }
           if (Get-Command py -ErrorAction SilentlyContinue) { throw 'py still on PATH' }
-          $out = & .\dist\finbreak.exe --self-test 2>&1 | Out-String
+          $sentinel = Join-Path $PWD 'selftest-out.txt'
+          $env:FINBREAK_SELFTEST_OUT = $sentinel
+          $p = Start-Process -FilePath .\dist\finbreak.exe -ArgumentList '--self-test' `
+                 -Wait -PassThru
+          $out = if (Test-Path $sentinel) { Get-Content $sentinel -Raw } else { '' }
           Write-Host $out
           if ($out -notmatch 'FINBREAK_SELFTEST_OK') { throw 'FINBREAK_SELFTEST_OK sentinel missing' }
+          if ($p.ExitCode -ne 0) { throw "self-test exited $($p.ExitCode)" }
 
       # Optional stretch (D4): the same .exe inside a truly Python-free Windows
       # container, for parity with the Linux debian:13-slim clean-room. Not
@@ -58,6 +68,7 @@ jobs:
         shell: pwsh
         run: |
           docker run --rm -v "${{ github.workspace }}:C:\ws" `
+            -e FINBREAK_SELFTEST_OUT=C:\selftest.txt `
             mcr.microsoft.com/windows/servercore:ltsc2022 `
             C:\ws\dist\finbreak.exe --self-test
 

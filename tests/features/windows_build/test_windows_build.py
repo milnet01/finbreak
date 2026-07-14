@@ -235,3 +235,23 @@ def test_driver_uses_canonical_flag_list():
     src = _DRIVER_FILE.read_text()
     # the driver must build its flags from the single canonical list (INV-3)
     assert "windows_freeze_flags" in src
+
+
+# --- FIBR-0132: the released .exe is a GUI app, not a console app -------------
+
+
+def test_driver_freezes_windowed_gui_exe():
+    """The Windows freeze must pass `--windowed` so PyInstaller builds the
+    /SUBSYSTEM:WINDOWS bootloader — otherwise the .exe attaches a console (the
+    cmd window a user sees before the GUI). Windows-only: the Linux freeze stays
+    console (its clean-room reads stdout; there is no window nuisance on Linux)."""
+    src = _DRIVER_FILE.read_text()
+    assert "--windowed" in src
+
+
+def test_selftest_can_redirect_sentinel_to_a_file():
+    """`--windowed` sets sys.stdout/stderr to None on Windows, so the CI
+    `--self-test` sentinel can't be read from stdout. `__main__` must honour
+    FINBREAK_SELFTEST_OUT and write the sentinel to that file instead."""
+    src = (_REPO_ROOT / "src" / "finbreak" / "__main__.py").read_text()
+    assert "FINBREAK_SELFTEST_OUT" in src
