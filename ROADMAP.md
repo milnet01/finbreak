@@ -1252,10 +1252,11 @@ because retrofitting them is a data migration.
   Kind: investigate.
   Source: user-request-2026-07-14.
 
-- 🚧 [FIBR-0138] **Expandable dashboard drill-down (Income / Spending / Transfers → categories → merchant → transactions).**
+- ✅ [FIBR-0138] **Expandable dashboard drill-down (Income / Spending / Transfers → categories → merchant → transactions).**
   Designed in-session 2026-07-14 (three user-approved brainstorm decisions). Enhances the FIBR-0012 dashboard: keep the donut + 12-month trend charts as the snapshot, add an expanding tree below them that drills the numbers.
   Spec written (docs/specs/FIBR-0138.md) 2026-07-14; /cold-eyes next.
   Spec CLEARED FOR CODE 2026-07-14 — /cold-eyes converged loop 5 (5 loops × 3 cold lanes = 15 reviews; accuracy lane clean from loop 4). Next: TDD tests/features/dashboard_drilldown/ (INV-1..9) → /close-phase.
+  Resolved (2026-07-14): SHIPPED (code) via /close-phase. TDD 41-leg tests/features/dashboard_drilldown/ (INV-1..9) → DrillNode/DrillLabels (models), merchant_name (text.py, pure+total), drill_rows_in_range (5-tuple sibling read), ReportingService.drill_down (one "group by top-of-chain" category algorithm + account-pair transfers, INV-7 uniform-string sort; branch totals sum from integer amount_minor so they equal the tiles, INV-1), HomeView QScrollArea+QTreeWidget wiring. Close: /audit semgrep 0 + gate 0; /indie-review 2 cold lanes → production money-correct, folded inline a top_of_chain/category_node corrupt-data cycle guard + 5 test-strength adds (real INV-7 mixed-type sort-key falsifier, INV-9 sentinel-label proof, cycle regression, count==1 bare label, punctuation merchant_name). Gate green 975/1, mypy 0. Commits 810283f (impl) + ebbcced (fold) + close; tag FIBR-0138-complete; journal docs/journal/FIBR-0138.md. README "what works today" refresh deferred to next bump per Deliverable 7.
 
   D1 Presentation: an expanding tree (QTreeWidget-style), NOT a click-to-drill donut. The three totals (Income / Spending / Transfers) are the top rows.
   D2 Spending/Income drill follows the existing category tree (parent->child, any depth) to a leaf category; at a leaf, group its transactions by merchant with a x count, then expand a merchant to the individual transactions (date + amount).

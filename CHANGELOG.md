@@ -21,6 +21,18 @@ signaling per
 
 ## [Unreleased]
 
+### Added
+
+- ****Expandable dashboard drill-down — open the Income / Spending / Transfers totals into categories, shops, and individual transactions (FIBR-0138).****
+  The Home dashboard's three headline numbers are now openable, in a tree
+  below the donut and trend charts. Click Spending to break it into your
+  categories, open a category down to a single one, then see the
+  transactions grouped by shop with a count (e.g. "Woolworths ×3"), and
+  open a shop to see each purchase (date + amount). Income opens the same
+  way; Transfers opens by account pair (e.g. "Current → Savings ×2"). Every
+  figure is still summed from the real stored amounts — the shop grouping
+  only decides which line a transaction sits under, never how much it is.
+
 ## [0.1.11] - 2026-07-14
 
 ### Added
