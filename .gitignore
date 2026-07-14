@@ -105,3 +105,6 @@ scratch/
 tmp/
 Screenshot_*.png
 screenshot*.png
+
+# Roadmap ID counter — re-derived from ROADMAP.md when absent; not tracked (user 2026-07-14)
+.roadmap-counter
