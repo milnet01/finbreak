@@ -21,6 +21,11 @@ signaling per
 
 ## [Unreleased]
 
+### Added
+
+- **Built-in category library — common merchants are now auto-categorised out of the box (FIBR-0139).**
+  A bundled, per-release merchant library guesses categories for new transactions, so a fresh vault no longer imports everything Uncategorised. It runs after your own rules and only on rows you haven't set by hand, so your rules and manual picks always win. Guessed rows show a small "~ guess" tag you can override with a click, and a Settings toggle (on by default) turns the whole thing off.
+
 ## [0.1.10] - 2026-07-14
 
 ### Added
