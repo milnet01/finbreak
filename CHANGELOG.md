@@ -21,6 +21,8 @@ signaling per
 
 ## [Unreleased]
 
+## [0.1.11] - 2026-07-14
+
 ### Added
 
 - **Built-in category library — common merchants are now auto-categorised out of the box (FIBR-0139).**

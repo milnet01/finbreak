@@ -13,7 +13,7 @@
 [![Status](https://img.shields.io/badge/status-pre--alpha-orange)]()
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-Current version: **0.1.10** (early preview). **[⬇ Download the latest
+Current version: **0.1.11** (early preview). **[⬇ Download the latest
 release](https://github.com/milnet01/finbreak/releases/latest)**, or see
 [CHANGELOG](CHANGELOG.md) for what's shipped and [ROADMAP](ROADMAP.md) for
 what's coming.
@@ -36,7 +36,9 @@ lot, with more polish and features to come. What works today:
   password-protected PDFs),
 - organising them into **accounts** and into **categories** you can group
   and rename,
-- **automatically sorting** transactions into categories, with rules you
+- **automatically sorting** transactions into categories — with built-in
+  guesses for common shops and services (so a fresh import is sorted straight
+  away; each guess is tagged so you can override it), plus your own rules you
   can edit and corrections it learns from,
 - **spotting transfers between your own accounts** — money you move from,
   say, your current account to savings is flagged so it isn't mistaken for
