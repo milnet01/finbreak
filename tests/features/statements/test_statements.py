@@ -323,12 +323,16 @@ def test_INV2_nav_actions_switch_the_workspace_tab(qtbot, service):
         assert workspace.currentIndex() == index, attr
 
 
-def test_INV2_toolbar_order_and_no_statements_button(qtbot, service):
+def test_INV2_toolbar_order_includes_statements(qtbot, service):
+    # FIBR-0136 (user request 2026-07-14): Statements now has a toolbar button too,
+    # placed after Transactions to mirror the workspace tab order. It was previously
+    # reachable only from the View menu — that omission surfaced dogfooding.
     window = _shell(qtbot, service)
     names = [a.objectName() for a in window._toolbar.actions()]
     assert names == [
         "action_home",
         "action_transactions",
+        "action_statements",  # FIBR-0136: after Transactions (tab order)
         "action_manual_entry",
         "action_import",
         "action_accounts",
@@ -338,11 +342,8 @@ def test_INV2_toolbar_order_and_no_statements_button(qtbot, service):
         "action_export",  # FIBR-0013: before Lock (Lock stays last)
         "action_lock",
     ], (
-        "toolbar order: Home, Transactions, Manual entry, Import, Accounts, "
-        "Categories, Rules, Transfers, Lock"
-    )
-    assert "action_statements" not in names, (
-        "Statements lives on the tab bar + View menu, not the toolbar (INV-2)"
+        "toolbar order: Home, Transactions, Statements, Manual entry, Import, "
+        "Accounts, Categories, Rules, Transfers, Export, Lock"
     )
 
 

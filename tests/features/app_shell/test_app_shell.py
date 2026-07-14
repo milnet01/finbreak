@@ -657,6 +657,23 @@ def test_transactions_toolbar_action_has_a_rendering_icon(qtbot, service):
     )
 
 
+def test_statements_toolbar_action_has_an_icon_and_sits_on_the_toolbar(qtbot, service):
+    """Statements shipped text-only AND absent from the toolbar — it was reachable
+    only from the (iconless) View menu, surfaced dogfooding. It needs a glyph
+    (ui/icons/statements.svg) and a toolbar button like its neighbours (FIBR-0136)."""
+    from PySide6.QtCore import QSize
+
+    service.first_run(bytearray(_PW), "ZAR")
+    service.lock()
+    window = MainWindow(service)
+    qtbot.addWidget(window)
+
+    action = window.findChild(QAction, "action_statements")
+    assert action is not None
+    assert not action.icon().pixmap(QSize(24, 24)).isNull(), "Statements needs an icon"
+    assert action in window._toolbar.actions(), "Statements must be on the toolbar"
+
+
 # --------------------------------------------------------------------------- #
 # FIBR-0013 — Export report as PDF (menu + toolbar entry, save flow)
 # --------------------------------------------------------------------------- #

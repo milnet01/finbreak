@@ -261,7 +261,10 @@ class MainWindow(QMainWindow):
             self._open_transactions,
         )
         self._action_statements = self._make_action(
-            "action_statements", self.tr("Statements"), None, self._open_statements
+            "action_statements",
+            self.tr("Statements"),
+            "statements",
+            self._open_statements,
         )
         self._action_manual_entry = self._make_action(
             "action_manual_entry",
@@ -391,6 +394,7 @@ class MainWindow(QMainWindow):
         for action in (
             self._action_home,
             self._action_transactions,
+            self._action_statements,  # FIBR-0136 — matches the workspace tab order
             self._action_manual_entry,
             self._action_import,
             self._action_accounts,
