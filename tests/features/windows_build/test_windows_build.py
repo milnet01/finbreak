@@ -255,3 +255,16 @@ def test_selftest_can_redirect_sentinel_to_a_file():
     FINBREAK_SELFTEST_OUT and write the sentinel to that file instead."""
     src = (_REPO_ROOT / "src" / "finbreak" / "__main__.py").read_text()
     assert "FINBREAK_SELFTEST_OUT" in src
+
+
+def test_driver_embeds_the_app_icon():
+    """The Windows freeze must pass `--icon` pointing at the committed multi-size
+    finbreak.ico, so Explorer/taskbar show the branded donut instead of
+    PyInstaller's default console-stub icon (FIBR-0037 app icon on Windows). The
+    .ico must exist and be a real multi-size Windows icon."""
+    src = _DRIVER_FILE.read_text()
+    assert "--icon" in src
+    ico = _REPO_ROOT / "assets" / "icon" / "finbreak.ico"
+    assert ico.is_file(), f"{ico} missing — regenerate via scripts/make-icons.sh"
+    # MS Windows .ico magic: reserved(0) + type 1 (icon).
+    assert ico.read_bytes()[:4] == b"\x00\x00\x01\x00"

@@ -23,6 +23,9 @@ signaling per
 
 ### Fixed
 
+- **Embed the finbreak icon in the Windows .exe (was PyInstaller's default console-stub icon).** (FIBR-0134)
+  Make the Windows app file show finbreak's donut icon in Explorer instead of a generic black terminal icon.
+
 - **Windows: the app no longer flashes a console (command-prompt) window on launch.** (FIBR-0132)
   The Windows `.exe` is now frozen as a GUI app (`--windowed`) instead of a
   console app, so no black cmd window appears before the window opens.

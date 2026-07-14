@@ -29,6 +29,9 @@ _PYPROJECT = _REPO_ROOT / "pyproject.toml"
 _SRC = _REPO_ROOT / "src"
 _ICONS_SRC = _SRC / "finbreak" / "ui" / "icons"
 _ENTRY = _SRC / "finbreak" / "__main__.py"
+# The multi-size Windows icon (FIBR-0037) PyInstaller embeds into the .exe so
+# Explorer shows the finbreak donut, not PyInstaller's default console stub.
+_ICO = _REPO_ROOT / "assets" / "icon" / "finbreak.ico"
 
 _QT_BINDINGS = ("PySide2", "PySide6", "PyQt5", "PyQt6")
 PYINSTALLER_PIN = "pyinstaller==6.21.0"
@@ -71,12 +74,20 @@ def main() -> None:
     _pip(*_runtime_deps(), PYINSTALLER_PIN)
     _assert_single_qt_binding()
 
+    if not _ICO.is_file():
+        raise SystemExit(f"build-windows-exe: expected the app icon {_ICO}, not found")
+
     add_data = f"{_ICONS_SRC}{os.pathsep}{flags.ADD_DATA_TARGET}"
     cmd = [
         sys.executable,
         "-m",
         "PyInstaller",
         "--onefile",
+        # Embed the finbreak donut as the .exe's Explorer/taskbar icon. Without
+        # --icon PyInstaller stamps its own default console-stub icon (FIBR-0037
+        # app icon; the runtime window icon is set separately via QApplication).
+        "--icon",
+        str(_ICO),
         # GUI app: /SUBSYSTEM:WINDOWS, no attached console (FIBR-0132). Without
         # this PyInstaller defaults to a console build and a cmd window flashes up
         # before the GUI. Windows-only — the Linux freeze stays console (its
