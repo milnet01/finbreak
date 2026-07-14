@@ -68,6 +68,7 @@ captured in a new ADR.
 | [0007](0007-self-contained-bundled-releases.md) | Self-contained bundled releases |
 | [0008](0008-qtcharts-for-reporting.md) | QtCharts for the reporting dashboard charts |
 | [0009](0009-sqlcipher-binding-package.md) | SQLCipher binding package — `sqlcipher3-wheels` (cross-platform fork) |
+| [0010](0010-theme-system.md) | Theme system — Fusion + token-driven palettes/QSS, non-vault theme pref |
 
 ## Template
 

@@ -506,12 +506,13 @@ lands on top.
   Source: user-request-2026-07-01.
   Deferred from FIBR-0004 (P02) per user decision 2026-07-02: the three P02 screens (first_run, unlock, main_window) build their strings once in __init__ and do NOT implement live language switching (changeEvent → retranslateUi). coding.md §5.2 asks for this "from P02"; the FIBR-0004 spec deliverable required only tr() strings + RTL layouts + QLocale amounts (all shipped), and there are no translations to switch yet. When this phase lands, add changeEvent/retranslateUi to those three screens (and every screen built between P02 and here) so the language switcher takes effect without a relaunch.
 
-- 📋 [FIBR-0127] **App-wide light/dark/follow-system theme system + dark-theme polish.**
+- 🚧 [FIBR-0127] **App-wide light/dark/follow-system theme system + dark-theme polish.**
   Split from FIBR-0014 (P12). Nothing exists today: the app rides the system/Qt default palette (dark by convention) with NO stylesheet, no QPalette install, no theme setting key, no toggle (app.py sets no palette). This builds the theme system from scratch: a `theme` settings key (light/dark/system), palette application at the app entry point / main_window, and follow-system detection, plus a dark-theme polish pass. Widgets already READ the live palette (ui/icons.py _is_dark_theme, home.py ChartTheme from palette().text(), _amount.py fixed mid-tones) so they adapt once a palette is installed. Unblocks FIBR-0116 (live icon re-tint on theme switch) and the _amount.py palette-adaptive re-tinting both deferred here. Hosted in the FIBR-0055 Settings dialog. Note: code cites ADR-0002 for the dark theme but that ADR is actually PySide6-vs-PyQt6 — reconcile / write a real theme ADR when specced.
   **Layman:** A proper light/dark mode you can choose (or have it follow your operating system), instead of the app being dark-only.
   Kind: implement.
   Lanes: ui.
   Source: split-from-FIBR-0014-2026-07-13.
+  Spec docs/specs/FIBR-0127.md + ADR-0010 written 2026-07-14 from the user-approved brainstorm (designed look, 6 finance themes Ledger/Parchment/Mint + Midnight/Graphite/Emerald, live follow-system, sleek modern polish: gradient/glow accents + grid row-highlighting, theme-aware toolbar icons). Cold-eyes next.
 
 - 📋 [FIBR-0128] **Manage stored PDF statement passwords (view / clear per-account).**
   Split from FIBR-0014 (P12). The store already EXISTS (FIBR-0009, schema v5): accounts.statement_pdf_password (nullable, vault-encrypted at rest, deliberately not selected into the Account dataclass for credential hygiene), with AccountsRepository.get_pdf_password / set_pdf_password. It is written implicitly during import and auto-tried; there is NO management UI. This item adds the Settings-hosted screen to list accounts with a remembered statement password and clear/update it. (Distinct from the FIBR-0013 export password, which is ephemeral and never stored.)
