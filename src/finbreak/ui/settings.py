@@ -33,6 +33,7 @@ from finbreak.services.auth import (
     AmountPrefs,
     AuthService,
 )
+from finbreak.ui import theme
 from finbreak.ui._datetime_prefs import (
     populate_datetime_combos,
     read_datetime_prefs,
@@ -56,9 +57,11 @@ class SettingsDialog(QDialog):
         *,
         update_enabled: bool = False,
         update_supported: bool = False,
+        theme_controller: theme.ThemeController | None = None,
     ):
         super().__init__(parent)
         self._service = service
+        self._theme_controller = theme_controller
         self.setWindowTitle(self.tr("Settings"))
 
         # Per-value tr() literals — never self.tr(variable), which lupdate cannot
@@ -139,7 +142,27 @@ class SettingsDialog(QDialog):
                 )
             )
 
+        # The FIBR-0127 theme picker — an immediate-apply control (not Save/Cancel
+        # data, D4): "Follow system" then the six themes grouped Light-then-Dark by
+        # is_dark (INV-9), preselected to the current pref. Present only when the
+        # shell handed us a controller (D10). The theme names are data (INV-13).
+        self._theme_combo: QComboBox | None = None
+        if theme_controller is not None:
+            self._theme_combo = QComboBox()
+            self._theme_combo.setObjectName("settings_theme")
+            self._theme_combo.addItem(self.tr("Follow system"), "system")
+            lights = [t for t in theme.THEMES.items() if not t[1].tokens.is_dark]
+            darks = [t for t in theme.THEMES.items() if t[1].tokens.is_dark]
+            for theme_id, theme_def in (*lights, *darks):
+                self._theme_combo.addItem(theme_def.name, theme_id)
+            select_combo_data(self._theme_combo, theme.load_theme_pref())
+            # Connect AFTER populate + preselect: the index moves above would else
+            # fire set_theme and clobber the pinned pref just by opening (INV-8).
+            self._theme_combo.currentIndexChanged.connect(self._on_theme_changed)
+
         form = QFormLayout()
+        if self._theme_combo is not None:
+            form.addRow(self.tr("Theme"), self._theme_combo)
         form.addRow(self.tr("Auto-lock after"), self._combo)
         form.addRow(self.tr("Time zone"), self._timezone)
         form.addRow(self.tr("Date format"), self._date_format)
@@ -175,6 +198,14 @@ class SettingsDialog(QDialog):
         flag via ``UpdateService.set_enabled`` (D5). The dialog itself writes
         nothing networked."""
         return self._update_checkbox.isChecked()
+
+    @Slot(int)
+    def _on_theme_changed(self, _index: int) -> None:
+        # Immediate apply + persist via the controller (D4), independent of
+        # Save/Cancel. currentData() is the selected theme id (or "system").
+        if self._theme_controller is None or self._theme_combo is None:
+            return
+        self._theme_controller.set_theme(self._theme_combo.currentData())
 
     @Slot()
     def _on_save(self) -> None:

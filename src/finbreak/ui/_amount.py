@@ -15,7 +15,7 @@ from PySide6.QtCore import QLocale
 from PySide6.QtGui import QColor
 
 # Direction tints for money display when colour is on (FIBR-0105 D3). Fixed
-# mid-tones chosen to read on the dark-default theme (ADR-0002) and stay legible
+# mid-tones chosen to read on the dark-default theme (ADR-0010) and stay legible
 # on light; palette-adaptive re-tinting is FIBR-0014.
 _NEGATIVE_TEXT = QColor(224, 108, 117)  # soft red — money out
 _POSITIVE_TEXT = QColor(152, 195, 121)  # soft green — money in

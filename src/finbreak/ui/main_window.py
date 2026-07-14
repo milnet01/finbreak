@@ -75,6 +75,7 @@ from finbreak.ui.manual_entry import ManualEntryDialog
 from finbreak.ui.rules import RulesWidget
 from finbreak.ui.settings import SettingsDialog
 from finbreak.ui.statements import StatementsWidget
+from finbreak.ui.theme import ThemeController, polish_item_views
 from finbreak.ui.transactions import TransactionsView
 from finbreak.ui.transfers import TransfersWidget
 from finbreak.ui.unlock import UnlockDialog
@@ -175,9 +176,18 @@ class MainWindow(QMainWindow):
         *,
         update_service: UpdateService | None = None,
         installer: Installer | None = None,
+        theme_controller: ThemeController | None = None,
     ):
         super().__init__(parent)
         self._service = service
+        # The app-wide theme controller (FIBR-0127 D10). Optional: with None the
+        # shell shows no theme picker, wires no re-tint, and skips polish_item_views,
+        # so every existing MainWindow(service) construction is untouched.
+        self._theme = theme_controller
+        # name -> icon-bearing action, populated by _make_action, iterated by
+        # _retint_toolbar_icons on a theme change (INV-10). Initialised BEFORE
+        # _build_chrome (which populates it).
+        self._icon_actions: dict[str, QAction] = {}
         # The opt-in updater (FIBR-0054). Resolve the installer ONCE and hand the
         # same instance to the service + use it for apply (D6/Deliverable 9). Tests
         # inject a fake service + installer; production builds the real pair.
@@ -221,6 +231,11 @@ class MainWindow(QMainWindow):
         state = service.state()
 
         self._build_chrome()
+        # Re-tint the toolbar glyphs on every theme change (delivers FIBR-0116's live
+        # re-tint, INV-10). Connected AFTER _build_chrome so _icon_actions is
+        # populated; only when a controller is present (D10).
+        if self._theme is not None:
+            self._theme.themeChanged.connect(self._retint_toolbar_icons)
         self._build_content()
         self._build_status_bar()
 
@@ -419,9 +434,19 @@ class MainWindow(QMainWindow):
             # Coloured, hover-brightening, theme-aware glyph on the toolbar + menus
             # (FIBR-0116): muted at rest, vibrant under the cursor.
             action.setIcon(toolbar_icon(icon_name))
+            # Record it so a theme change can re-tint the glyph (INV-10). Only
+            # icon-bearing actions — action_settings etc. (icon_name None) are skipped.
+            self._icon_actions[icon_name] = action
         # triggered emits a `checked` bool; drop it — every handler is zero-arg.
         action.triggered.connect(lambda *_, h=handler: h())
         return action
+
+    def _retint_toolbar_icons(self) -> None:
+        """Re-render each icon-bearing action's glyph for the now-current theme
+        (INV-10). ``toolbar_icon`` re-reads the live palette's light/dark, so the
+        glyphs never show stale-theme tones after a live theme switch."""
+        for name, action in self._icon_actions.items():
+            action.setIcon(toolbar_icon(name))
 
     # --- content + status --------------------------------------------------- #
     def _build_content(self) -> None:
@@ -601,6 +626,11 @@ class MainWindow(QMainWindow):
         # Connect AFTER the tabs are added, so building fires no spurious refresh.
         workspace.currentChanged.connect(self._on_tab_changed)
         self._workspace = workspace
+        # Enable alternating row stripes on every grid view so the theme's
+        # alternate-background-color renders (INV-11) — only when themed (D10), so
+        # the controller-less default path leaves alternatingRowColors untouched.
+        if self._theme is not None:
+            polish_item_views(workspace)
         self._set_live(workspace)
         return workspace
 
@@ -707,6 +737,7 @@ class MainWindow(QMainWindow):
             self,
             update_enabled=self._update_service.is_enabled(),
             update_supported=self._installer is not None,
+            theme_controller=self._theme,
         )
         dialog.saved.connect(self._on_settings_saved)
         dialog.export_backup_requested.connect(self._open_backup_export)

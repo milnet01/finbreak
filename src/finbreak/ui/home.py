@@ -315,7 +315,7 @@ class HomeView(QWidget):
                 value.setStyleSheet("")
 
     def _chart_theme(self) -> ChartTheme:
-        """The on-screen theme: text from the live palette (ADR-0002 dark default),
+        """The on-screen theme: text from the live palette (ADR-0010 dark default),
         the fixed FIBR-0105 positive/negative colours, transparent background — so
         the shared builders reproduce the FIBR-0012 dashboard exactly (D3)."""
         return ChartTheme(

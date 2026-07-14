@@ -96,7 +96,7 @@ class _PdfTheme:
 
 def _pdf_theme(name: str) -> _PdfTheme:
     """Map the ``"light"``/``"dark"`` token to its explicit colour set. Light is
-    print-friendly (white page, dark text); Dark mirrors the app panel (ADR-0002).
+    print-friendly (white page, dark text); Dark mirrors the app panel (ADR-0010).
     The positive/negative money tints are the fixed FIBR-0105 colours in both."""
     if name == "dark":
         return _PdfTheme(

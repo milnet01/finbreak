@@ -59,7 +59,7 @@ def icon(name: str) -> QIcon:
 def _is_dark_theme() -> bool:
     """Whether the active Qt palette is dark (window-background lightness < 0.5), so
     the glyph colours can suit the current theme (FIBR-0116). Defaults to dark
-    (ADR-0002) when no ``QApplication`` exists yet."""
+    (ADR-0010) when no ``QApplication`` exists yet."""
     if QApplication.instance() is None:
         return True
     # QApplication.palette() is a static accessor for the current app palette.
