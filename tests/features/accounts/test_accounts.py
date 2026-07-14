@@ -600,18 +600,21 @@ def test_INV1_widget_never_renders_or_reads_the_secret(qtbot, service, monkeypat
     default_id = _default_id(service.vault)
     svc.set_pdf_password(default_id, _SENTINEL_PW)
 
-    widget = AccountsWidget(service)
-    qtbot.addWidget(widget)
-
-    # Primary falsifier (a): the listing path must not read the plaintext.
+    # Primary falsifier (a): the listing path must not read the plaintext — spy at
+    # the CLASS level BEFORE constructing, so the construction-time _refresh (the
+    # shipping render path) is observed too, not just the manual one below.
     calls: list = []
-    orig = widget._accounts.get_pdf_password
-    monkeypatch.setattr(
-        widget._accounts,
-        "get_pdf_password",
-        lambda *a, **k: (calls.append(a), orig(*a, **k))[1],
-    )
-    widget._refresh()
+    orig = AccountService.get_pdf_password
+
+    def _spy(self, *a, **k):
+        calls.append(a)
+        return orig(self, *a, **k)
+
+    monkeypatch.setattr(AccountService, "get_pdf_password", _spy)
+
+    widget = AccountsWidget(service)  # __init__ runs _refresh
+    qtbot.addWidget(widget)
+    widget._refresh()  # and an explicit re-render
     assert calls == [], "the listing path must not read the plaintext password"
 
     # Primary falsifier (b) + defense-in-depth: the sentinel is nowhere in the UI.
@@ -735,6 +738,11 @@ def test_INV4_forget_declined_keeps_the_password(qtbot, service, monkeypatch):
     widget._select_account(a)
     widget._forget_pw_button.click()
     assert svc.get_pdf_password(a) == "PW-A", "declining the confirm keeps the password"
+    marked = any(
+        _PW_MARKER_PHRASE in widget._list.item(i).text()
+        for i in range(widget._list.count())
+    )
+    assert marked, "declining leaves the marker in place"
 
 
 def test_INV5_forget_swallows_vault_locked_silently(qtbot, service, monkeypatch):
