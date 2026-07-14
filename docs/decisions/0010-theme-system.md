@@ -20,8 +20,8 @@ layout direction, but **no palette / style / stylesheet**, so the app rode
 whatever the platform / Qt default handed it (dark by convention on the
 developer's desktop). Several widgets already **read** the live palette:
 `ui/icons.py` tints toolbar glyphs by `_is_dark_theme()` (window-background
-lightness `< 0.5`); `ui/charts.py`/`ui/home.py` derive `ChartTheme` colours from
-`palette().text()`. There was no `theme` setting, no toggle, and no ADR recording
+lightness `< 0.5`); `ui/home.py` derives its `ChartTheme` colours from
+`palette().text()` (the `ChartTheme` dataclass lives in `ui/charts.py`). There was no `theme` setting, no toggle, and no ADR recording
 "the app is dark" — `ui/icons.py`'s comment *"Defaults to dark (ADR-0002)"*
 mis-cited ADR-0002, which is actually **PySide6-vs-PyQt6**, not a theme decision.
 
