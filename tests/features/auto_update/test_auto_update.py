@@ -515,16 +515,19 @@ def test_FIBR0131_powershell_path_resolves_absolute_from_systemroot(
     assert _powershell_path() == str(ps)
 
 
-def test_FIBR0131_relaunch_command_waits_by_image_path_not_pid():
+def test_FIBR0131_relaunch_command_waits_by_image_path_not_pid(monkeypatch, tmp_path):
     # The waiter polls the exe IMAGE PATH (tree-agnostic + PID-recycling-proof),
     # aborts (removing the temp, no relaunch) if the image never frees, else moves
     # + relaunches. Paths with a space / apostrophe are single-quote-escaped.
+    # Pin SystemRoot so argv[0] resolves deterministically (not the host's PATH).
+    ps = tmp_path / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+    ps.parent.mkdir(parents=True)
+    ps.write_bytes(b"")
+    monkeypatch.setenv("SystemRoot", str(tmp_path))
     cmd = _windows_relaunch_command(
         r"C:\Program Files\My App\finbreak's.exe", r"C:\tmp\finbreak-update-xyz.exe"
     )
-    assert cmd[0].endswith("powershell.exe") and not cmd[0].endswith(
-        os.sep + "powershell"
-    )
+    assert cmd[0] == str(ps)  # absolute powershell.exe, never a bare "powershell"
     assert cmd[1:4] == ["-NoProfile", "-NonInteractive", "-Command"]
     script = cmd[4]
     # image-path poll, never a PID wait
@@ -539,7 +542,7 @@ def test_FIBR0131_relaunch_command_waits_by_image_path_not_pid():
     assert "'C:\\Program Files\\My App\\finbreak''s.exe'" in script
 
 
-def test_FIBR0131_windows_apply_wipes_then_spawns_detached_no_in_process_move(
+def test_FIBR0131_windows_apply_spawns_then_wipes_detached_no_in_process_move(
     monkeypatch, tmp_path
 ):
     exe = tmp_path / "finbreak.exe"
@@ -550,9 +553,10 @@ def test_FIBR0131_windows_apply_wipes_then_spawns_detached_no_in_process_move(
 
     WindowsInstaller(exe).apply(new_file, lambda: record["order"].append("wipe"))
 
-    # wipe -> spawn -> hard exit; the physical move happens OUT of process (in the
-    # helper, after exit), so neither file is touched in-process here.
-    assert record["order"] == ["wipe", "relaunch", "exit"]
+    # spawn -> wipe -> hard exit (spawn FIRST so a spawn failure can't strand a
+    # wiped key, INV-4; the helper blocks until we exit so it acts on nothing before
+    # the wipe). The physical move happens OUT of process, so neither file is touched.
+    assert record["order"] == ["relaunch", "wipe", "exit"]
     assert exe.read_bytes() == b"OLD-EXE"  # not replaced in-process
     assert new_file.read_bytes() == b"NEW-EXE"  # not moved in-process
     argv = record["argv"]
@@ -565,6 +569,54 @@ def test_FIBR0131_windows_apply_wipes_then_spawns_detached_no_in_process_move(
     assert kwargs["close_fds"] is True
     assert kwargs["env"]["PYINSTALLER_RESET_ENVIRONMENT"] == "1"
     assert record["exit_code"] == 0
+
+
+def test_FIBR0131_windows_apply_spawn_failure_leaves_key_unwiped(monkeypatch, tmp_path):
+    # A Popen failure (AV/AppLocker denies powershell.exe) must NOT wipe the key or
+    # os._exit — nothing is committed (the move lives in the helper), so surface an
+    # UpdateError with the key intact + the staged temp cleaned (INV-4).
+    exe = tmp_path / "finbreak.exe"
+    exe.write_bytes(b"OLD-EXE")
+    new_file = tmp_path / "finbreak-update-xyz.exe"
+    new_file.write_bytes(b"NEW-EXE")
+    order: list[str] = []
+
+    def boom_popen(*a, **k):
+        raise OSError("access denied: powershell.exe blocked by policy")
+
+    monkeypatch.setattr(update_installer.subprocess, "Popen", boom_popen)
+    monkeypatch.setattr(os, "_exit", lambda code: order.append("exit"))
+    monkeypatch.setattr(update_installer, "_relaunch_log_path", lambda: None)
+
+    with pytest.raises(UpdateError):
+        WindowsInstaller(exe).apply(new_file, lambda: order.append("wipe"))
+
+    assert order == []  # neither wiped nor exited — the session survives
+    assert not new_file.exists()  # the staged temp was cleaned (no accretion)
+    assert exe.read_bytes() == b"OLD-EXE"
+
+
+def test_relaunch_spawn_failure_still_exits_no_wiped_key_zombie(monkeypatch, tmp_path):
+    # Linux twin: the swap already committed (os.replace) + the key is already wiped,
+    # so a Popen failure must still os._exit — never return into a live GUI with a
+    # wiped key. The swapped AppImage is picked up by a manual relaunch.
+    appimage = tmp_path / "app.AppImage"
+    appimage.write_bytes(b"OLD-APP")
+    new_file = tmp_path / "new.AppImage"
+    new_file.write_bytes(b"NEW-APP")
+    order: list[str] = []
+
+    def boom_popen(*a, **k):
+        raise OSError("fork/exec failed")
+
+    monkeypatch.setattr(update_installer.subprocess, "Popen", boom_popen)
+    monkeypatch.setattr(os, "_exit", lambda code: order.append("exit"))
+    monkeypatch.setattr(update_installer, "_relaunch_log_path", lambda: None)
+
+    AppImageInstaller(appimage).apply(new_file, lambda: order.append("wipe"))
+
+    assert order == ["wipe", "exit"]  # wiped (swap committed) then exited anyway
+    assert appimage.read_bytes() == b"NEW-APP"  # the swap did land
 
 
 def test_FIBR0131_windows_download_stages_exe_extension_temp(monkeypatch, tmp_path):

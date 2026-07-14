@@ -952,8 +952,9 @@ class MainWindow(QMainWindow):
 
     # --- opt-in auto-update (FIBR-0054 D7/D15) ------------------------------ #
     def _maybe_check_for_update(self) -> None:
-        # Off an AppImage, or opted out, the feature is inert (INV-1/INV-7). One
-        # bounded check per launch, on a worker so the network never blocks the UI.
+        # Off a supported package (no installer), or opted out, the feature is inert
+        # (INV-1/INV-7). One bounded check per launch, on a worker so the network
+        # never blocks the UI.
         if self._installer is None or not self._update_service.is_enabled():
             return
         worker = UpdateCheckWorker(self._update_service, self)
@@ -1062,7 +1063,7 @@ class MainWindow(QMainWindow):
             self._installer.apply(path, on_before_exec=self._service.on_about_to_quit)
         else:
             # The prompt was torn down (auto-lock) — drop the verified temp so it
-            # doesn't orphan next to $APPIMAGE (INV-9).
+            # doesn't orphan next to the running binary (INV-9).
             Path(path).unlink(missing_ok=True)
 
     def _on_download_failed(self, _exc: object, prompt: QDialog | None) -> None:

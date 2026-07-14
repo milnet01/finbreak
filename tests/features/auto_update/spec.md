@@ -1,11 +1,14 @@
-# tests/features/auto_update — FIBR-0054 optional in-app auto-update
+# tests/features/auto_update — FIBR-0054 + FIBR-0131 optional in-app auto-update
 
-Conformance tests for [`docs/specs/FIBR-0054.md`](../../../docs/specs/FIBR-0054.md).
-An **opt-in, off-by-default** updater for the Linux AppImage: on a newer, signed,
+Conformance tests for [`docs/specs/FIBR-0054.md`](../../../docs/specs/FIBR-0054.md)
+(the updater) and [`docs/specs/FIBR-0131.md`](../../../docs/specs/FIBR-0131.md)
+(the Windows plug). An **opt-in, off-by-default** updater: on a newer, signed,
 non-skipped release it offers **Later / Skip this version / Update now**; **Update
-now** downloads → Ed25519-verifies → atomically swaps `$APPIMAGE` → relaunches.
-The check is the app's single deliberate network egress, confined to
-`services/update_fetch.py`.
+now** downloads → Ed25519-verifies → installs → relaunches. Install is
+platform-specific behind the `Installer` seam: Linux swaps `$APPIMAGE` in place
+(`os.replace`); Windows can't overwrite its locked `.exe`, so a detached PowerShell
+helper swaps it **out of process** after finbreak exits. The check is the app's
+single deliberate network egress, confined to `services/update_fetch.py`.
 
 All tests use `tmp_path` + synthetic bytes and an **injected fake fetcher** — no
 network (`testing.md § 6`), no real signing key (a throwaway test key is
@@ -44,6 +47,14 @@ prefixed so the two specs' invariants don't collide (see `docs/specs/FIBR-0131.m
 | FIBR-0131 INV-5 | `_windows_relaunch_env` sets `PYINSTALLER_RESET_ENVIRONMENT=1` (+ passes unrelated vars through); no POSIX `LD_*` fixups. |
 | FIBR-0131 INV-6 | `download_and_verify` stages the temp with the installer-derived extension (`.exe`), so a Windows download isn't a misnamed `*.AppImage`. |
 | FIBR-0131 INV-7 | The `.exe` rides the same byte-agnostic Ed25519 gate (covered transitively by the FIBR-0054 tamper leg; the new coverage is the picker feeding `.exe` bytes through it). |
+
+**Coverage honesty (INV-3/INV-4):** the Linux gate tests the **command/env
+construction** and the `apply` **ordering** (spawn→wipe→exit; spawn-failure leaves
+the key un-wiped) with a monkeypatched `Popen`/`os._exit`. The PowerShell helper's
+**runtime execution** — the image-free poll, the abort branch, the `Move-Item`
+retry, the temp `Remove-Item`, the relaunch — is **empirical-only on Windows** (a
+manual two-cycle leg, § docs/specs/FIBR-0131.md "To verify empirically"), exactly
+as the Linux `/bin/sh` relaunch legs are honest about being AppImage-runtime-only.
 
 INV-13/INV-9 grep legs and the Settings/shell `qtbot` legs live in the Qt section
 of `test_auto_update.py`; the pure service/installer/version/asset legs need no

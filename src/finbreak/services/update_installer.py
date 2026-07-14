@@ -295,15 +295,24 @@ class AppImageInstaller:
             )
             log.flush()
         stdio: TextIO | int = log if log is not None else subprocess.DEVNULL
-        subprocess.Popen(  # noqa: S603  # nosec B603 — fixed /bin/sh waiter, our own argv
-            _relaunch_command(str(self._appimage_path), pid),
-            env=_relaunch_env(),
-            stdin=subprocess.DEVNULL,
-            stdout=stdio,
-            stderr=subprocess.STDOUT,
-            start_new_session=True,
-            close_fds=True,
-        )
+        try:
+            subprocess.Popen(  # noqa: S603  # nosec B603 — fixed /bin/sh waiter, our own argv
+                _relaunch_command(str(self._appimage_path), pid),
+                env=_relaunch_env(),
+                stdin=subprocess.DEVNULL,
+                stdout=stdio,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+                close_fds=True,
+            )
+        except OSError as exc:
+            # The swap already committed (os.replace) and the key is already wiped,
+            # so we must NOT return into a live GUI with a wiped key. Log best-effort
+            # and hard-exit anyway: the new AppImage is in place, so a manual relaunch
+            # gets the new version (the documented two-cycle degrade), never a zombie.
+            if log is not None:
+                log.write(f"relaunch spawn failed ({exc}); exit for manual restart\n")
+                log.flush()
         os._exit(0)
 
 
@@ -327,12 +336,15 @@ class WindowsInstaller:
         return "-x86_64.exe"
 
     def apply(self, new_file: Path, on_before_exec: Callable[[], None]) -> NoReturn:
-        # No in-process swap — the running .exe is locked by the OS. Wipe the key
-        # now (the relaunch replaces this process and never runs Qt's aboutToQuit,
-        # INV-6/INV-4), then hand the physical move to a detached helper that runs
-        # AFTER we exit. There is no pre-wipe file op that can fail here (the
-        # writability probe already happened at download-stage time, INV-6).
-        on_before_exec()
+        # No in-process swap — the running .exe is locked by the OS; the physical
+        # move happens in a detached helper AFTER we exit. Spawn the helper FIRST,
+        # then wipe the key, then exit. The helper blocks until this .exe image is
+        # free (i.e. until this process exits), so it does nothing before the wipe;
+        # ordering the wipe AFTER a *successful* spawn means a spawn failure (e.g.
+        # AV/AppLocker denies powershell.exe) is non-destructive — the key stays
+        # intact, the session usable, the temp cleaned, the error surfaced — instead
+        # of stranding a live GUI with a wiped key (INV-4: wiped before the relaunch,
+        # which the helper does only after we exit).
         log = _relaunch_log_handle()
         if log is not None:
             log.write(
@@ -348,15 +360,26 @@ class WindowsInstaller:
         creationflags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(
             subprocess, "CREATE_NEW_PROCESS_GROUP", 0
         )
-        subprocess.Popen(  # noqa: S603  # nosec B603 — fixed PowerShell waiter, our own argv
-            _windows_relaunch_command(str(self._exe_path), str(new_file)),
-            env=_windows_relaunch_env(),
-            stdin=subprocess.DEVNULL,
-            stdout=stdio,
-            stderr=subprocess.STDOUT,
-            creationflags=creationflags,
-            close_fds=True,
-        )
+        try:
+            subprocess.Popen(  # noqa: S603  # nosec B603 — fixed PowerShell waiter, our own argv
+                _windows_relaunch_command(str(self._exe_path), str(new_file)),
+                env=_windows_relaunch_env(),
+                stdin=subprocess.DEVNULL,
+                stdout=stdio,
+                stderr=subprocess.STDOUT,
+                creationflags=creationflags,
+                close_fds=True,
+            )
+        except OSError as exc:
+            # Spawn failed and nothing is committed (the move lives in the helper):
+            # clean up and surface WITHOUT wiping the key, so the session survives.
+            new_file.unlink(missing_ok=True)
+            if log is not None:
+                log.close()
+            raise UpdateError(f"could not start the update helper: {exc}") from exc
+        # Helper is running (blocked until we exit). Wipe the key, then hard-exit;
+        # the helper then swaps + relaunches (INV-4/INV-6).
+        on_before_exec()
         os._exit(0)
 
 
