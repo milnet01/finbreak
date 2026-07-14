@@ -23,6 +23,9 @@ signaling per
 
 ### Fixed
 
+- **Auto-update: a download that fails after an idle auto-lock no longer disrupts the lock screen.**
+  If the vault auto-locked while an update was downloading and the download then failed, the app would close the re-opened unlock prompt and show a stray "Update failed" box over the lock screen. The failure handler now stays silent once its prompt is gone (FIBR-0054 close).
+
 - **Embed the finbreak icon in the Windows .exe (was PyInstaller's default console-stub icon).** (FIBR-0134)
   Make the Windows app file show finbreak's donut icon in Explorer instead of a generic black terminal icon.
 

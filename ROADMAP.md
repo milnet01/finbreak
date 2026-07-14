@@ -157,13 +157,14 @@ scariest unknown (native-library bundling) up front.
 
 ---
 
-- 🚧 [FIBR-0054] **Optional in-app auto-update (check → prompt Later/Skip/Update now → download, install, relaunch).**
+- ✅ [FIBR-0054] **Optional in-app auto-update (check → prompt Later/Skip/Update now → download, install, relaunch).**
   User request 2026-07-09: the app must offer (never force) updates. Flow:
   on a new version, prompt the user with three choices — **Later** (re-ask next
   launch), **Skip** (this version, don't re-prompt for it), **Update now**. On
   "Update now": download the latest build, close the app, install the update, and
   relaunch automatically.
   Progress (2026-07-10): brainstormed + design approved. Scope = full in-app auto-update, Linux/AppImage first (Windows seam only, not built). Two phases: (1) real release infra — version 0.1.0, signed release AppImage, published v0.1.0 GitHub Release; (2) the updater — opt-in launch check → Later/Skip/Update-now prompt → download + Ed25519-signature-verify → atomic AppImage swap → relaunch. Integrity gate = Ed25519 signature verified via the already-bundled `cryptography` lib (no new runtime dep/tool). Next: write docs/specs/FIBR-0054.md → /cold-eyes.
+  Resolved (2026-07-14) by /close-phase. Code-complete since v0.1.0 and field-proven through v0.1.9; the live auto-relaunch confirmed v0.1.8->v0.1.9 (commit 8e4a298) was the last gate before close. Close ran a full audit (semgrep/ruff/bandit/gitleaks) + 2 cold indie-review lanes over the auto-update surface: 1 MEDIUM (_on_download_failed missing the auto-lock guard its ready-sibling has) + 3 LOW (temp-staging outside the try; 2 test-fidelity) all fixed inline (commit 67132c1); 2 semgrep dynamic-urllib FPs allowlisted (allowlist-001). Gate green 856/1. Tag FIBR-0054-complete. Windows in-app auto-update is FIBR-0131 (separate).
 
   Design notes (to settle when picked — needs its own brainstorm + spec →
   /cold-eyes):
