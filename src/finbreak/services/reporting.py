@@ -23,15 +23,25 @@ from __future__ import annotations
 import calendar
 from dataclasses import dataclass
 from datetime import date
+from typing import NamedTuple
 
 from sqlcipher3 import dbapi2
 
-from finbreak.models import CategorySpend, MonthlyTotal, Summary
+from finbreak.models import (
+    Category,
+    CategorySpend,
+    ConfirmedTransfer,
+    DrillLabels,
+    DrillNode,
+    MonthlyTotal,
+    Summary,
+)
 from finbreak.repositories.categories import CategoryRepository
 from finbreak.repositories.reporting import ReportingRepository
 from finbreak.repositories.settings import SettingsRepository
 from finbreak.services.transactions import read_minor_unit_exponent, to_display_decimal
 from finbreak.services.transfer_detection import TransferDetectionService
+from finbreak.text import merchant_name, normalise_text
 from finbreak.vault import Vault
 
 # The five period modes. The token is the stored, non-translated value (D2).
@@ -105,6 +115,29 @@ def resolve_trend_months(prefs: ReportPrefs, today: date) -> list[tuple[int, int
         year, month = _prev_month(year, month)
     months.reverse()
     return months
+
+
+class _DrillRow(NamedTuple):
+    """One sign-filtered row carried through the drill build (FIBR-0138 D4).
+    ``magnitude_minor`` is the **positive** magnitude — Income keeps ``amount_minor``,
+    Spending negates it (exactly as ``summary`` does at line 161) — so every
+    downstream sum is a positive integer, and the scaled total equals the tile
+    (INV-1)."""
+
+    id: int
+    occurred_on: str
+    magnitude_minor: int
+    category_id: int | None
+    description: str
+
+
+def _sorted_nodes(items: list[tuple[DrillNode, str]]) -> tuple[DrillNode, ...]:
+    """INV-7 order: descending magnitude, then label ascending, then a per-node
+    **uniform string** key — so a mixed category+merchant sibling list (D4a) never
+    compares an ``int`` against a ``str`` (a ``TypeError``). ``items`` is
+    ``(node, key)``; returns just the ordered nodes."""
+    items.sort(key=lambda item: (-item[0].amount, item[0].label, item[1]))
+    return tuple(node for node, _key in items)
 
 
 class ReportingService:
@@ -258,3 +291,233 @@ class ReportingService:
                 )
             )
         return result
+
+    def drill_down(
+        self,
+        prefs: ReportPrefs,
+        account_ids: frozenset[int] | None,
+        today: date | None = None,
+        *,
+        labels: DrillLabels,
+    ) -> list[DrillNode]:
+        """The expandable dashboard tree — exactly ``[Income, Spending, Transfers]``
+        (FIBR-0138 D4). Reuses every ``summary`` primitive (``resolve_period``,
+        ``_excluded``, the minor→Decimal scaling) so the Income/Spending branch
+        totals **equal** the tiles (INV-1). Confirmed transfers drop out of the two
+        category branches and appear only under Transfers (INV-2). Read-only; a fresh
+        tree per call so a change elsewhere shows on next view (INV-3). ``labels``
+        carries the four ``tr()``-ed fixed strings (this service is not a
+        ``QObject``, D2/INV-9)."""
+        today = today or date.today()
+        start, end = resolve_period(prefs, today)
+        excluded = self._excluded()
+        exponent = read_minor_unit_exponent(self._conn)
+        income_rows: list[_DrillRow] = []
+        spending_rows: list[_DrillRow] = []
+        for (
+            txn_id,
+            occurred_on,
+            amount_minor,
+            category_id,
+            description,
+        ) in ReportingRepository(self._conn).drill_rows_in_range(
+            start.isoformat(), end.isoformat(), account_ids
+        ):
+            if txn_id in excluded:
+                continue  # a confirmed transfer shows only under Transfers (INV-2)
+            if amount_minor > 0:
+                income_rows.append(
+                    _DrillRow(
+                        txn_id, occurred_on, amount_minor, category_id, description
+                    )
+                )
+            else:
+                spending_rows.append(
+                    _DrillRow(
+                        txn_id, occurred_on, -amount_minor, category_id, description
+                    )
+                )
+        categories = CategoryRepository(self._conn).list_all()
+        return [
+            self._category_branch(
+                labels.income, income_rows, categories, labels, exponent
+            ),
+            self._category_branch(
+                labels.spending, spending_rows, categories, labels, exponent
+            ),
+            self._transfers_branch(
+                labels.transfers,
+                start.isoformat(),
+                end.isoformat(),
+                account_ids,
+                exponent,
+            ),
+        ]
+
+    def _category_branch(
+        self,
+        label: str,
+        rows: list[_DrillRow],
+        categories: list[Category],
+        labels: DrillLabels,
+        exponent: int,
+    ) -> DrillNode:
+        """One sign branch's category subtree (FIBR-0138 D4a) — a single "group by
+        **top-of-chain**" rule so no row is ever dropped, and the branch total equals
+        its tile (INV-1/INV-4). Each category node sums its own bucket plus every
+        descendant's; its children are the non-empty child-category nodes **and** the
+        merchant nodes for its own directly-assigned rows."""
+        zero = to_display_decimal(0, exponent)
+        roots = {c.id for c in categories if c.parent_id is None}
+        by_id = {c.id: c for c in categories}
+        children_by_parent: dict[int, list[Category]] = {}
+        for cat in categories:
+            if cat.parent_id is not None:
+                children_by_parent.setdefault(cat.parent_id, []).append(cat)
+        own_rows: dict[int | None, list[_DrillRow]] = {}
+        for row in rows:
+            own_rows.setdefault(row.category_id, []).append(row)
+
+        def top_of_chain(category_id: int) -> int:
+            """Climb ``parent_id`` until the parent is a root; that direct-child-of-a-
+            root is the top-of-chain. Defensively total: a root (or an unknown id) is
+            its own top-of-chain, and a broken chain stops — the loop never spins."""
+            cat = by_id.get(category_id)
+            if cat is None or cat.parent_id is None:
+                return category_id
+            while cat.parent_id not in roots:
+                parent = by_id.get(cat.parent_id)
+                if parent is None or parent.parent_id is None:
+                    return cat.id
+                cat = parent
+            return cat.id
+
+        def merchant_nodes(bucket: list[_DrillRow]) -> list[tuple[DrillNode, str]]:
+            """The merchant nodes (D3) for one category's own rows — grouped by the
+            ``normalise_text(merchant_name(...))`` key, each drilling to its individual
+            transactions. The display label is the lexicographically smallest
+            ``merchant_name`` in the group (deterministic, the read has no ORDER BY)."""
+            groups: dict[str, list[_DrillRow]] = {}
+            for row in bucket:
+                groups.setdefault(
+                    normalise_text(merchant_name(row.description)), []
+                ).append(row)
+            built: list[tuple[DrillNode, str]] = []
+            for key, group in groups.items():
+                display = min(merchant_name(r.description) for r in group)
+                leaves = [
+                    (
+                        DrillNode(
+                            r.occurred_on,
+                            to_display_decimal(r.magnitude_minor, exponent),
+                            1,
+                            (),
+                        ),
+                        f"txn:{r.id}",
+                    )
+                    for r in group
+                ]
+                amount = sum(
+                    (to_display_decimal(r.magnitude_minor, exponent) for r in group),
+                    zero,
+                )
+                node = DrillNode(display, amount, len(group), _sorted_nodes(leaves))
+                built.append((node, f"mer:{key}"))
+            return built
+
+        def category_node(category: Category) -> DrillNode | None:
+            """This category's node — its children are the non-empty child-category
+            nodes plus the merchant nodes for its own bucket; ``None`` if it and its
+            descendants hold no rows (an empty category is omitted, INV-4/D8)."""
+            child_items: list[tuple[DrillNode, str]] = []
+            for child in children_by_parent.get(category.id, []):
+                node = category_node(child)
+                if node is not None:
+                    child_items.append((node, f"cat:{child.id}"))
+            child_items.extend(merchant_nodes(own_rows.get(category.id, [])))
+            if not child_items:
+                return None
+            children = _sorted_nodes(child_items)
+            amount = sum((c.amount for c in children), zero)
+            count = sum(c.count for c in children)
+            return DrillNode(category.name, amount, count, children)
+
+        top_items: list[tuple[DrillNode, str]] = []
+        for top_id in {top_of_chain(cid) for cid in own_rows if cid is not None}:
+            top_category = by_id.get(top_id)
+            if top_category is None:
+                continue  # no live category_id is ever an orphan, but stay total
+            node = category_node(top_category)
+            if node is not None:
+                top_items.append((node, f"cat:{top_id}"))
+        if own_rows.get(None):
+            uncat_children = _sorted_nodes(merchant_nodes(own_rows[None]))
+            top_items.append(
+                (
+                    DrillNode(
+                        labels.uncategorised,
+                        sum((c.amount for c in uncat_children), zero),
+                        sum(c.count for c in uncat_children),
+                        uncat_children,
+                    ),
+                    "cat:none",
+                )
+            )
+        branch_children = _sorted_nodes(top_items)
+        return DrillNode(
+            label,
+            sum((c.amount for c in branch_children), zero),
+            sum(c.count for c in branch_children),
+            branch_children,
+        )
+
+    def _transfers_branch(
+        self,
+        label: str,
+        start_iso: str,
+        end_iso: str,
+        account_ids: frozenset[int] | None,
+        exponent: int,
+    ) -> DrillNode:
+        """The Transfers subtree (FIBR-0138 D4b): confirmed transfers whose **debit**
+        leg is in the period and whose scope matches (either leg's account, or all),
+        grouped by the ``from → to`` account-name pair, each drilling to its moves. A
+        transfer belongs to exactly its debit-leg period (INV-6); ``display_amount`` is
+        already the display-scaled positive ``Decimal``, so it presents identically to
+        the Income/Spending figures (INV-8)."""
+        zero = to_display_decimal(0, exponent)
+        groups: dict[tuple[str, str], list[ConfirmedTransfer]] = {}
+        for transfer in TransferDetectionService(self._vault).confirmed_transfers():
+            if not (start_iso <= transfer.debit.occurred_on <= end_iso):
+                continue
+            if account_ids is not None and (
+                transfer.debit.account_id not in account_ids
+                and transfer.credit.account_id not in account_ids
+            ):
+                continue
+            groups.setdefault((transfer.from_account, transfer.to_account), []).append(
+                transfer
+            )
+        pair_items: list[tuple[DrillNode, str]] = []
+        for (from_account, to_account), transfers in groups.items():
+            moves = [
+                (
+                    DrillNode(t.debit.occurred_on, t.display_amount, 1, ()),
+                    f"move:{t.pair_id}",
+                )
+                for t in transfers
+            ]
+            node = DrillNode(
+                f"{from_account} → {to_account}",
+                sum((t.display_amount for t in transfers), zero),
+                len(transfers),
+                _sorted_nodes(moves),
+            )
+            pair_items.append((node, f"pairgrp:{min(t.pair_id for t in transfers)}"))
+        children = _sorted_nodes(pair_items)
+        return DrillNode(
+            label,
+            sum((c.amount for c in children), zero),
+            sum(c.count for c in children),
+            children,
+        )

@@ -42,3 +42,28 @@ class ReportingRepository:
             params.extend(sorted(account_ids))  # sorted ⇒ deterministic binding
         rows = self._conn.execute(sql, params).fetchall()
         return [(row[0], row[1], row[2], row[3]) for row in rows]
+
+    def drill_rows_in_range(
+        self, start_iso: str, end_iso: str, account_ids: frozenset[int] | None
+    ) -> list[tuple[int, str, int, int | None, str]]:
+        """``(id, occurred_on, amount_minor, category_id, description)`` — the
+        drill-down's richer read (FIBR-0138 D5). Identical window + ``account_ids``
+        semantics to ``rows_in_range`` (incl. the empty-set short-circuit); it adds
+        exactly the one ``description`` column the merchant cleanup needs, and no
+        ``account_id`` (the scope is already in the ``IN (…)`` clause). A deliberate
+        sibling, not an extension — the three hot aggregations keep their lean
+        4-tuple with no strings in the loop."""
+        if account_ids is not None and not account_ids:
+            return []  # empty selection ⇒ empty result (never invalid IN ())
+        sql = (
+            "SELECT id, occurred_on, amount_minor, category_id, description "
+            "FROM transactions "
+            "WHERE occurred_on BETWEEN ? AND ?"
+        )
+        params: list[str | int] = [start_iso, end_iso]
+        if account_ids is not None:
+            placeholders = ",".join("?" * len(account_ids))
+            sql += f" AND account_id IN ({placeholders})"
+            params.extend(sorted(account_ids))  # sorted ⇒ deterministic binding
+        rows = self._conn.execute(sql, params).fetchall()
+        return [(row[0], row[1], row[2], row[3], row[4]) for row in rows]

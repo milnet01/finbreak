@@ -331,3 +331,37 @@ class MonthlyTotal:
     label: str
     income: Decimal
     expenditure: Decimal
+
+
+@dataclass(frozen=True)
+class DrillNode:
+    """One node of the expandable dashboard drill-down (FIBR-0138 D2). A single
+    recursive shape renders every level — a top branch (Income / Spending /
+    Transfers), a category, a merchant, an account pair, or an individual
+    transaction leaf — so the tree needs no per-level type zoo. ``amount`` is a
+    summed **positive** display magnitude (integer ``amount_minor`` throughout,
+    INV-8); ``count`` is a real row count, ``0`` only for an empty top branch; the
+    grouping decides *which* node a row sits under, never a total (INV-1). Frozen +
+    ``children`` a ``tuple`` so the model is immutable; it carries **no** id — the
+    INV-7 sort runs at build time, before construction — and no colour (the UI
+    threads that down the recursion). Frozen-friendly, hashable, testable."""
+
+    label: str
+    amount: Decimal
+    count: int
+    children: tuple[DrillNode, ...]
+
+
+@dataclass(frozen=True)
+class DrillLabels:
+    """The four ``tr()``-ed fixed strings the drill-down's *service-built* labels
+    need (FIBR-0138 D2/INV-9). Because ``ReportingService`` is not a ``QObject`` it
+    cannot translate, so the ``QObject`` caller passes these in — the exact
+    ``build_donut_chart(spending, tr("Uncategorised"), tr("Other"))`` precedent.
+    Every other label (a category / merchant / account name, a date) is data, not a
+    translated string."""
+
+    income: str
+    spending: str
+    transfers: str
+    uncategorised: str

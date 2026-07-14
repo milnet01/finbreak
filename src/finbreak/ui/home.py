@@ -17,20 +17,23 @@ from __future__ import annotations
 
 from PySide6.QtCharts import QChart, QChartView
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QPainter
+from PySide6.QtGui import QBrush, QColor, QPainter
 from PySide6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QScrollArea,
     QSpinBox,
     QStackedWidget,
+    QTreeWidget,
+    QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
 from finbreak.errors import VaultLockedError
-from finbreak.models import CategorySpend, MonthlyTotal, Summary
+from finbreak.models import CategorySpend, DrillLabels, DrillNode, MonthlyTotal, Summary
 from finbreak.services.accounts import AccountService
 from finbreak.services.auth import AmountPrefs, AuthService
 from finbreak.services.reporting import (
@@ -102,7 +105,15 @@ class HomeView(QWidget):
     def _build_dashboard(self) -> QWidget:
         page = QWidget()
         page.setObjectName("home_page_dashboard")
-        layout = QVBoxLayout(page)
+        # The selectors + tiles + charts + drill-down tree make a tall page, so the
+        # content scrolls (D1). The page keeps its object name; findChild searches
+        # recursively, so the scroll wrap is transparent to the qtbot lookups.
+        outer = QVBoxLayout(page)
+        outer.setContentsMargins(0, 0, 0, 0)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        content = QWidget()
+        layout = QVBoxLayout(content)
 
         layout.addLayout(self._build_selectors())
         layout.addLayout(self._build_tiles())
@@ -121,6 +132,19 @@ class HomeView(QWidget):
         self._trend_chart.setObjectName("dashboard_trend_chart")
         self._trend_chart.setRenderHint(QPainter.RenderHint.Antialiasing)
         layout.addWidget(self._trend_chart)
+
+        # The expandable Income / Spending / Transfers drill-down (FIBR-0138 D1). The
+        # service returns every level pre-sorted (INV-7), so the widget's own column
+        # sort is off and it inserts in order; read-only (no ItemIsEditable flag).
+        self._drilldown = QTreeWidget()
+        self._drilldown.setObjectName("dashboard_drilldown")
+        self._drilldown.setColumnCount(2)
+        self._drilldown.setHeaderLabels([self.tr("Name"), self.tr("Amount")])
+        self._drilldown.setSortingEnabled(False)
+        layout.addWidget(self._drilldown)
+
+        scroll.setWidget(content)
+        outer.addWidget(scroll)
         return page
 
     def _build_selectors(self) -> QHBoxLayout:
@@ -281,6 +305,18 @@ class HomeView(QWidget):
         self._render_tiles(self._reporting.summary(prefs, account_ids), symbol)
         self._render_donut(self._reporting.spending_by_category(prefs, account_ids))
         self._render_trend(self._reporting.monthly_trend(prefs, account_ids))
+        # The drill-down tree (FIBR-0138 D6). HomeView (a QObject) owns the tr()-ed
+        # fixed strings, keeping the non-QObject ReportingService translation-free —
+        # the same pattern _render_donut uses for tr("Uncategorised") / tr("Other").
+        labels = DrillLabels(
+            income=self.tr("Income"),
+            spending=self.tr("Spending"),
+            transfers=self.tr("Transfers"),
+            uncategorised=self.tr("Uncategorised"),
+        )
+        self._render_drilldown(
+            self._reporting.drill_down(prefs, account_ids, labels=labels)
+        )
         self._stack.setCurrentIndex(1)
 
     def _rebuild_account_selector(self) -> None:
@@ -352,3 +388,60 @@ class HomeView(QWidget):
                 self._chart_theme(),
             )
         )
+
+    def _render_drilldown(self, nodes: list[DrillNode]) -> None:
+        """Rebuild the drill-down tree from the three service nodes (FIBR-0138 D7).
+        The branch colour (Income positive, Spending negative, Transfers the default
+        text colour when ``amount_prefs.colour`` is on) is threaded down the recursion
+        so a deep transaction leaf inherits its branch's colour."""
+        self._drilldown.clear()
+        self._drill_symbol = self._reporting.base_currency()
+        coloured = self._amount_prefs.colour
+        branch_colours: list[QColor | None] = [
+            _POSITIVE_TEXT if coloured else None,  # Income
+            _NEGATIVE_TEXT if coloured else None,  # Spending
+            None,  # Transfers — neither income nor spending
+        ]
+        root = self._drilldown.invisibleRootItem()
+        # drill_down always returns exactly [Income, Spending, Transfers] (D4), so the
+        # lists match length — strict catches a contract break.
+        for node, branch_colour in zip(nodes, branch_colours, strict=True):
+            self._add_node(root, node, branch_colour)
+
+    def _add_node(
+        self,
+        parent_item: QTreeWidgetItem,
+        node: DrillNode,
+        branch_colour: QColor | None = None,
+    ) -> QTreeWidgetItem:
+        """Insert ``node`` (and its descendants) under ``parent_item``. A merchant or
+        account-pair node — one whose children are all individual-transaction leaves —
+        with ``count > 1`` shows the ``×N`` suffix (D7); category / top / txn nodes
+        show the bare label."""
+        item = QTreeWidgetItem(parent_item)
+        is_group = (
+            node.count > 1
+            and bool(node.children)
+            and all(not child.children for child in node.children)
+        )
+        if is_group:
+            item.setText(
+                0,
+                self.tr("{label} ×{count}").format(label=node.label, count=node.count),
+            )
+        else:
+            item.setText(0, node.label)
+        item.setText(
+            1,
+            _format_amount(
+                node.amount, self._drill_symbol, self._amount_prefs.negative_style
+            ),
+        )
+        item.setTextAlignment(
+            1, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
+        if branch_colour is not None:
+            item.setForeground(1, QBrush(branch_colour))
+        for child in node.children:
+            self._add_node(item, child, branch_colour)
+        return item
