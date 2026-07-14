@@ -56,7 +56,8 @@ def merchant_name(description: str) -> str:
         shed = False
         for prefix in _NOISE_PREFIXES:
             match = re.match(re.escape(prefix) + r"\b\s*", working, re.IGNORECASE)
-            if match and match.end() > 0:
+            # A non-empty prefix always consumes ≥ 1 char, so a match makes progress.
+            if match:
                 working = working[match.end() :]
                 shed = True
                 break

@@ -157,6 +157,7 @@ def test_INV5_digits_only_falls_back_to_trimmed_raw():
     """A description that cleans to empty keeps its raw identity (no blank label)."""
     assert merchant_name("1234567") == "1234567"
     assert merchant_name("  99-99  ") == "99-99"
+    assert merchant_name("!!!") == "!!!"  # punctuation-only edges strip to empty → raw
 
 
 def test_INV5_company_suffix_is_retained_v1():
@@ -361,6 +362,47 @@ def test_INV4_non_leaf_category_with_own_rows_shows_both_and_sorts(service):
     assert "Woolworths" in child_labels  # a merchant node for its own bucket
 
 
+def test_INV7_mixed_category_and_merchant_tie_reaches_the_string_key(service):
+    """The INV-7 falsifier for the uniform-STRING third key: a category node and a
+    merchant node that tie on BOTH magnitude AND label force the sort to compare the
+    third key. If the category key regressed to an int (`child.id`) while merchants
+    stay `f"mer:{k}"`, this int-vs-str compare would raise TypeError — so a clean
+    build proves the key is uniformly a string."""
+    a, _b = _two_accounts(service)
+    exp_root = _root(service, "expenditure")
+    parent = CategoryService(service.vault).add_category(exp_root.id, "Ztest Combo")
+    # A child category literally named "Shop" holding one -100.00 row...
+    shop_cat = CategoryService(service.vault).add_category(parent.id, "Shop").id
+    _set_cat(service, _add(service, a, -10000, "2026-01-05", "misc"), shop_cat)
+    # ...and the parent's OWN -100.00 row whose description cleans to merchant "Shop".
+    _force_cat(service, _add(service, a, -10000, "2026-01-06", "SHOP"), parent.id)
+
+    _, spending, _ = _drill(service)  # a TypeError here would fail the test
+    combo = _child(spending, "Ztest Combo")
+    # Two siblings, same label "Shop", same magnitude — one category node, one merchant.
+    shop_children = [c for c in combo.children if c.label == "Shop"]
+    assert len(shop_children) == 2
+    assert {c.amount for c in shop_children} == {Decimal("100.00")}
+
+
+def test_INV4_category_cycle_terminates_and_keeps_the_row(service):
+    """Corrupt data — a category parent cycle X→Y→X (reachable by re-parenting X
+    under its own child; CategoryService has no descendant guard) — must NOT hang or
+    RecursionError the dashboard. Both the top-of-chain climb and the child recursion
+    break the cycle with a visited set; the row is still counted (INV-1, no drop)."""
+    a, _b = _two_accounts(service)
+    exp_root = _root(service, "expenditure")
+    x = CategoryService(service.vault).add_category(exp_root.id, "Ztest X")
+    y = CategoryService(service.vault).add_category(x.id, "Ztest Y")
+    conn = service.vault.connection
+    conn.execute("UPDATE categories SET parent_id = ? WHERE id = ?", (y.id, x.id))
+    conn.commit()  # X→Y→X: neither is a root now
+    _force_cat(service, _add(service, a, -30000, "2026-01-05", "SHOP"), y.id)
+
+    _, spending, _ = _drill(service)  # must return promptly, not spin or overflow
+    assert spending.amount == Decimal("300.00")  # the row survives the cycle
+
+
 def test_INV4_same_id_under_both_branches_no_double_count(service):
     """A leaf holding both a positive and a negative row yields a node under Income
     AND under Spending, each carrying only its own sign bucket."""
@@ -471,20 +513,23 @@ def test_INV7_equal_magnitude_leaves_order_by_category_id(service):
     assert first == second
 
 
-def test_INV7_same_date_same_amount_txn_leaves_are_stably_ordered(service):
+def test_INV7_same_date_same_amount_txn_leaves_sort_totally(service):
+    """Two leaves tying on BOTH magnitude and label (same date, same amount) still
+    sort — the third `txn:{id}` key keeps the order total (no TypeError) and the tree
+    deterministic build-to-build (the read has no ORDER BY)."""
     a, _b = _two_accounts(service)
     leaf = _expenditure_leaf(service, "Ztest Dup")
     _set_cat(service, _add(service, a, -10000, "2026-01-05", "SHOP"), leaf)
     _set_cat(
         service, _add(service, a, -10000, "2026-01-05", "SHOP"), leaf
     )  # same date+amt
-    merchant = _child(_child(_drill(service)[1], "Ztest Dup"), "Shop")
-    assert len(merchant.children) == 2
-    # Stable: the two identical leaves keep a deterministic (id-keyed) order.
-    assert [c.amount for c in merchant.children] == [
-        Decimal("100.00"),
-        Decimal("100.00"),
-    ]
+
+    def snapshot():
+        merchant = _child(_child(_drill(service)[1], "Ztest Dup"), "Shop")
+        return [(c.label, c.amount, c.count) for c in merchant.children]
+
+    assert len(snapshot()) == 2  # both leaves present, the tie did not collapse them
+    assert snapshot() == snapshot()  # deterministic across independent builds
 
 
 def test_INV7_three_top_nodes_are_always_fixed_order(service):
@@ -543,6 +588,43 @@ def test_INV9_refresh_populates_tree_with_three_translated_tops(qtbot, service):
         spending_item.child(i).text(0) for i in range(spending_item.childCount())
     }
     assert "Uncategorised" in child_labels
+
+
+def test_INV9_service_threads_passed_labels_not_hardcoded_english(service):
+    """The i18n falsifier: a drill_down that ignored `labels` and hard-coded the
+    English strings would pass every other test (they use the English defaults).
+    Sentinel labels prove the service actually threads the four passed strings —
+    the three top nodes AND the None-bucket node — so it emits no untranslated label."""
+    a, _b = _two_accounts(service)
+    _add(service, a, 100000, "2026-01-03")  # income, uncategorised
+    _add(service, a, -20000, "2026-01-04")  # spending, uncategorised
+    sentinels = DrillLabels(
+        income="INC~", spending="SPND~", transfers="XFER~", uncategorised="UNCAT~"
+    )
+    income, spending, transfers = ReportingService(service.vault).drill_down(
+        _JAN, None, _TODAY, labels=sentinels
+    )
+    assert [income.label, spending.label, transfers.label] == ["INC~", "SPND~", "XFER~"]
+    assert _child(spending, "UNCAT~").amount == Decimal(
+        "200.00"
+    )  # None-bucket echoes it
+
+
+def test_INV9_single_transaction_merchant_shows_bare_label_no_count(qtbot, service):
+    """A count==1 merchant shows the bare label — no "×1" suffix (D7)."""
+    from PySide6.QtWidgets import QTreeWidget
+
+    a, _b = _two_accounts(service)
+    leaf = _expenditure_leaf(service, "Ztest Groceries")
+    _set_cat(service, _add(service, a, -10000, "2026-01-05", "POS WOOLWORTHS"), leaf)
+    service.set_report_prefs(_JAN)
+    home = _home(service)
+    qtbot.addWidget(home)
+    tree = home.findChild(QTreeWidget, "dashboard_drilldown")
+    merchant_item = (
+        tree.topLevelItem(1).child(0).child(0)
+    )  # Spending → category → merchant
+    assert merchant_item.text(0) == "Woolworths"  # bare, no "×1"
 
 
 def test_INV9_merchant_node_shows_count_suffix_category_stays_bare(qtbot, service):

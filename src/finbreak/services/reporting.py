@@ -381,14 +381,20 @@ class ReportingService:
         def top_of_chain(category_id: int) -> int:
             """Climb ``parent_id`` until the parent is a root; that direct-child-of-a-
             root is the top-of-chain. Defensively total: a root (or an unknown id) is
-            its own top-of-chain, and a broken chain stops — the loop never spins."""
+            its own top-of-chain, and a broken chain **or a corrupt-data cycle** stops
+            the climb — the loop never spins (the ``seen`` set breaks a cycle, mirroring
+            the ``type_of`` parent-chain guard in ``categorization.py``). Staying total
+            here keeps every row placed (no drop, INV-1) even on data the write path
+            rejects."""
             cat = by_id.get(category_id)
             if cat is None or cat.parent_id is None:
                 return category_id
+            seen = {cat.id}
             while cat.parent_id not in roots:
                 parent = by_id.get(cat.parent_id)
-                if parent is None or parent.parent_id is None:
-                    return cat.id
+                if parent is None or parent.id in seen:
+                    return cat.id  # orphan or cycle — stop, stay total
+                seen.add(parent.id)
                 cat = parent
             return cat.id
 
@@ -425,13 +431,21 @@ class ReportingService:
                 built.append((node, f"mer:{key}"))
             return built
 
-        def category_node(category: Category) -> DrillNode | None:
+        def category_node(
+            category: Category, ancestry: frozenset[int] = frozenset()
+        ) -> DrillNode | None:
             """This category's node — its children are the non-empty child-category
             nodes plus the merchant nodes for its own bucket; ``None`` if it and its
-            descendants hold no rows (an empty category is omitted, INV-4/D8)."""
+            descendants hold no rows (an empty category is omitted, INV-4/D8). The
+            ``ancestry`` set breaks a corrupt-data parent cycle so the recursion always
+            terminates (a re-entered category returns ``None``; its own rows are already
+            placed by the outer visit, so no row is dropped — INV-1)."""
+            if category.id in ancestry:
+                return None
+            ancestry = ancestry | {category.id}
             child_items: list[tuple[DrillNode, str]] = []
             for child in children_by_parent.get(category.id, []):
-                node = category_node(child)
+                node = category_node(child, ancestry)
                 if node is not None:
                     child_items.append((node, f"cat:{child.id}"))
             child_items.extend(merchant_nodes(own_rows.get(category.id, [])))
