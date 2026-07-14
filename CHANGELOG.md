@@ -23,6 +23,12 @@ signaling per
 
 ### Added
 
+- ****Forget a remembered bank-statement password, per account.**** (FIBR-0128)
+  The Accounts screen now marks each account whose locked-PDF statement
+  password the app remembered while importing, and adds a "Forget statement
+  password" button to clear it. The password itself is never shown — you only
+  see which accounts have one saved.
+
 - ****Themes — six finance-flavoured looks plus "Follow system", with a sleeker design.**** (FIBR-0127)
   Settings → Theme now offers six looks (three light — Ledger, Parchment, Mint;
   three dark — Midnight, Graphite, Emerald) or "Follow system", which tracks your
