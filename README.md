@@ -18,6 +18,13 @@ release](https://github.com/milnet01/finbreak/releases/latest)**, or see
 [CHANGELOG](CHANGELOG.md) for what's shipped and [ROADMAP](ROADMAP.md) for
 what's coming.
 
+**Code signing.** finbreak takes part in the
+[SignPath Foundation](https://signpath.org)'s free code-signing program for
+open-source projects; Windows release builds are signed with a certificate
+provided by the SignPath Foundation. Free code signing provided by
+[SignPath.io](https://about.signpath.io), certificate by
+[SignPath Foundation](https://signpath.org).
+
 ## Status
 
 finbreak is in **early development** — an early preview that already does a

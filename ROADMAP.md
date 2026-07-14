@@ -201,6 +201,12 @@ scariest unknown (native-library bundling) up front.
   Source: user-report-2026-07-14.
   Resolved 2026-07-14: `build-windows-exe.py` now freezes `--windowed`; self-test sentinel rerouted to FINBREAK_SELFTEST_OUT file so the clean-room read survives the None stdout; windows-build.yml reads the file via Start-Process -Wait. Regression-locked (test_driver_freezes_windowed_gui_exe + test_selftest_can_redirect_sentinel_to_a_file). Gate green 853/1. Ships in the next Windows release build.
 
+- 🚧 [FIBR-0133] **Free Windows code signing via SignPath Foundation (OSS program).**
+  User applying to SignPath Foundation's free code-signing program for OSS. Prep done this session: PRIVACY.md added (finbreak collects no data; local-only); README gained the required SignPath attribution ("Free code signing provided by SignPath.io, certificate by SignPath Foundation") which the hub site renders onto the download page (antsprojectshub.co.za/p/fin-break.html); Google Search Console verification + indexing done so the app is discoverable (a SignPath requirement — see [[finbreak-public-site-and-signing]]). Also fixed the stale milnet01/Fin_Break->finbreak repo slug in the hub data. REMAINING once approved: wire the SignPath signing step into .github/workflows/windows-build.yml so release .exe artifacts are signed; promote the .exe to a signed release asset. Requirements met: MIT license, public repo, GitHub 2FA (user to confirm), discoverable (in progress). Windows-only (macOS = Apple $99/yr; Linux AppImage GPG-signed already).
+  **Layman:** Get finbreak's Windows app officially signed for free so Windows stops showing "unknown publisher" warnings.
+  Kind: package.
+  Source: user-request-2026-07-14.
+
 ## P02 — Vertical slice: the security spine (target: after P01)
 
 **Theme:** the smallest end-to-end feature that touches every
