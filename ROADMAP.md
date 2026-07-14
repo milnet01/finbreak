@@ -1540,6 +1540,22 @@ is a future error tomorrow.
   Kind: refactor.
   Source: claude-suggestion-2026-07-11.
 
+- 📋 [FIBR-0141] **CategoryService.update_category has no descendant-cycle guard — re-parenting a category under its own child creates a cycle.**
+  Found during the FIBR-0138 close (indie-review). `update_category`
+  (`src/finbreak/services/categories.py`) blocks re-parenting a *root* and
+  requires an existing parent, but does NOT reject moving a category under
+  one of its own descendants — so X→Y→X cycles are reachable via the UI.
+  `categorization.type_of` already fails loud (ValueError) on such a cycle,
+  and FIBR-0138's `drill_down` was hardened to stay total against it, but
+  the ROOT CAUSE is the missing guard here. Fix: in `update_category`,
+  reject a `parent_id` that is the subject itself or any of its
+  descendants (ascend the prospective parent's chain; if the subject is
+  encountered, raise ValueError). Add a reproduce-first test. Small,
+  self-contained.
+  **Layman:** You can accidentally make the category tree loop back on itself (put a group inside one of its own sub-groups), which confuses the parts of the app that walk the tree; the app should refuse that move.
+  Kind: fix.
+  Source: indie-review-2026-07-14 (FIBR-0138 close).
+
 ## How to add an item
 
 1. Allocate the next ID:
