@@ -13,9 +13,10 @@
 ## Context
 
 Before FIBR-0127 the app installed **no palette and no stylesheet** — `app.py`
-built the `QApplication` and set only the window icon and layout direction, so
-the app rode whatever the platform / Qt default handed it (dark by convention on
-the developer's desktop). Several widgets already **read** the live palette:
+built the `QApplication` and set the app name, desktop file, window icon and
+layout direction, but **no palette / style / stylesheet**, so the app rode
+whatever the platform / Qt default handed it (dark by convention on the
+developer's desktop). Several widgets already **read** the live palette:
 `ui/icons.py` tints toolbar glyphs by `_is_dark_theme()` (window-background
 lightness `< 0.5`); `ui/charts.py`/`ui/home.py` derive `ChartTheme` colours from
 `palette().text()`. There was no `theme` setting, no toggle, and no ADR recording
