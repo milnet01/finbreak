@@ -23,6 +23,16 @@ signaling per
 
 ### Added
 
+- ****Themes — six finance-flavoured looks plus "Follow system", with a sleeker design.**** (FIBR-0127)
+  Settings → Theme now offers six looks (three light — Ledger, Parchment, Mint;
+  three dark — Midnight, Graphite, Emerald) or "Follow system", which tracks your
+  computer's light/dark setting and switches instantly when it changes. Picking a
+  theme applies it straight away — no Save needed. The whole app got a modern
+  polish pass: soft gradient/glow accents on buttons and fields, and highlighted
+  rows (hover, selection, and alternating stripes) in the tables. The toolbar icons
+  re-colour themselves to suit the chosen theme. Your choice is remembered and
+  applies from the moment the app opens, even before you unlock.
+
 - ****Windows in-app auto-update** — the Windows app now offers, verifies, and installs a new version, then reopens itself, matching the Linux AppImage.** (FIBR-0131)
   Opt-in and off by default, like on Linux. Each download is checked against
   finbreak's own signature before anything runs. Because a running Windows program
