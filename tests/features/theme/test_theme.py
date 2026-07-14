@@ -11,7 +11,7 @@ import dataclasses
 from unittest.mock import MagicMock
 
 import pytest
-from PySide6.QtCore import QSettings, Qt
+from PySide6.QtCore import QSettings, QSize, Qt
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import QApplication, QComboBox, QTableView, QWidget
 
@@ -451,11 +451,16 @@ def test_INV10_toolbar_icons_retint_on_theme_change(qtbot, service, theme_isolat
 
     assert "home" in window._icon_actions, "icon-bearing actions are recorded"
     action = window._icon_actions["home"]
-    key_light = action.icon().cacheKey()
+    # Compare the rendered PIXMAP CONTENT, not the QIcon cacheKey: toolbar_icon
+    # builds a fresh QIcon every call, so a cacheKey change proves only that
+    # setIcon re-ran — a re-tint that applied the *wrong* (light) tint under the
+    # dark theme would still change the cacheKey. The image bytes differ only if
+    # the glyph genuinely re-tinted to suit the new palette (INV-10).
+    glyph_light = action.icon().pixmap(QSize(24, 24)).toImage()
 
     controller.set_theme("midnight")  # dark -> a live re-tint
-    key_dark = action.icon().cacheKey()
-    assert key_light != key_dark, "the glyph re-tinted light -> dark"
+    glyph_dark = action.icon().pixmap(QSize(24, 24)).toImage()
+    assert glyph_light != glyph_dark, "the glyph pixmap genuinely re-tinted light->dark"
 
 
 # --------------------------------------------------------------------------- #
