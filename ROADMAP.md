@@ -1275,7 +1275,7 @@ because retrofitting them is a data migration.
   D3 New CategorySource.LIBRARY = 'library' — NO schema migration (category_source is free-text TEXT; auto_rows predicate 'IS NULL OR <> manual' already recomputes library rows). categorize/recategorize_auto_rows extended to return WHICH source matched so set_category stamps 'rule' vs 'library'.
   D4 Runs on the EXISTING paths — import auto-categorise + Rules-tab Apply — both now include the library. NO new button.
   D5 Settings toggle (default ON), reuse SettingsRepository (non-schema). Off => library not consulted; next apply/import reverts library rows to uncategorised.
-  D6 Small '~ guess' tag beside library-guessed category in Home + Transactions tables (row[0].category_source == 'library'); overridable.
+  D6 Small '~ guess' tag beside library-guessed category in the Transactions table (Home is now the FIBR-0012/0138 dashboard with no per-row cell — superseded by spec D7); overridable.
   D7 Library binds category by NAME; a renamed default category => entries fall through to Uncategorised (never mis-filed). Structural binding is a future enhancement (out of scope).
   INV money-safety: only sets category, never reads/alters an amount; grand-book total + amount_minor multiset identical before+after (per-category sums change by design — see spec INV-1). Deps: FIBR-0010. Lanes: services, ui, repo, tests. Next: spec docs/specs/<id>.md -> /cold-eyes (max-loops 7) -> TDD.
   **Layman:** finbreak ships with a built-in list of common shops so imported transactions get sensible categories automatically, without you writing a rule for every merchant.
