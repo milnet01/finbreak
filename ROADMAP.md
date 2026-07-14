@@ -515,9 +515,9 @@ lands on top.
   Spec docs/specs/FIBR-0127.md + ADR-0010 written 2026-07-14 from the user-approved brainstorm (designed look, 6 finance themes Ledger/Parchment/Mint + Midnight/Graphite/Emerald, live follow-system, sleek modern polish: gradient/glow accents + grid row-highlighting, theme-aware toolbar icons). Cold-eyes next.
   Resolved (2026-07-14): SHIPPED by /close-phase (code). TDD 30-leg tests/features/theme/ (INV-1..13 + D3/D4) → ui/theme.py (six-theme token registry → build_palette/build_stylesheet, ThemeController with live colorSchemeChanged follow-system, non-vault pref) + app.py/main_window.py/settings.py wiring + D11 ADR-0002→ADR-0010 citation fixes. /audit 0 actionable (semgrep full + ruff/bandit/gitleaks via gate); /indie-review 2 cold lanes → no CRIT/HIGH/MED, 1 LOW (INV-10 pixmap-content re-tint falsifier) folded inline. Gate green 907/1, mypy 0. Tag FIBR-0127-complete; journal docs/journal/FIBR-0127.md.
 
-- 🚧 [FIBR-0128] **Manage stored PDF statement passwords (view / clear per-account).**
+- 🚧 [FIBR-0128] **Forget remembered PDF statement passwords (per-account, Accounts screen).**
   Split from FIBR-0014 (P12). The store already EXISTS (FIBR-0009, schema v5): accounts.statement_pdf_password (nullable, vault-encrypted at rest, deliberately not selected into the Account dataclass for credential hygiene), with AccountsRepository.get_pdf_password / set_pdf_password. It is written implicitly during import and auto-tried; there is NO management UI. This item adds an Accounts-screen, per-account control to list accounts with a remembered statement password and forget (clear) it (placement + forget-only per spec FIBR-0128 D1/D5). (Distinct from the FIBR-0013 export password, which is ephemeral and never stored.)
-  **Layman:** A screen to see and clear the bank-statement passwords the app remembered while importing locked PDF statements.
+  **Layman:** A per-account button to see which accounts have a remembered bank-statement password and forget (clear) it — the password itself is never shown.
   Kind: implement.
   Lanes: ui, security.
   Source: split-from-FIBR-0014-2026-07-13.
