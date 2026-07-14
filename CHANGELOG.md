@@ -25,13 +25,13 @@ signaling per
 
 ### Added
 
-- ****Forget a remembered bank-statement password, per account.**** (FIBR-0128)
+- **Forget a remembered bank-statement password, per account.** (FIBR-0128)
   The Accounts screen now marks each account whose locked-PDF statement
   password the app remembered while importing, and adds a "Forget statement
   password" button to clear it. The password itself is never shown — you only
   see which accounts have one saved.
 
-- ****Themes — six finance-flavoured looks plus "Follow system", with a sleeker design.**** (FIBR-0127)
+- **Themes — six finance-flavoured looks plus "Follow system", with a sleeker design.** (FIBR-0127)
   Settings → Theme now offers six looks (three light — Ledger, Parchment, Mint;
   three dark — Midnight, Graphite, Emerald) or "Follow system", which tracks your
   computer's light/dark setting and switches instantly when it changes. Picking a
@@ -41,7 +41,7 @@ signaling per
   re-colour themselves to suit the chosen theme. Your choice is remembered and
   applies from the moment the app opens, even before you unlock.
 
-- ****Windows in-app auto-update** — the Windows app now offers, verifies, and installs a new version, then reopens itself, matching the Linux AppImage.** (FIBR-0131)
+- **Windows in-app auto-update — the Windows app now offers, verifies, and installs a new version, then reopens itself, matching the Linux AppImage.** (FIBR-0131)
   Opt-in and off by default, like on Linux. Each download is checked against
   finbreak's own signature before anything runs. Because a running Windows program
   can't overwrite its own file, a tiny helper waits for finbreak to close, swaps in
@@ -85,7 +85,7 @@ signaling per
   Run anyway") — and there is **no auto-update on Windows** yet (replace the old
   `.exe` to update).
 
-- ****Encrypted backup export & restore** — save a portable, password-protected `.fbk` backup of your vault and restore it later.** (FIBR-0014)
+- **Encrypted backup export & restore — save a portable, password-protected `.fbk` backup of your vault and restore it later.** (FIBR-0014)
   Export a `.fbk` from Settings, keyed by a **separate backup password** you
   choose. If you ever forget your master password, restore the backup from the
   unlock or first-run screen with the backup password plus a **new** master
@@ -104,7 +104,7 @@ signaling per
 
 ### Changed
 
-- ****Category pickers now group by Income / Expenditure type.**** (FIBR-0123)
+- **Category pickers now group by Income / Expenditure type.** (FIBR-0123)
   The Set-category and Rule dialogs and the Transactions category
   filter now list categories under non-selectable Income /
   Expenditure headers and tag every row "Name (Type)", so two
