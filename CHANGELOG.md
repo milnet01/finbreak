@@ -21,9 +21,11 @@ signaling per
 
 ## [Unreleased]
 
+## [0.1.12] - 2026-07-14
+
 ### Added
 
-- ****Expandable dashboard drill-down — open the Income / Spending / Transfers totals into categories, shops, and individual transactions (FIBR-0138).****
+- **Expandable dashboard drill-down — open the Income / Spending / Transfers totals into categories, shops, and individual transactions (FIBR-0138).**
   The Home dashboard's three headline numbers are now openable, in a tree
   below the donut and trend charts. Click Spending to break it into your
   categories, open a category down to a single one, then see the

@@ -13,7 +13,7 @@
 [![Status](https://img.shields.io/badge/status-pre--alpha-orange)]()
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-Current version: **0.1.11** (early preview). **[⬇ Download the latest
+Current version: **0.1.12** (early preview). **[⬇ Download the latest
 release](https://github.com/milnet01/finbreak/releases/latest)**, or see
 [CHANGELOG](CHANGELOG.md) for what's shipped and [ROADMAP](ROADMAP.md) for
 what's coming.
@@ -46,8 +46,11 @@ lot, with more polish and features to come. What works today:
 - a **dashboard** on the Home screen — an income-vs-spending summary for a
   period you choose (it defaults to last month and remembers your choice), a
   pie chart of where your money went by category, and a month-by-month trend
-  chart; money moved between your own accounts never counts as spending or
-  income, and
+  chart; you can now **open up the Income, Spending, and Transfers totals** to
+  see what's inside — click into a category, down to a single one, then see your
+  transactions grouped by shop with a count (e.g. "Woolworths ×3"), and open a
+  shop to see each purchase; money moved between your own accounts never counts
+  as spending or income, and
 - a searchable, filterable **Transactions tab** — find rows by description
   and filter by date range, account, and category (any or all at once), with
   columns you can drag to reorder and resize (it remembers your layout),
