@@ -521,7 +521,7 @@ lands on top.
   Kind: implement.
   Lanes: ui, security.
   Source: split-from-FIBR-0014-2026-07-13.
-  Placement decided (spec FIBR-0128 D1, user directive 2026-07-14): the view/forget controls live on the **Accounts screen** (per-account, selection-driven), NOT Settings — different accounts can have different statement passwords, so the per-account surface is the natural home. Forget-only (no reveal, no manual set); the secret never crosses into the UI. Spec written; /cold-eyes next.
+  Placement decided (spec FIBR-0128 D1, user directive 2026-07-14): the presence/forget controls live on the **Accounts screen** (per-account, selection-driven), NOT Settings — different accounts can have different statement passwords, so the per-account surface is the natural home. Forget-only (no reveal, no manual set); the secret never crosses into the UI. Spec written; /cold-eyes next.
 
 - 📋 [FIBR-0129] **Host the language switcher in Settings (picker widget + language setting key).**
   Split from FIBR-0014 (P12). Strings are tr()-wrapped throughout and RTL-ready (app.setLayoutDirection), but there is NO QTranslator, no .ts/.qm, no language setting key, no picker. This provides the language-picker widget in the FIBR-0055 Settings dialog + a `language` settings key. The translation pipeline itself (lupdate -> .ts -> .qm -> QTranslator at startup + live retranslateUi) is FIBR-0017; gate the picker's usefulness on that, or ship the widget writing the key now and wire it when FIBR-0017 lands.
