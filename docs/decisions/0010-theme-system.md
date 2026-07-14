@@ -1,6 +1,8 @@
 # ADR-0010: App-wide theme system — Fusion style + token-driven palettes & stylesheet, non-vault theme preference
 
-- **Status:** Accepted
+- **Status:** Proposed (flips to Accepted when FIBR-0127's spec clears its
+  `/cold-eyes` convergence — held Proposed so a loop that alters the theme
+  architecture is absorbed here, not in a superseding ADR)
 - **Date:** 2026-07-14
 - **Deciders:** Project lead, Claude
 - **Related:** [docs/specs/FIBR-0127.md](../specs/FIBR-0127.md) (the theme
@@ -81,7 +83,7 @@ of them is not a maintenance burden.
 **Positive:**
 
 - One consistent look on every OS (ADR-0007's three targets).
-- A new theme is ~10 semantic colours; six themes stay maintainable.
+- A new theme is ~8 semantic colours; six themes stay maintainable.
 - Live theme switching and live follow-system, with no relaunch.
 - Applied pre-unlock, so even the locked first-run / unlock window is themed.
 - No new runtime dependency — Fusion and `QSS` are built into the bundled Qt.
