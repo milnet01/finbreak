@@ -515,12 +515,13 @@ lands on top.
   Spec docs/specs/FIBR-0127.md + ADR-0010 written 2026-07-14 from the user-approved brainstorm (designed look, 6 finance themes Ledger/Parchment/Mint + Midnight/Graphite/Emerald, live follow-system, sleek modern polish: gradient/glow accents + grid row-highlighting, theme-aware toolbar icons). Cold-eyes next.
   Resolved (2026-07-14): SHIPPED by /close-phase (code). TDD 30-leg tests/features/theme/ (INV-1..13 + D3/D4) → ui/theme.py (six-theme token registry → build_palette/build_stylesheet, ThemeController with live colorSchemeChanged follow-system, non-vault pref) + app.py/main_window.py/settings.py wiring + D11 ADR-0002→ADR-0010 citation fixes. /audit 0 actionable (semgrep full + ruff/bandit/gitleaks via gate); /indie-review 2 cold lanes → no CRIT/HIGH/MED, 1 LOW (INV-10 pixmap-content re-tint falsifier) folded inline. Gate green 907/1, mypy 0. Tag FIBR-0127-complete; journal docs/journal/FIBR-0127.md.
 
-- 📋 [FIBR-0128] **Manage stored PDF statement passwords (view / clear per-account).**
+- 🚧 [FIBR-0128] **Manage stored PDF statement passwords (view / clear per-account).**
   Split from FIBR-0014 (P12). The store already EXISTS (FIBR-0009, schema v5): accounts.statement_pdf_password (nullable, vault-encrypted at rest, deliberately not selected into the Account dataclass for credential hygiene), with AccountsRepository.get_pdf_password / set_pdf_password. It is written implicitly during import and auto-tried; there is NO management UI. This item adds the Settings-hosted screen to list accounts with a remembered statement password and clear/update it. (Distinct from the FIBR-0013 export password, which is ephemeral and never stored.)
   **Layman:** A screen to see and clear the bank-statement passwords the app remembered while importing locked PDF statements.
   Kind: implement.
   Lanes: ui, security.
   Source: split-from-FIBR-0014-2026-07-13.
+  Placement decided (spec FIBR-0128 D1, user directive 2026-07-14): the view/forget controls live on the **Accounts screen** (per-account, selection-driven), NOT Settings — different accounts can have different statement passwords, so the per-account surface is the natural home. Forget-only (no reveal, no manual set); the secret never crosses into the UI. Spec written; /cold-eyes next.
 
 - 📋 [FIBR-0129] **Host the language switcher in Settings (picker widget + language setting key).**
   Split from FIBR-0014 (P12). Strings are tr()-wrapped throughout and RTL-ready (app.setLayoutDirection), but there is NO QTranslator, no .ts/.qm, no language setting key, no picker. This provides the language-picker widget in the FIBR-0055 Settings dialog + a `language` settings key. The translation pipeline itself (lupdate -> .ts -> .qm -> QTranslator at startup + live retranslateUi) is FIBR-0017; gate the picker's usefulness on that, or ship the widget writing the key now and wire it when FIBR-0017 lands.
@@ -1239,6 +1240,16 @@ because retrofitting them is a data migration.
   Kind: fix.
   Source: user-request-2026-07-14.
   Resolved (2026-07-14) — commit eb52443. statements.svg added, wired into _action_statements + the toolbar after Transactions; tests updated. Gate green 862/1.
+
+- 💭 [FIBR-0137] **Business / Personal account grouping — separate views within one profile.**
+  Today the model is one profile per logged-in user with a single, flat account list; every view (Home dashboard, Transactions, Accounts) spans all accounts at once. An external tester runs both business and personal accounts and wants to view each set separately WITHOUT a second profile/login.
+
+  Investigate: (a) an account "group" attribute — fixed Business/Personal, or user-defined groups — as a nullable column on accounts (no migration pain, defaults ungrouped); (b) a group filter/toggle shared across Home, Transactions and Accounts (reuse the existing account-selector pattern in HomeView); (c) whether dashboard totals should roll up per-group; (d) how this interacts with the (planned) expandable dashboard and with transfer-detection across groups. Keep the single-profile design — this is a view/grouping concern, not multi-user.
+
+  Source: user-request-2026-07-14 (friend / external tester).
+  **Layman:** Let someone tag each account as Business or Personal (or custom groups) and view the two separately, so a person with both kinds of accounts keeps them apart while still staying under one login.
+  Kind: investigate.
+  Source: user-request-2026-07-14.
 
 ### ⚡ Performance
 
