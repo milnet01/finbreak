@@ -13,7 +13,7 @@
 [![Status](https://img.shields.io/badge/status-pre--alpha-orange)]()
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-Current version: **0.1.9** (early preview). **[⬇ Download the latest
+Current version: **0.1.10** (early preview). **[⬇ Download the latest
 release](https://github.com/milnet01/finbreak/releases/latest)**, or see
 [CHANGELOG](CHANGELOG.md) for what's shipped and [ROADMAP](ROADMAP.md) for
 what's coming.
@@ -54,11 +54,17 @@ lot, with more polish and features to come. What works today:
   optionally lock the file with a password so only you can open it, and
 - **encrypted backups** — save a portable, password-protected backup of your
   whole vault and restore it later, even onto a new master password if you've
-  forgotten the old one.
+  forgotten the old one,
+- **six colour themes** — three light (Ledger, Parchment, Mint) and three dark
+  (Midnight, Graphite, Emerald), or **"Follow system"** to match your computer's
+  light/dark setting automatically and switch the instant it changes; your
+  choice applies the moment the app opens, even before you unlock, and
+- everyday **conveniences** — set auto-lock to "Never" if you'd rather it didn't
+  lock while idle, and forget a bank-statement password the app remembered
+  (per account) whenever you want.
 
-finbreak now also runs on **Windows** as a self-contained `.exe` (for testing
-— see Install below). Still to come: a packaged macOS app. See the
-[ROADMAP](ROADMAP.md) for the full plan.
+finbreak now also runs on **Windows** as a self-contained `.exe`. Still to come:
+a packaged macOS app. See the [ROADMAP](ROADMAP.md) for the full plan.
 
 ## Install
 

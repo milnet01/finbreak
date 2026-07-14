@@ -21,6 +21,8 @@ signaling per
 
 ## [Unreleased]
 
+## [0.1.10] - 2026-07-14
+
 ### Added
 
 - ****Forget a remembered bank-statement password, per account.**** (FIBR-0128)
@@ -48,6 +50,12 @@ signaling per
 
 - **Auto-lock can now be set to "Never" — the app won't lock itself while idle.**
   Settings → Auto-lock after → Never disables the idle timer. The password is still required when you open the app, and you can still lock any time with the Lock button (FIBR-0135).
+
+### Changed
+
+- **The About box shows the version on its own line, above the tagline.**
+  A small readability tweak — "finbreak 0.1.10" on the first line, then
+  "A private, offline personal-finance vault." beneath it.
 
 ### Fixed
 

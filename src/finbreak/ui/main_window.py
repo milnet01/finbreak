@@ -1168,7 +1168,7 @@ class MainWindow(QMainWindow):
         # (FIBR-0054 dogfooding: the About box previously showed no version).
         # tr() takes a literal; the version is interpolated (coding.md § 5.2).
         return self.tr(
-            "finbreak {version} — a private, offline personal-finance vault."
+            "finbreak {version}\nA private, offline personal-finance vault."
         ).format(version=__version__)
 
     def _show_about(self) -> None:
