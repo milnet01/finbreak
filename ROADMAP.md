@@ -1252,6 +1252,22 @@ because retrofitting them is a data migration.
   Kind: investigate.
   Source: user-request-2026-07-14.
 
+- 📋 [FIBR-0138] **Expandable dashboard drill-down (Income / Spending / Transfers → categories → merchant → transactions).**
+  Designed in-session 2026-07-14 (three user-approved brainstorm decisions). Enhances the FIBR-0012 dashboard: keep the donut + 12-month trend charts as the snapshot, add an expanding tree below them that drills the numbers.
+
+  D1 Presentation: an expanding tree (QTreeWidget-style), NOT a click-to-drill donut. The three totals (Income / Spending / Transfers) are the top rows.
+  D2 Spending/Income drill follows the existing category tree (parent->child, any depth) to a leaf category; at a leaf, group its transactions by merchant with a x count, then expand a merchant to the individual transactions (date + amount).
+  D3 Merchant = "smart cleanup" of the free-text description (strip card numbers, branch/ref codes, trailing digits) to a best-guess shop name, grouped + counted. There is NO merchant field today (only transactions.description) - this is a new derivation. Fuzzy by nature; refine rules over time. Candidate reuse: the FIBR-0010 rule-engine description matching.
+  D4 Transfers drill by account pair (from->to, x count), then the individual moves. Transfers have no categories (money between own accounts, excluded from income/spend totals).
+
+  INV (correctness-critical): the merchant cleanup only affects DISPLAY GROUPING - every total/subtotal is summed from real amount_minor; cleanup can never change a number, only which line it sits under.
+
+  Details: biggest-amount-first sort at every level (matches the donut); the period + account selectors drive the tree; magnitudes shown like the tiles. Needs a new ReportingService drill API + a merchant-normalisation helper. Spec -> /cold-eyes (--max-loops 7) -> TDD when scheduled; after the v0.1.10 release per the current plan.
+  **Layman:** Click a total on the Home dashboard to open it up — Spending breaks into categories, each category into shops (with a count like "McDonald's ×3"), and each shop into the actual purchases; Transfers break down by which accounts the money moved between.
+  Kind: enhancement.
+  Lanes: reporting, ui.
+  Source: user-request-2026-07-14.
+
 ### ⚡ Performance
 
 - 📋 [FIBR-0025] **Enable SQLite WAL mode.** Set
