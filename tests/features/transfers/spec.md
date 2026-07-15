@@ -23,7 +23,7 @@ are tested directly; the Transfers tab (two tables + Confirm / Reject / Confirm 
 | INV-6 | **Unlink reversible.** After `confirm` then `unlink(pair_id)`, the pair is back in `candidates()` and out of `confirmed_transfer_txn_ids()`. Unlinking a rejected / absent id is a silent no-op. |
 | INV-7 | **Live detection.** `candidates()` reads live vault state each call (no cache); a newly-inserted matching pair appears on the next call with no other action. |
 | INV-8 | **Statement-delete cascade.** Confirm a pair whose txns belong to a statement, then `delete_for_statement` → the `transfer_pairs` row is gone (no FK error, no dangling row). |
-| INV-9 | **Schema v7 → v8.** `LATEST_SCHEMA_VERSION == 8`; a v7 vault upgrades to v8 with an empty `transfer_pairs` table, one atomic step (a wedged step leaves a re-openable v7). |
+| INV-9 | **Schema v7 → v8.** `LATEST_SCHEMA_VERSION == 9`; a v7 vault upgrades to v8 with an empty `transfer_pairs` table, one atomic step (a wedged step leaves a re-openable v7). |
 | INV-10 | **Transfers tab.** The workspace has **6** tabs; the Transfers tab (`objectName "tab_transfers"`) shows the suggested + confirmed tables; Confirm / Reject / Confirm all / Unlink drive the service and refresh; a `VaultLockedError` mid-slot is caught (no crash). The toolbar Transfers action has a rendering icon. |
 | INV-11 | **No network; i18n.** No network import under the new modules (the vault-suite static scan covers them); user strings via `tr()` (convention/ruff, not a unit test). |
 | INV-12 | **Transactions untouched.** No transfer operation issues an `INSERT/UPDATE/DELETE` against `transactions` — rows (count, amounts, categories) are byte-identical before and after confirm / reject / unlink. |

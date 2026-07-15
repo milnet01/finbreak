@@ -90,18 +90,18 @@ def _pair(service: AuthService) -> tuple[int, int]:
 # --------------------------------------------------------------------------- #
 # INV-9 — schema v7 -> v8
 # --------------------------------------------------------------------------- #
-def test_INV9_latest_schema_version_is_8():
-    assert LATEST_SCHEMA_VERSION == 8
+def test_INV9_latest_schema_version_is_9():
+    assert LATEST_SCHEMA_VERSION == 9
 
 
-def test_INV9_v7_upgrades_to_v8(paths):
+def test_INV9_v7_upgrades_to_v9(paths):
     vault_path, sidecar = paths
     salt = bytes(range(SALT_LEN))
     build_v7_vault(vault_path, sidecar, salt, [("2026-01-01", -100, "a")])
 
     conn = keyed_connection(vault_path, salt)
-    run_migrations(conn)  # v7 -> v8 (walks to LATEST)
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 8
+    run_migrations(conn)  # v7 -> v9 (walks to LATEST)
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 9
 
     assert _has_transfer_pairs(conn)
     # A fresh table — no rows.

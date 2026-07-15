@@ -223,7 +223,7 @@ def test_INV1_manifest_records_schema_app_and_compat(paths, tmp_path):
             params = json.loads(zf.read("params.json"))
         assert manifest["format_version"] == MANIFEST_FORMAT_VERSION
         assert manifest["app_version"] == finbreak.__version__
-        assert manifest["schema_version"] == 8  # LATEST_SCHEMA_VERSION today
+        assert manifest["schema_version"] == 9  # LATEST_SCHEMA_VERSION today
         assert manifest["sqlcipher_compat"] == SQLCIPHER_COMPAT
         # params.json carries a fresh per-backup salt, not the master sidecar's.
         assert set(params) == {

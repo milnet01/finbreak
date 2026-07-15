@@ -31,6 +31,7 @@ from finbreak.migrations import (  # noqa: E402
     _migrate_to_v5,
     _migrate_to_v6,
     _migrate_to_v7,
+    _migrate_to_v8,
 )
 from finbreak.models import FORMAT_VERSION, KdfParams  # noqa: E402
 from finbreak.services.auth import (  # noqa: E402
@@ -316,4 +317,14 @@ def build_v7_vault(vault_path: Path, sidecar_path: Path, salt: bytes, rows) -> N
     build_v6_vault(vault_path, sidecar_path, salt, rows)
     conn = keyed_connection(vault_path, salt)
     _migrate_to_v7(conn)  # v6 -> v7 (category_id + category_source + rules)
+    conn.close()
+
+
+def build_v8_vault(vault_path: Path, sidecar_path: Path, salt: bytes, rows) -> None:
+    """A raw v8 vault: ``build_v7_vault`` taken one more step through the real
+    ``_migrate_to_v8`` (the ``transfer_pairs`` table). The v8->v9 migration suite's
+    upgrade-path fixture (FIBR-0142 INV-10)."""
+    build_v7_vault(vault_path, sidecar_path, salt, rows)
+    conn = keyed_connection(vault_path, salt)
+    _migrate_to_v8(conn)  # v7 -> v8 (transfer_pairs)
     conn.close()

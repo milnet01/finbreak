@@ -21,7 +21,7 @@ from finbreak.errors import SchemaVersionError
 
 log = logging.getLogger(__name__)
 
-LATEST_SCHEMA_VERSION = 8
+LATEST_SCHEMA_VERSION = 9
 
 # Seed data written by the v1->v2 migration (D8) — NOT a UI string, so never
 # run through tr(); the user renames it in the Accounts manager.
@@ -278,6 +278,33 @@ def _migrate_to_v8(conn: dbapi2.Connection) -> None:
         conn.execute("UPDATE schema_version SET version = 8")
 
 
+def _migrate_to_v9(conn: dbapi2.Connection) -> None:
+    """v8->v9: add the ``recurring_decisions`` table for FIBR-0142 recurring-money
+    detection — one ``CREATE TABLE`` recording each user confirm/dismiss decision
+    about a detected recurring group. **Keyed on ``(direction, merchant_key)``, not
+    on transaction ids** (unlike ``transfer_pairs``): a recurring decision is about a
+    *payee stream*, so it must outlive the specific transactions that formed it — new
+    imports add fresh charges under the same key, and a dismissed/confirmed stream
+    stays dismissed/confirmed (INV-8). Hence **no FK to transactions and no
+    cascade** — nothing to clean up when a transaction is deleted. ``UNIQUE(direction,
+    merchant_key)`` gives each stream one row across both statuses (upsert target).
+    **No backfill** — a fresh table. One atomic unit (INV-10): with the vault's
+    ``isolation_level=""`` the driver does not implicitly ``BEGIN`` around the DDL, so
+    the explicit ``BEGIN`` — the step's first statement, ``UPDATE schema_version`` its
+    last — makes it all-or-nothing (a mid-step failure leaves a re-openable v8)."""
+    with owned_transaction(conn):
+        conn.execute(
+            "CREATE TABLE recurring_decisions("
+            "id INTEGER PRIMARY KEY, "
+            "direction TEXT NOT NULL, "  # 'in' | 'out'
+            "merchant_key TEXT NOT NULL, "
+            "status TEXT NOT NULL, "  # 'confirmed' | 'dismissed'
+            "created_at TEXT NOT NULL, "
+            "UNIQUE(direction, merchant_key))"
+        )
+        conn.execute("UPDATE schema_version SET version = 9")
+
+
 _MIGRATIONS = {
     2: _migrate_to_v2,
     3: _migrate_to_v3,
@@ -286,4 +313,5 @@ _MIGRATIONS = {
     6: _migrate_to_v6,
     7: _migrate_to_v7,
     8: _migrate_to_v8,
+    9: _migrate_to_v9,
 }

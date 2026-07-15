@@ -104,11 +104,11 @@ def _do_import(imp: ImportService, text: str, account_id: int):
 # --------------------------------------------------------------------------- #
 # INV-15 — schema v6 -> v7
 # --------------------------------------------------------------------------- #
-def test_INV15_latest_schema_version_is_8():
-    assert LATEST_SCHEMA_VERSION == 8
+def test_INV15_latest_schema_version_is_9():
+    assert LATEST_SCHEMA_VERSION == 9
 
 
-def test_INV15_v6_upgrades_to_v8(paths):
+def test_INV15_v6_upgrades_to_v9(paths):
     vault_path, sidecar = paths
     salt = bytes(range(SALT_LEN))
     build_v6_vault(vault_path, sidecar, salt, [("2026-01-01", -100, "a")])
@@ -118,8 +118,8 @@ def test_INV15_v6_upgrades_to_v8(paths):
         "SELECT id, amount_minor, description FROM transactions"
     ).fetchall()
 
-    run_migrations(conn)  # v6 -> v8 (walks to LATEST)
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 8
+    run_migrations(conn)  # v6 -> v9 (walks to LATEST)
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 9
 
     cols = {r[1] for r in conn.execute("PRAGMA table_info(transactions)").fetchall()}
     assert {"category_id", "category_source"} <= cols
@@ -165,20 +165,20 @@ def test_INV15_atomic_rollback_leaves_v6(paths):
     conn.close()
 
 
-def test_INV15_idempotent_at_v8(paths):
+def test_INV15_idempotent_at_v9(paths):
     vault_path, sidecar = paths
     salt = bytes(range(SALT_LEN))
     build_v6_vault(vault_path, sidecar, salt, [])
     conn = keyed_connection(vault_path, salt)
     run_migrations(conn)
-    run_migrations(conn)  # re-run: no-op at v8
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 8
+    run_migrations(conn)  # re-run: no-op at v9
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 9
     conn.close()
 
 
-def test_INV15_first_run_vault_is_v8(service):
+def test_INV15_first_run_vault_is_v9(service):
     conn = service.vault.connection
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 8
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 9
     cols = {r[1] for r in conn.execute("PRAGMA table_info(transactions)").fetchall()}
     assert {"category_id", "category_source"} <= cols
 
