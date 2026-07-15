@@ -656,7 +656,9 @@ def test_INV12_workspace_has_eight_tabs_with_recurring_after_transfers(
     window._enter_unlocked()
     workspace = window._workspace
     assert workspace is not None
-    names = [workspace.widget(i).objectName() for i in range(workspace.count())]
+    tabs = [workspace.widget(i) for i in range(workspace.count())]
+    assert all(t is not None for t in tabs)
+    names = [t.objectName() for t in tabs if t is not None]
     assert names == [
         "tab_home",
         "tab_transactions",
@@ -724,5 +726,8 @@ def test_INV12_renders_direction_and_cadence_labels(qtbot, vault_service) -> Non
     _seed_recent_monthly(vault_service, _default_account(vault_service), -19900, "N")
     w = RecurringWidget(vault_service)
     qtbot.addWidget(w)
-    assert w._suggested.item(0, 1).text() == "Out"  # _COL_DIRECTION
-    assert w._suggested.item(0, 2).text() == "Monthly"  # _COL_CADENCE
+    direction_cell = w._suggested.item(0, 1)  # _COL_DIRECTION
+    cadence_cell = w._suggested.item(0, 2)  # _COL_CADENCE
+    assert direction_cell is not None and cadence_cell is not None
+    assert direction_cell.text() == "Out"
+    assert cadence_cell.text() == "Monthly"
