@@ -21,6 +21,8 @@ signaling per
 
 ## [Unreleased]
 
+## [0.1.13] - 2026-07-15
+
 ### Added
 
 - **Recurring-money detection (FIBR-0142) — a new Recurring tab that spots subscriptions and regular income** (FIBR-0142)

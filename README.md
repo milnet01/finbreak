@@ -13,7 +13,7 @@
 [![Status](https://img.shields.io/badge/status-pre--alpha-orange)]()
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-Current version: **0.1.12** (early preview). **[⬇ Download the latest
+Current version: **0.1.13** (early preview). **[⬇ Download the latest
 release](https://github.com/milnet01/finbreak/releases/latest)**, or see
 [CHANGELOG](CHANGELOG.md) for what's shipped and [ROADMAP](ROADMAP.md) for
 what's coming.
@@ -43,6 +43,10 @@ lot, with more polish and features to come. What works today:
 - **spotting transfers between your own accounts** — money you move from,
   say, your current account to savings is flagged so it isn't mistaken for
   spending or income (you confirm each one),
+- **spotting your recurring money** — the subscriptions, debit orders, and
+  regular income (like your salary) that repeat every week, fortnight, month,
+  or year; finbreak suggests them on a new **Recurring** tab so you can
+  confirm what's real and see at a glance what's on autopilot each month,
 - a **dashboard** on the Home screen — an income-vs-spending summary for a
   period you choose (it defaults to last month and remembers your choice), a
   pie chart of where your money went by category, and a month-by-month trend
