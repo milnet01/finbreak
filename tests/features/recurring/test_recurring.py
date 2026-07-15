@@ -224,13 +224,24 @@ def test_add_cadence_clamps_month_end() -> None:
     assert _add_cadence(date(2026, 1, 5), Cadence.FORTNIGHTLY) == date(2026, 1, 19)
 
 
-# INV-11 — monthly-equivalent rounds ROUND_HALF_EVEN: a yearly R1.50 → R0.125/mo
-# → R0.12 (2 is even; HALF_UP would give 0.13).
+# INV-11 — monthly-equivalent rounds ROUND_HALF_EVEN over the D8 formula
+# ``amount × N / 12`` (division deferred — a pre-divided factor rounds the factor
+# itself and defeats banker's rounding for fortnightly, review-fix FIBR-0142).
 def test_monthly_equivalent_half_even() -> None:
+    # yearly R1.50 → R0.125/mo → R0.12 (2 is even; HALF_UP would give 0.13).
     assert _monthly_equivalent(Decimal("1.50"), Cadence.YEARLY, _EXP) == Decimal("0.12")
-    # weekly factor 52/12 on R50.00 → R216.666… → R216.67.
+    # weekly 52/12 on R50.00 → R216.666… → R216.67.
     assert _monthly_equivalent(Decimal("50.00"), Cadence.WEEKLY, _EXP) == Decimal(
         "216.67"
+    )
+    # fortnightly R0.03 → 0.78/12 = R0.065 exactly → R0.06 (banker's, 6 is even).
+    # A pre-divided 26/12 factor rounds 0.065 up to R0.07 — the review-caught bug.
+    assert _monthly_equivalent(Decimal("0.03"), Cadence.FORTNIGHTLY, _EXP) == Decimal(
+        "0.06"
+    )
+    # fortnightly R1.59 → 41.34/12 = R3.445 → R3.44 (banker's); pre-divided → 3.45.
+    assert _monthly_equivalent(Decimal("1.59"), Cadence.FORTNIGHTLY, _EXP) == Decimal(
+        "3.44"
     )
 
 
@@ -481,14 +492,36 @@ def test_INV11_direction_cadence_tokens() -> None:
     assert Cadence.YEARLY.value == "yearly"
 
 
-# INV-11 — every user-facing string in the Recurring tab goes through tr().
+# INV-11 — every user-facing string in the Recurring tab goes through tr():
+# constructors, the column labels, the direction/cadence display labels, and the
+# status-line messages (a bare setText with a capital-letter literal is a leak;
+# setText("") to clear is allowed).
 def test_INV11_recurring_ui_strings_are_tr_wrapped() -> None:
+    import re
+
     import finbreak.ui.recurring as mod
 
     src = pathlib.Path(mod.__file__).read_text()
     assert 'QPushButton("' not in src, "buttons must use self.tr(...)"
     assert 'QLabel("' not in src, "labels must use self.tr(...)"
-    for literal in ("Merchant", "Direction", "Cadence", "Amount", "Confirm", "Dismiss"):
+    assert not re.search(r'setText\("[^"]', src), "status text must use self.tr(...)"
+    for literal in (
+        "Merchant",
+        "Direction",
+        "Cadence",
+        "Amount",
+        "Next due",
+        "Seen",
+        "Confirm",
+        "Dismiss",
+        "Un-confirm",  # buttons
+        "In",
+        "Out",
+        "Weekly",
+        "Fortnightly",
+        "Monthly",
+        "Yearly",  # enum labels
+    ):
         assert f'self.tr("{literal}")' in src, f"{literal!r} must be tr()-wrapped"
 
 
@@ -634,3 +667,62 @@ def test_INV12_workspace_has_eight_tabs_with_recurring_after_transfers(
         "tab_transfers",
         "tab_recurring",
     ]
+
+
+# --------------------------------------------------------------------------- #
+# Folded review findings (FIBR-0142 close: cold code-review).
+# --------------------------------------------------------------------------- #
+# INV-8 (review-fix) — a status flip keeps the original created_at stamp (the
+# upsert updates only `status`; created_at is immutable provenance). A known
+# seed timestamp makes this a deterministic falsifier — restoring the old
+# `created_at = excluded.created_at` upsert would overwrite 2020 with now().
+def test_INV8_flip_preserves_created_at(vault_service) -> None:
+    conn = vault_service.vault.connection
+    conn.execute(
+        "INSERT INTO recurring_decisions"
+        "(direction, merchant_key, status, created_at) "
+        "VALUES ('out', 'netflix', 'confirmed', '2020-01-01T00:00:00+00:00')"
+    )
+    conn.commit()
+    RecurringRepository(conn).set_decision("out", "netflix", "dismissed")  # flip
+    row = conn.execute(
+        "SELECT status, created_at FROM recurring_decisions "
+        "WHERE direction = 'out' AND merchant_key = 'netflix'"
+    ).fetchone()
+    assert row[0] == "dismissed"  # status flipped
+    assert row[1] == "2020-01-01T00:00:00+00:00"  # created_at unchanged
+
+
+# INV-12 (review-fix) — the action acts on the SELECTED item after a re-sort, not
+# on the insertion-order row: with two items sorted so the cheaper one rises to
+# visual row 0, confirming row 0 must confirm THAT item. Falsifies a
+# currentRow()-for-selected_index regression that the one-item tests can't catch.
+def test_INV12_confirm_respects_sort_order(qtbot, vault_service) -> None:
+    from PySide6.QtCore import Qt
+
+    from finbreak.ui.recurring import RecurringWidget
+
+    acct = _default_account(vault_service)
+    _seed_recent_monthly(vault_service, acct, -19900, "Netflix")  # R199/mo
+    _seed_recent_monthly(vault_service, acct, -9900, "Spotify")  # R99/mo
+    w = RecurringWidget(vault_service)
+    qtbot.addWidget(w)
+    assert w._suggested.rowCount() == 2
+    # Ascending by Amount → the R99 item rises to visual row 0 (detector order put
+    # the R199 item first).
+    w._suggested.sortItems(3, Qt.SortOrder.AscendingOrder)  # 3 == _COL_AMOUNT
+    w._suggested.selectRow(0)
+    w._confirm_button.click()
+    assert [it.merchant_key for it in w._confirmed_items] == ["spotify"]
+
+
+# INV-11 (review-fix) — the direction/cadence cells render the tr()-ed labels
+# (guards _direction_label / _cadence_label, incl. a KeyError on an unmapped enum).
+def test_INV12_renders_direction_and_cadence_labels(qtbot, vault_service) -> None:
+    from finbreak.ui.recurring import RecurringWidget
+
+    _seed_recent_monthly(vault_service, _default_account(vault_service), -19900, "N")
+    w = RecurringWidget(vault_service)
+    qtbot.addWidget(w)
+    assert w._suggested.item(0, 1).text() == "Out"  # _COL_DIRECTION
+    assert w._suggested.item(0, 2).text() == "Monthly"  # _COL_CADENCE

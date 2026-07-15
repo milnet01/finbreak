@@ -51,12 +51,14 @@ class RecurringRepository:
     def set_decision(self, direction: str, merchant_key: str, status: str) -> None:
         """Upsert one decision on ``(direction, merchant_key)`` (INV-8) — a fresh
         confirm/dismiss, or a status flip on the existing row (``UNIQUE`` is the
-        conflict target). One INSERT-or-UPDATE + commit."""
+        conflict target). One INSERT-or-UPDATE + commit. On a flip only ``status``
+        changes — ``created_at`` keeps its original insert stamp (provenance,
+        unchanged on conflict-update per the spec data model)."""
         self._conn.execute(
             "INSERT INTO recurring_decisions"
             "(direction, merchant_key, status, created_at) VALUES (?, ?, ?, ?) "
-            "ON CONFLICT(direction, merchant_key) DO UPDATE SET "
-            "status = excluded.status, created_at = excluded.created_at",
+            "ON CONFLICT(direction, merchant_key) "
+            "DO UPDATE SET status = excluded.status",
             (direction, merchant_key, status, datetime.now(UTC).isoformat()),
         )
         self._conn.commit()

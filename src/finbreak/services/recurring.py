@@ -52,11 +52,16 @@ _BANDS: tuple[tuple[int, int, Cadence], ...] = (
     (25, 35, Cadence.MONTHLY),
     (330, 400, Cadence.YEARLY),
 )
-_MONTHLY_FACTOR: dict[Cadence, Decimal] = {
-    Cadence.WEEKLY: Decimal(52) / Decimal(12),
-    Cadence.FORTNIGHTLY: Decimal(26) / Decimal(12),
-    Cadence.MONTHLY: Decimal(1),
-    Cadence.YEARLY: Decimal(1) / Decimal(12),
+# Periods-per-year numerator for the D8 monthly-equivalent (all over 12). Kept as
+# an INTEGER so the division is deferred to one expression ``amount × N / 12``
+# (spec D8): pre-dividing e.g. 26/12 rounds the *factor* at the 28-sig-fig context
+# and pushes exact half-way values off ROUND_HALF_EVEN for fortnightly — a
+# one-minor-unit error on ~2.9% of fortnightly amounts (review-fix FIBR-0142).
+_MONTHLY_NUM: dict[Cadence, int] = {
+    Cadence.WEEKLY: 52,
+    Cadence.FORTNIGHTLY: 26,
+    Cadence.MONTHLY: 12,
+    Cadence.YEARLY: 1,
 }
 
 
@@ -109,10 +114,12 @@ def _classify(gaps: list[int]) -> Cadence | None:
 
 
 def _monthly_equivalent(amount: Decimal, cadence: Cadence, exponent: int) -> Decimal:
-    """``amount`` normalised to per-month by cadence (D8), quantized to the minor
+    """``amount`` normalised to per-month by cadence (D8: ``amount × N / 12``, the
+    division kept in-line so ``amount × N`` stays exact), quantized to the minor
     unit with ``ROUND_HALF_EVEN`` (the one pinned money-rounding op)."""
     unit = Decimal(1).scaleb(-exponent)
-    return (amount * _MONTHLY_FACTOR[cadence]).quantize(unit, rounding=ROUND_HALF_EVEN)
+    monthly = amount * _MONTHLY_NUM[cadence] / Decimal(12)
+    return monthly.quantize(unit, rounding=ROUND_HALF_EVEN)
 
 
 def detect_recurring(
