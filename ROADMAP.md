@@ -1309,6 +1309,13 @@ because retrofitting them is a data migration.
   Kind: ux.
   Evidence: /home/ants/Pictures/ClaudePaste/paste_20260715_085635_284_5e11f9ac.png
   Source: user-feedback-2026-07-15 (dashboard focus).
+  UNBLOCKED 2026-07-15: user delivered the HTML mockup `/home/ants/Documents/dashboard_2.html` (+ annotated screenshot). Envisioned layout: three side-by-side columns — Expenditure / Income / Transfers — each with the existing pie chart on top, a bold coloured header + big total, then the expandable breakdown list (categories → merchant sub-rows, e.g. Groceries → Checkers/Sixty60, Spar); the monthly bar chart demoted to a full-width strip at the bottom ("2026 Monthly Trend Breakdown"). User notes: NO borders (those were alignment guides only), CONSISTENT row heights, reuse the existing pie chart (not the mockup's CSS one), add polish/flair. Next: brainstorm-confirm against the mockup → spec → cold-eyes → TDD. Also lands the deferred FIBR-0142 Home recurring card (consumes RecurringService.summary()). User gated this behind "if my weekly limit hasn't finished yet" (2026-07-15).
+
+- 📋 [FIBR-0144] **Centralise the schema-version drift guard to remove per-bump test churn.**
+  Surfaced during the FIBR-0142 close. Every feature that ever added a migration hard-asserts `LATEST_SCHEMA_VERSION == N` (and encodes the version in test function names + spec.md INV lines), so each schema bump forces ~24 assertion edits + ~15 renames across ~9 feature suites (v8→v9 did exactly this). Replace the scattered per-feature guards with ONE canonical "latest schema version" test (assert the constant + that a fresh vault reaches it) and have each feature's migration test assert only its OWN delta (the intermediate step it introduced), never the moving global latest. Removes the churn and the drift risk. Low priority, no user-facing effect.
+  **Layman:** A cleanup: right now every time the database format is upgraded, a bunch of unrelated tests have to be hand-edited. This would make that a one-line change instead.
+  Kind: refactor.
+  Source: in-session-2026-07-15 (FIBR-0142 review observation).
 
 ### ⚡ Performance
 
