@@ -7,8 +7,9 @@ slices. Every on-disk vault uses `tmp_path`; no test touches the network or real
 financial data (testing.md § 6).
 """
 
+import pathlib
 from collections.abc import Iterator
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
@@ -466,3 +467,170 @@ def test_summary_sums_confirmed_monthly_equivalents(vault_service) -> None:
     assert summary.monthly_out == Decimal("199.00")
     assert summary.monthly_in == Decimal("216.67")
     assert summary.net == Decimal("17.67")
+
+
+# --------------------------------------------------------------------------- #
+# INV-11 — stable enum tokens (decoupled from tr()-ed display labels).
+# --------------------------------------------------------------------------- #
+def test_INV11_direction_cadence_tokens() -> None:
+    assert Direction.IN.value == "in"
+    assert Direction.OUT.value == "out"
+    assert Cadence.WEEKLY.value == "weekly"
+    assert Cadence.FORTNIGHTLY.value == "fortnightly"
+    assert Cadence.MONTHLY.value == "monthly"
+    assert Cadence.YEARLY.value == "yearly"
+
+
+# INV-11 — every user-facing string in the Recurring tab goes through tr().
+def test_INV11_recurring_ui_strings_are_tr_wrapped() -> None:
+    import finbreak.ui.recurring as mod
+
+    src = pathlib.Path(mod.__file__).read_text()
+    assert 'QPushButton("' not in src, "buttons must use self.tr(...)"
+    assert 'QLabel("' not in src, "labels must use self.tr(...)"
+    for literal in ("Merchant", "Direction", "Cadence", "Amount", "Confirm", "Dismiss"):
+        assert f'self.tr("{literal}")' in src, f"{literal!r} must be tr()-wrapped"
+
+
+# --------------------------------------------------------------------------- #
+# INV-12 — the Recurring tab (RecurringWidget, qtbot). Transactions are seeded
+# relative to date.today() so the monthly series is always active.
+# --------------------------------------------------------------------------- #
+def _seed_recent_monthly(
+    svc: AuthService, account_id: int, amount_minor: int, desc: str, n: int = 3
+) -> list[int]:
+    today = date.today()
+    return [
+        _add_txn(
+            svc,
+            account_id,
+            (today - timedelta(days=30 * k)).isoformat(),
+            amount_minor,
+            desc,
+        )
+        for k in range(n)
+    ]
+
+
+def test_INV12_tab_objectname_and_populates(qtbot, vault_service) -> None:
+    from finbreak.ui.recurring import RecurringWidget
+
+    _seed_recent_monthly(
+        vault_service, _default_account(vault_service), -19900, "Netflix"
+    )
+    w = RecurringWidget(vault_service)
+    qtbot.addWidget(w)
+    assert w.objectName() == "tab_recurring"
+    assert w._suggested.rowCount() == 1
+    assert w._confirmed_table.rowCount() == 0
+
+
+def test_INV12_confirm_moves_suggested_to_confirmed(qtbot, vault_service) -> None:
+    from finbreak.ui.recurring import RecurringWidget
+
+    _seed_recent_monthly(
+        vault_service, _default_account(vault_service), -19900, "Netflix"
+    )
+    w = RecurringWidget(vault_service)
+    qtbot.addWidget(w)
+    w._suggested.selectRow(0)
+    w._confirm_button.click()
+    assert w._suggested.rowCount() == 0
+    assert w._confirmed_table.rowCount() == 1
+
+
+def test_INV12_dismiss_removes_from_suggested(qtbot, vault_service) -> None:
+    from finbreak.ui.recurring import RecurringWidget
+
+    _seed_recent_monthly(
+        vault_service, _default_account(vault_service), -19900, "Netflix"
+    )
+    w = RecurringWidget(vault_service)
+    qtbot.addWidget(w)
+    w._suggested.selectRow(0)
+    w._dismiss_button.click()
+    assert w._suggested.rowCount() == 0
+    assert w._confirmed_table.rowCount() == 0
+
+
+def test_INV12_unconfirm_returns_to_suggested(qtbot, vault_service) -> None:
+    from finbreak.ui.recurring import RecurringWidget
+
+    _seed_recent_monthly(
+        vault_service, _default_account(vault_service), -19900, "Netflix"
+    )
+    w = RecurringWidget(vault_service)
+    qtbot.addWidget(w)
+    w._suggested.selectRow(0)
+    w._confirm_button.click()
+    w._confirmed_table.selectRow(0)
+    w._unconfirm_button.click()
+    assert w._suggested.rowCount() == 1
+    assert w._confirmed_table.rowCount() == 0
+
+
+def test_INV12_empty_state_message(qtbot, vault_service) -> None:
+    from finbreak.ui.recurring import RecurringWidget
+
+    w = RecurringWidget(vault_service)  # no transactions seeded
+    qtbot.addWidget(w)
+    assert w._suggested.rowCount() == 0
+    assert w._status.text() != ""  # an empty-state message is shown
+
+
+@pytest.mark.parametrize(
+    ("method", "button", "needs_confirmed"),
+    [
+        ("confirm", "_confirm_button", False),
+        ("dismiss", "_dismiss_button", False),
+        ("reset", "_unconfirm_button", True),
+    ],
+)
+def test_INV12_slots_catch_vault_locked(
+    qtbot, vault_service, monkeypatch, method, button, needs_confirmed
+) -> None:
+    """Every action slot catches a VaultLockedError raised mid-click and returns
+    without crashing (an auto-lock can fire at any moment)."""
+    from finbreak.errors import VaultLockedError
+    from finbreak.ui.recurring import RecurringWidget
+
+    _seed_recent_monthly(
+        vault_service, _default_account(vault_service), -19900, "Netflix"
+    )
+    w = RecurringWidget(vault_service)
+    qtbot.addWidget(w)
+    if needs_confirmed:
+        w._suggested.selectRow(0)
+        w._confirm_button.click()
+        w._confirmed_table.selectRow(0)
+    else:
+        w._suggested.selectRow(0)
+
+    def _boom(*args, **kwargs):
+        raise VaultLockedError("locked mid-click")
+
+    monkeypatch.setattr(w._recurring, method, _boom)
+    getattr(w, button).click()  # must not raise
+
+
+def test_INV12_workspace_has_eight_tabs_with_recurring_after_transfers(
+    qtbot, vault_service
+) -> None:
+    from finbreak.ui.main_window import MainWindow
+
+    window = MainWindow(vault_service)
+    qtbot.addWidget(window)
+    window._enter_unlocked()
+    workspace = window._workspace
+    assert workspace is not None
+    names = [workspace.widget(i).objectName() for i in range(workspace.count())]
+    assert names == [
+        "tab_home",
+        "tab_transactions",
+        "tab_statements",
+        "tab_accounts",
+        "tab_categories",
+        "tab_rules",
+        "tab_transfers",
+        "tab_recurring",
+    ]

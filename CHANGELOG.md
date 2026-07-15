@@ -21,6 +21,16 @@ signaling per
 
 ## [Unreleased]
 
+### Added
+
+- **Recurring-money detection (FIBR-0142) — a new Recurring tab that spots subscriptions and regular income** (FIBR-0142)
+  finbreak now scans your history and suggests recurring charges and
+  income (weekly / fortnightly / monthly / yearly), which you Confirm or
+  Dismiss. Confirmed transfers are excluded, and one merchant's charges
+  across several accounts group into a single item. Amounts stay
+  exact-integer (money-safe); the per-month equivalents feed a summary the
+  upcoming dashboard card will show.
+
 ## [0.1.12] - 2026-07-14
 
 ### Added

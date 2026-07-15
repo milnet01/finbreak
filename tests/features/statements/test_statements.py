@@ -291,13 +291,13 @@ def test_INV9d_backfill_overlap_stays_null(paths):
 # --------------------------------------------------------------------------- #
 # INV-1 / INV-2 / INV-2a — the four-tab workspace + tab-switching navigation
 # --------------------------------------------------------------------------- #
-def test_INV1_workspace_has_seven_tabs_in_order(qtbot, service):
+def test_INV1_workspace_has_eight_tabs_in_order(qtbot, service):
     window = _shell(qtbot, service)
     workspace = window.centralWidget().currentWidget()
     assert workspace.objectName() == "workspace"
     names = [workspace.widget(i).objectName() for i in range(workspace.count())]
-    # Rules (FIBR-0010) is 6th, Transfers (FIBR-0011) 7th; Transactions (FIBR-0012)
-    # is inserted 2nd, right after Home.
+    # Rules (FIBR-0010) is 6th, Transfers (FIBR-0011) 7th, Recurring (FIBR-0142) 8th;
+    # Transactions (FIBR-0012) is inserted 2nd, right after Home.
     assert names == [
         "tab_home",
         "tab_transactions",
@@ -306,6 +306,7 @@ def test_INV1_workspace_has_seven_tabs_in_order(qtbot, service):
         "tab_categories",
         "tab_rules",
         "tab_transfers",
+        "tab_recurring",
     ]
 
 
@@ -339,11 +340,12 @@ def test_INV2_toolbar_order_includes_statements(qtbot, service):
         "action_categories",
         "action_rules",
         "action_transfers",
+        "action_recurring",
         "action_export",  # FIBR-0013: before Lock (Lock stays last)
         "action_lock",
     ], (
         "toolbar order: Home, Transactions, Statements, Manual entry, Import, "
-        "Accounts, Categories, Rules, Transfers, Export, Lock"
+        "Accounts, Categories, Rules, Transfers, Recurring, Export, Lock"
     )
 
 

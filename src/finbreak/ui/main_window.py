@@ -72,6 +72,7 @@ from finbreak.ui.home import HomeView
 from finbreak.ui.icons import toolbar_icon
 from finbreak.ui.import_wizard import ImportWizardWidget
 from finbreak.ui.manual_entry import ManualEntryDialog
+from finbreak.ui.recurring import RecurringWidget
 from finbreak.ui.rules import RulesWidget
 from finbreak.ui.settings import SettingsDialog
 from finbreak.ui.statements import StatementsWidget
@@ -98,6 +99,7 @@ _TAB_ACCOUNTS = 3
 _TAB_CATEGORIES = 4
 _TAB_RULES = 5
 _TAB_TRANSFERS = 6
+_TAB_RECURRING = 7
 
 # User-input event types that count as activity for the idle-lock reset (FIBR-0114).
 _ACTIVITY_EVENTS = frozenset(
@@ -212,6 +214,7 @@ class MainWindow(QMainWindow):
         self._categories_tab: CategoriesWidget | None = None
         self._rules_tab: RulesWidget | None = None
         self._transfers_tab: TransfersWidget | None = None
+        self._recurring_tab: RecurringWidget | None = None
         # The display prefs, read once post-unlock (the vault is locked here) and
         # passed to the display tabs (FIBR-0083 D7). All-"system" until then.
         self._prefs = DateTimePrefs(DATETIME_SYSTEM, DATETIME_SYSTEM, DATETIME_SYSTEM)
@@ -314,6 +317,9 @@ class MainWindow(QMainWindow):
         self._action_transfers = self._make_action(
             "action_transfers", self.tr("Transfers"), "transfers", self._open_transfers
         )
+        self._action_recurring = self._make_action(
+            "action_recurring", self.tr("Recurring"), "recurring", self._open_recurring
+        )
         self._action_lock = self._make_action(
             "action_lock", self.tr("Lock"), "lock", self._lock
         )
@@ -380,6 +386,7 @@ class MainWindow(QMainWindow):
         self._menu_view.addAction(self._action_categories)
         self._menu_view.addAction(self._action_rules)
         self._menu_view.addAction(self._action_transfers)
+        self._menu_view.addAction(self._action_recurring)
 
         # Window: geometry actions that need no vault, so they stay enabled while
         # locked (INV-6/INV-6c) — never touched by _set_vault_chrome_enabled.
@@ -416,6 +423,7 @@ class MainWindow(QMainWindow):
             self._action_categories,
             self._action_rules,
             self._action_transfers,
+            self._action_recurring,
             self._action_export,  # FIBR-0013, before Lock (Lock stays last)
             self._action_lock,
         ):
@@ -615,6 +623,8 @@ class MainWindow(QMainWindow):
 
         self._transfers_tab = TransfersWidget(self._service)  # sets tab_transfers
 
+        self._recurring_tab = RecurringWidget(self._service)  # sets tab_recurring
+
         workspace.addTab(self._home_tab, self.tr("Home"))
         workspace.addTab(self._transactions_tab, self.tr("Transactions"))
         workspace.addTab(self._statements_tab, self.tr("Statements"))
@@ -622,6 +632,7 @@ class MainWindow(QMainWindow):
         workspace.addTab(self._categories_tab, self.tr("Categories"))
         workspace.addTab(self._rules_tab, self.tr("Rules"))
         workspace.addTab(self._transfers_tab, self.tr("Transfers"))
+        workspace.addTab(self._recurring_tab, self.tr("Recurring"))
 
         # Connect AFTER the tabs are added, so building fires no spurious refresh.
         workspace.currentChanged.connect(self._on_tab_changed)
@@ -667,6 +678,8 @@ class MainWindow(QMainWindow):
             self._rules_tab._refresh()
         elif index == _TAB_TRANSFERS and self._transfers_tab is not None:
             self._transfers_tab._refresh()
+        elif index == _TAB_RECURRING and self._recurring_tab is not None:
+            self._recurring_tab.refresh()
 
     def _refresh_count(self, count: int) -> None:
         self._count.setText(self.tr("%n transaction(s)", "", count))
@@ -707,6 +720,10 @@ class MainWindow(QMainWindow):
     def _open_transfers(self) -> None:
         self._ensure_workspace().setCurrentIndex(_TAB_TRANSFERS)
         self._status(self.tr("Transfers"))
+
+    def _open_recurring(self) -> None:
+        self._ensure_workspace().setCurrentIndex(_TAB_RECURRING)
+        self._status(self.tr("Recurring"))
 
     def _open_manual_entry(self) -> None:
         dialog = ManualEntryDialog(self._service, self)
@@ -1309,6 +1326,7 @@ class MainWindow(QMainWindow):
                 self._categories_tab = None
                 self._rules_tab = None
                 self._transfers_tab = None
+                self._recurring_tab = None
             self._content.removeWidget(self._live)
             self._live.deleteLater()
             self._live = None

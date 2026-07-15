@@ -41,6 +41,7 @@ _ICON_HUES = {
     "categories": 38,  # amber
     "rules": 290,  # purple
     "transfers": 190,  # cyan
+    "recurring": 330,  # magenta
     "lock": 25,  # warm ochre
 }
 
