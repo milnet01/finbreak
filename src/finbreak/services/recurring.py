@@ -15,11 +15,20 @@ from collections import defaultdict
 from datetime import date, timedelta
 from decimal import ROUND_HALF_EVEN, Decimal
 from statistics import median_low
-from typing import NamedTuple
 
-from finbreak.models import Cadence, Direction, RecurringItem
-from finbreak.services.transactions import to_display_decimal
+from sqlcipher3 import dbapi2
+
+from finbreak.models import Cadence, Direction, RecurringItem, RecurringSummary
+from finbreak.repositories.recurring import RecurringRepository, _RecurRow
+from finbreak.services.transactions import read_minor_unit_exponent, to_display_decimal
+from finbreak.services.transfer_detection import TransferDetectionService
 from finbreak.text import merchant_name, normalise_text
+from finbreak.vault import Vault
+
+# Stored recurring_decisions statuses (INV-8). The repository takes/returns these
+# as plain strings; the service is their one producer.
+_CONFIRMED = "confirmed"
+_DISMISSED = "dismissed"
 
 _MIN_OCCURRENCES = 3
 # ±10% band as an integer cross-multiply: 100·maxdev ≤ 10·med (no float).
@@ -49,15 +58,6 @@ _MONTHLY_FACTOR: dict[Cadence, Decimal] = {
     Cadence.MONTHLY: Decimal(1),
     Cadence.YEARLY: Decimal(1) / Decimal(12),
 }
-
-
-class _RecurRow(NamedTuple):
-    """The lean per-transaction input the detector consumes (FIBR-0142 D2)."""
-
-    id: int
-    occurred_on: str
-    amount_minor: int
-    description: str
 
 
 def nominal_interval_days(cadence: Cadence) -> int:
@@ -179,3 +179,95 @@ def detect_recurring(
         key=lambda it: (-it.monthly_equivalent, it.merchant_key, it.direction.value)
     )
     return items
+
+
+class RecurringService:
+    """The suggest-then-confirm recurring engine (FIBR-0142).
+
+    Wraps the pure ``detect_recurring`` with the vault's minor-unit exponent and the
+    confirmed-transfer exclusion set (INV-3), then partitions its already-sorted
+    (D10) output by the stored ``recurring_decisions``: **suggested** = detected &
+    undecided, **confirmed** = detected & confirmed, **dismissed** = hidden from both
+    (INV-8/D9). Decisions key on ``(direction, merchant_key)``, so a confirm/dismiss
+    outlives the specific transactions that formed the group (INV-9). Never touches a
+    ``transactions`` row.
+    """
+
+    def __init__(self, vault: Vault) -> None:
+        self._vault = vault
+
+    @property
+    def _conn(self) -> dbapi2.Connection:
+        return self._vault.connection
+
+    def _recurring(self) -> RecurringRepository:
+        return RecurringRepository(self._conn)
+
+    # -- reads (each partitions ONE detection pass) ---------------------------
+    def snapshot(
+        self, today: date
+    ) -> tuple[list[RecurringItem], list[RecurringItem], RecurringSummary]:
+        """One detection pass → ``(suggested, confirmed, summary)`` (D9 perf) — the
+        widget's refresh path. ``candidates``/``confirmed``/``summary`` are thin
+        single-value wrappers over this."""
+        repo = self._recurring()
+        exponent = read_minor_unit_exponent(self._conn)
+        excluded = frozenset(
+            TransferDetectionService(self._vault).confirmed_transfer_txn_ids()
+        )
+        detected = detect_recurring(repo.recurring_rows(), today, exponent, excluded)
+        decisions = repo.decisions()
+        suggested: list[RecurringItem] = []
+        confirmed: list[RecurringItem] = []
+        for item in detected:  # detector order preserved within each partition
+            status = decisions.get((item.direction.value, item.merchant_key))
+            if status is None:
+                suggested.append(item)
+            elif status == _CONFIRMED:
+                confirmed.append(item)
+            # _DISMISSED → shown in neither list
+        return suggested, confirmed, self._summarise(confirmed, exponent)
+
+    def candidates(self, today: date) -> list[RecurringItem]:
+        """The Suggested list — detected but undecided."""
+        return self.snapshot(today)[0]
+
+    def confirmed(self, today: date) -> list[RecurringItem]:
+        """The Confirmed list — a confirmed decision that still detects today."""
+        return self.snapshot(today)[1]
+
+    def summary(self, today: date) -> RecurringSummary:
+        """The per-month totals over ``confirmed(today)`` (for the FIBR-0143 card)."""
+        return self.snapshot(today)[2]
+
+    # -- decisions (each write is one repository commit) ----------------------
+    def confirm(self, direction: Direction, merchant_key: str) -> None:
+        self._recurring().set_decision(direction.value, merchant_key, _CONFIRMED)
+
+    def dismiss(self, direction: Direction, merchant_key: str) -> None:
+        self._recurring().set_decision(direction.value, merchant_key, _DISMISSED)
+
+    def reset(self, direction: Direction, merchant_key: str) -> None:
+        self._recurring().clear_decision(direction.value, merchant_key)
+
+    # -- helpers --------------------------------------------------------------
+    def _summarise(
+        self, confirmed: list[RecurringItem], exponent: int
+    ) -> RecurringSummary:
+        """Sum the confirmed items' already-quantized ``monthly_equivalent``s by
+        direction (INV-1: the rows a user sees add up to the shown total); ``net =
+        in − out``. The empty sum is a zero at the currency's scale."""
+        zero = Decimal(0).scaleb(-exponent)
+        monthly_in = sum(
+            (it.monthly_equivalent for it in confirmed if it.direction is Direction.IN),
+            zero,
+        )
+        monthly_out = sum(
+            (
+                it.monthly_equivalent
+                for it in confirmed
+                if it.direction is Direction.OUT
+            ),
+            zero,
+        )
+        return RecurringSummary(monthly_in, monthly_out, monthly_in - monthly_out)

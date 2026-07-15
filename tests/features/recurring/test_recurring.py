@@ -7,22 +7,30 @@ slices. Every on-disk vault uses `tmp_path`; no test touches the network or real
 financial data (testing.md § 6).
 """
 
+from collections.abc import Iterator
 from datetime import date
 from decimal import Decimal
 
 import pytest
 
-from conftest import build_v8_vault, keyed_connection, raising_conn
+from conftest import _PW, build_v8_vault, keyed_connection, raising_conn
 from finbreak.crypto import SALT_LEN
 from finbreak.migrations import LATEST_SCHEMA_VERSION, run_migrations
-from finbreak.models import Cadence, Direction
+from finbreak.models import Cadence, Direction, RecurringSummary
+from finbreak.repositories.accounts import AccountRepository
+from finbreak.repositories.recurring import RecurringRepository
+from finbreak.repositories.transactions import TransactionRepository
+from finbreak.services.accounts import AccountService
+from finbreak.services.auth import AuthService
 from finbreak.services.recurring import (
+    RecurringService,
     _add_cadence,
     _monthly_equivalent,
     _RecurRow,
     detect_recurring,
     nominal_interval_days,
 )
+from finbreak.services.transfer_detection import TransferDetectionService
 
 pytestmark = pytest.mark.features
 
@@ -278,3 +286,183 @@ def test_INV10_migration_is_atomic(paths) -> None:
     assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 8
     assert not _has_recurring_decisions(conn)
     conn.close()
+
+
+# --------------------------------------------------------------------------- #
+# RecurringService + RecurringRepository — a real (tmp_path) v9 vault. first_run
+# migrates straight to v9; helpers seed raw transactions the detector reads.
+# --------------------------------------------------------------------------- #
+@pytest.fixture
+def vault_service(paths) -> Iterator[AuthService]:
+    svc = AuthService(*paths)
+    svc.first_run(bytearray(_PW), "ZAR")  # migrates straight to v9
+    yield svc
+    svc.lock()
+
+
+def _default_account(svc: AuthService) -> int:
+    return AccountRepository(svc.vault.connection).list_all()[0].id
+
+
+def _add_txn(
+    svc: AuthService, account_id: int, occurred_on: str, amount_minor: int, desc: str
+) -> int:
+    return TransactionRepository(svc.vault.connection).add(
+        account_id, occurred_on, amount_minor, desc
+    )
+
+
+_MONTHLY_DAYS = ("2026-01-05", "2026-02-05", "2026-03-05", "2026-04-05", "2026-05-05")
+_ACTIVE = date(2026, 5, 20)  # within grace of a series ending 2026-05-05
+
+
+def _seed_monthly(
+    svc: AuthService, account_id: int, amount_minor: int, desc: str
+) -> list[int]:
+    return [_add_txn(svc, account_id, d, amount_minor, desc) for d in _MONTHLY_DAYS]
+
+
+# INV-9 — snapshot() partitions into (suggested, confirmed, summary) in one pass,
+# and equals the three thin accessors called separately.
+def test_INV9_snapshot_partitions_and_matches_accessors(vault_service) -> None:
+    svc = vault_service
+    _seed_monthly(svc, _default_account(svc), -19900, "Netflix")
+    rec = RecurringService(svc.vault)
+    suggested, confirmed, summary = rec.snapshot(_ACTIVE)
+    assert [it.merchant_key for it in suggested] == ["netflix"]
+    assert confirmed == []
+    assert summary == RecurringSummary(Decimal("0"), Decimal("0"), Decimal("0"))
+    assert rec.candidates(_ACTIVE) == suggested
+    assert rec.confirmed(_ACTIVE) == confirmed
+    assert rec.summary(_ACTIVE) == summary
+
+
+# INV-9 (D9 perf) — snapshot runs detection exactly once.
+def test_INV9_snapshot_runs_detection_once(vault_service, monkeypatch) -> None:
+    import finbreak.services.recurring as rec_mod
+
+    svc = vault_service
+    _seed_monthly(svc, _default_account(svc), -19900, "Netflix")
+    calls = {"n": 0}
+    real = rec_mod.detect_recurring
+
+    def counting(*args, **kwargs):
+        calls["n"] += 1
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(rec_mod, "detect_recurring", counting)
+    rec_mod.RecurringService(svc.vault).snapshot(_ACTIVE)
+    assert calls["n"] == 1
+
+
+# INV-8 — confirm moves an item from suggested to confirmed; summary sums it.
+def test_INV8_confirm_moves_to_confirmed(vault_service) -> None:
+    svc = vault_service
+    _seed_monthly(svc, _default_account(svc), -19900, "Netflix")
+    rec = RecurringService(svc.vault)
+    rec.confirm(Direction.OUT, "netflix")
+    suggested, confirmed, summary = rec.snapshot(_ACTIVE)
+    assert suggested == []
+    assert [it.merchant_key for it in confirmed] == ["netflix"]
+    assert summary.monthly_out == Decimal("199.00")
+    assert summary.monthly_in == Decimal("0")
+    assert summary.net == Decimal("-199.00")
+
+
+# INV-8 — a dismissed key appears in neither list.
+def test_INV8_dismiss_hides_from_both(vault_service) -> None:
+    svc = vault_service
+    _seed_monthly(svc, _default_account(svc), -19900, "Netflix")
+    rec = RecurringService(svc.vault)
+    rec.dismiss(Direction.OUT, "netflix")
+    suggested, confirmed, _ = rec.snapshot(_ACTIVE)
+    assert suggested == []
+    assert confirmed == []
+
+
+# INV-8 — reset clears the decision, returning the item to suggested.
+def test_INV8_reset_returns_to_suggested(vault_service) -> None:
+    svc = vault_service
+    _seed_monthly(svc, _default_account(svc), -19900, "Netflix")
+    rec = RecurringService(svc.vault)
+    rec.confirm(Direction.OUT, "netflix")
+    rec.reset(Direction.OUT, "netflix")
+    suggested, confirmed, _ = rec.snapshot(_ACTIVE)
+    assert [it.merchant_key for it in suggested] == ["netflix"]
+    assert confirmed == []
+
+
+# INV-8 — decisions upsert on (direction, merchant_key): confirm then dismiss the
+# same key leaves ONE row, dismissed winning.
+def test_INV8_decision_upserts_by_key(vault_service) -> None:
+    svc = vault_service
+    _seed_monthly(svc, _default_account(svc), -19900, "Netflix")
+    rec = RecurringService(svc.vault)
+    rec.confirm(Direction.OUT, "netflix")
+    rec.dismiss(Direction.OUT, "netflix")
+    assert RecurringRepository(svc.vault.connection).decisions() == {
+        ("out", "netflix"): "dismissed"
+    }
+
+
+# INV-9 — a confirmed decision survives a detection gap: it vanishes when the item
+# stops detecting (stale) and returns when it detects again.
+def test_INV9_confirmed_decision_survives_detection_gap(vault_service) -> None:
+    svc = vault_service
+    _seed_monthly(svc, _default_account(svc), -19900, "Netflix")
+    rec = RecurringService(svc.vault)
+    rec.confirm(Direction.OUT, "netflix")
+    # Far future — the monthly series is now stale, so nothing detects.
+    assert rec.confirmed(date(2027, 1, 1)) == []
+    # Back in the active window — the confirmed item reappears (decision survived).
+    assert [it.merchant_key for it in rec.confirmed(_ACTIVE)] == ["netflix"]
+
+
+# INV-3 — the service excludes confirmed-transfer txn ids: excluding one member of
+# a 3-member series drops it below the minimum, so it stops detecting.
+def test_INV3_confirmed_transfer_txn_excluded(vault_service) -> None:
+    svc = vault_service
+    a = _default_account(svc)
+    b = AccountService(svc.vault).add_account("Savings", "savings").id
+    debit = _add_txn(svc, a, "2026-01-05", -19900, "Netflix")
+    _add_txn(svc, a, "2026-02-05", -19900, "Netflix")
+    _add_txn(svc, a, "2026-03-05", -19900, "Netflix")
+    rec = RecurringService(svc.vault)
+    today = date(2026, 3, 20)
+    assert [it.merchant_key for it in rec.candidates(today)] == ["netflix"]
+    # A matching credit on B, confirmed as a transfer → `debit` is now excluded.
+    credit = _add_txn(svc, b, "2026-01-05", 19900, "from current")
+    TransferDetectionService(svc.vault).confirm(debit, credit)
+    assert rec.candidates(today) == []  # only 2 members remain un-excluded
+
+
+# INV-13 — one merchant's charges across TWO accounts group into a single item
+# (the detection read has no account or window filter).
+def test_INV13_merchant_groups_across_accounts(vault_service) -> None:
+    svc = vault_service
+    a = _default_account(svc)
+    b = AccountService(svc.vault).add_account("Savings", "savings").id
+    _add_txn(svc, a, "2026-01-05", -19900, "Netflix")
+    _add_txn(svc, b, "2026-02-05", -19900, "Netflix")
+    _add_txn(svc, a, "2026-03-05", -19900, "Netflix")
+    items = RecurringService(svc.vault).candidates(date(2026, 3, 20))
+    assert len(items) == 1
+    assert items[0].occurrences == 3
+
+
+# D8 summary — confirmed weekly (52/12) + monthly items sum their per-month
+# equivalents into monthly_in / monthly_out; net = in − out.
+def test_summary_sums_confirmed_monthly_equivalents(vault_service) -> None:
+    svc = vault_service
+    acct = _default_account(svc)
+    _seed_monthly(svc, acct, -19900, "Netflix")  # OUT R199/mo
+    for d in ("2026-05-01", "2026-05-08", "2026-05-15", "2026-05-22"):
+        _add_txn(svc, acct, d, 5000, "Gig Pay")  # weekly IN R50 → R216.67/mo
+    rec = RecurringService(svc.vault)
+    today = date(2026, 5, 25)
+    rec.confirm(Direction.OUT, "netflix")
+    rec.confirm(Direction.IN, "gig pay")
+    summary = rec.summary(today)
+    assert summary.monthly_out == Decimal("199.00")
+    assert summary.monthly_in == Decimal("216.67")
+    assert summary.net == Decimal("17.67")
