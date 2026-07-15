@@ -717,6 +717,7 @@ because retrofitting them is a data migration.
   at spec time. Target phase: P04 (lands with the unlock flow).
   Dependencies: FIBR-0004. Lanes: security, ux. Kind: security.
   Source: user-request-2026-07-01.
+  Duplicate of FIBR-0095 (2026-07-15): both describe failed-unlock exponential backoff on the master-password unlock screen. FIBR-0095 is the newer, verified record (confirmed 2026-07-11 that services/auth.py applies no backoff) and is the tracking item for the implementation. This bullet stays as the original provenance record — flip it ✅ alongside FIBR-0095 when the throttling ships.
 
 - 📋 [FIBR-0032] **Clipboard auto-clear for copied sensitive values.**
   When the user copies a sensitive value (account number, amount, a stored
@@ -737,12 +738,13 @@ because retrofitting them is a data migration.
   Source: user-request-2026-07-01.
   Dependency re-points: FIBR-0018 (the backup mechanism) is merged into and implemented by FIBR-0014, so this restore-verification builds on FIBR-0014's .fbk export/restore (docs/specs/FIBR-0014.md), not a separate FIBR-0018 deliverable.
 
-- 📋 [FIBR-0041] **Back-fill the CSV import path with the INV-5b resource-size cap.**
+- ✅ [FIBR-0041] **Back-fill the CSV import path with the INV-5b resource-size cap.**
   security-model.md INV-5b binds an import resource budget (max file size / row count / parse time) to the import specs — naming FIBR-0007 (CSV) and FIBR-0008 (OFX) by id. FIBR-0008 pins the cap for the OFX path (D13: read_file_bytes stat-checks against _MAX_OFX_BYTES before read; a transaction-count cap). But FIBR-0007's CSV path (ImportService.read_file -> str) shipped WITHOUT a size cap, so security-model INV-5b's FIBR-0007 claim is currently unmet. Back-fill: apply the same size stat-check to read_file (or a shared bounded reader), pick a _MAX_CSV_BYTES constant, add a test (monkeypatch the cap down). Surfaced by the FIBR-0008 /cold-eyes (lane C, 2026-07-03).
   **Layman:** Add the same "reject a suspiciously huge file" safety limit to the CSV import that OFX import gets, so no oversized statement file can hog memory.
   Kind: security.
   Lanes: importers, services, tests.
   Source: cold-eyes-2026-07-03 FIBR-0008 lane-C.
+  Resolved (2026-07-15): already shipped — verified stale bullet. ImportService.read_file (services/import_.py) routes through the shared _read_capped helper, refusing a file over _MAX_IMPORT_BYTES (16 MiB) BEFORE loading it, so security-model INV-5b's FIBR-0007 (CSV) claim is now met. Hardened beyond the original ask during a later indie-review (H-F/H-G): reads cap+1 bytes rather than trusting stat().st_size, so an endless-symlink (/dev/zero) or a file that grows post-stat can't slip an unbounded read past the cap. Tests: test_read_file_refuses_oversized_csv (monkeypatches the cap to 100) + test_read_capped_bounds_read_against_endless_symlink, both in tests/features/import_/test_import.py. No code change this session — flip only.
 
 - 📋 [FIBR-0095] **Unlock throttling — backoff after repeated failed master-password attempts.**
   Verified 2026-07-11: services/auth.py applies NO delay/backoff on a failed unlock. Add an increasing backoff (and/or a short lockout window) after consecutive failed unlock attempts — defence-in-depth against offline brute-force on a stolen vault, atop Argon2id's already-slow KDF (security-model INV-2). Track the attempt count / last-fail time in the plaintext window.ini (pre-unlock, non-sensitive) or in-memory per session; UX = a friendly 'try again in N seconds'. Deps: FIBR-0004 (unlock path).
@@ -782,6 +784,7 @@ because retrofitting them is a data migration.
   charges (same payee / amount cadence) so subscriptions surface. Target
   phase: P10. Dependencies: FIBR-0006 (category tree), FIBR-0010 (rules).
   Lanes: reporting, ux. Kind: feature. Source: user-request-2026-07-01.
+  Split 2026-07-15: the recurring/subscription-detection half is now FIBR-0142 (active, being built first per user pick). This bullet stays as the budgets tracking item (per-category monthly limits + over-budget dashboard signalling) — the follow-up after FIBR-0142 ships.
 
 - 📋 [FIBR-0023] **Theming: separate theme sets for normal and
   colourblind vision + picker.** Ship **two families** of themes — a set
@@ -1292,6 +1295,19 @@ because retrofitting them is a data migration.
   **Layman:** Once you've categorised a shop by hand a few times, finbreak remembers and auto-applies that to future transactions from the same shop — without you writing a rule.
   Kind: enhancement.
   Source: user-request-2026-07-14.
+
+- 🚧 [FIBR-0142] **Recurring money detection (subscriptions + standing income).**
+  Split from FIBR-0022 (the recurring half; budgets stay on FIBR-0022 as the follow-up). Auto-detect repeating money movements — recurring OUT (subscriptions, debit orders, insurance) and recurring IN (salary, standing deposits) — surface for confirm/dismiss. User-chosen scope (2026-07-15 brainstorm): both directions; "Balanced" sensitivity (seen 3+ times, amount within ~10% of the group median, gaps consistently in one cadence bucket — weekly/fortnightly/monthly/yearly with slack). Pure deterministic detect_recurring(rows, today) grouping on normalise_text(merchant_name(description)) x direction (reuses FIBR-0138 cleanup); excludes confirmed transfers; integer amount_minor throughout (INV-13). Persistence: new schema v9 recurring_decisions table keyed on (direction, merchant_key) — not txn ids — mirroring transfer_pairs. RecurringService shaped like TransferDetectionService (candidates/confirmed/confirm/dismiss/reset/summary). SURFACES: dedicated Recurring tab (Suggested/Confirmed tables mirroring Transfers) built now; the read-only Home dashboard card is DEFERRED until the dashboard-focus rework so it isn't added to a layout being decluttered. Deps: FIBR-0138 (merchant_name), FIBR-0011 (transfer exclusion), FIBR-0012 (dashboard).
+  **Layman:** finbreak spots your regular payments and deposits — subscriptions, debit orders, salary — so you can see what's on autopilot and what it costs you each month.
+  Kind: feature.
+  Source: user-request-2026-07-01 (FIBR-0022 split) + brainstorm-2026-07-15.
+
+- 📋 [FIBR-0143] **Rework the Home dashboard so the income/expenditure/transfers breakdown is the hero, charts secondary.**
+  User feedback 2026-07-15 (with a screenshot): the current Home leads visually with the donut and the income-vs-spending BAR graph, while the FIBR-0138 drill-down breakdown (Income / Spending / Transfers -> category -> merchant -> txn) sits at the very bottom. The user's intended hero of the dashboard is that BREAKDOWN, not the graphs -- valuable information but the BIG feature is the breakdown. Especially de-emphasise the bar graph. Invert the layout: promote the expandable breakdown to the primary surface; keep the charts as smaller/secondary supporting detail. BLOCKED pending the user's own HTML mockup of the envisioned layout (they said they'll make one) -- do NOT redesign the layout before that lands. When it does: brainstorm-confirm against the mockup -> spec -> cold-eyes -> TDD. The deferred FIBR-0142 recurring Home-card slots into this reworked layout. Deps: FIBR-0012 (dashboard), FIBR-0138 (drill-down breakdown).
+  **Layman:** Redesign the main screen so the plain-language breakdown of where your money went (and came from) is the star, with the pie and bar charts moved to a supporting role.
+  Kind: ux.
+  Evidence: /home/ants/Pictures/ClaudePaste/paste_20260715_085635_284_5e11f9ac.png
+  Source: user-feedback-2026-07-15 (dashboard focus).
 
 ### ⚡ Performance
 
