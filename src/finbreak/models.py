@@ -8,6 +8,7 @@ type). ``Transaction`` is one row of the ``transactions`` table.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
 from decimal import Decimal
 from enum import StrEnum
 
@@ -365,3 +366,53 @@ class DrillLabels:
     spending: str
     transfers: str
     uncategorised: str
+
+
+class Direction(StrEnum):
+    """Money direction of a recurring group (FIBR-0142 D12). The ``.value`` is the
+    stored, non-translated ASCII token; display labels are a separate UI concern."""
+
+    IN = "in"
+    OUT = "out"
+
+
+class Cadence(StrEnum):
+    """The closed set of detected recurrence cadences (FIBR-0142 D6/D12). The
+    ``.value`` is a stable ASCII token, never the translated display text."""
+
+    WEEKLY = "weekly"
+    FORTNIGHTLY = "fortnightly"
+    MONTHLY = "monthly"
+    YEARLY = "yearly"
+
+
+@dataclass
+class RecurringItem:
+    """One detected recurring arrangement (FIBR-0142). Field order pinned so the
+    widget + tests can't diverge. ``amount`` is the representative (``median_low``)
+    magnitude as a display ``Decimal``; ``monthly_equivalent`` is it normalised to
+    per-month by cadence (D8). ``merchant`` is the earliest member's cleaned name;
+    ``merchant_key`` the ``normalise_text(merchant_name(...))`` group key."""
+
+    merchant: str
+    merchant_key: str
+    direction: Direction
+    cadence: Cadence
+    amount: Decimal
+    monthly_equivalent: Decimal
+    occurrences: int
+    first_seen: date
+    last_seen: date
+    next_expected: date
+    txn_ids: tuple[int, ...]
+
+
+@dataclass
+class RecurringSummary:
+    """Monthly-equivalent recurring totals for the (deferred FIBR-0143) dashboard
+    card: the sum of confirmed items' ``monthly_equivalent`` per direction, plus
+    ``net = monthly_in - monthly_out`` (FIBR-0142 D8). Field order pinned."""
+
+    monthly_in: Decimal
+    monthly_out: Decimal
+    net: Decimal
