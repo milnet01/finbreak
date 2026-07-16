@@ -127,7 +127,7 @@ def test_breakdown_donut_does_not_touch_the_spending_donut(qapp):
 from datetime import timedelta  # noqa: E402
 
 from conftest import _PW  # noqa: E402
-from finbreak.models import DrillLabels  # noqa: E402
+from finbreak.models import Direction, DrillLabels  # noqa: E402
 from finbreak.repositories.accounts import AccountRepository  # noqa: E402
 from finbreak.repositories.categories import CategoryRepository  # noqa: E402
 from finbreak.repositories.transactions import TransactionRepository  # noqa: E402
@@ -203,7 +203,10 @@ def _confirm_recurring(service, account_id, amount_minor, desc):
             desc,
         )
     rec = RecurringService(service.vault)
-    item = next(c for c in rec.candidates(today) if c.merchant_key == "netflix" or True)
+    # Confirm the candidate whose direction matches the seeded sign (so the net-zero
+    # test can confirm an OUT then an IN of the same merchant without ambiguity).
+    want = Direction.OUT if amount_minor < 0 else Direction.IN
+    item = next(c for c in rec.candidates(today) if c.direction is want)
     rec.confirm(item.direction, item.merchant_key)
     return rec
 
@@ -429,19 +432,26 @@ def test_INV5_recurring_card_shows_figures_when_net_zero(qtbot, service):
     confirmed OUT (net == 0, both directionals > 0) shows figures, not the hint."""
     from PySide6.QtWidgets import QLabel
 
+    from finbreak.services.auth import AmountPrefs
+
     a, _b = _two_accounts(service)
     _confirm_recurring(service, a, -19900, "Netflix REF")  # OUT 199/mo
     _confirm_recurring(
         service, a, 19900, "Netflix REF"
     )  # IN 199/mo (same key, other dir)
     service.set_report_prefs(_JAN)
-    home = _home(service)
+    home = _home(service, amount_prefs=AmountPrefs("minus", True))  # colour on
     qtbot.addWidget(home)
     summary = RecurringService(service.vault).summary(date.today())
     assert summary.monthly_in > 0 and summary.monthly_out > 0 and summary.net == 0
-    assert (
-        home.findChild(QLabel, "dashboard_recurring_in") is not None
-    )  # figures, not hint
+    in_label = home.findChild(QLabel, "dashboard_recurring_in")
+    out_label = home.findChild(QLabel, "dashboard_recurring_out")
+    assert in_label is not None  # figures, not hint
+    # Force-by-role falsifier: here monthly_in AND monthly_out are both positive
+    # (+199), so a sign-derived colour would paint both green — the role rule paints
+    # In green and Out red regardless of the (positive) magnitude sign.
+    assert _POSITIVE_TEXT.name() in in_label.styleSheet()
+    assert _NEGATIVE_TEXT.name() in out_label.styleSheet()
 
 
 def test_INV3_recurring_card_unscoped_by_period(qtbot, service):
@@ -459,6 +469,32 @@ def test_INV3_recurring_card_unscoped_by_period(qtbot, service):
     selector.setCurrentIndex(selector.findData(MODE_SPECIFIC_YEAR))  # change scope
     after = home.findChild(QLabel, "dashboard_recurring_out").text()
     assert before == after  # unscoped — the card ignores the selectors
+
+
+def test_INV3_recurring_card_reflects_a_confirm_on_next_refresh(qtbot, service):
+    """The other half of INV-3: the card is rebuilt each refresh, so a Recurring-tab
+    confirm shows on the next refresh() (falsifies a card cached at construction)."""
+    from PySide6.QtWidgets import QLabel
+
+    a, _b = _two_accounts(service)
+    _add(service, a, 300000, "2026-01-03", "SALARY")
+    # Seed the occurrences but DON'T confirm — the card starts in hint mode.
+    today = date.today()
+    for k in range(4):
+        when = (today - timedelta(days=30 * k)).isoformat()
+        _add(service, a, -19900, when, "Netflix REF")
+    service.set_report_prefs(_JAN)
+    home = _home(service)
+    qtbot.addWidget(home)
+    assert home.findChild(QLabel, "dashboard_recurring_out") is None  # hint mode
+
+    # Confirm on the (separate) Recurring service, then refresh Home.
+    rec = RecurringService(service.vault)
+    item = next(c for c in rec.candidates(today) if c.direction is Direction.OUT)
+    rec.confirm(item.direction, item.merchant_key)
+    home.refresh()
+    out_label = home.findChild(QLabel, "dashboard_recurring_out")
+    assert out_label is not None and "199" in out_label.text()  # now figures
 
 
 # --- INV-9: read-only trees + getting-started -------------------------------- #
