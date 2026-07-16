@@ -21,6 +21,8 @@ signaling per
 
 ## [Unreleased]
 
+## [0.1.14] - 2026-07-16
+
 ### Changed
 
 - **Reworked the Home dashboard so the breakdown is the primary surface (FIBR-0143)**
