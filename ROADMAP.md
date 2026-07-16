@@ -1333,6 +1333,7 @@ because retrofitting them is a data migration.
   Kind: fix.
   Source: external-tester-2026-07-16.
   Progress (2026-07-16): started. Approach confirmed with user — auto-detect the statement's date format from the extracted date column, pre-select a plain-English format in a friendly picker (replacing the raw %-code box) with a live sample-date preview so a wrong guess is caught before import (never a silent wrong-day); fall back to the picker when genuinely ambiguous. Plus a friendly per-row date error and a whole-import \"date format didn't match\" banner. Spec → /cold-eyes (7-loop) → TDD next; reproducible via a synthetic day-first (DD/MM/YYYY, month-rollover) fixture without the tester's sample.
+  Progress (2026-07-16, EOD): spec docs/specs/FIBR-0146.md written + run through /cold-eyes to the full project cap (7 loops × 3 cold lanes = 21 reviews). Core converged — accuracy lane clean loops 5–7, no remaining silent-wrong-day path loops 5–7; every CRITICAL/HIGH/MEDIUM/LOW fixed in-loop (notably: removed a plausible-year guard built on a false strptime claim, added dotted %m.%d.%Y to close a silent day-first read, and rejected the empty-format strptime(\"\",\"\")→1900-01-01 phantom-date trap at _validate_mapping). Spec Status = CLEARED FOR CODE. Paused for the night; NEXT = TDD (tests/features/import_date_detect/) per the spec's Deliverables + Test plan. 8 commits on main, all pushed.
 
 ### ⚡ Performance
 
