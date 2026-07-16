@@ -60,12 +60,14 @@ def _set_cat(service, txn_id, cat_id):
 
 
 def _home(service):
+    from finbreak.services.recurring import RecurringService
     from finbreak.ui.home import HomeView
 
     return HomeView(
         ReportingService(service.vault),
         AccountService(service.vault),
         service,
+        recurring=RecurringService(service.vault),
     )
 
 
@@ -134,11 +136,13 @@ def test_INV7_with_data_shows_dashboard_and_no_table(qtbot, service):
 
     assert home.findChild(QComboBox, "period_selector") is not None
     assert home.findChild(QComboBox, "account_selector") is not None
-    assert home.findChild(QChartView, "dashboard_category_chart") is not None
+    assert home.findChild(QChartView, "dashboard_pie_expenditure") is not None
     assert home.findChild(QChartView, "dashboard_trend_chart") is not None
 
 
 def test_INV7_tiles_show_income_expenditure_net(qtbot, service):
+    """FIBR-0143: the income/expenditure figures moved into the column-header totals
+    and the Net figure into the slim Net strip."""
     from PySide6.QtWidgets import QLabel
 
     a = _first_account(service)
@@ -147,8 +151,8 @@ def test_INV7_tiles_show_income_expenditure_net(qtbot, service):
     service.set_report_prefs(_JAN)
     home = _home(service)
     qtbot.addWidget(home)
-    income = home.findChild(QLabel, "dashboard_income")
-    expenditure = home.findChild(QLabel, "dashboard_expenditure")
+    income = home.findChild(QLabel, "dashboard_total_income")
+    expenditure = home.findChild(QLabel, "dashboard_total_expenditure")
     net = home.findChild(QLabel, "dashboard_net")
     assert "3" in income.text() and "000" in income.text()
     assert "500" in expenditure.text()
@@ -156,6 +160,7 @@ def test_INV7_tiles_show_income_expenditure_net(qtbot, service):
 
 
 def test_INV7_donut_has_a_slice_per_category(qtbot, service):
+    """FIBR-0143: the spending pie is now the Expenditure column's pie."""
     from PySide6.QtCharts import QChartView
 
     a = _first_account(service)
@@ -166,7 +171,7 @@ def test_INV7_donut_has_a_slice_per_category(qtbot, service):
     service.set_report_prefs(_JAN)
     home = _home(service)
     qtbot.addWidget(home)
-    view = home.findChild(QChartView, "dashboard_category_chart")
+    view = home.findChild(QChartView, "dashboard_pie_expenditure")
     assert view.isVisible() or not view.isHidden()
     slices = view.chart().series()[0].slices()
     labels = {s.label() for s in slices}
@@ -174,6 +179,7 @@ def test_INV7_donut_has_a_slice_per_category(qtbot, service):
 
 
 def test_INV7_empty_donut_hides_chart_shows_placeholder(qtbot, service):
+    """FIBR-0143: the empty-state toggle now lives on each column's pie."""
     from PySide6.QtCharts import QChartView
     from PySide6.QtWidgets import QLabel
 
@@ -184,8 +190,8 @@ def test_INV7_empty_donut_hides_chart_shows_placeholder(qtbot, service):
     qtbot.addWidget(home)
     home.show()  # visibility is only meaningful once shown
     qtbot.waitExposed(home)
-    view = home.findChild(QChartView, "dashboard_category_chart")
-    placeholder = home.findChild(QLabel, "dashboard_category_empty")
+    view = home.findChild(QChartView, "dashboard_pie_expenditure")
+    placeholder = home.findChild(QLabel, "dashboard_pie_empty_expenditure")
     assert not view.isVisible()
     assert placeholder.isVisible()
 

@@ -43,11 +43,13 @@ Covers:
   `[Income, Spending, Transfers]`.
 - **D8 — empty states.** An income-only period → a zero Spending node (`count == 0`,
   no children) + a zero Transfers node; the three tops are always present.
-- **INV-9 — UI wiring (qtbot).** `refresh()` populates `dashboard_drilldown` with three
-  tops labelled the passed-in `DrillLabels` and a `None`-node labelled the passed
-  `uncategorised` (proving the service emits no untranslated string); a merchant node
-  with `count > 1` shows `×N` while a category node stays bare; the tree is read-only;
-  the getting-started page still wins on a zero-transaction vault.
+- **INV-9 — UI wiring (qtbot).** `refresh()` populates the drill-down surfaces with the
+  three branch labels and a `None`-node labelled the passed `uncategorised` (proving the
+  service emits no untranslated string); a merchant node with `count > 1` shows `×N`
+  while a category node stays bare; the tree is read-only; the getting-started page still
+  wins on a zero-transaction vault. (FIBR-0143 split the single `dashboard_drilldown` into
+  three per-column trees `dashboard_breakdown_{expenditure,income,transfers}` under the
+  three column headings `dashboard_heading_*`; the tests assert those surfaces.)
 - **Ripple.** The `QScrollArea` wrap is transparent to `findChild` (tiles + both charts
   + the tree all still resolve); `DrillNode` / `DrillLabels` import cleanly.
 

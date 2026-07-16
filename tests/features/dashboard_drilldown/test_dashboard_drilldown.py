@@ -25,6 +25,7 @@ from finbreak.services.accounts import AccountService
 from finbreak.services.auth import AuthService
 from finbreak.services.categories import CategoryService
 from finbreak.services.categorization import CategorizationService
+from finbreak.services.recurring import RecurringService
 from finbreak.services.reporting import (
     MODE_SPECIFIC_MONTH,
     ReportingService,
@@ -562,12 +563,18 @@ def _home(service):
     from finbreak.ui.home import HomeView
 
     return HomeView(
-        ReportingService(service.vault), AccountService(service.vault), service
+        ReportingService(service.vault),
+        AccountService(service.vault),
+        service,
+        recurring=RecurringService(service.vault),
     )
 
 
 def test_INV9_refresh_populates_tree_with_three_translated_tops(qtbot, service):
-    from PySide6.QtWidgets import QTreeWidget
+    """FIBR-0143: the three tops are now the three column HEADINGS; each column's
+    tree shows that branch's children. The Expenditure column heading is the app's
+    tr("Spending") word and its tree carries the None-bucket's tr("Uncategorised")."""
+    from PySide6.QtWidgets import QLabel, QTreeWidget
 
     a, _b = _two_accounts(service)
     leaf = _expenditure_leaf(service, "Ztest Groceries")
@@ -577,15 +584,16 @@ def test_INV9_refresh_populates_tree_with_three_translated_tops(qtbot, service):
     home = _home(service)
     qtbot.addWidget(home)
 
-    tree = home.findChild(QTreeWidget, "dashboard_drilldown")
-    assert tree is not None
-    tops = [tree.topLevelItem(i).text(0) for i in range(tree.topLevelItemCount())]
-    assert tops == ["Income", "Spending", "Transfers"]
-    # The None-category node carries the passed-in tr("Uncategorised") string,
-    # proving the service emitted no untranslated label.
-    spending_item = tree.topLevelItem(1)
+    headings = [
+        home.findChild(QLabel, f"dashboard_heading_{k}").text()
+        for k in ("expenditure", "income", "transfers")
+    ]
+    assert headings == ["Spending", "Income", "Transfers"]
+    # The None-category node carries the passed-in tr("Uncategorised") string in the
+    # Expenditure column's tree, proving the service emitted no untranslated label.
+    exp_tree = home.findChild(QTreeWidget, "dashboard_breakdown_expenditure")
     child_labels = {
-        spending_item.child(i).text(0) for i in range(spending_item.childCount())
+        exp_tree.topLevelItem(i).text(0) for i in range(exp_tree.topLevelItemCount())
     }
     assert "Uncategorised" in child_labels
 
@@ -620,10 +628,8 @@ def test_INV9_single_transaction_merchant_shows_bare_label_no_count(qtbot, servi
     service.set_report_prefs(_JAN)
     home = _home(service)
     qtbot.addWidget(home)
-    tree = home.findChild(QTreeWidget, "dashboard_drilldown")
-    merchant_item = (
-        tree.topLevelItem(1).child(0).child(0)
-    )  # Spending → category → merchant
+    tree = home.findChild(QTreeWidget, "dashboard_breakdown_expenditure")
+    merchant_item = tree.topLevelItem(0).child(0)  # category → merchant (no branch row)
     assert merchant_item.text(0) == "Woolworths"  # bare, no "×1"
 
 
@@ -637,9 +643,8 @@ def test_INV9_merchant_node_shows_count_suffix_category_stays_bare(qtbot, servic
     service.set_report_prefs(_JAN)
     home = _home(service)
     qtbot.addWidget(home)
-    tree = home.findChild(QTreeWidget, "dashboard_drilldown")
-    spending_item = tree.topLevelItem(1)
-    cat_item = spending_item.child(0)
+    tree = home.findChild(QTreeWidget, "dashboard_breakdown_expenditure")
+    cat_item = tree.topLevelItem(0)  # category (no branch top row above it now)
     assert cat_item.text(0) == "Ztest Groceries"  # category: bare label, no ×N
     merchant_item = cat_item.child(0)
     assert "×2" in merchant_item.text(0)  # merchant with count>1: the ×N suffix
@@ -654,8 +659,8 @@ def test_INV9_tree_is_read_only(qtbot, service):
     service.set_report_prefs(_JAN)
     home = _home(service)
     qtbot.addWidget(home)
-    tree = home.findChild(QTreeWidget, "dashboard_drilldown")
-    item = tree.topLevelItem(1)  # Spending
+    tree = home.findChild(QTreeWidget, "dashboard_breakdown_expenditure")
+    item = tree.topLevelItem(0)  # the uncategorised SHOP row's category node
     assert not (item.flags() & Qt.ItemFlag.ItemIsEditable)
 
 
@@ -678,11 +683,11 @@ def test_ripple_scrollarea_wrap_keeps_charts_and_tiles_resolvable(qtbot, service
     home = _home(service)
     qtbot.addWidget(home)
     assert home.current_page().objectName() == "home_page_dashboard"
-    # The tiles + both charts + the new tree all still resolve through the scroll area.
-    assert home.findChild(QLabel, "dashboard_income") is not None
-    assert home.findChild(QChartView, "dashboard_category_chart") is not None
+    # A column header + pie + tree + the retained trend chart resolve through scroll.
+    assert home.findChild(QLabel, "dashboard_total_income") is not None
+    assert home.findChild(QChartView, "dashboard_pie_income") is not None
     assert home.findChild(QChartView, "dashboard_trend_chart") is not None
-    assert home.findChild(QTreeWidget, "dashboard_drilldown") is not None
+    assert home.findChild(QTreeWidget, "dashboard_breakdown_income") is not None
 
 
 def test_ripple_drillnode_and_drilllabels_are_importable():

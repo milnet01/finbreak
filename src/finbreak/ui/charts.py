@@ -130,6 +130,33 @@ def build_donut_chart(
     return _themed_chart(series, theme)
 
 
+def build_breakdown_donut(
+    slices: list[tuple[str, Decimal]],
+    other_label: str,
+    theme: ChartTheme,
+) -> QChart:
+    """A dashboard column's **pie** (a donut, matching ``build_donut_chart``) from
+    generic ``(label, amount)`` slices — a branch node's already-sorted children
+    (FIBR-0143 D3). Its own cap-and-collapse loop, distinct from ``_donut_wedges`` so
+    that builder (and the PDF export it feeds) stays untouched (D10): ≤ ``_MAX_WEDGES``
+    slices are all kept with no Other wedge; a longer list keeps the top
+    ``_MAX_WEDGES - 1`` and sums the tail into one **Other** wedge. Every kept slice
+    takes a ``_DONUT_PALETTE`` colour — there is no reserved Uncategorised neutral (a
+    ``DrillNode`` child has no category id to identify one by; FIBR-0138 INV-4)."""
+    if len(slices) <= _MAX_WEDGES:
+        keep, tail = slices, []
+    else:
+        keep, tail = slices[: _MAX_WEDGES - 1], slices[_MAX_WEDGES - 1 :]
+    series = QPieSeries()
+    series.setHoleSize(0.4)  # a non-zero hole makes it a donut
+    for i, (label, amount) in enumerate(keep):
+        series.append(label, float(amount)).setColor(_DONUT_PALETTE[i])
+    if tail:
+        other_amount = sum((amount for _, amount in tail), Decimal(0))
+        series.append(other_label, float(other_amount)).setColor(_OTHER_COLOUR)
+    return _themed_chart(series, theme)
+
+
 def build_trend_chart(
     trend: list[MonthlyTotal],
     income_label: str,

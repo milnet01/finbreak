@@ -57,6 +57,7 @@ from finbreak.services.auth import (
 from finbreak.services.backup import BackupService
 from finbreak.services.categorization import CategorizationService
 from finbreak.services.pdf_export import PdfExportService, period_filename_slug
+from finbreak.services.recurring import RecurringService
 from finbreak.services.reporting import ReportingService
 from finbreak.services.transactions import TransactionService
 from finbreak.services.update import UpdateInfo, UpdateService
@@ -585,11 +586,14 @@ class MainWindow(QMainWindow):
 
         # Home is now the dashboard (FIBR-0012 D6): reporting aggregates, the account
         # list, and the AuthService (for the persisted report-period prefs).
+        # amount_prefs passes by keyword: FIBR-0143 inserts the required `recurring`
+        # arg before it, so a positional pass would silently bind to `recurring`.
         self._home_tab = HomeView(
             ReportingService(self._service.vault),
             AccountService(self._service.vault),
             self._service,
-            self._amount_prefs,
+            RecurringService(self._service.vault),
+            amount_prefs=self._amount_prefs,
         )
         self._home_tab.setObjectName("tab_home")
         self._home_tab.add_account_requested.connect(self._action_accounts.trigger)

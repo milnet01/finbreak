@@ -21,6 +21,16 @@ signaling per
 
 ## [Unreleased]
 
+### Changed
+
+- **Reworked the Home dashboard so the breakdown is the primary surface (FIBR-0143)**
+  The Income / Spending / Transfers breakdown is now the hero: three
+  side-by-side columns, each with its own pie, a coloured heading with the
+  big total, and an expandable drill-down. A slim Net strip sits above; a
+  recurring-money card and the monthly-trend chart (demoted to a bottom
+  strip) sit below. No money figure changes — the same integer-exact
+  aggregations, only rearranged on screen.
+
 ## [0.1.13] - 2026-07-15
 
 ### Added

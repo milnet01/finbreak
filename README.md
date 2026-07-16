@@ -47,14 +47,16 @@ lot, with more polish and features to come. What works today:
   regular income (like your salary) that repeat every week, fortnight, month,
   or year; finbreak suggests them on a new **Recurring** tab so you can
   confirm what's real and see at a glance what's on autopilot each month,
-- a **dashboard** on the Home screen — an income-vs-spending summary for a
-  period you choose (it defaults to last month and remembers your choice), a
-  pie chart of where your money went by category, and a month-by-month trend
-  chart; you can now **open up the Income, Spending, and Transfers totals** to
-  see what's inside — click into a category, down to a single one, then see your
-  transactions grouped by shop with a count (e.g. "Woolworths ×3"), and open a
-  shop to see each purchase; money moved between your own accounts never counts
-  as spending or income, and
+- a **dashboard** on the Home screen — the breakdown is the star: three
+  side-by-side columns for **Spending**, **Income**, and **Transfers**, each
+  with its own pie of where the money went, the big total up top, and an
+  openable list beneath it (click into a category, down to a single one, then
+  see your transactions grouped by shop with a count like "Woolworths ×3", and
+  open a shop to see each purchase); a slim **Net** line shows the period's
+  surplus or shortfall, a **recurring-money** card sums what's on autopilot each
+  month, and a month-by-month trend chart sits at the bottom; you choose the
+  period (it defaults to last month and remembers your choice), and money moved
+  between your own accounts never counts as spending or income, and
 - a searchable, filterable **Transactions tab** — find rows by description
   and filter by date range, account, and category (any or all at once), with
   columns you can drag to reorder and resize (it remembers your layout),

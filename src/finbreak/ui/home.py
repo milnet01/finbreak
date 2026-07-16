@@ -5,21 +5,28 @@ when the vault holds zero transactions) and the **dashboard** (shown once there 
 data). The toggle is observable via ``current_page().objectName()``
 (``home_page_empty`` / ``home_page_dashboard``, INV-7).
 
-The dashboard shows, for a chosen period (defaulting to last month, persisted): a
-period + account selector, three summary tiles (income / expenditure / net), a
-category **donut**, and a 12-month income-vs-expenditure **trend** bar chart —
-all with confirmed transfers excluded (the ``ReportingService`` does the
-exclusion). Money moved between the user's own accounts never counts. The raw
-transaction table moved to the Transactions tab (``ui/transactions.py``).
+The dashboard leads with the breakdown (FIBR-0143): for a chosen period (defaulting
+to last month, persisted) — a period + account selector, a slim **Net** strip, then
+three side-by-side columns (Expenditure / Income / Transfers), each a **pie** + a
+coloured header (name + total) + an expandable **breakdown tree**; below them a
+full-width **recurring-money** card and the demoted 12-month **trend** bar strip.
+Confirmed transfers are excluded from Income / Spending (the ``ReportingService`` does
+the exclusion); money moved between the user's own accounts never counts. The recurring
+card is **unscoped** — it sums all confirmed recurring money vault-wide, regardless of
+the selectors. The raw transaction table moved to the Transactions tab.
 """
 
 from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import date
 
 from PySide6.QtCharts import QChart, QChartView
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QBrush, QColor, QPainter
 from PySide6.QtWidgets import (
     QComboBox,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QPushButton,
@@ -33,9 +40,16 @@ from PySide6.QtWidgets import (
 )
 
 from finbreak.errors import VaultLockedError
-from finbreak.models import CategorySpend, DrillLabels, DrillNode, MonthlyTotal, Summary
+from finbreak.models import (
+    DrillLabels,
+    DrillNode,
+    MonthlyTotal,
+    RecurringSummary,
+    Summary,
+)
 from finbreak.services.accounts import AccountService
 from finbreak.services.auth import AmountPrefs, AuthService
+from finbreak.services.recurring import RecurringService
 from finbreak.services.reporting import (
     MODE_CURRENT_MONTH,
     MODE_PREVIOUS_MONTH,
@@ -46,7 +60,20 @@ from finbreak.services.reporting import (
     ReportPrefs,
 )
 from finbreak.ui._amount import _NEGATIVE_TEXT, _POSITIVE_TEXT, _format_amount
-from finbreak.ui.charts import ChartTheme, build_donut_chart, build_trend_chart
+from finbreak.ui.charts import ChartTheme, build_breakdown_donut, build_trend_chart
+
+
+@dataclass
+class _Column:
+    """The five pinned widgets of one dashboard column (FIBR-0143 D1) — a pie with
+    its empty-state placeholder, a two-line header (name + total), and a breakdown
+    tree. Held so ``refresh()`` can re-render each column in place."""
+
+    pie: QChartView
+    empty: QLabel
+    name: QLabel
+    total: QLabel
+    tree: QTreeWidget
 
 
 class HomeView(QWidget):
@@ -59,6 +86,7 @@ class HomeView(QWidget):
         reporting: ReportingService,
         accounts: AccountService,
         auth: AuthService,
+        recurring: RecurringService,
         amount_prefs: AmountPrefs | None = None,
         parent: QWidget | None = None,
     ):
@@ -66,6 +94,7 @@ class HomeView(QWidget):
         self._reporting = reporting
         self._accounts = accounts
         self._auth = auth
+        self._recurring = recurring
         self._amount_prefs = amount_prefs or AmountPrefs("minus", True)
         # Guards the programmatic selector loads from re-triggering a persist.
         self._loading = False
@@ -105,9 +134,9 @@ class HomeView(QWidget):
     def _build_dashboard(self) -> QWidget:
         page = QWidget()
         page.setObjectName("home_page_dashboard")
-        # The selectors + tiles + charts + drill-down tree make a tall page, so the
-        # content scrolls (D1). The page keeps its object name; findChild searches
-        # recursively, so the scroll wrap is transparent to the qtbot lookups.
+        # Selectors → Net strip → three columns → recurring card → trend strip make a
+        # tall page, so the content scrolls (D1). The page keeps its object name;
+        # findChild searches recursively, so the scroll wrap is transparent to lookups.
         outer = QVBoxLayout(page)
         outer.setContentsMargins(0, 0, 0, 0)
         scroll = QScrollArea()
@@ -116,36 +145,75 @@ class HomeView(QWidget):
         layout = QVBoxLayout(content)
 
         layout.addLayout(self._build_selectors())
-        layout.addLayout(self._build_tiles())
 
-        # Category donut + its empty-state placeholder (only one is visible).
-        self._category_chart = QChartView()
-        self._category_chart.setObjectName("dashboard_category_chart")
-        self._category_chart.setRenderHint(QPainter.RenderHint.Antialiasing)
-        self._category_empty = QLabel(self.tr("No spending in this period"))
-        self._category_empty.setObjectName("dashboard_category_empty")
-        self._category_empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(self._category_chart)
-        layout.addWidget(self._category_empty)
+        # The slim Net strip above the columns (D4) — re-homes the old Net tile.
+        self._net_value = QLabel("")
+        self._net_value.setObjectName("dashboard_net")
+        layout.addWidget(self._net_value)
 
+        # The three breakdown columns (D1), rendered left-to-right in the mockup's
+        # order Expenditure / Income / Transfers; each an equal-stretch card.
+        columns = QHBoxLayout()
+        self._columns: dict[str, _Column] = {}
+        for key in ("expenditure", "income", "transfers"):
+            columns.addWidget(self._build_column(key), 1)
+        layout.addLayout(columns)
+
+        # The full-width recurring-money card (D5) and the demoted trend strip (D6).
+        layout.addWidget(self._build_recurring_card())
         self._trend_chart = QChartView()
         self._trend_chart.setObjectName("dashboard_trend_chart")
         self._trend_chart.setRenderHint(QPainter.RenderHint.Antialiasing)
         layout.addWidget(self._trend_chart)
 
-        # The expandable Income / Spending / Transfers drill-down (FIBR-0138 D1). The
-        # service returns every level pre-sorted (INV-7), so the widget's own column
-        # sort is off and it inserts in order; read-only (no ItemIsEditable flag).
-        self._drilldown = QTreeWidget()
-        self._drilldown.setObjectName("dashboard_drilldown")
-        self._drilldown.setColumnCount(2)
-        self._drilldown.setHeaderLabels([self.tr("Name"), self.tr("Amount")])
-        self._drilldown.setSortingEnabled(False)
-        layout.addWidget(self._drilldown)
-
         scroll.setWidget(content)
         outer.addWidget(scroll)
         return page
+
+    def _build_column(self, key: str) -> QWidget:
+        """One breakdown column: a pie + its empty placeholder (only one visible), a
+        two-line header (name + total), and a read-only breakdown tree (D1/D7). The
+        service pre-sorts every level (INV-7), so the tree's own sort is off."""
+        col = QWidget()
+        col.setObjectName(f"dashboard_col_{key}")
+        v = QVBoxLayout(col)
+
+        pie = QChartView()
+        pie.setObjectName(f"dashboard_pie_{key}")
+        pie.setRenderHint(QPainter.RenderHint.Antialiasing)
+        empty = QLabel(self.tr("No data for this period"))
+        empty.setObjectName(f"dashboard_pie_empty_{key}")
+        empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        v.addWidget(pie)
+        v.addWidget(empty)
+
+        name = QLabel("")
+        name.setObjectName(f"dashboard_heading_{key}")
+        total = QLabel("")
+        total.setObjectName(f"dashboard_total_{key}")
+        v.addWidget(name)
+        v.addWidget(total)
+
+        tree = QTreeWidget()
+        tree.setObjectName(f"dashboard_breakdown_{key}")
+        tree.setColumnCount(2)
+        tree.setHeaderLabels([self.tr("Name"), self.tr("Amount")])
+        tree.setSortingEnabled(False)
+        v.addWidget(tree)
+
+        self._columns[key] = _Column(pie, empty, name, total, tree)
+        return col
+
+    def _build_recurring_card(self) -> QWidget:
+        """The recurring-money card shell (D5); its body is rebuilt each refresh into
+        either a figures row (In / Out / Net) or a single hint line."""
+        card = QWidget()
+        card.setObjectName("dashboard_recurring")
+        v = QVBoxLayout(card)
+        v.addWidget(QLabel(self.tr("Recurring")))
+        self._recurring_grid = QGridLayout()
+        v.addLayout(self._recurring_grid)
+        return card
 
     def _build_selectors(self) -> QHBoxLayout:
         row = QHBoxLayout()
@@ -183,25 +251,6 @@ class HomeView(QWidget):
         row.addStretch()
         row.addWidget(self._account_selector)
         return row
-
-    def _build_tiles(self) -> QHBoxLayout:
-        row = QHBoxLayout()
-        self._income_value = self._make_tile(row, self.tr("Income"), "dashboard_income")
-        self._expenditure_value = self._make_tile(
-            row, self.tr("Spending"), "dashboard_expenditure"
-        )
-        self._net_value = self._make_tile(row, self.tr("Net"), "dashboard_net")
-        return row
-
-    def _make_tile(self, row: QHBoxLayout, title: str, object_name: str) -> QLabel:
-        tile = QWidget()
-        tile_layout = QVBoxLayout(tile)
-        tile_layout.addWidget(QLabel(title))
-        value = QLabel("")
-        value.setObjectName(object_name)
-        tile_layout.addWidget(value)
-        row.addWidget(tile)
-        return value
 
     # --- selector state ---------------------------------------------------- #
     def _load_prefs_into_selectors(self, prefs: ReportPrefs) -> None:
@@ -274,7 +323,8 @@ class HomeView(QWidget):
         return self._reporting.transaction_count()
 
     def set_amount_prefs(self, prefs: AmountPrefs) -> None:
-        """Adopt new amount-display prefs and re-render (the tiles reformat)."""
+        """Adopt new amount-display prefs and re-render (the column totals, Net strip,
+        and recurring figures reformat/recolour)."""
         self._amount_prefs = prefs
         self.refresh()
 
@@ -301,22 +351,38 @@ class HomeView(QWidget):
         # Home's single-or-all selection wraps to None or a one-element frozenset.
         account_ids = None if account_id is None else frozenset({account_id})
         symbol = self._reporting.base_currency()
+        self._drill_symbol = symbol
 
-        self._render_tiles(self._reporting.summary(prefs, account_ids), symbol)
-        self._render_donut(self._reporting.spending_by_category(prefs, account_ids))
-        self._render_trend(self._reporting.monthly_trend(prefs, account_ids))
-        # The drill-down tree (FIBR-0138 D6). HomeView (a QObject) owns the tr()-ed
-        # fixed strings, keeping the non-QObject ReportingService translation-free —
-        # the same pattern _render_donut uses for tr("Uncategorised") / tr("Other").
+        # The Net strip (D4) is the one summary()-sourced figure; the column headers
+        # come from the drill nodes, which equal Summary by FIBR-0138 INV-1.
+        self._render_net(self._reporting.summary(prefs, account_ids), symbol)
+
+        # One drill_down() feeds all three columns (D2). HomeView (a QObject) owns the
+        # tr()-ed fixed strings, keeping the non-QObject ReportingService translation-
+        # free — the same pattern the pie's tr("Uncategorised") / tr("Other") uses.
         labels = DrillLabels(
             income=self.tr("Income"),
             spending=self.tr("Spending"),
             transfers=self.tr("Transfers"),
             uncategorised=self.tr("Uncategorised"),
         )
-        self._render_drilldown(
-            self._reporting.drill_down(prefs, account_ids, labels=labels)
+        income, spending, transfers = self._reporting.drill_down(
+            prefs, account_ids, labels=labels
         )
+        # Node → column map (load-bearing: drill_down order ≠ display order, D2). The
+        # branch colour is gated on amount_prefs.colour; Transfers has no sign colour.
+        coloured = self._amount_prefs.colour
+        self._render_column(
+            "expenditure", spending, _NEGATIVE_TEXT if coloured else None, symbol
+        )
+        self._render_column(
+            "income", income, _POSITIVE_TEXT if coloured else None, symbol
+        )
+        self._render_column("transfers", transfers, None, symbol)
+
+        self._render_trend(self._reporting.monthly_trend(prefs, account_ids))
+        # The recurring card is unscoped (INV-3/D5): summary(today) takes no prefs.
+        self._render_recurring(self._recurring.summary(date.today()), symbol)
         self._stack.setCurrentIndex(1)
 
     def _rebuild_account_selector(self) -> None:
@@ -334,21 +400,105 @@ class HomeView(QWidget):
         finally:
             self._loading = False
 
-    def _render_tiles(self, summary: Summary, symbol: str) -> None:
+    def _render_net(self, summary: Summary, symbol: str) -> None:
+        """The slim Net strip (D4/INV-6): Summary.net, sign-coloured when the pref is
+        on — the identical logic the old Net tile used, moved not rewritten."""
         style = self._amount_prefs.negative_style
-        self._income_value.setText(_format_amount(summary.income, symbol, style))
-        self._expenditure_value.setText(
-            _format_amount(summary.expenditure, symbol, style)
+        self._net_value.setText(
+            f"{self.tr('Net')} {_format_amount(summary.net, symbol, style)}"
         )
-        self._net_value.setText(_format_amount(summary.net, symbol, style))
         if self._amount_prefs.colour:
-            self._income_value.setStyleSheet(f"color: {_POSITIVE_TEXT.name()}")
-            self._expenditure_value.setStyleSheet(f"color: {_NEGATIVE_TEXT.name()}")
-            net_colour = _POSITIVE_TEXT if summary.net >= 0 else _NEGATIVE_TEXT
-            self._net_value.setStyleSheet(f"color: {net_colour.name()}")
+            colour = _POSITIVE_TEXT if summary.net >= 0 else _NEGATIVE_TEXT
+            self._net_value.setStyleSheet(f"color: {colour.name()}")
         else:
-            for value in (self._income_value, self._expenditure_value, self._net_value):
-                value.setStyleSheet("")
+            self._net_value.setStyleSheet("")
+
+    def _render_column(
+        self, key: str, node: DrillNode, branch_colour: QColor | None, symbol: str
+    ) -> None:
+        """Render one column from its branch node (D2/D7): the header (name + total)
+        both take the branch colour when the pref is on; the pie mirrors the node's
+        direct children (palette-coloured, never the branch sign colour); the tree
+        shows the branch's children (not the branch header row, which the header is)."""
+        col = self._columns[key]
+        style = self._amount_prefs.negative_style
+        col.name.setText(node.label)
+        col.total.setText(_format_amount(node.amount, symbol, style))
+        header_style = f"color: {branch_colour.name()}" if branch_colour else ""
+        col.name.setStyleSheet(header_style)
+        col.total.setStyleSheet(header_style)
+
+        slices = [(child.label, child.amount) for child in node.children]
+        if slices:
+            col.empty.setVisible(False)
+            col.pie.setVisible(True)
+            col.pie.setChart(
+                build_breakdown_donut(slices, self.tr("Other"), self._chart_theme())
+            )
+        else:
+            # No children — hide the pie (kept present), show the placeholder (D8).
+            col.pie.setVisible(False)
+            col.empty.setVisible(True)
+            col.pie.setChart(QChart())  # release the old series
+
+        col.tree.clear()
+        root = col.tree.invisibleRootItem()
+        for child in node.children:
+            self._add_node(root, child, branch_colour)
+
+    def _render_recurring(self, summary: RecurringSummary, symbol: str) -> None:
+        """The recurring card body (D5/INV-5): a three-figure In / Out / Net row over
+        the confirmed monthly totals, or a single hint line when nothing is confirmed.
+        In/Out colours are forced by role (Out is an outflow though its value is
+        positive); Net follows its sign. Rebuilt each refresh."""
+        while self._recurring_grid.count():
+            item = self._recurring_grid.takeAt(0)
+            widget = item.widget() if item is not None else None
+            if widget is not None:
+                widget.setParent(
+                    None
+                )  # detach now so findChild can't see the stale one
+        style = self._amount_prefs.negative_style
+        coloured = self._amount_prefs.colour
+        # Gate on the two DIRECTIONAL totals, not net: equal confirmed in and out
+        # cancel to a zero net while still being real recurring money to show (INV-5).
+        if summary.monthly_in == 0 and summary.monthly_out == 0:
+            self._recurring_grid.addWidget(
+                QLabel(
+                    self.tr(
+                        "Confirm recurring items on the Recurring tab to see them here."
+                    )
+                ),
+                0,
+                0,
+                1,
+                3,
+            )
+            return
+        self._recurring_grid.addWidget(QLabel(self.tr("Per month")), 0, 0, 1, 3)
+        net_colour = _POSITIVE_TEXT if summary.net >= 0 else _NEGATIVE_TEXT
+        figures = (
+            (
+                self.tr("In"),
+                summary.monthly_in,
+                _POSITIVE_TEXT,
+                "dashboard_recurring_in",
+            ),
+            (
+                self.tr("Out"),
+                summary.monthly_out,
+                _NEGATIVE_TEXT,
+                "dashboard_recurring_out",
+            ),
+            (self.tr("Net"), summary.net, net_colour, "dashboard_recurring_net"),
+        )
+        for column, (caption, value, colour, object_name) in enumerate(figures):
+            self._recurring_grid.addWidget(QLabel(caption), 1, column)
+            figure = QLabel(_format_amount(value, symbol, style))
+            figure.setObjectName(object_name)
+            if coloured:
+                figure.setStyleSheet(f"color: {colour.name()}")
+            self._recurring_grid.addWidget(figure, 2, column)
 
     def _chart_theme(self) -> ChartTheme:
         """The on-screen theme: text from the live palette (ADR-0010 dark default),
@@ -361,24 +511,6 @@ class HomeView(QWidget):
             background=None,
         )
 
-    def _render_donut(self, spending: list[CategorySpend]) -> None:
-        if not spending:
-            # No spending in the period — hide the chart, show the placeholder (D9).
-            self._category_chart.setVisible(False)
-            self._category_empty.setVisible(True)
-            self._category_chart.setChart(QChart())  # release the old series
-            return
-        self._category_empty.setVisible(False)
-        self._category_chart.setVisible(True)
-        self._category_chart.setChart(
-            build_donut_chart(
-                spending,
-                self.tr("Uncategorised"),
-                self.tr("Other"),
-                self._chart_theme(),
-            )
-        )
-
     def _render_trend(self, trend: list[MonthlyTotal]) -> None:
         self._trend_chart.setChart(
             build_trend_chart(
@@ -388,25 +520,6 @@ class HomeView(QWidget):
                 self._chart_theme(),
             )
         )
-
-    def _render_drilldown(self, nodes: list[DrillNode]) -> None:
-        """Rebuild the drill-down tree from the three service nodes (FIBR-0138 D7).
-        The branch colour (Income positive, Spending negative, Transfers the default
-        text colour when ``amount_prefs.colour`` is on) is threaded down the recursion
-        so a deep transaction leaf inherits its branch's colour."""
-        self._drilldown.clear()
-        self._drill_symbol = self._reporting.base_currency()
-        coloured = self._amount_prefs.colour
-        branch_colours: list[QColor | None] = [
-            _POSITIVE_TEXT if coloured else None,  # Income
-            _NEGATIVE_TEXT if coloured else None,  # Spending
-            None,  # Transfers — neither income nor spending
-        ]
-        root = self._drilldown.invisibleRootItem()
-        # drill_down always returns exactly [Income, Spending, Transfers] (D4), so the
-        # lists match length — strict catches a contract break.
-        for node, branch_colour in zip(nodes, branch_colours, strict=True):
-            self._add_node(root, node, branch_colour)
 
     def _add_node(
         self,

@@ -6,12 +6,16 @@ Contract for the dashboard half of P10 (INV-7 / D6 / D9):
   `home_page_empty`; data shows `home_page_dashboard` (selectors, three tiles,
   both `QChartView`s, no table).
 - **Tiles** render income / expenditure / net for the selected period + account,
-  transfers excluded.
+  transfers excluded. (FIBR-0143 re-homed these into the per-column header totals
+  `dashboard_total_{income,expenditure}` and the Net strip `dashboard_net`; the tests
+  assert those surfaces.)
 - **Donut collapse (D9).** The pure `_donut_wedges` caps the ring at 8 wedges:
   10 categorised + Uncategorised → 6 coloured + Uncategorised + Other, in that
   order; the two synthetic buckets are pinned neutral colours.
 - **Empty donut placeholder.** No spending in the period → the chart is hidden and
-  the `dashboard_category_empty` placeholder shown.
+  the placeholder shown. (FIBR-0143 re-homed this toggle onto each column's pie —
+  the tests assert `dashboard_pie_expenditure` hidden + `dashboard_pie_empty_expenditure`
+  shown.)
 - **Selector persistence.** Changing the period selector persists the new
   `ReportPrefs` (via `AuthService.set_report_prefs`) and re-renders; the account
   selector re-renders only (not persisted).
