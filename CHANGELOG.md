@@ -21,6 +21,15 @@ signaling per
 
 ## [Unreleased]
 
+### Fixed
+
+- **Deleting a statement no longer loses transactions another overlapping statement still covers** (FIBR-0148)
+  If two of your statements' periods overlapped (say a monthly statement and a
+  quarterly one covering the same weeks), deleting one used to silently delete the
+  transactions they shared — even though the statement you kept still covered them.
+  Now those shared transactions are handed over to the statement you keep, and only
+  transactions nothing else accounts for are removed.
+
 ## [0.1.15] - 2026-07-17
 
 ### Changed
