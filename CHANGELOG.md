@@ -21,6 +21,19 @@ signaling per
 
 ## [Unreleased]
 
+### Fixed
+
+- **PDF/CSV statement import no longer fails every row when the bank's date layout isn't ISO (FIBR-0146)**
+  The import wizard used to ask for the date layout as a raw programmer code
+  (%Y-%m-%d), so a statement printed day-first (or any other layout) failed every
+  row with a wall of cryptic "time data … does not match format" text. finbreak
+  now reads the actual dates, guesses the layout, and offers a plain-English
+  picker (with a "Custom…" escape hatch) plus a live "Dates read as: …" preview —
+  so the common case just works and a wrong guess is caught before import, never a
+  silent wrong-day. When a row still can't be read it shows a friendly message
+  naming the value, and a whole-import banner points you at the date control when
+  nothing lands. Reported by an external Windows tester (165-row all-error import).
+
 ## [0.1.14] - 2026-07-16
 
 ### Changed
