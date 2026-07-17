@@ -1336,13 +1336,14 @@ because retrofitting them is a data migration.
   Progress (2026-07-16, EOD): spec docs/specs/FIBR-0146.md written + run through /cold-eyes to the full project cap (7 loops × 3 cold lanes = 21 reviews). Core converged — accuracy lane clean loops 5–7, no remaining silent-wrong-day path loops 5–7; every CRITICAL/HIGH/MEDIUM/LOW fixed in-loop (notably: removed a plausible-year guard built on a false strptime claim, added dotted %m.%d.%Y to close a silent day-first read, and rejected the empty-format strptime(\"\",\"\")→1900-01-01 phantom-date trap at _validate_mapping). Spec Status = CLEARED FOR CODE. Paused for the night; NEXT = TDD (tests/features/import_date_detect/) per the spec's Deliverables + Test plan. 8 commits on main, all pushed.
   Resolved (2026-07-17): shipped by TDD. New pure importers/date_detect.py (detect_date_format + 15 ordered KNOWN_DATE_FORMATS, clock-free, no year guard — strptime separates 2/4-digit widths); friendly per-row RowError in csv_importer (D3); wizard date-format QComboBox + Custom… reveal + auto-detect + live preview + whole-import banner (D4-D8); _validate_mapping rejects the empty-format strptime("","")→1900-01-01 trap (D4). New tests/features/import_date_detect/ (spec.md + 39 tests, 4 layers). Close: /audit semgrep 0; 2 cold review lanes — Lane A (date/money) no reachable defects, Lane B 2 MEDIUM (unblocked matched-profile date-combo re-detect; missing PDF-path tests) + 2 LOW, all folded inline + re-verified. Gate green 1080/1, mypy 0. Tag FIBR-0146-complete.
 
-- 📋 [FIBR-0148] **Deleting a statement silently loses transactions a still-present overlapping statement also covered.**
+- 🚧 [FIBR-0148] **Deleting a statement silently loses transactions a still-present overlapping statement also covered.**
   Import dedup (services/import_.py `_dedup`, D6/INV-5) is a multiset delta:
   duplicates are DROPPED at import, never stored — the single stored copy is
   stamped to whichever statement imported it FIRST (`statement_period_id`, a
   single-valued column). `StatementService.delete_statement`
   (services/statements.py) deletes exactly that statement's stamped rows and does
   NO re-evaluation of other statements.
+  Started 2026-07-17. Chose fix direction (a) ownership hand-off on delete: reassign transactions covered by a remaining overlapping statement to that statement, delete only truly-orphaned rows. Spec docs/specs/FIBR-0148.md.
 
   Concrete data loss: statement A (Jan) imported, then overlapping statement B
   (Jan-Feb) imported — B's January rows are deduped away, only February inserted.
