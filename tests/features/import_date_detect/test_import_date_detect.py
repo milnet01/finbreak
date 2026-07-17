@@ -248,3 +248,35 @@ def test_csv_valid_row_still_parses_INV6():
     assert len(result.drafts) == 1
     assert result.drafts[0].occurred_on == "2026-07-20"
     assert result.drafts[0].amount_minor == -1000
+
+
+# --------------------------------------------------------------------------- #
+# Layer 3 — _validate_mapping empty-format reject (D4, the 1900-01-01 trap).   #
+# --------------------------------------------------------------------------- #
+
+
+def test_empty_date_format_is_the_1900_trap():
+    """Documents WHY the empty format is rejected: strptime('', '') succeeds and
+    returns 1900-01-01, so a blank date cell under an empty format would import a
+    phantom date rather than error."""
+    from datetime import datetime
+
+    assert datetime.strptime("", "").date().isoformat() == "1900-01-01"
+
+
+@pytest.mark.parametrize("bad_format", ["", "   "])
+def test_validate_mapping_rejects_empty_date_format(bad_format):
+    from finbreak.models import ColumnMapping
+    from finbreak.services.import_ import ImportService
+
+    mapping = ColumnMapping("Date", "Details", "Amount", None, None, bad_format, False)
+    with pytest.raises(ValueError, match="choose a date format"):
+        ImportService._validate_mapping(mapping, ["Date", "Details", "Amount"])
+
+
+def test_validate_mapping_accepts_a_real_date_format():
+    from finbreak.models import ColumnMapping
+    from finbreak.services.import_ import ImportService
+
+    mapping = ColumnMapping("Date", "Details", "Amount", None, None, "%d/%m/%Y", False)
+    ImportService._validate_mapping(mapping, ["Date", "Details", "Amount"])  # no raise

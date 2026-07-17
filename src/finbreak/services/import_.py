@@ -340,7 +340,15 @@ class ImportService:
     @staticmethod
     def _validate_mapping(mapping: ColumnMapping, header: list[str]) -> None:
         """Exactly one amount style, every mapped column present in the header
-        (D3/D5) — the form-boundary ``ValueError`` (D10)."""
+        (D3/D5), and a non-empty date format — the form-boundary ``ValueError``
+        (D10)."""
+        # An empty date format is a TRAP, not merely unparseable: strptime("", "")
+        # succeeds and returns 1900-01-01, so a blank date cell (PDF-serialised
+        # tables produce these routinely) under an empty format would silently
+        # import a phantom 1900 date rather than error. Reject it here (FIBR-0146
+        # D4) so the format is never silently defaulted either.
+        if not mapping.date_format.strip():
+            raise ValueError("choose a date format")
         has_amount = mapping.amount_column is not None
         has_debit = mapping.debit_column is not None
         has_credit = mapping.credit_column is not None
