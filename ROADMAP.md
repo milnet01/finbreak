@@ -1371,6 +1371,24 @@ because retrofitting them is a data migration.
   Kind: fix.
   Source: user-question-2026-07-17.
 
+- 📋 [FIBR-0149] **Delete-statement confirm dialog overstates the count when a statement overlaps another.**
+  Surfaced by the FIBR-0148 cold code-review. After FIBR-0148, delete_statement
+  hands off transactions a remaining overlapping statement also covers (they
+  survive), but ui/statements.py's confirm dialog still says "Delete this
+  statement and its %n transaction(s)? This cannot be undone." with %n =
+  statement.transaction_count (the FULL linked count). In an overlap delete the
+  true deleted count is lower (often 0), so "cannot be undone" + an inflated
+  count could scare a user into cancelling a delete they wanted. FIBR-0148 D5
+  deliberately deferred this as a follow-up (revisit if users find the count
+  confusing). Fix direction: compute the would-orphan count up front (a dry-run
+  of the hand-off's NOT-covered set) and word the dialog as "delete this
+  statement (N of M transactions will be removed; the rest stay under an
+  overlapping statement)"; add the overlap-path confirmation test the review
+  noted is currently missing (test_INV10a only covers the non-overlap case).
+  **Layman:** When you delete a statement that shares transactions with another one you keep, the "delete its N transactions? This cannot be undone" prompt still counts all N — even though the shared ones now survive under the other statement. The warning should reflect how many actually go.
+  Kind: ux.
+  Source: indie-review-2026-07-17 (FIBR-0148 close, lane finding LOW).
+
 ### ⚡ Performance
 
 - ✅ [FIBR-0025] **Enable SQLite WAL mode.** Set

@@ -1259,14 +1259,10 @@ def test_INV5_deterministic_owner_is_earliest_period(service):
         "A.csv",
     )
     # B [01-01, 01-15] and C [01-10, 01-20] both cover 01-15; B starts earlier.
-    _import_span(
-        imp,
-        _csv(HEADER, [["2026-01-15", "x", "-1.00"], ["2026-01-01", "b0", "-5.00"]]),
-        acct,
-        "2026-01-01",
-        "2026-01-15",
-        "B.csv",
-    )
+    # Import C FIRST so B gets the HIGHER id — then a broken `ORDER BY id` alone
+    # (ignoring period_start) would pick C, so this genuinely isolates the
+    # (period_start, id) key: B must win on its earlier period_start despite its
+    # higher id.
     _import_span(
         imp,
         _csv(
@@ -1282,12 +1278,25 @@ def test_INV5_deterministic_owner_is_earliest_period(service):
         "2026-01-20",
         "C.csv",
     )
+    _import_span(
+        imp,
+        _csv(HEADER, [["2026-01-15", "x", "-1.00"], ["2026-01-01", "b0", "-5.00"]]),
+        acct,
+        "2026-01-01",
+        "2026-01-15",
+        "B.csv",
+    )
     periods = {
         p.source_filename: p
         for p in StatementPeriodRepository(conn).list_for_account(acct)
     }
+    assert periods["B.csv"].id > periods["C.csv"].id, (
+        "B has the higher id (imported 2nd)"
+    )
     StatementService(service.vault).delete_statement(periods["A.csv"].id)
-    assert _pid_of(conn, "x") == periods["B.csv"].id, "handed to the earliest-starting"
+    assert _pid_of(conn, "x") == periods["B.csv"].id, (
+        "handed to the earliest period_start (B), not the lowest id (C)"
+    )
 
 
 def test_INV6_handoff_is_account_scoped(service):
