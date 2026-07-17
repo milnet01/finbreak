@@ -1338,15 +1338,16 @@ because retrofitting them is a data migration.
 
 ### ⚡ Performance
 
-- 📋 [FIBR-0025] **Enable SQLite WAL mode.** Set
+- ✅ [FIBR-0025] **Enable SQLite WAL mode.** Set
   `PRAGMA journal_mode=WAL` on the SQLCipher DB for better write
   throughput and UI responsiveness during import. *Sequencing:* set at DB
   creation (FIBR-0004). WAL adds `-wal` / `-shm` sidecars (already
   ignored by FIBR-0002; SQLCipher encrypts them too). Target phase: P02.
   Dependencies: FIBR-0004. Lanes: persistence, perf. Kind: perf.
   Source: user-request-2026-07-01.
+  Resolved 2026-07-17 (commit 6c74966): journal_mode=WAL on the LIVE vault connection (set at create, converted on open) — readers no longer block the import writer. synchronous stays at the default FULL so per-commit fsync preserves the create() DB-durable-before-sidecar ordering (FIBR-0005 INV-5). The transient restore/backup-assembly connection (in_memory_temp) keeps the rollback journal, since backup._install moves vault.db at the file level without its -wal sidecar (FIBR-0014 INV-1 preserved).
 
-- 📋 [FIBR-0026] **Index the import de-duplication lookup.** Add a DB
+- ✅ [FIBR-0026] **Index the import de-duplication lookup.** Add a DB
   index on `(account_id, date, amount)` (and/or a normalised-description
   hash column) so import dedup (design.md data-flow step 5) is an indexed
   lookup, not an O(n·m) scan of existing rows for every imported row.
@@ -1354,6 +1355,7 @@ because retrofitting them is a data migration.
   MVP dedup by design; index it when a large account measures slow).
   Dependencies: FIBR-0007. Lanes: data, perf. Kind: perf.
   Source: user-request-2026-07-01.
+  Resolved 2026-07-17 (commit 6c74966): the dedup lookup is now an indexed probe via the composite transactions(account_id, occurred_on, amount_minor) index (shipped under FIBR-0098). design.md's un-indexed MVP dedup is now index-backed.
 
 - 📋 [FIBR-0027] **SQL-side dashboard aggregation + incremental refresh.**
   Compute dashboard summaries / charts with SQL `GROUP BY` rather than
@@ -1371,10 +1373,11 @@ because retrofitting them is a data migration.
 
 ---
 
-- 📋 [FIBR-0071] **Add DB indexes for the import-dedup + count lookups (full-table scans today).**
+- ✅ [FIBR-0071] **Add DB indexes for the import-dedup + count lookups (full-table scans today).**
   No CREATE INDEX anywhere in migrations.py. TransactionRepository.existing_for() (WHERE account_id, occurred_on, amount_minor) runs once per distinct (date, amount) bucket inside every import — N full scans; same for count_for_account / count_for_category / rules count_for_category. Fine at today's personal scale (design.md accepts it) but a multi-year vault degrades. A composite index on transactions(account_id, occurred_on, amount_minor) plus single-column indexes on account_id/category_id/statement_period_id would flatten it. Overlaps FIBR-0026 (indexed dedup lookup).
   Kind: perf.
   Source: indie-review-2026-07-10 (M-data3).
+  Resolved 2026-07-17 (commit 6c74966): shipped together with FIBR-0098. The composite transactions(account_id, occurred_on, amount_minor) flattens existing_for() import-dedup + count_for_account; categorization_rules(category_id) covers the rules count_for_category. EXPLAIN QUERY PLAN test proves the dedup probe is an indexed search, not a scan.
 
 - 📋 [FIBR-0097] **Virtualize the transaction tables — QTableWidget → QTableView + QAbstractTableModel.**
   Verified 2026-07-11: Home, Statements, and Rules use QTableWidget (ui/home.py, ui/statements.py, ui/rules.py), which builds a widget for EVERY cell — fine at 50 rows, sluggish at thousands. Migrate to QTableView + a QAbstractTableModel so rendering is virtualized (only visible rows built). Also a cleaner data/view separation that FIBR-0012 (sort/filter) and FIBR-0084 (movable/resizable columns) build on naturally. Sizeable refactor; own spec. Deps: FIBR-0051/0052 (the current widgets).
@@ -1382,11 +1385,12 @@ because retrofitting them is a data migration.
   Kind: perf.
   Source: claude-suggestion-2026-07-11.
 
-- 📋 [FIBR-0098] **Add database indexes on the hot query columns.**
+- ✅ [FIBR-0098] **Add database indexes on the hot query columns.**
   Verified 2026-07-11: the schema (migrations.py) declares NO indexes. Add them on the frequently-queried columns — transactions(occurred_on), transactions(account_id), transactions(category_id), transactions(statement_period_id) (+ any dedup/lookup key). A forward migration (current v7 -> v8). Speeds listing, filtering (FIBR-0012), cross-source dedup, and delete-cascade. Cheap, high-value. Deps: FIBR-0005/0006/0010/0052 (the columns).
   **Layman:** Add quick-lookup indexes so finbreak finds and filters transactions fast as your history grows.
   Kind: perf.
   Source: claude-suggestion-2026-07-11.
+  Resolved 2026-07-17 (commit 6c74966): v9->v10 forward migration adds five indexes on the hot columns — transactions(account_id, occurred_on, amount_minor) [composite; its account_id prefix also serves count_for_account, so no redundant standalone account_id index], transactions(occurred_on), transactions(category_id), transactions(statement_period_id), and categorization_rules(category_id) [the rules half of the category-delete blast radius]. Pure-DDL, atomic (one owned transaction; a wedged build rolls back to a re-openable v9). Subsumes FIBR-0071 + FIBR-0026. New tests/features/db_performance/ suite; full gate green.
 
 - 📋 [FIBR-0099] **Faster cold start — PyInstaller --onedir inside the AppImage (skip per-launch extraction).**
   Verified 2026-07-11: the release build uses PyInstaller --onefile (scripts/_build-smoke-in-container.sh:85), which re-extracts the whole bundle to /tmp on EVERY launch (adds seconds of cold-start latency). Since the AppImage is ITSELF a self-contained mounted container, freeze with --onedir and place the dir inside the AppDir — the app then runs directly, no per-launch extraction. Transparent to the user; measure before/after start time and confirm the FIBR-0003 clean-room bundling proof still passes. Deps: FIBR-0003/FIBR-0054 (build pipeline).
@@ -1399,6 +1403,21 @@ because retrofitting them is a data migration.
   **Layman:** When importing a big statement, do the heavy reading on a background thread with a progress bar so the window stays responsive instead of freezing.
   Kind: perf.
   Source: user-suggestion-2026-07-11.
+
+- 📋 [FIBR-0147] **Index the transfer_pairs cascade-delete FK columns.**
+  Surfaced while shipping FIBR-0098. `transfer_pairs` (FIBR-0011) has two
+  `ON DELETE CASCADE` FKs — `txn_a_id` / `txn_b_id` REFERENCES transactions(id) —
+  but SQLite does NOT auto-index FK columns, so each transaction delete scans
+  `transfer_pairs` for a match. `delete_for_statement` deletes many transactions
+  at once (one statement), so a bulk statement delete is O(deleted × pairs). The
+  table is small today (only confirmed/rejected pairs), so it was left OUT of the
+  FIBR-0098 index set to stay in-lane. Add `CREATE INDEX` on
+  `transfer_pairs(txn_a_id)` and `transfer_pairs(txn_b_id)` (a v10->v11 forward
+  migration) if a large multi-year vault with many detected transfers measures a
+  slow statement delete. Kind: perf.
+  **Layman:** Make deleting a big statement fast even when transfers have been detected.
+  Kind: perf.
+  Source: claude-suggestion-2026-07-17 (deferred from FIBR-0098).
 
 ### 🧹 Warnings & tech debt
 
