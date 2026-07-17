@@ -21,6 +21,8 @@ signaling per
 
 ## [Unreleased]
 
+## [0.1.15] - 2026-07-17
+
 ### Changed
 
 - **finbreak stays fast and responsive as your transaction history grows (FIBR-0098/0071/0026/0025)**
