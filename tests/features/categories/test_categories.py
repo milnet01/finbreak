@@ -271,6 +271,57 @@ def test_INV5_service_guards_the_root_count(service):
     assert len(CategoryRepository(service.vault.connection).children_of(None)) == 2
 
 
+def test_INV5_reparent_under_self_is_rejected(service):
+    """A category can't be moved under itself — that would make its parent
+    chain point at itself (FIBR-0141 cycle guard)."""
+    svc = CategoryService(service.vault)
+    income = _roots(service.vault.connection)["income"]
+    cat = svc.add_category(income.id, "Sundry")
+    with pytest.raises(ValueError, match="itself or one of its sub-categories"):
+        svc.update_category(cat.id, "Sundry", cat.id)
+    # Nothing moved: it still hangs under Income.
+    repo = CategoryRepository(service.vault.connection)
+    assert repo.get(cat.id).parent_id == income.id
+
+
+def test_INV5_reparent_under_own_descendant_is_rejected(service):
+    """Moving a category under one of its own descendants would create a cycle
+    (X→Y→X). The service must refuse it (FIBR-0141)."""
+    svc = CategoryService(service.vault)
+    repo = CategoryRepository(service.vault.connection)
+    income = _roots(service.vault.connection)["income"]
+    # Income → A → B → C (a 3-deep chain under the root).
+    a = svc.add_category(income.id, "A")
+    b = svc.add_category(a.id, "B")
+    c = svc.add_category(b.id, "C")
+
+    # Direct child and a deeper descendant are both rejected.
+    with pytest.raises(ValueError, match="itself or one of its sub-categories"):
+        svc.update_category(a.id, "A", b.id)
+    with pytest.raises(ValueError, match="itself or one of its sub-categories"):
+        svc.update_category(a.id, "A", c.id)
+    # A is untouched — still under Income.
+    assert repo.get(a.id).parent_id == income.id
+
+
+def test_INV5_legitimate_reparent_across_the_tree_still_works(service):
+    """The cycle guard only blocks the subject's own subtree — moving a category
+    to an unrelated branch (a non-descendant) is still allowed (FIBR-0141)."""
+    svc = CategoryService(service.vault)
+    repo = CategoryRepository(service.vault.connection)
+    roots = _roots(service.vault.connection)
+    income, expenditure = roots["income"], roots["expenditure"]
+    a = svc.add_category(income.id, "Movable")
+    b = svc.add_category(a.id, "Child")
+
+    # Move the child B up under Expenditure (B is not its own descendant).
+    svc.update_category(b.id, "Child", expenditure.id)
+    assert repo.get(b.id).parent_id == expenditure.id
+    # And the parent A can move under B's new sibling namespace too (Expenditure).
+    svc.update_category(a.id, "Movable", expenditure.id)
+    assert repo.get(a.id).parent_id == expenditure.id
+
+
 # --------------------------------------------------------------------------- #
 # INV-6 — delete guard (protect roots + block-with-children)
 # --------------------------------------------------------------------------- #

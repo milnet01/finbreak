@@ -59,6 +59,7 @@ class CategoryService:
                 "a Type (Income / Expenditure) cannot be edited"
             )
         parent = self._require_parent(parent_id, repo)
+        self._reject_cycle(category_id, parent, repo)
         name = self._validate(name, parent.id, repo, exclude_id=category_id)
         repo.update(category_id, name, parent.id)
         log.info("category updated")
@@ -113,6 +114,29 @@ class CategoryService:
         if parent is None:
             raise ValueError(f"no category with id {parent_id}")
         return parent
+
+    def _reject_cycle(
+        self, category_id: int, parent: Category, repo: CategoryRepository
+    ) -> None:
+        """Re-parenting a category under itself or one of its own descendants
+        would make the tree cyclic (FIBR-0141; INV-5 keeps it acyclic). Ascend
+        from the prospective parent toward the root — if the subject appears in
+        that chain it is an ancestor of the new parent, so the move loops the
+        tree back on itself. A ``seen`` set keeps the walk total against a
+        pre-existing corrupt cycle that doesn't involve the subject (mirrors the
+        depth-safe ascent in ``categorization.leaf_categories_grouped``)."""
+        node: Category | None = parent
+        seen: set[int] = set()
+        while node is not None:
+            if node.id == category_id:
+                raise ValueError(
+                    "a category cannot be moved under itself or one of its "
+                    "sub-categories"
+                )
+            if node.id in seen:
+                break  # unrelated pre-existing cycle — stay total, don't loop
+            seen.add(node.id)
+            node = repo.get(node.parent_id) if node.parent_id is not None else None
 
     def _validate(
         self,

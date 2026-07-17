@@ -1583,7 +1583,7 @@ is a future error tomorrow.
   Kind: refactor.
   Source: claude-suggestion-2026-07-11.
 
-- 📋 [FIBR-0141] **CategoryService.update_category has no descendant-cycle guard — re-parenting a category under its own child creates a cycle.**
+- ✅ [FIBR-0141] **CategoryService.update_category has no descendant-cycle guard — re-parenting a category under its own child creates a cycle.**
   Found during the FIBR-0138 close (indie-review). `update_category`
   (`src/finbreak/services/categories.py`) blocks re-parenting a *root* and
   requires an existing parent, but does NOT reject moving a category under
@@ -1598,6 +1598,7 @@ is a future error tomorrow.
   **Layman:** You can accidentally make the category tree loop back on itself (put a group inside one of its own sub-groups), which confuses the parts of the app that walk the tree; the app should refuse that move.
   Kind: fix.
   Source: indie-review-2026-07-14 (FIBR-0138 close).
+  Resolved 2026-07-17: added a `_reject_cycle` guard to `CategoryService.update_category` (mirrors the depth-safe ascend-with-`seen` idiom in `categorization.leaf_categories_grouped`) — ascends from the prospective parent to the root and raises ValueError if the subject appears in that chain, so re-parenting a category under itself or one of its own descendants is refused; the `seen` set keeps the walk total against a pre-existing corrupt cycle. Reproduce-first TDD in `tests/features/categories/` (INV-5: self-parent, direct child, deep descendant all rejected; legitimate cross-branch move still succeeds). Adapted the pre-existing `categorisation` corrupt-cycle test to inject the cycle at the repository layer (below the guard) since the service now refuses to build one. Note: today's category-manager parent picker only offers the two Type roots, so the cycle was reachable via a direct service call, not that UI — the guard is the service-layer contract boundary. Gate green 1083/1, mypy 0.
 
 ## How to add an item
 

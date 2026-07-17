@@ -23,6 +23,11 @@ signaling per
 
 ### Fixed
 
+- **Category tree can no longer loop back on itself.** (FIBR-0141)
+  Editing a category to sit under itself or one of its own sub-categories
+  is now refused with a clear message, instead of silently creating a loop
+  that could confuse the parts of the app that walk the category tree.
+
 - **PDF/CSV statement import no longer fails every row when the bank's date layout isn't ISO (FIBR-0146)**
   The import wizard used to ask for the date layout as a raw programmer code
   (%Y-%m-%d), so a statement printed day-first (or any other layout) failed every
