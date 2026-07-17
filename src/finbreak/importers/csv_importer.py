@@ -69,14 +69,25 @@ class CsvImporter:
                     RowError(row_number, "row has fewer columns than the header")
                 )
                 continue
+            # The date parse gets its own try so a strptime failure surfaces a
+            # FRIENDLY RowError naming the offending value (INV-3), never the raw
+            # "time data '…' does not match format '…'" text. The amount /
+            # parse_transaction failures below keep their existing human messages
+            # (D3), so only the date branch is re-worded.
+            raw_date = row[mapping.date_column].strip()
             try:
                 occurred_on = (
-                    datetime.strptime(
-                        row[mapping.date_column].strip(), mapping.date_format
-                    )
-                    .date()
-                    .isoformat()
+                    datetime.strptime(raw_date, mapping.date_format).date().isoformat()
                 )
+            except ValueError:
+                reason = (
+                    "the date cell is empty"
+                    if raw_date == ""
+                    else f'could not read the date "{raw_date}"'
+                )
+                errors.append(RowError(row_number, reason))
+                continue
+            try:
                 amount = (
                     self._single_amount(row, mapping)
                     if single

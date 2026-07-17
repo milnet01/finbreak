@@ -168,3 +168,83 @@ def test_known_formats_are_ordered_iso_first_then_day_first():
         parsed = datetime.strptime(example, fmt).date()
         assert (parsed.day, parsed.month) == (20, 7)
         assert parsed.year in (2026, 26)
+
+
+# --------------------------------------------------------------------------- #
+# Layer 2 — CsvImporter.parse friendly per-row date error (D3/INV-3).          #
+# --------------------------------------------------------------------------- #
+
+
+def _single_mapping(date_format: str = "%Y-%m-%d"):
+    from finbreak.models import ColumnMapping
+
+    return ColumnMapping("Date", "Details", "Amount", None, None, date_format, False)
+
+
+def _csv(rows: list[list[str]]) -> str:
+    header = "Date,Details,Amount\n"
+    return header + "".join(",".join(r) + "\n" for r in rows)
+
+
+def test_csv_bad_date_yields_friendly_rowerror_no_parser_internals():
+    """INV-3: a row the format can't read surfaces `could not read the date
+    "<raw>"` — the raw value, never the strptime/`%`-format internals."""
+    from finbreak.importers.csv_importer import CsvImporter
+
+    result = CsvImporter().parse(
+        _csv([["20/07/2026", "Coffee", "-10.00"]]), _single_mapping(), 2
+    )
+    assert len(result.errors) == 1
+    reason = result.errors[0].reason
+    assert reason == 'could not read the date "20/07/2026"'
+    assert "does not match format" not in reason
+    # No parser format token leaks (a junk cell may embed a bare '%', so check
+    # for the tokens, not a lone percent sign).
+    for token in ("%Y", "%m", "%d", "%y", "%b", "%B"):
+        assert token not in reason
+
+
+def test_csv_percent_in_junk_date_cell_still_no_token_leak():
+    """A cell like `50%` embeds a literal '%' in <raw> without a parser leak."""
+    from finbreak.importers.csv_importer import CsvImporter
+
+    result = CsvImporter().parse(
+        _csv([["50%", "Coffee", "-10.00"]]), _single_mapping(), 2
+    )
+    assert result.errors[0].reason == 'could not read the date "50%"'
+    for token in ("%Y", "%m", "%d"):
+        assert token not in result.errors[0].reason
+
+
+def test_csv_empty_date_cell_says_the_cell_is_empty():
+    from finbreak.importers.csv_importer import CsvImporter
+
+    result = CsvImporter().parse(
+        _csv([["", "Coffee", "-10.00"]]), _single_mapping(), 2
+    )
+    assert result.errors[0].reason == "the date cell is empty"
+
+
+def test_csv_amount_error_text_unregressed():
+    """The date-parse split must not change the amount-error message (D3)."""
+    from finbreak.importers.csv_importer import CsvImporter
+
+    result = CsvImporter().parse(
+        _csv([["2026-07-20", "Coffee", "not-a-number"]]), _single_mapping(), 2
+    )
+    assert len(result.errors) == 1
+    assert "date" not in result.errors[0].reason.lower()
+    assert result.errors[0].reason  # a human amount message, unchanged
+
+
+def test_csv_valid_row_still_parses_INV6():
+    """INV-6 no-regression anchor: the happy path is unchanged."""
+    from finbreak.importers.csv_importer import CsvImporter
+
+    result = CsvImporter().parse(
+        _csv([["2026-07-20", "Coffee", "-10.00"]]), _single_mapping(), 2
+    )
+    assert result.errors == []
+    assert len(result.drafts) == 1
+    assert result.drafts[0].occurred_on == "2026-07-20"
+    assert result.drafts[0].amount_minor == -1000
