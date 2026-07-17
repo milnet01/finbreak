@@ -1336,6 +1336,40 @@ because retrofitting them is a data migration.
   Progress (2026-07-16, EOD): spec docs/specs/FIBR-0146.md written + run through /cold-eyes to the full project cap (7 loops × 3 cold lanes = 21 reviews). Core converged — accuracy lane clean loops 5–7, no remaining silent-wrong-day path loops 5–7; every CRITICAL/HIGH/MEDIUM/LOW fixed in-loop (notably: removed a plausible-year guard built on a false strptime claim, added dotted %m.%d.%Y to close a silent day-first read, and rejected the empty-format strptime(\"\",\"\")→1900-01-01 phantom-date trap at _validate_mapping). Spec Status = CLEARED FOR CODE. Paused for the night; NEXT = TDD (tests/features/import_date_detect/) per the spec's Deliverables + Test plan. 8 commits on main, all pushed.
   Resolved (2026-07-17): shipped by TDD. New pure importers/date_detect.py (detect_date_format + 15 ordered KNOWN_DATE_FORMATS, clock-free, no year guard — strptime separates 2/4-digit widths); friendly per-row RowError in csv_importer (D3); wizard date-format QComboBox + Custom… reveal + auto-detect + live preview + whole-import banner (D4-D8); _validate_mapping rejects the empty-format strptime("","")→1900-01-01 trap (D4). New tests/features/import_date_detect/ (spec.md + 39 tests, 4 layers). Close: /audit semgrep 0; 2 cold review lanes — Lane A (date/money) no reachable defects, Lane B 2 MEDIUM (unblocked matched-profile date-combo re-detect; missing PDF-path tests) + 2 LOW, all folded inline + re-verified. Gate green 1080/1, mypy 0. Tag FIBR-0146-complete.
 
+- 📋 [FIBR-0148] **Deleting a statement silently loses transactions a still-present overlapping statement also covered.**
+  Import dedup (services/import_.py `_dedup`, D6/INV-5) is a multiset delta:
+  duplicates are DROPPED at import, never stored — the single stored copy is
+  stamped to whichever statement imported it FIRST (`statement_period_id`, a
+  single-valued column). `StatementService.delete_statement`
+  (services/statements.py) deletes exactly that statement's stamped rows and does
+  NO re-evaluation of other statements.
+
+  Concrete data loss: statement A (Jan) imported, then overlapping statement B
+  (Jan-Feb) imported — B's January rows are deduped away, only February inserted.
+  Delete A -> the January transactions vanish, even though B is still present and
+  legitimately covered January. B is not re-imported, so its rows are not
+  restored; B now shows a coverage span with a silent hole. For a money app this
+  is the unforgivable class (surfaced by a user question 2026-07-17).
+
+  Fix directions (needs a decision — likely a spec + cold-eyes, correctness-
+  critical):
+    (a) Ownership hand-off on delete: before deleting a row, check whether another
+        remaining statement of the same account covers its date (the span+NOT EXISTS
+        logic the v6 backfill already uses); if so, REASSIGN its statement_period_id
+        to that statement instead of deleting. Cheapest; delete only removes rows no
+        remaining statement covers. Caveat: span-overlap is a proxy for "the other
+        statement listed it" (true in practice — a statement lists all its period's
+        rows).
+    (b) Model change: store every imported row linked to its statement (many-to-many
+        transaction<->statement), dedup at display/aggregation time. Most correct,
+        biggest change.
+    (c) Minimum viable: warn on delete when rows would be lost that another
+        statement's span also covers, prompting a re-import.
+  Kind: fix (data integrity).
+  **Layman:** If two statements overlap and you delete one, the shared transactions vanish instead of staying under the statement you kept.
+  Kind: fix.
+  Source: user-question-2026-07-17.
+
 ### ⚡ Performance
 
 - ✅ [FIBR-0025] **Enable SQLite WAL mode.** Set
