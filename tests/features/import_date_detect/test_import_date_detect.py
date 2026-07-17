@@ -349,6 +349,9 @@ def test_regression_end_to_end_day_first_imports_rows(qtbot, service, tmp_path):
 
     assert widget._error.text() == ""
     assert widget._preview.new_count == 2 and len(widget._preview.errors) == 0
+    # INV-1: detection + preview commit NOTHING — the vault is still empty until
+    # the explicit Import press (the irreversible write is the user's alone).
+    assert TransactionRepository(conn).count_for_account(acct) == 0
     widget._import_button.click()
     assert TransactionRepository(conn).count_for_account(acct) == 2
 
@@ -481,21 +484,31 @@ def test_empty_custom_format_rejected_on_map_next(qtbot, service, tmp_path):
 
 
 def test_matched_profile_is_authoritative(qtbot, service, tmp_path):
+    """A matched profile's stored format wins and never re-runs auto-detect over
+    the data (INV-4/D5). The date column is deliberately OFF column 0 so the
+    programmatic date-combo set actually changes the index — masking it at index 0
+    would let an unblocked _on_date_column_changed slip through untested."""
     from finbreak.services.import_ import ImportService
 
+    header = ["Ref", "Date", "Amount"]  # date is NOT column 0
     acct = _acct(service)
     imp = ImportService(service.vault)
     imp.save_profile(
         "US",
-        HEADER,
-        ColumnMapping("Date", "Details", "Amount", None, None, "%m/%d/%Y", False),
+        header,
+        ColumnMapping("Date", "Ref", "Amount", None, None, "%m/%d/%Y", False),
     )
-    profile = imp.match_profile(HEADER)
+    profile = imp.match_profile(header)
     widget = _wizard(qtbot, service, acct)
     widget._date_ambiguous = True  # a stale flag a matched profile must clear
-    widget._populate_mapping_combos(HEADER)
+    widget._populate_mapping_combos(header)
+    # Auto-detect must NOT fire while applying a matched profile (D5).
+    calls = {"n": 0}
+    widget._autodetect_date_format = lambda: calls.__setitem__("n", calls["n"] + 1)  # type: ignore[method-assign]
     widget._apply_profile_to_combos(profile)
 
+    assert calls["n"] == 0, "matched profile does not re-run auto-detect over the data"
+    assert widget._column_combos["date"].currentData() == "Date"
     assert widget._date_format.currentData() == "%m/%d/%Y", "profile format wins"
     assert widget._date_ambiguous is False, "matched profile is never ambiguous"
 
@@ -545,6 +558,58 @@ def test_date_column_change_redetects_off_column_0(qtbot, service, tmp_path):
     )
     assert widget._date_format.currentData() == "%d/%m/%Y"
     assert "2026-07-20" in widget._date_preview.text()
+
+
+_PDF_HEADER = ["Date", "Details", "Amount"]
+_PDF_DAY_FIRST = [
+    _PDF_HEADER,
+    ["20/07/2026", "Coffee", "-10.00"],
+    ["21/07/2026", "Tea", "-5.00"],
+]
+_PDF_ISO = [
+    _PDF_HEADER,
+    ["2026-07-20", "Coffee", "-10.00"],
+    ["2026-07-21", "Tea", "-5.00"],
+]
+
+
+def test_pdf_table_switch_redetects_D5b(qtbot, service, tmp_path):
+    """D5(b): a PDF is serialised to the same self._text, so switching to a table
+    with a different date layout re-detects the format + refreshes the preview for
+    the new table (no stale reading). Exercises the untested _on_pdf_table_changed
+    auto-detect fire point on real candidate tables."""
+    acct = _acct(service)
+    widget = _wizard(qtbot, service, acct)
+    widget._pdf_candidates = [_PDF_DAY_FIRST, _PDF_ISO]
+
+    widget._on_pdf_table_changed(0)
+    assert widget._date_format.currentData() == "%d/%m/%Y"
+    assert "2026-07-20" in widget._date_preview.text()
+
+    widget._on_pdf_table_changed(1)
+    assert widget._date_format.currentData() == "%Y-%m-%d", "re-detected for table 2"
+    assert "2026-07-20" in widget._date_preview.text()
+
+
+def test_pdf_matched_table_uses_profile_not_autodetect_D5b(qtbot, service, tmp_path):
+    """D5(b) matched branch: a saved profile for the table wins (no auto-detect),
+    and the caller still refreshes the preview."""
+    from finbreak.services.import_ import ImportService
+
+    acct = _acct(service)
+    ImportService(service.vault).save_profile(
+        "PdfBank",
+        _PDF_HEADER,
+        ColumnMapping("Date", "Details", "Amount", None, None, "%m/%d/%Y", False),
+    )
+    widget = _wizard(qtbot, service, acct)
+    widget._pdf_candidates = [_PDF_DAY_FIRST]
+    calls = {"n": 0}
+    widget._autodetect_date_format = lambda: calls.__setitem__("n", calls["n"] + 1)  # type: ignore[method-assign]
+
+    widget._on_pdf_table_changed(0)
+    assert calls["n"] == 0, "a matched table uses the profile, never auto-detect"
+    assert widget._date_format.currentData() == "%m/%d/%Y"
 
 
 def test_added_strings_tr_wrapped_and_data_fixed_tokens(qtbot, service, tmp_path):

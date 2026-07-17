@@ -672,7 +672,14 @@ class ImportWizardWidget(QWidget):
         >1-table PDF shows the map step with the columns already mapped for the
         user to confirm."""
         mapping = profile.column_mapping()
-        self._set_combo(self._column_combos["date"], mapping.date_column)
+        # The date combo is wired to _on_date_column_changed (re-detect); block it
+        # so applying a matched profile does NOT re-run auto-detect over the data
+        # (FIBR-0146 D5: _apply_profile_to_combos is signal-blocked; INV-4 a matched
+        # profile's stored format is authoritative). Without this, a profile whose
+        # date column isn't column 0 would fire a spurious re-detect + double preview
+        # refresh. The other role combos carry no such connection.
+        with QSignalBlocker(self._column_combos["date"]):
+            self._set_combo(self._column_combos["date"], mapping.date_column)
         self._set_combo(self._column_combos["description"], mapping.description_column)
         if mapping.amount_column is not None:
             self._amount_style.setCurrentIndex(0)  # single

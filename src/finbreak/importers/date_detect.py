@@ -17,9 +17,9 @@ guard.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Sequence
 
 __all__ = ["KNOWN_DATE_FORMATS", "DateFormatGuess", "detect_date_format"]
 
