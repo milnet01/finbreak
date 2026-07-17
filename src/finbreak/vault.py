@@ -94,6 +94,14 @@ class Vault:
         # VaultLockedError guard. self._conn is set only after the schema commit,
         # so it stays locked on any earlier failure either way.
         try:
+            # WAL for the live vault (FIBR-0025): readers no longer block the
+            # import writer, so the UI stays responsive during a long import. Set
+            # as the FIRST statement — while the DB is empty and no transaction is
+            # open (journal_mode cannot change mid-transaction). WAL persists in the
+            # DB header, so every later open() inherits it. synchronous stays at the
+            # default FULL, so each commit still fsyncs the WAL — the "DB durable
+            # before sidecar" ordering below (INV-5) is unaffected.
+            conn.execute("PRAGMA journal_mode = WAL")
             conn.execute("CREATE TABLE schema_version(version INTEGER NOT NULL)")
             conn.execute(
                 "INSERT INTO schema_version(version) VALUES (?)", (SCHEMA_VERSION,)
@@ -121,9 +129,10 @@ class Vault:
             # sidecar last — so a migration failure leaves a vault-without-sidecar
             # (the clean mixed-state retry, INV-5), never a sidecar over a
             # half-migrated vault (FIBR-0005 D1/D2). The "DB durable before
-            # sidecar" half relies on SQLite's default per-commit fsync
-            # (synchronous=FULL); a later switch to WAL / synchronous=NORMAL would
-            # need the sidecar write deferred until the DB is durably flushed.
+            # sidecar" half relies on per-commit fsync: WAL is enabled above but
+            # synchronous stays at the default FULL, so each commit still fsyncs the
+            # WAL — the ordering holds. Only ALSO lowering synchronous to NORMAL
+            # would need the sidecar write deferred until the DB is durably flushed.
             run_migrations(conn)
             self._write_sidecar(params)
         except Exception:
@@ -153,6 +162,16 @@ class Vault:
             # key or a flipped body byte raises DatabaseError rather than
             # returning corrupt data (INV-1).
             conn.execute("SELECT count(*) FROM sqlite_master").fetchone()
+            # Convert a pre-WAL vault (created before FIBR-0025) to WAL on the LIVE
+            # connection — a no-op if already WAL. Set AFTER the guard read above so
+            # a wrong key still surfaces there (switching journal mode touches
+            # page 1, which a wrong key cannot decrypt). SKIPPED for the transient
+            # restore/backup-assembly connection (in_memory_temp): backup._install
+            # moves vault.db at the file level WITHOUT its -wal sidecar, so that
+            # connection must keep the self-contained rollback journal (and the
+            # security-model backup-journal guarantee, FIBR-0014 INV-1).
+            if not in_memory_temp:
+                conn.execute("PRAGMA journal_mode = WAL")
         except Exception:
             conn.close()
             raise

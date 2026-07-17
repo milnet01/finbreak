@@ -150,7 +150,7 @@ def test_INV4_v2_upgrades_to_v3_and_seeds_tree(paths):
     before_acct = conn.execute("SELECT id, name, type FROM accounts").fetchall()
 
     run_migrations(conn)  # v2 -> v3 -> ... -> v9 (run_migrations walks to LATEST)
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 9
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 10
 
     roots = _roots(conn)
     assert set(roots) == {"income", "expenditure"}
@@ -211,7 +211,7 @@ def test_INV4_idempotent_at_latest(paths):
     total_before = len(CategoryRepository(conn).list_all())
 
     run_migrations(conn)  # re-run: no-op at v9
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 9
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 10
     assert len(CategoryRepository(conn).children_of(None)) == roots_before == 2
     assert len(CategoryRepository(conn).list_all()) == total_before, "no duplicate seed"
     conn.close()
@@ -222,7 +222,7 @@ def test_INV4_first_run_vault_is_v9_with_seeded_tree(service):
     # FIBR-0052 statement-provenance column, v6->v7 the FIBR-0010 category link);
     # the category tree is still seeded at v2->v3.
     conn = service.vault.connection
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 9
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 10
     assert set(_roots(conn)) == {"income", "expenditure"}
 
 

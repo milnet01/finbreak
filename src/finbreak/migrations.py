@@ -21,7 +21,7 @@ from finbreak.errors import SchemaVersionError
 
 log = logging.getLogger(__name__)
 
-LATEST_SCHEMA_VERSION = 9
+LATEST_SCHEMA_VERSION = 10
 
 # Seed data written by the v1->v2 migration (D8) — NOT a UI string, so never
 # run through tr(); the user renames it in the Accounts manager.
@@ -305,6 +305,54 @@ def _migrate_to_v9(conn: dbapi2.Connection) -> None:
         conn.execute("UPDATE schema_version SET version = 9")
 
 
+def _migrate_to_v10(conn: dbapi2.Connection) -> None:
+    """v9->v10: add the hot-path indexes (FIBR-0098/0071/0026). The schema shipped
+    **no** indexes through v9, so every import-dedup probe, category/account count,
+    and statement delete was a full table scan — fine at personal scale (design.md
+    accepts it), but a multi-year vault degrades. Five indexes flatten the named
+    hot queries:
+
+    * ``transactions(account_id, occurred_on, amount_minor)`` — the import-dedup
+      ``existing_for`` probe (one lookup per distinct (date, amount) bucket per
+      import). Its leftmost ``account_id`` prefix ALSO serves ``count_for_account``,
+      so a standalone ``account_id`` index would be redundant (omitted, D-simplicity).
+    * ``transactions(occurred_on)`` — the ``list_all`` ``ORDER BY occurred_on`` and
+      date-range filters (NOT covered by the composite: ``occurred_on`` is not its
+      leftmost column).
+    * ``transactions(category_id)`` — ``count_for_category`` + the
+      ``clear_category_for`` reset in the category-delete blast radius.
+    * ``transactions(statement_period_id)`` — ``delete_for_statement`` /
+      ``reassign_account``.
+    * ``categorization_rules(category_id)`` — the rules half of the category-delete
+      count + delete.
+
+    A pure-DDL step: indexes touch no row data, so there is no backfill. Still one
+    atomic unit (INV-1): with the vault's ``isolation_level=""`` the driver does not
+    implicitly ``BEGIN`` around the DDL, so the explicit ``BEGIN`` — the step's first
+    statement, ``UPDATE schema_version`` its last — makes it all-or-nothing (a
+    mid-build failure leaves a re-openable v9 with no partial indexes)."""
+    with owned_transaction(conn):
+        conn.execute(
+            "CREATE INDEX idx_transactions_account_date_amount "
+            "ON transactions(account_id, occurred_on, amount_minor)"
+        )
+        conn.execute(
+            "CREATE INDEX idx_transactions_occurred_on ON transactions(occurred_on)"
+        )
+        conn.execute(
+            "CREATE INDEX idx_transactions_category_id ON transactions(category_id)"
+        )
+        conn.execute(
+            "CREATE INDEX idx_transactions_statement_period_id "
+            "ON transactions(statement_period_id)"
+        )
+        conn.execute(
+            "CREATE INDEX idx_categorization_rules_category_id "
+            "ON categorization_rules(category_id)"
+        )
+        conn.execute("UPDATE schema_version SET version = 10")
+
+
 _MIGRATIONS = {
     2: _migrate_to_v2,
     3: _migrate_to_v3,
@@ -314,4 +362,5 @@ _MIGRATIONS = {
     7: _migrate_to_v7,
     8: _migrate_to_v8,
     9: _migrate_to_v9,
+    10: _migrate_to_v10,
 }

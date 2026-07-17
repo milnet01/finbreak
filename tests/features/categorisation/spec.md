@@ -31,7 +31,7 @@ The code artifacts use American *categoriz*ation
 | INV-12 | **No re-dedup.** `apply_rules()` issues only `UPDATE`s — the transaction row count is identical before and after. |
 | INV-13 | **Idempotent apply.** A second `apply_rules()` with unchanged rules returns 0 and changes no row. |
 | INV-14 | **Auto-lock safety.** A `VaultLockedError` raised from the Home set / Apply / delete slot is caught — the slot returns, no crash. |
-| INV-15 | **Schema v6 → v7** (this feature's delta). `LATEST_SCHEMA_VERSION == 9` now (later phases advanced it — v8 is FIBR-0011); a v6 vault walking to latest gains `transactions.category_id` + `category_source` + the `categorization_rules` table at the v6→v7 step, one atomic step (a wedged step leaves a re-openable v6). |
+| INV-15 | **Schema v6 → v7** (this feature's delta). `LATEST_SCHEMA_VERSION == 10` now (later phases advanced it — v8 is FIBR-0011); a v6 vault walking to latest gains `transactions.category_id` + `category_source` + the `categorization_rules` table at the v6→v7 step, one atomic step (a wedged step leaves a re-openable v6). |
 | INV-16 | **No network; i18n.** No network import under the new modules (the vault-suite static scan covers them); user strings via `tr()` (convention/ruff, not a unit test). |
 
 **Edges** (beyond the INV table): `categorize(desc, [])` → `None`;

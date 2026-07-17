@@ -21,6 +21,17 @@ signaling per
 
 ## [Unreleased]
 
+### Changed
+
+- **finbreak stays fast and responsive as your transaction history grows (FIBR-0098/0071/0026/0025)**
+  The vault now keeps quick-lookup indexes on the columns finbreak searches
+  most (dates, accounts, categories, statement periods, and the duplicate-check
+  key), so listing, filtering, importing, and de-duplicating stay fast even on a
+  multi-year vault instead of slowing down as rows pile up. The database also
+  switches to a faster write mode (WAL) so the screen stays responsive while a
+  large statement imports. Existing vaults gain the speed-ups automatically the
+  next time you unlock them; your data is untouched.
+
 ### Fixed
 
 - **Category tree can no longer loop back on itself.** (FIBR-0141)

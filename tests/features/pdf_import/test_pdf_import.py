@@ -568,7 +568,7 @@ def test_INV8_v4_upgrades_through_v9_adds_nullable_column(paths):
     build_v4_vault(vault_path, sidecar_path, salt, [("2026-03-01", -1250, "Coffee")])
     conn = keyed_connection(vault_path, salt)
     run_migrations(conn)  # v4 -> v9
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 9
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 10
     cols = [r[1] for r in conn.execute("PRAGMA table_info(accounts)").fetchall()]
     assert "statement_pdf_password" in cols
     row = conn.execute("SELECT statement_pdf_password FROM accounts").fetchone()
@@ -583,7 +583,7 @@ def test_INV8_idempotent_at_v9(paths):
     conn = keyed_connection(vault_path, salt)
     run_migrations(conn)  # v4 -> v9
     run_migrations(conn)  # re-run: no-op at v9
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 9
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 10
     conn.close()
 
 
@@ -591,11 +591,11 @@ def test_INV8_first_run_vault_is_v9(service):
     version = service.vault.connection.execute(
         "SELECT version FROM schema_version"
     ).fetchone()[0]
-    assert version == 9
+    assert version == 10
 
 
-def test_INV8_latest_schema_version_is_9():
-    assert LATEST_SCHEMA_VERSION == 9
+def test_INV8_latest_schema_version_is_10():
+    assert LATEST_SCHEMA_VERSION == 10
 
 
 def test_INV8_v5_upgrades_through_v9_adds_provenance_column(paths):
@@ -607,7 +607,7 @@ def test_INV8_v5_upgrades_through_v9_adds_provenance_column(paths):
     build_v5_vault(vault_path, sidecar_path, salt, [("2026-03-01", -1250, "Coffee")])
     conn = keyed_connection(vault_path, salt)
     run_migrations(conn)  # v5 -> v9
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 9
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 10
     cols = [r[1] for r in conn.execute("PRAGMA table_info(transactions)").fetchall()]
     assert "statement_period_id" in cols
     row = conn.execute("SELECT statement_period_id FROM transactions").fetchone()

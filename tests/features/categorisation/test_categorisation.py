@@ -104,8 +104,8 @@ def _do_import(imp: ImportService, text: str, account_id: int):
 # --------------------------------------------------------------------------- #
 # INV-15 — schema v6 -> v7
 # --------------------------------------------------------------------------- #
-def test_INV15_latest_schema_version_is_9():
-    assert LATEST_SCHEMA_VERSION == 9
+def test_INV15_latest_schema_version_is_10():
+    assert LATEST_SCHEMA_VERSION == 10
 
 
 def test_INV15_v6_upgrades_to_v9(paths):
@@ -119,7 +119,7 @@ def test_INV15_v6_upgrades_to_v9(paths):
     ).fetchall()
 
     run_migrations(conn)  # v6 -> v9 (walks to LATEST)
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 9
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 10
 
     cols = {r[1] for r in conn.execute("PRAGMA table_info(transactions)").fetchall()}
     assert {"category_id", "category_source"} <= cols
@@ -172,13 +172,13 @@ def test_INV15_idempotent_at_v9(paths):
     conn = keyed_connection(vault_path, salt)
     run_migrations(conn)
     run_migrations(conn)  # re-run: no-op at v9
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 9
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 10
     conn.close()
 
 
 def test_INV15_first_run_vault_is_v9(service):
     conn = service.vault.connection
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 9
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 10
     cols = {r[1] for r in conn.execute("PRAGMA table_info(transactions)").fetchall()}
     assert {"category_id", "category_source"} <= cols
 
