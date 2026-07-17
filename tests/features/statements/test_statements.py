@@ -1055,3 +1055,335 @@ def test_list_statements_ordered_by_import_recency(service):
     _do_import(imp, _csv(HEADER, [["2026-02-05", "b", "-1.00"]]), acct, "second.csv")
     rows = StatementService(service.vault).list_statements()
     assert [r.source_filename for r in rows] == ["first.csv", "second.csv"]
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0148 — deleting a statement hands off transactions a REMAINING
+# overlapping statement still covers, instead of silently losing them.
+# --------------------------------------------------------------------------- #
+def _import_span(imp, text, acct, start, end, source="stmt.csv"):
+    """Import with an EXPLICIT coverage span (not the auto-detected row min/max),
+    so the overlap fixtures pin exactly which statement's period covers which
+    dates."""
+    preview = imp.preview(text, SINGLE, acct)
+    return imp.commit_import(preview, start, end, source)
+
+
+def _pid_of(conn, desc):
+    """The ``statement_period_id`` stamped on the row with this description."""
+    return conn.execute(
+        "SELECT statement_period_id FROM transactions WHERE description = ?", (desc,)
+    ).fetchone()[0]
+
+
+def _period_files(conn, acct):
+    """The source filenames of every recorded period for ``acct``, in list order."""
+    periods = StatementPeriodRepository(conn).list_for_account(acct)
+    return [p.source_filename for p in periods]
+
+
+def _build_full_overlap(service):
+    """A(Jan) + B(Jan–Feb) where B's period covers **all** of A's January rows.
+    A is imported first, so its two January rows are stamped to A; B's copies of
+    them dedup away (only b1/Feb is inserted, stamped to B). Returns
+    ``(acct, conn, a, b)`` with ``a``/``b`` the two ``StatementPeriod`` rows."""
+    imp, acct, conn = (
+        ImportService(service.vault),
+        _acct(service),
+        service.vault.connection,
+    )
+    _import_span(
+        imp,
+        _csv(HEADER, [["2026-01-10", "a1", "-1.00"], ["2026-01-20", "a2", "-2.00"]]),
+        acct,
+        "2026-01-10",
+        "2026-01-20",
+        "A.csv",
+    )
+    r = _import_span(
+        imp,
+        _csv(
+            HEADER,
+            [
+                ["2026-01-10", "a1", "-1.00"],
+                ["2026-01-20", "a2", "-2.00"],
+                ["2026-02-15", "b1", "-3.00"],
+            ],
+        ),
+        acct,
+        "2026-01-01",
+        "2026-02-28",
+        "B.csv",
+    )
+    assert r.inserted_count == 1 and r.period_recorded is True
+    periods = {
+        p.source_filename: p
+        for p in StatementPeriodRepository(conn).list_for_account(acct)
+    }
+    return acct, conn, periods["A.csv"], periods["B.csv"]
+
+
+def test_INV1_overlap_delete_hands_off_not_loses(service):
+    """The reproduce-first bug: deleting A must NOT lose the January rows B still
+    covers — they are handed off to B, and the call reports 0 orphaned."""
+    acct, conn, a, b = _build_full_overlap(service)
+
+    deleted = StatementService(service.vault).delete_statement(a.id)
+
+    survivors = {t.description for t in TransactionRepository(conn).list_all()}
+    assert survivors == {"a1", "a2", "b1"}, "January rows survive B's coverage"
+    assert _pid_of(conn, "a1") == b.id and _pid_of(conn, "a2") == b.id, "handed to B"
+    assert deleted == 0, "B covered every A row, so nothing was orphaned"
+    assert _period_files(conn, acct) == ["B.csv"], "only A's period row removed"
+
+
+def test_INV2_orphans_deleted_when_nothing_remains_to_cover(service):
+    """A transaction no remaining statement covers is still deleted (the return
+    count equals the rows actually removed)."""
+    imp, acct, conn = (
+        ImportService(service.vault),
+        _acct(service),
+        service.vault.connection,
+    )
+    _import_span(
+        imp,
+        _csv(HEADER, [["2026-01-10", "a1", "-1.00"], ["2026-01-20", "a2", "-2.00"]]),
+        acct,
+        "2026-01-10",
+        "2026-01-20",
+        "A.csv",
+    )
+    a = StatementPeriodRepository(conn).list_for_account(acct)[0]
+    deleted = StatementService(service.vault).delete_statement(a.id)
+    assert deleted == 2, "both rows orphaned (no other statement) and deleted"
+    assert TransactionRepository(conn).list_all() == []
+
+
+def test_INV2_zero_linked_delete_returns_zero_and_touches_nothing(service):
+    """Deleting a zero-linked statement (all rows deduped at import) hands off and
+    deletes nothing, removes only its period row, and returns 0 — and never
+    disturbs a row another statement owns."""
+    imp, acct, conn = (
+        ImportService(service.vault),
+        _acct(service),
+        service.vault.connection,
+    )
+    _import_span(
+        imp,
+        _csv(HEADER, [["2026-01-10", "a1", "-1.00"]]),
+        acct,
+        "2026-01-10",
+        "2026-01-10",
+        "A.csv",
+    )
+    # Same row (dedups to 0 inserted) but a DIFFERENT, wider span -> zero-linked B.
+    r = _import_span(
+        imp,
+        _csv(HEADER, [["2026-01-10", "a1", "-1.00"]]),
+        acct,
+        "2026-01-01",
+        "2026-02-28",
+        "B.csv",
+    )
+    assert r.inserted_count == 0 and r.period_recorded is True
+    b = next(
+        p
+        for p in StatementPeriodRepository(conn).list_for_account(acct)
+        if p.source_filename == "B.csv"
+    )
+    deleted = StatementService(service.vault).delete_statement(b.id)
+    assert deleted == 0
+    assert {t.description for t in TransactionRepository(conn).list_all()} == {"a1"}
+    assert _pid_of(conn, "a1") is not None, "a1 still owned by A (untouched)"
+    assert _period_files(conn, acct) == ["A.csv"]
+
+
+def test_INV3_delete_never_creates_a_null_stamped_row(service):
+    """No row is silently turned into a manual (NULL-stamped) row by a delete."""
+    acct, conn, a, _b = _build_full_overlap(service)
+
+    def null_count():
+        return conn.execute(
+            "SELECT count(*) FROM transactions WHERE statement_period_id IS NULL"
+        ).fetchone()[0]
+
+    assert null_count() == 0
+    StatementService(service.vault).delete_statement(a.id)
+    assert null_count() == 0, "covered rows moved to B; none became manual"
+
+
+def test_INV4_rollback_after_handoff_restores_everything(service):
+    """Atomic: a failure AFTER the hand-off UPDATE rolls back the re-stamp too —
+    the vault re-opens with A, B, and every row exactly as before."""
+    acct, conn, a, _b = _build_full_overlap(service)
+
+    # Wedge the orphan-delete (step 2), which runs after the hand-off (step 1).
+    wedge = StatementService(
+        StandInVault(
+            raising_conn(
+                conn, "DELETE FROM transactions", "injected failure after hand-off"
+            )
+        )
+    )
+    with pytest.raises(RuntimeError):
+        wedge.delete_statement(a.id)
+
+    # Same connection, before any reopen: the hand-off re-stamp is undone too.
+    assert {t.description for t in TransactionRepository(conn).list_all()} == {
+        "a1",
+        "a2",
+        "b1",
+    }
+    assert _pid_of(conn, "a1") == a.id and _pid_of(conn, "a2") == a.id, (
+        "re-stamp rolled back"
+    )
+    assert any(
+        p.id == a.id for p in StatementPeriodRepository(conn).list_for_account(acct)
+    ), "A's period row survives the rollback"
+
+
+def test_INV5_deterministic_owner_is_earliest_period(service):
+    """When >=2 remaining statements cover a row's date, it is handed to the one
+    ordered first by (period_start, id)."""
+    imp, acct, conn = (
+        ImportService(service.vault),
+        _acct(service),
+        service.vault.connection,
+    )
+    _import_span(
+        imp,
+        _csv(HEADER, [["2026-01-15", "x", "-1.00"]]),
+        acct,
+        "2026-01-15",
+        "2026-01-15",
+        "A.csv",
+    )
+    # B [01-01, 01-15] and C [01-10, 01-20] both cover 01-15; B starts earlier.
+    _import_span(
+        imp,
+        _csv(HEADER, [["2026-01-15", "x", "-1.00"], ["2026-01-01", "b0", "-5.00"]]),
+        acct,
+        "2026-01-01",
+        "2026-01-15",
+        "B.csv",
+    )
+    _import_span(
+        imp,
+        _csv(
+            HEADER,
+            [
+                ["2026-01-15", "x", "-1.00"],
+                ["2026-01-10", "c0", "-6.00"],
+                ["2026-01-20", "c1", "-7.00"],
+            ],
+        ),
+        acct,
+        "2026-01-10",
+        "2026-01-20",
+        "C.csv",
+    )
+    periods = {
+        p.source_filename: p
+        for p in StatementPeriodRepository(conn).list_for_account(acct)
+    }
+    StatementService(service.vault).delete_statement(periods["A.csv"].id)
+    assert _pid_of(conn, "x") == periods["B.csv"].id, "handed to the earliest-starting"
+
+
+def test_INV6_handoff_is_account_scoped(service):
+    """An overlapping period on a DIFFERENT account never adopts a row — the
+    uncovered (same-account) row is orphaned and deleted; the other account is
+    untouched."""
+    imp, conn = ImportService(service.vault), service.vault.connection
+    acct1 = _acct(service)
+    acct2 = AccountService(service.vault).add_account("Savings", "savings").id
+    _import_span(
+        imp,
+        _csv(HEADER, [["2026-01-15", "x", "-1.00"]]),
+        acct1,
+        "2026-01-15",
+        "2026-01-15",
+        "A.csv",
+    )
+    # A statement on acct2 whose period covers 01-15 — but it is a different account.
+    _import_span(
+        imp,
+        _csv(HEADER, [["2026-01-15", "y", "-1.00"]]),
+        acct2,
+        "2026-01-01",
+        "2026-02-28",
+        "OTHER.csv",
+    )
+    a = StatementPeriodRepository(conn).list_for_account(acct1)[0]
+    deleted = StatementService(service.vault).delete_statement(a.id)
+    assert deleted == 1, "no SAME-account statement covers x -> orphaned + deleted"
+    assert {t.description for t in TransactionRepository(conn).list_all()} == {"y"}
+
+
+def test_INV7_handoff_changes_only_provenance(service):
+    """Hand-off changes statement_period_id alone — every other column of the
+    moved row is byte-identical."""
+    acct, conn, a, b = _build_full_overlap(service)
+    cols = "account_id, occurred_on, amount_minor, description, category_id"
+    before = conn.execute(
+        f"SELECT {cols} FROM transactions WHERE description = 'a1'"
+    ).fetchone()
+    StatementService(service.vault).delete_statement(a.id)
+    after = conn.execute(
+        f"SELECT {cols} FROM transactions WHERE description = 'a1'"
+    ).fetchone()
+    assert after == before, "only statement_period_id changed on the handed-off row"
+    assert _pid_of(conn, "a1") == b.id
+
+
+def test_INV8_partial_overlap_splits_handoff_and_delete(service):
+    """A remaining statement covering only SOME of the deleted statement's dates
+    both hands off the covered rows and deletes the uncovered ones in one call."""
+    imp, acct, conn = (
+        ImportService(service.vault),
+        _acct(service),
+        service.vault.connection,
+    )
+    # A covers 01-05 (e) + 01-20 (l).
+    _import_span(
+        imp,
+        _csv(HEADER, [["2026-01-05", "e", "-1.00"], ["2026-01-20", "l", "-2.00"]]),
+        acct,
+        "2026-01-05",
+        "2026-01-20",
+        "A.csv",
+    )
+    # B [01-15, 02-28] covers 01-20 (l) but NOT 01-05 (e).
+    _import_span(
+        imp,
+        _csv(HEADER, [["2026-01-20", "l", "-2.00"], ["2026-02-10", "b1", "-3.00"]]),
+        acct,
+        "2026-01-15",
+        "2026-02-28",
+        "B.csv",
+    )
+    periods = {
+        p.source_filename: p
+        for p in StatementPeriodRepository(conn).list_for_account(acct)
+    }
+    deleted = StatementService(service.vault).delete_statement(periods["A.csv"].id)
+    assert deleted == 1, "only the uncovered 01-05 row is orphaned"
+    remaining = {t.description for t in TransactionRepository(conn).list_all()}
+    assert remaining == {"l", "b1"}
+    assert _pid_of(conn, "l") == periods["B.csv"].id, "the covered row handed to B"
+
+
+def test_INV9_delete_preserves_shared_money(service):
+    """Money-safety: a full-overlap delete lowers the vault total by exactly the
+    orphaned rows' sum — zero here, since every row is handed off, not deleted."""
+    acct, conn, a, _b = _build_full_overlap(service)
+
+    def total():
+        return conn.execute(
+            "SELECT COALESCE(SUM(amount_minor), 0) FROM transactions"
+        ).fetchone()[0]
+
+    before = total()
+    deleted = StatementService(service.vault).delete_statement(a.id)
+    assert deleted == 0
+    assert total() == before, "no money lost — shared rows handed off, not deleted"

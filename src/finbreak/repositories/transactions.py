@@ -149,6 +149,34 @@ class TransactionRepository:
             (statement_period_id,),
         ).rowcount
 
+    def hand_off_covered(self, statement_period_id: int) -> int:
+        """Re-stamp every transaction of the statement being deleted whose date a
+        **remaining** statement of the **same account** also covers, to that
+        statement — returning the rowcount handed off (FIBR-0148 INV-1). The
+        mirror of the ``_migrate_to_v6`` backfill with the polarity flipped:
+        ``NOT EXISTS`` → ``EXISTS`` (hand-off-if-covered), the outer ``WHERE``
+        keyed on ``= :pid`` instead of ``IS NULL``, and the ``SET`` sub-query a
+        correlated pick (``ORDER BY period_start, id LIMIT 1`` — INV-5) rather
+        than a constant. The ``EXISTS`` guard shares the sub-query's predicate
+        **byte-for-byte**, so a row no remaining statement covers is never
+        re-stamped to ``NULL`` (it keeps ``:pid`` and is deleted next) — the
+        money-critical NULL trap. **Commit-free** — invoked inside
+        ``StatementService.delete_statement``'s owned transaction, **before**
+        ``delete_for_statement``. ``NULL``-stamped (manual) rows are untouched."""
+        return self._conn.execute(
+            "UPDATE transactions SET statement_period_id = ("
+            "  SELECT q.id FROM statement_periods q "
+            "  WHERE q.account_id = transactions.account_id AND q.id <> :pid "
+            "  AND transactions.occurred_on BETWEEN q.period_start AND q.period_end "
+            "  ORDER BY q.period_start, q.id LIMIT 1) "
+            "WHERE statement_period_id = :pid "
+            "AND EXISTS ("
+            "  SELECT 1 FROM statement_periods q "
+            "  WHERE q.account_id = transactions.account_id AND q.id <> :pid "
+            "  AND transactions.occurred_on BETWEEN q.period_start AND q.period_end)",
+            {"pid": statement_period_id},
+        ).rowcount
+
     def reassign_account(self, statement_period_id: int, account_id: int) -> int:
         """Re-point every transaction stamped with ``statement_period_id`` to
         ``account_id``, returning the rowcount. **Commit-free** — invoked inside

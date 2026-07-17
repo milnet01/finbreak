@@ -27,8 +27,35 @@ subject is new in this phase:
   row with its statement; manual entry stays `NULL`; a span-reuse import stamps
   with the existing period id.
 - **INV-9 / INV-9a / INV-9b / INV-9c / INV-9d** — `delete_statement` atomically
-  removes only the target's stamped rows + its record; the FK blocks an unsafe
-  direct period delete; the v5→v6 backfill links unambiguous rows only.
+  removes the target's **orphaned** stamped rows + its record (rows a remaining
+  overlapping statement also covers are handed off, not deleted — see the
+  FIBR-0148 block below, which supersedes the "removes only the target's stamped
+  rows" wording); the FK blocks an unsafe direct period delete; the v5→v6
+  backfill links unambiguous rows only. The INV-9a/b/c/d fixtures use
+  **non-overlapping** statements, so they are unchanged by FIBR-0148.
+
+FIBR-0148 (deleting a statement must not lose transactions a remaining
+overlapping statement also covers) adds its own block to
+`tests/features/statements/test_statements.py`:
+
+- **INV-1** — an overlap delete (A Jan, B Jan–Feb, B covers all of A) hands off
+  A's January rows to B instead of losing them; returns 0 (nothing orphaned).
+- **INV-2** — a row no remaining statement covers is still deleted; a
+  zero-linked (all-deduped) statement delete removes only its period row,
+  returns 0, and disturbs no row another statement owns.
+- **INV-3** — a delete never turns a row into a manual (`NULL`-stamped) row.
+- **INV-4** — a forced failure **after** the hand-off rolls back the re-stamp
+  too (full atomic rollback across all three steps).
+- **INV-5** — with ≥2 remaining covering statements, the row is handed to the
+  one ordered first by `(period_start, id)`.
+- **INV-6** — hand-off is account-scoped: an overlapping period on another
+  account never adopts a row.
+- **INV-7** — hand-off changes `statement_period_id` alone; every other column
+  is unchanged.
+- **INV-8** — partial overlap splits: covered rows handed off, uncovered rows
+  deleted, in one call.
+- **INV-9** — money-safety: the vault total drops by exactly the orphaned rows'
+  summed `amount_minor` (0 under full overlap).
 - **INV-10 / INV-10a / INV-10b** — the Delete action confirms (naming the count)
   then deletes + refreshes; Cancel does nothing.
 - **INV-11 / INV-11a** — a mutation reflects on the Home tab on next activation.

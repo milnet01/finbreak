@@ -53,20 +53,28 @@ class StatementService:
         return [StatementRow(*row) for row in rows]
 
     def delete_statement(self, period_id: int) -> int:
-        """Atomically remove the statement ``period_id`` and its stamped
-        transactions, returning the number of transactions deleted (INV-9). One
-        owned ``BEGIN``: delete the children **then** the parent (so the plain FK
-        never trips), ``COMMIT``; any failure ``ROLLBACK``s both tables to a
-        re-openable vault. Manual (``NULL``) and other statements' rows untouched."""
+        """Atomically remove the statement ``period_id``, returning the number of
+        transactions actually **deleted** (FIBR-0148; supersedes FIBR-0052 INV-9's
+        "removes every stamped row" clause — the atomicity + ``NULL``-untouched +
+        return-value clauses are retained). One owned ``BEGIN``, three ordered
+        steps: (1) **hand off** each stamped row a *remaining* same-account
+        statement also covers to that statement (``hand_off_covered`` — so shared
+        transactions are preserved, not lost, INV-1); (2) delete the rows still
+        stamped ``period_id`` (nothing else covers them); (3) delete the period
+        row. Hand-off precedes the delete, and both precede the period delete, so
+        the plain (non-cascade) FK never trips. Any failure ``ROLLBACK``s all
+        three to a re-openable vault. Manual (``NULL``) and other statements'
+        rows untouched."""
         conn = self._conn
         tx_repo = TransactionRepository(conn)
         period_repo = StatementPeriodRepository(conn)
-        # Delete the children **then** the parent (so the plain FK never trips);
-        # any failure rolls back both to a re-openable vault (INV-9).
+        # Hand off covered rows, THEN delete the orphans, THEN the period row —
+        # one owned unit; any failure rolls all three back (FIBR-0148 INV-4).
         with owned_transaction(conn):
+            handed_off = tx_repo.hand_off_covered(period_id)
             deleted = tx_repo.delete_for_statement(period_id)
             period_repo.delete(period_id)
-        log.info("statement deleted")
+        log.info("statement deleted (%d handed off, %d removed)", handed_off, deleted)
         return deleted
 
     def reassign_account(self, period_id: int, new_account_id: int) -> int:
