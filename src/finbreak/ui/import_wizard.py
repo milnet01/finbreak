@@ -11,6 +11,9 @@ manager, so the screen is translation-ready and RTL-safe (coding.md § 5.2).
 
 from __future__ import annotations
 
+import csv
+import io
+from datetime import datetime
 from pathlib import Path
 from typing import cast
 
@@ -36,6 +39,7 @@ from PySide6.QtWidgets import (
 from finbreak.errors import FinbreakError
 from finbreak.importers.base import ParseResult
 from finbreak.importers.csv_importer import read_header
+from finbreak.importers.date_detect import KNOWN_DATE_FORMATS, detect_date_format
 from finbreak.importers.ofx_importer import OfxImporter
 from finbreak.importers.pdf_importer import (
     PasswordError,
@@ -54,6 +58,10 @@ from finbreak.ui.password_dialog import PasswordDialog
 
 _STEP_PICK, _STEP_MAP, _STEP_PREVIEW = 0, 1, 2
 _ERROR_ROW_BRUSH = QBrush(QColor(122, 59, 59))  # muted red — flags a RowError row
+
+_MAX_DATE_SAMPLES = 50  # detector sampling bound (FIBR-0146 D8)
+_PREVIEW_SAMPLES = 3  # how many parsed dates the live preview shows (D6)
+_CUSTOM_FORMAT = object()  # sentinel data for the "Custom…" combo entry (D4)
 
 
 class _NeedPassword:
@@ -90,6 +98,12 @@ class ImportWizardWidget(QWidget):
         # so the table chooser can re-serialise a selected one. Empty off the PDF
         # path (reset on every pick).
         self._pdf_candidates: list[list[list[str | None]]] = []
+        # FIBR-0146: True when auto-detect found two formats equally consistent
+        # with the sampled dates (e.g. every day-number <= 12, so day-first and
+        # month-first both parse) — drives the live-preview day/month nudge (D5/D6).
+        # Set by _autodetect_date_format; cleared by any manual format change and
+        # by a matched profile (authoritative, never "ambiguous").
+        self._date_ambiguous: bool = False
         # PDF only (FIBR-0057): the (account_id, password) a "remember" persisted
         # during THIS import, under the provisional file-select account. If the
         # user then re-targets the import (preview step), the committed rows land
@@ -160,7 +174,25 @@ class ImportWizardWidget(QWidget):
         self._invert_amount = QCheckBox(
             self.tr("Amounts are reversed (debits are positive)")
         )
-        self._date_format = QLineEdit("%Y-%m-%d")
+        # Date-format PICKER (FIBR-0146 D4) — a plain-English combo of example
+        # dates, not a raw %-code box. Each entry's TEXT is the example string,
+        # its DATA the strptime pattern (a language-neutral token, INV-5); a final
+        # "Custom…" entry (data = the _CUSTOM_FORMAT sentinel) reveals a raw-pattern
+        # field for an exotic bank (INV-4). Items are added BEFORE the signals are
+        # connected so populating fires no slot.
+        self._date_format = QComboBox()
+        self._date_format.setObjectName("import_date_format")
+        for example, fmt in KNOWN_DATE_FORMATS:
+            self._date_format.addItem(example, fmt)
+        self._date_format.addItem(self.tr("Custom…"), _CUSTOM_FORMAT)
+        self._date_format_custom = QLineEdit()
+        self._date_format_custom.setObjectName("import_date_format_custom")
+        self._date_format_custom.setPlaceholderText(self.tr("e.g. %Y.%m.%d"))
+        self._date_format_custom.hide()
+        # Live "how the dates read" preview (D6) — the confirm affordance.
+        self._date_preview = QLabel()
+        self._date_preview.setObjectName("import_date_preview")
+        self._date_preview.setWordWrap(True)
         self._profile_name = QLineEdit()
         self._profile_name.setPlaceholderText(
             self.tr("Save this layout as… (optional)")
@@ -177,6 +209,8 @@ class ImportWizardWidget(QWidget):
         form.addRow(self.tr("Credit column"), self._column_combos["credit"])
         form.addRow(self.tr("Invert"), self._invert_amount)
         form.addRow(self.tr("Date format"), self._date_format)
+        form.addRow("", self._date_format_custom)
+        form.addRow("", self._date_preview)
         form.addRow(self.tr("Profile name"), self._profile_name)
 
         buttons = QHBoxLayout()
@@ -191,6 +225,16 @@ class ImportWizardWidget(QWidget):
 
         self._map_next_button.clicked.connect(self._on_map_next)
         cancel.clicked.connect(self.done)
+        # FIBR-0146 D5/D6 single-owner wiring: a date-COLUMN change re-detects
+        # (_on_date_column_changed); a FORMAT change (picker OR the custom field's
+        # text) clears the ambiguity flag, shows/hides the custom field, then
+        # refreshes the preview — both signals reach the ONE no-arg slot, so the
+        # preview is refreshed by exactly one owner (never double).
+        self._column_combos["date"].currentIndexChanged.connect(
+            self._on_date_column_changed
+        )
+        self._date_format.currentIndexChanged.connect(self._on_date_format_changed)
+        self._date_format_custom.textChanged.connect(self._on_date_format_changed)
         return page
 
     # -- step 2: preview ------------------------------------------------------
@@ -212,6 +256,19 @@ class ImportWizardWidget(QWidget):
         self._ofx_statement_combo.currentIndexChanged.connect(
             self._on_ofx_statement_changed
         )
+        # Whole-import banner (FIBR-0146 D7) — shown only when nothing landed and
+        # at least one row errored (the tester's 0 new · 0 dup · 165 error state),
+        # turning N identical cryptic rows into one actionable sentence. Text set
+        # once; visibility toggled in _apply_preview_counts.
+        self._preview_banner = QLabel(
+            self.tr(
+                "None of the rows could be imported. Go back and check the column "
+                "mapping and the Date format match your statement."
+            )
+        )
+        self._preview_banner.setObjectName("import_preview_banner")
+        self._preview_banner.setWordWrap(True)
+        self._preview_banner.hide()
         self._preview_table = QTableWidget(0, 5)
         self._preview_table.setHorizontalHeaderLabels(
             [
@@ -251,6 +308,7 @@ class ImportWizardWidget(QWidget):
 
         layout = QVBoxLayout(page)
         layout.addLayout(destination)
+        layout.addWidget(self._preview_banner)
         layout.addWidget(self._ofx_statement_combo)
         layout.addWidget(self._preview_table)
         layout.addWidget(self._summary_label)
@@ -325,6 +383,10 @@ class ImportWizardWidget(QWidget):
         if matched is not None:
             self._run_preview(matched.column_mapping())
         else:
+            # FIBR-0146 D5(a): an unmatched CSV gets a date-format guess over the
+            # (default) date column before the map step is shown.
+            self._autodetect_date_format()
+            self._update_date_preview()
             self._goto_step(_STEP_MAP)
 
     @staticmethod
@@ -549,6 +611,11 @@ class ImportWizardWidget(QWidget):
             if len(candidates) == 1:
                 self._run_preview(matched.column_mapping())
                 return
+            self._update_date_preview()  # matched, >1 table: refresh for the map step
+        else:
+            # FIBR-0146 D5(b): a generic (non-SB) PDF gets a date-format guess.
+            self._autodetect_date_format()
+            self._update_date_preview()
         self._goto_step(_STEP_MAP)
 
     def _extract_pdf_tables(
@@ -594,6 +661,11 @@ class ImportWizardWidget(QWidget):
             matched = self._apply_pdf_table(index)
             if matched is not None:
                 self._apply_profile_to_combos(matched)
+            else:
+                # FIBR-0146 D5(b): a different unmatched table re-detects, so no
+                # stale format/preview from the previous table survives.
+                self._autodetect_date_format()
+            self._update_date_preview()  # single owner refresh (both branches)
 
     def _apply_profile_to_combos(self, profile: ImportProfile) -> None:
         """Pre-fill the mapping combos from a matched profile (INV-7d), so a
@@ -609,8 +681,31 @@ class ImportWizardWidget(QWidget):
             self._amount_style.setCurrentIndex(1)  # separate debit / credit
             self._set_combo(self._column_combos["debit"], mapping.debit_column)
             self._set_combo(self._column_combos["credit"], mapping.credit_column)
-        self._date_format.setText(mapping.date_format)
+        self._select_date_format(mapping.date_format)
+        # A matched profile is authoritative — never "ambiguous" (INV-4). Its
+        # caller refreshes _update_date_preview, so a stale nudge is cleared.
+        self._date_ambiguous = False
         self._invert_amount.setChecked(bool(mapping.invert_amount))
+
+    def _select_date_format(self, fmt: str) -> None:
+        """Point the picker at ``fmt`` (FIBR-0146 D4). A known format selects its
+        entry; an exotic/saved format not in the list selects "Custom…", fills the
+        raw field verbatim, and — because the programmatic select is signal-blocked
+        so _on_date_format_changed's show/hide won't fire — **explicitly reveals**
+        the custom field (INV-4 "shown, editable"; else the pattern is held but
+        hidden). No silent rewrite to a near-match."""
+        index = self._date_format.findData(fmt)
+        with QSignalBlocker(self._date_format):
+            if index >= 0:
+                self._date_format.setCurrentIndex(index)
+                self._date_format_custom.setVisible(False)
+            else:
+                self._date_format.setCurrentIndex(
+                    self._date_format.findData(_CUSTOM_FORMAT)
+                )
+                with QSignalBlocker(self._date_format_custom):
+                    self._date_format_custom.setText(fmt)
+                self._date_format_custom.setVisible(True)
 
     @staticmethod
     def _set_combo(combo: QComboBox, value: str | None) -> None:
@@ -626,10 +721,14 @@ class ImportWizardWidget(QWidget):
         return self._confirm_account_combo.currentText()
 
     def _populate_mapping_combos(self, header: list[str]) -> None:
+        # Signal-blocked so re-filling the date combo fires no _on_date_column_changed
+        # (FIBR-0146 D5): a programmatic fill must not re-detect — the caller runs
+        # auto-detect explicitly right after.
         for combo in self._column_combos.values():
-            combo.clear()
-            for name in header:
-                combo.addItem(name, name)
+            with QSignalBlocker(combo):
+                combo.clear()
+                for name in header:
+                    combo.addItem(name, name)
 
     @Slot()
     def _on_map_next(self) -> None:
@@ -648,7 +747,7 @@ class ImportWizardWidget(QWidget):
         style = self._amount_style.currentData()
         date_col = self._column_combos["date"].currentData()
         desc_col = self._column_combos["description"].currentData()
-        date_format = self._date_format.text().strip()
+        date_format = self._selected_date_format()
         invert = self._invert_amount.isChecked()
         if style == "single":
             return ColumnMapping(
@@ -669,6 +768,109 @@ class ImportWizardWidget(QWidget):
             date_format,
             invert,
         )
+
+    def _selected_date_format(self) -> str:
+        """The strptime format the form currently holds (FIBR-0146 D4): a known
+        combo entry's data (the fixed % pattern), or the custom field's stripped
+        text when "Custom…" is active — the same ``.strip()`` the old QLineEdit
+        did, so a stray-space custom pattern can't slip past validation."""
+        data = self._date_format.currentData()
+        if data is _CUSTOM_FORMAT:
+            return self._date_format_custom.text().strip()
+        return cast(str, data)
+
+    def _date_samples(self, column: str) -> list[str]:
+        """Up to ``_MAX_DATE_SAMPLES`` **stripped, non-blank** values of ``column``
+        from the loaded text (FIBR-0146 D8) — the same ``self._text`` a PDF is
+        serialised into. Stripping matches the importer (``csv_importer.py``) and
+        the detector, so the preview strptimes the identical string the committed
+        row uses (no false 'couldn't be read' on a padded cell). Bounded, so
+        detection cost is constant in the row count."""
+        if self._text is None:
+            return []
+        samples: list[str] = []
+        for row in csv.DictReader(io.StringIO(self._text)):
+            cell = row.get(column)
+            if cell is None:
+                continue
+            cell = cell.strip()
+            if not cell:
+                continue
+            samples.append(cell)
+            if len(samples) >= _MAX_DATE_SAMPLES:
+                break
+        return samples
+
+    def _autodetect_date_format(self) -> None:
+        """Guess the date format for the currently-selected date column and seed
+        the picker + ``_date_ambiguous`` (FIBR-0146 D5). Does **not** refresh the
+        preview — the caller owns that call (one owner, no double refresh), so a
+        ``None`` guess still shows the 'couldn't read' nudge. A programmatic combo
+        set is signal-blocked so it fires no re-detect."""
+        column = self._column_combos["date"].currentData()
+        samples = self._date_samples(column) if column is not None else []
+        guess = detect_date_format(samples)
+        self._date_ambiguous = guess.ambiguous
+        if guess.fmt is not None:
+            index = self._date_format.findData(guess.fmt)
+            if index >= 0:
+                with QSignalBlocker(self._date_format):
+                    self._date_format.setCurrentIndex(index)
+                self._date_format_custom.setVisible(False)
+
+    def _update_date_preview(self) -> None:
+        """Refresh the live 'how the dates read' label (FIBR-0146 D6). Renders the
+        first ``_PREVIEW_SAMPLES`` sampled dates as ISO **only when the selected
+        format parses all of the shown ones** (a clean, trustworthy preview); two
+        fallbacks cover the rest so the label is never a half-parsed tail. The
+        ambiguity nudge is prepended iff ``_date_ambiguous`` is set."""
+        column = self._column_combos["date"].currentData()
+        samples = self._date_samples(column) if column is not None else []
+        if not samples:
+            self._date_preview.setText(self.tr("No dates found in this column."))
+            return
+        fmt = self._selected_date_format()
+        parsed: list[str] = []
+        for sample in samples[:_PREVIEW_SAMPLES]:
+            try:
+                parsed.append(datetime.strptime(sample, fmt).date().isoformat())
+            except ValueError:
+                self._date_preview.setText(
+                    self.tr(
+                        "These dates couldn't be read with this format — pick another."
+                    )
+                )
+                return
+        text = self.tr("Dates read as: {samples}").format(samples=", ".join(parsed))
+        if self._date_ambiguous:
+            text = (
+                self.tr(
+                    "Check these are right — the day and month might be the other "
+                    "way around."
+                )
+                + " "
+                + text
+            )
+        self._date_preview.setText(text)
+
+    @Slot(int)
+    def _on_date_column_changed(self, _index: int) -> None:
+        """User picked a different date column (FIBR-0146 D5c): re-detect for it
+        (overriding any prior manual format pick — the column changed) and refresh."""
+        self._autodetect_date_format()
+        self._update_date_preview()
+
+    @Slot()
+    def _on_date_format_changed(self) -> None:
+        """User changed the picker OR edited the custom field (FIBR-0146 D6). No-arg
+        so BOTH ``currentIndexChanged(int)`` and the custom field's ``textChanged(str)``
+        connect here (the extra arg is dropped) — a single owner. Clears the stale
+        ambiguity nudge (the format is now a hand-choice), shows/hides the custom
+        field, then refreshes the preview."""
+        self._date_ambiguous = False
+        is_custom = self._date_format.currentData() is _CUSTOM_FORMAT
+        self._date_format_custom.setVisible(is_custom)
+        self._update_date_preview()
 
     def _run_preview(self, mapping: ColumnMapping) -> None:
         # _run_preview is only reached after _select_file loads the text (CSV).
@@ -710,6 +912,16 @@ class ImportWizardWidget(QWidget):
         # (a CSV with zero drafts has period_start == None, INV-9).
         self._import_button.setEnabled(
             len(preview.drafts) > 0 or preview.period_start is not None
+        )
+        # FIBR-0146 D7: the whole-import banner fires only when NOTHING landed and
+        # at least one row errored (0 new · 0 dup · N error). The trigger is
+        # count-based (several faults land here — wrong date format/column, blank
+        # date column, amount mis-map — so it names the general remedy, not one
+        # cause). Any success/duplicate row, or a header-only 0·0·0 preview, hides it.
+        self._preview_banner.setVisible(
+            preview.new_count == 0
+            and preview.duplicate_count == 0
+            and len(preview.errors) > 0
         )
 
     @Slot(int)

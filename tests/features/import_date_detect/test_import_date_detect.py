@@ -26,9 +26,7 @@ def test_day_first_numeric_disambiguated_by_day_gt_12():
     """The tester's shape: DD-first with a day > 12 rules out month-first."""
     from finbreak.importers.date_detect import detect_date_format
 
-    guess = detect_date_format(
-        ["20/07/2026", "21/07/2026", "31/07/2026", "02/08/2026"]
-    )
+    guess = detect_date_format(["20/07/2026", "21/07/2026", "31/07/2026", "02/08/2026"])
     assert guess.fmt == "%d/%m/%Y"
     assert guess.ambiguous is False
 
@@ -219,9 +217,7 @@ def test_csv_percent_in_junk_date_cell_still_no_token_leak():
 def test_csv_empty_date_cell_says_the_cell_is_empty():
     from finbreak.importers.csv_importer import CsvImporter
 
-    result = CsvImporter().parse(
-        _csv([["", "Coffee", "-10.00"]]), _single_mapping(), 2
-    )
+    result = CsvImporter().parse(_csv([["", "Coffee", "-10.00"]]), _single_mapping(), 2)
     assert result.errors[0].reason == "the date cell is empty"
 
 
@@ -280,3 +276,302 @@ def test_validate_mapping_accepts_a_real_date_format():
 
     mapping = ColumnMapping("Date", "Details", "Amount", None, None, "%d/%m/%Y", False)
     ImportService._validate_mapping(mapping, ["Date", "Details", "Amount"])  # no raise
+
+
+# --------------------------------------------------------------------------- #
+# Layer 4 — the wizard picker / auto-detect / live preview / banner (qtbot).   #
+# --------------------------------------------------------------------------- #
+from collections.abc import Iterator  # noqa: E402
+from pathlib import Path  # noqa: E402
+
+from conftest import _PW, _acct  # noqa: E402
+from finbreak.models import ColumnMapping  # noqa: E402
+from finbreak.services.auth import AuthService  # noqa: E402
+
+HEADER = ["Date", "Details", "Amount"]
+_DAY_FIRST = [["20/07/2026", "Coffee", "-10.00"], ["21/07/2026", "Tea", "-5.00"]]
+
+
+@pytest.fixture
+def service(paths) -> Iterator[AuthService]:
+    svc = AuthService(*paths)
+    svc.first_run(bytearray(_PW), "ZAR")
+    yield svc
+    svc.lock()
+
+
+def _write(tmp_path: Path, header: list[str], rows: list[list[str]]) -> str:
+    text = ",".join(header) + "\n" + "".join(",".join(r) + "\n" for r in rows)
+    path = tmp_path / "stmt.csv"
+    path.write_text(text, encoding="utf-8")
+    return str(path)
+
+
+def _wizard(qtbot, service, acct):
+    from finbreak.ui.import_wizard import ImportWizardWidget
+
+    widget = ImportWizardWidget(service)
+    qtbot.addWidget(widget)
+    widget._account_combo.setCurrentIndex(widget._account_combo.findData(acct))
+    return widget
+
+
+def test_autodetect_seeds_picker_day_first(qtbot, service, tmp_path):
+    """The tester's bug: day-first dates now pre-select %d/%m/%Y, not the old
+    ISO default — so the import lands rows instead of 165 errors."""
+    acct = _acct(service)
+    path = _write(tmp_path, HEADER, _DAY_FIRST)
+    widget = _wizard(qtbot, service, acct)
+    widget._select_file(path)
+
+    assert widget._stack.currentIndex() == 1, "unmatched -> map step"
+    assert widget._date_format.currentData() == "%d/%m/%Y"
+
+
+def test_regression_end_to_end_day_first_imports_rows(qtbot, service, tmp_path):
+    """The whole point: a day-first statement imports cleanly (was all-errors)."""
+    from finbreak.repositories.transactions import TransactionRepository
+
+    acct = _acct(service)
+    conn = service.vault.connection
+    path = _write(tmp_path, HEADER, _DAY_FIRST)
+    widget = _wizard(qtbot, service, acct)
+    widget._select_file(path)
+    # Map the non-date roles (date column defaults to header[0] = "Date").
+    widget._column_combos["description"].setCurrentIndex(
+        widget._column_combos["description"].findData("Details")
+    )
+    widget._amount_style.setCurrentIndex(widget._amount_style.findData("single"))
+    widget._column_combos["amount"].setCurrentIndex(
+        widget._column_combos["amount"].findData("Amount")
+    )
+    widget._map_next_button.click()
+
+    assert widget._error.text() == ""
+    assert widget._preview.new_count == 2 and len(widget._preview.errors) == 0
+    widget._import_button.click()
+    assert TransactionRepository(conn).count_for_account(acct) == 2
+
+
+def test_live_preview_reads_dates_and_flips_on_wrong_format(qtbot, service, tmp_path):
+    acct = _acct(service)
+    path = _write(tmp_path, HEADER, [["20/07/2026", "Coffee", "-10.00"]])
+    widget = _wizard(qtbot, service, acct)
+    widget._select_file(path)
+
+    assert "2026-07-20" in widget._date_preview.text()
+    assert "Dates read as" in widget._date_preview.text()
+    # Force a wrong format -> the "couldn't be read" fallback.
+    widget._date_format.setCurrentIndex(widget._date_format.findData("%m/%d/%Y"))
+    assert "couldn't be read" in widget._date_preview.text()
+
+
+def test_ambiguity_nudge_shows_then_clears_on_manual_pick(qtbot, service, tmp_path):
+    acct = _acct(service)
+    path = _write(
+        tmp_path, HEADER, [["05/06/2026", "A", "-1.00"], ["07/08/2026", "B", "-2.00"]]
+    )
+    widget = _wizard(qtbot, service, acct)
+    widget._select_file(path)
+
+    assert widget._date_format.currentData() == "%d/%m/%Y"
+    assert "the other way around" in widget._date_preview.text(), "ambiguity nudge"
+    # A manual pick clears the nudge (never stale against a hand-chosen format).
+    widget._date_format.setCurrentIndex(widget._date_format.findData("%m/%d/%Y"))
+    assert "the other way around" not in widget._date_preview.text()
+
+
+def test_two_preview_fallbacks_blank_and_junk(qtbot, service, tmp_path):
+    acct = _acct(service)
+    # All-blank date column -> "No dates found".
+    blank = _write(tmp_path / "" if False else tmp_path, HEADER, [["", "A", "-1.00"]])
+    widget = _wizard(qtbot, service, acct)
+    widget._select_file(blank)
+    assert "No dates found" in widget._date_preview.text()
+
+    # Junk (non-date) column -> "couldn't be read", picker stays at ISO default.
+    junk_path = tmp_path / "junk.csv"
+    junk_path.write_text("Date,Details,Amount\nbanana,A,-1.00\n", encoding="utf-8")
+    widget2 = _wizard(qtbot, service, acct)
+    widget2._select_file(str(junk_path))
+    assert widget2._date_format.currentData() == "%Y-%m-%d", "None -> ISO default"
+    assert "couldn't be read" in widget2._date_preview.text()
+
+
+def test_short_column_uses_clean_branch(qtbot, service, tmp_path):
+    """<3 samples still gets the clean 'Dates read as' branch (all-shown gate)."""
+    acct = _acct(service)
+    path = _write(
+        tmp_path, HEADER, [["20/07/2026", "A", "-1.00"], ["21/07/2026", "B", "-2.00"]]
+    )
+    widget = _wizard(qtbot, service, acct)
+    widget._select_file(path)
+    assert "Dates read as" in widget._date_preview.text()
+    assert "couldn't be read" not in widget._date_preview.text()
+
+
+def test_preview_refreshed_exactly_once_per_autodetect_fire(qtbot, service, tmp_path):
+    acct = _acct(service)
+    path = _write(tmp_path, HEADER, [["20/07/2026", "A", "-1.00"]])
+    widget = _wizard(qtbot, service, acct)
+    widget._select_file(path)
+
+    calls = {"n": 0}
+    original = widget._update_date_preview
+
+    def _counting():
+        calls["n"] += 1
+        original()
+
+    widget._update_date_preview = _counting  # type: ignore[method-assign]
+    widget._on_date_column_changed(0)
+    assert calls["n"] == 1, "one owner: the fire point refreshes once, not twice"
+
+
+def test_custom_roundtrip_exotic_saved_format(qtbot, service, tmp_path):
+    from finbreak.importers.date_detect import KNOWN_DATE_FORMATS
+    from finbreak.services.import_ import ImportService
+
+    acct = _acct(service)
+    exotic = "%Y.%m.%d"
+    assert exotic not in [fmt for _e, fmt in KNOWN_DATE_FORMATS]
+    imp = ImportService(service.vault)
+    imp.save_profile(
+        "Exotic",
+        HEADER,
+        ColumnMapping("Date", "Details", "Amount", None, None, exotic, False),
+    )
+    profile = imp.match_profile(HEADER)
+
+    widget = _wizard(qtbot, service, acct)
+    widget._populate_mapping_combos(HEADER)
+    widget._apply_profile_to_combos(profile)
+
+    from finbreak.ui.import_wizard import _CUSTOM_FORMAT
+
+    assert widget._date_format.currentData() is _CUSTOM_FORMAT
+    assert widget._date_format_custom.text() == exotic
+    # isHidden(), not isVisible(): the map page isn't shown in the test, but the
+    # explicit-hide flag reflects the reveal regardless of ancestor visibility.
+    assert not widget._date_format_custom.isHidden(), "INV-4 shown + editable"
+    assert widget._mapping_from_form().date_format == exotic, "no silent rewrite"
+
+
+def test_empty_custom_format_rejected_on_map_next(qtbot, service, tmp_path):
+    from finbreak.ui.import_wizard import _CUSTOM_FORMAT
+
+    acct = _acct(service)
+    path = _write(tmp_path, HEADER, [["20/07/2026", "Coffee", "-10.00"]])
+    widget = _wizard(qtbot, service, acct)
+    widget._select_file(path)
+
+    widget._column_combos["description"].setCurrentIndex(
+        widget._column_combos["description"].findData("Details")
+    )
+    widget._column_combos["amount"].setCurrentIndex(
+        widget._column_combos["amount"].findData("Amount")
+    )
+    # Select "Custom…" and leave the field blank.
+    widget._date_format.setCurrentIndex(widget._date_format.findData(_CUSTOM_FORMAT))
+    widget._date_format_custom.setText("")
+    widget._map_next_button.click()
+
+    assert "choose a date format" in widget._error.text()
+    assert widget._stack.currentIndex() == 1, "stays on the map step"
+
+
+def test_matched_profile_is_authoritative(qtbot, service, tmp_path):
+    from finbreak.services.import_ import ImportService
+
+    acct = _acct(service)
+    imp = ImportService(service.vault)
+    imp.save_profile(
+        "US",
+        HEADER,
+        ColumnMapping("Date", "Details", "Amount", None, None, "%m/%d/%Y", False),
+    )
+    profile = imp.match_profile(HEADER)
+    widget = _wizard(qtbot, service, acct)
+    widget._date_ambiguous = True  # a stale flag a matched profile must clear
+    widget._populate_mapping_combos(HEADER)
+    widget._apply_profile_to_combos(profile)
+
+    assert widget._date_format.currentData() == "%m/%d/%Y", "profile format wins"
+    assert widget._date_ambiguous is False, "matched profile is never ambiguous"
+
+
+def test_whole_import_banner_D7(qtbot, service, tmp_path):
+    from finbreak.importers.base import RowError
+    from finbreak.services.import_ import ImportPreview
+
+    acct = _acct(service)
+    widget = _wizard(qtbot, service, acct)
+
+    # isHidden() reflects the setVisible intent without showing the preview page.
+    all_error = ImportPreview(acct, [], [RowError(1, "x")], 0, 0, None, None)
+    widget._apply_preview_counts(all_error)
+    assert not widget._preview_banner.isHidden(), "0 new · 0 dup · N error -> banner"
+
+    from finbreak.models import TransactionDraft
+
+    draft = TransactionDraft(1, "2026-07-20", -1000, "A")
+    some_new = ImportPreview(acct, [draft], [], 1, 0, "2026-07-20", "2026-07-20")
+    widget._apply_preview_counts(some_new)
+    assert widget._preview_banner.isHidden(), "any success hides the banner"
+
+    header_only = ImportPreview(acct, [], [], 0, 0, None, None)
+    widget._apply_preview_counts(header_only)
+    assert widget._preview_banner.isHidden(), "0·0·0 -> no banner (nothing failed)"
+
+
+def test_date_column_change_redetects_off_column_0(qtbot, service, tmp_path):
+    """D5c + on-entry-column dependency: date is NOT column 0, so on entry the
+    picker stays at ISO and the preview can't read the junk col; selecting the
+    real date column re-detects."""
+    acct = _acct(service)
+    path = tmp_path / "off.csv"
+    path.write_text(
+        "Ref,Posted,Amount\nR1,20/07/2026,-1.00\nR2,21/07/2026,-2.00\n",
+        encoding="utf-8",
+    )
+    widget = _wizard(qtbot, service, acct)
+    widget._select_file(str(path))
+
+    assert widget._date_format.currentData() == "%Y-%m-%d", "col0 junk -> ISO default"
+    assert "couldn't be read" in widget._date_preview.text()
+    # Point the date column at the real date column -> re-detect.
+    widget._column_combos["date"].setCurrentIndex(
+        widget._column_combos["date"].findData("Posted")
+    )
+    assert widget._date_format.currentData() == "%d/%m/%Y"
+    assert "2026-07-20" in widget._date_preview.text()
+
+
+def test_added_strings_tr_wrapped_and_data_fixed_tokens(qtbot, service, tmp_path):
+    """INV-5: the new user-facing strings go through tr(); the combo DATA values
+    are the fixed % patterns (not the display example text)."""
+    from finbreak.importers.date_detect import KNOWN_DATE_FORMATS
+
+    src = Path("src/finbreak/ui/import_wizard.py").read_text(encoding="utf-8")
+    # Each new user-facing phrase must be present AND reached through self.tr(
+    # (the tr( may be on the line above for a wrapped literal, so allow a window).
+    for phrase in (
+        "Custom…",
+        "No dates found in this column.",
+        "the day and month might be",
+        "None of the rows could be imported.",
+    ):
+        # SOME occurrence must be reached through self.tr( (a comment may also
+        # mention the phrase, so scan every occurrence, not just the first).
+        starts = [i for i in range(len(src)) if src.startswith(phrase, i)]
+        assert starts, phrase
+        assert any("self.tr(" in src[max(0, i - 70) : i] for i in starts), (
+            f"{phrase} not tr-wrapped"
+        )
+
+    acct = _acct(service)
+    widget = _wizard(qtbot, service, acct)  # keep a ref so the C++ combo survives
+    combo = widget._date_format
+    datas = [combo.itemData(i) for i in range(combo.count())]
+    for _example, fmt in KNOWN_DATE_FORMATS:
+        assert fmt in datas, "combo item DATA is the fixed % pattern"

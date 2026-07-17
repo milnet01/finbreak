@@ -641,7 +641,7 @@ def test_INV10b_no_match_shows_mapping_and_saves_profile(qtbot, service, tmp_pat
     widget._column_combos["amount"].setCurrentIndex(
         widget._column_combos["amount"].findData("Amount")
     )
-    widget._date_format.setText("%Y-%m-%d")
+    widget._date_format.setCurrentIndex(widget._date_format.findData("%Y-%m-%d"))
     widget._profile_name.setText("MyBank")
     widget._map_next_button.click()
 
