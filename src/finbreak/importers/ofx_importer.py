@@ -26,6 +26,7 @@ path (``ImportService.read_file_bytes``).
 from __future__ import annotations
 
 import io
+import re
 
 from ofxparse import OfxParser
 from ofxparse.ofxparse import AccountType
@@ -37,6 +38,31 @@ from finbreak.services.transactions import parse_transaction
 # Whole-file transaction cap (D13/INV-10) — orders of magnitude above any real
 # personal statement. One-line-tunable; the byte cap is _MAX_IMPORT_BYTES (import_).
 _MAX_OFX_TRANSACTIONS = 100_000
+
+# The trailing `[offset:tz]` of an OFX datetime, e.g. `...[-5:EST]` (offsets may be
+# fractional — Newfoundland is -3.5). Mirrors ofxparse's own tz regex.
+_OFX_TZ_SUFFIX = re.compile(r"\[[-+]?\d+\.?\d*:\w*\]$")
+
+
+class _LocalDateOfxParser(OfxParser):
+    """An ``OfxParser`` that preserves the **as-posted local calendar date** of
+    every OFX datetime (FIBR-0042). The base ``parseOfxDateTime`` normalises a
+    timezone-bearing ``<DTPOSTED>``/``<DTSTART>``/``<DTEND>`` to UTC
+    (``local - offset``), so an evening transaction in a negative-offset zone
+    (``20260105230000[-5:EST]``) rolls to the next calendar day — a wrong-day
+    filing that also mis-assigns the statement period at a month boundary and can
+    defeat cross-source dedup against a manually-typed copy. finbreak files a row
+    under the day the bank **printed**, so we neutralise the printed offset to
+    ``[0:GMT]`` and delegate to the base parser — reusing its millisecond,
+    null-date (``00000000``) and custom-format handling unchanged (a bracketless
+    date-only value is untouched, so nothing shipped changes). ofxparse invokes
+    ``parseOfxDateTime`` via ``cls`` throughout, so this override applies to every
+    OFX date the parse produces."""
+
+    @classmethod
+    def parseOfxDateTime(cls, ofxDateTime):  # noqa: N802 — override of the base name
+        neutralised = _OFX_TZ_SUFFIX.sub("[0:GMT]", ofxDateTime.strip())
+        return super().parseOfxDateTime(neutralised)
 
 
 class OfxImporter:
@@ -51,7 +77,9 @@ class OfxImporter:
         # one broad catch maps them all to a friendly message. The original is
         # chained (not swallowed — global rule § 1).
         try:
-            ofx = OfxParser.parse(io.BytesIO(data))
+            # _LocalDateOfxParser (not the base OfxParser) so a timezone-bearing
+            # DTPOSTED/DTEND keeps its as-posted local calendar date (FIBR-0042).
+            ofx = _LocalDateOfxParser.parse(io.BytesIO(data))
         except Exception as exc:  # noqa: BLE001 — documented untrusted-input boundary (D7)
             raise ValueError("this file could not be read as OFX") from exc
 

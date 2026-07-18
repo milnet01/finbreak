@@ -563,6 +563,44 @@ def test_INV8_formula_and_path_fields_stored_inert(service, caplog):
 
 
 # --------------------------------------------------------------------------- #
+# FIBR-0042 — a timezone-bearing DTPOSTED/DTEND keeps its AS-POSTED LOCAL date
+# --------------------------------------------------------------------------- #
+# ofxparse 0.21 normalises a timestamped `<DTPOSTED>YYYYMMDDHHMMSS[offset:tz]` to
+# UTC (`local - offset`), which rolls an evening transaction in a negative-offset
+# zone to the NEXT calendar day (and can push a month-boundary DTEND into the next
+# month, mis-filing the statement period). finbreak files a row under the day the
+# bank printed, so `_LocalDateOfxParser` neutralises the offset. The roadmap's
+# verified reproducer is `20260105230000[-5:EST]` -> the wrong "2026-01-06".
+def test_INV11_dtposted_keeps_asposted_local_date_negative_offset(service):
+    # Evening in EST (UTC-5): buggy UTC normalisation would roll to 2026-01-06.
+    data = _ofx(_stmt([_txn("20260105230000[-5:EST]", "-10.00", name="C", fitid="z1")]))
+    _, result = OfxImporter().parse(data, _exp(service))[0]
+    assert result.drafts[0].occurred_on == "2026-01-05"
+
+
+def test_INV11a_dtend_span_keeps_asposted_local_date_at_month_boundary(service):
+    # A tz-bearing DTEND on the last night of the month: UTC normalisation would
+    # roll it to 2026-02-01 and wrongly extend the period into February.
+    data = _ofx(
+        _stmt(
+            [_txn("20260115", "-10.00", name="C", fitid="z2")],
+            start="20260101",
+            end="20260131235959[-5:EST]",
+        )
+    )
+    _, result = OfxImporter().parse(data, _exp(service))[0]
+    assert result.period_start == "2026-01-01" and result.period_end == "2026-01-31"
+
+
+def test_INV11b_dtposted_keeps_local_date_positive_offset(service):
+    # Early morning in a positive-offset zone: UTC normalisation would roll it
+    # BACKWARD to 2026-01-04 — the fix must hold in both directions.
+    data = _ofx(_stmt([_txn("20260105010000[+5:PKT]", "-10.00", name="C", fitid="z3")]))
+    _, result = OfxImporter().parse(data, _exp(service))[0]
+    assert result.drafts[0].occurred_on == "2026-01-05"
+
+
+# --------------------------------------------------------------------------- #
 # INV-9 — CSV import contracts preserved (relocation didn't fork)
 # --------------------------------------------------------------------------- #
 def test_INV9_parseresult_rowerror_shared_from_base_and_csv():

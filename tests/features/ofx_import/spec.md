@@ -26,3 +26,4 @@ is the FIBR-0007 first-run vault (already at v4 — no migration this phase, D9)
 | INV-8 | No network/secret/schema regression; OFX field text stored inert (INV-5a) |
 | INV-9 | The FIBR-0007 CSV import suite stays green (reuse, not fork) — the `ParseResult`/`RowError` relocation preserves both import sites |
 | INV-10 | OFX is resource-bounded: over-`_MAX_IMPORT_BYTES` file and over-`_MAX_OFX_TRANSACTIONS` file each refused with a `ValueError` |
+| INV-11 (FIBR-0042) | A timezone-bearing `<DTPOSTED>`/`<DTEND>` keeps its **as-posted local calendar date** (`_LocalDateOfxParser` neutralises the printed offset): a negative-offset evening (`20260105230000[-5:EST]`) stays `2026-01-05` (not the UTC-rolled `2026-01-06`), a month-boundary `<DTEND>` stays in-month (period not extended into the next month), and a positive-offset early morning does not roll backward. Date-only values (all other fixtures) are unchanged. |

@@ -23,6 +23,12 @@ signaling per
 
 ### Fixed
 
+- **OFX import now files each transaction under the date the bank printed.** (FIBR-0042)
+  A timezone-stamped OFX date (e.g. an evening transaction in a UTC-5 zone)
+  was being shifted to UTC, which could file it under the next day — and, at
+  a month boundary, under the wrong statement. Dates are now kept exactly as
+  posted on the statement.
+
 - **Delete-statement confirmation no longer over-states the loss on an overlap.** (FIBR-0149)
   When you delete a statement that shares transactions with another one you keep,
   the confirm dialog previously counted all of the statement's transactions and
