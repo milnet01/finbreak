@@ -747,11 +747,12 @@ because retrofitting them is a data migration.
   Source: cold-eyes-2026-07-03 FIBR-0008 lane-C.
   Resolved (2026-07-15): already shipped — verified stale bullet. ImportService.read_file (services/import_.py) routes through the shared _read_capped helper, refusing a file over _MAX_IMPORT_BYTES (16 MiB) BEFORE loading it, so security-model INV-5b's FIBR-0007 (CSV) claim is now met. Hardened beyond the original ask during a later indie-review (H-F/H-G): reads cap+1 bytes rather than trusting stat().st_size, so an endless-symlink (/dev/zero) or a file that grows post-stat can't slip an unbounded read past the cap. Tests: test_read_file_refuses_oversized_csv (monkeypatches the cap to 100) + test_read_capped_bounds_read_against_endless_symlink, both in tests/features/import_/test_import.py. No code change this session — flip only.
 
-- 📋 [FIBR-0095] **Unlock throttling — backoff after repeated failed master-password attempts.**
+- 🚧 [FIBR-0095] **Unlock throttling — backoff after repeated failed master-password attempts.**
   Verified 2026-07-11: services/auth.py applies NO delay/backoff on a failed unlock. Add an increasing backoff (and/or a short lockout window) after consecutive failed unlock attempts — defence-in-depth against offline brute-force on a stolen vault, atop Argon2id's already-slow KDF (security-model INV-2). Track the attempt count / last-fail time in the plaintext window.ini (pre-unlock, non-sensitive) or in-memory per session; UX = a friendly 'try again in N seconds'. Deps: FIBR-0004 (unlock path).
   **Layman:** After several wrong master-password tries, finbreak briefly slows further attempts — extra protection if someone gets hold of your vault file.
   Kind: security.
   Source: claude-suggestion-2026-07-11.
+  Started 2026-07-18 (self-directed, "build it all" autonomous run). Adding exponential backoff after repeated failed master-password unlock attempts; attempt count/last-fail persisted in plaintext window.ini so a relaunch doesn't reset the backoff. Spec -> /cold-eyes -> TDD -> /close-phase.
 
 - 📋 [FIBR-0096] **Per-release SHA256SUMS + generated SBOM alongside the signed AppImage.**
   The release AppImage is already Ed25519-signed (FIBR-0054 INV-14). Add, per release: a SHA256SUMS file (artifact checksums) and a generated SBOM (CycloneDX via cyclonedx-py, or pip-audit output) listing the bundled dependency versions — supply-chain transparency + a second integrity signal for users who verify manually rather than via the in-app updater. Wire into build-release-appimage.sh / the publish step. Deps: FIBR-0054 (release pipeline).
