@@ -207,15 +207,31 @@ class StatementsWidget(QWidget):
         if index is None:
             return
         statement = self._rows[index]
-        confirmed = QMessageBox.question(
-            self,
-            self.tr("Delete statement"),
-            self.tr(
+        try:
+            removed, kept = self._statements.delete_preview(statement.id)
+        except VaultLockedError:
+            return  # locked mid-click; the tab is being torn down (mirrors below)
+        if kept:
+            # An overlap delete: rows a remaining statement also covers survive, so
+            # naming the full linked count would over-state the loss (FIBR-0149).
+            message = self.tr(
+                "Delete this statement? %n of its transaction(s) will be "
+                "permanently removed — the rest are shared with an overlapping "
+                "statement and will stay. This cannot be undone.",
+                "",
+                removed,
+            )
+        else:
+            message = self.tr(
                 "Delete this statement and its %n transaction(s)? "
                 "This cannot be undone.",
                 "",
-                statement.transaction_count,
-            ),
+                removed,
+            )
+        confirmed = QMessageBox.question(
+            self,
+            self.tr("Delete statement"),
+            message,
         )
         if confirmed != QMessageBox.StandardButton.Yes:
             return

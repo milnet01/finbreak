@@ -1372,7 +1372,7 @@ because retrofitting them is a data migration.
   Kind: fix.
   Source: user-question-2026-07-17.
 
-- 📋 [FIBR-0149] **Delete-statement confirm dialog overstates the count when a statement overlaps another.**
+- ✅ [FIBR-0149] **Delete-statement confirm dialog overstates the count when a statement overlaps another.**
   Surfaced by the FIBR-0148 cold code-review. After FIBR-0148, delete_statement
   hands off transactions a remaining overlapping statement also covers (they
   survive), but ui/statements.py's confirm dialog still says "Delete this
@@ -1389,6 +1389,8 @@ because retrofitting them is a data migration.
   **Layman:** When you delete a statement that shares transactions with another one you keep, the "delete its N transactions? This cannot be undone" prompt still counts all N — even though the shared ones now survive under the other statement. The warning should reflect how many actually go.
   Kind: ux.
   Source: indie-review-2026-07-17 (FIBR-0148 close, lane finding LOW).
+  Progress (2026-07-18): starting — reproduce-first TDD. Fix: add TransactionRepository.delete_split_counts + StatementService.delete_preview (mirrors CategoryService.delete_blast_radius; UI calls service not repo), branch the confirm dialog so the overlap case names the ACTUAL removed count + reassures the shared rows stay. New overlap-path confirm test (INV-10a only covers non-overlap).
+  Resolved (2026-07-18): the confirm dialog now names the ACTUAL removed count on an overlap delete. New TransactionRepository.delete_split_counts -> (removed, kept) reuses hand_off_covered's EXISTS coverage guard byte-for-byte (preview can never disagree with the delete); surfaced via StatementService.delete_preview (UI→service, never repo, mirroring CategoryService.delete_blast_radius). ui/statements.py _on_delete branches: overlap (kept>0) → "%n of its transaction(s) will be permanently removed — the rest are shared with an overlapping statement and will stay"; non-overlap keeps the original wording (now from the fresh count). VaultLockedError-guarded. Reproduce-first TDD: INV-10c (full-overlap A/B, removed==0) fails pre-fix ("its 2 transactions… cannot be undone"), green after. Self-review (too small for /indie-review, per the FIBR-0141 precedent) + gate green 1104/1, mypy 0. Commit 10ee1db.
 
 ### ⚡ Performance
 

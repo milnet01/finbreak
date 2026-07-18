@@ -613,6 +613,43 @@ def test_INV10b_cancelled_delete_does_nothing(qtbot, service, monkeypatch):
     assert TransactionRepository(conn).count_for_account(acct) == 1
 
 
+def test_INV10c_overlap_confirm_names_actual_count(qtbot, service, monkeypatch):
+    """FIBR-0149: deleting a statement whose rows a REMAINING overlapping statement
+    also covers must not scare the user with the full linked count. Here B covers
+    all of A, so deleting A removes 0 rows (both handed off) — yet A lists
+    transaction_count == 2. The confirm dialog must name the ACTUAL removed count
+    (0) and reassure that the shared rows stay, not say "its 2 transactions...
+    cannot be undone"."""
+    acct, conn, a, _b = _build_full_overlap(service)
+    widget = StatementsWidget(service)
+    qtbot.addWidget(widget)
+    a_row = next(r for r in widget._rows if r.id == a.id)
+    assert a_row.transaction_count == 2, "A still lists its 2 linked rows (the trap)"
+    widget._select_period(a.id)
+
+    captured = {}
+
+    def _confirm_yes(parent, title, text, *args, **kwargs):
+        captured["text"] = text
+        return QMessageBox.StandardButton.Yes
+
+    monkeypatch.setattr(QMessageBox, "question", _confirm_yes)
+    widget._delete_button.click()
+
+    text = captured["text"]
+    assert "0 of its" in text, f"names the true removed count (0), not 2: {text!r}"
+    assert "shared with an overlapping statement" in text, (
+        f"reassures the shared rows stay: {text!r}"
+    )
+    # And the delete still went through: B's rows (incl. the handed-off ones) survive.
+    assert {t.description for t in TransactionRepository(conn).list_all()} == {
+        "a1",
+        "a2",
+        "b1",
+    }, "the shared January rows survive under B"
+    assert _period_files(conn, acct) == ["B.csv"], "only A's period row removed"
+
+
 # --------------------------------------------------------------------------- #
 # INV-11a — a change reflects on the Home tab when it is next activated
 # --------------------------------------------------------------------------- #

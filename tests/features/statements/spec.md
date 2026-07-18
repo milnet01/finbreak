@@ -58,6 +58,12 @@ overlapping statement also covers) adds its own block to
   summed `amount_minor` (0 under full overlap).
 - **INV-10 / INV-10a / INV-10b** — the Delete action confirms (naming the count)
   then deletes + refreshes; Cancel does nothing.
+- **INV-10c** (FIBR-0149) — an **overlap** delete confirms with the *actual*
+  removed count (via `StatementService.delete_preview` → `(removed, kept)`), not
+  the full linked count, and reassures that the shared rows stay. Under full
+  overlap (`removed == 0`) the dialog says "0 of its transaction(s) will be
+  permanently removed — the rest are shared with an overlapping statement and
+  will stay", never "its N transactions... cannot be undone".
 - **INV-11 / INV-11a** — a mutation reflects on the Home tab on next activation.
 - **INV-12 / INV-12a** — Accounts/Categories built with `show_done=False` have no
   Done button; a default-constructed one still does.

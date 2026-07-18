@@ -177,6 +177,31 @@ class TransactionRepository:
             {"pid": statement_period_id},
         ).rowcount
 
+    def delete_split_counts(self, statement_period_id: int) -> tuple[int, int]:
+        """A read-only preview of what ``delete_statement`` would do to the rows
+        stamped ``statement_period_id`` — ``(removed, kept)`` (FIBR-0149). ``kept``
+        are the rows a *remaining* same-account statement also covers (handed off,
+        so they survive); ``removed`` are the true orphans, deleted. The coverage
+        sub-query is ``hand_off_covered``'s ``EXISTS`` guard **byte-for-byte**, so
+        the preview can never disagree with the delete it describes. Commit-free;
+        never mutates. ``NULL``-stamped (manual) rows are neither counted."""
+        removed, kept = self._conn.execute(
+            "SELECT "
+            "  COALESCE(SUM(CASE WHEN NOT EXISTS ("
+            "    SELECT 1 FROM statement_periods q "
+            "    WHERE q.account_id = transactions.account_id AND q.id <> :pid "
+            "    AND transactions.occurred_on BETWEEN q.period_start AND q.period_end"
+            "  ) THEN 1 ELSE 0 END), 0), "
+            "  COALESCE(SUM(CASE WHEN EXISTS ("
+            "    SELECT 1 FROM statement_periods q "
+            "    WHERE q.account_id = transactions.account_id AND q.id <> :pid "
+            "    AND transactions.occurred_on BETWEEN q.period_start AND q.period_end"
+            "  ) THEN 1 ELSE 0 END), 0) "
+            "FROM transactions WHERE statement_period_id = :pid",
+            {"pid": statement_period_id},
+        ).fetchone()
+        return removed, kept
+
     def reassign_account(self, statement_period_id: int, account_id: int) -> int:
         """Re-point every transaction stamped with ``statement_period_id`` to
         ``account_id``, returning the rowcount. **Commit-free** — invoked inside

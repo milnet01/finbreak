@@ -23,6 +23,13 @@ signaling per
 
 ### Fixed
 
+- **Delete-statement confirmation no longer over-states the loss on an overlap.** (FIBR-0149)
+  When you delete a statement that shares transactions with another one you keep,
+  the confirm dialog previously counted all of the statement's transactions and
+  warned "this cannot be undone" — even though the shared ones now survive under
+  the overlapping statement. It now names the actual number that will be removed
+  (often 0) and reassures that the shared rows stay.
+
 - **Deleting a statement no longer loses transactions another overlapping statement still covers** (FIBR-0148)
   If two of your statements' periods overlapped (say a monthly statement and a
   quarterly one covering the same weeks), deleting one used to silently delete the

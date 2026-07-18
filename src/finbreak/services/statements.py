@@ -77,6 +77,16 @@ class StatementService:
         log.info("statement deleted (%d handed off, %d removed)", handed_off, deleted)
         return deleted
 
+    def delete_preview(self, period_id: int) -> tuple[int, int]:
+        """A read-only preview of a ``delete_statement`` — ``(removed, kept)``
+        (FIBR-0149). ``removed`` is how many transactions the delete would really
+        destroy; ``kept`` is how many survive because a *remaining* overlapping
+        statement of the same account also covers them (handed off, not lost).
+        The confirm dialog reads this so it can name the true count instead of the
+        full linked count (which over-states the loss in an overlap delete). The
+        UI calls this, never a repository (the codebase's layering)."""
+        return TransactionRepository(self._conn).delete_split_counts(period_id)
+
     def reassign_account(self, period_id: int, new_account_id: int) -> int:
         """Atomically re-point statement ``period_id`` **and** every transaction
         stamped with it to ``new_account_id``, returning the number of transactions
