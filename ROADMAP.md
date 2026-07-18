@@ -1408,6 +1408,32 @@ because retrofitting them is a data migration.
   normal transactions with no transfer marker and (in the shots) a blank Category —
   i.e. confirming a transfer in FIBR-0011's suggest-then-confirm flow does not
   propagate to how the Transactions view renders/labels those rows.
+  Root-cause (2026-07-18, subagent-verified): MISSING-WIRING gap, not a
+  regression. Confirm correctly records ONE `transfer_pairs` row
+  (status='confirmed') via TransferRepository.add_decision
+  (repositories/transfers.py:76-80); the `transfer_pairs` table is separate
+  (migrations.py:270-277, v7->v8) with NO is_transfer/transfer_id column on
+  `transactions`. FIBR-0011 INV-12 ("Transactions untouched",
+  docs/specs/FIBR-0011.md:66) DELIBERATELY leaves the transaction rows
+  byte-identical on confirm. The Transactions tab
+  (TransactionService.list_transactions services/transactions.py:111-125;
+  ui/transactions.py refresh:166 + render 223-311) reads only
+  transactions/categories/accounts and has ZERO lookup against transfer_pairs or
+  the existing `confirmed_transfer_txn_ids()` primitive (FIBR-0011 INV-5) -> the
+  two legs keep their blank category and no marker.
+
+  DESIGN DECISION NEEDED before coding (no spec defines how a confirmed transfer
+  should render on the tab): options = (a) a "Transfer" pseudo-category / label
+  surfaced at READ time by threading confirmed_transfer_txn_ids() into
+  list_transactions (must NOT mutate transaction rows -> preserves FIBR-0011
+  INV-12); (b) a separate badge/indicator column; (c) exclude transfer legs from
+  the tab. Recommend (a) read-time label. Fix stays read/render-side only.
+
+  Reproduce-first: service-level test in tests/features/transfers/test_transfers.py
+  -> confirm a transfer, call TransactionService.list_transactions(), assert each
+  leg is marked/labelled as a transfer (fails today). Prefer over a GUI test.
+
+  Note: the "Transactions tab" is specced as FIBR-0012 / FIBR-0139, not FIBR-0109.
 
   Depends-on / relates to FIBR-0011 (transfer detection, shipped) and FIBR-0109
   (dedicated Transactions tab). Reproduce-first: confirm a suggested transfer, then
