@@ -21,6 +21,16 @@ signaling per
 
 ## [Unreleased]
 
+### Security
+
+- **Unlock throttling — repeated wrong master-password attempts are now slowed. (FIBR-0095)**
+  After a wrong password on the unlock screen, finbreak now waits a
+  growing moment before accepting the next try (1s, then 2s, 4s, … up to
+  30s), and remembers the count so closing and reopening the app doesn't
+  reset it. This is extra protection against someone repeatedly guessing
+  your master password through the app; a correct password always clears
+  it, so you're never locked out of your own vault.
+
 ## [0.1.16] - 2026-07-18
 
 ### Fixed

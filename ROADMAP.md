@@ -708,7 +708,7 @@ because retrofitting them is a data migration.
   without the key anyway). Target phase: P02. Dependencies: FIBR-0004.
   Lanes: crypto, ux. Kind: feature. Source: user-request-2026-07-01.
 
-- 📋 [FIBR-0031] **Failed-unlock throttling (exponential backoff).**
+- ✅ [FIBR-0031] **Failed-unlock throttling (exponential backoff).**
   Slow down brute-force guessing of the master password: after each wrong
   attempt on the unlock screen, impose a growing delay (e.g. 1s → 2s → 4s
   …, capped) before the next try is accepted. A one-off typo is barely
@@ -719,6 +719,7 @@ because retrofitting them is a data migration.
   Dependencies: FIBR-0004. Lanes: security, ux. Kind: security.
   Source: user-request-2026-07-01.
   Duplicate of FIBR-0095 (2026-07-15): both describe failed-unlock exponential backoff on the master-password unlock screen. FIBR-0095 is the newer, verified record (confirmed 2026-07-11 that services/auth.py applies no backoff) and is the tracking item for the implementation. This bullet stays as the original provenance record — flip it ✅ alongside FIBR-0095 when the throttling ships.
+  Resolved 2026-07-18 as the duplicate of FIBR-0095 (shipped) — failed-unlock exponential backoff is implemented and tested there (services/unlock_throttle.py + ui/_unlock_throttle.py, security-model INV-10).
 
 - 📋 [FIBR-0032] **Clipboard auto-clear for copied sensitive values.**
   When the user copies a sensitive value (account number, amount, a stored
@@ -747,12 +748,13 @@ because retrofitting them is a data migration.
   Source: cold-eyes-2026-07-03 FIBR-0008 lane-C.
   Resolved (2026-07-15): already shipped — verified stale bullet. ImportService.read_file (services/import_.py) routes through the shared _read_capped helper, refusing a file over _MAX_IMPORT_BYTES (16 MiB) BEFORE loading it, so security-model INV-5b's FIBR-0007 (CSV) claim is now met. Hardened beyond the original ask during a later indie-review (H-F/H-G): reads cap+1 bytes rather than trusting stat().st_size, so an endless-symlink (/dev/zero) or a file that grows post-stat can't slip an unbounded read past the cap. Tests: test_read_file_refuses_oversized_csv (monkeypatches the cap to 100) + test_read_capped_bounds_read_against_endless_symlink, both in tests/features/import_/test_import.py. No code change this session — flip only.
 
-- 🚧 [FIBR-0095] **Unlock throttling — backoff after repeated failed master-password attempts.**
+- ✅ [FIBR-0095] **Unlock throttling — backoff after repeated failed master-password attempts.**
   Verified 2026-07-11: services/auth.py applies NO delay/backoff on a failed unlock. Add an increasing backoff (spec finalized backoff-only — no lockout) after consecutive failed unlock attempts — defence-in-depth against bulk interactive guessing through the app's own unlock screen (the offline-crack path on a stolen vault is defended by Argon2id's slow KDF, security-model INV-2, not by this UI backoff). Track the attempt count / last-fail time in the plaintext window.ini (pre-unlock, non-sensitive; spec finalized persisted-not-in-memory so a relaunch can't reset the backoff); UX = a friendly 'try again in N seconds'. Deps: FIBR-0004 (unlock path).
   **Layman:** After several wrong master-password tries, finbreak briefly slows further attempts — extra protection if someone gets hold of your vault file.
   Kind: security.
   Source: claude-suggestion-2026-07-11.
   Started 2026-07-18 (self-directed, "build it all" autonomous run). Adding exponential backoff after repeated failed master-password unlock attempts; attempt count/last-fail persisted in plaintext window.ini so a relaunch doesn't reset the backoff. Spec -> /cold-eyes -> TDD -> /close-phase.
+  Shipped 2026-07-18 (self-directed autonomous 'build it all' run). Capped exponential backoff (1s,2s,4s,…,30s) after a wrong master password in the unlock dialog; attempt count + last-fail persisted in plaintext window.ini so a relaunch can't reset it. Pure core services/unlock_throttle.py (exponent clamped BEFORE the power — tampered fail_count can't build a giant int) + QSettings adapter ui/_unlock_throttle.py (defensive int()/fromisoformat() coercion + tz-naive rejection) + UnlockDialog wiring (authoritative entry gate re-read every submit, 1-Hz countdown, reset-on-success, submit-only disable preserving FIBR-0004 INV-2f). security-model INV-10 (defence-in-depth, not a boundary). Spec /cold-eyes 4 loops → polish-converged; reproduce-first TDD 19 tests INV-1..7; /audit semgrep+bandit 0 on the changed surface; cold code-review caught 1 CRITICAL (tz-naive last_fail → aware/naive subtraction crash = owner lockout) folded reproduce-first + 1 LOW test tidy. Gate green 1126/1, mypy 0. Commits 7564234→7c8778d; tag FIBR-0095-complete.
 
 - 📋 [FIBR-0096] **Per-release SHA256SUMS + generated SBOM alongside the signed AppImage.**
   The release AppImage is already Ed25519-signed (FIBR-0054 INV-14). Add, per release: a SHA256SUMS file (artifact checksums) and a generated SBOM (CycloneDX via cyclonedx-py, or pip-audit output) listing the bundled dependency versions — supply-chain transparency + a second integrity signal for users who verify manually rather than via the in-app updater. Wire into build-release-appimage.sh / the publish step. Deps: FIBR-0054 (release pipeline).
