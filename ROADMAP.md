@@ -1400,6 +1400,25 @@ because retrofitting them is a data migration.
   Progress (2026-07-18): starting — reproduce-first TDD. Fix: add TransactionRepository.delete_split_counts + StatementService.delete_preview (mirrors CategoryService.delete_blast_radius; UI calls service not repo), branch the confirm dialog so the overlap case names the ACTUAL removed count + reassures the shared rows stay. New overlap-path confirm test (INV-10a only covers non-overlap).
   Resolved (2026-07-18): the confirm dialog now names the ACTUAL removed count on an overlap delete. New TransactionRepository.delete_split_counts -> (removed, kept) reuses hand_off_covered's EXISTS coverage guard byte-for-byte (preview can never disagree with the delete); surfaced via StatementService.delete_preview (UI→service, never repo, mirroring CategoryService.delete_blast_radius). ui/statements.py _on_delete branches: overlap (kept>0) → "%n of its transaction(s) will be permanently removed — the rest are shared with an overlapping statement and will stay"; non-overlap keeps the original wording (now from the fresh count). VaultLockedError-guarded. Reproduce-first TDD: INV-10c (full-overlap A/B, removed==0) fails pre-fix ("its 2 transactions… cannot be undone"), green after. Self-review (too small for /indie-review, per the FIBR-0141 precedent) + gate green 1104/1, mypy 0. Commit 10ee1db.
 
+- 📋 [FIBR-0151] **Confirmed transfers are not reflected on the Transactions tab.**
+  Reported 2026-07-18 with screenshots. In the Transfers tab, the "Confirmed
+  transfers" list shows approved transfers (status bar: "Confirmed 1 transfer(s).").
+  But on the Transactions tab those same legs (e.g. "Ib transfer to *****9000740
+  16H26 *****5235" on Market Link, and the paired Credit Card leg) still appear as
+  normal transactions with no transfer marker and (in the shots) a blank Category —
+  i.e. confirming a transfer in FIBR-0011's suggest-then-confirm flow does not
+  propagate to how the Transactions view renders/labels those rows.
+
+  Depends-on / relates to FIBR-0011 (transfer detection, shipped) and FIBR-0109
+  (dedicated Transactions tab). Reproduce-first: confirm a suggested transfer, then
+  assert the two legs are shown as a linked/marked transfer (or excluded/annotated)
+  on the Transactions tab. Investigate whether confirm writes the transfer link in
+  the DB but the Transactions query/view ignores it, or whether the view needs a
+  refresh/signal after confirm.
+  **Layman:** When you approve a transfer in the Transfers screen, the two matching transactions still show up as ordinary, uncategorised entries on the Transactions list instead of being marked as a transfer.
+  Kind: fix.
+  Source: user-report-2026-07-18 (screenshots).
+
 ### ⚡ Performance
 
 - ✅ [FIBR-0025] **Enable SQLite WAL mode.** Set
