@@ -563,7 +563,7 @@ def test_INV6_unlock_widget_roundtrip(qtbot, service):
     # unlock path, not the separately-tested throttle (tests/features/unlock_throttle).
     widget._countdown.stop()
     widget._throttle.reset()
-    widget._set_busy(False)
+    widget._set_submit_enabled(True)
 
     widget._password.setText(_PW.decode())
     with qtbot.waitSignal(widget.unlocked, timeout=15000):

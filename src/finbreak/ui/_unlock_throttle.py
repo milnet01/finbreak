@@ -45,9 +45,13 @@ class UnlockThrottle:
         except (TypeError, ValueError):
             fail_count = 0  # missing or non-integer → fail-safe 0
         try:
-            last_fail: datetime | None = datetime.fromisoformat(
-                settings.value(_LAST_FAIL_KEY)
-            )
+            parsed = datetime.fromisoformat(settings.value(_LAST_FAIL_KEY))
+            # An offset-less ISO string (e.g. a write truncated before its
+            # trailing "+00:00") parses without error but tz-NAIVE. The gate
+            # subtracts it from a tz-aware `now`, which would raise TypeError and
+            # crash the unlock dialog — so treat a naive value as malformed too
+            # (fail-safe → None / full delay), never a crash. (FIBR-0095 INV-3.)
+            last_fail: datetime | None = parsed if parsed.tzinfo is not None else None
         except (TypeError, ValueError):
             last_fail = None  # missing or malformed → fail-safe None (full delay)
         return ThrottleState(fail_count=fail_count, last_fail=last_fail)

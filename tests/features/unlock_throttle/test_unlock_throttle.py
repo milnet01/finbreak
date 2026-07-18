@@ -142,6 +142,22 @@ def test_INV4_load_defaults_on_missing_and_malformed(window_ini: Path) -> None:
     assert state.last_fail is None, "malformed timestamp coerces to None (fail-safe)"
 
 
+def test_INV3_naive_last_fail_treated_as_malformed(window_ini: Path) -> None:
+    # A partial write that truncates only the trailing "+00:00" offset leaves a
+    # fully *parseable* but offset-NAIVE ISO string. datetime.fromisoformat
+    # accepts it without raising, so load() must still reject it as tz-naive —
+    # otherwise remaining()'s `now - last_fail` (aware minus naive) raises
+    # TypeError and crashes the unlock dialog on every launch, which would deny
+    # the legitimate owner access (INV-3 fail-safe / FIBR-0031 never-lock-out).
+    window_ini.write_text("[unlock]\nfail_count=3\nlast_fail=2026-07-18T09:00:00\n")
+    assert UnlockThrottle().load().last_fail is None, (
+        "an offset-naive timestamp is treated as malformed → None"
+    )
+    # The gate must compute the full owed delay, never raise, on that state.
+    now = datetime(2026, 7, 18, 9, 0, 30, tzinfo=UTC)
+    assert UnlockThrottle().remaining(now) == backoff_delay_seconds(3)
+
+
 # --------------------------------------------------------------------------- #
 # INV-5 — reset() on a successful unlock
 # --------------------------------------------------------------------------- #
