@@ -729,8 +729,9 @@ because retrofitting them is a data migration.
   the value we put there (don't wipe something the user copied since).
   Target phase: P12. Dependencies: FIBR-0012, FIBR-0014. Lanes: ui,
   security. Kind: security. Source: user-request-2026-07-01.
+  Scope check 2026-07-18 (autonomous run): DEFERRED pending a product/scope decision. Recon found the app has NO app-wired clipboard "Copy" affordances anywhere (no QClipboard/setText into clipboard in src/), so auto-clear is greenfield — it has nothing to clear until copy points are added first. Deciding what becomes copyable is a real fork: amount/description in the transactions context menu are natural + safe, but a "copy the stored statement PDF password" affordance would be a NEW exposure that regresses FIBR-0128 INV-1 (that secret currently never crosses into the UI). Needs a user call on (a) which values become copyable and (b) whether the PDF password is copyable at all, before writing the spec. Not silently guessing a UX+security scope. Kept 📋.
 
-- 📋 [FIBR-0033] **Backup restore-verification ("does my backup work?").**
+- 🚧 [FIBR-0033] **Backup restore-verification ("does my backup work?").**
   A one-click check that opens an encrypted backup (FIBR-0018) into a
   throwaway in-memory / temp copy, confirms it decrypts and its schema +
   row counts are intact, then discards it — proving the backup is
@@ -739,6 +740,7 @@ because retrofitting them is a data migration.
   Dependencies: FIBR-0018. Lanes: crypto, ux. Kind: feature.
   Source: user-request-2026-07-01.
   Dependency re-points: FIBR-0018 (the backup mechanism) is merged into and implemented by FIBR-0014, so this restore-verification builds on FIBR-0014's .fbk export/restore (docs/specs/FIBR-0014.md), not a separate FIBR-0018 deliverable.
+  Started 2026-07-18 (autonomous run, after deferring FIBR-0032 on scope). One-click "does my backup work?" — open a .fbk (FIBR-0014) into a throwaway temp/in-memory copy, confirm it decrypts + schema/row-counts intact, discard it, WITHOUT touching the live vault. Spec -> /cold-eyes -> TDD -> close.
 
 - ✅ [FIBR-0041] **Back-fill the CSV import path with the INV-5b resource-size cap.**
   security-model.md INV-5b binds an import resource budget (max file size / row count / parse time) to the import specs — naming FIBR-0007 (CSV) and FIBR-0008 (OFX) by id. FIBR-0008 pins the cap for the OFX path (D13: read_file_bytes stat-checks against _MAX_OFX_BYTES before read; a transaction-count cap). But FIBR-0007's CSV path (ImportService.read_file -> str) shipped WITHOUT a size cap, so security-model INV-5b's FIBR-0007 claim is currently unmet. Back-fill: apply the same size stat-check to read_file (or a shared bounded reader), pick a _MAX_CSV_BYTES constant, add a test (monkeypatch the cap down). Surfaced by the FIBR-0008 /cold-eyes (lane C, 2026-07-03).
