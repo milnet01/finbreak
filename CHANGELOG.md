@@ -21,6 +21,8 @@ signaling per
 
 ## [Unreleased]
 
+## [0.1.16] - 2026-07-18
+
 ### Fixed
 
 - **OFX import now files each transaction under the date the bank printed.** (FIBR-0042)
