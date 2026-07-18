@@ -1,8 +1,10 @@
 # finbreak — Security model & threat model
 
 > **Status:** Live — the project's authoritative security & threat
-> model; amended through FIBR-0014 (2026-07-13 — T11: separate-password
-> backup recovery) and re-run through `/cold-eyes` on each material edit.
+> model; amended through FIBR-0095 (2026-07-18 — INV-10: interactive
+> unlock throttling). This line names the **most-recent** material
+> amendment, not a full history. Re-run through `/cold-eyes` on each
+> material edit.
 > **Why this exists:** finbreak holds **personal financial
 > data**. Security is the load-bearing concern, so it gets its
 > own document — a single place that names what we protect, what
@@ -77,7 +79,7 @@ attacked. Each row: the threat → how finbreak stops it.
 | # | Threat | Mitigation |
 |---|--------|------------|
 | T1 | **Lost/stolen laptop → someone reads the vault file** | Whole-file AES-256 encryption (SQLCipher). The file is meaningless without the key (A1, INV-1). |
-| T2 | **Weak master password brute-forced** | **Argon2id** memory-hard key derivation with pinned parameters (§ 5 INV-2) makes guessing slow and GPU-resistant. Password strength is also surfaced at first-run (advisory, not an enforced INV). |
+| T2 | **Weak master password brute-forced** | **Argon2id** memory-hard key derivation with pinned parameters (§ 5 INV-2) makes offline guessing slow and GPU-resistant; the interactive unlock dialog additionally throttles repeated wrong attempts on a capped backoff (§ 5 INV-10). Password strength is also surfaced at first-run (advisory, not an enforced INV). |
 | T3 | **Key or password recovered from memory / swap / a crash dump** | Key held only while unlocked; **wiped on lock and on exit**; auto-lock drops it after idle (INV-3). The plaintext password reference is cleared before the unlock routine returns. (Defending against the OS paging memory to swap is out of scope — see § 4.) The idle timeout is **user-configurable** (FIBR-0055) and may be set to **"Never"** (FIBR-0135), which disables *only* the idle drop — the key is still wiped on manual lock and on exit, and the password is still required on open. An unattended, unlocked session then stays unlocked: an accepted user choice, not a silent default. |
 | T4 | **Decrypted bank statement leaks to disk** | Locked input PDFs are decrypted **in memory only**; no decrypted content is *deliberately* written to disk or temp files (A5, INV-4). (Defending against the OS paging memory to swap is out of scope — § 4.) |
 | T5 | **Malicious import file** (crafted CSV/OFX/PDF — parser crash, path traversal, zip-bomb-style resource exhaustion, formula injection) **or a crafted restore `.fbk`** (a zip parsed **pre-login**) | Parsers run defensively: bounded resource use (file/page/row caps), no `eval`, no shell-out; CSV cells are treated as data, never spreadsheet formulas; per-row errors are reported, not fatal (INV-5a/5b/5c). The restore `.fbk` — parsed before any authentication — reads only the three fixed entry names with per-entry caps checked **before** inflating (never `extractall`), rejects traversal/extra/duplicate entries, and re-validates the embedded KDF params against the pinned floor before deriving any key (FIBR-0014 INV-11/INV-12). **One documented residual:** the PDF **decompressed-page-size** vector is assessed + accepted, not bounded — see INV-5b / FIBR-0075. |
@@ -114,7 +116,7 @@ be checkable. Enforcement arrives in step with the code:
   no-content-derived-path legs are unit-tested with the import
   specs (FIBR-0007+).
 - **With the phase that builds the code each governs:** INV-1,
-  INV-2, INV-3, INV-4, INV-5b, INV-5c, INV-7, INV-9 — asserted by
+  INV-2, INV-3, INV-4, INV-5b, INV-5c, INV-7, INV-9, INV-10 — asserted by
   tests that land alongside the vault, crypto, import, export, and
   logging paths (none of which exist yet at P01).
 - **INV-8 (single opt-in egress)** is enforced two ways: no networking
@@ -234,6 +236,17 @@ be checkable. Enforcement arrives in step with the code:
   `urllib`).
 - **INV-9 — Logs are clean.** The local log file never records
   transaction contents, passwords, keys, or decrypted data.
+- **INV-10 — Interactive unlock is throttled.** After a wrong master
+  password in the unlock dialog, the next attempt is delayed on a
+  capped exponential schedule (1s, 2s, 4s, …, capped at 30s), with the
+  attempt count and last-failure time persisted in the plaintext
+  `window.ini` so an app restart does not reset the delay. This is
+  best-effort friction against guessing **through the app UI**; it is
+  **not** a security boundary — an attacker with filesystem access can
+  reset it, and the copied-vault offline-cracking path is defended only
+  by INV-2 (Argon2id). The delay is capped and a correct password
+  always clears the counter, so the legitimate owner is never
+  permanently locked out.
 
 ## 6. Tooling that enforces this (harness wired in P01; per-INV tests land with each phase)
 
@@ -247,7 +260,7 @@ be checkable. Enforcement arrives in step with the code:
 
 The four scanners (bandit, pip-audit, gitleaks, ruff) and the test
 harness are wired in P01 (FIBR-0001); the per-INV pytest assertions
-(INV-1/2/3/4/5b/5c/7/9) arrive with the later phases that build the
+(INV-1/2/3/4/5b/5c/7/9/10) arrive with the later phases that build the
 vault, crypto, import, export, and logging paths. The CI workflow
 and the local script run the **same** gate list (one source of
 truth) so a security regression fails *before* a push, not after.

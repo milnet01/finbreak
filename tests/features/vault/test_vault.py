@@ -558,6 +558,13 @@ def test_INV6_unlock_widget_roundtrip(qtbot, service):
     assert service._key is None
     assert widget._error.text() != "", "a failed unlock shows a message"
 
+    # FIBR-0095: a wrong attempt now imposes a 1 s backoff (button disabled + the
+    # entry gate owes a delay). Clear it so this FIBR-0004 round-trip exercises the
+    # unlock path, not the separately-tested throttle (tests/features/unlock_throttle).
+    widget._countdown.stop()
+    widget._throttle.reset()
+    widget._set_busy(False)
+
     widget._password.setText(_PW.decode())
     with qtbot.waitSignal(widget.unlocked, timeout=15000):
         widget._unlock_button.click()

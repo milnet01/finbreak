@@ -16,7 +16,10 @@ deleted mid-run (INV-2f).
 
 from __future__ import annotations
 
-from PySide6.QtCore import Signal, Slot
+import math
+from datetime import UTC, datetime
+
+from PySide6.QtCore import QTimer, Signal, Slot
 from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
     QDialog,
@@ -30,6 +33,7 @@ from PySide6.QtWidgets import (
 
 from finbreak.errors import KdfPolicyError, SchemaVersionError
 from finbreak.services.auth import AuthService
+from finbreak.ui._unlock_throttle import UnlockThrottle
 from finbreak.ui._worker import DeriveWorker
 
 
@@ -44,6 +48,14 @@ class UnlockDialog(QDialog):
         super().__init__(parent)
         self._service = service
         self._worker: DeriveWorker | None = None
+        # Failed-unlock backoff (FIBR-0095). The count/last-fail live in the
+        # plaintext window.ini; the 1-Hz timer only drives the label — every real
+        # submit re-reads remaining() from the file (D4, the file is authoritative).
+        self._throttle = UnlockThrottle()
+        self._remaining_seconds = 0
+        self._countdown = QTimer(self)
+        self._countdown.setInterval(1000)
+        self._countdown.timeout.connect(self._tick_countdown)
         self.setWindowTitle(self.tr("Unlock finbreak"))
 
         self._password = QLineEdit()
@@ -88,6 +100,13 @@ class UnlockDialog(QDialog):
     def _on_unlock(self) -> None:
         if self._worker is not None:
             return  # a derivation is already in flight — ignore repeat submits
+        # Authoritative backoff gate (FIBR-0095 D3): recomputed from window.ini on
+        # every submit, so a backgrounded/unreliable timer can never grant an
+        # attempt early. While a delay is owed, refuse without deriving.
+        remaining = self._throttle.remaining(datetime.now(UTC))
+        if remaining > 0:
+            self._start_countdown(remaining)
+            return
         self._error.clear()
         try:
             params = self._service.load_params()
@@ -148,6 +167,7 @@ class UnlockDialog(QDialog):
             self.unlock_failed.emit()
             return
         if unlocked:
+            self._throttle.reset()  # a correct password clears the counter (INV-5)
             self.unlocked.emit()
         else:
             self._show_failure()
@@ -159,7 +179,47 @@ class UnlockDialog(QDialog):
         self._show_failure()
 
     def _show_failure(self) -> None:
-        self._error.setText(
-            self.tr("Could not unlock. Check your password and try again.")
-        )
+        # Record the failure, then start the countdown to the freshly-owed delay
+        # (FIBR-0095 D3). A recorded failure always owes a delay (>= 1 s), so the
+        # countdown message replaces the generic one.
+        now = datetime.now(UTC)
+        self._throttle.record_failure(now)
+        remaining = self._throttle.remaining(now)
+        if remaining > 0:
+            self._start_countdown(remaining)
+        else:
+            self._error.setText(
+                self.tr("Could not unlock. Check your password and try again.")
+            )
         self.unlock_failed.emit()
+
+    def _set_submit_enabled(self, enabled: bool) -> None:
+        # The countdown affordance toggles ONLY the submit controls — Cancel and
+        # Restore stay usable so the owner can always leave the dialog. (Those two
+        # are disabled *only* while a worker derives, via _set_busy — FIBR-0004
+        # INV-2f; the cosmetic backoff countdown must not re-disable them.)
+        self._unlock_button.setEnabled(enabled)
+        self._password.setEnabled(enabled)
+
+    def _start_countdown(self, remaining: float) -> None:
+        """Show "Try again in N s", disable submit, and tick the label down to 0
+        (D4 — cosmetic; the file is authoritative)."""
+        self._remaining_seconds = math.ceil(remaining)
+        self._set_submit_enabled(False)
+        self._update_countdown_label()
+        self._countdown.start()
+
+    def _tick_countdown(self) -> None:
+        self._remaining_seconds -= 1
+        if self._remaining_seconds <= 0:
+            self._countdown.stop()
+            self._set_submit_enabled(True)  # re-enable submit; next submit re-checks
+            return
+        self._update_countdown_label()
+
+    def _update_countdown_label(self) -> None:
+        self._error.setText(
+            self.tr("Could not unlock. Try again in {seconds}s.").format(
+                seconds=self._remaining_seconds
+            )
+        )

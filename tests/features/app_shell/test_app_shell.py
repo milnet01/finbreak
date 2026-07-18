@@ -165,6 +165,13 @@ def test_INV2b_unlock_happy_path(qtbot, service):
     assert not window._toolbar.isEnabled()
     assert isinstance(window._dialog, UnlockDialog), "the dialog stays for a retry"
 
+    # FIBR-0095: a wrong attempt now imposes a 1 s backoff (submit disabled + the
+    # entry gate owes a delay). Clear it so this happy-path round-trip exercises the
+    # unlock path, not the separately-tested throttle (tests/features/unlock_throttle).
+    dlg._countdown.stop()
+    dlg._throttle.reset()
+    dlg._set_submit_enabled(True)
+
     dlg._password.setText(_PW.decode())
     with qtbot.waitSignal(dlg.unlocked, timeout=15000):
         dlg._unlock_button.click()
