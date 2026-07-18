@@ -1678,6 +1678,12 @@ is a future error tomorrow.
   Source: indie-review-2026-07-14 (FIBR-0138 close).
   Resolved 2026-07-17: added a `_reject_cycle` guard to `CategoryService.update_category` (mirrors the depth-safe ascend-with-`seen` idiom in `categorization.leaf_categories_grouped`) — ascends from the prospective parent to the root and raises ValueError if the subject appears in that chain, so re-parenting a category under itself or one of its own descendants is refused; the `seen` set keeps the walk total against a pre-existing corrupt cycle. Reproduce-first TDD in `tests/features/categories/` (INV-5: self-parent, direct child, deep descendant all rejected; legitimate cross-branch move still succeeds). Adapted the pre-existing `categorisation` corrupt-cycle test to inject the cycle at the repository layer (below the guard) since the service now refuses to build one. Note: today's category-manager parent picker only offers the two Type roots, so the cycle was reachable via a direct service call, not that UI — the guard is the service-layer contract boundary. Gate green 1083/1, mypy 0.
 
+- 📋 [FIBR-0150] **security-model.md header provenance line is stale (skips FIBR-0054/0131/0133).**
+  The header (docs/security-model.md L3-5) reads "amended through FIBR-0014 (2026-07-13 — T11: separate-password backup recovery)" yet the body already carries FIBR-0054 (update-flow / INV-8 egress) and FIBR-0131/FIBR-0133 (Windows update / SignPath) content added since, without a header bump. Treat the line as a "most-recent material amendment" marker and either (a) document that semantics in the header itself, or (b) backfill the missed provenance. Surfaced by the FIBR-0095 /cold-eyes lane B (loop 4). Low-priority doc hygiene; FIBR-0095 bumps the line to itself as part of its own edit.
+  **Layman:** The security document's "last updated by" note names an old change and skips several newer ones — a quick tidy so it reflects reality.
+  Kind: doc-fix.
+  Source: cold-eyes-2026-07-18 FIBR-0095 lane-B.
+
 ## How to add an item
 
 1. Allocate the next ID:
