@@ -730,6 +730,7 @@ because retrofitting them is a data migration.
   Target phase: P12. Dependencies: FIBR-0012, FIBR-0014. Lanes: ui,
   security. Kind: security. Source: user-request-2026-07-01.
   Scope check 2026-07-18 (autonomous run): DEFERRED pending a product/scope decision. Recon found the app has NO app-wired clipboard "Copy" affordances anywhere (no QClipboard/setText into clipboard in src/), so auto-clear is greenfield — it has nothing to clear until copy points are added first. Deciding what becomes copyable is a real fork: amount/description in the transactions context menu are natural + safe, but a "copy the stored statement PDF password" affordance would be a NEW exposure that regresses FIBR-0128 INV-1 (that secret currently never crosses into the UI). Needs a user call on (a) which values become copyable and (b) whether the PDF password is copyable at all, before writing the spec. Not silently guessing a UX+security scope. Kept 📋.
+  Scope RESOLVED by user 2026-07-18: copyable values = transaction AMOUNT + DESCRIPTION only (add "Copy amount"/"Copy description" to the transactions list context menu), auto-clear after ~30s (configurable). The stored statement PDF password stays NON-copyable (no regression of FIBR-0128 INV-1); account number NOT copyable in this pass. Unblocked — ready to spec when its turn comes (currently queued behind FIBR-0033).
 
 - 🚧 [FIBR-0033] **Backup restore-verification ("does my backup work?").**
   A one-click check that opens an encrypted backup (FIBR-0018) into a
