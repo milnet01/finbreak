@@ -21,6 +21,16 @@ signaling per
 
 ## [Unreleased]
 
+### Added
+
+- **Verify a backup is restorable, from Settings** (FIBR-0033)
+  A new "Verify backup…" button in Settings opens a backup file (.fbk) and
+  checks it read-only — confirming the password is right, the data isn't
+  corrupted, and the version is one this app can restore — and shows a short
+  summary (schema version and how many transactions, etc.). It never touches
+  your live data. Now you can confirm a backup is good *before* you ever have
+  to rely on it.
+
 ### Fixed
 
 - **Confirmed transfers now show on the Transactions tab** (FIBR-0151)
