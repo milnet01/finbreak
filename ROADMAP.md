@@ -218,6 +218,39 @@ scariest unknown (native-library bundling) up front.
   Source: user-request-2026-07-14.
   Resolved (2026-07-14): added --icon assets/icon/finbreak.ico to scripts/build-windows-exe.py + a fail-loud .ico-exists guard + a windows_build regression test (test_driver_embeds_the_app_icon). Gate-relevant tests green (windows_build 13 passed). Icon lands on the next Windows build.
 
+- 📋 [FIBR-0152] **Update prompt shows only the latest release's notes — accumulate all changes since the user's version.**
+  Gap (verified 2026-07-19): the UpdateDialog "What's new" panel is filled
+  from GitHub's /releases/latest — a SINGLE release's body
+  (services/update.py:224 `notes = release.get("body") or ""`;
+  fetch_latest_release hits /repos/{owner}/{repo}/releases/latest,
+  update_fetch.py:22). So a user N versions behind sees ONLY the newest
+  release's notes; the intervening releases' notes are never shown. There is
+  no in-app changelog viewer either (zero `changelog` refs under src/), and
+  the notes panel deliberately has link-opening OFF (offline/no-egress
+  posture, INV-12) so there is no "view full changelog online" fallback.
+
+  Recommended fix (Option A — best fit for the offline posture): ship
+  CHANGELOG.md inside the bundle and have the update prompt show every entry
+  BETWEEN the user's current __version__ and the latest available version. No
+  new network surface; reuses the Keep-a-Changelog structure already
+  maintained. A small version-range slicer over the local file feeds the same
+  `notes` string the dialog already renders as markdown.
+
+  Alternatives considered: (B) fetch /releases (all, not /latest) and
+  concatenate each body newer than current — more network + a bigger response
+  cap + prerelease filtering; (C) leave latest-only. Prefer A.
+
+  Reproduce-first when built: a service-level test that, given current=0.3.0
+  and a CHANGELOG containing 0.4.0/0.5.0/0.6.0 sections, returns the
+  concatenated 0.4.0..0.6.0 notes (and latest-only when exactly one behind);
+  plus a qtbot assertion that the dialog renders the accumulated body. Must
+  preserve FIBR-0054 INV-12 (no new egress) and the lupdate/tr() posture
+  (release notes stay non-tr() verbatim data).
+  **Layman:** If you skip a couple of updates, the "What's new" box only tells you about the newest one — it should show everything that changed since your version.
+  Kind: enhancement.
+  Lanes: ui, services, packaging.
+  Source: user-request-2026-07-19.
+
 ## P02 — Vertical slice: the security spine (target: after P01)
 
 **Theme:** the smallest end-to-end feature that touches every
