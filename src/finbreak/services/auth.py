@@ -62,6 +62,14 @@ AUTO_LOCK_NEVER = 0
 # The offered choices (minutes); DEFAULT is a member so it always resolves.
 ALLOWED_AUTO_LOCK_MINUTES = (1, 5, 10, 15, 30, AUTO_LOCK_NEVER)
 
+# Clipboard auto-clear timeout in seconds (FIBR-0032): how long a copied amount /
+# description lingers before ClipboardAutoClear wipes it (if the clipboard still
+# holds our value). Read fresh per copy; DEFAULT applies on an absent / non-int /
+# out-of-set stored value. 0 == "Never" (copy without auto-clear). The single home
+# for both constants — the UI imports them, never redefining.
+ALLOWED_CLIPBOARD_CLEAR_SECONDS = (10, 30, 60, 0)
+DEFAULT_CLIPBOARD_CLEAR_SECONDS = 30
+
 # The datetime display prefs (FIBR-0083) share one sentinel: "system" means
 # resolve dynamically at display time (follow the OS); a concrete value pins it.
 DATETIME_SYSTEM = "system"
@@ -331,6 +339,40 @@ class AuthService:
             "auto_lock_minutes", str(minutes)
         )
         self._arm_timer()
+
+    # --- clipboard auto-clear config (FIBR-0032) --------------------------- #
+    def clipboard_clear_seconds(self) -> int:
+        """The configured clipboard auto-clear timeout in seconds, read from the
+        vault settings. Falls back to ``DEFAULT_CLIPBOARD_CLEAR_SECONDS`` for an
+        absent key, a non-integer stored value, or a value outside
+        ``ALLOWED_CLIPBOARD_CLEAR_SECONDS`` (INV-5)."""
+        raw = SettingsRepository(self._vault.connection).get("clipboard_clear_seconds")
+        if raw is None:
+            return DEFAULT_CLIPBOARD_CLEAR_SECONDS
+        try:
+            seconds = int(raw)
+        except ValueError:
+            return DEFAULT_CLIPBOARD_CLEAR_SECONDS
+        return (
+            seconds
+            if seconds in ALLOWED_CLIPBOARD_CLEAR_SECONDS
+            else DEFAULT_CLIPBOARD_CLEAR_SECONDS
+        )
+
+    def set_clipboard_clear_seconds(self, seconds: int) -> None:
+        """Validate then persist the clipboard auto-clear timeout. Rejects a value
+        outside ``ALLOWED_CLIPBOARD_CLEAR_SECONDS`` before any write (INV-5); a locked
+        vault raises ``VaultLockedError`` from ``Vault.connection``, guarded
+        dialog-side like auto-lock. Unlike ``set_auto_lock_minutes`` there is no live
+        timer to re-arm — the timeout is read fresh per copy (D3)."""
+        if seconds not in ALLOWED_CLIPBOARD_CLEAR_SECONDS:
+            raise ValueError(
+                f"clipboard clear timeout must be one of "
+                f"{ALLOWED_CLIPBOARD_CLEAR_SECONDS}"
+            )
+        SettingsRepository(self._vault.connection).set(
+            "clipboard_clear_seconds", str(seconds)
+        )
 
     # --- datetime display prefs config (FIBR-0083) ------------------------- #
     def datetime_prefs(self) -> DateTimePrefs:

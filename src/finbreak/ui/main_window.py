@@ -62,6 +62,7 @@ from finbreak.services.reporting import ReportingService
 from finbreak.services.transactions import TransactionService
 from finbreak.services.update import UpdateInfo, UpdateService
 from finbreak.services.update_installer import Installer, detect_installer
+from finbreak.ui._clipboard import ClipboardAutoClear
 from finbreak.ui._update_worker import DownloadWorker, UpdateCheckWorker
 from finbreak.ui.accounts import AccountsWidget
 from finbreak.ui.backup_export import BackupExportDialog
@@ -610,6 +611,10 @@ class MainWindow(QMainWindow):
             CategorizationService(self._service.vault),
             self._prefs,
             self._amount_prefs,
+            clipboard=ClipboardAutoClear(
+                QGuiApplication.clipboard(),
+                seconds_provider=self._service.clipboard_clear_seconds,
+            ),
         )
 
         self._statements_tab = StatementsWidget(

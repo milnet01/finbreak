@@ -30,6 +30,7 @@ from finbreak.datetime_format import system_timezone_id
 from finbreak.errors import VaultLockedError
 from finbreak.services.auth import (
     ALLOWED_AUTO_LOCK_MINUTES,
+    ALLOWED_CLIPBOARD_CLEAR_SECONDS,
     AmountPrefs,
     AuthService,
 )
@@ -87,6 +88,20 @@ class SettingsDialog(QDialog):
         # resolves. The >= 0 guard is belt-and-braces: a miss would safe-fail to index
         # 0 (the most-aggressive lock), never a weaker one.
         select_combo_data(self._combo, service.auto_lock_minutes())
+
+        # The FIBR-0032 clipboard auto-clear timeout. Per-value tr() literals — never
+        # self.tr(variable), which lupdate cannot extract (mirrors the auto-lock combo).
+        clipboard_labels = {
+            10: self.tr("10 seconds"),
+            30: self.tr("30 seconds"),
+            60: self.tr("1 minute"),
+            0: self.tr("Never"),
+        }
+        self._clipboard_combo = QComboBox()
+        self._clipboard_combo.setObjectName("settings_clipboard_clear")
+        for seconds in ALLOWED_CLIPBOARD_CLEAR_SECONDS:
+            self._clipboard_combo.addItem(clipboard_labels[seconds], seconds)
+        select_combo_data(self._clipboard_combo, service.clipboard_clear_seconds())
 
         # The FIBR-0083 timezone / date / time controls. The System-default label
         # is the only tr()-wrapped text (the detected value interpolated via a
@@ -177,6 +192,7 @@ class SettingsDialog(QDialog):
         if self._theme_combo is not None:
             form.addRow(self.tr("Theme"), self._theme_combo)
         form.addRow(self.tr("Auto-lock after"), self._combo)
+        form.addRow(self.tr("Clear copied values after"), self._clipboard_combo)
         form.addRow(self.tr("Time zone"), self._timezone)
         form.addRow(self.tr("Date format"), self._date_format)
         form.addRow(self.tr("Time format"), self._time_format)
@@ -239,6 +255,9 @@ class SettingsDialog(QDialog):
     def _on_save(self) -> None:
         try:
             self._service.set_auto_lock_minutes(self._combo.currentData())
+            self._service.set_clipboard_clear_seconds(
+                self._clipboard_combo.currentData()
+            )
             self._service.set_datetime_prefs(
                 read_datetime_prefs(
                     self._timezone, self._date_format, self._time_format

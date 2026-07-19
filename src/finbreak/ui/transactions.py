@@ -14,6 +14,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 from PySide6.QtCore import QPoint, Qt
+from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -33,11 +34,17 @@ from PySide6.QtWidgets import (
 from finbreak.datetime_format import format_date
 from finbreak.errors import VaultLockedError
 from finbreak.models import CategorySource, Transaction
-from finbreak.services.auth import DATETIME_SYSTEM, AmountPrefs, DateTimePrefs
+from finbreak.services.auth import (
+    DATETIME_SYSTEM,
+    DEFAULT_CLIPBOARD_CLEAR_SECONDS,
+    AmountPrefs,
+    DateTimePrefs,
+)
 from finbreak.services.categorization import CategorizationService
 from finbreak.services.transactions import TransactionService
 from finbreak.services.transfer_detection import TransferDetectionService
 from finbreak.ui._amount import _NEGATIVE_TEXT, _POSITIVE_TEXT, _format_amount
+from finbreak.ui._clipboard import ClipboardAutoClear
 from finbreak.ui._table_state import (
     SortableItem,
     enable_sorting,
@@ -72,12 +79,22 @@ class TransactionsView(QWidget):
         prefs: DateTimePrefs | None = None,
         amount_prefs: AmountPrefs | None = None,
         transfers: TransferDetectionService | None = None,
+        clipboard: ClipboardAutoClear | None = None,
         parent: QWidget | None = None,
     ):
         super().__init__(parent)
         self.setObjectName("tab_transactions")
         self._transactions = transactions
         self._categorization = categorization
+        # The copy-with-auto-clear helper (FIBR-0032). Default to a fallback over the
+        # system clipboard with a constant provider for standalone / test construction;
+        # the shell injects a service-wired instance. Either way the view takes
+        # ownership (setParent), so lock/rebuild teardown destroys its pending timer.
+        self._clipboard = clipboard or ClipboardAutoClear(
+            QGuiApplication.clipboard(),
+            seconds_provider=lambda: DEFAULT_CLIPBOARD_CLEAR_SECONDS,
+        )
+        self._clipboard.setParent(self)
         # A confirmed transfer is surfaced at READ time from transfer_pairs — the
         # transactions rows stay untouched (FIBR-0011 INV-12 / FIBR-0151). Default to
         # a service over the same vault so existing two-arg call sites gain the label
@@ -346,9 +363,30 @@ class TransactionsView(QWidget):
         if self._selected_txn() is None:
             return
         menu = QMenu(self)
+        copy_amount = menu.addAction(self.tr("Copy amount"))
+        copy_amount.triggered.connect(self._on_copy_amount)
+        copy_description = menu.addAction(self.tr("Copy description"))
+        copy_description.triggered.connect(self._on_copy_description)
+        menu.addSeparator()
         action = menu.addAction(self.tr("Set category…"))
         action.triggered.connect(self._on_set_category)
         menu.exec(self._table.viewport().mapToGlobal(pos))
+
+    def _on_copy_amount(self) -> None:
+        # The already-rendered Amount cell text (WYSIWYG) — no vault read, so this is
+        # lock-safe even if the auto-lock fired while the menu was open (INV-8/D1).
+        if self._selected_txn() is None:
+            return
+        row = next(iter({i.row() for i in self._table.selectedItems()}))
+        item = self._table.item(row, _COL_AMOUNT)
+        text = item.text() if item is not None else ""
+        self._clipboard.copy(text)
+
+    def _on_copy_description(self) -> None:
+        txn = self._selected_txn()
+        if txn is None:
+            return
+        self._clipboard.copy(txn.description)  # in-memory description — no vault read
 
     def _on_set_category(self) -> None:
         txn = self._selected_txn()
