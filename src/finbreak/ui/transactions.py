@@ -36,6 +36,7 @@ from finbreak.models import CategorySource, Transaction
 from finbreak.services.auth import DATETIME_SYSTEM, AmountPrefs, DateTimePrefs
 from finbreak.services.categorization import CategorizationService
 from finbreak.services.transactions import TransactionService
+from finbreak.services.transfer_detection import TransferDetectionService
 from finbreak.ui._amount import _NEGATIVE_TEXT, _POSITIVE_TEXT, _format_amount
 from finbreak.ui._table_state import (
     SortableItem,
@@ -70,12 +71,20 @@ class TransactionsView(QWidget):
         categorization: CategorizationService,
         prefs: DateTimePrefs | None = None,
         amount_prefs: AmountPrefs | None = None,
+        transfers: TransferDetectionService | None = None,
         parent: QWidget | None = None,
     ):
         super().__init__(parent)
         self.setObjectName("tab_transactions")
         self._transactions = transactions
         self._categorization = categorization
+        # A confirmed transfer is surfaced at READ time from transfer_pairs — the
+        # transactions rows stay untouched (FIBR-0011 INV-12 / FIBR-0151). Default to
+        # a service over the same vault so existing two-arg call sites gain the label
+        # without rewiring.
+        self._transfers = transfers or TransferDetectionService(transactions.vault)
+        # {txn_id: "Transfer to/from <counterparty>"}, rebuilt each refresh().
+        self._transfer_labels: dict[int, str] = {}
         self._prefs = prefs or DateTimePrefs(
             DATETIME_SYSTEM, DATETIME_SYSTEM, DATETIME_SYSTEM
         )
@@ -167,8 +176,25 @@ class TransactionsView(QWidget):
         """Reload the master list from the vault and rebuild the account / category
         filter combos (preserving the current selection), then re-apply filters."""
         self._master = self._transactions.list_transactions()
+        self._transfer_labels = self._build_transfer_labels()
         self._rebuild_filter_combos()
         self._apply_filters()
+
+    def _build_transfer_labels(self) -> dict[int, str]:
+        """Each confirmed-transfer leg's Category-cell label, naming the
+        *counterparty* account (FIBR-0151): the debit leg (money out) reads
+        "Transfer to <credit account>", the credit leg (money in) reads
+        "Transfer from <debit account>". Both names come straight from
+        ``confirmed_transfers()`` — no transactions row is read or written (INV-12)."""
+        labels: dict[int, str] = {}
+        for ct in self._transfers.confirmed_transfers():
+            labels[ct.debit.id] = self.tr("Transfer to {account}").format(
+                account=ct.to_account
+            )
+            labels[ct.credit.id] = self.tr("Transfer from {account}").format(
+                account=ct.from_account
+            )
+        return labels
 
     def _rebuild_filter_combos(self) -> None:
         # On the FIRST build the combos are empty and currentData() is None — which
@@ -289,7 +315,14 @@ class TransactionsView(QWidget):
         back to a display-text compare and split the group). A ``'library'`` row (a
         built-in guess) shows a "~ guess" marker + tooltip; a rule / manual /
         uncategorised row shows the plain name. Display-only: the sort key (bare name)
-        and the id-keyed filter are unaffected (INV-9)."""
+        and the id-keyed filter are unaffected (INV-9).
+
+        A confirmed transfer leg overrides the category name with its directional
+        "Transfer to/from <account>" label (FIBR-0151); the label is also its sort
+        key, so the two legs group together when the column is sorted."""
+        label = self._transfer_labels.get(transaction.id)
+        if label is not None:
+            return SortableItem(label, label)
         is_guess = transaction.category_source == CategorySource.LIBRARY.value and bool(
             category_name
         )

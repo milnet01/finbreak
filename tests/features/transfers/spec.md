@@ -27,6 +27,7 @@ are tested directly; the Transfers tab (two tables + Confirm / Reject / Confirm 
 | INV-10 | **Transfers tab.** The workspace has **6** tabs; the Transfers tab (`objectName "tab_transfers"`) shows the suggested + confirmed tables; Confirm / Reject / Confirm all / Unlink drive the service and refresh; a `VaultLockedError` mid-slot is caught (no crash). The toolbar Transfers action has a rendering icon. |
 | INV-11 | **No network; i18n.** No network import under the new modules (the vault-suite static scan covers them); user strings via `tr()` (convention/ruff, not a unit test). |
 | INV-12 | **Transactions untouched.** No transfer operation issues an `INSERT/UPDATE/DELETE` against `transactions` — rows (count, amounts, categories) are byte-identical before and after confirm / reject / unlink. |
+| INV-13 | **Transactions-tab label (FIBR-0151).** A confirmed transfer renders in the Transactions tab's Category column as a directional label naming the **counterparty** account: the debit leg (money out) reads `Transfer to <credit account>`, the credit leg (money in) reads `Transfer from <debit account>`. Resolved at render time from `confirmed_transfers()` — an unconfirmed pair shows no label (the legs stay ordinary uncategorised rows), and INV-12 still holds (no transactions row is read for the write path or mutated). |
 
 **Edges** (beyond the INV table): empty vault → `candidates()` == `[]`; the
 **Cartesian** case — two debits × two credits of equal magnitude in-window yield

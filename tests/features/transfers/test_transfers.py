@@ -552,3 +552,61 @@ def test_INV10_workspace_has_eight_tabs(qtbot, service):
     assert window._workspace is not None
     assert window._workspace.count() == 8  # + Transactions, Recurring (FIBR-0142)
     assert window._transfers_tab is not None
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0151 — a confirmed transfer renders as a directional label in the
+# Transactions tab's Category column, naming the *counterparty* account. This is
+# READ-time only: no transactions row is touched (INV-12 still holds — the label
+# is resolved from transfer_pairs when the tab is rendered).
+# --------------------------------------------------------------------------- #
+_COL_DESCRIPTION = 2
+_COL_CATEGORY = 4
+
+
+def _txn_view(service: AuthService):
+    """A TransactionsView over the same vault — it default-constructs its own
+    TransferDetectionService, so a confirmed pair surfaces without extra wiring."""
+    from finbreak.services.categorization import CategorizationService
+    from finbreak.services.transactions import TransactionService
+    from finbreak.ui.transactions import TransactionsView
+
+    return TransactionsView(
+        TransactionService(service.vault), CategorizationService(service.vault)
+    )
+
+
+def _category_text(view, description: str) -> str:
+    for r in range(view._table.rowCount()):
+        if view._table.item(r, _COL_DESCRIPTION).text() == description:
+            return view._table.item(r, _COL_CATEGORY).text()
+    raise AssertionError(f"no row for {description!r}")
+
+
+def test_FIBR0151_confirmed_transfer_shows_directional_counterparty_label(
+    qtbot, service
+):
+    # debit lives in Default (money out), credit in Savings (money in).
+    debit, credit = _pair(service)
+    _svc(service).confirm(debit, credit)
+
+    view = _txn_view(service)
+    qtbot.addWidget(view)
+
+    # Outgoing leg names where the money WENT (the credit's account).
+    assert _category_text(view, "to savings") == "Transfer to Savings"
+    # Incoming leg names where the money CAME FROM (the debit's account).
+    assert _category_text(view, "from current") == "Transfer from Default"
+
+
+def test_FIBR0151_unconfirmed_pair_renders_as_ordinary_uncategorised_rows(
+    qtbot, service
+):
+    _pair(service)  # a candidate, but the user has NOT confirmed it
+
+    view = _txn_view(service)
+    qtbot.addWidget(view)
+
+    # No label until confirmed — the legs are just uncategorised transactions.
+    assert _category_text(view, "to savings") == ""
+    assert _category_text(view, "from current") == ""

@@ -85,6 +85,12 @@ class TransactionService:
     def __init__(self, vault: Vault):
         self._vault = vault
 
+    @property
+    def vault(self) -> Vault:
+        """The backing vault — lets a caller compose a sibling service over the same
+        connection (e.g. the Transactions tab's TransferDetectionService, FIBR-0151)."""
+        return self._vault
+
     def _exponent(self) -> int:
         return read_minor_unit_exponent(self._vault.connection)
 
