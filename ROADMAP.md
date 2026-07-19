@@ -1487,6 +1487,19 @@ because retrofitting them is a data migration.
   Lanes: ui.
   Source: user-request-2026-07-19.
 
+- 📋 [FIBR-0154] **Category UI: expose a 3rd tier (sub-categories) — Type → Category → Sub-category.**
+  User asked for 3-tier categories (e.g. Expenditure > Groceries > Spar). Today the app is capped at TWO levels (Type > Category).
+
+  Already supported (no work): the data model is a self-referencing tree with no depth cap — `parent_id INTEGER REFERENCES categories(id)` (migrations.py:117-120), `Category.parent_id: int | None` (models.py:230-242); FIBR-0006 shipped it "3rd level ready, no migration needed". `CategoryService.add_category` -> `_require_parent` only checks the parent EXISTS (not that it is a root), with `_reject_cycle` guarding acyclicity (services/categories.py:41-48, 106-116, 118-139) — so the service layer already permits a grandchild. Renaming a leaf (Spar -> Pick 'n Pay) also works today via `update_category` (services/categories.py:50-65) + the Update button (ui/categories.py:125-140).
+
+  The gap is UI-only, deliberately deferred as "D9": the module docstring says "The UI exposes two levels (Type -> Category); a third (sub-category) level is a later enhancement (D9)" (ui/categories.py:9-10). `CategoriesWidget._refresh` renders only root -> one level of children and Add always parents onto the root Type combo (ui/categories.py:212-229, :116) — no control to pick a leaf as parent.
+
+  Scope for this item: (1) CategoriesWidget — allow picking an existing Category as parent and render a 3-deep tree; (2) the category pickers that flatten the tree (Set-category dialog ui/category_picker.py, Rules editor ui/rules.py, Transactions category filter) must render/resolve the deeper level — note the existing flat-combo ambiguity already roadmapped separately; (3) spec -> cold-eyes -> TDD. Decide a max depth (2 vs 3 vs arbitrary) — the model allows arbitrary, but a UI/UX cap keeps the tree legible.
+  **Layman:** Let you add a third level under a category (e.g. Expenditure › Groceries › Spar) and pick it when tagging transactions. Note: renaming a category (e.g. correcting "Spar" to "Pick 'n Pay") already works today — this item is only about adding the deeper third level.
+  Kind: feature.
+  Lanes: ui, services.
+  Source: user-request-2026-07-19.
+
 ### ⚡ Performance
 
 - ✅ [FIBR-0025] **Enable SQLite WAL mode.** Set
