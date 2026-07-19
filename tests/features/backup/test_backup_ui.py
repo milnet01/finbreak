@@ -11,7 +11,11 @@ from PySide6.QtCore import QTimer
 
 from conftest import _PW
 from finbreak.services.auth import AuthService
-from finbreak.services.backup import MIN_BACKUP_PASSWORD_LEN, BackupService
+from finbreak.services.backup import (
+    MIN_BACKUP_PASSWORD_LEN,
+    BackupService,
+    VerifyResult,
+)
 from finbreak.ui.backup_export import BackupExportDialog
 from finbreak.ui.backup_restore import BackupRestoreDialog
 from finbreak.ui.first_run import FirstRunDialog
@@ -293,3 +297,95 @@ def test_reconcile_pairs_old_files_by_stamp(qtbot, tmp_path):
     assert sp.read_bytes() == osb, "recovered its matching sidecar (same stamp)"
     assert service.unlock(bytearray(b"orig master")) is True, "the recovered pair opens"
     service.lock()
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0033 — backup verify: Settings affordance, dialog rendering, and wiring
+# --------------------------------------------------------------------------- #
+def test_settings_exposes_verify_backup(qtbot, paths):
+    auth = _seeded(paths)
+    try:
+        dialog = SettingsDialog(auth, "ZAR")
+        qtbot.addWidget(dialog)
+        assert dialog._verify_backup.objectName() == "settings_verify_backup"
+        fired: list[int] = []
+        dialog.verify_backup_requested.connect(lambda: fired.append(1))
+        dialog._verify_backup.click()
+        assert fired == [1], "the button requests a backup verify"
+    finally:
+        auth.lock()
+
+
+def test_verify_dialog_renders_success(qtbot):
+    from finbreak.ui.backup_verify import BackupVerifyDialog
+
+    dialog = BackupVerifyDialog()
+    qtbot.addWidget(dialog)
+    dialog.show_result(
+        VerifyResult(
+            ok=True,
+            schema_version=10,
+            table_counts={"transactions": 3, "accounts": 1},
+            reason=None,
+        )
+    )
+    text = dialog._result.text()
+    assert "10" in text, "the as-migrated schema version is shown"
+    assert "3" in text and "transactions" in text, "a friendly transaction count shows"
+    assert "accounts" in text, "other tables show as the raw table: count list"
+
+
+def test_verify_dialog_renders_failure(qtbot):
+    from finbreak.ui.backup_verify import BackupVerifyDialog
+
+    dialog = BackupVerifyDialog()
+    qtbot.addWidget(dialog)
+    dialog.show_result(
+        VerifyResult(
+            ok=False, schema_version=None, table_counts=None, reason="wrong_password"
+        )
+    )
+    text = dialog._result.text()
+    assert text, "a failure reason is shown"
+    assert "password" in text.lower(), "the wrong-password reason names the password"
+
+
+def test_verify_wiring_runs_service_and_renders(qtbot, paths, monkeypatch):
+    from PySide6.QtWidgets import QApplication
+
+    from finbreak.ui.backup_verify import BackupVerifyDialog
+    from finbreak.ui.main_window import MainWindow
+
+    auth = _seeded(paths)
+    window = MainWindow(auth)
+    qtbot.addWidget(window)
+    window._enter_unlocked()
+
+    # The Settings "Verify backup…" signal opens the verify dialog.
+    window._open_settings()
+    window._dialog.verify_backup_requested.emit()
+    dialog = window._dialog
+    assert isinstance(dialog, BackupVerifyDialog), "verify signal opens the dialog"
+
+    dialog._source_field.setText(str(paths[0].parent / "backup.fbk"))
+    dialog._backup_password.setText(_BACKUP_PW)
+
+    calls: list[tuple] = []
+    result = VerifyResult(
+        ok=True, schema_version=10, table_counts={"transactions": 0}, reason=None
+    )
+
+    def fake_verify(self, src, pw, **k):
+        calls.append((src, pw))
+        return result
+
+    monkeypatch.setattr(BackupService, "verify_backup", fake_verify)
+
+    dialog.verify_requested.emit()  # the dialog asks the shell to verify
+
+    assert len(calls) == 1, "the shell invokes BackupService.verify_backup once"
+    assert str(calls[0][0]) == str(paths[0].parent / "backup.fbk")
+    assert calls[0][1] == _BACKUP_PW
+    assert "10" in dialog._result.text(), "the VerifyResult is rendered in the dialog"
+    assert QApplication.overrideCursor() is None, "the wait cursor is always restored"
+    auth.lock()

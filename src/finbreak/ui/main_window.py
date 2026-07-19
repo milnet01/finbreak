@@ -66,6 +66,7 @@ from finbreak.ui._update_worker import DownloadWorker, UpdateCheckWorker
 from finbreak.ui.accounts import AccountsWidget
 from finbreak.ui.backup_export import BackupExportDialog
 from finbreak.ui.backup_restore import BackupRestoreDialog
+from finbreak.ui.backup_verify import BackupVerifyDialog
 from finbreak.ui.categories import CategoriesWidget
 from finbreak.ui.export_dialog import ExportDialog
 from finbreak.ui.first_run import FirstRunDialog
@@ -765,6 +766,7 @@ class MainWindow(QMainWindow):
         )
         dialog.saved.connect(self._on_settings_saved)
         dialog.export_backup_requested.connect(self._open_backup_export)
+        dialog.verify_backup_requested.connect(self._open_backup_verify)
         dialog.rejected.connect(self._teardown_dialog)  # cancel: no change
         self._open_dialog(dialog, defer=False)
 
@@ -883,6 +885,40 @@ class MainWindow(QMainWindow):
             QApplication.restoreOverrideCursor()
         self._teardown_dialog()
         self._status(self.tr("Backup saved"))
+
+    def _open_backup_verify(self) -> None:
+        # Reached from the Settings "Verify backup…" button (FIBR-0033 D5). Tear
+        # down Settings FIRST — the single _dialog slot holds one app-modal at a
+        # time — then open the verify dialog, mirroring _open_backup_export.
+        self._teardown_dialog()
+        dialog = BackupVerifyDialog(self)
+        dialog.verify_requested.connect(self._on_backup_verify_requested)
+        dialog.rejected.connect(self._teardown_dialog)
+        self._open_dialog(dialog, defer=False)
+
+    def _on_backup_verify_requested(self) -> None:
+        # Verify SYNCHRONOUSLY under a wait cursor (D7), mirroring export's one-shot
+        # UX. Unlike export/restore it needs no auto-lock protection — verify works
+        # on a separate temp Vault and never touches the live vault (D3). The
+        # expected "bad backup" outcomes come back as a VerifyResult, not an
+        # exception (D4), so there is no warn/catch here; the answer is rendered in
+        # the same dialog, which stays open for another try.
+        dialog = self._dialog
+        if not isinstance(dialog, BackupVerifyDialog):
+            return
+        source = dialog.source_path()
+        if source is None:
+            return
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            result = BackupService(self._service.vault, self._service).verify_backup(
+                source, dialog.backup_password()
+            )
+        finally:
+            # Restore on every path (incl. an unexpected bug that propagates) so a
+            # stuck wait cursor never survives the verify.
+            QApplication.restoreOverrideCursor()
+        dialog.show_result(result)
 
     def _open_restore(self) -> None:
         # Pre-login restore, reachable from first-run + unlock (INV-8). Tear down the

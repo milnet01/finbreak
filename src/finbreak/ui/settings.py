@@ -48,6 +48,9 @@ class SettingsDialog(QDialog):
     # "Export backup…" was clicked; the shell owns the password dialog + the
     # synchronous export (FIBR-0014 D3 — export lives only in Settings, INV-8).
     export_backup_requested = Signal()
+    # "Verify backup…" was clicked; the shell owns the verify dialog + the
+    # synchronous, read-only verify (FIBR-0033 D5 — post-login, next to Export).
+    verify_backup_requested = Signal()
 
     def __init__(
         self,
@@ -190,6 +193,14 @@ class SettingsDialog(QDialog):
         self._export_backup.setObjectName("settings_export_backup")
         self._export_backup.clicked.connect(self.export_backup_requested)
         form.addRow(self.tr("Encrypted backup"), self._export_backup)
+
+        # Proactive, read-only "does my backup open?" check (FIBR-0033 D5). Like
+        # Export the button only signals intent; the shell owns the verify dialog +
+        # the synchronous verify, so Settings keeps no BackupService reference.
+        self._verify_backup = QPushButton(self.tr("Verify backup…"))
+        self._verify_backup.setObjectName("settings_verify_backup")
+        self._verify_backup.clicked.connect(self.verify_backup_requested)
+        form.addRow("", self._verify_backup)
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel

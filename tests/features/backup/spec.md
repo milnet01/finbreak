@@ -31,6 +31,27 @@ back.
 | INV-12 | Safe-zip: a `../`-traversal entry name, an extra entry, and a `params.json` whose `ZipInfo.file_size` exceeds `MAX_MANIFEST_BYTES` are each refused; a large-but-legitimate `vault.db` restores. |
 | INV-13 | Cipher-compat portability: a `.fbk` restores when the process default `cipher_compatibility` is forced to a different level (`PRAGMA cipher_default_compatibility`); a recorded level other than `SQLCIPHER_COMPAT` is refused. |
 
+## FIBR-0033 — read-only verify (`verify_backup`)
+
+`BackupService.verify_backup(src, backup_password, *, on_key=None) -> VerifyResult`
+is a **read-only** "does this backup actually open?" probe: it reuses restore's
+read → guard → open sequence (extracted into the shared `_open_backup_vault`
+helper) but stops after the open, running `PRAGMA cipher_integrity_check` and
+reporting schema + per-table counts without ever touching the live vault. Each
+expected failure returns `ok=False` with a **stable `reason` code**, not an
+exception. INV-1..7 below are FIBR-0033's **own local numbering** (distinct from
+FIBR-0014's INV-1..13 above) — see [`docs/specs/FIBR-0033.md`](../../../docs/specs/FIBR-0033.md).
+
+| INV | What it pins | Test |
+|-----|--------------|------|
+| INV-1 | Verify never mutates / opens the live vault: its dir stays byte-identical and gains no files. | `test_INV1_verify_leaves_live_vault_untouched` |
+| INV-2 | A valid `.fbk` + correct password (with `cipher_integrity_check` clean) → `ok=True`, `schema_version == LATEST_SCHEMA_VERSION` (as-migrated), `table_counts` equal to the temp's actual per-table counts. | `test_INV2_verify_valid_backup_ok_with_counts` |
+| INV-3 | A wrong backup password → `ok=False`, `reason="wrong_password"` (from the caught `DatabaseError`); no exception escapes. | `test_INV3_verify_wrong_password_reason` |
+| INV-4 | Each bad-backup class maps to its reason code: a body/overflow-page corruption `count(*)` misses but `cipher_integrity_check` catches → `corrupt`; a manifest-under-states `.fbk` (embedded schema > LATEST) → `too_new`; below-floor/malformed KDF params → `bad_kdf_params`; a non-zip / guard failure → `invalid`; a temp-write `OSError` → `io_error`. | `test_INV4_verify_corrupt_overflow_page_reason`, `test_INV4_verify_too_new_embedded_schema_reason`, `test_INV4_verify_bad_kdf_params_reason`, `test_INV4_verify_invalid_non_zip_reason`, `test_INV4_verify_io_error_reason` |
+| INV-5 | Verify leaves no temp files behind — the system `TemporaryDirectory` (spied via monkeypatch) is removed after every path. | `test_INV5_verify_leaves_no_temp` |
+| INV-6 | The `_open_backup_vault` extraction leaves `restore_backup`'s observable behaviour unchanged — the whole FIBR-0014 restore suite above passes untouched. | (the Slice 1-4 restore tests) |
+| INV-7 | Verify leaves no live key material: the backup key + password buffer are wiped on every path (owned by `_open_backup_vault`), observed via the `on_key` seam; verify derives **only** the backup key (no master). | `test_INV7_verify_wipes_backup_key_via_on_key_seam` |
+
 ## Reuse helpers (Deliverable 2 — `vault.py`)
 
 | Helper | What it pins |

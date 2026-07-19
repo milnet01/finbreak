@@ -22,6 +22,7 @@ import tempfile
 import zipfile
 import zlib
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -64,6 +65,23 @@ _DB_ENTRY = "vault.db"
 
 def _noop_on_key(role: str, buffer: bytearray) -> None:
     return None
+
+
+@dataclass(frozen=True)
+class VerifyResult:
+    """The outcome of a read-only ``verify_backup`` probe (FIBR-0033).
+
+    ``ok`` is the headline answer. On success ``schema_version`` is the
+    **as-migrated** version (``== LATEST_SCHEMA_VERSION`` — ``open`` upgrades the
+    temp copy) and ``table_counts`` maps each application table to its row count;
+    ``reason`` is ``None``. On failure both are ``None`` and ``reason`` is a
+    **stable code** (never raw exception text) the UI maps to a translated
+    message — see the reason table in the FIBR-0033 spec."""
+
+    ok: bool
+    schema_version: int | None
+    table_counts: dict[str, int] | None
+    reason: str | None
 
 
 class BackupService:
@@ -147,37 +165,19 @@ class BackupService:
         on_key = on_key or _noop_on_key
         if len(new_master_password) == 0:
             raise ValueError("new master password must not be empty")
-        backup_pw = bytearray(backup_password, "utf-8")
         master_pw = bytearray(new_master_password, "utf-8")
-        backup_key: bytearray | None = None
         master_key: bytearray | None = None
         install_dir = self._vault.vault_path.parent
         try:
-            manifest, params_bytes, db_bytes = self._read_fbk(src)  # INV-12
-            self._guard_manifest(manifest)  # INV-4 format, INV-13 compat, INV-6a
             # The whole assembly lives in a temp dir INSIDE AppDataLocation, so the
             # final install os.replace is a same-filesystem rename (D4).
             with tempfile.TemporaryDirectory(dir=install_dir) as td:
-                tmp = Path(td)
-                tmp_db = tmp / "vault.db"
-                tmp_sidecar = tmp / "vault.kdf.json"
-                tmp_params = tmp / "params.json"
-                # Materialise params.json to a 0o600 temp + re-validate the KDF
-                # floor BEFORE any key is derived (INV-11).
-                self._write_owner_only(tmp_params, params_bytes)
-                backup_params = load_and_validate_params(tmp_params)
-                self._write_owner_only(tmp_db, db_bytes)
-                backup_key = derive_key(backup_pw, backup_params.salt, backup_params)
-                on_key("backup", backup_key)
-                # Open + migrate the backup DB (a wrong backup password fails page-1
-                # here; a newer embedded schema raises SchemaVersionError, INV-6b).
-                backup_vault = Vault(tmp_db, tmp_sidecar)
-                # Pass the derived key itself, NOT a bytearray(...) copy: open() only
-                # reads key.hex() (never mutates), so a copy would be an un-wiped
-                # second reference to live key material outside the finally wipe set
-                # (INV-7). Same for rekey below.
-                backup_vault.open(
-                    backup_key, in_memory_temp=True, cipher_compat=SQLCIPHER_COMPAT
+                # Shared read -> guard -> materialise -> derive -> open sequence
+                # (D1); the helper owns + wipes the backup key/password buffers and
+                # returns the opened backup Vault (whose vault.db lives in this temp
+                # dir, so it outlives the call for the install rename below).
+                backup_vault = self._open_backup_vault(
+                    src, backup_password, Path(td), on_key=on_key
                 )
                 try:
                     # Mint the new master's params FIRST, derive its key from THAT
@@ -189,11 +189,13 @@ class BackupService:
                         master_pw, master_params.salt, master_params
                     )
                     on_key("master", master_key)
-                    backup_vault.rekey(master_key)  # not a copy — see open() above
+                    backup_vault.rekey(master_key)  # not a copy — see open() below
                     backup_vault._write_sidecar(master_params)
                 finally:
                     backup_vault.close()
-                self._install(tmp_db, tmp_sidecar, on_key)  # INV-5
+                self._install(
+                    backup_vault.vault_path, backup_vault.sidecar_path, on_key
+                )  # INV-5
             log.info("backup restored")
         except (
             KdfPolicyError,
@@ -206,10 +208,129 @@ class BackupService:
             # untouched (nothing installed) or recoverable from *.old (INV-4/5).
             raise BackupError(str(exc)) from exc
         finally:
-            _wipe(backup_key)
             _wipe(master_key)
-            _wipe(backup_pw)
             _wipe(master_pw)
+
+    # -- verify ---------------------------------------------------------------
+    def verify_backup(
+        self, src: Path, backup_password: str, *, on_key: OnKey | None = None
+    ) -> VerifyResult:
+        """Read-only "does this backup actually open?" check (FIBR-0033).
+
+        Reuses restore's read -> guard -> open sequence (``_open_backup_vault``)
+        but stops after the open: runs ``PRAGMA cipher_integrity_check`` (a
+        full-DB per-page HMAC pass — catches the overflow pages ``count(*)`` never
+        reads), reads the as-migrated ``schema_version`` and per-table row counts,
+        then tears down. Never touches the live vault (D3); the backup key +
+        password buffer are wiped on every path (INV-7). Each expected failure
+        class maps to a stable ``reason`` code — a friendly answer, not a stack
+        trace (D4). A system ``TemporaryDirectory`` (removed on every path, INV-5)
+        holds only the backup's own ciphertext + a ``0o600`` params temp (D6)."""
+        on_key = on_key or _noop_on_key
+        try:
+            with tempfile.TemporaryDirectory() as td:
+                backup_vault = self._open_backup_vault(
+                    src, backup_password, Path(td), on_key=on_key
+                )
+                try:
+                    conn = backup_vault.connection
+                    # 4a — full-DB per-page HMAC; any row => a body/overflow-page
+                    # corruption count(*) + the page-1 guard would miss. Return
+                    # before 4b/4c.
+                    if conn.execute("PRAGMA cipher_integrity_check").fetchall():
+                        return VerifyResult(
+                            ok=False,
+                            schema_version=None,
+                            table_counts=None,
+                            reason="corrupt",
+                        )
+                    # 4b — as-migrated schema (== LATEST after a clean open+migrate).
+                    schema_version = conn.execute(
+                        "SELECT version FROM schema_version"
+                    ).fetchone()[0]
+                    # 4c — per-table row counts, display only (never a pass gate).
+                    names = [
+                        r[0]
+                        for r in conn.execute(
+                            "SELECT name FROM sqlite_master WHERE type='table' "
+                            "AND name NOT LIKE 'sqlite_%'"
+                        ).fetchall()
+                    ]
+                    # nosec B608: `n` is a table name read from sqlite_master (never
+                    # user input) — the dynamic enumeration the spec mandates.
+                    table_counts = {
+                        n: conn.execute(f"SELECT count(*) FROM {n}").fetchone()[0]  # nosec B608
+                        for n in names
+                    }
+                finally:
+                    backup_vault.close()  # 4d
+            return VerifyResult(
+                ok=True,
+                schema_version=schema_version,
+                table_counts=table_counts,
+                reason=None,
+            )
+        except DatabaseError:
+            # Wrong backup password OR a damaged page-1 header OR an older-schema
+            # body corruption read during migration — page-1 HMAC can't tell them
+            # apart (INV-3).
+            return VerifyResult(False, None, None, "wrong_password")
+        except KdfPolicyError:
+            return VerifyResult(False, None, None, "bad_kdf_params")
+        except SchemaVersionError:
+            return VerifyResult(False, None, None, "too_new")
+        except BackupError:
+            return VerifyResult(False, None, None, "invalid")
+        except OSError:
+            # A temp-write failure (disk-full / read-only temp); the helper raises
+            # it raw, so verify must catch it here (D7).
+            return VerifyResult(False, None, None, "io_error")
+
+    def _open_backup_vault(
+        self, src: Path, backup_password: str, work_dir: Path, *, on_key: OnKey
+    ) -> Vault:
+        """Shared read -> guard -> materialise-params -> derive -> open sequence
+        for restore and verify (D1).
+
+        The **caller owns and cleans up** ``work_dir``: the returned ``Vault``
+        holds an open SQLCipher connection to a ``vault.db`` inside it that must
+        outlive this call (restore installs it; verify reads counts from it), so
+        the helper must not own a ``TemporaryDirectory`` that would delete the dir
+        on return. The helper builds the password buffer, derives the backup key,
+        and **wipes both in its own finally on every path** (INV-7). Failures
+        propagate **raw** — ``_read_fbk`` / ``_guard_manifest`` raise
+        ``BackupError``; ``load_and_validate_params`` raises ``KdfPolicyError``;
+        ``open`` raises ``DatabaseError`` / ``SchemaVersionError`` — so each caller
+        can map a class to its own outcome (the ``BackupError`` normalisation stays
+        in ``restore_backup``, D1)."""
+        manifest, params_bytes, db_bytes = self._read_fbk(src)  # INV-12
+        self._guard_manifest(manifest)  # INV-4 format, INV-13 compat, INV-6a
+        password_buf = bytearray(backup_password, "utf-8")
+        backup_key: bytearray | None = None
+        tmp_db = work_dir / "vault.db"
+        tmp_sidecar = work_dir / "vault.kdf.json"
+        tmp_params = work_dir / "params.json"
+        try:
+            # Materialise params.json to a 0o600 temp + re-validate the KDF floor
+            # BEFORE any key is derived (INV-11).
+            self._write_owner_only(tmp_params, params_bytes)
+            backup_params = load_and_validate_params(tmp_params)
+            self._write_owner_only(tmp_db, db_bytes)
+            backup_key = derive_key(password_buf, backup_params.salt, backup_params)
+            on_key("backup", backup_key)
+            # Open + migrate the backup DB into the temp copy (a wrong backup
+            # password fails page-1 here; a newer embedded schema raises
+            # SchemaVersionError). Pass the derived key itself, NOT a copy: open()
+            # only reads key.hex() (never mutates), so a copy would be an un-wiped
+            # second reference to live key material outside the finally wipe (INV-7).
+            backup_vault = Vault(tmp_db, tmp_sidecar)
+            backup_vault.open(
+                backup_key, in_memory_temp=True, cipher_compat=SQLCIPHER_COMPAT
+            )
+            return backup_vault
+        finally:
+            _wipe(backup_key)
+            _wipe(password_buf)
 
     def _guard_manifest(self, manifest: dict[str, object]) -> None:
         """The pre-disk manifest guards: container ``format_version`` (INV-4),

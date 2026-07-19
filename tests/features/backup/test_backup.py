@@ -10,16 +10,19 @@ slices add ``BackupService`` export/restore and the UI. Every vault lives under
 import json
 import os
 import secrets
+import tempfile
 import zipfile
 from pathlib import Path
 
 import pytest
+import sqlcipher3
 from sqlcipher3.dbapi2 import DatabaseError
 
 import finbreak
 from conftest import _PW
-from finbreak.crypto import SALT_LEN, derive_key
+from finbreak.crypto import SALT_LEN, derive_key, load_and_validate_params
 from finbreak.errors import VaultLockedError
+from finbreak.migrations import LATEST_SCHEMA_VERSION
 from finbreak.models import FORMAT_VERSION, KdfParams
 from finbreak.services.auth import (
     ARGON2_MEMORY_KIB,
@@ -31,6 +34,7 @@ from finbreak.services.backup import (
     MANIFEST_FORMAT_VERSION,
     MIN_BACKUP_PASSWORD_LEN,
     BackupService,
+    VerifyResult,
 )
 from finbreak.vault import SQLCIPHER_COMPAT, Vault
 
@@ -684,3 +688,180 @@ def test_INV4_corrupt_deflate_entry_fails_closed(tmp_path):
     with pytest.raises(BackupError):  # not a raw zlib.error
         BackupService(auth.vault, auth).restore_backup(bad, _BACKUP_PW, _M2)
     _assert_unchanged(d, vb, sb)
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0033 — read-only verify_backup (INV-1..7, local numbering; the reason
+# codes of the spec's mapping table). Reuses _export_from_seed / _rebuild_fbk.
+# --------------------------------------------------------------------------- #
+def _verify_service(tmp_path, name="vsvc") -> BackupService:
+    """A BackupService over an empty dest location. Verify never touches this live
+    vault (D3), so any location — locked or absent — is fine."""
+    a = _dest_auth(tmp_path, name)
+    return BackupService(a.vault, a)
+
+
+def _open_embedded_db(fbk: Path, work: Path):
+    """Open the `.fbk`'s ciphertext ``vault.db`` with its backup key (derived from
+    the embedded params.json) so a fixture can mutate the DB below the manifest —
+    beyond what ``_rebuild_fbk`` (which copies vault.db verbatim) can do."""
+    with zipfile.ZipFile(fbk) as zf:
+        params_bytes, db = zf.read("params.json"), zf.read("vault.db")
+    dbp = work / "vault.db"
+    dbp.write_bytes(db)
+    pp = work / "params.json"
+    pp.write_bytes(params_bytes)
+    params = load_and_validate_params(pp)
+    key = derive_key(bytearray(_BACKUP_PW, "utf-8"), params.salt, params)
+    conn = sqlcipher3.dbapi2.connect(str(dbp))
+    conn.execute(f"PRAGMA key = \"x'{bytes(key).hex()}'\"")
+    conn.execute(f"PRAGMA cipher_compatibility = {SQLCIPHER_COMPAT}")
+    conn.execute("PRAGMA cipher_use_hmac = ON")
+    return conn, dbp
+
+
+def _write_fbk_with_db(fbk: Path, out: Path, db_bytes: bytes) -> None:
+    """Rebuild ``out`` from ``fbk`` swapping in ``db_bytes`` for vault.db, manifest
+    + params byte-identical."""
+    with zipfile.ZipFile(fbk) as zf:
+        m, p = zf.read("manifest.json"), zf.read("params.json")
+    with zipfile.ZipFile(out, "w") as zf:
+        zf.writestr("manifest.json", m)
+        zf.writestr("params.json", p)
+        zf.writestr("vault.db", db_bytes, compress_type=zipfile.ZIP_STORED)
+
+
+def test_INV2_verify_valid_backup_ok_with_counts(tmp_path):
+    fbk, snapshot = _export_from_seed(tmp_path)
+    res = _verify_service(tmp_path).verify_backup(fbk, _BACKUP_PW)
+    assert res.ok is True
+    assert res.reason is None
+    assert res.schema_version == LATEST_SCHEMA_VERSION  # as-migrated (INV-2)
+    assert res.table_counts == {n: len(rows) for n, rows in snapshot.items()}
+    assert res.table_counts["transactions"] == 1, "the seeded sentinel is counted"
+
+
+def test_INV3_verify_wrong_password_reason(tmp_path):
+    fbk, _snap = _export_from_seed(tmp_path)
+    res = _verify_service(tmp_path).verify_backup(fbk, "wrong-backup-pw!!")
+    assert res == VerifyResult(False, None, None, "wrong_password")
+
+
+def test_INV4_verify_corrupt_overflow_page_reason(tmp_path):
+    # A latest-schema backup with a long transaction description forces overflow
+    # pages count(*) never reads; flip a byte in the tail overflow region so page-1
+    # + count(*) still pass but cipher_integrity_check catches it (INV-4 corrupt).
+    src = tmp_path / "srcbig"
+    src.mkdir()
+    auth = _seeded_auth((src / "vault.db", src / "vault.kdf.json"))
+    conn = auth.vault.connection
+    acct = conn.execute("SELECT id FROM accounts LIMIT 1").fetchone()[0]
+    conn.execute(
+        "INSERT INTO transactions"
+        "(account_id, occurred_on, amount_minor, description, created_at) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (acct, "2026-07-02", -99, "Q" * 60000, "2026-01-01T00:00:00+00:00"),
+    )
+    conn.commit()
+    fbk = tmp_path / "big.fbk"
+    BackupService(auth.vault, auth).export_backup(fbk, _BACKUP_PW)
+    auth.lock()
+
+    with zipfile.ZipFile(fbk) as zf:
+        db = bytearray(zf.read("vault.db"))
+    db[len(db) - 100] ^= 0xFF  # tail overflow page — a count(*)-invisible byte
+    bad = tmp_path / "corrupt.fbk"
+    _write_fbk_with_db(fbk, bad, bytes(db))
+
+    res = _verify_service(tmp_path).verify_backup(bad, _BACKUP_PW)
+    assert res == VerifyResult(False, None, None, "corrupt")
+
+
+def test_INV4_verify_too_new_embedded_schema_reason(tmp_path):
+    # manifest-under-states: the manifest's schema stays at the gate-passing LATEST
+    # while the EMBEDDED vault.db's schema_version is bumped above LATEST, so it
+    # slips _guard_manifest and trips run_migrations -> SchemaVersionError -> too_new.
+    fbk, _snap = _export_from_seed(tmp_path)
+    with tempfile.TemporaryDirectory() as td:
+        conn, dbp = _open_embedded_db(fbk, Path(td))
+        conn.execute(
+            "UPDATE schema_version SET version = ?", (LATEST_SCHEMA_VERSION + 1,)
+        )
+        conn.commit()
+        conn.close()
+        db2 = dbp.read_bytes()
+    bad = tmp_path / "too_new.fbk"
+    _write_fbk_with_db(fbk, bad, db2)  # manifest schema unchanged (== LATEST)
+
+    res = _verify_service(tmp_path).verify_backup(bad, _BACKUP_PW)
+    assert res == VerifyResult(False, None, None, "too_new")
+
+
+def test_INV4_verify_bad_kdf_params_reason(tmp_path):
+    fbk, _snap = _export_from_seed(tmp_path)
+    weak = tmp_path / "weak.fbk"
+    _rebuild_fbk(fbk, weak, params={"memory_kib": ARGON2_MEMORY_KIB - 1})
+    res = _verify_service(tmp_path).verify_backup(weak, _BACKUP_PW)
+    assert res == VerifyResult(False, None, None, "bad_kdf_params")
+
+
+def test_INV4_verify_invalid_non_zip_reason(tmp_path):
+    fbk, _snap = _export_from_seed(tmp_path)
+    fbk.write_bytes(b"not a zip at all")
+    res = _verify_service(tmp_path).verify_backup(fbk, _BACKUP_PW)
+    assert res == VerifyResult(False, None, None, "invalid")
+
+
+def test_INV4_verify_io_error_reason(tmp_path, monkeypatch):
+    # A temp-write failure surfaces raw as OSError from the helper (D7) — verify
+    # must catch it, not crash, and map it to io_error.
+    fbk, _snap = _export_from_seed(tmp_path)
+
+    def boom(path, data):
+        raise OSError("read-only temp")
+
+    monkeypatch.setattr(BackupService, "_write_owner_only", staticmethod(boom))
+    res = _verify_service(tmp_path).verify_backup(fbk, _BACKUP_PW)
+    assert res == VerifyResult(False, None, None, "io_error")
+
+
+def test_INV1_verify_leaves_live_vault_untouched(tmp_path):
+    # Verify never opens or writes the live vault; its dir is byte-identical and
+    # gains no files across every outcome (here: a valid verify over a live vault).
+    fbk, _snap = _export_from_seed(tmp_path)
+    auth, d, vb, sb = _dest_with_vault(tmp_path)
+    before = sorted(p.name for p in d.iterdir())
+    res = BackupService(auth.vault, auth).verify_backup(fbk, _BACKUP_PW)
+    assert res.ok is True
+    _assert_unchanged(d, vb, sb)
+    assert sorted(p.name for p in d.iterdir()) == before, "no new files in vault dir"
+
+
+def test_INV5_verify_leaves_no_temp(tmp_path, monkeypatch):
+    fbk, _snap = _export_from_seed(tmp_path)
+    created: list[str] = []
+    real = tempfile.TemporaryDirectory
+
+    def spy(*a, **k):
+        td = real(*a, **k)
+        created.append(td.name)
+        return td
+
+    monkeypatch.setattr(tempfile, "TemporaryDirectory", spy)
+    _verify_service(tmp_path).verify_backup(fbk, _BACKUP_PW)
+    assert created, "verify allocated a temp dir"
+    assert not os.path.exists(created[0]), "the temp dir is removed after verify"
+
+
+def test_INV7_verify_wipes_backup_key_via_on_key_seam(tmp_path):
+    fbk, _snap = _export_from_seed(tmp_path)
+    captured: list[tuple[str, bytearray]] = []
+    _verify_service(tmp_path).verify_backup(
+        fbk, _BACKUP_PW, on_key=lambda role, buf: captured.append((role, buf))
+    )
+    roles = [role for role, _ in captured]
+    assert roles == ["backup"], "verify derives only the backup key (no master)"
+    _, key_buf = captured[0]
+    assert bytes(key_buf) == bytes(len(key_buf)), (
+        "the backup key buffer is zeroed after verify returns (INV-7)"
+    )
