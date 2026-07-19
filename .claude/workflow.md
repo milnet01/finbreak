@@ -2,6 +2,10 @@
 
 ## §1. Status header
 
+> **CURRENT (2026-07-19, autonomous "build it all" run) — trust this + ROADMAP over the stale table below.**
+> Shipped & pushed this session: **FIBR-0151** (confirmed transfers now render as directional "Transfer to/from <account>" labels on the Transactions tab — read-time only, INV-12 preserved; commit 5af8ee6) and **FIBR-0033** (read-only backup verification from Settings — `verify_backup`/`_open_backup_vault`/`VerifyResult` + `BackupVerifyDialog`; 14 tests; cold-review clean; commit 42bca98, **tag FIBR-0033-complete**). Filed: **FIBR-0152** 📋 (update prompt shows only the latest release's notes — accumulate all changes since the user's version; recommend Option A = ship CHANGELOG.md in the bundle + slice by version).
+> `main` level with origin, tree clean. **NEXT: FIBR-0032** (clipboard auto-clear) — greenfield (no clipboard code exists yet). Scope RESOLVED: add "Copy amount"/"Copy description" to the transactions context menu → clipboard, auto-clear after ~30s (configurable in Settings), clear-only-if-clipboard-still-holds-our-value; **PDF password stays NON-copyable** (no FIBR-0128 INV-1 regression). Needs full cycle: brainstorm the few open design points → write `docs/specs/FIBR-0032.md` → **/cold-eyes --max-loops 7** → reproduce-first TDD → close. Paused here for /compact.
+
 | Field | Value |
 |-------|-------|
 | **Project phase** | **P08 CLOSED** (FIBR-0010 rules engine + manual override + learning shipped 2026-07-10). Next up: **FIBR-0054** (in-app auto-update) — the last near-term user ask; then P09/FIBR-0011 (transfers) → P10/FIBR-0012 (dashboard). |
