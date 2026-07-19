@@ -21,6 +21,15 @@ signaling per
 
 ## [Unreleased]
 
+### Fixed
+
+- **Confirmed transfers now show on the Transactions tab** (FIBR-0151)
+  A transfer you've confirmed now appears in the Transactions tab's
+  Category column as a directional label naming the other account — the
+  money-out leg reads "Transfer to <account>" and the money-in leg reads
+  "Transfer from <account>". Previously a confirmed transfer left both
+  rows blank there.
+
 ### Security
 
 - **Unlock throttling — repeated wrong master-password attempts are now slowed. (FIBR-0095)**
