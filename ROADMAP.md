@@ -720,7 +720,7 @@ because retrofitting them is a data migration.
   FIBR-0004, FIBR-0019 (shares the key-wrapping envelope). Lanes: crypto,
   platform, ux. Kind: feature. Source: user-request-2026-07-01.
 
-- 📋 [FIBR-0029] **Password reminder / hint (shown before unlock).**
+- ✅ [FIBR-0029] **Password reminder / hint (shown before unlock).**
   An optional user-set hint on the unlock screen to jog memory —
   enforced to **not be the password** (and not to contain it). *Security
   note:* the hint must render **before** the vault is decrypted, so it
@@ -730,6 +730,7 @@ because retrofitting them is a data migration.
   a recovery method. Target phase: P02. Dependencies: FIBR-0004. Lanes:
   crypto, ux. Kind: feature. Source: user-request-2026-07-01.
   Design resolved by user 2026-07-20 (autonomous run): (1) SET the hint via a "Set password hint…" button in Settings that prompts for the CURRENT master password, verifies it, then enforces hint ≠ password AND hint does-not-contain password (needs plaintext in hand — hence the confirm), and saves to the plaintext window.ini (readable pre-unlock, outside the encrypted vault). (2) SHOW the hint on the unlock screen behind a "Show hint" button (hidden by default, reveal-on-click — reduces shoulder-surf exposure). Defaults decided: ~100-char cap; a plaintext-storage warning shown when setting; empty/unset hint means no "Show hint" affordance appears. security-model.md gains the new plaintext artefact (hint) as an asset + an enforcement invariant (hint never equals/contains the password) — that doc edit runs through /cold-eyes per §14. Ready to spec.
+  Resolved (2026-07-20, autonomous run): shipped. Optional plaintext password hint shown on the unlock screen behind a reveal-on-click "Show hint" button; SET from Settings ("Set password hint…" → confirm current password via new AuthService.verify_password, constant-time hmac.compare_digest against the session key). Enforced never to equal/contain the master password (pure services/password_hint.validate_hint: NFC-normalize + casefold both sides, unconditional containment — a short password can't be embedded verbatim; obfuscation out of scope). Stored in plaintext window.ini (key hint/text, readable pre-unlock). security-model.md gains A1 plaintext-artefact note + INV-11; that doc edit cold-eyes converged loop 1. Spec docs/specs/FIBR-0029.md cold-eyes converged loop 2 (loop 1 caught a short-password leak: dropped a len>=4 carve-out). 24 hint tests (INV-1..9); full gate green (1197 passed, 2 skipped). commit 4ddf725; tag FIBR-0029-complete.
 
 - 📋 [FIBR-0030] **"Forgotten password → start over" (destructive vault
   reset, double-confirmed).** Last resort on the unlock screen once the

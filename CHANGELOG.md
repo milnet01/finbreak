@@ -50,6 +50,16 @@ signaling per
 
 ### Security
 
+- **Optional password hint on the unlock screen** (FIBR-0029)
+  You can now set an optional hint to jog your memory, shown behind a
+  "Show hint" button on the unlock screen. You set it in Settings and must
+  confirm your current password to do so. The app refuses a hint that is,
+  or contains, your password — so it can't become a plaintext copy of your
+  secret. Note the hint is stored unencrypted (it has to be readable before
+  you unlock), so anyone with access to your device can read it — keep it
+  vague. It's a memory aid, not a way to recover a truly forgotten
+  password.
+
 - **Copy a transaction's amount or description — and it auto-clears from the clipboard** (FIBR-0032)
   Right-click a transaction and pick "Copy amount" or "Copy description" to
   put it on the clipboard. finbreak then wipes it after a short timeout
