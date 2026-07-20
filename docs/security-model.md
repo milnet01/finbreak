@@ -1,10 +1,10 @@
 # finbreak — Security model & threat model
 
 > **Status:** Live — the project's authoritative security & threat
-> model; amended through FIBR-0032 (2026-07-19 — T13: clipboard copy +
-> auto-clear for sensitive values). This line names the **most-recent**
-> material amendment, not a full history. Re-run through `/cold-eyes` on
-> each material edit.
+> model; amended through FIBR-0029 (2026-07-20 — INV-11: password-hint
+> enforcement, never equals/contains the master password). This line
+> names the **most-recent** material amendment, not a full history.
+> Re-run through `/cold-eyes` on each material edit.
 > **Why this exists:** finbreak holds **personal financial
 > data**. Security is the load-bearing concern, so it gets its
 > own document — a single place that names what we protect, what
