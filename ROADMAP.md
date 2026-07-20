@@ -754,7 +754,7 @@ because retrofitting them is a data migration.
   Duplicate of FIBR-0095 (2026-07-15): both describe failed-unlock exponential backoff on the master-password unlock screen. FIBR-0095 is the newer, verified record (confirmed 2026-07-11 that services/auth.py applies no backoff) and is the tracking item for the implementation. This bullet stays as the original provenance record — flip it ✅ alongside FIBR-0095 when the throttling ships.
   Resolved 2026-07-18 as the duplicate of FIBR-0095 (shipped) — failed-unlock exponential backoff is implemented and tested there (services/unlock_throttle.py + ui/_unlock_throttle.py, security-model INV-10).
 
-- 📋 [FIBR-0032] **Clipboard auto-clear for copied sensitive values.**
+- ✅ [FIBR-0032] **Clipboard auto-clear for copied sensitive values.**
   When the user copies a sensitive value (account number, amount, a stored
   PDF password), clear it from the system clipboard after a short timeout
   (~30s, configurable in the FIBR-0014 Settings screen) so it doesn't
@@ -764,6 +764,7 @@ because retrofitting them is a data migration.
   security. Kind: security. Source: user-request-2026-07-01.
   Scope check 2026-07-18 (autonomous run): DEFERRED pending a product/scope decision. Recon found the app has NO app-wired clipboard "Copy" affordances anywhere (no QClipboard/setText into clipboard in src/), so auto-clear is greenfield — it has nothing to clear until copy points are added first. Deciding what becomes copyable is a real fork: amount/description in the transactions context menu are natural + safe, but a "copy the stored statement PDF password" affordance would be a NEW exposure that regresses FIBR-0128 INV-1 (that secret currently never crosses into the UI). Needs a user call on (a) which values become copyable and (b) whether the PDF password is copyable at all, before writing the spec. Not silently guessing a UX+security scope. Kept 📋.
   Scope RESOLVED by user 2026-07-18: copyable values = transaction AMOUNT + DESCRIPTION only (add "Copy amount"/"Copy description" to the transactions list context menu), auto-clear after ~30s (configurable). The stored statement PDF password stays NON-copyable (no regression of FIBR-0128 INV-1); account number NOT copyable in this pass. Unblocked — ready to spec when its turn comes (currently queued behind FIBR-0033).
+  Resolved (2026-07-20, autonomous run): shipped. "Copy amount"/"Copy description" added to the transactions context menu (rendered cell text + in-memory description — no vault read, lock-safe INV-8); PDF password + account numbers stay NON-copyable (FIBR-0128 INV-1 preserved). New ClipboardAutoClear(QObject) helper: single owned single-shot QTimer wired directly to clear_if_ours; live per-copy timeout; clears only if the clipboard still holds our value. AuthService clipboard_clear_seconds getter/setter, ALLOWED=(10,30,60,0), DEFAULT=30; Settings combo; 0="Never" honoured. security-model.md T13 threat row added + cold-eyes converged (loop 1, polish-only). Spec docs/specs/FIBR-0032.md cold-eyes converged loop 9. 23 clipboard tests (INV-1..8); full gate green (1164 passed, 2 skipped). commit 0b45573; tag FIBR-0032-complete.
 
 - ✅ [FIBR-0033] **Backup restore-verification ("does my backup work?").**
   A one-click check that opens an encrypted backup (FIBR-0018) into a

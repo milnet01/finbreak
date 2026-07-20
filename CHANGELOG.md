@@ -42,6 +42,15 @@ signaling per
 
 ### Security
 
+- **Copy a transaction's amount or description — and it auto-clears from the clipboard** (FIBR-0032)
+  Right-click a transaction and pick "Copy amount" or "Copy description" to
+  put it on the clipboard. finbreak then wipes it after a short timeout
+  (default 30 seconds, adjustable in Settings — or "Never" if you prefer) so
+  it doesn't linger for other apps to read. It only clears the value if the
+  clipboard still holds what finbreak put there, so anything you copied since
+  is left alone. Your saved statement-PDF password and account numbers stay
+  non-copyable by design.
+
 - **Unlock throttling — repeated wrong master-password attempts are now slowed. (FIBR-0095)**
   After a wrong password on the unlock screen, finbreak now waits a
   growing moment before accepting the next try (1s, then 2s, 4s, … up to
