@@ -560,6 +560,75 @@ def test_FIBR0105_format_amount_defaults_to_minus(qtbot):
         QLocale.setDefault(previous)
 
 
+# --------------------------------------------------------------------------- #
+# FIBR-0153 — symbol (not ISO code) + one space in the Amount string
+# --------------------------------------------------------------------------- #
+def test_FIBR0153_INV1_symbol_not_code(qtbot):
+    """INV-1: a formatted amount begins with the display symbol (R for ZAR), never
+    the ISO code."""
+    rendered = _format_amount(Decimal("1234.49"), "ZAR")
+    assert rendered.startswith("R"), rendered
+    assert "ZAR" not in rendered, rendered
+
+
+def test_FIBR0153_INV2_exactly_one_space(qtbot):
+    """INV-2: exactly one U+0020 between the symbol and the first magnitude digit."""
+    rendered = _format_amount(Decimal("1234.49"), "ZAR")
+    assert re.match(r"^R 1", rendered), rendered
+    assert not re.match(r"^R  1", rendered), rendered
+    assert not re.match(r"^R1", rendered), rendered
+
+
+def test_FIBR0153_INV3_magnitude_locale_grouped_no_iso_code(qtbot):
+    """INV-3: pinned en_US → exact grouping, no ISO code; en_ZA robustness leg."""
+    previous = QLocale()
+    # (a) en_US (a non-C locale, so an ISO-code leak would actually show).
+    QLocale.setDefault(QLocale(QLocale.Language.English, QLocale.Country.UnitedStates))
+    try:
+        assert _format_amount(Decimal("1234.49"), "ZAR") == "R 1,234.49"
+        assert _format_amount(Decimal("1234.00"), "ZAR") == "R 1,234.00"
+        rendered = _format_amount(Decimal("1234.49"), "ZAR")
+        assert "ZAR" not in rendered and "USD" not in rendered, rendered
+    finally:
+        QLocale.setDefault(previous)
+
+    # (b) en_ZA robustness: still starts "R ", carries no ISO code (digits/separators
+    # are locale-dependent by design — nbsp-grouped — so we do NOT assert them).
+    previous = QLocale()
+    QLocale.setDefault(QLocale(QLocale.Language.English, QLocale.Country.SouthAfrica))
+    try:
+        rendered = _format_amount(Decimal("1234.49"), "ZAR")
+        assert rendered.startswith("R "), rendered
+        assert "ZAR" not in rendered and "USD" not in rendered, rendered
+    finally:
+        QLocale.setDefault(previous)
+
+
+def test_FIBR0153_INV4_sign_wraps_whole_body(qtbot):
+    """INV-4: minus → -R …; brackets → (R …) — symbol inside the sign wrap."""
+    previous = QLocale()
+    QLocale.setDefault(QLocale(QLocale.Language.English, QLocale.Country.UnitedStates))
+    try:
+        assert _format_amount(Decimal("-1234.49"), "ZAR", "minus") == "-R 1,234.49"
+        assert _format_amount(Decimal("-1234.49"), "ZAR", "brackets") == "(R 1,234.49)"
+    finally:
+        QLocale.setDefault(previous)
+
+
+def test_FIBR0153_INV5_unknown_code_degrades(qtbot):
+    """INV-5: an unmapped code falls back to the code itself, no crash."""
+    rendered = _format_amount(Decimal("1"), "XYZ")
+    assert rendered.startswith("XYZ "), rendered
+
+
+def test_FIBR0153_INV8_symbol_map_matches_exponent_map(qtbot):
+    """INV-8: the symbol map and the supported-currency exponent map cover the
+    exact same set of currencies (single home)."""
+    from finbreak.services.auth import CURRENCY_EXPONENTS, CURRENCY_SYMBOLS
+
+    assert set(CURRENCY_SYMBOLS) == set(CURRENCY_EXPONENTS)
+
+
 # The Amount-column colour/direction rendering tests moved with the transaction
 # table to the Transactions tab (FIBR-0012): see
 # tests/features/transactions_tab/test_transactions_tab.py. The pure

@@ -60,11 +60,13 @@ from finbreak.ui.modal import show_modal
 from finbreak.ui.rules import RuleEditDialog
 
 # Fixed column indices (the table's shape; headers are the translated labels).
+# Currency sits adjacent to Amount (natural reading: number, then its currency).
 _COL_DATE = 0
 _COL_AMOUNT = 1
-_COL_DESCRIPTION = 2
-_COL_ACCOUNT = 3
-_COL_CATEGORY = 4
+_COL_CURRENCY = 2
+_COL_DESCRIPTION = 3
+_COL_ACCOUNT = 4
+_COL_CATEGORY = 5
 
 # The "All accounts" / "All categories" sentinel — a real object so it can never be
 # confused with the ``None`` that marks the Uncategorised category (D8).
@@ -160,16 +162,17 @@ class TransactionsView(QWidget):
         return row
 
     def _build_table(self) -> QTableWidget:
-        self._table = QTableWidget(0, 5)
+        self._table = QTableWidget(0, 6)
         # A distinct objectName so remember_columns keys this table's saved layout
-        # uniquely — without it, this 5-column table and the (also 5-column)
-        # Statements table share the empty "columns/" key and cross-corrupt each
-        # other's widths + drag-reorder order (FIBR-0012 indie-review).
+        # uniquely — without it, this table and the (also multi-column) Statements
+        # table share the empty "columns/" key and cross-corrupt each other's widths
+        # + drag-reorder order (FIBR-0012 indie-review).
         self._table.setObjectName("transactions_table")
         self._table.setHorizontalHeaderLabels(
             [
                 self.tr("Date"),
                 self.tr("Amount"),
+                self.tr("Currency"),
                 self.tr("Description"),
                 self.tr("Account"),
                 self.tr("Category"),
@@ -291,6 +294,10 @@ class TransactionsView(QWidget):
                     elif display > 0:
                         amount_item.setForeground(_POSITIVE_TEXT)
                 self._table.setItem(row, _COL_AMOUNT, amount_item)
+                # The ISO code in its own column (display-only, non-editable — same
+                # treatment as the Account cell). One fixed value per vault today
+                # (FIBR-0153), forward-compatible with future multi-currency.
+                self._table.setItem(row, _COL_CURRENCY, QTableWidgetItem(symbol))
                 self._table.setItem(
                     row, _COL_DESCRIPTION, QTableWidgetItem(transaction.description)
                 )

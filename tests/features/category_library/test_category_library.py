@@ -39,8 +39,8 @@ from finbreak.services.transactions import TransactionService
 
 pytestmark = pytest.mark.features
 
-_COL_DESCRIPTION = 2
-_COL_CATEGORY = 4
+_COL_DESCRIPTION = 3
+_COL_CATEGORY = 5
 
 
 @pytest.fixture

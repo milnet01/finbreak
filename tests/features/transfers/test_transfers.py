@@ -560,8 +560,8 @@ def test_INV10_workspace_has_eight_tabs(qtbot, service):
 # READ-time only: no transactions row is touched (INV-12 still holds — the label
 # is resolved from transfer_pairs when the tab is rendered).
 # --------------------------------------------------------------------------- #
-_COL_DESCRIPTION = 2
-_COL_CATEGORY = 4
+_COL_DESCRIPTION = 3
+_COL_CATEGORY = 5
 
 
 def _txn_view(service: AuthService):

@@ -80,9 +80,67 @@ def _txn_cat(service, txn_id):
 
 def _cat_cell(view, description):
     for r in range(view._table.rowCount()):
-        if view._table.item(r, 2).text() == description:
-            return view._table.item(r, 4).text()
+        if view._table.item(r, 3).text() == description:
+            return view._table.item(r, 5).text()
     raise AssertionError(f"no visible row for {description!r}")
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0153 — dedicated Currency column + 6-column shape
+# --------------------------------------------------------------------------- #
+def test_FIBR0153_INV6_currency_column_shows_code(qtbot, service):
+    """INV-6: every populated Currency cell holds the base-currency ISO code."""
+    from finbreak.ui.transactions import _COL_CURRENCY
+
+    _add_txn(service, "Coffee shop")
+    _add_txn(service, "Rent payment")
+    view = _view(service)
+    qtbot.addWidget(view)
+    code = TransactionService(service.vault).base_currency()
+    rows = view._table.rowCount()
+    assert rows == 2
+    for r in range(rows):
+        assert view._table.item(r, _COL_CURRENCY).text() == code
+
+
+def test_FIBR0153_INV7_column_shape_is_six_and_category_at_five(qtbot, service):
+    """INV-7: 6 columns; a known category lands at _COL_CATEGORY (=5), not 4."""
+    from finbreak.ui.transactions import _COL_CATEGORY
+
+    g = _leaf_id(service, "Groceries")
+    txn = _add_txn(service, "PICK N PAY")
+    CategorizationService(service.vault).set_manual_category(txn, g)
+    view = _view(service)
+    qtbot.addWidget(view)
+    assert view._table.columnCount() == 6
+    assert _COL_CATEGORY == 5
+    for r in range(view._table.rowCount()):
+        if view._table.item(r, 3).text() == "PICK N PAY":
+            assert view._table.item(r, _COL_CATEGORY).text() == "Groceries"
+            break
+    else:
+        raise AssertionError("no visible row for PICK N PAY")
+
+
+def test_FIBR0153_INV9_stale_five_column_layout_is_safe(qtbot, service, window_ini):
+    """INV-9: a 5-section saved header blob in the window INI loads into the
+    6-column table without crashing; the table stays 6 columns."""
+    from PySide6.QtCore import QSettings
+    from PySide6.QtWidgets import QTableWidget
+
+    # A genuine 5-column header saveState() blob written under the table's INI key.
+    old = QTableWidget(0, 5)
+    old.setHorizontalHeaderLabels(
+        ["Date", "Amount", "Description", "Account", "Category"]
+    )
+    blob = old.horizontalHeader().saveState()
+    settings = QSettings(str(window_ini), QSettings.Format.IniFormat)
+    settings.setValue("columns/transactions_table", blob)
+    settings.sync()
+
+    view = _view(service)  # must not raise applying the stale 5-column blob
+    qtbot.addWidget(view)
+    assert view._table.columnCount() == 6
 
 
 # --------------------------------------------------------------------------- #
@@ -272,7 +330,7 @@ def test_INV9_search_filters_by_description_substring(qtbot, service):
     qtbot.addWidget(view)
     view._search.setText("coffee")  # case-insensitive
     descriptions = {
-        view._table.item(r, 2).text() for r in range(view._table.rowCount())
+        view._table.item(r, 3).text() for r in range(view._table.rowCount())
     }
     assert descriptions == {"Coffee shop", "Coffee beans"}
 
@@ -285,7 +343,7 @@ def test_INV9_date_range_filter(qtbot, service):
     view._date_from.setDate(QDate(2026, 1, 1))
     view._date_to.setDate(QDate(2026, 1, 31))
     descriptions = {
-        view._table.item(r, 2).text() for r in range(view._table.rowCount())
+        view._table.item(r, 3).text() for r in range(view._table.rowCount())
     }
     assert descriptions == {"Coffee shop"}  # only the January row
 
@@ -296,7 +354,7 @@ def test_INV9_account_filter(qtbot, service):
     qtbot.addWidget(view)
     view._account.setCurrentIndex(view._account.findData(b))
     descriptions = {
-        view._table.item(r, 2).text() for r in range(view._table.rowCount())
+        view._table.item(r, 3).text() for r in range(view._table.rowCount())
     }
     assert descriptions == {"Coffee beans"}  # only account B
 
@@ -308,13 +366,13 @@ def test_INV9_category_filter_and_uncategorised(qtbot, service):
     # A specific category.
     view._category.setCurrentIndex(view._category.findData(groceries))
     descriptions = {
-        view._table.item(r, 2).text() for r in range(view._table.rowCount())
+        view._table.item(r, 3).text() for r in range(view._table.rowCount())
     }
     assert descriptions == {"Coffee shop"}
     # "Uncategorised" selects category_id is None.
     view._category.setCurrentIndex(view._category.findData(None))
     descriptions = {
-        view._table.item(r, 2).text() for r in range(view._table.rowCount())
+        view._table.item(r, 3).text() for r in range(view._table.rowCount())
     }
     assert descriptions == {"Rent payment", "Coffee beans"}
 
@@ -356,13 +414,13 @@ def test_INV9_all_filters_combine_AND(qtbot, service):
     view._category.setCurrentIndex(view._category.findData(groceries))
     # Only "Coffee shop" satisfies all four at once.
     descriptions = [
-        view._table.item(r, 2).text() for r in range(view._table.rowCount())
+        view._table.item(r, 3).text() for r in range(view._table.rowCount())
     ]
     assert descriptions == ["Coffee shop"]
     # Clearing the search widens the set back (still AND of the other three).
     view._search.setText("")
     descriptions = {
-        view._table.item(r, 2).text() for r in range(view._table.rowCount())
+        view._table.item(r, 3).text() for r in range(view._table.rowCount())
     }
     assert descriptions == {"Coffee shop"}
 

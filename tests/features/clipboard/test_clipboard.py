@@ -31,7 +31,7 @@ from finbreak.ui.settings import SettingsDialog
 pytestmark = pytest.mark.features
 
 _COL_AMOUNT = 1
-_COL_DESCRIPTION = 2
+_COL_DESCRIPTION = 3
 
 
 # --------------------------------------------------------------------------- #

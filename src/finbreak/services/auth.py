@@ -47,6 +47,19 @@ log = logging.getLogger(__name__)
 # the default. Extended (incl. 0-/3-decimal currencies) in a later phase.
 CURRENCY_EXPONENTS = {"ZAR": 2, "USD": 2, "EUR": 2, "GBP": 2, "AUD": 2, "CAD": 2}
 
+# Display symbol per ISO code — the same 6 currencies as CURRENCY_EXPONENTS (INV-8),
+# so "which currencies we support and their properties" stays single-homed here.
+# The dollar variants take A$/C$ so they read unambiguously without the Currency
+# column (FIBR-0153). ui/_amount.py imports this (a clean one-way ui → services edge).
+CURRENCY_SYMBOLS: dict[str, str] = {
+    "ZAR": "R",
+    "USD": "$",
+    "EUR": "€",
+    "GBP": "£",
+    "AUD": "A$",
+    "CAD": "C$",
+}
+
 # Idle lock-out timeout measured from unlock — NOT reset on user activity. Now
 # user-configurable (FIBR-0055): the value is read from the vault ``settings`` table
 # on each arm; DEFAULT applies when the key is absent (a fresh / pre-FIBR-0055 vault)
