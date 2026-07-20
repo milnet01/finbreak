@@ -23,7 +23,7 @@ unavoidable it is glossed on first use.
 
 | # | Asset | Why it matters |
 |---|-------|----------------|
-| A1 | **The vault** — the SQLCipher database file holding every transaction, account, rule, and financial setting (base currency, minor-unit exponent, stored PDF passwords). *Non-sensitive UI state — window geometry / toolbar state / last-active tab, plus the opt-in update-check flag and any skipped-update version (FIBR-0054) — deliberately lives in a plaintext `window.ini` sibling, not the vault (FIBR-0052 INV-5, FIBR-0054 D4); it holds no financial data, so it is not an A1 asset.* | The whole financial picture. Its disclosure is the worst case. |
+| A1 | **The vault** — the SQLCipher database file holding every transaction, account, rule, and financial setting (base currency, minor-unit exponent, stored PDF passwords). *Non-sensitive UI state — window geometry / toolbar state / last-active tab, plus the opt-in update-check flag and any skipped-update version (FIBR-0054), and the optional user-authored password hint (FIBR-0029) — deliberately lives in a plaintext `window.ini` sibling, not the vault (FIBR-0052 INV-5, FIBR-0054 D4); it holds no financial data, so it is not an A1 asset. The hint is readable by anyone with device access (it must be, to help before unlock), so it is enforced at set-time never to be, nor contain, the master password (INV-11).* | The whole financial picture. Its disclosure is the worst case. |
 | A2 | **The master password** | Unlocks everything. Never stored anywhere. |
 | A3 | **The derived key** — the key Argon2id produces from the master password, passed to SQLCipher as its **raw** key (so Argon2id, not SQLCipher's built-in PBKDF2, is the KDF) | Decrypts the vault; lives only in memory while unlocked. |
 | A4 | **Stored statement-PDF passwords** (optional, opt-in) | Bank-document passwords; only ever live *inside* the encrypted vault. |
@@ -248,6 +248,18 @@ be checkable. Enforcement arrives in step with the code:
   by INV-2 (Argon2id). The delay is capped and a correct password
   always clears the counter, so the legitimate owner is never
   permanently locked out.
+- **INV-11 — A stored password hint never contains the master password
+  verbatim.** The optional plaintext hint (FIBR-0029, in `window.ini`) is
+  enforced at set-time never to be, nor contain, the master password —
+  compared NFC-normalized + casefolded, with **no** password-length
+  exemption (a short password embedded verbatim is still caught). The
+  check is gated behind a mandatory `AuthService.verify_password` confirm,
+  so the comparison is against the real password. The guarantee is scoped
+  to **verbatim** inclusion: internal obfuscation of the user's own hint
+  (inserted spaces, zero-width characters, homoglyphs) is out of scope —
+  substring matching cannot catch a user defeating their own safety net,
+  and the hint is plaintext-by-design regardless. Falsifiable by test
+  (`services/password_hint.validate_hint`).
 
 ## 6. Tooling that enforces this (harness wired in P01; per-INV tests land with each phase)
 

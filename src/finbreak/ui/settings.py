@@ -52,6 +52,10 @@ class SettingsDialog(QDialog):
     # "Verify backup…" was clicked; the shell owns the verify dialog + the
     # synchronous, read-only verify (FIBR-0033 D5 — post-login, next to Export).
     verify_backup_requested = Signal()
+    # "Set password hint…" was clicked; the shell owns the SetHintDialog + the
+    # verify → validate → write work (FIBR-0029 § 3.2 — mirrors Export backup, so
+    # Settings holds no AuthService-hint reference).
+    set_hint_requested = Signal()
 
     def __init__(
         self,
@@ -217,6 +221,14 @@ class SettingsDialog(QDialog):
         self._verify_backup.setObjectName("settings_verify_backup")
         self._verify_backup.clicked.connect(self.verify_backup_requested)
         form.addRow("", self._verify_backup)
+
+        # Optional plaintext password hint (FIBR-0029 § 3.2). Like Export the button
+        # only signals intent; the shell opens the SetHintDialog behind a
+        # current-password confirm, so Settings keeps no AuthService-hint reference.
+        self._set_hint = QPushButton(self.tr("Set password hint…"))
+        self._set_hint.setObjectName("settings_set_hint")
+        self._set_hint.clicked.connect(self.set_hint_requested)
+        form.addRow(self.tr("Password hint"), self._set_hint)
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel

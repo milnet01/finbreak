@@ -56,6 +56,7 @@ from finbreak.services.auth import (
 )
 from finbreak.services.backup import BackupService
 from finbreak.services.categorization import CategorizationService
+from finbreak.services.password_hint import HintPolicyError, validate_hint
 from finbreak.services.pdf_export import PdfExportService, period_filename_slug
 from finbreak.services.recurring import RecurringService
 from finbreak.services.reporting import ReportingService
@@ -63,6 +64,7 @@ from finbreak.services.transactions import TransactionService
 from finbreak.services.update import UpdateInfo, UpdateService
 from finbreak.services.update_installer import Installer, detect_installer
 from finbreak.ui._clipboard import ClipboardAutoClear
+from finbreak.ui._password_hint import clear_hint, read_hint, write_hint
 from finbreak.ui._update_worker import DownloadWorker, UpdateCheckWorker
 from finbreak.ui.accounts import AccountsWidget
 from finbreak.ui.backup_export import BackupExportDialog
@@ -77,6 +79,7 @@ from finbreak.ui.import_wizard import ImportWizardWidget
 from finbreak.ui.manual_entry import ManualEntryDialog
 from finbreak.ui.recurring import RecurringWidget
 from finbreak.ui.rules import RulesWidget
+from finbreak.ui.set_hint import SetHintDialog
 from finbreak.ui.settings import SettingsDialog
 from finbreak.ui.statements import StatementsWidget
 from finbreak.ui.theme import ThemeController, polish_item_views
@@ -772,6 +775,7 @@ class MainWindow(QMainWindow):
         dialog.saved.connect(self._on_settings_saved)
         dialog.export_backup_requested.connect(self._open_backup_export)
         dialog.verify_backup_requested.connect(self._open_backup_verify)
+        dialog.set_hint_requested.connect(self._open_set_hint)
         dialog.rejected.connect(self._teardown_dialog)  # cancel: no change
         self._open_dialog(dialog, defer=False)
 
@@ -924,6 +928,46 @@ class MainWindow(QMainWindow):
             # stuck wait cursor never survives the verify.
             QApplication.restoreOverrideCursor()
         dialog.show_result(result)
+
+    # --- optional password hint (FIBR-0029) -------------------------------- #
+    def _open_set_hint(self) -> None:
+        # Reached from the Settings "Set password hint…" button (§ 3.2). Tear down
+        # Settings FIRST (one app-modal per _dialog slot), mirroring the backup
+        # flows; pre-fill the current hint so "set" and "edit" are one flow.
+        self._teardown_dialog()
+        dialog = SetHintDialog(read_hint(), self)
+        dialog.save_requested.connect(self._on_set_hint_requested)
+        dialog.rejected.connect(self._teardown_dialog)
+        self._open_dialog(dialog, defer=False)
+
+    def _on_set_hint_requested(self) -> None:
+        # Verify the current password (authorizes the change), enforce the hint
+        # policy, then write / clear — all synchronous (§ 3.2). The KDF bytearray is
+        # wiped in a finally (INV-8); the plaintext pw_str the UI already produced is
+        # immutable and falls out of scope for GC (§ 3.4, an acknowledged residual).
+        dialog = self._dialog
+        if not isinstance(dialog, SetHintDialog):
+            return
+        hint = dialog.hint()
+        pw_str = dialog.password()
+        pw_bytes = bytearray(pw_str.encode("utf-8"))
+        try:
+            if not self._service.verify_password(pw_bytes):
+                dialog.show_error(self.tr("That password is not correct."))
+                return
+            try:
+                validate_hint(hint, pw_str)
+            except HintPolicyError as exc:
+                dialog.show_error(str(exc))
+                return
+            if hint.strip():
+                write_hint(hint)
+            else:
+                clear_hint()  # a blank field clears the hint (INV-7)
+        finally:
+            pw_bytes[:] = bytes(len(pw_bytes))  # wipe the KDF buffer (INV-8)
+        self._teardown_dialog()
+        self._status(self.tr("Password hint saved"))
 
     def _open_restore(self) -> None:
         # Pre-login restore, reachable from first-run + unlock (INV-8). Tear down the

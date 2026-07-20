@@ -10,6 +10,7 @@ to own — every wipe then runs on the one owning thread, no cross-thread race.
 
 from __future__ import annotations
 
+import hmac
 import logging
 import secrets
 from collections.abc import Callable
@@ -28,7 +29,7 @@ from finbreak.crypto import (
     derive_key,
     load_and_validate_params,
 )
-from finbreak.errors import VaultStateError
+from finbreak.errors import VaultLockedError, VaultStateError
 from finbreak.models import FORMAT_VERSION, KdfParams
 from finbreak.repositories.settings import SettingsRepository
 from finbreak.services.reporting import (
@@ -272,6 +273,28 @@ class AuthService:
         self._arm_timer()
         log.info("unlocked")
         return True
+
+    def verify_password(self, password: bytearray) -> bool:
+        """True iff ``password`` derives the key this vault was unlocked with.
+
+        Re-runs the pinned KDF and compares in constant time (FIBR-0029 § 3.5) —
+        used to authorize a within-session change (setting the password hint). It
+        verifies the key **the session was unlocked with** (``self._key``), not the
+        vault's current on-disk password: a mid-session re-key (a backup restore)
+        makes even the new correct password mismatch, returning ``False`` — a
+        fail-closed outcome (nothing bad is written).
+
+        Buffer discipline mirrors ``derive_raw`` / ``validate_first_run``: the KDF
+        consumes ``password`` (``derive_raw`` wipes it) and the caller wipes it
+        again in a ``finally``; the derived key copied here is wiped in place.
+        """
+        if self._key is None:
+            raise VaultLockedError("the vault is locked")
+        raw = bytearray(derive_raw(password, self.load_params()))
+        try:
+            return hmac.compare_digest(raw, self._key)
+        finally:
+            _wipe(raw)
 
     # --- lock / idle / exit ------------------------------------------------ #
     def lock(self) -> None:

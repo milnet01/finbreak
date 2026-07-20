@@ -729,6 +729,7 @@ because retrofitting them is a data migration.
   plaintext artefact in security-model.md at spec time. A memory aid, not
   a recovery method. Target phase: P02. Dependencies: FIBR-0004. Lanes:
   crypto, ux. Kind: feature. Source: user-request-2026-07-01.
+  Design resolved by user 2026-07-20 (autonomous run): (1) SET the hint via a "Set password hint…" button in Settings that prompts for the CURRENT master password, verifies it, then enforces hint ≠ password AND hint does-not-contain password (needs plaintext in hand — hence the confirm), and saves to the plaintext window.ini (readable pre-unlock, outside the encrypted vault). (2) SHOW the hint on the unlock screen behind a "Show hint" button (hidden by default, reveal-on-click — reduces shoulder-surf exposure). Defaults decided: ~100-char cap; a plaintext-storage warning shown when setting; empty/unset hint means no "Show hint" affordance appears. security-model.md gains the new plaintext artefact (hint) as an asset + an enforcement invariant (hint never equals/contains the password) — that doc edit runs through /cold-eyes per §14. Ready to spec.
 
 - 📋 [FIBR-0030] **"Forgotten password → start over" (destructive vault
   reset, double-confirmed).** Last resort on the unlock screen once the

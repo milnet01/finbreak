@@ -33,6 +33,7 @@ from PySide6.QtWidgets import (
 
 from finbreak.errors import KdfPolicyError, SchemaVersionError
 from finbreak.services.auth import AuthService
+from finbreak.ui._password_hint import read_hint
 from finbreak.ui._unlock_throttle import UnlockThrottle
 from finbreak.ui._worker import DeriveWorker
 
@@ -69,6 +70,23 @@ class UnlockDialog(QDialog):
         self._restore_button.setObjectName("unlock_restore")
         self._restore_button.setFlat(True)
 
+        # Optional password hint (FIBR-0029 § 3.3). Read ONCE at build, pre-unlock,
+        # needing no key (INV-3). Only add the reveal-on-click affordance when a
+        # hint is actually set — no button when there is nothing to show (INV-1).
+        # The hint is display-only: revealing it never touches the password field,
+        # the throttle, or the unlock result (INV-9).
+        hint = read_hint()
+        self._hint_button: QPushButton | None = None
+        self._hint_label: QLabel | None = None
+        if hint.strip():
+            self._hint_button = QPushButton(self.tr("Show hint"))
+            self._hint_button.setObjectName("unlock_show_hint")
+            self._hint_button.setFlat(True)
+            self._hint_label = QLabel(hint)
+            self._hint_label.setObjectName("unlock_hint_text")
+            self._hint_label.setWordWrap(True)
+            self._hint_label.hide()
+
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Cancel)
         self._cancel = buttons.button(QDialogButtonBox.StandardButton.Cancel)
         buttons.rejected.connect(self.reject)
@@ -78,12 +96,24 @@ class UnlockDialog(QDialog):
         layout.addWidget(self._password)
         layout.addWidget(self._unlock_button)
         layout.addWidget(self._error)
+        if self._hint_button is not None and self._hint_label is not None:
+            layout.addWidget(self._hint_button)
+            layout.addWidget(self._hint_label)
+            self._hint_button.clicked.connect(self._reveal_hint)
         layout.addWidget(self._restore_button)
         layout.addWidget(buttons)
 
         self._unlock_button.clicked.connect(self._on_unlock)
         self._password.returnPressed.connect(self._on_unlock)
         self._restore_button.clicked.connect(self.restore_requested)
+
+    @Slot()
+    def _reveal_hint(self) -> None:
+        # Display-only: show the pre-read hint and retire the button (INV-9).
+        if self._hint_label is not None:
+            self._hint_label.show()
+        if self._hint_button is not None:
+            self._hint_button.hide()
 
     def reject(self) -> None:
         if self._worker is not None:
