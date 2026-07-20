@@ -1481,12 +1481,13 @@ because retrofitting them is a data migration.
   Kind: fix.
   Source: user-report-2026-07-18 (screenshots).
 
-- 📋 [FIBR-0153] **Amount column: show the currency symbol ("R 1,234.49"), not the ISO code, plus a separate Currency column.**
+- ✅ [FIBR-0153] **Amount column: show the currency symbol ("R 1,234.49"), not the ISO code, plus a separate Currency column.**
   Current display renders "ZAR1,234.49" — the ISO code is passed as the currency *symbol* to QLocale().toCurrencyString in _format_amount (ui/_amount.py:24; symbol = base_currency() returns the ISO code "ZAR", ui/transactions.py:253), and there is no space. User request (2026-07-19): (a) show the amount with the proper symbol + a space — "R 1,234.49" for ZAR; (b) move the ISO code into its own dedicated "Currency" column on the transactions table. Work: map ISO code -> symbol (ZAR->R) with a space in _format_amount (decide symbol source — a small ISO->symbol table or a QLocale currency-symbol lookup for the base currency); add a Currency column (shifts the _COL_* constants). Also audit the Home tab / charts / PDF export for the same ISO-as-symbol rendering so the fix is consistent app-wide. Interaction: FIBR-0032's "Copy amount" reads the rendered Amount cell text, so it auto-follows the new format (no rework). Needs its own spec -> /cold-eyes -> reproduce-first TDD. Relates to FIBR-0105 (amount display prefs).
   **Layman:** Money currently shows as "ZAR1,234.49", which is hard to read — this makes it show as "R 1,234.49" and puts the "ZAR" code in its own tidy Currency column.
   Kind: fix.
   Lanes: ui.
   Source: user-request-2026-07-19.
+  Resolved (2026-07-20, autonomous run): shipped. _format_amount now maps the base-currency ISO code to a symbol via a single-homed CURRENCY_SYMBOLS map (beside CURRENCY_EXPONENTS in services/auth.py) and composes "<symbol> <magnitude>" with one space — "R 1,234.49" not "ZAR1,234.49" — fixing every money site app-wide (Transactions, Home tiles, PDF export) through the one formatter. Magnitude uses QLocale().toString(x,"f",decimals) (symbol-free/grouped/locale-correct), NOT toCurrencyString(v,"") which leaks the ISO code in non-C locales (caught empirically in cold-eyes loop 2). Transactions table gains a dedicated Currency column (_COL_CURRENCY=2, shifting Description/Account/Category to 3/4/5); Copy amount auto-follows. Spec docs/specs/FIBR-0153.md cold-eyes converged loop 5 (CRITICAL mechanism bug caught + fixed). INV-1..9 tested (en_US + en_ZA locale legs; stale 5-col saved-layout safe). Full gate green (1173 passed, 2 skipped). commit 4132649; tag FIBR-0153-complete.
 
 - 📋 [FIBR-0154] **Category UI: expose a 3rd tier (sub-categories) — Type → Category → Sub-category.**
   User asked for 3-tier categories (e.g. Expenditure > Groceries > Spar). Today the app is capped at TWO levels (Type > Category).

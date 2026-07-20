@@ -33,6 +33,14 @@ signaling per
 
 ### Fixed
 
+- **Amounts now show the currency symbol ("R 1,234.49"), with a tidy Currency column** (FIBR-0153)
+  Money used to display as "ZAR1,234.49" — the currency code jammed onto
+  the number with no space. It now shows the proper symbol and a space,
+  like "R 1,234.49", and the "ZAR" code moves into its own dedicated
+  Currency column on the Transactions table. The grouping and decimal
+  style still follow your system's locale. This applies everywhere amounts
+  appear — the transactions list, the Home dashboard, and PDF exports.
+
 - **Confirmed transfers now show on the Transactions tab** (FIBR-0151)
   A transfer you've confirmed now appears in the Transactions tab's
   Category column as a directional label naming the other account — the
