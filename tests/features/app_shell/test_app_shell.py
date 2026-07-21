@@ -119,6 +119,7 @@ def test_INV1_chrome_parts_and_action_set(qtbot, service):
         "action_donate_github",
         "action_donate_patreon",
         "action_donate_paybru",
+        "action_report_issue",  # FIBR-0156: top-level Report an Issue, right of Donate
     ):
         assert window.findChild(QAction, name) is not None, name
 
@@ -427,6 +428,25 @@ def test_INV8a_funding_yml_in_sync():
     )
     assert main_window.DONATE_PATREON == f"https://www.patreon.com/{values['patreon']}"
     assert main_window.DONATE_PAYBRU == values["custom"]
+
+
+# --------------------------------------------------------------------------- #
+# INV-8b — Report an Issue hands the issue page to the OS browser (no app fetch)
+# --------------------------------------------------------------------------- #
+def test_INV8b_report_issue_opens_url(qtbot, service, monkeypatch):
+    window = _unlocked_home_shell(qtbot, service)
+    calls = []
+    monkeypatch.setattr(
+        QDesktopServices, "openUrl", lambda url: calls.append(url.toString()) or True
+    )
+
+    window._action_report_issue.trigger()
+
+    assert calls == [main_window.REPORT_ISSUE_URL]
+    assert (
+        main_window.REPORT_ISSUE_URL
+        == "https://github.com/milnet01/finbreak/issues/new"
+    )
 
 
 # --------------------------------------------------------------------------- #

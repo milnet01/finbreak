@@ -96,6 +96,11 @@ DONATE_GITHUB = "https://github.com/sponsors/milnet01"
 DONATE_PATREON = "https://www.patreon.com/AntsProjectsHub"
 DONATE_PAYBRU = "https://paybru.co.za/tip/ants-projects-hub"
 
+# Report an Issue opens the public repo's new-issue form in the OS browser
+# (FIBR-0156). Like Donate, this is a user-initiated egress via _open_url, not an
+# app network call (security-model INV-8) — no vault data leaves the machine.
+REPORT_ISSUE_URL = "https://github.com/milnet01/finbreak/issues/new"
+
 _STATUS_TIMEOUT_MS = 4000
 
 # The workspace tab order (FIBR-0052 INV-1; Transactions inserted 2nd by FIBR-0012).
@@ -375,6 +380,12 @@ class MainWindow(QMainWindow):
             None,
             lambda: self._open_url(DONATE_PAYBRU),
         )
+        self._action_report_issue = self._make_action(
+            "action_report_issue",
+            self.tr("Report an Issue"),
+            None,
+            lambda: self._open_url(REPORT_ISSUE_URL),
+        )
 
         menu = self.menuBar()
         self._menu_file = menu.addMenu(self.tr("File"))
@@ -413,6 +424,10 @@ class MainWindow(QMainWindow):
         menu_donate.addAction(self._action_donate_github)
         menu_donate.addAction(self._action_donate_patreon)
         menu_donate.addAction(self._action_donate_paybru)
+
+        # A single top-level clickable item to the right of Donate (FIBR-0156) —
+        # one click opens the issue form, no submenu.
+        menu.addAction(self._action_report_issue)
 
         # An action on both the menu and the toolbar is a SINGLE QAction instance
         # added to both (one objectName, no duplicate key). Home leads the toolbar.

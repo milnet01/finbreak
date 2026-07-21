@@ -6,7 +6,7 @@ the cold-eyes-gated spec above. Every invariant below maps to a test in
 `test_app_shell.py`.
 
 The shell is `MainWindow(QMainWindow)` (rewritten from `AppShell`): a menubar
-(File · View · Help · Donate), an icon toolbar, a central `QStackedWidget`
+(File · View · Window · Help · Donate · Report an Issue), an icon toolbar, a central `QStackedWidget`
 content area, and a status bar. First-run + unlock are non-blocking
 application-modal `QDialog`s shown over the window; manual entry is a modal
 `ManualEntryDialog`; Home is a `HomeView` with a getting-started page + a
@@ -28,6 +28,7 @@ transaction table.
 | INV-6a | `test_INV6a_content_routing_returns_home` | Accounts/Categories/Import actions show the reused widget (prior destroyed); each `done` returns a fresh Home |
 | INV-7 | `test_INV7_status_bar_count_and_messages` | count widget shows the plural-aware string, hides on lock, re-shows on unlock; `_status` posts a transient message |
 | INV-8a | `test_INV8a_donate_opens_exact_urls` + `test_INV8a_funding_yml_in_sync` | each Donate action calls `openUrl` once with the pinned `QUrl`; exactly 3 calls total; constants match `.github/FUNDING.yml` |
+| INV-8b | `test_INV8b_report_issue_opens_url` | the top-level Report-an-Issue action (right of Donate) calls `openUrl` once with the pinned `REPORT_ISSUE_URL` (the repo's `issues/new` form); a browser egress, not an app fetch (FIBR-0156) |
 | INV-9 | `test_INV9_manual_entry_roundtrip_from_home` / `_from_non_home` / `test_INV9_manual_entry_cancel_and_invalid` | Add inserts one tx + navigates to fresh Home from either context; Cancel/invalid insert nothing |
 | INV-9a | `test_INV9a_home_toggles_empty_and_table` | `HomeView.current_page().objectName()` is `home_page_empty` (0 tx) vs `home_page_table` (≥1 tx) |
 | INV-10 | `test_INV10_no_fixed_geometry_in_new_ui` + `test_INV10_format_amount_localised` | no numeric-literal `setGeometry/move/resize` in `ui/*.py`; `_format_amount` renders via `QLocale` |
