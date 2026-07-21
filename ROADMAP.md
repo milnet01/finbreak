@@ -679,6 +679,15 @@ lands on top.
   Lanes: docs, ui, marketing.
   Source: user-request-2026-07-10.
 
+- 📋 [FIBR-0155] **Publish finbreak via the openSUSE Build Service (OBS) — native RPM/deb + the openSUSE software portal.**
+  User has an OBS account (build.opensuse.org) and wants finbreak on the openSUSE store + other Linux distro channels. OBS builds native packages for many distros from one recipe and publishes to software.opensuse.org + downloadable repos — complementary to the existing AppImage (FIBR-0054) and the deferred Flatpak/Flathub (FIBR-0130).
+
+  Scope to decide in the spec: (1) native-from-source packaging (an RPM `.spec` + a `debian/` recipe that pip-installs the PySide6 app + its native deps — SQLCipher, pikepdf/qpdf — into a distro package, .desktop + icon + AppStream metainfo) vs. wrapping the frozen AppImage; native is the "app store" experience OBS is built for. (2) Which targets to enable (openSUSE Tumbleweed/Leap, Fedora, Debian, Ubuntu). (3) How versioning/signing/release automation ties to the existing bump + release pipeline. (4) The AppStream metainfo `<release>` notes must mirror CHANGELOG (see changelog-writer). Needs: spec → /cold-eyes → implement (OBS project config + recipes + a submit/tag step) → verify a real OBS build. Dependencies: the app is feature-complete + already ships an AppImage, so no code blockers.
+  **Layman:** Get finbreak into Linux "app stores": one OBS setup builds native openSUSE/Fedora (RPM) and Debian/Ubuntu (deb) packages and lists it on software.opensuse.org, so users install + auto-update it the normal way for their distro.
+  Kind: package.
+  Lanes: packaging, release.
+  Source: user-request-2026-07-21.
+
 ## Enhancements & performance backlog
 
 Ideas captured 2026-07-01 from a product / performance review
