@@ -23,6 +23,9 @@ signaling per
 
 ### Added
 
+- **Per-release signed `SHA256SUMS` checksum manifest + per-platform CycloneDX SBOM** (FIBR-0096)
+  Each release now publishes a signed SHA256SUMS manifest (verify manually with `sha256sum -c --ignore-missing SHA256SUMS`, its `.sig` Ed25519-signed by the release key) and a per-platform CycloneDX SBOM of the bundled runtime dependencies — a second, independently-verifiable integrity signal and a supply-chain parts-list, complementary to the per-artifact signature the in-app updater already checks.
+
 - **"Forgot password? Start over" — a last-resort, double-confirmed destructive vault reset on the unlock screen** (FIBR-0030)
   For a genuinely forgotten master password with no usable backup, the unlock screen now offers "Start over": after a clear irreversible-warning and a second step where you type DELETE, it permanently erases the vault and returns you to first-run setup so you can begin fresh. The old data was already unrecoverable without the password; nothing that could be recovered is lost. The reset removes the vault's complete on-disk footprint (database, key file, and SQLite's working sidecars), and clears the old lockout/hint state, leaving your app preferences untouched.
 

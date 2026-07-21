@@ -798,11 +798,12 @@ because retrofitting them is a data migration.
   Started 2026-07-18 (self-directed, "build it all" autonomous run). Adding exponential backoff after repeated failed master-password unlock attempts; attempt count/last-fail persisted in plaintext window.ini so a relaunch doesn't reset the backoff. Spec -> /cold-eyes -> TDD -> /close-phase.
   Shipped 2026-07-18 (self-directed autonomous 'build it all' run). Capped exponential backoff (1s,2s,4s,…,30s) after a wrong master password in the unlock dialog; attempt count + last-fail persisted in plaintext window.ini so a relaunch can't reset it. Pure core services/unlock_throttle.py (exponent clamped BEFORE the power — tampered fail_count can't build a giant int) + QSettings adapter ui/_unlock_throttle.py (defensive int()/fromisoformat() coercion + tz-naive rejection) + UnlockDialog wiring (authoritative entry gate re-read every submit, 1-Hz countdown, reset-on-success, submit-only disable preserving FIBR-0004 INV-2f). security-model INV-10 (defence-in-depth, not a boundary). Spec /cold-eyes 4 loops → polish-converged; reproduce-first TDD 19 tests INV-1..7; /audit semgrep+bandit 0 on the changed surface; cold code-review caught 1 CRITICAL (tz-naive last_fail → aware/naive subtraction crash = owner lockout) folded reproduce-first + 1 LOW test tidy. Gate green 1126/1, mypy 0. Commits 7564234→7c8778d; tag FIBR-0095-complete.
 
-- 📋 [FIBR-0096] **Per-release SHA256SUMS + generated SBOM alongside the signed AppImage.**
+- ✅ [FIBR-0096] **Per-release SHA256SUMS + generated SBOM alongside the signed AppImage.**
   The release AppImage is already Ed25519-signed (FIBR-0054 INV-14). Add, per release: a SHA256SUMS file (artifact checksums) and a generated SBOM (CycloneDX via cyclonedx-py, or pip-audit output) listing the bundled dependency versions — supply-chain transparency + a second integrity signal for users who verify manually rather than via the in-app updater. Wire into build-release-appimage.sh / the publish step. Deps: FIBR-0054 (release pipeline).
   **Layman:** Each download comes with a checksum file and a parts-list, so anyone can verify what's inside and that it wasn't tampered with.
   Kind: security.
   Source: claude-suggestion-2026-07-11.
+  Resolved (2026-07-21): spec cold-eyes-converged over 8 loops (security/cross-ref lane clean 6–8; release-shell hardened), then reproduce-first TDD (10 tests, INV-1..7). Ships gen-checksums.sh (merge-aware manifest helper), two-phase signed SHA256SUMS with an anti-laundering fetch-verify gate + release-view fail-closed fetch, per-platform CycloneDX SBOM (freeze-before-PyInstaller, pip-audit -r --no-deps), and security-model INV-13. Gate green (1219 passed).
 
 ### 🎨 Features & accessibility
 
