@@ -21,7 +21,7 @@ jobs:
       # the verified Windows wheel (FIBR-0015). The driver installs the runtime
       # deps + PyInstaller itself (manifest-driven, INV-6).
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
