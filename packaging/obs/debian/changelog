@@ -1,0 +1,10 @@
+finbreak (0.1.16) unstable; urgency=medium
+
+  * OFX import now files each transaction under the date the bank printed, even
+    when the statement carries a timezone.
+  * The delete-statement confirmation no longer over-states the loss when the
+    statement overlaps another one you keep.
+  * Deleting a statement no longer loses transactions that an overlapping
+    statement still covers — they are handed over to the statement you keep.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Sat, 18 Jul 2026 12:00:00 +0200

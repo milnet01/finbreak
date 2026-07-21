@@ -64,6 +64,16 @@ dependencies = [
     "certifi>=2024.2.2",
 ]
 
+# Console entry point (FIBR-0155 § 3.4). Declares the canonical launch target
+# so a native install (the OBS RPM/deb) can expose `/usr/bin/finbreak` and a
+# test can assert it resolves to __main__.main. main() has real CLI behaviour
+# (--self-test, unknown-arg → exit 2), so console_scripts is the right idiom.
+# The Windows .exe is frozen from __main__.py directly and doesn't consume this
+# table; the OBS freeze targets __main__.py too — this is a declaration, not a
+# build input.
+[project.scripts]
+finbreak = "finbreak.__main__:main"
+
 # PEP 735 dev dependency group. Pinned EXACTLY (==) for a reproducible
 # toolchain across machines (FIBR-0001 INV-4); refreshed to latest-stable on
 # the periodic sweep (coding.md § 1.5 / global rule § 5c), not silently.

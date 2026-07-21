@@ -1,0 +1,176 @@
+# finbreak.spec — OBS RPM recipe for openSUSE + Fedora (FIBR-0155).
+#
+# The payload is a PyInstaller --onedir frozen runtime under /usr/lib/finbreak/:
+# it bundles its own Python + every pinned native (SQLCipher, qpdf, pdfium, Qt),
+# so the security-critical stack is the exact pinned closure the gate tests, not
+# a distro substitute (§ 3.2). Version comes from the tag via the _service
+# set_version (never hand-typed, obs_packaging INV-6).
+#
+# NOTE (§ 5 — recall, confirm before the first OBS submit): the per-family
+# package names below (Mesa-libGL1 vs mesa-libGL, libglib-2_0-0 vs glib2, …) and
+# the %post/%postun scriptlet macro spellings are recalled distro facts; a wrong
+# name hard-fails the OBS build, so they are checked against each target's real
+# package index first.
+
+Name:           finbreak
+# Placeholder — the OBS set_version service (_service) writes the real version
+# from the git tag. obs_packaging INV-6 asserts this is NOT a hard-coded semver.
+Version:        0
+Release:        0
+Summary:        Private, offline desktop app for understanding your personal finances
+License:        MIT
+URL:            https://antsprojectshub.co.za/p/fin-break.html
+Source0:        %{name}-%{version}.tar.gz
+# Vendored wheel closure (both cp312 + cp313 ABIs + PyInstaller + its closure),
+# built offline by the _service (§ 3.6). Unpacked to vendor/ in %prep.
+Source1:        vendor.tar.gz
+BuildRequires:  binutils
+
+# --- Build-time collect-set: the libs PyInstaller must SEE so it bundles them
+#     INTO the payload (the wider set from _build-smoke-in-container.sh), plus the
+#     unversioned python3 toolchain (floats to the target's own default 3.12/3.13,
+#     § 3.6). Two families, two name sets.
+%if 0%{?suse_version}
+BuildRequires:  python3
+BuildRequires:  python3-devel
+BuildRequires:  python3-pip
+BuildRequires:  Mesa-libGL1
+BuildRequires:  Mesa-libEGL1
+BuildRequires:  libglib-2_0-0
+BuildRequires:  libdbus-1-3
+BuildRequires:  libX11-6
+BuildRequires:  libxkbcommon0
+BuildRequires:  libfreetype6
+BuildRequires:  fontconfig
+BuildRequires:  libharfbuzz0
+%endif
+%if 0%{?fedora}
+BuildRequires:  python3
+BuildRequires:  python3-devel
+BuildRequires:  python3-pip
+BuildRequires:  mesa-libGL
+BuildRequires:  mesa-libEGL
+BuildRequires:  glib2
+BuildRequires:  dbus-libs
+BuildRequires:  libX11
+BuildRequires:  libxkbcommon
+BuildRequires:  freetype
+BuildRequires:  fontconfig
+BuildRequires:  harfbuzz
+%endif
+
+# --- Runtime deps: ONLY the host-left libGL/libEGL pair (the clean-room proof,
+#     build-smoke.sh:95-96). Everything else travels in-bundle, so a Requires on
+#     it would be over-broad + risk a wrong per-distro name (§ 3.5). The bundled
+#     .so's are dlopen'd — invisible to RPM's auto-scanner, which we also disable
+#     below — so libGL/libEGL are required explicitly.
+%if 0%{?suse_version}
+Requires:       Mesa-libGL1
+Requires:       Mesa-libEGL1
+%endif
+%if 0%{?fedora}
+Requires:       mesa-libGL
+Requires:       mesa-libEGL
+%endif
+
+# The payload is a bundled foreign tree: no debuginfo to split, and RPM must not
+# auto-generate deps/provides from its hundreds of bundled libraries.
+%global debug_package %{nil}
+%global __requires_exclude_from ^%{_prefix}/lib/finbreak/.*$
+%global __provides_exclude_from ^%{_prefix}/lib/finbreak/.*$
+
+%description
+finbreak is a private, offline desktop app for understanding your money. Import
+bank statements (CSV, OFX, PDF), categorise transactions, and see where your
+money goes — everything stored locally in an encrypted vault (SQLCipher AES-256,
+Argon2id key). No accounts, no cloud, no tracking.
+
+%prep
+%setup -q
+# Vendored wheels → vendor/ (offline %build source).
+tar -xf %{SOURCE1}
+
+%build
+# Build venv on the target's OWN default python3 (§ 3.6). Install the pinned
+# runtime deps + the freezer OFFLINE from the vendored wheels (obs_packaging
+# INV-7 — every build-phase pip install carries --no-index). Deps are read
+# straight from pyproject (single source of truth), never a hand-list.
+python3 -m venv _bvenv
+. _bvenv/bin/activate
+python3 -c "import tomllib; print('\n'.join(tomllib.load(open('pyproject.toml','rb'))['project']['dependencies']))" > _deps.txt
+pip install --no-index --find-links vendor/ -r _deps.txt pyinstaller==6.21.0
+# Freeze --onedir targeting __main__.py. Flags mirror scripts/_build-smoke-in-container.sh
+# (the gated onefile freeze) — the SAME collect/hidden-import set; only the output
+# mode differs (--onedir vs --onefile). Keep in lockstep with that script and with
+# debian/rules (§ 3.5 — the flag list is duplicated across the two recipes by design).
+pyinstaller --onedir --name finbreak \
+    --paths src \
+    --add-data "src/finbreak/ui/icons:finbreak/ui/icons" \
+    --add-data "src/finbreak/data:finbreak/data" \
+    --hidden-import sqlcipher3 \
+    --hidden-import pikepdf \
+    --hidden-import PySide6.QtWidgets \
+    --collect-binaries pikepdf \
+    --collect-binaries sqlcipher3 \
+    --collect-all argon2 \
+    --collect-all _argon2_cffi_bindings \
+    --collect-all ofxparse \
+    --collect-all bs4 \
+    --collect-all lxml \
+    --collect-all pdfplumber \
+    --collect-all pdfminer \
+    --collect-all pypdfium2 \
+    --collect-all pypdfium2_raw \
+    --collect-all PIL \
+    --collect-all cryptography \
+    --collect-all certifi \
+    --distpath dist --workpath _pybuild --specpath . \
+    src/finbreak/__main__.py
+
+%install
+# Lay the onedir tree out under /usr/lib/finbreak/ (the bootloader is
+# dist/finbreak/finbreak).
+mkdir -p %{buildroot}%{_prefix}/lib/finbreak
+cp -a dist/finbreak/. %{buildroot}%{_prefix}/lib/finbreak/
+# The /usr/bin launcher wrapper (§ 3.4).
+install -Dm0755 packaging/obs/finbreak.sh %{buildroot}%{_bindir}/finbreak
+# Desktop entry + AppStream metainfo (§ 3.3).
+install -Dm0644 packaging/obs/io.github.milnet01.finbreak.desktop \
+    %{buildroot}%{_datadir}/applications/io.github.milnet01.finbreak.desktop
+install -Dm0644 packaging/obs/io.github.milnet01.finbreak.metainfo.xml \
+    %{buildroot}%{_datadir}/metainfo/io.github.milnet01.finbreak.metainfo.xml
+# Hicolor icons renamed to the app-ID (themed-icon name = Icon= in the .desktop).
+for s in 16 24 32 48 64 128 256 512; do
+    install -Dm0644 assets/icon/finbreak-${s}.png \
+        %{buildroot}%{_datadir}/icons/hicolor/${s}x${s}/apps/io.github.milnet01.finbreak.png
+done
+
+%check
+# Prove the frozen native stack (Qt + SQLCipher + qpdf) travelled — the FIBR-0003
+# sentinel — against the STAGED buildroot freeze (the package isn't installed at
+# %check time, so a bare `finbreak` on $PATH would not resolve). offscreen: OBS
+# build roots are headless. This is the sole automated gate on the onedir path.
+QT_QPA_PLATFORM=offscreen %{buildroot}%{_prefix}/lib/finbreak/finbreak --self-test
+
+%post
+# Refresh the icon cache + desktop database so the menu entry + icon appear
+# without a manual refresh (macro spellings §5-confirmed per target).
+%icon_theme_cache_post
+%desktop_database_post
+
+%postun
+%icon_theme_cache_postun
+%desktop_database_postun
+
+%files
+%license LICENSE
+%doc README.md
+%{_bindir}/finbreak
+%dir %{_prefix}/lib/finbreak
+%{_prefix}/lib/finbreak/*
+%{_datadir}/applications/io.github.milnet01.finbreak.desktop
+%{_datadir}/metainfo/io.github.milnet01.finbreak.metainfo.xml
+%{_datadir}/icons/hicolor/*/apps/io.github.milnet01.finbreak.png
+
+%changelog
+# Managed by the CHANGELOG/metainfo sync, not hand-edited here.

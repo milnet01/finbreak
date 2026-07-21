@@ -1,0 +1,47 @@
+<services>
+  <!-- FIBR-0155 § 3.9 — version flows one way: git tag v{VERSION} → set_version →
+       the .spec/debian Version:. Never hand-entered (obs_packaging INV-6).
+       Services run mode="manual" (osc service manualrun) for the documented
+       first-cut submit; CI auto-submit is a follow-up (§ 2). -->
+
+  <!-- 1. Source tarball from the tagged release. versionformat strips the leading
+          'v' so set_version writes e.g. 0.1.16. -->
+  <service name="obs_scm" mode="manual">
+    <param name="scm">git</param>
+    <param name="url">https://github.com/milnet01/finbreak.git</param>
+    <param name="revision">v@VERSION@</param>
+    <param name="versionformat">@PARENT_TAG@</param>
+    <param name="versionrewrite-pattern">v(.*)</param>
+    <param name="versionrewrite-replacement">\1</param>
+    <param name="filename">finbreak</param>
+  </service>
+
+  <!-- 2. Compress the checkout into finbreak-{version}.tar.gz (Source0). -->
+  <service name="tar" mode="manual"/>
+  <service name="recompress" mode="manual">
+    <param name="file">finbreak-*.tar</param>
+    <param name="compression">gz</param>
+  </service>
+
+  <!-- 3. Inject the version into finbreak.spec + debian/changelog. -->
+  <service name="set_version" mode="manual"/>
+
+  <!--
+    4. Vendored wheels (offline build, § 3.6) → vendor.tar.gz (Source1).
+       OBS build roots are network-isolated, so the closure is vendored, not
+       fetched at build time. Regenerate on a Linux x86_64 host with glibc >= 2.34
+       (§ 5 pre-submit check), then `osc add vendor.tar.gz`. BOTH CPython ABIs
+       (Ubuntu 24.04 → cp312; Debian 13 / Fedora / Tumbleweed → cp313), NO single
+       --platform tag (host resolution infers the full manylinux cascade — the
+       correctness-critical wheels are tagged lower than manylinux_2_34), and the
+       freezer + its recursive closure (NOT --no-deps):
+
+         python3 -c "import tomllib;print(chr(10).join(tomllib.load(open('pyproject.toml','rb'))['project']['dependencies']))" > /tmp/deps.txt
+         rm -rf vendor && mkdir vendor
+         for PY in 3.12 3.13; do \
+           pip download --only-binary=:all: --python-version $PY \
+             -d vendor -r /tmp/deps.txt pyinstaller==6.21.0; \
+         done
+         tar caf vendor.tar.gz vendor/
+  -->
+</services>

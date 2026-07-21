@@ -93,7 +93,7 @@ the table are hypothetical too.)
 | **Qt translation** | `finbreak_<locale>.ts` / `.qm` (Qt-mandated, §6) | *(added at the i18n packaging step)* |
 | **Well-known root doc** | conventional UPPERCASE (§6) | `README.md`, `CHANGELOG.md`, `ROADMAP.md` |
 | **Tool-mandated file** | exactly what the tool expects (§6) | `pyproject.toml`, `.gitignore`, `.gitleaks.toml` |
-| **Packaging / build-recipe file** | tool/platform-mandated (§6): reverse-DNS app-ID, or app-named `.spec` | *(at the ADR-0007 packaging step: `io.github.<owner>.finbreak.desktop`, `finbreak.spec`)* |
+| **Packaging / build-recipe file** | tool/platform-mandated (§6): reverse-DNS app-ID, or app-named `.spec` | `packaging/obs/io.github.milnet01.finbreak.desktop`, `packaging/obs/finbreak.spec` (FIBR-0155) |
 
 *Hypothetical illustrations:* a Python module for CSV import would be
 `csv_importer.py` (snake_case, multiword); a feature package whose natural
@@ -173,11 +173,11 @@ here only apply to **non-`.py`** names.)
 - **Packaging / desktop-integration files** use the platform's
   **reverse-DNS application ID** (dots, mixed case — mandated by
   freedesktop / Flatpak / AppStream), which deliberately overrides §2's
-  lowercase + one-separator rules: `io.github.<owner>.finbreak.desktop`,
-  `io.github.<owner>.finbreak.metainfo.xml`, the Flatpak manifest
-  `io.github.<owner>.finbreak.yml`. The exact app-ID **and** the directory
-  they live in are fixed when the packaging phase (ADR-0007) lands; until
-  then, follow the reverse-DNS convention, not §1/§2. **Qt translation
+  lowercase + one-separator rules: `io.github.milnet01.finbreak.desktop`,
+  `io.github.milnet01.finbreak.metainfo.xml`, the Flatpak manifest
+  `io.github.milnet01.finbreak.yml`. The app-ID **and** their directory were
+  fixed when the packaging phase (ADR-0007) landed (FIBR-0155): the app-ID is
+  **`io.github.milnet01.finbreak`** and the recipes live in `packaging/obs/`. **Qt translation
   catalogs** likewise take Qt's `<app>_<locale>` form (`finbreak_de.ts` →
   `finbreak_de.qm`) — the `_<locale>` suffix is Qt-mandated.
 

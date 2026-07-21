@@ -1,0 +1,19 @@
+[Desktop Entry]
+Type=Application
+Name=finbreak
+GenericName=Personal Finance
+Comment=Private, offline desktop app for understanding your personal finances
+# Exec is the /usr/bin/finbreak wrapper the RPM/deb installs (FIBR-0155 § 3.4),
+# not an absolute freeze path — the payload lives under /usr/lib/finbreak/.
+Exec=finbreak
+# Themed icon name = the app-ID; the RPM/deb install the hicolor PNGs renamed to
+# this name under /usr/share/icons/hicolor/<size>x<size>/apps/.
+Icon=io.github.milnet01.finbreak
+# X11 launcher-association key — must equal the window's actual WM_CLASS, which
+# Qt's xcb backend derives from applicationName() ("finbreak", verbatim). On
+# Wayland this key is ignored; app_id = desktopFileName() = this file's basename
+# (FIBR-0155 § 3.3, app.py). Confirm once with `xprop WM_CLASS` on the built app.
+StartupWMClass=finbreak
+Categories=Office;Finance;
+Terminal=false
+Keywords=finance;budget;bank;statement;money;expenses;

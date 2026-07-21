@@ -253,6 +253,14 @@ be checkable. Enforcement arrives in step with the code:
   INV-4/INV-10/INV-11). No other network access exists; there is no
   networking *dependency* in the runtime bundle (the flow uses stdlib
   `urllib`).
+  - *Distro (OBS) builds have an empty outbound surface (FIBR-0155).* A
+    package launched from `/usr/bin/finbreak` has no `$APPIMAGE` env and is
+    not a frozen Windows exe, so `detect_installer()` → `None`: the
+    self-updater is inert and the Settings "check for updates" checkbox is
+    disabled. The distro build therefore makes **zero** outbound requests by
+    default — a strict subset of this invariant's "exactly one opt-in flow",
+    covered without any source change by the existing runtime gating and
+    asserted by `tests/features/obs_packaging/` INV-5.
 - **INV-9 — Logs are clean.** The local log file never records
   transaction contents, passwords, keys, or decrypted data.
 - **INV-10 — Interactive unlock is throttled.** After a wrong master

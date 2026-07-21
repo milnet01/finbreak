@@ -23,6 +23,9 @@ signaling per
 
 ### Added
 
+- **Native Linux packaging (RPM + deb) via the openSUSE Build Service** (FIBR-0155)
+  finbreak can now be published as a proper native package for openSUSE, Fedora, Debian and Ubuntu — installed and updated the normal way for your distro (zypper/dnf/apt) and listed with its icon in the software centre, alongside the existing AppImage. The package bundles its own tested runtime, so it runs the exact same encryption stack regardless of what your distro ships. (This adds the build recipes and desktop/store metadata; the first live build is published from the maintainer's OBS account.)
+
 - **A "Report an Issue" item in the menu bar (right of Donate) that opens the project's issue page in your browser** (FIBR-0156)
   One click opens finbreak's GitHub issue form so you can quickly report a bug or request a feature — no data leaves the app (it just hands the page to your browser, exactly like the Donate links).
 

@@ -34,13 +34,18 @@ def run(argv: list[str] | None = None) -> int:
         QApplication,
         QApplication.instance() or QApplication(argv if argv is not None else sys.argv),
     )
-    # Identify as "finbreak" so the running window's Wayland app_id (and X11
-    # WM_CLASS) matches finbreak.desktop (StartupWMClass=finbreak). Without this,
-    # a `python -m finbreak` launch reports the interpreter's name, so the desktop
-    # task manager can't associate the window with its launcher and shows a second,
-    # generic icon. desktopFileName is the app_id source on Wayland (Qt 6).
+    # Window→launcher association differs by display server, so the two Qt calls
+    # below deliberately carry DIFFERENT strings (FIBR-0155 § 3.3):
+    #  - X11 WM_CLASS is derived by Qt's xcb backend from applicationName() and
+    #    used verbatim when non-empty, so it stays the bare "finbreak" — matching
+    #    the .desktop's StartupWMClass=finbreak.
+    #  - Wayland app_id is QGuiApplication::desktopFileName(), which must equal the
+    #    installed .desktop basename. The OBS/distro package ships the reverse-DNS
+    #    io.github.milnet01.finbreak.desktop, so the app_id must be that app-ID or
+    #    the taskbar shows a second, generic icon. (The AppImage ships the same
+    #    reverse-DNS .desktop, so this app-ID is correct there too.)
     app.setApplicationName("finbreak")
-    QGuiApplication.setDesktopFileName("finbreak")
+    QGuiApplication.setDesktopFileName("io.github.milnet01.finbreak")
     app.setWindowIcon(app_icon())  # branded icon on every window + the taskbar
     app.setLayoutDirection(QLocale().textDirection())
 

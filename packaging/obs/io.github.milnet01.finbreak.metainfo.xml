@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- FIBR-0155: AppStream component consumed by software.opensuse.org, GNOME
+     Software and KDE Discover. The <releases> block mirrors CHANGELOG.md and is
+     kept in lockstep by the /bump recipe (changelog-writer Mode A); the newest
+     <release version> must equal __version__ (obs_packaging INV-6). Validate
+     with `appstreamcli validate io.github.milnet01.finbreak.metainfo.xml`. -->
+<component type="desktop-application">
+  <id>io.github.milnet01.finbreak</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+
+  <name>finbreak</name>
+  <summary>Understand your personal finances, privately and offline</summary>
+
+  <developer id="io.github.milnet01">
+    <name>Anthony Schemel</name>
+  </developer>
+
+  <description>
+    <p>
+      finbreak is a private, offline desktop app for understanding your money.
+      Import bank statements (CSV, OFX, or PDF), categorise transactions, and see
+      where your money goes — with everything stored locally in an encrypted
+      vault that only your password can open.
+    </p>
+    <p>Features:</p>
+    <ul>
+      <li>Import statements from CSV, OFX, and PDF, with per-bank mappings</li>
+      <li>Automatic and rule-based transaction categorisation you can override</li>
+      <li>A spending dashboard with drill-down by category and merchant</li>
+      <li>Recurring-payment and transfer detection</li>
+      <li>Password-protected PDF reports and encrypted backups</li>
+      <li>Strong local encryption (SQLCipher AES-256, Argon2id key)</li>
+      <li>No accounts, no cloud, no tracking — your data never leaves your device</li>
+    </ul>
+  </description>
+
+  <launchable type="desktop-id">io.github.milnet01.finbreak.desktop</launchable>
+
+  <categories>
+    <category>Office</category>
+    <category>Finance</category>
+  </categories>
+
+  <url type="homepage">https://antsprojectshub.co.za/p/fin-break.html</url>
+  <url type="bugtracker">https://github.com/milnet01/finbreak/issues</url>
+  <url type="vcs-browser">https://github.com/milnet01/finbreak</url>
+
+  <!-- A finance app with no objectionable content: an all-"none" OARS rating. -->
+  <content_rating type="oars-1.1"/>
+
+  <!-- Screenshots: upload real PNGs to the homepage before the first OBS submit
+       (§ 5 pre-submit checklist); the URL below is where they are hosted. -->
+  <screenshots>
+    <screenshot type="default">
+      <caption>The spending dashboard</caption>
+      <image>https://antsprojectshub.co.za/img/finbreak/dashboard.png</image>
+    </screenshot>
+  </screenshots>
+
+  <releases>
+    <release version="0.1.16" date="2026-07-18">
+      <description>
+        <p>Fixed:</p>
+        <ul>
+          <li>OFX import now files each transaction under the date the bank printed, even when the statement carries a timezone.</li>
+          <li>The delete-statement confirmation no longer over-states the loss when the statement overlaps another one you keep.</li>
+          <li>Deleting a statement no longer loses transactions that an overlapping statement still covers — they are handed over to the statement you keep.</li>
+        </ul>
+      </description>
+    </release>
+  </releases>
+</component>

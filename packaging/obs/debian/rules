@@ -1,0 +1,62 @@
+#!/usr/bin/make -f
+# debian/rules — deb recipe for Debian + Ubuntu (FIBR-0155). Same three steps as
+# the RPM: freeze the --onedir payload, lay it out under /usr/lib/finbreak/,
+# install the desktop assets + launcher. Version comes from debian/changelog,
+# kept == __version__ by the /bump sync (obs_packaging INV-6).
+export DH_VERBOSE = 1
+
+%:
+	dh $@
+
+override_dh_auto_build:
+	# Build venv on the target's OWN default python3 (§ 3.6). Install the pinned
+	# runtime deps + freezer OFFLINE from the vendored wheels (obs_packaging INV-7 —
+	# every build-phase pip install carries --no-index). Deps read from pyproject.
+	python3 -m venv debian/_bvenv
+	. debian/_bvenv/bin/activate && \
+	python3 -c "import tomllib; print('\n'.join(tomllib.load(open('pyproject.toml','rb'))['project']['dependencies']))" > debian/_deps.txt && \
+	pip install --no-index --find-links vendor/ -r debian/_deps.txt pyinstaller==6.21.0 && \
+	pyinstaller --onedir --name finbreak \
+	    --paths src \
+	    --add-data "src/finbreak/ui/icons:finbreak/ui/icons" \
+	    --add-data "src/finbreak/data:finbreak/data" \
+	    --hidden-import sqlcipher3 \
+	    --hidden-import pikepdf \
+	    --hidden-import PySide6.QtWidgets \
+	    --collect-binaries pikepdf \
+	    --collect-binaries sqlcipher3 \
+	    --collect-all argon2 \
+	    --collect-all _argon2_cffi_bindings \
+	    --collect-all ofxparse \
+	    --collect-all bs4 \
+	    --collect-all lxml \
+	    --collect-all pdfplumber \
+	    --collect-all pdfminer \
+	    --collect-all pypdfium2 \
+	    --collect-all pypdfium2_raw \
+	    --collect-all PIL \
+	    --collect-all cryptography \
+	    --collect-all certifi \
+	    --distpath dist --workpath debian/_pybuild --specpath debian \
+	    src/finbreak/__main__.py
+
+override_dh_auto_install:
+	# Payload tree → /usr/lib/finbreak/ (bootloader = dist/finbreak/finbreak).
+	mkdir -p debian/finbreak/usr/lib/finbreak
+	cp -a dist/finbreak/. debian/finbreak/usr/lib/finbreak/
+	# The /usr/bin launcher wrapper (renamed from finbreak.sh → finbreak, § 3.4).
+	install -Dm0755 packaging/obs/finbreak.sh debian/finbreak/usr/bin/finbreak
+	# Hicolor icons renamed to the app-ID (themed-icon name = Icon= in .desktop).
+	set -e; for s in 16 24 32 48 64 128 256 512; do \
+	    install -Dm0644 assets/icon/finbreak-$$s.png \
+	        debian/finbreak/usr/share/icons/hicolor/$${s}x$${s}/apps/io.github.milnet01.finbreak.png; \
+	done
+	# Staged-buildroot self-test (obs_packaging INV-2): the FIBR-0003 native-stack
+	# sentinel against the STAGED onedir freeze (not a bare finbreak on $$PATH — the
+	# package isn't installed yet), offscreen because the build root is headless.
+	QT_QPA_PLATFORM=offscreen debian/finbreak/usr/lib/finbreak/finbreak --self-test
+
+override_dh_shlibdeps:
+	# The bundled tree is a foreign closure (dlopen'd); only libGL/libEGL are
+	# host-left and declared in debian/control — keep dpkg-shlibdeps off the payload.
+	dh_shlibdeps -Xusr/lib/finbreak
