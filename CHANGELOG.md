@@ -23,6 +23,9 @@ signaling per
 
 ### Added
 
+- **"Forgot password? Start over" — a last-resort, double-confirmed destructive vault reset on the unlock screen** (FIBR-0030)
+  For a genuinely forgotten master password with no usable backup, the unlock screen now offers "Start over": after a clear irreversible-warning and a second step where you type DELETE, it permanently erases the vault and returns you to first-run setup so you can begin fresh. The old data was already unrecoverable without the password; nothing that could be recovered is lost. The reset removes the vault's complete on-disk footprint (database, key file, and SQLite's working sidecars), and clears the old lockout/hint state, leaving your app preferences untouched.
+
 - **Verify a backup is restorable, from Settings** (FIBR-0033)
   A new "Verify backup…" button in Settings opens a backup file (.fbk) and
   checks it read-only — confirming the password is right, the data isn't
