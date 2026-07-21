@@ -65,6 +65,7 @@ from finbreak.services.update import UpdateInfo, UpdateService
 from finbreak.services.update_installer import Installer, detect_installer
 from finbreak.ui._clipboard import ClipboardAutoClear
 from finbreak.ui._password_hint import clear_hint, read_hint, write_hint
+from finbreak.ui._unlock_throttle import UnlockThrottle
 from finbreak.ui._update_worker import DownloadWorker, UpdateCheckWorker
 from finbreak.ui.accounts import AccountsWidget
 from finbreak.ui.backup_export import BackupExportDialog
@@ -81,6 +82,7 @@ from finbreak.ui.recurring import RecurringWidget
 from finbreak.ui.rules import RulesWidget
 from finbreak.ui.set_hint import SetHintDialog
 from finbreak.ui.settings import SettingsDialog
+from finbreak.ui.start_over import StartOverDialog
 from finbreak.ui.statements import StatementsWidget
 from finbreak.ui.theme import ThemeController, polish_item_views
 from finbreak.ui.transactions import TransactionsView
@@ -535,6 +537,7 @@ class MainWindow(QMainWindow):
         dialog = UnlockDialog(self._service, self)
         dialog.unlocked.connect(self._enter_unlocked)
         dialog.restore_requested.connect(self._open_restore)
+        dialog.start_over_requested.connect(self._on_start_over)
         dialog.rejected.connect(self._teardown_dialog)  # cancel: stay locked
         self._open_dialog(dialog)
 
@@ -968,6 +971,55 @@ class MainWindow(QMainWindow):
             pw_bytes[:] = bytes(len(pw_bytes))  # wipe the KDF buffer (INV-8)
         self._teardown_dialog()
         self._status(self.tr("Password hint saved"))
+
+    def _on_start_over(self) -> None:
+        # Destructive "start over" from the unlock screen (FIBR-0030). Two gates,
+        # either cancel aborts with zero filesystem change.
+        # Step 1 — irreversible warning; explicit buttons + a Cancel default so a
+        # stray Enter cannot proceed (deliberately unlike statements.py's Yes-default
+        # question, whose delete is reversible).
+        choice = QMessageBox.warning(
+            self,
+            self.tr("Start over?"),
+            self.tr(
+                "This permanently erases your vault and everything in it. "
+                "It cannot be undone, and the data cannot be recovered "
+                "afterwards. Only do this if you have lost your password and "
+                "have no backup."
+            ),
+            QMessageBox.StandardButton.Cancel | QMessageBox.StandardButton.Yes,
+            QMessageBox.StandardButton.Cancel,  # default = the safe choice
+        )
+        if choice != QMessageBox.StandardButton.Yes:
+            return
+        # Step 2 — type-DELETE gate; a child modal over the still-open UnlockDialog.
+        # It lives outside the managed _dialog slot, so dispose it explicitly.
+        dialog = StartOverDialog(self)
+        accepted = dialog.exec() == QDialog.DialogCode.Accepted
+        dialog.deleteLater()
+        if not accepted:
+            return
+        # Only reset_vault() is wrapped: a second concurrent instance holding the DB
+        # open makes unlink raise OSError. Surface it and stay on unlock — do NOT
+        # promise the vault is intact (a second-unlink failure leaves a mixed state).
+        try:
+            self._service.reset_vault()
+        except OSError:
+            QMessageBox.critical(
+                self,
+                self.tr("Start over failed"),
+                self.tr(
+                    "finbreak could not erase the vault. The reset failed, so "
+                    "nothing has changed for certain — please try again."
+                ),
+            )
+            return
+        # Success only: clear the vault-coupled window.ini keys (the old vault's
+        # throttle lockout + hint), then route to first-run.
+        UnlockThrottle().reset()
+        clear_hint()
+        self._teardown_dialog()  # the child modal left UnlockDialog as the active slot
+        self._route_pre_login()  # both files gone → state() == "first_run"
 
     def _open_restore(self) -> None:
         # Pre-login restore, reachable from first-run + unlock (INV-8). Tear down the

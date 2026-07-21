@@ -44,6 +44,9 @@ class UnlockDialog(QDialog):
     # "Forgot password? Restore from a backup" — the shell owns the pre-login
     # restore flow (FIBR-0014 INV-8/D5).
     restore_requested = Signal()
+    # "Forgot password? Start over…" — the shell owns the destructive reset flow
+    # (FIBR-0030 § 3.1); like restore, the dialog only emits, holds no service ref.
+    start_over_requested = Signal()
 
     def __init__(self, service: AuthService, parent: QWidget | None = None):
         super().__init__(parent)
@@ -69,6 +72,11 @@ class UnlockDialog(QDialog):
         )
         self._restore_button.setObjectName("unlock_restore")
         self._restore_button.setFlat(True)
+        # The more drastic option — always present (a user with no hint and no
+        # password must still reach it), so it can't be gated on any stored state.
+        self._start_over_button = QPushButton(self.tr("Forgot password? Start over…"))
+        self._start_over_button.setObjectName("unlock_start_over")
+        self._start_over_button.setFlat(True)
 
         # Optional password hint (FIBR-0029 § 3.3). Read ONCE at build, pre-unlock,
         # needing no key (INV-3). Only add the reveal-on-click affordance when a
@@ -101,11 +109,14 @@ class UnlockDialog(QDialog):
             layout.addWidget(self._hint_label)
             self._hint_button.clicked.connect(self._reveal_hint)
         layout.addWidget(self._restore_button)
+        # After (below) restore — it is the more drastic escape hatch (§ 3.1).
+        layout.addWidget(self._start_over_button)
         layout.addWidget(buttons)
 
         self._unlock_button.clicked.connect(self._on_unlock)
         self._password.returnPressed.connect(self._on_unlock)
         self._restore_button.clicked.connect(self.restore_requested)
+        self._start_over_button.clicked.connect(self.start_over_requested)
 
     @Slot()
     def _reveal_hint(self) -> None:
@@ -178,6 +189,9 @@ class UnlockDialog(QDialog):
         # Restore is a dismissal-like route (it tears down this dialog); disable it
         # mid-derivation too so the parented worker is never deleted under it.
         self._restore_button.setEnabled(not busy)
+        # Start over is the same kind of dismissal-like route — no reset while a
+        # derivation runs (FIBR-0030 § 3.1 / INV-9).
+        self._start_over_button.setEnabled(not busy)
 
     @Slot(bytes)
     def _on_derived(self, raw: bytes) -> None:

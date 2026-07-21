@@ -304,6 +304,31 @@ class AuthService:
         self._key = None
         log.info("locked")
 
+    def reset_vault(self) -> None:
+        """Irreversibly delete the vault and its on-disk data footprint (DB, KDF
+        sidecar, and both SQLite WAL sidecars), then leave the service in a locked,
+        first-run state (FIBR-0030). Safe to call while locked — the unlock screen
+        is the only caller, so the vault is typically never-unlocked when this runs."""
+        self.lock()  # idempotent when already locked; releases any DB handle so the
+        # unlink is Windows-safe, and wipes self._key if one is held.
+        vault_path = self._vault.vault_path
+        sidecar_path = self._vault.sidecar_path
+        for path in (
+            vault_path,
+            sidecar_path,
+            # SQLite runs in WAL mode (vault.py create/open), so it writes
+            # `<db>-wal` and `<db>-shm` sidecars beside the DB. They hold the
+            # vault's most recent (encrypted) transactions — part of the user's
+            # data — and no path helper names them, so nothing else unlinks them.
+            # "Start over" removes them too: so no fragment of the old vault
+            # survives, and so an orphaned -wal can't interact with the next,
+            # differently keyed vault created at first-run.
+            vault_path.with_name(vault_path.name + "-wal"),
+            vault_path.with_name(vault_path.name + "-shm"),
+        ):
+            path.unlink(missing_ok=True)
+        log.info("vault reset")
+
     def _on_idle_timeout(self) -> None:
         if self._key is None:
             return  # already locked — a stale queued fire must not disturb the UI
