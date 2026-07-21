@@ -1516,6 +1516,15 @@ because retrofitting them is a data migration.
   Lanes: ui, services.
   Source: user-request-2026-07-19.
 
+- 📋 [FIBR-0156] **Menu bar: add a "Report an Issue" item to the right of Donate that lets users log an app issue.**
+  User wants a menu-bar entry to the RIGHT of Donate for logging an issue with the app. Anchor: the menu bar is File · View · Window · Help · Donate (main_window.py:4); Donate's actions open URLs via self._open_url(...) + QDesktopServices (main_window.py:32, :360-376), mirroring the .github/FUNDING.yml donate-URL pattern.
+
+  Design (for the spec): a new top-level "Report an Issue" menu-bar item positioned after Donate, opening the public repo's issue page (https://github.com/milnet01/finbreak/issues/new) in the user's browser via self._open_url — privacy-preserving and consistent with the local-only model + security-model INV-8 (opening a URL in the browser is NOT app network access, exactly like Donate). Decide: single top-level action vs a small menu ("Report a bug" / "Request a feature" → issues/new?template=...); optionally pre-fill the issue body with __version__ + OS via URL query (?title=&body=&labels=) — no sensitive data. Keep the URL as a module constant near the DONATE_* constants. Needs: spec (tiny) → cold-eyes (self-read; a one-menu-item feature test, not a multi-file design doc) → reproduce-first TDD (mirror the Donate action tests) → close.
+  **Layman:** Add a "Report an Issue" button next to "Donate" in the top menu so users can quickly report a bug or request a feature — it opens the project's issue page in their browser (no data leaves the app).
+  Kind: feature.
+  Lanes: ui.
+  Source: user-request-2026-07-21.
+
 ### ⚡ Performance
 
 - ✅ [FIBR-0025] **Enable SQLite WAL mode.** Set
