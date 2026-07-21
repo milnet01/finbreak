@@ -252,7 +252,11 @@ class TransactionsView(QWidget):
             filtered = [
                 (token, [c for c in cats if c.id in present]) for token, cats in grouped
             ]
-            add_grouped_categories(self._category, filtered)
+            add_grouped_categories(
+                self._category,
+                filtered,
+                self._categorization.sub_category_parent_names(),
+            )
             self._select_data(self._category, held_category)
         finally:
             self._loading = False
@@ -400,7 +404,12 @@ class TransactionsView(QWidget):
         if txn is None:
             return
         grouped = self._categorization.leaf_categories_grouped()
-        dialog = CategoryPickerDialog(grouped, txn.category_id, self)
+        dialog = CategoryPickerDialog(
+            grouped,
+            txn.category_id,
+            self,
+            parent_names=self._categorization.sub_category_parent_names(),
+        )
         show_modal(dialog, lambda: self._apply_category(dialog, txn))
 
     def _apply_category(self, dialog: CategoryPickerDialog, txn: Transaction) -> None:
@@ -418,7 +427,11 @@ class TransactionsView(QWidget):
         if chosen == self._categorization.would_categorize(description):
             return
         dialog = RuleEditDialog(
-            self._categorization.leaf_categories_grouped(), description, chosen, self
+            self._categorization.leaf_categories_grouped(),
+            description,
+            chosen,
+            self,
+            parent_names=self._categorization.sub_category_parent_names(),
         )
         show_modal(dialog, lambda: self._apply_learned_rule(dialog))
 

@@ -483,7 +483,7 @@ def test_INV2a_add_under_a_type_creates_a_level2(qtbot, service):
     widget._add_button.click()
     assert widget._error.text() == ""
     kids = {c.name for c in svc.children_of(income.id)}
-    assert "Consulting" in kids, "parented onto the SELECTED Type (Income), not a default"
+    assert "Consulting" in kids, "parented onto the SELECTED Type (Income)"
     assert _child_named(svc, income.id, "Consulting").parent_id == income.id
 
 

@@ -194,6 +194,24 @@ class CategorizationService:
             if cats
         ]
 
+    def sub_category_parent_names(self) -> dict[int, str]:
+        """A ``{category id: immediate-parent name}`` map for every category whose
+        parent is itself **non-root** — a Level-3 (grandchild) or deeper node
+        (FIBR-0154 INV-4). A Level-2 Category (parent is a Type root) is **absent**:
+        the FIBR-0123 ``Name (Type)`` tag already disambiguates those, and the deeper
+        breadcrumb is only needed one hop below. Computed from one ``list_all()`` +
+        a ``by_id`` dict — the same pattern ``leaf_categories_grouped`` uses."""
+        all_categories = CategoryRepository(self._conn).list_all()
+        by_id = {c.id: c for c in all_categories}
+        names: dict[int, str] = {}
+        for category in all_categories:
+            if category.parent_id is None:
+                continue  # a Type root has no parent to breadcrumb
+            parent = by_id.get(category.parent_id)
+            if parent is not None and parent.parent_id is not None:
+                names[category.id] = parent.name
+        return names
+
     def would_categorize(self, description: str) -> int | None:
         """The category the current **rules or built-in library** would assign to
         ``description`` (the learning "differs" check, D11) — computed against the

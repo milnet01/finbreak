@@ -222,7 +222,9 @@ def spy_learning(monkeypatch, ui_mod, *, accept, ret_pattern="", ret_cat=None):
     Add/Edit sites (``parent`` + ``parent_names`` by keyword)."""
     calls = _CallLog()
 
-    def factory(leaves, description="", category_id=None, parent=None, parent_names=None):
+    def factory(
+        leaves, description="", category_id=None, parent=None, parent_names=None
+    ):
         calls.append(True)
         calls.parent_names = parent_names
         return RuleStub(parent, ret_pattern, ret_cat, accept, parent_names)

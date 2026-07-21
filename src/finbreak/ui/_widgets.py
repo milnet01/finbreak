@@ -46,7 +46,9 @@ def category_type_labels() -> dict[str, str]:
 
 
 def add_grouped_categories(
-    combo: QComboBox, grouped: list[tuple[str, list[Category]]]
+    combo: QComboBox,
+    grouped: list[tuple[str, list[Category]]],
+    parent_names: dict[int, str] | None = None,
 ) -> None:
     """Append the grouped categories to ``combo`` (FIBR-0123 INV-1/INV-3): a
     disabled, bold section header per **non-empty** section (its text the plain
@@ -54,12 +56,20 @@ def add_grouped_categories(
     carrying the category id as ``userData``. Rendered in the order given — the
     ordering / sort is the service's guarantee, not this helper's.
 
+    ``parent_names`` (FIBR-0154 INV-4) breadcrumbs a Level-3 (grandchild) row so
+    same-named sub-categories under different parents stay distinct: when a row's
+    ``category.id`` is in the map, its name renders as ``"{parent} › {row}"``
+    (translatable via the same ``_LABEL_CONTEXT``), e.g.
+    ``"Groceries › Spar (Expenditure)"``. Default ``None`` = today's behaviour.
+
     Selection: a combo auto-rests on index 0, which may be a disabled header, so
     after populating, if the current row is not selectable the resting selection
     moves to the first enabled row; an already-selectable current (e.g. the
     picker's ``Uncategorised``) is left untouched."""
     labels = category_type_labels()
     row_tag = QCoreApplication.translate(_LABEL_CONTEXT, "{name} ({type})")
+    breadcrumb = QCoreApplication.translate(_LABEL_CONTEXT, "{parent} › {row}")
+    parent_names = parent_names or {}
     for token, categories in grouped:
         if not categories:
             continue  # a section with no categories contributes no header
@@ -71,9 +81,10 @@ def add_grouped_categories(
         header.setFont(font)
         header.setFlags(Qt.ItemFlag.NoItemFlags)  # non-selectable, non-enabled
         for category in categories:
-            combo.addItem(
-                row_tag.format(name=category.name, type=type_label), category.id
-            )
+            name = category.name
+            if category.id in parent_names:
+                name = breadcrumb.format(parent=parent_names[category.id], row=name)
+            combo.addItem(row_tag.format(name=name, type=type_label), category.id)
     _rest_on_first_selectable(combo)
 
 

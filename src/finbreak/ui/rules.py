@@ -55,6 +55,7 @@ class RuleEditDialog(QDialog):
         pattern: str = "",
         category_id: int | None = None,
         parent: QWidget | None = None,
+        parent_names: dict[int, str] | None = None,
     ):
         super().__init__(parent)
         self.setWindowTitle(self.tr("Rule"))
@@ -62,7 +63,7 @@ class RuleEditDialog(QDialog):
         self._pattern = QLineEdit(pattern)
         self._pattern.setPlaceholderText(self.tr("Text to look for in the description"))
         self._category = QComboBox()
-        add_grouped_categories(self._category, grouped)
+        add_grouped_categories(self._category, grouped, parent_names)
         if category_id is not None:
             select_combo_data(self._category, category_id)
 
@@ -193,7 +194,11 @@ class RulesWidget(QWidget):
             # grouped is empty exactly when no leaves exist (every section omitted).
             self._error.setText(self.tr("Create a category first, then add a rule."))
             return
-        dialog = RuleEditDialog(grouped, parent=self)
+        dialog = RuleEditDialog(
+            grouped,
+            parent=self,
+            parent_names=self._categorization.sub_category_parent_names(),
+        )
         # Non-blocking (FIBR-0065): a lock while the dialog is open destroys it
         # before _apply_add runs, so no read hits a deleted C++ object.
         show_modal(dialog, lambda: self._apply_add(dialog))
@@ -223,6 +228,7 @@ class RulesWidget(QWidget):
             rule.pattern,
             rule.category_id,
             self,
+            parent_names=self._categorization.sub_category_parent_names(),
         )
         show_modal(dialog, lambda: self._apply_edit(dialog, rule.id))
 

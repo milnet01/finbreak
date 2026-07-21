@@ -30,13 +30,14 @@ class CategoryPickerDialog(QDialog):
         grouped: list[tuple[str, list[Category]]],
         current_category_id: int | None,
         parent: QWidget | None = None,
+        parent_names: dict[int, str] | None = None,
     ):
         super().__init__(parent)
         self.setWindowTitle(self.tr("Set category"))
 
         self._combo = QComboBox()
         self._combo.addItem(self.tr("Uncategorised"), None)  # index 0 — the default
-        add_grouped_categories(self._combo, grouped)
+        add_grouped_categories(self._combo, grouped, parent_names)
         if current_category_id is not None:
             select_combo_data(self._combo, current_category_id)
 
