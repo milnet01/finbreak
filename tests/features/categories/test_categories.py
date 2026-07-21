@@ -401,39 +401,278 @@ def test_FIBR0123_manager_sources_type_labels_from_shared_helper(
     assert labels == {"INC!", "EXP!"}, "root labels follow the shared helper"
 
 
-def test_INV7b_add_under_a_type_appears_in_that_branch(qtbot, service):
+# --------------------------------------------------------------------------- #
+# FIBR-0154 — a 3rd tier (Type → Category → Sub-category). The redesigned
+# CategoriesWidget anchors Add to the tree selection and re-parents via a
+# dedicated subject-aware "Move under…" combo used by Update only. These tests
+# replace the retired test_INV7b / test_INV7cd, which drove the removed
+# roots-only ``_type`` combo (§ 7); their intent lives on in INV-2 / INV-7.
+# --------------------------------------------------------------------------- #
+def _child_named(svc, parent_id, name):
+    """The direct child of ``parent_id`` named ``name`` (e.g. the seeded
+    'Groceries' under the Expenditure root)."""
+    return next(c for c in svc.children_of(parent_id) if c.name == name)
+
+
+def _item_by_id(tree, category_id):
+    """The QTreeWidgetItem carrying ``category_id`` anywhere in the tree, walked
+    recursively — so finding a Level-3 node proves the render reaches depth 3."""
+    from finbreak.ui.categories import _ID_ROLE
+
+    def walk(item):
+        if item.data(0, _ID_ROLE) == category_id:
+            return item
+        for i in range(item.childCount()):
+            found = walk(item.child(i))
+            if found is not None:
+                return found
+        return None
+
+    for i in range(tree.topLevelItemCount()):
+        found = walk(tree.topLevelItem(i))
+        if found is not None:
+            return found
+    return None
+
+
+def _move_under_ids(widget):
+    """The set of category ids offered by the subject-aware 'Move under…' combo."""
+    combo = widget._move_under
+    return {combo.itemData(i) for i in range(combo.count())}
+
+
+# INV-1 — the tree renders three levels.
+def test_INV1_tree_renders_three_levels(qtbot, service):
+    """INV-1: _refresh renders Type → Level-2 → Level-3 as nested items (seed
+    Expenditure › Groceries › Spar via the service)."""
     from finbreak.ui.categories import CategoriesWidget
 
-    income = _roots(service.vault.connection)["income"]
+    svc = CategoryService(service.vault)
+    expenditure = _roots(service.vault.connection)["expenditure"]
+    groceries = _child_named(svc, expenditure.id, "Groceries")
+    spar = svc.add_category(groceries.id, "Spar")
+
     widget = CategoriesWidget(service)
     qtbot.addWidget(widget)
+    spar_item = _item_by_id(widget._tree, spar.id)
+    assert spar_item is not None, "the Level-3 sub-category renders"
+    assert spar_item.text(0) == "Spar"
+    parent = spar_item.parent()
+    assert parent is not None and parent.text(0) == "Groceries", "nested under Level-2"
+    grandparent = parent.parent()
+    assert grandparent is not None, "which is nested under the Type root"
+    assert widget._kind_of_item(grandparent) == "expenditure"
+
+
+# INV-2 — Add creates a child under the SELECTED node.
+def test_INV2a_add_under_a_type_creates_a_level2(qtbot, service):
+    """INV-2(a): with a Type selected, Add parents the new category onto THAT Type
+    (Level-2) — the create-under-a-root path. Income is used (not the ci-first
+    default Expenditure) so the assertion pins anchor-to-selection, never the old
+    roots-combo default."""
+    from finbreak.ui.categories import CategoriesWidget
+
+    svc = CategoryService(service.vault)
+    income = _roots(service.vault.connection)["income"]
+
+    widget = CategoriesWidget(service)
+    qtbot.addWidget(widget)
+    widget._select_category(income.id)
+    assert widget._add_button.isEnabled(), "Add is enabled with a Type selected"
     widget._name.setText("Consulting")
-    widget._type.setCurrentIndex(widget._type.findData(income.id))
     widget._add_button.click()
     assert widget._error.text() == ""
-    kids = {c.name for c in CategoryService(service.vault).children_of(income.id)}
-    assert "Consulting" in kids
+    kids = {c.name for c in svc.children_of(income.id)}
+    assert "Consulting" in kids, "parented onto the SELECTED Type (Income), not a default"
+    assert _child_named(svc, income.id, "Consulting").parent_id == income.id
 
 
-def test_INV7cd_select_loads_form_and_update_reparents(qtbot, service):
+def test_INV2b_add_under_a_category_creates_a_level3(qtbot, service):
+    """INV-2(b): with a Level-2 Category selected, Add creates a Level-3
+    sub-category under it — a parent the retired roots-only combo could never
+    express."""
+    from finbreak.ui.categories import CategoriesWidget
+
+    svc = CategoryService(service.vault)
+    expenditure = _roots(service.vault.connection)["expenditure"]
+    groceries = _child_named(svc, expenditure.id, "Groceries")
+
+    widget = CategoriesWidget(service)
+    qtbot.addWidget(widget)
+    widget._select_category(groceries.id)
+    assert widget._add_button.isEnabled()
+    widget._name.setText("Spar")
+    widget._add_button.click()
+    assert widget._error.text() == ""
+    kids = {c.name for c in svc.children_of(groceries.id)}
+    assert "Spar" in kids, "the new node is a Level-3 child of Groceries"
+
+
+# INV-3 — the UI caps depth at 3 (creation AND re-parent).
+def test_INV3a_add_disabled_on_level3_and_no_selection(qtbot, service):
+    """INV-3(a): Add is disabled when nothing is selected (no parent to add under)
+    and on a Level-3 node (a child would be Level 4); enabled again on a Level-2."""
+    from finbreak.ui.categories import CategoriesWidget
+
+    svc = CategoryService(service.vault)
+    expenditure = _roots(service.vault.connection)["expenditure"]
+    groceries = _child_named(svc, expenditure.id, "Groceries")
+    spar = svc.add_category(groceries.id, "Spar")
+
+    widget = CategoriesWidget(service)
+    qtbot.addWidget(widget)
+    assert not widget._add_button.isEnabled(), "no selection -> Add disabled"
+    widget._select_category(spar.id)
+    assert not widget._add_button.isEnabled(), "Level-3 selected -> Add disabled (cap)"
+    widget._select_category(groceries.id)
+    assert widget._add_button.isEnabled(), "Level-2 selected -> Add enabled"
+
+
+def test_INV3b_childed_level2_reparents_under_types_only(qtbot, service):
+    """INV-3(b): a childed Level-2 (Groceries with child Spar) offers ONLY the two
+    Types in 'Move under…' — moving it under another Level-2 (which would push its
+    child to Level 4) is impossible from the UI."""
     from finbreak.ui.categories import CategoriesWidget
 
     svc = CategoryService(service.vault)
     roots = _roots(service.vault.connection)
     income, expenditure = roots["income"], roots["expenditure"]
-    cat = svc.add_category(income.id, "Sundry")  # will be renamed + re-parented
+    groceries = _child_named(svc, expenditure.id, "Groceries")
+    svc.add_category(groceries.id, "Spar")  # makes Groceries a childed Level-2
 
     widget = CategoriesWidget(service)
     qtbot.addWidget(widget)
-    widget._select_category(cat.id)
-    assert widget._name.text() == "Sundry", "selection loads the name into the form"
+    widget._select_category(groceries.id)
+    assert _move_under_ids(widget) == {income.id, expenditure.id}, "Types only"
 
-    widget._name.setText("Sundries")
-    widget._type.setCurrentIndex(widget._type.findData(expenditure.id))
+
+def test_INV3c_childless_level2_reparents_under_types_and_categories(qtbot, service):
+    """INV-3(c): a childless Level-2 (Fuel) offers {Types + the other Level-2
+    Categories} but EXCLUDES itself (self-exclusion, only exercised when Level-2
+    candidates are present)."""
+    from finbreak.ui.categories import CategoriesWidget
+
+    svc = CategoryService(service.vault)
+    roots = _roots(service.vault.connection)
+    income, expenditure = roots["income"], roots["expenditure"]
+    fuel = svc.add_category(expenditure.id, "Fuel")  # childless Level-2
+    groceries = _child_named(svc, expenditure.id, "Groceries")
+
+    widget = CategoriesWidget(service)
+    qtbot.addWidget(widget)
+    widget._select_category(fuel.id)
+    offered = _move_under_ids(widget)
+    assert {income.id, expenditure.id} <= offered, "both Types are offered"
+    assert groceries.id in offered, "another Level-2 Category is offered"
+    assert fuel.id not in offered, "the subject itself is excluded"
+
+
+# INV-5 — a mid-tier Category stays assignable (a regression guard: the redesign
+# leaves the service untouched, so this stays green).
+def test_INV5_midtier_category_stays_assignable(service):
+    """INV-5: after Groceries gains a Spar child, Groceries is still offered by the
+    pickers and still a valid manual target."""
+    from finbreak.repositories.accounts import AccountRepository
+    from finbreak.repositories.transactions import TransactionRepository
+    from finbreak.services.categorization import CategorizationService
+
+    svc = CategoryService(service.vault)
+    cs = CategorizationService(service.vault)
+    expenditure = _roots(service.vault.connection)["expenditure"]
+    groceries = _child_named(svc, expenditure.id, "Groceries")
+    svc.add_category(groceries.id, "Spar")
+
+    grouped_ids = {c.id for _t, cats in cs.leaf_categories_grouped() for c in cats}
+    assert groceries.id in grouped_ids, "the mid-tier category is still offered"
+
+    acct = AccountRepository(service.vault.connection).list_all()[0].id
+    txn = TransactionRepository(service.vault.connection).add(
+        acct, "2026-01-05", -1000, "GROCERY RUN"
+    )
+    cs.set_manual_category(txn, groceries.id)  # must not raise — a mid-tier is a leaf
+    row = service.vault.connection.execute(
+        "SELECT category_id FROM transactions WHERE id = ?", (txn,)
+    ).fetchone()
+    assert row[0] == groceries.id
+
+
+# INV-7 — rename, re-parent & delete at all three levels.
+def test_INV7a_rename_level3_keeps_parent(qtbot, service):
+    """INV-7(a): rename a Level-3 sub-category via Update — the name changes and
+    parent_id is unchanged."""
+    from finbreak.ui.categories import CategoriesWidget
+
+    svc = CategoryService(service.vault)
+    expenditure = _roots(service.vault.connection)["expenditure"]
+    groceries = _child_named(svc, expenditure.id, "Groceries")
+    spar = svc.add_category(groceries.id, "Spar")
+
+    widget = CategoriesWidget(service)
+    qtbot.addWidget(widget)
+    widget._select_category(spar.id)
+    widget._name.setText("Pick n Pay")
     widget._update_button.click()
     assert widget._error.text() == ""
-    edited = CategoryRepository(service.vault.connection).get(cat.id)
-    assert edited.name == "Sundries" and edited.parent_id == expenditure.id
+    edited = CategoryRepository(service.vault.connection).get(spar.id)
+    assert edited.name == "Pick n Pay"
+    assert edited.parent_id == groceries.id, "a rename leaves the parent unchanged"
+
+
+def test_INV7b_pure_reparent_via_move_under_keeps_name(qtbot, service):
+    """INV-7(b): a childless Level-2 (Fuel) with an EMPTY name field + a 'Move
+    under…' change re-parents (parent_id updates) AND keeps the current name
+    (empty ⇒ keep-current-name — the assertion the retired test_INV7cd carried,
+    § 7). The name field starts empty; the current name is placeholder only
+    (§ 4.2), so a pure re-parent never trips the service's empty-name guard."""
+    from finbreak.ui._widgets import select_combo_data
+    from finbreak.ui.categories import CategoriesWidget
+
+    svc = CategoryService(service.vault)
+    roots = _roots(service.vault.connection)
+    income, expenditure = roots["income"], roots["expenditure"]
+    fuel = svc.add_category(expenditure.id, "Fuel")
+
+    widget = CategoriesWidget(service)
+    qtbot.addWidget(widget)
+    widget._select_category(fuel.id)
+    assert widget._name.text() == "", "the name field starts empty (placeholder only)"
+    select_combo_data(widget._move_under, income.id)
+    widget._update_button.click()
+    assert widget._error.text() == ""
+    edited = CategoryRepository(service.vault.connection).get(fuel.id)
+    assert edited.parent_id == income.id, "the re-parent executed"
+    assert edited.name == "Fuel", "an empty name field keeps the current name"
+
+
+def test_INV7c_delete_childed_refused_and_childless_leaf_succeeds(
+    qtbot, service, monkeypatch
+):
+    """INV-7(c): deleting a Level-2 that HAS children is refused (message shown,
+    nothing removed); a childless Level-3 leaf deletes. Reaching the Level-3 node
+    to delete it also exercises _select_category recursing to depth 3."""
+    from PySide6.QtWidgets import QMessageBox
+
+    from finbreak.ui.categories import CategoriesWidget
+
+    svc = CategoryService(service.vault)
+    expenditure = _roots(service.vault.connection)["expenditure"]
+    groceries = _child_named(svc, expenditure.id, "Groceries")
+    spar = svc.add_category(groceries.id, "Spar")
+
+    widget = CategoriesWidget(service)
+    qtbot.addWidget(widget)
+    monkeypatch.setattr(
+        QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.Yes
+    )
+
+    widget._select_category(groceries.id)  # Level-2 with a child
+    widget._delete_button.click()
+    assert widget._error.text() != "", "deleting a childed category is refused"
+    assert CategoryRepository(service.vault.connection).get(groceries.id) is not None
+
+    widget._select_category(spar.id)  # childless Level-3
+    widget._delete_button.click()
+    assert CategoryRepository(service.vault.connection).get(spar.id) is None
 
 
 def test_INV7e_delete_childless_removes_from_tree(qtbot, service, monkeypatch):
@@ -496,12 +735,17 @@ def test_INV8_category_cycle_logs_no_secret(service, caplog):
 
 def test_add_category_swallows_vault_locked_silently(qtbot, service, monkeypatch):
     """An auto-lock mid-add returns silently, matching the delete handler.
-    (indie-review UI-dialogs M1)"""
+    (indie-review UI-dialogs M1). Post-FIBR-0154 ``_on_add`` is anchored to the
+    tree selection, so a parent Type is selected first — otherwise the
+    selection-guard returns early and the monkeypatched ``add_category`` (the
+    swallow path under test) never runs (a vacuous green, § 7)."""
     from finbreak.errors import VaultLockedError
     from finbreak.ui.categories import CategoriesWidget
 
+    income = _roots(service.vault.connection)["income"]
     widget = CategoriesWidget(service)
     qtbot.addWidget(widget)
+    widget._select_category(income.id)  # anchor Add to a Type parent
     widget._name.setText("New")
 
     def locked(*a, **k):

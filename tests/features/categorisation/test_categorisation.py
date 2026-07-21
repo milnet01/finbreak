@@ -713,7 +713,9 @@ def test_edge_empty_description_row_stays_uncategorised(service):
 # INV-11 — the Rules tab (qtbot)
 # --------------------------------------------------------------------------- #
 def _stub_rule_dialog(monkeypatch, rules_mod, *, pattern, category_id, accept=True):
-    def factory(leaves, pat="", cat=None, parent=None):
+    # ``parent_names`` (FIBR-0154) is accepted + ignored so the redesigned
+    # RuleEditDialog constructor's new last kwarg never TypeErrors this stub.
+    def factory(leaves, pat="", cat=None, parent=None, parent_names=None):
         return RuleStub(parent, pattern, category_id, accept)
 
     monkeypatch.setattr(rules_mod, "RuleEditDialog", factory)
