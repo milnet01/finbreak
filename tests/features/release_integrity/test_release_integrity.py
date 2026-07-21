@@ -220,7 +220,9 @@ def test_INV3a_signed_manifest_roundtrip_and_tamper(tmp_path):
 # INV-3b — each release script double-verifies against the committed key: the
 # fetched manifest before the merge, the re-signed manifest before the upload.
 # --------------------------------------------------------------------------- #
-@pytest.mark.parametrize("script", [_RELEASE_LINUX, _RELEASE_WINDOWS], ids=lambda p: p.name)
+@pytest.mark.parametrize(
+    "script", [_RELEASE_LINUX, _RELEASE_WINDOWS], ids=lambda p: p.name
+)
 def test_INV3b_double_verify_gate_bound_to_position(script):
     text = script.read_text()
 
@@ -233,7 +235,9 @@ def test_INV3b_double_verify_gate_bound_to_position(script):
         if "SHA256SUMS" in block:
             upload_i = text.index(block)
             break
-    assert upload_i is not None, f"{script.name}: no gh release command carries SHA256SUMS"
+    assert upload_i is not None, (
+        f"{script.name}: no gh release command carries SHA256SUMS"
+    )
     assert merge_i < upload_i, f"{script.name}: the merge must precede the upload"
 
     before_merge = text[:merge_i]
@@ -242,7 +246,9 @@ def test_INV3b_double_verify_gate_bound_to_position(script):
     # gate 1 — the FETCHED SHA256SUMS.sig verified against the committed key
     # BEFORE the merge (§ 3.3 step 3, anti-laundering). Bound to its subject +
     # position: deleting it strips the only SHA256SUMS.sig verify before merge.
-    assert "SHA256SUMS.sig" in before_merge and "RELEASE_PUBLIC_KEY_B64" in before_merge, (
+    assert (
+        "SHA256SUMS.sig" in before_merge and "RELEASE_PUBLIC_KEY_B64" in before_merge
+    ), (
         f"{script.name}: no fetched-manifest verify gate (SHA256SUMS.sig vs "
         "RELEASE_PUBLIC_KEY_B64) before the gen-checksums.sh merge"
     )
@@ -262,16 +268,24 @@ def test_INV4_release_scripts_publish_new_artifacts():
     linux_blocks = _gh_release_blocks(_RELEASE_LINUX.read_text())
     assert linux_blocks, "release-linux.sh: no gh release command found"
     for block in linux_blocks:  # both the create and the upload --clobber branch
-        assert "SHA256SUMS.sig" in block, "release-linux.sh: SHA256SUMS.sig not in asset list"
+        assert "SHA256SUMS.sig" in block, (
+            "release-linux.sh: SHA256SUMS.sig not in asset list"
+        )
         assert "SHA256SUMS" in block
-        assert "-linux.cdx.json" in block, "release-linux.sh: linux SBOM not in asset list"
+        assert "-linux.cdx.json" in block, (
+            "release-linux.sh: linux SBOM not in asset list"
+        )
 
     windows_blocks = _gh_release_blocks(_RELEASE_WINDOWS.read_text())
     assert windows_blocks, "release-windows.sh: no gh release command found"
     for block in windows_blocks:
-        assert "SHA256SUMS.sig" in block, "release-windows.sh: SHA256SUMS.sig not re-uploaded"
+        assert "SHA256SUMS.sig" in block, (
+            "release-windows.sh: SHA256SUMS.sig not re-uploaded"
+        )
         assert "SHA256SUMS" in block
-        assert "-windows.cdx.json" in block, "release-windows.sh: windows SBOM not in asset list"
+        assert "-windows.cdx.json" in block, (
+            "release-windows.sh: windows SBOM not in asset list"
+        )
 
 
 # --------------------------------------------------------------------------- #
@@ -280,7 +294,9 @@ def test_INV4_release_scripts_publish_new_artifacts():
 def test_INV5_linux_sbom_generated_in_build():
     src = _LINUX_FREEZE.read_text()
     assert "pip-audit==2.10.0" in src, "linux freeze must install the pinned pip-audit"
-    assert "pip-audit -r" in src and "--no-deps" in src, "must audit the frozen closure as-is"
+    assert "pip-audit -r" in src and "--no-deps" in src, (
+        "must audit the frozen closure as-is"
+    )
     assert "cyclonedx-json" in src, "SBOM must be CycloneDX JSON"
     assert "-linux.cdx.json" in src, "linux SBOM output name missing"
     assert _has_sbom_existence_guard(src), "linux SBOM has no output-existence guard"
@@ -289,16 +305,26 @@ def test_INV5_linux_sbom_generated_in_build():
 def test_INV5_windows_sbom_generated_across_two_files():
     # File 1: the driver captures the runtime closure to a fixed handoff path.
     driver = _WIN_DRIVER.read_text()
-    assert "runtime-frozen.txt" in driver, "build-windows-exe.py must write the frozen closure"
-    assert "freeze" in driver, "build-windows-exe.py must pip-freeze the runtime closure"
+    assert "runtime-frozen.txt" in driver, (
+        "build-windows-exe.py must write the frozen closure"
+    )
+    assert "freeze" in driver, (
+        "build-windows-exe.py must pip-freeze the runtime closure"
+    )
 
     # File 2: the workflow audits it into a CycloneDX SBOM (bash for `|| true`).
     wf = _WIN_WORKFLOW.read_text()
-    assert "pip-audit==2.10.0" in wf, "windows SBOM step must install the pinned pip-audit"
-    assert "pip-audit -r" in wf and "--no-deps" in wf, "must audit the frozen closure as-is"
+    assert "pip-audit==2.10.0" in wf, (
+        "windows SBOM step must install the pinned pip-audit"
+    )
+    assert "pip-audit -r" in wf and "--no-deps" in wf, (
+        "must audit the frozen closure as-is"
+    )
     assert "cyclonedx-json" in wf, "SBOM must be CycloneDX JSON"
     assert "-windows.cdx.json" in wf, "windows SBOM output name missing"
-    assert "shell: bash" in wf, "the `|| true` SBOM step must set shell: bash on windows-latest"
+    assert "shell: bash" in wf, (
+        "the `|| true` SBOM step must set shell: bash on windows-latest"
+    )
     assert _has_sbom_existence_guard(wf), "windows SBOM has no output-existence guard"
 
 
@@ -307,18 +333,22 @@ def test_INV5_windows_sbom_generated_across_two_files():
 # --------------------------------------------------------------------------- #
 def test_INV6_sbom_names_stamped_off_version_env_not_literal():
     linux = _LINUX_FREEZE.read_text()
-    assert "finbreak-$VERSION-linux.cdx.json" in linux, "linux SBOM name must embed $VERSION"
+    assert "finbreak-$VERSION-linux.cdx.json" in linux, (
+        "linux SBOM name must embed $VERSION"
+    )
     assert not re.search(r"finbreak-\d+\.\d+\.\d+-linux\.cdx\.json", linux), (
         "linux SBOM name must not hardcode a version"
     )
 
     smoke = _BUILD_SMOKE.read_text()
     assert re.search(r'-e\s+"?VERSION=\$\{VERSION:-\}"?', smoke), (
-        "build-smoke.sh must pass a guarded `-e VERSION=${VERSION:-}` into the container"
+        "build-smoke.sh must pass a guarded `-e VERSION=${VERSION:-}` to the container"
     )
 
     windows = _RELEASE_WINDOWS.read_text()
-    assert "finbreak-windows.cdx.json" in windows, "must reference the unversioned in-workflow SBOM"
+    assert "finbreak-windows.cdx.json" in windows, (
+        "must reference the unversioned in-workflow SBOM"
+    )
     assert "finbreak-$VERSION-windows.cdx.json" in windows, (
         "release-windows.sh must rename the SBOM to a $VERSION-stamped name on download"
     )
@@ -332,7 +362,9 @@ def test_INV6_sbom_names_stamped_off_version_env_not_literal():
 # --------------------------------------------------------------------------- #
 def test_INV7_security_model_records_signed_manifest_inv13():
     doc = _SECURITY_MODEL.read_text()
-    assert "SHA256SUMS" in doc, "security-model.md is missing the signed-SHA256SUMS note"
+    assert "SHA256SUMS" in doc, (
+        "security-model.md is missing the signed-SHA256SUMS note"
+    )
 
     idx = doc.find("INV-13")
     assert idx != -1, "security-model.md has no INV-13 definition"

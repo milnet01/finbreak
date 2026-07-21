@@ -1,10 +1,11 @@
 # finbreak — Security model & threat model
 
 > **Status:** Live — the project's authoritative security & threat
-> model; amended through FIBR-0030 (2026-07-21 — INV-12: the
-> double-confirmed destructive "start over" reset deletes the vault's
-> complete on-disk footprint and returns to first-run). This line
-> names the **most-recent** material amendment, not a full history.
+> model; amended through FIBR-0096 (2026-07-21 — INV-13: each release
+> now publishes a **signed `SHA256SUMS`** manifest and a per-platform
+> CycloneDX SBOM as manual-verification integrity + supply-chain
+> transparency signals). This line names the **most-recent** material
+> amendment, not a full history.
 > Re-run through `/cold-eyes` on each material edit.
 > **Why this exists:** finbreak holds **personal financial
 > data**. Security is the load-bearing concern, so it gets its
@@ -57,7 +58,23 @@ unavoidable it is glossed on first use.
   not weaken this integrity gate.** The Windows install hand-off spawns a
   local helper process (a PowerShell waiter that swaps the `.exe` after
   finbreak exits); it opens no socket and touches no vault. The near-total
-  absence of network code keeps the attack surface minimal. (Dev/CI tooling
+  absence of network code keeps the attack surface minimal. Each published
+  release additionally carries a **signed `SHA256SUMS`** manifest
+  (`SHA256SUMS.sig`, the same Ed25519 release key) plus a per-platform
+  CycloneDX **SBOM** (`finbreak-<V>-<os>.cdx.json`) — a manual-verification
+  integrity signal for users who download from the GitHub release page
+  (complementary to the per-artifact `.sig` the in-app updater checks) and a
+  bundled-dependency parts-list for auditing (FIBR-0096, INV-13). **Honest
+  residual:** a GitHub-release-**write** attacker (no signing key) can
+  *remove* the manifest signal but cannot *forge* it — the release scripts
+  verify any carried other-platform line against the committed key before
+  re-signing (the anti-laundering gate), so a tampered line is never
+  laundered into a valid signature. The per-artifact `.sig` (FIBR-0054 INV-4)
+  therefore stays the **primary** integrity gate; a user should confirm
+  **their** artifact's basename actually appears in `SHA256SUMS`
+  (verifying with `sha256sum -c --ignore-missing SHA256SUMS`) and treat a
+  missing manifest/line as a red flag, not a bare `--ignore-missing` exit-0
+  pass. (Dev/CI tooling
   such as `pip-audit` and Dependabot run in CI and the local dev gate,
   never in the shipped app — INV-8.)
 - **Imported files are untrusted input.** CSV/OFX/PDF files come
@@ -272,6 +289,22 @@ be checkable. Enforcement arrives in step with the code:
   the (now-gone) key, so this is deletion-completeness *hygiene*, not a
   confidentiality or anti-forensic guarantee. Falsifiable by test
   (`AuthService.reset_vault`; FIBR-0030 INV-1).
+- **INV-13 — The published `SHA256SUMS` manifest is Ed25519-signed over its
+  final bytes.** Each release publishes a `SHA256SUMS` checksum manifest
+  signed with the release key (`SHA256SUMS.sig`) over its **final** merged
+  bytes; each hash line was computed by `scripts/gen-checksums.sh` from the
+  actual artifact at its platform's release phase, and every basename it
+  lists is a genuine release asset. The other-platform line a phase *carries*
+  is merged only **after** the prior manifest's own signature verifies
+  against the committed release public key (the anti-laundering gate the two
+  release scripts enforce before re-signing), so a re-sign can never launder
+  a tampered line. This is an **integrity** (tamper-evidence) guarantee,
+  **not** confidentiality: a release-write attacker can *delete* the manifest
+  or a line but cannot *forge* a valid signature, and a missing manifest/line
+  should be read as a red flag, not a pass — the per-artifact `.sig`
+  (FIBR-0054 INV-4) remains the primary download-integrity gate. Falsifiable
+  by the FIBR-0096 `release_integrity` suite (the `gen-checksums.sh` +
+  sign/verify roundtrip and the source-scrape of the two verify gates).
 
 ## 6. Tooling that enforces this (harness wired in P01; per-INV tests land with each phase)
 

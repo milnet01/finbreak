@@ -31,6 +31,21 @@ jobs:
       - name: Freeze finbreak.exe
         run: python scripts/build-windows-exe.py
 
+      # FIBR-0096 — CycloneDX SBOM of the bundled runtime closure. build-windows-exe.py
+      # froze that closure to dist/runtime-frozen.txt BEFORE PyInstaller (so build
+      # tooling stays out of the SBOM). --no-deps audits the pinned freeze AS-IS
+      # (no PyPI re-resolution). `|| true` tolerates pip-audit's non-zero exit on an
+      # advisory (it still writes the SBOM) — the SBOM is transparency, not the vuln
+      # gate. shell: bash because windows-latest `run:` defaults to pwsh (set
+      # explicitly below), where `|| true` is invalid; Git Bash is on the runner.
+      # The unversioned name is version-stamped later by release-windows.sh.
+      - name: Generate CycloneDX SBOM
+        shell: bash
+        run: |
+          python -m pip install pip-audit==2.10.0
+          pip-audit -r dist/runtime-frozen.txt --no-deps --format cyclonedx-json --output dist/finbreak-windows.cdx.json || true
+          [ -f dist/finbreak-windows.cdx.json ] || { echo "SBOM: pip-audit produced no output — a real failure, not a tolerated advisory" >&2; exit 1; }
+
       # EC3 (the D4 REQUIRED gate): launch the frozen .exe with python AND py
       # removed from PATH and assert the FINBREAK_SELFTEST_OK sentinel — proving
       # it loads all 9 native stacks (INV-4) without touching any interpreter. A
@@ -76,5 +91,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: finbreak-windows-exe
-          path: dist/finbreak.exe
+          path: |
+            dist/finbreak.exe
+            dist/*.cdx.json
           if-no-files-found: error

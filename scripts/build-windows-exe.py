@@ -70,9 +70,28 @@ def _pip(*args: str) -> None:
 
 def main() -> None:
     _pip("--upgrade", "pip")
-    # Manifest-driven: install exactly the runtime deps + the pinned PyInstaller,
-    # so the frozen analysis sees the same packages the Linux freeze does (INV-6).
-    _pip(*_runtime_deps(), PYINSTALLER_PIN)
+    # Manifest-driven: install exactly the runtime deps, so the frozen analysis
+    # sees the same packages the Linux freeze does (INV-6).
+    _pip(*_runtime_deps())
+    # FIBR-0096 § 3.4 — freeze the runtime closure to a FIXED path BEFORE
+    # PyInstaller enters the venv: that snapshot is the runtime set the workflow's
+    # pip-audit step audits into the CycloneDX SBOM. Capturing it pre-PyInstaller
+    # keeps build tooling out of the SBOM; there is no shared shell variable across
+    # the script -> workflow-step boundary the way the Linux freeze has within one
+    # script, so the workflow locates it by this fixed path. mkdir dist/ first —
+    # PyInstaller has not created it yet on a fresh checkout runner.
+    dist = _REPO_ROOT / "dist"
+    dist.mkdir(parents=True, exist_ok=True)
+    frozen = subprocess.run(
+        [sys.executable, "-m", "pip", "freeze"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    (dist / "runtime-frozen.txt").write_text(frozen)
+    # PyInstaller is a build tool (pyproject `build` group), installed AFTER the
+    # runtime snapshot so it never pollutes the SBOM.
+    _pip(PYINSTALLER_PIN)
     _assert_single_qt_binding()
 
     if not _ICO.is_file():

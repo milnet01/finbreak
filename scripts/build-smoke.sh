@@ -79,6 +79,7 @@ echo "== build-smoke: freezing in $BUILD_IMAGE (this takes a few minutes) =="
     -e "APP_TERMINAL=${APP_TERMINAL:-}" \
     -e "APP_CATEGORIES=${APP_CATEGORIES:-}" \
     -e "APP_ICON_SRC=${APP_ICON_SRC:-}" \
+    -e "VERSION=${VERSION:-}" \
     "$BUILD_IMAGE" bash /src/scripts/_build-smoke-in-container.sh
 
 [ -x "$DIST/$ONEFILE" ] || { echo "build-smoke: onefile not produced" >&2; exit 1; }
@@ -149,6 +150,9 @@ if [ "$MODE" = "release" ]; then
     echo "Release artifacts in $DIST:"
     echo "    $APPIMAGE"
     [ -f "$DIST/$APPIMAGE.sig" ] && echo "    $APPIMAGE.sig"
+    # The linux SBOM the container just produced (FIBR-0096). SHA256SUMS + its sig
+    # are NOT listed here — release-linux.sh creates those later, after this returns.
+    [ -f "$DIST/finbreak-$VERSION-linux.cdx.json" ] && echo "    finbreak-$VERSION-linux.cdx.json"
     echo ""
     echo "Publish as a NON-prerelease (D11 — /releases/latest skips prereleases):"
     echo "    gh release create v$VERSION \\"

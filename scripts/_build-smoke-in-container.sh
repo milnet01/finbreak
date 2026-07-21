@@ -50,7 +50,43 @@ python -m pip install --quiet --upgrade pip
 # fail writing egg-info into the read-only /src mount. PyInstaller is a build
 # tool (pyproject `build` group), installed separately.
 mapfile -t RUNTIME_DEPS < <(python -c "import tomllib; [print(d) for d in tomllib.load(open('/src/pyproject.toml','rb'))['project']['dependencies']]")
-python -m pip install --quiet "${RUNTIME_DEPS[@]}" pyinstaller==6.21.0
+if [ -n "${VERSION:-}" ]; then
+    # RELEASE MODE (FIBR-0096 § 3.4) — generate a CycloneDX SBOM of the bundled
+    # runtime closure. Split the combined install so the SBOM reflects the runtime
+    # deps AS INSTALLED, captured BEFORE any build tool enters the venv.
+    python -m pip install --quiet "${RUNTIME_DEPS[@]}"
+    # This pip freeze IS the runtime closure PyInstaller then collects from — no
+    # build tools, no re-resolution of the ranged/transitive versions. Honest
+    # scope (§ 2 out-of-scope residuals): NOT a byte-level proof every listed
+    # package landed in the one-file; installing PyInstaller after this snapshot
+    # can bump a SHARED transitive (e.g. packaging) by a patch; and a plain freeze
+    # also lists base tooling (pip/setuptools/wheel) PyInstaller does not bundle.
+    FROZEN="$(mktemp)"
+    python -m pip freeze > "$FROZEN"
+    # pip-audit is NOT in the freeze venv (it's a dev-group tool the gate installs
+    # on the HOST), so install the SAME pin (pyproject) into the venv now — AFTER
+    # the snapshot, so it never pollutes it; it only READS the frozen file.
+    python -m pip install --quiet pip-audit==2.10.0
+    OUT="/out/finbreak-$VERSION-linux.cdx.json"
+    # Remove any stale SBOM from a same-version re-cut first (/out is persistent —
+    # build-smoke.sh only mkdir -p's it), so the guard below can't false-pass on it.
+    rm -f "$OUT"
+    # --no-deps audits the fully-pinned freeze AS-IS: without it `pip-audit -r`
+    # RE-RESOLVES against PyPI, reintroducing the drift the freeze exists to avoid.
+    # The `|| true` is deliberate: pip-audit exits NON-ZERO when it finds any
+    # advisory but STILL writes the SBOM, and this runs under `set -euo pipefail` —
+    # the SBOM is a TRANSPARENCY artifact, not the vuln gate (that still fails the
+    # build on the host, T7). An un-tolerated call would abort the release build
+    # the moment a pinned dep ages into a CVE.
+    pip-audit -r "$FROZEN" --no-deps --format cyclonedx-json --output "$OUT" || true
+    # Existence guard — a swallowed ADVISORY is fine, a swallowed CRASH is not: a
+    # resolver/network failure writes NO file, which `|| true` would hide until the
+    # § 3.5 upload of a mandatory asset. Assert the output exists now.
+    [ -f "$OUT" ] || { echo "SBOM: pip-audit produced no output — a real failure, not a tolerated advisory" >&2; exit 1; }
+    python -m pip install --quiet pyinstaller==6.21.0
+else
+    python -m pip install --quiet "${RUNTIME_DEPS[@]}" pyinstaller==6.21.0
+fi
 
 # INV-2: exactly one Qt binding must be present before freezing (PyInstaller
 # 6.x refuses to collect more than one).
