@@ -23,6 +23,9 @@ signaling per
 
 ### Added
 
+- **A "Report an Issue" item in the menu bar (right of Donate) that opens the project's issue page in your browser** (FIBR-0156)
+  One click opens finbreak's GitHub issue form so you can quickly report a bug or request a feature — no data leaves the app (it just hands the page to your browser, exactly like the Donate links).
+
 - **Categories can now be organised three levels deep (Type › Category › Sub-category)** (FIBR-0154)
   Add a sub-category under an existing category (e.g. Expenditure › Groceries › Spar) directly in the Categories tab: select the parent, type the name, click Add. Renaming, moving (via "Move under…"), and deleting work at every level. Where two sub-categories share a name (Groceries › Spar and Fuel › Spar), the category pickers now show the parent so you can tell them apart. The app keeps the depth at three levels.
 
