@@ -23,6 +23,9 @@ signaling per
 
 ### Added
 
+- **Categories can now be organised three levels deep (Type › Category › Sub-category)** (FIBR-0154)
+  Add a sub-category under an existing category (e.g. Expenditure › Groceries › Spar) directly in the Categories tab: select the parent, type the name, click Add. Renaming, moving (via "Move under…"), and deleting work at every level. Where two sub-categories share a name (Groceries › Spar and Fuel › Spar), the category pickers now show the parent so you can tell them apart. The app keeps the depth at three levels.
+
 - **Per-release signed `SHA256SUMS` checksum manifest + per-platform CycloneDX SBOM** (FIBR-0096)
   Each release now publishes a signed SHA256SUMS manifest (verify manually with `sha256sum -c --ignore-missing SHA256SUMS`, its `.sig` Ed25519-signed by the release key) and a per-platform CycloneDX SBOM of the bundled runtime dependencies — a second, independently-verifiable integrity signal and a supply-chain parts-list, complementary to the per-artifact signature the in-app updater already checks.
 
