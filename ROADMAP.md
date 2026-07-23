@@ -317,6 +317,7 @@ scariest unknown (native-library bundling) up front.
   Flathub. Official distro archives are out of scope (bundling policy).
   **Layman:** Get finbreak into the main Linux app store (Flathub), so users on any distro can find and install it from their graphical Software centre with one click — the single biggest reach-the-most-people step.
   Kind: package.
+  Lanes: packaging, release.
   Source: user-request-2026-07-23.
 
 - 📋 [FIBR-0160] **Add openSUSE Leap 15.6 as an OBS target (deferred — Leap ships no python 3.12+).**
