@@ -296,6 +296,37 @@ lands on top.
 
 ---
 
+- 📋 [FIBR-0157] **Guided first-run wizard walks new users through the natural workflow: create accounts → import statements → categorise transactions → confirm/reject transfers.**
+  A sequenced onboarding wizard (and, ideally, smaller task-level wizards) that
+  guides a new user through finbreak's natural order of operations rather than
+  leaving them to discover it:
+
+    1. Create one or more accounts first (nothing else works without an account
+       to attach transactions to).
+    2. Import statements (CSV / OFX / PDF) into an account.
+    3. Categorise the imported transactions (Type → Category).
+    4. Confirm or reject the auto-detected transfers between accounts.
+
+  Design intent / open questions to settle at spec time:
+    - Trigger on first run (empty vault) automatically, and make it re-invokable
+      later from a Help/menu entry — never a forced modal a returning user can't
+      dismiss.
+    - Each step should deep-link into the real UI (open the Accounts dialog, the
+      Import flow, the Transactions tab filtered to Uncategorised, the Transfers
+      review) rather than reimplementing those screens — reuse over rebuild.
+    - Show progress ("step 2 of 4") and let the user skip ahead / come back; a
+      step is "done" when its underlying data condition is met (≥1 account
+      exists, ≥1 statement imported, no uncategorised rows, no pending transfers).
+    - Correctness guard: the wizard only navigates and prompts — it must never
+      itself write to the transactions table or bypass the transfer-confirmation
+      step (transfers stay a user decision, per the transfers invariant).
+    - Consider a lightweight "what next?" nudge on the dashboard once onboarding
+      is complete but a natural next action exists (e.g. a new statement import
+      left uncategorised).
+  **Layman:** A step-by-step helper for newcomers that walks them through setting up the app in the right order, so a first-time user is never staring at an empty screen wondering what to do.
+  Kind: feature.
+  Source: user-request-2026-07-23.
+
 ## P04 — Category tree
 
 ### 🎨 Features
