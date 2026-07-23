@@ -34,13 +34,21 @@
        (Ubuntu 24.04 → cp312; Debian 13 / Fedora / Tumbleweed → cp313), NO single
        --platform tag (host resolution infers the full manylinux cascade — the
        correctness-critical wheels are tagged lower than manylinux_2_34), and the
-       freezer + its recursive closure (NOT --no-deps):
+       freezer + its recursive closure (NOT --no-deps).
+
+       ofxparse ships as an sdist ONLY (no wheel on PyPI), so --only-binary=:all:
+       cannot resolve it and aborts the whole download. Pre-build it into a
+       universal py3 wheel first, then point --find-links at vendor/ so that wheel
+       satisfies the binary-only constraint; pip then pulls ofxparse's own closure
+       (lxml — a compiled dual-ABI wheel — and six) as normal wheels. Verified by
+       an offline `pip install --no-index` into a clean venv (§ 5 checklist).
 
          python3 -c "import tomllib;print(chr(10).join(tomllib.load(open('pyproject.toml','rb'))['project']['dependencies']))" > /tmp/deps.txt
          rm -rf vendor && mkdir vendor
+         pip wheel --no-deps ofxparse==0.21 -w vendor
          for PY in 3.12 3.13; do \
            pip download --only-binary=:all: --python-version $PY \
-             -d vendor -r /tmp/deps.txt pyinstaller==6.21.0; \
+             --find-links vendor -d vendor -r /tmp/deps.txt pyinstaller==6.21.0; \
          done
          tar caf vendor.tar.gz vendor/
   -->

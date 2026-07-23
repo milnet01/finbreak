@@ -42,10 +42,14 @@ Version flows **one way**: the git tag `v{VERSION}` drives everything via the
 2. **Vendor the wheels** on a Linux x86_64 host with **glibc ≥ 2.34** (§ 3.6) —
    run the `pip download` block documented in `_service` (both `cp312` + `cp313`
    ABIs, **no** single `--platform` tag, includes `pyinstaller==6.21.0` and its
-   recursive closure), producing `vendor.tar.gz`.
+   recursive closure), producing `vendor.tar.gz`. The block **pre-builds ofxparse**
+   (sdist-only on PyPI) into a universal wheel first — without that step
+   `--only-binary=:all:` cannot resolve it and the whole download aborts, taking
+   ofxparse's own deps (`lxml`, `six`) down with it. Confirmed 2026-07-23: the
+   corrected block vendors 34 wheels and passes the offline-install check below.
 3. **Check it out + populate sources:**
    ```
-   osc checkout home:milnet01 finbreak && cd home:milnet01/finbreak
+   osc checkout home:milnet finbreak && cd home:milnet/finbreak
    cp /path/to/packaging/obs/* .          # spec, debian/, desktop, metainfo, _service
    cp /path/to/vendor.tar.gz .
    osc service manualrun                  # obs_scm + tar + set_version
