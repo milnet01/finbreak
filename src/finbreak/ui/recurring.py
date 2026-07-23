@@ -34,6 +34,8 @@ from finbreak.errors import VaultLockedError
 from finbreak.models import Cadence, Direction, RecurringItem
 from finbreak.services.auth import AuthService
 from finbreak.services.recurring import RecurringService
+from finbreak.services.transactions import TransactionService
+from finbreak.ui._amount import _format_amount
 from finbreak.ui._table_state import (
     SortableItem,
     enable_sorting,
@@ -56,6 +58,7 @@ class RecurringWidget(QWidget):
     def __init__(self, service: AuthService, parent: QWidget | None = None):
         super().__init__(parent)
         self.setObjectName("tab_recurring")
+        self._service = service
         self._recurring = RecurringService(service.vault)
         self._suggested_items: list[RecurringItem] = []  # parallel to _suggested rows
         self._confirmed_items: list[RecurringItem] = []  # parallel to _confirmed rows
@@ -126,8 +129,11 @@ class RecurringWidget(QWidget):
         suggested, confirmed, _summary = self._recurring.snapshot(date.today())
         self._suggested_items = suggested
         self._confirmed_items = confirmed
-        self._fill(self._suggested, suggested)
-        self._fill(self._confirmed_table, confirmed)
+        # The base-currency code, read fresh like the Transactions/Home tabs, so the
+        # amount renders with the currency glyph + locale grouping (FIBR-0153).
+        symbol = TransactionService(self._service.vault).base_currency()
+        self._fill(self._suggested, suggested, symbol)
+        self._fill(self._confirmed_table, confirmed, symbol)
         if not suggested and not confirmed:
             self._status.setText(
                 self.tr(
@@ -139,7 +145,9 @@ class RecurringWidget(QWidget):
             self._status.setText("")
         self._on_selection_changed()
 
-    def _fill(self, table: QTableWidget, items: list[RecurringItem]) -> None:
+    def _fill(
+        self, table: QTableWidget, items: list[RecurringItem], symbol: str
+    ) -> None:
         with fill_guard(table):
             table.setRowCount(len(items))
             for row, item in enumerate(items):
@@ -151,7 +159,11 @@ class RecurringWidget(QWidget):
                     row, _COL_CADENCE, QTableWidgetItem(self._cadence_label(item))
                 )
                 table.setItem(
-                    row, _COL_AMOUNT, SortableItem(str(item.amount), item.amount)
+                    row,
+                    _COL_AMOUNT,
+                    # amount is a positive magnitude (direction shown separately); the
+                    # SortableItem keeps the Decimal as the numeric sort key (D11).
+                    SortableItem(_format_amount(item.amount, symbol), item.amount),
                 )
                 table.setItem(
                     # next_expected is ISO (YYYY-MM-DD) — sorts chronologically as text

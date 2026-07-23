@@ -128,7 +128,7 @@ def test_sort_order_persists_across_rebuild(qtbot, service):
     first = TransfersWidget(service)
     qtbot.addWidget(first)
     first._suggested.sortItems(1, Qt.SortOrder.DescendingOrder)  # Amount, descending
-    assert first._suggested.item(0, 1).text() == "500.00"
+    assert first._suggested.item(0, 1).text() == "R 500.00"
 
     rebuilt = TransfersWidget(service)  # fresh session
     qtbot.addWidget(rebuilt)
@@ -136,7 +136,7 @@ def test_sort_order_persists_across_rebuild(qtbot, service):
     assert header.sortIndicatorSection() == 1
     assert header.sortIndicatorOrder() == Qt.SortOrder.DescendingOrder
     # ...and the rows are actually re-sorted, not just the arrow restored.
-    assert rebuilt._suggested.item(0, 1).text() == "500.00"
+    assert rebuilt._suggested.item(0, 1).text() == "R 500.00"
 
 
 # --------------------------------------------------------------------------- #

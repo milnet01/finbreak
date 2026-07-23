@@ -18,6 +18,13 @@ from finbreak.models import FORMAT_VERSION, KdfParams
 # Pinned Argon2id parameters (security-model.md INV-2). memory_cost is in KiB —
 # 47104 KiB is the "46 MiB" human gloss; the API argument is 47104, not 46.
 ARGON2_MEMORY_KIB = 47104
+# The on-open acceptance floor, kept DISTINCT from the creation pin above so the
+# pin can be raised (following an updated OWASP snapshot) to strengthen NEW
+# vaults WITHOUT locking every EXISTING vault out — an existing vault records the
+# older, now-below-pin memory_kib, and validate_params must still open it. Hold
+# this at the minimum ever shipped; only raise it behind a re-derive migration.
+# Equal to the pin today, so nothing changes until the pin is bumped.
+ARGON2_MEMORY_FLOOR_KIB = 47104
 ARGON2_TIME_COST = 1
 ARGON2_PARALLELISM = 1
 KEY_LEN = 32
@@ -65,7 +72,10 @@ def validate_params(params: KdfParams) -> None:
     """Enforce the strength floor and exact on-disk format, else ``KdfPolicyError``.
 
     The floor (memory) is directional — below is refused, at-or-above passes —
-    so the creation pin can be raised later without locking out existing vaults.
+    checked against ``ARGON2_MEMORY_FLOOR_KIB``, which is deliberately SEPARATE
+    from the creation pin (``ARGON2_MEMORY_KIB``) so the pin can be raised later
+    to strengthen new vaults without locking out existing ones (their recorded
+    ``memory_kib`` stays at-or-above the unchanged floor).
     The salt exists on disk, so both its real length and the recorded
     ``salt_len`` must equal ``SALT_LEN``; the key is never on disk, so only its
     recorded ``key_len`` is checked against the constant.
@@ -85,9 +95,10 @@ def validate_params(params: KdfParams) -> None:
             f"salt must be {SALT_LEN} bytes with a matching salt_len; "
             f"got len={len(params.salt)} salt_len={params.salt_len}"
         )
-    if params.memory_kib < ARGON2_MEMORY_KIB:
+    if params.memory_kib < ARGON2_MEMORY_FLOOR_KIB:
         raise KdfPolicyError(
-            f"memory_kib {params.memory_kib} is below the floor {ARGON2_MEMORY_KIB}"
+            f"memory_kib {params.memory_kib} is below the floor "
+            f"{ARGON2_MEMORY_FLOOR_KIB}"
         )
 
 

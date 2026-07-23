@@ -33,7 +33,16 @@ def read_header(text: str) -> list[str]:
     ``ValueError`` on an **empty** file (no header line — ``DictReader.fieldnames``
     is ``None``); a genuinely headerless file *with* data is indistinguishable
     and out of scope (D11)."""
-    fieldnames = csv.DictReader(io.StringIO(text)).fieldnames
+    try:
+        fieldnames = csv.DictReader(io.StringIO(text)).fieldnames
+    except csv.Error as exc:
+        # DictReader parses the header lazily on ``.fieldnames`` access, so a
+        # structurally-broken file (e.g. a field over ``csv.field_size_limit``
+        # from an unterminated quote) raises ``csv.Error`` HERE — and it is *not*
+        # a ``ValueError`` subclass, so the wizard's (ValueError, FinbreakError)
+        # net would miss it and crash. Translate it to the friendly type so a
+        # malformed file surfaces a message, never a crash (INV-4).
+        raise ValueError(f"the file is not valid CSV: {exc}") from exc
     if fieldnames is None:
         raise ValueError("the file has no header row")
     return list(fieldnames)
@@ -58,9 +67,19 @@ class CsvImporter:
         drafts: list[TransactionDraft] = []
         errors: list[RowError] = []
         reader = csv.DictReader(io.StringIO(text))
-        # enumerate over the data rows DictReader yields: 1-based, and blank lines
-        # (which DictReader skips) never consume a number (INV-4).
-        for row_number, row in enumerate(reader, start=1):
+        # DictReader parses lazily DURING iteration, so a structural CSV error (a
+        # field over ``csv.field_size_limit`` from an unterminated quote, a stray
+        # NUL, ...) is raised while advancing the reader — OUTSIDE the per-row try
+        # below, and ``csv.Error`` is not a ``ValueError`` so the wizard's
+        # (ValueError, FinbreakError) net would miss it and crash. Materialise the
+        # rows under one guard that translates ``csv.Error`` to the friendly type
+        # (INV-4: a malformed file must never crash). The enumerate is 1-based and
+        # blank lines (which DictReader skips) never consume a number.
+        try:
+            rows = list(enumerate(reader, start=1))
+        except csv.Error as exc:
+            raise ValueError(f"the file is not valid CSV: {exc}") from exc
+        for row_number, row in rows:
             # Ragged-row guard: a short row pads missing mapped cells with None;
             # Decimal(None)/None.strip() raise TypeError/AttributeError (outside
             # the catch below), so turn it into a RowError up-front (D5).

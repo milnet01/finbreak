@@ -2001,6 +2001,42 @@ is a future error tomorrow.
   Kind: doc-fix.
   Source: cold-eyes-2026-07-18 FIBR-0095 lane-B.
 
+- ✅ [FIBR-0165] **CSV import no longer crashes on a structurally-broken file — csv.Error is translated to a friendly ValueError.**
+  indie-review (importers lane), MEDIUM. csv.DictReader parses lazily during iteration, so a field over csv.field_size_limit (e.g. an unterminated quote) raised csv.Error from the `for` line — outside the per-row try — and csv.Error is not a ValueError, so the wizard's (ValueError, FinbreakError) net missed it and the import crashed (violates INV-4 'malformed file must never crash'). Fixed in csv_importer.py: parse() materialises rows under one csv.Error->ValueError guard; read_header() guards the .fieldnames access. Regression: test_INV4_malformed_csv_surfaces_valueerror_not_csv_error.
+  **Layman:** A corrupt or truncated CSV now shows a friendly 'not valid CSV' message instead of crashing the import.
+  Kind: review-fix.
+  Source: indie-review-2026-07-23.
+
+- ✅ [FIBR-0166] **Argon2id acceptance floor decoupled from the creation pin so a future KDF-strength bump can't lock out existing vaults.**
+  indie-review (crypto lane), LOW (data-loss footgun). validate_params checked memory_kib against the SAME ARGON2_MEMORY_KIB used to create vaults, while the docstring claimed the pin could be raised without locking out existing vaults — false. Raising the constant (per global rule §5 / an OWASP bump) would push every existing vault below the floor -> KdfPolicyError on open = permanent lockout. Fixed by adding ARGON2_MEMORY_FLOOR_KIB (= the pin today, held at the minimum ever shipped); validate_params now checks the floor, so the pin can rise independently. Zero behaviour change today; all floor tests stay green.
+  **Layman:** Made it safe to strengthen password protection later without locking anyone out of their existing data.
+  Kind: review-fix.
+  Source: indie-review-2026-07-23.
+
+- ✅ [FIBR-0167] **Auto-update enforces https on redirects, not just the initial URL (FIBR-0054 INV-10).**
+  indie-review (update/signature lane), LOW (defence-in-depth). _require_https guarded only the first URL; urllib's default opener follows 3xx redirects to http/ftp transparently, so an https URL redirecting to http:// was followed. Integrity was still guaranteed by the Ed25519 check on the asset, but the unsigned API JSON could be read over plaintext. Fixed with _HttpsOnlyRedirectHandler on a process-wide opener (install_opener), re-asserting _require_https on every hop; urlopen keeps its call shape so the test seam survives. Regression: test_INV10_redirect_to_non_https_is_refused.
+  **Layman:** The update check can no longer be silently downgraded to an insecure connection via a redirect.
+  Kind: review-fix.
+  Source: indie-review-2026-07-23.
+
+- ✅ [FIBR-0168] **Recurring & Transfers tabs render amounts with the currency symbol + locale grouping via _format_amount.**
+  indie-review (UI lane), LOW. Both tabs rendered raw str(Decimal) instead of the shared _format_amount, so a large figure showed with no currency glyph and no thousands grouping — easy to misread by an order of magnitude in a finance app. Values/signs were correct. Both amounts are positive magnitudes, so no negative-style/colour prefs plumbing was needed: the base-currency symbol is read fresh (TransactionService.base_currency()) like the Transactions/Home tabs and passed to _format_amount; the SortableItem numeric sort key is unchanged.
+  **Layman:** Money on the Recurring and Transfers tabs now shows as 'R 1,234.50' like the rest of the app, instead of a bare '1234.5'.
+  Kind: review-fix.
+  Source: indie-review-2026-07-23.
+
+- 📋 [FIBR-0169] **Auto-update anti-rollback: bind the offered version into the signed artifact to prevent a signed-but-older downgrade.**
+  indie-review (update/signature lane), LOW — deferred (design + release-pipeline change, needs a spec). The Ed25519 signature binds only the artifact BYTES, not the version; the offered version comes verbatim from the untrusted GitHub tag_name. A GitHub-release-WRITE attacker (no signing key — the residual security-model §2 already acknowledges) could re-publish an old, still-validly-signed AppImage under a higher tag; check_for_update sees it as newer, download_and_verify passes (authentic bytes), and the user is silently downgraded to a version with known bugs. Fix options: sign a manifest naming version+hash, or refuse to install a payload whose embedded __version__ <= current. At minimum document the downgrade case alongside the existing 'no rollback' accepted-risk in FIBR-0054 Out-of-scope.
+  **Layman:** Stop a would-be attacker (who can write GitHub releases but holds no signing key) from tricking the app into installing an older, still-signed version.
+  Kind: security.
+  Source: indie-review-2026-07-23.
+
+- 📋 [FIBR-0170] **Install the verified update from the in-memory buffer to close the verify-in-memory / install-from-disk TOCTOU.**
+  indie-review (update/signature lane), INFO — out of the current threat model (needs a same-user/root attacker able to rewrite the 0600 mkstemp temp in the target dir, explicitly out of scope per security-model §4), so deferred. download_and_verify verifies data read into memory (asset_tmp.read_bytes()) but the installer later os.replace()s the on-disk temp — the file could differ from the verified bytes in the window. Hardening: write the verified `data` buffer to a fresh temp and install THAT, rather than trusting the re-read file. Low priority; noted for completeness.
+  **Layman:** Extra hardening so the exact bytes we checked are the exact bytes installed.
+  Kind: security.
+  Source: indie-review-2026-07-23.
+
 ## How to add an item
 
 1. Allocate the next ID:

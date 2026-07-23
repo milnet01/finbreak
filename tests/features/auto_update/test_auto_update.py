@@ -756,6 +756,16 @@ def test_INV10_download_refuses_non_https(tmp_path):
         )
 
 
+def test_INV10_redirect_to_non_https_is_refused():
+    """``_require_https`` guards only the first hop; a 3xx redirect to a non-https
+    target must be REJECTED by the redirect handler, not silently followed
+    (urllib's default handler would downgrade the fetch to plaintext). The dummy
+    request/fp args are never touched — ``_require_https`` raises first."""
+    handler = update_fetch._HttpsOnlyRedirectHandler()
+    with pytest.raises(ValueError):
+        handler.redirect_request(None, None, 302, "Found", {}, "http://evil/downgrade")
+
+
 def test_fetch_latest_release_parses_json(monkeypatch):
     payload = b'{"tag_name": "v0.1.0", "assets": []}'
     monkeypatch.setattr(update_fetch.urllib.request, "urlopen", _fake_urlopen(payload))

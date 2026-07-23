@@ -73,6 +73,24 @@ def _write_csv(tmp_path: Path, name: str, header, rows) -> Path:
     return path
 
 
+# INV-4 (indie-review) — a structurally-broken CSV (an unterminated quote over
+# the field-size limit) is parsed LAZILY during iteration, so the csv.Error is
+# raised outside the per-row guard. csv.Error is not a ValueError, so without a
+# translation the wizard's (ValueError, FinbreakError) net misses it and the
+# import CRASHES. Both entry points must surface a friendly ValueError instead.
+def test_INV4_malformed_csv_surfaces_valueerror_not_csv_error() -> None:
+    import csv
+
+    oversize_field = '"' + "a" * (csv.field_size_limit() + 1000)
+    # Malformed HEADER line: read_header's .fieldnames access raises csv.Error.
+    with pytest.raises(ValueError):
+        read_header(oversize_field)
+    # Header ok, malformed DATA row: parse's row iteration raises csv.Error.
+    text = ",".join(HEADER) + "\n" + oversize_field
+    with pytest.raises(ValueError):
+        CsvImporter().parse(text, SINGLE, 2)
+
+
 # --------------------------------------------------------------------------- #
 # INV-1 — profile CRUD + signature round-trip + upsert
 # --------------------------------------------------------------------------- #

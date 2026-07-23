@@ -29,7 +29,9 @@ from PySide6.QtWidgets import (
 from finbreak.errors import VaultLockedError
 from finbreak.models import ConfirmedTransfer, TransferCandidate
 from finbreak.services.auth import AuthService
+from finbreak.services.transactions import TransactionService
 from finbreak.services.transfer_detection import TransferDetectionService
+from finbreak.ui._amount import _format_amount
 from finbreak.ui._table_state import (
     SortableItem,
     enable_sorting,
@@ -51,6 +53,7 @@ class TransfersWidget(QWidget):
     def __init__(self, service: AuthService, parent: QWidget | None = None):
         super().__init__(parent)
         self.setObjectName("tab_transfers")
+        self._service = service
         self._detection = TransferDetectionService(service.vault)
         self._candidates: list[TransferCandidate] = []  # parallel to _suggested rows
         self._confirmed: list[
@@ -121,14 +124,18 @@ class TransfersWidget(QWidget):
     def _refresh(self) -> None:
         self._candidates = self._detection.candidates()
         self._confirmed = self._detection.confirmed_transfers()
-        self._fill(self._suggested, self._candidates)
-        self._fill(self._confirmed_table, self._confirmed)
+        # The base-currency code, read fresh like the Transactions/Home tabs, so the
+        # magnitude renders with the currency glyph + locale grouping (FIBR-0153).
+        symbol = TransactionService(self._service.vault).base_currency()
+        self._fill(self._suggested, self._candidates, symbol)
+        self._fill(self._confirmed_table, self._confirmed, symbol)
         self._on_selection_changed()
 
     def _fill(
         self,
         table: QTableWidget,
         rows: Sequence[TransferCandidate | ConfirmedTransfer],
+        symbol: str,
     ) -> None:
         with fill_guard(table):
             table.setRowCount(len(rows))
@@ -140,7 +147,12 @@ class TransfersWidget(QWidget):
                 table.setItem(
                     row,
                     _COL_AMOUNT,
-                    SortableItem(str(item.display_amount), item.display_amount),
+                    # display_amount is a positive magnitude; the SortableItem keeps
+                    # the Decimal as the numeric sort key (D9), unchanged.
+                    SortableItem(
+                        _format_amount(item.display_amount, symbol),
+                        item.display_amount,
+                    ),
                 )
                 table.setItem(row, _COL_FROM_TO, QTableWidgetItem(from_to))
                 table.setItem(

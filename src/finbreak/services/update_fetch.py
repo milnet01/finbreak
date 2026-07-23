@@ -49,6 +49,42 @@ def _require_https(url: str) -> None:
         raise ValueError(f"refusing a non-https update URL: {url!r}")
 
 
+class _HttpsOnlyRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Re-assert the https-only invariant (INV-10) on EVERY redirect hop.
+
+    ``_require_https`` only guards the *first* URL we open; urllib's default
+    redirect handler would otherwise transparently follow a 3xx to ``http://``
+    (or ``ftp://``), silently downgrading the fetch to plaintext. We reject any
+    non-https redirect target. Integrity is still guaranteed by the Ed25519 check
+    on the asset; this closes the confidentiality gap for the *unsigned* API JSON.
+    """
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        _require_https(newurl)  # raises before the redirect is followed
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+@functools.lru_cache(maxsize=1)
+def _install_opener() -> None:
+    """Install a process-wide opener that verifies TLS against the bundled
+    certifi CA set AND enforces https on redirects (``_HttpsOnlyRedirectHandler``).
+
+    Installed globally rather than passed per call because
+    ``urllib.request.urlopen(..., context=...)`` builds a throwaway opener with
+    the DEFAULT redirect handler — there is no per-call hook to inject our
+    https-only guard. ``update_fetch`` is the app's sole network surface (INV-12),
+    so a process-wide opener is contained. Callers then use plain
+    ``urlopen(request, timeout=...)`` (no ``context=``) so this opener is used.
+    Idempotent via ``lru_cache``.
+    """
+    urllib.request.install_opener(
+        urllib.request.build_opener(
+            urllib.request.HTTPSHandler(context=_ssl_context()),
+            _HttpsOnlyRedirectHandler(),
+        )
+    )
+
+
 def fetch_latest_release(
     owner: str, repo: str, *, timeout: float, max_bytes: int
 ) -> dict:
@@ -59,11 +95,12 @@ def fetch_latest_release(
     deadline. ``/releases/latest`` excludes prereleases (D11)."""
     url = _API_URL_TEMPLATE.format(owner=owner, repo=repo)
     _require_https(url)
+    _install_opener()  # https-only redirects + bundled-certifi TLS (INV-10)
     request = urllib.request.Request(
         url, headers={"User-Agent": _USER_AGENT, "Accept": _ACCEPT_GITHUB_JSON}
     )
     with urllib.request.urlopen(  # nosec B310  # nosemgrep: dynamic-urllib-use-detected
-        request, timeout=timeout, context=_ssl_context()
+        request, timeout=timeout
     ) as response:
         raw = response.read(max_bytes + 1)
     if len(raw) > max_bytes:
@@ -76,12 +113,13 @@ def download(url: str, dest: Path, *, max_bytes: int, timeout: float) -> None:
     running total exceeds *max_bytes* (INV-10). Any failure deletes the partial
     temp so a broken download never orphans bytes on the ``$APPIMAGE`` fs."""
     _require_https(url)
+    _install_opener()  # https-only redirects + bundled-certifi TLS (INV-10)
     request = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
     total = 0
     try:
         with (
             urllib.request.urlopen(  # nosec B310  # nosemgrep: dynamic-urllib-use-detected
-                request, timeout=timeout, context=_ssl_context()
+                request, timeout=timeout
             ) as response,
             open(dest, "wb") as handle,
         ):

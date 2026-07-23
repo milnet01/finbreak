@@ -21,6 +21,18 @@ signaling per
 
 ## [Unreleased]
 
+### Fixed
+
+- **The Recurring and Transfers tabs now show amounts with the currency symbol and thousands grouping (e.g. “R 1,234.50”), matching the rest of the app.** (FIBR-0168)
+
+- **CSV import no longer crashes on a corrupt or truncated file — it now reports a friendly “not valid CSV” message.** (FIBR-0165)
+
+### Security
+
+- **The Argon2id acceptance floor is now separate from the vault-creation parameter, so a future increase in password-hashing strength cannot lock existing vaults out.** (FIBR-0166)
+
+- **The auto-update check now enforces HTTPS on redirects, not just the first request, so it cannot be silently downgraded to plaintext.** (FIBR-0167)
+
 ## [0.1.17] - 2026-07-23
 
 ### Added
