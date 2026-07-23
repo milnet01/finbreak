@@ -1,3 +1,20 @@
+finbreak (0.1.17) unstable; urgency=medium
+
+  * Flatpak + native Linux packages (RPM/deb) — install finbreak via GNOME
+    Software, KDE Discover, or your distro's package manager.
+  * Categories can now be organised three levels deep (Type > Category >
+    Sub-category), with rename, move and delete at every level.
+  * "Report an Issue" menu item; signed SHA256SUMS checksums and per-platform
+    software-component lists (SBOMs) for independent release verification.
+  * Forgotten-password vault reset on the unlock screen, and a "Verify backup"
+    button in Settings that checks a backup is readable before you rely on it.
+  * Amounts show the currency symbol ("R 1,234.49") with a dedicated Currency
+    column; confirmed transfers now show directionally on the Transactions tab.
+  * Optional password hint on the unlock screen; copied amounts/descriptions
+    auto-clear from the clipboard; repeated wrong unlock attempts are throttled.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Thu, 23 Jul 2026 12:00:00 +0200
+
 finbreak (0.1.16) unstable; urgency=medium
 
   * OFX import now files each transaction under the date the bank printed, even

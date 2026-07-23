@@ -59,6 +59,28 @@
   </screenshots>
 
   <releases>
+    <release version="0.1.17" date="2026-07-23">
+      <description>
+        <p>Added:</p>
+        <ul>
+          <li>Flatpak and native Linux packages (RPM + deb) — install finbreak via GNOME Software, KDE Discover, or your distro's package manager with a bundled, tested runtime.</li>
+          <li>Three-level category organization (Type › Category › Sub-category) with full rename, move and delete support at every level.</li>
+          <li>Report an Issue menu item; signed SHA256SUMS checksums and per-platform software-component lists (SBOMs) for independent release verification.</li>
+          <li>Password-safety features: vault reset for forgotten passwords and a Settings button to verify a backup is readable before restore.</li>
+        </ul>
+        <p>Fixed:</p>
+        <ul>
+          <li>Amounts display currency symbols correctly ("R 1,234.49") with a dedicated Currency column; confirmed transfers now show directionally on the Transactions tab.</li>
+        </ul>
+        <p>Security:</p>
+        <ul>
+          <li>Optional password hint on the unlock screen, stored unencrypted and readable before unlock as a memory aid (keep it vague, not your password).</li>
+          <li>Copy a transaction's amount or description with automatic clipboard clear after a configurable timeout (default 30 seconds) so sensitive data doesn't linger.</li>
+          <li>Unlock delays for repeated wrong password attempts — each retry gets slower (1s, then 2s, 4s, up to 30s) to defend against guessing attacks.</li>
+        </ul>
+      </description>
+    </release>
+
     <release version="0.1.16" date="2026-07-18">
       <description>
         <p>Fixed:</p>

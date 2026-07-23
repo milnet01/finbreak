@@ -21,7 +21,20 @@ signaling per
 
 ## [Unreleased]
 
+## [0.1.17] - 2026-07-23
+
 ### Added
+
+- **Flatpak packaging for Flathub — the cross-distro Linux app store** (FIBR-0159)
+  finbreak can now be built as a Flatpak and submitted to Flathub — the
+  app store that shows up in GNOME Software and KDE Discover on every
+  Linux distro — so you'll be able to search "finbreak" and install it
+  with one click, whichever distro you run. The Flatpak runs strongly
+  sandboxed for the finance-security story: it has no network access at
+  all, and can only touch a file after you pick it in the open/save
+  dialog (nothing else on your computer is visible to it). This adds the
+  build manifest and recipe; the live Flathub listing follows once the
+  submission is merged.
 
 - **Native Linux packaging (RPM + deb) via the openSUSE Build Service** (FIBR-0155)
   finbreak can now be published as a proper native package for openSUSE, Fedora, Debian and Ubuntu — installed and updated the normal way for your distro (zypper/dnf/apt) and listed with its icon in the software centre, alongside the existing AppImage. The package bundles its own tested runtime, so it runs the exact same encryption stack regardless of what your distro ships. (This adds the build recipes and desktop/store metadata; the first live build is published from the maintainer's OBS account.)

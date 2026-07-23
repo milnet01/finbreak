@@ -13,7 +13,7 @@
 [![Status](https://img.shields.io/badge/status-pre--alpha-orange)]()
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-Current version: **0.1.16** (early preview). **[⬇ Download the latest
+Current version: **0.1.17** (early preview). **[⬇ Download the latest
 release](https://github.com/milnet01/finbreak/releases/latest)**, or see
 [CHANGELOG](CHANGELOG.md) for what's shipped and [ROADMAP](ROADMAP.md) for
 what's coming.
@@ -35,7 +35,7 @@ lot, with more polish and features to come. What works today:
 - importing statements from **CSV, OFX, and PDF** files (including
   password-protected PDFs),
 - organising them into **accounts** and into **categories** you can group
-  and rename,
+  and rename — now up to three levels deep (Type › Category › Sub-category),
 - **automatically sorting** transactions into categories — with built-in
   guesses for common shops and services (so a fresh import is sorted straight
   away; each guess is tagged so you can override it), plus your own rules you
@@ -74,8 +74,11 @@ lot, with more polish and features to come. What works today:
   lock while idle, and forget a bank-statement password the app remembered
   (per account) whenever you want.
 
-finbreak now also runs on **Windows** as a self-contained `.exe`. Still to come:
-a packaged macOS app. See the [ROADMAP](ROADMAP.md) for the full plan.
+finbreak now also runs on **Windows** as a self-contained `.exe`, and installs on
+**Linux** as native **RPM/deb** packages and a strongly-sandboxed **Flatpak**
+(headed to Flathub, so you'll find it in GNOME Software / KDE Discover) alongside
+the existing AppImage. Still to come: a packaged macOS app. See the
+[ROADMAP](ROADMAP.md) for the full plan.
 
 ## Install
 

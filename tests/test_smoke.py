@@ -8,4 +8,4 @@ import finbreak
 
 
 def test_package_imports():
-    assert finbreak.__version__ == "0.1.16"
+    assert finbreak.__version__ == "0.1.17"
