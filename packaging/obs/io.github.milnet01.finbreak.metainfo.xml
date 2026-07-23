@@ -49,12 +49,35 @@
   <!-- A finance app with no objectionable content: an all-"none" OARS rating. -->
   <content_rating type="oars-1.1"/>
 
-  <!-- Screenshots: upload real PNGs to the homepage before the first OBS submit
-       (§ 5 pre-submit checklist); the URL below is where they are hosted. -->
+  <!-- Screenshots: a curated mix of the dark (Midnight) and light (Ledger) themes,
+       one per headline feature, generated from synthetic demo data by
+       scripts/capture_screenshots.py (FIBR-0082). The PNGs live in-repo under
+       assets/screenshots/site/; upload that set to the hosted path below before a
+       Flathub / OBS submit (§ 5 pre-submit checklist). -->
   <screenshots>
     <screenshot type="default">
-      <caption>The spending dashboard</caption>
+      <caption>See where your money goes at a glance</caption>
       <image>https://antsprojectshub.co.za/img/finbreak/dashboard.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Search and filter every transaction</caption>
+      <image>https://antsprojectshub.co.za/img/finbreak/transactions.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Organise categories up to three levels deep</caption>
+      <image>https://antsprojectshub.co.za/img/finbreak/categories.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Spot recurring money — subscriptions, debit orders and salary</caption>
+      <image>https://antsprojectshub.co.za/img/finbreak/recurring.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Transfers between your own accounts, kept out of spending</caption>
+      <image>https://antsprojectshub.co.za/img/finbreak/transfers.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Auto-sort transactions with your own rules</caption>
+      <image>https://antsprojectshub.co.za/img/finbreak/rules.png</image>
     </screenshot>
   </screenshots>
 

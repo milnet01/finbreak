@@ -22,6 +22,10 @@ __pycache__/
 # purpose so a test proves an old-package vault still opens after the swap.
 !tests/fixtures/windows_build/vault.db
 *.sqlite3-*
+# The kept demo vault from scripts/capture_screenshots.py — SYNTHETIC throwaway
+# data (FIBR-0082), but a full vault dir (vault.db + vault.kdf.json sidecar), so
+# ignore the whole dir. Regenerated on each capture run; never committed.
+.demo-vault/
 
 # Tooling caches
 .pytest_cache/

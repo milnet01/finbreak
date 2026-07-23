@@ -811,8 +811,18 @@ lands on top.
   Kind: implement.
   Source: user-request-2026-07-09.
 
-- 📋 [FIBR-0082] **Generate app screenshots from synthetic dummy data for the GitHub README + antsprojectshub.co.za.**
+- ✅ [FIBR-0082] **Generate app screenshots from synthetic dummy data for the GitHub README + antsprojectshub.co.za.**
   A reproducible way to populate a THROWAWAY vault with realistic-but-fake dummy data (a spread of accounts, a month or two of categorised transactions, a couple of imported statements, a few rules) and capture screenshots of the key screens for the GitHub README and https://antsprojectshub.co.za/.
+  Resolved (2026-07-23): scripts/seed_demo_vault.py seeds a throwaway ZAR
+  demo vault (3 accounts, ~13 months of categorised transactions, 3-level
+  nested categories, auto-rules, confirmed transfers + recurring), and
+  scripts/capture_screenshots.py renders every main tab offscreen in both
+  the Midnight (dark) and Ledger (light) themes, plus a curated mixed-theme
+  site/ set matching the metainfo <image> URLs. 20 PNGs under
+  assets/screenshots/; metainfo now lists 6 captioned shots. Demo vault kept
+  at .demo-vault/ (git-ignored) for reuse. Statements shot deferred (see
+  FIBR-0162). Still user's: upload assets/screenshots/site/* to
+  antsprojectshub.co.za/img/finbreak/ before the Flathub/OBS submit.
 
   Scope: a scripted seeder (e.g. scripts/seed-demo-vault.py) that first-runs a vault and inserts synthetic transactions/categories/accounts/rules, plus a documented capture flow for the main views — first-run, unlock, Home, Statements tab, Categories, Rules, the import wizard, and (once P10/FIBR-0012 lands) the spending-by-category dashboard, which is the most compelling shot.
 
@@ -834,6 +844,18 @@ lands on top.
   Kind: package.
   Lanes: packaging, release.
   Source: user-request-2026-07-21.
+
+- 📋 [FIBR-0163] **Add a populated Statements-tab screenshot via a synthetic statement import.**
+  FIBR-0082's capture omits the Statements tab: the demo seeder inserts
+  transactions straight through the repository, so no StatementPeriod rows
+  exist and the Statements list renders empty. To capture it, drive a
+  synthetic CSV/OFX through the real import path (ImportService / the import
+  wizard) in scripts/seed_demo_vault.py, then re-add "statements" to
+  scripts/capture_screenshots.py's _SCREENS. Low priority — the other 7 tabs
+  already cover the headline features.
+  **Layman:** One screenshot (the "Statements" list) is still blank because the demo data is added directly rather than by importing a bank file; this adds that missing shot.
+  Kind: marketing.
+  Source: in-session-2026-07-23.
 
 ## Enhancements & performance backlog
 
