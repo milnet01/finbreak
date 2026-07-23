@@ -25,6 +25,10 @@ Source0:        %{name}-%{version}.tar.gz
 # built offline by the _service (§ 3.6). Unpacked to vendor/ in %prep.
 Source1:        vendor.tar.gz
 BuildRequires:  binutils
+# Present at build time so the post-build filelist check sees the shared
+# /usr/share/icons/hicolor/* dirs as owned (the Requires below doesn't get
+# pulled into that isolated check) (FIBR-0155 §5).
+BuildRequires:  hicolor-icon-theme
 
 # --- Build-time collect-set: the libs PyInstaller must SEE so it bundles them
 #     INTO the payload (the wider set from _build-smoke-in-container.sh), plus the
@@ -37,6 +41,14 @@ BuildRequires:  python3-pip
 BuildRequires:  Mesa-libGL1
 BuildRequires:  Mesa-libEGL1
 BuildRequires:  libglib-2_0-0
+# openSUSE splits libgthread-2.0.so.0 (a Qt dep) into its own package, unlike
+# Fedora's glib2 which bundles it. Without it here, PyInstaller can't see the
+# lib at freeze time and the %check self-test fails to load Qt (FIBR-0155).
+BuildRequires:  libgthread-2_0-0
+# PySide6's PyInstaller hook runs a freeze-time _check_if_openssl_enabled()
+# that imports QtNetwork, which pulls libgssapi_krb5.so.2 (krb5). Missing it
+# aborts the %build freeze, not just %check. Fedora's base image carries it.
+BuildRequires:  krb5
 BuildRequires:  libdbus-1-3
 BuildRequires:  libX11-6
 BuildRequires:  libxkbcommon0
@@ -72,6 +84,10 @@ Requires:       Mesa-libEGL1
 Requires:       mesa-libGL
 Requires:       mesa-libEGL
 %endif
+# Owns the shared /usr/share/icons/hicolor/*/apps dirs our PNGs land in, so the
+# openSUSE filelist check doesn't fail on "directories not owned by a package"
+# (same package name on openSUSE + Fedora + Debian) (FIBR-0155 §5).
+Requires:       hicolor-icon-theme
 
 # The payload is a bundled foreign tree: no debuginfo to split, and RPM must not
 # auto-generate deps/provides from its hundreds of bundled libraries.
@@ -150,17 +166,24 @@ done
 # sentinel — against the STAGED buildroot freeze (the package isn't installed at
 # %check time, so a bare `finbreak` on $PATH would not resolve). offscreen: OBS
 # build roots are headless. This is the sole automated gate on the onedir path.
-QT_QPA_PLATFORM=offscreen %{buildroot}%{_prefix}/lib/finbreak/finbreak --self-test
+FINBREAK_SELFTEST_DEBUG=1 QT_QPA_PLATFORM=offscreen %{buildroot}%{_prefix}/lib/finbreak/finbreak --self-test
 
 %post
-# Refresh the icon cache + desktop database so the menu entry + icon appear
-# without a manual refresh (macro spellings §5-confirmed per target).
+# Fedora needs explicit scriptlets to refresh the icon cache + desktop database.
+# openSUSE does it automatically via file triggers (gtk-update-icon-cache on
+# /usr/share/icons; desktop-file-utils on /usr/share/applications), so this is
+# Fedora-only: the Fedora macros are undefined on openSUSE and, left unbraced,
+# bash reads them as job specs ("fg: no job control"), failing %post (§5).
+%if 0%{?fedora}
 %icon_theme_cache_post
 %desktop_database_post
+%endif
 
 %postun
+%if 0%{?fedora}
 %icon_theme_cache_postun
 %desktop_database_postun
+%endif
 
 %files
 %license LICENSE

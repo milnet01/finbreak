@@ -28,6 +28,8 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 _OBS = _REPO_ROOT / "packaging" / "obs"
 _SPEC = _OBS / "finbreak.spec"
 _SERVICE = _OBS / "_service"
+_VENDOR_SCRIPT = _OBS / "vendor-wheels.sh"
+_RPMLINTRC = _OBS / "finbreak-rpmlintrc"
 _LAUNCHER = _OBS / "finbreak.sh"
 _DEB = _OBS / "debian"
 _DEB_CONTROL = _DEB / "control"
@@ -287,13 +289,26 @@ def test_INV7_offline_build() -> None:
             f"{name}: must install from the vendored wheel dir"
         )
 
-    # The _service fetches the wheel closure and injects the version.
-    assert "pip" in service and "download" in service, (
-        "_service must vendor the wheel closure via pip download"
+    # The offline wheel closure is vendored by packaging/obs/vendor-wheels.sh —
+    # a real script, NOT an XML comment in _service, because shell flags contain
+    # "--" which is illegal inside an XML comment and aborts `osc service`.
+    vendor_script = _read(_VENDOR_SCRIPT)
+    assert "pip" in vendor_script and (
+        "download" in vendor_script or "wheel" in vendor_script
+    ), "vendor-wheels.sh must build the offline wheel closure via pip download/wheel"
+    assert "vendor.tar.gz" in vendor_script, (
+        "vendor-wheels.sh must produce vendor.tar.gz (the offline Source1)"
     )
-    assert "set_version" in service or "tar_scm" in service or "obs_scm" in service, (
-        "_service must inject the version from the tag"
+
+    # _service pulls the tagged source (obs_scm), injects the version
+    # (set_version), and references the vendored closure.
+    assert "obs_scm" in service or "tar_scm" in service, (
+        "_service must fetch the tagged source via obs_scm"
     )
+    assert "set_version" in service, (
+        "_service must inject the version from the tag via set_version"
+    )
+    assert "vendor" in service, "_service must reference the vendored wheel closure"
 
 
 # --------------------------------------------------------------------------- #
@@ -310,3 +325,22 @@ def test_INV8_console_entry_point() -> None:
     from finbreak.__main__ import main
 
     assert callable(main)
+
+
+# --------------------------------------------------------------------------- #
+# rpmlint filter — the bundled foreign tree under /usr/lib/finbreak trips checks
+# that assume a native, system-linked distro package; openSUSE aborts the build
+# on the accumulated badness without a filter file (FIBR-0155 §5).
+# --------------------------------------------------------------------------- #
+def test_rpmlintrc_filters_bundled_tree_noise() -> None:
+    rc = _read(_RPMLINTRC)
+    assert "addFilter" in rc, "rpmlintrc must use addFilter() entries"
+    # missing-hash-section on the bundled Qt .so's is the dominant badness; the
+    # others are the recurring bundled-wheel noise. All must be filtered or the
+    # openSUSE build aborts (badness far exceeds the threshold).
+    for check in (
+        "missing-hash-section",
+        "devel-file-in-non-devel-package",
+        "unstripped-binary-or-object",
+    ):
+        assert check in rc, f"rpmlintrc must filter {check} for the bundled payload"

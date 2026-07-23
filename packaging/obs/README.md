@@ -13,83 +13,110 @@ full design and rationale.
 |------|------|
 | `finbreak.spec` | RPM recipe (openSUSE + Fedora) |
 | `debian/` | deb recipe (Debian + Ubuntu) |
+| `obs-setup.sh` | create/update the OBS sub-project + package + build targets (one-time, idempotent) |
+| `obs-submit.sh` | vendor → populate the checkout → run services → commit a revision (per-release) |
+| `obs-status.sh` | poll the build results + tail any failing build log |
+| `vendor-wheels.sh` | builds `vendor.tar.gz` — the offline wheel closure (run on a glibc ≥ 2.34 host) |
+| `finbreak-rpmlintrc` | filters rpmlint noise inherent to the bundled foreign tree (openSUSE gate) |
 | `io.github.milnet01.finbreak.desktop` | desktop entry (menu + launcher association) |
 | `io.github.milnet01.finbreak.metainfo.xml` | AppStream component (software-centre listing) |
 | `finbreak.sh` | the `/usr/bin/finbreak` launcher wrapper |
-| `_service` | OBS source tarball + version injection (+ the documented wheel-vendoring command) |
+| `_service` | pulls the tagged source (obs_scm) + injects the version (set_version) |
 
-## Target matrix
+## Where it lives
 
-Four confirmed-buildable targets; openSUSE Leap 15.6 is a likely fifth, gated on
-one glibc check (below). The **glibc ≥ 2.34** floor — not the Python version — is
-the gating constraint (a build root below 2.34 cannot install the PySide6 wheel).
+A dedicated **sub-project `home:milnet:finbreak`** (isolated from other packages
+in `home:milnet`, with its own build targets), package `finbreak`. Public repo:
+`https://download.opensuse.org/repositories/home:/milnet:/finbreak/`.
 
-| Family | Target | Notes |
-|--------|--------|-------|
-| openSUSE | Tumbleweed | primary listing; OBS home turf |
-| Fedora | latest stable | second RPM family |
-| Debian | 13 (trixie) | matches the CI clean-room image |
-| Ubuntu | 24.04 LTS | largest desktop base; default python3 = 3.12 |
-| openSUSE | **Leap 15.6** | **contingent** — see the glibc check |
+## Target matrix (all **x86_64-only** — the bundled wheels are 64-bit)
 
-## First-cut submit (manual `osc` flow)
+| Family | Target | OBS path | Status (2026-07-23) |
+|--------|--------|----------|---------------------|
+| openSUSE | Tumbleweed | `openSUSE:Factory / snapshot` | ✅ built + published |
+| Fedora | 44 | `Fedora:44 / standard` | ✅ built + published |
+| Debian | 13 (trixie) | `Debian:13 / standard` | ⚠️ excluded — needs a `.dsc` + the vendor bundle as a deb component tarball |
+| Ubuntu | 24.04 LTS | `Ubuntu:24.04 / universe` | ⚠️ excluded — same deb work as Debian 13 |
+| openSUSE | Leap 15.6 | `openSUSE:Leap:15.6 / standard` | ⏳ pending a `%if 0%{?sle_version}` python313 branch |
 
-Version flows **one way**: the git tag `v{VERSION}` drives everything via the
-`_service` `set_version` — never hand-edit a `Version:` (obs_packaging INV-6).
+The **glibc ≥ 2.34** floor gates buildability (the PySide6/cryptography wheels
+are tagged `manylinux_2_34`). Leap 15.6 (glibc 2.38) clears it; its blocker is
+the legacy default `python3` (3.6), not glibc.
 
-1. **Tag + release** the version on GitHub (the normal `/bump` + release flow),
-   so `v{VERSION}` exists.
-2. **Vendor the wheels** on a Linux x86_64 host with **glibc ≥ 2.34** (§ 3.6) —
-   run the `pip download` block documented in `_service` (both `cp312` + `cp313`
-   ABIs, **no** single `--platform` tag, includes `pyinstaller==6.21.0` and its
-   recursive closure), producing `vendor.tar.gz`. The block **pre-builds ofxparse**
-   (sdist-only on PyPI) into a universal wheel first — without that step
-   `--only-binary=:all:` cannot resolve it and the whole download aborts, taking
-   ofxparse's own deps (`lxml`, `six`) down with it. Confirmed 2026-07-23: the
-   corrected block vendors 34 wheels and passes the offline-install check below.
-3. **Check it out + populate sources:**
-   ```
-   osc checkout home:milnet finbreak && cd home:milnet/finbreak
-   cp /path/to/packaging/obs/* .          # spec, debian/, desktop, metainfo, _service
-   cp /path/to/vendor.tar.gz .
-   osc service manualrun                  # obs_scm + tar + set_version
-   osc add finbreak-*.tar.gz vendor.tar.gz *.spec *.desktop *.metainfo.xml debian _service
-   osc commit -m "finbreak {VERSION}"
-   ```
-4. **Watch the build** (`osc results`) for each enabled target/arch.
+## Submit flow (scripted)
 
-## Pre-submit checklist (things CI cannot prove — FIBR-0155 § 5)
+Version flows **one way**: the newest `v*` git tag drives `set_version`, which
+writes the `.spec` + `debian/changelog` `Version:` — never hand-edited
+(obs_packaging INV-6). Prerequisites: the `osc` CLI (logged in once), and
+`obs-service-tar` + `obs-service-obs_scm` (`zypper in osc obs-service-tar
+obs-service-obs_scm`). Vendoring needs a **glibc ≥ 2.34** x86_64 host.
 
-Run these **once** before locking the recipes in (all are recalled distro facts,
-global rule 13):
+```sh
+packaging/obs/obs-setup.sh     # once: create the sub-project + package + targets
+packaging/obs/obs-submit.sh    # vendor → populate → services → commit a revision
+packaging/obs/obs-status.sh    # poll results; tail any failing build log
+```
 
-- [ ] **Leap 15.6 go/no-go:** `zypper info glibc` in an `openSUSE:Leap:15.6` build
-      root. **≥ 2.34** → add it as a fifth target *and* add a third,
-      `%if 0%{?sle_version}` branch to `finbreak.spec` overriding the unversioned
-      `python3` with `python313` (Leap's default `python3` is the legacy 3.6).
-      **< 2.34** → defer Leap 15.6 (Leap users fall back to the AppImage).
-- [ ] **Per-distro package names** in `finbreak.spec` `%if` branches + `debian/control`
-      (`Mesa-libGL1` vs `mesa-libGL`, `libglib-2_0-0` vs `glib2`, …) confirmed
-      against each target's real package index.
-- [ ] **`%post`/`%postun` macro spellings** (`%icon_theme_cache_post`,
-      `%desktop_database_post`) confirmed for openSUSE + Fedora.
-- [ ] **The onedir freeze runs** — a local `pyinstaller --onedir` smoke of the app
-      once, so its first real exercise isn't inside an OBS build root.
-- [ ] **The wheel vendoring** resolves offline: `pip install --no-index
-      --find-links vendor/ -r deps.txt pyinstaller==6.21.0` in a clean venv for
-      **both** ABIs, confirming the recursive PyInstaller closure landed.
-- [ ] **Each target's `python3 --version` + `ldd --version`** — default `python3`
-      minor in `{3.12, 3.13}` and glibc ≥ 2.34.
-- [ ] **`appstreamcli validate io.github.milnet01.finbreak.metainfo.xml`** passes
-      (INV-4 is skip-if-absent in CI).
-- [ ] **Live `xprop WM_CLASS`** on the built app equals the `.desktop`'s
-      `StartupWMClass=finbreak` (guards a Qt-version quirk, § 3.3).
-- [ ] **Upload real screenshots** to the homepage and confirm the metainfo
-      `<screenshot>` URLs resolve.
+All three take defaults for `home:milnet:finbreak/finbreak` on
+`api.opensuse.org`, overridable via env vars (`OBS_API`, `OBS_PROJECT`,
+`OBS_PACKAGE`, …; see each script's header). `obs-submit.sh` reuses an existing
+`vendor.tar.gz`; pass `REVENDOR=1` to rebuild it (do so when the dependency
+closure or a target's default python changes). The spec's `%check` runs the
+frozen `--self-test` with `FINBREAK_SELFTEST_DEBUG=1`, so a Qt/native failure
+prints its real traceback in the build log.
+
+`_service` tracks `revision=main` with `match-tag=v*` during bring-up (builds the
+newest release code + derives the version from the latest `v*` tag). For a pinned
+release, set `revision` to that tag.
+
+**Doing it by hand** (what the scripts automate): `osc checkout
+home:milnet:finbreak finbreak`, copy the recipe files + `vendor.tar.gz` in, `osc
+service manualrun`, `osc add` the sources (`echo y | osc add debian` archives the
+dir), `osc commit`, then `osc results` / `osc buildlog … <repo> x86_64`.
+
+## Bugs bring-up surfaced (none catchable in CI — all fixed)
+
+The build environment differs from every local/CI check, so these only appeared
+on the real OBS builders:
+
+1. **ofxparse sdist-only** — `--only-binary=:all:` fetched zero wheels; ofxparse
+   is pre-built to a wheel and offered via `--find-links` (`vendor-wheels.sh`).
+2. **`--` in an XML comment** — the vendoring command lived in an `_service`
+   comment; shell `--flags` are illegal in XML comments and broke parsing. Moved
+   to `vendor-wheels.sh`.
+3. **Wrong version tag** — `@PARENT_TAG@` grabbed a `FIBR-*-complete` marker tag;
+   fixed with `match-tag=v*`.
+4. **Fedora 44 = Python 3.14** — vendored cp314 too (was 3.12/3.13 only).
+5. **`libgthread-2_0-0`** — openSUSE splits it out of `libglib`; a Qt dep, so
+   PyInstaller couldn't bundle it → `%check` failed loading Qt. Added to
+   `BuildRequires`.
+6. **`krb5`** — PySide6's freeze-time `_check_if_openssl_enabled()` imports
+   QtNetwork → needs `libgssapi_krb5`. Added to `BuildRequires`.
+7. **Fedora-only scriptlets + dir ownership** — the `%icon_theme_cache_post`
+   macros are undefined on openSUSE (and, unbraced, bash reads them as job
+   specs); wrapped in `%if 0%{?fedora}` (openSUSE uses file triggers). Added
+   `hicolor-icon-theme` to Build+Requires so the icon dirs are owned.
+8. **rpmlint badness** — the bundled foreign tree trips checks assuming a native
+   package (missing-hash-section on Qt `.so`s dominated); filtered via
+   `finbreak-rpmlintrc`.
+
+## Still open (§5 follow-ups)
+
+- [ ] **Debian + Ubuntu** — un-exclude the deb builds: author a `.dsc` (the
+      debtransform trigger) and deliver `vendor.tar.gz` into the deb build tree
+      (a `3.0 (quilt)` component orig tarball → unpacks to `vendor/`), since deb
+      builds have no RPM-style `Source1`.
+- [ ] **Leap 15.6** — add the target + a `%if 0%{?sle_version}` branch pinning
+      `python313` (Leap's default `python3` is 3.6).
+- [ ] **Live `xprop WM_CLASS`** on the running app equals the `.desktop`'s
+      `StartupWMClass=finbreak` (Qt-version quirk guard, § 3.3).
+- [ ] **Real screenshots** uploaded to the homepage so the metainfo
+      `<screenshot>` URLs resolve in the software centres.
 
 ## Ongoing releases
 
 Each new finbreak version is a new package revision in the OBS repo (pulled by
 `zypper up` / `apt upgrade`). The `/bump` recipe keeps the metainfo `<release>`
-and `debian/changelog` in lockstep with `CHANGELOG.md`; then repeat the
-tag → vendor → `osc service manualrun` → `osc commit` flow above.
+and `debian/changelog` in lockstep with `CHANGELOG.md`. Re-run
+`vendor-wheels.sh` **only** when the dependency closure or a target's default
+python changes; otherwise repeat `osc service manualrun` → `osc commit`.

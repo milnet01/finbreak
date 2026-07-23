@@ -1,0 +1,45 @@
+# rpmlint filter for finbreak (FIBR-0155).
+#
+# finbreak ships a self-contained PyInstaller runtime under /usr/lib/finbreak/:
+# its own Python + Qt + SQLCipher + qpdf + the pinned wheel closure (§ 3.2).
+# rpmlint's defaults assume a native distro package dynamically linked against
+# system-shared libraries; the checks below are inapplicable to a *private,
+# bundled foreign tree* and would otherwise abort the openSUSE build on badness.
+# Each filter targets noise inherent to vendored upstream wheels, not a defect
+# in finbreak. See docs/specs/FIBR-0155.md and packaging/obs/README.md.
+
+# --- Bundled ELF objects from upstream wheels (private to /usr/lib/finbreak) ---
+# No GNU hash section / unstripped (shipped as the wheels built them); not on the
+# system linker path, so ldconfig is irrelevant; PIC/PIE/setgroups/gethostbyname
+# are advisories about third-party library code we bundle verbatim, not call.
+addFilter(r"missing-hash-section")
+addFilter(r"unstripped-binary-or-object")
+addFilter(r"(postin|postun)-without-ldconfig")
+addFilter(r"shlib-with-non-pic-code")
+addFilter(r"position-independent-executable-suggested")
+addFilter(r"missing-call-to-setgroups-before-setuid")
+addFilter(r"binary-or-shlib-calls-gethostbyname")
+
+# --- Bundled Python package data (private to /usr/lib/finbreak) ---
+# C headers (lxml), files duplicated across the tree, dotfiles, and helper
+# scripts without shebangs / non-exec / zero-length markers are all internal to
+# the vendored tree, never consumed as distro devel or executable artifacts.
+addFilter(r"devel-file-in-non-devel-package")
+addFilter(r"files-duplicate")
+addFilter(r"hidden-file-or-dir")
+addFilter(r"non-executable-script")
+addFilter(r"script-without-shebang")
+addFilter(r"zero-length")
+addFilter(r"empty-")
+addFilter(r"python-missing-require")
+
+# --- Spec / metadata ---
+# hicolor-icon-theme is a plain runtime dependency (it owns the icon dirs our
+# PNGs land in), not an openSUSE *-branding package, so it needs no version.
+addFilter(r"branding-requires-unversioned hicolor-icon-theme")
+# The changelog lives in CHANGELOG.md and packaging/obs/debian/changelog, not in
+# the RPM spec's %changelog (which the version sync leaves empty by design).
+addFilter(r"no-changelogname-tag")
+# The %-tokens in the spec's explanatory comments are prose references to build
+# phases (%build, %check, %post ...), not live macros.
+addFilter(r"macro-in-comment")

@@ -108,3 +108,9 @@ screenshot*.png
 
 # Roadmap ID counter — re-derived from ROADMAP.md when absent; not tracked (user 2026-07-14)
 .roadmap-counter
+
+# OBS packaging build artifacts (FIBR-0155) — never committed to git; the wheel
+# closure is huge and host-specific, the osc checkout is a working copy.
+/vendor.tar.gz
+/vendor/
+/build-obs/
