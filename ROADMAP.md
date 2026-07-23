@@ -294,7 +294,7 @@ scariest unknown (native-library bundling) up front.
   Unlike the official distro archives (which forbid bundling and need a maintainer
   sponsor — impractical for finbreak's deliberately-bundled runtime), Flathub is
   self-publish and embraces the self-contained/sandboxed model, so it fits.
-  Design finalized (2026-07-23, docs/specs/FIBR-0159.md, cold-eyes): build on the freedesktop 25.08 runtime + the pinned pip-wheel closure (PySide6 6.11.1 carries its own Qt6) — NOT the PySide6 BaseApp (tops out at 6.10, forks the pinned stack) and NOT the KDE runtime (no 6.11 branch). The "recent freedesktop runtime + PySide6 BaseApp" wording in the scope above is the pre-research candidate; the freedesktop + pip-wheel path is the chosen one.
+  Design decision (2026-07-23, docs/specs/FIBR-0159.md, research-stage): build on the freedesktop 25.08 runtime + the pinned pip-wheel closure (PySide6 6.11.1 carries its own Qt6) — NOT the PySide6 BaseApp (tops out at 6.10, forks the pinned stack) and NOT the KDE runtime (no 6.11 branch). The "recent freedesktop runtime + PySide6 BaseApp" wording in the scope above is the pre-research candidate; the freedesktop + pip-wheel path is the chosen one.
 
   Scope (a SEPARATE build pipeline from OBS — Flatpak uses flatpak-builder + a
   manifest, not rpm/deb):
