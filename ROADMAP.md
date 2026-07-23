@@ -857,6 +857,22 @@ lands on top.
   Kind: marketing.
   Source: in-session-2026-07-23.
 
+- ✅ [FIBR-0164] **Keep README.md current every release; fix stale Windows signing + auto-update status.**
+  User directive (2026-07-23): ensure README.md is up to date on every
+  release. Fixed two stale claims: the "Code signing" section said Windows
+  builds were SignPath-signed (SignPath DECLINED — FIBR-0133), and the
+  Windows install section said "no auto-update on Windows" (FIBR-0131 shipped
+  Windows in-app auto-update + the signed .exe release asset, confirmed on the
+  v0.1.16 release assets). Also refreshed the feature list for 0.1.17's
+  password-safety additions (hint, clipboard auto-clear, unlock throttle,
+  verify-backup). Broadened .claude/bump.json's README todo to sweep the
+  standing status sections (code signing, per-platform install/auto-update,
+  distribution) against reality each release, not just the feature list; also
+  recorded as a [[readme-update-every-release]] memory.
+  **Layman:** Fixed the README so it no longer wrongly says the Windows app is officially signed or that it can't auto-update, and set things up so the README is checked on every release.
+  Kind: doc-fix.
+  Source: user-request-2026-07-23.
+
 ## Enhancements & performance backlog
 
 Ideas captured 2026-07-01 from a product / performance review

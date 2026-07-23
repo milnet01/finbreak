@@ -18,12 +18,13 @@ release](https://github.com/milnet01/finbreak/releases/latest)**, or see
 [CHANGELOG](CHANGELOG.md) for what's shipped and [ROADMAP](ROADMAP.md) for
 what's coming.
 
-**Code signing.** finbreak takes part in the
-[SignPath Foundation](https://signpath.org)'s free code-signing program for
-open-source projects; Windows release builds are signed with a certificate
-provided by the SignPath Foundation. Free code signing provided by
-[SignPath.io](https://about.signpath.io), certificate by
-[SignPath Foundation](https://signpath.org).
+**Code signing.** Windows builds are **not yet code-signed**, so Windows
+SmartScreen may warn about an "unknown publisher" the first time you run finbreak
+(see [Install](#install) for how to proceed). We're working towards free code
+signing for open-source projects through the
+[SignPath Foundation](https://signpath.org); this section will say so once it's in
+place. (Linux AppImages and the Windows `.exe` are already Ed25519-signed for the
+in-app updater — a separate thing from an OS "publisher" certificate.)
 
 ## Status
 
@@ -64,15 +65,18 @@ lot, with more polish and features to come. What works today:
   transactions), the accounts and period, and a light or dark theme, and
   optionally lock the file with a password so only you can open it, and
 - **encrypted backups** — save a portable, password-protected backup of your
-  whole vault and restore it later, even onto a new master password if you've
-  forgotten the old one,
+  whole vault, check it's readable before you rely on it, and restore it later —
+  even onto a new master password if you've forgotten the old one,
 - **six colour themes** — three light (Ledger, Parchment, Mint) and three dark
   (Midnight, Graphite, Emerald), or **"Follow system"** to match your computer's
   light/dark setting automatically and switch the instant it changes; your
   choice applies the moment the app opens, even before you unlock, and
-- everyday **conveniences** — set auto-lock to "Never" if you'd rather it didn't
-  lock while idle, and forget a bank-statement password the app remembered
-  (per account) whenever you want.
+- everyday **conveniences and safety** — an optional password hint on the unlock
+  screen, amounts and descriptions you copy are cleared from the clipboard after a
+  short while, repeated wrong unlock attempts are slowed down, you can set
+  auto-lock to "Never" if you'd rather it didn't lock while idle, and you can
+  forget a bank-statement password the app remembered (per account) whenever you
+  want.
 
 finbreak now also runs on **Windows** as a self-contained `.exe`, and installs on
 **Linux** as native **RPM/deb** packages and a strongly-sandboxed **Flatpak**
@@ -98,12 +102,15 @@ Each release also ships a `.sig` file next to the AppImage — that's the
 signature finbreak uses to check updates are genuine; you don't need to do
 anything with it yourself.
 
-**Windows (testing)** — a self-contained `finbreak.exe` (no Python needed) is
-built on demand by the `windows-build` CI workflow and shared with testers as a
-build artifact. It is **not code-signed yet**, so Windows SmartScreen will show an
-"unknown publisher" warning the first time you run it — choose **More info → Run
-anyway**. There is **no auto-update on Windows** (that's Linux/AppImage-only for
-now); to update, just replace the old `.exe` with the newer one.
+**Windows** — a self-contained `finbreak.exe` (no Python needed) ships as a
+release asset on each
+**[release](https://github.com/milnet01/finbreak/releases/latest)**, next to an
+Ed25519 `finbreak-*.exe.sig` the updater verifies (the `windows-build` CI workflow
+also builds it on demand for testers). It is **not code-signed** for Windows (no
+Authenticode "publisher" certificate yet), so SmartScreen shows an "unknown
+publisher" warning the first time you run it — choose **More info → Run anyway**.
+Automatic updates work the same as on Linux — opt-in and off by default (see
+[Staying up to date](#staying-up-to-date-optional)).
 
 **macOS** — a packaged `.dmg` is still on the way (see [ROADMAP](ROADMAP.md)). Until
 then, you can run from source with Python 3.12+ (see
