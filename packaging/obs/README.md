@@ -106,8 +106,11 @@ on the real OBS builders:
       debtransform trigger) and deliver `vendor.tar.gz` into the deb build tree
       (a `3.0 (quilt)` component orig tarball → unpacks to `vendor/`), since deb
       builds have no RPM-style `Source1`.
-- [ ] **Leap 15.6** — add the target + a `%if 0%{?sle_version}` branch pinning
-      `python313` (Leap's default `python3` is 3.6).
+- [ ] **Leap 15.6** (FIBR-0160, deferred) — attempted; went *unresolvable*
+      because Leap 15.6 ships **no python 3.12+** (`osc buildinfo`: "nothing
+      provides python313"), and we vendor only cp312/cp313/cp314. Needs Leap's
+      actual newest python3XX module + that ABI vendored. The spec keeps the
+      `%{py3}`/`%{py3pkg}` abstraction ready for it.
 - [ ] **Live `xprop WM_CLASS`** on the running app equals the `.desktop`'s
       `StartupWMClass=finbreak` (Qt-version quirk guard, § 3.3).
 - [ ] **Real screenshots** uploaded to the homepage so the metainfo

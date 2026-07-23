@@ -251,6 +251,97 @@ scariest unknown (native-library bundling) up front.
   Lanes: ui, services, packaging.
   Source: user-request-2026-07-19.
 
+- 📋 [FIBR-0158] **Un-exclude the Debian 13 + Ubuntu 24.04 deb builds on OBS (home:milnet:finbreak).**
+  Both RPM families (openSUSE Tumbleweed + Fedora 44) build, publish and install
+  from OBS (FIBR-0155). The two deb targets (Debian 13, Ubuntu 24.04) are
+  currently "excluded" — OBS finds no Debian source package to build. Two gaps to
+  close, both verified-design work (rule 13 — confirm against OBS debtransform
+  docs, don't recall):
+
+    1. Author a `.dsc` at the OBS package root — OBS's debtransform only builds a
+       deb when a `.dsc` is present. It needs the debtransform headers
+       (Debtransform-Tar: the finbreak orig tarball; the debian/ dir). set_version
+       must stamp its Version (add it to the lockstep, obs_packaging INV-6).
+
+    2. Deliver vendor.tar.gz INTO the deb build tree. RPM gets it as Source1, but a
+       deb build only unpacks the orig tarball — which does not contain vendor/.
+       Cleanest: switch debian/source/format from "3.0 (native)" to "3.0 (quilt)"
+       and ship the wheels as a component orig tarball
+       (finbreak_<ver>.orig-vendor.tar.gz), which dpkg-source unpacks to vendor/ at
+       the source root, where debian/rules already looks (--find-links vendor/).
+
+  Then expect the same class of per-distro fixes the RPM bring-up surfaced, found
+  empirically from the OBS build logs:
+    - Debian/Ubuntu apt names for the freeze-time libs (libgthread-2.0.so.0 is in
+      libglib2.0-0 on Debian; the krb5 lib is libgssapi-krb5-2; collect-set is
+      libgl1/libegl1/libxcb*/...).
+    - python3 default per target: Ubuntu 24.04 = 3.12, Debian 13 = 3.13 — both
+      already vendored (cp312 + cp313), no extra ABI.
+    - lintian is far more lenient than openSUSE rpmlint on a bundled tree; watch
+      dpkg-shlibdeps on the private /usr/lib/finbreak (debian/rules already
+      excludes it via -Xusr/lib/finbreak).
+
+  Driver: iterate with packaging/obs/obs-submit.sh + obs-status.sh, reading each
+  deb build log, exactly as the RPM targets were brought up. See
+  packaging/obs/README.md "Still open".
+  **Layman:** Get the .deb version of finbreak building on the build service too, so Debian and Ubuntu users get a native package (right now only the openSUSE/Fedora RPMs build; the .deb targets are skipped).
+  Kind: package.
+  Source: user-request-2026-07-23.
+
+- 📋 [FIBR-0159] **Publish finbreak to Flathub — the cross-distro app store (GNOME Software / KDE Discover).**
+  Flathub is the de-facto cross-distro app store: one submission surfaces finbreak
+  in GNOME Software + KDE Discover on openSUSE, Fedora, Ubuntu, Debian, Mint, etc.
+  Unlike the official distro archives (which forbid bundling and need a maintainer
+  sponsor — impractical for finbreak's deliberately-bundled runtime), Flathub is
+  self-publish and embraces the self-contained/sandboxed model, so it fits.
+
+  Scope (a SEPARATE build pipeline from OBS — Flatpak uses flatpak-builder + a
+  manifest, not rpm/deb):
+    - Write io.github.milnet01.finbreak.yaml (flatpak-builder manifest) on a recent
+      freedesktop runtime + the PySide6 BaseApp (or build Qt/Python from the
+      vendored wheels; reuse the FIBR-0155 offline closure where possible).
+    - Reuse the existing AppStream metainfo + .desktop + icons already shipped
+      under packaging/obs/ (Flathub requires exactly these — the groundwork is done,
+      ADR-0007).
+    - Sandbox review: finbreak is local-only (no network except the opt-in update
+      check, which is redundant under Flatpak's own updates — gate it off in the
+      Flatpak build). Filesystem access: statement import + PDF export need a file
+      portal (xdg-desktop-portal), not broad home access — keep permissions minimal
+      for the security story.
+    - Submit to github.com/flathub/flathub (PR to a new repo), pass the reviewer
+      round, then Flathub builds + hosts it.
+
+  Follow-up (optional, lower priority): the Snap Store (Ubuntu-led, also
+  self-publish, also appears in the software centres) — a snapcraft.yaml. Do after
+  Flathub. Official distro archives are out of scope (bundling policy).
+  **Layman:** Get finbreak into the main Linux app store (Flathub), so users on any distro can find and install it from their graphical Software centre with one click — the single biggest reach-the-most-people step.
+  Kind: package.
+  Source: user-request-2026-07-23.
+
+- 📋 [FIBR-0160] **Add openSUSE Leap 15.6 as an OBS target (deferred — Leap ships no python 3.12+).**
+  Attempted 2026-07-23: added the Leap 15.6 target + a %if 0%{?sle_version}
+  python313 build branch, but the build went "unresolvable" — osc buildinfo:
+  "nothing provides python313, python313-devel, python313-pip". Leap 15.6 (SLE 15
+  SP6) has no python313 (nor 3.12/3.14); we vendor only cp312/cp313/cp314. The Leap
+  target was removed to keep the project clean; the spec keeps the %{py3}/%{py3pkg}
+  abstraction (harmless — resolves to python3 on every active target).
+
+  To enable later:
+    1. Confirm Leap 15.6's newest python3XX module (`osc buildinfo` against
+       openSUSE:Leap:15.6, or the Leap package index) — likely python311 (3.11).
+    2. Vendor that ABI (add it to vendor-wheels.sh's PY loop) — all deps must
+       publish that cpXX wheel (PySide6/cryptography are abi3 so fine; check
+       sqlcipher3-wheels, lxml, pikepdf, Pillow, cffi, charset-normalizer).
+    3. Set the sle_version branch's %{py3pkg} to that module (e.g. python311) and
+       %{py3} to its interpreter (python3.11).
+    4. Re-add the openSUSE_Leap_15.6 repo (obs-setup.sh) + rebuild.
+
+  Lower priority than FIBR-0159 (Flathub), which serves Leap users through GNOME
+  Software / KDE Discover regardless.
+  **Layman:** Offer a native openSUSE Leap package too. Parked for now: Leap's software repos don't carry a new-enough Python to match our bundled parts, and Flathub will reach Leap users in the meantime.
+  Kind: package.
+  Source: user-request-2026-07-23.
+
 ## P02 — Vertical slice: the security spine (target: after P01)
 
 **Theme:** the smallest end-to-end feature that touches every

@@ -30,14 +30,25 @@ BuildRequires:  binutils
 # pulled into that isolated check) (FIBR-0155 §5).
 BuildRequires:  hicolor-icon-theme
 
+# Build-time python: the target's default python3 — EXCEPT openSUSE Leap (SLE),
+# whose default python3 is the legacy 3.6. There, use the python313 module stack,
+# which matches the cp313 vendored wheels (§ 3.6).
+%if 0%{?sle_version}
+%global py3     python3.13
+%global py3pkg  python313
+%else
+%global py3     python3
+%global py3pkg  python3
+%endif
+
 # --- Build-time collect-set: the libs PyInstaller must SEE so it bundles them
-#     INTO the payload (the wider set from _build-smoke-in-container.sh), plus the
-#     unversioned python3 toolchain (floats to the target's own default 3.12/3.13,
-#     § 3.6). Two families, two name sets.
+#     INTO the payload (the wider set from _build-smoke-in-container.sh). openSUSE
+#     Tumbleweed + Leap share the SUSE names; Fedora is its own set. The python3
+#     toolchain floats via %%{py3pkg} (python3 everywhere, python313 on Leap).
 %if 0%{?suse_version}
-BuildRequires:  python3
-BuildRequires:  python3-devel
-BuildRequires:  python3-pip
+BuildRequires:  %{py3pkg}
+BuildRequires:  %{py3pkg}-devel
+BuildRequires:  %{py3pkg}-pip
 BuildRequires:  Mesa-libGL1
 BuildRequires:  Mesa-libEGL1
 BuildRequires:  libglib-2_0-0
@@ -107,11 +118,11 @@ Argon2id key). No accounts, no cloud, no tracking.
 tar -xf %{SOURCE1}
 
 %build
-# Build venv on the target's OWN default python3 (§ 3.6). Install the pinned
-# runtime deps + the freezer OFFLINE from the vendored wheels (obs_packaging
-# INV-7 — every build-phase pip install carries --no-index). Deps are read
-# straight from pyproject (single source of truth), never a hand-list.
-python3 -m venv _bvenv
+# Build venv on the target's build python (%{py3}: python3 everywhere, python3.13
+# on Leap). Install the pinned runtime deps + the freezer OFFLINE from the
+# vendored wheels — every build-phase `pip install --no-index` (obs_packaging
+# INV-7). Deps are read straight from pyproject (single source of truth).
+%{py3} -m venv _bvenv
 . _bvenv/bin/activate
 python3 -c "import tomllib; print('\n'.join(tomllib.load(open('pyproject.toml','rb'))['project']['dependencies']))" > _deps.txt
 pip install --no-index --find-links vendor/ -r _deps.txt pyinstaller==6.21.0

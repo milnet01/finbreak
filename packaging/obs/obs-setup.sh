@@ -29,6 +29,9 @@ cat > "$tmp/prj.xml" <<EOF
     <path project="openSUSE:Factory" repository="snapshot"/>
     <arch>x86_64</arch>
   </repository>
+  <!-- openSUSE Leap 15.6 deferred (FIBR-0160): it ships no python 3.12+, so the
+       cp312/cp313/cp314 wheels can't resolve. Re-add once its python module +
+       ABI are vendored. -->
   <repository name="Fedora_44">
     <path project="Fedora:44" repository="standard"/>
     <arch>x86_64</arch>
