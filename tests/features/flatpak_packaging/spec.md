@@ -42,6 +42,12 @@ network, no financial data.
   Monkeypatch `_in_flatpak()`→True and `_is_wayland()`→True with
   `XDG_CURRENT_DESKTOP=KDE`; assert `_kde_wayland()` and `_center_supported()` are
   both `False`.
+- **INV-9 — `flathub.json` restricts the build to exactly the closure's arches.**
+  The pinned wheels are x86_64-only, but Flathub's buildbot builds every arch by
+  default — so `packaging/flatpak/flathub.json` must exist and its `only-arches`
+  list must equal the concrete arch set the `python3-deps.yaml` wheel filenames
+  carry (skip-if-deps-absent, like INV-3/7). Locks the two against drift: widening
+  the wheels forces widening `only-arches`, and vice versa.
 
 ## Coverage limits (see spec § 4 / § 5)
 

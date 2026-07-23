@@ -16,7 +16,10 @@
 # SUBMISSION NOTE: the finbreak module's git source is pinned to a real release
 # (tag + immutable commit, § 3.8 / INV-4). Re-pin `tag:`/`commit:` to the newest
 # release before a Flathub PR (and regenerate python3-deps.yaml if the closure
-# changed) — see packaging/flatpak/README.md.
+# changed) — see packaging/flatpak/README.md. The submission also carries
+# `flathub.json` (`only-arches: [x86_64]`) beside this manifest — the pinned wheel
+# closure is x86_64-only, so it restricts Flathub's buildbot to the arch it can
+# build (INV-9); without it the default aarch64 build fails.
 id: io.github.milnet01.finbreak
 runtime: org.freedesktop.Platform
 runtime-version: '25.08'

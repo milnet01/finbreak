@@ -17,6 +17,7 @@ sandbox is the finance-app security story.
 |------|------|
 | `io.github.milnet01.finbreak.yaml` | the `flatpak-builder` manifest (runtime, modules, `finish-args`, reused assets) |
 | `python3-deps.yaml` | **generated** — sha256-pinned pip sources for the dependency closure |
+| `flathub.json` | Flathub build config — `only-arches: [x86_64]` (the closure is x86_64-only; INV-9) |
 | `generate-pip-sources.sh` | regenerates `python3-deps.yaml` (derives `--prefer-wheels` from the resolved closure) |
 | `flatpak-build.sh` | local build + install + `--self-test` smoke |
 | `README.md` | this runbook |
@@ -65,9 +66,12 @@ New apps go on the **`new-pr` base branch** of `github.com/flathub/flathub`
    validate packaging/obs/io.github.milnet01.finbreak.metainfo.xml` passes; the
    metainfo `<screenshot>` URLs resolve to real images.
 3. Fork `flathub/flathub`, branch from `new-pr`, add **at the repo root**:
-   `io.github.milnet01.finbreak.yaml` + `python3-deps.yaml` (copies of these,
-   with the reused-asset install commands reaching the assets through the git
-   clone — no `packaging/obs/` sits beside a submitted manifest, § 3.2).
+   `io.github.milnet01.finbreak.yaml` + `python3-deps.yaml` + `flathub.json`
+   (copies of these three, with the reused-asset install commands reaching the
+   assets through the git clone — no `packaging/obs/` sits beside a submitted
+   manifest, § 3.2). `flathub.json` restricts the buildbot to `x86_64` — the arch
+   the pinned wheel closure covers (INV-9); without it the default aarch64 build
+   fails on the x86_64-only wheels.
 4. Open a PR titled `Add io.github.milnet01.finbreak`. The reviewer checks it
    builds entirely from pinned source, passes the linter, and has valid metainfo.
    Be ready to justify the binary (manylinux) wheels as upstream-published,

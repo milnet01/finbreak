@@ -17,6 +17,7 @@ No network, no real Flatpak build, no financial data.
 
 from __future__ import annotations
 
+import json
 import re
 import shutil
 import subprocess
@@ -40,6 +41,12 @@ _DEPS = _FLATPAK / "python3-deps.yaml"
 _METAINFO = _OBS / f"{APP_ID}.metainfo.xml"
 _GEN_SCRIPT = _FLATPAK / "generate-pip-sources.sh"
 _BUILD_SCRIPT = _FLATPAK / "flatpak-build.sh"
+_FLATHUB_JSON = _FLATPAK / "flathub.json"
+
+# Concrete CPU arches a manylinux platform tag can name (the ones Flathub builds).
+# A wheel platform tag is `<arch>` for the pure-Python `any` case (skipped) or ends
+# in one of these for a native manylinux wheel.
+_KNOWN_ARCHES = ("x86_64", "aarch64", "armv7l", "i686", "ppc64le", "s390x")
 
 # INV-2 — the ENUMERATED sandbox allowlist (§ 3.4). Every finish-args entry must be
 # one of these; anything else — a --share=network, any --filesystem=, any
@@ -202,6 +209,53 @@ def test_INV3c_single_cpython_abi() -> None:
 
 
 # --------------------------------------------------------------------------- #
+# INV-9 — flathub.json restricts the build to exactly the closure's arches.
+# The pinned wheels are x86_64-only (generate-pip-sources.sh --wheel-arches=x86_64),
+# but Flathub's buildbot builds EVERY arch by default — so an aarch64 build would
+# `pip install --no-index` an x86_64 wheel and fail. flathub.json's `only-arches`
+# must equal the concrete arch set the wheel filenames carry, so the two can never
+# drift (widen the wheels ⟹ must widen only-arches, and vice versa).
+# --------------------------------------------------------------------------- #
+def _closure_arches(deps: Any) -> set[str]:
+    """The set of concrete CPU arches the pinned wheels target (pure-Python
+    `*-none-any` wheels and the sdist are arch-independent — they contribute none)."""
+    arches: set[str] = set()
+    for mod in _iter_modules(deps):
+        for src in mod["sources"]:
+            if not isinstance(src, dict):
+                continue
+            name = _source_filename(src)
+            if not name.endswith(".whl"):
+                continue
+            platform_tags = name[: -len(".whl")].split("-")[-1]  # trailing platform tag
+            for tag in platform_tags.split("."):
+                for arch in _KNOWN_ARCHES:
+                    if tag.endswith(arch):
+                        arches.add(arch)
+    return arches
+
+
+def test_INV9_flathub_json_restricts_to_closure_arches() -> None:
+    assert _FLATHUB_JSON.exists(), (
+        "packaging/flatpak/flathub.json is missing — without `only-arches` Flathub "
+        "builds every arch and the aarch64 build fails on the x86_64-only closure"
+    )
+    config = json.loads(_FLATHUB_JSON.read_text(encoding="utf-8"))
+    only_arches = config.get("only-arches")
+    assert isinstance(only_arches, list) and only_arches, (
+        "flathub.json needs a non-empty only-arches list"
+    )
+
+    deps = _require_deps()
+    want = _closure_arches(deps)
+    assert want, "no concrete-arch wheels found in python3-deps.yaml"
+    assert set(only_arches) == want, (
+        f"flathub.json only-arches {sorted(only_arches)} != wheel-closure arches "
+        f"{sorted(want)} — restrict Flathub to exactly what the pinned wheels cover"
+    )
+
+
+# --------------------------------------------------------------------------- #
 # INV-4 — identity + version single-source (new Flatpak-side legs only).
 # --------------------------------------------------------------------------- #
 def test_INV4_identity_and_version() -> None:
@@ -325,5 +379,12 @@ def test_INV8_gate_is_flatpak_specific(monkeypatch: pytest.MonkeyPatch) -> None:
 # Recipe files exist (the § 6 implementation surface).
 # --------------------------------------------------------------------------- #
 def test_recipe_files_present() -> None:
-    for path in (_MANIFEST, _GEN_SCRIPT, _BUILD_SCRIPT, _FLATPAK / "README.md"):
+    required = (
+        _MANIFEST,
+        _GEN_SCRIPT,
+        _BUILD_SCRIPT,
+        _FLATHUB_JSON,
+        _FLATPAK / "README.md",
+    )
+    for path in required:
         assert path.exists(), f"missing packaging/flatpak file: {path.name}"

@@ -351,6 +351,19 @@ scariest unknown (native-library bundling) up front.
   Kind: package.
   Source: user-request-2026-07-23.
 
+- 📋 [FIBR-0161] **Fold the Flathub `flathub.json` arch-restriction into the FIBR-0159 spec §5 checklist.**
+  During FIBR-0159 submission prep we found the pinned wheel closure is
+  x86_64-only, but Flathub's buildbot builds every arch by default — so the
+  submission needs a `flathub.json` with `only-arches: [x86_64]` or the aarch64
+  build fails. Implemented in packaging (packaging/flatpak/flathub.json + INV-9
+  test locking only-arches to the closure's wheel arches), but the signed-off
+  FIBR-0159 spec §3.4/§5 pre-submit checklist never mentions it. Fold in an arch
+  line — but the spec is a design doc, so the edit runs through /cold-eyes
+  (--max-loops 7, CLAUDE.md rule 14) rather than an inline patch.
+  **Layman:** The Flathub packaging now ships a small config that tells Flathub to build only for the PC (x86_64) chip we have the parts for; the design document should mention it.
+  Kind: doc-fix.
+  Source: in-session-2026-07-23.
+
 ## P02 — Vertical slice: the security spine (target: after P01)
 
 **Theme:** the smallest end-to-end feature that touches every
