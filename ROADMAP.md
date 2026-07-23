@@ -1712,6 +1712,48 @@ because retrofitting them is a data migration.
   Lanes: ui.
   Source: user-request-2026-07-21.
 
+- 📋 [FIBR-0171] **Cash-flow forecast — project account balances forward from detected recurring income and expenses.**
+  Turns finbreak from backward-looking (what did I spend?) into forward-looking (can I afford this?). Reuses the shipped recurring-money detection (FIBR-0142): take the confirmed recurring income + expenses, roll them forward from today's balance, and draw a projected-balance line to a chosen horizon (month-end / N days). Highest value-per-line-of-code of this batch because the detection engine already exists.
+  **Layman:** Shows where your balance is heading — e.g. "you'll have about R X left by month-end" — based on your regular income and bills.
+  Kind: feature.
+  Source: in-session-2026-07-23.
+
+- 📋 [FIBR-0172] **Spending alerts — flag unusual spend, a newly-appeared recurring charge, or a missed expected debit.**
+  A notice layer on top of recurring detection (FIBR-0142) + category history: (a) new recurring charge detected this period, (b) a category's spend is N× its rolling average, (c) an expected recurring debit did not post. Non-intrusive surfacing (dashboard banner / list), user-dismissable. Pairs naturally with the cash-flow forecast.
+  **Layman:** Quiet nudges when something changes: a new subscription starts, one category spikes well above normal, or an expected payment didn't arrive.
+  Kind: feature.
+  Source: in-session-2026-07-23.
+
+- 📋 [FIBR-0173] **Savings goals — track progress toward a target amount, distinct from spending budgets.**
+  Budgets cap spending; goals build toward a target — a separate concept from the planned Budgets item (FIBR-0022). Per-goal: name, target amount, optional target date, current progress (linked account balance or manual contributions), and an on-track / behind indicator.
+  **Layman:** Set a target like "R10,000 holiday fund" and watch a progress bar fill as you save toward it.
+  Kind: feature.
+  Source: in-session-2026-07-23.
+
+- 📋 [FIBR-0174] **Tax-year summary — per-category totals for a chosen tax year with a tax-deductible flag, exportable to PDF/CSV.**
+  Adds a "tax-deductible" flag to categories and a tax-year report view (configurable year boundary for the SA Mar–Feb tax year). Reuses the existing PDF (services/pdf_export.py) and the planned plain-data CSV export (FIBR-0093). Locally useful given the SA bank focus.
+  **Layman:** A one-click annual report of what you earned and spent per category for a tax year, with deductible categories flagged — ready for filing.
+  Kind: feature.
+  Source: in-session-2026-07-23.
+
+- 📋 [FIBR-0175] **Compare periods on the dashboard — this month vs last, this year vs last year, side by side.**
+  The dashboard shows one period at a time (FIBR-0143). Add a compare toggle that renders a second period alongside the current one with per-category deltas (up/down arrows + amount/percent). Small addition to the existing reporting aggregation for a big 'aha'.
+  **Layman:** See two periods next to each other so you can spot what went up or down.
+  Kind: feature.
+  Source: in-session-2026-07-23.
+
+- 📋 [FIBR-0176] **Receipt attachments — attach a photo/PDF of a receipt to a transaction, stored inside the encrypted vault.**
+  Store attachment blobs inside the SQLCipher vault (not on disk) so they inherit the same at-rest encryption as transactions. Needs a size cap (reuse the INV-5b resource-size cap pattern) and a schema/migration for an attachments table. Fits the privacy-first, everything-encrypted design.
+  **Layman:** Keep a picture of a receipt with its transaction, encrypted like everything else.
+  Kind: feature.
+  Source: in-session-2026-07-23.
+
+- 📋 [FIBR-0177] **Account-level balance reconciliation — verify imported transactions sum to the bank's stated balance for every account.**
+  Generalises the Standard Bank import-time reconciliation (importers/standard_bank.py: opening ± total vs closing) into a visible, ongoing account-level check: opening balance + running sum of transactions vs the latest known statement balance, surfaced as ✓ / off-by-R-X. Catches import gaps for every account and every bank, complementing the planned statement coverage/gap detection (FIBR-0038) and running-balance work (FIBR-0094).
+  **Layman:** A tick that confirms your imported transactions add up to the balance your bank states — or flags the gap — for any account, not just at import time.
+  Kind: feature.
+  Source: in-session-2026-07-23.
+
 ### ⚡ Performance
 
 - ✅ [FIBR-0025] **Enable SQLite WAL mode.** Set
