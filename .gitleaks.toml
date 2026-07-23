@@ -14,6 +14,15 @@ paths = [
   '''\.git/''',
   '''dist/''',
   '''build/''',
+  # flatpak-builder outputs (FIBR-0159): the built app tree (.build/.repo) and the
+  # download/build cache (.flatpak-builder/) bundle hundreds of MB of third-party
+  # wheels + native libs whose high-entropy strings trip the default detectors.
+  # They are git-ignored transient build output (packaging/flatpak/.gitignore) —
+  # same rationale as dist/ + build/. The committed manifest/deps/scripts are still
+  # scanned (and clean).
+  '''\.flatpak-builder/''',
+  '''packaging/flatpak/\.build/''',
+  '''packaging/flatpak/\.repo/''',
   # release/ holds ONLY the maintainer's local, git-ignored Ed25519 signing
   # *private* key (scripts/gen-signing-key.py). `gitleaks dir .` scans disk
   # regardless of .gitignore, so it would flag that key on every push. It can

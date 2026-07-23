@@ -261,6 +261,14 @@ be checkable. Enforcement arrives in step with the code:
     default — a strict subset of this invariant's "exactly one opt-in flow",
     covered without any source change by the existing runtime gating and
     asserted by `tests/features/obs_packaging/` INV-5.
+  - *Flatpak (Flathub) builds are empty-outbound **and** sandbox-enforced
+    (FIBR-0159).* A Flatpak launch has no `$APPIMAGE` and is not a frozen exe,
+    so `detect_installer()` → `None` and the updater is inert — the same
+    empty app-initiated outbound surface as the OBS build. The Flatpak goes
+    further: its `finish-args` grant **no `--share=network`** (§ 3.4), so app
+    networking is not merely off-by-default but **unreachable at the OS level**
+    — the strongest form of this invariant. Asserted by
+    `tests/features/flatpak_packaging/` INV-6.
 - **INV-9 — Logs are clean.** The local log file never records
   transaction contents, passwords, keys, or decrypted data.
 - **INV-10 — Interactive unlock is throttled.** After a wrong master

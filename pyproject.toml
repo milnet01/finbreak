@@ -88,6 +88,15 @@ dev = [
     "pytest-qt==4.5.0",
     # Runs the [tool.mypy] config below (also run server-side by the audit).
     "mypy==2.1.0",
+    # Structural parse of the Flatpak manifest + generated python3-deps.yaml in
+    # the flatpak_packaging feature tests (FIBR-0159 INV-1..4/7 — the spec mandates
+    # YAML-key-anchored assertions, not substring scans). Present transitively via
+    # bandit today, but declared explicitly so the invariant tests don't rest on a
+    # transitive pin (dependencies.md).
+    "PyYAML==6.0.3",
+    # mypy stubs for PyYAML — without them the gate's `mypy` step errors
+    # "Library stubs not installed for yaml" on the flatpak_packaging import.
+    "types-PyYAML==6.0.12.20260518",
 ]
 # PEP 735 build group — the freezer used only by scripts/build-smoke.sh
 # (FIBR-0003). Kept out of `dev` so the everyday gate needn't install it.

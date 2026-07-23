@@ -1,0 +1,6 @@
+# flatpak-builder outputs + cached tooling (regenerated locally, never committed).
+.build/
+.repo/
+.flatpak-builder/
+.local-manifest.yaml
+.flatpak-pip-generator.py

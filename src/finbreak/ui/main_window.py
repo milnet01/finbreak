@@ -146,11 +146,28 @@ def _is_wayland() -> bool:
     return QGuiApplication.platformName().startswith("wayland")
 
 
+def _in_flatpak() -> bool:
+    """True when running inside a Flatpak sandbox. Flatpak drops a
+    ``/.flatpak-info`` marker into every sandbox, so its presence is the canonical
+    probe — a sibling monkeypatchable seam to ``_is_wayland`` (FIBR-0159 INV-8).
+    The sandbox's session-bus proxy auto-allows only ``org.freedesktop.portal.*``;
+    the KWin window-centering call (``org.kde.KWin``, FIBR-0060) is not reachable,
+    and finbreak's finance-app sandbox deliberately does not widen the D-Bus
+    surface to reach it (FIBR-0159 § 3.5 / INV-2)."""
+    return os.path.exists("/.flatpak-info")
+
+
 def _kde_wayland() -> bool:
     """True on a KDE Plasma Wayland session — the one Wayland compositor finbreak
     can centre a window on, via KWin's scripting D-Bus API (FIBR-0060). Other
     Wayland compositors expose no app-usable placement API, so Center window is
-    disabled there rather than silently doing nothing."""
+    disabled there rather than silently doing nothing. Under Flatpak the
+    ``org.kde.KWin`` name is outside the sandbox's portal-only bus proxy
+    (FIBR-0159 § 3.5), so this returns False there too — the single chokepoint that
+    both ``_center_supported()`` (the menu gate) and ``_center_window()`` (the
+    Reset-Layout path) consult, disabling the unreachable call at one seam."""
+    if _in_flatpak():
+        return False
     return _is_wayland() and "KDE" in os.environ.get("XDG_CURRENT_DESKTOP", "").upper()
 
 
