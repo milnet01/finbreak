@@ -114,6 +114,20 @@ def test_INV4_event_on_the_horizon_is_included() -> None:
     assert [e.on for e in fc.events] == [date(2026, 1, 8)]  # boundary inclusive
 
 
+def test_INV4_occurrence_on_today_is_excluded_no_double_count() -> None:
+    # The disjoint-window money-safety guard: a flow dated exactly today is already
+    # owned by the anchor's (period_end, today] window (D1), so projecting it too
+    # would count it twice. next_expected == today must roll to the next cadence.
+    # (Falsifier: weakening `while when <= today` to `< today` keeps the on-today
+    # occurrence and this test goes red.)
+    item = _item(500, "2026-01-08", Cadence.WEEKLY)
+    today = date(2026, 1, 8)
+    fc = project_forecast(0, [item], today, date(2026, 1, 31))
+    dates = [e.on for e in fc.events]
+    assert today not in dates
+    assert dates[0] == date(2026, 1, 15)  # first is strictly after today
+
+
 # --------------------------------------------------------------------------- #
 # INV-5 — signs: IN raises, OUT lowers; event sign matches its direction
 # --------------------------------------------------------------------------- #
