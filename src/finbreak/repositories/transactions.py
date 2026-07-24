@@ -212,6 +212,25 @@ class TransactionRepository:
             (account_id, statement_period_id),
         ).rowcount
 
+    def sum_after(
+        self, account_id: int, after_date: str, up_to: str
+    ) -> tuple[int, int]:
+        """The ``(sum(amount_minor), count)`` of ``account_id``'s transactions in
+        the half-open window ``(after_date, up_to]`` — strictly after ``after_date``,
+        no later than ``up_to`` (FIBR-0171 D1/INV-13). This is the roll-forward the
+        forecast adds to a statement's closing balance to bring it current: rows on
+        ``after_date`` (== the statement's ``period_end``) are already in the closing
+        balance, and rows after ``up_to`` (== today) are future-dated. ``COALESCE``
+        makes the zero-later-transactions case (a fresh statement) return ``(0, 0)``,
+        not ``(NULL, 0)``; the count feeds ``AnchorSource.since_txn_count`` + the
+        provenance line."""
+        total, count = self._conn.execute(
+            "SELECT COALESCE(SUM(amount_minor), 0), COUNT(*) FROM transactions "
+            "WHERE account_id = ? AND occurred_on > ? AND occurred_on <= ?",
+            (account_id, after_date, up_to),
+        ).fetchone()
+        return total, count
+
     def count_for_account(self, account_id: int) -> int:
         return self._conn.execute(
             "SELECT count(*) FROM transactions WHERE account_id = ?",
