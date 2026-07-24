@@ -412,6 +412,74 @@ class RecurringItem:
     txn_ids: tuple[int, ...]
 
 
+class ForecastMode(StrEnum):
+    """Whether the cash-flow forecast (FIBR-0171) projects a real balance or an
+    honest net change. ``ANCHORED`` — at least one account has a persisted closing
+    balance, so the line starts from a real brought-current balance; ``NET_FLOW`` —
+    no account has one, so the line starts at 0 and is framed as a projected
+    *change*, never a fabricated balance. A single vault-wide switch (INV-2)."""
+
+    ANCHORED = "anchored"
+    NET_FLOW = "net_flow"
+
+
+@dataclass
+class AnchorSource:
+    """One contributing account's provenance for the forecast anchor (FIBR-0171 D10).
+    The starting figure is the sum over these of ``current_balance_minor`` =
+    ``statement_balance_minor`` + the transactions rolled in since ``as_of``. Field
+    order pinned. Empty list in ``NET_FLOW`` mode. All money is signed integer minor
+    units; the vault has one ``minor_unit_exponent`` so these never mix scales."""
+
+    account_id: int
+    account_name: str
+    statement_balance_minor: int
+    as_of: date  # the source statement's period_end
+    since_txn_count: int
+    current_balance_minor: int
+
+
+@dataclass
+class ForecastEvent:
+    """One projected recurring occurrence in the forecast window (FIBR-0171 D6). Field
+    order pinned. ``amount_minor`` is **signed** (``+`` for IN, ``-`` for OUT) and is
+    authoritative for the INV-1 sum; ``direction`` is carried for display/colour and
+    must agree with the sign (INV-5). ``running_after_minor`` is the running balance
+    after applying this event, in the merged stable-sorted event order."""
+
+    on: date
+    merchant: str
+    direction: Direction
+    amount_minor: int
+    running_after_minor: int
+
+
+@dataclass
+class ForecastPoint:
+    """One vertex of the projected-balance step line (FIBR-0171 D6): the start point,
+    one after each event, and a terminal point at the horizon. ``len(points) == 2 +
+    len(events)`` (INV-13)."""
+
+    on: date
+    balance_minor: int
+
+
+@dataclass
+class Forecast:
+    """The cash-flow projection result (FIBR-0171 D6). ``start_minor`` is the anchor
+    (0 in ``NET_FLOW``); ``end_minor == start_minor + Σ event.amount_minor`` (INV-1).
+    ``points`` is the step line to ``horizon`` (inclusive); ``anchor_sources`` the
+    per-account provenance (empty in ``NET_FLOW``). Field order pinned."""
+
+    mode: ForecastMode
+    start_minor: int
+    end_minor: int
+    horizon: date
+    points: list[ForecastPoint]
+    events: list[ForecastEvent]
+    anchor_sources: list[AnchorSource]
+
+
 @dataclass
 class RecurringSummary:
     """Monthly-equivalent recurring totals for the (deferred FIBR-0143) dashboard
