@@ -23,9 +23,16 @@ from PySide6.QtWidgets import (
 )
 
 from finbreak.errors import FinbreakError, VaultLockedError
-from finbreak.models import AccountType
+from finbreak.models import AccountReconciliation, AccountType, ReconciliationStatus
 from finbreak.services.accounts import AccountService
 from finbreak.services.auth import AuthService
+from finbreak.services.reconciliation import ReconciliationService
+from finbreak.services.transactions import (
+    TransactionService,
+    read_minor_unit_exponent,
+    to_display_decimal,
+)
+from finbreak.ui._amount import _format_amount
 from finbreak.ui._widgets import select_combo_data
 
 _ACCOUNT_ID_ROLE = Qt.ItemDataRole.UserRole
@@ -50,6 +57,11 @@ class AccountsWidget(QWidget):
     ):
         super().__init__(parent)
         self._accounts = AccountService(service.vault)
+        # The per-account balance-reconciliation health check (FIBR-0177 D6). The
+        # vault is kept so ``_refresh`` can read the money-display exponent (from the
+        # connection) + the base-currency symbol to render an "off by" magnitude.
+        self._vault = service.vault
+        self._reconciliation = ReconciliationService(service.vault)
 
         self.setWindowTitle(self.tr("Accounts"))
 
@@ -241,15 +253,44 @@ class AccountsWidget(QWidget):
         # Presence only — the id-set query never pulls the stored password into the
         # UI (FIBR-0128 INV-1). A marked row shows a screen-reader-legible suffix.
         with_pw = self._accounts.account_ids_with_pdf_password()
+        # The reconciliation health check for every account, read once (FIBR-0177 D6).
+        # A total map, so ``statuses[account.id]`` is always present. Money-display
+        # bits come from the vault connection + base currency, like the sibling tabs.
+        statuses = self._reconciliation.account_statuses()
+        exponent = read_minor_unit_exponent(self._vault.connection)
+        symbol = TransactionService(self._vault).base_currency()
         for account in self._accounts.list_accounts():
             label = self._type_labels.get(account.type, account.type)
             text = f"{account.name} — {label}"
             has_pw = account.id in with_pw
             if has_pw:
                 text += self.tr("  ·  🔑 statement password saved")
+            text += self._reconciliation_suffix(statuses[account.id], exponent, symbol)
             item = QListWidgetItem(text)
             item.setData(_ACCOUNT_ID_ROLE, account.id)
             item.setData(_ACCOUNT_NAME_ROLE, account.name)
             item.setData(_ACCOUNT_TYPE_ROLE, account.type)
             item.setData(_ACCOUNT_HAS_PW_ROLE, has_pw)
             self._list.addItem(item)
+
+    def _reconciliation_suffix(
+        self, recon: AccountReconciliation, exponent: int, symbol: str
+    ) -> str:
+        """The per-row reconciliation marker (FIBR-0177 D6): ``✓`` for a reconciled
+        account, ``⚠ off by {money}`` for a single-period discrepancy (the magnitude
+        rendered through the shared money formatter, currency-driven — not a
+        hard-coded "R"), ``⚠ {n} periods don't reconcile`` for several, and **nothing**
+        for NOT_ENOUGH_DATA / NOT_SUPPORTED (quiet, like an account with no saved
+        password)."""
+        if recon.status is ReconciliationStatus.RECONCILED:
+            return self.tr("  ·  ✓ balances reconcile")
+        if recon.status is ReconciliationStatus.OFF:
+            if recon.off_pair_count == 1:
+                money = _format_amount(
+                    to_display_decimal(abs(recon.discrepancy_minor), exponent), symbol
+                )
+                return self.tr("  ·  ⚠ off by {money}").format(money=money)
+            return self.tr("  ·  ⚠ {n} periods don't reconcile").format(
+                n=recon.off_pair_count
+            )
+        return ""

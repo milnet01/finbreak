@@ -107,6 +107,24 @@ class StatementPeriodRepository:
             for account_id, balance, period_end in rows
         ]
 
+    def closing_balances_for_account(self, account_id: int) -> list[tuple[str, int]]:
+        """One ``(period_end, closing_balance_minor)`` per balance-bearing statement
+        of ``account_id`` — the rows whose ``closing_balance_minor`` is non-``NULL``,
+        ordered ``(period_end, id)`` **ascending** (the reconciliation chain,
+        FIBR-0177 D3/INV-3). A sibling of ``latest_closing_balances`` — the same
+        *columns*, ascending (the balance *date*, tie-broken by insert order) vs its
+        latest-row-per-account ``DESC``. Statements with no closing balance (CSV /
+        manual) are not chain nodes, but their transactions still count inside a
+        bridge window (the service reads them via ``sum_after``). The SELECT column
+        list is literal (bandit B608)."""
+        rows = self._conn.execute(
+            "SELECT period_end, closing_balance_minor FROM statement_periods "
+            "WHERE account_id = ? AND closing_balance_minor IS NOT NULL "
+            "ORDER BY period_end, id",
+            (account_id,),
+        ).fetchall()
+        return [(period_end, balance) for period_end, balance in rows]
+
     def id_for_span(
         self, account_id: int, period_start: str, period_end: str
     ) -> int | None:

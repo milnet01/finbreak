@@ -489,3 +489,35 @@ class RecurringSummary:
     monthly_in: Decimal
     monthly_out: Decimal
     net: Decimal
+
+
+class ReconciliationStatus(StrEnum):
+    """The health of one account's cross-statement balance reconciliation
+    (FIBR-0177 D4). The ``.value`` is a stable ASCII token, never translated
+    display text. ``RECONCILED`` — an asset account (≥2 balance-bearing statements)
+    whose every consecutive pair bridges exactly; ``OFF`` — ≥1 pair fails;
+    ``NOT_ENOUGH_DATA`` — an asset account with < 2 balance-bearing statements
+    (nothing to bridge — never an error); ``NOT_SUPPORTED`` — a type outside
+    {current, savings} (D1), assigned by the service, never by the pure core."""
+
+    RECONCILED = "reconciled"
+    OFF = "off"
+    NOT_ENOUGH_DATA = "not_enough_data"
+    NOT_SUPPORTED = "not_supported"
+
+
+@dataclass
+class AccountReconciliation:
+    """One account's reconciliation rollup (FIBR-0177 D5). Computed, never stored,
+    so field order is pinned for the widget + tests, not a SELECT. ``discrepancy_minor``
+    is the signed **net** ``Σ(actual − expected)`` over all consecutive pairs (0 when
+    reconciled), where ``expected = C_prev + bridge_sum`` and ``actual = C_curr``;
+    ``off_pair_count`` counts the pairs with a non-zero diff; ``checked_pair_count``
+    is ``max(0, nodes − 1)`` (never ``−1``). For any status with no pairs to examine
+    — ``NOT_ENOUGH_DATA`` / ``NOT_SUPPORTED`` — all three int fields are ``0``."""
+
+    account_id: int
+    status: ReconciliationStatus
+    discrepancy_minor: int
+    off_pair_count: int
+    checked_pair_count: int
