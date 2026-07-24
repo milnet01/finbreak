@@ -550,7 +550,9 @@ def test_INV10_workspace_has_eight_tabs(qtbot, service):
     qtbot.addWidget(window)
     window._enter_unlocked()
     assert window._workspace is not None
-    assert window._workspace.count() == 9  # + Recurring (FIBR-0142), Forecast (FIBR-0171)
+    assert (
+        window._workspace.count() == 9
+    )  # + Recurring (FIBR-0142), Forecast (FIBR-0171)
     assert window._transfers_tab is not None
 
 

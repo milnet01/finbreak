@@ -21,6 +21,17 @@ signaling per
 
 ## [Unreleased]
 
+### Added
+
+- **A new Forecast tab projects your balance forward from confirmed recurring income and expenses.** (FIBR-0171)
+  The forecast starts from a real, current balance — each imported
+  statement's closing balance, brought up to date with the transactions
+  imported since — and draws a projected-balance line to a chosen horizon
+  (end of this month, 30, 60 or 90 days). When no statement has recorded a
+  balance yet, it honestly shows the projected net change from zero instead
+  of a made-up balance. A provenance line names each account and statement
+  the starting figure came from.
+
 ### Fixed
 
 - **The Recurring and Transfers tabs now show amounts with the currency symbol and thousands grouping (e.g. “R 1,234.50”), matching the rest of the app.** (FIBR-0168)

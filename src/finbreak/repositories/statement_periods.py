@@ -102,7 +102,10 @@ class StatementPeriodRepository:
             "  FROM statement_periods WHERE closing_balance_minor IS NOT NULL"
             ") WHERE rn = 1"
         ).fetchall()
-        return [(account_id, balance, period_end) for account_id, balance, period_end in rows]
+        return [
+            (account_id, balance, period_end)
+            for account_id, balance, period_end in rows
+        ]
 
     def id_for_span(
         self, account_id: int, period_start: str, period_end: str

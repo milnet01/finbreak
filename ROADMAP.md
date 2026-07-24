@@ -1712,12 +1712,13 @@ because retrofitting them is a data migration.
   Lanes: ui.
   Source: user-request-2026-07-21.
 
-- 🚧 [FIBR-0171] **Cash-flow forecast — project account balances forward from detected recurring income and expenses.**
+- ✅ [FIBR-0171] **Cash-flow forecast — project account balances forward from detected recurring income and expenses.**
   Turns finbreak from backward-looking (what did I spend?) into forward-looking (can I afford this?). Reuses the shipped recurring-money detection (FIBR-0142): take the confirmed recurring income + expenses, roll them forward from today's balance, and draw a projected-balance line to a chosen horizon (month-end / N days). Highest value-per-line-of-code of this batch because the detection engine already exists.
   **Layman:** Shows where your balance is heading — e.g. "you'll have about R X left by month-end" — based on your regular income and bills.
   Kind: feature.
   Source: in-session-2026-07-23.
   Started 2026-07-24 (self-directed, user delegated the pick). Design: vault-wide cash-flow forecast reusing RecurringService.confirmed() — net-flow projection by default, upgrades to an absolute projected-balance line when the user enters an optional 'current balance as of today' anchor (stored as a vault setting, shown with its as-of date so a stale anchor is never mistaken for fact). New Forecast tab: projected line chart + upcoming-events list + horizon picker. Pure integer-minor projection core. Spec next → /cold-eyes (max-loops 7) → TDD.
+  Shipped 2026-07-24 (TDD). Schema v11 persists each statement's closing balance (statement_periods.closing_balance_minor); the forecast anchors to the sum of per-account balances brought current to today with real post-statement transactions (sum_after, half-open (period_end, today]), then projects the confirmed recurring set forward to a chosen horizon (End-of-month/30/60/90) via the pure Decimal-free project_forecast (reuses _add_cadence). NET_FLOW fallback (line from 0) when no account has a recorded balance. New Forecast tab after Recurring. INV-1..13 green; gate green.
 
 - 📋 [FIBR-0172] **Spending alerts — flag unusual spend, a newly-appeared recurring charge, or a missed expected debit.**
   A notice layer on top of recurring detection (FIBR-0142) + category history: (a) new recurring charge detected this period, (b) a category's spend is N× its rolling average, (c) an expected recurring debit did not post. Non-intrusive surfacing (dashboard banner / list), user-dismissable. Pairs naturally with the cash-flow forecast.
@@ -1754,6 +1755,20 @@ because retrofitting them is a data migration.
   **Layman:** A tick that confirms your imported transactions add up to the balance your bank states — or flags the gap — for any account, not just at import time.
   Kind: feature.
   Source: in-session-2026-07-23.
+
+- 📋 [FIBR-0178] **Cash-flow forecast v2 follow-ups (FIBR-0171 D12, logged not dropped).**
+  Deferred out of the FIBR-0171 v1 cash-flow forecast (spec D12),
+  logged so they are not lost: (a) a user-typed manual balance
+  override for balance-less accounts (CSV-only), so those accounts can
+  contribute to the anchor without waiting for a balance-bearing
+  statement; (b) per-account (rather than vault-wide) forecasts;
+  (c) scenario / what-if one-off inputs (a known future cost the
+  recurring engine won't model); (d) a CSV balance-column mapping so a
+  CSV import can persist a closing balance too. Multi-currency forecasts
+  stay out of scope and are tracked by FIBR-0087.
+  **Layman:** Optional extras for the new Forecast tab, deferred from v1.
+  Kind: feature.
+  Source: FIBR-0171 spec D12 (in-session 2026-07-24).
 
 ### ⚡ Performance
 

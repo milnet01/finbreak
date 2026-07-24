@@ -66,7 +66,9 @@ def test_INV10_tab_present_after_recurring(qtbot, vault_service) -> None:
     window._enter_unlocked()
     workspace = window._workspace
     assert workspace is not None
-    names = [workspace.widget(i).objectName() for i in range(workspace.count())]
+    tabs = [workspace.widget(i) for i in range(workspace.count())]
+    assert all(t is not None for t in tabs)
+    names = [t.objectName() for t in tabs if t is not None]
     assert names[-1] == "tab_forecast"
     assert names.index("tab_forecast") == names.index("tab_recurring") + 1
 

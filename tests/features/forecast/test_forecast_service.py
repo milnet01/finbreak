@@ -47,9 +47,7 @@ def _add(svc: AuthService, account_id: int, day: str, minor: int, desc: str) -> 
 
 def _confirm_netflix(svc: AuthService) -> None:
     rec = RecurringService(svc.vault)
-    item = next(
-        it for it in rec.candidates(_TODAY) if it.merchant_key == "netflix"
-    )
+    item = next(it for it in rec.candidates(_TODAY) if it.merchant_key == "netflix")
     rec.confirm(item.direction, item.merchant_key)
 
 
@@ -90,8 +88,9 @@ def test_INV13_anchored_forecast_brought_current(service) -> None:
         date(2026, 7, 5),
         date(2026, 8, 5),
     ]
-    assert all(e.amount_minor == -19_900 and e.direction is Direction.OUT
-               for e in fc.events)
+    assert all(
+        e.amount_minor == -19_900 and e.direction is Direction.OUT for e in fc.events
+    )
     assert fc.end_minor == 510_100 - 3 * 19_900
 
 

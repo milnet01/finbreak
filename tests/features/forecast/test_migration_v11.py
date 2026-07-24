@@ -67,9 +67,9 @@ def test_INV9_v10_upgrades_to_v11_adding_closing_balance_column(paths) -> None:
     assert "closing_balance_minor" in _cols(conn, "statement_periods")
     # The old row is backfilled NULL (no historical balance to recover).
     assert (
-        conn.execute(
-            "SELECT closing_balance_minor FROM statement_periods"
-        ).fetchone()[0]
+        conn.execute("SELECT closing_balance_minor FROM statement_periods").fetchone()[
+            0
+        ]
         is None
     )
     conn.close()
@@ -146,7 +146,9 @@ def test_INV12_update_fills_a_null_balance(service) -> None:
     conn.commit()
     repo.update_closing_balance(pid, 500_000)
     conn.commit()
-    assert repo.get(pid).closing_balance_minor == 500_000
+    got = repo.get(pid)
+    assert got is not None
+    assert got.closing_balance_minor == 500_000
 
 
 def test_INV12_update_never_overwrites_a_nonnull_balance(service) -> None:
@@ -157,7 +159,9 @@ def test_INV12_update_never_overwrites_a_nonnull_balance(service) -> None:
     conn.commit()
     repo.update_closing_balance(pid, 999_999)  # a different value — must be ignored
     conn.commit()
-    assert repo.get(pid).closing_balance_minor == 860_000, "fixed for the span"
+    got = repo.get(pid)
+    assert got is not None
+    assert got.closing_balance_minor == 860_000, "fixed for the span"
 
 
 # --------------------------------------------------------------------------- #
@@ -181,7 +185,9 @@ def test_INV6_latest_closing_balances_picks_greatest_period_end_nonnull(
     repo.add(b, "2026-06-15", "2026-07-15", "b.pdf", 30_000)
     conn.commit()
 
-    latest = dict((acct, (bal, end)) for acct, bal, end in repo.latest_closing_balances())
+    latest = dict(
+        (acct, (bal, end)) for acct, bal, end in repo.latest_closing_balances()
+    )
     assert latest[a] == (120_000, "2026-06-30")
     assert latest[b] == (30_000, "2026-07-15")
 
@@ -200,7 +206,9 @@ def test_INV6_tie_on_period_end_breaks_on_greatest_id(service) -> None:
     acct = AccountService(service.vault).list_accounts()[0].id
     repo = StatementPeriodRepository(conn)
     repo.add(acct, "2026-06-01", "2026-06-30", "first.pdf", 111_000)
-    repo.add(acct, "2026-06-05", "2026-06-30", "second.pdf", 222_000)  # same end, later id
+    repo.add(
+        acct, "2026-06-05", "2026-06-30", "second.pdf", 222_000
+    )  # same end, later id
     conn.commit()
     latest = dict(
         (a, bal) for a, bal, _end in repo.latest_closing_balances() if a == acct

@@ -33,17 +33,16 @@ from PySide6.QtWidgets import (
 
 from finbreak.errors import VaultLockedError
 from finbreak.models import Forecast, ForecastMode
-from finbreak.services.auth import AuthService
 from finbreak.services.accounts import AccountService
+from finbreak.services.auth import AuthService
 from finbreak.services.forecast import ForecastService
 from finbreak.services.transactions import (
     TransactionService,
     read_minor_unit_exponent,
     to_display_decimal,
 )
-from finbreak.ui._amount import _format_amount
+from finbreak.ui._amount import _NEGATIVE_TEXT, _POSITIVE_TEXT, _format_amount
 from finbreak.ui.charts import ChartTheme, build_forecast_chart
-from finbreak.ui._amount import _NEGATIVE_TEXT, _POSITIVE_TEXT
 
 # Column order is fixed so the qtbot cells are deterministically assertable (D9).
 _COL_DATE = 0
@@ -163,9 +162,9 @@ class ForecastWidget(QWidget):
         if fc.mode is ForecastMode.ANCHORED:
             amount = _format_amount(end_display, symbol)
             coverage = self._coverage_suffix(fc)
-            return self.tr("Projected balance{coverage}: ~{amount} by {horizon}").format(
-                coverage=coverage, amount=amount, horizon=horizon
-            )
+            return self.tr(
+                "Projected balance{coverage}: ~{amount} by {horizon}"
+            ).format(coverage=coverage, amount=amount, horizon=horizon)
         # NET_FLOW — an explicit projected change (double-empty reads "R0").
         amount = self._signed_change(fc.end_minor, end_display, symbol)
         return self.tr("Projected net change: {amount} by {horizon}").format(
@@ -173,7 +172,7 @@ class ForecastWidget(QWidget):
         )
 
     def _coverage_suffix(self, fc: Forecast) -> str:
-        """" (<accounts> only)" when not every account contributed to the anchor
+        """ " (<accounts> only)" when not every account contributed to the anchor
         (D2/D9), else "" — so a partial total is never mistaken for a whole-vault
         balance."""
         total = len(AccountService(self._service.vault).list_accounts())
@@ -195,9 +194,9 @@ class ForecastWidget(QWidget):
             )
         start = _format_amount(to_display_decimal(fc.start_minor, exponent), symbol)
         clauses = [self._source_clause(src) for src in fc.anchor_sources]
-        text = self.tr(
-            "Starting balance {start} as of today — from {sources}."
-        ).format(start=start, sources=", ".join(clauses))
+        text = self.tr("Starting balance {start} as of today — from {sources}.").format(
+            start=start, sources=", ".join(clauses)
+        )
         excluded = self._excluded_names(fc)
         if excluded:
             text += " " + self.tr(

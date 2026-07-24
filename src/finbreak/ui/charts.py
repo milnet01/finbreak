@@ -33,7 +33,7 @@ from PySide6.QtCharts import (
     QPieSeries,
     QValueAxis,
 )
-from PySide6.QtCore import QDate, QDateTime, Qt
+from PySide6.QtCore import QDate, Qt
 from PySide6.QtGui import QColor
 
 from finbreak.models import CategorySpend, ForecastPoint, MonthlyTotal

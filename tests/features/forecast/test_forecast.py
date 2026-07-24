@@ -42,9 +42,7 @@ def test_INV1_anchored_end_is_start_plus_sum() -> None:
         _item(100_000, "2026-01-10", Cadence.MONTHLY, "Salary", Direction.IN),
         _item(-30_000, "2026-01-05", Cadence.MONTHLY, "Rent", Direction.OUT),
     ]
-    fc = project_forecast(
-        50_000, items, date(2026, 1, 1), date(2026, 3, 31)
-    )
+    fc = project_forecast(50_000, items, date(2026, 1, 1), date(2026, 3, 31))
     assert fc.mode is ForecastMode.ANCHORED
     assert fc.start_minor == 50_000
     assert fc.end_minor == fc.start_minor + sum(e.amount_minor for e in fc.events)

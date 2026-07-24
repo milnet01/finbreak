@@ -363,9 +363,10 @@ def _migrate_to_v11(conn: dbapi2.Connection) -> None:
     table rebuild. **No backfill** is possible: historical statements' balances were
     discarded at import and are gone; only statements imported *after* this ships (or
     re-imported) populate the column, so old rows stay ``NULL`` and contribute
-    nothing to the anchor. Idempotency comes from **version-gating** — ``run_migrations``
-    calls this only for a vault at exactly v10 (``range(current+1, LATEST+1)``), so the
-    bare ``ALTER`` runs once and is never replayed (it is not replay-safe on its own).
+    nothing to the anchor. Idempotency comes from **version-gating** —
+    ``run_migrations`` calls this only for a vault at exactly v10 (``range(current+1,
+    LATEST+1)``), so the bare ``ALTER`` runs once and is never replayed (it is not
+    replay-safe on its own).
     One atomic unit (INV-9): with the vault's ``isolation_level=""`` the driver does
     not implicitly ``BEGIN`` around the DDL, so the explicit ``BEGIN`` — the step's
     first statement, ``UPDATE schema_version`` its last — makes it all-or-nothing (a

@@ -150,12 +150,14 @@ class ForecastService:
         today_iso = today.isoformat()
         period_repo = StatementPeriodRepository(self._conn)
         txn_repo = TransactionRepository(self._conn)
-        account_names = {
-            a.id: a.name for a in AccountRepository(self._conn).list_all()
-        }
+        account_names = {a.id: a.name for a in AccountRepository(self._conn).list_all()}
         sources: list[AnchorSource] = []
         total = 0
-        for account_id, balance_minor, period_end in period_repo.latest_closing_balances():
+        for (
+            account_id,
+            balance_minor,
+            period_end,
+        ) in period_repo.latest_closing_balances():
             roll_minor, since_count = txn_repo.sum_after(
                 account_id, period_end, today_iso
             )

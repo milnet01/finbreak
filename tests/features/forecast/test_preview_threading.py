@@ -42,7 +42,9 @@ def _stored_balance(svc: AuthService, account_id: int) -> int | None:
     repo = StatementPeriodRepository(svc.vault.connection)
     pid = repo.id_for_span(account_id, _START, _END)
     assert pid is not None
-    return repo.get(pid).closing_balance_minor
+    period = repo.get(pid)
+    assert period is not None
+    return period.closing_balance_minor
 
 
 def test_INV13_preview_carries_the_balance_and_retarget_preserves_it(service) -> None:
