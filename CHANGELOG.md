@@ -23,6 +23,12 @@ signaling per
 
 ### Added
 
+- **Account-level balance reconciliation — verify imported transactions sum to the bank's stated balance for every account.** (FIBR-0177)
+  Per-account reconciliation marker on the Accounts tab (✓ balances
+  reconcile / ⚠ off by …) for current & savings accounts, checking that
+  imported transactions bridge each statement's closing balance to the
+  next. Bank-agnostic, no new stored data, no schema change.
+
 - **A new Forecast tab projects your balance forward from confirmed recurring income and expenses.** (FIBR-0171)
   The forecast starts from a real, current balance — each imported
   statement's closing balance, brought up to date with the transactions
