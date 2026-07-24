@@ -9,12 +9,15 @@ written literally so it shares the ``StatementPeriod`` dataclass's field order.
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 
 from sqlcipher3 import dbapi2
 
 from finbreak.models import StatementPeriod
 from finbreak.repositories import last_insert_id
+
+log = logging.getLogger(__name__)
 
 # The SELECT column list is written literally (not interpolated) so it shares the
 # ``StatementPeriod`` dataclass's field order — matching the codebase convention
@@ -31,24 +34,75 @@ class StatementPeriodRepository:
         period_start: str,
         period_end: str,
         source_filename: str | None,
+        closing_balance_minor: int | None = None,
     ) -> int:
         """Insert one coverage-period row, stamping ``imported_at`` (UTC ISO), and
         return its new id (so ``commit_import`` can stamp the batch with it,
-        FIBR-0052 INV-8). Commit-free — the caller's import transaction owns the
-        commit (D7)."""
+        FIBR-0052 INV-8). ``closing_balance_minor`` (FIBR-0171) is the statement's
+        persisted closing balance in signed minor units, or ``None`` when the source
+        printed none (Savings / CSV / manual). Commit-free — the caller's import
+        transaction owns the commit (D7)."""
         cursor = self._conn.execute(
             "INSERT INTO statement_periods("
-            "account_id, period_start, period_end, source_filename, imported_at) "
-            "VALUES (?, ?, ?, ?, ?)",
+            "account_id, period_start, period_end, source_filename, imported_at, "
+            "closing_balance_minor) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
             (
                 account_id,
                 period_start,
                 period_end,
                 source_filename,
                 datetime.now(UTC).isoformat(),
+                closing_balance_minor,
             ),
         )
         return last_insert_id(cursor)
+
+    def update_closing_balance(self, period_id: int, balance_minor: int) -> None:
+        """**Fill-only** write of a span's closing balance (FIBR-0171 D4/INV-12):
+        set ``closing_balance_minor`` for ``period_id`` **only when the stored value
+        is currently ``NULL``** — filling a gap left by a prior CSV-only import. For
+        one span the closing balance is fixed, so a non-``NULL`` stored balance is
+        **never** overwritten; an incoming *different* value signals a parse /
+        wrong-file error, so keep the stored value but **log a warning** naming the
+        span and both values rather than swallowing the disagreement. Commit-free —
+        the caller's import transaction owns the commit."""
+        stored = self._conn.execute(
+            "SELECT closing_balance_minor FROM statement_periods WHERE id = ?",
+            (period_id,),
+        ).fetchone()
+        if stored is None:
+            return  # no such span
+        current = stored[0]
+        if current is None:
+            self._conn.execute(
+                "UPDATE statement_periods SET closing_balance_minor = ? WHERE id = ?",
+                (balance_minor, period_id),
+            )
+        elif current != balance_minor:
+            log.warning(
+                "closing balance disagreement for statement period %d: stored %d, "
+                "incoming %d — keeping the stored value (a span's balance is fixed)",
+                period_id,
+                current,
+                balance_minor,
+            )
+
+    def latest_closing_balances(self) -> list[tuple[int, int, str]]:
+        """One ``(account_id, closing_balance_minor, period_end)`` per account: the
+        row with the greatest ``period_end`` (tie: greatest ``id``) whose
+        ``closing_balance_minor`` is non-``NULL`` (FIBR-0171 D1/INV-6). Accounts with
+        no balance-bearing statement are absent (they contribute nothing to the
+        forecast anchor). A window function picks the top row per account partition."""
+        rows = self._conn.execute(
+            "SELECT account_id, closing_balance_minor, period_end FROM ("
+            "  SELECT account_id, closing_balance_minor, period_end, "
+            "  ROW_NUMBER() OVER ("
+            "    PARTITION BY account_id ORDER BY period_end DESC, id DESC) AS rn "
+            "  FROM statement_periods WHERE closing_balance_minor IS NOT NULL"
+            ") WHERE rn = 1"
+        ).fetchall()
+        return [(account_id, balance, period_end) for account_id, balance, period_end in rows]
 
     def id_for_span(
         self, account_id: int, period_start: str, period_end: str
@@ -67,7 +121,7 @@ class StatementPeriodRepository:
     def list_for_account(self, account_id: int) -> list[StatementPeriod]:
         rows = self._conn.execute(
             "SELECT id, account_id, period_start, period_end, source_filename, "
-            "imported_at FROM statement_periods "
+            "imported_at, closing_balance_minor FROM statement_periods "
             "WHERE account_id = ? ORDER BY period_start, id",
             (account_id,),
         ).fetchall()
@@ -78,7 +132,8 @@ class StatementPeriodRepository:
         tab's read, FIBR-0052 INV-7), ordered by import recency then id."""
         rows = self._conn.execute(
             "SELECT id, account_id, period_start, period_end, source_filename, "
-            "imported_at FROM statement_periods ORDER BY imported_at, id"
+            "imported_at, closing_balance_minor FROM statement_periods "
+            "ORDER BY imported_at, id"
         ).fetchall()
         return [StatementPeriod(*row) for row in rows]
 
@@ -87,7 +142,7 @@ class StatementPeriodRepository:
         — the span read behind ``reassign_account``'s guard (FIBR-0059 D2)."""
         row = self._conn.execute(
             "SELECT id, account_id, period_start, period_end, source_filename, "
-            "imported_at FROM statement_periods WHERE id = ?",
+            "imported_at, closing_balance_minor FROM statement_periods WHERE id = ?",
             (period_id,),
         ).fetchone()
         return StatementPeriod(*row) if row is not None else None

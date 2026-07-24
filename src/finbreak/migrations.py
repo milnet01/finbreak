@@ -21,7 +21,7 @@ from finbreak.errors import SchemaVersionError
 
 log = logging.getLogger(__name__)
 
-LATEST_SCHEMA_VERSION = 10
+LATEST_SCHEMA_VERSION = 11
 
 # Seed data written by the v1->v2 migration (D8) — NOT a UI string, so never
 # run through tr(); the user renames it in the Accounts manager.
@@ -353,6 +353,30 @@ def _migrate_to_v10(conn: dbapi2.Connection) -> None:
         conn.execute("UPDATE schema_version SET version = 10")
 
 
+def _migrate_to_v11(conn: dbapi2.Connection) -> None:
+    """v10->v11: add the **nullable** ``statement_periods.closing_balance_minor``
+    column for FIBR-0171's cash-flow forecast anchor. Every bank statement prints a
+    closing balance; the importers already parse it (Standard Bank computes it for
+    its completeness checksum, then discarded it) — this column persists it so the
+    forecast can anchor to a real, current balance. A nullable ``ADD COLUMN`` is an
+    **in-place** change (SQLite backfills every existing row with ``NULL``) — no
+    table rebuild. **No backfill** is possible: historical statements' balances were
+    discarded at import and are gone; only statements imported *after* this ships (or
+    re-imported) populate the column, so old rows stay ``NULL`` and contribute
+    nothing to the anchor. Idempotency comes from **version-gating** — ``run_migrations``
+    calls this only for a vault at exactly v10 (``range(current+1, LATEST+1)``), so the
+    bare ``ALTER`` runs once and is never replayed (it is not replay-safe on its own).
+    One atomic unit (INV-9): with the vault's ``isolation_level=""`` the driver does
+    not implicitly ``BEGIN`` around the DDL, so the explicit ``BEGIN`` — the step's
+    first statement, ``UPDATE schema_version`` its last — makes it all-or-nothing (a
+    mid-step failure leaves a re-openable v10)."""
+    with owned_transaction(conn):
+        conn.execute(
+            "ALTER TABLE statement_periods ADD COLUMN closing_balance_minor INTEGER"
+        )
+        conn.execute("UPDATE schema_version SET version = 11")
+
+
 _MIGRATIONS = {
     2: _migrate_to_v2,
     3: _migrate_to_v3,
@@ -363,4 +387,5 @@ _MIGRATIONS = {
     8: _migrate_to_v8,
     9: _migrate_to_v9,
     10: _migrate_to_v10,
+    11: _migrate_to_v11,
 }

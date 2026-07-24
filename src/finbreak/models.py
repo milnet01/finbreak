@@ -197,7 +197,11 @@ class StatementPeriod:
     """One import's coverage-period record (FIBR-0007 D8). The repository
     ``SELECT`` and this field order share ``id, account_id, period_start,
     period_end, source_filename, imported_at`` so ``StatementPeriod(*row)`` stays
-    aligned. ``period_*`` are ISO-8601 dates; ``imported_at`` a UTC timestamp."""
+    aligned. ``period_*`` are ISO-8601 dates; ``imported_at`` a UTC timestamp.
+    ``closing_balance_minor`` (appended **last** at v11, FIBR-0171) is the
+    statement's persisted closing balance in signed integer minor units — the
+    forecast anchor — or ``None`` for a statement that printed none (Savings) or was
+    imported before v11 / from a CSV with no balance column."""
 
     id: int
     account_id: int
@@ -205,6 +209,7 @@ class StatementPeriod:
     period_end: str
     source_filename: str | None
     imported_at: str
+    closing_balance_minor: int | None = None
 
 
 @dataclass
