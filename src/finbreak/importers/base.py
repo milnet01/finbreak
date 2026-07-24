@@ -31,9 +31,16 @@ class ParseResult:
     their ``row_number`` for file-order interleaving) + the coverage span
     (``None``/``None`` when a CSV has zero drafts; the embedded DTSTART/DTEND for
     OFX, D4). Fills design.md's uniform ``parse(source) -> ParseResult`` importer
-    interface (CSV and OFX both produce this type)."""
+    interface (CSV and OFX both produce this type).
+
+    ``closing_balance_minor`` (appended **last** at FIBR-0171, default ``None``) is
+    the statement's printed closing balance in signed integer minor units — the
+    forecast anchor. The default ``None`` keeps every existing 4-arg positional
+    construction unchanged (INV-8); CSV / manual leave it ``None`` (no balance
+    column in v1), Standard Bank / OFX set it when the source prints one."""
 
     drafts: list[TransactionDraft]
     errors: list[RowError]
     period_start: str | None
     period_end: str | None
+    closing_balance_minor: int | None = None

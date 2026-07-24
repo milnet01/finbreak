@@ -145,7 +145,20 @@ class OfxImporter:
             )
 
         period_start, period_end = _embedded_span(statement, drafts)
-        return ParseResult(drafts, errors, period_start, period_end)
+        # The OFX ledger balance (<LEDGERBAL>) is the forecast anchor (FIBR-0171 D4).
+        # ofxparse leaves ``statement.balance`` UNSET (not None) when no <LEDGERBAL>
+        # is present, so a bare access raises AttributeError — and this runs OUTSIDE
+        # the wizard's boundary try/except. ``getattr(..., None)`` guards it; a present
+        # Decimal converts to minor with the same scaling ``_minor`` uses.
+        balance = getattr(statement, "balance", None)
+        closing_balance_minor = (
+            None
+            if balance is None
+            else int((balance * (10**exponent)).to_integral_value())
+        )
+        return ParseResult(
+            drafts, errors, period_start, period_end, closing_balance_minor
+        )
 
 
 def _embedded_span(

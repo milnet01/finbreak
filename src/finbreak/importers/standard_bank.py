@@ -891,7 +891,11 @@ class StandardBankImporter:
         _verify_checksum(family, opening, result.drafts, closing, exponent)
 
         start, end = _span(family, period, result.drafts, full_text)
-        return ParseResult(result.drafts, [], start, end)
+        # Persist the closing balance for the forecast anchor (FIBR-0171 D4): the
+        # figure the checksum verified, in signed minor units, or None when the
+        # statement prints none (Savings / Family A rides the per-row gate).
+        closing_minor = None if closing is None else _minor(closing, exponent)
+        return ParseResult(result.drafts, [], start, end, closing_minor)
 
 
 def _cc_opening(full_text: str, fmt: Fmt) -> Decimal:
