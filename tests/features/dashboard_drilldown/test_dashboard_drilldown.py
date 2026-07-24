@@ -560,6 +560,7 @@ def test_D8_income_only_period_has_zero_spending_and_transfers_nodes(service):
 # UI (qtbot) — INV-3 / INV-9 wiring
 # --------------------------------------------------------------------------- #
 def _home(service):
+    from finbreak.services.alerts import AlertService
     from finbreak.ui.home import HomeView
 
     return HomeView(
@@ -567,6 +568,7 @@ def _home(service):
         AccountService(service.vault),
         service,
         recurring=RecurringService(service.vault),
+        alerts=AlertService(service.vault),
     )
 
 

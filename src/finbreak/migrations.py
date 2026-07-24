@@ -21,7 +21,7 @@ from finbreak.errors import SchemaVersionError
 
 log = logging.getLogger(__name__)
 
-LATEST_SCHEMA_VERSION = 11
+LATEST_SCHEMA_VERSION = 12
 
 # Seed data written by the v1->v2 migration (D8) — NOT a UI string, so never
 # run through tr(); the user renames it in the Accounts manager.
@@ -378,6 +378,30 @@ def _migrate_to_v11(conn: dbapi2.Connection) -> None:
         conn.execute("UPDATE schema_version SET version = 11")
 
 
+def _migrate_to_v12(conn: dbapi2.Connection) -> None:
+    """v11->v12: add the ``alert_dismissals`` table for FIBR-0172 spending alerts —
+    one ``CREATE TABLE`` recording each dismissed alert's opaque stable identity.
+    **Keyed on ``alert_key`` alone** (unlike ``recurring_decisions``'s ``(direction,
+    merchant_key)``): each kind's key already encodes the right dismissal scope
+    (new-recurring per stream, spike per-month, missed-debit per-occurrence — D5), so
+    the single ``UNIQUE(alert_key)`` gives each dismissal one row and is the upsert
+    conflict target. Hence **no FK to transactions and no cascade** — a dismissal
+    follows the *thing*, not a specific txn, and nothing needs cleanup when a
+    transaction is deleted. **No backfill** — a fresh table. One atomic unit: with the
+    vault's ``isolation_level=""`` the driver does not implicitly ``BEGIN`` around the
+    DDL, so the explicit ``BEGIN`` — the step's first statement, ``UPDATE
+    schema_version`` its last — makes it all-or-nothing (a mid-step failure leaves a
+    re-openable v11)."""
+    with owned_transaction(conn):
+        conn.execute(
+            "CREATE TABLE alert_dismissals("
+            "id INTEGER PRIMARY KEY, "
+            "alert_key TEXT NOT NULL UNIQUE, "
+            "created_at TEXT NOT NULL)"
+        )
+        conn.execute("UPDATE schema_version SET version = 12")
+
+
 _MIGRATIONS = {
     2: _migrate_to_v2,
     3: _migrate_to_v3,
@@ -389,4 +413,5 @@ _MIGRATIONS = {
     9: _migrate_to_v9,
     10: _migrate_to_v10,
     11: _migrate_to_v11,
+    12: _migrate_to_v12,
 }

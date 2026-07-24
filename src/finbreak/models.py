@@ -521,3 +521,31 @@ class AccountReconciliation:
     discrepancy_minor: int
     off_pair_count: int
     checked_pair_count: int
+
+
+class AlertKind(StrEnum):
+    """The three spending-alert kinds (FIBR-0172 D1). The ``.value`` is the stable
+    ASCII token embedded in each alert's dismissal ``key`` (never translated); the
+    UI switches on the enum member to build the display string (D9/FIBR-0138)."""
+
+    NEW_RECURRING = "new_recurring"
+    CATEGORY_SPIKE = "category_spike"
+    MISSED_DEBIT = "missed_debit"
+
+
+@dataclass
+class SpendingAlert:
+    """One dashboard spending alert (FIBR-0172 § 3). Field order pinned (repo
+    convention). All money is a **positive magnitude** integer in minor units — the
+    UI owns sign/format (INV-15). ``key`` is the opaque stable dismissal identity
+    (D5); ``baseline_minor`` / ``on`` are the only kind-specific fields — a category
+    spike carries its rolling-average spend in ``baseline_minor`` (0 for a/c) and a
+    missed debit carries the due date in ``on`` (``None`` for a/b). The view switches
+    on ``kind`` to render."""
+
+    kind: AlertKind
+    key: str
+    label: str
+    amount_minor: int
+    baseline_minor: int
+    on: date | None

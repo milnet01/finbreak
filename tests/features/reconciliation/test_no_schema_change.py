@@ -1,10 +1,12 @@
-"""FIBR-0177 — no schema change (INV-8).
+"""FIBR-0177 — reconciliation adds no schema change of its own (INV-8).
 
 Reconciliation is read-only analytics over FIBR-0171's v11 `closing_balance_minor`
-column + the existing `sum_after` primitive. It must NOT bump the schema: the
-latest version stays 11 and there is no `_migrate_to_v12` registered. This guard
-mirrors FIBR-0171's `test_migration_v11.py::test_INV9_latest_schema_version_is_11`
-so a stray migration for this feature is caught.
+column + the existing `sum_after` primitive; it registers no migration of its own.
+The schema has since advanced to **v12** via FIBR-0172 (the `alert_dismissals`
+table — unrelated to reconciliation), so this guard can no longer be an absolute
+"unchanged at 11" pin. It now asserts the current latest (v12) and that no
+*unregistered next* version (v13) exists — the same "reconciliation introduced no
+migration of its own" intent, expressed against a moving latest.
 """
 
 import pytest
@@ -14,9 +16,9 @@ from finbreak.migrations import _MIGRATIONS, LATEST_SCHEMA_VERSION
 pytestmark = pytest.mark.features
 
 
-def test_INV8_schema_version_unchanged_at_11() -> None:
-    assert LATEST_SCHEMA_VERSION == 11
+def test_INV8_schema_version_at_current_latest_v12() -> None:
+    assert LATEST_SCHEMA_VERSION == 12
 
 
-def test_INV8_no_v12_migration_registered() -> None:
-    assert 12 not in _MIGRATIONS
+def test_INV8_no_unregistered_next_migration() -> None:
+    assert LATEST_SCHEMA_VERSION + 1 not in _MIGRATIONS

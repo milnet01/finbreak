@@ -48,6 +48,7 @@ from sqlcipher3.dbapi2 import DatabaseError
 from finbreak import __version__, paths
 from finbreak.errors import BackupError, VaultLockedError, VaultStateError
 from finbreak.services.accounts import AccountService
+from finbreak.services.alerts import AlertService
 from finbreak.services.auth import (
     DATETIME_SYSTEM,
     AmountPrefs,
@@ -641,6 +642,7 @@ class MainWindow(QMainWindow):
             AccountService(self._service.vault),
             self._service,
             RecurringService(self._service.vault),
+            AlertService(self._service.vault),
             amount_prefs=self._amount_prefs,
         )
         self._home_tab.setObjectName("tab_home")

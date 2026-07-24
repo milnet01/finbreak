@@ -26,6 +26,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QBrush, QColor, QPainter
 from PySide6.QtWidgets import (
     QComboBox,
+    QFrame,
     QGridLayout,
     QHBoxLayout,
     QLabel,
@@ -41,13 +42,16 @@ from PySide6.QtWidgets import (
 
 from finbreak.errors import VaultLockedError
 from finbreak.models import (
+    AlertKind,
     DrillLabels,
     DrillNode,
     MonthlyTotal,
     RecurringSummary,
+    SpendingAlert,
     Summary,
 )
 from finbreak.services.accounts import AccountService
+from finbreak.services.alerts import AlertService
 from finbreak.services.auth import AmountPrefs, AuthService
 from finbreak.services.recurring import RecurringService
 from finbreak.services.reporting import (
@@ -59,6 +63,7 @@ from finbreak.services.reporting import (
     ReportingService,
     ReportPrefs,
 )
+from finbreak.services.transactions import read_minor_unit_exponent, to_display_decimal
 from finbreak.ui._amount import _NEGATIVE_TEXT, _POSITIVE_TEXT, _format_amount
 from finbreak.ui.charts import ChartTheme, build_breakdown_donut, build_trend_chart
 
@@ -87,6 +92,7 @@ class HomeView(QWidget):
         accounts: AccountService,
         auth: AuthService,
         recurring: RecurringService,
+        alerts: AlertService,
         amount_prefs: AmountPrefs | None = None,
         parent: QWidget | None = None,
     ):
@@ -95,6 +101,7 @@ class HomeView(QWidget):
         self._accounts = accounts
         self._auth = auth
         self._recurring = recurring
+        self._alerts = alerts
         self._amount_prefs = amount_prefs or AmountPrefs("minus", True)
         # Guards the programmatic selector loads from re-triggering a persist.
         self._loading = False
@@ -143,6 +150,10 @@ class HomeView(QWidget):
         scroll.setWidgetResizable(True)
         content = QWidget()
         layout = QVBoxLayout(content)
+
+        # The non-intrusive alerts card sits ABOVE the selectors (D9) — the most
+        # visible, least-disruptive slot. Hidden entirely when there is nothing to say.
+        layout.addWidget(self._build_alerts_card())
 
         layout.addLayout(self._build_selectors())
 
@@ -213,6 +224,20 @@ class HomeView(QWidget):
         v.addWidget(QLabel(self.tr("Recurring")))
         self._recurring_grid = QGridLayout()
         v.addLayout(self._recurring_grid)
+        return card
+
+    def _build_alerts_card(self) -> QWidget:
+        """The spending-alerts card shell (D9). Its body is rebuilt each render into
+        one row per alert; the whole card is hidden when there are no alerts."""
+        card = QFrame()
+        card.setObjectName("dashboard_alerts")
+        card.setFrameShape(QFrame.Shape.StyledPanel)
+        v = QVBoxLayout(card)
+        v.addWidget(QLabel(self.tr("Alerts")))
+        self._alerts_rows = QVBoxLayout()
+        v.addLayout(self._alerts_rows)
+        card.setVisible(False)  # hidden until _render_alerts finds something to show
+        self._alerts_card = card
         return card
 
     def _build_selectors(self) -> QHBoxLayout:
@@ -383,6 +408,8 @@ class HomeView(QWidget):
         self._render_trend(self._reporting.monthly_trend(prefs, account_ids))
         # The recurring card is unscoped (INV-3/D5): summary(today) takes no prefs.
         self._render_recurring(self._recurring.summary(date.today()), symbol)
+        # The alerts card is likewise unscoped + clock-injected (FIBR-0172 D8/INV-16).
+        self._render_alerts(date.today())
         self._stack.setCurrentIndex(1)
 
     def _rebuild_account_selector(self) -> None:
@@ -499,6 +526,82 @@ class HomeView(QWidget):
             if coloured:
                 figure.setStyleSheet(f"color: {colour.name()}")
             self._recurring_grid.addWidget(figure, 2, column)
+
+    def _render_alerts(self, today: date) -> None:
+        """The alerts card body (D9/INV-17): one row per alert — a translated summary
+        label + a Dismiss (``✕``) button carrying the alert key — or a hidden card
+        when ``alerts(today)`` is empty. The service returns structured
+        ``SpendingAlert``s; this view builds the tr()-ed strings by switching on
+        ``kind`` (the FIBR-0138 pattern). Rebuilt in place so the dismiss path can
+        re-run it without a full ``refresh()``."""
+        while self._alerts_rows.count():
+            item = self._alerts_rows.takeAt(0)
+            widget = item.widget() if item is not None else None
+            if widget is not None:
+                widget.setParent(None)  # detach now so findChild can't see a stale row
+        try:
+            alerts = self._alerts.alerts(today)
+        except VaultLockedError:
+            # An auto-lock mid-render: show nothing rather than crash the dashboard.
+            self._alerts_card.setVisible(False)
+            return
+        if not alerts:
+            self._alerts_card.setVisible(False)
+            return
+        symbol = self._reporting.base_currency()
+        exponent = read_minor_unit_exponent(self._auth.vault.connection)
+        for alert in alerts:
+            row = QWidget()
+            row_layout = QHBoxLayout(row)
+            row_layout.setContentsMargins(0, 0, 0, 0)
+            row_layout.addWidget(QLabel(self._alert_summary(alert, symbol, exponent)))
+            row_layout.addStretch()
+            dismiss = QPushButton(self.tr("✕"))
+            dismiss.setObjectName("alert_dismiss")
+            dismiss.setProperty("alert_key", alert.key)
+            dismiss.clicked.connect(self._on_alert_dismiss)
+            row_layout.addWidget(dismiss)
+            self._alerts_rows.addWidget(row)
+        self._alerts_card.setVisible(True)
+
+    def _alert_summary(self, alert: SpendingAlert, symbol: str, exponent: int) -> str:
+        """The translated one-line summary for an alert, by kind (D9/INV-18). Money is
+        scaled from the alert's positive minor magnitude to a display Decimal here (the
+        service carries integers, INV-15)."""
+        amount = _format_amount(
+            to_display_decimal(alert.amount_minor, exponent), symbol
+        )
+        if alert.kind is AlertKind.NEW_RECURRING:
+            return self.tr("New recurring charge: {name} ({amount})").format(
+                name=alert.label, amount=amount
+            )
+        if alert.kind is AlertKind.CATEGORY_SPIKE:
+            baseline = _format_amount(
+                to_display_decimal(alert.baseline_minor, exponent), symbol
+            )
+            return self.tr(
+                "{name} spending is up: {amount} vs usual {baseline}"
+            ).format(name=alert.label, amount=amount, baseline=baseline)
+        # AlertKind.MISSED_DEBIT — ``on`` is the due date that was missed.
+        due = alert.on.isoformat() if alert.on is not None else ""
+        return self.tr("Missed payment: {name} ({amount}) due {due}").format(
+            name=alert.label, amount=amount, due=due
+        )
+
+    def _on_alert_dismiss(self) -> None:
+        """Dismiss the clicked alert then rebuild ONLY the card (D9/INV-18). The write
+        is guarded against a mid-interaction auto-lock (VaultLockedError-silent, like
+        the other mutating dashboard slots); a card-local rebuild — not a full
+        ``refresh()`` — reflects the removal."""
+        button = self.sender()
+        key = button.property("alert_key") if button is not None else None
+        if key is None:
+            return
+        try:
+            self._alerts.dismiss(key)
+        except VaultLockedError:
+            return  # auto-lock fired mid-click; the workspace is being torn down
+        self._render_alerts(date.today())
 
     def _chart_theme(self) -> ChartTheme:
         """The on-screen theme: text from the live palette (ADR-0010 dark default),

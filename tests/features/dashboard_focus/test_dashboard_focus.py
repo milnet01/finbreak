@@ -212,6 +212,7 @@ def _confirm_recurring(service, account_id, amount_minor, desc):
 
 
 def _home(service, amount_prefs=None):
+    from finbreak.services.alerts import AlertService
     from finbreak.ui.home import HomeView
 
     return HomeView(
@@ -219,6 +220,7 @@ def _home(service, amount_prefs=None):
         AccountService(service.vault),
         service,
         recurring=RecurringService(service.vault),
+        alerts=AlertService(service.vault),
         amount_prefs=amount_prefs,
     )
 
