@@ -23,6 +23,13 @@ signaling per
 
 ### Added
 
+- **Spending alerts — flag unusual spend, a newly-appeared recurring charge, or a missed expected debit.** (FIBR-0172)
+  A quiet, dismissable alerts card on the Home dashboard: a new recurring
+  charge that just appeared, a spending category well above its recent
+  average, or an expected debit that didn't post. Each alert is
+  dismissable and the dismissal sticks. Computed from data the app already
+  holds (recurring detection + reporting); one small new dismissals table.
+
 - **Account-level balance reconciliation — verify imported transactions sum to the bank's stated balance for every account.** (FIBR-0177)
   Per-account reconciliation marker on the Accounts tab (✓ balances
   reconcile / ⚠ off by …) for current & savings accounts, checking that

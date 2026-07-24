@@ -138,7 +138,7 @@ def test_INV2_confirmed_and_in_streams_do_not_yield_new_recurring(service) -> No
     assert _by_kind(alerts, AlertKind.NEW_RECURRING) == []
 
 
-def test_INV1_established_suggested_stream_over_threshold_does_not_fire(service) -> None:
+def test_INV1_over_occurrence_threshold_not_new(service) -> None:
     # A suggested OUT stream with 5 occurrences (> _NEW_MAX_OCCURRENCES=4) is no
     # longer "new": the service must thread `occurrences` through the real snapshot
     # so the detector skips it (the occurrences>threshold boundary, service-level).
@@ -149,7 +149,8 @@ def test_INV1_established_suggested_stream_over_threshold_does_not_fire(service)
     # Sanity: it IS a suggested OUT stream with 5 occurrences (so the null result is
     # the occurrences gate, not a detection miss).
     spotify_like = next(
-        it for it in RecurringService(svc.vault).candidates(_TODAY)
+        it
+        for it in RecurringService(svc.vault).candidates(_TODAY)
         if it.merchant_key == "netflix"
     )
     assert spotify_like.occurrences == 5
