@@ -1750,11 +1750,12 @@ because retrofitting them is a data migration.
   Kind: feature.
   Source: in-session-2026-07-23.
 
-- 📋 [FIBR-0177] **Account-level balance reconciliation — verify imported transactions sum to the bank's stated balance for every account.**
+- 🚧 [FIBR-0177] **Account-level balance reconciliation — verify imported transactions sum to the bank's stated balance for every account.**
   Generalises the Standard Bank import-time reconciliation (importers/standard_bank.py: opening ± total vs closing) into a visible, ongoing account-level check: opening balance + running sum of transactions vs the latest known statement balance, surfaced as ✓ / off-by-R-X. Catches import gaps for every account and every bank, complementing the planned statement coverage/gap detection (FIBR-0038) and running-balance work (FIBR-0094).
   **Layman:** A tick that confirms your imported transactions add up to the balance your bank states — or flags the gap — for any account, not just at import time.
   Kind: feature.
   Source: in-session-2026-07-23.
+  Started 2026-07-24 (self-directed autonomous run). Spec docs/specs/FIBR-0177.md drafted: v1 reconciles current+savings cash accounts only (debt/investment/other deferred — persisted closing sign convention is canonical only for asset accounts); cross-statement telescoping over persisted closing balances (C_prev + sum_after(P_prev,P_curr] == C_curr, exact), reusing FIBR-0171 primitives; Accounts-tab per-account marker; no schema change. Next: /cold-eyes.
 
 - 📋 [FIBR-0178] **Cash-flow forecast v2 follow-ups (FIBR-0171 D12, logged not dropped).**
   Deferred out of the FIBR-0171 v1 cash-flow forecast (spec D12),
