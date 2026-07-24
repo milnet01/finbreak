@@ -1771,6 +1771,29 @@ because retrofitting them is a data migration.
   Kind: feature.
   Source: FIBR-0171 spec D12 (in-session 2026-07-24).
 
+- 📋 [FIBR-0179] **Forecast anchor mishandles debt-account (credit-card / loan) closing balances — wrong-sign roll-forward + an owed figure folded into the vault-wide cash total.**
+  ForecastService._anchor (services/forecast.py) sums
+  latest_closing_balances() across ALL account types with
+  `current = balance_minor + roll_minor` (a plain `+`, no type dispatch).
+  But a debt product's persisted closing_balance_minor is stored in the
+  "owed" convention (positive = debt, as the statement prints it), the
+  OPPOSITE sign to the canonical amount_minor (debit −/credit +). So for a
+  credit-card / home-loan / personal-loan account the `+ roll_minor`
+  brings the balance current in the WRONG direction, AND the owed figure
+  is folded into a vault-wide "cash" total as if it were an asset (doubly
+  wrong). Reachable: Family C credit-card statements always persist a
+  closing (the SB checksum raises on a missing closing for non-savings
+  families), so a credit-card account contributes to the anchor. Verify
+  first (write a failing forecast test with a credit_card account + a
+  post-statement transaction) then fix — likely by canonicalising the
+  closing per AccountType, or by excluding debt/investment accounts from
+  the anchor. Related: FIBR-0177 sidesteps this by scoping reconciliation
+  to current+savings; the loan display-inversion roadmap note keeps
+  amount_minor canonical while inverting only at display.
+  **Layman:** The new Forecast's starting balance can be wrong for credit-card and loan accounts — it needs a per-account-type sign fix (or to leave debt accounts out of the total).
+  Kind: fix.
+  Source: in-session-2026-07-24 (surfaced by FIBR-0177 cold-eyes, spec D9).
+
 ### ⚡ Performance
 
 - ✅ [FIBR-0025] **Enable SQLite WAL mode.** Set
