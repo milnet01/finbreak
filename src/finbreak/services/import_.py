@@ -68,6 +68,10 @@ class ImportPreview:
     duplicate_count: int
     period_start: str | None
     period_end: str | None
+    # The statement's persisted closing balance (FIBR-0171 D4), carried from the
+    # ParseResult across the preview boundary so commit_import can persist it; None
+    # for a CSV / manual / balance-less source. Last field, default None.
+    closing_balance_minor: int | None = None
 
 
 @dataclass
@@ -192,6 +196,7 @@ class ImportService:
             preview.errors,
             preview.period_start,
             preview.period_end,
+            preview.closing_balance_minor,  # a re-target must not drop it (D4)
         )
 
     def _preview_from_result(
@@ -207,6 +212,7 @@ class ImportService:
             result.errors,
             result.period_start,
             result.period_end,
+            result.closing_balance_minor,
         )
 
     def _build_preview(
@@ -216,6 +222,7 @@ class ImportService:
         errors: list[RowError],
         period_start: str | None,
         period_end: str | None,
+        closing_balance_minor: int | None = None,
     ) -> ImportPreview:
         """Run the multiset-delta dedup for ``account_id`` over ``drafts`` and pack
         the counts + (account-independent) errors/span into an ``ImportPreview``.
@@ -231,6 +238,7 @@ class ImportService:
             duplicate_count=len(drafts) - new_count,
             period_start=period_start,
             period_end=period_end,
+            closing_balance_minor=closing_balance_minor,
         )
 
     def commit_import(
@@ -265,9 +273,16 @@ class ImportService:
                     period_start,
                     period_end,
                     Path(source_filename).name,  # store the basename, not the path
+                    preview.closing_balance_minor,  # persist the forecast anchor (D4)
                 )
             else:
                 period_id = existing_id
+                # Span-reuse: fill a NULL balance left by a prior CSV-only import,
+                # but never overwrite a fixed non-NULL one (FIBR-0171 D4/INV-12).
+                if preview.closing_balance_minor is not None:
+                    period_repo.update_closing_balance(
+                        period_id, preview.closing_balance_minor
+                    )
             if to_insert:
                 tx_repo.add_batch(
                     [
