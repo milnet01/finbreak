@@ -28,13 +28,15 @@ from PySide6.QtCharts import (
     QBarSeries,
     QBarSet,
     QChart,
+    QDateTimeAxis,
+    QLineSeries,
     QPieSeries,
     QValueAxis,
 )
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QDate, QDateTime, Qt
 from PySide6.QtGui import QColor
 
-from finbreak.models import CategorySpend, MonthlyTotal
+from finbreak.models import CategorySpend, ForecastPoint, MonthlyTotal
 
 # The ordered categorical palette for the coloured (categorised) donut wedges
 # (FIBR-0012 D9) — accessible on the dark default, the app-icon family extended.
@@ -155,6 +157,48 @@ def build_breakdown_donut(
         other_amount = sum((amount for _, amount in tail), Decimal(0))
         series.append(other_label, float(other_amount)).setColor(_OTHER_COLOUR)
     return _themed_chart(series, theme)
+
+
+def build_forecast_chart(points: list[ForecastPoint], theme: ChartTheme) -> QChart:
+    """The projected-balance **line** chart for the Forecast tab (FIBR-0171 D6/D9).
+
+    Draws a single themed ``QLineSeries`` over the step-line ``points`` (each a
+    ``(date, balance_minor)`` vertex; ``points`` already carries the terminal
+    ``(horizon, end)`` vertex, so no separate horizon argument is needed). Uses its
+    **own** themed-line path — ``_themed_chart`` only accepts a pie / bar series
+    (its union rejects a line series) — mirroring that helper's background + text
+    treatment: a transparent background on-screen (``background=None``), a solid one
+    for a raster. The x-axis is a date axis; a single series needs no legend."""
+    series = QLineSeries()
+    for point in points:
+        qdate = QDate(point.on.year, point.on.month, point.on.day)
+        stamp = qdate.startOfDay().toMSecsSinceEpoch()
+        series.append(float(stamp), float(point.balance_minor))
+    pen = series.pen()
+    pen.setColor(theme.positive)
+    pen.setWidth(2)
+    series.setPen(pen)
+
+    chart = QChart()
+    chart.addSeries(series)
+    if theme.background is None:
+        chart.setBackgroundVisible(False)
+    else:
+        chart.setBackgroundVisible(True)
+        chart.setBackgroundBrush(theme.background)
+    chart.legend().setVisible(False)  # a single line needs no legend
+    chart.setTitleBrush(theme.text)
+
+    axis_x = QDateTimeAxis()
+    axis_x.setFormat("d MMM")
+    axis_x.setLabelsColor(theme.text)
+    chart.addAxis(axis_x, Qt.AlignmentFlag.AlignBottom)
+    series.attachAxis(axis_x)
+    axis_y = QValueAxis()
+    axis_y.setLabelsColor(theme.text)
+    chart.addAxis(axis_y, Qt.AlignmentFlag.AlignLeft)
+    series.attachAxis(axis_y)
+    return chart
 
 
 def build_trend_chart(

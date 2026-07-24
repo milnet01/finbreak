@@ -668,6 +668,7 @@ def test_INV12_workspace_has_eight_tabs_with_recurring_after_transfers(
         "tab_rules",
         "tab_transfers",
         "tab_recurring",
+        "tab_forecast",
     ]
 
 

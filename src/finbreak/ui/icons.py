@@ -42,6 +42,7 @@ _ICON_HUES = {
     "rules": 290,  # purple
     "transfers": 190,  # cyan
     "recurring": 330,  # magenta
+    "forecast": 100,  # yellow-green
     "lock": 25,  # warm ochre
 }
 

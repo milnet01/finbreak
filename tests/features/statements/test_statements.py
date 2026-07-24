@@ -307,6 +307,7 @@ def test_INV1_workspace_has_eight_tabs_in_order(qtbot, service):
         "tab_rules",
         "tab_transfers",
         "tab_recurring",
+        "tab_forecast",
     ]
 
 
@@ -341,11 +342,12 @@ def test_INV2_toolbar_order_includes_statements(qtbot, service):
         "action_rules",
         "action_transfers",
         "action_recurring",
+        "action_forecast",  # FIBR-0171: after Recurring (tab order)
         "action_export",  # FIBR-0013: before Lock (Lock stays last)
         "action_lock",
     ], (
         "toolbar order: Home, Transactions, Statements, Manual entry, Import, "
-        "Accounts, Categories, Rules, Transfers, Recurring, Export, Lock"
+        "Accounts, Categories, Rules, Transfers, Recurring, Forecast, Export, Lock"
     )
 
 
