@@ -30,8 +30,14 @@ from finbreak.models import (
     ForecastEvent,
     ForecastMode,
     ForecastPoint,
+    RecurringItem,
 )
-from finbreak.services.recurring import _add_cadence
+from finbreak.repositories.accounts import AccountRepository
+from finbreak.repositories.statement_periods import StatementPeriodRepository
+from finbreak.repositories.transactions import TransactionRepository
+from finbreak.services.recurring import RecurringService, _add_cadence
+from finbreak.services.transactions import read_minor_unit_exponent
+from finbreak.vault import Vault
 
 
 @dataclass
@@ -111,3 +117,82 @@ def project_forecast(
         events=events,
         anchor_sources=sources,
     )
+
+
+class ForecastService:
+    """Compose the cash-flow forecast over a vault (FIBR-0171 Deliverable 9).
+
+    Builds the **brought-current** anchor — for each account with a persisted
+    statement balance (its latest non-NULL closing balance), add the account's
+    actual transactions in the half-open ``(period_end, today]`` window (D1/INV-13)
+    — plus one ``AnchorSource`` per contributing account. Reads the **confirmed**
+    recurring set (D5), converts each item's ``amount`` (a positive display Decimal)
+    back to exact signed minor units once (D7), prepares ``ForecastInput``s, and
+    calls the pure ``project_forecast``. The anchor is ``None`` (⇒ NET_FLOW) when no
+    account has a recorded balance. Mirrors ``RecurringService`` — vault-wide.
+    """
+
+    def __init__(self, vault: Vault) -> None:
+        self._vault = vault
+
+    @property
+    def _conn(self):
+        return self._vault.connection
+
+    def forecast(self, today: date, horizon: date) -> Forecast:
+        anchor_minor, sources = self._anchor(today)
+        items = self._inputs(today)
+        return project_forecast(anchor_minor, items, today, horizon, sources)
+
+    def _anchor(self, today: date) -> tuple[int | None, list[AnchorSource]]:
+        """The vault-wide current-balance anchor + its provenance (D1/D10/INV-6/13),
+        or ``(None, [])`` when no account has a recorded closing balance."""
+        today_iso = today.isoformat()
+        period_repo = StatementPeriodRepository(self._conn)
+        txn_repo = TransactionRepository(self._conn)
+        account_names = {
+            a.id: a.name for a in AccountRepository(self._conn).list_all()
+        }
+        sources: list[AnchorSource] = []
+        total = 0
+        for account_id, balance_minor, period_end in period_repo.latest_closing_balances():
+            roll_minor, since_count = txn_repo.sum_after(
+                account_id, period_end, today_iso
+            )
+            current = balance_minor + roll_minor
+            total += current
+            sources.append(
+                AnchorSource(
+                    account_id=account_id,
+                    account_name=account_names.get(account_id, ""),
+                    statement_balance_minor=balance_minor,
+                    as_of=date.fromisoformat(period_end),
+                    since_txn_count=since_count,
+                    current_balance_minor=current,
+                )
+            )
+        if not sources:
+            return None, []
+        return total, sources
+
+    def _inputs(self, today: date) -> list[ForecastInput]:
+        """The confirmed recurring items prepared as signed-minor ``ForecastInput``s
+        (D5/D7). Each ``RecurringItem.amount`` is a positive display Decimal =
+        ``to_display_decimal(median_low_minor, exponent)``; converting it back with
+        the same exponent recovers the exact minor integer (INV-7), and the direction
+        applies the sign."""
+        exponent = read_minor_unit_exponent(self._conn)
+        confirmed = RecurringService(self._vault).confirmed(today)
+        return [self._to_input(item, exponent) for item in confirmed]
+
+    @staticmethod
+    def _to_input(item: RecurringItem, exponent: int) -> ForecastInput:
+        magnitude = int((item.amount * (10**exponent)).to_integral_value())
+        signed = -magnitude if item.direction is Direction.OUT else magnitude
+        return ForecastInput(
+            amount_minor=signed,
+            next_expected=item.next_expected,
+            cadence=item.cadence,
+            merchant=item.merchant,
+            direction=item.direction,
+        )
