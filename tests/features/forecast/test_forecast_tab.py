@@ -107,3 +107,29 @@ def test_INV10_anchored_vault_headline_and_provenance(qtbot, vault_service) -> N
     assert "projected balance" in w._headline.text().lower()
     assert "as of today" in w._provenance.text().lower()
     assert w._events_table.rowCount() >= 1, "the confirmed item projects forward"
+
+
+def test_INV14_debt_account_named_as_excluded_for_the_right_reason(
+    qtbot, vault_service
+) -> None:
+    """A credit card with a recorded balance is excluded because it isn't cash —
+    the provenance line must say so, not claim it has no balance yet (FIBR-0179)."""
+    _seed_anchored(vault_service)
+    today = date.today()
+    card = AccountService(vault_service.vault).add_account("Visa", "credit_card").id
+    StatementPeriodRepository(vault_service.vault.connection).add(
+        card,
+        (today - timedelta(days=200)).isoformat(),
+        (today - timedelta(days=40)).isoformat(),
+        "card.pdf",
+        120_000,
+    )
+    vault_service.vault.connection.commit()
+
+    w = ForecastWidget(vault_service)
+    qtbot.addWidget(w)
+    w.refresh()
+
+    provenance = w._provenance.text().lower()
+    assert "aren't cash): visa" in provenance
+    assert "no recorded balance yet" not in provenance

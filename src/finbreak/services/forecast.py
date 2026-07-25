@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from datetime import date
 
 from finbreak.models import (
+    AccountType,
     AnchorSource,
     Cadence,
     Direction,
@@ -38,6 +39,17 @@ from finbreak.repositories.transactions import TransactionRepository
 from finbreak.services.recurring import RecurringService, _add_cadence
 from finbreak.services.transactions import read_minor_unit_exponent
 from finbreak.vault import Vault
+
+# The account types whose printed closing balance follows the canonical
+# ``amount_minor`` convention (money out −, money in +), so bringing it current with
+# ``balance + Σ amount_minor`` holds and the result is spendable cash. Everything
+# else is excluded from the anchor (FIBR-0179): a debt product (credit card, home /
+# personal loan) prints its closing in the **owed** convention — the opposite sign —
+# so the roll-forward would move it the wrong way AND fold an owed figure into a cash
+# total; an investment balance moves with the market, not with transactions; ``other``
+# has no guaranteed convention. ``reconciliation.py`` gates on the same set for the
+# same reason (FIBR-0177 D1) — keep the two in step.
+CASH_TYPES = frozenset({AccountType.CURRENT, AccountType.SAVINGS})
 
 
 @dataclass
@@ -122,10 +134,11 @@ def project_forecast(
 class ForecastService:
     """Compose the cash-flow forecast over a vault (FIBR-0171 Deliverable 9).
 
-    Builds the **brought-current** anchor — for each account with a persisted
-    statement balance (its latest non-NULL closing balance), add the account's
-    actual transactions in the half-open ``(period_end, today]`` window (D1/INV-13)
-    — plus one ``AnchorSource`` per contributing account. Reads the **confirmed**
+    Builds the **brought-current** anchor — for each **cash** account (``CASH_TYPES``,
+    FIBR-0179) with a persisted statement balance (its latest non-NULL closing
+    balance), add the account's actual transactions in the half-open
+    ``(period_end, today]`` window (D1/INV-13) — plus one ``AnchorSource`` per
+    contributing account. Reads the **confirmed**
     recurring set (D5), converts each item's ``amount`` (a positive display Decimal)
     back to exact signed minor units once (D7), prepares ``ForecastInput``s, and
     calls the pure ``project_forecast``. The anchor is ``None`` (⇒ NET_FLOW) when no
@@ -146,11 +159,19 @@ class ForecastService:
 
     def _anchor(self, today: date) -> tuple[int | None, list[AnchorSource]]:
         """The vault-wide current-balance anchor + its provenance (D1/D10/INV-6/13),
-        or ``(None, [])`` when no account has a recorded closing balance."""
+        or ``(None, [])`` when no **cash** account has a recorded closing balance.
+        Only ``CASH_TYPES`` accounts contribute (FIBR-0179); the Forecast tab already
+        names the non-contributing accounts, so the exclusion is visible."""
         today_iso = today.isoformat()
         period_repo = StatementPeriodRepository(self._conn)
         txn_repo = TransactionRepository(self._conn)
-        account_names = {a.id: a.name for a in AccountRepository(self._conn).list_all()}
+        # account.type is the stored STR token — compare to the enum .values.
+        cash_tokens = {t.value for t in CASH_TYPES}
+        cash_names = {
+            a.id: a.name
+            for a in AccountRepository(self._conn).list_all()
+            if a.type in cash_tokens
+        }
         sources: list[AnchorSource] = []
         total = 0
         for (
@@ -158,6 +179,8 @@ class ForecastService:
             balance_minor,
             period_end,
         ) in period_repo.latest_closing_balances():
+            if account_id not in cash_names:
+                continue  # debt / investment / other — not spendable cash (FIBR-0179)
             roll_minor, since_count = txn_repo.sum_after(
                 account_id, period_end, today_iso
             )
@@ -166,7 +189,7 @@ class ForecastService:
             sources.append(
                 AnchorSource(
                     account_id=account_id,
-                    account_name=account_names.get(account_id, ""),
+                    account_name=cash_names[account_id],
                     statement_balance_minor=balance_minor,
                     as_of=date.fromisoformat(period_end),
                     since_txn_count=since_count,

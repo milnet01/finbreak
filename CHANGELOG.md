@@ -47,6 +47,17 @@ signaling per
 
 ### Fixed
 
+- **Forecast starting balance no longer counts credit-card and loan debt as cash** (FIBR-0179)
+  A statement for a credit card or loan prints its closing balance as
+  the amount you OWE, the opposite sign to the way finbreak stores
+  transactions. The Forecast tab was adding that owed figure into your
+  projected balance as though it were money you have, and any card
+  purchase since the statement moved it the wrong way. The forecast now
+  anchors on cash accounts only (current and savings); debt and
+  investment accounts are listed as excluded, with the reason. If a
+  debt account is the only one with a recorded balance, the forecast
+  honestly shows a projected change from zero instead.
+
 - **The Recurring and Transfers tabs now show amounts with the currency symbol and thousands grouping (e.g. “R 1,234.50”), matching the rest of the app.** (FIBR-0168)
 
 - **CSV import no longer crashes on a corrupt or truncated file — it now reports a friendly “not valid CSV” message.** (FIBR-0165)

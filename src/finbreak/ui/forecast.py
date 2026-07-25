@@ -35,7 +35,7 @@ from finbreak.errors import VaultLockedError
 from finbreak.models import Forecast, ForecastMode
 from finbreak.services.accounts import AccountService
 from finbreak.services.auth import AuthService
-from finbreak.services.forecast import ForecastService
+from finbreak.services.forecast import CASH_TYPES, ForecastService
 from finbreak.services.transactions import (
     TransactionService,
     read_minor_unit_exponent,
@@ -197,11 +197,15 @@ class ForecastWidget(QWidget):
         text = self.tr("Starting balance {start} as of today — from {sources}.").format(
             start=start, sources=", ".join(clauses)
         )
-        excluded = self._excluded_names(fc)
-        if excluded:
+        no_balance, not_cash = self._excluded_names(fc)
+        if no_balance:
             text += " " + self.tr(
                 "Excluded (no recorded balance yet): {names}."
-            ).format(names=", ".join(excluded))
+            ).format(names=", ".join(no_balance))
+        if not_cash:
+            text += " " + self.tr(
+                "Excluded (credit, loan and investment balances aren't cash): {names}."
+            ).format(names=", ".join(not_cash))
         return text
 
     def _source_clause(self, src) -> str:
@@ -215,13 +219,21 @@ class ForecastWidget(QWidget):
             )
         return clause
 
-    def _excluded_names(self, fc: Forecast) -> list[str]:
+    def _excluded_names(self, fc: Forecast) -> tuple[list[str], list[str]]:
+        """The non-contributing accounts split by *why* (FIBR-0179): cash accounts
+        with no recorded balance yet (they join once a balance-bearing statement is
+        imported), and non-cash accounts, whose balance is never part of the anchor
+        whatever they record. ``account.type`` is the stored STR token."""
         contributing = {src.account_id for src in fc.anchor_sources}
-        return [
-            a.name
-            for a in AccountService(self._service.vault).list_accounts()
-            if a.id not in contributing
-        ]
+        cash_tokens = {t.value for t in CASH_TYPES}
+        no_balance: list[str] = []
+        not_cash: list[str] = []
+        for account in AccountService(self._service.vault).list_accounts():
+            if account.id in contributing:
+                continue
+            target = no_balance if account.type in cash_tokens else not_cash
+            target.append(account.name)
+        return no_balance, not_cash
 
     # -- events table ---------------------------------------------------------
     def _fill_events(self, fc: Forecast, exponent: int, symbol: str) -> None:

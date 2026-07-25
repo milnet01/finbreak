@@ -132,6 +132,43 @@ def test_INV2_no_recorded_balance_is_net_flow(service) -> None:
     assert fc.events and fc.end_minor == -3 * 19_900
 
 
+def test_INV14_debt_account_balance_is_not_anchored(service) -> None:
+    """FIBR-0179: a credit-card statement prints its closing in the *owed*
+    convention (positive = debt), the opposite sign to `amount_minor`. It can be
+    neither brought current by adding transactions nor summed into a cash total,
+    so it must not contribute to the anchor at all."""
+    svc = service
+    cash = _acct(svc)
+    card = AccountService(svc.vault).add_account("Visa", "credit_card").id
+
+    repo = StatementPeriodRepository(svc.vault.connection)
+    repo.add(cash, "2026-01-01", "2026-04-30", "apr.pdf", 500_000)
+    repo.add(card, "2026-01-01", "2026-04-30", "card-apr.pdf", 120_000)  # R1200 owed
+    svc.vault.connection.commit()
+    # A post-statement card purchase: canonical sign (-), owed convention (+).
+    _add(svc, card, "2026-05-10", -25_000, "Fuel")
+
+    fc = ForecastService(svc.vault).forecast(_TODAY, _HORIZON)
+
+    assert [src.account_id for src in fc.anchor_sources] == [cash]
+    assert fc.start_minor == 500_000, "the owed figure must not inflate the cash total"
+
+
+def test_INV14_debt_only_vault_is_net_flow(service) -> None:
+    """With no cash account carrying a balance, there is no honest anchor —
+    NET_FLOW, not a forecast anchored on a debt figure (FIBR-0179)."""
+    svc = service
+    card = AccountService(svc.vault).add_account("Visa", "credit_card").id
+    repo = StatementPeriodRepository(svc.vault.connection)
+    repo.add(card, "2026-01-01", "2026-04-30", "card-apr.pdf", 120_000)
+    svc.vault.connection.commit()
+
+    fc = ForecastService(svc.vault).forecast(_TODAY, _HORIZON)
+    assert fc.mode is ForecastMode.NET_FLOW
+    assert fc.start_minor == 0
+    assert fc.anchor_sources == []
+
+
 def test_INV2_empty_vault_is_net_flow_zero(service) -> None:
     fc = ForecastService(service.vault).forecast(_TODAY, _HORIZON)
     assert fc.mode is ForecastMode.NET_FLOW

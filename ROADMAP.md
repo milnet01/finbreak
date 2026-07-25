@@ -1773,7 +1773,7 @@ because retrofitting them is a data migration.
   Kind: feature.
   Source: FIBR-0171 spec D12 (in-session 2026-07-24).
 
-- 📋 [FIBR-0179] **Forecast anchor mishandles debt-account (credit-card / loan) closing balances — wrong-sign roll-forward + an owed figure folded into the vault-wide cash total.**
+- ✅ [FIBR-0179] **Forecast anchor mishandles debt-account (credit-card / loan) closing balances — wrong-sign roll-forward + an owed figure folded into the vault-wide cash total.**
   ForecastService._anchor (services/forecast.py) sums
   latest_closing_balances() across ALL account types with
   `current = balance_minor + roll_minor` (a plain `+`, no type dispatch).
@@ -1795,6 +1795,19 @@ because retrofitting them is a data migration.
   **Layman:** The new Forecast's starting balance can be wrong for credit-card and loan accounts — it needs a per-account-type sign fix (or to leave debt accounts out of the total).
   Kind: fix.
   Source: in-session-2026-07-24 (surfaced by FIBR-0177 cold-eyes, spec D9).
+  Resolved (2026-07-25): verified first — a RED test proved a
+  credit-card account with a persisted closing balance (R1200 owed)
+  was anchored as +R1200 of *cash*, and a post-statement purchase
+  rolled it the wrong way. Fixed by narrowing the anchor to CASH_TYPES
+  (current + savings) in ForecastService._anchor — the same gate
+  FIBR-0177 D1 applies, for the same sign-convention reason. Debt /
+  investment / other accounts now contribute nothing; a vault whose
+  only balance-bearing account is a debt account falls back to
+  NET_FLOW. The Forecast tab's provenance line gained a second
+  exclusion clause so a type-excluded account is no longer mislabelled
+  "no recorded balance yet". Contract: tests/features/forecast/spec.md
+  INV-14 (3 new tests); FIBR-0171 §D1 carries an amendment note. Gate
+  green 1363 passed, 2 skipped.
 
 ### ⚡ Performance
 
