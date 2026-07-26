@@ -18,7 +18,7 @@ from finbreak.services.auth import CURRENCY_SYMBOLS
 
 # Direction tints for money display when colour is on (FIBR-0105 D3). Fixed
 # mid-tones chosen to read on the dark-default theme (ADR-0010) and stay legible
-# on light; palette-adaptive re-tinting is FIBR-0014.
+# on light; palette-adaptive re-tinting is FIBR-0127.
 _NEGATIVE_TEXT = QColor(224, 108, 117)  # soft red — money out
 _POSITIVE_TEXT = QColor(152, 195, 121)  # soft green — money in
 

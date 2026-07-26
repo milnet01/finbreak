@@ -16,15 +16,15 @@ import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-import json  # noqa: E402
-from pathlib import Path  # noqa: E402
+import json
+from pathlib import Path
 
-import pytest  # noqa: E402
-from PySide6.QtWidgets import QDialog  # noqa: E402
-from sqlcipher3 import dbapi2  # noqa: E402
+import pytest
+from PySide6.QtWidgets import QDialog
+from sqlcipher3 import dbapi2
 
-from finbreak.crypto import KEY_LEN, SALT_LEN, derive_key  # noqa: E402
-from finbreak.migrations import (  # noqa: E402
+from finbreak.crypto import KEY_LEN, SALT_LEN, derive_key
+from finbreak.migrations import (
     _migrate_to_v2,
     _migrate_to_v3,
     _migrate_to_v4,
@@ -34,8 +34,8 @@ from finbreak.migrations import (  # noqa: E402
     _migrate_to_v8,
     _migrate_to_v9,
 )
-from finbreak.models import FORMAT_VERSION, KdfParams  # noqa: E402
-from finbreak.services.auth import (  # noqa: E402
+from finbreak.models import FORMAT_VERSION, KdfParams
+from finbreak.services.auth import (
     ARGON2_MEMORY_KIB,
     ARGON2_PARALLELISM,
     ARGON2_TIME_COST,

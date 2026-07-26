@@ -286,7 +286,7 @@ def run_self_test(out: TextIO | None = None) -> int:
     for name, check in checks:
         try:
             check()
-        except Exception:  # noqa: BLE001 — any failure means the stack didn't load
+        except Exception:  # any failure means the stack didn't load
             # FINBREAK_SELFTEST_DEBUG=1 dumps the real exception to stderr (the
             # sentinel line alone can't say *why* a native lib failed to load).
             if os.environ.get("FINBREAK_SELFTEST_DEBUG") == "1":

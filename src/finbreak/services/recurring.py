@@ -4,8 +4,8 @@ A pure ``detect_recurring`` groups transactions by ``(direction, merchant_key)``
 qualifies each group under the Balanced rule (≥3 members; every magnitude within
 ±10% of the integer ``median_low``; ≥2 non-zero day-gaps all in one cadence
 band), and returns the *active* recurring items sorted biggest-first. It takes no
-clock (``today`` is a parameter) and does no I/O. ``RecurringService`` (later
-slice) persists confirm/dismiss decisions and partitions the output. No network.
+clock (``today`` is a parameter) and does no I/O. ``RecurringService`` persists
+confirm/dismiss decisions and partitions the output. No network.
 """
 
 from __future__ import annotations

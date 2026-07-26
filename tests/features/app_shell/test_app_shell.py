@@ -68,7 +68,7 @@ class _StubWorker(DeriveWorker):
     'derivation in flight' state the real ~1–2 s Argon2id can't be caught in
     (INV-2f). failed() is forced by the test to drive the completion path."""
 
-    def start(  # noqa: D401 — never runs; stays pending
+    def start(  # never runs; the derivation stays pending
         self, priority: QThread.Priority = QThread.Priority.InheritPriority
     ) -> None:
         pass

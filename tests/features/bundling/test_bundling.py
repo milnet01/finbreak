@@ -9,9 +9,11 @@ See tests/features/bundling/spec.md.
 
 import io
 import os
+import re
 import shutil
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -200,3 +202,71 @@ def test_INV2_INV3_build_smoke_clean_room():
 
     result = subprocess.run([str(script)], cwd=_PROJECT_ROOT)
     assert result.returncode == 0, "build-smoke.sh must exit 0 (both artifacts pass)"
+
+
+# --------------------------------------------------------------------------- #
+# INV-7 — build-tool pins are in lockstep between pyproject and every build path.
+#
+# Neither tool is ever installed via `--group build` / `--group dev` by the build
+# paths: the container smoke build, the Windows freeze driver and the three OBS
+# recipes each name `pyinstaller==` inline, and windows-build.yml names
+# `pip-audit==` inline. Without this gate, bumping the pyproject pin silently
+# leaves all of them behind — a class of drift docs/specs/FIBR-0155.md § 805-808
+# already flagged. The scan walks tracked files, so a NEW call-site is covered
+# automatically; `min_sites` guards against the scan passing vacuously if a build
+# path stops pinning (or moves).
+# --------------------------------------------------------------------------- #
+_LOCKSTEP_PINS = (
+    # (distribution, pyproject dependency-group, minimum expected inline sites)
+    ("pyinstaller", "build", 6),  # pyproject + 5 build paths (one names it twice)
+    ("pip-audit", "dev", 2),  # pyproject + windows-build.yml's SBOM step
+)
+
+
+def _group_pin(pattern: re.Pattern[str], group_name: str) -> str:
+    """The authoritative pin: pyproject's PEP 735 ``<group_name>`` group."""
+    with (_PROJECT_ROOT / "pyproject.toml").open("rb") as fh:
+        group = tomllib.load(fh)["dependency-groups"][group_name]
+    pins = [m.group(1) for dep in group if (m := pattern.fullmatch(dep))]
+    assert len(pins) == 1, f"expected one pin in [{group_name}], got {pins}"
+    return pins[0]
+
+
+@pytest.mark.parametrize(("dist", "group", "min_sites"), _LOCKSTEP_PINS)
+def test_INV7_build_tool_pins_are_in_lockstep(
+    dist: str, group: str, min_sites: int
+) -> None:
+    pattern = re.compile(rf"{re.escape(dist)}==([0-9][0-9A-Za-z.\-+]*)")
+    expected = _group_pin(pattern, group)
+    tracked = subprocess.run(
+        ["git", "ls-files", "-z"],
+        cwd=_PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.split("\0")
+
+    offenders: list[str] = []
+    sites = 0
+    for rel in tracked:
+        if not rel or rel.startswith("tests/features/bundling/"):
+            continue  # this file names the pattern itself
+        path = _PROJECT_ROOT / rel
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        for lineno, line in enumerate(text.splitlines(), 1):
+            for match in pattern.finditer(line):
+                sites += 1
+                if match.group(1) != expected:
+                    offenders.append(f"{rel}:{lineno}: {match.group(0)}")
+
+    assert not offenders, (
+        f"{dist} pin drift — pyproject [dependency-groups] {group} says "
+        f"{expected}, but:\n" + "\n".join(offenders)
+    )
+    assert sites >= min_sites, (
+        f"expected >= {min_sites} inline {dist} pins, found {sites} — did a "
+        f"build path stop pinning it, or move?"
+    )

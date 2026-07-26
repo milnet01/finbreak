@@ -2,13 +2,15 @@
 
 A distinct responsibility from the import pipeline (``ImportService`` is already
 large), given its own testable seam. ``list_statements`` assembles the tab rows
-with a single ``LEFT JOIN`` of ``accounts`` (for the name) + a grouped ``COUNT``
-of linked ``transactions`` — so a zero-linked statement still appears with count
-0 (INV-7/INV-7b), and no N+1. ``delete_statement`` runs one service-owned
-``BEGIN … COMMIT``: it removes the statement's stamped transactions **then** the
-period row (the ordered two-step delete, INV-9), leaving manual (``NULL``) and
-other statements' rows untouched, and ``ROLLBACK``s to a re-openable vault on any
-failure. Constructed like the other services — takes a ``Vault``.
+with an inner ``JOIN`` of ``accounts`` (for the name) + a ``LEFT JOIN`` grouped
+``COUNT`` of linked ``transactions`` — so a zero-linked statement still appears
+with count 0 (INV-7/INV-7b), and no N+1. ``delete_statement`` runs one service-owned
+``BEGIN … COMMIT``: the ordered **three**-step hand-off delete (FIBR-0148,
+superseding FIBR-0052 INV-9) — hand off rows a remaining statement also covers,
+delete the rows still stamped to this period, then delete the period row —
+leaving covered, manual (``NULL``) and other statements' rows untouched, and
+``ROLLBACK``s to a re-openable vault on any failure. Constructed like the other
+services — takes a ``Vault``.
 """
 
 from __future__ import annotations

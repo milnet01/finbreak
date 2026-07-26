@@ -22,7 +22,8 @@ import tomllib
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import windows_freeze_flags as flags  # noqa: E402  (sibling script, not a package)
+# Sibling script, not a package — hence the sys.path insert above.
+import windows_freeze_flags as flags
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _PYPROJECT = _REPO_ROOT / "pyproject.toml"

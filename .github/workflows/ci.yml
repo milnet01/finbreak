@@ -12,11 +12,20 @@ permissions:
 jobs:
   gate:
     name: lint + security + tests
+    # Pinned, not `-latest`, so a runner-image rollover can't change the gate
+    # under us; bump deliberately.
     runs-on: ubuntu-24.04
     # Run INSIDE the same image scripts/ci-docker.sh uses, so a local
     # `scripts/ci-docker.sh` run and this job install an identical environment
     # and run the identical gate — they cannot drift (FIBR-0001 INV-2). The
     # image ships Python 3.12, so no setup-python step is needed.
+    #
+    # HELD at bookworm (Debian 12, now oldstable) deliberately: this image's glibc
+    # ~2.36 IS the effective floor of the frozen artifacts (pyproject.toml's
+    # dependency comment explains why — libpython links it), so moving to trixie
+    # would raise the minimum glibc every AppImage/.exe user needs. Bump only
+    # together with build-smoke.sh + ci-docker.sh, and only as a deliberate
+    # floor-raise. Tracked as FIBR-0180.
     container: python:3.12-slim-bookworm
     steps:
       # actions/checkout shells out to git, which the slim image lacks.

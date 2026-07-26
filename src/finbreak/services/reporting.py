@@ -383,9 +383,9 @@ class ReportingService:
             root is the top-of-chain. Defensively total: a root (or an unknown id) is
             its own top-of-chain, and a broken chain **or a corrupt-data cycle** stops
             the climb — the loop never spins (the ``seen`` set breaks a cycle, mirroring
-            the ``type_of`` parent-chain guard in ``categorization.py``). Staying total
-            here keeps every row placed (no drop, INV-1) even on data the write path
-            rejects."""
+            the ``seen``-set parent-chain guard in
+            ``categorization.leaf_categories_grouped``). Staying total here keeps every
+            row placed (no drop, INV-1) even on data the write path rejects."""
             cat = by_id.get(category_id)
             if cat is None or cat.parent_id is None:
                 return category_id

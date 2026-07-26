@@ -120,7 +120,13 @@ src = ["src", "tests"]
 [tool.ruff.lint]
 # E/W pycodestyle, F pyflakes, I import-sort, UP pyupgrade (modern idioms,
 # coding.md § 1.5), B flake8-bugbear.
-select = ["E", "W", "F", "I", "UP", "B"]
+# RUF100 (unused-noqa) is deliberate: a debt sweep found 20 `# noqa` directives
+# citing rules this select list never enabled (BLE001, N802, S603, D401) plus
+# stale E402s. They READ as reviewed suppressions while suppressing nothing —
+# exactly the "silencing without a root cause" shape the project forbids. Their
+# rationale now lives in plain comments; this rule stops inert directives
+# returning. (bandit's `# nosec` is a separate, live mechanism — untouched.)
+select = ["E", "W", "F", "I", "UP", "B", "RUF100"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

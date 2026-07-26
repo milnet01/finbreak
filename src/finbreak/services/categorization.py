@@ -1,7 +1,7 @@
 """CategorizationService — the rules engine, manual override, and learning
 (FIBR-0010).
 
-Two module functions carry the pure/commit-free core so both the service's owned
+Module-level functions carry the pure/commit-free core so both the service's owned
 transaction and the import / delete-cascade transactions can reuse them:
 
 - ``categorize(description, rules)`` — the pure first-match matcher (no DB).

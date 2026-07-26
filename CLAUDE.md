@@ -71,7 +71,10 @@ The harness contract is [`docs/specs/FIBR-0001.md`](docs/specs/FIBR-0001.md).
 
 **Requirements:** Python ≥ 3.12 and the `gitleaks` binary on `PATH` (a Go
 binary, not a pip package — install from your distro or the
-[gitleaks releases](https://github.com/gitleaks/gitleaks/releases)).
+[gitleaks releases](https://github.com/gitleaks/gitleaks/releases)). Use
+**≥ 8.30.1** — the version `scripts/ci-setup.sh` pins. An older distro build can
+run a different rule engine over the same `.gitleaks.toml`, so a local gate can
+pass where CI fails (or vice versa); check with `gitleaks version`.
 
 **One-time dev setup** — isolated env + the pinned dev toolchain (ruff,
 bandit, pip-audit, pytest, pytest-qt, mypy + `types-PyYAML`) **and the runtime

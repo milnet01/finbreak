@@ -131,5 +131,8 @@ def test_INV14_debt_account_named_as_excluded_for_the_right_reason(
     w.refresh()
 
     provenance = w._provenance.text().lower()
-    assert "aren't cash): visa" in provenance
+    # The card must be named under the NOT-CASH clause (which states the rule
+    # positively — only current/savings are spendable cash — so it stays true for
+    # `other`-type accounts too), never under the no-balance clause.
+    assert "spendable cash): visa" in provenance
     assert "no recorded balance yet" not in provenance

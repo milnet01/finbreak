@@ -107,7 +107,7 @@ def _relaunch_log_path() -> Path | None:
         from finbreak.paths import data_dir
 
         return data_dir() / "update-relaunch.log"
-    except Exception:  # noqa: BLE001 — logging must never block the relaunch
+    except Exception:  # logging must never block the relaunch
         return None
 
 
@@ -296,7 +296,7 @@ class AppImageInstaller:
             log.flush()
         stdio: TextIO | int = log if log is not None else subprocess.DEVNULL
         try:
-            subprocess.Popen(  # noqa: S603  # nosec B603 — fixed /bin/sh waiter, our own argv
+            subprocess.Popen(  # nosec B603 — fixed /bin/sh waiter, our own argv
                 _relaunch_command(str(self._appimage_path), pid),
                 env=_relaunch_env(),
                 stdin=subprocess.DEVNULL,
@@ -361,7 +361,7 @@ class WindowsInstaller:
             subprocess, "CREATE_NEW_PROCESS_GROUP", 0
         )
         try:
-            subprocess.Popen(  # noqa: S603  # nosec B603 — fixed PowerShell waiter, our own argv
+            subprocess.Popen(  # nosec B603 — fixed PowerShell waiter, our own argv
                 _windows_relaunch_command(str(self._exe_path), str(new_file)),
                 env=_windows_relaunch_env(),
                 stdin=subprocess.DEVNULL,

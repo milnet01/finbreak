@@ -482,7 +482,7 @@ class Forecast:
 
 @dataclass
 class RecurringSummary:
-    """Monthly-equivalent recurring totals for the (deferred FIBR-0143) dashboard
+    """Monthly-equivalent recurring totals for the Home (FIBR-0143) dashboard
     card: the sum of confirmed items' ``monthly_equivalent`` per direction, plus
     ``net = monthly_in - monthly_out`` (FIBR-0142 D8). Field order pinned."""
 

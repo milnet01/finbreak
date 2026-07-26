@@ -204,7 +204,8 @@ class ForecastWidget(QWidget):
             ).format(names=", ".join(no_balance))
         if not_cash:
             text += " " + self.tr(
-                "Excluded (credit, loan and investment balances aren't cash): {names}."
+                "Excluded (only current and savings balances are spendable "
+                "cash): {names}."
             ).format(names=", ".join(not_cash))
         return text
 

@@ -11,7 +11,7 @@ Two layers, split on the pure-vs-service seam (§7):
   is **no ``Decimal`` and no exponent** in this function — money is signed integer
   minor units throughout (money-safe, INV-1/D6/D7).
 
-* ``ForecastService`` (later slice) composes the current-balance anchor from the
+* ``ForecastService`` composes the current-balance anchor from the
   persisted statement balances + the post-statement transaction roll-forward, reads
   the confirmed recurring set, does the one exact amount→minor conversion per item,
   and calls ``project_forecast``.
@@ -142,7 +142,9 @@ class ForecastService:
     recurring set (D5), converts each item's ``amount`` (a positive display Decimal)
     back to exact signed minor units once (D7), prepares ``ForecastInput``s, and
     calls the pure ``project_forecast``. The anchor is ``None`` (⇒ NET_FLOW) when no
-    account has a recorded balance. Mirrors ``RecurringService`` — vault-wide.
+    **cash** account (``CASH_TYPES``) has a recorded balance — a debt-only vault
+    therefore runs in NET_FLOW too (FIBR-0179). Mirrors ``RecurringService`` —
+    vault-wide.
     """
 
     def __init__(self, vault: Vault) -> None:

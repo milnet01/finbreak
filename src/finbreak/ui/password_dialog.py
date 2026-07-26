@@ -53,7 +53,8 @@ class PasswordDialog(QDialog):
         layout.addWidget(buttons)
 
     def password(self) -> str:
-        """The entered password (read only after an ``Accepted`` ``exec()``)."""
+        """The entered password (read from the ``accepted`` slot — the dialog is shown
+        non-blocking via ``show_modal``, never ``exec()``-ed; FIBR-0065 INV-1)."""
         return self._field.text()
 
     def remember(self) -> bool:

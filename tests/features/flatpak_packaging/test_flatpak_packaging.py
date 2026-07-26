@@ -293,7 +293,7 @@ def test_INV5_metainfo_validates() -> None:
     tool = shutil.which("appstreamcli")
     if tool is None:
         pytest.skip("appstreamcli not installed (manual pre-submit check, § 5)")
-    result = subprocess.run(  # noqa: S603 — fixed argv, no shell
+    result = subprocess.run(
         [tool, "validate", "--no-net", str(_METAINFO)],
         capture_output=True,
         text=True,
@@ -373,6 +373,30 @@ def test_INV8_gate_is_flatpak_specific(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert main_window._kde_wayland() is True
     assert main_window._center_supported() is True
+
+
+# --------------------------------------------------------------------------- #
+# INV-10 — the manifest's git tag tracks __version__.
+# INV-4 already gates the SHAPE of the pin (40-hex commit, no bare semver), but
+# nothing tied the `tag:` to the release it is supposed to build. The tag is
+# version-bearing, so /bump must carry it: without this gate a bump leaves the
+# manifest pinned to the PREVIOUS release and Flathub silently ships stale code.
+# (Its sibling `commit:` cannot be gated here — the tag's sha does not exist
+# until the release is tagged; .claude/bump.json carries that as a todo.)
+# --------------------------------------------------------------------------- #
+def test_INV10_manifest_git_tag_matches_package_version() -> None:
+    from finbreak import __version__
+
+    tag = None
+    for mod in _iter_modules(_load(_MANIFEST)):
+        if isinstance(mod, dict) and mod.get("name") == "finbreak":
+            for src in mod["sources"]:
+                if isinstance(src, dict) and src.get("type") == "git":
+                    tag = src.get("tag")
+    assert tag == f"v{__version__}", (
+        f"Flatpak manifest pins {tag!r} but finbreak.__version__ is "
+        f"{__version__!r} — bump `tag:` (and re-pin `commit:` after tagging)"
+    )
 
 
 # --------------------------------------------------------------------------- #

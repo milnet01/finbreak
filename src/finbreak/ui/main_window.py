@@ -6,12 +6,12 @@ toolbar, a central ``QStackedWidget`` content area, and a status bar. First-run
 and unlock are non-blocking application-modal dialogs shown *over* the window;
 manual entry is a modal dialog. When unlocked, the content slot holds a single
 **workspace** ``QTabWidget`` (Home · Transactions · Statements · Accounts ·
-Categories · Rules · Transfers as persistent tabs), built once per session and
-**destroyed on lock** so no
-decrypted rows survive (INV-3). An import temporarily replaces the workspace with
-the wizard (also destroyed on lock), rebuilding the workspace on ``done``. Window
-size/position/state + the last-active tab are persisted to a plain INI **outside**
-the vault (``paths.window_settings_path``, INV-5), restored before unlock. On
+Categories · Rules · Transfers · Recurring · Forecast as persistent tabs), built
+once per session and **destroyed on lock** so no decrypted rows survive (INV-3).
+An import temporarily replaces the workspace with the wizard (also destroyed on
+lock), rebuilding the workspace on ``done``. Window size/position/state + the
+last-active tab are persisted to a plain INI **outside** the vault
+(``paths.window_settings_path``, INV-5), restored before unlock. On
 Wayland the compositor owns placement, so only the size is restored (via a
 resize the compositor honours) and Center window is driven through KWin's D-Bus
 API on KDE (disabled on other Wayland compositors, which expose no placement

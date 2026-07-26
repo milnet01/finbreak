@@ -213,7 +213,7 @@ def test_INV4_metainfo_validates() -> None:
     validator = shutil.which("appstreamcli")
     if validator is None:
         pytest.skip("appstreamcli not installed (manual / pre-OBS-submit check)")
-    result = subprocess.run(  # noqa: S603
+    result = subprocess.run(
         [validator, "validate", "--no-net", str(_METAINFO)],
         capture_output=True,
         text=True,

@@ -5,7 +5,8 @@ pre-fill, like ``SettingsDialog``): a period selector (Home's five modes), an
 **Accounts** checkbox list under an **All accounts** master toggle, three
 **section** checkboxes, a **Theme** Light/Dark pair, and a **password** + confirm
 pair with a single Show toggle. ``options()`` returns the chosen ``ExportOptions``
-after an accepted ``exec()``.
+and is read from the ``accepted`` slot — the dialog is shown non-blocking,
+never ``exec()``-ed (FIBR-0065 INV-1).
 
 Gating (INV-14): **Export…** is enabled iff ≥ 1 section ∧ ≥ 1 account ∧ the
 password field is empty **or** (≥ ``MIN_EXPORT_PASSWORD_LEN`` chars ∧ equals

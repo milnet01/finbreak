@@ -49,6 +49,14 @@ network, no financial data.
   carry (skip-if-deps-absent, like INV-3/7). Locks the two against drift: widening
   the wheels forces widening `only-arches`, and vice versa.
 
+- **INV-10 (git tag tracks the release)** — the `finbreak` module's git source
+  `tag:` equals `v{finbreak.__version__}`. INV-4 gates the *shape* of the pin (a
+  40-hex `commit:`, no bare semver anywhere) but nothing tied the tag to the
+  release it builds; the tag is version-bearing, so `/bump` must carry it
+  (`.claude/bump.json` `files` + `post_check`). Its sibling `commit:` is **not**
+  gated here — the tag's sha does not exist until the release is tagged, so
+  re-pinning it is a bump-time todo.
+
 ## Coverage limits (see spec § 4 / § 5)
 
 - `python3-deps.yaml` may not exist until `generate-pip-sources.sh` has been run

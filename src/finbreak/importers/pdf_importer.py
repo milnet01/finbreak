@@ -160,7 +160,7 @@ class PdfImporter:
                     raw_tables.extend(page.extract_tables())
         except ValueError:
             raise  # our own friendly guards (e.g. the page cap) pass through
-        except Exception as exc:  # noqa: BLE001 — untrusted-PDF boundary (mirror OFX D7)
+        except Exception as exc:  # untrusted-PDF boundary (mirrors OFX D7)
             raise ValueError(
                 "couldn't read this PDF — try your bank's CSV or OFX export"
             ) from exc

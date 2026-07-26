@@ -60,7 +60,7 @@ class _LocalDateOfxParser(OfxParser):
     OFX date the parse produces."""
 
     @classmethod
-    def parseOfxDateTime(cls, ofxDateTime):  # noqa: N802 — override of the base name
+    def parseOfxDateTime(cls, ofxDateTime):  # camelCase: overrides the base name
         neutralised = _OFX_TZ_SUFFIX.sub("[0:GMT]", ofxDateTime.strip())
         return super().parseOfxDateTime(neutralised)
 
@@ -80,7 +80,7 @@ class OfxImporter:
             # _LocalDateOfxParser (not the base OfxParser) so a timezone-bearing
             # DTPOSTED/DTEND keeps its as-posted local calendar date (FIBR-0042).
             ofx = _LocalDateOfxParser.parse(io.BytesIO(data))
-        except Exception as exc:  # noqa: BLE001 — documented untrusted-input boundary (D7)
+        except Exception as exc:  # documented untrusted-input boundary (D7)
             raise ValueError("this file could not be read as OFX") from exc
 
         # A structurally-valid but statement-less envelope (empty ofx.accounts —
@@ -149,7 +149,8 @@ class OfxImporter:
         # ofxparse leaves ``statement.balance`` UNSET (not None) when no <LEDGERBAL>
         # is present, so a bare access raises AttributeError — and this runs OUTSIDE
         # the wizard's boundary try/except. ``getattr(..., None)`` guards it; a present
-        # Decimal converts to minor with the same scaling ``_minor`` uses.
+        # Decimal converts to minor with the same scaling ``standard_bank._minor``
+        # uses (duplicated, not shared — see the to_minor consolidation item).
         balance = getattr(statement, "balance", None)
         closing_balance_minor = (
             None

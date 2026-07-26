@@ -10,8 +10,8 @@ applies directly (each is reversible via the opposite decision) and every slot c
 direction & cadence are stable ASCII enum tokens; only their column **text** is a
 ``tr()``-ed label (INV-11). All strings go through ``tr()`` and every widget sits in a
 layout manager (coding.md § 5.2). The **Next due** column may show a *past* date for an
-active-but-overdue item (INV-7) — expected. The Home dashboard card is deferred to
-FIBR-0143, which consumes ``RecurringService.summary()`` (built + tested here).
+active-but-overdue item (INV-7) — expected. The Home dashboard card (FIBR-0143,
+shipped) consumes ``RecurringService.summary()`` (built + tested here).
 """
 
 from __future__ import annotations
