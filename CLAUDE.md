@@ -55,11 +55,12 @@ for the full table and reasoning):
   locked input statements (ADR-0004)
 - **Import parsers:** stdlib `csv` + per-bank mapping profiles
   (ADR-0005), `ofxparse` (OFX), `pdfplumber` (PDF)
-- **Tests / lint:** pytest (+ pytest-qt), ruff
+- **Tests / lint / types:** pytest (+ pytest-qt), ruff, mypy
 - **Security gate:** bandit, pip-audit, gitleaks (see
   [`docs/security-model.md`](docs/security-model.md))
 - **Packaging:** PyInstaller (Windows `.exe`, macOS `.app`/`.dmg`),
-  AppImage + Flatpak/Flathub (Linux) (ADR-0007)
+  AppImage + Flatpak/Flathub and native RPM/deb via the openSUSE Build
+  Service (Linux; `packaging/obs/`, FIBR-0155) (ADR-0007)
 - **License:** MIT; local-only apart from an opt-in, off-by-default
   update check (FIBR-0054; stdlib `urllib`, confined to
   `services/update_fetch.py`).
@@ -73,8 +74,8 @@ binary, not a pip package — install from your distro or the
 [gitleaks releases](https://github.com/gitleaks/gitleaks/releases)).
 
 **One-time dev setup** — isolated env + the pinned dev toolchain (ruff,
-bandit, pip-audit, pytest, pytest-qt) **and the runtime deps** (PySide6,
-SQLCipher, pikepdf), which the FIBR-0003 self-test guard imports:
+bandit, pip-audit, pytest, pytest-qt, mypy + `types-PyYAML`) **and the runtime
+deps** (PySide6, SQLCipher, pikepdf), which the FIBR-0003 self-test guard imports:
 
 ```bash
 python3 -m venv .venv
@@ -85,7 +86,8 @@ python -m pip install .                  # runtime deps — the self-test test l
 ```
 
 **Run the full gate** — the same stages CI runs (lint, format-check, bandit,
-pip-audit, gitleaks, tests; FIBR-0001 INV-1/INV-2):
+pip-audit, gitleaks, **mypy**, tests; FIBR-0001 INV-1/INV-2). Note the mypy
+stage: a green `pytest` alone is **not** a green gate:
 
 ```bash
 ./scripts/ci-local.sh
@@ -188,16 +190,27 @@ header.
 - `scripts/ci-docker.sh` — reproduce the GitHub CI run exactly, locally, in the
   same `python:3.12-slim-bookworm` image (`ci-setup.sh` + `ci-local.sh`). Run
   before pushing to catch environment issues a configured desktop masks.
-- `scripts/build-smoke.sh` (+ `_build-smoke-in-container.sh`) — freeze the stub
+- `scripts/build-smoke.sh` (+ `_build-smoke-in-container.sh`) — freeze the app
   in a `python:3.12-slim-bookworm` container (glibc ~2.36) and launch it in a
   Python-free `debian:13-slim` container (FIBR-0003).
+- `scripts/` also holds the release path: `build-release-appimage.sh`,
+  `build-windows-exe.py` (+ `windows_freeze_flags.py`), `release-linux.sh`,
+  `release-windows.sh`, `gen-signing-key.py`, `sign-release.py`,
+  `gen-checksums.sh`, `make-icons.sh`, and the demo/screenshot helpers
+  `seed_demo_vault.py` + `capture_screenshots.py`.
+- `packaging/` — the distro recipes: `packaging/flatpak/` (Flathub manifest,
+  FIBR-0159) and `packaging/obs/` (openSUSE Build Service `.spec`, `debian/`,
+  `_service`, metainfo + desktop files, FIBR-0155).
+- `assets/` — the app icon set and the README screenshots.
 - `.github/workflows/ci.yml` — CI mirror; runs INSIDE `python:3.12-slim-bookworm`
   and calls `ci-setup.sh` then `ci-local.sh` — the same image + scripts as
   `ci-docker.sh`, so local and CI cannot drift (single source of truth, INV-2).
 - `.github/workflows/build-smoke.yml` — the dedicated, opt-in build job
   (`workflow_dispatch` + weekly), not run on every push.
+- `.github/workflows/windows-build.yml` — the on-demand Windows `.exe` freeze
+  (unsigned; Authenticode signing is FIBR-0133, still blocked).
 - `pyproject.toml` — metadata, pinned runtime deps + `dev`/`build` groups,
-  ruff / pytest / bandit config.
+  ruff / pytest / bandit / mypy config.
 
 ## Resumption flow — MANDATORY summarise-back
 

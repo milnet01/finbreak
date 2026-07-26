@@ -53,8 +53,9 @@ signaling per
   transactions. The Forecast tab was adding that owed figure into your
   projected balance as though it were money you have, and any card
   purchase since the statement moved it the wrong way. The forecast now
-  anchors on cash accounts only (current and savings); debt and
-  investment accounts are listed as excluded, with the reason. If a
+  anchors on cash accounts only (current and savings); every other
+  account type — debt, investment, and "other" — is listed as
+  excluded, with the reason. If a
   debt account is the only one with a recorded balance, the forecast
   honestly shows a projected change from zero instead.
 

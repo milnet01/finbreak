@@ -203,7 +203,7 @@ scariest unknown (native-library bundling) up front.
   Resolved 2026-07-14: `build-windows-exe.py` now freezes `--windowed`; self-test sentinel rerouted to FINBREAK_SELFTEST_OUT file so the clean-room read survives the None stdout; windows-build.yml reads the file via Start-Process -Wait. Regression-locked (test_driver_freezes_windowed_gui_exe + test_selftest_can_redirect_sentinel_to_a_file). Gate green 853/1. Ships in the next Windows release build.
 
 - 🚧 [FIBR-0133] **Free Windows code signing via SignPath Foundation (OSS program).**
-  User applying to SignPath Foundation's free code-signing program for OSS. Prep done this session: PRIVACY.md added (finbreak collects no data; local-only); README gained the required SignPath attribution ("Free code signing provided by SignPath.io, certificate by SignPath Foundation") which the hub site renders onto the download page (antsprojectshub.co.za/p/fin-break.html); Google Search Console verification + indexing done so the app is discoverable (a SignPath requirement — see [[finbreak-public-site-and-signing]]). Also fixed the stale milnet01/Fin_Break->finbreak repo slug in the hub data. REMAINING once approved: wire the SignPath signing step into .github/workflows/windows-build.yml so release .exe artifacts are signed; promote the .exe to a signed release asset. Requirements met: MIT license, public repo, GitHub 2FA (user to confirm), discoverable (in progress). Windows-only (macOS = Apple $99/yr; Linux AppImage GPG-signed already).
+  User applying to SignPath Foundation's free code-signing program for OSS. Prep done this session: PRIVACY.md added (finbreak collects no data; local-only); README gained the required SignPath attribution ("Free code signing provided by SignPath.io, certificate by SignPath Foundation") which the hub site renders onto the download page (antsprojectshub.co.za/p/fin-break.html) — NOTE (2026-07-26 debt sweep): that attribution string is no longer in README.md, having been removed after the decline; it must be restored before any reapplication; Google Search Console verification + indexing done so the app is discoverable (a SignPath requirement — see [[finbreak-public-site-and-signing]]). Also fixed the stale milnet01/Fin_Break->finbreak repo slug in the hub data. REMAINING once approved: wire the SignPath signing step into .github/workflows/windows-build.yml so release .exe artifacts are signed; promote the .exe to a signed release asset. Requirements met: MIT license, public repo, GitHub 2FA (user to confirm), discoverable (in progress). Windows-only (macOS = Apple $99/yr; Linux AppImage GPG-signed already).
   **Layman:** Get finbreak's Windows app officially signed for free so Windows stops showing "unknown publisher" warnings.
   Kind: package.
   Source: user-request-2026-07-14.
@@ -2070,7 +2070,7 @@ is a future error tomorrow.
   Source: claude-suggestion-2026-07-11.
 
 - 📋 [FIBR-0103] **Consolidate presentation formatting into one module.**
-  FIBR-0083 introduces src/finbreak/datetime_format.py (date/time display). Fold the existing amount/currency QLocale formatting (ui/home.py::_format_amount -> QLocale.toCurrencyString) into a shared formatting package alongside it, so all presentation logic is centralised + unit-tested in one place (Rule of Three: date + currency + future). Deps: FIBR-0083 (lands the first formatter). Small refactor; do AFTER FIBR-0083 ships.
+  FIBR-0083 introduces src/finbreak/datetime_format.py (date/time display). Fold the existing amount/currency QLocale formatting (ui/_amount.py::_format_amount -> QLocale.toCurrencyString; already lifted out of ui/home.py and now imported by 8 modules, so the remaining work is the fold into a shared formatting package) into a shared formatting package alongside it, so all presentation logic is centralised + unit-tested in one place (Rule of Three: date + currency + future). Deps: FIBR-0083 (lands the first formatter). Small refactor; do AFTER FIBR-0083 ships.
   **Layman:** Keep all the 'how numbers and dates look' code in one tidy, tested place.
   Kind: refactor.
   Source: claude-suggestion-2026-07-11.
@@ -2092,11 +2092,19 @@ is a future error tomorrow.
   Source: indie-review-2026-07-14 (FIBR-0138 close).
   Resolved 2026-07-17: added a `_reject_cycle` guard to `CategoryService.update_category` (mirrors the depth-safe ascend-with-`seen` idiom in `categorization.leaf_categories_grouped`) — ascends from the prospective parent to the root and raises ValueError if the subject appears in that chain, so re-parenting a category under itself or one of its own descendants is refused; the `seen` set keeps the walk total against a pre-existing corrupt cycle. Reproduce-first TDD in `tests/features/categories/` (INV-5: self-parent, direct child, deep descendant all rejected; legitimate cross-branch move still succeeds). Adapted the pre-existing `categorisation` corrupt-cycle test to inject the cycle at the repository layer (below the guard) since the service now refuses to build one. Note: today's category-manager parent picker only offers the two Type roots, so the cycle was reachable via a direct service call, not that UI — the guard is the service-layer contract boundary. Gate green 1083/1, mypy 0.
 
-- 📋 [FIBR-0150] **security-model.md header provenance line is stale (skips FIBR-0054/0131/0133).**
+- ✅ [FIBR-0150] **security-model.md header provenance line is stale (skips FIBR-0054/0131/0133).**
   The header (docs/security-model.md L3-5) reads "amended through FIBR-0014 (2026-07-13 — T11: separate-password backup recovery)" yet the body already carries FIBR-0054 (update-flow / INV-8 egress) and FIBR-0131/FIBR-0133 (Windows update / SignPath) content added since, without a header bump. Treat the line as a "most-recent material amendment" marker and either (a) document that semantics in the header itself, or (b) backfill the missed provenance. Surfaced by the FIBR-0095 /cold-eyes lane B (loop 4). Low-priority doc hygiene; FIBR-0095 bumps the line to itself as part of its own edit.
   **Layman:** The security document's "last updated by" note names an old change and skips several newer ones — a quick tidy so it reflects reality.
   Kind: doc-fix.
   Source: cold-eyes-2026-07-18 FIBR-0095 lane-B.
+  Resolved (2026-07-26, debt sweep): both halves are now in place. The
+  header (docs/security-model.md L3-8) reads "amended through FIBR-0096
+  (2026-07-21 — INV-13: signed SHA256SUMS + CycloneDX SBOM)", so the
+  FIBR-0014 staleness is gone; and remedy option (a) is documented
+  verbatim in the header itself — "This line names the most-recent
+  material amendment, not a full history." Landed incidentally via the
+  FIBR-0095/FIBR-0096 edits rather than as its own change, which is why
+  the bullet was never flipped. Verified against source, not recalled.
 
 - ✅ [FIBR-0165] **CSV import no longer crashes on a structurally-broken file — csv.Error is translated to a friendly ValueError.**
   indie-review (importers lane), MEDIUM. csv.DictReader parses lazily during iteration, so a field over csv.field_size_limit (e.g. an unterminated quote) raised csv.Error from the `for` line — outside the per-row try — and csv.Error is not a ValueError, so the wizard's (ValueError, FinbreakError) net missed it and the import crashed (violates INV-4 'malformed file must never crash'). Fixed in csv_importer.py: parse() materialises rows under one csv.Error->ValueError guard; read_header() guards the .fieldnames access. Regression: test_INV4_malformed_csv_surfaces_valueerror_not_csv_error.

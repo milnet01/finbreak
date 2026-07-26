@@ -20,11 +20,12 @@ what's coming.
 
 **Code signing.** Windows builds are **not yet code-signed**, so Windows
 SmartScreen may warn about an "unknown publisher" the first time you run finbreak
-(see [Install](#install) for how to proceed). We're working towards free code
-signing for open-source projects through the
-[SignPath Foundation](https://signpath.org); this section will say so once it's in
-place. (Linux AppImages and the Windows `.exe` are already Ed25519-signed for the
-in-app updater — a separate thing from an OS "publisher" certificate.)
+(see [Install](#install) for how to proceed). We applied to the
+[SignPath Foundation](https://signpath.org)'s free code-signing programme for
+open-source projects in July 2026 and were **declined**; the plan is to build up
+more of a public track record and reapply. This section will say so once signing
+is in place. (Linux AppImages and the Windows `.exe` are already Ed25519-signed for
+the in-app updater — a separate thing from an OS "publisher" certificate.)
 
 ## Status
 
@@ -78,11 +79,13 @@ lot, with more polish and features to come. What works today:
   forget a bank-statement password the app remembered (per account) whenever you
   want.
 
-finbreak now also runs on **Windows** as a self-contained `.exe`, and installs on
-**Linux** as native **RPM/deb** packages and a strongly-sandboxed **Flatpak**
-(headed to Flathub, so you'll find it in GNOME Software / KDE Discover) alongside
-the existing AppImage. Still to come: a packaged macOS app. See the
-[ROADMAP](ROADMAP.md) for the full plan.
+finbreak now also runs on **Windows** as a self-contained `.exe`, and on **Linux**
+installs as a native **RPM** on openSUSE Tumbleweed and Fedora 44 (from the
+[openSUSE Build Service](https://download.opensuse.org/repositories/home:/milnet:/finbreak/))
+alongside the existing AppImage. Still to come: **deb** packages for Debian and
+Ubuntu (the recipe exists but those targets don't build yet), a **Flatpak** on
+Flathub, and a packaged macOS app. See the [ROADMAP](ROADMAP.md) for the full
+plan.
 
 ## Install
 
@@ -101,6 +104,23 @@ libraries installed:
 Each release also ships a `.sig` file next to the AppImage — that's the
 signature finbreak uses to check updates are genuine; you don't need to do
 anything with it yourself.
+
+**Linux (openSUSE Tumbleweed / Fedora 44)** — finbreak is also packaged as a
+native RPM, so your usual updater keeps it current. Add the repository once,
+then install:
+
+```bash
+# openSUSE Tumbleweed
+sudo zypper addrepo https://download.opensuse.org/repositories/home:/milnet:/finbreak/openSUSE_Tumbleweed/home:milnet:finbreak.repo
+sudo zypper refresh && sudo zypper install finbreak
+
+# Fedora 44
+sudo dnf config-manager addrepo --from-repofile=https://download.opensuse.org/repositories/home:/milnet:/finbreak/Fedora_44/home:milnet:finbreak.repo
+sudo dnf install finbreak
+```
+
+Debian/Ubuntu `.deb` packages and a Flathub Flatpak are still being worked on —
+use the AppImage above on those systems for now.
 
 **Windows** — a self-contained `finbreak.exe` (no Python needed) ships as a
 release asset on each

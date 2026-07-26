@@ -102,6 +102,74 @@ Do not delete revoked entries — the history is the value.
 - **Confirmed by phase:** FIBR-0054 (close)
 
 
+## allowlist-002 — debt-sweep:missing_inv_test fires on this project's hyphen-less test-tag convention
+
+- **Status:** active
+- **Tool / rule:** `debt_sweep_scan` (Ants MCP) —
+  `test_coverage` / `missing_inv_test`
+- **Location:** class-level — 65 of 67 findings across
+  `tests/features/*/spec.md` (every feature dir).
+- **Why this is a false positive:** the detector greps the literal
+  hyphenated token `INV-N` in `test_*.py` **in the same directory**.
+  This project tags invariants four other ways, all of which that grep
+  misses: (1) inside the test function name with the hyphen dropped —
+  `test_INV8a_...`, `test_INV2c_...`, which is the *dominant*
+  convention; (2) in section-banner comments — `# Bounds (INV-14)`;
+  (3) with sub-letters in inline comments — `# INV-12(a)`; (4) by
+  ticket id, where the invariant's title names it —
+  `test_FIBR0151_...`. Separately, several specs deliberately
+  **relocate** an invariant to a sibling suite and say so in prose
+  (`reporting` INV-2 → the settings suite; `statements` INV-13/13a →
+  the migration suites; `settings` INV-10 / `theme` INV-13 /
+  `transfers` INV-11 / `category_library` INV-11 / `categorisation`
+  INV-16 → the shared source-scans). And `db_performance` "INV-5" is
+  not a declaration at all — that spec's table is INV-1..4; the string
+  is a cross-reference to *FIBR-0005* INV-5 inside INV-3's prose.
+  Two independent verification lanes classified all 67 findings: 65
+  covered-or-by-design, **2 genuine gaps** (`dialog_lifecycle` INV-4,
+  `recurring` INV-2), both closed with real tests in this sweep.
+- **Suppression applied:** none available (the detector is
+  server-side and has no inline-suppression syntax). Recorded here so
+  the next sweep discards the class without re-litigating it. If the
+  Ants MCP detector later normalises `INV<N><letter>` in identifiers
+  and honours the specs' "covered in X" prose (reported upstream),
+  revoke this entry and re-run clean.
+- **Logged:** 2026-07-26
+- **Confirmed by phase:** DS01 (debt sweep)
+
+
+## allowlist-003 — ROADMAP bullet headlines record the work as *proposed*, not as *delivered*
+
+- **Status:** active
+- **Tool / rule:** `debt-sweep:doc_drift` (and any reviewer reading
+  ROADMAP headlines in isolation)
+- **Location:** finding signature — a ✅ bullet whose **headline**
+  names a symbol that does not exist. Seen at `ROADMAP.md:2011`
+  (FIBR-0069, `_signed_balance_from_tokens`) and `ROADMAP.md:2006`
+  (FIBR-0068, `_set_combo` "promoted to a shared UI util").
+- **Why this is a false positive:** in this project's ants-v1 roadmap
+  format the headline records the work **as originally proposed**; the
+  `Resolved:` body records what actually shipped, including any
+  deviation. In both cited cases the body documents the deviation
+  explicitly and correctly. FIBR-0069's body: *"Named `_signed_balance`
+  (a single token) rather than the tentative
+  `_signed_balance_from_tokens`, since every site passes one token"* —
+  and `src/finbreak/importers/standard_bank.py:191` defines
+  `_signed_balance`. FIBR-0068's body: *"IMPORTANT distinction
+  surfaced, not forced: kept DISTINCT from
+  `ImportWizardWidget._set_combo`, which is UNGUARDED by design …
+  Merging them would have been a silent behavior change"* — and
+  `src/finbreak/ui/_widgets.py:6-9` repeats that rationale in the
+  module docstring, with `select_combo_data` at `:27`. Rewriting the
+  headlines to match the delivered names would **destroy** the
+  proposed-vs-delivered contrast that makes each deviation legible.
+  Rule for future sweeps: judge a shipped bullet's accuracy against
+  its body, not its headline.
+- **Suppression applied:** none — documentary convention, no rule id.
+- **Logged:** 2026-07-26
+- **Confirmed by phase:** DS01 (debt sweep)
+
+
 ## What does NOT belong here
 
 - **Findings that are real but blocked by a missing feature.**

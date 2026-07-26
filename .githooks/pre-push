@@ -16,7 +16,8 @@ set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
 
-# The gate's tools (ruff, bandit, pip-audit, pytest) live in the project venv. A
+# The gate's tools (ruff, bandit, pip-audit, mypy, pytest) live in the project
+# venv — note mypy: a green `pytest` alone is not a green gate. A
 # `git push` from a shell without it activated would otherwise fail on missing
 # tools rather than on a real finding — activate it here so the hook is faithful.
 if [ -z "${VIRTUAL_ENV:-}" ] && [ -f .venv/bin/activate ]; then
