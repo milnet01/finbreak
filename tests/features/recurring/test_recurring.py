@@ -82,6 +82,39 @@ def test_clean_monthly_out_series_qualifies() -> None:
     assert it.txn_ids == (1, 2, 3, 4, 5)
 
 
+# INV-2 — pure + deterministic: the same inputs yield the same list in the same
+# order (D10), whatever order the rows arrive in. Four groups, two of them sharing
+# a monthly_equivalent, so the merchant_key tiebreak is genuinely exercised and not
+# masked by the primary key.
+def test_INV2_detection_is_order_independent_and_D10_sorted() -> None:
+    rows = [
+        *[_row(i, f"2026-{i:02d}-05", -19900, "Netflix REF123") for i in (1, 2, 3)],
+        *[_row(10 + i, f"2026-{i:02d}-07", -9900, "Gym Contract") for i in (1, 2, 3)],
+        *[_row(20 + i, f"2026-{i:02d}-09", -9900, "Insurance Prem") for i in (1, 2, 3)],
+        *[_row(30 + i, f"2026-{i:02d}-25", 5000000, "Acme Salary") for i in (1, 2, 3)],
+    ]
+    today = date(2026, 3, 30)
+
+    first = detect_recurring(rows, today, _EXP, frozenset())
+    shuffled = [rows[i] for i in (7, 0, 11, 3, 9, 1, 6, 10, 2, 4, 8, 5)]
+    second = detect_recurring(shuffled, today, _EXP, frozenset())
+
+    assert len(first) == 4, "all four groups qualify"
+    # Element-for-element, not merely the same set: the D10 order is the contract.
+    assert first == second
+    assert first == sorted(
+        first,
+        key=lambda it: (-it.monthly_equivalent, it.merchant_key, it.direction.value),
+    )
+    # The equal-monthly_equivalent pair really is present, so the tiebreak ran.
+    assert [it.monthly_equivalent for it in first] == [
+        Decimal("50000.00"),
+        Decimal("199.00"),
+        Decimal("99.00"),
+        Decimal("99.00"),
+    ]
+
+
 # --------------------------------------------------------------------------- #
 # pure detector — regression locks for the branches the clean case doesn't hit.
 # The detector is already implemented (slice 1); these verify each spec INV
