@@ -2142,6 +2142,30 @@ is a future error tomorrow.
   Kind: security.
   Source: indie-review-2026-07-23.
 
+- 📋 [FIBR-0180] **Decide deliberately whether to move the CI/build base image off Debian 12 (bookworm, now oldstable).**
+  ci.yml, ci-docker.sh and build-smoke.sh all pin python:3.12-slim-bookworm. Debian 13 (trixie) has been stable since Aug 2025, so bookworm is oldstable and a python:3.12-slim-trixie image exists. This is NOT a routine bump: the build image's glibc (~2.36) is the EFFECTIVE floor of every frozen artifact (libpython links it - see the pyproject.toml dependencies comment), so moving to trixie raises the minimum glibc an AppImage/.exe user needs. The debt sweep added that rationale as a comment on ci.yml's container line rather than bumping. Decide: (a) hold on bookworm until the AppImage's target-distro floor justifies moving, or (b) bump all three call-sites together and re-run build-smoke to confirm the clean-room launch still passes on the oldest distro we claim to support. Either way, record the decision so the next sweep does not re-raise it.
+  **Layman:** Our build machine runs an older Debian. Moving to the newer one is a trade-off: it may stop finbreak running on older Linux systems, so it needs a decision rather than a routine update.
+  Kind: chore.
+  Source: debt-sweep-2026-07-26.
+
+- 📋 [FIBR-0181] **Consolidate the five hand-rolled Decimal to minor-units conversions behind one to_minor() helper.**
+  Five independent implementations of the same Decimal->minor-units conversion: services/alerts.py:167 (_to_minor), services/forecast.py:215, importers/standard_bank.py:445 (_minor), importers/ofx_importer.py:157 (inline), services/transactions.py:73 (a scaleb variant). The duplication is already self-admitted in two places: alerts.py's docstring says it is 'the exact idiom ForecastService._to_input uses', and ofx_importer.py's comment points at a _minor that lives in a different module it does not import. The REVERSE direction already has a single home (transactions.to_display_decimal) - add the forward to_minor(amount, exponent) beside it and route all five through it. Well past Rule of Three. Deliberately NOT done in the debt sweep: this is money code in a correctness-critical app, so it wants its own reproduce-first cycle with a test pinning rounding behaviour (esp. the scaleb variant, which may not round identically) rather than a drive-by edit. Related watch item: services/forecast.py CASH_TYPES and services/reconciliation.py _RECONCILABLE_TYPES are the identical frozenset kept in manual sync by comment - only 2 sites, so below Rule of Three; extract on the third caller.
+  **Layman:** The code that turns a money amount into whole cents is written out five separate times. One shared version would make a rounding mistake impossible to introduce in just one of them.
+  Kind: refactor.
+  Source: debt-sweep-2026-07-26.
+
+- 📋 [FIBR-0182] **Four dead-code sites surfaced by the debt sweep (not removed - each needs an owner decision).**
+  Surfaced rather than deleted (global rule 11 - do not remove pre-existing dead code unasked). Each verified with a repo-wide grep over src/tests/scripts/docs: (1) importers/standard_bank.py:42 re-exports PasswordError from pdf_importer behind a '# noqa: F401 (re-export)'; nothing imports it from standard_bank (the wizard takes it from pdf_importer), so the noqa keeps a dead name alive - drop it, or declare __all__ if the re-export is intended public API. (2) ui/transfers.py:221 candidate_count() sits under a 'test / shell accessors' banner with zero callers anywhere. (3) ui/statements.py:265 selected_period_id() has zero callers; its only mention is prose at docs/specs/FIBR-0059.md:356 - so either the test that spec implies is missing, or the accessor is. (4) importers/standard_bank.py:919 _span()'s `family` parameter is never read (the body branches only on `period is not None`); dropping it touches two call-sites (:893) and two tests. NOTE: main_window.py:237/239 _update_check_worker / _download_worker are assigned-never-read but are defensible QThread lifetime anchors - left alone.
+  **Layman:** Four small pieces of code that nothing uses. Removing them is tidy-up, but each one needs a quick check that it was not left there on purpose.
+  Kind: chore.
+  Source: debt-sweep-2026-07-26.
+
+- 📋 [FIBR-0183] **bandit prints 31 'Test in comment' warnings because prose follows the # nosec test id.**
+  bandit parses everything after '# nosec' as a comma/space-separated list of test IDs, so a marker written '# nosec B603 - fixed /bin/sh waiter, our own argv' makes it try to resolve 'fixed', 'waiter', 'our', 'own', 'argv' as test names and emit 'WARNING Test in comment: X is not a test name or id, ignoring' for each. 31 such warnings across the tree. Verified pre-existing and NOT caused by the debt sweep's noqa cleanup (identical count before and after, and bandit still exits 0 with the suppressions honoured). Low severity, but it is 31 lines of noise in every gate run, which is exactly the condition under which a real bandit warning gets skimmed past. Fix: put the rationale on its own line above, or after a separator bandit stops parsing at, keeping the marker itself bare ('# nosec B603').
+  **Layman:** Our security scanner prints 31 confusing warnings every run, caused purely by how a comment is written. Harmless now, but the noise could hide a real warning.
+  Kind: chore.
+  Source: debt-sweep-2026-07-26.
+
 ## How to add an item
 
 1. Allocate the next ID:

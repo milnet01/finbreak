@@ -45,6 +45,13 @@ signaling per
   of a made-up balance. A provenance line names each account and statement
   the starting figure came from.
 
+### Changed
+
+- **The Forecast tab's "excluded accounts" note now states the rule positively — "only current and savings balances are spendable cash".**
+  It used to list "credit, loan and investment", which quietly left out
+  accounts of type "other" — they were excluded from the forecast anchor
+  too, but the note never said why. (Debt sweep DS02.)
+
 ### Fixed
 
 - **Forecast starting balance no longer counts credit-card and loan debt as cash** (FIBR-0179)
