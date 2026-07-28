@@ -40,6 +40,7 @@ from finbreak.services.transactions import (
     TransactionService,
     parse_transaction,
     to_display_decimal,
+    to_minor,
 )
 from finbreak.vault import Vault
 
@@ -414,6 +415,64 @@ def test_INV4b_accepts_either_sign_and_large_magnitude():
 def test_INV4b_to_display_decimal_inverts_scaling():
     assert to_display_decimal(-1234, 2) == Decimal("-12.34")
     assert to_display_decimal(5000, 2) == Decimal("50.00")
+
+
+# --- to_minor: the forward conversion the five call-sites share (FIBR-0181) --- #
+@pytest.mark.parametrize(
+    "amount,exponent,expected",
+    [
+        (Decimal("12.34"), 2, 1234),
+        (Decimal("-12.34"), 2, -1234),
+        (Decimal("0"), 2, 0),
+        (Decimal("50.00"), 2, 5000),
+        (Decimal("12.340"), 2, 1234),  # trailing zero is the same value
+        (Decimal("7"), 0, 7),  # zero-decimal currency (JPY-style)
+        (Decimal("1.234"), 3, 1234),  # three-decimal currency (KWD-style)
+        (Decimal("90000000000000.00"), 2, 9_000_000_000_000_000),
+    ],
+)
+def test_FIBR0181_to_minor_scales_exactly(amount, exponent, expected):
+    assert to_minor(amount, exponent) == expected
+
+
+def test_FIBR0181_to_minor_inverts_to_display_decimal():
+    # The pair is a round-trip in both directions for every stored value.
+    for minor in (-9999, -1234, -1, 0, 1, 5000, 123456789):
+        assert to_minor(to_display_decimal(minor, 2), 2) == minor
+
+
+@pytest.mark.parametrize(
+    "amount,expected",
+    [
+        (Decimal("0.005"), 0),  # exactly .5 minor → half-EVEN → down to 0
+        (Decimal("0.015"), 2),  # exactly 1.5 minor → half-EVEN → up to 2
+        (Decimal("0.004"), 0),
+        (Decimal("0.006"), 1),
+        (Decimal("-0.005"), 0),
+        (Decimal("-0.006"), -1),
+    ],
+)
+def test_FIBR0181_to_minor_rounds_half_even_below_the_minor_unit(amount, expected):
+    # Sub-minor input can't reach here through parse_transaction (INV-4b rejects
+    # it), but the helper is shared — pin the rounding rather than leave it
+    # implicit. Half-even matches Decimal.to_integral_value()'s default.
+    assert to_minor(amount, 2) == expected
+
+
+def test_FIBR0181_to_minor_matches_both_replaced_idioms():
+    # The five call-sites this helper replaces used two spellings: `* 10**exp`
+    # (alerts, forecast, standard_bank, ofx) and `.scaleb(exp)` (parse_transaction).
+    # Lock that they agree, so the consolidation changed no stored value.
+    for amount in (
+        Decimal("12.34"),
+        Decimal("-0.01"),
+        Decimal("0.005"),
+        Decimal("999999.99"),
+        Decimal("1E+3"),
+        Decimal("1.2345678901234567890123456"),
+    ):
+        assert to_minor(amount, 2) == int((amount * (10**2)).to_integral_value())
+        assert to_minor(amount, 2) == int(amount.scaleb(2).to_integral_value())
 
 
 # --------------------------------------------------------------------------- #

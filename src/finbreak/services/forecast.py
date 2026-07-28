@@ -37,7 +37,7 @@ from finbreak.repositories.accounts import AccountRepository
 from finbreak.repositories.statement_periods import StatementPeriodRepository
 from finbreak.repositories.transactions import TransactionRepository
 from finbreak.services.recurring import RecurringService, _add_cadence
-from finbreak.services.transactions import read_minor_unit_exponent
+from finbreak.services.transactions import read_minor_unit_exponent, to_minor
 from finbreak.vault import Vault
 
 # The account types whose printed closing balance follows the canonical
@@ -214,7 +214,7 @@ class ForecastService:
 
     @staticmethod
     def _to_input(item: RecurringItem, exponent: int) -> ForecastInput:
-        magnitude = int((item.amount * (10**exponent)).to_integral_value())
+        magnitude = to_minor(item.amount, exponent)
         signed = -magnitude if item.direction is Direction.OUT else magnitude
         return ForecastInput(
             amount_minor=signed,

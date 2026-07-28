@@ -33,7 +33,7 @@ from ofxparse.ofxparse import AccountType
 
 from finbreak.importers.base import ParseResult, RowError
 from finbreak.models import OfxAccountInfo, TransactionDraft
-from finbreak.services.transactions import parse_transaction
+from finbreak.services.transactions import parse_transaction, to_minor
 
 # Whole-file transaction cap (D13/INV-10) — orders of magnitude above any real
 # personal statement. One-line-tunable; the byte cap is _MAX_IMPORT_BYTES (import_).
@@ -148,15 +148,9 @@ class OfxImporter:
         # The OFX ledger balance (<LEDGERBAL>) is the forecast anchor (FIBR-0171 D4).
         # ofxparse leaves ``statement.balance`` UNSET (not None) when no <LEDGERBAL>
         # is present, so a bare access raises AttributeError — and this runs OUTSIDE
-        # the wizard's boundary try/except. ``getattr(..., None)`` guards it; a present
-        # Decimal converts to minor with the same scaling ``standard_bank._minor``
-        # uses (duplicated, not shared — see the to_minor consolidation item).
+        # the wizard's boundary try/except. ``getattr(..., None)`` guards it.
         balance = getattr(statement, "balance", None)
-        closing_balance_minor = (
-            None
-            if balance is None
-            else int((balance * (10**exponent)).to_integral_value())
-        )
+        closing_balance_minor = None if balance is None else to_minor(balance, exponent)
         return ParseResult(
             drafts, errors, period_start, period_end, closing_balance_minor
         )

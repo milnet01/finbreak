@@ -7,8 +7,9 @@ Each detector is clock-free where it can be, **integer minor units only — no
 ``Decimal``, no float** (INV-15), and takes a list of prepared integer inputs (§ 3),
 returning ``list[SpendingAlert]`` — it owns the alert's ``key`` + payload so the keys
 are pure and testable without a DB. ``AlertService`` does everything impure: it
-prepares each detector's inputs (the single ``Decimal → minor`` conversion lives
-here, D7), calls the detectors, concatenates, applies the deterministic order (D1),
+prepares each detector's inputs (the single ``Decimal → minor`` step happens here,
+via the shared ``to_minor`` helper — D7), calls the detectors, concatenates,
+applies the deterministic order (D1),
 and filters out dismissed alerts.
 """
 
@@ -16,7 +17,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, timedelta
-from decimal import Decimal
 
 from sqlcipher3 import dbapi2
 
@@ -26,7 +26,7 @@ from finbreak.repositories.categories import CategoryRepository
 from finbreak.repositories.reporting import ReportingRepository
 from finbreak.services.recurring import RecurringService
 from finbreak.services.reporting import _month_bounds, _prev_month
-from finbreak.services.transactions import read_minor_unit_exponent
+from finbreak.services.transactions import read_minor_unit_exponent, to_minor
 from finbreak.services.transfer_detection import TransferDetectionService
 from finbreak.vault import Vault
 
@@ -159,22 +159,15 @@ def detect_missed_debits(
     return alerts
 
 
-def _to_minor(amount: Decimal, exponent: int) -> int:
-    """The single ``Decimal → positive minor`` conversion (D7) — the exact idiom
-    ``ForecastService._to_input`` uses. ``RecurringItem.amount`` is a positive display
-    ``Decimal``; scaling by ``10**exponent`` recovers the exact minor magnitude, so no
-    ``Decimal`` reaches a pure detector (INV-15)."""
-    return int((amount * (10**exponent)).to_integral_value())
-
-
 class AlertService:
     """Compose the dashboard spending alerts over a vault (FIBR-0172 D1/Deliverable 4).
 
     Prepares each pure detector's integer-minor inputs — the FIBR-0142 recurring
     snapshot (one call, D2/D4), the FIBR-0012 per-category monthly series with the
     ``ReportingService`` transfer-exclusion set (D3), and the single Decimal→minor
-    conversion (D7) — calls the three detectors, concatenates, applies the fixed
-    urgency-then-size order (D1/INV-19), and filters out dismissed keys (D5). Mirrors
+    conversion (D7, the shared ``to_minor``) — calls the three detectors,
+    concatenates, applies the fixed urgency-then-size order (D1/INV-19), and
+    filters out dismissed keys (D5). Mirrors
     ``ForecastService`` — vault-wide, ``account_ids=None`` (INV-5)."""
 
     def __init__(self, vault: Vault) -> None:
@@ -215,7 +208,7 @@ class AlertService:
             NewRecurringInput(
                 merchant=item.merchant,
                 merchant_key=item.merchant_key,
-                amount_minor=_to_minor(item.amount, exponent),
+                amount_minor=to_minor(item.amount, exponent),
                 occurrences=item.occurrences,
             )
             for item in suggested
@@ -232,7 +225,7 @@ class AlertService:
             MissedDebitInput(
                 merchant=item.merchant,
                 merchant_key=item.merchant_key,
-                amount_minor=_to_minor(item.amount, exponent),
+                amount_minor=to_minor(item.amount, exponent),
                 next_expected=item.next_expected,
             )
             for item in confirmed

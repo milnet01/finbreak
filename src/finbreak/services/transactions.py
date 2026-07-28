@@ -70,7 +70,7 @@ def parse_transaction(
     if -cast(int, amount.normalize().as_tuple().exponent) > exponent:
         raise ValueError("amount has more fractional digits than the currency allows")
 
-    amount_minor = int(amount.scaleb(exponent).to_integral_value())
+    amount_minor = to_minor(amount, exponent)
     if amount_minor == 0:
         raise ValueError("amount must be non-zero")
     return occurred_on, amount_minor, description
@@ -79,6 +79,18 @@ def parse_transaction(
 def to_display_decimal(amount_minor: int, exponent: int) -> Decimal:
     """Reconstruct the display amount from stored minor units (no float)."""
     return Decimal(amount_minor).scaleb(-exponent)
+
+
+def to_minor(amount: Decimal, exponent: int) -> int:
+    """Scale a display ``Decimal`` to stored minor units — the exact inverse of
+    ``to_display_decimal`` and the ONE forward conversion in the codebase
+    (FIBR-0181; it replaced five hand-rolled copies).
+
+    Sub-minor fractions round half-even (``Decimal.to_integral_value``'s default).
+    ``parse_transaction`` rejects them upstream, but the other callers scale values
+    that already round-tripped through ``to_display_decimal``, so the scaling is
+    exact there."""
+    return int(amount.scaleb(exponent).to_integral_value())
 
 
 class TransactionService:

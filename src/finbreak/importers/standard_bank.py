@@ -39,7 +39,7 @@ from finbreak.importers.pdf_importer import (
     _normalise_to_plaintext,
 )
 from finbreak.models import TransactionDraft
-from finbreak.services.transactions import parse_transaction
+from finbreak.services.transactions import parse_transaction, to_minor
 
 Fmt = str  # Literal["us", "eu"] — kept loose to avoid a typing import churn.
 
@@ -438,10 +438,6 @@ def _capture_closing(full_text: str, family: Family, fmt: Fmt) -> Decimal | None
     return None
 
 
-def _minor(value: Decimal, exponent: int) -> int:
-    return int((value * (10**exponent)).to_integral_value())
-
-
 def _verify_checksum(
     family: Family,
     opening: Decimal,
@@ -461,8 +457,8 @@ def _verify_checksum(
             "try your bank's CSV or OFX export"
         )
     total = sum(d.amount_minor for d in drafts)
-    opening_m = _minor(opening, exponent)
-    closing_m = _minor(closing, exponent)
+    opening_m = to_minor(opening, exponent)
+    closing_m = to_minor(closing, exponent)
     if family is Family.C:
         # Drafts carry the flipped budget sign; the printed convention is +purchase.
         reconciled = opening_m - total
@@ -890,7 +886,7 @@ class StandardBankImporter:
         # Persist the closing balance for the forecast anchor (FIBR-0171 D4): the
         # figure the checksum verified, in signed minor units, or None when the
         # statement prints none (Savings / Family A rides the per-row gate).
-        closing_minor = None if closing is None else _minor(closing, exponent)
+        closing_minor = None if closing is None else to_minor(closing, exponent)
         return ParseResult(result.drafts, [], start, end, closing_minor)
 
 
