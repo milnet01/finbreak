@@ -58,6 +58,7 @@ class _FakeFetcher:
         self.blobs = blobs or {}
         self.fetch_error = fetch_error
         self.fetch_calls = 0
+        self.dests: dict[str, Path] = {}  # url -> the temp it was written to
 
     def fetch_latest_release(self, owner, repo, *, timeout, max_bytes):
         self.fetch_calls += 1
@@ -68,6 +69,7 @@ class _FakeFetcher:
     def download(self, url, dest, *, max_bytes, timeout):
         from pathlib import Path
 
+        self.dests[url] = Path(dest)
         Path(dest).write_bytes(self.blobs[url])
 
 
@@ -910,6 +912,36 @@ def test_INV4_good_signature_returns_verified_path(monkeypatch, tmp_path):
     verified = svc.download_and_verify(update_info)
     assert verified.read_bytes() == blob
     assert verified.parent == tmp_path  # staged next to $APPIMAGE (same fs, INV-5)
+
+
+def test_FIBR0170_installs_the_verified_buffer_not_the_re_read_download(
+    monkeypatch, tmp_path
+):
+    """The path handed to the installer must hold the bytes we VERIFIED, freshly
+    written from memory — not the download temp we re-read them from, which has
+    sat on disk since the transfer began (FIBR-0170). So the returned path is a
+    DIFFERENT file from the download dest, and the download temp is gone."""
+    blob = b"REAL-APPIMAGE-BYTES"
+    sig = _signing_setup(monkeypatch, blob)
+    fetcher = _FakeFetcher(blobs={"https://dl/app": blob, "https://dl/sig": sig})
+    installer = AppImageInstaller(tmp_path / "app.AppImage")
+    svc = _service(tmp_path, installer=installer, fetcher=fetcher)
+    info = UpdateInfo(
+        version="0.1.1",
+        asset_url="https://dl/app",
+        sig_url="https://dl/sig",
+        notes="notes",
+    )
+
+    verified = svc.download_and_verify(info)
+
+    downloaded = fetcher.dests["https://dl/app"]
+    assert verified != downloaded  # a fresh temp, written from the verified buffer
+    assert not downloaded.exists()  # the re-read download temp is cleaned up
+    assert verified.read_bytes() == blob
+    assert verified.parent == tmp_path  # still same-fs as $APPIMAGE (INV-5)
+    # exactly one temp survives — the one being installed
+    assert list(tmp_path.glob("finbreak-update-*")) == [verified]
 
 
 def _dv_service(monkeypatch, tmp_path, blob, sig):

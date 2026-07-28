@@ -232,10 +232,11 @@ class UpdateService:
         """Download the platform binary asset + its ``.sig`` into the running
         binary's directory (``target_path().parent``) and verify the Ed25519
         signature over the **exact** downloaded bytes against the committed public
-        key. Return the verified temp path (the caller installs it); on **any**
-        failure delete the temps and raise — ``UpdateVerificationError`` for a bad
-        signature, ``UpdateError`` for an oversize / timed-out / dropped download
-        (INV-4/INV-10/INV-11)."""
+        key. Return a fresh temp holding those **verified** bytes, re-written from
+        memory so the file the installer swaps in is the file we checked
+        (FIBR-0170); on **any** failure delete the temps and raise —
+        ``UpdateVerificationError`` for a bad signature, ``UpdateError`` for an
+        oversize / timed-out / dropped download (INV-4/INV-10/INV-11)."""
         if self._installer is None:
             raise UpdateError("self-update is not supported on this platform")
         directory = self._installer.target_path().parent
@@ -248,6 +249,7 @@ class UpdateService:
         # not leaked as a raw OSError with the first temp orphaned.
         asset_tmp: Path | None = None
         sig_tmp: Path | None = None
+        verified_tmp: Path | None = None
         try:
             asset_tmp = _stage_temp(directory, asset_ext)
             sig_tmp = _stage_temp(directory, ".sig")
@@ -269,7 +271,16 @@ class UpdateService:
                     "the update's signature did not verify"
                 ) from exc
             sig_tmp.unlink(missing_ok=True)  # only the verified binary is installed
-            return asset_tmp
+            # Hand the installer the bytes we VERIFIED, not the file we re-read
+            # them from (FIBR-0170). The download temp has sat on disk since the
+            # transfer began; writing the in-memory buffer to a fresh mkstemp
+            # (0600, O_EXCL) right before the hand-off shrinks the window in which
+            # a same-user attacker could swap the payload from "the whole
+            # download" to the moment before the installer's os.replace().
+            verified_tmp = _stage_temp(directory, asset_ext)
+            verified_tmp.write_bytes(data)
+            asset_tmp.unlink(missing_ok=True)
+            return verified_tmp
         except UpdateVerificationError:
             _unlink(asset_tmp)
             _unlink(sig_tmp)
@@ -277,4 +288,5 @@ class UpdateService:
         except Exception as exc:  # staging / oversize / timeout / dropped / disk
             _unlink(asset_tmp)
             _unlink(sig_tmp)
+            _unlink(verified_tmp)  # a failed re-write orphans nothing (INV-5)
             raise UpdateError(f"could not download the update: {exc}") from exc

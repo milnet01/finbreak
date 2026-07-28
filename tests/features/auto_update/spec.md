@@ -48,6 +48,13 @@ prefixed so the two specs' invariants don't collide (see `docs/specs/FIBR-0131.m
 | FIBR-0131 INV-6 | `download_and_verify` stages the temp with the installer-derived extension (`.exe`), so a Windows download isn't a misnamed `*.AppImage`. |
 | FIBR-0131 INV-7 | The `.exe` rides the same byte-agnostic Ed25519 gate (covered transitively by the FIBR-0054 tamper leg; the new coverage is the picker feeding `.exe` bytes through it). |
 
+Later hardening / UX items on the same subsystem carry their roadmap id as the
+row key (they refine a shipped invariant rather than adding a numbered one):
+
+| Item | What it pins |
+|------|--------------|
+| FIBR-0170 | `download_and_verify` returns a **fresh** temp written from the verified in-memory buffer, and deletes the download temp it re-read those bytes from — so the file the installer swaps in is the file the signature check passed. |
+
 **Coverage honesty (INV-3/INV-4):** the Linux gate tests the **command/env
 construction** and the `apply` **ordering** (spawn→wipe→exit; spawn-failure leaves
 the key un-wiped) with a monkeypatched `Popen`/`os._exit`. The PowerShell helper's
