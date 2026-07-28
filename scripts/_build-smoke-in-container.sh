@@ -167,22 +167,33 @@ chmod +x "$APPDIR/AppRun"
 APP_DISPLAY_NAME="${APP_DISPLAY_NAME:-finbreak-selftest}"
 APP_TERMINAL="${APP_TERMINAL:-true}"
 APP_CATEGORIES="${APP_CATEGORIES:-Utility;}"
-cat > "$APPDIR/$ONEFILE.desktop" <<EOF
+# The launcher identity (FIBR-0188). The .desktop BASENAME must equal the window's
+# Wayland app_id — app.py sets that with setDesktopFileName("io.github.milnet01.
+# finbreak") — or the panel cannot associate the running window with its launcher
+# and shows a SECOND icon. StartupWMClass is the X11 half, matched against WM_CLASS
+# (derived from applicationName(), the bare "finbreak", not the versioned binary).
+# Both default to $ONEFILE so the self-test stub, which nobody pins to a panel, is
+# unchanged; the release build exports the real values.
+APP_ID="${APP_ID:-$ONEFILE}"
+APP_WM_CLASS="${APP_WM_CLASS:-$ONEFILE}"
+cat > "$APPDIR/$APP_ID.desktop" <<EOF
 [Desktop Entry]
 Type=Application
 Name=$APP_DISPLAY_NAME
 Exec=$ONEFILE
-Icon=$ONEFILE
+Icon=$APP_ID
+StartupWMClass=$APP_WM_CLASS
 Categories=$APP_CATEGORIES
 Terminal=$APP_TERMINAL
 EOF
 # appimagetool requires an icon. A release build points APP_ICON_SRC at the real
 # app.png (FIBR-0037); the smoke stub has none, so generate a placeholder square
 # (Pillow is present — a pikepdf dependency).
+# The icon filename must match the Icon= key above, so it follows APP_ID too.
 if [ -n "${APP_ICON_SRC:-}" ] && [ -f "$APP_ICON_SRC" ]; then
-    cp "$APP_ICON_SRC" "$APPDIR/$ONEFILE.png"
+    cp "$APP_ICON_SRC" "$APPDIR/$APP_ID.png"
 else
-    python -c "from PIL import Image; Image.new('RGBA', (64, 64), (30, 120, 80, 255)).save('$APPDIR/$ONEFILE.png')"
+    python -c "from PIL import Image; Image.new('RGBA', (64, 64), (30, 120, 80, 255)).save('$APPDIR/$APP_ID.png')"
 fi
 
 echo "-- building AppImage --"

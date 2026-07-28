@@ -42,8 +42,10 @@ def run(argv: list[str] | None = None) -> int:
     #  - Wayland app_id is QGuiApplication::desktopFileName(), which must equal the
     #    installed .desktop basename. The OBS/distro package ships the reverse-DNS
     #    io.github.milnet01.finbreak.desktop, so the app_id must be that app-ID or
-    #    the taskbar shows a second, generic icon. (The AppImage ships the same
-    #    reverse-DNS .desktop, so this app-ID is correct there too.)
+    #    the taskbar shows a second, generic icon. The AppImage ships a .desktop of
+    #    the same basename via APP_ID in scripts/build-smoke.sh — it did NOT until
+    #    FIBR-0188 (it wrote finbreak-<version>.desktop), which is precisely why the
+    #    AppImage showed the duplicate icon this comment used to claim it wouldn't.
     app.setApplicationName("finbreak")
     QGuiApplication.setDesktopFileName("io.github.milnet01.finbreak")
     app.setWindowIcon(app_icon())  # branded icon on every window + the taskbar

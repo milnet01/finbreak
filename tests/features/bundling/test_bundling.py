@@ -270,3 +270,55 @@ def test_INV7_build_tool_pins_are_in_lockstep(
         f"expected >= {min_sites} inline {dist} pins, found {sites} — did a "
         f"build path stop pinning it, or move?"
     )
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0188 — the AppImage's launcher identity matches the window's
+# --------------------------------------------------------------------------- #
+def test_FIBR0188_appimage_desktop_basename_matches_the_apps_desktop_file_name():
+    """A Wayland panel matches the window's app_id against a .desktop BASENAME.
+    app.py sets that app_id via setDesktopFileName(); the AppImage build must write
+    a .desktop of the same name, or the running window cannot be associated with
+    its launcher and the panel shows a second icon."""
+    root = Path(__file__).resolve().parents[3]
+    app_py = (root / "src" / "finbreak" / "app.py").read_text()
+    match = re.search(r'setDesktopFileName\(\s*"([^"]+)"', app_py)
+    assert match, "app.py no longer calls setDesktopFileName — app_id is unset"
+    app_id = match.group(1)
+
+    build = (root / "scripts" / "build-smoke.sh").read_text()
+    assert f'export APP_ID="{app_id}"' in build, (
+        f"build-smoke.sh must export APP_ID={app_id} so the AppImage's .desktop "
+        "basename equals the window's app_id (FIBR-0188)"
+    )
+
+    container = (root / "scripts" / "_build-smoke-in-container.sh").read_text()
+    assert '"$APPDIR/$APP_ID.desktop"' in container, (
+        "the AppImage .desktop must be named for APP_ID, not the versioned binary"
+    )
+    assert "Icon=$APP_ID" in container and '"$APPDIR/$APP_ID.png"' in container, (
+        "appimagetool requires the bundled icon filename to match the Icon= key"
+    )
+    assert "StartupWMClass=$APP_WM_CLASS" in container, (
+        "the X11 half of the association (WM_CLASS) is still missing"
+    )
+
+
+def test_FIBR0188_appimage_wm_class_matches_the_application_name():
+    """X11 WM_CLASS comes from applicationName(), which is the bare "finbreak" —
+    NOT the versioned binary name — and the RPM/deb launcher already says so."""
+    root = Path(__file__).resolve().parents[3]
+    app_py = (root / "src" / "finbreak" / "app.py").read_text()
+    match = re.search(r'setApplicationName\(\s*"([^"]+)"', app_py)
+    assert match, "app.py no longer sets applicationName — WM_CLASS is undefined"
+    wm_class = match.group(1)
+
+    build = (root / "scripts" / "build-smoke.sh").read_text()
+    assert f'export APP_WM_CLASS="{wm_class}"' in build
+
+    obs = (
+        root / "packaging" / "obs" / "io.github.milnet01.finbreak.desktop"
+    ).read_text()
+    assert f"StartupWMClass={wm_class}" in obs, (
+        "the AppImage and the RPM/deb launchers must claim the same WM_CLASS"
+    )

@@ -39,6 +39,14 @@ if [ "$MODE" = "release" ]; then
     ONEFILE="finbreak-$VERSION"
     APPIMAGE="finbreak-$VERSION-x86_64.AppImage"
     export APP_DISPLAY_NAME="finbreak"
+    # The launcher's identity (FIBR-0188). APP_ID is the .desktop BASENAME, which
+    # a Wayland compositor matches against the window's app_id — and app.py sets
+    # that app_id to this exact string via setDesktopFileName(). APP_WM_CLASS is
+    # the X11 equivalent, which Qt's xcb backend derives from applicationName()
+    # ("finbreak", not the versioned binary name). Both mirror the RPM/deb
+    # launcher at packaging/obs/io.github.milnet01.finbreak.desktop.
+    export APP_ID="io.github.milnet01.finbreak"
+    export APP_WM_CLASS="finbreak"
     export APP_TERMINAL="false"
     export APP_CATEGORIES="Office;Finance;Utility;"
     export APP_ICON_SRC="/src/src/finbreak/ui/icons/app.png"
@@ -76,6 +84,8 @@ echo "== build-smoke: freezing in $BUILD_IMAGE (this takes a few minutes) =="
     -e "ONEFILE=$ONEFILE" \
     -e "APPIMAGE=$APPIMAGE" \
     -e "APP_DISPLAY_NAME=${APP_DISPLAY_NAME:-}" \
+    -e "APP_ID=${APP_ID:-}" \
+    -e "APP_WM_CLASS=${APP_WM_CLASS:-}" \
     -e "APP_TERMINAL=${APP_TERMINAL:-}" \
     -e "APP_CATEGORIES=${APP_CATEGORIES:-}" \
     -e "APP_ICON_SRC=${APP_ICON_SRC:-}" \
