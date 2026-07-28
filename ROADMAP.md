@@ -333,6 +333,15 @@ scariest unknown (native-library bundling) up front.
       reviewer round, then Flathub builds + hosts it.
   Progress (2026-07-23): spec CONVERGED (cold-eyes loop 8) + signed off; implementation landed — packaging/flatpak/ (manifest, generate-pip-sources.sh, python3-deps.yaml, flatpak-build.sh, README), the _kde_wayland() Flatpak gate (main_window.py, INV-8), security-model.md INV-8 note, and tests/features/flatpak_packaging/ (INV-1..8). Local flatpak-builder build + portal smoke next, then the Flathub new-pr submission.
   Local build VALIDATED (2026-07-23): flatpak-builder builds green offline from the sha256-pinned closure (24 sources, ofxparse the one sdist); `flatpak run --command=finbreak … --self-test` → FINBREAK_SELFTEST_OK (Qt+SQLCipher+qpdf travelled); sandbox network-isolated (in-sandbox connect → OSError, proving no --share=network); full gate green (1258 passed). Two gate fixes folded in: types-PyYAML mypy stubs + a .gitleaks.toml allowlist for the flatpak-builder artifacts (.build/.repo/.flatpak-builder). REMAINING before Flathub submit: (1) manual live-host §5 smoke on KDE-Wayland — portal file open + PDF/.fbk export, Center-window disabled, real screenshot URLs; (2) re-pin the manifest to a release tag/commit (currently v0.1.16); (3) open the flathub/flathub new-pr PR — an outward-facing action, awaiting user go-ahead.
+  Decision (2026-07-28, user): KEEP the app id io.github.milnet01.finbreak for
+  the Flathub submission — do not switch to the user's own domain
+  (antsprojectshub.co.za). Flathub accepts a reverse-DNS id based on a
+  code-hosting account you control, 0.1.18 already shipped with this id, and a
+  rename would churn the desktop file, icon filenames, metainfo id, the Flatpak
+  manifest and the OBS spec while making existing RPM installs look like a
+  different app. The domain is still the right HOMEPAGE value in the manifest and
+  metainfo — that field is independent of the id. (User data is unaffected either
+  way: paths.py keys AppDataLocation on applicationName "finbreak", not the id.)
 
   Follow-up (optional, lower priority): the Snap Store (Ubuntu-led, also
   self-publish, also appears in the software centres) — a snapcraft.yaml. Do after

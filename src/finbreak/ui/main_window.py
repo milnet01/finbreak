@@ -1313,6 +1313,28 @@ class MainWindow(QMainWindow):
         if prompt_live and isinstance(prompt, UpdateDialog):
             prompt.set_progress(received, total)
 
+    def set_single_instance_guard(self, guard: object | None) -> None:
+        """Hand over the FIBR-0189 socket this process owns, so the update relaunch
+        can release it. Set by the app entry point; ``None`` in tests and whenever
+        the guard could not be taken."""
+        self._instance_guard = guard
+
+    def _release_for_relaunch(self) -> None:
+        """Free the single-instance socket, THEN wipe the key (INV-6 ordering is
+        preserved — the wipe still happens before the relaunch).
+
+        The replacement process probes that socket as it starts. If this process
+        were still holding it, the new instance would see a live owner, nudge it,
+        and exit — so the update would appear to do nothing at all. That is the
+        same shape as the 0.1.2→0.1.3 "closed but didn't reopen" bug, which is why
+        the release is explicit here rather than left to process teardown:
+        ``apply()`` ends in ``os._exit``, which runs no cleanup handlers.
+        """
+        guard = getattr(self, "_instance_guard", None)
+        if guard is not None:
+            guard.close()
+        self._service.on_about_to_quit()
+
     def _on_download_ready(self, path: Path, prompt: QDialog | None) -> None:
         prompt_live = (
             self._dialog is prompt and prompt is not None and shiboken6.isValid(prompt)
@@ -1322,7 +1344,7 @@ class MainWindow(QMainWindow):
             # replaced and before the relaunch (INV-6) — in-process after os.replace
             # on Linux, before the detached swap helper on Windows. apply() does not
             # return.
-            self._installer.apply(path, on_before_exec=self._service.on_about_to_quit)
+            self._installer.apply(path, on_before_exec=self._release_for_relaunch)
         else:
             # The prompt was torn down (auto-lock) — drop the verified temp so it
             # doesn't orphan next to the running binary (INV-9).

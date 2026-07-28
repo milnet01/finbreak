@@ -13,11 +13,12 @@ from __future__ import annotations
 import sys
 from typing import cast
 
-from PySide6.QtCore import QLocale
+from PySide6.QtCore import QLocale, Qt
 from PySide6.QtGui import QGuiApplication
-from PySide6.QtWidgets import QApplication, QMessageBox
+from PySide6.QtNetwork import QLocalServer
+from PySide6.QtWidgets import QApplication, QMessageBox, QWidget
 
-from finbreak import paths
+from finbreak import paths, single_instance
 from finbreak.errors import VaultStateError
 from finbreak.services.auth import AuthService
 from finbreak.ui.icons import app_icon
@@ -57,6 +58,13 @@ def run(argv: list[str] | None = None) -> int:
     theme_controller = ThemeController(app)
     theme_controller.set_theme(load_theme_pref(), persist=False)
 
+    # One finbreak per OS user (FIBR-0189). Probed BEFORE any window is built, so a
+    # second launch costs a socket round-trip rather than a flash of UI. The running
+    # instance is nudged to the front by the probe itself.
+    guard_name = single_instance.socket_name()
+    if single_instance.another_instance_is_running(guard_name):
+        return 0
+
     service = AuthService(paths.vault_path(), paths.sidecar_path())
     app.aboutToQuit.connect(service.on_about_to_quit)
 
@@ -72,4 +80,28 @@ def run(argv: list[str] | None = None) -> int:
         return 1
 
     window.show()
+
+    # Claim the socket only once there is a window to raise. Fails OPEN: if the
+    # probe found nobody but we still cannot listen, run unguarded rather than
+    # refuse to start.
+    guard = single_instance.listen(guard_name)
+    if guard is not None:
+        window.set_single_instance_guard(guard)
+        guard.newConnection.connect(lambda: _raise_existing(guard, window))
     return app.exec()
+
+
+def _raise_existing(guard: QLocalServer, window: QWidget) -> None:
+    """A second launch knocked: drain it and bring this window to the front.
+
+    Un-minimising needs the state cleared explicitly — ``show()`` on a minimised
+    window restores it to the taskbar, not to the foreground.
+    """
+    connection = guard.nextPendingConnection()
+    if connection is not None:
+        connection.disconnectFromServer()
+        connection.deleteLater()
+    window.setWindowState(window.windowState() & ~Qt.WindowState.WindowMinimized)
+    window.show()
+    window.raise_()
+    window.activateWindow()

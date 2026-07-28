@@ -1441,11 +1441,18 @@ def test_INV6_download_ready_applies_with_key_wipe_callback(qtbot, service, tmp_
     window._on_update_found(info)
     prompt = window._dialog
 
+    wiped: list[str] = []
+    service.on_about_to_quit = lambda: wiped.append("key")  # spy on the real wipe
+
     window._on_download_ready(verified, prompt)
     assert len(installer.applied) == 1
     new_file, on_before_exec = installer.applied[0]
     assert new_file == verified
-    assert on_before_exec == service.on_about_to_quit  # the key-wipe (INV-6)
+    # INV-6 is about BEHAVIOUR, not the callable's identity: the shell now wraps
+    # the wipe so the single-instance socket is released first (FIBR-0189 INV-5),
+    # so assert that invoking the callback still wipes the key.
+    on_before_exec()
+    assert wiped == ["key"]
 
 
 def test_INV7_settings_checkbox_disabled_when_unsupported(qtbot, service):
