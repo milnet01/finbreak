@@ -256,7 +256,7 @@ class BackupService:
                             "AND name NOT LIKE 'sqlite_%'"
                         ).fetchall()
                     ]
-                    # nosec B608: `n` is a table name read from sqlite_master (never
+                    # B608: `n` is a table name read from sqlite_master (never
                     # user input) — the dynamic enumeration the spec mandates.
                     table_counts = {
                         n: conn.execute(f"SELECT count(*) FROM {n}").fetchone()[0]  # nosec B608

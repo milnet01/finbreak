@@ -18,7 +18,10 @@ from __future__ import annotations
 import os
 import shlex
 import shutil
-import subprocess  # nosec B404 — fixed-argv waiter, our own paths, no user input
+
+# B404: fixed-argv waiter, our own paths, no user input. (Rationale sits above
+# the marker, which stays bare — bandit parses trailing prose as test ids.)
+import subprocess  # nosec B404
 import sys
 import time
 from collections.abc import Callable
@@ -296,7 +299,8 @@ class AppImageInstaller:
             log.flush()
         stdio: TextIO | int = log if log is not None else subprocess.DEVNULL
         try:
-            subprocess.Popen(  # nosec B603 — fixed /bin/sh waiter, our own argv
+            # B603: fixed /bin/sh waiter, our own argv.
+            subprocess.Popen(  # nosec B603
                 _relaunch_command(str(self._appimage_path), pid),
                 env=_relaunch_env(),
                 stdin=subprocess.DEVNULL,
@@ -361,7 +365,8 @@ class WindowsInstaller:
             subprocess, "CREATE_NEW_PROCESS_GROUP", 0
         )
         try:
-            subprocess.Popen(  # nosec B603 — fixed PowerShell waiter, our own argv
+            # B603: fixed PowerShell waiter, our own argv.
+            subprocess.Popen(  # nosec B603
                 _windows_relaunch_command(str(self._exe_path), str(new_file)),
                 env=_windows_relaunch_env(),
                 stdin=subprocess.DEVNULL,

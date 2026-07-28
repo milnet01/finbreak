@@ -317,7 +317,7 @@ def _snapshot_tables(conn) -> dict[str, list]:
             "AND name NOT LIKE 'sqlite_%'"
         ).fetchall()
     ]
-    # nosec B608: `n` is a table name read from sqlite_master (never user input) —
+    # B608: `n` is a table name read from sqlite_master (never user input) —
     # the dynamic enumeration INV-2 mandates; not an injectable interpolation.
     return {
         n: sorted(map(str, conn.execute(f"SELECT * FROM {n}").fetchall()))  # nosec B608

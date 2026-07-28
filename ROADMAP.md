@@ -2160,11 +2160,17 @@ is a future error tomorrow.
   Kind: chore.
   Source: debt-sweep-2026-07-26.
 
-- 📋 [FIBR-0183] **bandit prints 31 'Test in comment' warnings because prose follows the # nosec test id.**
+- ✅ [FIBR-0183] **bandit prints 31 'Test in comment' warnings because prose follows the # nosec test id.**
   bandit parses everything after '# nosec' as a comma/space-separated list of test IDs, so a marker written '# nosec B603 - fixed /bin/sh waiter, our own argv' makes it try to resolve 'fixed', 'waiter', 'our', 'own', 'argv' as test names and emit 'WARNING Test in comment: X is not a test name or id, ignoring' for each. 31 such warnings across the tree. Verified pre-existing and NOT caused by the debt sweep's noqa cleanup (identical count before and after, and bandit still exits 0 with the suppressions honoured). Low severity, but it is 31 lines of noise in every gate run, which is exactly the condition under which a real bandit warning gets skimmed past. Fix: put the rationale on its own line above, or after a separator bandit stops parsing at, keeping the marker itself bare ('# nosec B603').
   **Layman:** Our security scanner prints 31 confusing warnings every run, caused purely by how a comment is written. Harmless now, but the noise could hide a real warning.
   Kind: chore.
   Source: debt-sweep-2026-07-26.
+  Resolved (2026-07-28): moved every rationale off the `# nosec` line (own
+  comment line above, marker left bare) in update_installer.py x3,
+  backup.py and tests/features/backup/test_backup.py. Verified: bandit
+  "Test in comment" warnings 31 -> 0, `bandit -c pyproject.toml -r src -q`
+  still exits 0 with the 7 suppressions honoured; ruff + 1369 passed,
+  2 skipped.
 
 ## How to add an item
 
