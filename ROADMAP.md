@@ -1533,9 +1533,9 @@ because retrofitting them is a data migration.
   Source: dogfooding-2026-07-12.
   Resolved (2026-07-12): _table_region now falls back, on a Family-C page with no "Date Description Amount" column header, to starting the region at the first real transaction row (a CC segment ending in a 2-decimal amount — which excludes summary-page date spans like "Statement Period 20 Sep 25 to 20 Oct 25"). TDD: 2 pure _table_region unit tests (header-less continuation page captured; header-less summary page stays empty). Validated end-to-end on the real SBSA 2025-10-20 statement in a throwaway scratchpad: now 72 drafts, reconciles exactly (1348.95 - (-619.82) = 1968.77 = closing); the 3 previously-dropped page-3 rows (Checkers 514.21, Cash Finance Charge 23.05, Tips 10.00 = 547.26) are captured. Full SB suite + gate green (604 passed/1 skipped). Real file/password never committed; tests are synthetic. Note: a pre-existing cosmetic issue remains (a "Continued on next page......" line folds into the last page-N transaction's description) — filed separately, not this fix.
 
-- 🚧 [FIBR-0113] **Accounts tab: show accounts in columns (Name / Type / Account number / Note) instead of one line.**
-  User request 2026-07-12 (screenshot): the Accounts tab lists each account as one line "Credit Card — Credit card" (name — type). Move to a columnar QTableWidget with columns: Name, Type of account, Account number, Note (optional). Requires two NEW nullable account fields — account_number and note (schema bump) — plus the add/edit form growing those inputs and the AccountsWidget becoming a table (mirrors the Rules/Statements tab table shape). Account number is display/reference only (not used for matching). Dovetails with the columnar direction of FIBR-0109 (Transactions tab) and the account credential accessors already on the accounts repo (FIBR-0009).
-  **Layman:** Show accounts in a proper table (Name, Type, Account number, and an optional Note) instead of a single cramped "Name — Type" line each.
+- 🚧 [FIBR-0113] **Accounts tab: show accounts in a sortable 5-column table (Name / Type / Account number / Note / Status) instead of one line.**
+  User request 2026-07-12 (screenshot): the Accounts tab lists each account as one line "Credit Card — Credit card" (name — type). Move to a columnar QTableWidget with columns: Name, Type of account, Account number, Note (optional), Status. Requires two NEW nullable account fields — account_number and note (schema bump) — plus the add/edit form growing those inputs and the AccountsWidget becoming a table (mirrors the Rules/Statements tab table shape). Account number is display/reference only (not used for matching). Dovetails with the columnar direction of FIBR-0109 (Transactions tab) and the account credential accessors already on the accounts repo (FIBR-0009).
+  **Layman:** Show accounts in a proper table (Name, Type, Account number, an optional Note, and a Status column you can sort by) instead of a single cramped "Name — Type" line each.
   Kind: feature.
   Lanes: ui, repo.
   Source: user-request-2026-07-12.
@@ -1576,16 +1576,41 @@ because retrofitting them is a data migration.
   Three HIGHs are the same shape — the spec promises something no
   invariant locks: the account-number column's masking, the table's
   click-sortability, and the update write path for the two new columns.
-  DECISION PENDING: loop 5's recommendation is to SPLIT rather than run
+  SPLIT EXECUTED (2026-07-28): loop 5's recommendation was to SPLIT rather than run
   loop 6 — draft defects are not falling (three NEW structural gaps
   appeared at loop 5 after four cold reads missed them), and the spec is
   985 lines vs a ~567 median. Proposed seam and per-finding assignment
   are in the review file. FIBR-0113 keeps the UI half; the schema +
-  model/repo/service half needs a new id.
+  model/repo/service half became FIBR-0193.
   Also note: the /cold-eyes cheap breadth pass returned ZERO suspects on
   all three lanes this loop; the strong pass then found 3 CRITICAL. The
   skill has been amended so a breadth pass can no longer certify a lane
   clean after a loop that produced CRITICAL/HIGH.
+  Split executed (2026-07-28). This item now delivers the UI half ONLY:
+  the 5-column sortable Accounts table, the masked account-number cell and
+  form field, the reveal toggle and its auto-hide timer, and the two-row
+  edit form. The storage half — migration v13, models.Account, the accounts
+  repository and service — moved to FIBR-0193, which SHIPS FIRST: this
+  table reads and writes columns FIBR-0193 creates.
+
+  Loop 5's 35 verified findings were routed to whichever half owns them per
+  the assignment in docs/reviews/FIBR-0113-cold-eyes-loop5.md, and folded in
+  directly rather than re-reviewed. The two open decisions that gated the
+  three CRITICALs were resolved against current source, not by preference:
+  (1) _refresh() uses CLEAR-then-fill, because AccountsWidget._refresh
+  already opens with self._list.clear() — clear-then-fill preserves today's
+  behaviour, where the StatementsWidget reuse-rows shape would newly
+  introduce the cross-account write CR-1 reproduced; (2) the Forget-button
+  rule moves into a gating-only helper _apply_forget_gating(), called from
+  _on_selection_changed, _refresh()'s tail and the reveal handler, so a
+  refresh can no longer repopulate the form (CR-2 + HI-6 in one fix).
+
+  Headline + Layman card reconciled to five columns in this same edit (both
+  still said four; the Status column was the user's 2026-07-28 decision).
+
+  Spec rewritten as the UI half; cold-eyes gate re-run from loop 6 against
+  the reduced document — §13's loop log for loops 1-5 is a frozen record and
+  travels with this id.
 
   Folding that work in here made this spec the largest source of its own
   review defects (4 of 5 criticals in cold-eyes loop 2 traced to the
@@ -2379,6 +2404,49 @@ because retrofitting them is a data migration.
   Kind: feature.
   Lanes: ui.
   Source: cold-eyes-2026-07-28 (FIBR-0113 loop 2).
+
+- 📋 [FIBR-0193] **Account storage: migration v13 adds nullable accounts.account_number + accounts.note, carried through model / repo / service.**
+  Split out of FIBR-0113 on 2026-07-28, executing the recommendation
+  /cold-eyes loop 5 made when that spec did not converge (35 verified
+  findings; docs/reviews/FIBR-0113-cold-eyes-loop5.md). FIBR-0113 was 985
+  lines against a ~567-line median, and three NEW structural draft defects
+  appeared at loop 5 after four cold reads missed them — the size trigger in
+  /cold-eyes Phase 5. This half was the quietest lane in that loop: zero
+  CRITICAL, one HIGH, all findings local.
+
+  SHIPS FIRST. FIBR-0113 (the 5-column Accounts table, masking, the reveal
+  toggle) reads and writes these two columns, so it cannot start until they
+  exist.
+
+  Scope — the storage half of FIBR-0113's original design:
+  - migrations.py: LATEST_SCHEMA_VERSION 12 -> 13 and a _migrate_to_v13 step
+    issuing two nullable ADD COLUMNs inside one owned_transaction.
+  - models.Account gains account_number + note, appended after created_at.
+  - repositories/accounts.AccountRepository: both listing SELECTs grow the
+    two columns in dataclass field order (Account(*row) is positional), and
+    add() / update() grow the two parameters, REQUIRED not defaulted.
+  - services/accounts.AccountService: add_account's are optional keyword
+    args, update_account's are REQUIRED — an unconditional UPDATE ... SET
+    means a defaulted None silently erases a stored value at every one of
+    the six existing three-argument call sites.
+  - A module-level _normalise_optional in services/accounts.py, called by
+    BOTH write paths, so a blank field stores SQL NULL rather than "".
+
+  Also carries FIBR-0086's bullet amendment: FIBR-0086 currently claims the
+  account-number STORAGE half ("a new column in the ENCRYPTED vault ...
+  schema migration, currently v7 -> v8"), which this item delivers instead,
+  at v13 not v8. Amend it to keep detection + matching only when this ships,
+  or a later implementer re-adds an existing column at a stale version.
+
+  FIBR-0084 stays 📋 when this ships, and stays 📋 when FIBR-0113 ships —
+  FIBR-0192 is its blocker, not either half of this split.
+
+  Spec next (docs/specs/FIBR-0193-account-storage-fields.md), then cold-eyes,
+  then TDD.
+  **Layman:** Give each account somewhere to keep an account number and a free-text note — the storage side only; the Accounts screen that shows and edits them is FIBR-0113.
+  Kind: feature.
+  Lanes: repo.
+  Source: split-from-FIBR-0113-2026-07-28 (/cold-eyes loop 5).
 
 ### ⚡ Performance
 
