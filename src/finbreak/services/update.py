@@ -37,6 +37,9 @@ _GITHUB_REPO = "finbreak"
 # raw Ed25519 signature is 64 bytes. A stalled connection times out, not hangs.
 _MAX_UPDATE_BYTES = 200 * 1024 * 1024
 _MAX_API_BYTES = 1024 * 1024
+# A page of 30 releases carries 30 bodies, so it needs more headroom than the
+# single-release JSON (FIBR-0152) — still a hard cap, not an open door.
+_MAX_RELEASES_BYTES = 4 * 1024 * 1024
 _MAX_SIG_BYTES = 4096
 _TIMEOUT_S = 30
 
@@ -115,6 +118,35 @@ def _version_string(tag: str) -> str:
     """The bare version string of a tag — a single leading ``v``/``V`` stripped
     (the form stored as the skipped version + shown in the prompt)."""
     return tag[1:] if tag[:1] in ("v", "V") else tag
+
+
+def _accumulated_notes(
+    releases: list[dict], current: tuple[int, ...], offered: tuple[int, ...]
+) -> str:
+    """Every release body newer than *current* and no newer than *offered*, newest
+    first, headed by its version (FIBR-0152).
+
+    Someone three versions behind is about to install all three, so the prompt owes
+    them all three sets of notes — not just the newest release's body. Drafts and
+    prereleases are dropped: they are not what ``/releases/latest`` offered, so they
+    are not what the user is getting. Returns ``""`` when nothing qualifies, which
+    is the caller's signal to fall back to the single offered body.
+    """
+    entries: list[tuple[tuple[int, ...], str]] = []
+    for release in releases:
+        if release.get("draft") or release.get("prerelease"):
+            continue
+        tag = release.get("tag_name") or ""
+        parsed = _parse_version(tag)
+        if parsed is None or not _version_gt(parsed, current):
+            continue
+        if _version_gt(parsed, offered):
+            continue
+        body = (release.get("body") or "").strip()
+        if body:
+            entries.append((parsed, f"## {_version_string(tag)}\n\n{body}"))
+    entries.sort(key=lambda entry: entry[0], reverse=True)
+    return "\n\n---\n\n".join(text for _, text in entries)
 
 
 def _stage_temp(directory: Path, suffix: str) -> Path:
@@ -222,11 +254,40 @@ class UpdateService:
                 version=version,
                 asset_url=asset_url,
                 sig_url=sig_url,
-                notes=release.get("body") or "",
+                notes=self._notes_since(current, latest, release),
             )
         except Exception as exc:  # DNS/HTTP/JSON/anything — stay silent + safe
             log.debug("update check failed: %r", exc)
             return None
+
+    def _notes_since(
+        self,
+        current: tuple[int, ...],
+        offered: tuple[int, ...],
+        offered_release: dict,
+    ) -> str:
+        """The bodies of every release between the running version and the offered
+        one — or just the offered release's body (FIBR-0152).
+
+        A second, best-effort GET against the same host under the same caps. The
+        *offer* decision is already made and never depends on it, so any failure
+        degrades to the single body the prompt used to show rather than costing the
+        user the update. No new module and no new host, so the one-networked-file
+        confinement (INV-12) is unchanged; the notes stay verbatim release data,
+        never ``tr()``-wrapped.
+        """
+        try:
+            releases = self._fetcher.fetch_releases(
+                _GITHUB_OWNER,
+                _GITHUB_REPO,
+                timeout=_TIMEOUT_S,
+                max_bytes=_MAX_RELEASES_BYTES,
+            )
+            accumulated = _accumulated_notes(releases, current, offered)
+        except Exception as exc:  # the offer stands; only the notes are poorer
+            log.debug("release-notes accumulation failed: %r", exc)
+            accumulated = ""
+        return accumulated or (offered_release.get("body") or "")
 
     # --- the signature-verified download (INV-4/5/10) ----------------------- #
     def download_and_verify(

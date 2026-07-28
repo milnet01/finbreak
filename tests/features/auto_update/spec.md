@@ -54,6 +54,7 @@ row key (they refine a shipped invariant rather than adding a numbered one):
 | Item | What it pins |
 |------|--------------|
 | FIBR-0108 | Real download progress: `update_fetch.download` reports `(received, total)` per chunk with *total* from `Content-Length` (`0` when absent/malformed); `DownloadWorker` relays it as a Qt signal; the prompt's bar goes determinate on a known size and stays indeterminate on an unknown one. |
+| FIBR-0152 | Accumulated "what's new": `update_fetch.fetch_releases` reads the same host's `…/releases` list; the slicer keeps every non-draft, non-prerelease body newer than the running version and no newer than the offered one, newest first, each headed by its version; one-behind yields just that release; a failed list read falls back to the single offered body (the offer never depends on it). |
 | FIBR-0170 | `download_and_verify` returns a **fresh** temp written from the verified in-memory buffer, and deletes the download temp it re-read those bytes from — so the file the installer swaps in is the file the signature check passed. |
 
 **Coverage honesty (INV-3/INV-4):** the Linux gate tests the **command/env

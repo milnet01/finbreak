@@ -53,18 +53,36 @@ class _FakeFetcher:
     dict and writes canned bytes per URL. Records fetch calls so INV-1 can assert
     the disabled service never phones home."""
 
-    def __init__(self, release=None, blobs=None, fetch_error=None):
+    def __init__(
+        self,
+        release=None,
+        blobs=None,
+        fetch_error=None,
+        releases=None,
+        releases_error=None,
+    ):
         self.release = release
         self.blobs = blobs or {}
         self.fetch_error = fetch_error
         self.fetch_calls = 0
         self.dests: dict[str, Path] = {}  # url -> the temp it was written to
+        # The FIBR-0152 notes-accumulation page. Left empty by default, so every
+        # pre-existing test still exercises the single-body fallback.
+        self.releases = releases
+        self.releases_error = releases_error
+        self.releases_calls = 0
 
     def fetch_latest_release(self, owner, repo, *, timeout, max_bytes):
         self.fetch_calls += 1
         if self.fetch_error is not None:
             raise self.fetch_error
         return self.release
+
+    def fetch_releases(self, owner, repo, *, timeout, max_bytes):
+        self.releases_calls += 1
+        if self.releases_error is not None:
+            raise self.releases_error
+        return list(self.releases or [])
 
     def download(self, url, dest, *, max_bytes, timeout, on_progress=None):
         from pathlib import Path
@@ -1600,3 +1618,103 @@ def test_manual_check_error_warns(qtbot, service, monkeypatch):
     )
     window._on_manual_check_error(RuntimeError("boom"))
     assert warned, "a failed manual check should warn the user"
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0152 — the prompt shows EVERY release's notes since the running version
+# --------------------------------------------------------------------------- #
+def _behind_service(tmp_path, current, *, releases_error=None):
+    """A service on *current* with 0.6.0 available and 0.3.0..0.6.0 published."""
+    fetcher = _FakeFetcher(
+        release=_release("v0.6.0"),
+        releases=[_release(f"v0.{minor}.0") for minor in (6, 5, 4, 3)],
+        releases_error=releases_error,
+    )
+    svc = _service(tmp_path, fetcher=fetcher, current=current)
+    svc.set_enabled(True)
+    return svc, fetcher
+
+
+def test_FIBR0152_fetch_releases_parses_the_release_list(monkeypatch):
+    """The list endpoint is a plain JSON array off the SAME host as the single
+    release — one module, one host, no new network surface (INV-12)."""
+    seen = {}
+
+    def opener(request, timeout=None, context=None):
+        seen["url"] = request.full_url
+        return _FakeHTTPResponse(b'[{"tag_name": "v0.6.0"}, {"tag_name": "v0.5.0"}]')
+
+    monkeypatch.setattr(update_fetch.urllib.request, "urlopen", opener)
+    result = update_fetch.fetch_releases(
+        "milnet01", "finbreak", timeout=5, max_bytes=1024
+    )
+    assert [entry["tag_name"] for entry in result] == ["v0.6.0", "v0.5.0"]
+    assert seen["url"].startswith("https://api.github.com/repos/milnet01/finbreak/")
+    assert "/releases?" in seen["url"]  # the list, not /releases/latest
+
+
+def test_FIBR0152_notes_accumulate_across_every_release_since_current(tmp_path):
+    """Three versions behind means three sets of notes, newest first — the user is
+    about to install all three, not just the newest one."""
+    svc, _ = _behind_service(tmp_path, "0.3.0")
+    info = svc.check_for_update()
+    assert info is not None
+    for tag in ("v0.4.0", "v0.5.0", "v0.6.0"):
+        assert f"release notes for {tag}" in info.notes
+    assert "release notes for v0.3.0" not in info.notes  # already running it
+    assert "## 0.6.0" in info.notes  # each body is headed by its version
+    order = [info.notes.index(f"release notes for v0.{n}.0") for n in (6, 5, 4)]
+    assert order == sorted(order), "newest release first"
+
+
+def test_FIBR0152_one_version_behind_shows_just_that_release(tmp_path):
+    svc, _ = _behind_service(tmp_path, "0.5.0")
+    info = svc.check_for_update()
+    assert info is not None
+    assert "release notes for v0.6.0" in info.notes
+    assert "release notes for v0.5.0" not in info.notes
+
+
+def test_FIBR0152_drafts_and_prereleases_are_left_out(tmp_path):
+    """``/releases/latest`` never offered a draft or prerelease, so the accumulated
+    notes must not describe one either."""
+    draft = _release("v0.5.0") | {"draft": True}
+    pre = _release("v0.4.0") | {"prerelease": True}
+    fetcher = _FakeFetcher(
+        release=_release("v0.6.0"), releases=[_release("v0.6.0"), draft, pre]
+    )
+    svc = _service(tmp_path, fetcher=fetcher, current="0.3.0")
+    svc.set_enabled(True)
+    info = svc.check_for_update()
+    assert info is not None
+    assert "release notes for v0.6.0" in info.notes
+    assert "release notes for v0.5.0" not in info.notes
+    assert "release notes for v0.4.0" not in info.notes
+
+
+def test_FIBR0152_release_list_failure_still_offers_with_the_single_body(tmp_path):
+    """The offer never depends on the second fetch: a failed list degrades to the
+    body the prompt used to show, it does not cost the user the update."""
+    svc, fetcher = _behind_service(tmp_path, "0.3.0", releases_error=OSError("no dns"))
+    info = svc.check_for_update()
+    assert info is not None
+    assert fetcher.releases_calls == 1
+    assert info.notes == _release("v0.6.0")["body"]
+
+
+def test_FIBR0152_prompt_renders_the_accumulated_body(qtbot, tmp_path):
+    from PySide6.QtWidgets import QTextBrowser
+
+    from finbreak.ui.update_dialog import UpdateDialog
+
+    svc, _ = _behind_service(tmp_path, "0.3.0")
+    info = svc.check_for_update()
+    assert info is not None
+    dialog = UpdateDialog("0.3.0", info.version, info.notes, None)
+    qtbot.addWidget(dialog)
+
+    notes = dialog.findChild(QTextBrowser, "update_notes")
+    assert notes is not None and not notes.isHidden()
+    shown = notes.toPlainText()
+    for tag in ("v0.4.0", "v0.5.0", "v0.6.0"):
+        assert f"release notes for {tag}" in shown

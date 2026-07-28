@@ -2,10 +2,10 @@
 
 This is the **one** file under ``src/finbreak/`` permitted to import ``urllib``;
 ``test_INV8_no_network_imports_under_src`` allowlists exactly this relative path.
-It exposes only two functions — read the GitHub Releases API, and stream one asset
-to disk — both over the default-TLS ``https://`` endpoint, both bounded by a byte
-cap and a socket timeout (INV-10) so a hostile or broken server cannot exhaust
-disk or hang the launch check. All higher-level policy (opt-in gate, version
+It exposes only reads of the GitHub Releases API and one asset stream to disk —
+all over the default-TLS ``https://`` endpoint, all bounded by a byte cap and a
+socket timeout (INV-10) so a hostile or broken server cannot exhaust disk or hang
+the launch check. All higher-level policy (opt-in gate, version
 compare, signature verify) lives in ``update.py``; this module just moves bytes.
 """
 
@@ -17,10 +17,16 @@ import ssl
 import urllib.request
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import certifi
 
 _API_URL_TEMPLATE = "https://api.github.com/repos/{owner}/{repo}/releases/latest"
+# The newest page of releases (FIBR-0152). 30 is GitHub's default page size and
+# covers any realistic upgrade gap while keeping the response bounded.
+_RELEASES_URL_TEMPLATE = (
+    "https://api.github.com/repos/{owner}/{repo}/releases?per_page=30"
+)
 _USER_AGENT = "finbreak-updater"
 _ACCEPT_GITHUB_JSON = "application/vnd.github+json"
 _DOWNLOAD_CHUNK_BYTES = 64 * 1024
@@ -86,15 +92,11 @@ def _install_opener() -> None:
     )
 
 
-def fetch_latest_release(
-    owner: str, repo: str, *, timeout: float, max_bytes: int
-) -> dict:
-    """GET ``/repos/{owner}/{repo}/releases/latest`` and return the parsed JSON.
+def _get_json(url: str, *, timeout: float, max_bytes: int) -> Any:
+    """GET *url* and return its parsed JSON body.
 
-    The body is read under *max_bytes* (a response exceeding it raises
-    ``ValueError`` rather than being parsed) with a *timeout*-second socket
-    deadline. ``/releases/latest`` excludes prereleases (D11)."""
-    url = _API_URL_TEMPLATE.format(owner=owner, repo=repo)
+    Read under *max_bytes* (a response exceeding it raises ``ValueError`` rather
+    than being parsed) with a *timeout*-second socket deadline (INV-10)."""
     _require_https(url)
     _install_opener()  # https-only redirects + bundled-certifi TLS (INV-10)
     request = urllib.request.Request(
@@ -107,6 +109,30 @@ def fetch_latest_release(
     if len(raw) > max_bytes:
         raise ValueError("release API response exceeds the size cap")
     return json.loads(raw.decode("utf-8"))
+
+
+def fetch_latest_release(
+    owner: str, repo: str, *, timeout: float, max_bytes: int
+) -> dict:
+    """GET ``/repos/{owner}/{repo}/releases/latest`` and return the parsed JSON.
+
+    ``/releases/latest`` excludes prereleases (D11) — this is the endpoint the
+    offer decision rests on."""
+    url = _API_URL_TEMPLATE.format(owner=owner, repo=repo)
+    return _get_json(url, timeout=timeout, max_bytes=max_bytes)
+
+
+def fetch_releases(
+    owner: str, repo: str, *, timeout: float, max_bytes: int
+) -> list[dict]:
+    """GET ``/repos/{owner}/{repo}/releases`` — the newest page, newest first.
+
+    Feeds the accumulated "what's new" text for a user several versions behind
+    (FIBR-0152). Unlike ``/releases/latest`` this endpoint DOES include drafts and
+    prereleases, so filtering them is the caller's job. Same host, same cap +
+    timeout discipline, same module — no new network surface (INV-12)."""
+    url = _RELEASES_URL_TEMPLATE.format(owner=owner, repo=repo)
+    return _get_json(url, timeout=timeout, max_bytes=max_bytes)
 
 
 def _content_length(response) -> int:
