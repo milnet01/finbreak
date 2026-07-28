@@ -1341,11 +1341,12 @@ because retrofitting them is a data migration.
   Kind: fix.
   Source: dogfooding-2026-07-11.
 
-- 📋 [FIBR-0108] **Update download: show real progress instead of a permanently-full indeterminate bar.**
+- ✅ [FIBR-0108] **Update download: show real progress instead of a permanently-full indeterminate bar.**
   The "Downloading…" bar in the update dialog is hardcoded to indeterminate (busy) mode — ui/update_dialog.py:79 `self._busy.setRange(0, 0)` — so it shows a moving/striped full bar the entire download rather than actual percent-complete. The fix is feasible without new deps: services/update_fetch.py `download()` already streams the body in 64 KiB chunks (`_DOWNLOAD_CHUNK_BYTES`, line 89), so it can (a) read the total from the response `Content-Length` header and (b) accept an optional progress callback invoked per chunk with (received, total). Then the DownloadWorker (ui/_update_worker.py) emits a progress signal and the dialog switches the bar to determinate (`setRange(0, total)` + `setValue(received)`), falling back to indeterminate only when Content-Length is absent/zero. Keep the byte-cap (max_bytes) guard intact. TDD: unit-test the callback fires with monotonic received ≤ total and a missing-Content-Length fallback; a qtbot test that the bar goes determinate on a known-size download. Kind: enhancement.
   **Layman:** While an update downloads, the progress bar looks full/striped the whole time instead of filling up as it downloads.
   Kind: enhancement.
   Source: dogfooding-2026-07-12.
+  Resolved (2026-07-28): update_fetch.download takes an optional per-chunk on_progress callback reporting (received, total) with total from Content-Length (0 when absent/malformed); UpdateService passes it to the asset download only, DownloadWorker relays it as a Qt signal, and UpdateDialog.set_progress switches the bar to determinate — an unsized download keeps the indeterminate look. INV-10 byte cap untouched. Tests: test_FIBR0108_download_reports_progress_against_content_length, _absent_or_malformed_content_length_reports_unknown_total, _download_worker_relays_progress, _prompt_bar_goes_determinate_on_a_known_size, _prompt_bar_stays_indeterminate_when_size_unknown.
 
 - 📋 [FIBR-0109] **Move the Home transaction list to a dedicated Transactions tab with account / date-range / amount-range filters.**
   User request 2026-07-12. Today Home is the transaction table (HomeView). Move that table to its own Transactions tab and add filters: by account, by date range (from/to), and/or by amount range (min/max), combinable. This dovetails with FIBR-0012 (the dashboard's "filterable table" + Home-as-summary vision) and complements FIBR-0011 (a confirmed-transfer marker could later show here). Reuses the existing list_transactions read; the filter is a query/where layer. Dates in the filter follow the typed-or-picker rule below.
@@ -2136,11 +2137,12 @@ is a future error tomorrow.
   Kind: security.
   Source: indie-review-2026-07-23.
 
-- 📋 [FIBR-0170] **Install the verified update from the in-memory buffer to close the verify-in-memory / install-from-disk TOCTOU.**
+- ✅ [FIBR-0170] **Install the verified update from the in-memory buffer to close the verify-in-memory / install-from-disk TOCTOU.**
   indie-review (update/signature lane), INFO — out of the current threat model (needs a same-user/root attacker able to rewrite the 0600 mkstemp temp in the target dir, explicitly out of scope per security-model §4), so deferred. download_and_verify verifies data read into memory (asset_tmp.read_bytes()) but the installer later os.replace()s the on-disk temp — the file could differ from the verified bytes in the window. Hardening: write the verified `data` buffer to a fresh temp and install THAT, rather than trusting the re-read file. Low priority; noted for completeness.
   **Layman:** Extra hardening so the exact bytes we checked are the exact bytes installed.
   Kind: security.
   Source: indie-review-2026-07-23.
+  Resolved (2026-07-28): download_and_verify now writes the verified in-memory buffer to a fresh mkstemp (0600, O_EXCL) and deletes the download temp it re-read those bytes from, so the file the installer swaps in is the file the signature check passed. Shrinks the swap window from the whole transfer to the moment before os.replace(). Test: test_FIBR0170_installs_the_verified_buffer_not_the_re_read_download.
 
 - 📋 [FIBR-0180] **Decide deliberately whether to move the CI/build base image off Debian 12 (bookworm, now oldstable).**
   ci.yml, ci-docker.sh and build-smoke.sh all pin python:3.12-slim-bookworm. Debian 13 (trixie) has been stable since Aug 2025, so bookworm is oldstable and a python:3.12-slim-trixie image exists. This is NOT a routine bump: the build image's glibc (~2.36) is the EFFECTIVE floor of every frozen artifact (libpython links it - see the pyproject.toml dependencies comment), so moving to trixie raises the minimum glibc an AppImage/.exe user needs. The debt sweep added that rationale as a comment on ci.yml's container line rather than bumping. Decide: (a) hold on bookworm until the AppImage's target-distro floor justifies moving, or (b) bump all three call-sites together and re-run build-smoke to confirm the clean-room launch still passes on the oldest distro we claim to support. Either way, record the decision so the next sweep does not re-raise it.

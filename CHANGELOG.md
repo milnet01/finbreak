@@ -47,6 +47,11 @@ signaling per
 
 ### Changed
 
+- **The update download now shows real progress instead of a permanently-full striped bar** (FIBR-0108)
+  The "Downloading…" bar fills up as the update arrives. If the server
+  doesn't say how big the file is, the bar keeps its old busy look rather
+  than guessing.
+
 - **The Forecast tab's "excluded accounts" note now states the rule positively — "only current and savings balances are spendable cash".**
   It used to list "credit, loan and investment", which quietly left out
   accounts of type "other" — they were excluded from the forecast anchor
@@ -71,6 +76,11 @@ signaling per
 - **CSV import no longer crashes on a corrupt or truncated file — it now reports a friendly “not valid CSV” message.** (FIBR-0165)
 
 ### Security
+
+- **Updates install the exact bytes that passed the signature check** (FIBR-0170)
+  The verified download is now re-written from memory immediately before
+  install, instead of handing over the file it had been read from — closing
+  a window in which the payload could have been swapped on disk.
 
 - **The Argon2id acceptance floor is now separate from the vault-creation parameter, so a future increase in password-hashing strength cannot lock existing vaults out.** (FIBR-0166)
 
