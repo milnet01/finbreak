@@ -379,6 +379,35 @@ scariest unknown (native-library bundling) up front.
   Kind: doc-fix.
   Source: in-session-2026-07-23.
 
+- 📋 [FIBR-0184] **bump.json's Flatpak re-pin todo names a tagging step the release path doesn't use, so `git rev-parse v<NEW>` fails locally.**
+  Hit during the v0.1.18 release. The `.claude/bump.json` todo for the
+  Flatpak `commit:` pin says to set it "AFTER `git tag -a v{NEW}`" — but
+  nothing in the release path runs `git tag -a`. `scripts/release-linux.sh`
+  creates the tag through `gh release create`, which creates it on the
+  REMOTE only. So the local clone has no such ref and the todo's own
+  follow-up command fails:
+
+      $ git rev-parse v0.1.18^{commit}
+      fatal: ambiguous argument 'v0.1.18^{commit}': unknown revision ...
+
+  The fix is a `git fetch --tags origin` before the rev-parse (that is what
+  unblocked it here). Two candidate homes, either is fine:
+  (a) reword the bump.json todo to name the real sequence — run
+  release-linux.sh, `git fetch --tags`, then rev-parse; or
+  (b) better, fold the whole step into release-linux.sh after the release is
+  created, since the sha is known there and the manual step exists only
+  because the tag does not exist at bump time. (b) removes the todo
+  entirely rather than correcting it.
+
+  Low severity — it costs one confusing failure per release, and the
+  flatpak_packaging tests (INV-4 40-hex sha, INV-10 tag == __version__)
+  still pass either way because they cannot tell whether the tag and the
+  commit point at the same object. That blind spot is the reason this is a
+  manual step at all, so a wrong instruction here is worth fixing.
+  **Layman:** A release checklist step tells you to look up something that isn't on your computer yet, so it fails until you fetch it first.
+  Kind: doc-fix.
+  Source: in-session-2026-07-28 (v0.1.18 release).
+
 ## P02 — Vertical slice: the security spine (target: after P01)
 
 **Theme:** the smallest end-to-end feature that touches every
