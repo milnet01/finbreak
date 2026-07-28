@@ -977,7 +977,7 @@ because retrofitting them is a data migration.
 
 ### 🔒 Security & account recovery
 
-- 📋 [FIBR-0018] **Encrypted vault backup & restore.**
+- ✅ [FIBR-0018] **Encrypted vault backup & restore.**
   Export the whole vault to a single encrypted backup file the user
   keeps off-device (external drive / cloud), and restore from it — the
   mitigation design.md names for the no-recovery-backdoor rule, so a disk
@@ -985,6 +985,12 @@ because retrofitting them is a data migration.
   heading already lists "backup"). Dependencies: FIBR-0004. Lanes:
   crypto, ux. Kind: feature. Source: user-request-2026-07-01.
   Merged into FIBR-0014 (2026-07-13): FIBR-0018 and the narrowed FIBR-0014 both describe the encrypted vault backup & restore. FIBR-0014 (docs/specs/FIBR-0014.md) is the IMPLEMENTATION spec; track the work there. The backup safety nudge is FIBR-0089; restore-verification is FIBR-0033. This item stays as the original provenance record — flip it ✅ alongside FIBR-0014 when the backup ships.
+  Resolved (2026-07-28): closed as covered by its merge target. FIBR-0014
+  (P12 settings / auto-lock / encrypted backup) is ✅ and the encrypted
+  vault backup & restore it absorbed is live — services/backup.py plus the
+  backup_export / backup_restore / backup_verify dialogs. This bullet was
+  kept only as the original provenance record per the 2026-07-13 merge
+  note, which said to flip it alongside FIBR-0014; doing that now.
 
 - 📋 [FIBR-0019] **Master-password recovery via recovery key
   (key-wrapping).** At vault creation, generate a high-entropy recovery
@@ -1441,13 +1447,20 @@ because retrofitting them is a data migration.
   Source: dogfooding-2026-07-12.
   Resolved (2026-07-28): update_fetch.download takes an optional per-chunk on_progress callback reporting (received, total) with total from Content-Length (0 when absent/malformed); UpdateService passes it to the asset download only, DownloadWorker relays it as a Qt signal, and UpdateDialog.set_progress switches the bar to determinate — an unsized download keeps the indeterminate look. INV-10 byte cap untouched. Tests: test_FIBR0108_download_reports_progress_against_content_length, _absent_or_malformed_content_length_reports_unknown_total, _download_worker_relays_progress, _prompt_bar_goes_determinate_on_a_known_size, _prompt_bar_stays_indeterminate_when_size_unknown.
 
-- 📋 [FIBR-0109] **Move the Home transaction list to a dedicated Transactions tab with account / date-range / amount-range filters.**
+- ✅ [FIBR-0109] **Move the Home transaction list to a dedicated Transactions tab with account / date-range / amount-range filters.**
   User request 2026-07-12. Today Home is the transaction table (HomeView). Move that table to its own Transactions tab and add filters: by account, by date range (from/to), and/or by amount range (min/max), combinable. This dovetails with FIBR-0012 (the dashboard's "filterable table" + Home-as-summary vision) and complements FIBR-0011 (a confirmed-transfer marker could later show here). Reuses the existing list_transactions read; the filter is a query/where layer. Dates in the filter follow the typed-or-picker rule below.
   **Layman:** Give the transaction list its own tab with filters for account, date range and amount, so the Home tab is freed to become a summary/dashboard.
   Kind: feature.
   Lanes: ui.
   Source: user-request-2026-07-12.
   Absorbed into FIBR-0012 (P10 dashboard) 2026-07-12: the Transactions tab is built there with search + date-range + account + category filters (all combinable). The amount-range (min/max) filter this bullet originally named was NOT chosen in the FIBR-0012 brainstorm and is DEFERRED (recorded in docs/specs/FIBR-0012.md Out-of-scope) — a clean future follow-up. Close this bullet when FIBR-0012 ships; re-open a fresh item only if the amount-range filter is still wanted.
+  Resolved (2026-07-28): closed as covered by its absorb target. FIBR-0012
+  (P10 dashboard) is ✅ and shipped the dedicated Transactions tab
+  (src/finbreak/ui/transactions.py) with search + date-range + account +
+  category filters, all combinable — which is what this bullet asked for
+  minus one piece. The amount-range (min/max) filter the 2026-07-12 absorb
+  note explicitly DEFERRED is still wanted, and is re-filed as its own
+  item rather than kept alive here.
 
 - 📋 [FIBR-0110] **Every date input accepts typed entry (validated) or a date picker.**
   User request 2026-07-12. Cross-cutting UX: wherever a date is entered — the manual-entry dialog, the future Transactions filters (above), any settings/import date field — offer both a typed field (ISO-validated, the existing parse_transaction date check) and a QDateEdit-style calendar picker, so neither typists nor mouse users are forced. A shared date-input widget/helper so the two modes stay consistent (Rule-of-Three: extract on the third site).
@@ -2088,6 +2101,17 @@ because retrofitting them is a data migration.
   Verified 2026-07-28 against a real 12-page, 3-month SBSA Current-account
   statement (2026-02-28 -> 2026-05-27, 183 transaction rows; NOT committed —
   personal data, see "needs a sample" below).
+  Sample located (2026-07-28): the user supplied the path to the real
+  statement this diagnosis was made against —
+  /mnt/Emulators/storage_backup_2026-05-08/Statements/Current/SBSA_Statement_2026-05-28_3-months.pdf
+  (LOCAL ONLY — real payees and balances; it must NEVER be committed, and
+  nothing derived from it may enter tests/fixtures/ un-anonymised). So the
+  blocker is no longer "no access to the layout" but "no committable
+  fixture": the work is to hand-build an anonymised copy in the same layout
+  (fictional payees, made-up amounts, recomputed running balance so the
+  existing balance checksum still passes) the way the current
+  standard_bank fixtures were produced, then fix detect_standard_bank
+  against it and re-verify once against the real file locally.
 
   BOTH import paths fail, so the user sees no importable rows at all:
 
@@ -2137,6 +2161,43 @@ because retrofitting them is a data migration.
   Kind: fix.
   Lanes: importers, tests.
   Source: user-request-2026-07-28 (real statement checked in-session).
+
+- 📋 [FIBR-0191] **Amount-range (min/max) filter on the Transactions tab.**
+  Split out of FIBR-0109 (2026-07-28) as the one piece its absorb target
+  did not build. FIBR-0012 shipped the Transactions tab
+  (src/finbreak/ui/transactions.py) with search + date-range + account +
+  category filters, all combinable; the amount-range (min/max) filter
+  FIBR-0109 originally named was deliberately NOT chosen in the FIBR-0012
+  brainstorm and is recorded under Out-of-scope in
+  docs/specs/FIBR-0012.md. The user confirmed on 2026-07-28 that it is
+  still wanted, so it is re-filed here rather than left implicit in a
+  closed bullet.
+
+  Scope: two optional amount inputs (min, max) in the existing Transactions
+  filter bar, combinable with every filter already present, pushed into the
+  same query/where layer the other filters use — not a post-filter in
+  Python. Decisions the spec must settle, none of them obvious:
+
+  - Whether the comparison is on the SIGNED amount or its magnitude. The
+    app stores money-out as negative, so "over 1000" most likely means
+    |amount| >= 1000 to a user, but a signed reading is defensible and the
+    two disagree on every debit. Getting this wrong is a wrong-total class
+    bug, so it needs an explicit invariant either way.
+  - Whether a blank input means unbounded on that side (expected) and how
+    min &gt; max is handled — refuse, swap, or return empty.
+  - Currency: FIBR-0087 (per-account currency) and FIBR-0111 (currency in
+    its own column) are both open, so a mixed-currency vault would compare
+    unlike amounts. Either scope this to the single-currency case with a
+    note, or gate it on those items.
+  - Whether the range participates in the saved per-tab filter state the
+    other Transactions filters use.
+
+  Reuses the existing list_transactions read path and the tab's current
+  filter plumbing; no new repository. Dependencies: FIBR-0012 (✅).
+  **Layman:** Let people narrow the transaction list to amounts between two figures — e.g. "show me everything over R1 000" — alongside the search, date, account and category filters already there.
+  Kind: feature.
+  Lanes: ui.
+  Source: user-request-2026-07-28.
 
 ### ⚡ Performance
 
