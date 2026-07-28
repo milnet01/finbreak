@@ -2441,7 +2441,7 @@ because retrofitting them is a data migration.
   FIBR-0084 stays 📋 when this ships, and stays 📋 when FIBR-0113 ships —
   FIBR-0192 is its blocker, not either half of this split.
 
-  Spec next (docs/specs/FIBR-0193-account-storage-fields.md), then cold-eyes,
+  Spec next (docs/specs/FIBR-0193.md), then cold-eyes,
   then TDD.
   **Layman:** Give each account somewhere to keep an account number and a free-text note — the storage side only; the Accounts screen that shows and edits them is FIBR-0113.
   Kind: feature.
@@ -2517,7 +2517,43 @@ because retrofitting them is a data migration.
   (b) is a project-convention decision, not a docs defect.
   **Layman:** Every spec that involves a database change is supposed to ship a short build-order file. None of them do, and each spec currently explains that omission again. Decide once: either start writing them, or record the exemption in one place.
   Kind: doc.
-  Source: cold-eyes-2026-07-28 loop 1 on docs/specs/FIBR-0193-account-storage-fields.md.
+  Source: cold-eyes-2026-07-28 loop 1 on docs/specs/FIBR-0193.md.
+
+- 📋 [FIBR-0196] **Reconcile the spec-filename rule: naming.md says `<ID>.md`, the shared spec-format says `<ID>-<topic>.md`.**
+  Two standards claim authority over the same filename and give
+  different answers:
+
+  - docs/standards/naming.md: "**Spec doc** | `<ID>.md` (the stable
+    roadmap ID)", repeated under *ID-named docs* ("using the **stable ID
+    verbatim**"). Its §9 *Project overrides* says "(None yet.)"
+  - ~/.claude/skills/_shared/spec-format.md §2 (the governing format
+    standard, since this project has no docs/standards/spec-format.md):
+    `docs/specs/<ID>-<topic>.md`.
+
+  Measured 2026-07-28: 48 of the 49 files in docs/specs/ use the bare-ID
+  form. The single exception was FIBR-0193, written topic-suffixed during
+  the FIBR-0113 split; it has been renamed to docs/specs/FIBR-0193.md so
+  the tree is uniform again, and every reference repointed.
+
+  That fixes the instance, not the conflict. The next spec written from
+  the shared format standard will depart again, and a cold reviewer will
+  correctly flag it again.
+
+  Decide one of:
+  (a) keep the bare-ID form (matches all 49 specs and naming.md) and
+  record it as a project override in naming.md §9, so the departure from
+  the shared standard is stated once and deliberately; or
+  (b) adopt `<ID>-<topic>.md`, update naming.md's table and its ID-named
+  docs paragraph, and accept that the existing 49 are grandfathered.
+
+  (a) is the cheaper answer — it is what the tree already does, and the
+  topic suffix buys nothing that the spec's own title line does not.
+
+  Surfaced by /cold-eyes rather than decided inline: which standard wins
+  is a project-convention call, not a docs defect.
+  **Layman:** Two rulebooks disagree about what to call a spec file. Pick one so the next spec doesn't get named wrong.
+  Kind: doc.
+  Source: cold-eyes-2026-07-28 loop 2 on docs/specs/FIBR-0193.md.
 
 ### ⚡ Performance
 
