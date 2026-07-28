@@ -2448,6 +2448,48 @@ because retrofitting them is a data migration.
   Lanes: repo.
   Source: split-from-FIBR-0113-2026-07-28 (/cold-eyes loop 5).
 
+- 📋 [FIBR-0194] **StatementsWidget.refresh leaves a stale selection that resolves to a different statement under an active sort.**
+  Found while reviewing FIBR-0113's spec, which took StatementsWidget.refresh
+  as its fill precedent. Verified against source and reproduced against real Qt
+  (docs/reviews/FIBR-0113-selection-drift-repro.py).
+
+  ui/statements.py::StatementsWidget.refresh fills with
+  `setRowCount(len(self._rows))` + setItem inside fill_guard, with NO
+  preceding clear. setRowCount(len) does not clear rows, so an existing
+  selection SURVIVES the repopulate; fill_guard's exit then re-applies the
+  active sort, and the selection rides its item through that re-sort. It
+  lands on whichever row's INSERTION index equals the previously-selected
+  VISUAL row — i.e. `_table_state.selected_index` can return a different
+  object than the user selected.
+
+  Measured with three rows under a descending sort: the first and last rows
+  drift; the MIDDLE row is the sort's fixed point and does not, which is why
+  a single-row test can pass in the broken state.
+
+  HARMLESS TODAY, which is why this is 📋 and not urgent:
+  StatementsWidget._on_selection_changed only sets two button enabled-states
+  (_reassign_button, _delete_button) and touches no form, so the worst
+  current outcome is a correctly-enabled button. But _on_reassign and
+  _on_delete both resolve through _selected_row() — so a user who sorts,
+  selects, and triggers a refresh (any add/import) before clicking could
+  reassign or delete a DIFFERENT statement than the one highlighted. Worth
+  confirming whether any refresh can interleave with a live selection that
+  way before deciding the severity.
+
+  Fix: add a leading `self._table.setRowCount(0)` inside the fill_guard, as
+  FIBR-0113 §3 decision 6 does for the Accounts table, and add a regression
+  test that drives EVERY row (not one) under a descending sort and asserts
+  selected_index is None after refresh.
+
+  Check the other tables built on the same _table_state seam for the same
+  pattern before fixing — transactions, transfers, recurring, rules and the
+  import-wizard preview all use fill_guard, and any of them that loads a
+  form from the selection has the FIBR-0113 CR-1 hazard for real.
+  **Layman:** On the Statements tab, redrawing the list while it is sorted can leave the highlighted row pointing at a different statement than the one shown. Harmless today because the two buttons it drives are only enabled/disabled — but the same pattern would corrupt data on any tab that loads a form from the selection.
+  Kind: fix.
+  Lanes: ui.
+  Source: cold-eyes-2026-07-28 loop 5 on docs/specs/FIBR-0113.md (code-side observation, surfaced not fixed).
+
 ### ⚡ Performance
 
 - ✅ [FIBR-0025] **Enable SQLite WAL mode.** Set
