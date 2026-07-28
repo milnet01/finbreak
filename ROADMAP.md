@@ -417,8 +417,9 @@ scariest unknown (native-library bundling) up front.
   Kind: doc-fix.
   Source: in-session-2026-07-28 (v0.1.18 release).
 
-- 📋 [FIBR-0188] **The AppImage's embedded .desktop name doesn't match the app id, so the panel shows a second icon.**
+- ✅ [FIBR-0188] **The AppImage's embedded .desktop name doesn't match the app id, so the panel shows a second icon.**
   Verified 2026-07-28 by source read (user screenshot shows the duplicate).
+  Resolved (2026-07-28): SHIPPED. Two new build vars — APP_ID (the .desktop basename AND the bundled icon name, which appimagetool requires to match Icon=) and APP_WM_CLASS (the X11 half, from applicationName(), the bare "finbreak") — both defaulting to $ONEFILE so the self-test stub is byte-identical. Also corrected the app.py comment that ASSERTED the AppImage already shipped a reverse-DNS .desktop; it never did, and that unverified claim is why the mismatch survived. Tests derive expectations FROM app.py, so a future app_id change fails the test rather than silently desyncing the launcher. Source-scan only — the grouping is empirical and proves out on the NEXT release's AppImage, not the published 0.1.18 one. Gate: 1403 passed.
 
   The mismatch, exactly:
     - src/finbreak/app.py:48 calls
@@ -1975,7 +1976,7 @@ because retrofitting them is a data migration.
   Kind: ux.
   Source: user-request-2026-07-28 (screenshot).
 
-- 📋 [FIBR-0187] **The Import-statement preview table forgets its column widths between imports.**
+- ✅ [FIBR-0187] **The Import-statement preview table forgets its column widths between imports.**
   Verified 2026-07-28 (user screenshot + source read). The import preview table is
   built at src/finbreak/ui/import_wizard.py:272 as a plain QTableWidget(0, 5) with
   setHorizontalHeaderLabels — and never calls remember_columns(), the helper in
@@ -1983,6 +1984,7 @@ because retrofitting them is a data migration.
   recurring.py, statements.py, transfers.py, rules.py all import it). It also has
   no objectName, which remember_columns needs as its settings key
   ("columns/<objectName>").
+  Resolved (2026-07-28): SHIPPED by TDD. The preview table was the one table built without remember_columns. Gave it objectName "import_preview_table" (the helper keys saved state on it; unnamed would share the empty "columns/" key and cross-corrupt the other tables) and called the existing helper — no new code. Columns are now drag-reorderable too, from the same call. 2 new tests, both failing before. Gate: 1401 passed.
 
   So this is a missed call-site, not missing capability: remember_columns already
   restores widths + column order + sort on construction and re-saves on every
@@ -2002,10 +2004,11 @@ because retrofitting them is a data migration.
   Kind: fix.
   Source: user-request-2026-07-28 (screenshot).
 
-- 📋 [FIBR-0189] **Allow only one running finbreak instance; a second launch raises the existing window.**
+- ✅ [FIBR-0189] **Allow only one running finbreak instance; a second launch raises the existing window.**
   User request 2026-07-28: "ensure that the app can only have one running
   instance (if we need to change this in future we can revisit this)" — so
   single-instance is the intended behaviour, not a configurable one for now.
+  Resolved (2026-07-28): SHIPPED by TDD. src/finbreak/single_instance.py — QLocalSocket probe then QLocalServer listen, wired in app.py::run before any window is built. Handles all three traps: a kill -9 stale socket (removeServer before listen, safe only because the probe ran first) that would otherwise make the app permanently unlaunchable; the update relaunch (_release_for_relaunch frees the socket before the key wipe, since apply() ends in os._exit and runs no cleanup — else the replacement would probe a live owner and silently exit); and per-user scoping (the socket lives in a shared temp dir on Unix). Fails OPEN. 8 tests + spec.md. auto_update INV-6 re-pointed from callback IDENTITY to behaviour. Gate: 1411 passed.
 
   Two reasons this is worth more than tidiness:
     1. It is a likely contributor to the duplicate panel icon in FIBR-0188 —

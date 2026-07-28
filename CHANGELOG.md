@@ -21,6 +21,26 @@ signaling per
 
 ## [Unreleased]
 
+### Changed
+
+- **Only one copy of finbreak runs at a time — launching it again brings the open window to the front.** (FIBR-0189)
+  Starting finbreak when it's already running no longer opens a second
+  copy; it raises the window you already have, restoring it if it was
+  minimised. This also keeps two copies from writing to your vault at once.
+
+### Fixed
+
+- **Running the AppImage no longer puts a duplicate finbreak icon in the taskbar.** (FIBR-0188)
+  The AppImage's launcher had a different name from the one the window
+  announces, so your desktop treated them as two separate things. Takes
+  effect from the next release's AppImage — an already-downloaded copy keeps
+  the old launcher.
+
+- **The import preview table now remembers your column widths between imports.** (FIBR-0187)
+  Widen a column while checking an import and it stays that way next time,
+  like every other table in the app. You can also drag its columns into the
+  order you prefer.
+
 ## [0.1.18] - 2026-07-28
 
 ### Added
