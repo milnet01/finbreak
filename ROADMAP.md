@@ -1328,6 +1328,28 @@ because retrofitting them is a data migration.
   **Layman:** Let a person drag columns wider or narrower and drag them into a different order on any table (Statements, Home, Accounts, Categories, Rules), and have finbreak remember that layout next time.
   Kind: feature.
   Source: user-request-2026-07-11 (dogfooding v0.1.0).
+  Scope re-checked 2026-07-28 — mostly already shipped, folded into
+  FIBR-0113. Everything this bullet asks for exists: ui/_table_state.py's
+  remember_columns() sets setSectionsMovable(True), restores
+  QHeaderView.saveState()/restoreState() from the plaintext window INI
+  (paths.window_settings_path, NOT the vault — the FIBR-0052 INV-5 rule
+  this bullet names), keyed per table by objectName, and re-saves on
+  resize / reorder / re-sort. The Reset-layout action this bullet also
+  asks for is main_window._reset_layout (menu action
+  "action_reset_layout"), covered by test_INV6b_reset_layout. Shipped as
+  FIBR-0117 with the reorder half added by FIBR-0012, and most recently
+  extended to the import-wizard preview table.
+
+  Call sites today: statements, transactions, rules, recurring, transfers,
+  import_wizard. Of the tables this bullet enumerates, that leaves:
+  - Categories — a QTreeWidget with setHeaderHidden(True) and a single
+    column, so resize/reorder/persist has nothing to act on. Deliberately
+    out of scope, not an omission.
+  - Accounts — genuinely missing, because it is still a QListWidget with
+    no header at all. Making it a table is FIBR-0113.
+
+  So this bullet's residue is exactly FIBR-0113's table conversion; it
+  will be flipped ✅ alongside it rather than tracked as separate work.
 
 - 📋 [FIBR-0085] **Batch statement import — import several statement files in one go.**
   Motivated by dogfooding v0.1.0. Today the import wizard handles ONE file per run (FIBR-0007 CSV / FIBR-0008 OFX / FIBR-0009 PDF). Add multi-file selection that runs each file through the existing preview -> dedup -> commit pipeline, with per-file semantics (a bad/duplicate file is reported and skipped, never aborting the batch) and a summary dialog listing each file's outcome (imported N / skipped-duplicate / failed-why) + transaction counts. Mixed formats (CSV/OFX/PDF) allowed in one batch; per-file mapping where the format needs it (CSV mapping profile selection, PDF password prompt). Reuses the existing importers + FIBR-0052 statement provenance; the new work is the multi-file wizard flow + aggregate reporting. Deps: FIBR-0007/0008/0009 (importers), FIBR-0052 (per-statement provenance so each imported file is a distinct statement row).
@@ -1483,12 +1505,43 @@ because retrofitting them is a data migration.
   Source: dogfooding-2026-07-12.
   Resolved (2026-07-12): _table_region now falls back, on a Family-C page with no "Date Description Amount" column header, to starting the region at the first real transaction row (a CC segment ending in a 2-decimal amount — which excludes summary-page date spans like "Statement Period 20 Sep 25 to 20 Oct 25"). TDD: 2 pure _table_region unit tests (header-less continuation page captured; header-less summary page stays empty). Validated end-to-end on the real SBSA 2025-10-20 statement in a throwaway scratchpad: now 72 drafts, reconciles exactly (1348.95 - (-619.82) = 1968.77 = closing); the 3 previously-dropped page-3 rows (Checkers 514.21, Cash Finance Charge 23.05, Tips 10.00 = 547.26) are captured. Full SB suite + gate green (604 passed/1 skipped). Real file/password never committed; tests are synthetic. Note: a pre-existing cosmetic issue remains (a "Continued on next page......" line folds into the last page-N transaction's description) — filed separately, not this fix.
 
-- 📋 [FIBR-0113] **Accounts tab: show accounts in columns (Name / Type / Account number / Note) instead of one line.**
+- 🚧 [FIBR-0113] **Accounts tab: show accounts in columns (Name / Type / Account number / Note) instead of one line.**
   User request 2026-07-12 (screenshot): the Accounts tab lists each account as one line "Credit Card — Credit card" (name — type). Move to a columnar QTableWidget with columns: Name, Type of account, Account number, Note (optional). Requires two NEW nullable account fields — account_number and note (schema bump) — plus the add/edit form growing those inputs and the AccountsWidget becoming a table (mirrors the Rules/Statements tab table shape). Account number is display/reference only (not used for matching). Dovetails with the columnar direction of FIBR-0109 (Transactions tab) and the account credential accessors already on the accounts repo (FIBR-0009).
   **Layman:** Show accounts in a proper table (Name, Type, Account number, and an optional Note) instead of a single cramped "Name — Type" line each.
   Kind: feature.
   Lanes: ui, repo.
   Source: user-request-2026-07-12.
+  Started 2026-07-28, with FIBR-0084 folded in. Scope check first: the
+  column machinery FIBR-0084 asks for ALREADY SHIPPED under FIBR-0117 /
+  FIBR-0012 — _table_state.remember_columns does widths + drag-reorder +
+  per-table persistence in the window INI keyed by objectName, and
+  main_window._reset_layout clears it. It is already called by Statements,
+  Transactions, Rules, Recurring, Transfers and the import-wizard preview.
+  The only two screens without it are Categories (a single-column
+  QTreeWidget with setHeaderHidden(True) — column customisation is
+  meaningless there) and Accounts (still a QListWidget). So FIBR-0084's
+  residue IS this item, and it closes alongside.
+
+  User decisions (2026-07-28):
+  - FIVE columns: Name | Type | Account number | Note | Status. The Status
+    column absorbs the suffixes _refresh currently concatenates onto the
+    row text (the 🔑 saved-statement-password marker and the FIBR-0177
+    reconciliation ✓ / ⚠ off by {money} / ⚠ {n} periods marker), so the
+    user can click-sort to bring non-reconciling accounts to the top.
+  - Account number is MASKED by default (last 4 shown) with an explicit
+    reveal toggle — it is shoulder-surf / screenshot exposure, not storage
+    exposure (the vault is already encrypted). The mask is display-only;
+    the stored value is verbatim.
+  - The add/edit form stays INLINE on the tab, relaid as a two-row grid
+    rather than moving to a dialog.
+
+  Work: migration 13 adds nullable accounts.account_number + accounts.note
+  (LATEST_SCHEMA_VERSION is 12); Account model + accounts repo/service
+  carry them; AccountsWidget moves QListWidget -> QTableWidget using the
+  existing _table_state seam (SortableItem for the sortable columns,
+  fill_guard, tag_row/selected_index so an action still targets the right
+  account after a re-sort, enable_sorting, remember_columns with a distinct
+  objectName). Spec next, then cold-eyes, then TDD.
 
 - ✅ [FIBR-0114] **Auto-lock should be an inactivity timer (reset on user activity), not an absolute timer from unlock.**
   User report 2026-07-12. AuthService._arm_timer (auth.py:241) starts a single-shot QTimer at unlock (and only re-arms on a settings change), so the auto-lock fires a fixed duration after UNLOCK regardless of activity — locking mid-use. Fix: make it an inactivity timer. Add AuthService.notify_activity() that restarts the running timer with its existing interval (no settings re-read, since it fires on every input event; no-op when locked/headless), and have MainWindow install an application-level event filter that calls notify_activity() on user-input events (MouseButtonPress/MouseMove/KeyPress/Wheel). TDD: service-level (notify_activity restarts the running timer when unlocked, no-op when locked) + shell-level (eventFilter calls notify_activity on an input event).
