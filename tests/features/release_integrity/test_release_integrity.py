@@ -373,3 +373,30 @@ def test_INV7_security_model_records_signed_manifest_inv13():
     assert re.search(r"sign|Ed25519", para, re.IGNORECASE), (
         "INV-13 must describe the manifest as Ed25519-signed"
     )
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0184 — the tag `gh release create` makes remotely must land locally too
+# --------------------------------------------------------------------------- #
+def test_FIBR0184_release_linux_fetches_the_tag_it_published():
+    """The script never runs `git tag` — `gh release create` creates the ref on
+    the REMOTE. Without a fetch the local clone has no such tag, so the very next
+    step (.claude/bump.json's Flatpak `commit:` re-pin, which resolves
+    `git rev-parse v<NEW>^{commit}`) fails on a ref that demonstrably exists."""
+    # Comment-blind: this file's own prose names both commands, and so do the
+    # script's explanatory comments — scan the executable lines only.
+    text = "\n".join(
+        line
+        for line in _RELEASE_LINUX.read_text().splitlines()
+        if not line.lstrip().startswith("#")
+    )
+    assert "git tag" not in text, (
+        "release-linux.sh now tags locally — this test's premise (the tag is "
+        "created remotely by gh) no longer holds; re-check the fetch is still needed"
+    )
+    create_at = text.index("gh release create")
+    tail = text[create_at:]
+    assert "git fetch" in tail and "--tags" in tail, (
+        "release-linux.sh: no `git fetch --tags` after the release is published, "
+        "so the published tag never reaches the local clone (FIBR-0184)"
+    )

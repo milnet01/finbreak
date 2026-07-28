@@ -2,7 +2,9 @@
 # Cut + publish the LINUX release: build the signed AppImage and publish the
 # GitHub release for the CURRENT source version (the FIBR-0016 Linux slice).
 #
-# Run this FIRST. It creates the vX.Y.Z tag + GitHub release; the companion
+# Run this FIRST. It creates the vX.Y.Z tag + GitHub release (the tag is made
+# REMOTELY by the gh publish step — nothing here tags locally — so step 5 fetches
+# it back and the local clone has it too); the companion
 # scripts/release-windows.sh then builds the Windows .exe against that tag and
 # attaches it to the SAME release.
 #
@@ -18,6 +20,8 @@
 #   4. Build the signed SHA256SUMS manifest + linux SBOM, then create the vX.Y.Z
 #      GitHub release (non-prerelease, --latest) with the AppImage + .sig + those
 #      supply-chain artifacts, and notes lifted from the CHANGELOG [X.Y.Z] section.
+#   5. Fetch the just-published tag so `git rev-parse vX.Y.Z` resolves locally,
+#      and print its sha — the Flatpak `commit:` re-pin needs exactly that.
 #
 # Prerequisites: the project venv ACTIVE (`. .venv/bin/activate` — cryptography is
 # needed to sign + verify), podman/docker on PATH (the build container), a signing
@@ -186,5 +190,23 @@ else
         --title "finbreak $TAG" --notes-file "$NOTES" --latest
 fi
 
+# Step 8 — bring the tag home. The publish step above creates the ref on the
+# REMOTE only (nothing in this script tags locally), so without this the local
+# clone has no $TAG and the very next release step — .claude/bump.json's Flatpak
+# `commit:` re-pin, which resolves `git rev-parse $TAG^{commit}` — fails on a tag
+# that demonstrably exists on GitHub. Non-fatal: the release is already published,
+# so a fetch hiccup must not exit non-zero and read as a failed release.
+if git fetch --tags --quiet origin 2>/dev/null && SHA="$(git rev-parse "$TAG^{commit}" 2>/dev/null)"; then
+    echo "== release-linux: fetched $TAG locally — commit $SHA =="
+else
+    SHA=""
+    echo "== release-linux: WARNING — could not fetch $TAG locally; run 'git fetch --tags origin' before the Flatpak re-pin ==" >&2
+fi
+
 echo "== release-linux: DONE — $TAG published with the Linux AppImage + .sig =="
 echo "   Next: run scripts/release-windows.sh to build, sign, and attach the Windows .exe."
+# `[ -n ]` as the LAST command would make an empty SHA the script's exit status
+# under `set -e`, turning a published release into a reported failure.
+if [ -n "$SHA" ]; then
+    echo "   Then re-pin the Flatpak source: set commit: $SHA in packaging/flatpak/io.github.milnet01.finbreak.yaml"
+fi
