@@ -2084,6 +2084,60 @@ because retrofitting them is a data migration.
   Kind: feature.
   Source: user-request-2026-07-28.
 
+- 📋 [FIBR-0190] **A current Standard Bank Current-account statement imports ZERO of its 183 rows — the "Payments / Deposits" column layout matches no Family signature, and the generic fallback can't split the columns.**
+  Verified 2026-07-28 against a real 12-page, 3-month SBSA Current-account
+  statement (2026-02-28 -> 2026-05-27, 183 transaction rows; NOT committed —
+  personal data, see "needs a sample" below).
+
+  BOTH import paths fail, so the user sees no importable rows at all:
+
+  1. The dedicated reader returns None (unrecognised -> generic fallback).
+     `_LEGAL_MARKER` IS present, so it is definitely an SB statement, but every
+     family signature misses. The statement's transaction header line is:
+         `Date Description Payments Deposits Balance`
+     Family A wants debits+credits+date+balance (window 3) — "credits" appears
+     NOWHERE in the document. Family D wants withdrawals+deposits+balance —
+     "deposits" is present but "withdrawals" is not. C and B miss outright.
+     So this is a FIFTH transactional layout: the money-out column is headed
+     **Payments** (not Debits) and money-in **Deposits** (not Credits).
+
+  2. The generic PDF fallback finds a table but cannot use it. `candidate_tables`
+     returns 2 candidates; candidate 1 has the correct 5-cell header
+     ['Date','Description','Payments','Deposits','Balance'] and 183 data rows —
+     but the DATA rows are not column-split: the whole row lands in cell 0
+     (e.g. "28 Feb 26 &lt;desc&gt; -250.00 4,278.15\n&lt;continuation&gt;"), because the
+     page has no ruling lines for pdfplumber to split on. Result: CsvImporter
+     with a Payments/Deposits debit/credit ColumnMapping yields
+     **drafts=0, errors=183** under every date format tried
+     (%d %b, %b %d, %d %m, %m %d, %d/%m/%Y, %m/%d/%Y, %d %m %Y).
+
+  Observed row shape (useful for the grammar): `DD Mon YY  &lt;description&gt;
+  &lt;signed amount&gt;  &lt;running balance&gt;`, with a wrapped continuation line
+  carrying the rest of the description — i.e. date-first with an already-SIGNED
+  single amount plus a balance tail, which is closer to the existing Family-C /
+  fold-based row parsing than to Family A's column pair. The region opens with
+  `STATEMENT OPENING BALANCE &lt;amount&gt;` and terminates on the existing
+  "please verify" terminator, both already handled.
+
+  Suggested shape: add this as a new Family (or a Family-A variant) —
+  `detect_standard_bank` needs a signature on `date`+`description`+`payments`+
+  `deposits`+`balance`, and a row grammar for the date-first signed-amount +
+  balance form, reusing `_fold` / `_anchor_balance` / `_verify_row` and the
+  existing running-balance checksum (which this layout CAN satisfy — it prints a
+  balance on every row plus an opening balance). Note "Payments" is a money-OUT
+  column here, which inverts the usual reading of that word — worth a comment.
+
+  Needs a sample: the verification file is a real statement with real balances
+  and payees, so it cannot go in `tests/fixtures/`. Blocked on a hand-anonymised
+  copy (same layout, fictional payees/amounts, recomputed running balance) the
+  way the existing standard_bank fixtures were produced. Same blocker class as
+  FIBR-0074, but this one is Standard Bank — a bank the app already claims to
+  support — so it is a REGRESSION-grade gap, not a new-bank feature.
+  **Layman:** A real Standard Bank statement won't import at all right now — the reader doesn't recognise this newer page layout, and the manual fallback can't tell the columns apart either.
+  Kind: fix.
+  Lanes: importers, tests.
+  Source: user-request-2026-07-28 (real statement checked in-session).
+
 ### ⚡ Performance
 
 - ✅ [FIBR-0025] **Enable SQLite WAL mode.** Set
