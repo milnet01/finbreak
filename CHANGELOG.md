@@ -23,6 +23,23 @@ signaling per
 
 ### Changed
 
+- **The dashboard scrolls instead of squashing when the window is too small** (FIBR-0186)
+  The dashboard content now has a minimum readable size. Shrink the window
+  below it and the page scrolls; the three breakdown columns keep a width you
+  can actually read rather than compressing into slivers. It is a minimum, not
+  a fixed size, so a larger system font or display scaling still grows the
+  layout rather than clipping text.
+
+- **Alerts moved off the dashboard into an Alerts button + dialog** (FIBR-0185)
+  The Home dashboard no longer carries an alerts card whose height grew and
+  shrank with the number of open alerts, shoving everything below it up and
+  down the page. Alerts now live behind an "Alerts (4)" button on the
+  dashboard's top row, which opens a dialog listing each one with its own
+  dismiss control. The button fills with the active theme's attention colour
+  while something is outstanding and sits quiet and disabled when nothing is —
+  each of the six themes carries its own attention colour, so it stays legible
+  in all of them. Dismissals persist exactly as before.
+
 - **Only one copy of finbreak runs at a time — launching it again brings the open window to the front.** (FIBR-0189)
   Starting finbreak when it's already running no longer opens a second
   copy; it raises the window you already have, restoring it if it was

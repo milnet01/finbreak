@@ -1903,7 +1903,7 @@ because retrofitting them is a data migration.
   INV-14 (3 new tests); FIBR-0171 §D1 carries an amendment note. Gate
   green 1363 passed, 2 skipped.
 
-- 📋 [FIBR-0185] **Move the Home alerts card behind an Alerts button + dialog, so alerts never reflow the dashboard.**
+- ✅ [FIBR-0185] **Move the Home alerts card behind an Alerts button + dialog, so alerts never reflow the dashboard.**
   Verified 2026-07-28 from a user screenshot: the alerts card renders inline at
   the TOP of the Home dashboard, above the period picker. With 4 alerts it
   occupies ~120px and pushes the whole dashboard (period picker, Net line, the
@@ -1911,6 +1911,23 @@ because retrofitting them is a data migration.
   trend chart) down the page. Dismissing one alert pulls everything back up. So
   the dashboard's vertical layout is a function of how many alerts happen to be
   open — the thing the user is reading moves under them as they read it.
+  Resolved 2026-07-28. The inline alerts card is gone from the Home
+  dashboard; alerts now sit behind an "Alerts (N)" button on the selector
+  row, which opens a new AlertsDialog (src/finbreak/ui/alerts_dialog.py)
+  listing every open alert with its per-alert dismiss control. The FIBR-0172
+  alert model, detectors and dismissal store are untouched — the rows and the
+  VaultLockedError-silent dismiss handler moved out of HomeView verbatim.
+  Button states are theme-driven, not hard-coded: ThemeTokens grew a ninth
+  `attention` token (dark on the three light themes, light on the three dark
+  ones, so it reads against each window), and build_stylesheet fills
+  QPushButton#alerts_button with it — with a separate :disabled rule so "no
+  alerts" sits quietly. The dialog opens through the shell's tracked
+  _open_dialog(defer=False) path (auto-lock tears it down) and emits `changed`
+  after each dismiss, which the shell routes to HomeView.refresh_alerts() so
+  the count stays live. Net effect: the dashboard's top row is fixed-height
+  whatever the alert count. Tests: tests/features/spending_alerts/
+  test_alerts_ui.py (9 legs, replacing test_alerts_card.py) + a theme leg
+  pinning the attention token's light/dark posture and the button's QSS.
 
   User's chosen design (they weighed the alternative and rejected it): NOT a
   separate Alerts tab — a tab is easy to never open, and would need its own
@@ -1939,7 +1956,7 @@ because retrofitting them is a data migration.
   Kind: ux.
   Source: user-request-2026-07-28 (screenshot).
 
-- 📋 [FIBR-0186] **Give the Home dashboard a fixed layout that scrolls when the window is too small, instead of reflowing.**
+- ✅ [FIBR-0186] **Give the Home dashboard a fixed layout that scrolls when the window is too small, instead of reflowing.**
   User request 2026-07-28, alongside the Alerts-button item above: "Set a fixed
   size for everything on the dashboard so that if someone makes the window too
   small, it means they will have to scroll to see everything."
@@ -1948,6 +1965,17 @@ because retrofitting them is a data migration.
   stops squashing; a too-small window scrolls) without clipping text for anyone
   running larger system fonts or display scaling. This closes the design note
   above — build it that way.
+  Resolved 2026-07-28. As decided, the minimum-size + QScrollArea route, not
+  literal per-widget fixed sizes. The scroll area already existed (FIBR-0012
+  D1) with no floor under it, so the only change was a floor:
+  `dashboard_content` (the scrolled content widget) now carries
+  setMinimumSize(880, 620). Below that the viewport scrolls instead of
+  squashing the three donut columns into slivers; above it the layout is still
+  free to grow, so larger system fonts / display scaling widen rather than
+  clip. The floor is on the content only — HomeView's own minimumSizeHint
+  stays small, so the window is never pinned open. Tests:
+  tests/features/dashboard/test_min_size.py (3 legs; verified
+  discriminating — two fail with the setMinimumSize line removed).
 
   DESIGN NOTE — recommend implementing this as a MINIMUM size plus a scroll area,
   not as hard-coded pixel sizes on each widget. Same user-visible behaviour (the
