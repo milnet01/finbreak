@@ -262,11 +262,6 @@ class StatementsWidget(QWidget):
         # The tagged parallel-list index of the selection — correct after a re-sort.
         return selected_index(self._table)
 
-    def selected_period_id(self) -> int | None:
-        """The id of the selected statement, or ``None`` with no selection."""
-        index = self._selected_row()
-        return self._rows[index].id if index is not None else None
-
     def _select_period(self, period_id: int) -> None:
         """Select the row for ``period_id`` (used by the UI tests)."""
         for i, statement in enumerate(self._rows):

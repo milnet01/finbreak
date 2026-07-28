@@ -218,9 +218,6 @@ class TransfersWidget(QWidget):
         self._refresh()
 
     # --- test / shell accessors -------------------------------------------- #
-    def candidate_count(self) -> int:
-        return len(self._candidates)
-
     def _selected_row(self, table: QTableWidget) -> int | None:
         # The tagged parallel-list index of the selection — correct after a re-sort
         # (the visual row order can differ from _candidates/_confirmed order).

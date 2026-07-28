@@ -33,13 +33,9 @@ from decimal import Decimal, InvalidOperation
 from enum import StrEnum
 
 from finbreak.importers.base import ParseResult
-
-# ``PasswordError`` is re-exported: pikepdf's re-prompt signal (FIBR-0009 INV-3), so
-# the wizard can catch it from either importer module.
 from finbreak.importers.pdf_importer import (
     _MAX_PDF_PAGES,
     _MAX_PDF_ROWS,
-    PasswordError,  # noqa: F401  (re-export)
     _normalise_to_plaintext,
 )
 from finbreak.models import TransactionDraft
@@ -890,7 +886,7 @@ class StandardBankImporter:
             opening = _capture_opening(region_lines, fmt)
         _verify_checksum(family, opening, result.drafts, closing, exponent)
 
-        start, end = _span(family, period, result.drafts, full_text)
+        start, end = _span(period, result.drafts, full_text)
         # Persist the closing balance for the forecast anchor (FIBR-0171 D4): the
         # figure the checksum verified, in signed minor units, or None when the
         # statement prints none (Savings / Family A rides the per-row gate).
@@ -916,14 +912,13 @@ def _cc_opening(full_text: str, fmt: Fmt) -> Decimal:
 
 
 def _span(
-    family: Family,
     period: tuple[str, str] | None,
     drafts: list[TransactionDraft],
     full_text: str,
 ) -> tuple[str | None, str | None]:
-    """The ``ParseResult`` coverage span (D8): A/C = the authoritative printed
-    period; B/D = min/max parsed date, else the statement "Date" line (quiet
-    month)."""
+    """The ``ParseResult`` coverage span (D8): a printed period wins (families A/C
+    are the ones that supply one); otherwise min/max parsed date, else the
+    statement "Date" line (quiet month)."""
     if period is not None:
         return period
     dates = sorted(d.occurred_on for d in drafts)

@@ -180,11 +180,11 @@ def test_D8_span_quiet_bd_falls_back_to_statement_date():
     # B/D print no "Statement from...to..." period; a quiet month (zero drafts)
     # falls back to the statement "Date" line for the coverage span (both the
     # YYYY MM DD and the D Month YYYY forms).
-    assert _span(Family.D, None, [], "Transaction details\nDate 2026 03 31\n") == (
+    assert _span(None, [], "Transaction details\nDate 2026 03 31\n") == (
         "2026-03-31",
         "2026-03-31",
     )
-    assert _span(Family.B, None, [], "Statement\nDate 31 March 2026\n") == (
+    assert _span(None, [], "Statement\nDate 31 March 2026\n") == (
         "2026-03-31",
         "2026-03-31",
     )

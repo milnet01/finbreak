@@ -2154,11 +2154,21 @@ is a future error tomorrow.
   Kind: refactor.
   Source: debt-sweep-2026-07-26.
 
-- 📋 [FIBR-0182] **Four dead-code sites surfaced by the debt sweep (not removed - each needs an owner decision).**
+- ✅ [FIBR-0182] **Four dead-code sites surfaced by the debt sweep (not removed - each needs an owner decision).**
   Surfaced rather than deleted (global rule 11 - do not remove pre-existing dead code unasked). Each verified with a repo-wide grep over src/tests/scripts/docs: (1) importers/standard_bank.py:42 re-exports PasswordError from pdf_importer behind a '# noqa: F401 (re-export)'; nothing imports it from standard_bank (the wizard takes it from pdf_importer), so the noqa keeps a dead name alive - drop it, or declare __all__ if the re-export is intended public API. (2) ui/transfers.py:221 candidate_count() sits under a 'test / shell accessors' banner with zero callers anywhere. (3) ui/statements.py:265 selected_period_id() has zero callers; its only mention is prose at docs/specs/FIBR-0059.md:356 - so either the test that spec implies is missing, or the accessor is. (4) importers/standard_bank.py:919 _span()'s `family` parameter is never read (the body branches only on `period is not None`); dropping it touches two call-sites (:893) and two tests. NOTE: main_window.py:237/239 _update_check_worker / _download_worker are assigned-never-read but are defensible QThread lifetime anchors - left alone.
   **Layman:** Four small pieces of code that nothing uses. Removing them is tidy-up, but each one needs a quick check that it was not left there on purpose.
   Kind: chore.
   Source: debt-sweep-2026-07-26.
+  Resolved (2026-07-28): all four removed after re-verifying each has zero
+  callers. (1) the PasswordError re-export + its noqa F401 dropped from
+  standard_bank.py (the wizard imports it from pdf_importer). (2)
+  ui/transfers.py candidate_count() removed. (3) ui/statements.py
+  selected_period_id() removed, and the FIBR-0059 §"code reused" survey
+  line updated so no doc points at it. (4) _span()'s unread `family`
+  parameter dropped (call-site :893 + two asserts in
+  test_standard_bank.py), docstring reworded to state the actual rule (a
+  printed period wins; A/C are simply the families that supply one).
+  Verified: ruff + mypy clean, 1369 passed, 2 skipped.
 
 - ✅ [FIBR-0183] **bandit prints 31 'Test in comment' warnings because prose follows the # nosec test id.**
   bandit parses everything after '# nosec' as a comma/space-separated list of test IDs, so a marker written '# nosec B603 - fixed /bin/sh waiter, our own argv' makes it try to resolve 'fixed', 'waiter', 'our', 'own', 'argv' as test names and emit 'WARNING Test in comment: X is not a test name or id, ignoring' for each. 31 such warnings across the tree. Verified pre-existing and NOT caused by the debt sweep's noqa cleanup (identical count before and after, and bandit still exits 0 with the suppressions honoured). Low severity, but it is 31 lines of noise in every gate run, which is exactly the condition under which a real bandit warning gets skimmed past. Fix: put the rationale on its own line above, or after a separator bandit stops parsing at, keeping the marker itself bare ('# nosec B603').
