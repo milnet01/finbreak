@@ -13,7 +13,7 @@
 [![Status](https://img.shields.io/badge/status-pre--alpha-orange)]()
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-Current version: **0.1.17** (early preview). **[⬇ Download the latest
+Current version: **0.1.18** (early preview). **[⬇ Download the latest
 release](https://github.com/milnet01/finbreak/releases/latest)**, or see
 [CHANGELOG](CHANGELOG.md) for what's shipped and [ROADMAP](ROADMAP.md) for
 what's coming.
@@ -49,6 +49,16 @@ lot, with more polish and features to come. What works today:
   regular income (like your salary) that repeat every week, fortnight, month,
   or year; finbreak suggests them on a new **Recurring** tab so you can
   confirm what's real and see at a glance what's on autopilot each month,
+- a **Forecast tab** that projects your balance forward — it starts from a
+  real, current figure (your latest statement's closing balance, brought up to
+  date with everything imported since) and draws where you're heading to the end
+  of the month, or 30, 60 or 90 days out, using the recurring money you've
+  confirmed; only current and savings balances count as spendable cash, and it
+  names any account it left out and why,
+- **checking your balances add up** — the Accounts tab marks each current or
+  savings account ✓ when the transactions you've imported bridge one statement's
+  closing balance to the next, or ⚠ with the amount it's off by, so a missing or
+  duplicated import doesn't go unnoticed,
 - a **dashboard** on the Home screen — the breakdown is the star: three
   side-by-side columns for **Spending**, **Income**, and **Transfers**, each
   with its own pie of where the money went, the big total up top, and an
@@ -56,7 +66,10 @@ lot, with more polish and features to come. What works today:
   see your transactions grouped by shop with a count like "Woolworths ×3", and
   open a shop to see each purchase); a slim **Net** line shows the period's
   surplus or shortfall, a **recurring-money** card sums what's on autopilot each
-  month, and a month-by-month trend chart sits at the bottom; you choose the
+  month, a quiet **alerts card** flags anything worth a look — a new recurring
+  charge that just appeared, a category well above its usual spend, or an
+  expected debit that didn't post (dismiss any alert and it stays dismissed) —
+  and a month-by-month trend chart sits at the bottom; you choose the
   period (it defaults to last month and remembers your choice), and money moved
   between your own accounts never counts as spending or income, and
 - a searchable, filterable **Transactions tab** — find rows by description
@@ -161,7 +174,9 @@ for new versions, turn on **"Check for updates on startup"** in
 **Settings**. When it's on, finbreak checks GitHub at launch and, if there's
 a newer release, offers to download and install it — but only after
 verifying the download's signature, so a tampered update can never be
-installed. Leave it off and finbreak makes no network connections at all.
+installed. The prompt shows what changed in every release you skipped, not
+just the newest one, and the download bar shows real progress. Leave it off
+and finbreak makes no network connections at all.
 
 ## For maintainers
 

@@ -68,5 +68,5 @@ modules:
     sources:
       - type: git
         url: https://github.com/milnet01/finbreak.git
-        tag: v0.1.17
+        tag: v0.1.18
         commit: 21bebf7a95e08f2ae0aa1fe6ee68b1591bd02d06

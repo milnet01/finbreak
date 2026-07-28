@@ -21,6 +21,8 @@ signaling per
 
 ## [Unreleased]
 
+## [0.1.18] - 2026-07-28
+
 ### Added
 
 - **Spending alerts — flag unusual spend, a newly-appeared recurring charge, or a missed expected debit.** (FIBR-0172)

@@ -82,6 +82,32 @@
   </screenshots>
 
   <releases>
+    <release version="0.1.18" date="2026-07-28">
+      <description>
+        <p>Added:</p>
+        <ul>
+          <li>A new Forecast tab projects your balance forward from confirmed recurring income and expenses, to the end of the month or 30, 60 or 90 days ahead.</li>
+          <li>Spending alerts on the Home dashboard flag unusual spend, a newly-appeared recurring charge, or an expected debit that didn't post — each one dismissable.</li>
+          <li>Account-level balance reconciliation on the Accounts tab verifies that imported transactions bridge each statement's closing balance to the next.</li>
+        </ul>
+        <p>Changed:</p>
+        <ul>
+          <li>The update prompt now lists what changed in every release you skipped, not just the newest one, and the download bar shows real progress.</li>
+        </ul>
+        <p>Fixed:</p>
+        <ul>
+          <li>The forecast no longer counts credit-card and loan debt as spendable cash; it anchors on current and savings accounts and names any account it excluded.</li>
+          <li>The Recurring and Transfers tabs show amounts with the currency symbol and thousands grouping, matching the rest of the app.</li>
+          <li>CSV import reports a friendly "not valid CSV" message instead of crashing on a corrupt or truncated file.</li>
+        </ul>
+        <p>Security:</p>
+        <ul>
+          <li>Updates install the exact bytes that passed the signature check, closing a window in which the payload could have been swapped on disk.</li>
+          <li>The auto-update check enforces HTTPS on redirects, not just the first request, so it cannot be silently downgraded to plaintext.</li>
+          <li>The password-hashing acceptance floor is separate from the vault-creation setting, so raising strength in future cannot lock existing vaults out.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.1.17" date="2026-07-23">
       <description>
         <p>Added:</p>

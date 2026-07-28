@@ -1,3 +1,24 @@
+finbreak (0.1.18) unstable; urgency=medium
+
+  * A new Forecast tab projects your balance forward from confirmed recurring
+    income and expenses, to month-end or 30, 60 or 90 days ahead.
+  * Spending alerts on the Home dashboard flag unusual spend, a newly-appeared
+    recurring charge, or an expected debit that didn't post — each dismissable.
+  * Account-level balance reconciliation on the Accounts tab checks that
+    imported transactions bridge each statement's closing balance to the next.
+  * The update prompt now lists what changed in every release you skipped, not
+    just the newest one, and the download bar shows real progress.
+  * The forecast no longer counts credit-card and loan debt as spendable cash;
+    it anchors on current and savings accounts and names what it excluded.
+  * The Recurring and Transfers tabs show amounts with the currency symbol and
+    thousands grouping, matching the rest of the app.
+  * CSV import reports a friendly "not valid CSV" message instead of crashing
+    on a corrupt or truncated file.
+  * Security: updates install the exact bytes that passed the signature check;
+    the update check enforces HTTPS on redirects, not just the first request.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Tue, 28 Jul 2026 12:00:00 +0200
+
 finbreak (0.1.17) unstable; urgency=medium
 
   * Flatpak + native Linux packages (RPM/deb) — install finbreak via GNOME
