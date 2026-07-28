@@ -5,10 +5,10 @@ run that finally converges — a stale resume file is worse than none.
 
 ## Where the run stopped
 
-- **FIBR-0193** (`docs/specs/FIBR-0193.md`) — **loops 1 and 2 complete**, both
-  dispatched, verified, fixed, logged and committed (`4f7a669`, `a4bbd6a`).
-  **Loop 3 dispatched** at the time of writing; if no loop-3 row exists in the
-  spec's §13, that dispatch did not land and loop 3 must be re-run.
+- **FIBR-0193** (`docs/specs/FIBR-0193.md`) — **loops 1, 2 and 3 complete**,
+  all dispatched, verified, fixed, logged and committed (`4f7a669`, `35d93e8`,
+  `af4dbcc`). **Loop 4 is owed and NOT yet dispatched** — the lane copy and
+  shared block are already rebuilt for it, so it can go straight out.
 - **FIBR-0113** (`docs/specs/FIBR-0113.md`) — **gate not started.** Rewritten as
   the UI half and committed, never reviewed. This is the second half of the
   user's instruction and is still owed. Its materials are already staged (see
@@ -20,14 +20,33 @@ run that finally converges — a stale resume file is worse than none.
 |---|---|---|---|---|---|---|
 | 1 | 1 | 3 | 13 | 12 | 29 | 29 |
 | 2 | 0 | 2 | 8 | 9 | 20 | 20 |
+| 3 | 0 | 2 | 8 | 11 | 21 | 21 |
 
-Full per-loop detail is in the spec's own §13 rows. **Not converged** — loop 2's
-2 HIGH and 8 MEDIUM were all substantive.
+Full per-loop detail is in the spec's own §13 rows. **Not converged.**
+
+## Why loop 4 was judged necessary (user asked; this is the answer given)
+
+The **contract** is buildable and has been stable since loop 1 — schema v13, the
+two nullable columns, the dataclass shape, the four signatures,
+`_normalise_optional`, INV-1..INV-7. Loops 2 and 3 did not change what to build.
+
+Loop 4 is owed for one specific, measured reason: **every loop so far has found
+defects introduced by the previous loop's fixes.** Both of loop 3's HIGHs were
+loop-2 fix damage (§7 still promising a deleted AST scan; §11's rewritten row
+blurring a catcher with a `nothing`, the shape spec-format §5.8 forbids). Loop
+3's own fixes are the same magnitude of edit — leg 2 rewritten into four
+sub-assertions, §7's inventory restructured into a list, §11 split — and they
+are **currently unreviewed**. Signing off now ships an edit pass whose two
+predecessors each had fix-induced defects.
+
+**Stopping rule committed to the user:** if loop 4 produces no HIGH and no
+contract-changing MEDIUM, the spec is signed off regardless of remaining
+prose-level polish. Do not spend loop 5 on wording.
 
 **Loop 3 must dispatch every lane at the strong model and must NOT run the cheap
 breadth pass** — the skill's rule: on the loop after any loop that produced a
 verified CRITICAL or HIGH, a breadth pass may not accept a lane clean. Loop 2
-produced 2 HIGH, so this still binds for loop 3. It stops binding only after a
+produced 2 HIGH, so it still binds for loop 4. It stops binding only after a
 loop that produces neither.
 
 Project cap is `--max-loops 7` (finbreak override, not the skill default of 5).
@@ -120,4 +139,4 @@ the loop produce evidence, rather than splitting again on a guess.
 
 ## Commit
 
-Docs are at `a4bbd6a` on `main`. Nothing pushed.
+Docs are at `af4dbcc` on `main`. Nothing pushed.
