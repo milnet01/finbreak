@@ -1336,9 +1336,37 @@ because retrofitting them is a data migration.
   this bullet names), keyed per table by objectName, and re-saves on
   resize / reorder / re-sort. The Reset-layout action this bullet also
   asks for is main_window._reset_layout (menu action
-  "action_reset_layout"), covered by test_INV6b_reset_layout. Shipped as
+  "action_reset_layout"), but it does NOT clear saved column state — see the 2026-07-28 correction below. Shipped as
   FIBR-0117 with the reorder half added by FIBR-0012, and most recently
   extended to the import-wizard preview table.
+  Correction + re-scope (2026-07-28, /cold-eyes on docs/specs/FIBR-0113.md).
+  The 2026-07-28 note above was written from recall and was WRONG twice; both
+  claims are now corrected against source:
+
+  - "The Reset-layout action this bullet also asks for is
+    main_window._reset_layout": the action exists, but _reset_layout removes
+    exactly _KEY_GEOMETRY, _KEY_STATE and _KEY_SIZE. It never touches the
+    "columns/<objectName>" entries remember_columns writes, so saved column
+    state survives a Reset layout. What this bullet asks for is NOT done.
+  - "this bullet's residue is exactly FIBR-0113's table conversion": false.
+    Two further surfaces have no column persistence at all —
+    ui/forecast.py's 4-column events table (objectName already
+    "forecast_events"; forecast.py imports nothing from _table_state) and
+    ui/home.py's dashboard breakdown trees (QTreeWidget, setColumnCount(2),
+    a VISIBLE Name/Amount header, objectName "dashboard_breakdown_<key>";
+    home.py likewise imports nothing from _table_state). This bullet's own
+    text names both classes — "each QTableView/QTreeView header" and "Home
+    transactions" — so they are in scope by its own wording (user confirmed
+    2026-07-28).
+
+  Re-scoped accordingly: FIBR-0113 delivers ONLY the Accounts table (it was
+  carrying the rest, and a cold-eyes loop showed that fold-in was the largest
+  single source of defects in that spec). The remaining three gaps are now
+  FIBR-0192, which is the blocker for this bullet's ✅.
+
+  So: do NOT flip this bullet when FIBR-0113 ships. Flip it when FIBR-0192
+  ships. Categories stays deliberately out of scope (single column under
+  setHeaderHidden(True) — nothing to resize or reorder).
 
   Call sites today: statements, transactions, rules, recurring, transfers,
   import_wizard. Of the tables this bullet enumerates, that leaves:
@@ -1515,12 +1543,30 @@ because retrofitting them is a data migration.
   column machinery FIBR-0084 asks for ALREADY SHIPPED under FIBR-0117 /
   FIBR-0012 — _table_state.remember_columns does widths + drag-reorder +
   per-table persistence in the window INI keyed by objectName, and
-  main_window._reset_layout clears it. It is already called by Statements,
+  main_window._reset_layout does NOT clear it (corrected 2026-07-28, see below). It is already called by Statements,
   Transactions, Rules, Recurring, Transfers and the import-wizard preview.
   The only two screens without it are Categories (a single-column
   QTreeWidget with setHeaderHidden(True) — column customisation is
   meaningless there) and Accounts (still a QListWidget). So FIBR-0084's
   residue IS this item, and it closes alongside.
+  Re-scoped 2026-07-28 (/cold-eyes loop 2 on docs/specs/FIBR-0113.md).
+  The "FIBR-0084 folded in" plan above is WITHDRAWN, and one claim in it was
+  wrong: main_window._reset_layout does not clear saved column state (it
+  removes geometry / window_state / window_size only), so FIBR-0084 was never
+  as close to done as that note said. Two more surfaces also lack column
+  persistence entirely — ui/forecast.py's events table and ui/home.py's
+  2-column dashboard breakdown trees.
+
+  Folding that work in here made this spec the largest source of its own
+  review defects (4 of 5 criticals in cold-eyes loop 2 traced to the
+  fold-in). Split on the user's call: this item now delivers ONLY the
+  Accounts tab — the 5-column table, the two new nullable account fields
+  behind migration v13, and the masked/auto-hiding account number. The
+  FIBR-0084 completion work moved to FIBR-0192, which is what unblocks
+  FIBR-0084's ✅.
+
+  Consequence for the close: flip ONLY this bullet when the work ships.
+  FIBR-0084 stays 📋 until FIBR-0192 lands.
 
   User decisions (2026-07-28):
   - FIVE columns: Name | Type | Account number | Note | Status. The Status
@@ -2251,6 +2297,58 @@ because retrofitting them is a data migration.
   Kind: feature.
   Lanes: ui.
   Source: user-request-2026-07-28.
+
+- 📋 [FIBR-0192] **Finish FIBR-0084: the shared column scheme on the last unwired headers, and make Reset layout actually reset columns.**
+  Split out of FIBR-0113 on 2026-07-28 after a /cold-eyes loop-2 pass found
+  that FIBR-0113's fold-in of this work was the single largest source of
+  defects in that spec (4 of 5 criticals). Splitting keeps each item inside
+  the review's design point; nothing is dropped. FIBR-0084 stays OPEN until
+  this ships — FIBR-0113 alone does not close it.
+
+  Three gaps, each verified against source on 2026-07-28, not recalled:
+
+  1. ui/forecast.py::ForecastWidget._make_table builds a 4-column
+  QTableWidget, already named "forecast_events" and otherwise configured
+  like its siblings, but forecast.py imports nothing from _table_state — so
+  its columns are neither reorderable nor remembered. CAUTION: its filler
+  _fill_events uses a bare setRowCount + setItem loop with NO fill_guard,
+  unlike every other sorted table (statements / transactions / transfers /
+  recurring). So add remember_columns ONLY — adding enable_sorting without
+  first wrapping the fill in fill_guard lets Qt re-sort mid-fill and render
+  a running balance against another event's date. Wrap the fill first if
+  click-sorting is wanted.
+
+  2. ui/home.py's dashboard breakdown trees: QTreeWidget with
+  setColumnCount(2), a VISIBLE header (setHeaderLabels Name / Amount) and
+  objectName "dashboard_breakdown_<key>". home.py imports nothing from
+  _table_state. FIBR-0084's own text names this surface — "Make each
+  QTableView/QTreeView header user-resizable AND movable ... Covers every
+  relevant table: Statements, Home transactions, Accounts, Categories,
+  Rules" — so it is in scope by that bullet's wording (user confirmed
+  2026-07-28). Note _table_state.remember_columns is typed
+  `(table: QTableWidget)`; a QTreeWidget is not one, so the helper needs its
+  parameter widened to the common base (both expose horizontalHeader /
+  header via QAbstractItemView + QHeaderView) or a sibling overload. That
+  signature widening is the only non-trivial piece of this item.
+
+  3. main_window.py::MainWindow._reset_layout removes exactly _KEY_GEOMETRY,
+  _KEY_STATE and _KEY_SIZE. It never touches the "columns/<objectName>"
+  entries remember_columns writes, so Reset layout silently leaves every
+  table's saved column layout in place — which is what FIBR-0084's bullet
+  asks for and does not have. QSettings.remove("columns") drops the whole
+  group. Two cautions found in review: the action does NOT rebuild the
+  workspace, so live headers keep their restored state until restart unless
+  they are also reset in place; and the existing self.resize(...) runs AFTER
+  settings.sync(), which can emit sectionResized on a live table and write
+  "columns/<name>" straight back. Order the clear accordingly and assert the
+  user-visible outcome, not just an empty INI.
+
+  Deps: FIBR-0117 (the _table_state seam), FIBR-0113 (lands the Accounts
+  table; independent of this). Blocker for: FIBR-0084's ✅ flip.
+  **Layman:** Let people resize and reorder the columns on the Forecast tab and the Home dashboard's category breakdown lists — the last two places that still can't — and make the "Reset layout" menu item put columns back to their defaults, which it currently doesn't do.
+  Kind: feature.
+  Lanes: ui.
+  Source: cold-eyes-2026-07-28 (FIBR-0113 loop 2).
 
 ### ⚡ Performance
 
