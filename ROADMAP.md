@@ -2490,6 +2490,35 @@ because retrofitting them is a data migration.
   Lanes: ui.
   Source: cold-eyes-2026-07-28 loop 5 on docs/specs/FIBR-0113.md (code-side observation, surfaced not fixed).
 
+- 📋 [FIBR-0195] **Resolve the docs/plans/ gap once, project-wide, instead of re-arguing it in every spec.**
+  spec-format §2 makes a plan mandatory "once the build order matters (a
+  migration, a change that must land in a specific sequence, or anything a
+  second person will execute)". Verified 2026-07-28: docs/plans/ does not
+  exist anywhere in this tree, and none of the 49 files in docs/specs/ has
+  one — including every spec that ships a schema migration.
+
+  The cost is not the missing files, it is that each affected spec now spends
+  a paragraph explaining why it has no plan, and a cold reviewer correctly
+  re-raises it every time. Prior non-compliance is not a waiver, so the
+  paragraph cannot just say "nobody else does it either".
+
+  Decide one of:
+  (a) adopt docs/plans/ for specs that carry a migration or an ordered build,
+      starting with the next one, and backfill nothing; or
+  (b) record the departure ONCE — in docs/standards/documentation.md or a
+      project spec-format override — and have every spec point at that single
+      statement instead of restating it.
+
+  (b) is the cheaper answer if the build order genuinely lives fine inside
+  the spec's design section, which is what the existing 49 specs suggest in
+  practice. Either way the per-spec paragraph goes away.
+
+  Surfaced by /cold-eyes rather than fixed inline: choosing between (a) and
+  (b) is a project-convention decision, not a docs defect.
+  **Layman:** Every spec that involves a database change is supposed to ship a short build-order file. None of them do, and each spec currently explains that omission again. Decide once: either start writing them, or record the exemption in one place.
+  Kind: doc.
+  Source: cold-eyes-2026-07-28 loop 1 on docs/specs/FIBR-0193-account-storage-fields.md.
+
 ### ⚡ Performance
 
 - ✅ [FIBR-0025] **Enable SQLite WAL mode.** Set
