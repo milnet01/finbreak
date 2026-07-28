@@ -218,7 +218,7 @@ scariest unknown (native-library bundling) up front.
   Source: user-request-2026-07-14.
   Resolved (2026-07-14): added --icon assets/icon/finbreak.ico to scripts/build-windows-exe.py + a fail-loud .ico-exists guard + a windows_build regression test (test_driver_embeds_the_app_icon). Gate-relevant tests green (windows_build 13 passed). Icon lands on the next Windows build.
 
-- 📋 [FIBR-0152] **Update prompt shows only the latest release's notes — accumulate all changes since the user's version.**
+- ✅ [FIBR-0152] **Update prompt shows only the latest release's notes — accumulate all changes since the user's version.**
   Gap (verified 2026-07-19): the UpdateDialog "What's new" panel is filled
   from GitHub's /releases/latest — a SINGLE release's body
   (services/update.py:224 `notes = release.get("body") or ""`;
@@ -228,6 +228,21 @@ scariest unknown (native-library bundling) up front.
   no in-app changelog viewer either (zero `changelog` refs under src/), and
   the notes panel deliberately has link-opening OFF (offline/no-egress
   posture, INV-12) so there is no "view full changelog online" fallback.
+  Resolved (2026-07-28): SHIPPED by TDD, but NOT via Option A — a bundled
+  CHANGELOG.md stops at the running version, so it cannot describe the
+  releases the user has yet to install. Took the item's own alternative B,
+  narrowed: the OFFER still rests solely on /releases/latest (D11 prerelease
+  exclusion intact); a second, best-effort read of the same host's
+  /releases list (new update_fetch.fetch_releases, sharing a new _get_json
+  with fetch_latest_release, same cap + timeout) feeds only the notes;
+  pure _accumulated_notes keeps every non-draft, non-prerelease body newer
+  than the running version and no newer than the offered one, newest first,
+  each headed by its version. Any failure of the second read degrades to the
+  single body — it never costs the user the update. No new module and no new
+  host, so INV-12 (one networked file) is unchanged; notes stay verbatim
+  non-tr() release data. 6 new tests (list parse + URL, 3-behind accumulate,
+  1-behind latest-only, draft/prerelease excluded, list-failure fallback,
+  qtbot dialog renders the accumulated body). Gate: 1398 passed, 2 skipped.
 
   Recommended fix (Option A — best fit for the offline posture): ship
   CHANGELOG.md inside the bundle and have the update prompt show every entry

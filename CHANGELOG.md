@@ -47,6 +47,13 @@ signaling per
 
 ### Changed
 
+- **The update prompt now shows what changed in every release you skipped, not just the newest one.** (FIBR-0152)
+  If you were three versions behind, "What's new" only described the
+  newest release. It now lists each release between your version and the
+  one on offer, newest first. The check reads the release list from the
+  same GitHub endpoint it already used — no new network surface — and if
+  that read fails you simply get the single set of notes as before.
+
 - **The update download now shows real progress instead of a permanently-full striped bar** (FIBR-0108)
   The "Downloading…" bar fills up as the update arrives. If the server
   doesn't say how big the file is, the bar keeps its old busy look rather
