@@ -66,9 +66,10 @@ lot, with more polish and features to come. What works today:
   see your transactions grouped by shop with a count like "Woolworths ×3", and
   open a shop to see each purchase); a slim **Net** line shows the period's
   surplus or shortfall, a **recurring-money** card sums what's on autopilot each
-  month, a quiet **alerts card** flags anything worth a look — a new recurring
-  charge that just appeared, a category well above its usual spend, or an
-  expected debit that didn't post (dismiss any alert and it stays dismissed) —
+  month, an **Alerts button** lights up when something is worth a look — a new
+  recurring charge that just appeared, a category well above its usual spend, or
+  an expected debit that didn't post (open it for the list; dismiss any alert and
+  it stays dismissed) —
   and a month-by-month trend chart sits at the bottom; you choose the
   period (it defaults to last month and remembers your choice), and money moved
   between your own accounts never counts as spending or income, and

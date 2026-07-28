@@ -18,7 +18,10 @@ Coverage in this directory:
   INV-4, INV-5, INV-9, INV-11, INV-13, INV-15, INV-16, INV-19).
 - `test_migration_v12.py` — the v12 `alert_dismissals` migration + drift guards
   (INV-14, INV-14a).
-- `test_alerts_card.py` — the `AlertsCard` on the Home dashboard: hidden when
-  empty, one row per alert, Dismiss round-trip, `VaultLockedError`-silent
-  (INV-17, INV-18).
+- `test_alerts_ui.py` — the Home **Alerts button** + `AlertsDialog` (FIBR-0185,
+  superseding the inline card this spec's INV-17 described): the button carries
+  the count and is disabled when there are none, clicking it asks the shell to
+  open the dialog, and the dashboard holds no height-varying alerts card. The
+  dialog keeps INV-18's contract unchanged — one row per alert, Dismiss
+  round-trip, `VaultLockedError`-silent, rebuilt in place.
 </content>

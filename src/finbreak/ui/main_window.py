@@ -61,7 +61,10 @@ from finbreak.services.password_hint import HintPolicyError, validate_hint
 from finbreak.services.pdf_export import PdfExportService, period_filename_slug
 from finbreak.services.recurring import RecurringService
 from finbreak.services.reporting import ReportingService
-from finbreak.services.transactions import TransactionService
+from finbreak.services.transactions import (
+    TransactionService,
+    read_minor_unit_exponent,
+)
 from finbreak.services.update import UpdateInfo, UpdateService
 from finbreak.services.update_installer import Installer, detect_installer
 from finbreak.ui._clipboard import ClipboardAutoClear
@@ -69,6 +72,7 @@ from finbreak.ui._password_hint import clear_hint, read_hint, write_hint
 from finbreak.ui._unlock_throttle import UnlockThrottle
 from finbreak.ui._update_worker import DownloadWorker, UpdateCheckWorker
 from finbreak.ui.accounts import AccountsWidget
+from finbreak.ui.alerts_dialog import AlertsDialog
 from finbreak.ui.backup_export import BackupExportDialog
 from finbreak.ui.backup_restore import BackupRestoreDialog
 from finbreak.ui.backup_verify import BackupVerifyDialog
@@ -651,6 +655,7 @@ class MainWindow(QMainWindow):
         self._home_tab.add_transaction_requested.connect(
             self._action_manual_entry.trigger
         )
+        self._home_tab.alerts_requested.connect(self._open_alerts)
 
         # The relocated transaction table + filters (FIBR-0012 D7); sets
         # tab_transactions.
@@ -809,6 +814,26 @@ class MainWindow(QMainWindow):
         if self._home_tab is not None:
             self._refresh_count(self._home_tab.transaction_count())
         workspace.setCurrentIndex(_TAB_TRANSACTIONS)
+
+    def _open_alerts(self) -> None:
+        """The spending alerts, behind Home's Alerts button (FIBR-0185). Reachable
+        only from the unlocked dashboard; the dialog is handed the currency + minor
+        unit so it formats amounts exactly as the old inline card did. Each dismiss
+        re-counts Home's button behind the dialog."""
+        vault = self._service.vault
+        dialog = AlertsDialog(
+            AlertService(vault),
+            TransactionService(vault).base_currency(),
+            read_minor_unit_exponent(vault.connection),
+            self,
+        )
+        dialog.changed.connect(self._on_alerts_changed)
+        dialog.rejected.connect(self._teardown_dialog)  # Close: nothing to apply
+        self._open_dialog(dialog, defer=False)
+
+    def _on_alerts_changed(self) -> None:
+        if self._home_tab is not None:
+            self._home_tab.refresh_alerts()
 
     def _open_settings(self) -> None:
         # Vault-dependent (File menu is disabled while locked, INV-6). The shell

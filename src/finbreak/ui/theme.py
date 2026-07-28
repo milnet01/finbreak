@@ -29,12 +29,13 @@ from finbreak import paths
 
 @dataclass(frozen=True)
 class ThemeTokens:
-    """The eight semantic colours a theme is built from, plus ``is_dark``. Every
-    field has a consumer this cut (INV-3): the eight colours feed ``build_palette``'s
-    roles (INV-4) and ``build_stylesheet`` (D7); ``is_dark`` drives the picker's
-    Light/Dark grouping (INV-9) and the stylesheet gradient direction (D7). No
-    ``positive`` / ``negative`` amount tokens — amounts keep their fixed mid-tones
-    (D9)."""
+    """The nine semantic colours a theme is built from, plus ``is_dark``. Every
+    field has a consumer this cut (INV-3): eight feed ``build_palette``'s roles
+    (INV-4) and ``build_stylesheet`` (D7); ``attention`` is stylesheet-only — the
+    per-theme warning colour the Home Alerts button fills with (FIBR-0185), so no
+    hard-coded red leaks past the theme. ``is_dark`` drives the picker's Light/Dark
+    grouping (INV-9) and the stylesheet gradient direction (D7). No ``positive`` /
+    ``negative`` amount tokens — amounts keep their fixed mid-tones (D9)."""
 
     window: QColor
     base: QColor
@@ -43,6 +44,7 @@ class ThemeTokens:
     muted_text: QColor
     accent: QColor
     accent_soft: QColor
+    attention: QColor
     border: QColor
     is_dark: bool
 
@@ -75,6 +77,7 @@ THEMES: dict[str, ThemeDef] = {
             muted_text=_c("#6b7280"),
             accent=_c("#b8892b"),
             accent_soft=_c("#e6d5a3"),
+            attention=_c("#a53a24"),
             border=_c("#d8d3c4"),
             is_dark=False,
         ),
@@ -89,6 +92,7 @@ THEMES: dict[str, ThemeDef] = {
             muted_text=_c("#8a7a63"),
             accent=_c("#b06d1f"),
             accent_soft=_c("#e0c48f"),
+            attention=_c("#96331d"),
             border=_c("#d0c2a4"),
             is_dark=False,
         ),
@@ -103,6 +107,7 @@ THEMES: dict[str, ThemeDef] = {
             muted_text=_c("#5f7a6f"),
             accent=_c("#1f9d55"),
             accent_soft=_c("#bce7cd"),
+            attention=_c("#b03a1e"),
             border=_c("#cde0d4"),
             is_dark=False,
         ),
@@ -117,6 +122,7 @@ THEMES: dict[str, ThemeDef] = {
             muted_text=_c("#8b93a7"),
             accent=_c("#d4af37"),
             accent_soft=_c("#6b5d2e"),
+            attention=_c("#e0654f"),
             border=_c("#2a3450"),
             is_dark=True,
         ),
@@ -131,6 +137,7 @@ THEMES: dict[str, ThemeDef] = {
             muted_text=_c("#8a9099"),
             accent=_c("#5b7fb5"),
             accent_soft=_c("#34435c"),
+            attention=_c("#e2775c"),
             border=_c("#3a3f47"),
             is_dark=True,
         ),
@@ -145,6 +152,7 @@ THEMES: dict[str, ThemeDef] = {
             muted_text=_c("#7d9a8c"),
             accent=_c("#1fae6a"),
             accent_soft=_c("#2a5a44"),
+            attention=_c("#e8836a"),
             border=_c("#234636"),
             is_dark=True,
         ),
@@ -237,10 +245,12 @@ def build_stylesheet(tokens: ThemeTokens) -> str:
     muted = tokens.muted_text.name()
     accent = tokens.accent.name()
     accent_soft = tokens.accent_soft.name()
+    attention = tokens.attention.name()
     border = tokens.border.name()
     hover_2 = _companion(tokens.accent_soft, tokens.is_dark).name()
     selected_2 = _companion(tokens.accent, tokens.is_dark).name()
     hi_text = _highlighted_text(tokens.accent).name()
+    attention_text = _highlighted_text(tokens.attention).name()
     return f"""
 /* FIBR-0127 polish stylesheet — generated from the theme tokens (ADR-0010). */
 QToolBar {{
@@ -285,6 +295,20 @@ QPushButton:hover {{
 }}
 QPushButton:default {{
     border: 1px solid {accent};
+}}
+/* FIBR-0185 — Home's Alerts button. Filled with the theme's attention colour while
+   alerts are outstanding; disabled (none outstanding) it sits quietly, like any
+   other inert control. The ID selector outranks the plain QPushButton rules above,
+   so the fill survives hover. */
+QPushButton#alerts_button {{
+    background: {attention};
+    color: {attention_text};
+    border: 1px solid {attention};
+}}
+QPushButton#alerts_button:disabled {{
+    background: {base};
+    color: {muted};
+    border: 1px solid {border};
 }}
 QGroupBox {{
     border: 1px solid {border};

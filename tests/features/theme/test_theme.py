@@ -69,6 +69,7 @@ _SYNTH_BASE = theme.ThemeTokens(
     muted_text=QColor("#808080"),
     accent=QColor("#3366cc"),
     accent_soft=QColor("#5588ee"),
+    attention=QColor("#e0654f"),
     border=QColor("#333333"),
     is_dark=True,
 )
@@ -161,6 +162,7 @@ def test_INV3_every_token_is_a_valid_colour():
         "muted_text",
         "accent",
         "accent_soft",
+        "attention",
         "border",
     )
     for tid, tdef in theme.THEMES.items():
@@ -168,6 +170,16 @@ def test_INV3_every_token_is_a_valid_colour():
             colour = getattr(tdef.tokens, field)
             assert isinstance(colour, QColor) and colour.isValid(), f"{tid}.{field}"
         assert isinstance(tdef.tokens.is_dark, bool)
+
+
+def test_INV3_attention_contrasts_the_window():
+    """FIBR-0185 — every theme carries an attention colour that reads AGAINST its
+    window: dark on the three light themes, light on the three dark ones. Pins the
+    'no hard-coded red' contract — the Alerts button's fill is a theme token."""
+    for tid in _LIGHT:
+        assert theme.THEMES[tid].tokens.attention.lightnessF() < 0.5, tid
+    for tid in _DARK:
+        assert theme.THEMES[tid].tokens.attention.lightnessF() >= 0.5, tid
 
 
 def test_INV3_is_dark_agrees_with_window_lightness():
@@ -237,6 +249,16 @@ def test_INV5_stylesheet_contains_token_hex():
     assert t.accent.name() in ss
     assert t.accent_soft.name() in ss
     assert t.alt_base.name() in ss
+
+
+def test_INV5_alerts_button_is_filled_from_the_attention_token():
+    """FIBR-0185 — the Alerts button's fill comes from the theme, and its disabled
+    state is styled separately (so 'no alerts' sits quietly rather than shouting)."""
+    for tid, tdef in theme.THEMES.items():
+        ss = theme.build_stylesheet(tdef.tokens)
+        assert "QPushButton#alerts_button" in ss, tid
+        assert "QPushButton#alerts_button:disabled" in ss, tid
+        assert tdef.tokens.attention.name() in ss, tid
 
 
 def test_INV5_different_themes_differ():

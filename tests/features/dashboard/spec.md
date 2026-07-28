@@ -19,3 +19,8 @@ Contract for the dashboard half of P10 (INV-7 / D6 / D9):
 - **Selector persistence.** Changing the period selector persists the new
   `ReportPrefs` (via `AuthService.set_report_prefs`) and re-renders; the account
   selector re-renders only (not persisted).
+- **Readable floor, then scroll (FIBR-0186).** `dashboard_content` carries a
+  *minimum* size (not per-widget fixed sizes, which would clip under larger system
+  fonts or display scaling); a window smaller than it scrolls rather than squashing
+  the three donut columns. The floor is on the scrolled content only — `HomeView`
+  itself still shrinks, so the window is never pinned open. (`test_min_size.py`)
