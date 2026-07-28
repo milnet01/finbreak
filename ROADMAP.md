@@ -1556,6 +1556,36 @@ because retrofitting them is a data migration.
   as close to done as that note said. Two more surfaces also lack column
   persistence entirely — ui/forecast.py's events table and ui/home.py's
   2-column dashboard breakdown trees.
+  Progress (2026-07-28): /cold-eyes loop 5 ran and did NOT converge —
+  CRITICAL 3 · HIGH 6 · MEDIUM 13 · LOW 13 · INFO 8, all verified, none
+  fixed. Full write-up with cites and proposed fixes:
+  docs/reviews/FIBR-0113-cold-eyes-loop5.md (do NOT re-dispatch review
+  lanes to rediscover them — fold them in from that file).
+  The three CRITICALs: (1) §4.5's premise that redrawing the table drops
+  the selection is FALSE — with a sort active the selection survives and
+  resolves to a DIFFERENT account, so the form loads account B while the
+  selection points at account A and the next Update writes B onto A
+  (reproduced against real Qt: docs/reviews/FIBR-0113-selection-drift-repro.py);
+  (2) §4.4's trailing _on_selection_changed() copies a StatementsWidget
+  line whose handler there only toggles buttons — on Accounts it also
+  rewrites the form, so every _refresh() clobbers in-progress input and
+  defeats _on_add's field-clearing; (3) INV-12 requires the test to
+  assert the table cells "carry the typed values", which contradicts
+  §4.3's masked cell — satisfying it literally ships the account number
+  UNMASKED with every other invariant green.
+  Three HIGHs are the same shape — the spec promises something no
+  invariant locks: the account-number column's masking, the table's
+  click-sortability, and the update write path for the two new columns.
+  DECISION PENDING: loop 5's recommendation is to SPLIT rather than run
+  loop 6 — draft defects are not falling (three NEW structural gaps
+  appeared at loop 5 after four cold reads missed them), and the spec is
+  985 lines vs a ~567 median. Proposed seam and per-finding assignment
+  are in the review file. FIBR-0113 keeps the UI half; the schema +
+  model/repo/service half needs a new id.
+  Also note: the /cold-eyes cheap breadth pass returned ZERO suspects on
+  all three lanes this loop; the strong pass then found 3 CRITICAL. The
+  skill has been amended so a breadth pass can no longer certify a lane
+  clean after a loop that produced CRITICAL/HIGH.
 
   Folding that work in here made this spec the largest source of its own
   review defects (4 of 5 criticals in cold-eyes loop 2 traced to the
