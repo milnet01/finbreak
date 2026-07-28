@@ -15,6 +15,7 @@ from __future__ import annotations
 import logging
 import os
 import tempfile
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -228,7 +229,9 @@ class UpdateService:
             return None
 
     # --- the signature-verified download (INV-4/5/10) ----------------------- #
-    def download_and_verify(self, info: UpdateInfo) -> Path:
+    def download_and_verify(
+        self, info: UpdateInfo, *, on_progress: Callable[[int, int], None] | None = None
+    ) -> Path:
         """Download the platform binary asset + its ``.sig`` into the running
         binary's directory (``target_path().parent``) and verify the Ed25519
         signature over the **exact** downloaded bytes against the committed public
@@ -236,7 +239,10 @@ class UpdateService:
         memory so the file the installer swaps in is the file we checked
         (FIBR-0170); on **any** failure delete the temps and raise —
         ``UpdateVerificationError`` for a bad signature, ``UpdateError`` for an
-        oversize / timed-out / dropped download (INV-4/INV-10/INV-11)."""
+        oversize / timed-out / dropped download (INV-4/INV-10/INV-11).
+
+        *on_progress* rides through to the **asset** download only — the ``.sig``
+        is 64 bytes, so a second bar for it would only flicker (FIBR-0108)."""
         if self._installer is None:
             raise UpdateError("self-update is not supported on this platform")
         directory = self._installer.target_path().parent
@@ -258,6 +264,7 @@ class UpdateService:
                 asset_tmp,
                 max_bytes=_MAX_UPDATE_BYTES,
                 timeout=_TIMEOUT_S,
+                on_progress=on_progress,
             )
             self._fetcher.download(
                 info.sig_url, sig_tmp, max_bytes=_MAX_SIG_BYTES, timeout=_TIMEOUT_S

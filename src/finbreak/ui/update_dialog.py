@@ -4,7 +4,8 @@ A non-blocking dialog (opened by the shell's tracked ``_open_dialog`` path, neve
 ``exec()`` — INV-9) offering **Later** / **Skip this version** / **Update now**,
 with the release notes ("What's new") shown **inline** in a compact read-only
 panel (no browser round-trip). On **Update now** it disables the buttons and
-**stays open** in an indeterminate "Downloading…" busy state — it does not
+**stays open** in a "Downloading…" busy state — indeterminate until the fetcher
+reports a size, then a real percentage (``set_progress``, FIBR-0108) — it does not
 ``accept()``/``reject()`` until the install relaunches the app or the shell
 surfaces an error and tears it down. Its three custom signals + stay-open
 lifecycle are why it can't use the vanilla ``show_modal`` single-accept contract
@@ -72,11 +73,12 @@ class UpdateDialog(QDialog):
             self._notes_label.setVisible(False)
             self._notes.setVisible(False)
 
-        # Indeterminate busy indicator — hidden until Update now (D2: no byte
-        # percentage, the asset is one small file).
+        # Busy indicator — hidden until Update now. Starts indeterminate and
+        # switches to a real percentage on the first sized progress report
+        # (FIBR-0108); an unsized download keeps the striped look.
         self._busy = QProgressBar()
         self._busy.setObjectName("update_busy")
-        self._busy.setRange(0, 0)  # indeterminate
+        self._busy.setRange(0, 0)  # indeterminate until a size is known
         self._busy.setVisible(False)
         self._busy_label = QLabel(self.tr("Downloading…"))
         self._busy_label.setObjectName("update_busy_label")
@@ -118,6 +120,16 @@ class UpdateDialog(QDialog):
         # dialog closes only when the install relaunches or an error tears it down.
         self._enter_busy()
         self.update_now.emit()
+
+    def set_progress(self, received: int, total: int) -> None:
+        """Advance the download bar. A *total* of 0 means the server never said
+        how big the asset is, so the bar stays indeterminate rather than showing a
+        percentage of a guess (FIBR-0108)."""
+        if total <= 0:
+            return
+        if self._busy.maximum() != total:
+            self._busy.setRange(0, total)
+        self._busy.setValue(received)
 
     def _enter_busy(self) -> None:
         for button in (self._later_button, self._skip_button, self._update_button):

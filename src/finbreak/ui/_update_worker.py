@@ -41,6 +41,7 @@ class UpdateCheckWorker(QThread):
 class DownloadWorker(QThread):
     ready = Signal(object)  # the verified Path
     failed = Signal(object)  # an UpdateError / UpdateVerificationError
+    progress = Signal(int, int)  # (received, total) bytes; total 0 = size unknown
 
     def __init__(self, service: UpdateService, info: UpdateInfo, parent=None):
         super().__init__(parent)
@@ -49,7 +50,11 @@ class DownloadWorker(QThread):
 
     def run(self) -> None:
         try:
-            path = self._service.download_and_verify(self._info)
+            # The service reports bytes as they land; re-emitting them as a Qt
+            # signal hops them to the GUI thread for the bar (FIBR-0108).
+            path = self._service.download_and_verify(
+                self._info, on_progress=self.progress.emit
+            )
         except Exception as exc:  # signature mismatch / oversize / timeout / disk
             self.failed.emit(exc)
             return

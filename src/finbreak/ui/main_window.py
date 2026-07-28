@@ -1295,9 +1295,23 @@ class MainWindow(QMainWindow):
         worker = DownloadWorker(self._update_service, info, self)
         worker.ready.connect(lambda path: self._on_download_ready(path, prompt))
         worker.failed.connect(lambda exc: self._on_download_failed(exc, prompt))
+        worker.progress.connect(
+            lambda received, total: self._on_download_progress(received, total, prompt)
+        )
         worker.finished.connect(worker.deleteLater)
         self._download_worker = worker
         worker.start()
+
+    def _on_download_progress(
+        self, received: int, total: int, prompt: QDialog | None
+    ) -> None:
+        # Same guard as ready/failed: an auto-lock may have torn the busy prompt
+        # down mid-download, leaving no bar to advance (INV-9). FIBR-0108.
+        prompt_live = (
+            self._dialog is prompt and prompt is not None and shiboken6.isValid(prompt)
+        )
+        if prompt_live and isinstance(prompt, UpdateDialog):
+            prompt.set_progress(received, total)
 
     def _on_download_ready(self, path: Path, prompt: QDialog | None) -> None:
         prompt_live = (

@@ -66,11 +66,14 @@ class _FakeFetcher:
             raise self.fetch_error
         return self.release
 
-    def download(self, url, dest, *, max_bytes, timeout):
+    def download(self, url, dest, *, max_bytes, timeout, on_progress=None):
         from pathlib import Path
 
         self.dests[url] = Path(dest)
-        Path(dest).write_bytes(self.blobs[url])
+        blob = self.blobs[url]
+        Path(dest).write_bytes(blob)
+        if on_progress is not None:  # one whole-file report (FIBR-0108)
+            on_progress(len(blob), len(blob))
 
 
 def _release(tag: str) -> dict:
@@ -689,9 +692,10 @@ class _FakeHTTPResponse:
     """A minimal urlopen() stand-in: a context manager whose read(n) yields the
     payload in <=n-byte slices (so the byte-cap logic sees a real stream)."""
 
-    def __init__(self, payload: bytes):
+    def __init__(self, payload: bytes, headers: dict | None = None):
         self._payload = payload
         self._offset = 0
+        self.headers = headers if headers is not None else {}
 
     def read(self, size: int = -1) -> bytes:
         if size is None or size < 0:
@@ -707,9 +711,9 @@ class _FakeHTTPResponse:
         return None
 
 
-def _fake_urlopen(payload: bytes):
+def _fake_urlopen(payload: bytes, headers: dict | None = None):
     def opener(request, timeout=None, context=None):
-        return _FakeHTTPResponse(payload)
+        return _FakeHTTPResponse(payload, headers)
 
     return opener
 
@@ -739,6 +743,52 @@ def test_download_writes_bytes_under_cap(monkeypatch, tmp_path):
         "https://dl/finbreak.AppImage", dest, max_bytes=1024, timeout=5
     )
     assert dest.read_bytes() == b"HELLO-APPIMAGE"
+
+
+def test_FIBR0108_download_reports_progress_against_content_length(
+    monkeypatch, tmp_path
+):
+    """The download reports (received, total) per chunk so the prompt can show a
+    real percentage instead of a permanently-full striped bar (FIBR-0108). The
+    total comes from Content-Length; received climbs monotonically to it."""
+    payload = b"Z" * (update_fetch._DOWNLOAD_CHUNK_BYTES * 2 + 17)
+    monkeypatch.setattr(
+        update_fetch.urllib.request,
+        "urlopen",
+        _fake_urlopen(payload, {"Content-Length": str(len(payload))}),
+    )
+    seen: list[tuple[int, int]] = []
+    update_fetch.download(
+        "https://dl/app",
+        tmp_path / "out.AppImage",
+        max_bytes=len(payload) * 2,
+        timeout=5,
+        on_progress=lambda received, total: seen.append((received, total)),
+    )
+    assert len(seen) == 3  # one call per 64 KiB chunk, plus the short tail
+    assert [r for r, _ in seen] == sorted(r for r, _ in seen)  # monotonic
+    assert all(total == len(payload) for _, total in seen)
+    assert seen[-1] == (len(payload), len(payload))  # ends at 100%
+
+
+@pytest.mark.parametrize("headers", [{}, {"Content-Length": "not-a-number"}])
+def test_FIBR0108_absent_or_malformed_content_length_reports_unknown_total(
+    monkeypatch, tmp_path, headers
+):
+    """No usable Content-Length ⇒ total 0, the caller's signal to stay
+    indeterminate rather than invent a denominator (FIBR-0108)."""
+    monkeypatch.setattr(
+        update_fetch.urllib.request, "urlopen", _fake_urlopen(b"SHORT", headers)
+    )
+    seen: list[tuple[int, int]] = []
+    update_fetch.download(
+        "https://dl/app",
+        tmp_path / "out.AppImage",
+        max_bytes=1024,
+        timeout=5,
+        on_progress=lambda received, total: seen.append((received, total)),
+    )
+    assert seen == [(5, 0)]
 
 
 def test_INV10_download_aborts_over_cap_and_cleans_temp(monkeypatch, tmp_path):
@@ -1054,6 +1104,28 @@ def test_INV9_prompt_update_now_emits_and_stays_open_busy(qtbot):
     assert not dialog._update_button.isEnabled()
 
 
+def test_FIBR0108_prompt_bar_goes_determinate_on_a_known_size(qtbot):
+    """A download that advertises its size drives a real percentage bar; before
+    the first report the bar is still the indeterminate busy one (FIBR-0108)."""
+    dialog = _prompt(qtbot)
+    dialog._on_update_now()
+    assert (dialog._busy.minimum(), dialog._busy.maximum()) == (0, 0)  # busy
+
+    dialog.set_progress(512, 2048)
+
+    assert (dialog._busy.minimum(), dialog._busy.maximum()) == (0, 2048)
+    assert dialog._busy.value() == 512
+
+
+def test_FIBR0108_prompt_bar_stays_indeterminate_when_size_unknown(qtbot):
+    """No Content-Length ⇒ total 0 ⇒ the bar keeps its striped busy look rather
+    than jumping to a made-up denominator (FIBR-0108)."""
+    dialog = _prompt(qtbot)
+    dialog._on_update_now()
+    dialog.set_progress(512, 0)
+    assert (dialog._busy.minimum(), dialog._busy.maximum()) == (0, 0)
+
+
 def test_prompt_shows_both_versions(qtbot):
     from PySide6.QtWidgets import QLabel
 
@@ -1107,14 +1179,32 @@ def test_D7_check_worker_emits_failed_on_unexpected_error(qtbot):
 
 
 class _StubDownloadService:
-    def __init__(self, path=None, error=None):
+    def __init__(self, path=None, error=None, chunks=()):
         self._path = path
         self._error = error
+        self._chunks = chunks  # (received, total) pairs to report back
 
-    def download_and_verify(self, info):
+    def download_and_verify(self, info, *, on_progress=None):
+        for received, total in self._chunks:
+            if on_progress is not None:
+                on_progress(received, total)
         if self._error is not None:
             raise self._error
         return self._path
+
+
+def test_FIBR0108_download_worker_relays_progress(qtbot, tmp_path):
+    """The worker forwards the service's per-chunk report as a Qt signal, so the
+    bar advances off the GUI thread without the dialog touching the network layer
+    (FIBR-0108)."""
+    from finbreak.ui._update_worker import DownloadWorker
+
+    service = _StubDownloadService(path=tmp_path / "v", chunks=[(10, 100), (100, 100)])
+    worker = DownloadWorker(service, UpdateInfo("0.1.1", "", "", ""))
+    seen: list[tuple[int, int]] = []
+    worker.progress.connect(lambda received, total: seen.append((received, total)))
+    worker.run()
+    assert seen == [(10, 100), (100, 100)]
 
 
 def test_D7_download_worker_emits_ready(qtbot, tmp_path):

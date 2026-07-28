@@ -15,6 +15,7 @@ import functools
 import json
 import ssl
 import urllib.request
+from collections.abc import Callable
 from pathlib import Path
 
 import certifi
@@ -108,14 +109,37 @@ def fetch_latest_release(
     return json.loads(raw.decode("utf-8"))
 
 
-def download(url: str, dest: Path, *, max_bytes: int, timeout: float) -> None:
+def _content_length(response) -> int:
+    """The body size the server advertises, or ``0`` when the header is absent or
+    not a plain decimal count (FIBR-0108). Zero is the caller's "size unknown"
+    signal — it keeps the progress bar indeterminate rather than inventing a
+    denominator. Never trusted for allocation: the byte cap still governs."""
+    raw = response.headers.get("Content-Length")
+    if raw is None:
+        return 0
+    text = str(raw).strip()
+    return int(text) if text.isascii() and text.isdigit() else 0
+
+
+def download(
+    url: str,
+    dest: Path,
+    *,
+    max_bytes: int,
+    timeout: float,
+    on_progress: Callable[[int, int], None] | None = None,
+) -> None:
     """Stream *url* to *dest*, aborting (temp deleted, ``ValueError``) once the
     running total exceeds *max_bytes* (INV-10). Any failure deletes the partial
-    temp so a broken download never orphans bytes on the ``$APPIMAGE`` fs."""
+    temp so a broken download never orphans bytes on the ``$APPIMAGE`` fs.
+
+    *on_progress*, if given, is called after each chunk with
+    ``(received_bytes, total_bytes)`` — *total_bytes* being the advertised
+    Content-Length, or ``0`` when the server doesn't say (FIBR-0108)."""
     _require_https(url)
     _install_opener()  # https-only redirects + bundled-certifi TLS (INV-10)
     request = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
-    total = 0
+    received = 0
     try:
         with (
             urllib.request.urlopen(  # nosec B310  # nosemgrep: dynamic-urllib-use-detected
@@ -123,14 +147,17 @@ def download(url: str, dest: Path, *, max_bytes: int, timeout: float) -> None:
             ) as response,
             open(dest, "wb") as handle,
         ):
+            total = _content_length(response)
             while True:
                 chunk = response.read(_DOWNLOAD_CHUNK_BYTES)
                 if not chunk:
                     break
-                total += len(chunk)
-                if total > max_bytes:
+                received += len(chunk)
+                if received > max_bytes:
                     raise ValueError("download exceeds the size cap")
                 handle.write(chunk)
+                if on_progress is not None:
+                    on_progress(received, total)
     except BaseException:
         Path(dest).unlink(missing_ok=True)
         raise
