@@ -1854,6 +1854,101 @@ because retrofitting them is a data migration.
   INV-14 (3 new tests); FIBR-0171 §D1 carries an amendment note. Gate
   green 1363 passed, 2 skipped.
 
+- 📋 [FIBR-0185] **Move the Home alerts card behind an Alerts button + dialog, so alerts never reflow the dashboard.**
+  Verified 2026-07-28 from a user screenshot: the alerts card renders inline at
+  the TOP of the Home dashboard, above the period picker. With 4 alerts it
+  occupies ~120px and pushes the whole dashboard (period picker, Net line, the
+  three donut columns, Spending/Income/Transfers panes, the recurring card, the
+  trend chart) down the page. Dismissing one alert pulls everything back up. So
+  the dashboard's vertical layout is a function of how many alerts happen to be
+  open — the thing the user is reading moves under them as they read it.
+
+  User's chosen design (they weighed the alternative and rejected it): NOT a
+  separate Alerts tab — a tab is easy to never open, and would need its own
+  attention-drawing mechanism anyway. Instead an **Alerts button** on the Home
+  header row that opens an **Alerts dialog** listing every open alert with its
+  per-alert dismiss control (the same dismissals that already persist, FIBR-0172).
+
+  Button states:
+    - alerts outstanding → an attention colour DRAWN FROM THE ACTIVE THEME (six
+      themes ship; no hard-coded red — each theme needs a legible attention/danger
+      role, and the light themes need a different value from the dark ones).
+    - none outstanding → disabled, styled to sit quietly in the theme.
+  A count on the face ("Alerts (4)") is the cheap way to make the state readable
+  without opening it.
+
+  Net effect: the dashboard's top row becomes fixed-height whatever the alert
+  count, which is the actual complaint. Pairs with the fixed-size work below,
+  and largely subsumes it — alerts are the only element on Home whose height
+  varies with data.
+
+  Reuse: the alert model, detectors and dismissal persistence all shipped with
+  FIBR-0172; this is a presentation change, not new alert logic. The dialog
+  should go through the shell's tracked _open_dialog path (auto-lock tears
+  dialogs down — INV-9), not exec().
+  **Layman:** Alerts move into a button that opens a list. The button lights up when something needs attention, so the dashboard below it stops jumping around every time an alert appears or is dismissed.
+  Kind: ux.
+  Source: user-request-2026-07-28 (screenshot).
+
+- 📋 [FIBR-0186] **Give the Home dashboard a fixed layout that scrolls when the window is too small, instead of reflowing.**
+  User request 2026-07-28, alongside the Alerts-button item above: "Set a fixed
+  size for everything on the dashboard so that if someone makes the window too
+  small, it means they will have to scroll to see everything."
+
+  DESIGN NOTE — recommend implementing this as a MINIMUM size plus a scroll area,
+  not as hard-coded pixel sizes on each widget. Same user-visible behaviour (the
+  layout stops squashing; a too-small window scrolls), but:
+    - setFixedSize on text-bearing widgets CLIPS rather than scrolls when the user
+      runs a larger system font or a HiDPI scale factor — an accessibility
+      regression, and finbreak already ships "Follow system" theming, so honouring
+      system display settings is the established posture;
+    - a minimum size is one property per pane instead of a width AND height per
+      widget, and it cannot drift out of sync with the content it wraps.
+  The concrete shape: wrap Home's content in a QScrollArea with
+  setWidgetResizable(True), give the content widget a sensible minimum width and
+  height, and let the existing layouts do the rest. Scrollbars appear only when
+  the window is smaller than that minimum.
+
+  Sequencing: land the Alerts button FIRST. Alerts are the only Home element whose
+  height varies with data, so that change removes most of the observed movement
+  on its own, and it will be clearer afterwards how much of this item is still
+  needed — possibly only the scroll area.
+
+  Test posture: qtbot legs asserting the content keeps its minimum size when the
+  window is shrunk below it, and that the scroll area becomes scrollable rather
+  than the panes shrinking. Per qtbot-visibility notes, probe with isHidden()
+  rather than isVisible() for widgets on a non-current page.
+  **Layman:** The dashboard keeps its shape no matter the window size — make the window small and you scroll to see the rest, rather than everything squashing and rearranging.
+  Kind: ux.
+  Source: user-request-2026-07-28 (screenshot).
+
+- 📋 [FIBR-0187] **The Import-statement preview table forgets its column widths between imports.**
+  Verified 2026-07-28 (user screenshot + source read). The import preview table is
+  built at src/finbreak/ui/import_wizard.py:272 as a plain QTableWidget(0, 5) with
+  setHorizontalHeaderLabels — and never calls remember_columns(), the helper in
+  src/finbreak/ui/_table_state.py that every other table uses (transactions.py,
+  recurring.py, statements.py, transfers.py, rules.py all import it). It also has
+  no objectName, which remember_columns needs as its settings key
+  ("columns/<objectName>").
+
+  So this is a missed call-site, not missing capability: remember_columns already
+  restores widths + column order + sort on construction and re-saves on every
+  resize/reorder/sort, keyed by objectName in the window INI. The fix is to give
+  the preview table an objectName and call remember_columns on it — rule-of-reuse
+  case (a), call the existing helper directly, no new code.
+
+  Side benefit, worth noting because it is the same one line: remember_columns
+  also sets setSectionsMovable(True), so the preview's columns become
+  drag-reorderable like the rest of the app's tables.
+
+  Reproduce-first: a qtbot leg that widens a preview column, rebuilds the wizard,
+  and asserts the width survived — mirroring whatever the existing table_state
+  suite (tests/features/table_state/) already does for the shipped tables, which
+  is the pattern to copy rather than invent.
+  **Layman:** Widen a column while checking an import and it snaps back to the default next time you import — unlike every other table in the app, which remembers.
+  Kind: fix.
+  Source: user-request-2026-07-28 (screenshot).
+
 ### ⚡ Performance
 
 - ✅ [FIBR-0025] **Enable SQLite WAL mode.** Set
