@@ -206,3 +206,40 @@ def test_rules_table_is_not_sortable_but_persists_widths(qtbot, service):
     rebuilt = RulesWidget(service)
     qtbot.addWidget(rebuilt)
     assert rebuilt._table.columnWidth(0) == 199
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0187 — the import preview table remembers its columns too
+# --------------------------------------------------------------------------- #
+def test_FIBR0187_import_preview_columns_remembered_across_rebuild(qtbot, service):
+    """The preview table was the one table built without remember_columns, so a
+    column widened while checking an import snapped back on the next import."""
+    from finbreak.ui.import_wizard import ImportWizardWidget
+
+    first = ImportWizardWidget(service)
+    qtbot.addWidget(first)
+    assert first._preview_table.objectName(), (
+        "the preview table needs an objectName — remember_columns keys the saved "
+        "state on it, so a blank name would collide with every other unnamed table"
+    )
+    first._preview_table.setColumnWidth(3, 311)  # user widens Description
+
+    rebuilt = ImportWizardWidget(service)  # the next import
+    qtbot.addWidget(rebuilt)
+    assert rebuilt._preview_table.columnWidth(3) == 311
+
+
+def test_FIBR0187_import_preview_column_key_is_distinct(qtbot, service):
+    """Both the preview and the Statements table are 5-column; sharing a key would
+    cross-corrupt their widths and drag order (the FIBR-0012 failure mode)."""
+    from finbreak.ui.import_wizard import ImportWizardWidget
+    from finbreak.ui.statements import StatementsWidget
+
+    wizard = ImportWizardWidget(service)
+    qtbot.addWidget(wizard)
+    assert wizard._preview_table.objectName() == "import_preview_table"
+    wizard._preview_table.horizontalHeader().moveSection(0, 3)
+
+    stmts = StatementsWidget(service)
+    qtbot.addWidget(stmts)
+    assert stmts._table.horizontalHeader().visualIndex(0) == 0  # unmoved

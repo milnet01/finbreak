@@ -53,6 +53,7 @@ from finbreak.services.accounts import AccountService
 from finbreak.services.auth import AuthService
 from finbreak.services.import_ import ImportPreview, ImportService
 from finbreak.services.transactions import read_minor_unit_exponent, to_display_decimal
+from finbreak.ui._table_state import remember_columns
 from finbreak.ui.modal import show_modal
 from finbreak.ui.password_dialog import PasswordDialog
 
@@ -270,6 +271,10 @@ class ImportWizardWidget(QWidget):
         self._preview_banner.setWordWrap(True)
         self._preview_banner.hide()
         self._preview_table = QTableWidget(0, 5)
+        # Named so remember_columns has a settings key of its own ("columns/
+        # import_preview_table") — an unnamed table would share the empty key with
+        # every other unnamed one and cross-corrupt their widths (FIBR-0187).
+        self._preview_table.setObjectName("import_preview_table")
         self._preview_table.setHorizontalHeaderLabels(
             [
                 self.tr("Row"),
@@ -280,6 +285,9 @@ class ImportWizardWidget(QWidget):
             ]
         )
         self._preview_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        # Widths / column order survive the wizard being rebuilt for the next
+        # import, the way every other table in the app already behaves (FIBR-0187).
+        remember_columns(self._preview_table)
         self._summary_label = QLabel()
         self._period_start = QDateEdit()
         self._period_start.setCalendarPopup(True)
