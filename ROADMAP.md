@@ -408,6 +408,45 @@ scariest unknown (native-library bundling) up front.
   Kind: doc-fix.
   Source: in-session-2026-07-28 (v0.1.18 release).
 
+- 📋 [FIBR-0188] **The AppImage's embedded .desktop name doesn't match the app id, so the panel shows a second icon.**
+  Verified 2026-07-28 by source read (user screenshot shows the duplicate).
+
+  The mismatch, exactly:
+    - src/finbreak/app.py:48 calls
+      QGuiApplication.setDesktopFileName("io.github.milnet01.finbreak"), so the
+      window announces that app id (Wayland app_id / the desktop-entry association
+      key).
+    - scripts/_build-smoke-in-container.sh:169 writes the AppImage's embedded
+      launcher as "$ONEFILE.desktop" = finbreak.desktop, with Icon=$ONEFILE and NO
+      StartupWMClass line at all.
+
+  So a compositor/panel resolving the window's app id looks for
+  io.github.milnet01.finbreak.desktop and finds finbreak.desktop instead. No
+  match, so the running window cannot be grouped with its launcher and appears as
+  a second, separate panel entry. On X11 the same gap shows up differently: the
+  xcb backend derives WM_CLASS from applicationName() ("finbreak"), and with no
+  StartupWMClass key the association rests on the basename coincidence alone.
+
+  NOT a bug in the RPM/deb path: packaging/obs/io.github.milnet01.finbreak.desktop
+  is already named for the app id AND carries StartupWMClass=finbreak, which is
+  the pairing this item brings to the AppImage.
+
+  Fix: name the embedded file for the app id and add the X11 key — i.e. an APP_ID
+  variable (defaulting to $ONEFILE so the self-test smoke stub is unchanged, with
+  the release build exporting io.github.milnet01.finbreak), write
+  "$APP_ID.desktop", add StartupWMClass=$ONEFILE, and rename the bundled icon to
+  $APP_ID.png with Icon=$APP_ID so it keeps matching (appimagetool requires the
+  icon to match the Icon= key). Mirrors the obs/ launcher exactly.
+
+  Verify: this cannot be proven by a source-scan alone. Build the AppImage
+  (scripts/build-release-appimage.sh), run it, and confirm with
+  `xprop WM_CLASS` (X11) or the panel grouping (Wayland) that one icon appears.
+  A test can pin the generated .desktop's basename + keys; the grouping itself is
+  empirical, like the FIBR-0131 PowerShell legs.
+  **Layman:** Running the AppImage puts a duplicate finbreak icon in the taskbar instead of lighting up the one you pinned.
+  Kind: fix.
+  Source: user-request-2026-07-28 (screenshot: duplicate panel icon).
+
 ## P02 — Vertical slice: the security spine (target: after P01)
 
 **Theme:** the smallest end-to-end feature that touches every
@@ -1894,6 +1933,11 @@ because retrofitting them is a data migration.
   User request 2026-07-28, alongside the Alerts-button item above: "Set a fixed
   size for everything on the dashboard so that if someone makes the window too
   small, it means they will have to scroll to see everything."
+  Decision (2026-07-28, user): take the MINIMUM-size + QScrollArea route, not
+  literal per-widget fixed pixel sizes. Same user-visible behaviour (the layout
+  stops squashing; a too-small window scrolls) without clipping text for anyone
+  running larger system fonts or display scaling. This closes the design note
+  above — build it that way.
 
   DESIGN NOTE — recommend implementing this as a MINIMUM size plus a scroll area,
   not as hard-coded pixel sizes on each widget. Same user-visible behaviour (the
@@ -1948,6 +1992,57 @@ because retrofitting them is a data migration.
   **Layman:** Widen a column while checking an import and it snaps back to the default next time you import — unlike every other table in the app, which remembers.
   Kind: fix.
   Source: user-request-2026-07-28 (screenshot).
+
+- 📋 [FIBR-0189] **Allow only one running finbreak instance; a second launch raises the existing window.**
+  User request 2026-07-28: "ensure that the app can only have one running
+  instance (if we need to change this in future we can revisit this)" — so
+  single-instance is the intended behaviour, not a configurable one for now.
+
+  Two reasons this is worth more than tidiness:
+    1. It is a likely contributor to the duplicate panel icon in FIBR-0188 —
+       a second process is a second window, and no launcher association can
+       merge those. Fix both; neither subsumes the other (0188 is a launcher
+       NAMING mismatch that bites even with a single process).
+    2. VAULT SAFETY. The vault is one SQLCipher file. Two instances with it
+       open are two writers against the same database — at best the second
+       one's writes race the first's, at worst a torn write during an import
+       or migration. The app has no cross-process locking today. Worth
+       verifying whether concurrent open is already possible before assuming
+       it is: if SQLite's own locking already refuses the second opener, the
+       symptom is a confusing error rather than corruption, but either way
+       one instance is the answer.
+
+  Implementation — Qt's canonical single-instance pattern, no new dependency:
+  QLocalServer / QLocalSocket. On start, try to connect to a named socket keyed
+  per USER (not a fixed global name — a multi-user machine must not have one
+  user's launch bounce off another's, and the socket must live in the user's
+  runtime dir). Connect succeeds => an instance is live: send a "raise" message,
+  then exit(0) without building a window. Connect fails => become the owner,
+  listen, and on each incoming connection raise + activate the existing window
+  (show(), raise_(), activateWindow(), and un-minimise if needed).
+
+  Care needed, and these are the parts that actually bite:
+    - STALE SOCKET after a crash or SIGKILL: a leftover socket file makes every
+      later launch think an instance is live and silently exit — the app becomes
+      unlaunchable. QLocalServer.removeServer(name) before listen() is the
+      standard guard; the connect-first ordering means a LIVE owner still wins.
+    - The AppImage relaunch path (FIBR-0054/0131 self-update) spawns the new
+      binary from the old one. The old process must have released the socket
+      before the new one listens, or the update relaunch turns into a silent
+      no-op — exactly the class of bug the 0.1.2->0.1.3 "closed but didn't
+      reopen" relaunch fix was. Sequence this against os._exit in the installer.
+    - The --self-test entry point (_selftest.py builds its own QApplication)
+      must NOT take the lock, or a self-test while the app is open would exit 0
+      having tested nothing.
+
+  Test posture: the socket layer is testable headlessly — a first "instance"
+  listens, a second attempt detects it and reports "already running" without
+  building a MainWindow; a removed/stale socket still allows a fresh start. The
+  window-raising itself is a qtbot leg on the handler, not on real cross-process
+  focus (which is compositor policy and empirical, like the FIBR-0131 legs).
+  **Layman:** Clicking finbreak when it's already open brings up the window you already have, instead of starting a second copy.
+  Kind: feature.
+  Source: user-request-2026-07-28.
 
 ### ⚡ Performance
 
