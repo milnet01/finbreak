@@ -1529,7 +1529,7 @@ because retrofitting them is a data migration.
   Source: dogfooding-2026-07-12.
   Resolved (2026-07-12): _table_region now falls back, on a Family-C page with no "Date Description Amount" column header, to starting the region at the first real transaction row (a CC segment ending in a 2-decimal amount — which excludes summary-page date spans like "Statement Period 20 Sep 25 to 20 Oct 25"). TDD: 2 pure _table_region unit tests (header-less continuation page captured; header-less summary page stays empty). Validated end-to-end on the real SBSA 2025-10-20 statement in a throwaway scratchpad: now 72 drafts, reconciles exactly (1348.95 - (-619.82) = 1968.77 = closing); the 3 previously-dropped page-3 rows (Checkers 514.21, Cash Finance Charge 23.05, Tips 10.00 = 547.26) are captured. Full SB suite + gate green (604 passed/1 skipped). Real file/password never committed; tests are synthetic. Note: a pre-existing cosmetic issue remains (a "Continued on next page......" line folds into the last page-N transaction's description) — filed separately, not this fix.
 
-- 🚧 [FIBR-0113] **Accounts tab: show accounts in a sortable 5-column table (Name / Type / Account number / Note / Status) instead of one line.**
+- ✅ [FIBR-0113] **Accounts tab: show accounts in a sortable 5-column table (Name / Type / Account number / Note / Status) instead of one line.**
   User request 2026-07-12 (screenshot): the Accounts tab lists each account as one line "Credit Card — Credit card" (name — type). Move to a columnar QTableWidget with columns: Name, Type of account, Account number, Note (optional), Status. Requires two NEW nullable account fields — account_number and note (schema bump) — plus the add/edit form growing those inputs and the AccountsWidget becoming a table (mirrors the Rules/Statements tab table shape). Account number is display/reference only (not used for matching). Dovetails with the columnar direction of FIBR-0109 (Transactions tab) and the account credential accessors already on the accounts repo (FIBR-0009).
   **Layman:** Show accounts in a proper table (Name, Type, Account number, an optional Note, and a Status column you can sort by) instead of a single cramped "Name — Type" line each.
   Kind: feature.
@@ -1662,6 +1662,37 @@ because retrofitting them is a data migration.
 
   Nothing is owed on either spec. Both are gated and ready to build.
   Order: FIBR-0193 (storage) -> FIBR-0113 (table) -> FIBR-0198 (reveal).
+  Resolved (2026-07-30): shipped by TDD, on top of FIBR-0193's storage.
+  `AccountsWidget._list` (QListWidget) became `_table` (QTableWidget) with five
+  sortable columns — Name, Type, Account number, Note, Status — built like
+  `StatementsWidget`'s (NoEditTriggers / SelectRows / SingleSelection /
+  `enable_sorting` / `remember_columns` on a new `accounts_table` objectName), so
+  Accounts joins the shared remembered-column scheme (FIBR-0084's Accounts
+  surface; the other three stay FIBR-0192's). The add/edit form relaid into a
+  two-row grid with Account-number and Note fields. The number is masked on BOTH
+  surfaces by two different mechanisms — the cell via the new
+  `_mask_account_number` (a QTableWidgetItem has no echo mode), the form field via
+  `Password` echo mode; the form always holds the RAW value, or an Update would
+  write "•••• 7890" back as the account number. Row identity moved to the
+  `_table_state` contract (tag on fill, `selected_index` in every handler), and
+  the six `_ACCOUNT_*_ROLE` constants were deleted as a correctness requirement:
+  `_ACCOUNT_ID_ROLE` and `_ROW_INDEX_ROLE` are both `Qt.ItemDataRole.UserRole`, so
+  a survivor would make `selected_index` return a database id used as an index.
+  The fill is clear-then-fill (a leading `setRowCount(0)` inside `fill_guard`) —
+  the sibling's reuse-rows shape lets a selection ride its item through a re-sort
+  onto a different account (reproduced against real Qt; the Statements twin is
+  FIBR-0194, not fixed here). Status is a `SortableItem` keyed on a severity rank,
+  composing the reconciliation marker first and the 🔑 second — the reverse of the
+  old list line, since the column sorts by severity — and the four `tr()` literals
+  dropped their leading "  ·  ". Reproduce-first TDD: 19 red before the rewrite
+  (INV-5/7/9/12/15/18/20/21/22 in `test_accounts.py`, INV-8/17 in
+  `test_table_state.py`), with four existing legs RE-DERIVED rather than
+  re-pointed because a mechanical `_list`→`_table` swap would have left them
+  passing while checking less — the FIBR-0128 sentinel sweep above all. Cross-doc
+  per spec §12: FIBR-0005, FIBR-0128 and FIBR-0177 annotated, README + both
+  Accounts screenshots refreshed (the demo seeder now carries numbers and notes so
+  the masking is visible), CHANGELOG. FIBR-0198 (the reveal toggle) is next;
+  FIBR-0084 stays 📋 until FIBR-0192.
 
 - ✅ [FIBR-0114] **Auto-lock should be an inactivity timer (reset on user activity), not an absolute timer from unlock.**
   User report 2026-07-12. AuthService._arm_timer (auth.py:241) starts a single-shot QTimer at unlock (and only re-arms on a settings change), so the auto-lock fires a fixed duration after UNLOCK regardless of activity — locking mid-use. Fix: make it an inactivity timer. Add AuthService.notify_activity() that restarts the running timer with its existing interval (no settings re-read, since it fires on every input event; no-op when locked/headless), and have MainWindow install an application-level event filter that calls notify_activity() on user-input events (MouseButtonPress/MouseMove/KeyPress/Wheel). TDD: service-level (notify_activity restarts the running timer when unlocked, no-op when locked) + shell-level (eventFilter calls notify_activity on an input event).

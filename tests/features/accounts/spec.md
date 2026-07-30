@@ -4,11 +4,16 @@
 type; every transaction belongs to one; and the first forward-only schema
 migration (v1→v2) that adds the account link.
 
-This is the test-side contract for [`docs/specs/FIBR-0005.md`](../../../docs/specs/FIBR-0005.md);
-each `INV-N` maps to that spec's invariant of the same number. `test_accounts.py`
-enforces them, except FIBR-0193's INV-1 / INV-2, which live in
-`test_migration_v13.py` in this directory. Every on-disk vault uses `tmp_path`;
-no test touches the network or real financial data (testing.md § 6).
+This is the test-side contract for **four** specs, one block per spec below.
+The `## Invariants` block belongs to
+[`docs/specs/FIBR-0005.md`](../../../docs/specs/FIBR-0005.md); each later block
+names its own spec in its heading. Numbering **restarts at INV-1 in each
+block** and is not shared between them, so every invariant carries a `Source:`
+line naming the spec it maps to. `test_accounts.py` enforces them all, except
+FIBR-0193's INV-1 / INV-2, which live in `test_migration_v13.py` in this
+directory, and FIBR-0113's INV-8 / INV-17, which extend
+`tests/features/table_state/test_table_state.py`. Every on-disk vault uses
+`tmp_path`; no test touches the network or real financial data (testing.md § 6).
 
 ## Invariants
 
@@ -40,14 +45,16 @@ no test touches the network or real financial data (testing.md § 6).
   empty non-last account deletes; a missing id falls through to a no-op. Source:
   FIBR-0005 INV-6.
 - **INV-7** — Accounts-manager UI round-trip (`qtbot`): the type picker offers
-  the seven types (labels map back to tokens); Add shows the account in the list
-  and in the main window's account picker; a transaction shows its account name;
+  the seven types (labels map back to tokens); Add shows the account in the
+  **table** and in the main window's account picker; a transaction shows its account name;
   deleting an in-use account shows a message and removes nothing; an empty
   non-last account deletes; selecting an account loads it into the form and
   Update selected renames/retypes it in place (the add/edit form). Source:
   FIBR-0005 INV-7 (a–f). (`amended by FIBR-0193`: the Update-selected round-trip
   now also passes the account's stored `account_number` / `note` back unchanged,
-  locked by that item's INV-7.)
+  locked by that item's INV-7. `amended by FIBR-0113`: the on-screen list is a
+  five-column table, so every leg asserts on cells rather than on a row-wide
+  string, and selecting an account loads **four** inputs.)
 - **INV-8** — The new modules add no network import and log no secret across an
   account add→delete cycle (covered by the vault-suite whole-`src/` scan plus a
   `caplog` capture here). Source: FIBR-0005 INV-8.
@@ -64,9 +71,16 @@ displayed.
   .ids_with_pdf_password()` / `AccountService.account_ids_with_pdf_password()`
   return an **id-set** (empty by default), never the secret; the widget never calls
   `get_pdf_password` during render, and a stored sentinel appears in no row
-  text/tooltip/item-data. Source: FIBR-0128 INV-1.
+  text/tooltip/item-data. Source: FIBR-0128 INV-1. (`amended by FIBR-0113`: the
+  sweep is **re-derived**, not re-pointed — it walks every cell's `text()` and
+  `toolTip()` across all five columns plus the two `_table_state` roles. The old
+  literal role list re-pointed at the table would keep passing while sweeping
+  strictly less: `UserRole` / `+1` are re-purposed into row mechanics that could
+  never hold a password, and four columns would go unswept.)
 - **INV-2** — A per-account marker (the phrase "statement password saved") shows on
   exactly the rows whose account has a saved password. Source: FIBR-0128 INV-2.
+  (`amended by FIBR-0113`: the marker lives in the **Status cell**, second after
+  the reconciliation text; the row is found by its Name cell.)
 - **INV-3** — The **Forget statement password** button is disabled with no selection
   and for an account without a saved password, enabled only for a selected account
   that has one, and disabled again after a Forget clears the selection. Source:
@@ -115,6 +129,52 @@ only — nothing displays or edits either field until FIBR-0113.
   the name or type leaves both stored fields intact (`qtbot`). Source:
   FIBR-0193 INV-7.
 
+## FIBR-0113 — the sortable 5-column table, account number masked
+
+Test-side contract for [`docs/specs/FIBR-0113.md`](../../../docs/specs/FIBR-0113.md);
+each `INV-N` below maps to that spec's invariant of the same number (a fourth
+numbering). **The ids are non-contiguous by design** — eleven were withdrawn to
+FIBR-0193, FIBR-0192 and FIBR-0198 when that spec was split, and spec-format
+§3.7 forbids renumbering or reusing them, so the gaps are permanent handles
+rather than omissions. INV-8 and INV-17 live in
+`tests/features/table_state/test_table_state.py`; the rest in `test_accounts.py`.
+
+- **INV-5** — `_mask_account_number` returns a mask plus the last 4 characters
+  for a value longer than 4, a **bare** mask for a value of 1–4 characters, and
+  an empty string for `None` or `""`. Source: FIBR-0113 INV-5.
+- **INV-7** — After the user sorts by any column, Update, Delete and Forget act
+  on the account the user **selected**, not on the parallel-list entry sitting
+  at that visual row index. Source: FIBR-0113 INV-7.
+- **INV-8** — The table's `objectName` is `accounts_table`, distinct from every
+  other table passed to `remember_columns`. Source: FIBR-0113 INV-8.
+- **INV-9** — The Status column orders by reconciliation **severity**, not by
+  its rendered string (OFF → quiet → RECONCILED ascending); its text composes
+  the reconciliation marker first and the 🔑 marker second, `" · "`-joined,
+  absent parts omitted. Source: FIBR-0113 INV-9.
+- **INV-12** — Typing an account number and a note and pressing Add stores both
+  and clears the form; re-selecting repopulates both fields with the
+  **normalised stored value**, the number field still in `Password` echo mode;
+  a `_refresh()` with the selection cleared leaves the form untouched. Source:
+  FIBR-0113 INV-12.
+- **INV-15** — `_select_account(account_id)` selects the row displaying that
+  account whatever the sort — it resolves the id to a **position** in
+  `self._rows` rather than passing it to `select_by_index` — and leaves the
+  selection unchanged for an unknown id. Source: FIBR-0113 INV-15.
+- **INV-17** — The columns are user-reorderable and the layout survives a
+  rebuild: a fresh widget restores the moved order and the set widths. Source:
+  FIBR-0113 INV-17.
+- **INV-18** — Repopulating while a sort is active never mis-pairs cells: every
+  row's five cells belong to the same account after a refresh, in both sort
+  directions. Source: FIBR-0113 INV-18.
+- **INV-20** — The Account-number **column** renders
+  `_mask_account_number(account.account_number)` for every row, whatever the
+  sort order. Source: FIBR-0113 INV-20.
+- **INV-21** — The table is click-sortable: `isSortingEnabled()` is `True` and
+  driving a header section reorders the rows. Source: FIBR-0113 INV-21.
+- **INV-22** — `_refresh()` leaves the table with **no selection**, whatever
+  sort is active, so no stale selection survives a repopulate and resolves to a
+  different account. Source: FIBR-0113 INV-22.
+
 ## Out of scope
 
 Editing an existing transaction's account; reassigning/bulk-moving transactions;
@@ -126,3 +186,9 @@ import); Settings-screen placement; Business/Personal grouping (FIBR-0137).
 the masked cell and form field, the reveal toggle — all FIBR-0113/FIBR-0198;
 detecting an account number on an imported statement and matching it
 (FIBR-0086); per-account currency (FIBR-0087).
+**FIBR-0113:** the reveal control — the "Show account numbers" checkbox, its
+auto re-mask timer, and the echo-mode switch on the form field (FIBR-0198);
+finishing FIBR-0084 (the Forecast table, the Home dashboard trees, and Reset
+layout clearing saved column state — FIBR-0192); preserving the selection
+across a tab switch, and column customisation on the Categories tree, both
+permanent decisions rather than deferrals.

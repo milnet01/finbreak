@@ -125,19 +125,33 @@ def seed(auth: AuthService, *, today: date | None = None) -> None:
     anchor = today or date.today()
     vault = auth.vault
 
-    # 1) Accounts — rename the seeded "Default" and add two more.
+    # 1) Accounts — rename the seeded "Default" and add two more. Each carries a
+    # synthetic account number and a note so the marketing capture of the
+    # Accounts tab shows those columns populated — and the number MASKED, which
+    # is the whole point of FIBR-0113 D2 (screenshots are the named exposure).
     accounts = AccountService(vault)
     default = accounts.list_accounts()[0]
-    # An explicit `None` is correct here rather than the erasure the required
-    # parameters guard against: this renames the freshly-created Default account
-    # moments after first_run, so there is no stored value to erase (FIBR-0193).
     accounts.update_account(
-        default.id, "Cheque account", "current", account_number=None, note=None
+        default.id,
+        "Cheque account",
+        "current",
+        account_number="62141230078",
+        note="Main salary account",
     )
     acct = {
         "cheque": default.id,
-        "savings": accounts.add_account("Savings", "savings").id,
-        "credit": accounts.add_account("Credit card", "current").id,
+        "savings": accounts.add_account(
+            "Savings",
+            "savings",
+            account_number="62149875544",
+            note="Emergency fund",
+        ).id,
+        "credit": accounts.add_account(
+            "Credit card",
+            "current",
+            account_number="4023110098761234",
+            note="Pays off on the 1st",
+        ).id,
     }
 
     # 2) Categories (with 3-level nesting) + auto-rules.

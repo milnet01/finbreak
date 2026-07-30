@@ -36,8 +36,13 @@ lot, with more polish and features to come. What works today:
   vault),
 - importing statements from **CSV, OFX, and PDF** files (including
   password-protected PDFs),
-- organising them into **accounts** and into **categories** you can group
-  and rename — now up to three levels deep (Type › Category › Sub-category),
+- organising them into **accounts** — shown in a sortable table of Name, Type,
+  Account number, Note and Status, whose column widths and order finbreak
+  remembers; each account can keep a reference **account number** (always shown
+  as dots plus the last four digits, so a glance or a screenshot never gives it
+  away) and a free-text **note**,
+- ...and into **categories** you can group and rename — now up to three levels
+  deep (Type › Category › Sub-category),
 - **automatically sorting** transactions into categories — with built-in
   guesses for common shops and services (so a fresh import is sorted straight
   away; each guess is tagged so you can override it), plus your own rules you

@@ -23,6 +23,14 @@ signaling per
 
 ### Added
 
+- **The Accounts tab is now a sortable table of Name, Type, Account number, Note and Status** (FIBR-0113)
+  Instead of one cramped line per account, accounts appear as rows you can
+  sort, resize and reorder — and finbreak remembers the layout. Clicking
+  Status brings the accounts that don't reconcile to the top. The account
+  number and note FIBR-0193 added can now be entered and edited on the tab;
+  the account number always shows as dots plus its last four digits, on
+  screen and in the form, so a glance or a screenshot never gives it away.
+
 - **Each account can now store an optional account number and a free-text note** (FIBR-0193)
   Storage only — both fields live in the encrypted vault behind schema
   migration v13, and nothing displays or edits them yet (the Accounts
