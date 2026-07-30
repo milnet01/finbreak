@@ -2571,6 +2571,35 @@ because retrofitting them is a data migration.
   Kind: doc-fix.
   Source: in-session-2026-07-30 (FIBR-0193 cold-eyes loop 4, deferred finding).
 
+- 📋 [FIBR-0198] **Accounts tab: reveal the masked account number, with an auto re-mask after 30s.**
+  Split out of FIBR-0113 on 2026-07-30. FIBR-0113 ships the sortable
+  5-column Accounts table with the account number ALWAYS masked; this item
+  adds the way to see it. Blocked by FIBR-0113 (it needs the table, the
+  mask helper and the account-number form field that item creates).
+
+  Scope: a "Show account numbers" QCheckBox between the table and the
+  form; a single-shot QTimer (_REVEAL_SECONDS = 30, matching the existing
+  clipboard_clear_seconds default) that re-masks unattended; reveal
+  governs BOTH surfaces — the table cell text AND the form field's echo
+  mode (Password -> Normal), because the form fills on every row selection;
+  session-scoped, never persisted, and gone after a lock cycle. The
+  toggle handler must re-select the previously-selected account with the
+  table's signals blocked, or it clobbers a half-typed edit.
+
+  Also amends docs/security-model.md T13, whose mitigation currently
+  asserts account numbers are "not copyable" — true only while the form
+  field stays in Password echo mode, i.e. only until this ships.
+
+  The split reason: shipping the table alone renders the account number
+  masked and nothing regresses; shipping the reveal alone is impossible.
+  FIBR-0113 §8 records why "mask with no reveal" is not the end state —
+  a user who needs the full number to pay someone would otherwise have to
+  open the vault file to get it back.
+  **Layman:** Add a "Show account numbers" tick-box to the Accounts tab so you can read a full account number when you need to pay someone — and have it hide itself again after half a minute so it can't be left on screen.
+  Kind: feature.
+  Lanes: ui.
+  Source: in-session-2026-07-30 (FIBR-0113 split, UI half).
+
 ### ⚡ Performance
 
 - ✅ [FIBR-0025] **Enable SQLite WAL mode.** Set
