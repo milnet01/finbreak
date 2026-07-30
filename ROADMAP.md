@@ -1586,10 +1586,11 @@ because retrofitting them is a data migration.
   all three lanes this loop; the strong pass then found 3 CRITICAL. The
   skill has been amended so a breadth pass can no longer certify a lane
   clean after a loop that produced CRITICAL/HIGH.
-  Split executed (2026-07-28). This item now delivers the UI half ONLY:
-  the 5-column sortable Accounts table, the masked account-number cell and
-  form field, the reveal toggle and its auto-hide timer, and the two-row
-  edit form. The storage half — migration v13, models.Account, the accounts
+  Split executed (2026-07-28), and split again on 2026-07-30. This item
+  now delivers the TABLE half ONLY: the 5-column sortable Accounts table,
+  the account-number cell and form field with the number ALWAYS masked, and
+  the two-row edit form. The reveal toggle and its auto-hide timer moved to
+  FIBR-0198, which ships AFTER this. The storage half — migration v13, models.Account, the accounts
   repository and service — moved to FIBR-0193, which SHIPS FIRST: this
   table reads and writes columns FIBR-0193 creates.
 
@@ -1602,8 +1603,9 @@ because retrofitting them is a data migration.
   behaviour, where the StatementsWidget reuse-rows shape would newly
   introduce the cross-account write CR-1 reproduced; (2) the Forget-button
   rule moves into a gating-only helper _apply_forget_gating(), called from
-  _on_selection_changed, _refresh()'s tail and the reveal handler, so a
-  refresh can no longer repopulate the form (CR-2 + HI-6 in one fix).
+  _on_selection_changed and _refresh()'s tail here, plus FIBR-0198's reveal
+  handler once that ships, so a refresh can no longer repopulate the form
+  (CR-2 + HI-6 in one fix).
 
   Headline + Layman card reconciled to five columns in this same edit (both
   still said four; the Status column was the user's 2026-07-28 decision).
@@ -1629,10 +1631,11 @@ because retrofitting them is a data migration.
     row text (the 🔑 saved-statement-password marker and the FIBR-0177
     reconciliation ✓ / ⚠ off by {money} / ⚠ {n} periods marker), so the
     user can click-sort to bring non-reconciling accounts to the top.
-  - Account number is MASKED by default (last 4 shown) with an explicit
-    reveal toggle — it is shoulder-surf / screenshot exposure, not storage
-    exposure (the vault is already encrypted). The mask is display-only;
-    the stored value is verbatim.
+  - Account number is MASKED wherever it is displayed (last 4 shown) — it
+    is shoulder-surf / screenshot exposure, not storage exposure (the vault
+    is already encrypted). The mask is display-only; the stored value is
+    verbatim. The way to SEE the full number is FIBR-0198's, not this
+    item's.
   - The add/edit form stays INLINE on the tab, relaid as a two-row grid
     rather than moving to a dialog.
 
@@ -2414,9 +2417,9 @@ because retrofitting them is a data migration.
   /cold-eyes Phase 5. This half was the quietest lane in that loop: zero
   CRITICAL, one HIGH, all findings local.
 
-  SHIPS FIRST. FIBR-0113 (the 5-column Accounts table, masking, the reveal
-  toggle) reads and writes these two columns, so it cannot start until they
-  exist.
+  SHIPS FIRST. FIBR-0113 (the 5-column Accounts table and the masking)
+  reads and writes these two columns, so it cannot start until they exist.
+  FIBR-0198 (the reveal toggle) follows FIBR-0113.
 
   Scope — the storage half of FIBR-0113's original design:
   - migrations.py: LATEST_SCHEMA_VERSION 12 -> 13 and a _migrate_to_v13 step
