@@ -43,6 +43,14 @@ _ACCOUNT_TYPE_ROLE = Qt.ItemDataRole.UserRole + 2
 # Whether the row's account has a remembered statement PDF password (a bool — the
 # secret itself is never stashed on the row). Drives the Forget button (FIBR-0128).
 _ACCOUNT_HAS_PW_ROLE = Qt.ItemDataRole.UserRole + 3
+# The row's stored account number + note (FIBR-0193 D5). Nothing renders them
+# yet — they exist so ``_on_update`` can pass the account's current values back
+# unchanged, since ``update_account`` issues an unconditional UPDATE and would
+# otherwise erase both on any name/type edit. FIBR-0113 replaces them with real
+# form fields. The +4/+5 values are pinned: the FIBR-0128 role sweep in
+# ``test_accounts.py`` enumerates them literally.
+_ACCOUNT_NUMBER_ROLE = Qt.ItemDataRole.UserRole + 4
+_ACCOUNT_NOTE_ROLE = Qt.ItemDataRole.UserRole + 5
 
 
 class AccountsWidget(QWidget):
@@ -157,6 +165,13 @@ class AccountsWidget(QWidget):
                 item.data(_ACCOUNT_ID_ROLE),
                 self._name.text(),
                 self._type.currentData(),
+                # Read-and-pass-back: no surface edits these two yet, and the
+                # service's UPDATE is unconditional, so anything else here
+                # (notably `None, None`) would silently erase them (FIBR-0193
+                # D5, INV-7). `_normalise_optional` is idempotent, so re-sending
+                # an already-stored value on every click is harmless.
+                account_number=item.data(_ACCOUNT_NUMBER_ROLE),
+                note=item.data(_ACCOUNT_NOTE_ROLE),
             )
         except VaultLockedError:
             return  # auto-lock fired mid-edit — silent, like the delete handlers
@@ -271,6 +286,8 @@ class AccountsWidget(QWidget):
             item.setData(_ACCOUNT_NAME_ROLE, account.name)
             item.setData(_ACCOUNT_TYPE_ROLE, account.type)
             item.setData(_ACCOUNT_HAS_PW_ROLE, has_pw)
+            item.setData(_ACCOUNT_NUMBER_ROLE, account.account_number)
+            item.setData(_ACCOUNT_NOTE_ROLE, account.note)
             self._list.addItem(item)
 
     def _reconciliation_suffix(

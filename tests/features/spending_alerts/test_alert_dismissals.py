@@ -1,6 +1,6 @@
 """FIBR-0172 — AlertDismissalRepository (schema v12 ``alert_dismissals``).
 
-Enforces spec INV-12 on a real (tmp_path) v12 vault: ``dismiss`` is idempotent (a
+Enforces spec INV-12 on a real (tmp_path) v13 vault: ``dismiss`` is idempotent (a
 double-dismiss is one row, no error), ``dismissed_keys()`` round-trips, and
 ``clear`` removes. No network, no real financial data (testing.md § 6).
 """
@@ -21,7 +21,7 @@ pytestmark = pytest.mark.features
 @pytest.fixture
 def service(paths) -> Iterator[AuthService]:
     svc = AuthService(*paths)
-    svc.first_run(bytearray(_PW), "ZAR")  # migrates straight to latest (v12)
+    svc.first_run(bytearray(_PW), "ZAR")  # migrates straight to latest (v13)
     yield svc
     svc.lock()
 

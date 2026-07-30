@@ -21,6 +21,15 @@ signaling per
 
 ## [Unreleased]
 
+### Added
+
+- **Each account can now store an optional account number and a free-text note** (FIBR-0193)
+  Storage only — both fields live in the encrypted vault behind schema
+  migration v13, and nothing displays or edits them yet (the Accounts
+  screen that does is FIBR-0113). A blank field is stored as SQL NULL
+  rather than an empty string, and an existing vault upgrades in place
+  with every account row untouched.
+
 ### Changed
 
 - **The dashboard scrolls instead of squashing when the window is too small** (FIBR-0186)

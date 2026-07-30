@@ -71,7 +71,7 @@ def test_INV1_crud_roundtrip_and_order(service):
     # created_at is a well-formed ISO-8601 timestamp (fromisoformat raises if not).
     datetime.fromisoformat(got.created_at)
 
-    svc.update_account(current.id, "Cheque", "current")
+    svc.update_account(current.id, "Cheque", "current", account_number=None, note=None)
     assert repo.get(current.id).name == "Cheque"
 
     repo.delete(current.id)
@@ -81,7 +81,7 @@ def test_INV1_crud_roundtrip_and_order(service):
 def test_INV1_missing_id_update_and_delete_are_noops(service):
     repo = AccountRepository(service.vault.connection)
     repo.delete(999_999)  # no row, no raise
-    repo.update(999_999, "ghost", "other")  # no row, no raise
+    repo.update(999_999, "ghost", "other", None, None)  # no row, no raise
     assert repo.get(999_999) is None
 
 
@@ -132,10 +132,12 @@ def test_INV3_name_stored_trimmed_and_update_allows_own_name(service):
     acct = svc.add_account("  Savings  ", "savings")
     assert acct.name == "Savings", "stored trimmed"
     # Re-saving the same account with its own (unchanged) name is allowed.
-    svc.update_account(acct.id, "Savings", "current")
+    svc.update_account(acct.id, "Savings", "current", account_number=None, note=None)
     # But colliding with a *different* account's name is refused.
     with pytest.raises(ValueError):
-        svc.update_account(acct.id, "Default", "current")
+        svc.update_account(
+            acct.id, "Default", "current", account_number=None, note=None
+        )
 
 
 # --------------------------------------------------------------------------- #
@@ -154,7 +156,7 @@ def test_INV4_v1_vault_upgrades_and_backfills(paths):
     svc = AuthService(vault_path, sidecar_path)
     assert svc.unlock(bytearray(_PW)) is True  # unlock runs the migration
     conn = svc.vault.connection
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 12
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 13
 
     accounts = AccountRepository(conn).list_all()
     assert [a.name for a in accounts] == [DEFAULT_ACCOUNT_NAME]
@@ -169,7 +171,7 @@ def test_INV4_v1_vault_upgrades_and_backfills(paths):
 
 def test_INV4_first_run_vault_is_v9_with_one_default(service):
     conn = service.vault.connection
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 12
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 13
     accounts = AccountRepository(conn).list_all()
     assert [a.name for a in accounts] == [DEFAULT_ACCOUNT_NAME]
     assert accounts[0].type == "current"
@@ -179,7 +181,7 @@ def test_INV4_idempotent_at_latest(service):
     # Re-running migrations on an already-latest vault changes nothing.
     conn = service.vault.connection
     run_migrations(conn)
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 12
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 13
     assert len(AccountRepository(conn).list_all()) == 1, "Default not duplicated"
 
 
@@ -492,14 +494,27 @@ def test_INV7f_edit_selected_account_updates_it(qtbot, service):
 # --------------------------------------------------------------------------- #
 def test_INV8_account_cycle_logs_no_secret(service, caplog):
     password = _PW.decode()
+    # Sentinels for the two v13 reference fields (FIBR-0193 § 7): a leaked
+    # account number or note would otherwise pass this sweep, which checks only
+    # the master password and the derived key. Gives security-model INV-9's
+    # wording ("the local log file never records … decrypted data") an
+    # observable for these columns instead of leaving it as wording.
+    account_number = "SENTINEL-ACCT-NUMBER-9911"
+    note = "SENTINEL-NOTE-2277"
     with caplog.at_level(logging.INFO, logger="finbreak"):
         svc = AccountService(service.vault)
-        spare = svc.add_account("Spare", "other")
-        svc.update_account(spare.id, "Spare2", "savings")
+        spare = svc.add_account(
+            "Spare", "other", account_number=account_number, note=note
+        )
+        svc.update_account(
+            spare.id, "Spare2", "savings", account_number=account_number, note=note
+        )
         svc.delete_account(spare.id)
 
     joined = "\n".join(record.getMessage() for record in caplog.records)
     assert password not in joined, "the master password must never be logged"
+    assert account_number not in joined, "an account number must never be logged"
+    assert note not in joined, "an account note must never be logged"
     params = service.load_params()
     key = derive_key(bytearray(_PW), params.salt, params)
     assert bytes(key).hex() not in joined, "the derived key (hex) must never be logged"
@@ -624,6 +639,8 @@ def test_INV1_widget_never_renders_or_reads_the_secret(qtbot, service, monkeypat
         Qt.ItemDataRole.UserRole + 1,
         Qt.ItemDataRole.UserRole + 2,
         Qt.ItemDataRole.UserRole + 3,
+        Qt.ItemDataRole.UserRole + 4,  # _ACCOUNT_NUMBER_ROLE (FIBR-0193)
+        Qt.ItemDataRole.UserRole + 5,  # _ACCOUNT_NOTE_ROLE (FIBR-0193)
     ]
     for i in range(widget._list.count()):
         item = widget._list.item(i)
@@ -771,3 +788,160 @@ def test_INV5_forget_swallows_vault_locked_silently(qtbot, service, monkeypatch)
     monkeypatch.setattr(widget._accounts, "set_pdf_password", locked)
     widget._on_forget_password()  # must not raise
     assert widget._error.text() == "", "VaultLockedError is swallowed silently"
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0193 — the optional account_number / note storage fields (schema v13)
+# --------------------------------------------------------------------------- #
+_PW_ACCESSORS = {"get_pdf_password", "set_pdf_password", "ids_with_pdf_password"}
+
+
+def test_INV3_account_number_and_note_round_trip_on_both_read_paths(service):
+    """A populated write reads back by FIELD NAME on `get()` AND `list_all()`
+    (FIBR-0193 INV-3). Populated, not blank: a blank write can tell neither a
+    mis-ordered SELECT from a correct one, nor a widened INSERT from one that
+    silently omits both columns."""
+    svc = AccountService(service.vault)
+    acct = svc.add_account(
+        "Holiday", "savings", account_number="62145530078", note="Ann's card"
+    )
+    assert acct.account_number == "62145530078"
+    assert acct.note == "Ann's card"
+
+    repo = AccountRepository(service.vault.connection)
+    for label, got in (
+        ("get", repo.get(acct.id)),
+        ("list_all", next(a for a in repo.list_all() if a.id == acct.id)),
+    ):
+        assert got is not None, label
+        assert got.account_number == "62145530078", label
+        assert got.note == "Ann's card", label
+        assert got.name == "Holiday" and got.type == "savings", label
+        # The falsifier for a column inserted BEFORE created_at in one SELECT
+        # (e.g. id, name, type, account_number, created_at, note): the timestamp
+        # would land in account_number and this parse would raise.
+        datetime.fromisoformat(got.created_at)
+
+
+def test_INV4_statement_pdf_password_confined_to_its_accessors():
+    """Within `repositories/accounts.py`, `statement_pdf_password` is named only
+    inside the three dedicated accessors — no listing query in that file selects
+    it (FIBR-0193 INV-4, re-asserting FIBR-0128 INV-1 at source level). An AST
+    walk, because a substring scan cannot attribute a hit to its enclosing
+    function."""
+    import ast
+    import sys
+    from pathlib import Path
+
+    def mentions(node) -> int:
+        return sum(
+            1
+            for n in ast.walk(node)
+            if isinstance(n, ast.Constant)
+            and isinstance(n.value, str)
+            and "statement_pdf_password" in n.value
+        )
+
+    # Located through the imported symbol, not a path relative to this file, so
+    # it keeps working if either tree moves.
+    module = Path(sys.modules[AccountRepository.__module__].__file__)
+    tree = ast.parse(module.read_text(encoding="utf-8"))
+    accessors = {
+        fn.name: fn
+        for fn in ast.walk(tree)
+        if isinstance(fn, ast.FunctionDef) and fn.name in _PW_ACCESSORS
+    }
+    assert set(accessors) == _PW_ACCESSORS, "the three dedicated accessors still exist"
+
+    inside = sum(mentions(fn) for fn in accessors.values())
+    assert inside > 0, "the accessors must actually name the column"
+    assert mentions(tree) == inside, (
+        "the stored statement password is named outside its three accessors — a "
+        "listing SELECT would carry every saved password into every account listing"
+    )
+
+
+def test_INV5_blank_account_number_and_note_are_stored_as_null(service):
+    """A blank field passed through `add_account` is SQL NULL, not "" — covering
+    the strip half and the collapse half separately (FIBR-0193 INV-5)."""
+    svc = AccountService(service.vault)
+    conn = service.vault.connection
+
+    accounts = [
+        svc.add_account("Empty", "other", account_number="", note=""),
+        svc.add_account("Whitespace", "other", account_number="   ", note="  \t "),
+        svc.add_account("Omitted", "other"),
+    ]
+    for account in accounts:
+        row = conn.execute(
+            "SELECT account_number IS NULL, note IS NULL FROM accounts WHERE id = ?",
+            (account.id,),
+        ).fetchone()
+        assert tuple(row) == (1, 1), f"{account.name}: a blank field must be NULL"
+
+
+def test_INV6_update_persists_account_number_and_note(service):
+    """Editing a stored account number writes the new value (FIBR-0193 INV-6 leg
+    1) — the only headless guard on `AccountRepository.update`'s SET clause and
+    bind tuple. Every value is distinguishable from the others and from
+    name/type, so a transposed pair reddens instead of passing."""
+    svc = AccountService(service.vault)
+    repo = AccountRepository(service.vault.connection)
+    acct = svc.add_account(
+        "Holiday", "savings", account_number="OLD-1111", note="old note"
+    )
+
+    svc.update_account(
+        acct.id, "Holiday", "savings", account_number="NEW-2222", note="new note"
+    )
+
+    got = repo.get(acct.id)
+    assert got is not None
+    assert got.account_number == "NEW-2222", "the edited number is persisted"
+    assert got.note == "new note", "the edited note is persisted"
+    assert got.name == "Holiday" and got.type == "savings", "and nothing transposed"
+
+
+def test_INV6_update_blanks_clear_both_fields_to_null(service):
+    """Clearing a filled field to blank writes SQL NULL back over it — the
+    catcher for `update_account` skipping `_normalise_optional` (INV-6 leg 2,
+    which is also INV-5's both-paths falsifier)."""
+    svc = AccountService(service.vault)
+    conn = service.vault.connection
+    acct = svc.add_account(
+        "Holiday", "savings", account_number="62145530078", note="Ann's card"
+    )
+
+    svc.update_account(acct.id, "Holiday", "savings", account_number="   ", note="   ")
+
+    row = conn.execute(
+        "SELECT account_number IS NULL, note IS NULL FROM accounts WHERE id = ?",
+        (acct.id,),
+    ).fetchone()
+    assert tuple(row) == (1, 1), "a cleared field is stored as NULL, not ''"
+
+
+def test_INV7_on_update_passes_stored_account_number_and_note_through(qtbot, service):
+    """An Update that edits only the name leaves both stored fields intact
+    (FIBR-0193 INV-7). The seeds are mutually distinguishable AND already
+    normalised — no outer whitespace: this leg is the only catcher for
+    `_normalise_optional`'s idempotency, so a " 1234 " seed would be stored as
+    "1234" and turn the leg red against a CORRECT build."""
+    from finbreak.ui.accounts import AccountsWidget
+
+    svc = AccountService(service.vault)
+    spare = svc.add_account(
+        "Spair", "other", account_number="ACCT-4021-7788", note="joint, second card"
+    )
+
+    widget = AccountsWidget(service)
+    qtbot.addWidget(widget)
+    widget._select_account(spare.id)
+    widget._name.setText("Spare")  # edit ONLY the name
+    widget._update_button.click()
+
+    assert widget._error.text() == "", "a valid edit shows no error"
+    edited = next(a for a in svc.list_accounts() if a.id == spare.id)
+    assert edited.name == "Spare", "the rename itself landed"
+    assert edited.account_number == "ACCT-4021-7788", "the stored number survived"
+    assert edited.note == "joint, second card", "the stored note survived"

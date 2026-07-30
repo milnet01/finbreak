@@ -53,8 +53,8 @@ def service(paths):
 # --------------------------------------------------------------------------- #
 # INV-1 — schema v10 + the v9->v10 migration
 # --------------------------------------------------------------------------- #
-def test_INV1_latest_schema_version_is_12() -> None:
-    assert LATEST_SCHEMA_VERSION == 12
+def test_INV1_latest_schema_version_is_13() -> None:
+    assert LATEST_SCHEMA_VERSION == 13
 
 
 def test_INV1_v9_upgrades_to_v10_adding_indexes(paths) -> None:
@@ -65,7 +65,7 @@ def test_INV1_v9_upgrades_to_v10_adding_indexes(paths) -> None:
     conn = keyed_connection(vault_path, salt)
     assert _index_names(conn) == set(), "v9 ships no indexes"
     run_migrations(conn)  # v9 -> v10 (walks to LATEST)
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 12
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 13
     assert _index_names(conn) == _EXPECTED_INDEXES
     # Pure-DDL step: the row survives untouched (no backfill).
     assert conn.execute("SELECT count(*) FROM transactions").fetchone()[0] == 1
@@ -101,7 +101,7 @@ def test_INV1_idempotent_at_latest(paths) -> None:
     conn = keyed_connection(vault_path, salt)
     run_migrations(conn)  # v9 -> v10
     run_migrations(conn)  # no-op at latest — no duplicate indexes
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 12
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 13
     assert _index_names(conn) == _EXPECTED_INDEXES
     conn.close()
 

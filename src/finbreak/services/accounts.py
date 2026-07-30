@@ -20,6 +20,18 @@ from finbreak.vault import Vault
 log = logging.getLogger(__name__)
 
 
+def _normalise_optional(value: str | None) -> str | None:
+    """Strip, and collapse an empty result to None — so a blank form field is
+    stored as SQL NULL rather than "" (FIBR-0193 INV-5).
+
+    Idempotent (``f(f(x)) == f(x)``), which the Accounts screen's
+    read-and-pass-back depends on: it re-sends an already-stored value through
+    ``update_account`` on every Update click, so the value is re-stripped each
+    time and must not walk away character by character.
+    """
+    return (value or "").strip() or None
+
+
 class AccountService:
     def __init__(self, vault: Vault):
         self._vault = vault
@@ -30,17 +42,49 @@ class AccountService:
     def list_accounts(self) -> list[Account]:
         return self._accounts().list_all()
 
-    def add_account(self, name: str, type: str) -> Account:
+    # The asymmetry below is deliberate (FIBR-0193 D2/D3). ``add_account``'s two
+    # new fields are optional: an omitted column on an ``INSERT`` is written
+    # NULL, which is the value the caller meant. ``update_account``'s are
+    # REQUIRED, because the repository issues an unconditional ``UPDATE … SET``
+    # — a defaulted ``None`` would make every existing three-argument call
+    # silently erase a stored account number and note.
+    def add_account(
+        self,
+        name: str,
+        type: str,
+        *,
+        account_number: str | None = None,
+        note: str | None = None,
+    ) -> Account:
         name = self._validate(name, type)
         repo = self._accounts()
-        account_id = repo.add(name, type)
+        account_id = repo.add(
+            name,
+            type,
+            _normalise_optional(account_number),
+            _normalise_optional(note),
+        )
         log.info("account created")
         # get() is Optional; the row was just inserted, so it is present.
         return cast(Account, repo.get(account_id))
 
-    def update_account(self, account_id: int, name: str, type: str) -> None:
+    def update_account(
+        self,
+        account_id: int,
+        name: str,
+        type: str,
+        *,
+        account_number: str | None,
+        note: str | None,
+    ) -> None:
         name = self._validate(name, type, exclude_id=account_id)
-        self._accounts().update(account_id, name, type)
+        self._accounts().update(
+            account_id,
+            name,
+            type,
+            _normalise_optional(account_number),
+            _normalise_optional(note),
+        )
         log.info("account updated")
 
     def delete_account(self, account_id: int) -> None:

@@ -293,7 +293,7 @@ def _has_recurring_decisions(conn) -> bool:
 
 
 def test_INV10_latest_schema_version_is_10() -> None:
-    assert LATEST_SCHEMA_VERSION == 12
+    assert LATEST_SCHEMA_VERSION == 13
 
 
 def test_INV10_v8_upgrades_to_v9(paths) -> None:
@@ -303,7 +303,7 @@ def test_INV10_v8_upgrades_to_v9(paths) -> None:
 
     conn = keyed_connection(vault_path, salt)
     run_migrations(conn)  # v8 -> v9 (walks to LATEST)
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 12
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 13
 
     assert _has_recurring_decisions(conn)
     # A fresh table — no rows.

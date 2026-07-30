@@ -21,7 +21,7 @@ from finbreak.errors import SchemaVersionError
 
 log = logging.getLogger(__name__)
 
-LATEST_SCHEMA_VERSION = 12
+LATEST_SCHEMA_VERSION = 13
 
 # Seed data written by the v1->v2 migration (D8) — NOT a UI string, so never
 # run through tr(); the user renames it in the Accounts manager.
@@ -402,6 +402,34 @@ def _migrate_to_v12(conn: dbapi2.Connection) -> None:
         conn.execute("UPDATE schema_version SET version = 12")
 
 
+def _migrate_to_v13(conn: dbapi2.Connection) -> None:
+    """v12->v13: add the **nullable** ``accounts.account_number`` and
+    ``accounts.note`` columns for FIBR-0193 — two optional reference fields the
+    Accounts screen renders and edits from FIBR-0113 on. Both are plain nullable
+    ``ADD COLUMN``s, so the change is **in-place** (SQLite backfills every
+    existing row with ``NULL``) — no table rebuild, no FK churn. **No backfill**
+    is possible or wanted: the data has never been collected, so ``NULL`` = "the
+    user has not filled this in", which is exactly right for every existing and
+    new account. Neither column is length-capped: nothing downstream parses,
+    indexes, matches or aggregates either field (§ 4.1). Idempotency comes from
+    **version-gating** — ``run_migrations`` calls this only for a vault at
+    exactly v12 (``range(current+1, LATEST+1)``), so the bare ``ALTER``s run once
+    and are never replayed (they are not replay-safe on their own).
+    One atomic unit: with the vault's ``isolation_level=""`` the driver does not
+    implicitly ``BEGIN`` around the DDL, so the explicit ``BEGIN`` — the step's
+    first statement, ``UPDATE schema_version`` its last — makes it all-or-nothing
+    (a failure between the two ``ALTER``s leaves a re-openable v12 with
+    **neither** column added). ``owned_transaction``'s precondition holds: its
+    docstring is worded more broadly than the real constraint — it says "must not
+    execute", but ``run_migrations`` SELECTs the version first and every existing
+    step still works, because a *read* opens no transaction at
+    ``isolation_level=""``; it is a prior **write** that would."""
+    with owned_transaction(conn):
+        conn.execute("ALTER TABLE accounts ADD COLUMN account_number TEXT")
+        conn.execute("ALTER TABLE accounts ADD COLUMN note TEXT")
+        conn.execute("UPDATE schema_version SET version = 13")
+
+
 _MIGRATIONS = {
     2: _migrate_to_v2,
     3: _migrate_to_v3,
@@ -414,4 +442,5 @@ _MIGRATIONS = {
     10: _migrate_to_v10,
     11: _migrate_to_v11,
     12: _migrate_to_v12,
+    13: _migrate_to_v13,
 }

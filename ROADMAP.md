@@ -1382,7 +1382,7 @@ because retrofitting them is a data migration.
   Source: user-request-2026-07-11 (dogfooding v0.1.0).
 
 - 📋 [FIBR-0086] **Account numbers + import auto-detect — match a statement to its account (prompt to create if new).**
-  Motivated by dogfooding v0.1.0. Store an account number on each account — a new column in the ENCRYPTED vault (sensitive financial data, NOT the plaintext window.ini; schema migration, currently v7 -> v8). On import, extract the statement's account number and match it to a configured account (normalised: strip spaces/dashes; match on TRAILING digits when the statement masks it, e.g. "xxxx1234"), auto-selecting the account instead of today's manual pick. Availability varies by format: OFX <ACCTID> (reliable), PDF printed number (the Standard Bank / generic parsers can surface it), CSV often carries none — so auto-detect is a SMART DEFAULT with a manual fallback whenever the number is absent or matches zero/multiple accounts (never silently import to the wrong account — cf. FIBR-0059). When the detected number matches no account, prompt to create one, pre-filled from statement metadata (number, bank name if printed, type/currency where available) and asking the user for the rest. ENABLER for FIBR-0085 (batch import) — auto-detect is what makes multi-file import usable (you cannot hand-map a folder of files); reduces reliance on FIBR-0059 (change-account fix). Deps: FIBR-0005 (accounts), FIBR-0007/0008/0009 (importers must surface the statement's number), FIBR-0052 (statement provenance).
+  Motivated by dogfooding v0.1.0. The account-number STORAGE half shipped separately as FIBR-0193 (2026-07-30): `accounts.account_number` is a nullable column in the ENCRYPTED vault, added by schema migration **v12 -> v13** — so this bullet is now DETECTION + MATCHING only, and no new column is needed. On import, extract the statement's account number and match it to a configured account (normalised: strip spaces/dashes; match on TRAILING digits when the statement masks it, e.g. "xxxx1234"), auto-selecting the account instead of today's manual pick. Availability varies by format: OFX <ACCTID> (reliable), PDF printed number (the Standard Bank / generic parsers can surface it), CSV often carries none — so auto-detect is a SMART DEFAULT with a manual fallback whenever the number is absent or matches zero/multiple accounts (never silently import to the wrong account — cf. FIBR-0059). When the detected number matches no account, prompt to create one, pre-filled from statement metadata (number, bank name if printed, type/currency where available) and asking the user for the rest. ENABLER for FIBR-0085 (batch import) — auto-detect is what makes multi-file import usable (you cannot hand-map a folder of files); reduces reliance on FIBR-0059 (change-account fix). Deps: FIBR-0005 (accounts), FIBR-0007/0008/0009 (importers must surface the statement's number), FIBR-0052 (statement provenance).
   **Layman:** Give each account its account number so importing a statement automatically files it under the right account — and if it's an account finbreak hasn't seen, it offers to create it, pre-filled from the statement.
   Kind: feature.
   Source: user-request-2026-07-11 (dogfooding v0.1.0).
@@ -2424,7 +2424,7 @@ because retrofitting them is a data migration.
   Lanes: ui.
   Source: cold-eyes-2026-07-28 (FIBR-0113 loop 2).
 
-- 📋 [FIBR-0193] **Account storage: migration v13 adds nullable accounts.account_number + accounts.note, carried through model / repo / service.**
+- ✅ [FIBR-0193] **Account storage: migration v13 adds nullable accounts.account_number + accounts.note, carried through model / repo / service.**
   Split out of FIBR-0113 on 2026-07-28, executing the recommendation
   /cold-eyes loop 5 made when that spec did not converge (35 verified
   findings; docs/reviews/FIBR-0113-cold-eyes-loop5.md). FIBR-0113 was 985
@@ -2466,6 +2466,27 @@ because retrofitting them is a data migration.
   Kind: feature.
   Lanes: repo.
   Source: split-from-FIBR-0113-2026-07-28 (/cold-eyes loop 5).
+  Resolved (2026-07-30): shipped by TDD. Schema **v13** — `_migrate_to_v13`
+  issues two nullable `ADD COLUMN`s (`accounts.account_number`,
+  `accounts.note`) inside one `owned_transaction`; `models.Account` gains both
+  fields appended after `created_at` (defaulted, so the four-argument
+  positional literals outside the repository keep working); both
+  `AccountRepository` read paths SELECT all six columns in dataclass field
+  order; `add`/`update` take the two parameters REQUIRED; `AccountService`
+  routes both write paths through the new module-level `_normalise_optional`,
+  so a blank field stores SQL `NULL` rather than `""`. `add_account`'s two are
+  optional keyword args, `update_account`'s are required (D2/D3) — an
+  unconditional `UPDATE ... SET` means a defaulted `None` would silently erase
+  a stored value. `ui/accounts.py::_on_update` reads the account's current
+  values off two new item-data roles (`UserRole + 4`/`+ 5`) and passes them
+  back unchanged, so a name/type-only edit leaves both stored fields intact
+  (D5, INV-7); FIBR-0113 replaces that passthrough with real form fields.
+  Reproduce-first TDD: new `tests/features/accounts/test_migration_v13.py`
+  (5 legs, INV-1/INV-2) run RED before the migration existed, plus INV-3..INV-7
+  in `test_accounts.py`. Schema-churn sweep: 14 test files re-pinned, 6 test
+  functions renamed, the `v12`-as-latest comment sweep across 5 files, and 6
+  feature `spec.md` prose fixes. FIBR-0086's bullet amended above (its storage
+  half landed here, at v13 not v8). FIBR-0113 stays 🚧 — it ships next.
 
 - 📋 [FIBR-0194] **StatementsWidget.refresh leaves a stale selection that resolves to a different statement under an active sort.**
   Found while reviewing FIBR-0113's spec, which took StatementsWidget.refresh

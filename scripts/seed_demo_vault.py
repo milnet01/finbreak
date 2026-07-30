@@ -128,7 +128,12 @@ def seed(auth: AuthService, *, today: date | None = None) -> None:
     # 1) Accounts — rename the seeded "Default" and add two more.
     accounts = AccountService(vault)
     default = accounts.list_accounts()[0]
-    accounts.update_account(default.id, "Cheque account", "current")
+    # An explicit `None` is correct here rather than the erasure the required
+    # parameters guard against: this renames the freshly-created Default account
+    # moments after first_run, so there is no stored value to erase (FIBR-0193).
+    accounts.update_account(
+        default.id, "Cheque account", "current", account_number=None, note=None
+    )
     acct = {
         "cheque": default.id,
         "savings": accounts.add_account("Savings", "savings").id,

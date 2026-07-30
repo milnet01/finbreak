@@ -54,10 +54,21 @@ class KdfParams:
 
 @dataclass
 class Account:
+    """One row of the ``accounts`` table. ``account_number`` / ``note``
+    (appended after ``created_at`` at v13, FIBR-0193) are optional reference
+    fields; both read paths name all six columns in this order so
+    ``Account(*row)`` stays aligned. The two defaults keep the four-argument
+    positional literals outside the repository working (the precedent is
+    ``ParseResult.closing_balance_minor``, FIBR-0171 D4) — they also absorb an
+    un-widened SELECT, which is why INV-3 asserts round-tripped *values* rather
+    than merely that construction succeeds."""
+
     id: int
     name: str
     type: str
     created_at: str
+    account_number: str | None = None
+    note: str | None = None
 
 
 class CategorySource(StrEnum):

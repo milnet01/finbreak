@@ -19,32 +19,49 @@ class AccountRepository:
     def __init__(self, connection: dbapi2.Connection):
         self._conn = connection
 
-    def add(self, name: str, type: str) -> int:
+    # ``account_number`` / ``note`` (v13, FIBR-0193) are REQUIRED parameters on
+    # both writers, not defaulted: ``update`` issues an unconditional
+    # ``UPDATE … SET``, so a defaulted ``None`` would let a three-argument caller
+    # silently erase a stored account number and note. ``add`` matches for
+    # symmetry rather than because an ``INSERT`` default would be dangerous.
+    def add(
+        self, name: str, type: str, account_number: str | None, note: str | None
+    ) -> int:
         cursor = self._conn.execute(
-            "INSERT INTO accounts(name, type, created_at) VALUES (?, ?, ?)",
-            (name, type, datetime.now(UTC).isoformat()),
+            "INSERT INTO accounts(name, type, created_at, account_number, note) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (name, type, datetime.now(UTC).isoformat(), account_number, note),
         )
         self._conn.commit()
         return last_insert_id(cursor)
 
     def list_all(self) -> list[Account]:
         rows = self._conn.execute(
-            "SELECT id, name, type, created_at FROM accounts "
+            "SELECT id, name, type, created_at, account_number, note FROM accounts "
             "ORDER BY name COLLATE NOCASE, id"
         ).fetchall()
         return [Account(*row) for row in rows]
 
     def get(self, account_id: int) -> Account | None:
         row = self._conn.execute(
-            "SELECT id, name, type, created_at FROM accounts WHERE id = ?",
+            "SELECT id, name, type, created_at, account_number, note "
+            "FROM accounts WHERE id = ?",
             (account_id,),
         ).fetchone()
         return Account(*row) if row is not None else None
 
-    def update(self, account_id: int, name: str, type: str) -> None:
+    def update(
+        self,
+        account_id: int,
+        name: str,
+        type: str,
+        account_number: str | None,
+        note: str | None,
+    ) -> None:
         self._conn.execute(
-            "UPDATE accounts SET name = ?, type = ? WHERE id = ?",
-            (name, type, account_id),
+            "UPDATE accounts SET name = ?, type = ?, account_number = ?, note = ? "
+            "WHERE id = ?",
+            (name, type, account_number, note, account_id),
         )
         self._conn.commit()
 
