@@ -1369,15 +1369,11 @@ because retrofitting them is a data migration.
   setHeaderHidden(True) — nothing to resize or reorder).
 
   Call sites today: statements, transactions, rules, recurring, transfers,
-  import_wizard. Of the tables this bullet enumerates, that leaves:
-  - Categories — a QTreeWidget with setHeaderHidden(True) and a single
-    column, so resize/reorder/persist has nothing to act on. Deliberately
-    out of scope, not an omission.
-  - Accounts — genuinely missing, because it is still a QListWidget with
-    no header at all. Making it a table is FIBR-0113.
-
-  So this bullet's residue is exactly FIBR-0113's table conversion; it
-  will be flipped ✅ alongside it rather than tracked as separate work.
+  import_wizard. Accounts is genuinely missing (still a QListWidget with no
+  header at all) and making it a table is FIBR-0113; Categories is
+  deliberately out of scope, not an omission. But those two are NOT the
+  whole residue — see the correction above: Forecast, the Home dashboard
+  trees and Reset layout remain, and they are FIBR-0192's.
 
 - 📋 [FIBR-0085] **Batch statement import — import several statement files in one go.**
   Motivated by dogfooding v0.1.0. Today the import wizard handles ONE file per run (FIBR-0007 CSV / FIBR-0008 OFX / FIBR-0009 PDF). Add multi-file selection that runs each file through the existing preview -> dedup -> commit pipeline, with per-file semantics (a bad/duplicate file is reported and skipped, never aborting the batch) and a summary dialog listing each file's outcome (imported N / skipped-duplicate / failed-why) + transaction counts. Mixed formats (CSV/OFX/PDF) allowed in one batch; per-file mapping where the format needs it (CSV mapping profile selection, PDF password prompt). Reuses the existing importers + FIBR-0052 statement provenance; the new work is the multi-file wizard flow + aggregate reporting. Deps: FIBR-0007/0008/0009 (importers), FIBR-0052 (per-statement provenance so each imported file is a distinct statement row).
@@ -1616,11 +1612,11 @@ because retrofitting them is a data migration.
 
   Folding that work in here made this spec the largest source of its own
   review defects (4 of 5 criticals in cold-eyes loop 2 traced to the
-  fold-in). Split on the user's call: this item now delivers ONLY the
-  Accounts tab — the 5-column table, the two new nullable account fields
-  behind migration v13, and the masked/auto-hiding account number. The
-  FIBR-0084 completion work moved to FIBR-0192, which is what unblocks
-  FIBR-0084's ✅.
+  fold-in). Split on the user's call: the FIBR-0084 completion work moved
+  to FIBR-0192, which is what unblocks FIBR-0084's ✅. Two further splits
+  followed — the storage half to FIBR-0193 (2026-07-28) and the reveal to
+  FIBR-0198 (2026-07-30) — so this item's scope is the paragraph above,
+  not this one.
 
   Consequence for the close: flip ONLY this bullet when the work ships.
   FIBR-0084 stays 📋 until FIBR-0192 lands.
@@ -1639,13 +1635,15 @@ because retrofitting them is a data migration.
   - The add/edit form stays INLINE on the tab, relaid as a two-row grid
     rather than moving to a dialog.
 
-  Work: migration 13 adds nullable accounts.account_number + accounts.note
-  (LATEST_SCHEMA_VERSION is 12); Account model + accounts repo/service
-  carry them; AccountsWidget moves QListWidget -> QTableWidget using the
-  existing _table_state seam (SortableItem for the sortable columns,
-  fill_guard, tag_row/selected_index so an action still targets the right
-  account after a re-sort, enable_sorting, remember_columns with a distinct
-  objectName). Spec next, then cold-eyes, then TDD.
+  Work (this item only, after the two splits): AccountsWidget moves
+  QListWidget -> QTableWidget using the existing _table_state seam
+  (SortableItem for the sortable columns, fill_guard, tag_row/selected_index
+  so an action still targets the right account after a re-sort,
+  enable_sorting, remember_columns with a distinct objectName), plus the
+  two-row edit form and the always-masked account-number cell. The
+  migration, the Account model and the repo/service changes are FIBR-0193's
+  and ship first; the reveal toggle and its timer are FIBR-0198's and ship
+  after. Spec cold-eyes-gated; TDD next.
 
 - ✅ [FIBR-0114] **Auto-lock should be an inactivity timer (reset on user activity), not an absolute timer from unlock.**
   User report 2026-07-12. AuthService._arm_timer (auth.py:241) starts a single-shot QTimer at unlock (and only re-arms on a settings change), so the auto-lock fires a fixed duration after UNLOCK regardless of activity — locking mid-use. Fix: make it an inactivity timer. Add AuthService.notify_activity() that restarts the running timer with its existing interval (no settings re-read, since it fires on every input event; no-op when locked/headless), and have MainWindow install an application-level event filter that calls notify_activity() on user-input events (MouseButtonPress/MouseMove/KeyPress/Wheel). TDD: service-level (notify_activity restarts the running timer when unlocked, no-op when locked) + shell-level (eventFilter calls notify_activity on an input event).
