@@ -5,14 +5,16 @@ run that finally converges — a stale resume file is worse than none.
 
 ## Where the run stopped
 
-- **FIBR-0193** (`docs/specs/FIBR-0193.md`) — **loops 1, 2, 3 and 4 complete**,
-  all dispatched, verified, fixed, logged and committed (`4f7a669`, `35d93e8`,
-  `af4dbcc`, `bcfbfd8`). **Loop 5 is owed and NOT yet dispatched.** The lane
-  materials must be **re-staged** — the session scratchpad is wiped on restart,
-  which already cost this run one rebuild.
-  Loop 5 runs at **strong depth on all three lanes with no breadth pass**: loop 4
+- **FIBR-0193** (`docs/specs/FIBR-0193.md`) — **loops 1–5 complete**, all
+  dispatched, verified, fixed, logged and committed (`4f7a669`, `35d93e8`,
+  `af4dbcc`, `bcfbfd8`, `bafa4fd`). **Loop 6 is owed and NOT yet dispatched.**
+  The lane materials must be **re-staged** — the session scratchpad is wiped on
+  restart, which has already cost this run one rebuild, and loop 5's fixes grew
+  the spec to **1041 lines**, so the staged copy and every pre-pass figure must
+  be re-derived rather than carried.
+  Loop 6 runs at **strong depth on all three lanes with no breadth pass**: loop 5
   produced 4 verified HIGH, so the skill's post-HIGH rule still binds.
-  Project cap is `--max-loops 7`, so loops 5–7 remain available.
+  Project cap is `--max-loops 7`, so loops 6–7 remain available.
 - **FIBR-0113** (`docs/specs/FIBR-0113.md`) — **gate not started.** Rewritten as
   the UI half and committed, never reviewed. This is the second half of the
   user's instruction and is still owed. Its materials are already staged (see
@@ -26,18 +28,38 @@ run that finally converges — a stale resume file is worse than none.
 | 2 | 0 | 2 | 8 | 9 | 20 | 20 |
 | 3 | 0 | 2 | 8 | 11 | 21 | 21 |
 | 4 | 0 | 4 | 9 | 9 | 24 | 23 (+1 deferred, 1 dismissed) |
+| 5 | 0 | 4 | 8 | 8 | 20 | 20 (+1 INFO folded in, 3 dismissed) |
 
 Full per-loop detail is in the spec's own §13 rows. **Not converged.**
 
-**The signal to carry into loop 5.** The HIGH count went *up* (2 → 4), but the
-shape changed: **every loop-4 HIGH was cross-doc bookkeeping in §11/§12, and none
-touched the build contract**, which has now been stable across four loops. §12 has
-been wrong in all four. If loop 5 also returns only §11/§12 findings, the right
-conclusion is that those two sections are structurally too coupled to the rest of
-the document to stay correct under edits — not that a fifth round of wording
-fixes is owed. Consider whether §12's per-sibling edit instructions belong in the
-sibling specs instead, where they cannot go stale relative to the doc they
-describe.
+**The signal to carry into loop 6 — loop 5 answered loop 4's question.** Loop 4's
+prediction was that another §11/§12 loop would prove those sections structurally
+unsound. Loop 5 returned 4 HIGH again, and **two of them were caused by loop 4's
+own fixes**: §12's bullets are written as *instructions*, loop 4 carried three of
+them out as collateral, and an instruction that has been carried out is a false
+statement about the tree. That is a mechanism, not a wording problem, and it is
+why §12 was wrong in five consecutive loops.
+
+**It is now fixed at the mechanism:** §12 carries a rule making every bullet a
+*state claim* about the tree, marked applied or pending and checkable by opening
+the named file. Moving the per-sibling instructions into the sibling specs — loop
+4's suggested fix — was **rejected**: a sibling spec should not carry another
+item's pending TODO, and the state-claim framing removes the rot without moving
+anything.
+
+**Loop 6 is the test of that prediction, and it is also the decision point.** Two
+figures to weigh when it returns:
+
+- The **build contract** (§4.1, §4.2, §5, §7's legs) has now been stable for
+  **five** loops. Nothing since loop 3 has changed what an implementer builds.
+- The document is **growing** — 963 → 1041 lines in loop 5 alone — while the
+  findings move further into the meta-layer. That is global rule 14's
+  oversized-document signal, and it argues for filing the tail rather than
+  spending loop 7.
+
+If loop 6 returns no finding that changes the build contract, **stop there**:
+file whatever remains as roadmap items and ship the spec, rather than using the
+last loop. Convergence is not literal zero.
 
 **Loop 4's own fix-induced defects, caught by the post-fix sweep rather than by
 the next loop** (the first time in this run that happened): the §12 fix
