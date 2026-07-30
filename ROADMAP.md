@@ -1644,6 +1644,24 @@ because retrofitting them is a data migration.
   migration, the Account model and the repo/service changes are FIBR-0193's
   and ship first; the reveal toggle and its timer are FIBR-0198's and ship
   after. Spec cold-eyes-gated; TDD next.
+  Cold-eyes gate 2026-07-30: 5 loops run jointly with FIBR-0198 (3
+  strong cold lanes each, no breadth pass). 132 findings verified, 1
+  unverified, all fixed — 3 CRITICAL / 30 HIGH / 50 MEDIUM / 54 LOW.
+  Draft defects fell 30 -> 17 -> 11 -> 10 -> 8; fix collateral ran
+  0 -> 9 -> 7 -> 5 -> 9. Stopped at loop 5 on the
+  collateral-outnumbers-draft trigger, with implementation next.
+
+  Highest-value catches: the reveal's clipboard copy escapes the
+  auto-hide entirely (ClipboardAutoClear is wired only to the
+  transactions list), so FIBR-0198's T13 amendment had to say the copy is
+  NOT auto-cleared; three invariant legs were unbuildable or vacuous
+  against a correct implementation; and this bullet's own body
+  contradicted the split in seven places, including FIBR-0084's closing
+  paragraph, which would have flipped that item green with three
+  surfaces unbuilt.
+
+  Nothing is owed on either spec. Both are gated and ready to build.
+  Order: FIBR-0193 (storage) -> FIBR-0113 (table) -> FIBR-0198 (reveal).
 
 - ✅ [FIBR-0114] **Auto-lock should be an inactivity timer (reset on user activity), not an absolute timer from unlock.**
   User report 2026-07-12. AuthService._arm_timer (auth.py:241) starts a single-shot QTimer at unlock (and only re-arms on a settings change), so the auto-lock fires a fixed duration after UNLOCK regardless of activity — locking mid-use. Fix: make it an inactivity timer. Add AuthService.notify_activity() that restarts the running timer with its existing interval (no settings re-read, since it fires on every input event; no-op when locked/headless), and have MainWindow install an application-level event filter that calls notify_activity() on user-input events (MouseButtonPress/MouseMove/KeyPress/Wheel). TDD: service-level (notify_activity restarts the running timer when unlocked, no-op when locked) + shell-level (eventFilter calls notify_activity on an input event).
