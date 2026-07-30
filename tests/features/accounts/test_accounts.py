@@ -1363,3 +1363,259 @@ def test_INV22_refresh_leaves_no_selection_on_any_row(qtbot, service):
         widget._refresh()
         assert selected_index(widget._table) is None, f"row {row} survived the refresh"
         assert widget._table.selectedItems() == []
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0198 — the "Show account numbers" reveal + its 30s auto re-mask
+# --------------------------------------------------------------------------- #
+def test_INV1_reveal_is_off_by_default_and_never_persisted(qtbot, service):
+    """Reveal starts off, is written to no persistent store, and a lock cycle
+    returns it to off (FIBR-0198 INV-1)."""
+    from PySide6.QtCore import QSettings
+
+    from finbreak import paths
+    from finbreak.ui.accounts import AccountsWidget
+
+    # (a) unchecked on construction
+    widget = AccountsWidget(service)
+    qtbot.addWidget(widget)
+    assert widget._reveal.isChecked() is False
+
+    # (b) toggling writes nothing to the window INI. Keys are read THROUGH
+    # QSettings after sync(), not by parsing the file's bytes: a persisting
+    # implementation whose setValue is still buffered would never reach the file
+    # during the test. Only `columns/accounts_table` may legitimately change —
+    # excluding the whole `columns/` GROUP would let a flag persisted as
+    # `columns/accounts_reveal` pass the leg meant to fail on it.
+    def _keys() -> set[str]:
+        settings = QSettings(
+            str(paths.window_settings_path()), QSettings.Format.IniFormat
+        )
+        settings.sync()
+        return set(settings.allKeys())
+
+    before = _keys()
+    widget._reveal.setChecked(True)
+    widget._reveal.setChecked(False)
+    assert (_keys() - before) - {"columns/accounts_table"} == set(), (
+        "the reveal state must not be written to the window INI"
+    )
+
+    # (c) a lock cycle rebuilds the tab with reveal off. Needs a real
+    # MainWindow: what this uniquely catches is `_clear_live` ever being changed
+    # to REUSE the Accounts tab rather than rebuild it.
+    from finbreak.ui.main_window import MainWindow
+
+    window = MainWindow(service)
+    qtbot.addWidget(window)
+    window._enter_unlocked()
+    assert window._accounts_tab is not None
+    window._accounts_tab._reveal.setChecked(True)
+    window._lock()
+    assert service.unlock(bytearray(_PW)) is True
+    window._enter_unlocked()
+    assert window._accounts_tab is not None
+    assert window._accounts_tab._reveal.isChecked() is False, (
+        "a rebuilt Accounts tab starts masked"
+    )
+
+
+def test_INV2_reveal_auto_remasks_and_only_a_fresh_reveal_arms_the_timer(
+    qtbot, service
+):
+    """The reveal lapses on its own; a manual uncheck cancels the pending timer;
+    and nothing but a fresh reveal (re)starts it (FIBR-0198 INV-2)."""
+    from PySide6.QtWidgets import QLineEdit
+
+    from finbreak.ui.accounts import _REVEAL_SECONDS, AccountsWidget
+
+    svc = AccountService(service.vault)
+    svc.add_account("WithNumber", "savings", account_number="1234567890")
+
+    widget = AccountsWidget(service)
+    qtbot.addWidget(widget)
+
+    # (b) the timer's configuration, read on a FRESH widget before any reveal —
+    # the read moment is part of the assertion, because the precedent's
+    # alternative shape (start(seconds * 1000) per use) leaves interval() at 0
+    # until the first reveal.
+    assert widget._reveal_timer.isSingleShot() is True
+    assert widget._reveal_timer.interval() == _REVEAL_SECONDS * 1000
+
+    # (a) the re-mask actually HAPPENS. Legs (b)-(d) observe the timer's
+    # configuration, so they all pass against an implementation that never
+    # connects `timeout` — which is why this leg leads.
+    widget._reveal.setChecked(True)
+    assert _cell(widget, "WithNumber", _COL_NUMBER) == "1234567890"
+    widget._reveal_timer.timeout.emit()
+    assert widget._reveal.isChecked() is False
+    assert widget._account_number.echoMode() == QLineEdit.EchoMode.Password
+    assert _cell(widget, "WithNumber", _COL_NUMBER) == "•••• 7890"
+
+    # (c) a manual uncheck cancels the pending timer, so it cannot fire across a
+    # later reveal.
+    widget._reveal.setChecked(True)
+    assert widget._reveal_timer.isActive() is True
+    widget._reveal.setChecked(False)
+    assert widget._reveal_timer.isActive() is False
+
+    # (d) an unrelated _refresh() neither restarts NOR stops the timer.
+    widget._reveal.setChecked(True)
+    qtbot.wait(50)  # so a restart is observable as a jump back up
+    assert widget._reveal_timer.isActive() is True
+    before = widget._reveal_timer.remainingTime()
+    assert before < _REVEAL_SECONDS * 1000, "the wait must have consumed some time"
+
+    rows_before = widget._table.rowCount()
+    widget._name.setText("A brand new account")  # unused: _on_add returns BEFORE
+    widget._add_button.click()  # _refresh() on a rejected name
+    assert widget._table.rowCount() == rows_before + 1, "the Add really happened"
+
+    # isActive() is what makes the numeric clauses mean anything: QTimer returns
+    # -1 from remainingTime() on an INACTIVE timer, so against an implementation
+    # that stops the timer in _refresh() both numbers hold while the reveal
+    # never lapses at all.
+    assert widget._reveal_timer.isActive() is True, "the reveal must still lapse"
+    after = widget._reveal_timer.remainingTime()
+    assert after <= before, "a _refresh() must not restart the timer"
+    assert after < _REVEAL_SECONDS * 1000
+
+
+def test_INV3_form_field_echo_mode_follows_the_reveal(qtbot, service):
+    """The account-number field is `Password` with reveal off and `Normal` with
+    it on, and stays editable in both states (FIBR-0198 INV-3)."""
+    from PySide6.QtWidgets import QLineEdit
+
+    from finbreak.ui.accounts import AccountsWidget
+
+    svc = AccountService(service.vault)
+    acct = svc.add_account("WithNumber", "savings", account_number="1234567890")
+
+    widget = AccountsWidget(service)
+    qtbot.addWidget(widget)
+    widget._select_account(acct.id)
+
+    # Reveal off. A Password field's text() is NEVER masked — asserting on it
+    # would fail and invite weakening the leg; displayText() is the masked one.
+    assert widget._account_number.echoMode() == QLineEdit.EchoMode.Password
+    assert widget._account_number.text() == "1234567890"
+    assert widget._account_number.displayText() != "1234567890"
+
+    widget._reveal.setChecked(True)
+    assert widget._account_number.echoMode() == QLineEdit.EchoMode.Normal
+    assert widget._account_number.displayText() == widget._account_number.text()
+
+    # Editable in BOTH states, and the typed value reaches the service.
+    widget._select_account(acct.id)
+    widget._account_number.setText("5555666677")
+    widget._update_button.click()
+    assert next(a for a in svc.list_accounts() if a.id == acct.id).account_number == (
+        "5555666677"
+    ), "an edit made while revealed is stored"
+
+    widget._reveal.setChecked(False)
+    assert widget._account_number.echoMode() == QLineEdit.EchoMode.Password
+    # Re-select first: the Update above ended in _refresh(), which leaves no
+    # selection (FIBR-0113 INV-22), so _on_update would early-return.
+    widget._select_account(acct.id)
+    widget._account_number.setText("8888999900")
+    widget._update_button.click()
+    assert next(a for a in svc.list_accounts() if a.id == acct.id).account_number == (
+        "8888999900"
+    ), "an edit made while masked is stored too"
+
+
+def test_INV4_toggling_reveal_preserves_an_in_progress_edit(qtbot, service):
+    """Toggling reveal keeps the selection, the four form inputs and the Forget
+    button exactly as they were (FIBR-0198 INV-4)."""
+    from finbreak.ui._table_state import selected_index
+    from finbreak.ui.accounts import AccountsWidget
+
+    svc = AccountService(service.vault)
+    acct = svc.add_account(
+        "WithNumber", "savings", account_number="1234567890", note="stored note"
+    )
+    svc.set_pdf_password(acct.id, _SENTINEL_PW)
+
+    widget = AccountsWidget(service)
+    qtbot.addWidget(widget)
+
+    def _typed_state():
+        widget._select_account(acct.id)
+        assert widget._forget_pw_button.isEnabled(), "the saved password gates it on"
+        widget._name.setText("typed name")
+        widget._note.setText("typed note")
+        return (
+            selected_index(widget._table),
+            widget._name.text(),
+            widget._type.currentData(),
+            widget._account_number.text(),
+            widget._note.text(),
+            widget._forget_pw_button.isEnabled(),
+        )
+
+    def _current_state():
+        return (
+            selected_index(widget._table),
+            widget._name.text(),
+            widget._type.currentData(),
+            widget._account_number.text(),
+            widget._note.text(),
+            widget._forget_pw_button.isEnabled(),
+        )
+
+    # The manual toggle, on and off.
+    expected = _typed_state()
+    widget._reveal.setChecked(True)
+    assert _current_state() == expected, "reveal ON discarded the in-progress edit"
+    widget._reveal.setChecked(False)
+    assert _current_state() == expected, "reveal OFF discarded the in-progress edit"
+
+    # And the UNATTENDED off-transition — the case that matters, since § 8
+    # rejects extending the timer on activity, so the spec has DECIDED a re-mask
+    # can land mid-edit.
+    expected = _typed_state()
+    widget._reveal.setChecked(True)
+    widget._name.setText("typed name")  # re-type after the on-toggle's refresh
+    widget._note.setText("typed note")
+    widget._reveal_timer.timeout.emit()
+    assert widget._reveal.isChecked() is False
+    assert _current_state() == expected, "an auto re-mask discarded the typing"
+
+
+def test_INV5_account_number_column_follows_the_reveal(qtbot, service):
+    """The column renders the raw value while reveal is on and the mask when it
+    goes off, for every row (FIBR-0198 INV-5, narrowing FIBR-0113 INV-20)."""
+    from finbreak.ui.accounts import AccountsWidget
+
+    svc = AccountService(service.vault)
+    svc.add_account("WithNumber", "savings", account_number="1234567890")
+    svc.add_account("NoNumber", "current")
+
+    widget = AccountsWidget(service)
+    qtbot.addWidget(widget)
+    # Rows located by their Name cell throughout: remember_columns restores a
+    # saved sort indicator, so positions are not this leg's to assume, and the
+    # Add below changes the row set.
+    assert _cell(widget, "WithNumber", _COL_NUMBER) == "•••• 7890"
+    assert _cell(widget, "NoNumber", _COL_NUMBER) == ""
+
+    widget._reveal.setChecked(True)
+    assert _cell(widget, "WithNumber", _COL_NUMBER) == "1234567890"
+    assert _cell(widget, "NoNumber", _COL_NUMBER) == "", "a number-less row stays empty"
+
+    # Still revealed, drive a NON-toggle _refresh(). This is the only leg that
+    # exercises § 4.2's `self._reveal.isChecked()` requirement: a fill reading
+    # the toggle's bool parameter instead would re-mask on every Add, Update,
+    # Delete and tab activation while the box stayed ticked.
+    rows_before = widget._table.rowCount()
+    widget._name.setText("A brand new account")  # unused: _on_add returns BEFORE
+    widget._add_button.click()  # _refresh() on a rejected name
+    assert widget._table.rowCount() == rows_before + 1, "the Add really happened"
+    assert _cell(widget, "WithNumber", _COL_NUMBER) == "1234567890", (
+        "a non-toggle refresh must not re-mask while the box is ticked"
+    )
+
+    widget._reveal.setChecked(False)
+    assert _cell(widget, "WithNumber", _COL_NUMBER) == "•••• 7890"
+    assert _cell(widget, "NoNumber", _COL_NUMBER) == ""

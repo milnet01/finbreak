@@ -13,9 +13,10 @@ via ``selected_index`` and the fill tags each row with its insertion index.
 
 from __future__ import annotations
 
-from PySide6.QtCore import Signal, Slot
+from PySide6.QtCore import QTimer, Signal, Slot
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QCheckBox,
     QComboBox,
     QGridLayout,
     QHBoxLayout,
@@ -64,6 +65,14 @@ _COL_NAME, _COL_TYPE, _COL_NUMBER, _COL_NOTE, _COL_STATUS = range(5)
 _RANK_OFF, _RANK_QUIET, _RANK_RECONCILED = 0, 1, 2
 
 _MASK = "•" * 4
+
+# How long a reveal lasts before it re-masks itself (FIBR-0198 D3). A COPIED
+# literal, not `= DEFAULT_CLIPBOARD_CLEAR_SECONDS`: importing it would pull
+# services/auth.py into this module and make this window track a change to that
+# default, which is exactly the tracking that decision rules out. The value is
+# inherited from the app's other "sensitive thing visible for a bounded time"
+# control (FIBR-0032's clipboard auto-clear) rather than invented.
+_REVEAL_SECONDS = 30
 
 
 def _mask_account_number(value: str | None) -> str:
@@ -160,6 +169,14 @@ class AccountsWidget(QWidget):
         self._note = QLineEdit()
         self._note.setPlaceholderText(self.tr("Note (optional)"))
         self._note.setAccessibleName(self.tr("Note"))
+        # Session-scoped reveal: constructed unchecked, written to no store.
+        # A lock needs no extra code to reset it — MainWindow._lock() destroys
+        # the workspace and the next unlock builds a fresh widget (FIBR-0198 D2).
+        self._reveal = QCheckBox(self.tr("Show account numbers"))
+        self._reveal_timer = QTimer(self)  # parented — dies with the widget
+        self._reveal_timer.setSingleShot(True)
+        self._reveal_timer.setInterval(_REVEAL_SECONDS * 1000)
+        self._reveal_timer.timeout.connect(self._on_reveal_timeout)
         self._type = QComboBox()
         self._type.setAccessibleName(self.tr("Account type"))
         for token, label in self._type_labels.items():
@@ -197,6 +214,7 @@ class AccountsWidget(QWidget):
 
         layout = QVBoxLayout(self)
         layout.addWidget(self._table)
+        layout.addWidget(self._reveal)  # its own row, between table and form
         layout.addLayout(add_row)
         layout.addWidget(self._error)
         layout.addLayout(actions)
@@ -211,6 +229,7 @@ class AccountsWidget(QWidget):
         # both Add (nothing selected) and Update (D8 — the seeded Default
         # account is renamed / retyped here).
         self._table.itemSelectionChanged.connect(self._on_selection_changed)
+        self._reveal.toggled.connect(self._on_reveal_toggled)
 
         self._refresh()
 
@@ -231,6 +250,49 @@ class AccountsWidget(QWidget):
         self._forget_pw_button.setEnabled(
             account is not None and account.id in self._with_pw
         )
+
+    @Slot()
+    def _on_reveal_timeout(self) -> None:
+        """Re-mask on expiry by unchecking the box, so the re-mask travels the
+        same path as a manual uncheck and has one implementation. (Calling this
+        on an already-unchecked box emits nothing and is harmless.)"""
+        self._reveal.setChecked(False)
+
+    @Slot(bool)
+    def _on_reveal_toggled(self, revealed: bool) -> None:
+        """The one handler that owns the reveal transition, over both surfaces.
+
+        The order is partly forced: step 1 must precede step 4, because the
+        selected id has to be captured before ``_refresh()`` replaces
+        ``self._rows``, and steps 4 → 5 → 6 must run in that sequence.
+        """
+        # (1) capture the selection before _refresh() replaces self._rows
+        account = self._selected_account()
+        selected_id = None if account is None else account.id
+        # (2) the form field's echo mode — the ExportDialog._on_show_toggled
+        # idiom. This is the ONLY thing that changes it (INV-3).
+        self._account_number.setEchoMode(
+            QLineEdit.EchoMode.Normal if revealed else QLineEdit.EchoMode.Password
+        )
+        # (3) restart (not extend) the single-shot timer, or cancel it
+        if revealed:
+            self._reveal_timer.start()
+        else:
+            self._reveal_timer.stop()
+        # (4) re-render both surfaces; clear-then-fill leaves no selection
+        self._refresh()
+        # (5) restore the selection WITHOUT waking _on_selection_changed, which
+        # would repopulate all four inputs from storage over a half-typed edit
+        # (INV-4). The unblock is in a finally: a raise between the two would
+        # leave the table permanently deaf to selection.
+        if selected_id is not None:
+            self._table.blockSignals(True)
+            try:
+                self._select_account(selected_id)
+            finally:
+                self._table.blockSignals(False)
+        # (6) the one thing step 5 suppressed that still has to happen
+        self._apply_forget_gating()
 
     @Slot()
     def _on_add(self) -> None:
@@ -377,16 +439,36 @@ class AccountsWidget(QWidget):
                 return
 
     def _refresh(self) -> None:
-        # Presence only — the id-set query never pulls the stored password into the
-        # UI (FIBR-0128 INV-1). A marked row shows a screen-reader-legible marker.
-        self._rows = self._accounts.list_accounts()
-        self._with_pw = self._accounts.account_ids_with_pdf_password()
-        # The reconciliation health check for every account, read once (FIBR-0177 D6).
-        # A total map, so ``statuses[account.id]`` is always present. Money-display
-        # bits come from the vault connection + base currency, like the sibling tabs.
-        statuses = self._reconciliation.account_statuses()
-        exponent = read_minor_unit_exponent(self._vault.connection)
-        symbol = TransactionService(self._vault).base_currency()
+        # The guard wraps the WHOLE pre-fill read block, not a named subset. All
+        # five reads reach ``Vault.connection``, which is where VaultLockedError
+        # is raised, so whichever runs first is the one that raises — scoping it
+        # to today's first read would silently stop covering the hazard the day
+        # someone reorders them. Reachable because FIBR-0198's auto-hide timeout
+        # can land between the vault locking and the widget being deleted
+        # (_clear_live uses a DEFERRED deleteLater), so this swallows it
+        # silently, as the four vault-reading _on_* handlers already do.
+        try:
+            # Presence only — the id-set query never pulls the stored password
+            # into the UI (FIBR-0128 INV-1); a marked row shows a
+            # screen-reader-legible marker.
+            rows = self._accounts.list_accounts()
+            with_pw = self._accounts.account_ids_with_pdf_password()
+            # The reconciliation health check for every account, read once
+            # (FIBR-0177 D6). A total map, so ``statuses[account.id]`` is always
+            # present. Money-display bits come from the vault connection + base
+            # currency, like the sibling tabs.
+            statuses = self._reconciliation.account_statuses()
+            exponent = read_minor_unit_exponent(self._vault.connection)
+            symbol = TransactionService(self._vault).base_currency()
+        except VaultLockedError:
+            # Neither self._rows nor self._with_pw has been re-assigned and the
+            # table is untouched, so the previous render stays intact — which on
+            # the one path this guard exists for is already off-screen, because
+            # _lock()'s _clear_live() removeWidget runs synchronously before the
+            # event loop can deliver the queued timeout.
+            return
+        self._rows = rows
+        self._with_pw = with_pw
         with fill_guard(self._table):
             # CLEAR-then-fill (D6). The leading setRowCount(0) is load-bearing:
             # the sibling's reuse-rows shape lets a surviving selection ride its
@@ -411,8 +493,18 @@ class AccountsWidget(QWidget):
                     _COL_TYPE: QTableWidgetItem(
                         self._type_labels.get(account.type, account.type)
                     ),
+                    # Reads self._reveal.isChecked(), NOT the bool _on_reveal_
+                    # toggled receives: _refresh() also runs from Add, Update,
+                    # Delete, Forget and MainWindow._refresh_tab, where there is
+                    # no toggle event and so no parameter to read. Safe inside
+                    # the handler too — QCheckBox updates its check state before
+                    # emitting `toggled`. The raw branch is None-guarded:
+                    # Account.account_number is `str | None`, and a number-less
+                    # row must still render "" while revealed.
                     _COL_NUMBER: QTableWidgetItem(
-                        _mask_account_number(account.account_number)
+                        (account.account_number or "")
+                        if self._reveal.isChecked()
+                        else _mask_account_number(account.account_number)
                     ),
                     # `Account.note` is `str | None` and QTableWidgetItem(None)
                     # raises TypeError — the seeded Default has no note, so this
