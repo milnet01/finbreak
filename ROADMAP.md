@@ -2454,6 +2454,29 @@ because retrofitting them is a data migration.
   Kind: feature.
   Lanes: ui.
   Source: cold-eyes-2026-07-28 (FIBR-0113 loop 2).
+  Spec ACCEPTED 2026-07-31 (docs/specs/FIBR-0192.md) — /cold-eyes
+  converged after 4 loops plus a mid-run split. Totals: 1 CRIT, 10 HIGH,
+  29 MED, 34 LOW verified and ALL fixed; 9 unverified/dismissed. No
+  deferred tail — nothing was left open.
+
+  The split (loop 3->4): the ratio stop-trigger fired twice (collateral
+  outnumbering draft defects two loops running), so the ten measured Qt
+  facts and their probe scripts moved to docs/specs/FIBR-0192-qt-facts.md
+  with permanent ids QT-1..QT-10, and all citations were retargeted off
+  the position-dependent "2.1 row N" form. That doc is a REFERENCE —
+  /doc-lint checks it, not /cold-eyes.
+
+  Three findings that would have shipped bugs: (1) saveState() serialises
+  the sections-movable flag, so a capture one line early would have
+  turned drag-reorder off app-wide; (2) it ALSO serialises the sort
+  indicator, so a capture before enable_sorting would make the sort arrow
+  vanish; (3) a sortable view's re-sort rides on sortIndicatorChanged, so
+  the blockSignals guard an earlier draft specified would have
+  desynchronised the arrow from the rows on five shipped tables. All
+  three were found by RUNNING Qt, not by reading it.
+
+  Next: TDD the implementation (8 invariants, 7 test functions in
+  tests/features/table_state/ plus the mypy gate stage).
 
 - ✅ [FIBR-0193] **Account storage: migration v13 adds nullable accounts.account_number + accounts.note, carried through model / repo / service.**
   Split out of FIBR-0113 on 2026-07-28, executing the recommendation
