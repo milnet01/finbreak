@@ -5,16 +5,15 @@ run that finally converges — a stale resume file is worse than none.
 
 ## Where the run stopped
 
-- **FIBR-0193** (`docs/specs/FIBR-0193.md`) — **loops 1–5 complete**, all
-  dispatched, verified, fixed, logged and committed (`4f7a669`, `35d93e8`,
-  `af4dbcc`, `bcfbfd8`, `bafa4fd`). **Loop 6 is owed and NOT yet dispatched.**
-  The lane materials must be **re-staged** — the session scratchpad is wiped on
-  restart, which has already cost this run one rebuild, and loop 5's fixes grew
-  the spec to **1041 lines**, so the staged copy and every pre-pass figure must
-  be re-derived rather than carried.
-  Loop 6 runs at **strong depth on all three lanes with no breadth pass**: loop 5
-  produced 4 verified HIGH, so the skill's post-HIGH rule still binds.
-  Project cap is `--max-loops 7`, so loops 6–7 remain available.
+- **FIBR-0193** (`docs/specs/FIBR-0193.md`) — **GATE CLOSED. All seven loops
+  run**, dispatched, verified, fixed, logged and committed (`4f7a669`,
+  `35d93e8`, `af4dbcc`, `bcfbfd8`, `bafa4fd`, `76d3d95`, `b5107c5`). Loop 7 hit
+  the project cap (`--max-loops 7`), and the run ends there per global rule 14 —
+  file the tail and ship rather than loop further. **Nothing is owed on this
+  spec.** Its §13 carries the full seven-row log; the fix ledger with all 85
+  rows and every per-loop sweep is at `/tmp/cold-eyes-9ddde0cc/fix-ledger.json`
+  (session-local — not durable).
+
 - **FIBR-0113** (`docs/specs/FIBR-0113.md`) — **gate not started.** Rewritten as
   the UI half and committed, never reviewed. This is the second half of the
   user's instruction and is still owed. Its materials are already staged (see
@@ -29,6 +28,8 @@ run that finally converges — a stale resume file is worse than none.
 | 3 | 0 | 2 | 8 | 11 | 21 | 21 |
 | 4 | 0 | 4 | 9 | 9 | 24 | 23 (+1 deferred, 1 dismissed) |
 | 5 | 0 | 4 | 8 | 8 | 20 | 20 (+1 INFO folded in, 3 dismissed) |
+| 6 | 0 | 2 | 7 | 8 | 17 | 17 (+1 sweep fix) |
+| 7 | 0 | 1 | 10 | 10 | 21 | 21 — **cap; gate closed** |
 
 Full per-loop detail is in the spec's own §13 rows. **Not converged.**
 
