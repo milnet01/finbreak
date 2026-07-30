@@ -243,3 +243,48 @@ def test_FIBR0187_import_preview_column_key_is_distinct(qtbot, service):
     stmts = StatementsWidget(service)
     qtbot.addWidget(stmts)
     assert stmts._table.horizontalHeader().visualIndex(0) == 0  # unmoved
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0113 — the Accounts table joins the shared column scheme
+# --------------------------------------------------------------------------- #
+def test_INV8_accounts_table_column_key_is_distinct(qtbot, service):
+    """The Accounts table's objectName is `accounts_table`, distinct from every
+    other table passed to remember_columns (FIBR-0113 INV-8). Left unset, its
+    saved header state lands under the shared empty "columns/" key and
+    cross-corrupts another unnamed table's layout — the FIBR-0012 defect."""
+    from finbreak.ui.accounts import AccountsWidget
+    from finbreak.ui.statements import StatementsWidget
+
+    accounts = AccountsWidget(service)
+    qtbot.addWidget(accounts)
+    assert accounts._table.objectName() == "accounts_table"
+    accounts._table.horizontalHeader().moveSection(0, 3)  # reorder Accounts
+
+    stmts = StatementsWidget(service)
+    qtbot.addWidget(stmts)
+    assert stmts._table.objectName() == "statements_table"
+    # The Statements table keeps its natural order — it did not inherit the move.
+    assert stmts._table.horizontalHeader().visualIndex(0) == 0
+
+
+def test_INV17_accounts_columns_are_movable_and_persist_across_rebuild(qtbot, service):
+    """The Accounts columns are user-reorderable and resizable, and both survive
+    a rebuild (FIBR-0113 INV-17). INV-8 does not catch a table nobody
+    registered: the objectName can be right on a table remember_columns was
+    never called on."""
+    from finbreak.ui.accounts import AccountsWidget
+
+    first = AccountsWidget(service)
+    qtbot.addWidget(first)
+    header = first._table.horizontalHeader()
+    assert header.sectionsMovable(), "columns can be dragged to reorder"
+    header.moveSection(0, 2)  # Name to visual position 2
+    first._table.setColumnWidth(1, 213)  # the user drags the Type column
+
+    rebuilt = AccountsWidget(service)  # a fresh session / tab rebuild
+    qtbot.addWidget(rebuilt)
+    assert rebuilt._table.horizontalHeader().visualIndex(0) == 2, (
+        "the reordered column layout is restored"
+    )
+    assert rebuilt._table.columnWidth(1) == 213, "and the width with it"

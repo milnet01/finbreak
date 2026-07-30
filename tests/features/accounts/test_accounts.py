@@ -54,6 +54,37 @@ def _default_id(vault) -> int:
 
 
 # --------------------------------------------------------------------------- #
+# FIBR-0113 table helpers — shared by the re-pointed FIBR-0005 / FIBR-0128 legs
+# and by the FIBR-0113 block at the foot of this file.
+# --------------------------------------------------------------------------- #
+_COL_NAME, _COL_TYPE, _COL_NUMBER, _COL_NOTE, _COL_STATUS = range(5)
+
+
+def _names(widget) -> list[str]:
+    """Every row's Name cell, in current visual order."""
+    return [
+        widget._table.item(row, _COL_NAME).text()
+        for row in range(widget._table.rowCount())
+    ]
+
+
+def _row_of(widget, name: str) -> int:
+    """The visual row whose Name cell is `name`. A lookup by cell, never by a
+    fixed index: a fill under an active sort puts a row at no predictable one."""
+    for row in range(widget._table.rowCount()):
+        item = widget._table.item(row, _COL_NAME)
+        if item is not None and item.text() == name:
+            return row
+    raise AssertionError(f"no account row named {name!r} in {_names(widget)}")
+
+
+def _cell(widget, name: str, column: int) -> str:
+    """The text of `name`'s row in `column`."""
+    item = widget._table.item(_row_of(widget, name), column)
+    return "" if item is None else item.text()
+
+
+# --------------------------------------------------------------------------- #
 # INV-1 — account model & CRUD round-trip
 # --------------------------------------------------------------------------- #
 def test_INV1_crud_roundtrip_and_order(service):
@@ -362,8 +393,7 @@ def test_INV7bc_add_appears_in_list_and_main_picker(qtbot, service):
     widget._name.setText("Holiday")
     widget._type.setCurrentIndex(widget._type.findData("savings"))
     widget._add_button.click()
-    listed = [widget._list.item(i).text() for i in range(widget._list.count())]
-    assert any("Holiday" in text for text in listed), "added account shows in the list"
+    assert "Holiday" in _names(widget), "the added account shows in the table"
 
     dialog = ManualEntryDialog(service)
     qtbot.addWidget(dialog)
@@ -430,8 +460,7 @@ def test_INV7e_delete_empty_nonlast_removes_from_list(qtbot, service, monkeypatc
     qtbot.addWidget(widget)
     widget._select_account(spare.id)
     widget._delete_button.click()
-    listed = [widget._list.item(i).text() for i in range(widget._list.count())]
-    assert not any("Spare" in text for text in listed), "empty non-last account gone"
+    assert "Spare" not in _names(widget), "empty non-last account gone"
 
 
 def test_delete_confirmation_no_keeps_the_account(qtbot, service, monkeypatch):
@@ -482,9 +511,9 @@ def test_INV7f_edit_selected_account_updates_it(qtbot, service):
     widget._update_button.click()
 
     assert widget._error.text() == "", "a valid edit shows no error"
-    listed = [widget._list.item(i).text() for i in range(widget._list.count())]
-    assert any("Spare — " in text for text in listed), "the rename shows in the list"
-    assert not any("Spair" in text for text in listed), "the old name is gone"
+    assert "Spare" in _names(widget), "the rename shows in the table"
+    assert "Spair" not in _names(widget), "the old name is gone"
+    assert _cell(widget, "Spare", _COL_TYPE) == "Savings", "and the retype too"
     edited = next(a for a in svc.list_accounts() if a.id == spare.id)
     assert edited.name == "Spare" and edited.type == "savings"
 
@@ -633,45 +662,50 @@ def test_INV1_widget_never_renders_or_reads_the_secret(qtbot, service, monkeypat
     assert calls == [], "the listing path must not read the plaintext password"
 
     # Primary falsifier (b) + defense-in-depth: the sentinel is nowhere in the UI.
+    # RE-DERIVED for the table, not re-pointed (FIBR-0113 § 6). The old literal
+    # role list would keep passing while covering far less: `UserRole` / `+1` are
+    # re-purposed by _table_state into row mechanics that could never hold a
+    # password, `+2`..`+5` are no longer written at all, and a column-0-only
+    # sweep would leave the four other cells — the Account-number one included —
+    # unswept entirely. Sweep every cell of every column instead.
     roles = [
         Qt.ItemDataRole.AccessibleTextRole,
-        Qt.ItemDataRole.UserRole,
-        Qt.ItemDataRole.UserRole + 1,
-        Qt.ItemDataRole.UserRole + 2,
-        Qt.ItemDataRole.UserRole + 3,
-        Qt.ItemDataRole.UserRole + 4,  # _ACCOUNT_NUMBER_ROLE (FIBR-0193)
-        Qt.ItemDataRole.UserRole + 5,  # _ACCOUNT_NOTE_ROLE (FIBR-0193)
+        Qt.ItemDataRole.UserRole,  # _table_state._ROW_INDEX_ROLE
+        Qt.ItemDataRole.UserRole + 1,  # _table_state._SORT_KEY_ROLE
     ]
-    for i in range(widget._list.count()):
-        item = widget._list.item(i)
-        assert _SENTINEL_PW not in item.text()
-        assert _SENTINEL_PW not in (item.toolTip() or "")
-        for role in roles:
-            assert _SENTINEL_PW != str(item.data(role))
+    assert widget._table.rowCount() > 0, "an empty table sweeps nothing"
+    for row in range(widget._table.rowCount()):
+        for col in range(widget._table.columnCount()):
+            item = widget._table.item(row, col)
+            assert item is not None, f"row {row} column {col} has no item to sweep"
+            assert _SENTINEL_PW not in item.text()
+            assert _SENTINEL_PW not in (item.toolTip() or "")
+            for role in roles:
+                assert _SENTINEL_PW != str(item.data(role))
 
 
 def test_INV2_marker_flags_exactly_accounts_with_a_saved_password(qtbot, service):
     """The marker shows only for accounts with a saved password (FIBR-0128 INV-2)."""
-    from PySide6.QtCore import Qt
-
     from finbreak.ui.accounts import AccountsWidget
 
     svc = AccountService(service.vault)
     default_id = _default_id(service.vault)
-    spare = svc.add_account("Spare", "other")
+    svc.add_account("Spare", "other")  # a second row, with no saved password
     svc.set_pdf_password(default_id, _SENTINEL_PW)  # only default has one
 
     widget = AccountsWidget(service)
     qtbot.addWidget(widget)
 
-    marked = {
-        widget._list.item(i).data(Qt.ItemDataRole.UserRole): (
-            _PW_MARKER_PHRASE in widget._list.item(i).text()
-        )
-        for i in range(widget._list.count())
-    }
-    assert marked[default_id] is True, "the account with a saved password is marked"
-    assert marked[spare.id] is False, "the account without one is not marked"
+    # Re-derived for the table (FIBR-0113 § 6): rows are located by their Name
+    # cell and the marker read from the STATUS cell. Reading UserRole would now
+    # return _table_state's row tag, not an account id, and the marker is no
+    # longer part of any row-wide string.
+    assert _PW_MARKER_PHRASE in _cell(widget, DEFAULT_ACCOUNT_NAME, _COL_STATUS), (
+        "the account with a saved password is marked"
+    )
+    assert _PW_MARKER_PHRASE not in _cell(widget, "Spare", _COL_STATUS), (
+        "the account without one is not marked"
+    )
 
 
 def test_INV3_forget_enabled_only_for_saved_password(qtbot, service, monkeypatch):
@@ -707,7 +741,6 @@ def test_INV3_forget_enabled_only_for_saved_password(qtbot, service, monkeypatch
 def test_INV4_forget_clears_only_selected_when_confirmed(qtbot, service, monkeypatch):
     """Confirming Forget clears only the selected account's password; the marker
     drops; other accounts are untouched (FIBR-0128 INV-4)."""
-    from PySide6.QtCore import Qt
     from PySide6.QtWidgets import QMessageBox
 
     from finbreak.ui.accounts import AccountsWidget
@@ -728,13 +761,11 @@ def test_INV4_forget_clears_only_selected_when_confirmed(qtbot, service, monkeyp
 
     assert svc.get_pdf_password(a) is None, "the selected account's password is cleared"
     assert svc.get_pdf_password(b) == "PW-B", "other account's password untouched"
-    marks = {
-        widget._list.item(i).data(Qt.ItemDataRole.UserRole): (
-            _PW_MARKER_PHRASE in widget._list.item(i).text()
-        )
-        for i in range(widget._list.count())
-    }
-    assert marks[a] is False and marks[b] is True, "only cleared row loses its marker"
+    # Re-derived for the table (FIBR-0113 § 6), as in INV-2 above.
+    assert _PW_MARKER_PHRASE not in _cell(widget, DEFAULT_ACCOUNT_NAME, _COL_STATUS)
+    assert _PW_MARKER_PHRASE in _cell(widget, "Spare", _COL_STATUS), (
+        "only the cleared row loses its marker"
+    )
 
 
 def test_INV4_forget_declined_keeps_the_password(qtbot, service, monkeypatch):
@@ -755,11 +786,9 @@ def test_INV4_forget_declined_keeps_the_password(qtbot, service, monkeypatch):
     widget._select_account(a)
     widget._forget_pw_button.click()
     assert svc.get_pdf_password(a) == "PW-A", "declining the confirm keeps the password"
-    marked = any(
-        _PW_MARKER_PHRASE in widget._list.item(i).text()
-        for i in range(widget._list.count())
+    assert _PW_MARKER_PHRASE in _cell(widget, DEFAULT_ACCOUNT_NAME, _COL_STATUS), (
+        "declining leaves the marker in place"
     )
-    assert marked, "declining leaves the marker in place"
 
 
 def test_INV5_forget_swallows_vault_locked_silently(qtbot, service, monkeypatch):
@@ -945,3 +974,392 @@ def test_INV7_on_update_passes_stored_account_number_and_note_through(qtbot, ser
     assert edited.name == "Spare", "the rename itself landed"
     assert edited.account_number == "ACCT-4021-7788", "the stored number survived"
     assert edited.note == "joint, second card", "the stored note survived"
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0113 — the sortable 5-column Accounts table, account number masked
+# --------------------------------------------------------------------------- #
+# The shared "sorted setup" (spec § 5): EXACTLY three accounts, each with a
+# distinct name, type, account number AND note, viewed under a DESCENDING Name
+# sort. `AccountRepository.list_all()` ends `ORDER BY name COLLATE NOCASE, id`,
+# so `self._rows` is always name-ASCENDING — the descending sort is what makes
+# every visual position differ from its index. The distinct types / numbers /
+# notes are load-bearing: without them two accounts render identical cells in
+# three of the five columns and INV-18's row-wise pairing check silently
+# degrades to a Name-and-Status check.
+_SORTED_ACCOUNTS = [
+    # name,   type,          label,         account number, note
+    ("Alpha", "savings", "Savings", "1111222233", "alpha note"),
+    ("Mid", "current", "Current", "4444555566", "mid note"),
+    ("Zed", "credit_card", "Credit card", "7777888899", "zed note"),
+]
+
+
+def _seed_sorted(service) -> dict[str, int]:
+    """Build the sorted setup's three accounts; return {name: id}. The seeded
+    Default is renamed into the set rather than left beside it, so the table
+    holds exactly three rows."""
+    svc = AccountService(service.vault)
+    ids = {}
+    for i, (name, type_, _label, number, note) in enumerate(_SORTED_ACCOUNTS):
+        if i == 1:  # reuse the seeded Default as the middle account
+            account_id = _default_id(service.vault)
+            svc.update_account(
+                account_id, name, type_, account_number=number, note=note
+            )
+        else:
+            account_id = svc.add_account(
+                name, type_, account_number=number, note=note
+            ).id
+        ids[name] = account_id
+    return ids
+
+
+def _sort_desc_by_name(widget) -> None:
+    from PySide6.QtCore import Qt
+
+    widget._table.sortItems(_COL_NAME, Qt.SortOrder.DescendingOrder)
+
+
+def _statement(service, account_id, start, end, name, closing) -> None:
+    from finbreak.repositories.statement_periods import StatementPeriodRepository
+
+    StatementPeriodRepository(service.vault.connection).add(
+        account_id, start, end, name, closing
+    )
+    service.vault.connection.commit()
+
+
+# -- INV-5 — the mask helper ------------------------------------------------ #
+def test_INV5_mask_account_number_shows_at_most_the_last_four():
+    """A mask plus the last 4 for a value longer than 4; a BARE mask for 1-4
+    characters (its "last 4" would be all of it); an empty cell for no number
+    (FIBR-0113 INV-5)."""
+    from finbreak.ui.accounts import _mask_account_number
+
+    assert _mask_account_number("1234567890") == "•••• 7890"
+    assert _mask_account_number("12345") == "•••• 2345", "the shortest last-4 value"
+    assert _mask_account_number("1234") == "••••", "no digits leak at exactly 4"
+    assert _mask_account_number("123") == "••••", "nor below it"
+    assert _mask_account_number("") == ""
+    assert _mask_account_number(None) == ""
+
+
+# -- INV-7 — handlers act on the SELECTED account, not the visual row ------- #
+def test_INV7_handlers_act_on_the_selected_account_under_a_sort(
+    qtbot, service, monkeypatch
+):
+    """Update, Delete and Forget all act on the account the user selected, not
+    on the parallel-list entry sitting at that visual row index (FIBR-0113
+    INV-7). This is the money-adjacent one: it deletes the wrong account."""
+    from PySide6.QtWidgets import QMessageBox
+
+    from finbreak.ui.accounts import AccountsWidget
+
+    monkeypatch.setattr(  # both Delete and Forget block on a confirm
+        QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.Yes
+    )
+    svc = AccountService(service.vault)
+    ids = _seed_sorted(service)
+    # Two accounts carry a saved statement password; the THIRD is the Delete
+    # target. Aiming all three drives at one account would delete it, and the
+    # next _select_account would miss — red against a correct implementation.
+    svc.set_pdf_password(ids["Alpha"], "PW-ALPHA")
+    svc.set_pdf_password(ids["Zed"], "PW-ZED")
+
+    widget = AccountsWidget(service)
+    qtbot.addWidget(widget)
+    _sort_desc_by_name(widget)
+
+    # (1) Update lands on Alpha. Each drive re-selects by id first: every handler
+    # ends in _refresh(), which leaves no selection (INV-22), so handlers 2 and 3
+    # would otherwise take their no-selection early return and do nothing.
+    widget._select_account(ids["Alpha"])
+    widget._name.setText("Alpha renamed")  # selection pre-populated the old name
+    widget._update_button.click()
+    by_id = {a.id: a for a in svc.list_accounts()}
+    assert by_id[ids["Alpha"]].name == "Alpha renamed", "Update hit the selected one"
+    assert by_id[ids["Mid"]].name == "Mid", "and no other"
+    assert by_id[ids["Zed"]].name == "Zed"
+
+    # (2) Delete lands on Mid.
+    widget._select_account(ids["Mid"])
+    widget._delete_button.click()
+    remaining = {a.id for a in svc.list_accounts()}
+    assert ids["Mid"] not in remaining, "Delete removed the selected account"
+    assert remaining == {ids["Alpha"], ids["Zed"]}, "and left the rest"
+
+    # (3) Forget lands on Zed.
+    widget._select_account(ids["Zed"])
+    widget._forget_pw_button.click()
+    assert svc.get_pdf_password(ids["Zed"]) is None, "Forget cleared the selected one"
+    assert svc.get_pdf_password(ids["Alpha"]) == "PW-ALPHA", "and left the other"
+
+
+# -- INV-9 — Status sorts by reconciliation SEVERITY, not by its string ----- #
+def test_INV9_status_column_sorts_by_severity_and_composes_its_text(qtbot, service):
+    """Ascending: every OFF above every quiet above every RECONCILED. Both quiet
+    shapes are required — an empty cell sorts FIRST lexically but BETWEEN by
+    rank, and a key-only cell (U+1F511) sorts LAST lexically but MIDDLE
+    (FIBR-0113 INV-9)."""
+    from PySide6.QtCore import Qt
+
+    from finbreak.ui.accounts import AccountsWidget
+
+    svc = AccountService(service.vault)
+    # OFF — two statements, nothing bridging them.
+    off = svc.add_account("AAoff", "current").id
+    _statement(service, off, "2026-01-01", "2026-04-30", "apr.pdf", 100_000)
+    _statement(service, off, "2026-05-01", "2026-05-31", "may.pdf", 150_000)
+    # Quiet with NO marker at all — one statement only (NOT_ENOUGH_DATA).
+    quiet = svc.add_account("BBquiet", "savings").id
+    _statement(service, quiet, "2026-01-01", "2026-04-30", "s.ofx", 100_000)
+    # Quiet with the key marker ONLY.
+    quiet_key = svc.add_account("CCquietkey", "savings").id
+    _statement(service, quiet_key, "2026-01-01", "2026-04-30", "s2.ofx", 100_000)
+    svc.set_pdf_password(quiet_key, "PW-Q")
+    # RECONCILED — two statements bridged exactly.
+    good = svc.add_account("DDgood", "current").id
+    _statement(service, good, "2026-01-01", "2026-04-30", "apr.pdf", 100_000)
+    _statement(service, good, "2026-05-01", "2026-05-31", "may.pdf", 150_000)
+    TransactionRepository(service.vault.connection).add(
+        good, "2026-05-15", 50_000, "bridge"
+    )
+    # RECONCILED with a key.
+    good_key = svc.add_account("EEgoodkey", "current").id
+    _statement(service, good_key, "2026-01-01", "2026-04-30", "a.pdf", 100_000)
+    _statement(service, good_key, "2026-05-01", "2026-05-31", "b.pdf", 150_000)
+    TransactionRepository(service.vault.connection).add(
+        good_key, "2026-05-15", 50_000, "bridge"
+    )
+    svc.set_pdf_password(good_key, "PW-G")
+    # The seeded Default has no statements at all — delete it so the five ranks
+    # under test are the whole table.
+    svc.delete_account(_default_id(service.vault))
+
+    widget = AccountsWidget(service)
+    qtbot.addWidget(widget)
+    widget._table.sortItems(_COL_STATUS, Qt.SortOrder.AscendingOrder)
+
+    # Rank GROUPING, not an exact five-name sequence: intra-rank order among the
+    # two quiet and the two reconciled rows is unspecified.
+    order = _names(widget)
+    rank = {
+        "AAoff": 0,
+        "BBquiet": 1,
+        "CCquietkey": 1,
+        "DDgood": 2,
+        "EEgoodkey": 2,
+    }
+    ranks = [rank[name] for name in order]
+    assert ranks == sorted(ranks), f"severity grouping broken: {order}"
+    assert ranks == [0, 1, 1, 2, 2]
+
+    # The composed cell text, by EXACT equality for every marker x key
+    # combination — a substring check passes on a cell that still carries the
+    # "  ·  " prefix § 4.2 removes from the four tr() literals.
+    key_text = "🔑 statement password saved"
+    assert _cell(widget, "BBquiet", _COL_STATUS) == ""
+    assert _cell(widget, "CCquietkey", _COL_STATUS) == key_text
+    assert _cell(widget, "DDgood", _COL_STATUS) == "✓ balances reconcile"
+    assert (
+        _cell(widget, "EEgoodkey", _COL_STATUS) == f"✓ balances reconcile · {key_text}"
+    ), "reconciliation text FIRST, key second — a deliberate reversal of the list"
+    off_text = _cell(widget, "AAoff", _COL_STATUS)
+    assert off_text.startswith("⚠ off by "), f"no leading separator: {off_text!r}"
+    assert "500" in off_text, "the discrepancy magnitude is rendered"
+
+
+# -- INV-12 — the two new form fields --------------------------------------- #
+def test_INV12_form_stores_and_repopulates_account_number_and_note(qtbot, service):
+    """Typing an account number and a note and pressing Add stores both and
+    clears the form; re-selecting repopulates both with the NORMALISED stored
+    value, the number field still masked (FIBR-0113 INV-12)."""
+    from PySide6.QtWidgets import QLineEdit
+
+    from finbreak.ui.accounts import AccountsWidget, _mask_account_number
+
+    svc = AccountService(service.vault)
+    existing = svc.add_account("Existing", "savings", account_number="9999", note="x")
+
+    widget = AccountsWidget(service)
+    qtbot.addWidget(widget)
+    # Leg (d), construction-time half: the field is built in Password echo mode,
+    # BEFORE any selection. The only leg that observes that.
+    assert widget._account_number.echoMode() == QLineEdit.EchoMode.Password
+
+    # Select an existing row FIRST, so the _refresh() after Add genuinely fires
+    # the selection-cleared path rather than starting from no selection (where
+    # no itemSelectionChanged is emitted at all).
+    widget._select_account(existing.id)
+    # A NEW, unused name: _on_add passes _name.text() straight to add_account,
+    # which rejects a duplicate and returns BEFORE clearing the form — a leg
+    # reusing the selected account's name would fail its own step (a).
+    widget._name.setText("Holiday")
+    widget._account_number.setText("  1234567890  ")  # outer whitespace -> stripped
+    widget._note.setText("  holiday savings  ")
+    type_before = widget._type.currentData()
+    widget._add_button.click()
+
+    # (a) the post-Add state, which the _refresh() that follows must not undo
+    assert widget._name.text() == ""
+    assert widget._account_number.text() == ""
+    assert widget._note.text() == ""
+    assert widget._type.currentData() == type_before, "the Type picker is not cleared"
+
+    # (b) the new row's Note cell carries the normalised value
+    assert _cell(widget, "Holiday", _COL_NOTE) == "holiday savings"
+    # (c) ...and its Account-number cell the MASKED form, not the typed value
+    assert _cell(widget, "Holiday", _COL_NUMBER) == _mask_account_number("1234567890")
+    assert "1234567890" not in _cell(widget, "Holiday", _COL_NUMBER)
+
+    # (d) re-selecting repopulates both fields with the normalised stored value,
+    # the number field still masked by echo mode
+    added = next(a for a in svc.list_accounts() if a.name == "Holiday")
+    widget._select_account(added.id)
+    assert widget._account_number.text() == "1234567890", "the RAW value, not the mask"
+    assert widget._note.text() == "holiday savings"
+    assert widget._account_number.echoMode() == QLineEdit.EchoMode.Password
+    assert widget._account_number.displayText() != widget._account_number.text(), (
+        "the echo character is platform-dependent, so only the difference is pinned"
+    )
+
+    # (e) a _refresh() with the selection cleared LEAVES the form untouched. The
+    # only leg that falsifies that clause: (a) asserts the fields are empty at a
+    # point where _on_add has already cleared them, so a handler that CLEARS the
+    # form on a cleared selection passes (a) identically while wiping
+    # in-progress input on every tab activation.
+    widget._select_account(existing.id)
+    widget._name.setText("typed but not saved")
+    widget._refresh()
+    assert widget._name.text() == "typed but not saved"
+
+
+# -- INV-15 — _select_account maps id -> position --------------------------- #
+def test_INV15_select_account_resolves_the_id_to_a_position(qtbot, service):
+    """`_select_account` selects the row displaying that account whatever the
+    sort, and selects nothing for an unknown id (FIBR-0113 INV-15)."""
+    from finbreak.ui._table_state import selected_index
+    from finbreak.ui.accounts import AccountsWidget
+
+    ids = _seed_sorted(service)
+    widget = AccountsWidget(service)
+    qtbot.addWidget(widget)
+    _sort_desc_by_name(widget)
+
+    # Pick an account whose id differs from its index in self._rows — the seeded
+    # Default has id == 1 and can sit at index 1, where an id passed straight
+    # through selects the same row and the leg passes green.
+    target = "Zed"
+    index = next(i for i, a in enumerate(widget._rows) if a.id == ids[target])
+    assert ids[target] != index, "the id and the index must differ for this to bite"
+
+    widget._select_account(ids[target])
+    assert selected_index(widget._table) == index
+    assert _names(widget)[widget._table.currentRow()] == target
+
+    # An absent id leaves the selection UNCHANGED — not cleared (§ 4.2).
+    widget._select_account(999_999)
+    assert selected_index(widget._table) == index, "an unknown id changes nothing"
+
+
+# -- INV-18 — a refresh under an active sort never mis-pairs cells ---------- #
+def test_INV18_refresh_under_a_sort_never_mispairs_cells(qtbot, service):
+    """Every row's five cells belong to the same account after a refresh, in
+    both sort directions (FIBR-0113 INV-18). Without `fill_guard` Qt re-sorts on
+    each setItem and a row acquires cells from whichever account occupied that
+    visual position mid-fill."""
+    from PySide6.QtCore import Qt
+
+    from finbreak.ui.accounts import AccountsWidget, _mask_account_number
+
+    _seed_sorted(service)
+    widget = AccountsWidget(service)
+    qtbot.addWidget(widget)
+
+    expected = {
+        name: (label, _mask_account_number(number), note)
+        for name, _type, label, number, note in _SORTED_ACCOUNTS
+    }
+    for order in (Qt.SortOrder.DescendingOrder, Qt.SortOrder.AscendingOrder):
+        widget._table.sortItems(_COL_NAME, order)
+        widget._refresh()
+        assert widget._table.rowCount() == len(_SORTED_ACCOUNTS)
+        for row in range(widget._table.rowCount()):
+            name = widget._table.item(row, _COL_NAME).text()
+            cells = (
+                widget._table.item(row, _COL_TYPE).text(),
+                widget._table.item(row, _COL_NUMBER).text(),
+                widget._table.item(row, _COL_NOTE).text(),
+            )
+            assert cells == expected[name], f"row {row} ({order}) mixes accounts"
+
+
+# -- INV-20 — the Account-number COLUMN is always masked -------------------- #
+def test_INV20_account_number_column_is_masked_on_every_fill(qtbot, service):
+    """The column renders `_mask_account_number(...)` for every row, whatever
+    the sort order (FIBR-0113 INV-20). § 3 decision 2's primary surface — INV-5
+    covers only the pure helper and INV-12 leg (d) only the form field."""
+    from finbreak.ui.accounts import AccountsWidget
+
+    svc = AccountService(service.vault)
+    svc.add_account("WithNumber", "savings", account_number="1234567890")
+    svc.add_account("NoNumber", "current")
+
+    widget = AccountsWidget(service)
+    qtbot.addWidget(widget)
+    # Rows located by their NAME cell: an empty Account-number cell is otherwise
+    # indistinguishable from a mis-filled one.
+    assert _cell(widget, "WithNumber", _COL_NUMBER) == "•••• 7890"
+    assert _cell(widget, "NoNumber", _COL_NUMBER) == ""
+
+    # ...and again after a _refresh() driven by an Add.
+    widget._name.setText("Third")
+    widget._add_button.click()
+    assert _cell(widget, "WithNumber", _COL_NUMBER) == "•••• 7890"
+    assert _cell(widget, "NoNumber", _COL_NUMBER) == ""
+    assert _cell(widget, "Third", _COL_NUMBER) == ""
+
+
+# -- INV-21 — the table is click-sortable ----------------------------------- #
+def test_INV21_table_is_click_sortable(qtbot, service):
+    """`isSortingEnabled()` is True and driving the header reorders the rows
+    (FIBR-0113 INV-21). NOT `sortByColumn` / `sortItems` — those sort whether or
+    not sorting was ever enabled, so they pass in the exact broken state."""
+    from PySide6.QtCore import Qt
+
+    from finbreak.ui.accounts import AccountsWidget
+
+    _seed_sorted(service)
+    widget = AccountsWidget(service)
+    qtbot.addWidget(widget)
+    assert widget._table.isSortingEnabled(), "enable_sorting was never called"
+
+    header = widget._table.horizontalHeader()
+    header.setSortIndicator(_COL_NAME, Qt.SortOrder.AscendingOrder)
+    ascending = _names(widget)
+    header.setSortIndicator(_COL_NAME, Qt.SortOrder.DescendingOrder)
+    assert _names(widget) == list(reversed(ascending)), "a header click reorders"
+
+
+# -- INV-22 — a refresh leaves NO selection --------------------------------- #
+def test_INV22_refresh_leaves_no_selection_on_any_row(qtbot, service):
+    """`_refresh()` leaves the table with no selection whatever sort is active,
+    so no stale selection can survive a repopulate and resolve to a DIFFERENT
+    account (FIBR-0113 INV-22). Every row is driven, mirroring § 8's
+    reproduction."""
+    from finbreak.ui._table_state import selected_index
+    from finbreak.ui.accounts import AccountsWidget
+
+    _seed_sorted(service)
+    widget = AccountsWidget(service)
+    qtbot.addWidget(widget)
+    _sort_desc_by_name(widget)
+    assert widget._table.rowCount() == len(_SORTED_ACCOUNTS)
+
+    for row in range(widget._table.rowCount()):
+        widget._table.selectRow(row)
+        assert selected_index(widget._table) is not None, f"row {row} did not select"
+        widget._refresh()
+        assert selected_index(widget._table) is None, f"row {row} survived the refresh"
+        assert widget._table.selectedItems() == []

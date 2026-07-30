@@ -3,8 +3,11 @@
 Each status renders the right per-row suffix (or none): a RECONCILED account shows
 `✓ balances reconcile`, a 1-gap OFF shows `⚠ off by …` with the magnitude, a >1-gap
 OFF shows `⚠ {n} periods don't reconcile`, and NOT_ENOUGH_DATA / NOT_SUPPORTED rows
-carry no reconciliation suffix. A real (tmp_path) v11 vault; no network, no real
-financial data (testing.md § 6). The suffix is asserted on the QListWidgetItem text.
+carry no reconciliation marker. A real (tmp_path) vault; no network, no real
+financial data (testing.md § 6). The marker is asserted on the **Status cell** of
+the FIBR-0113 accounts table: name and status are separate cells now, so the row
+is found by its Name cell and the marker read from column 4 (FIBR-0113 § 6 — a
+mechanical `_list` -> `_table` swap would not compile into anything meaningful).
 """
 
 from collections.abc import Iterator
@@ -40,12 +43,19 @@ def _txn(svc, account_id, day, minor, desc) -> None:
     TransactionRepository(svc.vault.connection).add(account_id, day, minor, desc)
 
 
-def _row_text(widget: AccountsWidget, name_substr: str) -> str:
-    for i in range(widget._list.count()):
-        text = widget._list.item(i).text()
-        if name_substr in text:
-            return text
-    raise AssertionError(f"no account row contains {name_substr!r}")
+_COL_NAME, _COL_STATUS = 0, 4
+
+
+def _row_text(widget: AccountsWidget, name: str) -> str:
+    """The Status-cell text of the row whose NAME cell is `name`. Re-derived
+    for the table: the old helper matched the account name and read the marker
+    out of the same row-wide string, which no longer exists."""
+    for row in range(widget._table.rowCount()):
+        item = widget._table.item(row, _COL_NAME)
+        if item is not None and item.text() == name:
+            status = widget._table.item(row, _COL_STATUS)
+            return "" if status is None else status.text()
+    raise AssertionError(f"no account row named {name!r}")
 
 
 def test_INV9_marker_per_status(qtbot, service) -> None:
