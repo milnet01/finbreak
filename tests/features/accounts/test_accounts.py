@@ -1439,8 +1439,16 @@ def test_INV2_reveal_auto_remasks_and_only_a_fresh_reveal_arms_the_timer(
     # the read moment is part of the assertion, because the precedent's
     # alternative shape (start(seconds * 1000) per use) leaves interval() at 0
     # until the first reveal.
+    from PySide6.QtCore import Qt
+
     assert widget._reveal_timer.isSingleShot() is True
     assert widget._reveal_timer.interval() == _REVEAL_SECONDS * 1000
+    # Precise, not Qt's DEFAULT Coarse. A coarse timer shifts its deadline by up
+    # to 5% to coalesce wakeups, so the re-mask can land ~1.5s late and
+    # remainingTime() reads ABOVE the interval — which made leg (d) below flake
+    # (measured 12/25 reads once the event loop has registered the timer). This
+    # clause is what stops that returning silently.
+    assert widget._reveal_timer.timerType() == Qt.TimerType.PreciseTimer
 
     # (a) the re-mask actually HAPPENS. Legs (b)-(d) observe the timer's
     # configuration, so they all pass against an implementation that never

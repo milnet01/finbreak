@@ -13,7 +13,7 @@ via ``selected_index`` and the fill tags each row with its insertion index.
 
 from __future__ import annotations
 
-from PySide6.QtCore import QTimer, Signal, Slot
+from PySide6.QtCore import Qt, QTimer, Signal, Slot
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -176,6 +176,13 @@ class AccountsWidget(QWidget):
         self._reveal_timer = QTimer(self)  # parented — dies with the widget
         self._reveal_timer.setSingleShot(True)
         self._reveal_timer.setInterval(_REVEAL_SECONDS * 1000)
+        # Precise, not Qt's default Coarse: a coarse timer may shift its deadline
+        # by up to 5% to coalesce wakeups, so the re-mask could land up to ~1.5s
+        # LATE and `remainingTime()` legitimately reads above the interval
+        # (measured: 12 of 25 reads once the event loop has registered it). This
+        # is a bound on how long a sensitive value stays on screen, so it should
+        # mean what it says; the cost for one 30-second single-shot is nil.
+        self._reveal_timer.setTimerType(Qt.TimerType.PreciseTimer)
         self._reveal_timer.timeout.connect(self._on_reveal_timeout)
         self._type = QComboBox()
         self._type.setAccessibleName(self.tr("Account type"))
