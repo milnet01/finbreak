@@ -23,6 +23,15 @@ signaling per
 
 ### Added
 
+- **A "Show account numbers" tick-box on the Accounts tab, with a 30-second auto-hide** (FIBR-0198)
+  Account numbers stay masked by default, but you can now read one in
+  full when you need it to pay someone — the tick-box reveals every
+  account number in the table and in the edit form at once. It hides
+  itself again after half a minute, so a number can't be left sitting on
+  screen, and the tick never survives a lock or a restart. Note that a
+  number you COPY while it's revealed stays on your clipboard until
+  something else replaces it.
+
 - **The Accounts tab is now a sortable table of Name, Type, Account number, Note and Status** (FIBR-0113)
   Instead of one cramped line per account, accounts appear as rows you can
   sort, resize and reorder — and finbreak remembers the layout. Clicking

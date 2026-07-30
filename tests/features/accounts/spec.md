@@ -4,7 +4,7 @@
 type; every transaction belongs to one; and the first forward-only schema
 migration (v1→v2) that adds the account link.
 
-This is the test-side contract for **four** specs, one block per spec below.
+This is the test-side contract for **five** specs, one block per spec below.
 The `## Invariants` block belongs to
 [`docs/specs/FIBR-0005.md`](../../../docs/specs/FIBR-0005.md); each later block
 names its own spec in its heading. Numbering **restarts at INV-1 in each
@@ -168,12 +168,48 @@ rather than omissions. INV-8 and INV-17 live in
   directions. Source: FIBR-0113 INV-18.
 - **INV-20** — The Account-number **column** renders
   `_mask_account_number(account.account_number)` for every row, whatever the
-  sort order. Source: FIBR-0113 INV-20.
+  sort order. Source: FIBR-0113 INV-20. (`amended by FIBR-0198`, which
+  narrows this to the reveal-off state.)
 - **INV-21** — The table is click-sortable: `isSortingEnabled()` is `True` and
   driving a header section reorders the rows. Source: FIBR-0113 INV-21.
 - **INV-22** — `_refresh()` leaves the table with **no selection**, whatever
   sort is active, so no stale selection survives a repopulate and resolves to a
   different account. Source: FIBR-0113 INV-22.
+
+## FIBR-0198 — reveal the masked account number, with an auto re-mask
+
+Test-side contract for [`docs/specs/FIBR-0198.md`](../../../docs/specs/FIBR-0198.md);
+each `INV-N` below maps to that spec's invariant of the same number (a fifth
+numbering). All five legs are `qtbot` tests over a constructed `AccountsWidget`,
+except INV-1 leg (c), which builds a `MainWindow` solely to drive a lock cycle.
+
+- **INV-1** — A freshly constructed `AccountsWidget` has reveal **off**, the
+  toggle state is written to no persistent store, and a lock cycle returns it to
+  off. The non-persistence leg reads the window INI's **keys** through
+  `QSettings` after `sync()` (not the file's bytes, which a buffered `setValue`
+  never reaches during a test) and excludes only the single
+  `columns/accounts_table` key, not the whole `columns/` group. Source:
+  FIBR-0198 INV-1.
+- **INV-2** — A reveal re-masks on its own after `_REVEAL_SECONDS`; a manual
+  uncheck cancels the pending timer; and **nothing but a fresh reveal
+  (re)starts** it — not a `_refresh()` from any other cause. Leg (a) emits the
+  timeout and asserts the re-mask, because every other leg observes the timer's
+  *configuration* and would pass against an implementation that never connects
+  `timeout`. Source: FIBR-0198 INV-2.
+- **INV-3** — The edit form's account-number field is `Password` echo with
+  reveal off and `Normal` with it on, and stays editable in both states.
+  Asserted on `displayText()`, never on `text()` — a `Password` field's `text()`
+  is never masked. Source: FIBR-0198 INV-3.
+- **INV-4** — Toggling reveal preserves an in-progress edit: the selection, all
+  four form inputs and the Forget button's enabled state are unchanged. Driven
+  for both the manual off-transition and the **unattended** one (the timer),
+  which is the case that matters, since the spec has decided a re-mask may land
+  mid-edit. Source: FIBR-0198 INV-4.
+- **INV-5** — The Account-number **column** renders the raw stored value while
+  reveal is on and returns to the mask when it goes off, for every row —
+  including across a non-toggle `_refresh()`, the only leg that exercises the
+  fill reading `self._reveal.isChecked()` rather than a toggle parameter.
+  Source: FIBR-0198 INV-5.
 
 ## Out of scope
 
@@ -192,3 +228,6 @@ finishing FIBR-0084 (the Forecast table, the Home dashboard trees, and Reset
 layout clearing saved column state — FIBR-0192); preserving the selection
 across a tab switch, and column customisation on the Categories tree, both
 permanent decisions rather than deferrals.
+**FIBR-0198:** making `_REVEAL_SECONDS` user-configurable, and a reveal that
+survives a lock or a restart — both decisions rather than deferrals, so
+neither has a follow-up id.

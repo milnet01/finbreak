@@ -2642,7 +2642,7 @@ because retrofitting them is a data migration.
   Kind: doc-fix.
   Source: in-session-2026-07-30 (FIBR-0193 cold-eyes loop 4, deferred finding).
 
-- 📋 [FIBR-0198] **Accounts tab: reveal the masked account number, with an auto re-mask after 30s.**
+- ✅ [FIBR-0198] **Accounts tab: reveal the masked account number, with an auto re-mask after 30s.**
   Split out of FIBR-0113 on 2026-07-30. FIBR-0113 ships the sortable
   5-column Accounts table with the account number ALWAYS masked; this item
   adds the way to see it. Blocked by FIBR-0113 (it needs the table, the
@@ -2670,6 +2670,34 @@ because retrofitting them is a data migration.
   Kind: feature.
   Lanes: ui.
   Source: in-session-2026-07-30 (FIBR-0113 split, UI half).
+  Resolved (2026-07-30): shipped by TDD, closing the
+  FIBR-0193 → FIBR-0113 → FIBR-0198 chain. A "Show account numbers" checkbox
+  between the table and the form switches the account number from masked to raw
+  on BOTH surfaces FIBR-0113 masks — the table cell (a conditional write in the
+  fill) and the form field (echo mode `Normal`/`Password`, the
+  `ExportDialog._on_show_toggled` idiom). Session-scoped and written to no store;
+  a lock needs no extra code, since `MainWindow._lock()` destroys the workspace
+  and the next unlock builds a fresh widget. A parented single-shot `QTimer`
+  re-masks after `_REVEAL_SECONDS` (a COPIED literal 30, not an import of
+  `DEFAULT_CLIPBOARD_CLEAR_SECONDS` — importing it would make this window track
+  that user-settable default, the coupling D3 forbids); the interval restarts
+  rather than extends on each fresh reveal, and no `_refresh()` from any other
+  cause touches it. `_on_reveal_toggled` runs six ordered steps, re-selecting
+  under `blockSignals` (with the unblock in a `finally`) so a re-mask cannot
+  repopulate four form inputs from storage over a half-typed edit — the reveal is
+  the one control a user reaches for mid-edit. `_refresh()` gained a
+  `VaultLockedError` guard around all five pre-fill reads, because a queued
+  timeout can land between the vault locking and the deferred `deleteLater()`.
+  Reproduce-first TDD, 5 legs red first: INV-2 leads by EMITTING the timeout,
+  because the configuration-observing legs all pass against an implementation
+  that never connects it, and its no-restart leg leads with `isActive()` because
+  `QTimer` returns -1 from `remainingTime()` when inactive. `security-model.md`
+  T13 amended and **T14** added: the reveal makes an account number copyable from
+  the form field, and that copy is NOT auto-cleared — `ClipboardAutoClear` is
+  wired only to the transactions list, so a Ctrl+C during a 30-second reveal
+  outlives it indefinitely. A deliberate gap (clearing it mid-payment would defeat
+  the reason the reveal exists), now stated rather than implied. Screenshots +
+  README refreshed. FIBR-0084 still stays 📋 until FIBR-0192.
 
 ### ⚡ Performance
 

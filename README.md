@@ -38,9 +38,10 @@ lot, with more polish and features to come. What works today:
   password-protected PDFs),
 - organising them into **accounts** — shown in a sortable table of Name, Type,
   Account number, Note and Status, whose column widths and order finbreak
-  remembers; each account can keep a reference **account number** (always shown
-  as dots plus the last four digits, so a glance or a screenshot never gives it
-  away) and a free-text **note**,
+  remembers; each account can keep a reference **account number** (shown as dots
+  plus the last four digits, so a glance or a screenshot never gives it away —
+  tick **Show account numbers** when you need the full one to pay someone, and
+  it hides itself again after half a minute) and a free-text **note**,
 - ...and into **categories** you can group and rename — now up to three levels
   deep (Type › Category › Sub-category),
 - **automatically sorting** transactions into categories — with built-in
