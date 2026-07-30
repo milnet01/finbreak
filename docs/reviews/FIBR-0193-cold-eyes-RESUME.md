@@ -117,13 +117,21 @@ report or re-confirm*, and do **not** count them as substantive for convergence.
 
 ## FIBR-0113 gate — prepared, not started
 
-Materials are already staged under `<scratchpad>/ce-0113/`:
+**Materials must be RE-STAGED before this gate runs — the previously staged copies
+are gone and their figures are stale.** Two independent causes, both after the
+figures below were measured:
 
-- `shared-context.md` — written, with settled source facts verified 2026-07-28.
-- `FIBR-0113-under-review.md` — the redacted lane copy (960 lines).
+1. The session scratchpad was wiped on restart, destroying
+   `<scratchpad>/ce-0113/shared-context.md` and the redacted lane copy.
+2. FIBR-0193's cold-eyes **loop 4** amended FIBR-0113 itself (§4.2 and its §11
+   row: the `_ACCOUNT_*_ROLE` deletion set went four → **six**, `amended by
+   FIBR-0193`), so the document under review is not the one that was measured.
 
-Mechanical pre-pass already run and clean: `spec_lint` 0 findings,
-`doc_integrity` 0, `doc_citations` 0 citations, INV-1..22 contiguous, 979 lines.
+The superseded pre-pass reading was: `spec_lint` 0 findings, `doc_integrity` 0,
+`doc_citations` 0 citations, INV-1..22 contiguous, 979 lines. **Re-derive every
+figure** — the doc is now 981 lines and `spec_query` still reports 22 invariants,
+but the rest must be re-measured rather than carried, per the fix-ledger rule
+that a figure measured against edited bytes is not a figure.
 
 Lane partition for that run:
 
@@ -133,7 +141,7 @@ Lane partition for that run:
 | B — table/sort/identity | §4.2, §8, INV-7/8/9/15/17/18/21/22 |
 | C — cross-doc/format | header, §1, §2, §3, §9, §10, §11, §12, withdrawn stubs |
 
-**Known open question for the user:** FIBR-0113 is still 979 lines — the size
+**Known open question for the user:** FIBR-0113 is still 981 lines — the size
 that triggered the split. The decision taken was to gate it once as-is and let
 the loop produce evidence, rather than splitting again on a guess.
 
