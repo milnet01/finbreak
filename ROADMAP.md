@@ -2555,6 +2555,22 @@ because retrofitting them is a data migration.
   Kind: doc.
   Source: cold-eyes-2026-07-28 loop 2 on docs/specs/FIBR-0193.md.
 
+- 📋 [FIBR-0197] **Two feature spec.md files still pin LATEST_SCHEMA_VERSION == 5.**
+  `tests/features/pdf_import/spec.md` INV-8 pins `LATEST_SCHEMA_VERSION == 5`
+  and `tests/features/import_/spec.md` INV-8 says the version "is now 5".
+  Both are prose-only staleness in test-contract files: the *tests* those
+  specs describe are green, so nothing fails. Surfaced by a cold-eyes lane
+  while reviewing FIBR-0193 and deliberately NOT folded into that item —
+  these two files are outside its blast radius (they are not in the
+  `== 12` pin set FIBR-0193 §6/§12 own), and widening a review run into
+  unrelated documents is how a review silently becomes an edit run.
+  Fix: advance both to whatever `LATEST_SCHEMA_VERSION` is when this is
+  picked up, or reword them to cite the constant instead of a literal so
+  they stop churning on every migration.
+  **Layman:** Two old test-contract files still say the database format is at version 5, when it is really at 12 (and about to be 13) — harmless today, but confusing to read.
+  Kind: doc-fix.
+  Source: in-session-2026-07-30 (FIBR-0193 cold-eyes loop 4, deferred finding).
+
 ### ⚡ Performance
 
 - ✅ [FIBR-0025] **Enable SQLite WAL mode.** Set

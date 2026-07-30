@@ -5,10 +5,14 @@ run that finally converges — a stale resume file is worse than none.
 
 ## Where the run stopped
 
-- **FIBR-0193** (`docs/specs/FIBR-0193.md`) — **loops 1, 2 and 3 complete**,
+- **FIBR-0193** (`docs/specs/FIBR-0193.md`) — **loops 1, 2, 3 and 4 complete**,
   all dispatched, verified, fixed, logged and committed (`4f7a669`, `35d93e8`,
-  `af4dbcc`). **Loop 4 is owed and NOT yet dispatched** — the lane copy and
-  shared block are already rebuilt for it, so it can go straight out.
+  `af4dbcc`, `bcfbfd8`). **Loop 5 is owed and NOT yet dispatched.** The lane
+  materials must be **re-staged** — the session scratchpad is wiped on restart,
+  which already cost this run one rebuild.
+  Loop 5 runs at **strong depth on all three lanes with no breadth pass**: loop 4
+  produced 4 verified HIGH, so the skill's post-HIGH rule still binds.
+  Project cap is `--max-loops 7`, so loops 5–7 remain available.
 - **FIBR-0113** (`docs/specs/FIBR-0113.md`) — **gate not started.** Rewritten as
   the UI half and committed, never reviewed. This is the second half of the
   user's instruction and is still owed. Its materials are already staged (see
@@ -21,10 +25,35 @@ run that finally converges — a stale resume file is worse than none.
 | 1 | 1 | 3 | 13 | 12 | 29 | 29 |
 | 2 | 0 | 2 | 8 | 9 | 20 | 20 |
 | 3 | 0 | 2 | 8 | 11 | 21 | 21 |
+| 4 | 0 | 4 | 9 | 9 | 24 | 23 (+1 deferred, 1 dismissed) |
 
 Full per-loop detail is in the spec's own §13 rows. **Not converged.**
 
-## Why loop 4 was judged necessary (user asked; this is the answer given)
+**The signal to carry into loop 5.** The HIGH count went *up* (2 → 4), but the
+shape changed: **every loop-4 HIGH was cross-doc bookkeeping in §11/§12, and none
+touched the build contract**, which has now been stable across four loops. §12 has
+been wrong in all four. If loop 5 also returns only §11/§12 findings, the right
+conclusion is that those two sections are structurally too coupled to the rest of
+the document to stay correct under edits — not that a fifth round of wording
+fixes is owed. Consider whether §12's per-sibling edit instructions belong in the
+sibling specs instead, where they cannot go stale relative to the doc they
+describe.
+
+**Loop 4's own fix-induced defects, caught by the post-fix sweep rather than by
+the next loop** (the first time in this run that happened): the §12 fix
+contradicted §6 over whether anything in FIBR-0172 INV-14a's guard "advances",
+and an added §4.1 docstring note duplicated replay-safety prose §4.1 already
+carried. Both were fixed before the commit. The sweep also caught `979` going
+stale here because the collateral edit grew FIBR-0113 to 981.
+
+## Why loop 4 was judged necessary (user asked; this is the answer given, and loop 4 vindicated it)
+
+> Loop 4 outcome against the stopping rule stated below: the rule was "no HIGH and
+> no contract-changing MEDIUM → sign off". It produced **4 HIGH**, so the rule did
+> not fire and loop 5 is owed. The prediction that drove the loop — that
+> unreviewed loop-3 fixes carried defects — held: §11's `SCHEMA_VERSION` row,
+> which loop 3 *split*, asserted a `nothing` that was false in both halves.
+
 
 The **contract** is buildable and has been stable since loop 1 — schema v13, the
 two nullable columns, the dataclass shape, the four signatures,
