@@ -457,6 +457,43 @@ scariest unknown (native-library bundling) up front.
   Kind: fix.
   Source: user-request-2026-07-28 (screenshot: duplicate panel icon).
 
+- 📋 [FIBR-0206] **AppStream metainfo points at six screenshots that 404 — appstreamcli validate fails.**
+  Found while validating the metainfo during the v0.1.19 bump.
+  `appstreamcli validate packaging/obs/io.github.milnet01.finbreak.metainfo.xml`
+  exits non-zero: `✘ Validation failed: warnings: 6`, all six
+  `screenshot-image-not-found`.
+
+  Verified live 2026-08-02, not inferred from the validator — every URL was
+  fetched and all six return **HTTP 404**:
+  `https://antsprojectshub.co.za/img/finbreak/{dashboard,transactions,categories,recurring,transfers,rules}.png`
+
+  Pre-existing, and NOT caused by the v0.1.19 metainfo edit (that only
+  prepended a `<release>` block; the warnings are all on `<screenshot>`
+  elements). The file's own header comment at `:5` names `appstreamcli
+  validate` as the check, so the intended gate exists and is red.
+
+  Why it matters rather than being cosmetic: this is the file GNOME
+  Software and KDE Discover read. A listing whose screenshot URLs 404
+  renders with **no screenshots at all** — the single biggest thing a
+  store page uses to sell an app. It also bears on **FIBR-0159** (Flathub,
+  🚧): Flathub's submission CI runs `appstreamcli validate`, so this is
+  plausibly a submission blocker, not just a wart. Worth confirming what
+  severity Flathub gates on before assuming it passes.
+
+  The assets themselves exist in-repo (`assets/` holds the README
+  screenshots, refreshed for FIBR-0113 on 2026-07-30) — so this is a
+  publish-and-point problem, not a capture problem. Two candidate fixes:
+  upload the six PNGs to the antsprojectshub.co.za path already
+  referenced (the download page repo is `milnet01/antsprojectshub`,
+  `build.mjs` → `dist`), or re-point `<screenshot>` at raw
+  `github.com/milnet01/finbreak` URLs, which need no second repo to stay
+  in sync. Note the two surfaces have drifted before, so whichever is
+  chosen wants a check that keeps them together.
+  **Layman:** The Linux app-store listing links six screenshots that aren't actually online, so the listing would show none.
+  Kind: fix.
+  Lanes: release, docs.
+  Source: in-session-2026-08-02 v0.1.19 release.
+
 ## P02 — Vertical slice: the security spine (target: after P01)
 
 **Theme:** the smallest end-to-end feature that touches every
@@ -3017,6 +3054,55 @@ because retrofitting them is a data migration.
   either side of the widening and goes red when the widening is dropped.
   Gate green **1455 passed, 2 skipped**; `/doc-lint` clean on all six
   edited docs.
+
+- 📋 [FIBR-0205] **tests/features/bundling cannot be run on its own — it SIGABRTs with a coredump.**
+  Found while running a subset of the suite during the v0.1.19 bump.
+  `pytest tests/features/bundling` aborts the interpreter — SIGABRT,
+  `Fatal Python error: Aborted`, a 12 MB coredump per run. The whole suite
+  is green (1455 passed), so this is invisible to the gate and to CI.
+
+  Verified against source 2026-08-02, and reproduced with the release bump
+  stashed so it is not caused by the version edits:
+
+  1. `test_INV1_selftest_fail_names_the_broken_stack`
+  (`tests/features/bundling/test_bundling.py:86`) monkeypatches
+  `_selftest._check_qt` to `lambda: None` and `_check_sqlcipher` to raise,
+  then calls `run_self_test`.
+
+  2. `run_self_test` (`src/finbreak/_selftest.py:266`) runs its checks in
+  the order `qt → qtcharts → icons → sqlcipher → …`. So `_check_icons`
+  runs for real, BEFORE the stubbed-out sqlcipher failure it is testing
+  for — and `_check_icons` (`:63`) renders a pixmap
+  (`icon("lock").pixmap(QSize(16, 16))`).
+
+  3. `_check_qt` is what constructs the QApplication — its own docstring at
+  `:72` says `_check_icons` "Runs after `_check_qt` (needs the
+  QApplication)". Stubbing `_check_qt` removes it, so `QIcon::pixmap`
+  reaches Qt's `qFatal` in `libqsvgicon.so` and calls `abort()`.
+  `run_self_test`'s `except Exception` cannot catch it — `qFatal` is not a
+  Python exception.
+
+  4. It passes in the full suite only because an EARLIER test file leaks a
+  process-wide QApplication. Proven both ways:
+  `pytest tests/features/bundling` → SIGABRT;
+  `pytest tests/features/theme tests/features/bundling` → 42 passed.
+  So the test's docstring claim that it unit-tests the FAIL contract
+  "independent of installed native deps" is false — it depends on a
+  QApplication it does not create.
+
+  Consequence beyond the noise: `docs/specs/FIBR-0001.md` INV-6 and
+  CLAUDE.md both document running a single test / a single file as a
+  supported workflow, and for this file it is not — it dumps core.
+
+  Likely fix: stub `_check_qtcharts` and `_check_icons` alongside the other
+  two (the test only asserts the ordered-token contract, so the real
+  renderers are incidental), or take pytest-qt's `qapp` fixture so the
+  QApplication is created explicitly rather than inherited. Prefer the
+  stub — it makes the test's stated independence true.
+  **Layman:** One test file crashes hard unless other tests run first, so you can't run it by itself.
+  Kind: test.
+  Lanes: tests.
+  Source: in-session-2026-08-02 v0.1.19 release.
 
 ### ⚡ Performance
 
