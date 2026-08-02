@@ -2765,6 +2765,86 @@ because retrofitting them is a data migration.
   Kind: fix.
   Source: in-session-2026-08-02 FIBR-0192 build.
 
+- 📋 [FIBR-0201] **Bulk-confirm transfers — tick several suggested pairs and confirm them in one click.**
+  The Transfers tab today offers exactly two speeds and nothing in
+  between: `_on_confirm` (`ui/transfers.py:174`) confirms the ONE
+  selected candidate, and `_on_confirm_all` (`:200`) confirms every
+  candidate the detector produced. A user who trusts eight of twelve
+  suggestions has to click through eight times or accept all twelve.
+
+  Verified against source 2026-08-02, not recalled:
+
+  1. `ui/transfers.py:119` sets the suggested table to
+  `QAbstractItemView.SelectionMode.SingleSelection`, so multi-select is
+  not merely unwired — the table refuses it. Widening it is the first
+  change, and it is the one with blast radius: `_selected_row()` returns
+  a single index and is used by `_on_confirm`, `_on_reject` and the
+  enable/disable recompute, so each needs a decision about what "the
+  selection" means once it can be plural.
+
+  2. `remember_columns` + `enable_sorting` are both live on this table
+  (`:120-121`), so a confirm that rebuilds via `_refresh()` re-sorts.
+  The FIBR-0113 finding applies: a selection held across a re-sort can
+  ride its item onto a DIFFERENT row. A bulk confirm must resolve every
+  ticked row to its `(debit.id, credit.id)` BEFORE it starts confirming,
+  not index into `self._candidates` as it goes.
+
+  3. The status line uses `tr("Confirmed %n transfer(s).", "", n)`, which
+  already pluralises — so the count is free once the loop exists.
+
+  Open design question for the spec: whether the service grows a
+  `confirm_many(pairs)` that owns one transaction, or the widget loops
+  over `confirm()`. A partial failure mid-loop leaves some pairs
+  confirmed and some not, with no record of where it stopped, so the
+  transaction boundary is a correctness question, not a tidiness one.
+  Kind: feature.
+  **Layman:** Confirm a handful of suggested transfers at once instead of one at a time.
+  Kind: feature.
+  Lanes: ui.
+  Source: user-request-2026-08-02.
+
+- 📋 [FIBR-0202] **Bulk-delete statements — tick several, plus a Delete all button.**
+  The Statements tab deletes exactly one statement per click
+  (`ui/statements.py:205`, single-select at `:94`), and there is no way
+  to clear the list. Clearing out a bad import run means N confirm
+  dialogs.
+
+  Verified against source 2026-08-02, not recalled:
+
+  1. `ui/statements.py:94` is `SelectionMode.SingleSelection` — same
+  first change as the transfers item, and the same re-sort hazard
+  (`enable_sorting` at `:95`): resolve ticked rows to statement ids
+  before deleting, never index as you go.
+
+  2. **The confirm text cannot simply be repeated N times.** `_on_delete`
+  calls `StatementService.delete_preview` (`services/statements.py:82`)
+  per statement and branches on whether any transactions are shared with
+  an overlapping statement — the FIBR-0149 wording fix. A bulk delete
+  needs ONE aggregate message, so `delete_preview` needs a batch form or
+  the caller has to sum the pairs itself.
+
+  3. **The batch is order-sensitive, and this is the real hazard.**
+  `delete_statement` (`services/statements.py:57`) runs FIBR-0148's
+  hand-off: each stamped row a REMAINING same-account statement also
+  covers is re-stamped to that statement rather than deleted. "Remaining"
+  is evaluated per call, so deleting A then B is not the same as deleting
+  {A,B} as a set — rows handed to B in step one are then deleted in step
+  two, and a preview computed up-front over-states what survives. The
+  spec has to decide whether a bulk delete is one transaction that
+  evaluates coverage against the post-batch survivor set, or a
+  documented sequence of independent deletes.
+
+  4. A **Delete all** button is the same operation with the selection
+  implied, and inherits point 3 exactly: with every statement going, no
+  statement remains to hand rows off to, so every stamped row is deleted.
+  Worth stating in the confirm text, since that is the case where the
+  loss is total.
+  Kind: feature.
+  **Layman:** Remove several imported statements at once, or clear the lot, instead of deleting them one by one.
+  Kind: feature.
+  Lanes: ui.
+  Source: user-request-2026-08-02.
+
 ### ⚡ Performance
 
 - ✅ [FIBR-0025] **Enable SQLite WAL mode.** Set
