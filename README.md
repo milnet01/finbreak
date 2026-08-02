@@ -13,7 +13,7 @@
 [![Status](https://img.shields.io/badge/status-pre--alpha-orange)]()
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-Current version: **0.1.18** (early preview). **[⬇ Download the latest
+Current version: **0.1.19** (early preview). **[⬇ Download the latest
 release](https://github.com/milnet01/finbreak/releases/latest)**, or see
 [CHANGELOG](CHANGELOG.md) for what's shipped and [ROADMAP](ROADMAP.md) for
 what's coming.
@@ -78,7 +78,9 @@ lot, with more polish and features to come. What works today:
   it stays dismissed) —
   and a month-by-month trend chart sits at the bottom; you choose the
   period (it defaults to last month and remembers your choice), and money moved
-  between your own accounts never counts as spending or income, and
+  between your own accounts never counts as spending or income (make the window
+  small and the page scrolls, rather than squashing the three columns into
+  unreadable slivers), and
 - a searchable, filterable **Transactions tab** — find rows by description
   and filter by date range, account, and category (any or all at once), with
   columns you can drag to reorder and resize (it remembers your layout),
@@ -92,12 +94,18 @@ lot, with more polish and features to come. What works today:
   (Midnight, Graphite, Emerald), or **"Follow system"** to match your computer's
   light/dark setting automatically and switch the instant it changes; your
   choice applies the moment the app opens, even before you unlock, and
+- **a layout that stays how you left it** — every table in the app remembers the
+  column widths and the column order you dragged them into, including the
+  Forecast tab and the Home dashboard's breakdown lists; if you'd rather start
+  fresh, **Window → Reset layout** puts the window size *and* every table's
+  columns back the way they looked on a new install, in one click, and
 - everyday **conveniences and safety** — an optional password hint on the unlock
   screen, amounts and descriptions you copy are cleared from the clipboard after a
   short while, repeated wrong unlock attempts are slowed down, you can set
-  auto-lock to "Never" if you'd rather it didn't lock while idle, and you can
+  auto-lock to "Never" if you'd rather it didn't lock while idle, you can
   forget a bank-statement password the app remembered (per account) whenever you
-  want.
+  want, and starting finbreak when it's already open simply brings the window you
+  have to the front instead of opening a second copy.
 
 finbreak now also runs on **Windows** as a self-contained `.exe`, and on **Linux**
 installs as a native **RPM** on openSUSE Tumbleweed and Fedora 44 (from the

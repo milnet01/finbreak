@@ -21,6 +21,8 @@ signaling per
 
 ## [Unreleased]
 
+## [0.1.19] - 2026-08-02
+
 ### Added
 
 - **Forecast and Home dashboard columns are now resizable and remembered** (FIBR-0192)

@@ -82,6 +82,29 @@
   </screenshots>
 
   <releases>
+    <release version="0.1.19" date="2026-08-02">
+      <description>
+        <p>Added:</p>
+        <ul>
+          <li>The Accounts tab is now a sortable table of Name, Type, Account number, Note and Status, with columns you can resize and reorder.</li>
+          <li>Each account can store an account number and a free-text note, both held in the encrypted vault and masked on screen as dots plus the last four digits.</li>
+          <li>A "Show account numbers" tick-box reveals every account number in full for 30 seconds, then hides them again automatically.</li>
+          <li>The Forecast table and the Home dashboard breakdown lists now remember their column widths and order, like every other table in the app.</li>
+        </ul>
+        <p>Changed:</p>
+        <ul>
+          <li>The dashboard scrolls instead of squashing when the window is too small, so the three breakdown columns stay readable.</li>
+          <li>Alerts moved off the dashboard into an "Alerts" button and dialog, so the page no longer shifts up and down as alerts come and go.</li>
+          <li>Only one copy of finbreak runs at a time — launching it again raises the window you already have.</li>
+        </ul>
+        <p>Fixed:</p>
+        <ul>
+          <li>Window → Reset layout now restores column widths and order as well as the window size, in the same click.</li>
+          <li>Running the AppImage no longer puts a duplicate finbreak icon in the taskbar.</li>
+          <li>The import preview table remembers your column widths between imports.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.1.18" date="2026-07-28">
       <description>
         <p>Added:</p>

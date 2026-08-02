@@ -1,3 +1,26 @@
+finbreak (0.1.19) unstable; urgency=medium
+
+  * The Accounts tab is now a sortable table of Name, Type, Account number,
+    Note and Status, with columns you can resize and reorder.
+  * Each account can store an account number and a free-text note, both held
+    in the encrypted vault and masked as dots plus the last four digits.
+  * A "Show account numbers" tick-box reveals every account number in full
+    for 30 seconds, then hides them again automatically.
+  * The Forecast table and the Home dashboard breakdown lists now remember
+    their column widths and order, like every other table in the app.
+  * The dashboard scrolls instead of squashing when the window is too small,
+    so the three breakdown columns stay readable.
+  * Alerts moved off the dashboard into an "Alerts" button and dialog, so the
+    page no longer shifts up and down as alerts come and go.
+  * Only one copy of finbreak runs at a time — launching it again raises the
+    window you already have.
+  * Window → Reset layout now restores column widths and order as well as the
+    window size, in the same click.
+  * Running the AppImage no longer puts a duplicate finbreak icon in the
+    taskbar, and the import preview table remembers its column widths.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Sun, 02 Aug 2026 12:00:00 +0200
+
 finbreak (0.1.18) unstable; urgency=medium
 
   * A new Forecast tab projects your balance forward from confirmed recurring
