@@ -101,6 +101,15 @@ def test_INV1_theme_applied_before_window(qtbot, monkeypatch, theme_isolation):
 
     monkeypatch.setattr(app_mod, "MainWindow", _Recorder)
     monkeypatch.setattr(app_mod, "AuthService", lambda *a, **k: MagicMock())
+    # `run()` probes the FIBR-0189 single-instance guard before it builds the
+    # window, and the socket name carries the uid — so a real finbreak open on
+    # the developer's desktop makes `run()` return 0 and this test fail with
+    # "DID NOT RAISE". Stub the probe like MainWindow and AuthService above:
+    # this leg's subject is theme-before-window, and the guard has its own suite
+    # (tests/features/single_instance/). FIBR-0207.
+    monkeypatch.setattr(
+        app_mod.single_instance, "another_instance_is_running", lambda _name: False
+    )
 
     with pytest.raises(_Sentinel):
         app_mod.run([])

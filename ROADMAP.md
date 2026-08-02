@@ -3129,6 +3129,53 @@ because retrofitting them is a data migration.
   Lanes: tests.
   Source: in-session-2026-08-02 v0.1.19 release.
 
+- ✅ [FIBR-0207] **The theme INV-1 test failed whenever a real finbreak was open on the same machine.**
+  Caught by the pre-push gate while pushing the v0.1.19 release record:
+  `test_INV1_theme_applied_before_window` failed `DID NOT RAISE
+  _Sentinel`, breaking a push whose only content was `.claude/workflow.md`
+  and `ROADMAP.md`. The same test had passed twice earlier in the session
+  (1455 passed, twice), so the trigger was environmental, not a code change.
+
+  Cause, verified against source and reproduced live rather than inferred:
+
+  1. The test patches `app_mod.MainWindow` with a recorder that raises, then
+  asserts `run()` raises it — i.e. that the theme is applied BEFORE the
+  window is built (FIBR-0127 INV-1).
+
+  2. `app.run()` (`src/finbreak/app.py:64-66`) probes the FIBR-0189
+  single-instance guard and `return 0`s *before* constructing `MainWindow`.
+  So with another instance live, the recorder is never reached and the
+  `pytest.raises` fails.
+
+  3. `single_instance.socket_name()` carries the **uid**, so it is the same
+  OS user's running app that collides — and a real finbreak was open on the
+  desktop (5 processes; `/home/ants/Applications/finbreak-x86_64.AppImage`,
+  already on 0.1.19 — i.e. exactly what a maintainer does right after
+  cutting a release: run it).
+
+  4. The suite's `theme_isolation` fixture snapshots only palette / style /
+  stylesheet, so it never covered this.
+
+  The product was behaving CORRECTLY throughout — this was only ever a
+  test-isolation gap, invisible in CI (no desktop instance) and invisible
+  locally until someone had the app open during a gate run.
+
+  Fixed by stubbing the probe alongside the `MainWindow` / `AuthService`
+  patches the test already applies — the same class of external dependency
+  it had already decided to isolate. No coverage lost: the guard has its own
+  8-test suite at `tests/features/single_instance/`. `listen()` needs no
+  stub, since the recorder raises before `run()` reaches it.
+  Verified the fix under the failing condition rather than after closing the
+  app: with 5 finbreak processes still live, `tests/features/theme/` goes
+  **32 passed** (was 1 failed / 31 passed).
+
+  Only ONE test drives `finbreak.app.run()`, so this is a local stub rather
+  than an autouse fixture; a second such test should factor it out.
+  **Layman:** A test broke just because the app happened to be running — fixed, so it no longer depends on that.
+  Kind: test.
+  Lanes: tests.
+  Source: in-session-2026-08-02 v0.1.19 release.
+
 ### ⚡ Performance
 
 - ✅ [FIBR-0025] **Enable SQLite WAL mode.** Set
