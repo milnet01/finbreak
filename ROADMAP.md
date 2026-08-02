@@ -2822,7 +2822,7 @@ because retrofitting them is a data migration.
   the reason the reveal exists), now stated rather than implied. Screenshots +
   README refreshed. FIBR-0084 still stays 📋 until FIBR-0192.
 
-- 📋 [FIBR-0199] **Cover Reset layout's settings clear — no leg discriminates it today.**
+- ✅ [FIBR-0199] **Cover Reset layout's settings clear — no leg discriminates it today.**
   Found by mutation-testing during the FIBR-0192 build (2026-08-02).
   `reset_columns(self)` and `settings.remove("columns")` in
   `MainWindow._reset_layout` are redundant while both run in the same
@@ -2849,6 +2849,22 @@ because retrofitting them is a data migration.
   `deleteLater()` + `processEvents()`; False after a `QTimer`-quit
   `app.exec()` spin). FIBR-0200 itself closed as not reproducible, so this
   bullet no longer shares a scenario with it.
+  Resolved (2026-08-02): closed by the fixture this bullet called for — a
+  remembered view DESTROYED before the reset, which is the one shape
+  `reset_columns(self)` cannot reach. `tests/features/table_state/` row 13
+  + `test_FIBR0199_reset_clear_discriminates_a_destroyed_remembered_view`
+  widens and persists `transactions_table`'s column 0, destroys the table
+  (`deleteLater()` + `_pump_deferred_delete()`, asserted with
+  `shiboken6.isValid`), runs `_reset_layout()`, and requires a freshly
+  built view to come up on the default width.
+  Discrimination verified by mutating BOTH lines independently, not just
+  the one: dropping `settings.remove("columns")` turns it RED
+  (`assert 197 == 100` — the stale width survives), while dropping
+  `reset_columns(self)` leaves it GREEN. That is the property INV-6 could
+  not provide, which only went red when both were dropped.
+  NOT closed: the clear-first vs clear-last ORDERING that FIBR-0192 §4.4
+  turns on still has no discriminating leg — this fixture destroys the
+  view, so both orderings end with the group erased. Still a `nothing` row.
 
 - ✅ [FIBR-0200] **remember_columns' _save can outlive its header and raise at teardown.**
   Observed 2026-08-02 while probing FIBR-0192: a standalone script exits

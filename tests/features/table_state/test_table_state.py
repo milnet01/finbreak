@@ -11,10 +11,11 @@ from collections.abc import Iterator
 from datetime import date, timedelta
 
 import pytest
+import shiboken6
 from PySide6.QtCore import QPoint, QSettings, QSize, Qt
 from PySide6.QtWidgets import QTableWidget, QTableWidgetItem, QTreeWidget
 
-from conftest import _PW
+from conftest import _PW, _pump_deferred_delete
 from finbreak import paths as fb_paths
 from finbreak.repositories.accounts import AccountRepository
 from finbreak.repositories.transactions import TransactionRepository
@@ -658,3 +659,52 @@ def test_FIBR0192_INV8_reset_restores_build_time_default_not_saved_state(
     keys = _sort_keys(table, after[0])
     expected = sorted(keys, reverse=after[1] == Qt.SortOrder.DescendingOrder)
     assert keys == expected, "the restored sort arrow must match the row order"
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0199 — the settings clear discriminates on its own (a destroyed view)
+# --------------------------------------------------------------------------- #
+def test_FIBR0199_reset_clear_discriminates_a_destroyed_remembered_view(qtbot, service):
+    """Why this exists: mutation testing during the FIBR-0192 build found
+    `reset_columns(self)` and `settings.remove("columns")` redundant in
+    `_reset_layout` — INV-6 above only goes red when BOTH are dropped, because
+    each alone leaves a live, reachable view on the default. This locks the
+    settings clear on its OWN: destroy the remembered `transactions_table`
+    BEFORE the reset runs, so `reset_columns(self)`'s `findChildren` has
+    nothing left to restore, and only the clear can keep the stale width from
+    surviving into the next rebuild.
+
+    `deleteLater()` alone leaves the C++ object alive until a real event-loop
+    turn processes `DeferredDelete` — a bare `QApplication.processEvents()`
+    does NOT (measured 2026-08-02 pre-checking FIBR-0200) — so this uses the
+    same `_pump_deferred_delete()` helper the app_shell/settings suites already
+    rely on to prove destruction.
+    """
+    window = _unlocked_shell(qtbot, service)
+    table = window.findChild(QTableWidget, "transactions_table")
+    assert table is not None
+    default_width = table.horizontalHeader().sectionSize(0)
+
+    stored_before = _window_ini().value("columns/transactions_table")
+    table.setColumnWidth(0, default_width + 97)  # the user widens Date, persisted
+    stored_after = _window_ini().value("columns/transactions_table")
+    assert stored_after is not None and (
+        stored_before is None or bytes(stored_after) != bytes(stored_before)
+    ), "the widening must actually persist, or there is nothing stale to erase"
+
+    table.deleteLater()
+    _pump_deferred_delete()
+    assert not shiboken6.isValid(table), (
+        "the table must be genuinely destroyed, or reset_columns(self) could "
+        "still reach it and this leg would not discriminate the clear on its own"
+    )
+
+    window._reset_layout()  # reset_columns(self) can no longer find the table
+
+    rebuilt = _txn_view(service)
+    qtbot.addWidget(rebuilt)
+    assert rebuilt._table.columnWidth(0) == default_width, (
+        "the stale widened width must not survive into the next rebuild -- only "
+        "settings.remove('columns') could have erased it, since reset_columns(self) "
+        "had no live view left to restore"
+    )
