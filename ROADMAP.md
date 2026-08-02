@@ -2845,6 +2845,43 @@ because retrofitting them is a data migration.
   Lanes: ui.
   Source: user-request-2026-08-02.
 
+- 📋 [FIBR-0203] **Back-fill the missing v0.1.17 GitHub release — its notes are invisible to the in-app updater.**
+  `gh release list` jumps 0.1.18 → 0.1.16: there is no GitHub **release**
+  for v0.1.17, though the tag exists locally AND on origin
+  (`21bebf7`, 2026-07-23) and `CHANGELOG.md` carries the full section.
+
+  Verified against source 2026-08-02, not recalled — this is not
+  cosmetic. FIBR-0152 (✅, shipped) accumulates the notes shown in the
+  update prompt from the **GitHub release objects**, not from tags or
+  from CHANGELOG.md: `services/update.py:280` calls `fetch_releases`,
+  which GETs `/releases?per_page=30`
+  (`services/update_fetch.py:28`), and `:286` feeds that list to
+  `_accumulated_notes(releases, current, offered)`. A release absent
+  from the list contributes nothing.
+
+  Consequence: a user still on **0.1.16** who is offered 0.1.18 sees
+  0.1.18's body only. Everything 0.1.17 delivered — Flathub Flatpak
+  packaging (FIBR-0159), native RPM/deb via OBS (FIBR-0155), 3-level
+  categories (FIBR-0154), the "Forgot password? Start over" vault reset
+  (FIBR-0030), signed SHA256SUMS + SBOM (FIBR-0096), Report an Issue
+  (FIBR-0156) — is silently missing from the prompt. The offer itself is
+  unaffected (`_notes_since` is best-effort and the decision is already
+  made), so this degrades the notes only.
+
+  Open decision for whoever picks this up: whether to publish notes-only
+  (cheap, fixes the accumulation immediately) or to also build and sign
+  the v0.1.17 artifacts to match every other release (the tag is 10 days
+  old; v0.1.18 supersedes it for actual downloads, and every other
+  release carries AppImage + exe + both `.sig`s + SHA256SUMS + SBOM).
+  Notes-only leaves an asset-less release page, which is a visible
+  inconsistency but harms nobody, since `/releases/latest` — the offer
+  endpoint — is unaffected either way.
+  Kind: fix.
+  **Layman:** A whole version's release notes are missing from the update prompt inside the app.
+  Kind: fix.
+  Lanes: release.
+  Source: in-session-2026-08-02 housekeeping.
+
 ### ⚡ Performance
 
 - ✅ [FIBR-0025] **Enable SQLite WAL mode.** Set
