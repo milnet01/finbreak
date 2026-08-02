@@ -69,6 +69,7 @@ from finbreak.services.update import UpdateInfo, UpdateService
 from finbreak.services.update_installer import Installer, detect_installer
 from finbreak.ui._clipboard import ClipboardAutoClear
 from finbreak.ui._password_hint import clear_hint, read_hint, write_hint
+from finbreak.ui._table_state import reset_columns
 from finbreak.ui._unlock_throttle import UnlockThrottle
 from finbreak.ui._update_worker import DownloadWorker, UpdateCheckWorker
 from finbreak.ui.accounts import AccountsWidget
@@ -1548,13 +1549,26 @@ class MainWindow(QMainWindow):
                     pass
 
     def _reset_layout(self) -> None:
+        """Resize first, clear LAST — the order is the design (FIBR-0192).
+
+        The resize can re-save the user's old column layout: `transactions_table`
+        sets stretchLastSection and every QTreeWidget header has it on by default,
+        so resizing the window re-lays-out those sections, emits `sectionResized`,
+        and `remember_columns`' handler writes the *pre-reset* layout straight
+        back. Clearing afterwards is what erases it. `reset_columns` cannot rescue
+        that case — it puts the live header back and never writes to the INI.
+
+        `self`, not `self._workspace`: the Window menu holding this action needs no
+        vault, so `_workspace` may still be None (INV-7)."""
+        self.resize(_DEFAULT_WINDOW_SIZE)
+        self._center_window()  # a no-op on Wayland; the resize above still applies
+        reset_columns(self)  # live headers back to their build-time defaults
         settings = self._settings()
         settings.remove(_KEY_GEOMETRY)
         settings.remove(_KEY_STATE)
         settings.remove(_KEY_SIZE)
+        settings.remove("columns")  # the whole group written by remember_columns
         settings.sync()
-        self.resize(_DEFAULT_WINDOW_SIZE)
-        self._center_window()  # a no-op on Wayland; the resize above still applies
 
     # --- content-stack + dialog helpers ------------------------------------- #
     def _set_live(self, widget: QWidget) -> None:

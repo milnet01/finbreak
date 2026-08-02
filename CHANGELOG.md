@@ -23,6 +23,9 @@ signaling per
 
 ### Added
 
+- **Forecast and Home dashboard columns are now resizable and remembered** (FIBR-0192)
+  The Forecast tab's upcoming-events table can be resized and drag-reordered, and the three Home breakdown lists remember their column widths, like every other table in the app.
+
 - **A "Show account numbers" tick-box on the Accounts tab, with a 30-second auto-hide** (FIBR-0198)
   Account numbers stay masked by default, but you can now read one in
   full when you need it to pay someone — the tick-box reveals every
@@ -72,6 +75,9 @@ signaling per
   minimised. This also keeps two copies from writing to your vault at once.
 
 ### Fixed
+
+- **Reset layout now resets column widths and order too** (FIBR-0192)
+  Window → Reset layout put the window back to its default size but left every table's columns exactly as you had dragged them. It now returns them to how they looked on a fresh install, in the same click, without needing a restart.
 
 - **Running the AppImage no longer puts a duplicate finbreak icon in the taskbar.** (FIBR-0188)
   The AppImage's launcher had a different name from the one the window

@@ -42,6 +42,7 @@ from finbreak.services.transactions import (
     to_display_decimal,
 )
 from finbreak.ui._amount import _NEGATIVE_TEXT, _POSITIVE_TEXT, _format_amount
+from finbreak.ui._table_state import remember_columns
 from finbreak.ui.charts import ChartTheme, build_forecast_chart
 
 # Column order is fixed so the qtbot cells are deterministically assertable (D9).
@@ -112,6 +113,12 @@ class ForecastWidget(QWidget):
         table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        # Widths + drag-reorder, persisted (FIBR-0192). Deliberately NO
+        # enable_sorting: `_fill_events` writes each row's running balance beside
+        # its own date and has no fill_guard, so a click-sort would pair a balance
+        # with another event's date. The rows are already date-ascending — the
+        # order `project_forecast` produces (§3 decision 1).
+        remember_columns(table)
         return table
 
     # -- horizon --------------------------------------------------------------

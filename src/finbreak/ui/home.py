@@ -61,6 +61,7 @@ from finbreak.services.reporting import (
     ReportPrefs,
 )
 from finbreak.ui._amount import _NEGATIVE_TEXT, _POSITIVE_TEXT, _format_amount
+from finbreak.ui._table_state import remember_columns
 from finbreak.ui.charts import ChartTheme, build_breakdown_donut, build_trend_chart
 
 
@@ -210,6 +211,7 @@ class HomeView(QWidget):
         tree.setColumnCount(2)
         tree.setHeaderLabels([self.tr("Name"), self.tr("Amount")])
         tree.setSortingEnabled(False)
+        remember_columns(tree)  # widths, persisted per key (FIBR-0192)
         v.addWidget(tree)
 
         self._columns[key] = _Column(pie, empty, name, total, tree)

@@ -1323,7 +1323,7 @@ because retrofitting them is a data migration.
   Source: user-request-2026-07-11 (dogfooding v0.1.0).
   Resolved (2026-07-11): shipped via TDD in 4 slices — pure datetime_format formatter (format_date/format_timestamp, presets, "system" sentinel + INV-6 fallbacks); DateTimePrefs + AuthService persistence (vault settings, no schema change); Settings + first-run combos (shared ui/_datetime_prefs.py); display wiring (Statements Period/Imported, Home Date) + live push on Settings Save. 8 cold-eyes loops on the spec; full gate green.
 
-- 📋 [FIBR-0084] **User-customisable table columns — resize, reorder, and remember per tab.**
+- ✅ [FIBR-0084] **User-customisable table columns — resize, reorder, and remember per tab.**
   Motivated by dogfooding v0.1.0. Extends FIBR-0052 (which already remembers window geometry + last-active tab in the plaintext window.ini sibling) to per-table column state. Make each QTableView/QTreeView header user-resizable AND movable (QHeaderView.setSectionsMovable(True)); persist each table's full header state (column widths + order) via QHeaderView.saveState()/restoreState(), keyed per tab, in the plaintext window.ini (non-sensitive UI state, like geometry — FIBR-0052 INV-5; NOT the vault). Covers every relevant table: Statements, Home transactions, Accounts, Categories, Rules. A Reset-layout action (FIBR-0052) should also clear saved column state.
   **Layman:** Let a person drag columns wider or narrower and drag them into a different order on any table (Statements, Home, Accounts, Categories, Rules), and have finbreak remember that layout next time.
   Kind: feature.
@@ -1374,6 +1374,7 @@ because retrofitting them is a data migration.
   deliberately out of scope, not an omission. But those two are NOT the
   whole residue — see the correction above: Forecast, the Home dashboard
   trees and Reset layout remain, and they are FIBR-0192's.
+  Resolved (2026-08-02): unblocked by FIBR-0192, which was this bullet's stated blocker. Every table and tree the app shows now resizes, drag-reorders and remembers its layout per tab — the Forecast events table and the three Home breakdown trees were the last two unwired surfaces, and Window → Reset layout now returns them all to their build-time defaults in the same click.
 
 - 📋 [FIBR-0085] **Batch statement import — import several statement files in one go.**
   Motivated by dogfooding v0.1.0. Today the import wizard handles ONE file per run (FIBR-0007 CSV / FIBR-0008 OFX / FIBR-0009 PDF). Add multi-file selection that runs each file through the existing preview -> dedup -> commit pipeline, with per-file semantics (a bad/duplicate file is reported and skipped, never aborting the batch) and a summary dialog listing each file's outcome (imported N / skipped-duplicate / failed-why) + transaction counts. Mixed formats (CSV/OFX/PDF) allowed in one batch; per-file mapping where the format needs it (CSV mapping profile selection, PDF password prompt). Reuses the existing importers + FIBR-0052 statement provenance; the new work is the multi-file wizard flow + aggregate reporting. Deps: FIBR-0007/0008/0009 (importers), FIBR-0052 (per-statement provenance so each imported file is a distinct statement row).
@@ -2403,7 +2404,7 @@ because retrofitting them is a data migration.
   Lanes: ui.
   Source: user-request-2026-07-28.
 
-- 📋 [FIBR-0192] **Finish FIBR-0084: the shared column scheme on the last unwired headers, and make Reset layout actually reset columns.**
+- ✅ [FIBR-0192] **Finish FIBR-0084: the shared column scheme on the last unwired headers, and make Reset layout actually reset columns.**
   Split out of FIBR-0113 on 2026-07-28 after a /cold-eyes loop-2 pass found
   that FIBR-0113's fold-in of this work was the single largest source of
   defects in that spec (4 of 5 criticals). Splitting keeps each item inside
@@ -2477,6 +2478,11 @@ because retrofitting them is a data migration.
 
   Next: TDD the implementation (8 invariants, 7 test functions in
   tests/features/table_state/ plus the mypy gate stage).
+  Resolved (2026-08-02): implemented TDD off the accepted spec. `remember_columns` widened to `QTableWidget | QTreeWidget` via `_header_of`, capturing the build-time header state into a `finbreak_default_header_state` dynamic property after `setSectionsMovable(True)` and before the restore; new `reset_columns(root)` sweeps `findChildren` and restores it (NOT under `blockSignals`); `_reset_layout` reordered to resize -> centre -> reset_columns -> clear -> sync. Two new call sites: `forecast.py::_make_table`, `home.py::_build_column`. Seven legs in tests/features/table_state/ (INV-1,2,3,5,6,7,8) plus mypy for INV-4; suite 1455 passed / 2 skipped.
+
+  Three spec claims measured NARROWER than written, and the spec was amended rather than the tests bent to fit: (1) INV-6 needed a fourth precondition — the Transactions tab must be the CURRENT tab, or a QTabWidget gives its page no layout pass and the reset's resize emits no `sectionResized` at all, leaving the leg vacuous; (2) INV-6 does NOT discriminate the clear-first/clear-last ordering — `reset_columns` and `settings.remove("columns")` are redundant in-process, so the INI holds the default state under either ordering; (3) consequently nothing covers the clear itself. §4.4's ordering is kept on correctness grounds (it does not depend on which Qt emission timing occurs), and §11 now carries six `nothing` rows instead of four plus a `partly`.
+
+  Verified by mutation, not by reading: capture-before-movable, capture-after-restore, drop-reset_columns, drop-home-call, drop-forecast-call and the narrowed mypy type each turn the expected leg red.
 
 - ✅ [FIBR-0193] **Account storage: migration v13 adds nullable accounts.account_number + accounts.note, carried through model / repo / service.**
   Split out of FIBR-0113 on 2026-07-28, executing the recommendation
@@ -2721,6 +2727,43 @@ because retrofitting them is a data migration.
   outlives it indefinitely. A deliberate gap (clearing it mid-payment would defeat
   the reason the reveal exists), now stated rather than implied. Screenshots +
   README refreshed. FIBR-0084 still stays 📋 until FIBR-0192.
+
+- 📋 [FIBR-0199] **Cover Reset layout's settings clear — no leg discriminates it today.**
+  Found by mutation-testing during the FIBR-0192 build (2026-08-02).
+  `reset_columns(self)` and `settings.remove("columns")` in
+  `MainWindow._reset_layout` are redundant while both run in the same
+  call: each alone leaves a rebuilt view on the default columns, so
+  dropping either one keeps INV-6 green and only dropping BOTH turns it
+  red. The clear is defence-in-depth for a view `reset_columns` cannot
+  reach (built without `remember_columns`, or destroyed before the
+  reset), and that path has no live instance.
+  The same redundancy is why no leg discriminates the clear-first vs
+  clear-last ordering that FIBR-0192 §4.4 turns on — under either, the
+  INI ends up holding the default state, immediately as well as after a
+  deferred layout pass. Closing this needs a genuinely fresh process, or
+  a fixture that builds a remembered view and destroys it before the
+  reset. FIBR-0192 §11 records both as `nothing` rows.
+  **Layman:** A safety net in the Reset-layout code has no test proving it works.
+  Kind: test.
+  Source: in-session-2026-08-02 FIBR-0192 build.
+
+- 📋 [FIBR-0200] **remember_columns' _save can outlive its header and raise at teardown.**
+  Observed 2026-08-02 while probing FIBR-0192: a standalone script exits
+  with `RuntimeError: libshiboken: Internal C++ object
+  (PySide6.QtWidgets.QHeaderView) already deleted` raised from `_save` in
+  `ui/_table_state.py`. The closure captures `header` and stays connected
+  to the header's own signals, so a late emission during interpreter /
+  widget teardown calls `header.saveState()` on a destroyed C++ object.
+  Pre-existing (FIBR-0117), not introduced by FIBR-0192 — surfaced only
+  because the probe ran outside pytest, where teardown ordering differs.
+  Harmless today (stderr noise at exit, nothing is lost), but it is the
+  same class as the QT-5 `TypeError` §4.3 already documents. Likely fix:
+  guard `_save` with `shiboken6.isValid(header)`, matching the pattern
+  `main_window.py::_ensure_workspace` already uses. Confirm it can fire
+  in the packaged app before spending much on it.
+  **Layman:** A harmless-looking error can print when the app shuts down.
+  Kind: fix.
+  Source: in-session-2026-08-02 FIBR-0192 build.
 
 ### ⚡ Performance
 

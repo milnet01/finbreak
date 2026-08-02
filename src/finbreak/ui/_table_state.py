@@ -29,7 +29,13 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 
 from PySide6.QtCore import QSettings, Qt
-from PySide6.QtWidgets import QTableWidget, QTableWidgetItem
+from PySide6.QtWidgets import (
+    QHeaderView,
+    QTableWidget,
+    QTableWidgetItem,
+    QTreeWidget,
+    QWidget,
+)
 
 from finbreak import paths
 
@@ -37,6 +43,12 @@ from finbreak import paths
 # moves an item's data with the item. UserRole+1 holds a SortableItem's sort key.
 _ROW_INDEX_ROLE = Qt.ItemDataRole.UserRole
 _SORT_KEY_ROLE = Qt.ItemDataRole.UserRole + 1
+
+# The dynamic Qt property holding each remembered view's build-time header state,
+# so Reset layout can put it back (FIBR-0192). On the VIEW, not in a module-level
+# registry: a registry keyed by objectName would outlive the widget that owns it
+# and leak across a workspace rebuild, two windows, or two tests in one session.
+_DEFAULT_STATE_PROP = "finbreak_default_header_state"
 
 
 class SortableItem(QTableWidgetItem):
@@ -109,19 +121,35 @@ def _settings() -> QSettings:
     return QSettings(str(paths.window_settings_path()), QSettings.Format.IniFormat)
 
 
-def remember_columns(table: QTableWidget) -> None:
-    """Restore ``table``'s saved column layout (widths / order / sort) and re-save it
+def _header_of(view: QTableWidget | QTreeWidget) -> QHeaderView:
+    """The column header of either view kind — QTableWidget names it
+    ``horizontalHeader``, QTreeWidget just ``header``."""
+    return view.horizontalHeader() if isinstance(view, QTableWidget) else view.header()
+
+
+def remember_columns(view: QTableWidget | QTreeWidget) -> None:
+    """Restore ``view``'s saved column layout (widths / order / sort) and re-save it
     on every resize, reorder, or sort. Keyed by ``objectName`` in the window INI —
-    call once, after the table has its ``objectName`` and columns.
+    call once, as the **last** line of the view's header setup (see below).
 
     Columns are made **drag-reorderable** (``setSectionsMovable``); the new visual
     order is persisted via the same ``saveState`` restored here (the header state
     carries section positions as well as widths, FIBR-0012 user request). Reordering
     is visual-only — the parallel-list row tag lives on **logical** column 0, so
-    ``selected_index`` / sorting stay correct whatever the column order (INV-9)."""
-    key = f"columns/{table.objectName()}"
-    header = table.horizontalHeader()
+    ``selected_index`` / sorting stay correct whatever the column order (INV-9).
+
+    **Call this last**, after every other header call. ``saveState()`` serialises
+    *flags*, not just widths and positions — the sections-movable flag and the sort
+    indicator, including whether it is shown. The build-time snapshot taken here is
+    what ``reset_columns`` restores, so a snapshot taken before ``enable_sorting``
+    would make Reset layout hide the sort arrow on a still-sortable table, and one
+    taken before ``setSectionsMovable`` would turn drag-reorder off (FIBR-0192)."""
+    key = f"columns/{view.objectName()}"
+    header = _header_of(view)
     header.setSectionsMovable(True)
+    # After the movable flag, before the restore: this is the FIRST-RUN layout that
+    # Reset layout returns to, not whatever the user last left behind.
+    view.setProperty(_DEFAULT_STATE_PROP, header.saveState())
     state = _settings().value(key)
     if state is not None:
         header.restoreState(state)
@@ -134,3 +162,35 @@ def remember_columns(table: QTableWidget) -> None:
     header.sectionResized.connect(_save)
     header.sectionMoved.connect(_save)
     header.sortIndicatorChanged.connect(_save)
+
+
+def reset_columns(root: QWidget) -> None:
+    """Put every remembered header under ``root`` back to the default captured by
+    ``remember_columns``. Views built without it are skipped.
+
+    ``findChildren`` is recursive, so this reaches the Home trees through the
+    dashboard's ``QScrollArea`` and the tab pages through the workspace's
+    ``QTabWidget``.
+
+    **The restore is deliberately NOT wrapped in ``blockSignals``.** Blocking looks
+    like hygiene here and silently breaks a shipped behaviour: ``restoreState``
+    emits no ``sectionResized`` / ``sectionMoved``, so nothing re-saves — but it
+    *does* emit ``sortIndicatorChanged``, and a table view's own re-sort rides on
+    that signal. Block it and the header shows the restored default's sort arrow
+    while the rows keep the user's old order, on all five click-sortable tables
+    (FIBR-0192; the same arrow-vs-rows split spec.md row 4b already calls a defect).
+
+    ``remember_columns``' ``_save`` also listens to that signal. On the pinned
+    PySide6 it never runs on a restore — the ``Qt::SortOrder`` argument fails to
+    marshal and the handler raises ``TypeError`` to stderr. That noise is accepted:
+    the obvious way to silence it is exactly the ``blockSignals`` above. A future
+    PySide6 that marshalled it would write the just-restored *default* back, which
+    ``_reset_layout``'s clear removes anyway."""
+    views: list[QTableWidget | QTreeWidget] = [
+        *root.findChildren(QTableWidget),
+        *root.findChildren(QTreeWidget),
+    ]
+    for view in views:
+        state = view.property(_DEFAULT_STATE_PROP)
+        if state is not None:
+            _header_of(view).restoreState(state)
