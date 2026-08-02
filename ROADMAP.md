@@ -2882,6 +2882,87 @@ because retrofitting them is a data migration.
   Lanes: release.
   Source: in-session-2026-08-02 housekeeping.
 
+- 🚧 [FIBR-0204] **FP01 — fix-pass after FIBR-0192: two wrong Qt measurements, and the docs that still say it never shipped.**
+  Raised by `/close-phase` on FIBR-0192 — one static-analysis sweep
+  (semgrep/ruff/bandit, **0 findings**) plus two cold review lanes. Every
+  finding below was re-verified in this session against PySide6 6.11.1 or
+  against the file itself; nothing is taken on the reviewer's word.
+
+  **The two measurement defects (latent, no user-visible bug today):**
+
+  1. **QT-10's negative half is backwards.**
+  `docs/specs/FIBR-0192-qt-facts.md:38` and `:176-179` conclude that
+  `stretchLastSection` and the section resize mode are NOT carried in
+  `QHeaderView.saveState()`. Re-measured: **stretch, resize mode,
+  `sectionsClickable`, `defaultSectionSize` and per-section hidden flags
+  all restore to their captured values.** Probe C's own recorded output
+  refutes the conclusion drawn from it. Consequence: `_table_state.py`
+  `remember_columns`' docstring (`:141-146`) enumerates only the movable
+  flag and the sort indicator as ordering constraints, so a contributor
+  who adds `setStretchLastSection(True)` or `hideColumn(n)` AFTER
+  `remember_columns` gets it silently reverted by the first Reset layout
+  — QT-3's exact failure shape on a flag the contract calls safe. No
+  current call site violates it (`transactions.py:181-184` precedes
+  `:189`), which is why nothing is broken today.
+  Also of record: `docs/specs/FIBR-0192.md:776` shows cold-eyes loop 3
+  citing this measurement to DISMISS a lane that had reported it
+  correctly.
+
+  2. **QT-5 is a probe artifact.** `_table_state.py:183-188` and
+  `main_window.py:1558-1559` state that `_save` never runs on a restore
+  because `Qt::SortOrder` fails to marshal and raises `TypeError`, and
+  therefore that `reset_columns` "never writes to the INI". Re-measured:
+  `restoreState` emits `sortIndicatorChanged` **whenever the restored
+  indicator differs from the current one**, and the argument marshals
+  cleanly — a proper `SortOrder` enum, no `TypeError`, nothing on
+  stderr. So `reset_columns` DOES `setValue` + `sync()` per affected
+  view. Harmless today only because `_reset_layout`'s trailing
+  `settings.remove("columns")` erases the writes; the docstring's
+  rationale rests on a false premise, and any future caller of
+  `reset_columns` without a trailing clear persists the default.
+  Measured additionally: on a **QTreeWidget**, `restoreState` also emits
+  `sectionResized` once, which the same docstring (`:177`) denies.
+
+  **The documentation-truth half** — the item shipped in 70f0e15, and
+  these still describe it as pending:
+
+  - `docs/specs/FIBR-0192.md:3-4` — **Status still "ready to
+  implement"**; its three siblings (FIBR-0113/0193/0198 `:3`) read
+  `✅ SHIPPED`. And `:11-12` still instructs "do NOT flip FIBR-0084 until
+  this ships", which the same commit did.
+  - `docs/specs/FIBR-0052.md:71` (INV-6) and `:325-326` (INV-6b) — never
+  widened to name the `columns/*` group, though FIBR-0192 §12 called this
+  out by name as the one existing contract this item widens.
+  - `docs/specs/FIBR-0113.md:653-654` — **actively wrong advice**: "no
+  escape hatch today ... must delete the `columns/accounts_table` key by
+  hand." The escape hatch now exists.
+  - `docs/specs/FIBR-0113.md:594-597` (§5 INV-13/INV-14) and `:773-780`
+  (§9) — the two places FIBR-0192 §12 said would be "annotated as
+  discharged here"; neither was.
+  - `docs/specs/FIBR-0113.md:18, :39, :67, :110, :863`;
+  `docs/specs/FIBR-0193.md:891-892, :978`;
+  `tests/features/accounts/spec.md:227-229` — present-tense pending.
+  - `FIBR-0192.md:597` and `:657` — the remembered-view count is **13**,
+  not 11 (`recurring.py` and `transfers.py` each build two tables); §10's
+  resource figures inherit it.
+
+  **Test-suite verdict: clean.** 15 mutations against the shipped source;
+  no vacuous leg, and all four of §11's "nothing checks this" admissions
+  are literally accurate. Two LOWs to fold: INV-6's precondition (b) is
+  asserted more weakly than §5 states
+  (`tests/features/table_state/test_table_state.py:544` accepts a key
+  holding the DEFAULT state), and §11 credits INV-6 with catching nothing
+  when it does catch the both-mechanisms-dropped case.
+
+  FIBR-0200 was independently confirmed real by the code lane (the `_save`
+  teardown `RuntimeError`), and this change takes the connected-closure
+  count from 8 to 12 — evidence for that bullet, not new work here.
+  Kind: review-fix.
+  **Layman:** Corrections found while closing the column-layout work: two measured facts were recorded backwards, and a pile of documents still say the feature is unbuilt.
+  Kind: review-fix.
+  Lanes: ui, docs.
+  Source: in-session-2026-08-02 /close-phase FIBR-0192.
+
 ### ⚡ Performance
 
 - ✅ [FIBR-0025] **Enable SQLite WAL mode.** Set
