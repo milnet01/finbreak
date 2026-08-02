@@ -2949,6 +2949,26 @@ because retrofitting them is a data migration.
   Kind: feature.
   Lanes: ui.
   Source: user-request-2026-08-02.
+  Progress (2026-08-02): specced jointly with FIBR-0202 in
+  `docs/specs/FIBR-0201.md` (umbrella spec, ACCEPTED after 4 cold-eyes
+  loops with 2 cold lanes each, 18 invariants).
+  **This bullet's open design question is answered: neither a widget loop
+  nor a new batch transaction.** `TransferDetectionService` grows
+  `confirm_many(pairs)`, and `confirm_all()` becomes `confirm_many(
+  candidate_pairs())` — the consumed-set logic MOVES rather than being
+  copied, because the hazard it guards (two selected suggestions sharing a
+  transaction) is not specific to "all". It keeps `confirm_all`'s shipped
+  per-decision-commit boundary (FIBR-0011 D6) rather than inventing a new
+  one, since changing that is a behaviour change this item did not ask
+  for. It calls `add_decision` directly, not `_record`, so a consumed pair
+  is skipped instead of raising `ValueError` at the user; verified that
+  this is safe — `add_decision` canonicalises the pair internally
+  (`min`/`max`), so bypassing `_record` changes what is rejected, never
+  what is written.
+  The selection mode is `MultiSelection`, not `ExtendedSelection` (plain
+  click toggles; no Ctrl/Shift knowledge needed for this app's audience),
+  and only the SUGGESTED table widens — `_make_table` builds both transfer
+  tables from one line, so it takes a parameter.
 
 - 📋 [FIBR-0202] **Bulk-delete statements — tick several, plus a Delete all button.**
   The Statements tab deletes exactly one statement per click
@@ -2991,6 +3011,25 @@ because retrofitting them is a data migration.
   Kind: feature.
   Lanes: ui.
   Source: user-request-2026-08-02.
+  Progress (2026-08-02): specced jointly with FIBR-0201 in
+  `docs/specs/FIBR-0201.md` (umbrella, ACCEPTED after 4 cold-eyes loops).
+  **This bullet's point 3 is CORRECTED by measurement.** It called the
+  per-call FIBR-0148 hand-off "order-sensitive, and this is the real
+  hazard". Measured against the real services: the SURVIVING DATA is not
+  order-sensitive — deleting A-then-B and B-then-A end identically, and
+  identically to batch semantics — because the hand-off re-evaluates on
+  every call, so coverage by a statement that is itself being deleted
+  never persists. What DOES break is the PREVIEW: summing per-statement
+  `delete_preview` calls over a batch reports `removed=0, kept=3` where
+  the batch-aware query reports `removed=2, kept=1`, so the confirm dialog
+  would promise nothing is permanently removed and then destroy two
+  transactions. That is the money-critical defect, and atomicity — not
+  data correctness — is what one transaction buys (spec D5/§2.1).
+  Also found while specing: the exclusion predicate `q.id <> :pid` lives
+  at FOUR sites, not two — `hand_off_covered`'s `SET` correlated picker as
+  well as its `EXISTS` guard, plus both of `delete_split_counts`' arms.
+  Widening only the guard would let a row be handed to a statement inside
+  the batch, which the same batch then deletes.
 
 - ✅ [FIBR-0203] **Back-fill the missing v0.1.17 GitHub release — its notes are invisible to the in-app updater.**
   `gh release list` jumps 0.1.18 → 0.1.16: there is no GitHub **release**
