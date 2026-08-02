@@ -2757,7 +2757,11 @@ because retrofitting them is a data migration.
   Pre-existing (FIBR-0117), not introduced by FIBR-0192 — surfaced only
   because the probe ran outside pytest, where teardown ordering differs.
   Harmless today (stderr noise at exit, nothing is lost), but it is the
-  same class as the QT-5 `TypeError` §4.3 already documents. Likely fix:
+  same class as the shiboken lifetime issues the UI already guards. (This
+  line originally cited "the QT-5 `TypeError` §4.3 documents"; FP01
+  re-measured QT-5 on 2026-08-02 and no `TypeError` occurs — that citation
+  is withdrawn, but this teardown `RuntimeError` is independently real and
+  was reproduced again by the close-phase code lane.) Likely fix:
   guard `_save` with `shiboken6.isValid(header)`, matching the pattern
   `main_window.py::_ensure_workspace` already uses. Confirm it can fire
   in the packaged app before spending much on it.

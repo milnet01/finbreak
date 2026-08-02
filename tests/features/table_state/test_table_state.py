@@ -546,8 +546,20 @@ def test_FIBR0192_INV6_reset_layout_survives_a_rebuild(qtbot, service):
     window.resize(_DEFAULT_WINDOW_SIZE + QSize(140, 110))  # (c)
     window.show()
     qtbot.waitExposed(window)
+    # (b) is "a DIFFERING, persisted width". Asserting the key merely exists is
+    # too weak twice over: it passes against a key holding the build-time
+    # default, and — measured — it also passes with the widening removed
+    # entirely, because the `window.resize` above already provokes a save. So
+    # snapshot the stored bytes either side of the widening and require THAT to
+    # be what moved them.
+    stored_before = _window_ini().value("columns/transactions_table")
     table.setColumnWidth(0, default_width + 93)  # (b)
-    assert _window_ini().value("columns/transactions_table") is not None
+    stored_after = _window_ini().value("columns/transactions_table")
+    assert stored_after is not None, "the widened column must have been persisted"
+    assert stored_before is None or bytes(stored_after) != bytes(stored_before), (
+        "the widening itself must be what changed the persisted state, or the "
+        "reset has nothing of the user's to undo and this leg cannot fail"
+    )
 
     fired: list[object] = []
     header.sectionResized.connect(lambda *a: fired.append(a))

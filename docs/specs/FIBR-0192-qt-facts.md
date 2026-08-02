@@ -12,7 +12,9 @@ citing them had become the run's largest single source of findings. One home,
 one copy.
 
 **Provenance.** All measurements run against the pinned **PySide6 6.11.1** under
-`QT_QPA_PLATFORM=offscreen` on 2026-07-30, except **QT-10**, added 2026-07-31.
+`QT_QPA_PLATFORM=offscreen` on 2026-07-30, except **QT-10** (added 2026-07-31)
+and **QT-11** (added 2026-08-02 by FP01, which also corrected QT-5 and QT-10's
+last clause — both re-measured on the same pinned 6.11.1).
 The source files they concern were last modified at `b676863` (2026-07-28) and
 are unmodified since. Re-run both probes on any PySide6 bump — §5's invariants
 rest on these, and none of them is inferable from the Qt documentation.
@@ -30,12 +32,13 @@ the contract, the order is not.
 | **QT-2** | `QTreeWidget.header().sectionsMovable()` | **True** by default | Asserting `True` on a Home tree proves **nothing** — it passes against a build that never calls `remember_columns`. INV-3 asserts persistence instead. |
 | **QT-3** | **`saveState()` serialises the sections-movable flag** | **Yes** | The single most dangerous fact here. A default captured *before* `setSectionsMovable(True)` stores `movable = False`, and restoring it on a reset turns drag-reorder **off** for good. FIBR-0192 §4.2 pins the capture point because of this. |
 | **QT-4** | `QHeaderView.restoreState()` emits `sectionResized` / `sectionMoved` | **No** | Restoring a default does not re-trigger the width/order save. |
-| **QT-5** | `QHeaderView.restoreState()` and `sortIndicatorChanged` | **Emitted, but the connected slot does not run** — PySide6 raises `TypeError: … parameter 1 of type "Qt::SortOrder" cannot be converted` to stderr instead. Measured identically on `QTableWidget` with sorting off, with sorting on, and on `QTreeWidget`. | So on the pinned PySide6 `remember_columns`' own `_save` **does not run** on a restore — deterministically, not sometimes. The design still does not depend on that, because a future PySide6 that marshals the argument successfully would only write the default state, which is harmless. The `TypeError` on stderr is accepted noise (FIBR-0192 §4.3); the one thing that must **not** be done about it is blocking the signal — see QT-6. |
+| **QT-5** | `QHeaderView.restoreState()` and `sortIndicatorChanged` | **Emitted, and the connected slot runs.** Exactly one emission per restore, on `QTableWidget` and `QTreeWidget` alike, whether or not the restored indicator differs from the current one. The `Qt::SortOrder` argument marshals cleanly — a real `SortOrder` enum reaches the slot. **CORRECTED 2026-08-02 (FP01).** This row previously said the slot dies in a `TypeError` and never runs; that does not reproduce on the pinned PySide6 6.11.1, and it was contradicted by running the shipped functions (below). | So `remember_columns`' own `_save` **does** run on a restore, which means `reset_columns` performs a `setValue` + `sync()` per remembered view. Verified end-to-end against the real `remember_columns`/`reset_columns`: the window INI's bytes change across a `reset_columns` call. That is harmless **only** because `_reset_layout` clears the `columns` group immediately afterwards (FIBR-0192 §4.4) — the write lands and is then erased. Any *other* caller of `reset_columns`, without that trailing clear, silently persists the default. The one thing that must **not** be done about the emission is blocking the signal — see QT-6. |
 | **QT-6** | **A sortable view re-sorts its rows on `restoreState` — via `sortIndicatorChanged`, and only if that signal is not blocked** | Unblocked: an ascending default restored over a user's descending sort returns the rows to `['apple','banana','cherry']`. Blocked: the indicator reads Ascending while the rows stay `['cherry','banana','apple']`. | The reason FIBR-0192 §4.3 **forbids** `blockSignals` around the restore. Blocking looks like hygiene and silently desynchronises the sort arrow from the rows on all **five** click-sortable tables. Reproduced by Probe B. |
 | **QT-7** | `QTableWidget.horizontalHeader().stretchLastSection()` / `QTreeWidget.header()…` | **False** / **True** by default | Only `transactions_table` sets it explicitly, but every `QTreeWidget` header has it on — so the three new Home trees also re-lay-out on a window resize (FIBR-0192 §4.4 reason 1 applies to them too, and §10's write-amplification note follows from it). |
 | **QT-8** | `QTreeWidget.clear()` vs header state | Column count, section widths, header labels **and** the view's dynamic property all survive | `_render_column` calls `col.tree.clear()` on every dashboard refresh. Had it reset the header, INV-3 would fail after any refresh and the whole design would need a different home for the default. |
 | **QT-9** | `setProperty` / `property` round-trip of a `QByteArray`; `saveState()` size on an unshown 2-column tree; `findChildren` through one nesting level | equal; **127 bytes**, default section size 100; finds it | FIBR-0192 §4.2's storage mechanism, §10's figure, and §4.3's reach into the dashboard's `QScrollArea`. |
-| **QT-10** | **`saveState()` also serialises the SORT INDICATOR** — its section, its order, and whether it is shown | Restoring a capture taken **before** `setSortingEnabled(True)` leaves `isSortIndicatorShown()` **False** — the arrow disappears. Restoring one taken after brings the indicator's section and order back with it. `stretchLastSection` and the section resize mode, by contrast, are **not** in the state — restoring a capture taken before either was changed leaves both as they are. | The **second** flag with QT-3's shape, and the reason FIBR-0192 §4.2's capture must also follow `enable_sorting`. QT-3 and QT-10 together are the whole precondition: capture after every call that configures the header, not merely after the columns exist. |
+| **QT-10** | **`saveState()` also serialises the SORT INDICATOR** — its section, its order, and whether it is shown | Restoring a capture taken **before** `setSortingEnabled(True)` leaves `isSortIndicatorShown()` **False** — the arrow disappears. Restoring one taken after brings the indicator's section and order back with it. **CORRECTED 2026-08-02 (FP01):** this row also claimed `stretchLastSection` and the section resize mode are *not* in the state. They are — see QT-11, which supersedes that clause. | The **second** flag with QT-3's shape, and the reason FIBR-0192 §4.2's capture must also follow `enable_sorting`. QT-3, QT-10 and QT-11 together are the whole precondition: capture after every call that configures the header, not merely after the columns exist. |
+| **QT-11** | **`saveState()` serialises far more than widths, order and the two flags above** | Measured 2026-08-02 on PySide6 6.11.1, each set to a non-default value, changed, then restored: `stretchLastSection`, the section **resize mode**, `sectionsClickable`, `defaultSectionSize` and per-section **hidden** flags all return to their captured values. | Supersedes QT-10's "not in the state" clause, which was read backwards off Probe C — the probe printed the *captured* values after the restore, which is the signature of them being restored, not of their being absent. The practical rule is therefore stronger than "capture after `setSectionsMovable` and `enable_sorting`": **`remember_columns` must be the last header-touching call in a view's setup, full stop.** No current call site violates it. |
 
 ## 2. Three of these killed a defect that had survived a careful read
 
@@ -125,14 +128,30 @@ PY
 # findChildren through nesting: 1
 ```
 
-Read that output carefully, because the interesting part is on **stderr**. The
-restore re-applies the width (100) while invoking **no** handler —
-`sectionResized` and `sectionMoved` are genuinely not emitted, and
-`sortIndicatorChanged` *is* emitted but its slot dies in PySide6's argument
-conversion. Blocking the header's signals removes that `TypeError` — and Probe B
-shows what else it removes, which is why FIBR-0192 §4.3 forbids it.
+The restore re-applies the width (100), and `sectionResized` / `sectionMoved` are
+genuinely not emitted (QT-4).
 
-## 5. Probe C — QT-10, and what is *not* in the state
+**The `handler calls on restore: []` line and the stderr `TypeError` above are
+both artefacts of this probe — CORRECTED 2026-08-02 (FP01).** Re-run on the
+pinned PySide6 6.11.1, `restoreState` emits `sortIndicatorChanged` **once** on
+both view kinds and the slot **runs**, receiving a properly marshalled
+`SortOrder` enum; no `TypeError` reaches stderr. The re-run was done three ways —
+a bare header, a header inside a parent widget, and the shipped
+`remember_columns` / `reset_columns` pair — and the last of those is decisive:
+the window INI's bytes change across a `reset_columns` call, which can only
+happen if `_save` ran. Two theories for the original reading were tested and
+**disproved**: that Probe A's import set (no `from PySide6.QtCore import Qt`)
+left the enum without a converter, and that the emission is conditional on the
+restored indicator differing from the current one. Neither reproduces; the slot
+runs in every configuration tried.
+
+Blocking the header's signals would suppress the emission — and Probe B shows
+what else it suppresses, which is why FIBR-0192 §4.3 forbids it.
+
+## 5. Probe C — QT-10 and QT-11
+
+(Originally titled "QT-10, and what is *not* in the state" — that framing was
+the misreading FP01 corrected; see the note under the output.)
 
 ```
 QT_QPA_PLATFORM=offscreen python - <<'PY'
@@ -173,7 +192,18 @@ PY
 # stretch after restoring pre-stretch capture: False | resizeMode(0): Interactive
 ```
 
-The last line is the negative half and it matters as much as the positive one:
-`stretchLastSection` and the resize mode are **not** restored, so the capture
-point does not have to follow those calls. Only the two flags — movable (QT-3)
+**The last line was read backwards, and the correction is QT-11 — FP01,
+2026-08-02.** `h3` is captured at `(stretch=False, mode=Interactive)`, changed to
+`(True, Fixed)`, then restored; the line prints `False | Interactive`. Those are
+the **captured** values, so the restore put them back — which is precisely what
+"they are in the state" looks like. Had they genuinely been absent from the
+state, the restore would have left the changed values and the line would read
+`True | Fixed`. The probe was correct and its conclusion inverted.
+
+Read correctly, the last line is a *second positive* half, not a negative one:
+`stretchLastSection` and the resize mode **are** restored, alongside
+`sectionsClickable`, `defaultSectionSize` and hidden-section flags (QT-11). The
+capture point must therefore follow those calls too — the rule is simply that
+`remember_columns` goes last. The superseded reading, kept here because §4.2 and
+the loop-3 log were both written against it, was that only the two flags — movable (QT-3)
 and the sort indicator (QT-10) — impose the ordering FIBR-0192 §4.2 requires.

@@ -138,12 +138,16 @@ def remember_columns(view: QTableWidget | QTreeWidget) -> None:
     is visual-only — the parallel-list row tag lives on **logical** column 0, so
     ``selected_index`` / sorting stay correct whatever the column order (INV-9).
 
-    **Call this last**, after every other header call. ``saveState()`` serialises
-    *flags*, not just widths and positions — the sections-movable flag and the sort
-    indicator, including whether it is shown. The build-time snapshot taken here is
-    what ``reset_columns`` restores, so a snapshot taken before ``enable_sorting``
-    would make Reset layout hide the sort arrow on a still-sortable table, and one
-    taken before ``setSectionsMovable`` would turn drag-reorder off (FIBR-0192)."""
+    **Call this last**, after every other header call — the rule is that literal,
+    and it is not a style preference. ``saveState()`` serialises far more than
+    widths and positions: the sections-movable flag, the sort indicator (including
+    whether it is *shown*), ``stretchLastSection``, the section resize mode,
+    ``sectionsClickable``, ``defaultSectionSize`` and per-section hidden flags.
+    The build-time snapshot taken here is what ``reset_columns`` restores, so any
+    header call made *after* this one has its pre-call value baked into the
+    snapshot and silently reverted by the first Reset layout — drag-reorder turned
+    off, the sort arrow hidden, a stretch undone, a hidden column revealed
+    (FIBR-0192; measured set in FIBR-0192-qt-facts.md QT-3/QT-10/QT-11)."""
     key = f"columns/{view.objectName()}"
     header = _header_of(view)
     header.setSectionsMovable(True)
@@ -180,12 +184,15 @@ def reset_columns(root: QWidget) -> None:
     while the rows keep the user's old order, on all five click-sortable tables
     (FIBR-0192; the same arrow-vs-rows split spec.md row 4b already calls a defect).
 
-    ``remember_columns``' ``_save`` also listens to that signal. On the pinned
-    PySide6 it never runs on a restore — the ``Qt::SortOrder`` argument fails to
-    marshal and the handler raises ``TypeError`` to stderr. That noise is accepted:
-    the obvious way to silence it is exactly the ``blockSignals`` above. A future
-    PySide6 that marshalled it would write the just-restored *default* back, which
-    ``_reset_layout``'s clear removes anyway."""
+    ``remember_columns``' ``_save`` also listens to that signal, and **it does
+    run** — once per restored view, with the ``Qt::SortOrder`` argument marshalling
+    cleanly (measured on PySide6 6.11.1; FIBR-0192-qt-facts.md QT-5, corrected
+    2026-08-02). So this function writes the just-restored *default* back to the
+    INI and ``sync()``s it, once per view.
+
+    That is harmless from ``_reset_layout`` **only** because its trailing
+    ``settings.remove("columns")`` erases those writes (§4.4). Any other caller
+    must either clear afterwards or accept that the default is now persisted."""
     views: list[QTableWidget | QTreeWidget] = [
         *root.findChildren(QTableWidget),
         *root.findChildren(QTreeWidget),

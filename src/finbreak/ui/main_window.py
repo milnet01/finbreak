@@ -1555,8 +1555,16 @@ class MainWindow(QMainWindow):
         sets stretchLastSection and every QTreeWidget header has it on by default,
         so resizing the window re-lays-out those sections, emits `sectionResized`,
         and `remember_columns`' handler writes the *pre-reset* layout straight
-        back. Clearing afterwards is what erases it. `reset_columns` cannot rescue
-        that case — it puts the live header back and never writes to the INI.
+        back. Clearing afterwards is what erases it.
+
+        `reset_columns` cannot rescue that case either. It puts the live header
+        back, but it does NOT leave the INI alone: its `restoreState` emits
+        `sortIndicatorChanged`, `remember_columns`' handler runs, and the
+        just-restored default is written and `sync()`ed once per view
+        (FIBR-0192-qt-facts.md QT-5, corrected 2026-08-02 — this comment
+        previously claimed it never writes). Either way the trailing
+        `settings.remove("columns")` is what makes the result correct, which is
+        why it must come last.
 
         `self`, not `self._workspace`: the Window menu holding this action needs no
         vault, so `_workspace` may still be None (INV-7)."""

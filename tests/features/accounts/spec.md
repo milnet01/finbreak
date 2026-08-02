@@ -225,7 +225,8 @@ detecting an account number on an imported statement and matching it
 **FIBR-0113:** the reveal control — the "Show account numbers" checkbox, its
 auto re-mask timer, and the echo-mode switch on the form field (FIBR-0198);
 finishing FIBR-0084 (the Forecast table, the Home dashboard trees, and Reset
-layout clearing saved column state — FIBR-0192); preserving the selection
+layout clearing saved column state — FIBR-0192, **shipped 2026-08-02**; its legs
+live in `tests/features/table_state/`, not here); preserving the selection
 across a tab switch, and column customisation on the Categories tree, both
 permanent decisions rather than deferrals.
 **FIBR-0198:** making `_REVEAL_SECONDS` user-configurable, and a reveal that
