@@ -493,6 +493,31 @@ scariest unknown (native-library bundling) up front.
   Kind: fix.
   Lanes: release, docs.
   Source: in-session-2026-08-02 v0.1.19 release.
+  Progress (2026-08-02): root cause narrowed, and it is NOT a missing
+  upload — the images are published and live. The metainfo simply has the
+  wrong path shape.
+
+  The site repo (`milnet01/antsprojectshub`) holds all six at
+  `src/assets/img/shots/finbreak-<name>.png`, and its build serves them at
+  `/assets/img/shots/`, not `/img/finbreak/`. All six verified live
+  2026-08-02 — `https://antsprojectshub.co.za/assets/img/shots/finbreak-{dashboard,transactions,categories,recurring,transfers,rules}.png`
+  each return **HTTP 200**, while the two shapes the metainfo could have
+  meant (`/img/finbreak/<name>.png` and `/img/shots/finbreak-<name>.png`)
+  both 404.
+
+  So the fix is a six-line URL correction in
+  `packaging/obs/io.github.milnet01.finbreak.metainfo.xml`, mapping
+  `/img/finbreak/<name>.png` → `/assets/img/shots/finbreak-<name>.png`.
+  Note the basename gains the `finbreak-` prefix as well as the path
+  change, so a path-only sed will still 404.
+
+  Deliberately NOT fixed in this session: it is outside the v0.1.19 release
+  scope this session was asked for, and the release does not depend on it.
+  The remaining open question is unchanged — whether to point at the site
+  (one more place to keep in sync when screenshots are refreshed) or at raw
+  `github.com/milnet01/finbreak` URLs, which need no second repo. Whichever
+  is chosen, verify with `appstreamcli validate` afterwards; that is the
+  check that is currently red.
 
 ## P02 — Vertical slice: the security spine (target: after P01)
 
