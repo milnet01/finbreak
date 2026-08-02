@@ -2886,7 +2886,7 @@ because retrofitting them is a data migration.
   Lanes: release.
   Source: in-session-2026-08-02 housekeeping.
 
-- 🚧 [FIBR-0204] **FP01 — fix-pass after FIBR-0192: two wrong Qt measurements, and the docs that still say it never shipped.**
+- ✅ [FIBR-0204] **FP01 — fix-pass after FIBR-0192: two wrong Qt measurements, and the docs that still say it never shipped.**
   Raised by `/close-phase` on FIBR-0192 — one static-analysis sweep
   (semgrep/ruff/bandit, **0 findings**) plus two cold review lanes. Every
   finding below was re-verified in this session against PySide6 6.11.1 or
@@ -2966,6 +2966,34 @@ because retrofitting them is a data migration.
   Kind: review-fix.
   Lanes: ui, docs.
   Source: in-session-2026-08-02 /close-phase FIBR-0192.
+  Resolved (2026-08-02): applied via `/apply-fixes`, commit `5cd057f`.
+  Every finding re-measured before fixing rather than taken on the
+  reviewer's word — which paid twice. **QT-11 added** and QT-10's negative
+  clause withdrawn: `saveState()` does serialise `stretchLastSection`, the
+  resize mode, `sectionsClickable`, `defaultSectionSize` and hidden flags.
+  **QT-5 rewritten**: `restoreState` emits `sortIndicatorChanged` once per
+  view, the `SortOrder` marshals cleanly, and `reset_columns` therefore
+  writes + `sync()`s per view — proved against the real functions by
+  watching the INI's bytes change across the call. The review's own
+  explanation for the original QT-5 reading (Probe A missing a
+  `QtCore.Qt` import) was **tested and disproved**; the handler runs
+  either way, and that is recorded in the doc so the next reader does not
+  re-derive it. Both source comments corrected, plus §4.2/§4.3/§4.4/§8/§10.
+  Doc-truth half closed: FIBR-0192's own Status line, its FIBR-0084
+  blocker instruction, FIBR-0052 INV-6/INV-6b (widened to the `columns/*`
+  group at last), FIBR-0113's wrong "delete the key by hand" advice and
+  its two §5/§9 discharge annotations, FIBR-0193 and the accounts test
+  spec. Cold-eyes loop-log rows left **frozen** — they record what each
+  loop believed at the time, and rewriting them would destroy the audit
+  trail that made the QT-10 dismissal findable. View count corrected
+  11 → 13. **A test fix that needed fixing twice:** INV-6's precondition
+  (b) asserted only that the settings key existed; the first replacement
+  compared stored bytes against the build-time default, and mutation
+  testing showed that ALSO passes with the widening removed, because the
+  preceding `window.resize` already provokes a save. It now snapshots
+  either side of the widening and goes red when the widening is dropped.
+  Gate green **1455 passed, 2 skipped**; `/doc-lint` clean on all six
+  edited docs.
 
 ### ⚡ Performance
 
