@@ -519,6 +519,38 @@ scariest unknown (native-library bundling) up front.
   is chosen, verify with `appstreamcli validate` afterwards; that is the
   check that is currently red.
 
+- 📋 [FIBR-0208] **The AppImage's bundled libxkbcommon segfaults on X11 keymap data it can't parse.**
+  Found 2026-08-02 while probing FIBR-0200 in a throwaway environment; it
+  is the app-side finding of that probe, not the probe's own fault.
+
+  `dist/finbreak-0.1.19-x86_64.AppImage` SIGSEGVs against a plain X server
+  (Xvfb), coredump frame #0 inside the BUNDLED `libxkbcommon.so.0`
+  (`+0x1d9b8`). It dies at startup or on the first keystroke, and loading a
+  keymap first (`setxkbmap us`) does not help. Forcing the system copy —
+  `LD_PRELOAD=/usr/lib64/libxkbcommon.so.0` — makes the SAME AppImage run
+  to completion: unlock, every tab, clean quit. So the bundled library is
+  what fails, not the app.
+
+  Not exotic-display-only. On the maintainer's own desktop the same bundled
+  copy logs, on every launch,
+  `xkbcommon: ERROR: /usr/share/X11/locale/en_US.UTF-8/Compose:1661:1:
+  unrecognized keysym "dead_hamza"` (repeated down the Compose file)
+  against the system's newer `xkeyboard-config` data — the same version
+  skew, milder symptom, already visible in the journal today.
+
+  Risk: this library ships to every Linux user of the AppImage, and a
+  distro whose X11 locale data is newer than the bundled parser expects
+  gets a noisy log at best and the reproduced segfault at worst.
+
+  Provenance not yet pinned: the copy is either PySide6's wheel bundle or
+  the `python:3.12-slim-bookworm` build container's system library (Debian
+  12 is older than most target desktops). Establishing which comes first —
+  the fix is then to exclude it from the freeze so the host copy is used,
+  or to build against newer keyboard data.
+  **Layman:** The app carries its own copy of a keyboard-layout library that is older than the system's keyboard data — it crashed in testing.
+  Kind: fix.
+  Source: in-session-2026-08-02 FIBR-0200 pre-check.
+
 ## P02 — Vertical slice: the security spine (target: after P01)
 
 **Theme:** the smallest end-to-end feature that touches every
@@ -2808,8 +2840,17 @@ because retrofitting them is a data migration.
   **Layman:** A safety net in the Reset-layout code has no test proving it works.
   Kind: test.
   Source: in-session-2026-08-02 FIBR-0192 build.
+  Progress (2026-08-02): one fixture input verified while pre-checking
+  FIBR-0200. A leg that needs a remembered view DESTROYED before the reset
+  must use `deleteLater()` plus a real event-loop spin (or
+  `shiboken6.delete`) — `QApplication.processEvents()` does NOT process
+  DeferredDelete, so the widget is still alive and the leg silently proves
+  nothing (measured: `shiboken6.isValid(holder)` is still True after
+  `deleteLater()` + `processEvents()`; False after a `QTimer`-quit
+  `app.exec()` spin). FIBR-0200 itself closed as not reproducible, so this
+  bullet no longer shares a scenario with it.
 
-- 📋 [FIBR-0200] **remember_columns' _save can outlive its header and raise at teardown.**
+- ✅ [FIBR-0200] **remember_columns' _save can outlive its header and raise at teardown.**
   Observed 2026-08-02 while probing FIBR-0192: a standalone script exits
   with `RuntimeError: libshiboken: Internal C++ object
   (PySide6.QtWidgets.QHeaderView) already deleted` raised from `_save` in
@@ -2830,6 +2871,30 @@ because retrofitting them is a data migration.
   **Layman:** A harmless-looking error can print when the app shuts down.
   Kind: fix.
   Source: in-session-2026-08-02 FIBR-0192 build.
+  Resolved (2026-08-02): NOT REPRODUCIBLE AS SHIPPED. The pre-check this
+  bullet itself asked for came back negative on every path tried, so the
+  `shiboken6.isValid` guard is not worth adding — it would be a defensive
+  branch for a state the current stack forbids. Evidence, all against
+  v0.1.19 / PySide6 6.11.1:
+  (a) The packaged AppImage driven end to end against a seeded throwaway
+  vault on an isolated X display: unlock, five tabs built, then File ▸
+  Quit — exits 0 with EMPTY stderr. File ▸ Lock, which destroys all 13
+  remembered views while the process keeps running, is equally silent.
+  (b) The same flow from source: exit 0, silent.
+  (c) Direct probe: after a GENUINE destruction (`shiboken6.isValid(header)`
+  == False, verified), `_save` is never called again. Qt drops the
+  connection with the header, and emitting on the dead header raises
+  "Signal source has been deleted" at the EMIT site, so `_save` never runs
+  to reach `header.saveState()`. NOTE a first attempt at this probe was
+  invalid: `QApplication.processEvents()` does NOT process DeferredDelete,
+  so the widget was still alive and the silence proved nothing.
+  (d) 30 days of real maintainer runs — 30 distinct `app-finbreak@*.service`
+  scopes, whose stderr does reach the journal (its fontconfig / xkbcommon
+  lines prove the capture works) — contain zero "already deleted" /
+  "Internal C++ object" lines.
+  The one gap: the 2026-08-02 probe script that produced the original
+  observation was never committed, so its exact shape could not be
+  replayed verbatim. Re-open if it resurfaces on a newer PySide6.
 
 - 📋 [FIBR-0201] **Bulk-confirm transfers — tick several suggested pairs and confirm them in one click.**
   The Transfers tab today offers exactly two speeds and nothing in
