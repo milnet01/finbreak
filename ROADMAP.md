@@ -2849,7 +2849,7 @@ because retrofitting them is a data migration.
   Lanes: ui.
   Source: user-request-2026-08-02.
 
-- 📋 [FIBR-0203] **Back-fill the missing v0.1.17 GitHub release — its notes are invisible to the in-app updater.**
+- ✅ [FIBR-0203] **Back-fill the missing v0.1.17 GitHub release — its notes are invisible to the in-app updater.**
   `gh release list` jumps 0.1.18 → 0.1.16: there is no GitHub **release**
   for v0.1.17, though the tag exists locally AND on origin
   (`21bebf7`, 2026-07-23) and `CHANGELOG.md` carries the full section.
@@ -2885,6 +2885,29 @@ because retrofitting them is a data migration.
   Kind: fix.
   Lanes: release.
   Source: in-session-2026-08-02 housekeeping.
+  Resolved (2026-08-02): published the v0.1.17 GitHub release
+  **notes-only**, per the open decision in this bullet — the notes body is
+  CHANGELOG.md's `[0.1.17]` section verbatim, prefaced by a short italic
+  line stating the notes were published retrospectively and that no
+  artifacts are attached because v0.1.18+ supersede it.
+  Created with `--latest=false`, which was the one real hazard: GitHub's
+  default "latest" selection is date-based, so a release object created
+  today for an older tag would have become `/releases/latest` — the exact
+  endpoint `check_for_update` reads to decide what to OFFER. Verified after
+  publishing: `/releases/latest` still returns **v0.1.18**, and v0.1.17
+  carries 0 assets, `draft: false`, `prerelease: false`.
+  Fix verified end-to-end against the LIVE API rather than by inspection:
+  called the real `fetch_releases` + `_accumulated_notes` for a user on
+  0.1.16 offered 0.1.18 — 19 releases fetched, the prompt now contains
+  both `## 0.1.18` and `## 0.1.17` headings (11,032 chars) and the 0.1.17
+  body's own content (FIBR-0154, Flathub). Before the back-fill that call
+  returned 0.1.18's body alone. The non-empty-`body` and
+  not-draft/not-prerelease conditions `_accumulated_notes` gates on are
+  all satisfied.
+  No CHANGELOG entry and no code change: the defect was a missing release
+  object on GitHub, not app behaviour — nothing in the shipped software
+  differs. Notes-only leaves an asset-less release page, the accepted
+  cost recorded in this bullet's own decision.
 
 - ✅ [FIBR-0204] **FP01 — fix-pass after FIBR-0192: two wrong Qt measurements, and the docs that still say it never shipped.**
   Raised by `/close-phase` on FIBR-0192 — one static-analysis sweep
