@@ -120,18 +120,36 @@ class TransactionRepository:
         ).fetchall()
         return [Transaction(*row) for row in rows]
 
-    def auto_rows(self) -> list[tuple[int, str]]:
-        """The ``(id, description)`` of every **auto** row — one the engine may
-        recompute (FIBR-0010 D4). The NULL-safe predicate ``category_source IS NULL
-        OR category_source <> 'manual'`` is load-bearing: a bare ``<> 'manual'``
-        drops every never-touched ``NULL`` row (SQL three-valued logic — ``NULL <>
-        'manual'`` is unknown, not true), i.e. the dominant auto state right after
-        an import. Manual rows are excluded here, so they are never read or written."""
+    def auto_rows(self, *, min_txn_id: int = 0) -> list[tuple[int, str]]:
+        """The ``(id, description)`` of every **auto** row above ``min_txn_id`` — one
+        the engine may recompute (FIBR-0010 D4). The NULL-safe predicate
+        ``category_source IS NULL OR category_source <> 'manual'`` is load-bearing: a
+        bare ``<> 'manual'`` drops every never-touched ``NULL`` row (SQL three-valued
+        logic — ``NULL <> 'manual'`` is unknown, not true), i.e. the dominant auto
+        state right after an import. Manual rows are excluded here, so they are never
+        read or written.
+
+        ``min_txn_id`` defaults to 0, i.e. every auto row. ``commit_import`` passes
+        ``max_id()`` taken inside its transaction just before the inserts, which
+        scopes the recompute to exactly the rows it added (FIBR-0213)."""
         rows = self._conn.execute(
             "SELECT id, description FROM transactions "
-            "WHERE category_source IS NULL OR category_source <> 'manual'"
+            "WHERE (category_source IS NULL OR category_source <> 'manual') "
+            "AND id > ?",
+            (min_txn_id,),
         ).fetchall()
         return [(row[0], row[1]) for row in rows]
+
+    def max_id(self) -> int:
+        """The largest transaction id, or 0 on an empty table.
+
+        Read inside ``commit_import``'s transaction immediately before its inserts:
+        SQLite assigns a new ``INTEGER PRIMARY KEY`` row ``max(rowid) + 1``, so every
+        row inserted after this read has a strictly greater id — an exact "the rows
+        this import added" boundary, with no per-row id round-trip (FIBR-0213)."""
+        return self._conn.execute(
+            "SELECT coalesce(max(id), 0) FROM transactions"
+        ).fetchone()[0]
 
     def set_category(
         self, txn_id: int, category_id: int | None, source: str | None

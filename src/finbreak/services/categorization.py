@@ -48,14 +48,33 @@ _DEFAULT_ROOT_KIND: dict[str, str] = {
 LIBRARY_ENABLED_KEY = "auto_category_library"
 
 
+def fold_rules(rules: Sequence[CategorizationRule]) -> list[tuple[str, int]]:
+    """``rules`` as ``(normalised pattern, category_id)`` pairs, folded ONCE.
+
+    The matcher folds both sides before substring-matching, and the pattern side is
+    the same for every row it is asked about — so folding it per row made a recompute
+    O(rows x patterns) ``normalise_text`` calls (NFC + split/join + casefold each).
+    Measured 0.397s -> 0.120s over 20k rows x 113 patterns (FIBR-0213)."""
+    return [(normalise_text(rule.pattern), rule.category_id) for rule in rules]
+
+
 def categorize(description: str, rules: Sequence[CategorizationRule]) -> int | None:
     """The first matching rule's ``category_id`` (rules in ascending priority, then
     id — the order ``list_all`` returns), or ``None`` when none matches or the rule
-    set is empty. Both sides are ``normalise_text``-folded, then substring-matched."""
-    normalised = normalise_text(description)
-    for rule in rules:
-        if normalise_text(rule.pattern) in normalised:
-            return rule.category_id
+    set is empty. Both sides are ``normalise_text``-folded, then substring-matched.
+
+    The one-shot form: folds the rules on every call. The recompute paths fold once
+    via ``_match_inputs`` and go straight to ``categorize_folded``; both end in the
+    same loop, so the two can never diverge."""
+    return categorize_folded(normalise_text(description), fold_rules(rules))
+
+
+def categorize_folded(normalised: str, folded: Sequence[tuple[str, int]]) -> int | None:
+    """The matcher proper: the first folded pattern that is a substring of an
+    already-folded ``description``. The single place the rule layer matches."""
+    for pattern, category_id in folded:
+        if pattern in normalised:
+            return category_id
     return None
 
 
@@ -122,18 +141,25 @@ def _leaf_name_to_id(conn: dbapi2.Connection) -> dict[str, int]:
 
 def categorize_with_library(
     description: str,
-    rules: Sequence[CategorizationRule],
-    entries: list[category_library.LibraryEntry],
+    folded_rules: Sequence[tuple[str, int]],
+    folded_entries: Sequence[tuple[str, str]],
     name_to_id: dict[str, int],
 ) -> tuple[int | None, str | None]:
     """The ``(category_id, category_source)`` for ``description``: a matching **user
-    rule** wins (INV-2), else a **library** guess, else ``(None, None)``. Reuses
-    ``categorize`` for the rule layer so the two layers can never diverge — the single
-    place they compose, called by both the apply path and ``would_categorize`` (D2)."""
-    rule_match = categorize(description, rules)
+    rule** wins (INV-2), else a **library** guess, else ``(None, None)``. The single
+    place the two layers compose, called by both the apply path and
+    ``would_categorize`` (D2).
+
+    Takes **pre-folded** patterns from ``_match_inputs`` (FIBR-0213) and calls the
+    same ``*_folded`` matchers the one-shot ``categorize`` / ``match_library`` end
+    in, so folding once cannot make this path match differently from those."""
+    normalised = normalise_text(description)
+    rule_match = categorize_folded(normalised, folded_rules)
     if rule_match is not None:
         return rule_match, CategorySource.RULE.value
-    library_match = category_library.match_library(description, entries, name_to_id)
+    library_match = category_library.match_library_folded(
+        normalised, folded_entries, name_to_id
+    )
     if library_match is not None:
         return library_match, CategorySource.LIBRARY.value
     return None, None
@@ -141,34 +167,42 @@ def categorize_with_library(
 
 def _match_inputs(
     conn: dbapi2.Connection,
-) -> tuple[
-    list[CategorizationRule], list[category_library.LibraryEntry], dict[str, int]
-]:
+) -> tuple[list[tuple[str, int]], list[tuple[str, str]], dict[str, int]]:
     """The **single** toggle-gated input source for both recompute paths (D2): always
     the rules (slot 1); the library pair (``entries``, ``name_to_id``) **iff** the
     toggle is on, else ``([], {})``. Routing both ``recategorize_auto_rows`` and
     ``would_categorize`` through this helper means the *gating* (off → empty library)
     can't drift between them — ``categorize_with_library`` guarantees match consistency,
-    ``_match_inputs`` guarantees toggle consistency."""
-    rules = CategorizationRuleRepository(conn).list_all()
+    ``_match_inputs`` guarantees toggle consistency.
+
+    Both pattern lists come back **folded** (FIBR-0213). This is the one place that
+    knows the whole pattern set up front, and the matcher needed it folded for every
+    row it was asked about."""
+    rules = fold_rules(CategorizationRuleRepository(conn).list_all())
     if library_enabled(conn):
-        return rules, category_library.load_library(), _leaf_name_to_id(conn)
+        entries = category_library.fold_entries(category_library.load_library())
+        return rules, entries, _leaf_name_to_id(conn)
     return rules, [], {}
 
 
-def recategorize_auto_rows(conn: dbapi2.Connection) -> int:
-    """Recompute every **auto** row from the current rules **and** the toggle-gated
-    built-in library; write only the rows that change; return that changed count
-    (INV-1/INV-4/INV-10/INV-13). Commit-free — the caller (``apply_rules`` /
-    ``commit_import`` / the delete cascade) owns the transaction. When the library is
-    off, ``entries`` is empty → every previously-``'library'`` row recomputes to
-    ``(None, None)`` (reverted to Uncategorised, INV-7)."""
-    rules, entries, name_to_id = _match_inputs(conn)
+def recategorize_auto_rows(conn: dbapi2.Connection, *, min_txn_id: int = 0) -> int:
+    """Recompute the **auto** rows above ``min_txn_id`` from the current rules **and**
+    the toggle-gated built-in library; write only the rows that change; return that
+    changed count (INV-1/INV-4/INV-10/INV-13). Commit-free — the caller
+    (``apply_rules`` / ``commit_import`` / the delete cascade) owns the transaction.
+    When the library is off, ``entries`` is empty → every previously-``'library'`` row
+    recomputes to ``(None, None)`` (reverted to Uncategorised, INV-7).
+
+    ``min_txn_id`` defaults to 0, i.e. the whole vault — what "Apply now" and the
+    delete cascade both mean. ``commit_import`` passes the largest id that existed
+    before its inserts, so an import touches only the rows it just added, which is
+    what FIBR-0010 D9 always said it did (FIBR-0213)."""
+    folded_rules, folded_entries, name_to_id = _match_inputs(conn)
     tx_repo = TransactionRepository(conn)
     changed = 0
-    for txn_id, description in tx_repo.auto_rows():
+    for txn_id, description in tx_repo.auto_rows(min_txn_id=min_txn_id):
         category_id, source = categorize_with_library(
-            description, rules, entries, name_to_id
+            description, folded_rules, folded_entries, name_to_id
         )
         changed += tx_repo.set_category(txn_id, category_id, source)
     return changed

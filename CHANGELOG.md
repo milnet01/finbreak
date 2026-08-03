@@ -31,6 +31,13 @@ signaling per
 
 ### Changed
 
+- **Importing a statement no longer re-sorts your whole history** (FIBR-0213)
+  An import now only categorises the transactions it just added.
+  Before, it quietly re-sorted every automatically-categorised transaction in
+  the vault — slow on a long history, and it could move numbers you were not
+  expecting to change. To re-sort everything on purpose, use "Apply rules now"
+  on the Rules tab. Matching itself is also about six times faster.
+
 - **Accented shop names are matched consistently across import and categorisation** (FIBR-0204)
   The same shop name can be spelled two ways behind the scenes depending on
   where a statement came from. finbreak now treats those spellings as

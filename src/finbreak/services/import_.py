@@ -274,6 +274,10 @@ class ImportService:
         period_repo = StatementPeriodRepository(conn)
         with owned_transaction(conn):
             to_insert = self._dedup(preview.account_id, preview.drafts, tx_repo)
+            # The exact "rows this import added" boundary for the recompute below:
+            # SQLite gives a new row max(rowid) + 1, so everything inserted after
+            # this read has a strictly greater id (FIBR-0213).
+            max_id_before = tx_repo.max_id()
             # Resolve the period id FIRST so every inserted row can be stamped with
             # it (FIBR-0052 INV-8/D8): reuse the existing span's id, else create the
             # period row now and take its new id. ``period_recorded`` is true only
@@ -315,7 +319,16 @@ class ImportService:
             # rows (auto/NULL) from the current rules, inside this same transaction —
             # so a fresh import arrives categorised with no uncategorised flash and no
             # second transaction. Manual rows are excluded, so INV-3 holds.
-            recategorize_auto_rows(conn)
+            #
+            # Scoped to THIS import's rows (FIBR-0213). It used to rescan every auto
+            # row in the vault — all accounts, all statements — inside this write
+            # transaction on the GUI thread, so importing 20 rows into a 50k-row
+            # vault ran 50k matches plus their UPDATEs while holding the DB lock. It
+            # also meant a library change between releases silently re-filed hundreds
+            # of unrelated historical rows on the next import, moving every chart. A
+            # whole-vault re-file is the Rules tab's "Apply now" — an explicit user
+            # action, which is where a surprise that large belongs.
+            recategorize_auto_rows(conn, min_txn_id=max_id_before)
         log.info("import committed")
         return ImportResult(
             inserted_count=len(to_insert),

@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -108,13 +109,36 @@ def match_library(
     exists (a renamed or deleted default) is silently skipped, so the row falls
     through to Uncategorised — never mis-filed (INV-6). An empty / whitespace-only
     ``description`` → ``None``. Same substring / ``normalise_text`` primitive as
-    ``categorize``."""
-    normalised = normalise_text(description)
+    ``categorize``.
+
+    The one-shot form: folds the entries on every call. The recompute paths fold
+    once via ``_match_inputs`` and go straight to ``match_library_folded``; both end
+    in the same loop, so the two can never diverge."""
+    return match_library_folded(
+        normalise_text(description), fold_entries(entries), name_to_id
+    )
+
+
+def fold_entries(entries: Sequence[LibraryEntry]) -> list[tuple[str, str]]:
+    """``entries`` as ``(normalised pattern, category name)`` pairs, folded ONCE —
+    the library twin of ``categorization.fold_rules``. The shipped library is 113
+    patterns, re-folded for every row before FIBR-0213."""
+    return [(normalise_text(entry.pattern), entry.category) for entry in entries]
+
+
+def match_library_folded(
+    normalised: str,
+    folded: Sequence[tuple[str, str]],
+    name_to_id: dict[str, int],
+) -> int | None:
+    """The matcher proper: the first folded pattern that is a substring of an
+    already-folded description AND whose category name resolves. The single place
+    the library layer matches."""
     if not normalised:
         return None
-    for entry in entries:
-        if normalise_text(entry.pattern) in normalised:
-            category_id = name_to_id.get(entry.category)
+    for pattern, category in folded:
+        if pattern in normalised:
+            category_id = name_to_id.get(category)
             if category_id is not None:
                 return category_id
     return None

@@ -111,6 +111,78 @@ def _do_import(imp: ImportService, text: str, account_id: int):
 
 
 # --------------------------------------------------------------------------- #
+# FIBR-0213 — an import recomputes ITS OWN rows, and folds each pattern once
+# --------------------------------------------------------------------------- #
+def test_FIBR0213_import_does_not_refile_historical_rows(service):
+    """``commit_import``'s comment always said it categorises "the just-inserted
+    rows", but ``recategorize_auto_rows`` iterated EVERY auto row in the vault — all
+    accounts, all statements — inside the write transaction, on the GUI thread.
+
+    Two consequences, and this pins the surprising one: adding a rule and then
+    importing an unrelated statement silently re-filed matching historical rows,
+    moving every chart and report the user was not touching. A whole-vault re-file
+    is the Rules tab's "Apply now" — an explicit action. The second leg proves the
+    scoping did not simply switch the recompute off."""
+    historical = _add_txn(service, "NETFLIX SUBSCRIPTION")
+    entertainment = _leaf_id(service, "Entertainment")
+    CategorizationService(service.vault).add_rule("netflix", entertainment)
+    assert _txn_cat(service, historical) == (None, None), "the rule was not applied"
+
+    account = _account_id(service)
+    text = _csv(HEADER, [["2026-02-09", "NETFLIX SUBSCRIPTION", "-199.00"]])
+    _do_import(ImportService(service.vault), text, account)
+
+    assert _txn_cat(service, historical) == (None, None), (
+        "the historical row is untouched by an import that did not include it"
+    )
+    imported = service.vault.connection.execute(
+        "SELECT id FROM transactions WHERE occurred_on = '2026-02-09'"
+    ).fetchone()[0]
+    assert _txn_cat(service, imported) == (entertainment, "rule"), (
+        "the rows the import DID insert are still categorised"
+    )
+
+
+def test_FIBR0213_patterns_are_folded_once_not_once_per_row(service, monkeypatch):
+    """Each pattern was ``normalise_text``-folded (NFC + split/join + casefold) once
+    per TRANSACTION ROW inside the match loop, in both ``categorize`` and
+    ``match_library`` — O(rows x patterns). Measured 0.397s -> 0.120s over 20k rows
+    x 113 patterns when folded once up front.
+
+    Counted rather than timed: a wall-clock assertion is flaky on a shared machine,
+    and the count is the property that actually changed."""
+    import finbreak.category_library as library_mod
+    import finbreak.services.categorization as cat_mod
+    from finbreak.text import normalise_text as real_normalise
+
+    rows, patterns = 12, 8
+    for i in range(rows):
+        _add_txn(service, f"MERCHANT {i}", occurred=f"2026-01-{i + 1:02d}")
+    cs = CategorizationService(service.vault)
+    groceries = _leaf_id(service, "Groceries")
+    for i in range(patterns):
+        cs.add_rule(f"pattern-{i}", groceries)
+
+    calls = 0
+
+    def counting(text: str) -> str:
+        nonlocal calls
+        calls += 1
+        return real_normalise(text)
+
+    monkeypatch.setattr(cat_mod, "normalise_text", counting)
+    monkeypatch.setattr(library_mod, "normalise_text", counting)
+    cs.apply_rules()
+
+    # Folded once: patterns + one fold per row's description. Per-row folding would
+    # be rows x patterns = 96 on its own, before the descriptions.
+    assert calls <= rows + patterns + 4, (
+        f"{calls} normalise_text calls for {rows} rows x {patterns} patterns — "
+        "the patterns are being re-folded inside the loop"
+    )
+
+
+# --------------------------------------------------------------------------- #
 # INV-15 — schema v6 -> v7
 # --------------------------------------------------------------------------- #
 def test_INV15_latest_schema_version_is_10():

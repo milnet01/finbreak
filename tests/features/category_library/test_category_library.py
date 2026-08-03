@@ -20,6 +20,7 @@ import pytest
 from conftest import _PW, spy_learning, stub_picker
 from finbreak.category_library import (
     LibraryEntry,
+    fold_entries,
     match_library,
     parse_library,
 )
@@ -34,6 +35,7 @@ from finbreak.services.categorization import (
     CategorizationService,
     _leaf_name_to_id,
     categorize_with_library,
+    fold_rules,
 )
 from finbreak.services.transactions import TransactionService
 
@@ -159,8 +161,10 @@ def test_match_library_none_cases():
 # categorize_with_library — rule beats library (INV-2)
 # --------------------------------------------------------------------------- #
 def test_categorize_with_library_rule_beats_library():
-    rules = [CategorizationRule(1, "netflix", 7, 0, "t")]
-    entries = [LibraryEntry("netflix", "Entertainment")]
+    # Pre-folded patterns since FIBR-0213 — the composer takes what `_match_inputs`
+    # produces, so the fold happens once per recompute rather than once per row.
+    rules = fold_rules([CategorizationRule(1, "netflix", 7, 0, "t")])
+    entries = fold_entries([LibraryEntry("netflix", "Entertainment")])
     assert categorize_with_library("NETFLIX", rules, entries, {"Entertainment": 5}) == (
         7,
         "rule",
@@ -168,7 +172,7 @@ def test_categorize_with_library_rule_beats_library():
 
 
 def test_categorize_with_library_library_only():
-    entries = [LibraryEntry("netflix", "Entertainment")]
+    entries = fold_entries([LibraryEntry("netflix", "Entertainment")])
     assert categorize_with_library("NETFLIX", [], entries, {"Entertainment": 5}) == (
         5,
         "library",

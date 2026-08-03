@@ -1065,7 +1065,7 @@ lands on top.
   pre-planted 0666 temp used to survive into the final backup.
   Tests: three legs in tests/features/backup, all verified red first.
 
-- 📋 [FIBR-0213] **recategorize_auto_rows rescans the whole vault inside the import transaction.**
+- ✅ [FIBR-0213] **recategorize_auto_rows rescans the whole vault inside the import transaction.**
   From the FIBR-0204 sweep (MEDIUM, verified by reading). `commit_import`'s
   comment says it will "categorise the just-inserted rows (auto/NULL)", but
   `recategorize_auto_rows` iterates `tx_repo.auto_rows()` — EVERY auto row in the
@@ -1087,6 +1087,22 @@ lands on top.
   Kind: fix.
   Lanes: services.
   Source: code-quality-review-2026-08-03.
+  Resolved (2026-08-03): both halves done, and the comment did not
+  need correcting — the CODE was changed to match what it always claimed.
+  Scoping: `recategorize_auto_rows(conn, *, min_txn_id=0)` + `auto_rows(min_txn_id
+  =)` + a new `TransactionRepository.max_id()`. `commit_import` reads max_id()
+  INSIDE its transaction just before the inserts; SQLite gives a new INTEGER
+  PRIMARY KEY row max(rowid)+1, so the boundary is exact with no per-row id
+  round-trip. A whole-vault re-file is now only the Rules tab's "Apply now" — leg
+  (b) of FIBR-0010 INV-4, which was already an explicit user action, so no new UI.
+  INV-4 + D9 updated in docs/specs/FIBR-0010.md; the feature spec's "or the next
+  import" clause no longer holds and says so. Folding: new `fold_rules` /
+  `fold_entries`, and `_match_inputs` returns folded pairs. Both one-shot matchers
+  now delegate to the same `*_folded` loop the recompute path uses, so folding
+  once cannot diverge from folding per call. MEASURED here 0.429s -> 0.067s over
+  20k rows x 113 patterns (load avg 0.35; both runs identical to 3dp). Tests:
+  counted, not timed — 12 rows x 8 patterns went 120 folds -> 20. Both legs red
+  first.
 
 - 📋 [FIBR-0214] **Theme palettes miss WCAG on borders, stripes, muted text and one focus ring.**
   From the FIBR-0204 sweep (MEDIUM x3, ratios COMPUTED with the real WCAG
