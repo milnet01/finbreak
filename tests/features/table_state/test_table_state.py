@@ -13,7 +13,12 @@ from datetime import date, timedelta
 import pytest
 import shiboken6
 from PySide6.QtCore import QPoint, QSettings, QSize, Qt
-from PySide6.QtWidgets import QTableWidget, QTableWidgetItem, QTreeWidget
+from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QTableWidget,
+    QTableWidgetItem,
+    QTreeWidget,
+)
 
 from conftest import _PW, _pump_deferred_delete
 from finbreak import paths as fb_paths
@@ -23,6 +28,8 @@ from finbreak.services.accounts import AccountService
 from finbreak.services.auth import AuthService
 from finbreak.ui._table_state import (
     SortableItem,
+    enable_sorting,
+    fill_guard,
     select_by_index,
     selected_index,
     selected_indexes,
@@ -790,3 +797,54 @@ def test_FIBR0201_INV15_select_by_index_unchanged_under_singleselection(qtbot):
     select_by_index(table, 0)
     select_by_index(table, 2)
     assert selected_index(table) == 2
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0204 — a refill must not leave the selection pointing at a different row
+# --------------------------------------------------------------------------- #
+def test_FIBR0204_refill_under_a_sort_does_not_retarget_the_selection(qtbot):
+    """A refresh while a row is selected under a non-identity sort must not
+    silently move the action target to a different row.
+
+    `fill_guard` disabled sorting for the body and restored it after, but left the
+    selection alone. Four of the five tables refill IN PLACE (`setRowCount(len)`
+    with no leading clear), so after the restore re-sorted, the still-selected
+    VISUAL row held a different item — and `selected_index` faithfully returned
+    that different item's tag. `AccountsWidget` alone cleared first, and its own
+    comment says why; the other four did not.
+
+    Reachable without anything exotic: SettingsDialog is non-modal, and saving it
+    pushes new amount/date prefs into every tab, each of which refills. Select
+    transfer pairs, change the date format, Save, click Confirm selected — and
+    `confirm_many` acts on pairs the user never chose. Row 3 of this contract only
+    covers confirm-immediately-after-sort, not sort-then-refill.
+    """
+    rows = [("T1-groceries", 1_000), ("T2-RENT", 50_000), ("T3-fuel", 10_000)]
+    table = QTableWidget()
+    table.setColumnCount(2)
+    qtbot.addWidget(table)
+    enable_sorting(table)
+    table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+    table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+
+    def refill() -> None:
+        with fill_guard(table):
+            table.setRowCount(len(rows))  # the reuse-rows shape, no leading clear
+            for row, (name, amount) in enumerate(rows):
+                table.setItem(row, 0, SortableItem(name, name))
+                table.setItem(row, 1, SortableItem(str(amount), amount))
+                tag_row(table, row, row)
+
+    refill()
+    table.sortItems(1, Qt.SortOrder.DescendingOrder)  # RENT, fuel, groceries
+    table.selectRow(1)
+    chosen = selected_index(table)
+    assert chosen == 2, "fixture: visual row 1 under this sort is T3-fuel (index 2)"
+
+    refill()  # an unrelated refresh — e.g. a Settings save pushing new prefs
+
+    after = selected_index(table)
+    assert after in (None, chosen), (
+        f"the refill retargeted the action from {rows[chosen][0]} to "
+        f"{rows[after][0]} — a wrong row-to-action map in a money app"
+    )

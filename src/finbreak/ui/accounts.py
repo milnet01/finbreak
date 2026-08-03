@@ -477,12 +477,11 @@ class AccountsWidget(QWidget):
         self._rows = rows
         self._with_pw = with_pw
         with fill_guard(self._table):
-            # CLEAR-then-fill (D6). The leading setRowCount(0) is load-bearing:
-            # the sibling's reuse-rows shape lets a surviving selection ride its
-            # item through a re-sort and land on a DIFFERENT account. Today's
-            # QListWidget cleared on every repopulate, so this preserves the
-            # existing behaviour rather than changing it (INV-22).
-            self._table.setRowCount(0)
+            # CLEAR-then-fill (D6, INV-22): a surviving selection would ride its
+            # item through the re-sort and resolve to a DIFFERENT account. The
+            # clear now lives in `fill_guard` itself (FIBR-0204) — this widget was
+            # the only one of five that had it, and the seam is where it belongs —
+            # so there is no local setRowCount(0) here any more.
             self._table.setRowCount(len(self._rows))
             for row, account in enumerate(self._rows):
                 recon_text = self._reconciliation_suffix(

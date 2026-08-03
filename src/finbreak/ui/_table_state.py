@@ -77,11 +77,33 @@ def enable_sorting(table: QTableWidget) -> None:
 
 @contextmanager
 def fill_guard(table: QTableWidget) -> Iterator[None]:
-    """Repopulate ``table`` without Qt re-sorting mid-fill: disable sorting for the
-    body, restore it after so the current sort is applied once. Safe on a table
-    that never enabled sorting (setSortingEnabled(False) is then a no-op restore)."""
+    """Repopulate ``table`` without Qt re-sorting mid-fill, and without carrying a
+    stale selection across the refill.
+
+    Two things happen on entry: sorting is disabled for the body (restored after,
+    so the current sort is applied once), and the table is **cleared**.
+
+    The clear is load-bearing, not tidiness. Every caller does a full refill, and
+    four of the five did it *in place* — ``setRowCount(len(rows))`` over the
+    existing rows. Under a non-identity sort that silently retargets the user's
+    action: the selection is held by VISUAL row, the restore re-sorts, and the
+    row the user picked now holds a different item, so ``selected_index`` returns
+    a different tag. Measured: select ``T3-fuel``, refill, and the action target
+    becomes ``T2-RENT``. It needs nothing exotic to reach — ``SettingsDialog`` is
+    non-modal, and a Save pushes new prefs into every tab, each of which refills.
+    A wrong row-to-action map in a money app is unacceptable, so this belongs in
+    the one seam rather than in five call sites (``AccountsWidget`` was the only
+    one that had it right, and it got there by hand).
+
+    After a refill nothing is selected, which is the honest state; a caller that
+    wants to restore the user's row calls ``select_by_index``.
+
+    Safe on a table that never enabled sorting (``setSortingEnabled(False)`` is
+    then a no-op restore).
+    """
     was_sorting = table.isSortingEnabled()
     table.setSortingEnabled(False)
+    table.setRowCount(0)
     try:
         yield
     finally:
