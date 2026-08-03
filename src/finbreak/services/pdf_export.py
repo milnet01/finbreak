@@ -160,7 +160,28 @@ class PdfExportService:
         pdf_bytes = self.render_pdf_bytes(options, today)
         tmp = out_path.with_name(out_path.name + ".part")
         try:
-            tmp.write_bytes(pdf_bytes)
+            # Owner-only, and never through a symlink — the same guarded open
+            # `backup.py` uses (INV-7 there), for the same reason. A report is a
+            # complete spending profile (dates, counterparties, amounts) and a
+            # blank password produces it in PLAINTEXT by design, so it must not
+            # inherit a loose umask: `Path.write_bytes` opens 0o666-and-umask and
+            # `os.replace` preserves the inode, so the FINAL pdf carried 0644/0664.
+            # The `.part` name is derived from the user-chosen output name and so
+            # is fully predictable, which is what makes the symlink plant work in
+            # any shared directory.
+            #
+            # Clear a stale `.part` from an earlier crashed export first — `unlink`
+            # removes the link itself, never its target — then create with O_EXCL
+            # so an attacker re-planting inside that window loses the race instead
+            # of having us write into their file.
+            tmp.unlink(missing_ok=True)
+            fd = os.open(
+                tmp,
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
+                0o600,
+            )
+            with os.fdopen(fd, "wb") as handle:
+                handle.write(pdf_bytes)
             os.replace(tmp, out_path)
         except BaseException:
             tmp.unlink(missing_ok=True)

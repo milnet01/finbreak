@@ -916,3 +916,41 @@ def test_read_capped_bounds_read_against_endless_symlink(service, tmp_path):
     os.symlink("/dev/zero", link)
     with pytest.raises(ValueError):
         ImportService(service.vault).read_file_bytes(str(link))
+
+
+# --------------------------------------------------------------------------- #
+# INV-4 — a structurally-broken CSV must never crash a Qt slot
+# --------------------------------------------------------------------------- #
+def test_INV4_unterminated_quote_surfaces_a_message_not_a_crash(
+    qtbot, service, tmp_path
+):
+    """A stray quote mid-file must reach the user as an error, not kill the app.
+
+    `csv.DictReader` parses lazily, so an over-long field (an unterminated quote
+    swallowing the rest of the file) raises `csv.Error` while ADVANCING the
+    reader. `csv.Error` is not a `ValueError` subclass, so the wizard's
+    `(ValueError, OSError, FinbreakError)` nets do not catch it and it escapes
+    the slot into the Qt event loop.
+
+    `csv_importer` already guards both of its own readers and both comments say
+    exactly this — but `_date_samples` in the wizard rolled a third, unguarded
+    `DictReader`. The header parses fine (it is line 1), so `_select_file` gets
+    past `read_header`, and the unmatched-profile branch then calls
+    `_autodetect_date_format()` straight into the broken rows.
+    """
+    acct = _acct(service)
+    # Header is well formed; row 2 opens a quote it never closes, so the reader
+    # accumulates the remaining bytes into one field and trips field_size_limit.
+    broken = ",".join(HEADER) + '\n2026-01-05,"' + ("x" * 200_000) + ",-10.00\n"
+    path = tmp_path / "broken.csv"
+    path.write_text(broken, encoding="utf-8")
+
+    from finbreak.ui.import_wizard import ImportWizardWidget
+
+    widget = ImportWizardWidget(service)
+    qtbot.addWidget(widget)
+    widget._account_combo.setCurrentIndex(widget._account_combo.findData(acct))
+
+    widget._select_file(str(path))  # must not raise
+
+    assert widget._error.text(), "the malformed file must surface a user-facing message"

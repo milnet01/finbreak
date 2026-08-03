@@ -17,6 +17,7 @@ import csv
 import io
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
+from typing import Any
 
 from finbreak.importers.base import ParseResult, RowError
 from finbreak.models import ColumnMapping, TransactionDraft
@@ -48,6 +49,36 @@ def read_header(text: str) -> list[str]:
     return list(fieldnames)
 
 
+def read_rows(text: str) -> list[dict[str, Any]]:
+    """Every data row of ``text``, materialised under ONE ``csv.Error`` guard.
+
+    The value type mirrors ``DictReader``'s own (``Any``) rather than the truer
+    ``str | None`` — a short row really is padded with ``None``. Callers guard for
+    that explicitly (``parse``'s ragged-row check below), but the guard narrows a
+    *separate* ``row.get(col)`` expression, which mypy cannot connect to the later
+    ``row[col]``. Declaring the tighter type here would therefore turn a pure
+    extraction into a typing change across the parse loop; the ragged-row contract
+    is stated in ``parse`` where it is enforced.
+
+    ``DictReader`` parses lazily *during iteration*, so a structurally-broken file
+    (a field over ``csv.field_size_limit`` from an unterminated quote, a stray
+    NUL, ...) raises ``csv.Error`` while the reader is being advanced — not at
+    construction. ``csv.Error`` is **not** a ``ValueError`` subclass, so the UI's
+    ``(ValueError, OSError, FinbreakError)`` nets miss it entirely and it escapes
+    the Qt slot, terminating the app. Translating it here means a malformed file
+    surfaces a message, never a crash (INV-4).
+
+    Extracted at the third call-site (coding.md § 1.3, Rule of Three): ``parse``
+    below and ``read_header`` above each carried this guard, and
+    ``ImportWizardWidget._date_samples`` rolled a third reader without it — which
+    is precisely the crash the other two comments warn about.
+    """
+    try:
+        return list(csv.DictReader(io.StringIO(text)))
+    except csv.Error as exc:
+        raise ValueError(f"the file is not valid CSV: {exc}") from exc
+
+
 class CsvImporter:
     def parse(self, text: str, mapping: ColumnMapping, exponent: int) -> ParseResult:
         """Parse ``text`` under ``mapping`` into drafts + row errors + the date
@@ -66,19 +97,9 @@ class CsvImporter:
 
         drafts: list[TransactionDraft] = []
         errors: list[RowError] = []
-        reader = csv.DictReader(io.StringIO(text))
-        # DictReader parses lazily DURING iteration, so a structural CSV error (a
-        # field over ``csv.field_size_limit`` from an unterminated quote, a stray
-        # NUL, ...) is raised while advancing the reader — OUTSIDE the per-row try
-        # below, and ``csv.Error`` is not a ``ValueError`` so the wizard's
-        # (ValueError, FinbreakError) net would miss it and crash. Materialise the
-        # rows under one guard that translates ``csv.Error`` to the friendly type
-        # (INV-4: a malformed file must never crash). The enumerate is 1-based and
-        # blank lines (which DictReader skips) never consume a number.
-        try:
-            rows = list(enumerate(reader, start=1))
-        except csv.Error as exc:
-            raise ValueError(f"the file is not valid CSV: {exc}") from exc
+        # ``read_rows`` owns the ``csv.Error`` guard (INV-4). The enumerate is
+        # 1-based and blank lines (which DictReader skips) never consume a number.
+        rows = list(enumerate(read_rows(text), start=1))
         for row_number, row in rows:
             # Ragged-row guard: a short row pads missing mapped cells with None;
             # Decimal(None)/None.strip() raise TypeError/AttributeError (outside

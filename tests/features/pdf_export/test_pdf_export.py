@@ -434,3 +434,46 @@ def test_rasterise_returns_non_empty_image(qapp):
     img = PdfExportService._rasterise(chart)
     assert not img.isNull()
     assert img.width() > 0 and img.height() > 0
+
+
+# --------------------------------------------------------------------------- #
+# INV-2 — the export temp is owner-only and never follows a symlink
+# --------------------------------------------------------------------------- #
+def test_export_temp_is_owner_only_and_final_file_inherits_it(qapp, service, tmp_path):
+    """An exported report is a full spending profile — dates, descriptions,
+    counterparties, amounts, per-account totals — and a blank password produces it
+    in PLAINTEXT by design (FIBR-0013 INV-1). It must not land group/world
+    readable just because the user's umask is loose.
+
+    `Path.write_bytes` opens 0o666-and-umask, and `os.replace` preserves the
+    inode, so the FINAL pdf carried 0644 (umask 022) or 0664 (umask 002). The
+    sibling `services/backup.py` already opens its temp `0o600` explicitly; this
+    is the same class of file with the weaker posture.
+    """
+    out = tmp_path / "report.pdf"
+    _svc(service).export(_options(), out)
+
+    mode = out.stat().st_mode & 0o777
+    assert mode == 0o600, f"exported report is mode {mode:o}, expected 600"
+
+
+def test_export_temp_refuses_to_follow_a_symlink(qapp, service, tmp_path):
+    """The `.part` name is fully predictable from the output name, so in any
+    shared or group-writable directory an attacker can pre-plant it as a symlink
+    to a file they want overwritten — `write_bytes` follows it and truncates the
+    target, as the user. `O_NOFOLLOW` is the fix, and `backup.py` already uses it.
+    """
+    target = tmp_path / "precious.txt"
+    target.write_text("do not clobber", encoding="utf-8")
+    out = tmp_path / "report.pdf"
+    (tmp_path / "report.pdf.part").symlink_to(target)
+
+    _svc(service).export(_options(), out)
+
+    # The planted link is cleared rather than written through, so the export still
+    # succeeds — what must NOT happen is the target being truncated.
+    assert target.read_text(encoding="utf-8") == "do not clobber", (
+        "the export followed a symlink and overwrote an unrelated file"
+    )
+    assert out.exists() and out.read_bytes().startswith(b"%PDF")
+    assert out.stat().st_mode & 0o777 == 0o600

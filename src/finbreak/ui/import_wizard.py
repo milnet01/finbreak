@@ -11,8 +11,6 @@ manager, so the screen is translation-ready and RTL-safe (coding.md § 5.2).
 
 from __future__ import annotations
 
-import csv
-import io
 from datetime import datetime
 from pathlib import Path
 from typing import cast
@@ -38,7 +36,7 @@ from PySide6.QtWidgets import (
 
 from finbreak.errors import FinbreakError
 from finbreak.importers.base import ParseResult
-from finbreak.importers.csv_importer import read_header
+from finbreak.importers.csv_importer import read_header, read_rows
 from finbreak.importers.date_detect import KNOWN_DATE_FORMATS, detect_date_format
 from finbreak.importers.ofx_importer import OfxImporter
 from finbreak.importers.pdf_importer import (
@@ -382,20 +380,28 @@ class ImportWizardWidget(QWidget):
             text = self._imports.read_file(path)
             header = read_header(text)  # raises ValueError on an empty file
             matched = self._imports.match_profile(header)  # raises on dup-named header
+            self._text = text
+            self._header = header
+            self._populate_mapping_combos(header)
+            if matched is not None:
+                self._run_preview(matched.column_mapping())
+            else:
+                # FIBR-0146 D5(a): an unmatched CSV gets a date-format guess over
+                # the (default) date column before the map step is shown. This is
+                # INSIDE the guard: the header is line 1, so a file whose *rows*
+                # are structurally broken parses its header fine and only trips
+                # when the detector reads the body (INV-4).
+                self._autodetect_date_format()
+                self._update_date_preview()
+                self._goto_step(_STEP_MAP)
         except (ValueError, OSError, FinbreakError) as exc:
+            # Drop the rejected text: `_text` may already have been assigned above
+            # before the failure, and leaving it set would let the map-step slots
+            # re-enter `_date_samples` on a file we just refused. `None` is the
+            # honest state — no usable file is loaded.
+            self._text = None
             self._error.setText(str(exc))
             return
-        self._text = text
-        self._header = header
-        self._populate_mapping_combos(header)
-        if matched is not None:
-            self._run_preview(matched.column_mapping())
-        else:
-            # FIBR-0146 D5(a): an unmatched CSV gets a date-format guess over the
-            # (default) date column before the map step is shown.
-            self._autodetect_date_format()
-            self._update_date_preview()
-            self._goto_step(_STEP_MAP)
 
     @staticmethod
     def _looks_like_ofx(path: str) -> bool:
@@ -804,7 +810,10 @@ class ImportWizardWidget(QWidget):
         if self._text is None:
             return []
         samples: list[str] = []
-        for row in csv.DictReader(io.StringIO(self._text)):
+        # Via ``read_rows``, NOT a bare DictReader: it carries the ``csv.Error``
+        # guard, and csv.Error is not a ValueError so an unguarded reader here
+        # escapes this widget's slots entirely (INV-4).
+        for row in read_rows(self._text):
             cell = row.get(column)
             if cell is None:
                 continue
