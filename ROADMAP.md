@@ -1367,6 +1367,51 @@ lands on top.
   Kind: fix.
   Source: code-quality-review-2026-08-03 (split out of FIBR-0216).
 
+- 📋 [FIBR-0220] **Agreeing with a "~ guess" cannot teach the app — the no-nag gate has no escape hatch.**
+  Reported by the user 2026-08-03. VERIFIED against source; the current
+  behaviour is deliberate and documented, and the gap is a missing action rather
+  than a defect.
+
+  What happens today. Right-click a `~ guess` row -> Set category -> the picker
+  opens with the guessed category ALREADY selected (`_on_set_category` passes
+  `txn.category_id`). Accepting it calls `set_manual_category`, which writes
+  `(same_id, 'manual')` — the source differs from `'library'`, so the row really
+  is written and the `~` marker clears (`transactions.py:354` renders the marker
+  only for `category_source == 'library'`). So the row IS confirmed and frozen.
+
+  But `_maybe_offer_rule` returns early when `chosen == would_categorize(desc)`
+  (`transactions.py:427`), and `would_categorize` includes the LIBRARY layer
+  (`categorization.py:293-301`, FIBR-0139 D4 — which explicitly supersedes
+  FIBR-0010 INV-5's rules-only phrasing: "confirming a library guess raises no
+  learning nag; overriding one still offers the rule"). Agreeing with a guess is
+  therefore, by construction, the one case that can never produce a rule.
+
+  Consequence: confirming a guess fixes exactly one row. The next import of the
+  same merchant is a `~ guess` again, and the user repeats the work per
+  statement. The only two routes to a persistent rule are to pick a DIFFERENT
+  category (tripping the "differs" check) or to hand-write one on the Rules tab —
+  neither discoverable from the row being looked at.
+
+  The no-nag rule itself is right and should stay: a modal offer on every
+  agreement would be intolerable. What is missing is an explicit, opt-in action.
+  Candidates, cheapest first: (a) a second context-menu item on a guessed row —
+  "Always file <merchant> here" — that skips the differs-check and opens the
+  existing `RuleEditDialog` pre-filled exactly as the learn offer does, reusing
+  `_maybe_offer_rule`'s dialog and `_apply_learned_rule` wholesale; (b) a
+  "remember this" checkbox in the CategoryPickerDialog; (c) a bulk "turn my
+  confirmed guesses into rules" pass. (a) is the smallest and is the one route
+  that starts where the user already is.
+
+  Whichever ships, the merchant-key question needs deciding: the learn offer
+  pre-fills the rule with the FULL description and tells the user to trim it to a
+  keyword. For a guess-derived rule the library's own matched pattern is the
+  better default, since it is already the generalised merchant token — but that
+  means surfacing which library pattern matched, which `match_library` currently
+  discards (it returns only the category id).
+  **Layman:** When the app guesses a category correctly, saying "yes, that's right" only fixes that one row — the next statement guesses again. There is no way to say "always file this shop here".
+  Kind: enhancement.
+  Source: user-report-2026-08-03.
+
 ## P13 — Packaging & release
 
 ### 📦 Packaging
