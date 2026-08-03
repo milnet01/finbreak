@@ -10,8 +10,12 @@ for a one-shot confirm. It borrows only the validation-gating idiom from
 
 ``CONFIRM_WORD`` is deliberately locale-independent (a plain non-``tr()`` literal):
 the field label may be translated, but the word the user types must stay the
-literal Latin ``DELETE`` — the label keeps ``DELETE`` un-translated so a localized
-label can never disable the OK gate forever.
+literal Latin ``DELETE``, so a localized label can never disable the OK gate
+forever. Until FIBR-0216 that was only *asserted* here — the word was spelled
+inside the translatable literal itself, where the extraction hands the whole
+string to a translator and a code comment cannot reach them. It is now
+interpolated into the label, which is what actually makes the guarantee hold.
+(A test greps this module for the old shape, so do not quote it back verbatim.)
 """
 
 from __future__ import annotations
@@ -66,8 +70,16 @@ class StartOverDialog(QDialog):
 
         layout = QVBoxLayout(self)
         layout.addWidget(warning)
-        # Keep DELETE un-translated — it is the literal to type (CONFIRM_WORD).
-        layout.addWidget(QLabel(self.tr("Type DELETE to confirm")))
+        # CONFIRM_WORD is INTERPOLATED, never spelled inside the tr() literal
+        # (FIBR-0216). A translator reading the .ts file sees only the string, not
+        # the comment that used to sit here asking them to leave one word alone —
+        # translate it and the dialog names a word the comparison never accepts,
+        # disabling OK forever on the app's one irreversible action. Interpolating
+        # makes the docstring's guarantee structural. Same idiom as
+        # MainWindow._about_text's version (coding.md § 5.2).
+        layout.addWidget(
+            QLabel(self.tr("Type {word} to confirm").format(word=CONFIRM_WORD))
+        )
         layout.addWidget(self._field)
         layout.addWidget(buttons)
 

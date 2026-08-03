@@ -394,11 +394,25 @@ def test_INV4a_money_round_trips_exactly(service):
         ("2026-07-01", "-12.34", ""),
         ("2026-07-01", "-12.34", "   "),
         ("not-a-date", "-12.34", "bad date"),
+        # FIBR-0216 — past SQLite's signed 64-bit INTEGER. These used to sail
+        # through here and fail at the INSERT as an OverflowError, a class no
+        # caller catches, escaping ManualEntryDialog's slot.
+        ("2026-07-01", "1E19", "too large"),
+        ("2026-07-01", "-1E19", "too large, negative"),
+        ("2026-07-01", "92233720368547758.08", "one minor unit over the bound"),
     ],
 )
 def test_INV4b_rejects_bad_money_input(occurred_on, amount, description):
     with pytest.raises(ValueError):
         parse_transaction(occurred_on, amount, description, exponent=2)
+
+
+def test_INV4b_accepts_the_largest_storable_amount():
+    """The bound is inclusive, so the largest value SQLite can hold still parses —
+    a guard that rejected it would be an off-by-one nobody would notice (FIBR-0216).
+    """
+    at_bound = parse_transaction("2026-07-01", "92233720368547758.07", "max", 2)[1]
+    assert at_bound == 2**63 - 1
 
 
 def test_INV4b_accepts_either_sign_and_large_magnitude():

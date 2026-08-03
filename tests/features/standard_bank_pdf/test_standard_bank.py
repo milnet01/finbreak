@@ -200,6 +200,34 @@ def test_INV3a_family_a_keeps_embedded_mm_dd_in_description():
     assert r.drafts[0].amount_minor == -10000  # -100,00
 
 
+def test_FIBR0216_zero_amount_row_degrades_instead_of_aborting_the_statement():
+    """A printed 0.00 line — a zero fee, "interest capitalised 0.00" — is legitimate
+    and fails `parse_transaction`'s "amount must be non-zero". Every `_draft` call
+    site was a bare loop or comprehension with no per-row guard, so that ValueError
+    propagated out of `parse` and killed the WHOLE import, reading to the user as an
+    app bug on an otherwise perfect statement. `csv_importer` degrades per row; this
+    now does too.
+
+    Deliberately NOT a hole in the all-or-nothing balance contract (INV-11): the
+    row's balance verified fine (0 == 0), and it contributes 0 to every running
+    balance, so dropping it changes no arithmetic. A balance MISMATCH still raises,
+    because that means the parse is wrong."""
+    lines = [
+        "BALANCE BROUGHT FORWARD 05 01 1,000.00",
+        "SERVICE FEE WAIVED 05 02 0.00 05 02 1,000.00",
+        "GROCERIES 05 03 100.00- 05 03 900.00",
+    ]
+    r = _parse_family_a(lines, 2, "us", ("2026-05-01", "2026-05-31"))
+
+    assert [d.amount_minor for d in r.drafts] == [-10000], (
+        "the real transaction still imports"
+    )
+    assert [e.row_number for e in r.errors] == [1], (
+        "the 0.00 row is reported, not fatal"
+    )
+    assert "non-zero" in r.errors[0].reason
+
+
 def test_INV6a_family_c_keeps_embedded_price_amount_is_last_token():
     r = _parse_family_c(["24 Apr 26 Patreon Membership 5.75 95.41"], 2, "us")
     assert r.drafts[0].description == "Patreon Membership 5.75"

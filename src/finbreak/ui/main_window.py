@@ -933,7 +933,6 @@ class MainWindow(QMainWindow):
             # retry or pick another location. Anything else is a genuine bug and is
             # left to propagate (coding.md § 2) rather than mis-reported as a save
             # error.
-            QApplication.restoreOverrideCursor()
             QMessageBox.warning(
                 self,
                 self.tr("Export failed"),
@@ -943,7 +942,13 @@ class MainWindow(QMainWindow):
                 ),
             )
             return
-        QApplication.restoreOverrideCursor()
+        finally:
+            # `finally`, not a restore on each of the three exits (FIBR-0216). The
+            # two enumerated paths each had one and the "genuine bug propagates"
+            # path had none — so exactly the case that leaves the app wedged under a
+            # wait cursor was the one not covered. Both backup handlers already got
+            # this right; this one is now their shape.
+            QApplication.restoreOverrideCursor()
         self._teardown_dialog()
         self._status(self.tr("Report exported"))
 

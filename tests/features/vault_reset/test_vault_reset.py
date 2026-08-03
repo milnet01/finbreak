@@ -8,7 +8,7 @@ under ``tmp_path`` (the ``paths`` fixture) and every INI write hits the autouse
 
 import pytest
 from PySide6.QtCore import QSettings
-from PySide6.QtWidgets import QDialog, QMessageBox
+from PySide6.QtWidgets import QDialog, QLabel, QMessageBox
 
 from conftest import _PW
 from finbreak.services.auth import AuthService
@@ -139,6 +139,36 @@ def test_INV5_ok_gated_on_exact_confirm_word(qtbot):
         assert not dialog._ok.isEnabled(), f"{bad!r} keeps OK disabled"
     dialog._field.setText(CONFIRM_WORD)
     assert dialog._ok.isEnabled(), "exact DELETE enables OK"
+
+
+def test_INV5_confirm_word_is_interpolated_not_inside_the_tr_literal(qtbot):
+    """FIBR-0216 — the module docstring says the label "keeps DELETE un-translated
+    so a localized label can never disable the OK gate forever". It did not: the
+    word sat INSIDE `tr("Type DELETE to confirm")`, and a translator reading the
+    .ts file sees only that string. Translate it and the dialog tells the user to
+    type a word the comparison will never accept, permanently disabling OK on the
+    app's one irreversible action.
+
+    The code comment above the line said "keep DELETE un-translated", which is a
+    note to the developer, not something the extraction can enforce. Interpolating
+    it makes the guarantee structural — the same idiom `_about_text` uses for the
+    version (coding.md § 5.2)."""
+    import inspect
+
+    from finbreak.ui import start_over
+
+    source = inspect.getsource(start_over)
+    assert f'tr("Type {CONFIRM_WORD}' not in source, (
+        "the confirm word is inside the translatable literal — a translator can "
+        "render it away and disable OK forever"
+    )
+
+    dialog = StartOverDialog()
+    qtbot.addWidget(dialog)
+    labels = [w.text() for w in dialog.findChildren(QLabel)]
+    assert any(CONFIRM_WORD in text for text in labels), (
+        "the rendered label still names the word to type"
+    )
 
 
 # --------------------------------------------------------------------------- #

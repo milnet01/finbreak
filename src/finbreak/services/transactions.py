@@ -22,6 +22,12 @@ from finbreak.repositories.settings import SettingsRepository
 from finbreak.repositories.transactions import TransactionRepository
 from finbreak.vault import Vault
 
+# The largest magnitude an amount can hold, in minor units: SQLite's INTEGER is a
+# signed 64-bit value, so anything past this raises OverflowError at the INSERT —
+# a class no caller catches, unlike the ValueError every other rejection here
+# raises (FIBR-0216).
+_MAX_AMOUNT_MINOR = 2**63 - 1
+
 
 def read_minor_unit_exponent(conn: dbapi2.Connection) -> int:
     """The base currency's minor-unit exponent, from ``settings`` — the single
@@ -42,8 +48,12 @@ def parse_transaction(
     """Validate one transaction's fields → ``(occurred_on, amount_minor, description)``.
 
     Raises ``ValueError`` when the description is blank, the date is not ISO-8601,
-    or the amount is non-numeric, non-finite, zero, or has more fractional digits
-    than the currency allows (rounding money would silently mutate it — INV-4b).
+    or the amount is non-numeric, non-finite, zero, past what SQLite's 64-bit
+    INTEGER can hold, or has more fractional digits than the currency allows
+    (rounding money would silently mutate it — INV-4b).
+
+    ``ValueError`` for **every** rejection is the contract, not an accident: it is
+    what `ManualEntryDialog` and `csv_importer` each catch and render (FIBR-0216).
     """
     description = description.strip()
     if not description:
@@ -73,6 +83,12 @@ def parse_transaction(
     amount_minor = to_minor(amount, exponent)
     if amount_minor == 0:
         raise ValueError("amount must be non-zero")
+    if not -_MAX_AMOUNT_MINOR <= amount_minor <= _MAX_AMOUNT_MINOR:
+        # Every other rejection here is a ValueError the callers already catch and
+        # render. Without this one a pasted "1E19" sails through and only fails at
+        # the INSERT, as an OverflowError — a different class, uncaught, escaping
+        # ManualEntryDialog's slot (FIBR-0216).
+        raise ValueError("amount is too large to store")
     return occurred_on, amount_minor, description
 
 

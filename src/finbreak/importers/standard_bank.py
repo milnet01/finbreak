@@ -29,10 +29,11 @@ from __future__ import annotations
 
 import io
 import re
+from collections.abc import Sequence
 from decimal import Decimal, InvalidOperation
 from enum import StrEnum
 
-from finbreak.importers.base import ParseResult
+from finbreak.importers.base import ParseResult, RowError
 from finbreak.importers.pdf_importer import (
     _MAX_PDF_PAGES,
     _MAX_PDF_ROWS,
@@ -585,11 +586,40 @@ def _anchor_balance(line: str, fmt: Fmt) -> Decimal | None:
 
 def _draft(
     row: int, occurred_on: str, signed: Decimal, description: str, exponent: int
-) -> TransactionDraft:
-    occurred_on, amount_minor, description = parse_transaction(
-        occurred_on, signed, description, exponent
-    )
+) -> TransactionDraft | RowError:
+    """One parsed row as a draft, or a ``RowError`` when the row itself is
+    unimportable — **degrading per row, never aborting the statement** (FIBR-0216).
+
+    Every call site is a bare loop or comprehension with no per-row guard, so a
+    ``parse_transaction`` ValueError used to propagate out of `parse` and abort the
+    WHOLE import. The reachable case is a legitimate printed ``0.00`` line — a zero
+    fee, "interest capitalised 0.00" — which fails "amount must be non-zero" and
+    read to the user as an app bug on an otherwise perfect statement.
+
+    This is **not** a hole in the all-or-nothing balance contract (INV-7b): a
+    balance MISMATCH still raises, because it means the parse is wrong and the
+    numbers cannot be trusted. A zero-amount row verified fine; it just carries no
+    money. Dropping it leaves every running balance and the credit-card
+    completeness gate untouched, since it contributes 0 to both. ``csv_importer``
+    degrades per row exactly this way."""
+    try:
+        occurred_on, amount_minor, description = parse_transaction(
+            occurred_on, signed, description, exponent
+        )
+    except ValueError as exc:
+        return RowError(row, str(exc))
     return TransactionDraft(row, occurred_on, amount_minor, description)
+
+
+def _split(
+    items: Sequence[TransactionDraft | RowError],
+) -> tuple[list[TransactionDraft], list[RowError]]:
+    """Partition ``_draft`` results into the two ``ParseResult`` channels, keeping
+    file order within each (the preview interleaves them by ``row_number``)."""
+    return (
+        [i for i in items if isinstance(i, TransactionDraft)],
+        [i for i in items if isinstance(i, RowError)],
+    )
 
 
 def _verify_row(delta: Decimal, amt_tok: str, fmt: Fmt, *, check_sign: bool) -> None:
@@ -644,13 +674,19 @@ def _parse_family_a(
         md_pairs.append((int(mm), int(dd)))
         prev_balance = balance
     years = _infer_years(md_pairs, period)
-    drafts = [
-        _draft(
-            i + 1, _iso(years[i], md_pairs[i][0], md_pairs[i][1]), delta, desc, exponent
-        )
-        for i, (desc, delta, _t, _b) in enumerate(staged)
-    ]
-    return ParseResult(drafts, [], None, None)
+    drafts, errors = _split(
+        [
+            _draft(
+                i + 1,
+                _iso(years[i], md_pairs[i][0], md_pairs[i][1]),
+                delta,
+                desc,
+                exponent,
+            )
+            for i, (desc, delta, _t, _b) in enumerate(staged)
+        ]
+    )
+    return ParseResult(drafts, errors, None, None)
 
 
 def _clean_desc(desc: str) -> str:
@@ -663,7 +699,7 @@ def _parse_family_b(lines: list[str], exponent: int, fmt: Fmt) -> ParseResult:
     ISO dates, no printed sign (delta is the sole sign source)."""
     groups = _fold(lines)
     prev_balance: Decimal | None = None
-    drafts: list[TransactionDraft] = []
+    parsed: list[TransactionDraft | RowError] = []
     row = 0
     for line, cont in groups:
         bf = _anchor_balance(line, fmt)
@@ -688,16 +724,17 @@ def _parse_family_b(lines: list[str], exponent: int, fmt: Fmt) -> ParseResult:
         _verify_row(delta, amt_tok, fmt, check_sign=False)  # B prints no amount sign
         row += 1
         full_desc = " ".join([_clean_desc(desc)] + cont).strip()
-        drafts.append(_draft(row, posting, delta, full_desc, exponent))
+        parsed.append(_draft(row, posting, delta, full_desc, exponent))
         prev_balance = balance
-    return ParseResult(drafts, [], None, None)
+    drafts, errors = _split(parsed)
+    return ParseResult(drafts, errors, None, None)
 
 
 def _parse_family_d(lines: list[str], exponent: int, fmt: Fmt) -> ParseResult:
     """Family D (Money Market) — ``YYYY MM DD desc [±R amount] R balance``."""
     groups = _fold(lines)
     prev_balance: Decimal | None = None
-    drafts: list[TransactionDraft] = []
+    parsed: list[TransactionDraft | RowError] = []
     row = 0
     for line, cont in groups:
         bf = _anchor_balance(line, fmt)
@@ -722,11 +759,12 @@ def _parse_family_d(lines: list[str], exponent: int, fmt: Fmt) -> ParseResult:
         _verify_row(delta, amt_tok, fmt, check_sign=True)
         row += 1
         full_desc = " ".join([desc.strip()] + cont).strip()
-        drafts.append(
+        parsed.append(
             _draft(row, _iso(int(y), int(mo), int(d)), delta, full_desc, exponent)
         )
         prev_balance = balance
-    return ParseResult(drafts, [], None, None)
+    drafts, errors = _split(parsed)
+    return ParseResult(drafts, errors, None, None)
 
 
 def _is_cc_skip_line(line: str) -> bool:
@@ -773,11 +811,13 @@ def _parse_family_c(lines: list[str], exponent: int, fmt: Fmt) -> ParseResult:
             # printed purchase (no sign) -> budget negative; printed credit (-) -> +.
             signed = -printed if not _is_negative(amt_tok) else printed
             staged.append((_cc_iso(date_s), desc.strip(), signed))
-    drafts = [
-        _draft(i + 1, date_iso, signed, desc, exponent)
-        for i, (date_iso, desc, signed) in enumerate(staged)
-    ]
-    return ParseResult(drafts, [], None, None)
+    drafts, errors = _split(
+        [
+            _draft(i + 1, date_iso, signed, desc, exponent)
+            for i, (date_iso, desc, signed) in enumerate(staged)
+        ]
+    )
+    return ParseResult(drafts, errors, None, None)
 
 
 def _cc_iso(date_s: str) -> str:

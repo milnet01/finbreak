@@ -1234,6 +1234,39 @@ lands on top.
   Lanes: ui, services.
   Source: code-quality-review-2026-08-03.
 
+- 📋 [FIBR-0217] **Dark-theme PDF page numbers render black on the dark page.**
+  Split out of FIBR-0216 after an implementation attempt showed it is not a
+  batched-polish-sized fix. MEASURED with pdfplumber: the footer page number
+  comes out `non_stroking_color == (0, 0, 0)` while the body text is `0.902`,
+  and the dark theme's page background genuinely renders (a filled rect
+  `(10,10)-(585,832)` in `#242830`, confirmed by rasterising — corner pixel
+  RGB(36,40,48)). The number sits inside that rect, so it is black on
+  near-black, about 1.3:1.
+
+  `QTextDocument::print_` draws that number itself using the painter's default
+  pen, and the painter is created inside `print_` — unreachable. Qt suppresses
+  its own numbering only when the document is ALREADY paginated, so the fix
+  shape is to paginate + paint the pages ourselves and draw the footer in the
+  theme's ink.
+
+  **Attempted and reverted 2026-08-03.** Reproducing what `print_` does
+  internally is version-sensitive and it regressed pagination twice against a
+  direct A/B harness: without Qt's DPI transform the whole report rendered at
+  about 1/12 scale in the page corner (1 page instead of 8); with the transform
+  applied it still came out 7 pages instead of 8 and the body glyphs landed at
+  x=10 rather than x=66, because `print_` also reserves the page-layout margins.
+  Getting this right needs its own pass with page-by-page visual verification —
+  the wrong risk to take inside a batch of small fixes, on a money report.
+
+  The A/B harness is the asset to keep: render the same HTML through
+  `doc.print_` and through the replacement, then compare page count and every
+  body glyph's (text, x0, top) via pdfplumber. Identical body glyphs + a
+  theme-coloured footer is the acceptance gate, and it makes the regression risk
+  measurable rather than hoped-at.
+  **Layman:** On a dark-themed PDF report the little page number at the bottom is black on a nearly-black background, so you cannot read it.
+  Kind: fix.
+  Source: in-session-2026-08-03 (split out of FIBR-0216).
+
 ## P13 — Packaging & release
 
 ### 📦 Packaging
