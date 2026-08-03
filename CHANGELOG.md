@@ -40,6 +40,13 @@ signaling per
 
 ### Fixed
 
+- **Update and Delete on the Accounts tab now grey out when no account is selected** (FIBR-0204)
+  They used to stay clickable after the list refreshed, and clicking them
+  did nothing at all — no change, no message. Because the form still showed
+  the account's details, it looked as though your edit simply had not
+  worked. They now grey out, so it is clear you need to pick the account
+  again.
+
 - **The import preview now shows which rows are duplicates** (FIBR-0204)
   The preview marked every row "OK" even when the summary said some were
   duplicates, so you could not tell which transactions were about to be

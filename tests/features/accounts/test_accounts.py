@@ -1627,3 +1627,47 @@ def test_INV5_account_number_column_follows_the_reveal(qtbot, service):
     widget._reveal.setChecked(False)
     assert _cell(widget, "WithNumber", _COL_NUMBER) == "•••• 7890"
     assert _cell(widget, "NoNumber", _COL_NUMBER) == ""
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0204 — Update / Delete must grey out when nothing is selected
+# --------------------------------------------------------------------------- #
+def test_FIBR0204_update_and_delete_disable_without_a_selection(qtbot, service):
+    """A button that stays clickable with nothing selected is a dead button.
+
+    `_refresh()` clears the selection (the table is repopulated inside
+    `fill_guard`), but only Forget password was ever gated on the selection —
+    Update and Delete were never `setEnabled`-ed at all. So after any refill they
+    stayed clickable, and their handlers hit `if account is None: return` and did
+    nothing, silently.
+
+    The user-visible shape: rename an account, click Update (works), notice a typo
+    in what you just typed. The form still shows the account's details on purpose
+    — `_refresh` deliberately leaves the form alone so in-progress typing is not
+    wiped — and Update is still enabled. Correct the typo, click Update, and
+    nothing happens. No change, no error, no message; the only cue is a row that
+    is no longer highlighted, which is easy to miss with a full form in front of
+    you. The other four tabs all disable coherently; Accounts was the outlier.
+    """
+    from finbreak.ui.accounts import AccountsWidget
+
+    widget = AccountsWidget(service)
+    qtbot.addWidget(widget)
+    AccountService(service.vault).add_account("Savings", "savings")
+    widget._refresh()
+
+    widget._table.selectRow(0)
+    assert widget._selected_account() is not None
+    assert widget._update_button.isEnabled(), "a selected account can be updated"
+    assert widget._delete_button.isEnabled(), "a selected account can be deleted"
+
+    widget._refresh()  # any refresh — a tab switch, a Settings save
+
+    assert widget._selected_account() is None, "the refill clears the selection"
+    assert not widget._update_button.isEnabled(), (
+        "Update must grey out with nothing selected — otherwise the click is a "
+        "silent no-op and the user cannot tell why their edit did not apply"
+    )
+    assert not widget._delete_button.isEnabled(), (
+        "Delete must grey out with nothing selected"
+    )

@@ -194,6 +194,10 @@ class AccountsWidget(QWidget):
         # Clears the selected account's remembered statement PDF password (FIBR-0128).
         # Disabled until a selected account actually has one saved; never reveals it.
         self._forget_pw_button = QPushButton(self.tr("Forget statement password"))
+        # Selection-dependent from the start: nothing is selected on a fresh
+        # build, so these must not begin life clickable (FIBR-0204).
+        self._update_button.setEnabled(False)
+        self._delete_button.setEnabled(False)
         self._forget_pw_button.setEnabled(False)
         # The "back to Home" Done button is meaningless when this widget is a
         # permanent tab, so it is not built when show_done=False (FIBR-0052
@@ -246,14 +250,30 @@ class AccountsWidget(QWidget):
         index = selected_index(self._table)
         return self._rows[index] if index is not None else None
 
-    def _apply_forget_gating(self) -> None:
-        """Enable Forget only for a selected account that has a saved statement
-        password (FIBR-0128 D3). Gating ONLY — it never touches the form, so a
-        ``_refresh()`` cannot overwrite in-progress input. Called from here and
-        from ``_refresh``; FIBR-0198's reveal handler is the third site, and it
-        is the one that makes a separate helper necessary rather than tidy,
-        because it fires with a selection LIVE."""
+    def _apply_selection_gating(self) -> None:
+        """Enable the selection-dependent buttons for the current selection.
+
+        Update and Delete need a selected account; Forget additionally needs that
+        account to have a saved statement password (FIBR-0128 D3).
+
+        Update and Delete used to be gated on nothing at all, so after a refill —
+        which clears the selection, since the table repopulates inside
+        ``fill_guard`` — they stayed clickable and their handlers hit
+        ``if account is None: return`` and did nothing. Silently: no change, no
+        error, and the form still full of the account's details, because this
+        helper deliberately never touches the form so a ``_refresh()`` cannot wipe
+        in-progress typing. The only cue was an unhighlighted row. The other four
+        tabs all re-run their gating slot at the end of a refill; Accounts was the
+        outlier (FIBR-0204).
+
+        Gating ONLY. Called from ``_on_selection_changed`` and ``_refresh``;
+        FIBR-0198's reveal handler is the third site, and it is the one that makes
+        a separate helper necessary rather than tidy, because it fires with a
+        selection LIVE.
+        """
         account = self._selected_account()
+        self._update_button.setEnabled(account is not None)
+        self._delete_button.setEnabled(account is not None)
         self._forget_pw_button.setEnabled(
             account is not None and account.id in self._with_pw
         )
@@ -299,7 +319,7 @@ class AccountsWidget(QWidget):
             finally:
                 self._table.blockSignals(False)
         # (6) the one thing step 5 suppressed that still has to happen
-        self._apply_forget_gating()
+        self._apply_selection_gating()
 
     @Slot()
     def _on_add(self) -> None:
@@ -352,7 +372,7 @@ class AccountsWidget(QWidget):
         # Gate the Forget button BEFORE the no-selection early-return, so a
         # cleared selection (every _refresh clears it) actually disables the
         # button rather than leaving it stale-enabled (FIBR-0128 D3).
-        self._apply_forget_gating()
+        self._apply_selection_gating()
         account = self._selected_account()
         if account is None:
             # Leave the form untouched — a cleared selection must not wipe
@@ -530,7 +550,7 @@ class AccountsWidget(QWidget):
                 # and silently no-ops when it is missing, which would leave every
                 # selection unresolvable with no error anywhere.
                 tag_row(self._table, row, row)
-        self._apply_forget_gating()
+        self._apply_selection_gating()
 
     @staticmethod
     def _severity_rank(recon: AccountReconciliation) -> int:
