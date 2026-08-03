@@ -2039,6 +2039,17 @@ because retrofitting them is a data migration.
   Source: indie-review-2026-07-17 (FIBR-0148 close, lane finding LOW).
   Progress (2026-07-18): starting — reproduce-first TDD. Fix: add TransactionRepository.delete_split_counts + StatementService.delete_preview (mirrors CategoryService.delete_blast_radius; UI calls service not repo), branch the confirm dialog so the overlap case names the ACTUAL removed count + reassures the shared rows stay. New overlap-path confirm test (INV-10a only covers non-overlap).
   Resolved (2026-07-18): the confirm dialog now names the ACTUAL removed count on an overlap delete. New TransactionRepository.delete_split_counts -> (removed, kept) reuses hand_off_covered's EXISTS coverage guard byte-for-byte (preview can never disagree with the delete); surfaced via StatementService.delete_preview (UI→service, never repo, mirroring CategoryService.delete_blast_radius). ui/statements.py _on_delete branches: overlap (kept>0) → "%n of its transaction(s) will be permanently removed — the rest are shared with an overlapping statement and will stay"; non-overlap keeps the original wording (now from the fresh count). VaultLockedError-guarded. Reproduce-first TDD: INV-10c (full-overlap A/B, removed==0) fails pre-fix ("its 2 transactions… cannot be undone"), green after. Self-review (too small for /indie-review, per the FIBR-0141 precedent) + gate green 1104/1, mypy 0. Commit 10ee1db.
+  Extended, not replaced, by FIBR-0201 (2026-08-03): the preview-wording
+  contract now covers the BATCH form. `delete_preview` is the batch-of-one
+  case of a new `delete_preview_many`, with its signature and result
+  unchanged. The invariant that the preview and the delete share their
+  coverage predicate byte-for-byte survives, and is now MECHANICAL rather
+  than eye-checked: four inline literals could be compared by reading, but
+  once each carries an N-placeholder run they cannot, so all four sites
+  interpolate one `_coverage_where_sql` and a test asserts the fragment
+  appears twice in each emitted statement. The batch's own trap is that
+  SUMMING per-statement previews reports 0 removed for a delete that
+  destroys transactions (measured) — one batch-aware call answers it.
 
 - ✅ [FIBR-0151] **Confirmed transfers are not reflected on the Transactions tab.**
   Reported 2026-07-18 with screenshots. In the Transfers tab, the "Confirmed
@@ -2912,7 +2923,7 @@ because retrofitting them is a data migration.
   observation was never committed, so its exact shape could not be
   replayed verbatim. Re-open if it resurfaces on a newer PySide6.
 
-- 🚧 [FIBR-0201] **Bulk-confirm transfers — tick several suggested pairs and confirm them in one click.**
+- ✅ [FIBR-0201] **Bulk-confirm transfers — tick several suggested pairs and confirm them in one click.**
   The Transfers tab today offers exactly two speeds and nothing in
   between: `_on_confirm` (`ui/transfers.py:174`) confirms the ONE
   selected candidate, and `_on_confirm_all` (`:200`) confirms every
@@ -2969,8 +2980,20 @@ because retrofitting them is a data migration.
   click toggles; no Ctrl/Shift knowledge needed for this app's audience),
   and only the SUGGESTED table widens — `_make_table` builds both transfer
   tables from one line, so it takes a parameter.
+  Resolved (2026-08-03): shipped by TDD off docs/specs/FIBR-0201.md.
+  The open design question (service `confirm_many` vs a widget loop) is
+  answered by D4/§4.3 in favour of the service: `confirm_many(pairs)`
+  confirms in the GIVEN order and the consumed-set logic MOVED there rather
+  than being copied, so `confirm_all()` is literally its caller (INV-5) and
+  the two cannot drift. `reject_many` sits alongside it (D3) — rejection
+  consumes nothing, so two selected suggestions sharing a transaction are
+  both recorded. Both record via `add_decision`, not `_record`, whose two
+  guards RAISE where a skip is wanted; `add_decision` canonicalises the pair
+  internally, so nothing about what is written changes. A skipped pair is
+  named on the status line, and `tr("Rejected.")` stays byte-for-byte at
+  n == 1 (INV-14).
 
-- 🚧 [FIBR-0202] **Bulk-delete statements — tick several, plus a Delete all button.**
+- ✅ [FIBR-0202] **Bulk-delete statements — tick several, plus a Delete all button.**
   The Statements tab deletes exactly one statement per click
   (`ui/statements.py:205`, single-select at `:94`), and there is no way
   to clear the list. Clearing out a bad import run means N confirm
@@ -3030,6 +3053,16 @@ because retrofitting them is a data migration.
   well as its `EXISTS` guard, plus both of `delete_split_counts`' arms.
   Widening only the guard would let a row be handed to a statement inside
   the batch, which the same batch then deletes.
+  Resolved (2026-08-03): shipped by TDD off the shared spec.
+  Point 3's premise was already corrected by §2.1 and the build confirms it:
+  loop ORDER does not change what survives — INV-13 measured batch against a
+  per-call loop in BOTH orders over three seeds. The real hazard was the
+  CONFIRM MESSAGE: summing per-statement previews reported removed=0 for a
+  delete that destroys two transactions. One batch-aware preview now answers
+  it. The exclusion predicate lives at FOUR sites, not two (the SET picker is
+  not EXISTS-shaped and is the easy one to miss); all four interpolate one
+  `_coverage_where_sql`, proven on the emitted SQL. The batch is one owned
+  transaction — for atomicity, not data correctness.
 
 - ✅ [FIBR-0203] **Back-fill the missing v0.1.17 GitHub release — its notes are invisible to the in-app updater.**
   `gh release list` jumps 0.1.18 → 0.1.16: there is no GitHub **release**

@@ -21,6 +21,14 @@ signaling per
 
 ## [Unreleased]
 
+### Added
+
+- **Delete several statements at once, and a Delete all button** (FIBR-0202)
+  The Statements tab takes a plural selection too, and a new Delete all clears every recorded import. The warning message states truthfully what the batch will destroy: the obvious way to build it would have said nothing is permanently removed while in fact destroying transactions. Change account still works on one statement at a time, and deleting a single statement reads exactly as it did before.
+
+- **Confirm or reject several suggested transfers at once** (FIBR-0201)
+  The Transfers tab's suggested list now takes a plural selection — click rows to tick them in or out, then Confirm or Reject the lot. Trusting eight of twelve suggestions is one click, not eight. If two of the rows you picked share a transaction only one can be confirmed, and the status line now says so rather than quietly reporting a smaller number.
+
 ## [0.1.19] - 2026-08-02
 
 ### Added
