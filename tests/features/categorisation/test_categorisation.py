@@ -20,7 +20,13 @@ from conftest import _PW, RuleStub, build_v6_vault, keyed_connection, raising_co
 from finbreak.crypto import SALT_LEN
 from finbreak.errors import VaultLockedError
 from finbreak.migrations import LATEST_SCHEMA_VERSION, run_migrations
-from finbreak.models import CategorizationRule, Category, CategoryKind, ColumnMapping
+from finbreak.models import (
+    CategorizationRule,
+    Category,
+    CategoryKind,
+    CategorySource,
+    ColumnMapping,
+)
 from finbreak.repositories.accounts import AccountRepository
 from finbreak.repositories.categories import CategoryRepository
 from finbreak.repositories.transactions import TransactionRepository
@@ -28,7 +34,10 @@ from finbreak.services.auth import AuthService
 from finbreak.services.categories import CategoryService
 from finbreak.services.categorization import (
     CategorizationService,
+    _leaf_name_to_id,
+    _match_inputs,
     categorize,
+    categorize_with_library,
 )
 from finbreak.services.import_ import ImportService
 from finbreak.text import normalise_text
@@ -1061,3 +1070,71 @@ def test_move_rule_unknown_id_is_noop(service):
     before = [r.id for r in cs.list_rules()]
     cs.move_rule(999999, "up")  # unknown id — no-op
     assert [r.id for r in cs.list_rules()] == before
+
+
+# --------------------------------------------------------------------------- #
+# INV-6a — a duplicate category name must not hijack the built-in library
+# --------------------------------------------------------------------------- #
+def test_INV6a_income_side_duplicate_does_not_capture_library_patterns(service):
+    """A same-named category on the Income side must not steal an Expenditure
+    category's library patterns.
+
+    `_leaf_name_to_id` keyed the built-in library on the BARE category name across
+    the whole tree, first-wins over `ORDER BY parent_id, ...`. Sibling-uniqueness
+    is scoped **per parent**, so `Income > Groceries` (refunds) is a legal thing to
+    create — and because the Income root is seeded first it has the lower id, so it
+    won the name. Every grocery pattern in the shipped library then filed spending
+    under an Income leaf, on the next import, silently.
+
+    The shipped library names both income (`Salary`, `Interest`) and expenditure
+    categories, so the tie cannot be broken by preferring one root — it is broken
+    by the root the DEFAULT seed puts that name under.
+    """
+    catsvc = CategoryService(service.vault)
+    conn = service.vault.connection
+    income_root = _roots(conn)["income"]
+
+    expenditure_groceries = _leaf_id(service, "Groceries")
+    income_groceries = catsvc.add_category(income_root.id, "Groceries").id
+    assert income_groceries != expenditure_groceries
+
+    name_to_id = _leaf_name_to_id(conn)
+    assert name_to_id["Groceries"] == expenditure_groceries, (
+        "the built-in library's 'Groceries' patterns must resolve to the "
+        "EXPENDITURE leaf, not a user-created Income category of the same name"
+    )
+
+    # ...and the income-side defaults still resolve to their own root.
+    assert name_to_id["Salary"] == _leaf_id(service, "Salary")
+
+
+@pytest.mark.real_library
+def test_INV6a_end_to_end_a_grocery_purchase_still_files_under_expenditure(service):
+    """The whole point of INV-6a, exercised through the REAL shipped library.
+
+    Marked `real_library` so the autouse neutraliser stands down — the finding is
+    about the shipped file's category names colliding with user-created ones, so a
+    synthetic library would not exercise it.
+    """
+    catsvc = CategoryService(service.vault)
+    conn = service.vault.connection
+    # Resolve the EXPENDITURE Groceries explicitly — `_leaf_id` takes the first by
+    # list order, which after this insert is the Income one, so using it here would
+    # make the test pass against the very bug it exists to catch.
+    expenditure_root = _roots(conn)["expenditure"].id
+    expenditure_groceries = next(
+        c.id
+        for c in CategoryRepository(conn).children_of(expenditure_root)
+        if c.name == "Groceries"
+    )
+    income_groceries = catsvc.add_category(_roots(conn)["income"].id, "Groceries").id
+
+    rules, entries, name_to_id = _match_inputs(conn)
+    category_id, source = categorize_with_library(
+        "POS PURCHASE CHECKERS HYPER SANDTON", rules, entries, name_to_id
+    )
+    assert source == CategorySource.LIBRARY.value
+    assert category_id == expenditure_groceries, (
+        "a grocery purchase must file under Expenditure > Groceries, not under "
+        f"the user's Income > Groceries ({income_groceries})"
+    )

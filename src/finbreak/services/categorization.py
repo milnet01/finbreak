@@ -24,6 +24,7 @@ from sqlcipher3 import dbapi2
 
 from finbreak import category_library
 from finbreak.db import owned_transaction
+from finbreak.migrations import DEFAULT_CATEGORIES
 from finbreak.models import CategorizationRule, Category, CategoryKind, CategorySource
 from finbreak.repositories.categories import CategoryRepository
 from finbreak.repositories.categorization_rules import CategorizationRuleRepository
@@ -33,6 +34,14 @@ from finbreak.text import normalise_text
 from finbreak.vault import Vault
 
 log = logging.getLogger(__name__)
+
+# Which Type root each SHIPPED DEFAULT category name belongs under. The built-in
+# library names its categories by bare name, and sibling-uniqueness is per parent,
+# so the same name can legitimately live under both roots — this is the tie-break
+# (INV-6a). Derived from the seed rather than restated, so the two cannot drift.
+_DEFAULT_ROOT_KIND: dict[str, str] = {
+    name: kind for kind, names in DEFAULT_CATEGORIES.items() for name in names
+}
 
 # The vault setting that gates the built-in category library (FIBR-0139 D6). Default
 # ON: absent, or any value but the string ``"false"``, reads as enabled.
@@ -63,16 +72,51 @@ def library_enabled(conn: dbapi2.Connection) -> bool:
 def _leaf_name_to_id(conn: dbapi2.Connection) -> dict[str, int]:
     """A ``{leaf category name: id}`` map over the assignable (non-root, ``parent_id
     is not None``) categories, keyed by the **exact stored name, case-sensitive** —
-    only merchant *patterns* are folded, not category names (FIBR-0139 D5). On a
-    duplicate name, **first by ``list_all`` order wins** via ``setdefault`` (a plain
-    comprehension would be last-wins), giving a deterministic first-wins over
-    ``list_all``'s ``ORDER BY parent_id, name COLLATE NOCASE, id`` (INV-6). Re-expressed
-    here as a module function (no ``self``) — a noted 3-line duplication of the
-    ``leaf_categories`` leaf predicate (coding.md § 1.3)."""
+    only merchant *patterns* are folded, not category names (FIBR-0139 D5).
+
+    **Names the shipped library uses resolve under the root the DEFAULT SEED puts
+    them under (INV-6a).** Sibling-uniqueness is scoped per *parent*, so the same
+    name legitimately exists under both Type roots — ``Income > Groceries``
+    (refunds) alongside ``Expenditure > Groceries`` is a reasonable thing for a
+    user to create. A plain first-wins over ``list_all``'s ``ORDER BY parent_id,
+    …`` then hands the name to whichever root has the lower id, and the seed
+    inserts Income first — so *every* Income-side duplicate captured the library's
+    patterns for that name and silently filed spending under an Income leaf on the
+    next import. The tie cannot be broken by preferring one root: the shipped file
+    names income categories (``Salary``, ``Interest``) as well as expenditure ones.
+    ``DEFAULT_CATEGORIES`` already records which root each of those names belongs
+    to, so that is the tie-breaker.
+
+    Names the seed does not know (user-created categories) keep the previous
+    deterministic first-wins — the library never looks them up, so the order is
+    immaterial there, and INV-6's rule is preserved for them.
+    """
+    categories = CategoryRepository(conn).list_all()
+    by_id = {c.id: c for c in categories}
+
+    def root_kind(category: Category) -> str | None:
+        """The ``kind`` of the ancestor root, or ``None`` if the chain is broken.
+        Cycle-guarded — ``leaf_categories_grouped`` carries the same guard, and a
+        corrupt tree must not hang the import."""
+        node, seen = category, {category.id}
+        while node.parent_id is not None:
+            parent = by_id.get(node.parent_id)
+            if parent is None or parent.id in seen:
+                return None
+            seen.add(parent.id)
+            node = parent
+        return node.kind
+
+    leaves = [c for c in categories if c.parent_id is not None]
     name_to_id: dict[str, int] = {}
-    for category in CategoryRepository(conn).list_all():
-        if category.parent_id is not None:
+    # Pass 1 — leaves sitting under the root the seed expects for that name.
+    for category in leaves:
+        expected = _DEFAULT_ROOT_KIND.get(category.name)
+        if expected is not None and root_kind(category) == expected:
             name_to_id.setdefault(category.name, category.id)
+    # Pass 2 — everything else, first-wins by list_all order as before (INV-6).
+    for category in leaves:
+        name_to_id.setdefault(category.name, category.id)
     return name_to_id
 
 

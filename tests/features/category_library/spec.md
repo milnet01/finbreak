@@ -46,8 +46,27 @@ would_categorize legs.
 `match_library` returns an id only when the entry's `category` resolves in the leaf
 `name_to_id` map; a renamed/deleted default drops the entry (fall-through to
 Uncategorised, never mis-filed). `_leaf_name_to_id` is **first-wins** on a duplicate
-name (`setdefault`) — a cross-parent "Misc" resolves to the `list_all`-first (Income)
-leaf.
+name (`setdefault`) for a name the default seed does not know — a cross-parent
+"Misc" resolves to the `list_all`-first (Income) leaf.
+
+## INV-6a — a duplicate of a SEEDED name resolves under the seed's own root
+
+Amended 2026-08-03 (FIBR-0204). As written, INV-6's plain first-wins also applied to
+the names the shipped library actually uses, and that was a defect rather than a
+choice: sibling-uniqueness is scoped **per parent**, so `Income > Groceries`
+(refunds) is a legal category to create, and because the seed inserts the Income
+root first it holds the lower `parent_id` — so it won the name under `ORDER BY
+parent_id, …` and captured every `Groceries` pattern in the shipped file. Grocery
+spending then filed under an *Income* leaf on the next import, silently, with the
+headline income/expenditure totals unaffected (those derive from the amount sign)
+so nothing looked wrong except the category dimension.
+
+The tie cannot be broken by preferring one root — the shipped file names income
+categories (`Salary`, `Interest`) as well as expenditure ones. It is broken by
+`DEFAULT_CATEGORIES`, which already records the root each seeded name belongs
+under; `_leaf_name_to_id` resolves those names to the leaf whose ancestor root
+matches, and falls back to INV-6's first-wins for every other name. The ancestor
+walk is cycle-guarded, like `leaf_categories_grouped`.
 
 ## INV-7 — off switch (default ON)
 
