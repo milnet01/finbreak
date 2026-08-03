@@ -17,6 +17,77 @@ from finbreak.models import Transaction
 from finbreak.repositories import last_insert_id
 
 
+def _coverage_where_sql(ids: Sequence[int]) -> tuple[str, dict[str, int]]:
+    """The shared "same account, covers this row, and NOT one of the statements
+    being deleted" ``WHERE`` fragment, plus the parameter dict that binds it.
+
+    The single source of the predicate: all **four** sites interpolate this SQL
+    element — ``hand_off_covered``'s ``SET`` picker and ``EXISTS`` guard, and both
+    of ``delete_split_counts``' counting arms — so the preview cannot describe a
+    delete that does not match it, and no row is ever handed to a statement inside
+    the batch (FIBR-0201 INV-9). Returning the params with the SQL keeps the
+    ``:del0 … :del{n-1}`` naming in ONE place; built separately they drift.
+
+    Placeholder style is pinned to **named** parameters: ``sqlite3`` refuses mixed
+    named and qmark binding in one statement, and ``hand_off_covered`` keeps a
+    scalar ``:pid`` in its outer ``WHERE``.
+
+    ``n == 0`` is a precondition failure, not an edge case to render — an empty
+    exclusion list would emit ``q.id NOT IN ()``, which SQLite rejects as a syntax
+    error. Both batch service methods return early before reaching here."""
+    if not ids:
+        raise ValueError("the coverage predicate needs at least one excluded id")
+    names = [f"del{i}" for i in range(len(ids))]
+    placeholders = ", ".join(f":{name}" for name in names)
+    sql = (
+        f"q.account_id = transactions.account_id AND q.id NOT IN ({placeholders}) "
+        "AND transactions.occurred_on BETWEEN q.period_start AND q.period_end"
+    )
+    return sql, dict(zip(names, ids, strict=True))
+
+
+def _hand_off_sql(ids: Sequence[int]) -> str:
+    """``hand_off_covered``'s statement, built at module level so a test can obtain
+    the *emitted* SQL and compare its predicates (INV-9). The ``SET`` sub-query is
+    the correlated **picker** (which statement a row is handed to) and the
+    ``EXISTS`` is the **guard** (whether it is handed off at all) — both share the
+    fragment byte-for-byte, so a row no survivor covers is never re-stamped to
+    ``NULL`` (the money-critical NULL trap)."""
+    coverage, _ = _coverage_where_sql(ids)
+    # The suppression below is deliberate, not a silenced warning: the only
+    # interpolated text is `coverage`, itself generated SQL whose variable part is
+    # generated `:delN` placeholder NAMES. No caller value reaches the statement
+    # text — the ids bind as named parameters. The underlying constraint is that a
+    # variable-length IN list cannot be written as a fixed parameter string.
+    return (
+        "UPDATE transactions SET statement_period_id = ("  # nosec B608
+        f"  SELECT q.id FROM statement_periods q WHERE {coverage} "
+        "  ORDER BY q.period_start, q.id LIMIT 1) "
+        "WHERE statement_period_id = :pid "
+        "AND EXISTS ("
+        f"  SELECT 1 FROM statement_periods q WHERE {coverage})"
+    )
+
+
+def _split_counts_sql(ids: Sequence[int]) -> str:
+    """``delete_split_counts``' statement (see ``_hand_off_sql`` for why it is
+    module-level). Its two counting arms share the same coverage fragment, so the
+    preview can never disagree with the delete it describes."""
+    coverage, _ = _coverage_where_sql(ids)
+    outer = ", ".join(f":del{i}" for i in range(len(ids)))
+    # Same reasoning as _hand_off_sql: the interpolated text is placeholder names.
+    return (
+        "SELECT "  # nosec B608
+        "  COALESCE(SUM(CASE WHEN NOT EXISTS ("
+        f"    SELECT 1 FROM statement_periods q WHERE {coverage}"
+        "  ) THEN 1 ELSE 0 END), 0), "
+        "  COALESCE(SUM(CASE WHEN EXISTS ("
+        f"    SELECT 1 FROM statement_periods q WHERE {coverage}"
+        "  ) THEN 1 ELSE 0 END), 0) "
+        f"FROM transactions WHERE statement_period_id IN ({outer})"
+    )
+
+
 class TransactionRepository:
     def __init__(self, connection: dbapi2.Connection):
         self._conn = connection
@@ -149,56 +220,57 @@ class TransactionRepository:
             (statement_period_id,),
         ).rowcount
 
-    def hand_off_covered(self, statement_period_id: int) -> int:
+    def hand_off_covered(
+        self, statement_period_id: int, deleting: Sequence[int]
+    ) -> int:
         """Re-stamp every transaction of the statement being deleted whose date a
-        **remaining** statement of the **same account** also covers, to that
+        **surviving** statement of the **same account** also covers, to that
         statement — returning the rowcount handed off (FIBR-0148 INV-1). The
         mirror of the ``_migrate_to_v6`` backfill with the polarity flipped:
         ``NOT EXISTS`` → ``EXISTS`` (hand-off-if-covered), the outer ``WHERE``
         keyed on ``= :pid`` instead of ``IS NULL``, and the ``SET`` sub-query a
         correlated pick (``ORDER BY period_start, id LIMIT 1`` — INV-5) rather
-        than a constant. The ``EXISTS`` guard shares the sub-query's predicate
-        **byte-for-byte**, so a row no remaining statement covers is never
-        re-stamped to ``NULL`` (it keeps ``:pid`` and is deleted next) — the
-        money-critical NULL trap. **Commit-free** — invoked inside
-        ``StatementService.delete_statement``'s owned transaction, **before**
-        ``delete_for_statement``. ``NULL``-stamped (manual) rows are untouched."""
-        return self._conn.execute(
-            "UPDATE transactions SET statement_period_id = ("
-            "  SELECT q.id FROM statement_periods q "
-            "  WHERE q.account_id = transactions.account_id AND q.id <> :pid "
-            "  AND transactions.occurred_on BETWEEN q.period_start AND q.period_end "
-            "  ORDER BY q.period_start, q.id LIMIT 1) "
-            "WHERE statement_period_id = :pid "
-            "AND EXISTS ("
-            "  SELECT 1 FROM statement_periods q "
-            "  WHERE q.account_id = transactions.account_id AND q.id <> :pid "
-            "  AND transactions.occurred_on BETWEEN q.period_start AND q.period_end)",
-            {"pid": statement_period_id},
-        ).rowcount
+        than a constant. **Commit-free** — invoked inside
+        ``StatementService.delete_statements``' owned transaction, **before**
+        ``delete_for_statement``. ``NULL``-stamped (manual) rows are untouched.
 
-    def delete_split_counts(self, statement_period_id: int) -> tuple[int, int]:
-        """A read-only preview of what ``delete_statement`` would do to the rows
-        stamped ``statement_period_id`` — ``(removed, kept)`` (FIBR-0149). ``kept``
-        are the rows a *remaining* same-account statement also covers (handed off,
-        so they survive); ``removed`` are the true orphans, deleted. The coverage
-        sub-query is ``hand_off_covered``'s ``EXISTS`` guard **byte-for-byte**, so
-        the preview can never disagree with the delete it describes. Commit-free;
-        never mutates. ``NULL``-stamped (manual) rows are neither counted."""
+        The outer ``WHERE`` stays scalar: this hands off **one** statement's rows,
+        while ``deleting`` excludes **the whole batch** from the coverage test, so
+        no row is handed to a statement the same batch is about to delete
+        (FIBR-0201 §4.4). ``deleting`` is required with no default — after
+        FIBR-0201 no caller omits it, and a default nothing exercises is a path no
+        test covers and a future reader trusts.
+
+        ``statement_period_id`` must itself be a member of ``deleting``: with the
+        statement absent from its own exclusion list the ``SET`` picker can
+        re-stamp a row straight back onto the statement being deleted, which the
+        period delete then orphans or FK-trips (INV-9)."""
+        if statement_period_id not in deleting:
+            raise ValueError(
+                "the statement being handed off must itself be in the deleting set"
+            )
+        sql, params = _hand_off_sql(deleting), _coverage_where_sql(deleting)[1]
+        return self._conn.execute(sql, {**params, "pid": statement_period_id}).rowcount
+
+    def delete_split_counts(
+        self, statement_period_ids: Sequence[int]
+    ) -> tuple[int, int]:
+        """A read-only preview of what deleting **this whole batch** would do to
+        the rows stamped to it — ``(removed, kept)`` (FIBR-0149, widened to a set
+        by FIBR-0201). ``kept`` are the rows a *surviving* same-account statement
+        also covers (handed off, so they survive); ``removed`` are the true
+        orphans, deleted. Commit-free; never mutates. ``NULL``-stamped (manual)
+        rows are neither counted.
+
+        The ids **are** the exclusion set — there is no second parameter, because
+        in every use the previewed set and the excluded set are the same list and a
+        pair with undefined divergent behaviour is an API a caller has to guess at
+        (§8). Summing per-statement previews instead of calling this once is the
+        measured defect FIBR-0201 §2.1 exists to prevent: it reports 0 removed for
+        a delete that destroys two transactions irreversibly."""
         removed, kept = self._conn.execute(
-            "SELECT "
-            "  COALESCE(SUM(CASE WHEN NOT EXISTS ("
-            "    SELECT 1 FROM statement_periods q "
-            "    WHERE q.account_id = transactions.account_id AND q.id <> :pid "
-            "    AND transactions.occurred_on BETWEEN q.period_start AND q.period_end"
-            "  ) THEN 1 ELSE 0 END), 0), "
-            "  COALESCE(SUM(CASE WHEN EXISTS ("
-            "    SELECT 1 FROM statement_periods q "
-            "    WHERE q.account_id = transactions.account_id AND q.id <> :pid "
-            "    AND transactions.occurred_on BETWEEN q.period_start AND q.period_end"
-            "  ) THEN 1 ELSE 0 END), 0) "
-            "FROM transactions WHERE statement_period_id = :pid",
-            {"pid": statement_period_id},
+            _split_counts_sql(statement_period_ids),
+            _coverage_where_sql(statement_period_ids)[1],
         ).fetchone()
         return removed, kept
 

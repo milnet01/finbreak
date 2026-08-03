@@ -35,10 +35,11 @@ from finbreak.services.import_ import ImportService
 from finbreak.services.statements import StatementService
 from finbreak.services.transactions import TransactionService
 from finbreak.ui import main_window
+from finbreak.ui._table_state import _ROW_INDEX_ROLE
 from finbreak.ui.accounts import AccountsWidget
 from finbreak.ui.import_wizard import ImportWizardWidget
 from finbreak.ui.main_window import MainWindow
-from finbreak.ui.statements import StatementsWidget
+from finbreak.ui.statements import _COL_PERIOD, StatementsWidget
 
 pytestmark = pytest.mark.features
 
@@ -1435,3 +1436,500 @@ def test_INV9_delete_preserves_shared_money(service):
     deleted = StatementService(service.vault).delete_statement(a.id)
     assert deleted == 0
     assert total() == before, "no money lost — shared rows handed off, not deleted"
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0201 / FIBR-0202 — multi-select bulk delete + Delete all.
+#
+# The §2.1 seed is the primary fixture, and the measured trap it reproduces is
+# that SUMMING per-statement previews reports removed=0 for a delete that in fact
+# destroys two transactions irreversibly.
+# --------------------------------------------------------------------------- #
+def _stamped_txn(conn, account_id, occurred_on, period_id, description):
+    """One transaction stamped to ``period_id`` — the batch seeds pin exactly which
+    statement owns which row, which an import's own span detection would not."""
+    conn.execute(
+        "INSERT INTO transactions("
+        "account_id, occurred_on, amount_minor, description, created_at, "
+        "statement_period_id) VALUES (?, ?, -100, ?, '2026-01-01T00:00:00+00:00', ?)",
+        (account_id, occurred_on, description, period_id),
+    )
+
+
+def _select_periods(widget, *period_ids):
+    """Select exactly the rows for ``period_ids``. Deliberately NOT via
+    ``_select_period``, which names ONE row and clears the rest (INV-15) — a leg
+    that needs two rows selected calls ``selectRow`` directly (§7)."""
+    widget._table.clearSelection()
+    for period_id in period_ids:
+        index = next(i for i, r in enumerate(widget._rows) if r.id == period_id)
+        row = next(
+            r
+            for r in range(widget._table.rowCount())
+            if widget._table.item(r, 0).data(_ROW_INDEX_ROLE) == index
+        )
+        widget._table.selectRow(row)
+
+
+def _stamps(conn):
+    """``{description: statement_period_id}`` for every surviving transaction —
+    the shape the loop-vs-batch equivalence compares (INV-13)."""
+    return dict(
+        conn.execute("SELECT description, statement_period_id FROM transactions")
+    )
+
+
+def _seed_measured_trap(service):
+    """The §2.1 seed, verbatim: ONE account, three periods — A(Jan), B(Jan–Feb),
+    C(Feb) — and three transactions, r1/r3 in January stamped to A, r2 in February
+    stamped to B. The batch under test is {A, B}."""
+    acct, conn = _acct(service), service.vault.connection
+    a = _raw_period(conn, acct, "2026-01-01", "2026-01-31")
+    b = _raw_period(conn, acct, "2026-01-01", "2026-02-28")
+    c = _raw_period(conn, acct, "2026-02-01", "2026-02-28")
+    _stamped_txn(conn, acct, "2026-01-10", a, "r1")
+    _stamped_txn(conn, acct, "2026-02-10", b, "r2")
+    _stamped_txn(conn, acct, "2026-01-20", a, "r3")
+    conn.commit()  # close the implicit write txn — the delete opens its own BEGIN
+    return acct, conn, a, b, c
+
+
+def _seed_cross_account(service):
+    """Seed 2 — a batch spanning two ACCOUNTS. The coverage predicate is
+    per-account (`q.account_id = transactions.account_id`), so neither statement
+    can affect the other's hand-off (§6)."""
+    conn = service.vault.connection
+    acct1 = _acct(service)
+    acct2 = AccountService(service.vault).add_account("Savings", "savings").id
+    p1 = _raw_period(conn, acct1, "2026-01-01", "2026-01-31")
+    p2 = _raw_period(conn, acct2, "2026-01-01", "2026-01-31")
+    # A survivor on account 2 only — it must NOT rescue account 1's row.
+    survivor = _raw_period(conn, acct2, "2026-01-01", "2026-02-28")
+    _stamped_txn(conn, acct1, "2026-01-10", p1, "one")
+    _stamped_txn(conn, acct2, "2026-01-10", p2, "two")
+    conn.commit()
+    return conn, p1, p2, survivor
+
+
+def _seed_covering_chain(service):
+    """Seed 3 — the lowest ``(period_start, id)`` covering statement is itself IN
+    the batch. X(Jan) ⊂ Y(Jan–Feb) ⊂ Z(Jan–Mar), batch {X, Y}: a LOOP hands X's row
+    to Y and then Y's to Z, while the batch hands it straight to Z. That is the
+    case where a loop's intermediate hand-off differs most (§7)."""
+    acct, conn = _acct(service), service.vault.connection
+    x = _raw_period(conn, acct, "2026-01-01", "2026-01-31")
+    y = _raw_period(conn, acct, "2026-01-01", "2026-02-28")
+    z = _raw_period(conn, acct, "2026-01-01", "2026-03-31")
+    _stamped_txn(conn, acct, "2026-01-15", x, "t1")
+    conn.commit()
+    return acct, conn, x, y, z
+
+
+# -- INV-8: the confirm message is computed from ONE batch-aware preview ------ #
+def test_FIBR0202_INV8_summed_previews_lie_where_the_batch_preview_tells_truth(service):
+    """The reproduce-first regression for the money-critical defect (§2.1,
+    measured 2026-08-02). Summing the per-statement previews says NOTHING is
+    permanently removed; the batch-aware preview says two transactions are."""
+    _acct_id, _conn, a, b, _c = _seed_measured_trap(service)
+    svc = StatementService(service.vault)
+
+    per_call = [svc.delete_preview(a), svc.delete_preview(b)]
+    assert per_call == [(0, 2), (0, 1)], "the shipped per-statement previews"
+    summed = (sum(r for r, _ in per_call), sum(k for _, k in per_call))
+    assert summed == (0, 3), "summing claims nothing is destroyed — the trap"
+
+    assert svc.delete_preview_many([a, b]) == (2, 1), (
+        "the batch-aware preview reports the truth: two rows really are destroyed"
+    )
+
+
+def test_FIBR0202_INV8_batch_preview_matches_what_the_batch_delete_does(service):
+    """The preview cannot be allowed to disagree with the delete it describes."""
+    _acct_id, conn, a, b, _c = _seed_measured_trap(service)
+    svc = StatementService(service.vault)
+    removed, kept = svc.delete_preview_many([a, b])
+
+    deleted = svc.delete_statements([a, b])
+
+    assert deleted == removed == 2
+    assert len(TransactionRepository(conn).list_all()) == kept == 1
+
+
+# -- INV-9: ONE coverage predicate, interpolated at all four sites ------------ #
+def test_FIBR0202_INV9_one_predicate_is_shared_by_all_four_sites():
+    """A name-reference grep would not prove the EMITTED predicates identical —
+    this asserts the built fragment is literally present, twice, in each query.
+    Widening the EXISTS guard but not the SET picker is the breaker: the picker
+    would then hand a row to a statement inside the batch, which the delete then
+    removes (FK trip or lost row)."""
+    from finbreak.repositories.transactions import (
+        _coverage_where_sql,
+        _hand_off_sql,
+        _split_counts_sql,
+    )
+
+    ids = [7, 9]
+    fragment, params = _coverage_where_sql(ids)
+    assert params == {"del0": 7, "del1": 9}, "the builder owns the :delN naming"
+
+    hand_off, split = _hand_off_sql(ids), _split_counts_sql(ids)
+    assert hand_off.count(fragment) == 2, (
+        "hand_off_covered's SET picker AND its EXISTS guard share the fragment"
+    )
+    assert split.count(fragment) == 2, (
+        "delete_split_counts' NOT EXISTS and EXISTS arms share the fragment"
+    )
+
+
+def test_FIBR0202_INV9_hand_off_refuses_an_id_absent_from_deleting(service):
+    """`statement_period_id` must itself be a member of `deleting`. Break it and
+    the SET picker can re-stamp a row straight back onto the statement being
+    deleted, which the period delete then orphans or FK-trips."""
+    _acct_id, conn, a, b, _c = _seed_measured_trap(service)
+    with pytest.raises(ValueError):
+        TransactionRepository(conn).hand_off_covered(a, [b])
+
+
+def test_FIBR0202_INV9_no_row_is_ever_handed_to_a_statement_in_the_batch(service):
+    """Seed 3 is the discriminator: Y is the lowest-(period_start, id) covering
+    statement and is IN the batch. A picker still keyed on `q.id <> :pid` picks Y
+    — which the same call then deletes."""
+    _acct_id, conn, x, y, z = _seed_covering_chain(service)
+    StatementService(service.vault).delete_statements([x, y])
+    assert _stamps(conn) == {"t1": z}, "handed to the SURVIVOR, never to Y"
+
+
+# -- INV-13: batch == loop, in either order, over all three seeds ------------- #
+@pytest.mark.parametrize("seed", ["trap", "cross_account", "chain"])
+@pytest.mark.parametrize("reverse", [False, True])
+def test_FIBR0202_INV13_batch_matches_a_loop_in_either_order(paths, seed, reverse):
+    """§2.1 measured order-independence on ONE seed; one hand-built case cannot
+    support a claim about batches in general. Each seed is built twice in two
+    independent vaults — once deleted as a batch, once as a loop in the given
+    order — and the surviving transactions AND their statement stamps must match."""
+
+    def _build(vault_paths):
+        svc = AuthService(*vault_paths)
+        svc.first_run(bytearray(_PW), "ZAR")
+        if seed == "trap":
+            _a, conn, p1, p2, _c = _seed_measured_trap(svc)
+        elif seed == "cross_account":
+            conn, p1, p2, _survivor = _seed_cross_account(svc)
+        else:
+            _a, conn, p1, p2, _z = _seed_covering_chain(svc)
+        ids = [p2, p1] if reverse else [p1, p2]
+        return svc, conn, ids
+
+    batch_svc, batch_conn, ids = _build((paths[0], paths[1]))
+    loop_svc, loop_conn, loop_ids = _build(
+        (paths[0].parent / "loop.db", paths[0].parent / "loop.kdf.json")
+    )
+    try:
+        batch_total = StatementService(batch_svc.vault).delete_statements(ids)
+        loop_service = StatementService(loop_svc.vault)
+        loop_total = sum(loop_service.delete_statement(pid) for pid in loop_ids)
+
+        assert _stamps(batch_conn) == _stamps(loop_conn), (
+            "the surviving rows and their statement stamps must be identical"
+        )
+        assert batch_total == loop_total, "and the reported total must agree"
+    finally:
+        batch_svc.lock()
+        loop_svc.lock()
+
+
+# -- INV-10 / INV-17: one transaction, and the batch total ------------------- #
+def test_FIBR0202_INV10_a_failure_part_way_leaves_nothing_deleted(service, paths):
+    """One owned transaction: a failure part-way through leaves NO statement
+    deleted and the vault re-openable — the property a loop of `delete_statement`
+    calls cannot offer (D5)."""
+    _acct_id, conn, a, b, _c = _seed_measured_trap(service)
+    before = _stamps(conn)
+    wedged = StatementService(StandInVault(raising_conn(conn, "DELETE FROM", "boom")))
+
+    with pytest.raises(RuntimeError):
+        wedged.delete_statements([a, b])
+
+    assert _stamps(conn) == before, "not one row deleted or handed off"
+    assert len(StatementPeriodRepository(conn).list_for_account(_acct_id)) == 3
+    # ...and the vault is still usable, not left mid-transaction.
+    assert StatementService(service.vault).delete_preview_many([a, b]) == (2, 1)
+
+
+def test_FIBR0202_INV17_delete_statements_returns_the_batch_total(service):
+    """The TOTAL across the batch, not the last id's count."""
+    acct, conn = _acct(service), service.vault.connection
+    p1 = _raw_period(conn, acct, "2026-01-01", "2026-01-31")
+    p2 = _raw_period(conn, acct, "2026-02-01", "2026-02-28")
+    _stamped_txn(conn, acct, "2026-01-10", p1, "a")
+    _stamped_txn(conn, acct, "2026-01-20", p1, "b")
+    _stamped_txn(conn, acct, "2026-02-10", p2, "c")
+    conn.commit()
+
+    assert StatementService(service.vault).delete_statements([p1, p2]) == 3
+    assert TransactionRepository(conn).list_all() == []
+
+
+def test_FIBR0202_INV17_empty_batch_short_circuits_before_the_repository(service):
+    """An empty exclusion list would emit `NOT IN ()`, a SQLite syntax error. Both
+    batch methods return early — proven against a vault whose every execute
+    raises, so reaching the repository at all would surface."""
+    conn = service.vault.connection
+    wedged = StatementService(StandInVault(raising_conn(conn, "", "any SQL at all")))
+    assert wedged.delete_statements(()) == 0
+    assert wedged.delete_preview_many(()) == (0, 0)
+
+
+# -- INV-12: the batch-of-one is today's single-statement path --------------- #
+def test_FIBR0202_INV12_delete_statement_is_the_batch_of_one(service):
+    """`delete_statement` / `delete_preview` keep their signatures, return values
+    and semantics — including the FIBR-0148 hand-off (deleting A must not lose the
+    January rows B still covers)."""
+    acct, conn, a, b = _build_full_overlap(service)
+    svc = StatementService(service.vault)
+    assert svc.delete_preview(a.id) == (0, 2), "unchanged preview"
+
+    assert svc.delete_statement(a.id) == 0, "unchanged return: nothing orphaned"
+    assert _pid_of(conn, "a1") == b.id and _pid_of(conn, "a2") == b.id
+    assert _period_files(conn, acct) == ["B.csv"]
+
+
+# -- INV-2 / INV-3 / INV-7: the widened table and its slots ------------------ #
+def test_FIBR0202_INV2_statements_table_is_multi_select(qtbot, service):
+    from PySide6.QtWidgets import QAbstractItemView
+
+    widget = StatementsWidget(service)
+    qtbot.addWidget(widget)
+    assert (
+        widget._table.selectionMode() == QAbstractItemView.SelectionMode.MultiSelection
+    )
+
+
+def test_FIBR0202_INV2_delete_acts_on_every_selected_row(qtbot, service, monkeypatch):
+    """Widening the table but leaving `_on_delete` reading `_selected_row()` — which
+    returns None for a plural selection — makes the button clickable and silently
+    do nothing, since §4.8 enables it on any non-empty selection."""
+    _acct_id, conn, a, b, _c = _seed_measured_trap(service)
+    widget = StatementsWidget(service)
+    qtbot.addWidget(widget)
+    monkeypatch.setattr(
+        QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.Yes
+    )
+    _select_periods(widget, a, b)
+
+    widget._delete_button.click()
+
+    assert widget.statement_count() == 1, "both selected statements are gone"
+    assert set(_stamps(conn)) == {"r2"}
+
+
+def test_FIBR0202_INV3_bulk_delete_resolves_ids_before_mutating(
+    qtbot, service, monkeypatch
+):
+    """Under an applied sort that actually reorders the rows: `refresh()` rebuilds
+    and re-sorts `_rows`, so an index dereferenced mid-loop can name a different
+    statement (FIBR-0113)."""
+    from PySide6.QtCore import Qt
+
+    _acct_id, conn, a, b, c = _seed_measured_trap(service)
+    widget = StatementsWidget(service)
+    qtbot.addWidget(widget)
+    # Sort by Period DESCENDING so the visual order is not the insertion order.
+    widget._table.sortItems(_COL_PERIOD, Qt.SortOrder.DescendingOrder)
+    monkeypatch.setattr(
+        QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.Yes
+    )
+    _select_periods(widget, a, b)
+
+    widget._delete_button.click()
+
+    remaining = [r.id for r in widget._rows]
+    assert remaining == [c], f"exactly the two selected statements went: {remaining}"
+
+
+def test_FIBR0202_INV7_change_account_needs_exactly_one_row(qtbot, service):
+    """Change account is single-row by design and today shares one `has_selection`
+    flag with Delete; relaxing both together leaves it clickable and silently
+    no-op, because `_on_reassign` reads `_selected_row()`."""
+    _acct_id, _conn, a, b, _c = _seed_measured_trap(service)
+    widget = StatementsWidget(service)
+    qtbot.addWidget(widget)
+    assert not widget._reassign_button.isEnabled(), "nothing selected"
+
+    _select_periods(widget, a)
+    assert widget._reassign_button.isEnabled() and widget._delete_button.isEnabled()
+
+    _select_periods(widget, a, b)
+    assert widget._delete_button.isEnabled(), "Delete widens..."
+    assert not widget._reassign_button.isEnabled(), "...Change account does not"
+
+
+# -- INV-14 / INV-16 / INV-11: the confirm wording --------------------------- #
+def test_FIBR0202_INV14_single_delete_keeps_todays_strings_byte_for_byte(
+    qtbot, service
+):
+    """D9: forcing N == 1 through a batch string would regress "Delete this
+    statement?" into "Delete 1 statement(s)?"."""
+    widget = StatementsWidget(service)
+    qtbot.addWidget(widget)
+
+    kept = widget._confirm_text(removed=1, kept=2, statements=1)
+    assert kept == (
+        "Delete this statement? 1 of its transaction(s) will be permanently "
+        "removed — the rest are shared with an overlapping statement and will "
+        "stay. This cannot be undone."
+    ), kept
+    total = widget._confirm_text(removed=3, kept=0, statements=1)
+    assert total == (
+        "Delete this statement and its 3 transaction(s)? This cannot be undone."
+    ), total
+
+
+def test_FIBR0202_INV16_batch_message_reports_two_distinct_numbers(qtbot, service):
+    """Qt binds ONE numerus per string and a second %n silently repeats the first
+    (measured, §4.5) — so a message written that way renders the statement count
+    in the transaction slot: plausible, wrong, and passing every other invariant.
+    The counts here DIFFER, so that string fails this leg."""
+    widget = StatementsWidget(service)
+    qtbot.addWidget(widget)
+
+    text = widget._confirm_text(removed=7, kept=0, statements=2)
+    assert "7" in text and "2" in text, text
+    assert "7 statement" not in text and "2 transaction" not in text, (
+        f"the two counts must not be swapped or repeated: {text!r}"
+    )
+
+
+def test_FIBR0202_batch_message_branches_are_ordered(qtbot, service):
+    """§4.5's four rows, first match wins. Two of the conditions overlap, so the
+    ORDER is the contract: a single-statement delete can never reach a batch
+    string, and an all-empty batch is not told about sharing that is not
+    happening."""
+    widget = StatementsWidget(service)
+    qtbot.addWidget(widget)
+
+    empty = widget._confirm_text(removed=0, kept=0, statements=3)
+    assert "no transactions linked" in empty, empty
+
+    shared = widget._confirm_text(removed=0, kept=4, statements=3)
+    assert "0 of their transaction(s)" in shared, shared
+    assert "will stay" not in empty
+
+    total = widget._confirm_text(removed=5, kept=0, statements=3)
+    assert "5" in total and "3" in total, total
+    assert "shared" in total.lower(), (
+        f"the kept == 0 wording must state the loss is TOTAL (D7): {total!r}"
+    )
+
+
+def test_FIBR0202_INV11_delete_all_reaches_the_total_loss_wording(
+    qtbot, service, monkeypatch
+):
+    """With every statement in the exclusion set the EXISTS guard can never find a
+    survivor, so `kept` is necessarily 0 and the total-loss wording is reached with
+    no special case — even with an overlapping pair present."""
+    _acct_id, conn, _a, _b, _c = _seed_measured_trap(service)
+    widget = StatementsWidget(service)
+    qtbot.addWidget(widget)
+    captured = {}
+
+    def _yes(parent, title, text, *a, **k):
+        captured["text"] = text
+        return QMessageBox.StandardButton.Yes
+
+    monkeypatch.setattr(QMessageBox, "question", _yes)
+    assert widget._delete_all_button.isEnabled(), "enabled whenever any is listed"
+
+    widget._delete_all_button.click()
+
+    text = captured["text"]
+    assert "3" in text, f"names all three statements: {text!r}"
+    assert "shared" in text.lower() and "staying" in text.lower(), (
+        f"states the loss is total, not that anything survives: {text!r}"
+    )
+    assert widget.statement_count() == 0
+    assert TransactionRepository(conn).list_all() == []
+
+
+def test_FIBR0202_delete_all_disabled_with_nothing_listed(qtbot, service):
+    widget = StatementsWidget(service)
+    qtbot.addWidget(widget)
+    assert widget.statement_count() == 0
+    assert not widget._delete_all_button.isEnabled()
+
+
+def test_FIBR0202_delete_all_of_one_statement_reads_as_one(qtbot, service, monkeypatch):
+    """D9 applied to Delete all: with exactly one statement listed it IS a
+    one-statement delete and uses today's wording (§4.5, intended)."""
+    acct, conn = _acct(service), service.vault.connection
+    p = _raw_period(conn, acct, "2026-01-01", "2026-01-31")
+    _stamped_txn(conn, acct, "2026-01-10", p, "only")
+    conn.commit()
+    widget = StatementsWidget(service)
+    qtbot.addWidget(widget)
+    captured = {}
+
+    def _yes(parent, title, text, *a, **k):
+        captured["text"] = text
+        return QMessageBox.StandardButton.Yes
+
+    monkeypatch.setattr(QMessageBox, "question", _yes)
+    widget._delete_all_button.click()
+    assert captured["text"].startswith("Delete this statement"), captured["text"]
+
+
+def test_FIBR0202_cancelled_bulk_delete_does_nothing(qtbot, service, monkeypatch):
+    _acct_id, conn, a, b, _c = _seed_measured_trap(service)
+    widget = StatementsWidget(service)
+    qtbot.addWidget(widget)
+    before = _stamps(conn)
+    monkeypatch.setattr(
+        QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.No
+    )
+    _select_periods(widget, a, b)
+    widget._delete_button.click()
+    assert widget.statement_count() == 3 and _stamps(conn) == before
+
+
+# -- INV-18: the shell reports the batch, once ------------------------------- #
+def test_FIBR0202_INV18_shell_reports_the_number_deleted_and_fires_once(
+    qtbot, service, monkeypatch
+):
+    """Leaving `changed = Signal()` reports "Statement deleted" after deleting
+    five; emitting per statement fires the shell's Home refresh N times and
+    reports the last one."""
+    _acct_id, _conn, a, b, _c = _seed_measured_trap(service)
+    window = _shell(qtbot, service)
+    widget = window._statements_tab
+    assert widget is not None
+    monkeypatch.setattr(
+        QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.Yes
+    )
+    emissions: list[int] = []
+    widget.changed.connect(emissions.append)
+    _select_periods(widget, a, b)
+
+    widget._delete_button.click()
+
+    assert emissions == [2], "ONE emission carrying the batch size, not one per id"
+    assert "2" in window.statusBar().currentMessage(), (
+        f"the shell names the number deleted: {window.statusBar().currentMessage()!r}"
+    )
+
+
+def test_FIBR0202_INV18_a_single_delete_still_reads_as_one(qtbot, service, monkeypatch):
+    """D9's rule applied to the shell line, as §4.8 applies it to `tr("Rejected.")`:
+    "1 statement(s) deleted" is the same regression as "Delete 1 statement(s)?"."""
+    acct, conn = _acct(service), service.vault.connection
+    p = _raw_period(conn, acct, "2026-01-01", "2026-01-31")
+    _stamped_txn(conn, acct, "2026-01-10", p, "only")
+    conn.commit()
+    window = _shell(qtbot, service)
+    widget = window._statements_tab
+    assert widget is not None
+    monkeypatch.setattr(
+        QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.Yes
+    )
+    _select_periods(widget, p)
+    widget._delete_button.click()
+    assert window.statusBar().currentMessage() == "Statement deleted"

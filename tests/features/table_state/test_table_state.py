@@ -23,7 +23,9 @@ from finbreak.services.accounts import AccountService
 from finbreak.services.auth import AuthService
 from finbreak.ui._table_state import (
     SortableItem,
+    select_by_index,
     selected_index,
+    selected_indexes,
     tag_row,
 )
 
@@ -708,3 +710,83 @@ def test_FIBR0199_reset_clear_discriminates_a_destroyed_remembered_view(qtbot, s
         "settings.remove('columns') could have erased it, since reset_columns(self) "
         "had no live view left to restore"
     )
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0201 — `selected_indexes`, the plural sibling of `selected_index`, and
+# `select_by_index` staying single-row under MultiSelection (INV-15).
+# --------------------------------------------------------------------------- #
+def _tagged_table(tags: list[int]) -> QTableWidget:
+    """A one-column table whose rows carry ``tags`` as their parallel-list index,
+    in the given visual order — so a test can pin insertion-index order against a
+    visual order that deliberately disagrees."""
+    table = QTableWidget(len(tags), 1)
+    for row, index in enumerate(tags):
+        table.setItem(row, 0, QTableWidgetItem(f"r{index}"))
+        tag_row(table, row, index)
+    table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+    table.setSelectionMode(QTableWidget.SelectionMode.MultiSelection)
+    return table
+
+
+def test_FIBR0201_selected_indexes_empty_when_nothing_selected(qtbot):
+    table = _tagged_table([0, 1, 2])
+    assert selected_indexes(table) == []
+
+
+def test_FIBR0201_selected_indexes_returns_every_selected_row(qtbot):
+    table = _tagged_table([0, 1, 2])
+    table.selectRow(0)
+    table.selectRow(2)
+    assert selected_indexes(table) == [0, 2]
+
+
+def test_FIBR0201_selected_indexes_is_insertion_order_not_visual_order(qtbot):
+    """The ordering is normative, not incidental (§4.1): it decides which of two
+    conflicting pairs `confirm_many` confirms first (INV-4). The visual order here
+    is deliberately the reverse of the insertion order, so a implementation that
+    returns rows top-to-bottom fails."""
+    table = _tagged_table([2, 1, 0])  # visual row 0 holds insertion index 2
+    table.selectRow(0)
+    table.selectRow(2)
+    assert selected_indexes(table) == [0, 2], "sorted by index value, not by row"
+
+
+def test_FIBR0201_selected_indexes_skips_an_untagged_row(qtbot):
+    table = _tagged_table([0, 1])
+    table.setRowCount(3)
+    table.setItem(2, 0, QTableWidgetItem("untagged"))  # no tag_row call
+    table.selectRow(0)
+    table.selectRow(2)
+    assert selected_indexes(table) == [0], "an untagged row contributes nothing"
+
+
+def test_FIBR0201_selected_indexes_agrees_with_selected_index_on_one_row(qtbot):
+    table = _tagged_table([7, 8])
+    table.selectRow(1)
+    assert selected_indexes(table) == [8] and selected_index(table) == 8
+
+
+def test_FIBR0201_INV15_select_by_index_stays_single_row_under_multiselection(qtbot):
+    """Measured 2026-08-02: `QTableWidget.selectRow` REPLACES the selection under
+    SingleSelection but ADDS to it under MultiSelection. Without a clearSelection()
+    first, `select_by_index` silently becomes "also select this row" the moment the
+    table widens — which turns the shipped, test-facing `_select_period` into a
+    different function (INV-15)."""
+    table = _tagged_table([0, 1, 2])
+    select_by_index(table, 0)
+    select_by_index(table, 2)
+    assert selected_indexes(table) == [2], (
+        "select_by_index names ONE row; under MultiSelection a bare selectRow adds"
+    )
+
+
+def test_FIBR0201_INV15_select_by_index_unchanged_under_singleselection(qtbot):
+    """The helper is shared with two tables this item does NOT widen
+    (transactions, accounts). There selectRow already replaces, so the added
+    clearSelection() must be a no-op — same result as today."""
+    table = _tagged_table([0, 1, 2])
+    table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+    select_by_index(table, 0)
+    select_by_index(table, 2)
+    assert selected_index(table) == 2

@@ -38,6 +38,7 @@ from finbreak.ui._table_state import (
     fill_guard,
     remember_columns,
     selected_index,
+    selected_indexes,
     tag_row,
 )
 
@@ -62,7 +63,10 @@ class TransfersWidget(QWidget):
 
         self.setWindowTitle(self.tr("Transfers"))
 
-        self._suggested = self._make_table("transfers_suggested")
+        # Only the SUGGESTED table takes a plural selection (FIBR-0201 D2/INV-1) —
+        # bulk Unlink is out of scope, and both tables share this builder, so this
+        # is a parameter rather than an edited line.
+        self._suggested = self._make_table("transfers_suggested", multi_select=True)
         self._confirmed_table = self._make_table("transfers_confirmed")
 
         self._confirm_button = QPushButton(self.tr("Confirm"))
@@ -103,7 +107,9 @@ class TransfersWidget(QWidget):
 
         self._refresh()
 
-    def _make_table(self, object_name: str) -> QTableWidget:
+    def _make_table(
+        self, object_name: str, *, multi_select: bool = False
+    ) -> QTableWidget:
         table = QTableWidget(0, 4)
         table.setObjectName(object_name)
         table.setHorizontalHeaderLabels(
@@ -116,7 +122,13 @@ class TransfersWidget(QWidget):
         )
         table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        # MultiSelection, not ExtendedSelection (D8): a plain click toggles a row in
+        # or out, with no Ctrl/Shift knowledge required of a non-technical audience.
+        table.setSelectionMode(
+            QAbstractItemView.SelectionMode.MultiSelection
+            if multi_select
+            else QAbstractItemView.SelectionMode.SingleSelection
+        )
         enable_sorting(table)  # click a header to sort; second click toggles order
         remember_columns(table)  # persist column widths across sessions (FIBR-0117)
         return table
@@ -162,7 +174,7 @@ class TransfersWidget(QWidget):
 
     @Slot()
     def _on_selection_changed(self) -> None:
-        suggested = self._selected_row(self._suggested) is not None
+        suggested = bool(self._selected_rows())
         self._confirm_button.setEnabled(suggested)
         self._reject_button.setEnabled(suggested)
         self._confirm_all_button.setEnabled(bool(self._candidates))
@@ -170,30 +182,61 @@ class TransfersWidget(QWidget):
             self._selected_row(self._confirmed_table) is not None
         )
 
+    def _selected_pairs(self) -> list[tuple[int, int]]:
+        """The selected suggestions as ``(debit_id, credit_id)`` domain ids,
+        resolved **before** any mutation (INV-3). Never dereference
+        ``self._candidates[i]`` mid-loop: ``_refresh()`` rebuilds and re-sorts it,
+        so an index resolved before the mutation and used after it can name a
+        different pair (FIBR-0113)."""
+        return [
+            (self._candidates[i].debit.id, self._candidates[i].credit.id)
+            for i in self._selected_rows()
+        ]
+
     @Slot()
     def _on_confirm(self) -> None:
-        index = self._selected_row(self._suggested)
-        if index is None:
+        pairs = self._selected_pairs()
+        if not pairs:
             return
-        candidate = self._candidates[index]
         try:
-            self._detection.confirm(candidate.debit.id, candidate.credit.id)
+            count = self._detection.confirm_many(pairs)
         except VaultLockedError:
             return  # auto-lock fired mid-click; the workspace is being torn down
-        self._status.setText(self.tr("Confirmed %n transfer(s).", "", 1))
+        self._status.setText(self._confirmed_status(len(pairs), count))
         self._refresh()
+
+    def _confirmed_status(self, asked: int, confirmed: int) -> str:
+        """The Confirmed status line, naming any pair the consumed-set skipped.
+        A user who deliberately selected five rows and got three is owed the
+        reason; under ``Confirm all`` the same drop is invisible by design, which
+        is why it never needed saying before (§4.8)."""
+        text = self.tr("Confirmed %n transfer(s).", "", confirmed)
+        skipped = asked - confirmed
+        if skipped > 0:
+            text += " " + self.tr(
+                "%n suggestion(s) were skipped — they share a transaction with a "
+                "transfer you just confirmed.",
+                "",
+                skipped,
+            )
+        return text
 
     @Slot()
     def _on_reject(self) -> None:
-        index = self._selected_row(self._suggested)
-        if index is None:
+        pairs = self._selected_pairs()
+        if not pairs:
             return
-        candidate = self._candidates[index]
         try:
-            self._detection.reject(candidate.debit.id, candidate.credit.id)
+            count = self._detection.reject_many(pairs)
         except VaultLockedError:
             return
-        self._status.setText(self.tr("Rejected."))
+        # n == 1 keeps today's string byte-for-byte: "Rejected 1 transfer(s)." is
+        # the same regression D9 forbids on the Statements tab (INV-14).
+        self._status.setText(
+            self.tr("Rejected.")
+            if count == 1
+            else self.tr("Rejected %n transfer(s).", "", count)
+        )
         self._refresh()
 
     @Slot()
@@ -218,6 +261,12 @@ class TransfersWidget(QWidget):
         self._refresh()
 
     # --- test / shell accessors -------------------------------------------- #
+    def _selected_rows(self) -> list[int]:
+        # The tagged parallel-list indexes of every selected suggestion, in
+        # insertion order — which is candidate order, so it decides which of two
+        # conflicting pairs confirm_many keeps (INV-4).
+        return selected_indexes(self._suggested)
+
     def _selected_row(self, table: QTableWidget) -> int | None:
         # The tagged parallel-list index of the selection — correct after a re-sort
         # (the visual row order can differ from _candidates/_confirmed order).

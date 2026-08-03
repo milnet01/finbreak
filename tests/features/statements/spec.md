@@ -80,3 +80,38 @@ fixture, as the FIBR-0007 import tests do). No network, no real financial data;
 the user's real credit-card PDF is for manual end-to-end validation only — never
 committed, its password never written. Backfill tests build a raw v5 vault via
 `conftest.build_v5_vault` and run the real `_migrate_to_v6`.
+
+**FIBR-0201 / FIBR-0202 — multi-select bulk delete + Delete all.**
+
+- **INV-2 / INV-7 (bulk)** — `statements_table` is `MultiSelection` and *Delete
+  selected* acts on every selected row; *Change account* stays single-row and is
+  disabled on a plural selection (the two shared one `has_selection` flag, and
+  relaxing both would leave it clickable and silently no-op).
+- **INV-8 (the measured trap)** — the reproduce-first regression. On the §2.1
+  seed the shipped per-statement previews are `(0, 2)` and `(0, 1)`, so summing
+  them claims **nothing** is permanently removed; the batch-aware
+  `delete_preview_many` reports `(2, 1)` — the truth — and the confirm message is
+  built from it.
+- **INV-9** — one coverage predicate, interpolated at **four** sites. Asserted on
+  the *emitted* SQL (the fragment appears twice in each of `_hand_off_sql` and
+  `_split_counts_sql`), because a name-reference grep would not prove them
+  identical. Plus: `hand_off_covered` refuses an id absent from `deleting`, and
+  no row is ever handed to a statement inside the batch.
+- **INV-10 / INV-12 / INV-17** — the batch is one owned transaction (a wedged
+  delete leaves nothing deleted and the vault re-openable); `delete_statement` /
+  `delete_preview` are the batch-of-one with signatures and results unchanged;
+  the return is the batch **total**, and an empty batch short-circuits before the
+  repository (an empty exclusion list would emit `NOT IN ()`, a syntax error).
+- **INV-13** — batch equals a per-call loop, **in either order**, over three
+  seeds: the §2.1 seed, a cross-account batch (the predicate is per-account), and
+  a chain where the lowest-`(period_start, id)` covering statement is itself in
+  the batch. Each seed is built twice in two independent vaults and the surviving
+  rows *and their statement stamps* compared.
+- **INV-11 / INV-14 / INV-16** — the confirm wording, via the pure
+  `_confirm_text(removed, kept, statements)` helper (`_on_delete` uses a blocking
+  `QMessageBox.question`, so no leg could observe a string built inside it). One
+  statement uses today's two strings byte-for-byte; the four branches are
+  **ordered**, and INV-16 passes counts that **differ** so a two-`%n` string —
+  which Qt silently binds to one numerus — fails.
+- **INV-18** — `changed` carries the batch size and fires **once** per batch; the
+  shell names the number deleted, keeping "Statement deleted" at n == 1.

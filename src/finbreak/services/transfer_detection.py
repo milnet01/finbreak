@@ -13,6 +13,7 @@ call), and records the user's confirm/reject/unlink decisions — never touching
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 
 from sqlcipher3 import dbapi2
 
@@ -106,24 +107,62 @@ class TransferDetectionService:
         self._transfers().delete_confirmed(pair_id)
         log.info("transfer unlinked")
 
-    def confirm_all(self) -> int:
-        """Confirm every current candidate, greedily + consumption-safe (INV-4/D7):
-        iterate the deterministic candidate order, skipping any pair whose debit or
-        credit an earlier confirm in this pass already consumed, and return the count
-        committed. So a debit matching two credits is confirmed against the first and
-        its second candidate is dropped — never a double-link."""
+    def confirm_many(self, pairs: Sequence[tuple[int, int]]) -> int:
+        """Confirm each pair in the given order, greedily + consumption-safe
+        (INV-4/D7): skip any pair whose debit or credit an earlier confirm **in
+        this pass** consumed, and return the count committed. So a debit matching
+        two credits is confirmed against whichever pair came first and the other is
+        dropped — never a double-link, never a raise at the user.
+
+        The consumption hazard is not specific to "all": a user can equally select
+        two suggestions that share a transaction (FIBR-0201 D3). Order is the
+        caller's — ``selected_indexes`` insertion order for a selection, the live
+        candidate order for ``confirm_all`` — and it decides which of two
+        conflicting pairs wins.
+
+        Calls ``add_decision`` directly rather than ``_record``, exactly as
+        ``confirm_all`` did: ``_record``'s two guards both **raise**, and the
+        consumed-set already covers the first while the second is unreachable for
+        pairs resolved from a live candidate list. Routing through it would turn a
+        skip into an exception at the user. Nothing about what is *written*
+        changes — ``_record`` only guards, and ``add_decision`` canonicalises the
+        pair internally (``min``/``max``) whether or not ``_record`` was
+        involved."""
+        repo = self._transfers()
         consumed: set[int] = set()
         count = 0
-        for debit_id, credit_id in self._transfers().candidate_pairs():
+        for debit_id, credit_id in pairs:
             if debit_id in consumed or credit_id in consumed:
                 continue
-            self._transfers().add_decision(
-                debit_id, credit_id, TransferStatus.CONFIRMED.value
-            )
+            repo.add_decision(debit_id, credit_id, TransferStatus.CONFIRMED.value)
             consumed.update((debit_id, credit_id))
             count += 1
         log.info("confirmed %d transfer(s)", count)
         return count
+
+    def reject_many(self, pairs: Sequence[tuple[int, int]]) -> int:
+        """Reject each pair, returning the count recorded (FIBR-0201 D3/INV-6).
+        Rejection consumes nothing — a rejected transaction is still free to pair
+        with another — so this is a plain loop with no consumed-set.
+
+        Like ``confirm_many`` it records via ``add_decision`` rather than
+        ``_record``: a rejection of an already-decided pair is not reachable from a
+        live candidate list, and a raise at the user would be the wrong outcome if
+        it ever were. It lives here rather than in the widget because the widget
+        never contains decision logic in this codebase."""
+        repo = self._transfers()
+        count = 0
+        for debit_id, credit_id in pairs:
+            repo.add_decision(debit_id, credit_id, TransferStatus.REJECTED.value)
+            count += 1
+        log.info("rejected %d transfer(s)", count)
+        return count
+
+    def confirm_all(self) -> int:
+        """Confirm every current candidate, in the deterministic candidate order.
+        Literally ``confirm_many`` over that order — the consumed-set logic lives
+        there, not in a second copy that could drift (INV-5)."""
+        return self.confirm_many(self._transfers().candidate_pairs())
 
     # -- helpers --------------------------------------------------------------
     def _record(self, debit_id: int, credit_id: int, status: TransferStatus) -> None:

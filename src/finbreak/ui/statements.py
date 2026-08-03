@@ -38,6 +38,7 @@ from finbreak.ui._table_state import (
     remember_columns,
     select_by_index,
     selected_index,
+    selected_indexes,
     tag_row,
 )
 from finbreak.ui.account_picker import AccountPickerDialog
@@ -52,7 +53,11 @@ _COL_COUNT = 4
 
 
 class StatementsWidget(QWidget):
-    changed = Signal()  # a delete succeeded — the shell refreshes Home + the count
+    # A delete succeeded — the shell refreshes Home + the count. The payload is the
+    # NUMBER of statements deleted, emitted once per batch (not per statement), so
+    # the shell can report "2 statements deleted" instead of the singular it used
+    # to say after deleting five (FIBR-0201 INV-18).
+    changed = Signal(int)
     reassigned = Signal()  # a Change-account move succeeded (FIBR-0059) — distinct
     # from `changed` because the shell's `changed` handler reports "Statement
     # deleted"; a move shows its own message.
@@ -91,7 +96,9 @@ class StatementsWidget(QWidget):
         )
         self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        # MultiSelection, not ExtendedSelection (FIBR-0201 D8/INV-2): a plain click
+        # toggles a row in or out, needing no Ctrl/Shift knowledge.
+        self._table.setSelectionMode(QAbstractItemView.SelectionMode.MultiSelection)
         enable_sorting(self._table)  # click a header to sort; second click toggles
         remember_columns(self._table)  # persist column widths across sessions
 
@@ -101,11 +108,15 @@ class StatementsWidget(QWidget):
         self._delete_button = QPushButton(self.tr("Delete selected"))
         self._delete_button.setObjectName("button_delete_statement")
         self._delete_button.setEnabled(False)  # no selection yet
+        self._delete_all_button = QPushButton(self.tr("Delete all"))
+        self._delete_all_button.setObjectName("button_delete_all_statements")
+        self._delete_all_button.setEnabled(False)  # nothing listed yet
 
         actions = QHBoxLayout()
         actions.addStretch()
         actions.addWidget(self._reassign_button)
         actions.addWidget(self._delete_button)
+        actions.addWidget(self._delete_all_button)
 
         layout = QVBoxLayout(self)
         layout.addWidget(self._table)
@@ -113,6 +124,7 @@ class StatementsWidget(QWidget):
 
         self._reassign_button.clicked.connect(self._on_reassign)
         self._delete_button.clicked.connect(self._on_delete)
+        self._delete_all_button.clicked.connect(self._on_delete_all)
         self._table.itemSelectionChanged.connect(self._on_selection_changed)
 
         self.refresh()
@@ -151,13 +163,20 @@ class StatementsWidget(QWidget):
                 for col, item in items.items():
                     self._table.setItem(row, col, item)
                 tag_row(self._table, row, row)
+        # Enabled whenever any statement is listed, mirroring Confirm all's
+        # `bool(self._candidates)` on the Transfers tab (§4.8).
+        self._delete_all_button.setEnabled(bool(self._rows))
         self._on_selection_changed()
 
     @Slot()
     def _on_selection_changed(self) -> None:
-        has_selection = self._selected_row() is not None
-        self._reassign_button.setEnabled(has_selection)
-        self._delete_button.setEnabled(has_selection)
+        selected = self._selected_rows()
+        # Delete widens to any non-empty selection; Change account does NOT — it is
+        # single-row by design, and relaxing both together (they shared one flag)
+        # would leave it clickable and silently no-op, since `_on_reassign` reads
+        # `_selected_row()`, which returns None for a plural selection (INV-7).
+        self._reassign_button.setEnabled(len(selected) == 1)
+        self._delete_button.setEnabled(bool(selected))
 
     @Slot()
     def _on_reassign(self) -> None:
@@ -201,42 +220,101 @@ class StatementsWidget(QWidget):
         self.refresh()
         self.reassigned.emit()
 
-    @Slot()
-    def _on_delete(self) -> None:
-        index = self._selected_row()
-        if index is None:
-            return
-        statement = self._rows[index]
-        try:
-            removed, kept = self._statements.delete_preview(statement.id)
-        except VaultLockedError:
-            return  # locked mid-click; the tab is being torn down (mirrors below)
-        if kept:
-            # An overlap delete: rows a remaining statement also covers survive, so
-            # naming the full linked count would over-state the loss (FIBR-0149).
-            message = self.tr(
-                "Delete this statement? %n of its transaction(s) will be "
-                "permanently removed — the rest are shared with an overlapping "
-                "statement and will stay. This cannot be undone.",
-                "",
-                removed,
-            )
-        else:
-            message = self.tr(
+    def _confirm_text(self, removed: int, kept: int, statements: int) -> str:
+        """The delete confirmation message — a pure function of the three counts,
+        so the invariants guarding this money-critical wording can assert it
+        without observing a string produced inside a blocking modal (§4.4).
+
+        A **method**, not a module-level function, so every string keeps going
+        through ``self.tr`` in the ``StatementsWidget`` translation context — which
+        is what INV-14's byte-for-byte claim about today's strings depends on.
+
+        The four branches are **ordered**; the first match wins, and the order is
+        the contract because two of the conditions overlap (§4.5):
+
+        1. one statement -> today's two shipped strings, byte-for-byte (D9), so a
+           single delete can never reach a batch string;
+        2. nothing linked at all -> `list_statements` deliberately keeps
+           zero-linked statements (FIBR-0052 INV-7b), and an empty-import batch
+           must not be told about sharing that is not happening;
+        3. something is shared -> the honest count, including ``removed == 0``;
+        4. otherwise -> the total-loss wording, which **Delete all** always reaches
+           (§4.7) and which must state the totality (D7).
+
+        ``%n`` binds the TRANSACTION count, as today's strings do; the statement
+        count is interpolated with ``str.format``. That split is not a style
+        choice: Qt binds one numerus per string and a second ``%n`` silently
+        repeats the first (measured), so a two-``%n`` string would render the
+        statement count in the transaction slot — plausible, and wrong (INV-16)."""
+        if statements == 1:
+            if kept:
+                # An overlap delete: rows a remaining statement also covers survive,
+                # so naming the full linked count over-states the loss (FIBR-0149).
+                return self.tr(
+                    "Delete this statement? %n of its transaction(s) will be "
+                    "permanently removed — the rest are shared with an overlapping "
+                    "statement and will stay. This cannot be undone.",
+                    "",
+                    removed,
+                )
+            return self.tr(
                 "Delete this statement and its %n transaction(s)? "
                 "This cannot be undone.",
                 "",
                 removed,
             )
+        if removed == 0 and kept == 0:
+            return self.tr(
+                "Delete {k} statements? They have no transactions linked to them."
+            ).format(k=statements)
+        if kept:
+            return self.tr(
+                "Delete {k} statements? %n of their transaction(s) will be "
+                "permanently removed — the rest are shared with a statement that "
+                "is staying, and will survive with it. This cannot be undone.",
+                "",
+                removed,
+            ).format(k=statements)
+        return self.tr(
+            "Delete {k} statements and every one of their %n transaction(s)? "
+            "Nothing is shared with a statement that is staying, so all of them "
+            "are permanently removed. This cannot be undone.",
+            "",
+            removed,
+        ).format(k=statements)
+
+    @Slot()
+    def _on_delete(self) -> None:
+        self._delete_batch(self._selected_ids())
+
+    @Slot()
+    def _on_delete_all(self) -> None:
+        # The same operation with the selection implied, not a second code path
+        # (D6): with every statement in the exclusion set the coverage guard can
+        # never find a survivor, so `kept` is necessarily 0 and the total-loss
+        # wording falls out with no special case (INV-11).
+        self._delete_batch([statement.id for statement in self._rows])
+
+    def _delete_batch(self, ids: list[int]) -> None:
+        """Confirm and delete ``ids`` — already resolved to domain ids **before**
+        any mutation (INV-3), because `refresh()` rebuilds and re-sorts `_rows`."""
+        if not ids:
+            return
+        try:
+            removed, kept = self._statements.delete_preview_many(ids)
+        except VaultLockedError:
+            return  # locked mid-click; the tab is being torn down (mirrors below)
         confirmed = QMessageBox.question(
             self,
             self.tr("Delete statement"),
-            message,
+            self._confirm_text(removed, kept, len(ids)),
         )
         if confirmed != QMessageBox.StandardButton.Yes:
             return
         try:
-            self._statements.delete_statement(statement.id)
+            # One call, so the catch wraps the WHOLE batch — a lock half-way
+            # through a loop would leave a count that did not land (§6).
+            self._statements.delete_statements(ids)
         except VaultLockedError:
             # An idle auto-lock can fire while this (nested, untracked) confirm box
             # is open — the vault is then closed and this whole workspace is being
@@ -245,7 +323,7 @@ class StatementsWidget(QWidget):
             # locked-vault error keeps the click from crashing the slot.
             return
         self.refresh()
-        self.changed.emit()
+        self.changed.emit(len(ids))  # ONCE per batch, carrying its size (INV-18)
 
     def set_datetime_prefs(self, prefs: DateTimePrefs) -> None:
         """Adopt new display prefs and re-render, so a Settings change takes
@@ -261,6 +339,16 @@ class StatementsWidget(QWidget):
     def _selected_row(self) -> int | None:
         # The tagged parallel-list index of the selection — correct after a re-sort.
         return selected_index(self._table)
+
+    def _selected_rows(self) -> list[int]:
+        # Every selected row's tagged index — the plural sibling used by Delete.
+        return selected_indexes(self._table)
+
+    def _selected_ids(self) -> list[int]:
+        # Resolved to statement ids BEFORE any mutation (INV-3): `refresh()`
+        # rebuilds and re-sorts `_rows`, so an index dereferenced mid-delete can
+        # name a different statement (FIBR-0113).
+        return [self._rows[i].id for i in self._selected_rows()]
 
     def _select_period(self, period_id: int) -> None:
         """Select the row for ``period_id`` (used by the UI tests)."""

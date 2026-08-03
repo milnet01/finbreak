@@ -1425,9 +1425,19 @@ class MainWindow(QMainWindow):
             self._home_tab.refresh()
             self._refresh_count(self._home_tab.transaction_count())
 
-    def _on_statement_changed(self) -> None:
+    def _on_statement_changed(self, deleted: int) -> None:
+        # `changed` carries the batch size (FIBR-0201 INV-18) — reporting the
+        # singular after deleting five was the defect. n == 1 keeps today's string
+        # byte-for-byte, as `tr("Rejected.")` does on the Transfers tab (D9): "1
+        # statement(s) deleted" is the same regression the batch wording exists to
+        # avoid. A widened signal into a zero-argument slot raises, so this moved
+        # with the signal, in the same change.
         self._refresh_after_statement_change()
-        self._status(self.tr("Statement deleted"))
+        self._status(
+            self.tr("Statement deleted")
+            if deleted == 1
+            else self.tr("%n statements deleted", "", deleted)
+        )
 
     def _on_statement_reassigned(self) -> None:
         # A Change-account move (FIBR-0059) — its own status message, NOT the

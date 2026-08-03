@@ -2912,7 +2912,7 @@ because retrofitting them is a data migration.
   observation was never committed, so its exact shape could not be
   replayed verbatim. Re-open if it resurfaces on a newer PySide6.
 
-- 📋 [FIBR-0201] **Bulk-confirm transfers — tick several suggested pairs and confirm them in one click.**
+- 🚧 [FIBR-0201] **Bulk-confirm transfers — tick several suggested pairs and confirm them in one click.**
   The Transfers tab today offers exactly two speeds and nothing in
   between: `_on_confirm` (`ui/transfers.py:174`) confirms the ONE
   selected candidate, and `_on_confirm_all` (`:200`) confirms every
@@ -2970,7 +2970,7 @@ because retrofitting them is a data migration.
   and only the SUGGESTED table widens — `_make_table` builds both transfer
   tables from one line, so it takes a parameter.
 
-- 📋 [FIBR-0202] **Bulk-delete statements — tick several, plus a Delete all button.**
+- 🚧 [FIBR-0202] **Bulk-delete statements — tick several, plus a Delete all button.**
   The Statements tab deletes exactly one statement per click
   (`ui/statements.py:205`, single-select at `:94`), and there is no way
   to clear the list. Clearing out a bad import run means N confirm

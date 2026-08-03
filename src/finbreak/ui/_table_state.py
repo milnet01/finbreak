@@ -108,11 +108,38 @@ def selected_index(table: QTableWidget) -> int | None:
     return int(key) if key is not None else None
 
 
+def selected_indexes(table: QTableWidget) -> list[int]:
+    """The parallel-list indexes of every selected row, sorted ascending **by index
+    value** (i.e. in the order the rows were inserted, NOT their current visual
+    order — the two differ after a sort). An untagged row contributes nothing
+    (where ``selected_index`` returns None for one). Empty when nothing is selected.
+
+    The plural sibling of ``selected_index``, which is deliberately single-row and
+    is used in five files. The ordering is normative, not incidental: it is the
+    order ``confirm_many`` consumes, so it decides which of two conflicting pairs
+    wins (FIBR-0201 INV-4)."""
+    found: list[int] = []
+    for row in {i.row() for i in table.selectedItems()}:
+        item = table.item(row, 0)
+        key = None if item is None else item.data(_ROW_INDEX_ROLE)
+        if key is not None:
+            found.append(int(key))
+    return sorted(found)
+
+
 def select_by_index(table: QTableWidget, index: int) -> None:
-    """Select the row whose tag == ``index`` (post-sort safe)."""
+    """Select the row whose tag == ``index`` (post-sort safe), and **only** it.
+
+    The leading ``clearSelection`` is load-bearing, not hygiene: ``selectRow``
+    *replaces* the selection under ``SingleSelection`` but *adds* to it under
+    ``MultiSelection`` (measured 2026-08-02), so without it this helper silently
+    becomes "also select this row" on a widened table — turning the shipped
+    ``StatementsWidget._select_period`` into a different function (FIBR-0201
+    INV-15). A no-op on the two tables that stay single-select."""
     for row in range(table.rowCount()):
         item = table.item(row, 0)
         if item is not None and item.data(_ROW_INDEX_ROLE) == index:
+            table.clearSelection()
             table.selectRow(row)
             return
 

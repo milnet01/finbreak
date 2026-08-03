@@ -498,8 +498,12 @@ def test_INV10_tab_from_to_and_amount_cells(qtbot, service):
 @pytest.mark.parametrize(
     "method, button",
     [
-        ("confirm", "_confirm_button"),
-        ("reject", "_reject_button"),
+        # The bulk slots call confirm_many / reject_many (FIBR-0201 D3), so those
+        # are the methods a lock has to be caught around — patching the old
+        # single-pair confirm/reject would leave this leg green while checking
+        # nothing.
+        ("confirm_many", "_confirm_button"),
+        ("reject_many", "_reject_button"),
         ("confirm_all", "_confirm_all_button"),
         ("unlink", "_unlink_button"),
     ],
@@ -612,3 +616,278 @@ def test_FIBR0151_unconfirmed_pair_renders_as_ordinary_uncategorised_rows(
     # No label until confirmed — the legs are just uncategorised transactions.
     assert _category_text(view, "to savings") == ""
     assert _category_text(view, "from current") == ""
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0201 — bulk confirm / reject on a multi-select suggested table.
+# --------------------------------------------------------------------------- #
+def _two_pairs(service: AuthService) -> tuple[tuple[int, int], tuple[int, int]]:
+    """Two independent, unambiguous candidate pairs, as ``(debit, credit)`` tuples
+    in candidate order (the amounts differ so no cross-match is possible)."""
+    a, b = _two_accounts(service)
+    d1 = _add(service, a, -1000, "2026-01-05", "one")
+    d2 = _add(service, a, -2000, "2026-01-05", "two")
+    c1 = _add(service, b, 1000, "2026-01-05", "one")
+    c2 = _add(service, b, 2000, "2026-01-05", "two")
+    return (d1, c1), (d2, c2)
+
+
+def test_FIBR0201_INV4_confirm_many_confirms_each_given_pair(service):
+    svc = _svc(service)
+    p1, p2 = _two_pairs(service)
+    assert svc.confirm_many([p1, p2]) == 2
+    assert svc.confirmed_transfer_txn_ids() == {*p1, *p2}
+
+
+def test_FIBR0201_INV4_confirm_many_skips_a_consumed_pair_and_the_earlier_wins(service):
+    """The consumption hazard is not specific to "all": a user can select two
+    suggestions that share a transaction. Exactly one is confirmed — the EARLIER
+    in the given order — the count is 1, and no ValueError reaches the user."""
+    a, b = _two_accounts(service)
+    debit = _add(service, a, -1000, "2026-01-05")
+    credit1 = _add(service, b, 1000, "2026-01-05")
+    credit2 = _add(service, b, 1000, "2026-01-06")
+    svc = _svc(service)
+
+    assert svc.confirm_many([(debit, credit2), (debit, credit1)]) == 1, (
+        "the second pair's debit was consumed by the first — skipped, not raised"
+    )
+    assert svc.confirmed_transfer_txn_ids() == {debit, credit2}, (
+        "the EARLIER pair in the given order wins (credit2 was listed first)"
+    )
+
+
+def test_FIBR0201_INV4_confirm_many_winner_flips_with_the_order(service):
+    """The companion of the leg above: reverse the order and the other pair wins.
+    Without this an implementation that always picks the lowest id passes."""
+    a, b = _two_accounts(service)
+    debit = _add(service, a, -1000, "2026-01-05")
+    credit1 = _add(service, b, 1000, "2026-01-05")
+    credit2 = _add(service, b, 1000, "2026-01-06")
+    svc = _svc(service)
+
+    assert svc.confirm_many([(debit, credit1), (debit, credit2)]) == 1
+    assert svc.confirmed_transfer_txn_ids() == {debit, credit1}
+
+
+def test_FIBR0201_INV4_confirm_many_empty_confirms_nothing(service):
+    svc = _svc(service)
+    _two_pairs(service)
+    assert svc.confirm_many([]) == 0
+    assert svc.confirmed_transfer_txn_ids() == set()
+
+
+def test_FIBR0201_INV5_confirm_all_is_confirm_many_over_candidate_pairs(service):
+    """The consumed-set logic MOVES into confirm_many rather than being copied, so
+    `confirm_all` is literally its caller — two implementations would drift."""
+    svc = _svc(service)
+    _two_pairs(service)
+    pairs = TransferRepository(service.vault.connection).candidate_pairs()
+    calls: list[list[tuple[int, int]]] = []
+    real = svc.confirm_many
+
+    def _spy(given):
+        calls.append(list(given))
+        return real(given)
+
+    svc.confirm_many = _spy  # type: ignore[method-assign]
+    assert svc.confirm_all() == 2
+    assert calls == [list(pairs)], "confirm_all delegates the live candidate order"
+
+
+def test_FIBR0201_INV5_confirm_all_count_and_effect_unchanged(service):
+    """`confirm_all`'s shipped behaviour and count are unchanged — the ambiguous
+    debit still resolves to exactly one confirmed pair."""
+    a, b = _two_accounts(service)
+    _add(service, a, -1000, "2026-01-05")
+    _add(service, b, 1000, "2026-01-05")
+    _add(service, b, 1000, "2026-01-06")
+    svc = _svc(service)
+    assert svc.confirm_all() == 1
+    assert len(svc.confirmed_transfers()) == 1
+
+
+def test_FIBR0201_INV6_reject_many_records_each_and_none_resurfaces(service):
+    svc = _svc(service)
+    p1, p2 = _two_pairs(service)
+    assert svc.reject_many([p1, p2]) == 2
+    assert svc.candidates() == [], "a rejected pair is never re-offered"
+    assert svc.confirmed_transfer_txn_ids() == set(), "rejection confirms nothing"
+
+
+def test_FIBR0201_INV6_reject_many_takes_two_pairs_sharing_a_transaction(service):
+    """The reachable case `reject()` cannot serve: a user selects two suggestions
+    that share a transaction and rejects both. Rejection consumes nothing — a
+    rejected transaction is still free to pair with another — so BOTH are recorded
+    and nothing raises at the user, where a loop through `_record` would raise on
+    the second (its `is_confirmed`/`pair_decided` guards raise rather than skip)."""
+    a, b = _two_accounts(service)
+    debit = _add(service, a, -1000, "2026-01-05")
+    credit1 = _add(service, b, 1000, "2026-01-05")
+    credit2 = _add(service, b, 1000, "2026-01-06")
+    svc = _svc(service)
+    assert len(svc.candidates()) == 2, "one debit, two candidate credits"
+
+    assert svc.reject_many([(debit, credit1), (debit, credit2)]) == 2
+
+    assert svc.candidates() == [], "neither pair is re-offered"
+    assert svc.confirmed_transfer_txn_ids() == set()
+
+
+def test_FIBR0201_INV6_reject_many_empty_rejects_nothing(service):
+    svc = _svc(service)
+    _two_pairs(service)
+    assert svc.reject_many([]) == 0
+    assert len(svc.candidates()) == 2
+
+
+def test_FIBR0201_INV1_only_the_suggested_table_is_multi_select(qtbot, service):
+    """Both transfer tables are built by ONE `_make_table`, so the naive edit of
+    its `setSelectionMode` line silently widens the confirmed table too — and
+    Unlink is explicitly out of scope (D2)."""
+    from PySide6.QtWidgets import QAbstractItemView
+
+    from finbreak.ui.transfers import TransfersWidget
+
+    widget = TransfersWidget(service)
+    qtbot.addWidget(widget)
+    assert (
+        widget._suggested.selectionMode()
+        == QAbstractItemView.SelectionMode.MultiSelection
+    )
+    assert (
+        widget._confirmed_table.selectionMode()
+        == QAbstractItemView.SelectionMode.SingleSelection
+    )
+
+
+def test_FIBR0201_tab_confirms_every_selected_row(qtbot, service):
+    from finbreak.ui.transfers import TransfersWidget
+
+    p1, p2 = _two_pairs(service)
+    widget = TransfersWidget(service)
+    qtbot.addWidget(widget)
+    assert len(widget._candidates) == 2
+
+    widget._suggested.selectRow(0)
+    widget._suggested.selectRow(1)
+    widget._confirm_button.click()
+
+    assert widget._candidates == []
+    assert len(widget._confirmed) == 2
+    assert _svc(service).confirmed_transfer_txn_ids() == {*p1, *p2}
+
+
+def test_FIBR0201_tab_rejects_every_selected_row(qtbot, service):
+    from finbreak.ui.transfers import TransfersWidget
+
+    _two_pairs(service)
+    widget = TransfersWidget(service)
+    qtbot.addWidget(widget)
+    widget._suggested.selectRow(0)
+    widget._suggested.selectRow(1)
+    widget._reject_button.click()
+    assert widget._candidates == [] and widget._confirmed == []
+
+
+def test_FIBR0201_INV3_bulk_confirm_resolves_ids_before_mutating(qtbot, service):
+    """Resolve-before-mutate under an APPLIED SORT that actually reorders the rows
+    (§7): `_refresh()` rebuilds and re-sorts `_candidates`, so an index resolved
+    before the mutation and dereferenced after it can name a different pair
+    (FIBR-0113). Here the visual order is the reverse of the insertion order, so an
+    implementation that indexes as it goes confirms the wrong pairs — or raises."""
+    a, b = _two_accounts(service)
+    d1 = _add(service, a, -10000, "2026-01-05", "small")  # 100.00, inserted first
+    c1 = _add(service, b, 10000, "2026-01-05", "small")
+    d2 = _add(service, a, -50000, "2026-01-05", "big")  # 500.00
+    c2 = _add(service, b, 50000, "2026-01-05", "big")
+    from PySide6.QtCore import Qt
+
+    from finbreak.ui.transfers import TransfersWidget
+
+    widget = TransfersWidget(service)
+    qtbot.addWidget(widget)
+    widget._suggested.sortItems(1, Qt.SortOrder.DescendingOrder)  # 500.00 on top
+    assert widget._suggested.item(0, 1).text().endswith("500.00")
+
+    widget._suggested.selectRow(0)
+    widget._suggested.selectRow(1)
+    widget._confirm_button.click()
+
+    assert _svc(service).confirmed_transfer_txn_ids() == {d1, c1, d2, c2}, (
+        "both selected pairs confirmed, whatever the visual order"
+    )
+
+
+def test_FIBR0201_buttons_enable_on_a_plural_selection(qtbot, service):
+    from finbreak.ui.transfers import TransfersWidget
+
+    _two_pairs(service)
+    widget = TransfersWidget(service)
+    qtbot.addWidget(widget)
+    assert not widget._confirm_button.isEnabled(), "nothing selected"
+    widget._suggested.selectRow(0)
+    widget._suggested.selectRow(1)
+    assert widget._confirm_button.isEnabled() and widget._reject_button.isEnabled()
+
+
+def test_FIBR0201_INV14_single_reject_keeps_todays_status_string(qtbot, service):
+    """D9 applied to the Transfers tab: "Rejected 1 transfer(s)." is the same
+    regression as "Delete 1 statement(s)?", and §1 promises single-selection
+    behaviour is unchanged."""
+    from finbreak.ui.transfers import TransfersWidget
+
+    _two_pairs(service)
+    widget = TransfersWidget(service)
+    qtbot.addWidget(widget)
+    widget._suggested.selectRow(0)
+    widget._reject_button.click()
+    assert widget._status.text() == "Rejected.", widget._status.text()
+
+
+def test_FIBR0201_plural_reject_names_the_count(qtbot, service):
+    from finbreak.ui.transfers import TransfersWidget
+
+    _two_pairs(service)
+    widget = TransfersWidget(service)
+    qtbot.addWidget(widget)
+    widget._suggested.selectRow(0)
+    widget._suggested.selectRow(1)
+    widget._reject_button.click()
+    assert "2" in widget._status.text(), widget._status.text()
+
+
+def test_FIBR0201_a_skipped_selection_is_named_not_silent(qtbot, service):
+    """Under `Confirm all` a consumed-pair skip is invisible by design; under an
+    explicit selection the user chose N and got fewer, so the status line owes
+    them the reason (§4.8, §6)."""
+    from finbreak.ui.transfers import TransfersWidget
+
+    a, b = _two_accounts(service)
+    _add(service, a, -1000, "2026-01-05")  # one debit...
+    _add(service, b, 1000, "2026-01-05")  # ...matching two credits
+    _add(service, b, 1000, "2026-01-06")
+    widget = TransfersWidget(service)
+    qtbot.addWidget(widget)
+    assert len(widget._candidates) == 2
+
+    widget._suggested.selectRow(0)
+    widget._suggested.selectRow(1)
+    widget._confirm_button.click()
+
+    text = widget._status.text()
+    assert "1" in text and "skipped" in text.lower(), (
+        f"names the skipped suggestion rather than silently reporting 1: {text!r}"
+    )
+
+
+def test_FIBR0201_no_skip_message_when_nothing_was_skipped(qtbot, service):
+    from finbreak.ui.transfers import TransfersWidget
+
+    _two_pairs(service)
+    widget = TransfersWidget(service)
+    qtbot.addWidget(widget)
+    widget._suggested.selectRow(0)
+    widget._suggested.selectRow(1)
+    widget._confirm_button.click()
+    assert "skipped" not in widget._status.text().lower()
