@@ -10,6 +10,7 @@ slices add ``BackupService`` export/restore and the UI. Every vault lives under
 import json
 import os
 import secrets
+import stat
 import tempfile
 import zipfile
 from pathlib import Path
@@ -570,6 +571,93 @@ def test_INV12_oversized_manifest_entry_refused(tmp_path):
     with pytest.raises(BackupError):
         BackupService(auth.vault, auth).restore_backup(bad, _BACKUP_PW, _M2)
     _assert_unchanged(d, vb, sb)
+
+
+def test_INV12_deflate_bomb_refused_on_the_ratio(tmp_path):
+    """FIBR-0212 — INV-12 requires "a suspicious ``file_size / compress_size`` ratio"
+    to be rejected, and it was not implemented. The ZIP_STORED note in the code
+    covers files finbreak WRITES; a restore reads an untrusted file, and
+    ``_read_capped`` never inspected ``compress_type``. MEASURED here: a small
+    hostile ``.fbk`` whose ``vault.db`` is deflated zeros inflates to the 512 MiB
+    cap in RAM, pre-login. The declared size is honest, so only the ratio catches
+    it."""
+    from finbreak.errors import BackupError
+    from finbreak.services.backup import MAX_BACKUP_DB_BYTES
+
+    fbk, _snap = _export_from_seed(tmp_path)
+    bomb = tmp_path / "bomb.fbk"
+    with zipfile.ZipFile(fbk) as zf:
+        m, p = zf.read("manifest.json"), zf.read("params.json")
+    with zipfile.ZipFile(bomb, "w") as zf:
+        zf.writestr("manifest.json", m)
+        zf.writestr("params.json", p)
+        # Zeros deflate ~1000:1, so this is a few hundred KB on disk.
+        zf.writestr(
+            "vault.db", b"\0" * MAX_BACKUP_DB_BYTES, compress_type=zipfile.ZIP_DEFLATED
+        )
+    assert bomb.stat().st_size < 2 * 1024 * 1024, "the bomb file itself is small"
+
+    auth, d, vb, sb = _dest_with_vault(tmp_path)
+    # `match=` is load-bearing: the declared file_size is exactly the cap, so the
+    # `file_size > cap` gate does NOT fire, and without the ratio check the restore
+    # inflates all 512 MiB and *still* raises BackupError from the downstream
+    # "this isn't a vault" failure — a green that proves nothing (measured).
+    with pytest.raises(BackupError, match="compression ratio"):
+        BackupService(auth.vault, auth).restore_backup(bomb, _BACKUP_PW, _M2)
+    _assert_unchanged(d, vb, sb)
+
+
+def test_INV7_export_temp_refuses_a_pre_planted_file(tmp_path):
+    """FIBR-0212 — ``_write_fbk`` opened its temp O_TRUNC, so an attacker who
+    pre-creates ``dest.fbk.tmp`` (mode 0666) in a shared export dir has it filled
+    and renamed into place: the user's backup is then attacker-owned and
+    world-readable. O_NOFOLLOW stops only the symlink case. Its sibling
+    ``_write_owner_only`` in the same file already used O_EXCL, as does
+    ``pdf_export`` since FIBR-0204; the export writer is now the same shape —
+    unlink the stale temp, then create with O_EXCL so a re-plant loses the race."""
+    src = tmp_path / "src"
+    src.mkdir()
+    auth = _seeded_auth((src / "vault.db", src / "vault.kdf.json"))
+    dest = tmp_path / "out.fbk"
+
+    planted = dest.with_name(dest.name + ".tmp")
+    planted.touch(mode=0o666)
+    planted.chmod(0o666)  # touch() honours the umask; force the hostile mode
+
+    BackupService(auth.vault, auth).export_backup(dest, _BACKUP_PW)
+    auth.lock()
+
+    mode = dest.stat().st_mode & 0o777
+    assert mode == 0o600, f"the backup is owner-only, not {oct(mode)}"
+
+
+def test_INV7_export_fsyncs_the_destination_directory(tmp_path, monkeypatch):
+    """FIBR-0212 — ``_write_fbk`` fsyncs the FILE, then ``os.replace``s it. POSIX
+    does not guarantee the directory ENTRY reaches stable storage, so a power loss
+    after "Backup saved" can leave no dest at all — on the one artifact whose whole
+    purpose is surviving a disaster. Asserts the directory fd is fsynced after the
+    rename."""
+    import finbreak.services.backup as backup_mod
+
+    src = tmp_path / "src"
+    src.mkdir()
+    auth = _seeded_auth((src / "vault.db", src / "vault.kdf.json"))
+    dest = tmp_path / "out.fbk"
+
+    synced: list[int] = []
+    real_fsync = os.fsync
+
+    def recording_fsync(fd):
+        synced.append(os.fstat(fd).st_mode)
+        return real_fsync(fd)
+
+    monkeypatch.setattr(backup_mod.os, "fsync", recording_fsync)
+    BackupService(auth.vault, auth).export_backup(dest, _BACKUP_PW)
+    auth.lock()
+
+    assert any(stat.S_ISDIR(mode) for mode in synced), (
+        "the destination DIRECTORY is fsynced, not only the file"
+    )
 
 
 def test_INV12_large_legit_db_restores(tmp_path):

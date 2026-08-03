@@ -121,6 +121,14 @@ signaling per
 
 ### Security
 
+- **Backups are harder to attack, and survive a power cut** (FIBR-0212)
+  Restoring a maliciously-crafted backup file can no longer make
+  finbreak allocate half a gigabyte of memory before you have even logged in.
+  Saving a backup now flushes the folder entry to disk, so a power cut straight
+  after "Backup saved" cannot leave you with no file at all. And a backup written
+  into a shared folder can no longer be hijacked by a file planted there in
+  advance.
+
 - **Another user on the same computer can no longer stop finbreak starting** (FIBR-0204)
   finbreak's single-instance marker lived in a shared system folder, so any
   other account could take the name and make finbreak exit silently with no

@@ -48,10 +48,20 @@ MANIFEST_FORMAT_VERSION = 1
 
 # INV-12 decompression-bomb caps, checked against ZipInfo.file_size BEFORE
 # inflating. Tight on the JSON entries (the real bomb vector); generous on the DB
-# (a large multi-year vault, well above the 16 MiB statement-import cap). vault.db
-# is ZIP_STORED — AES ciphertext is incompressible, so DEFLATE can't bomb it.
+# (a large multi-year vault, well above the 16 MiB statement-import cap).
 MAX_MANIFEST_BYTES = 64 * 1024
 MAX_BACKUP_DB_BYTES = 512 * 1024 * 1024
+
+# INV-12's second half: reject a suspicious file_size/compress_size ratio. The caps
+# alone are not enough, because a bomb sized to land exactly ON a cap passes them —
+# measured, a ~500 KB hostile .fbk whose vault.db is deflated zeros inflates to the
+# full 512 MiB in RAM, pre-login, on the restore path.
+#
+# ZIP_STORED closes this for files finbreak WRITES; restore reads an untrusted file
+# and must not assume its own writer produced it. An honest stored entry has a ratio
+# of exactly 1, and a deflated JSON manifest of a few hundred bytes stays far under
+# 100 — so this rejects only what no legitimate `.fbk` looks like.
+MAX_COMPRESSION_RATIO = 100
 
 # The single test seam: invoked with (role, buffer) for each derived key — role in
 # {"backup", "master", "post_move_aside"} — so a test captures the buffer to assert
@@ -65,6 +75,27 @@ _DB_ENTRY = "vault.db"
 
 def _noop_on_key(role: str, buffer: bytearray) -> None:
     return None
+
+
+def _fsync_dir(directory: Path) -> None:
+    """Flush ``directory``'s own entries to stable storage (FIBR-0212).
+
+    ``_write_fbk`` fsyncs the FILE, but POSIX does not guarantee that the directory
+    ENTRY created by the following ``os.replace`` is durable — a power loss right
+    after "Backup saved" could leave no dest at all, on the one artifact whose whole
+    purpose is surviving a disaster. Best-effort: a directory fsync is not portable
+    (it raises on Windows, and some filesystems refuse it), and failing an otherwise
+    complete export over it would be worse than the durability gap it closes."""
+    try:
+        fd = os.open(directory, os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.fsync(fd)
+    except OSError:
+        log.debug("directory fsync unsupported here; backup is written but unflushed")
+    finally:
+        os.close(fd)
 
 
 @dataclass(frozen=True)
@@ -132,6 +163,7 @@ class BackupService:
                 self._vault.export_to(tmp_db, backup_key)
                 self._write_fbk(tmp_zip, manifest, params.to_sidecar_dict(), tmp_db)
             os.replace(tmp_zip, dest)
+            _fsync_dir(dest.parent)
             log.info("backup exported")
         except BaseException:
             tmp_zip.unlink(missing_ok=True)
@@ -203,6 +235,7 @@ class BackupService:
             DatabaseError,
             zipfile.BadZipFile,
             OSError,
+            MemoryError,  # a bomb's allocation on a small machine (FIBR-0212)
         ) as exc:
             # Normalise every underlying failure to BackupError; on-disk state is
             # untouched (nothing installed) or recoverable from *.old (INV-4/5).
@@ -401,6 +434,11 @@ class BackupService:
             json.JSONDecodeError,
             UnicodeDecodeError,  # a non-UTF-8 manifest.json (json.loads raises this)
             zlib.error,  # a corrupt DEFLATE stream in any entry (zf.open read)
+            # A hostile entry that inflates further than this machine has RAM for.
+            # The INV-12 caps + ratio bound it, but the bound is still 512 MiB and a
+            # small machine can lose that allocation — a refused backup, not an
+            # unhandled exception out of a Qt slot (FIBR-0212).
+            MemoryError,
         ) as exc:
             raise BackupError(f"unreadable backup: {exc}") from exc
         if not isinstance(manifest, dict):
@@ -410,16 +448,24 @@ class BackupService:
     @staticmethod
     def _read_capped(zf: zipfile.ZipFile, info: zipfile.ZipInfo, cap: int) -> bytes:
         """Read one zip entry with a hard byte cap (INV-12). Rejects on the declared
-        ``ZipInfo.file_size`` BEFORE inflating, then reads through ``zf.open`` with a
-        bounded ``read(cap + 1)`` — never ``zf.read(name)`` (which would inflate the
-        whole entry first). The bounded read is the real bomb guard: even a lying
-        ``file_size`` can't inflate past ``cap + 1`` bytes."""
-        if info.file_size > cap:
-            raise BackupError(f"backup entry {info.filename!r} exceeds its size cap")
+        ``ZipInfo.file_size`` and on a suspicious compression RATIO BEFORE inflating,
+        then reads through ``zf.open`` with a bounded read — never ``zf.read(name)``
+        (which would inflate the whole entry first).
+
+        The ratio is what bounds the read against the SOURCE file's size rather than
+        against the cap alone: a bomb sized to land exactly on ``cap`` passes the
+        size gate, and the bounded read then still allocates the whole cap. Both
+        gates use the same ``allowed`` figure, so even a lying ``file_size`` cannot
+        inflate past what its own compressed bytes could honestly produce."""
+        allowed = min(cap, max(info.compress_size, 1) * MAX_COMPRESSION_RATIO)
+        too_big = f"backup entry {info.filename!r} exceeds its size cap"
+        bad_ratio = f"backup entry {info.filename!r} has a suspicious compression ratio"
+        if info.file_size > allowed:
+            raise BackupError(too_big if info.file_size > cap else bad_ratio)
         with zf.open(info) as handle:
-            data = handle.read(cap + 1)
-        if len(data) > cap:
-            raise BackupError(f"backup entry {info.filename!r} exceeds its size cap")
+            data = handle.read(allowed + 1)
+        if len(data) > allowed:
+            raise BackupError(too_big if len(data) > cap else bad_ratio)
         return data
 
     @staticmethod
@@ -444,10 +490,21 @@ class BackupService:
         """Assemble the three-entry `.fbk` zip at ``tmp_zip``, owner-only + fsynced.
 
         ``vault.db`` is stored (not deflated) — AES ciphertext is incompressible,
-        and ZIP_STORED closes the DEFLATE-bomb vector on the DB entry (INV-12)."""
+        and ZIP_STORED closes the DEFLATE-bomb vector on the DB entry (INV-12).
+
+        The temp name is ``<dest>.tmp``, derived from the user-chosen output path and
+        so fully predictable. ``O_NOFOLLOW`` stops only the symlink plant; under the
+        old ``O_TRUNC`` an attacker who pre-created a plain ``dest.fbk.tmp`` (mode
+        0666) in a shared export dir had it filled and renamed into place, leaving
+        the user's backup attacker-owned and world-readable. So: unlink any stale
+        temp from an earlier crashed export (``unlink`` removes the link, never its
+        target), then create with ``O_EXCL`` so a re-plant inside that window loses
+        the race. Same shape as ``_write_owner_only`` below and ``pdf_export``
+        (FIBR-0212)."""
+        tmp_zip.unlink(missing_ok=True)
         fd = os.open(
             tmp_zip,
-            os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0),
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
             0o600,
         )
         with os.fdopen(fd, "wb") as handle:

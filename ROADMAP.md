@@ -1022,7 +1022,7 @@ lands on top.
   `_on_edit` twin was found by reading the sibling. Tests: one forecast leg, one
   categories leg, three parametrised rules legs — all five verified red first.
 
-- 📋 [FIBR-0212] **Backup restore accepts a DEFLATE bomb and skips the directory fsync.**
+- ✅ [FIBR-0212] **Backup restore accepts a DEFLATE bomb and skips the directory fsync.**
   From the FIBR-0204 sweep (MEDIUM x3, verified by reading). Three separate
   things in services/backup.py:
 
@@ -1049,6 +1049,21 @@ lands on top.
   Kind: security.
   Lanes: services.
   Source: code-quality-review-2026-08-03.
+  Resolved (2026-08-03): all three closed. (1) INV-12's ratio clause
+  is implemented — new `MAX_COMPRESSION_RATIO = 100`, and `_read_capped` now
+  bounds BOTH the declared-size gate and the bounded read by
+  `min(cap, compress_size * ratio)`, so a lying `file_size` cannot inflate past
+  what its own compressed bytes could honestly produce. MEASURED: a bomb sized
+  to land exactly ON the 512 MiB cap passed every existing gate, and the test
+  had to match the message — without the ratio check the restore inflates all
+  512 MiB and STILL raises BackupError from the downstream "this isn't a vault"
+  failure, a green that proves nothing. MemoryError normalised at `_read_entries`
+  (so verify_backup gets it too, as reason "invalid") AND in restore_backup's
+  tuple. (2) New `_fsync_dir` after the export's `os.replace`, best-effort since
+  a directory fsync is not portable. (3) `_write_fbk` is now
+  unlink-then-O_EXCL|O_NOFOLLOW|0600, the pdf_export shape; verified the
+  pre-planted 0666 temp used to survive into the final backup.
+  Tests: three legs in tests/features/backup, all verified red first.
 
 - 📋 [FIBR-0213] **recategorize_auto_rows rescans the whole vault inside the import transaction.**
   From the FIBR-0204 sweep (MEDIUM, verified by reading). `commit_import`'s
