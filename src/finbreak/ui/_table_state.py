@@ -28,7 +28,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from contextlib import contextmanager
 
-from PySide6.QtCore import QSettings, Qt
+from PySide6.QtCore import QByteArray, QSettings, Qt
 from PySide6.QtWidgets import (
     QHeaderView,
     QTableWidget,
@@ -204,8 +204,12 @@ def remember_columns(view: QTableWidget | QTreeWidget) -> None:
     # Reset layout returns to, not whatever the user last left behind.
     view.setProperty(_DEFAULT_STATE_PROP, header.saveState())
     state = _settings().value(key)
-    if state is not None:
-        header.restoreState(state)
+    if isinstance(state, (QByteArray, bytes, bytearray)):
+        # Only a byte blob is a saved layout. A damaged INI hands back a plain
+        # string, which raises TypeError inside Qt and takes down the tab being
+        # built — the sibling of the startup brick fixed in FIBR-0210. A layout we
+        # cannot decode is simply the build-time default, never a crash.
+        header.restoreState(QByteArray(state))
 
     def _save(*_: object) -> None:
         settings = _settings()

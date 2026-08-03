@@ -40,6 +40,14 @@ signaling per
 
 ### Fixed
 
+- **A damaged window settings file no longer stops finbreak from starting** (FIBR-0210)
+  Every value read from `window.ini` now falls back to its default
+  instead of raising: an empty or non-numeric `last_tab`, and a truncated
+  `geometry` / `window_state` / `window_size`. Previously any of these made the
+  app unlaunchable until the file was deleted by hand. The same guard was added
+  to the saved table-column layouts, where a corrupt entry took down the tab
+  being built.
+
 - **Update and Delete on the Accounts tab now grey out when no account is selected** (FIBR-0204)
   They used to stay clickable after the list refreshed, and clicking them
   did nothing at all — no change, no message. Because the form still showed

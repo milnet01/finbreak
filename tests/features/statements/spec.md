@@ -19,6 +19,13 @@ subject is new in this phase:
 - **INV-5 / INV-5a** — window geometry + last tab round-trip through a plain INI
   at `paths.window_settings_path()`, outside the vault, holding no transaction
   data.
+- **INV-5b** — a *corrupt* INI degrades to the defaults instead of bricking
+  startup (FIBR-0210). `_restore_geometry` runs inside `MainWindow.__init__`, so
+  anything it raises escapes `app.py`'s `except VaultStateError` and the app
+  cannot launch until the user deletes the file by hand. Five shapes:
+  `last_tab=` (empty → `''`, not `None`, so `int('')` raises ValueError), a
+  non-numeric `last_tab`, and a plain string where a `@ByteArray` was written
+  for `geometry` / `window_state` / `window_size` (TypeError inside Qt).
 - **INV-6 / INV-6a / INV-6b / INV-6c** — the `Window` menu: Center window, Reset
   layout (to `_DEFAULT_WINDOW_SIZE`), both enabled while locked.
 - **INV-7 / INV-7a / INV-7b** — the Statements tab lists imports with an exact

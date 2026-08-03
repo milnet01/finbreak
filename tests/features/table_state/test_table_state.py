@@ -126,6 +126,22 @@ def test_column_widths_remembered_across_rebuild(qtbot, service):
     assert rebuilt._suggested.columnWidth(0) == 217
 
 
+def test_corrupt_column_state_does_not_break_the_view(qtbot, service, window_ini):
+    """FIBR-0210 sibling — a damaged window.ini must not take down the tab being
+    built. ``QSettings.value`` hands back a plain string for a truncated or
+    hand-edited value, and ``QHeaderView.restoreState(str)`` raises TypeError
+    (MEASURED, PySide6 6.9); an undecodable layout is just the build-time default."""
+    from finbreak.ui.transfers import TransfersWidget
+
+    window_ini.write_text(
+        "[columns]\ntransfers_suggested=truncated\n", encoding="utf-8"
+    )
+
+    widget = TransfersWidget(service)  # must not raise
+    qtbot.addWidget(widget)
+    assert widget._suggested.columnCount() > 0, "the view is built with its defaults"
+
+
 # --------------------------------------------------------------------------- #
 # 4b — the chosen SORT (column + direction) persists across a rebuild
 # --------------------------------------------------------------------------- #

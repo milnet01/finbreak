@@ -415,6 +415,38 @@ def test_INV5a_geometry_and_tab_roundtrip_outside_vault(
     assert window2._workspace.currentIndex() == 2, "the last-active tab is restored"
 
 
+@pytest.mark.parametrize(
+    "ini_body",
+    [
+        pytest.param("[General]\nlast_tab=\n", id="empty-last_tab"),
+        pytest.param("[General]\nlast_tab=Home\n", id="non-numeric-last_tab"),
+        pytest.param("[General]\ngeometry=truncated\n", id="corrupt-geometry"),
+        pytest.param("[General]\nwindow_state=truncated\n", id="corrupt-window_state"),
+        pytest.param("[General]\nwindow_size=truncated\n", id="corrupt-window_size"),
+    ],
+)
+def test_INV5b_corrupt_window_ini_does_not_brick_startup(
+    qtbot, service, window_ini, ini_body
+):
+    """FIBR-0210 — a damaged window.ini must degrade to the defaults, never stop the
+    app from launching. ``_restore_geometry`` runs inside ``MainWindow.__init__``, so
+    an exception there escapes ``app.py``'s ``except VaultStateError`` and the app is
+    unlaunchable until the user finds and deletes the INI by hand.
+
+    MEASURED (PySide6 6.9): an INI key with an empty value makes ``QSettings.value``
+    return ``''`` (NOT ``None``), so ``int('')`` raises ValueError; a plain string
+    where a ``@ByteArray`` was written makes ``restoreGeometry``/``restoreState``
+    raise TypeError. Both shapes are reachable from a truncated sync after power
+    loss, a hand-edit, or a downgrade from a version storing a different type."""
+    window_ini.write_text(ini_body, encoding="utf-8")
+
+    window = MainWindow(service)  # must not raise
+    qtbot.addWidget(window)
+
+    assert window._initial_tab == main_window._TAB_HOME, "falls back to the Home tab"
+    assert window.height() > 0, "the window is constructed and sized"
+
+
 # --------------------------------------------------------------------------- #
 # INV-6 — the Window menu: Center, Reset, both enabled while locked
 # --------------------------------------------------------------------------- #

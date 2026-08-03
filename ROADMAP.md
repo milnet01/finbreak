@@ -957,7 +957,7 @@ lands on top.
   Lanes: ui, i18n.
   Source: user-request-2026-08-03.
 
-- 📋 [FIBR-0210] **Startup is bricked by a corrupt window.ini (int('') on last_tab).**
+- ✅ [FIBR-0210] **Startup is bricked by a corrupt window.ini (int('') on last_tab).**
   From the FIBR-0204 sweep (MEDIUM, verified). `MainWindow._restore_geometry`
   reads `int(raw_tab) if raw_tab is not None else _TAB_HOME`. MEASURED: an INI
   containing `last_tab=` makes QSettings return `''` (NOT None), and `int('')`
@@ -976,6 +976,18 @@ lands on top.
   Kind: fix.
   Lanes: ui.
   Source: code-quality-review-2026-08-03.
+  Resolved (2026-08-03): `_restore_geometry` is fail-safe on every
+  read. The audit the bullet asked for found three MORE brick shapes in the
+  same function, not just `int('')` — `geometry` and `window_state` are handed
+  to `restoreGeometry`/`restoreState`, and a plain string where a `@ByteArray`
+  was written raises TypeError (measured, PySide6 6.9). New `_restore_blob`
+  helper type-checks the blob and reports whether Qt actually applied it, so an
+  undecodable geometry now falls back to `_DEFAULT_WINDOW_SIZE` instead of
+  leaving the window unsized. `last_tab` is a try/except returning `_TAB_HOME`.
+  Same shape found and fixed in `_table_state.remember_columns` (a corrupt
+  `columns/*` key took down the tab being built). Tests: five parametrised legs
+  in `test_INV5b_corrupt_window_ini_does_not_brick_startup` + one in
+  table_state; four of five and the table_state leg verified red first.
 
 - 📋 [FIBR-0211] **Two vault reads sit outside their VaultLockedError guards.**
   From the FIBR-0204 sweep (MEDIUM, verified by reading). Two sites call into the

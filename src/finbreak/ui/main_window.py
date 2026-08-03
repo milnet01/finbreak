@@ -28,7 +28,16 @@ from pathlib import Path
 
 import pikepdf
 import shiboken6
-from PySide6.QtCore import QEvent, QObject, QSettings, QSize, Qt, QTimer, QUrl
+from PySide6.QtCore import (
+    QByteArray,
+    QEvent,
+    QObject,
+    QSettings,
+    QSize,
+    Qt,
+    QTimer,
+    QUrl,
+)
 from PySide6.QtGui import QAction, QCloseEvent, QDesktopServices, QGuiApplication
 from PySide6.QtWidgets import (
     QApplication,
@@ -156,6 +165,21 @@ def _is_wayland() -> bool:
     centre via the compositor's own API. A module function so tests can
     monkeypatch it to exercise both platform branches."""
     return QGuiApplication.platformName().startswith("wayland")
+
+
+def _restore_blob(restore: Callable[[QByteArray], bool], value: object) -> bool:
+    """Hand one persisted ``QByteArray`` to its ``restoreGeometry``/``restoreState``
+    and report whether it was actually applied (FIBR-0210).
+
+    A value read back from the INI is only a byte blob when the INI is intact. A
+    damaged file yields ``None`` (key gone), ``''``/a plain string (value truncated
+    or hand-edited), which raises TypeError inside Qt — from ``__init__``, where an
+    exception makes the app unlaunchable. A well-formed blob Qt cannot decode
+    (a version it does not know) returns False instead, and is equally not a restore.
+    Both answer False here so the caller can fall back to the default."""
+    if not isinstance(value, (QByteArray, bytes, bytearray)):
+        return False
+    return bool(restore(QByteArray(value)))
 
 
 def _in_flatpak() -> bool:
@@ -1476,22 +1500,31 @@ class MainWindow(QMainWindow):
         none). Called in __init__, before the window is shown (INV-5). On Wayland
         (FIBR-0060) restore only the SIZE via ``resize()`` — the compositor owns
         placement, so ``restoreGeometry``'s position is ignored and its size is
-        unreliable before the first map."""
+        unreliable before the first map.
+
+        **Every read here is fail-safe (FIBR-0210).** This runs inside ``__init__``,
+        so anything it raises escapes ``app.py``'s ``except VaultStateError`` and the
+        app cannot start until the user finds and deletes the INI by hand — on a file
+        that is damaged by a truncated sync after power loss, a hand-edit, or a
+        downgrade from a version that stored a different type. MEASURED: a key with an
+        empty value yields ``''`` (not ``None``), so ``int('')`` raises ValueError;
+        a plain string where a ``@ByteArray`` was written makes ``restoreGeometry`` /
+        ``restoreState`` raise TypeError. Same defensive posture as ``auth.py``'s
+        ``auto_lock_minutes`` and ``UnlockThrottle.load``: a corrupt value is the
+        default, never a crash."""
         settings = self._settings()
         if _is_wayland():
             size = settings.value(_KEY_SIZE)
             self.resize(size if isinstance(size, QSize) else _DEFAULT_WINDOW_SIZE)
         else:
             geometry = settings.value(_KEY_GEOMETRY)
-            if geometry is not None:
-                self.restoreGeometry(geometry)
-            else:
+            if not _restore_blob(self.restoreGeometry, geometry):
                 self.resize(_DEFAULT_WINDOW_SIZE)
-        window_state = settings.value(_KEY_STATE)
-        if window_state is not None:
-            self.restoreState(window_state)
-        raw_tab = settings.value(_KEY_LAST_TAB)
-        return int(raw_tab) if raw_tab is not None else _TAB_HOME
+        _restore_blob(self.restoreState, settings.value(_KEY_STATE))
+        try:
+            return int(settings.value(_KEY_LAST_TAB))
+        except (TypeError, ValueError):
+            return _TAB_HOME  # missing or non-integer → the Home tab
 
     def _save_geometry(self) -> None:
         settings = self._settings()
