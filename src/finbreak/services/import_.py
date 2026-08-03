@@ -72,6 +72,12 @@ class ImportPreview:
     # ParseResult across the preview boundary so commit_import can persist it; None
     # for a CSV / manual / balance-less source. Last field, default None.
     closing_balance_minor: int | None = None
+    # The ``row_number`` of every draft the dedup delta will DROP (FIBR-0204).
+    # ``duplicate_count`` alone is a total with no way back to the rows, so the
+    # preview labelled every draft "OK" — including the ones that were never going
+    # to land. The kept set is already computed inside ``_dedup``; this is it,
+    # inverted, so the table can point at the rows the user will not get.
+    duplicate_row_numbers: frozenset[int] = frozenset()
 
 
 @dataclass
@@ -230,6 +236,14 @@ class ImportService:
         (``_preview_from_result``) and a re-target (``retarget``, FIBR-0057)."""
         to_insert = self._dedup(account_id, drafts, TransactionRepository(self._conn))
         new_count = len(to_insert)
+        # Identity, not equality: `_dedup` returns the very draft objects it kept,
+        # so the dropped set is the row numbers it did not return. Two drafts can
+        # be equal (that is what a duplicate IS), which is why this cannot be a
+        # value comparison.
+        kept_rows = {id(draft) for draft in to_insert}
+        dropped = frozenset(
+            draft.row_number for draft in drafts if id(draft) not in kept_rows
+        )
         return ImportPreview(
             account_id=account_id,
             drafts=drafts,
@@ -239,6 +253,7 @@ class ImportService:
             period_start=period_start,
             period_end=period_end,
             closing_balance_minor=closing_balance_minor,
+            duplicate_row_numbers=dropped,
         )
 
     def commit_import(

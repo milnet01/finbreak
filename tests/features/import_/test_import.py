@@ -954,3 +954,42 @@ def test_INV4_unterminated_quote_surfaces_a_message_not_a_crash(
     widget._select_file(str(path))  # must not raise
 
     assert widget._error.text(), "the malformed file must surface a user-facing message"
+
+
+# --------------------------------------------------------------------------- #
+# INV-5a — the preview says WHICH rows the dedup will drop
+# --------------------------------------------------------------------------- #
+def test_INV5a_preview_marks_the_rows_dedup_will_drop(service, tmp_path):
+    """A row that will not be imported must not be labelled "OK".
+
+    `_fill_preview_table` set the Status cell to "OK" for every draft, and the
+    dedup delta was exposed only as a COUNT (`new_count` / `duplicate_count`) that
+    was never mapped back to rows. So the summary could read "1 new, 1 duplicate"
+    while both rows showed OK, and the user had no way to see which of their
+    transactions was about to be silently discarded. In a money app the row that
+    is NOT going to land is the one worth pointing at.
+
+    The kept set is already computed inside `_dedup` — it was just thrown away.
+    """
+    imp = ImportService(service.vault)
+    acct = _acct(service)
+    rows = [["2026-01-05", "Coffee", "-10.00"], ["2026-01-06", "Lunch", "-50.00"]]
+    text = _csv(HEADER, rows)
+
+    first = imp.preview(text, SINGLE, acct)
+    assert first.duplicate_row_numbers == frozenset(), "nothing imported yet"
+    imp.commit_import(first, "2026-01-05", "2026-01-06", "stmt.csv")
+
+    # Re-importing the same file: both rows are now duplicates.
+    again = imp.preview(text, SINGLE, acct)
+    assert again.new_count == 0 and again.duplicate_count == 2
+    assert again.duplicate_row_numbers == {d.row_number for d in again.drafts}, (
+        "every draft the dedup will drop must be identifiable by row number"
+    )
+
+    # A file with one genuinely new row names only the repeat.
+    mixed = _csv(HEADER, [rows[0], ["2026-01-07", "Dinner", "-90.00"]])
+    third = imp.preview(mixed, SINGLE, acct)
+    assert third.new_count == 1 and third.duplicate_count == 1
+    dropped = [d for d in third.drafts if d.row_number in third.duplicate_row_numbers]
+    assert [d.description for d in dropped] == ["Coffee"]

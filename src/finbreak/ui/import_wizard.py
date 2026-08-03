@@ -981,7 +981,14 @@ class ImportWizardWidget(QWidget):
                         # checking a statement before import. No float (D1).
                         str(to_display_decimal(draft.amount_minor, self._exponent)),
                         draft.description,
-                        self.tr("OK"),
+                        # A row the dedup delta will drop is NOT "OK" — it is not
+                        # going to be imported at all. Labelling every draft OK
+                        # while the summary said "N duplicate" left the user with
+                        # no way to see which of their transactions was being
+                        # discarded (FIBR-0204).
+                        self.tr("Duplicate")
+                        if draft.row_number in preview.duplicate_row_numbers
+                        else self.tr("OK"),
                     ],
                 )
             )

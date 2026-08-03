@@ -127,10 +127,23 @@ def test_INV3a_a_live_owner_is_never_evicted(qapp, name):
 # --------------------------------------------------------------------------- #
 # INV-4 — the socket is per-user
 # --------------------------------------------------------------------------- #
-def test_INV4_socket_name_is_scoped_to_the_user():
+def test_INV4_socket_name_is_scoped_to_the_user(monkeypatch, tmp_path):
     """QLocalServer's socket lives in a SHARED temp dir on Unix, so an unqualified
     name would let one user's launch bounce off another's session — and that second
-    user could never open the app at all."""
+    user could never open the app at all.
+
+    Two branches. With ``$XDG_RUNTIME_DIR`` set the name is an absolute path under
+    it: that directory is specified user-owned and 0700, which also closes the
+    FIBR-0204 denial of service — in world-writable /tmp any local account can
+    pre-bind the predictable name, and finbreak's probe then reads it as "already
+    running" and exits 0 with no window and no message. Without the variable we
+    fall back to the uid-suffixed bare name, because refusing to start would be
+    worse than a guard a hostile local user can block.
+    """
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
+    assert single_instance.socket_name() == str(tmp_path / "finbreak.sock")
+
+    monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
     resolved = single_instance.socket_name()
     if hasattr(os, "getuid"):
         assert resolved == f"finbreak-{os.getuid()}"

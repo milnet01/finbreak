@@ -42,8 +42,30 @@ _NUDGE = b"raise"
 
 
 def socket_name(base: str = "finbreak") -> str:
-    """The per-user socket name. ``os.getuid`` is POSIX-only; on Windows the named
-    pipe is already per-session, so the bare base name is correct there."""
+    """The per-user socket name — an absolute path under ``$XDG_RUNTIME_DIR`` when
+    that is available, else a uid-suffixed bare name.
+
+    ``QLocalServer`` puts a bare name in a **shared** temp dir on Unix (``/tmp``),
+    which is world-writable. Any other local account can pre-create and listen on
+    that path; finbreak's probe then connects successfully, ``app.py`` treats it
+    as "another instance is already running" and returns 0 — **no window, no
+    message, exit status 0**. That is an undiagnosable denial of service, and the
+    uid suffix does not prevent it (it only stops two *users* colliding by
+    accident, which is the separate INV-4 concern).
+
+    ``$XDG_RUNTIME_DIR`` is specified to be user-owned and mode 0700, so nothing
+    can be planted there by another account. Qt honours an absolute name for both
+    ``listen`` and ``connectToServer``, so the probe/listen pair is unaffected.
+
+    Falls back to the old shared-dir name when the variable is unset (a bare
+    ``su``, some containers, macOS, Windows) — the guard is best-effort, and an
+    app that will not start is worse than one that can be blocked by a hostile
+    local user. Windows named pipes are already per-session, so the bare base
+    name is correct there.
+    """
+    runtime_dir = os.environ.get("XDG_RUNTIME_DIR")
+    if runtime_dir and os.path.isdir(runtime_dir):
+        return os.path.join(runtime_dir, f"{base}.sock")
     uid = os.getuid() if hasattr(os, "getuid") else None
     return base if uid is None else f"{base}-{uid}"
 
