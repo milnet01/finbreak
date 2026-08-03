@@ -44,6 +44,15 @@ _ICON_HUES = {
     "recurring": 330,  # magenta
     "forecast": 100,  # yellow-green
     "lock": 25,  # warm ochre
+    # FIBR-0215 — these three are toolbar actions like the ten above and were simply
+    # missing, so they fell through to the neutral-grey fallback: no Active pixmap
+    # (no hover-brighten) and a no-op re-tint on a theme change. Hues chosen in the
+    # three widest gaps in the existing wheel (38-100, 210-265, and 330-25 wrapping),
+    # so no glyph pair sits closer than the 13 degrees `lock` and `categories`
+    # already do.
+    "transactions": 237,  # blue-violet — the core ledger, beside home + accounts
+    "statements": 69,  # olive-gold — paper/documents, beside categories' amber
+    "export": 357,  # coral — the one action that produces a file outside the app
 }
 
 # The pixmap sizes toolbar (text-under-icon, ~24-32) and menus (16) request;

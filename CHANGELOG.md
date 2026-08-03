@@ -47,6 +47,18 @@ signaling per
 
 ### Fixed
 
+- **The Transactions, Statements and Export toolbar buttons now light up on hover** (FIBR-0215)
+  Three of the thirteen toolbar buttons were stuck in neutral grey: they
+  never brightened under the cursor and never changed shade when you switched
+  theme, unlike the other ten.
+
+- **Faint grey text and Ledger's focus outline are easier to see** (FIBR-0214)
+  Column headers and unselected tabs were slightly too pale to meet the
+  accessibility guideline on three themes, and Ledger's gold focus outline was
+  too faint. All four are nudged just enough to pass — you would not spot the
+  difference side by side. Links in the release-notes panel now use the theme's
+  full accent colour instead of a washed-out tint.
+
 - **The vault locking itself mid-action no longer closes the app** (FIBR-0211)
   Five places read your data a moment after an auto-lock could have
   fired — on the Forecast tab, when deleting a category, and three times on the

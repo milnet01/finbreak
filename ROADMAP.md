@@ -1104,7 +1104,7 @@ lands on top.
   counted, not timed — 12 rows x 8 patterns went 120 folds -> 20. Both legs red
   first.
 
-- 📋 [FIBR-0214] **Theme palettes miss WCAG on borders, stripes, muted text and one focus ring.**
+- ✅ [FIBR-0214] **Theme palettes miss WCAG on borders, stripes, muted text and one focus ring.**
   From the FIBR-0204 sweep (MEDIUM x3, ratios COMPUTED with the real WCAG
   formula, not estimated). The selected-row text was CRITICAL and is already
   fixed in FIBR-0204; these are the remainder, and each needs a palette decision
@@ -1135,8 +1135,9 @@ lands on top.
   Kind: accessibility.
   Lanes: ui.
   Source: code-quality-review-2026-08-03.
+  Resolved (2026-08-03): the open question the bullet raised — is there a contrast budget at all? — is answered and written down as FIBR-0127 INV-4b. User chose the low-visual-cost set over a full AA restyle (2026-08-03). Verified every ratio in the bullet against source first; all six border figures, ledger's 2.87 focus ring, the 1.16-1.27 stripes, muted 4.39/3.36/4.30 and the 1.36-2.86 links all reproduced exactly. FIXED (invisible side by side): muted_text ledger #6b7280->#69707d, parchment #8a7a63->#726552, mint #5f7a6f->#5c766b (all now >=4.5:1 on window); ledger accent #b8892b->#b2842a (focus ring 2.87->3.06); Link role accent_soft->accent (1.36-2.86 -> 3.16-8.83 on base — accent_soft stays live as the QSS button gradient, so INV-4's no-unused-token half still holds). DELIBERATELY UNMET, recorded rather than ignored: input borders at 1.27-1.61 (reaching 3:1 means #d8d3c4->#998c65 on ledger — a visible restyle of all six); Link under 4.5:1 on the light themes (4.5 would make a link indistinguishable from body text, and every link in the app is non-clickable by design); alt_base stripes at 1.16-1.27 (decorative, outside SC 1.4.11 — and polish_item_views' "visible" claim is corrected). Three legs added to the INV-4a harness as the bullet asked, not a second one. All three red first.
 
-- 📋 [FIBR-0215] **Three toolbar glyphs are unmapped, so they never hover-brighten or re-tint.**
+- ✅ [FIBR-0215] **Three toolbar glyphs are unmapped, so they never hover-brighten or re-tint.**
   From the FIBR-0204 sweep (MEDIUM, verified by reading). `icons._ICON_HUES`
   omits `transactions`, `statements` and `export` — all three ARE toolbar action
   icon names with SVGs on disk. `toolbar_icon` returns a plain `icon(name)` for
@@ -1154,6 +1155,7 @@ lands on top.
   Kind: fix.
   Lanes: ui.
   Source: code-quality-review-2026-08-03.
+  Resolved (2026-08-03): user decided the omission was an oversight, not hierarchy — all three mapped. `transactions` 237 (blue-violet), `statements` 69 (olive-gold), `export` 357 (coral), placed in the three widest gaps in the existing wheel (38-100, 210-265, 330-25 wrapping) so no pair sits closer than the 13 degrees `lock` and `categories` already do. The bullet's read of the test was right: INV-10 asserted the re-tint for ONE action, which proves the mechanism and not the coverage, so it stayed green for as long as the gap existed. Now asserted over the whole `_icon_actions` set — nothing in it missing from `_ICON_HUES`, every glyph's pixmap changes light->dark, and every mapped glyph's Active pixmap differs from its Normal one — so a future toolbar action that forgets its hue is caught the day it lands. Red first, naming exactly the three.
 
 - 📋 [FIBR-0216] **Assorted MEDIUM/LOW findings from the FIBR-0204 sweep, batched.**
   From the FIBR-0204 sweep. Each verified against source; none reached CRITICAL

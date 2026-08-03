@@ -12,7 +12,7 @@ from unittest.mock import MagicMock
 
 import pytest
 from PySide6.QtCore import QSettings, QSize, Qt
-from PySide6.QtGui import QColor, QPalette
+from PySide6.QtGui import QColor, QIcon, QPalette
 from PySide6.QtWidgets import QApplication, QComboBox, QTableView, QWidget
 
 from conftest import _PW
@@ -229,7 +229,10 @@ def test_INV4_full_role_map_light_and_dark():
         assert p.color(G.Disabled, R.Text) == t.muted_text
         assert p.color(G.Disabled, R.WindowText) == t.muted_text
         assert p.color(R.Highlight) == t.accent
-        assert p.color(R.Link) == t.accent_soft
+        # accent, not accent_soft, since FIBR-0214 — see INV-4b. accent_soft stays
+        # a live token (the button gradient + border in build_stylesheet), so the
+        # "no set-but-unused token" half of this invariant still holds.
+        assert p.color(R.Link) == t.accent
         assert p.color(R.Mid) == t.border
         assert p.color(R.Dark) == t.border
 
@@ -290,6 +293,49 @@ def test_INV4a_selected_row_text_meets_wcag_on_every_theme():
         if ratio < 4.5:
             failures.append(f"{tid}: {hi.name()} on {accent.name()} = {ratio:.2f}:1")
     assert not failures, "selected-row text below WCAG 4.5:1 — " + "; ".join(failures)
+
+
+def test_INV4b_live_muted_text_meets_wcag_on_every_theme():
+    """FIBR-0214 — `muted_text` is BOTH the Disabled group's text (exempt from SC
+    1.4.3) and the live `QHeaderView::section` / unselected `QTabBar::tab` colour,
+    which is not exempt. Measured before the fix: ledger 4.39, parchment 3.36,
+    mint 4.30 against their windows."""
+    failures = []
+    for tid, spec in theme.THEMES.items():
+        ratio = _wcag_contrast(spec.tokens.muted_text, spec.tokens.window)
+        if ratio < 4.5:
+            failures.append(f"{tid}: {spec.tokens.muted_text.name()} = {ratio:.2f}:1")
+    assert not failures, "live muted text below WCAG 4.5:1 — " + "; ".join(failures)
+
+
+def test_INV4b_focus_ring_meets_non_text_contrast_on_every_theme():
+    """FIBR-0214 — the accent is the focus ring and the selected-tab underline: the
+    only thing marking which control has keyboard focus, so SC 1.4.11 wants 3:1
+    against the window. Five themes passed (3.22-8.25); ledger's gold was 2.87."""
+    failures = []
+    for tid, spec in theme.THEMES.items():
+        ratio = _wcag_contrast(spec.tokens.accent, spec.tokens.window)
+        if ratio < 3.0:
+            failures.append(f"{tid}: {spec.tokens.accent.name()} = {ratio:.2f}:1")
+    assert not failures, "focus ring below WCAG 3:1 — " + "; ".join(failures)
+
+
+def test_INV4b_link_colour_beats_the_soft_accent_it_replaced(qapp):
+    """FIBR-0214 — `Link` was `accent_soft`, which scored 1.36-2.86 against `base`.
+    Links do render (the update dialog's release-notes browser), so that is a live
+    SC 1.4.3 surface. `accent` is the strongest token that is still recognisably
+    "a link" rather than body text: 3.16-8.83.
+
+    The bar here is deliberately NOT 4.5 — reaching it on the three light themes
+    would mean a link colour indistinguishable from `text`, and the only links in
+    the app are non-clickable by design (`setOpenLinks(False)`, INV-12). Asserted
+    as strictly better than what it replaced, and recorded in the spec as a
+    knowingly-unmet criterion rather than a silently-ignored one."""
+    for tid, spec in theme.THEMES.items():
+        link = theme.build_palette(spec.tokens).color(QPalette.ColorRole.Link)
+        assert link == spec.tokens.accent, tid
+        soft = _wcag_contrast(spec.tokens.accent_soft, spec.tokens.base)
+        assert _wcag_contrast(link, spec.tokens.base) > soft, tid
 
 
 # --------------------------------------------------------------------------- #
@@ -536,6 +582,57 @@ def test_INV10_toolbar_icons_retint_on_theme_change(qtbot, service, theme_isolat
     controller.set_theme("midnight")  # dark -> a live re-tint
     glyph_dark = action.icon().pixmap(QSize(24, 24)).toImage()
     assert glyph_light != glyph_dark, "the glyph pixmap genuinely re-tinted light->dark"
+
+
+def test_INV10_EVERY_toolbar_glyph_retints_not_just_home(
+    qtbot, service, theme_isolation
+):
+    """FIBR-0215 — the leg above proves the mechanism on `home`, so it stayed green
+    while `transactions`, `statements` and `export` were missing from `_ICON_HUES`
+    entirely. `toolbar_icon` returns a plain `icon(name)` for an unmapped glyph: no
+    Active/Selected pixmap, so no hover-brighten, and `_retint_toolbar_icons`
+    re-installs an identical icon on a theme change. Three of the thirteen toolbar
+    buttons behaved differently from the other ten.
+
+    This asserts the property for the whole set, so a future toolbar action that
+    forgets its hue is caught the day it lands."""
+    from finbreak.ui import icons
+
+    app = QApplication.instance()
+    controller = theme.ThemeController(app)
+    controller.set_theme("ledger")  # light
+
+    window = MainWindow(service, theme_controller=controller)
+    qtbot.addWidget(window)
+    window._enter_unlocked()
+
+    unmapped = sorted(set(window._icon_actions) - set(icons._ICON_HUES))
+    assert not unmapped, f"toolbar glyphs with no mapped hue: {unmapped}"
+
+    before = {
+        name: action.icon().pixmap(QSize(24, 24)).toImage()
+        for name, action in window._icon_actions.items()
+    }
+    controller.set_theme("midnight")  # dark -> a live re-tint
+    stale = [
+        name
+        for name, action in window._icon_actions.items()
+        if action.icon().pixmap(QSize(24, 24)).toImage() == before[name]
+    ]
+    assert not stale, f"glyphs that did not re-tint light->dark: {stale}"
+
+
+def test_INV10_hover_state_differs_for_every_toolbar_glyph(qapp, theme_isolation):
+    """The other half of FIBR-0215: an unmapped glyph gets no `Active` pixmap, so
+    `QIcon` falls back to the `Normal` one and the docstring's "vibrant one on
+    hover" silently does not happen. Asserted per glyph rather than for one."""
+    from finbreak.ui import icons
+
+    for name in sorted(icons._ICON_HUES):
+        built = icons.toolbar_icon(name)
+        normal = built.pixmap(QSize(24, 24), QIcon.Mode.Normal).toImage()
+        active = built.pixmap(QSize(24, 24), QIcon.Mode.Active).toImage()
+        assert normal != active, f"{name}: hover state is identical to rest"
 
 
 # --------------------------------------------------------------------------- #

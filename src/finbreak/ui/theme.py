@@ -74,8 +74,8 @@ THEMES: dict[str, ThemeDef] = {
             base=_c("#ffffff"),
             alt_base=_c("#efece2"),
             text=_c("#1b2a44"),
-            muted_text=_c("#6b7280"),
-            accent=_c("#b8892b"),
+            muted_text=_c("#69707d"),  # 4.52:1 on window (was #6b7280, 4.39) INV-4b
+            accent=_c("#b2842a"),  # 3.06:1 on window (was #b8892b, 2.87) INV-4b
             accent_soft=_c("#e6d5a3"),
             attention=_c("#a53a24"),
             border=_c("#d8d3c4"),
@@ -89,7 +89,7 @@ THEMES: dict[str, ThemeDef] = {
             base=_c("#f9f2e2"),
             alt_base=_c("#e6dac2"),
             text=_c("#4a3b2a"),
-            muted_text=_c("#8a7a63"),
+            muted_text=_c("#726552"),  # 4.58:1 on window (was #8a7a63, 3.36) INV-4b
             accent=_c("#b06d1f"),
             accent_soft=_c("#e0c48f"),
             attention=_c("#96331d"),
@@ -104,7 +104,7 @@ THEMES: dict[str, ThemeDef] = {
             base=_c("#ffffff"),
             alt_base=_c("#e6f1ea"),
             text=_c("#16302a"),
-            muted_text=_c("#5f7a6f"),
+            muted_text=_c("#5c766b"),  # 4.54:1 on window (was #5f7a6f, 4.30) INV-4b
             accent=_c("#1f9d55"),
             accent_soft=_c("#bce7cd"),
             attention=_c("#b03a1e"),
@@ -254,7 +254,16 @@ def build_palette(tokens: ThemeTokens) -> QPalette:
     palette.setColor(QPalette.ColorGroup.Disabled, role.WindowText, tokens.muted_text)
     palette.setColor(role.Highlight, tokens.accent)
     palette.setColor(role.HighlightedText, _highlighted_text(tokens.accent))
-    palette.setColor(role.Link, tokens.accent_soft)
+    # Link is `accent`, not `accent_soft` (FIBR-0214). accent_soft scored 1.36-2.86
+    # against `base` — link text nobody could read — and links DO render, in the
+    # update dialog's release-notes browser. accent gives 3.16-8.83 and is still
+    # recognisably a link rather than body text. It does not reach SC 1.4.3's 4.5:1
+    # on the three light themes; getting there would mean a link indistinguishable
+    # from `text`, and every link in the app is non-clickable by design
+    # (`setOpenLinks(False)`, INV-12). Recorded as a knowingly-unmet criterion in
+    # FIBR-0127 rather than left to look accidental. `accent_soft` is still live —
+    # it is the button gradient + border in `build_stylesheet`.
+    palette.setColor(role.Link, tokens.accent)
     palette.setColor(role.Mid, tokens.border)
     palette.setColor(role.Dark, tokens.border)
     return palette
@@ -401,8 +410,15 @@ QTabBar::tab:hover {{
 def polish_item_views(root: QWidget) -> None:
     """Enable ``setAlternatingRowColors(True)`` on every ``QAbstractItemView``
     descendant of ``root`` (INV-11) — the one call that turns the QSS
-    ``alternate-background-color`` into visible stripes across all the tab views. A
-    ``root`` with no item-view descendants is a defined no-op."""
+    ``alternate-background-color`` on across all the tab views. A ``root`` with no
+    item-view descendants is a defined no-op.
+
+    "Visible" overstated it and this docstring used to say so (FIBR-0214):
+    ``alt_base`` sits 1.16-1.27:1 from ``base`` on the six themes, a subtle tint
+    rather than a stripe you would pick out. That is a deliberate palette choice —
+    striping is decorative and carries no information, so it is outside SC 1.4.11 —
+    and the measured figures are recorded in FIBR-0127 so the gap reads as a
+    decision rather than an oversight."""
     for view in root.findChildren(QAbstractItemView):
         view.setAlternatingRowColors(True)
 
