@@ -186,10 +186,20 @@ class ForecastWidget(QWidget):
         )
 
     def _coverage_suffix(self, fc: Forecast) -> str:
-        """ " (<accounts> only)" when not every account contributed to the anchor
-        (D2/D9), else "" — so a partial total is never mistaken for a whole-vault
-        balance."""
-        total = len(AccountService(self._service.vault).list_accounts())
+        """ " (<accounts> only)" when not every **cash** account contributed to the
+        anchor (D2/D9), else "" — so a partial total is never mistaken for a
+        whole-vault balance.
+
+        The denominator is the CASH accounts, not every account (FIBR-0216). Only
+        ``CASH_TYPES`` can ever contribute (FIBR-0179), so counting all of them made
+        a vault holding any debt or investment account show "only" forever, even
+        with every cash account contributing and the total complete — and the
+        provenance line already names those exclusions and says why."""
+        cash_tokens = {t.value for t in CASH_TYPES}
+        total = sum(
+            account.type in cash_tokens
+            for account in AccountService(self._service.vault).list_accounts()
+        )
         if len(fc.anchor_sources) >= total:
             return ""
         names = ", ".join(src.account_name for src in fc.anchor_sources)

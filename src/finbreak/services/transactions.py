@@ -59,7 +59,14 @@ def parse_transaction(
     if not description:
         raise ValueError("description must not be empty")
     try:
-        date.fromisoformat(occurred_on)
+        # CANONICALISED, not merely validated (FIBR-0216). `date.fromisoformat`
+        # accepts more spellings of the same day than it looks like — "20260715" and
+        # the ISO week form "2026-W29-3" both parse — and everything downstream
+        # compares occurred_on as a STRING, so storing the input verbatim would make
+        # two spellings of one date sort and group apart. Latent today (every caller
+        # arrives via strptime().isoformat() or a QDateEdit), which is exactly when
+        # it is cheapest to close.
+        occurred_on = date.fromisoformat(occurred_on).isoformat()
     except (TypeError, ValueError) as exc:
         raise ValueError("occurred_on must be a valid ISO-8601 date") from exc
 

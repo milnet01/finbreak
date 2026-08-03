@@ -306,6 +306,40 @@ def test_INV4a_autolock_destroys_content_same_window(qtbot, service):
     assert isinstance(window._dialog, UnlockDialog), "the UnlockDialog re-opened"
 
 
+def test_INV4c_autolock_empties_the_rows_before_the_deferred_delete(qtbot, service):
+    """FIBR-0216 — the row above pumps the deferred-delete queue before asserting,
+    which is precisely what a nested modal loop does NOT do.
+
+    `deleteLater` posts a `DeferredDelete` event and Qt holds those until the event
+    loop returns to the level the object was created at. So an auto-lock that fires
+    while a nested loop is running — Help→About, a QFileDialog — leaves the
+    workspace alive, with every decrypted row still in its item models, until the
+    user dismisses that box. Unattended, which is the case auto-lock exists for.
+
+    This asserts the wipe happens at LOCK time by deliberately NOT pumping: the
+    tables are empty while the object is still valid."""
+    from PySide6.QtWidgets import QTableWidget
+
+    window = _unlocked_home_shell(qtbot, service)
+    TransactionService(service.vault).add_transaction(
+        _default_id(service), "2026-07-01", "-12.34", "ZZSECRETMEMO"
+    )
+    workspace = window.centralWidget().currentWidget()
+    window._transactions_tab.refresh()
+    filled = [t for t in workspace.findChildren(QTableWidget) if t.rowCount() > 0]
+    assert filled, "the fixture put rows on screen before the lock"
+
+    service._on_idle_timeout()  # no _pump_deferred_delete() — the whole point
+
+    assert shiboken6.isValid(workspace), (
+        "the widget is still alive — this is the deferred-delete window under test"
+    )
+    still_filled = [
+        t.objectName() for t in workspace.findChildren(QTableWidget) if t.rowCount() > 0
+    ]
+    assert not still_filled, f"decrypted rows survived the lock in: {still_filled}"
+
+
 def test_INV4a_lock_drops_every_tab_reference(qtbot, service):
     """`_clear_live` must null EVERY cached tab reference, not eight of nine.
 

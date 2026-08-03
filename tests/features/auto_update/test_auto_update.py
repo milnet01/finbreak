@@ -1607,6 +1607,11 @@ def test_manual_check_supported_starts_a_worker(qtbot, service, tmp_path, monkey
 
 def test_manual_check_up_to_date_shows_info(qtbot, service, monkeypatch):
     window, _ = _updater_shell(qtbot, service)
+    # Unlocked first (FIBR-0216): Help→Check is only reachable from a running,
+    # unlocked app — while locked the UnlockDialog is app-modal and blocks the menu
+    # — and the result handlers now gate on that. `_updater_shell` leaves the shell
+    # never-unlocked, which was a fixture artifact rather than a reachable state.
+    window._enter_unlocked()
     shown = []
     monkeypatch.setattr(
         "finbreak.ui.main_window.QMessageBox.information",
@@ -1618,6 +1623,7 @@ def test_manual_check_up_to_date_shows_info(qtbot, service, monkeypatch):
 
 def test_manual_check_error_warns(qtbot, service, monkeypatch):
     window, _ = _updater_shell(qtbot, service)
+    window._enter_unlocked()  # see the sibling above (FIBR-0216)
     warned = []
     monkeypatch.setattr(
         "finbreak.ui.main_window.QMessageBox.warning",
@@ -1625,6 +1631,32 @@ def test_manual_check_error_warns(qtbot, service, monkeypatch):
     )
     window._on_manual_check_error(RuntimeError("boom"))
     assert warned, "a failed manual check should warn the user"
+
+
+@pytest.mark.parametrize(
+    ("slot", "patched", "args"),
+    [
+        ("_on_manual_check_up_to_date", "information", ()),
+        ("_on_manual_check_error", "warning", (RuntimeError("boom"),)),
+    ],
+)
+def test_FIBR0216_manual_check_result_is_silent_once_locked(
+    qtbot, service, monkeypatch, slot, patched, args
+):
+    """FIBR-0216 — the check runs on a worker thread, so an idle auto-lock can fire
+    between the click and the reply. These two were the only update handlers with no
+    guard, so the box popped over the lock screen; every sibling gates on
+    `self._dialog is prompt`."""
+    window, _ = _updater_shell(qtbot, service)
+    shown = []
+    monkeypatch.setattr(
+        f"finbreak.ui.main_window.QMessageBox.{patched}",
+        lambda *a, **k: shown.append(a),
+    )
+    window._lock()
+
+    getattr(window, slot)(*args)
+    assert not shown, "no message box may appear over the lock screen"
 
 
 # --------------------------------------------------------------------------- #

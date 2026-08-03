@@ -156,6 +156,21 @@ def detect_recurring(
     activeness filter; applying user confirm/dismiss decisions is the service's
     job. ``excluded_ids`` (confirmed-transfer ids) and zero-amount rows are dropped
     before grouping.
+
+    **Known limit — two charges from one merchant on the SAME day collapse into one
+    item (FIBR-0216, documented not fixed).** The group key is
+    ``(direction, merchant_key)`` with no date component, and the amount is a
+    ``median_low`` of the members, so two R199 charges from one merchant on one day
+    project as a single R199/month rather than the true R398. It also inflates the
+    "Seen" count, which can push a group's occurrence count past the
+    new-recurring alert threshold and so silently suppress that alert.
+
+    Not fixed here because the alternatives all cost more than the case is worth
+    today: de-duplicating same-day members would break a genuinely twice-billed
+    subscription, and summing them would break a merchant who legitimately bills
+    twice on one day for different things. It needs a real decision about which is
+    the common case, on evidence rather than by construction, so it is recorded
+    where the grouping happens instead of guessed at.
     """
     groups: dict[tuple[Direction, str], list[_RecurRow]] = defaultdict(list)
     for row in rows:

@@ -388,7 +388,11 @@ class BackupService:
         real_db = self._vault.vault_path
         real_sidecar = self._vault.sidecar_path
         if real_db.exists() or real_sidecar.exists():
-            stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
+            # Microseconds, not seconds (FIBR-0216): two restores inside the same
+            # second produced the same stamp, so the second one's os.replace
+            # silently overwrote the first recoverable copy — on the files that
+            # exist to be recoverable.
+            stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%f")
             if real_db.exists():
                 os.replace(real_db, real_db.with_name(f"{real_db.name}.{stamp}.old"))
             if real_sidecar.exists():

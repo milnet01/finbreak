@@ -48,7 +48,9 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QStackedWidget,
+    QTableWidget,
     QTabWidget,
+    QTreeWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -180,6 +182,26 @@ def _restore_blob(restore: Callable[[QByteArray], bool], value: object) -> bool:
     if not isinstance(value, (QByteArray, bytes, bytearray)):
         return False
     return bool(restore(QByteArray(value)))
+
+
+def _clear_decrypted_rows(widget: QWidget) -> None:
+    """Empty every table/tree under ``widget`` before it is handed to
+    ``deleteLater`` (FIBR-0216).
+
+    ``deleteLater`` posts a ``DeferredDelete`` event, and Qt holds those until the
+    event loop returns to the level the object was created at — so an auto-lock that
+    fires while a NESTED modal loop is running (Help→About, a QFileDialog) defers the
+    workspace's destruction until the user dismisses that box. The widget is already
+    removed from the stack and invisible, but every decrypted row is still sitting in
+    its item models, for exactly as long as the machine is unattended: the case
+    auto-lock exists for.
+
+    Clearing the models makes the wipe happen at lock time rather than at destruction
+    time, so the deferral no longer decides how long the data lives."""
+    for view in widget.findChildren(QTableWidget):
+        view.setRowCount(0)
+    for tree in widget.findChildren(QTreeWidget):
+        tree.clear()
 
 
 def _in_flatpak() -> bool:
@@ -1317,6 +1339,8 @@ class MainWindow(QMainWindow):
         worker.start()
 
     def _on_manual_check_up_to_date(self) -> None:
+        if not self._unlocked:
+            return  # locked while the check was in flight (FIBR-0216) — see below
         QMessageBox.information(
             self,
             self.tr("Check for updates"),
@@ -1326,6 +1350,14 @@ class MainWindow(QMainWindow):
         )
 
     def _on_manual_check_error(self, _exc: object) -> None:
+        # Both manual-check results are gated on still being unlocked. The check runs
+        # on a worker thread, so an idle auto-lock can fire between the click and the
+        # reply — and these two were the only update handlers with no guard, popping
+        # a box over the lock screen. The offer path guards on `self._dialog is
+        # prompt`; the natural gate here is the same flag `_lock` clears, since these
+        # own no dialog of their own (FIBR-0216).
+        if not self._unlocked:
+            return
         QMessageBox.warning(
             self,
             self.tr("Check for updates"),
@@ -1691,6 +1723,7 @@ class MainWindow(QMainWindow):
                 self._recurring_tab = None
                 self._forecast_tab = None
             self._content.removeWidget(self._live)
+            _clear_decrypted_rows(self._live)
             self._live.deleteLater()
             self._live = None
 

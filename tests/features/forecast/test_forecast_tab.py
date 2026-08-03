@@ -109,6 +109,38 @@ def test_INV10_anchored_vault_headline_and_provenance(qtbot, vault_service) -> N
     assert w._events_table.rowCount() >= 1, "the confirmed item projects forward"
 
 
+def test_FIBR0216_coverage_suffix_counts_cash_accounts_not_all_accounts(
+    qtbot, vault_service
+) -> None:
+    """FIBR-0216 — the "(X only)" suffix marks a PARTIAL total, and its denominator
+    was `len(list_accounts())`: every account in the vault. But only CASH_TYPES
+    accounts can ever contribute to the anchor (FIBR-0179), so a vault holding any
+    debt or investment account showed "only" forever — even when every cash account
+    had contributed and the total was complete.
+
+    The provenance line already names the excluded accounts and says why, so the
+    suffix was also redundant with it in exactly that case."""
+    _seed_anchored(vault_service)  # one cash account, with a balance -> contributes
+    w = ForecastWidget(vault_service)
+    qtbot.addWidget(w)
+    w.refresh()
+    assert "only" not in w._headline.text().lower(), "one cash account, fully covered"
+
+    # A credit card can never contribute; it must not make the cash total look partial.
+    AccountService(vault_service.vault).add_account("Visa", "credit_card")
+    w.refresh()
+    assert "only" not in w._headline.text().lower(), (
+        "a non-cash account is not a gap in the CASH total"
+    )
+
+    # A second CASH account with no balance IS a real gap — the suffix must return.
+    AccountService(vault_service.vault).add_account("Second current", "current")
+    w.refresh()
+    assert "only" in w._headline.text().lower(), (
+        "a cash account that did not contribute still marks the total partial"
+    )
+
+
 def test_refresh_swallows_a_vault_lock_from_the_text_builders(
     qtbot, vault_service, monkeypatch
 ) -> None:

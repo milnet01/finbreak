@@ -1267,6 +1267,44 @@ lands on top.
   Kind: fix.
   Source: in-session-2026-08-03 (split out of FIBR-0216).
 
+- 📋 [FIBR-0218] **The AppImage installs no launcher, so a hand-made one shows a second panel icon.**
+  Reported by the user 2026-08-03 with screenshots: two finbreak icons in the
+  KDE panel while running 0.1.19 (the latest). DIAGNOSED on their machine, not
+  inferred.
+
+  Root cause is an app-ID mismatch, and finbreak's own side is correct. On
+  Wayland KDE associates a window with a pinned launcher by matching the window's
+  `app_id` to the launcher's desktop-file BASENAME. `app.py` sets
+  `QGuiApplication.setDesktopFileName("io.github.milnet01.finbreak")` and the
+  AppImage bundles `io.github.milnet01.finbreak.desktop` — consistent. But the
+  user's panel pinned `~/.local/share/applications/finbreak.desktop`, a
+  hand-rolled launcher whose basename id is `finbreak`, so KDE saw a pinned
+  launcher and an unrelated window. (`StartupWMClass=finbreak` in that file is
+  the X11 key and is ignored on Wayland — a trap, since it LOOKS like the
+  association key.)
+
+  Resolved for the reporter by renaming their launcher to
+  `io.github.milnet01.finbreak.desktop` and pointing `Icon=` at the installed
+  `io.github.milnet01.finbreak` hicolor PNGs.
+
+  The product gap: the AppImage installs no desktop entry of its own, so a user
+  who wants a menu/panel entry hand-writes one and will usually name it
+  `finbreak.desktop` — reproducing this. Options to weigh: (a) document the
+  required basename in the README's AppImage install section (cheapest, and the
+  README is refreshed every release anyway); (b) have the AppImage offer to
+  install a correct launcher on first run, the way many AppImages do; (c) rely on
+  AppImageLauncher, which does it correctly but is not installed by default on
+  openSUSE. (a) is the minimum and should ship regardless of the rest.
+
+  Also observed on the reporter's machine, and NOT part of this item: three
+  concurrent installs — the AppImage 0.1.19, an RPM/deb providing
+  `/usr/share/applications/io.github.milnet01.finbreak.desktop`, and a Flatpak
+  `io.github.milnet01.finbreak` still on 0.1.16. Worth asking whether the docs
+  should warn that the three can shadow each other's launchers.
+  **Layman:** If you make your own shortcut for the AppImage, finbreak shows up twice in the taskbar — once for the shortcut and once for the running window.
+  Kind: fix.
+  Source: user-report-2026-08-03.
+
 ## P13 — Packaging & release
 
 ### 📦 Packaging

@@ -407,6 +407,23 @@ def test_INV4b_rejects_bad_money_input(occurred_on, amount, description):
         parse_transaction(occurred_on, amount, description, exponent=2)
 
 
+@pytest.mark.parametrize(
+    ("spelling", "canonical"),
+    [
+        ("2026-07-15", "2026-07-15"),
+        ("20260715", "2026-07-15"),  # compact ISO — fromisoformat accepts it
+        ("2026-W29-3", "2026-07-15"),  # ISO week date — same day, same value
+    ],
+)
+def test_INV4b_date_is_canonicalised_not_just_validated(spelling, canonical):
+    """FIBR-0216 — `date.fromisoformat` accepts more spellings of one day than it
+    looks like, and everything downstream compares `occurred_on` as a STRING, so
+    storing the input verbatim would sort and group two spellings of the same date
+    apart. Latent (every current caller arrives via `strptime().isoformat()` or a
+    QDateEdit), which is why it is cheap to close now."""
+    assert parse_transaction(spelling, "-12.34", "x", 2)[0] == canonical
+
+
 def test_INV4b_accepts_the_largest_storable_amount():
     """The bound is inclusive, so the largest value SQLite can hold still parses —
     a guard that rejected it would be an off-by-one nobody would notice (FIBR-0216).
