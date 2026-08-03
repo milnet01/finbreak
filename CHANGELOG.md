@@ -29,6 +29,89 @@ signaling per
 - **Confirm or reject several suggested transfers at once** (FIBR-0201)
   The Transfers tab's suggested list now takes a plural selection — click rows to tick them in or out, then Confirm or Reject the lot. Trusting eight of twelve suggestions is one click, not eight. If two of the rows you picked share a transaction only one can be confirmed, and the status line now says so rather than quietly reporting a smaller number.
 
+### Changed
+
+- **Accented shop names are matched consistently across import and categorisation** (FIBR-0204)
+  The same shop name can be spelled two ways behind the scenes depending on
+  where a statement came from. finbreak now treats those spellings as
+  identical, which mainly matters for spotting duplicate imports and for
+  grouping recurring payments. Only affects descriptions with accented
+  characters.
+
+### Fixed
+
+- **The import preview now shows which rows are duplicates** (FIBR-0204)
+  The preview marked every row "OK" even when the summary said some were
+  duplicates, so you could not tell which transactions were about to be
+  skipped. Duplicate rows are now labelled as such.
+
+- **Your chosen timezone is no longer reset by saving an unrelated setting** (FIBR-0204)
+  If your pinned timezone was one this computer did not list — which can
+  happen after moving a vault between machines, since timezone names get
+  renamed over the years — opening Settings and saving anything at all
+  silently switched you back to the system default, shifting timestamps
+  near midnight onto the wrong day.
+
+- **Closing finbreak while it checks for updates no longer crashes it** (FIBR-0204)
+  Quitting shortly after startup, or while an update was downloading, could
+  end in a crash dialog instead of a clean exit.
+
+- **Refreshing a tab no longer moves which row a button acts on** (FIBR-0204)
+  With a table sorted and a row selected, anything that refreshed it — such
+  as saving a change in Settings — could quietly move the selection to a
+  different row, so a Confirm or Delete acted on something you had not
+  chosen. Refreshing now clears the selection instead.
+
+- **A duplicate category name no longer misfiles your spending** (FIBR-0204)
+  If you created a category on the Income side with the same name as a
+  built-in spending one — an "Insurance" for payouts received, say — the
+  built-in shop list started filing your actual insurance payments under
+  Income. Your totals stayed right, but the categories did not.
+
+- **A damaged statement file no longer closes the app when you pick it** (FIBR-0204)
+  A stray quotation mark in a CSV could make finbreak vanish the moment you
+  chose the file, with no message. It now tells you the file cannot be
+  read, like any other bad import.
+
+- **A month-end debit order no longer drifts to the 28th in the forecast** (FIBR-0204)
+  A payment due on the 31st was projected onto 28 February and then stayed
+  on the 28th for every following month — the 29th in a leap year. The
+  forecast now returns to month-end the way the bank does: 31st, 28th or
+  29th in February, then 31st and 30th again.
+
+- **Selected-row text is now readable on every theme** (FIBR-0204)
+  On Ledger, Parchment, Mint and Emerald the highlighted row used near-white
+  text on a light accent colour, well below the readable-contrast standard.
+  Emerald was the worst. The colour is now chosen by measuring the actual
+  contrast, so all six themes pass — no palette had to be redesigned.
+
+- **The Forecast tab no longer says "no known balance" when it has your credit-card statement** (FIBR-0204)
+  If the only balance finbreak had was from a credit card, it told you
+  there was no balance yet and never mentioned the card — so you would go
+  looking for a statement you had already imported. It now names the
+  account and explains that only current and savings balances count as
+  spendable cash.
+
+- **Two copies of finbreak can no longer open the same vault at once** (FIBR-0204)
+  Launching finbreak twice in quick succession — a double-clicked icon, or
+  an update relaunch racing a manual start — could leave both copies
+  running against the same encrypted file, which nothing else in the app
+  guards against. The second copy now steps aside properly.
+
+### Security
+
+- **Another user on the same computer can no longer stop finbreak starting** (FIBR-0204)
+  finbreak's single-instance marker lived in a shared system folder, so any
+  other account could take the name and make finbreak exit silently with no
+  window. It now lives in your own private runtime folder.
+
+- **Exported PDF reports are written private to you, and can no longer overwrite another file** (FIBR-0204)
+  An exported report — which lists your dates, shops and amounts, and is
+  unencrypted unless you set a password — was written readable by other
+  accounts on the same computer. It is now owner-only. The temporary file
+  it is built through also refuses to follow a symbolic link, so it cannot
+  be used to overwrite something else.
+
 ## [0.1.19] - 2026-08-02
 
 ### Added

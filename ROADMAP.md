@@ -957,6 +957,228 @@ lands on top.
   Lanes: ui, i18n.
   Source: user-request-2026-08-03.
 
+- 📋 [FIBR-0210] **Startup is bricked by a corrupt window.ini (int('') on last_tab).**
+  From the FIBR-0204 sweep (MEDIUM, verified). `MainWindow._restore_geometry`
+  reads `int(raw_tab) if raw_tab is not None else _TAB_HOME`. MEASURED: an INI
+  containing `last_tab=` makes QSettings return `''` (NOT None), and `int('')`
+  raises ValueError. It runs inside `MainWindow.__init__`, so it escapes past
+  `app.py`'s `except VaultStateError` guard and the app never starts again until
+  the user finds and deletes ~/.config/finbreak/window.ini.
+
+  Reachable from a truncated sync after power loss, a hand-edit, or a downgrade
+  from a future version that stores a tab NAME. Fix: `except (TypeError,
+  ValueError): return _TAB_HOME` — the same defensive posture `auth.py`'s
+  `auto_lock_minutes` already takes for a corrupt stored value, and the same
+  allowlist-the-known-good shape as `theme.load_theme_pref`.
+
+  While there, audit the other `window.ini` reads for the same shape.
+  **Layman:** If the settings file that remembers your window size gets damaged, finbreak refuses to open at all until you find and delete it by hand. It should just fall back to the default.
+  Kind: fix.
+  Lanes: ui.
+  Source: code-quality-review-2026-08-03.
+
+- 📋 [FIBR-0211] **Two vault reads sit outside their VaultLockedError guards.**
+  From the FIBR-0204 sweep (MEDIUM, verified by reading). Two sites call into the
+  vault OUTSIDE the try/except that was written to protect them:
+
+  1. `ui/forecast.py` — `_headline_text` -> `_coverage_suffix` and
+     `_provenance_text` -> `_excluded_names` each construct an AccountService and
+     call `list_accounts()`, but `refresh()`'s `except VaultLockedError` closes
+     before those two setText calls. The module docstring claims "every slot
+     catches VaultLockedError and returns". NOTE: FIBR-0204 WIDENED this exposure
+     — `_excluded_names` is now called in both forecast modes, not just ANCHORED
+     — so this is worth closing promptly.
+  2. `ui/categories.py:198` — `delete_blast_radius(category_id)` is one line
+     ABOVE a try/except that carefully documents the auto-lock-while-the-confirm-
+     box-is-open case. Same shape at `ui/rules.py` `_refresh` and the
+     `leaf_categories_grouped` call before the dialog.
+
+  No sys.excepthook is installed anywhere in src/, so these escape a Qt slot.
+  Fold the reads into the guarded block in each case.
+  **Layman:** In two places the app reads your data a moment after the vault may have locked itself, which can make it close unexpectedly instead of just stopping.
+  Kind: fix.
+  Lanes: ui.
+  Source: code-quality-review-2026-08-03.
+
+- 📋 [FIBR-0212] **Backup restore accepts a DEFLATE bomb and skips the directory fsync.**
+  From the FIBR-0204 sweep (MEDIUM x3, verified by reading). Three separate
+  things in services/backup.py:
+
+  1. **DEFLATE bomb on the READ path.** The comment says "vault.db is ZIP_STORED
+     — AES ciphertext is incompressible, so DEFLATE can't bomb it", which is true
+     of files finbreak WRITES and irrelevant to files it READS: `_read_capped`
+     never inspects `compress_type`. A ~500 KB hostile .fbk whose vault.db is
+     deflated zeros inflates to the 512 MiB cap in RAM, pre-login, on the restore
+     path. FIBR-0014 INV-12 explicitly requires a file_size/compress_size ratio
+     check; it is not implemented. Also add MemoryError to restore_backup's
+     normalisation tuple — today it escapes as an unhandled exception.
+  2. **No directory fsync after the rename.** `_write_fbk` fsyncs the FILE then
+     os.replace's it, but POSIX does not guarantee the directory entry reaches
+     stable storage. A power loss after "Backup saved" can leave no dest at all —
+     on the one artifact whose entire purpose is surviving a disaster.
+  3. **The .fbk temp is O_TRUNC, not O_EXCL.** O_NOFOLLOW stops the symlink case,
+     but an attacker who pre-creates a regular dest.fbk.tmp (mode 0666) in a
+     shared export dir has it filled and renamed into place — the user's backup
+     is then attacker-owned and world-readable. `_write_owner_only` in the same
+     file gets this right with O_EXCL; the two writers differ for no stated
+     reason. (pdf_export was given the O_EXCL|O_NOFOLLOW|0600 treatment in
+     FIBR-0204; this is its sibling.)
+  **Layman:** A malicious backup file could be crafted to eat a lot of memory when you restore it, and a power cut right after a backup could leave no file at all.
+  Kind: security.
+  Lanes: services.
+  Source: code-quality-review-2026-08-03.
+
+- 📋 [FIBR-0213] **recategorize_auto_rows rescans the whole vault inside the import transaction.**
+  From the FIBR-0204 sweep (MEDIUM, verified by reading). `commit_import`'s
+  comment says it will "categorise the just-inserted rows (auto/NULL)", but
+  `recategorize_auto_rows` iterates `tx_repo.auto_rows()` — EVERY auto row in the
+  vault, all accounts, all statements.
+
+  Two consequences. Cost: importing a 20-row CSV into a 50k-row vault runs 50k
+  `categorize_with_library` calls plus their UPDATEs inside the write transaction
+  holding the DB lock, on the GUI thread. Surprise: if the built-in library
+  changed between releases, importing one small statement silently re-files
+  hundreds of unrelated historical rows, moving every chart and report.
+
+  At minimum correct the comment. Better: scope the recompute to the rows this
+  import inserted (or to the period), and make a full re-file an explicit user
+  action. A separate measured finding: rule and library patterns are re-folded
+  once PER TRANSACTION ROW inside the loop (`categorization.py` and
+  `category_library.py`), measured 0.397s -> 0.120s for 20k rows x 113 patterns
+  when folded once up front — fold them in `_match_inputs`.
+  **Layman:** Importing a small statement quietly re-sorts every transaction you have ever imported, inside the same operation — slow on a big history, and it can move numbers you were not expecting to change.
+  Kind: fix.
+  Lanes: services.
+  Source: code-quality-review-2026-08-03.
+
+- 📋 [FIBR-0214] **Theme palettes miss WCAG on borders, stripes, muted text and one focus ring.**
+  From the FIBR-0204 sweep (MEDIUM x3, ratios COMPUTED with the real WCAG
+  formula, not estimated). The selected-row text was CRITICAL and is already
+  fixed in FIBR-0204; these are the remainder, and each needs a palette decision
+  rather than a code fix:
+
+  - **1.4.11 non-text contrast (needs 3:1) — control borders fail on every
+    theme.** `border` is the 1px edge on QLineEdit/QComboBox/QPushButton/
+    QGroupBox, i.e. the only thing identifying an input's bounds: ledger 1.36,
+    parchment 1.42, mint 1.27, midnight 1.41, graphite 1.43, emerald 1.61
+    (against `window`). Ledger's FOCUS RING is also short at 2.87 — accent
+    #b8892b on #f5f4ef — and the same value is the selected-tab underline. The
+    other five focus rings pass (3.22-8.25).
+  - **Alternating row stripes are invisible.** alt_base vs base: 1.16-1.27
+    across the six. `polish_item_views`' docstring claims it makes stripes
+    "visible"; at these ratios they are not. Decorative, so not a WCAG failure —
+    but the stated purpose is not met.
+  - **1.4.3 (needs 4.5:1) — muted_text where it is LIVE, not disabled.**
+    `muted_text` is the QHeaderView::section and unselected QTabBar::tab colour:
+    ledger 4.39, parchment 3.36, mint 4.30. Its Disabled-palette use IS exempt;
+    these are not. Related: `Link` is `accent_soft` at 1.25-2.86 and links do
+    render (update_dialog sets setOpenExternalLinks(False) on a notes widget).
+
+  The theme suite now has INV-4a computing ratios per theme (FIBR-0204) — extend
+  that harness to these pairs rather than writing a second one. Open question the
+  reviewer raised and I could not answer from the docs: is there a contrast
+  budget for the palettes at all? Neither FIBR-0127 nor ADR-0010 states one.
+  **Layman:** Some of the colours in the themes are too faint to see easily — input outlines, the alternating row shading, and some grey text. Needs a design pass with the contrast numbers checked.
+  Kind: accessibility.
+  Lanes: ui.
+  Source: code-quality-review-2026-08-03.
+
+- 📋 [FIBR-0215] **Three toolbar glyphs are unmapped, so they never hover-brighten or re-tint.**
+  From the FIBR-0204 sweep (MEDIUM, verified by reading). `icons._ICON_HUES`
+  omits `transactions`, `statements` and `export` — all three ARE toolbar action
+  icon names with SVGs on disk. `toolbar_icon` returns a plain `icon(name)` for
+  them, which adds no Active/Selected pixmap, so the module docstring's "vibrant
+  one on hover" and "tuned to the active light/dark theme" simply do not happen
+  there, and `_retint_toolbar_icons` re-installs an identical icon.
+
+  Theme INV-10 is phrased as "a MAPPED action's icon cacheKey() changes", so the
+  test is shaped around the gap rather than catching it. Contrast is fine
+  (#808080 scores 3.18-4.39 on all six windows) — this is consistency, not
+  accessibility. Decide whether the omission was deliberate visual hierarchy; the
+  docstring's "any glyph not listed stays neutral grey" reads as a fallback for
+  UNUSED glyphs, not for three live toolbar buttons.
+  **Layman:** Three of the toolbar buttons do not light up when you hover over them, and do not change shade when you switch theme, unlike the other ten.
+  Kind: fix.
+  Lanes: ui.
+  Source: code-quality-review-2026-08-03.
+
+- 📋 [FIBR-0216] **Assorted MEDIUM/LOW findings from the FIBR-0204 sweep, batched.**
+  From the FIBR-0204 sweep. Each verified against source; none reached CRITICAL
+  or HIGH, so they were deferred by user decision rather than fixed in that pass.
+
+  **Correctness / robustness**
+  - `parse_transaction` has no upper bound; a pasted `1E19` reaches SQLite and
+    raises OverflowError (NOT ValueError), escaping ManualEntryDialog's slot.
+    Exact bound: 9223372036854775807 minor units. Range-check and raise
+    ValueError like every other rejection.
+  - `standard_bank._draft` is called from bare loops with no per-row try, so a
+    legitimate 0.00 statement line (a zero fee, "interest capitalised 0.00")
+    aborts the WHOLE statement import with "amount must be non-zero" — which
+    reads as an app bug. csv_importer degrades per row; this should too.
+  - `services/transactions.py` validates the date but does not canonicalise it:
+    `date.fromisoformat` accepts "20260715" and "2026-W29-3" and stores them
+    verbatim, and everything downstream compares dates as STRINGS. No current
+    caller reaches it (all paths go through strptime().isoformat() or a
+    QDateEdit) — latent, one-line fix.
+  - `_coverage_suffix` (ui/forecast.py) counts ALL accounts as its denominator,
+    so a vault holding any debt/investment account always shows the partial-total
+    suffix even when every CASH account contributed. Compare against the cash
+    count instead.
+  - Two same-day charges from one merchant collapse into a single recurring item
+    (grouping is `(direction, merchant_key)` and the amount is a median), so the
+    forecast projects R199/month against a true R398. Also inflates the "Seen"
+    count, which can push occurrences past the new-recurring alert threshold and
+    silently suppress that alert. Document at minimum.
+
+  **Amount / locale**
+  - Display is locale-aware (QLocale) but input is C-locale only, so a de_DE user
+    cannot type back the number the app just showed them (`1.234,56` is
+    rejected). The manual-entry placeholder is tr()-able while the parser is not,
+    which makes the translation actively misleading.
+  - `negative_style` is a magic string (`== "brackets"`) in a codebase that uses
+    StrEnum for all nine other closed token sets.
+
+  **UI polish**
+  - Alerts dialog dismiss buttons are a bare tr("✕") with no accessibleName — a
+    screen reader announces N identically-unnamed buttons (WCAG 4.1.2), and the
+    bare glyph gives translators no context.
+  - Every dismiss recomputes the whole alert set TWICE (the dialog re-renders,
+    then the shell's `changed` signal re-runs it), each a full unfiltered
+    transaction scan plus a recurring-detection pass.
+  - File -> Quit is disabled while locked (the whole File menu is), so on the
+    app's default startup surface there is no menu route to exit — and there are
+    no keyboard shortcuts or menu mnemonics anywhere in the app
+    (`grep setShortcut|QKeySequence` returns nothing), so no Ctrl+Q either.
+  - A manual update check returning after a lock pops a QMessageBox over the
+    lock screen; every sibling guards on `self._dialog is prompt`.
+  - An auto-lock during a nested modal loop (Help->About, a QFileDialog) defers
+    the workspace's deleteLater indefinitely, so decrypted rows survive in the
+    hidden widget until the user dismisses the box — the unattended case
+    auto-lock exists for.
+  - StartOverDialog's confirm word is inside a tr() string, so a translated build
+    tells the user to type a word the comparison will never accept, permanently
+    disabling OK. The module docstring claims the opposite.
+  - PDF export can leave a stuck wait cursor (no `finally`, unlike the two backup
+    handlers).
+  - Dark-theme PDF page numbers render black on the dark page background.
+
+  **Docs / dead code**
+  - FIBR-0172 still specifies an `AlertsCard` in HomeView; FIBR-0185 replaced it
+    with a dialog and grep finds zero hits for `dashboard_alerts`/`AlertsCard`.
+  - FIBR-0006 describes a Type combo on the category Add form that does not
+    exist, claims two-level depth (the UI renders unbounded), and says the
+    service does NOT guard re-parent cycles (it does).
+  - `select_by_index` has almost no production caller — both wrappers
+    (`StatementsWidget._select_period`, `TransactionsView._select_txn`) are
+    documented as test/shell accessors with zero non-definition hits in src/.
+  - `ExportDialog._export_button()` has zero callers in src/.
+  - The `.old` restore stamp is second-resolution, so two restores inside one
+    second silently discard the first recoverable copy.
+  **Layman:** A collection of smaller issues found in the big code review — none of them break anything today, but each is worth tidying.
+  Kind: fix.
+  Lanes: ui, services.
+  Source: code-quality-review-2026-08-03.
+
 ## P13 — Packaging & release
 
 ### 📦 Packaging
