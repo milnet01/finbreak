@@ -85,6 +85,13 @@ def run(argv: list[str] | None = None) -> int:
     # probe found nobody but we still cannot listen, run unguarded rather than
     # refuse to start.
     guard = single_instance.listen(guard_name)
+    if guard is None and single_instance.another_instance_is_running(guard_name):
+        # Not a fail-open case — the guard WORKED. Another launch claimed the
+        # socket during the window build above, so this process lost the startup
+        # race; the owner has been nudged to the front. Running unguarded here
+        # would put two writers on one SQLCipher file, which is the whole reason
+        # the guard exists (INV-3a). Stand down instead.
+        return 0
     if guard is not None:
         window.set_single_instance_guard(guard)
         guard.newConnection.connect(lambda: _raise_existing(guard, window))

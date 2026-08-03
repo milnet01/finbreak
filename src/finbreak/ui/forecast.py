@@ -195,16 +195,23 @@ class ForecastWidget(QWidget):
         return _format_amount(display, symbol)  # negative carries its own "-"; 0 -> R0
 
     def _provenance_text(self, fc: Forecast, exponent: int, symbol: str) -> str:
-        if fc.mode is ForecastMode.NET_FLOW:
-            return self.tr(
-                "No known balance yet — the chart shows the projected change only."
-            )
-        start = _format_amount(to_display_decimal(fc.start_minor, exponent), symbol)
-        clauses = [self._source_clause(src) for src in fc.anchor_sources]
-        text = self.tr("Starting balance {start} as of today — from {sources}.").format(
-            start=start, sources=", ".join(clauses)
-        )
+        # The reason split is built BEFORE the mode branch, because NET_FLOW is
+        # exactly the mode a debt-only vault lands in: `_anchor` contributes no
+        # cash source, so a credit card holding a real statement balance would
+        # otherwise be told "no known balance yet" and never named at all. That
+        # is the case INV-14 was written for (FIBR-0179).
         no_balance, not_cash = self._excluded_names(fc)
+        if fc.mode is ForecastMode.NET_FLOW:
+            text = self.tr(
+                "No spendable-cash balance yet — the chart shows the projected "
+                "change only."
+            )
+        else:
+            start = _format_amount(to_display_decimal(fc.start_minor, exponent), symbol)
+            clauses = [self._source_clause(src) for src in fc.anchor_sources]
+            text = self.tr(
+                "Starting balance {start} as of today — from {sources}."
+            ).format(start=start, sources=", ".join(clauses))
         if no_balance:
             text += " " + self.tr(
                 "Excluded (no recorded balance yet): {names}."

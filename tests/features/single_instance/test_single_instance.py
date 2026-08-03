@@ -96,6 +96,34 @@ def test_INV3_a_stale_socket_does_not_block_a_fresh_start(qapp, name):
     server.close()
 
 
+def test_INV3a_a_live_owner_is_never_evicted(qapp, name):
+    """The stale-socket clear must not be able to evict a LIVE owner.
+
+    ``listen()`` used to call ``removeServer`` unconditionally, which unlinks
+    whatever is at the path — including a running instance's socket. Two
+    launches racing between the probe and the listen therefore both ended up
+    "listening" on one name, and the first owner's server was left bound to an
+    unlinked inode: permanently unreachable. Two processes then write the same
+    SQLCipher file, which is the exact hazard this feature exists to prevent.
+
+    This is INV-3's twin: INV-3 says a socket with nobody behind it MUST be
+    cleared, this says a socket with somebody behind it must NOT be.
+    """
+    owner = single_instance.listen(name)
+    assert owner is not None, "the first launch must become the owner"
+
+    intruder = single_instance.listen(name)
+    assert intruder is None, (
+        "a second listen() while the owner is live must fail, not evict it"
+    )
+    assert owner.isListening(), "the owner must still be listening"
+    assert single_instance.another_instance_is_running(name) is True, (
+        "the owner must still be REACHABLE — an unlinked socket still reports "
+        "isListening() while no probe can ever connect to it again"
+    )
+    owner.close()
+
+
 # --------------------------------------------------------------------------- #
 # INV-4 — the socket is per-user
 # --------------------------------------------------------------------------- #

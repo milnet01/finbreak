@@ -248,6 +248,50 @@ def test_INV4_highlighted_text_computed_both_branches():
     assert hi_on_light.lightnessF() < 0.5, "light accent -> near-black text"
 
 
+def _wcag_contrast(a: QColor, b: QColor) -> float:
+    """WCAG 2.2 contrast ratio — the real formula, not an HSL approximation.
+
+    sRGB channels are linearised, combined by the luminance coefficients, and the
+    lighter of the pair goes on top. This is the arithmetic the accessibility
+    criterion is defined in; `QColor.lightnessF()` is HSL lightness, a different
+    quantity that ranks saturated mid-hues quite differently.
+    """
+
+    def lum(c: QColor) -> float:
+        def chan(v: int) -> float:
+            f = v / 255.0
+            return f / 12.92 if f <= 0.03928 else ((f + 0.055) / 1.055) ** 2.4
+
+        return (
+            0.2126 * chan(c.red()) + 0.7152 * chan(c.green()) + 0.0722 * chan(c.blue())
+        )
+
+    la, lb = lum(a), lum(b)
+    return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
+
+
+def test_INV4a_selected_row_text_meets_wcag_on_every_theme():
+    """The selected transaction row is the most-read string in the app, so its
+    text must clear WCAG 2.2 SC 1.4.3 (4.5:1) against the accent it sits on.
+
+    The rule used to branch on `accent.lightnessF() < 0.5`. HSL lightness is not
+    luminance: a saturated mid-hue accent scores under 0.5 and so was classed
+    "dark", taking near-white text that it does not actually contrast. Measured
+    on the shipped palettes, four of six themes failed — emerald worst at
+    2.63:1 — while the *other* candidate the same function already returns
+    passed on all six. Picking by contrast rather than lightness fixes every
+    failing theme and changes nothing on the two that passed.
+    """
+    failures = []
+    for tid, spec in theme.THEMES.items():
+        accent = spec.tokens.accent
+        hi = theme.build_palette(spec.tokens).color(QPalette.ColorRole.HighlightedText)
+        ratio = _wcag_contrast(hi, accent)
+        if ratio < 4.5:
+            failures.append(f"{tid}: {hi.name()} on {accent.name()} = {ratio:.2f}:1")
+    assert not failures, "selected-row text below WCAG 4.5:1 — " + "; ".join(failures)
+
+
 # --------------------------------------------------------------------------- #
 # INV-5 — build_stylesheet is parameterised by the tokens
 # --------------------------------------------------------------------------- #

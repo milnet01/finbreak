@@ -27,7 +27,7 @@ from __future__ import annotations
 import logging
 import os
 
-from PySide6.QtNetwork import QLocalServer, QLocalSocket
+from PySide6.QtNetwork import QAbstractSocket, QLocalServer, QLocalSocket
 
 log = logging.getLogger(__name__)
 
@@ -65,12 +65,32 @@ def another_instance_is_running(name: str) -> bool:
 def listen(name: str) -> QLocalServer | None:
     """Become the single instance on *name*, or ``None`` if that isn't possible.
 
-    ``removeServer`` first: a process killed with SIGKILL (or an OOM kill, or a
-    crash) leaves its socket file behind on Unix, and a stale file makes every
-    later ``listen()`` fail — which would render the app permanently unlaunchable.
-    Removing it is only safe because the caller has *already* probed and found
-    nobody listening; a live owner wins that race, not this cleanup.
+    **Listen first, clear only a proven-stale socket.** A process killed with
+    SIGKILL (or an OOM kill, or a crash) leaves its socket file behind on Unix,
+    and a stale file makes every later ``listen()`` fail — which would render the
+    app permanently unlaunchable (INV-3). But ``removeServer`` unlinks whatever
+    is at the path, *including a live owner's socket*, so it cannot be called
+    speculatively: the caller's earlier probe does not settle the question,
+    because ``app.py`` builds and shows the whole window between that probe and
+    this call. Two launches inside that window both used to end up "listening" on
+    one name, with the first owner bound to an unlinked inode and unreachable
+    forever — two writers on one SQLCipher file (INV-3a).
+
+    So: try to listen; on ``AddressInUseError`` re-probe, and clear the path only
+    when nobody answers. A live owner keeps its socket and this launch returns
+    ``None`` — the caller's fail-open path.
     """
+    server = QLocalServer()
+    if server.listen(name):
+        return server
+    if server.serverError() != QAbstractSocket.SocketError.AddressInUseError:
+        log.debug("single-instance: could not listen on %r; running unguarded", name)
+        return None
+    if another_instance_is_running(name):
+        # A live owner holds the name (and has just been nudged to the front).
+        log.debug("single-instance: %r is owned by a live instance", name)
+        return None
+    # Bound but unanswered: a crash leftover. Safe to clear (INV-3).
     QLocalServer.removeServer(name)
     server = QLocalServer()
     if not server.listen(name):

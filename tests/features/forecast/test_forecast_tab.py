@@ -81,7 +81,7 @@ def test_INV10_empty_vault_renders_net_flow_without_crashing(
     assert w.objectName() == "tab_forecast"
     # NET_FLOW headline + provenance, no events, chart present.
     assert "net change" in w._headline.text().lower()
-    assert "no known balance" in w._provenance.text().lower()
+    assert "no spendable-cash balance" in w._provenance.text().lower()
     assert w._events_table.rowCount() == 0
     assert w._chart_view.chart() is not None
 
@@ -136,3 +136,38 @@ def test_INV14_debt_account_named_as_excluded_for_the_right_reason(
     # `other`-type accounts too), never under the no-balance clause.
     assert "spendable cash): visa" in provenance
     assert "no recorded balance yet" not in provenance
+
+
+def test_INV14_debt_only_vault_still_names_the_reason_in_net_flow(
+    qtbot, vault_service
+) -> None:
+    """The NET_FLOW half of INV-14 — the case the invariant was written for.
+
+    INV-14 says "a vault whose only balance-bearing account is a debt account
+    runs in NET_FLOW. The provenance line names it as excluded *because it isn't
+    cash*, not as 'no recorded balance yet'." The sibling test above seeds a cash
+    anchor first, so it only ever exercised the ANCHORED branch — where the
+    reason split is built. In NET_FLOW the branch returned early, so a
+    credit-card user holding a statement was told there was no balance yet and
+    the account was never named at all.
+    """
+    today = date.today()
+    card = AccountService(vault_service.vault).add_account("Visa", "credit_card").id
+    StatementPeriodRepository(vault_service.vault.connection).add(
+        card,
+        (today - timedelta(days=200)).isoformat(),
+        (today - timedelta(days=40)).isoformat(),
+        "card.pdf",
+        120_000,
+    )
+    vault_service.vault.connection.commit()
+
+    w = ForecastWidget(vault_service)
+    qtbot.addWidget(w)
+    w.refresh()
+
+    provenance = w._provenance.text().lower()
+    assert "spendable cash): visa" in provenance, (
+        "the card holds a balance and is excluded for NOT BEING CASH — the "
+        f"reason must survive into NET_FLOW mode. Got: {w._provenance.text()!r}"
+    )

@@ -194,11 +194,47 @@ def save_theme_pref(theme_id: str) -> None:
 # --------------------------------------------------------------------------- #
 # Token -> palette / stylesheet (INV-4, INV-5)
 # --------------------------------------------------------------------------- #
+def _relative_luminance(colour: QColor) -> float:
+    """WCAG 2.2 relative luminance of an sRGB colour — channels linearised, then
+    combined by the standard coefficients."""
+
+    def channel(value: int) -> float:
+        f = value / 255.0
+        return f / 12.92 if f <= 0.03928 else ((f + 0.055) / 1.055) ** 2.4
+
+    return (
+        0.2126 * channel(colour.red())
+        + 0.7152 * channel(colour.green())
+        + 0.0722 * channel(colour.blue())
+    )
+
+
+def _contrast_ratio(a: QColor, b: QColor) -> float:
+    """WCAG 2.2 contrast ratio between two colours (1.0 … 21.0)."""
+    la, lb = _relative_luminance(a), _relative_luminance(b)
+    return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
+
+
 def _highlighted_text(accent: QColor) -> QColor:
-    """The selected-row text colour: near-white on a dark accent, near-black on a
-    light one, so it always contrasts the accent fill (INV-4, a deterministic rule
-    on *accent* lightness, not theme light/dark)."""
-    return QColor("#f5f5f7") if accent.lightnessF() < 0.5 else QColor("#111119")
+    """The selected-row text colour: whichever of near-white / near-black actually
+    contrasts the accent fill better (INV-4/INV-4a).
+
+    This used to branch on ``accent.lightnessF() < 0.5``. HSL lightness is not
+    perceptual luminance, and the two disagree exactly where it matters — a
+    saturated mid-hue accent scores under 0.5, so it was classed "dark" and given
+    near-white text it does not contrast. Measured on the shipped palettes, four
+    of six themes landed under WCAG 2.2 SC 1.4.3's 4.5:1 on the most-read string
+    in the app (emerald worst, 2.63:1), while the *other* candidate this same
+    function already returns cleared the bar on all six. Choosing by the real
+    contrast ratio fixes every failing theme and is a no-op on the two that
+    passed, so no palette had to be redesigned.
+    """
+    light, dark = QColor("#f5f5f7"), QColor("#111119")
+    return (
+        light
+        if _contrast_ratio(light, accent) > _contrast_ratio(dark, accent)
+        else dark
+    )
 
 
 def build_palette(tokens: ThemeTokens) -> QPalette:
