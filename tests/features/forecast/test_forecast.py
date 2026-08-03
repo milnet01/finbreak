@@ -186,3 +186,62 @@ def test_INV11_horizon_equal_today_is_zero_width_not_an_error() -> None:
     assert len(fc.points) == 2
     assert fc.points[0].on == fc.points[-1].on == same
     assert fc.start_minor == fc.end_minor == 9_000
+
+
+# --------------------------------------------------------------------------- #
+# INV-4a — a month-end item keeps its day-of-month; the clamp does not ratchet
+# --------------------------------------------------------------------------- #
+def test_INV4a_month_end_item_does_not_ratchet_down() -> None:
+    """A 31st debit order must project onto 28/29 Feb and then back onto the
+    31st — not onto the 28th forever.
+
+    `_occurrences` stepped `when = _add_cadence(when, ...)`, and `_add_months`
+    clamps the day to the target month's length. Feeding the clamped date back in
+    as the next step's input loses the anchor day permanently, so a Jan-31 item
+    emitted 02-28, 03-28, 04-28 in a common year and 02-29, 03-29, 04-29 in a leap
+    one — the same standing order landing on a different day depending on
+    February. INV-4 only ever pinned the FIRST clamp, which is why this survived.
+
+    Month-end is the most common standing-order date, and the tab exists to
+    answer "will I be short before month-end?", so a 3-day drift is a wrong
+    answer on exactly the days that matter.
+    """
+    # Anchor on 2027-01-31, project across a common year.
+    fc = project_forecast(
+        0, [_item(-12_500_00, "2027-01-31")], date(2027, 1, 30), date(2027, 5, 15)
+    )
+    assert [e.on.isoformat() for e in fc.events] == [
+        "2027-01-31",
+        "2027-02-28",
+        "2027-03-31",
+        "2027-04-30",
+    ]
+
+    # The same item in a leap year must differ ONLY in the February date.
+    leap = project_forecast(
+        0, [_item(-12_500_00, "2028-01-31")], date(2028, 1, 30), date(2028, 5, 15)
+    )
+    assert [e.on.isoformat() for e in leap.events] == [
+        "2028-01-31",
+        "2028-02-29",
+        "2028-03-31",
+        "2028-04-30",
+    ]
+
+
+def test_INV4a_weekly_and_fortnightly_stepping_unchanged() -> None:
+    """The fixed-day cadences never clamp, so the anchored stepping must give
+    exactly what the old repeated stepping gave."""
+    weekly = project_forecast(
+        0,
+        [_item(-100_00, "2027-01-07", cadence=Cadence.WEEKLY)],
+        date(2027, 1, 6),
+        date(2027, 2, 4),
+    )
+    assert [e.on.isoformat() for e in weekly.events] == [
+        "2027-01-07",
+        "2027-01-14",
+        "2027-01-21",
+        "2027-01-28",
+        "2027-02-04",
+    ]

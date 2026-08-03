@@ -1,8 +1,9 @@
 """Shared text-matching normaliser (FIBR-0010 D2).
 
-``normalise_text`` collapses runs of whitespace to single spaces and casefolds —
-the one primitive both the import dedup (``ImportService._normalise``) and the
-rule matcher (``services.categorization.categorize``) compare against, so a rule
+``normalise_text`` folds Unicode composition to NFC, collapses runs of whitespace
+to single spaces, and casefolds — the one primitive both the import dedup
+(``ImportService._normalise``) and the rule matcher
+(``services.categorization.categorize``) compare against, so a rule
 pattern matches a description the same way the importer dedups it. Extracted here
 (coding.md § 1.3, reuse-before-rewrite) once the concept reached a second
 call-site; a tiny pure function, no vault, trivially testable.
@@ -12,6 +13,7 @@ from __future__ import annotations
 
 import re
 import string
+import unicodedata
 
 # Leading noise prefixes stripped from a bank description before the shop name
 # (FIBR-0138 D3). Ordered **longest-first** so an overlapping future prefix stays
@@ -32,16 +34,34 @@ _NOISE_PREFIXES = (
 
 
 def normalise_text(text: str) -> str:
-    """Fold whitespace to single spaces, then casefold."""
-    return " ".join(text.split()).casefold()
+    """Fold Unicode composition to NFC, whitespace to single spaces, then casefold.
+
+    The NFC step matters because this is the **import dedup key** as well as the
+    rule matcher: "Café" spelled with U+00E9 and the same word spelled "e" +
+    U+0301 are visually identical and casefold to *different* strings, so a
+    statement period imported once from a PDF (pdfplumber emits whatever the
+    font encoding produced, frequently decomposed) and again from the bank's CSV
+    (composed) would not recognise its own rows and would double-count them.
+
+    Pure ASCII input is unaffected, which is the overwhelming majority of bank
+    descriptions on this project's target market — so in practice this changes
+    almost no existing vault's dedup outcome. It is a behaviour change all the
+    same, and deliberately made in one place so the dedup key and the merchant
+    grouping key cannot drift apart.
+    """
+    return unicodedata.normalize("NFC", " ".join(text.split())).casefold()
 
 
 def merchant_name(description: str) -> str:
     """A best-guess shop name from a free-text bank ``description`` (FIBR-0138 D3).
 
     Pure and **total** — never raises for any ``str``. Fuzzy by design and refined
-    per release (like the category library); because the drill sums the real stored
-    amounts (INV-1), a mis-grouped shop is only cosmetic. Steps: strip; shed leading
+    per release (like the category library). A mis-grouped shop is cosmetic **in
+    the drill-down**, which sums the real stored amounts (INV-1) — but it is *not*
+    cosmetic in ``services.recurring``, where the same key is a **filter**: a
+    merchant split across two groups can drop each below ``_MIN_OCCURRENCES`` and
+    vanish from the recurring list, and so from the forecast that projects it.
+    Steps: strip; shed leading
     noise prefixes; drop digit-heavy reference tokens (a run of ≥ 3 digits, or a
     majority-digit token); strip edge punctuation; title-case, else fall back to the
     trimmed raw text (never a blank label — a stored description is non-empty). The

@@ -795,7 +795,7 @@ class MainWindow(QMainWindow):
 
     def _open_forecast(self) -> None:
         self._ensure_workspace().setCurrentIndex(_TAB_FORECAST)
-        self._status(self.tr("Recurring"))
+        self._status(self.tr("Forecast"))
 
     def _open_manual_entry(self) -> None:
         dialog = ManualEntryDialog(self._service, self)
@@ -1611,6 +1611,7 @@ class MainWindow(QMainWindow):
                 self._rules_tab = None
                 self._transfers_tab = None
                 self._recurring_tab = None
+                self._forecast_tab = None
             self._content.removeWidget(self._live)
             self._live.deleteLater()
             self._live = None

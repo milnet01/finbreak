@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QStackedWidget,
     QToolBar,
+    QWidget,
 )
 
 from conftest import _PW, _pump_deferred_delete
@@ -303,6 +304,53 @@ def test_INV4a_autolock_destroys_content_same_window(qtbot, service):
     count = window.findChild(QLabel, "status_txn_count")
     assert count.isHidden(), "the transaction count is hidden while locked"
     assert isinstance(window._dialog, UnlockDialog), "the UnlockDialog re-opened"
+
+
+def test_INV4a_lock_drops_every_tab_reference(qtbot, service):
+    """`_clear_live` must null EVERY cached tab reference, not eight of nine.
+
+    The workspace is destroyed on lock, but the shell keeps a Python attribute per
+    tab. `_forecast_tab` was missed when Forecast was appended to the list
+    (FIBR-0171), so after a lock the shell still held the wrapper of a destroyed
+    ForecastWidget — the one property INV-3/D5 exists to guarantee — and
+    `_refresh_tab` guards only on `is not None`, never `shiboken6.isValid`, so any
+    path reaching it between a lock and a rebuild reads a deleted object.
+
+    Asserted over the attribute set rather than a hand-written list, so the next
+    tab appended cannot reintroduce the same omission.
+    """
+    window = _unlocked_home_shell(qtbot, service)
+    # Widget-valued `*_tab` attributes only — `_initial_tab` is the restored tab
+    # INDEX, an int, and is meant to survive a lock.
+    tab_attrs = [
+        n
+        for n in vars(window)
+        if n.endswith("_tab") and isinstance(getattr(window, n), QWidget)
+    ]
+    assert len(tab_attrs) >= 9, f"expected the full tab set, found {tab_attrs}"
+    assert "_forecast_tab" in tab_attrs
+
+    service._on_idle_timeout()
+    _pump_deferred_delete()
+
+    still_held = [n for n in tab_attrs if getattr(window, n) is not None]
+    assert not still_held, (
+        f"these tab references survived the lock: {still_held} — a destroyed "
+        "widget's wrapper must not be reachable from the locked shell"
+    )
+
+
+def test_forecast_navigation_reports_its_own_destination(qtbot, service):
+    """Every `_open_*` handler names the tab it opens. `_open_forecast` was a
+    copy-paste of `_open_recurring` and reported "Recurring" while switching to
+    the Forecast tab, so clicking Forecast put the wrong word in the status bar."""
+    window = _unlocked_home_shell(qtbot, service)
+    window._action_forecast.trigger()
+
+    message = window.statusBar().currentMessage()
+    assert message == "Forecast", (
+        f"the Forecast action must report Forecast, got {message!r}"
+    )
 
 
 def test_INV4b_autolock_closes_open_manual_dialog(qtbot, service):

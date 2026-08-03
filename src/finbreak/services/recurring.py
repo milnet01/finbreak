@@ -82,14 +82,36 @@ def _add_months(d: date, months: int) -> date:
 
 def _add_cadence(d: date, cadence: Cadence) -> date:
     """The next expected date after ``d`` for ``cadence`` (D7) — calendar-aware for
-    month/year (day-clamped), fixed-day for week/fortnight."""
+    month/year (day-clamped), fixed-day for week/fortnight.
+
+    **One step only.** To walk several steps use :func:`_add_cadence_n` from a fixed
+    anchor — chaining this function re-feeds a clamped day back in and ratchets a
+    month-end item down permanently.
+    """
+    return _add_cadence_n(d, cadence, 1)
+
+
+def _add_cadence_n(anchor: date, cadence: Cadence, n: int) -> date:
+    """The ``n``-th occurrence after ``anchor`` — computed from the anchor, never by
+    chaining single steps.
+
+    The distinction is load-bearing for the month cadences. ``_add_months`` clamps
+    the day to the target month's length, so chaining turns a Jan-31 item into
+    Feb-28 and then keeps *28* as the input for March: the anchor day is lost after
+    the first short month and never returns. That made a month-end debit order land
+    on the 28th for the rest of the projection in a common year and the 29th in a
+    leap one — the same standing order on a different day depending on February.
+    Anchoring instead gives 31 → 28/29 → 31 → 30, which is what the bank does.
+
+    Strictly increasing in ``n`` for every cadence, so callers can loop on it.
+    """
     if cadence is Cadence.WEEKLY:
-        return d + timedelta(days=7)
+        return anchor + timedelta(days=7 * n)
     if cadence is Cadence.FORTNIGHTLY:
-        return d + timedelta(days=14)
+        return anchor + timedelta(days=14 * n)
     if cadence is Cadence.MONTHLY:
-        return _add_months(d, 1)
-    return _add_months(d, 12)
+        return _add_months(anchor, n)
+    return _add_months(anchor, 12 * n)
 
 
 def _classify(gaps: list[int]) -> Cadence | None:

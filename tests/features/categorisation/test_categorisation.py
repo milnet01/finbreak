@@ -190,6 +190,29 @@ def test_normalise_text_collapses_whitespace_and_casefolds():
     assert normalise_text("  Foo   BAR ") == "foo bar"
 
 
+def test_normalise_text_folds_unicode_composition(monkeypatch):
+    """Two spellings of the same accented merchant must compare equal.
+
+    `casefold()` alone does not touch composition: "Café" written with U+00E9 and
+    the same word written as "e" + U+0301 look identical, print identically, and
+    folded to *different* strings. That matters because this one function is the
+    import dedup key (`ImportService._normalise`) as well as the rule matcher —
+    so a period imported once from a PDF (pdfplumber emits whatever the font
+    encoding produced, often decomposed) and again from the bank's CSV (composed)
+    would not recognise its own rows as duplicates and would double-count them.
+
+    NFC is the fold, applied before casefolding.
+    """
+    import unicodedata
+
+    composed = "Café Nescafé"
+    decomposed = unicodedata.normalize("NFD", composed)
+    assert composed != decomposed, "the fixture must actually differ in codepoints"
+    assert normalise_text(composed) == normalise_text(decomposed)
+    # ...and the plain-ASCII behaviour is untouched.
+    assert normalise_text("  Foo   BAR ") == "foo bar"
+
+
 def test_import_normalise_delegates_to_text():
     # ImportService._normalise must become a byte-identical delegator (D2), so the
     # dedup behaviour is unchanged.

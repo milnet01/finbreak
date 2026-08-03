@@ -6,7 +6,7 @@ Two layers, split on the pure-vs-service seam (§7):
   ``anchor_minor`` (``None`` ⇒ NET_FLOW), prepared signed-integer ``ForecastInput``s,
   ``today``, an inclusive ``horizon`` date, and the service-built ``anchor_sources``
   it just carries onto the result. It generates each item's future occurrences by
-  **reusing** FIBR-0142's calendar-aware ``_add_cadence`` stepper, merges + stable-
+  **reusing** FIBR-0142's calendar-aware ``_add_cadence_n`` stepper, merges + stable-
   sorts the events, accumulates the running balance, and builds the step line. There
   is **no ``Decimal`` and no exponent** in this function — money is signed integer
   minor units throughout (money-safe, INV-1/D6/D7).
@@ -36,7 +36,7 @@ from finbreak.models import (
 from finbreak.repositories.accounts import AccountRepository
 from finbreak.repositories.statement_periods import StatementPeriodRepository
 from finbreak.repositories.transactions import TransactionRepository
-from finbreak.services.recurring import RecurringService, _add_cadence
+from finbreak.services.recurring import RecurringService, _add_cadence_n
 from finbreak.services.transactions import read_minor_unit_exponent, to_minor
 from finbreak.vault import Vault
 
@@ -68,16 +68,26 @@ class ForecastInput:
 def _occurrences(item: ForecastInput, today: date, horizon: date) -> list[date]:
     """Every occurrence of ``item`` strictly after ``today`` and no later than
     ``horizon`` (the disjoint ``(today, horizon]`` window, D6). Starts at
-    ``next_expected``, rolls forward with ``_add_cadence`` while ``<= today``, then
-    emits while ``<= horizon``. Termination is guaranteed — every ``_add_cadence``
-    step advances the date by ≥ 7 days."""
-    when = item.next_expected
+    ``next_expected``, rolls forward while ``<= today``, then emits while
+    ``<= horizon``.
+
+    Every date is computed as the **n-th occurrence from the anchor**
+    (``_add_cadence_n``) rather than by chaining single steps. Chaining re-feeds a
+    day-clamped date back in, so a Jan-31 item degrades to the 28th (or 29th in a
+    leap year) for the rest of the projection instead of returning to month-end.
+    Termination is guaranteed — ``_add_cadence_n`` is strictly increasing in ``n``.
+    """
+    anchor = item.next_expected
+    step = 0
+    when = anchor
     while when <= today:
-        when = _add_cadence(when, item.cadence)
+        step += 1
+        when = _add_cadence_n(anchor, item.cadence, step)
     dates: list[date] = []
     while when <= horizon:
         dates.append(when)
-        when = _add_cadence(when, item.cadence)
+        step += 1
+        when = _add_cadence_n(anchor, item.cadence, step)
     return dates
 
 
