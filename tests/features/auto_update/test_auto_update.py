@@ -1725,3 +1725,43 @@ def test_FIBR0152_prompt_renders_the_accumulated_body(qtbot, tmp_path):
     shown = notes.toPlainText()
     for tag in ("v0.4.0", "v0.5.0", "v0.6.0"):
         assert f"release notes for {tag}" in shown
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0204 — quitting with an update worker in flight must not abort
+# --------------------------------------------------------------------------- #
+def test_FIBR0204_close_drains_an_inflight_update_worker(qtbot, service):
+    """Destroying a running QThread aborts the process; closing the window must
+    not be able to do that.
+
+    The update workers are parented to MainWindow and nothing waited on them, so
+    the window's destructor could reach a live QThread — Qt prints "Destroyed
+    while thread is still running" and calls abort() (verified: exit 134, core
+    dumped). Reachable by quitting within the launch check's 30 s socket timeout,
+    or deterministically by starting a download and closing the window.
+    """
+    from PySide6.QtCore import QThread
+
+    window, _ = _updater_shell(qtbot, service)
+
+    class _Slow(QThread):
+        def run(self) -> None:
+            for _ in range(100):
+                if self.isInterruptionRequested():
+                    return
+                self.msleep(20)
+
+    worker = _Slow(window)
+    window._download_worker = worker
+    worker.start()
+    qtbot.waitUntil(worker.isRunning, timeout=2000)
+
+    window.close()
+
+    assert window._download_worker is None, "the reference must be dropped on close"
+    assert not worker.isRunning() or worker.parent() is None, (
+        "a worker still running after close must have been detached from the "
+        "window — otherwise the window's destructor aborts the process"
+    )
+    worker.requestInterruption()
+    worker.wait(3000)

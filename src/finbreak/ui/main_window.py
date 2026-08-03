@@ -109,6 +109,10 @@ DONATE_PAYBRU = "https://paybru.co.za/tip/ants-projects-hub"
 REPORT_ISSUE_URL = "https://github.com/milnet01/finbreak/issues/new"
 
 _STATUS_TIMEOUT_MS = 4000
+# How long a quit waits for an in-flight update worker before detaching it. Short
+# enough that closing the window still feels immediate; a worker that outlasts it
+# is unparented rather than destroyed, so it cannot abort the process (FIBR-0204).
+_WORKER_DRAIN_MS = 1500
 
 # The workspace tab order (FIBR-0052 INV-1; Transactions inserted 2nd by FIBR-0012).
 # Fixed; the navigation actions and the import-done landing key on these indices.
@@ -1502,7 +1506,43 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event: QCloseEvent) -> None:
         self._save_geometry()  # persist size/position/state/tab on quit (D7)
+        self._drain_update_workers()
         super().closeEvent(event)
+
+    def _drain_update_workers(self) -> None:
+        """Stop any in-flight update ``QThread`` before this window is destroyed.
+
+        The three update workers are parented to the window, and nothing used to
+        ``wait()`` on them. Destroying a ``QThread`` that is still running makes Qt
+        print "QThread: Destroyed while thread is still running" and **abort the
+        process** — verified here, exit 134 with a core dump. Two ordinary routes
+        reach it: the launch check is armed a tick after startup and its socket
+        timeout is 30 s, so any quit inside that window on a slow network aborts;
+        and clicking **Update now** on a large AppImage then closing the window
+        does it deterministically.
+
+        Bounded on purpose. Both workers are a single blocking call, so there is
+        no interruption point to honour mid-request — we ask, then wait a short
+        while. If a worker outlasts that, detaching it from the window is what
+        actually prevents the abort: an unparented thread is not destroyed by the
+        window's destructor, so the worst case degrades to a Qt warning at process
+        exit instead of a crash the user sees.
+        """
+        for attr in (
+            "_update_check_worker",
+            "_manual_check_worker",
+            "_download_worker",
+        ):
+            worker = getattr(self, attr, None)
+            if worker is None or not shiboken6.isValid(worker):
+                setattr(self, attr, None)
+                continue
+            if worker.isRunning():
+                worker.requestInterruption()
+                worker.quit()
+                if not worker.wait(_WORKER_DRAIN_MS):
+                    worker.setParent(None)  # outlive the window rather than abort
+            setattr(self, attr, None)
 
     def _center_window(self) -> None:
         """Center the window on its screen. On X11 / Windows / macOS a plain

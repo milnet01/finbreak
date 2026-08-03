@@ -870,6 +870,13 @@ lands on top.
   Lanes: ui, i18n, services, tests.
   Source: user-request-2026-07-01.
   Deferred from FIBR-0004 (P02) per user decision 2026-07-02: the three P02 screens (first_run, unlock, main_window) build their strings once in __init__ and do NOT implement live language switching (changeEvent → retranslateUi). coding.md §5.2 asks for this "from P02"; the FIBR-0004 spec deliverable required only tr() strings + RTL layouts + QLocale amounts (all shipped), and there are no translations to switch yet. When this phase lands, add changeEvent/retranslateUi to those three screens (and every screen built between P02 and here) so the language switcher takes effect without a relaunch.
+  Scope note (2026-08-03, user request): loading the right catalog **at
+  startup from the system language** is FIBR-0209, not this bullet. This
+  item's "loaded via QTranslator at startup and on live switch" says the
+  mechanism exists but never says which locale is chosen on a first run
+  with no stored preference — FIBR-0209 pins that (system locale, full
+  `pt_BR` then bare `pt`, else English) and the silent-fallback rule.
+  Fold FIBR-0209 in if this is specced first; otherwise ship it after.
 
 - ✅ [FIBR-0127] **App-wide six-theme (finance-flavoured) + follow-system theme system & modern polish.**
   Split from FIBR-0014 (P12). Nothing exists today: the app rides the system/Qt default palette (dark by convention) with NO stylesheet, no QPalette install, no theme setting key, no toggle (app.py sets no palette). This builds the theme system from scratch (Fusion + token-driven QPalette/QSS — ADR-0010): a non-vault `theme` pref with 7 values (`system` + six named themes Ledger/Parchment/Mint · Midnight/Graphite/Emerald), palette+stylesheet application at the app entry point, and live follow-system detection, plus the sleek modern polish (gradient/glow accents + grid row-highlighting). Widgets already READ the live palette (ui/icons.py _is_dark_theme, home.py ChartTheme from palette().text(), _amount.py fixed mid-tones) so they adapt once a palette is installed. Delivers FIBR-0116's live icon re-tint on theme switch (toolbar glyphs re-tint on the ThemeController themeChanged signal); the _amount.py palette-adaptive re-tinting stays deferred here. Hosted in the FIBR-0055 Settings dialog. (The old note that the code mis-cites ADR-0002 for the dark theme and "write a real theme ADR when specced" is done — ADR-0010 is that theme ADR; the icons.py citation is corrected in the spec.)
@@ -895,6 +902,13 @@ lands on top.
   Kind: implement.
   Lanes: ui, i18n.
   Source: split-from-FIBR-0014-2026-07-13.
+  Scope note (2026-08-03, user request): the `language` key this bullet
+  adds must default to a `"system"` sentinel, not to `"en"` — FIBR-0209
+  makes "follow the operating system's language" the out-of-the-box
+  behaviour, so the picker's first entry is "System default" and an
+  explicit pick is what overrides detection. Same shape as the timezone
+  / date / time combos (`DATETIME_SYSTEM`, `ui/_datetime_prefs.py`),
+  which this dialog already hosts.
 
 - ✅ [FIBR-0135] **Auto-lock "Never" option — let the user disable the idle timer entirely.**
   User lives alone / rarely has visitors and doesn't want the idle auto-lock. Added 0="Never" to ALLOWED_AUTO_LOCK_MINUTES (listed LAST so a corrupt/absent value still falls back to the 1-minute floor, never to "Never" — the INV-1 safe-fail is preserved). _arm_timer stops the timer instead of starting it when Never; notify_activity gains an isActive() guard so user activity can't silently re-arm a disabled timer. Settings combo gains a "Never" label. Password-on-open and manual Lock button are unchanged; the key is still wiped on lock and exit. security-model.md T3 amended to record the accepted residual risk (an unattended unlocked session stays unlocked — a user choice, not a silent default). Reverses the FIBR-0055 D6 "no never option" decision by explicit user request. Kind: enhancement.
@@ -902,6 +916,46 @@ lands on top.
   Kind: enhancement.
   Source: user-request-2026-07-14.
   Resolved (2026-07-14) — commit b915254. Auto-lock "Never" (0) added; _arm_timer stops on it, notify_activity isActive()-guarded, combo label + security-model T3 note. Gate green 862/1.
+
+- 📋 [FIBR-0209] **Launch in the system language automatically, falling back to English.**
+  User request 2026-08-03. On startup, detect the operating system's
+  language and load that locale's translation automatically — the user
+  should not have to find a setting to be understood.
+
+  Resolution order (first hit wins):
+  1. An explicit language the user picked, if one is stored (FIBR-0129's
+     `language` key). An explicit choice always beats detection.
+  2. The system language, via `QLocale.system()` — match on the full
+     locale first (e.g. `pt_BR`), then fall back to the bare language
+     (`pt`), so a regional variant still finds its base translation.
+  3. English, if the system language is absent, unreadable, or has no
+     bundled `.qm` catalog.
+
+  Follow the project's existing sentinel shape: the stored `language`
+  key should default to a `"system"` token exactly like
+  `DATETIME_SYSTEM` in `ui/_datetime_prefs.py`, so "follow the system"
+  is a real stored state and not merely the absence of a value. That
+  also makes the Settings picker's first entry ("System default")
+  consistent with the timezone / date / time combos already there.
+
+  Two traps worth pinning in the spec:
+  - The fallback must be **silent and total** — an unsupported language
+    is the normal case for most of the world until more locales ship,
+    so it must never surface an error or an empty UI, just English.
+  - Detection runs BEFORE the first window is built, like the theme
+    pref (`app.py` applies the theme before `MainWindow`), so the
+    locked first window is already in the right language. The theme
+    system's `load_theme_pref` allowlist-against-known-ids is the
+    pattern to copy for validating a stored/detected language token.
+
+  Depends on FIBR-0017 (the QTranslator pipeline + the bundled `.qm`
+  catalogs must exist before there is anything to detect INTO) and
+  FIBR-0129 (owns the `language` settings key this reads). Ship after
+  both, or fold into FIBR-0017 if that is specced first.
+  **Layman:** finbreak should open in whatever language your computer is set to, without you having to pick it. If it does not know your language, or does not have a translation for it yet, it opens in English.
+  Kind: feature.
+  Lanes: ui, i18n.
+  Source: user-request-2026-08-03.
 
 ## P13 — Packaging & release
 

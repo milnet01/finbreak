@@ -6,6 +6,7 @@ a Settings Save pushes new prefs to the open tabs live. Vault under ``tmp_path``
 """
 
 import pytest
+from PySide6.QtCore import QTimeZone
 from PySide6.QtWidgets import QComboBox
 
 from conftest import _PW, _acct
@@ -13,6 +14,7 @@ from finbreak.datetime_format import format_date, format_timestamp
 from finbreak.services.auth import AuthService, DateTimePrefs
 from finbreak.services.categorization import CategorizationService
 from finbreak.services.transactions import TransactionService
+from finbreak.ui._datetime_prefs import DATETIME_SYSTEM
 from finbreak.ui.main_window import MainWindow
 from finbreak.ui.statements import StatementsWidget
 from finbreak.ui.transactions import TransactionsView
@@ -152,4 +154,60 @@ def test_settings_save_pushes_prefs_to_open_tabs(qtbot, service):
     )
     assert window._statements_tab._table.item(0, _COL_PERIOD).text() == (
         "2026/06/01 – 2026/06/30"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0204 — a pinned timezone survives a Save even if the combo can't offer it
+# --------------------------------------------------------------------------- #
+def test_FIBR0204_unofferable_timezone_is_preserved_not_downgraded(qtbot, monkeypatch):
+    """A stored timezone the combo cannot offer must round-trip, not silently
+    become "system".
+
+    `populate_datetime_combos` fills the combo from `QTimeZone.availableTimeZoneIds()`
+    and preselects with `select_combo_data`, whose contract is to leave the
+    selection UNCHANGED when `findData` misses — so the combo rests on item 0,
+    `system`. `read_datetime_prefs` is unguarded and `SettingsDialog._on_save`
+    writes it on EVERY save, touched or not. So opening Settings to change the
+    auto-lock timeout and pressing Save silently repoints every timestamp at the
+    machine's local zone: a wrong-day render for any transaction near midnight.
+
+    The list follows the host's tzdata, and a vault is portable (backup/restore,
+    or the same account on two machines). Zone ids really are renamed between
+    releases — `Europe/Kiev` to `Europe/Kyiv`, `Asia/Rangoon` to `Asia/Yangon` —
+    so a pref set on one machine can be unofferable on another. The monkeypatch
+    below stands in for exactly that difference; the guard is what matters, not
+    which id happens to be missing on today's box.
+    """
+    from finbreak.ui import _datetime_prefs
+
+    pinned = "Africa/Johannesburg"
+    assert QTimeZone(pinned.encode()).isValid(), "fixture must use a real zone"
+
+    # Simulate a host whose tzdata does not enumerate the stored id.
+    monkeypatch.setattr(
+        _datetime_prefs,
+        "_available_zone_ids",
+        lambda: ["Europe/London", "America/New_York"],
+    )
+
+    tz, date, time = QComboBox(), QComboBox(), QComboBox()
+    for combo in (tz, date, time):
+        qtbot.addWidget(combo)
+    _datetime_prefs.populate_datetime_combos(
+        tz,
+        date,
+        time,
+        system_tz_label="System",
+        system_date_label="System",
+        system_time_label="System",
+        current=DateTimePrefs(
+            timezone=pinned, date_format=DATETIME_SYSTEM, time_format=DATETIME_SYSTEM
+        ),
+    )
+
+    read_back = _datetime_prefs.read_datetime_prefs(tz, date, time)
+    assert read_back.timezone == pinned, (
+        "an unrelated Save must not downgrade a pinned timezone to 'system' just "
+        "because this host's tzdata does not enumerate it"
     )

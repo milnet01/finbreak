@@ -55,10 +55,27 @@ def populate_datetime_combos(
     """Fill the three combos with a prepended System-default item (mapped to the
     ``"system"`` sentinel) then the concrete choices, and preselect ``current``.
     Every item's ``userData`` is the stored token (D5). Only the timezone combo
-    is editable — its completer gives type-to-search over 643 ids, with
-    ``NoInsert`` so free text can't create a new item."""
+    is editable — its completer gives type-to-search over the host's zone ids
+    (the count follows the platform's tzdata, so it is not fixed), with
+    ``NoInsert`` so free text can't create a new item. A pinned id this host does
+    not enumerate is added anyway, so it round-trips rather than degrading."""
     tz.addItem(system_tz_label, DATETIME_SYSTEM)
-    for zone_id in _available_zone_ids():
+    available = _available_zone_ids()
+    if current.timezone != DATETIME_SYSTEM and current.timezone not in available:
+        # The stored id is pinned but this host's tzdata does not enumerate it —
+        # a vault is portable (backup/restore, or the same person on two
+        # machines) and zone ids really are renamed between tzdata releases
+        # (Europe/Kiev -> Europe/Kyiv, Asia/Rangoon -> Asia/Yangon). Offer it
+        # anyway, so the preselect below can find it.
+        #
+        # Without this the combo rests on item 0 (System): `select_combo_data`
+        # leaves the selection unchanged on a miss, and `read_datetime_prefs` is
+        # unguarded, so the next Save — of ANY setting, since `_on_save` writes
+        # all of them — silently repoints every timestamp at the machine's local
+        # zone. That is a wrong-day render for a transaction near midnight, from
+        # a preference the user never touched.
+        available = [current.timezone, *available]
+    for zone_id in available:
         tz.addItem(zone_id, zone_id)  # label == data: the id, shown verbatim
     tz.setEditable(True)
     tz.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
