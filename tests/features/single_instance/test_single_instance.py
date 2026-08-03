@@ -143,6 +143,20 @@ def test_INV4_socket_name_is_scoped_to_the_user(monkeypatch, tmp_path):
     monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
     assert single_instance.socket_name() == str(tmp_path / "finbreak.sock")
 
+    # An overlong runtime dir must fall back to the short name rather than
+    # return a path AF_UNIX cannot bind: past ~107 bytes every listen() fails and
+    # the guard would silently disable itself, letting two instances open one
+    # vault with nothing shown to the user. Switching to an absolute path is what
+    # introduced this mode — a bare name was always short enough (FIBR-0204).
+    long_dir = tmp_path / ("d" * 120)
+    long_dir.mkdir()
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(long_dir))
+    fallback = single_instance.socket_name()
+    assert not fallback.startswith(str(long_dir)), (
+        f"an unbindable {len(str(long_dir)) + 14}-byte path was returned instead "
+        "of falling back to the short name"
+    )
+
     monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
     resolved = single_instance.socket_name()
     if hasattr(os, "getuid"):

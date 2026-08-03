@@ -40,6 +40,11 @@ _PROBE_MS = 500
 # an update relaunch.
 _NUDGE = b"raise"
 
+# Usable bytes for an AF_UNIX socket path. The kernel's sun_path is 108 bytes
+# including the NUL (measured: a raw bind fails at 108 chars, succeeds at 107),
+# and Qt refuses one byte earlier again. 100 keeps a margin under both.
+_MAX_UNIX_SOCKET_PATH = 100
+
 
 def socket_name(base: str = "finbreak") -> str:
     """The per-user socket name — an absolute path under ``$XDG_RUNTIME_DIR`` when
@@ -65,7 +70,20 @@ def socket_name(base: str = "finbreak") -> str:
     """
     runtime_dir = os.environ.get("XDG_RUNTIME_DIR")
     if runtime_dir and os.path.isdir(runtime_dir):
-        return os.path.join(runtime_dir, f"{base}.sock")
+        candidate = os.path.join(runtime_dir, f"{base}.sock")
+        # An AF_UNIX socket path is capped at 107 bytes (measured; Qt fails one
+        # byte tighter still, reserving room for its lock-file suffix). A bare
+        # name was always short enough, so switching to an absolute path
+        # introduces a length failure mode that did not exist before: past the
+        # cap every `listen()` fails, the guard silently disables itself, and two
+        # instances can open one vault with nothing shown to the user. Qt at
+        # least fails cleanly rather than truncating — two long paths colliding
+        # on one name would be worse — but a disabled guard is not what we want,
+        # so fall back to the short name rather than return an unusable path.
+        # /run/user/<uid>/finbreak.sock is 28 bytes, so this is headroom, not a
+        # case anyone hits on a normal desktop.
+        if len(candidate.encode()) <= _MAX_UNIX_SOCKET_PATH:
+            return candidate
     uid = os.getuid() if hasattr(os, "getuid") else None
     return base if uid is None else f"{base}-{uid}"
 

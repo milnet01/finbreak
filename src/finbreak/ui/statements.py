@@ -306,7 +306,15 @@ class StatementsWidget(QWidget):
             return  # locked mid-click; the tab is being torn down (mirrors below)
         confirmed = QMessageBox.question(
             self,
-            self.tr("Delete statement"),
+            # The title branches on the count for the same reason `_confirm_text`
+            # does: N == 1 keeps today's shipped string byte-for-byte (INV-14),
+            # and a batch gets the plural rather than captioning a five-statement
+            # delete "Delete statement". Two literals, not a `%n` — the body owns
+            # the one numerus Qt binds per string, and a second `%n` here would
+            # silently repeat the transaction count (INV-16).
+            self.tr("Delete statement")
+            if len(ids) == 1
+            else self.tr("Delete statements"),
             self._confirm_text(removed, kept, len(ids)),
         )
         if confirmed != QMessageBox.StandardButton.Yes:
