@@ -44,6 +44,7 @@ from finbreak.models import (
     DrillLabels,
     DrillNode,
     MonthlyTotal,
+    NegativeStyle,
     RecurringSummary,
     Summary,
 )
@@ -100,7 +101,7 @@ class HomeView(QWidget):
         self._auth = auth
         self._recurring = recurring
         self._alerts = alerts
-        self._amount_prefs = amount_prefs or AmountPrefs("minus", True)
+        self._amount_prefs = amount_prefs or AmountPrefs(NegativeStyle.MINUS, True)
         # Guards the programmatic selector loads from re-triggering a persist.
         self._loading = False
 
@@ -537,6 +538,16 @@ class HomeView(QWidget):
             count = len(self._alerts.alerts(date.today()))
         except VaultLockedError:
             count = 0
+        self.set_alert_count(count)
+
+    def set_alert_count(self, count: int) -> None:
+        """Render the Alerts button for a count someone else already computed.
+
+        Split out of ``refresh_alerts`` (FIBR-0216) for the dismiss path: the
+        AlertsDialog re-renders its rows on every dismiss, which computes the alert
+        set — a full unfiltered transaction scan plus a recurring-detection pass —
+        and then this button recomputed the identical set for its number. Twice per
+        click, for a value the dialog was holding."""
         self._alerts_button.setText(
             self.tr("Alerts ({count})").format(count=count)
             if count

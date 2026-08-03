@@ -14,6 +14,7 @@ from typing import cast
 from PySide6.QtCore import QLocale
 from PySide6.QtGui import QColor
 
+from finbreak.models import NegativeStyle
 from finbreak.services.auth import CURRENCY_SYMBOLS
 
 # Direction tints for money display when colour is on (FIBR-0105 D3). Fixed
@@ -23,7 +24,9 @@ _NEGATIVE_TEXT = QColor(224, 108, 117)  # soft red — money out
 _POSITIVE_TEXT = QColor(152, 195, 121)  # soft green — money in
 
 
-def _format_amount(display: Decimal, symbol: str, negative_style: str = "minus") -> str:
+def _format_amount(
+    display: Decimal, symbol: str, negative_style: str = NegativeStyle.MINUS
+) -> str:
     # We compose the display string ourselves: «display-symbol»␣«grouped-magnitude»
     # (FIBR-0153). The caller passes the base-currency ISO code as ``symbol``; we map
     # it to a display glyph (R for ZAR) via CURRENCY_SYMBOLS, falling back to the code
@@ -49,5 +52,5 @@ def _format_amount(display: Decimal, symbol: str, negative_style: str = "minus")
     magnitude = QLocale().toString(float(abs(display)), "f", decimals)
     body = f"{sym} {magnitude}"
     if display < 0:
-        return f"({body})" if negative_style == "brackets" else f"-{body}"
+        return f"({body})" if negative_style == NegativeStyle.BRACKETS else f"-{body}"
     return body

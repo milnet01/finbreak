@@ -1157,7 +1157,7 @@ lands on top.
   Source: code-quality-review-2026-08-03.
   Resolved (2026-08-03): user decided the omission was an oversight, not hierarchy — all three mapped. `transactions` 237 (blue-violet), `statements` 69 (olive-gold), `export` 357 (coral), placed in the three widest gaps in the existing wheel (38-100, 210-265, 330-25 wrapping) so no pair sits closer than the 13 degrees `lock` and `categories` already do. The bullet's read of the test was right: INV-10 asserted the re-tint for ONE action, which proves the mechanism and not the coverage, so it stayed green for as long as the gap existed. Now asserted over the whole `_icon_actions` set — nothing in it missing from `_ICON_HUES`, every glyph's pixmap changes light->dark, and every mapped glyph's Active pixmap differs from its Normal one — so a future toolbar action that forgets its hue is caught the day it lands. Red first, naming exactly the three.
 
-- 📋 [FIBR-0216] **Assorted MEDIUM/LOW findings from the FIBR-0204 sweep, batched.**
+- ✅ [FIBR-0216] **Assorted MEDIUM/LOW findings from the FIBR-0204 sweep, batched.**
   From the FIBR-0204 sweep. Each verified against source; none reached CRITICAL
   or HIGH, so they were deferred by user decision rather than fixed in that pass.
 
@@ -1233,6 +1233,31 @@ lands on top.
   Kind: fix.
   Lanes: ui, services.
   Source: code-quality-review-2026-08-03.
+  Resolved (2026-08-03): worked the batch in four commits. Fixed:
+  StartOverDialog's tr()'d confirm word (a translated build could never confirm);
+  standard_bank's 0.00 row aborting a whole statement; parse_transaction's missing
+  upper bound (OverflowError, not ValueError, escaping the slot); the PDF export
+  wait cursor's missing finally; decrypted rows surviving an auto-lock through a
+  nested modal loop; two update-check boxes over the lock screen;
+  _coverage_suffix's all-accounts denominator; date canonicalisation; the .old
+  stamp's second resolution; the alerts dismiss buttons' accessibleName; the
+  double alert-set recompute per dismiss; Quit unreachable while locked (+ the
+  app's first shortcut, Ctrl+Q); negative_style -> NegativeStyle StrEnum; the
+  misleading tr()'d amount placeholder. Documented: the same-day recurring
+  collapse (both plausible fixes break a real case, so it needs evidence);
+  FIBR-0172's AlertsCard section and FIBR-0006's D9 + cycle-guard claims;
+  _export_button as a test accessor.
+
+  THREE corrections to the bullet, each verified against source:
+  (1) `select_by_index` is NOT near-dead — it has three production call sites
+  (transactions.py, statements.py, accounts.py). Dropped, not silently filtered.
+  (2) `ExportDialog._export_button()` has zero src/ callers but IS a live test
+  accessor, so it is labelled rather than removed.
+  (3) The dark-theme PDF page numbers and the locale amount input each turned out
+  too large for a batch and are split out as FIBR-0217 and FIBR-0219. FIBR-0219
+  in particular: the obvious locale fix MEASURED as a silent 100x error (de_DE
+  turns a typed -12.34 into -1234), strictly worse than today's rejection — a
+  hazard the original finding did not name.
 
 - 📋 [FIBR-0217] **Dark-theme PDF page numbers render black on the dark page.**
   Split out of FIBR-0216 after an implementation attempt showed it is not a
@@ -1304,6 +1329,43 @@ lands on top.
   **Layman:** If you make your own shortcut for the AppImage, finbreak shows up twice in the taskbar — once for the shortcut and once for the running window.
   Kind: fix.
   Source: user-report-2026-08-03.
+
+- 📋 [FIBR-0219] **Amount input is C-locale only, and the obvious fix silently multiplies by 100.**
+  Split out of FIBR-0216 because implementing it turned up a hazard the original
+  finding did not name, which changes what the fix has to be.
+
+  The gap is real: display goes through `QLocale().toString()` (grouped,
+  locale-correct separators — `_amount.py`), while input goes straight to
+  `parse_transaction`, which does `Decimal(str(raw).strip())` — C locale only. So
+  a de_DE user is shown `R 1.234,56` and cannot type it back.
+
+  **The naive fix is worse than the bug, and this is the reason to be careful.**
+  "Strip the locale group separator, swap its decimal point for a dot" is the
+  obvious normalisation, and MEASURED under de_DE (group `.`, point `,`) it turns
+  a typed `-12.34` into `-1234` — a silent 100x error, on a money field, with no
+  rejection anywhere. Today that same input is simply refused, which is safe. A
+  fix that trades a refusal for a silent 100x error is a regression however good
+  the intent. The full measured matrix (en_US / de_DE / fr_FR, four input forms
+  each) was taken 2026-08-03; fr_FR is a third shape again, grouping with U+202F.
+
+  So the design question this needs answered first is what happens to an AMBIGUOUS
+  input, not how to parse an unambiguous one. Sketch worth evaluating: normalise
+  via the locale AND via the C rules, and accept only when the two agree on a
+  value; when they disagree, refuse with a message naming the format the app
+  displays. That keeps every unambiguous input working in both conventions and
+  turns the dangerous case into a visible refusal rather than a wrong number.
+  Whatever is chosen needs a per-locale test matrix, since the failure mode is
+  silent and off by a factor of 100.
+
+  Done already under FIBR-0216: the manual-entry placeholder was a tr()-able
+  `"e.g. -12.34"` while the parser is C-locale only, so a translated build asked
+  for `-12,34` and then rejected it — actively misleading. It is now a
+  non-translatable `-12.34`, an example of a machine format (coding.md § 5.2),
+  so the hint cannot disagree with the parser. That removes the harm without
+  pretending the locale gap is closed.
+  **Layman:** If your computer is set to a language that writes numbers as 1.234,56 you cannot type an amount back the way finbreak just showed it to you.
+  Kind: fix.
+  Source: code-quality-review-2026-08-03 (split out of FIBR-0216).
 
 ## P13 — Packaging & release
 

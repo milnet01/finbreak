@@ -36,9 +36,16 @@ from finbreak.ui._amount import _format_amount
 
 class AlertsDialog(QDialog):
     """The open alerts, one row per alert. ``changed`` fires after a successful
-    dismiss so the shell can re-count Home's Alerts button behind the dialog."""
+    dismiss, carrying the number of alerts still open, so the shell can update
+    Home's Alerts button behind the dialog.
 
-    changed = Signal()
+    It carries the COUNT rather than being a bare notification (FIBR-0216): a
+    dismiss re-renders these rows, which computes the alert set, and Home's
+    ``refresh_alerts`` then computed the very same set again — two full unfiltered
+    transaction scans plus two recurring-detection passes per click, for one number
+    the dialog was already holding."""
+
+    changed = Signal(int)
 
     def __init__(
         self,
@@ -71,10 +78,11 @@ class AlertsDialog(QDialog):
         self._render()
 
     # --- render ------------------------------------------------------------- #
-    def _render(self) -> None:
+    def _render(self) -> int:
         """Rebuild the rows in place: a translated summary label + a Dismiss (``✕``)
         button carrying the alert key. Rebuilt rather than refreshed so the dismiss
-        path can re-run it without reopening the dialog."""
+        path can re-run it without reopening the dialog. Returns the number of open
+        alerts, so the dismiss path can pass it on instead of recomputing it."""
         while self._rows.count():
             item = self._rows.takeAt(0)
             widget = item.widget() if item is not None else None
@@ -90,13 +98,23 @@ class AlertsDialog(QDialog):
             row_layout.setContentsMargins(0, 0, 0, 0)
             row_layout.addWidget(QLabel(self._summary(alert)))
             row_layout.addStretch()
-            dismiss = QPushButton(self.tr("✕"))
+            # The glyph is DATA, not a translatable string — there is nothing in
+            # "✕" for a translator to work with, and a bare glyph left a screen
+            # reader announcing N identically-unnamed buttons (WCAG 4.1.2). The
+            # accessible name is the translated part, and it names WHICH alert it
+            # dismisses (FIBR-0216). Same treatment for the tooltip, so the meaning
+            # is available to a sighted user hovering, too.
+            dismiss = QPushButton("✕")
             dismiss.setObjectName("alert_dismiss")
+            label = self.tr("Dismiss: {alert}").format(alert=self._summary(alert))
+            dismiss.setAccessibleName(label)
+            dismiss.setToolTip(label)
             dismiss.setProperty("alert_key", alert.key)
             dismiss.clicked.connect(self._on_dismiss)
             row_layout.addWidget(dismiss)
             self._rows.addWidget(row)
         self._empty.setVisible(not alerts)
+        return len(alerts)
 
     def _summary(self, alert: SpendingAlert) -> str:
         """The translated one-line summary for an alert, by kind (FIBR-0172 INV-18).
@@ -134,5 +152,4 @@ class AlertsDialog(QDialog):
             self._alerts.dismiss(key)
         except VaultLockedError:
             return  # auto-lock fired mid-click; the workspace is being torn down
-        self._render()
-        self.changed.emit()
+        self.changed.emit(self._render())

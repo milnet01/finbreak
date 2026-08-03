@@ -862,11 +862,41 @@ def test_FIBR0013_export_action_on_menu_toolbar_and_vault_gated(qtbot, service):
     export = window._action_export
     assert export in window._menu_file.actions()
     assert export in window._toolbar.actions()
-    assert export.shortcut().isEmpty()  # no accelerator to bypass a disabled menu
+    assert export.shortcut().isEmpty()  # no accelerator to bypass a disabled action
     assert not export.icon().pixmap(QSize(24, 24)).isNull()  # export.svg renders
-    window._action_lock.trigger()  # locking disables the whole File menu + toolbar
-    assert not window._menu_file.isEnabled()
+    window._action_lock.trigger()  # locking disables the vault-dependent chrome
+    # The ACTION is what must go dead (FIBR-0216). File itself stays openable now,
+    # because Quit lives in it and a greyed-out menu cannot be opened at all.
+    assert not export.isEnabled()
     assert not window._toolbar.isEnabled()
+
+
+def test_FIBR0216_quit_stays_reachable_while_locked(qtbot, service):
+    """FIBR-0216 — the whole File menu was disabled on lock, and Quit lives in it. A
+    greyed-out menu cannot be opened at all, so on the app's DEFAULT startup surface
+    — the locked screen — there was no menu route to exit, and no Ctrl+Q either (a
+    grep for setShortcut/QKeySequence across the app returned nothing).
+
+    Quit needs no vault. It stays enabled, File stays openable, and Quit now carries
+    the platform's standard Quit sequence as an application-wide shortcut."""
+    window = _unlocked_home_shell(qtbot, service)
+    window._action_lock.trigger()
+
+    assert window._menu_file.isEnabled(), "File can still be opened while locked"
+    assert window._action_quit.isEnabled(), "and Quit inside it is live"
+    assert not window._action_quit.shortcut().isEmpty(), "Quit has an accelerator"
+    assert (
+        window._action_quit.shortcutContext() is Qt.ShortcutContext.ApplicationShortcut
+    ), "it fires from the locked screen, which holds no focused workspace"
+    # Everything that DOES need a vault is still dead.
+    for action in (
+        window._action_manual_entry,
+        window._action_import,
+        window._action_settings,
+        window._action_export,
+        window._action_lock,
+    ):
+        assert not action.isEnabled(), action.objectName()
 
 
 def test_FIBR0013_open_export_opens_a_prefilled_dialog(qtbot, service):

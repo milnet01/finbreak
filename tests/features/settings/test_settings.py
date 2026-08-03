@@ -225,9 +225,16 @@ def test_D6_default_in_allowed():
 def test_INV6_settings_action_vault_dependent(qtbot, service):
     window = _shell(qtbot, service)
     assert window._action_settings in window._menu_file.actions()
-    assert window._menu_file.isEnabled(), "File menu enabled while unlocked"
+    assert window._action_settings.isEnabled(), "Settings enabled while unlocked"
     window._action_lock.trigger()
-    assert not window._menu_file.isEnabled(), "File menu disabled on lock"
+    # Asserted on the ACTION, not the menu (FIBR-0216): File is no longer disabled
+    # wholesale, because Quit lives in it and a greyed-out menu cannot be opened at
+    # all — which left the locked screen, the app's default startup surface, with no
+    # menu route to exit. The vault-dependent items are disabled individually, which
+    # is the property this invariant was always about.
+    assert not window._action_settings.isEnabled(), "Settings disabled on lock"
+    assert window._menu_file.isEnabled(), "but File itself stays openable, for Quit"
+    assert window._action_quit.isEnabled(), "and Quit needs no vault"
 
 
 # --------------------------------------------------------------------------- #

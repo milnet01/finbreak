@@ -256,6 +256,13 @@ class ExportDialog(QDialog):
     # -- results --------------------------------------------------------------
 
     def _export_button(self) -> QPushButton:
+        """The Export button — a **test accessor**, not production wiring.
+
+        Zero callers in ``src/``; the one caller is
+        ``tests/features/pdf_export/test_export_dialog.py``, which drives the
+        enable/disable gating through it. Labelled rather than deleted (FIBR-0216)
+        so the next reader does not re-file it as dead code and remove a live test's
+        only handle on this button."""
         return self._export_btn
 
     def _current_prefs(self) -> ReportPrefs:

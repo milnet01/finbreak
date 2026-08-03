@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
 
 from finbreak.datetime_format import system_timezone_id
 from finbreak.errors import VaultLockedError
+from finbreak.models import NegativeStyle
 from finbreak.services.auth import (
     ALLOWED_AUTO_LOCK_MINUTES,
     ALLOWED_CLIPBOARD_CLEAR_SECONDS,
@@ -139,8 +140,8 @@ class SettingsDialog(QDialog):
         amount = service.amount_prefs()
         self._amount_negative = QComboBox()
         self._amount_negative.setObjectName("settings_amount_negative")
-        self._amount_negative.addItem(self.tr("Minus (-)"), "minus")
-        self._amount_negative.addItem(self.tr("Brackets ( )"), "brackets")
+        self._amount_negative.addItem(self.tr("Minus (-)"), NegativeStyle.MINUS)
+        self._amount_negative.addItem(self.tr("Brackets ( )"), NegativeStyle.BRACKETS)
         select_combo_data(self._amount_negative, amount.negative_style)
         self._amount_colour = QCheckBox(self.tr("Colour amounts red/green"))
         self._amount_colour.setObjectName("settings_amount_colour")

@@ -50,7 +50,13 @@ class ManualEntryDialog(QDialog):
         # in FIBR-0083 (Settings), which owns this now (not FIBR-0014).
         self._date.setDisplayFormat("yyyy/MM/dd")
         self._amount = QLineEdit()
-        self._amount.setPlaceholderText(self.tr("e.g. -12.34"))
+        # The example is NOT tr()-able (FIBR-0216). The parser is C-locale only —
+        # `Decimal("-12.34")` — while this hint was translatable, so a German build
+        # would say "z. B. -12,34" and then reject exactly what it asked for. An
+        # example of a machine-readable format is data, like a currency code
+        # (coding.md § 5.2); the label beside it carries the translatable words.
+        # Accepting the locale form is FIBR-0219, and is NOT a one-liner: see there.
+        self._amount.setPlaceholderText("-12.34")
         self._description = QLineEdit()
         self._error = QLabel()
 

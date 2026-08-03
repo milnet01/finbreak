@@ -205,6 +205,55 @@ def test_dialog_dismiss_calls_service_rebuilds_and_announces(
     assert empty is not None and not empty.isHidden()
 
 
+def test_FIBR0216_dismiss_buttons_are_individually_named(qtbot, service) -> None:
+    """FIBR-0216 — the dismiss control was a bare `tr("✕")` with no accessible name,
+    so a screen reader announced N identically-unnamed buttons (WCAG 4.1.2) and a
+    translator got a glyph with no context to work from. The glyph is data now; the
+    accessible name is the translated part and says WHICH alert it dismisses."""
+    _seed_one_new_recurring(service)
+    dialog = _dialog(service, AlertService(service.vault))
+    qtbot.addWidget(dialog)
+
+    (button,) = _dismiss_buttons(dialog)
+    assert button.accessibleName(), "the dismiss control has an accessible name"
+    assert "Spotify".lower() in button.accessibleName().lower(), (
+        "and it identifies the alert it acts on, not just 'Dismiss'"
+    )
+    assert button.toolTip() == button.accessibleName()
+
+
+def test_FIBR0216_dismiss_computes_the_alert_set_once_not_twice(
+    qtbot, service, monkeypatch
+) -> None:
+    """FIBR-0216 — a dismiss re-renders the dialog's rows (computing the alert set)
+    and then Home's `refresh_alerts` computed the identical set again for its count:
+    two full unfiltered transaction scans plus two recurring-detection passes per
+    click. `changed` now carries the count the dialog already holds."""
+    _seed_one_new_recurring(service)
+    alerts = AlertService(service.vault)
+    real = alerts.alerts
+    calls: list[object] = []
+
+    def counting(today):
+        calls.append(today)
+        return real(today)
+
+    monkeypatch.setattr(alerts, "alerts", counting)
+    dialog = _dialog(service, alerts)
+    qtbot.addWidget(dialog)
+
+    calls.clear()  # ignore the build-time render
+    received: list[int] = []
+    dialog.changed.connect(received.append)
+    with qtbot.waitSignal(dialog.changed, timeout=1000):
+        _dismiss_buttons(dialog)[0].click()
+
+    assert len(calls) == 1, (
+        f"the alert set is computed once per dismiss, not {len(calls)}"
+    )
+    assert received == [0], "and `changed` carries the remaining count for Home"
+
+
 def test_dialog_dismiss_is_vault_locked_silent(qtbot, service, monkeypatch) -> None:
     _seed_one_new_recurring(service)
     alerts = AlertService(service.vault)

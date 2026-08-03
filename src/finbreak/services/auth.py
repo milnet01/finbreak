@@ -30,7 +30,7 @@ from finbreak.crypto import (
     load_and_validate_params,
 )
 from finbreak.errors import VaultLockedError, VaultStateError
-from finbreak.models import FORMAT_VERSION, KdfParams
+from finbreak.models import FORMAT_VERSION, KdfParams, NegativeStyle
 from finbreak.repositories.settings import SettingsRepository
 from finbreak.services.reporting import (
     MODE_CURRENT_MONTH,
@@ -91,8 +91,10 @@ DATETIME_SYSTEM = "system"
 # Amount display prefs (FIBR-0105) — how the Home Amount column renders negatives.
 # Two independent, defaulted keys in the vault ``settings`` table (no schema
 # change). Defaults (absent key) are the friendly non-accountant choice.
-ALLOWED_NEGATIVE_STYLES = ("minus", "brackets")
-DEFAULT_NEGATIVE_STYLE = "minus"
+# Derived from the NegativeStyle StrEnum rather than restated, so the allowed set
+# and the enum cannot drift (FIBR-0216).
+ALLOWED_NEGATIVE_STYLES = tuple(s.value for s in NegativeStyle)
+DEFAULT_NEGATIVE_STYLE = NegativeStyle.MINUS.value
 DEFAULT_AMOUNT_COLOUR = True
 
 # The five valid dashboard period modes (FIBR-0012 D2). A stored mode outside this

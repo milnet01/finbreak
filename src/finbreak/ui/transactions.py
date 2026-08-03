@@ -33,7 +33,7 @@ from PySide6.QtWidgets import (
 
 from finbreak.datetime_format import format_date
 from finbreak.errors import VaultLockedError
-from finbreak.models import CategorySource, Transaction
+from finbreak.models import CategorySource, NegativeStyle, Transaction
 from finbreak.services.auth import (
     DATETIME_SYSTEM,
     DEFAULT_CLIPBOARD_CLEAR_SECONDS,
@@ -107,7 +107,7 @@ class TransactionsView(QWidget):
         self._prefs = prefs or DateTimePrefs(
             DATETIME_SYSTEM, DATETIME_SYSTEM, DATETIME_SYSTEM
         )
-        self._amount_prefs = amount_prefs or AmountPrefs("minus", True)
+        self._amount_prefs = amount_prefs or AmountPrefs(NegativeStyle.MINUS, True)
         # The full, unfiltered master list (reloaded only by refresh()).
         self._master: list[tuple[Transaction, Decimal, str, str]] = []
         # The currently-visible (filtered) rows, parallel to the table rows.

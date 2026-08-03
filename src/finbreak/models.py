@@ -84,6 +84,20 @@ class CategorySource(StrEnum):
     LIBRARY = "library"
 
 
+class NegativeStyle(StrEnum):
+    """How the Amount column renders a negative (FIBR-0105). The ``.value`` is the
+    stored, non-translated token in the vault ``settings`` table.
+
+    A StrEnum because every other closed token set in this codebase is one
+    (FIBR-0216) — this was the tenth, and the only one compared as a bare
+    ``== "brackets"`` string literal, so a typo at any call site silently fell
+    through to the minus branch instead of failing.  Being a ``StrEnum`` keeps it
+    byte-compatible with the values already in every existing vault."""
+
+    MINUS = "minus"
+    BRACKETS = "brackets"
+
+
 @dataclass
 class Transaction:
     """One row of the ``transactions`` table. ``category_id`` / ``category_source``

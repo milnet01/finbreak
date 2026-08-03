@@ -30,7 +30,7 @@ from PySide6.QtWidgets import (
 )
 
 from finbreak.datetime_format import system_timezone_id
-from finbreak.models import KdfParams
+from finbreak.models import KdfParams, NegativeStyle
 from finbreak.services.auth import (
     CURRENCY_EXPONENTS,
     DATETIME_SYSTEM,
@@ -97,8 +97,8 @@ class FirstRunDialog(QDialog):
         # vault to read yet — INV-7): minus + colour on. Same idiom as Settings.
         self._amount_negative = QComboBox()
         self._amount_negative.setObjectName("first_run_amount_negative")
-        self._amount_negative.addItem(self.tr("Minus (-)"), "minus")
-        self._amount_negative.addItem(self.tr("Brackets ( )"), "brackets")
+        self._amount_negative.addItem(self.tr("Minus (-)"), NegativeStyle.MINUS)
+        self._amount_negative.addItem(self.tr("Brackets ( )"), NegativeStyle.BRACKETS)
         self._amount_colour = QCheckBox(self.tr("Colour amounts red/green"))
         self._amount_colour.setObjectName("first_run_amount_colour")
         self._amount_colour.setChecked(True)

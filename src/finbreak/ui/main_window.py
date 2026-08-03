@@ -38,7 +38,13 @@ from PySide6.QtCore import (
     QTimer,
     QUrl,
 )
-from PySide6.QtGui import QAction, QCloseEvent, QDesktopServices, QGuiApplication
+from PySide6.QtGui import (
+    QAction,
+    QCloseEvent,
+    QDesktopServices,
+    QGuiApplication,
+    QKeySequence,
+)
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
@@ -58,6 +64,7 @@ from sqlcipher3.dbapi2 import DatabaseError
 
 from finbreak import __version__, paths
 from finbreak.errors import BackupError, VaultLockedError, VaultStateError
+from finbreak.models import NegativeStyle
 from finbreak.services.accounts import AccountService
 from finbreak.services.alerts import AlertService
 from finbreak.services.auth import (
@@ -309,7 +316,7 @@ class MainWindow(QMainWindow):
         self._prefs = DateTimePrefs(DATETIME_SYSTEM, DATETIME_SYSTEM, DATETIME_SYSTEM)
         # The amount-display prefs, likewise read once post-unlock (FIBR-0105).
         # The friendly default (minus + colour on) applies until then.
-        self._amount_prefs = AmountPrefs("minus", True)
+        self._amount_prefs = AmountPrefs(NegativeStyle.MINUS, True)
         self.setWindowTitle(self.tr("finbreak"))
 
         # Recover from a restore interrupted mid-install BEFORE routing: a crash
@@ -418,6 +425,12 @@ class MainWindow(QMainWindow):
         self._action_quit = self._make_action(
             "action_quit", self.tr("Quit"), None, QApplication.quit
         )
+        # The app's first keyboard shortcut (FIBR-0216): the platform's standard Quit
+        # (Ctrl+Q on Linux/Windows, Cmd+Q on macOS), so exiting never depends on
+        # finding a menu. `ApplicationShortcut` so it works from the locked screen,
+        # where the window holds no focused workspace.
+        self._action_quit.setShortcut(QKeySequence.StandardKey.Quit)
+        self._action_quit.setShortcutContext(Qt.ShortcutContext.ApplicationShortcut)
         self._action_center_window = self._make_action(
             "action_center_window", self.tr("Center window"), None, self._center_window
         )
@@ -882,9 +895,12 @@ class MainWindow(QMainWindow):
         dialog.rejected.connect(self._teardown_dialog)  # Close: nothing to apply
         self._open_dialog(dialog, defer=False)
 
-    def _on_alerts_changed(self) -> None:
+    def _on_alerts_changed(self, open_count: int) -> None:
+        # The dialog just re-rendered its rows, so it already knows the count —
+        # take it rather than making Home recompute the whole alert set a second
+        # time per dismiss (FIBR-0216).
         if self._home_tab is not None:
-            self._home_tab.refresh_alerts()
+            self._home_tab.set_alert_count(open_count)
 
     def _open_settings(self) -> None:
         # Vault-dependent (File menu is disabled while locked, INV-6). The shell
@@ -1749,8 +1765,21 @@ class MainWindow(QMainWindow):
             dialog.deleteLater()
 
     def _set_vault_chrome_enabled(self, enabled: bool) -> None:
-        # Window + Help + Donate need no vault and stay enabled; File/View + the
-        # toolbar are vault-dependent (INV-2/INV-4/INV-6c).
+        # Window + Help + Donate need no vault and stay enabled; View + the toolbar
+        # are vault-dependent (INV-2/INV-4/INV-6c).
         self._toolbar.setEnabled(enabled)
-        self._menu_file.setEnabled(enabled)
         self._menu_view.setEnabled(enabled)
+        # File is disabled ITEM BY ITEM rather than as a whole menu (FIBR-0216).
+        # Disabling the menu greys its title, so it cannot be opened at all — and
+        # Quit lives in it. On the app's DEFAULT startup surface, the locked screen,
+        # that left no menu route to exit, and there was no Ctrl+Q either (a grep for
+        # setShortcut/QKeySequence across the app returned nothing). Quit needs no
+        # vault, so it stays enabled and the menu stays openable.
+        for action in (
+            self._action_manual_entry,
+            self._action_import,
+            self._action_settings,
+            self._action_export,
+            self._action_lock,
+        ):
+            action.setEnabled(enabled)

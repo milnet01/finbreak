@@ -47,6 +47,23 @@ signaling per
 
 ### Fixed
 
+- **The Forecast no longer says "only" when your cash total is complete** (FIBR-0216)
+  If you held any credit card or investment account, the projected
+  balance always carried a "(... only)" note suggesting it was partial — even
+  when every current and savings account had been counted.
+
+- **Alerts: each dismiss button is now named, and dismissing is twice as fast** (FIBR-0216)
+  The dismiss buttons were a bare ✕ with no name, so a screen reader
+  announced several identical unnamed buttons. Each now says which alert it
+  dismisses. Dismissing also worked out your whole alert list twice per click;
+  now once.
+
+- **Quit is reachable from the lock screen, and Ctrl+Q now works** (FIBR-0216)
+  The whole File menu was switched off while locked, and Quit lives in
+  it — so on the screen finbreak starts on there was no menu route to exit.
+  Quit needs no vault, so it stays available, and it is now the app's first
+  keyboard shortcut.
+
 - **The Transactions, Statements and Export toolbar buttons now light up on hover** (FIBR-0215)
   Three of the thirteen toolbar buttons were stuck in neutral grey: they
   never brightened under the cursor and never changed shade when you switched
