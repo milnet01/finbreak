@@ -195,7 +195,15 @@ class CategoriesWidget(QWidget):
         # surprised by a mass move (FIBR-0010 INV-8). Two tr() sentences — Qt allows
         # only one %n numerus per translated string. The counts are read pre-delete
         # (before the cascade's step-1 reset) via the service, never a repo.
-        txn_count, rule_count = self._categories.delete_blast_radius(category_id)
+        # Guarded like the delete below it: this read is a vault read too, and an
+        # auto-lock can already have fired by the time a queued click reaches this
+        # slot (FIBR-0211 — it used to sit one line ABOVE the try that documents
+        # exactly that case).
+        try:
+            txn_count, rule_count = self._categories.delete_blast_radius(category_id)
+        except VaultLockedError:
+            return
+
         confirmed = QMessageBox.question(
             self,
             self.tr("Delete category"),

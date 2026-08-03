@@ -989,7 +989,7 @@ lands on top.
   in `test_INV5b_corrupt_window_ini_does_not_brick_startup` + one in
   table_state; four of five and the table_state leg verified red first.
 
-- 📋 [FIBR-0211] **Two vault reads sit outside their VaultLockedError guards.**
+- ✅ [FIBR-0211] **Two vault reads sit outside their VaultLockedError guards.**
   From the FIBR-0204 sweep (MEDIUM, verified by reading). Two sites call into the
   vault OUTSIDE the try/except that was written to protect them:
 
@@ -1011,6 +1011,16 @@ lands on top.
   Kind: fix.
   Lanes: ui.
   Source: code-quality-review-2026-08-03.
+  Resolved (2026-08-03): five unguarded reads folded into their
+  guards, not the two reported. forecast.py — `refresh` now BUILDS both strings
+  inside the try and only renders after it, so `_coverage_suffix` and
+  `_excluded_names` are covered (the module docstring's "every slot catches
+  VaultLockedError" is now true). categories.py — `delete_blast_radius` moved
+  into a try. rules.py — `_refresh`'s pair (`list_rules` + `list_all`) and the
+  `leaf_categories_grouped`/`sub_category_parent_names` reads that build the
+  dialog in BOTH `_on_add` and `_on_edit`; the bullet named `_on_add`'s, the
+  `_on_edit` twin was found by reading the sibling. Tests: one forecast leg, one
+  categories leg, three parametrised rules legs — all five verified red first.
 
 - 📋 [FIBR-0212] **Backup restore accepts a DEFLATE bomb and skips the directory fsync.**
   From the FIBR-0204 sweep (MEDIUM x3, verified by reading). Three separate

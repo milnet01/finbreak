@@ -163,8 +163,15 @@ class RulesWidget(QWidget):
         self._refresh()
 
     def _refresh(self) -> None:
-        self._rows = self._categorization.list_rules()
-        names = {c.id: c.name for c in self._categories.list_all()}
+        # Two vault reads, and every handler below calls this AFTER its own guarded
+        # write returns — so a lock between the two is exactly the case the sibling
+        # guards cover, and this one had none (FIBR-0211). Nothing to redraw against
+        # a locked vault; the next unlock rebuilds fresh chrome.
+        try:
+            self._rows = self._categorization.list_rules()
+            names = {c.id: c.name for c in self._categories.list_all()}
+        except VaultLockedError:
+            return
         self._table.setRowCount(len(self._rows))
         for row, rule in enumerate(self._rows):
             self._table.setItem(row, _COL_PATTERN, QTableWidgetItem(rule.pattern))
@@ -187,18 +194,20 @@ class RulesWidget(QWidget):
     @Slot()
     def _on_add(self) -> None:
         self._error.clear()
-        grouped = self._categorization.leaf_categories_grouped()
+        # The category read that builds the dialog is a vault read like any other,
+        # and sat outside every guard in this class (FIBR-0211).
+        try:
+            grouped = self._categorization.leaf_categories_grouped()
+            parent_names = self._categorization.sub_category_parent_names()
+        except VaultLockedError:
+            return
         if not grouped:
             # Nothing to file a rule as — guide the user instead of opening a
             # dialog whose empty combo dead-ends on the leaf error (FIBR-0079).
             # grouped is empty exactly when no leaves exist (every section omitted).
             self._error.setText(self.tr("Create a category first, then add a rule."))
             return
-        dialog = RuleEditDialog(
-            grouped,
-            parent=self,
-            parent_names=self._categorization.sub_category_parent_names(),
-        )
+        dialog = RuleEditDialog(grouped, parent=self, parent_names=parent_names)
         # Non-blocking (FIBR-0065): a lock while the dialog is open destroys it
         # before _apply_add runs, so no read hits a deleted C++ object.
         show_modal(dialog, lambda: self._apply_add(dialog))
@@ -223,12 +232,13 @@ class RulesWidget(QWidget):
         if index is None:
             return
         rule = self._rows[index]
+        try:  # same unguarded vault read as _on_add's (FIBR-0211)
+            grouped = self._categorization.leaf_categories_grouped()
+            parent_names = self._categorization.sub_category_parent_names()
+        except VaultLockedError:
+            return
         dialog = RuleEditDialog(
-            self._categorization.leaf_categories_grouped(),
-            rule.pattern,
-            rule.category_id,
-            self,
-            parent_names=self._categorization.sub_category_parent_names(),
+            grouped, rule.pattern, rule.category_id, self, parent_names=parent_names
         )
         show_modal(dialog, lambda: self._apply_edit(dialog, rule.id))
 

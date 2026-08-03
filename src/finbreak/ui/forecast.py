@@ -145,11 +145,18 @@ class ForecastWidget(QWidget):
             fc = self._forecast_service.forecast(today, self._horizon_date(today))
             exponent = read_minor_unit_exponent(self._service.vault.connection)
             symbol = TransactionService(self._service.vault).base_currency()
+            # Both text builders read the vault AGAIN — _headline_text through
+            # _coverage_suffix, _provenance_text through _excluded_names — so they
+            # belong inside the guard, not after it (FIBR-0211). Built here,
+            # rendered below: the guard covers every vault read, the setText calls
+            # touch only widgets.
+            headline = self._headline_text(fc, exponent, symbol)
+            provenance = self._provenance_text(fc, exponent, symbol)
         except VaultLockedError:
             return  # auto-lock fired; the workspace is being torn down
 
-        self._headline.setText(self._headline_text(fc, exponent, symbol))
-        self._provenance.setText(self._provenance_text(fc, exponent, symbol))
+        self._headline.setText(headline)
+        self._provenance.setText(provenance)
         self._chart_view.setChart(build_forecast_chart(fc.points, self._chart_theme()))
         self._fill_events(fc, exponent, symbol)
         if not fc.events:

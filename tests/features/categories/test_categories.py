@@ -756,6 +756,29 @@ def test_add_category_swallows_vault_locked_silently(qtbot, service, monkeypatch
     assert widget._error.text() == "", "VaultLockedError is swallowed silently"
 
 
+def test_delete_blast_radius_swallows_vault_locked_silently(
+    qtbot, service, monkeypatch
+):
+    """FIBR-0211 — ``delete_blast_radius`` is read one line ABOVE the try/except
+    that carefully documents the auto-lock case, so the vault read the confirm box
+    is built from was itself unguarded. Same swallow as the sibling handlers."""
+    from finbreak.errors import VaultLockedError
+    from finbreak.ui.categories import CategoriesWidget
+
+    income = _roots(service.vault.connection)["income"]
+    cat = CategoryService(service.vault).add_category(income.id, "Royalties")
+    widget = CategoriesWidget(service)
+    qtbot.addWidget(widget)
+    widget._select_category(cat.id)  # anchor Delete to a real row
+
+    def locked(*a, **k):
+        raise VaultLockedError("the vault is locked")
+
+    monkeypatch.setattr(widget._categories, "delete_blast_radius", locked)
+    widget._on_delete()  # must not raise — and never opens the confirm box
+    assert widget._error.text() == "", "VaultLockedError is swallowed silently"
+
+
 def test_add_category_unknown_parent_raises(service):
     """add_category under a non-existent parent id raises the _require_parent
     'no category with id' ValueError (FIBR-0064) — distinct from the None-parent

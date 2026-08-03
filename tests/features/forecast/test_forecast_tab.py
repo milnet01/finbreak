@@ -109,6 +109,36 @@ def test_INV10_anchored_vault_headline_and_provenance(qtbot, vault_service) -> N
     assert w._events_table.rowCount() >= 1, "the confirmed item projects forward"
 
 
+def test_refresh_swallows_a_vault_lock_from_the_text_builders(
+    qtbot, vault_service, monkeypatch
+) -> None:
+    """FIBR-0211 — ``refresh``'s ``except VaultLockedError`` closed *before* the two
+    setText calls, and both text builders read the vault again:
+    ``_headline_text`` -> ``_coverage_suffix`` and ``_provenance_text`` ->
+    ``_excluded_names`` each construct an ``AccountService`` and call
+    ``list_accounts()``. The module docstring claims "every slot catches
+    VaultLockedError and returns"; these two escaped it, and no ``sys.excepthook``
+    is installed anywhere in ``src/``, so the escape reaches Qt.
+
+    Widened by FIBR-0204: ``_excluded_names`` now runs in BOTH forecast modes, not
+    only ANCHORED. Seeded anchored so ``_coverage_suffix`` runs as well."""
+    from finbreak.errors import VaultLockedError
+
+    _seed_anchored(vault_service)
+    w = ForecastWidget(vault_service)
+    qtbot.addWidget(w)
+    w.refresh()
+    assert w._headline.text(), "the fixture renders before the lock is simulated"
+
+    def locked(*a, **k):
+        raise VaultLockedError("the vault is locked")
+
+    # The reads the guard was written to cover, and nothing else — patched on the
+    # class, since both builders construct their own AccountService.
+    monkeypatch.setattr(AccountService, "list_accounts", locked)
+    w.refresh()  # must not raise
+
+
 def test_INV14_debt_account_named_as_excluded_for_the_right_reason(
     qtbot, vault_service
 ) -> None:

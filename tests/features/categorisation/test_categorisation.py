@@ -775,6 +775,39 @@ def test_INV11_add_lists_and_apply_reports_count(qtbot, service, monkeypatch):
     assert "0" in widget._status.text(), "a second Apply reports 0 (idempotent)"
 
 
+@pytest.mark.parametrize(
+    ("method", "slot"),
+    [
+        ("list_rules", "_refresh"),
+        ("leaf_categories_grouped", "_on_add"),
+        ("leaf_categories_grouped", "_on_edit"),
+    ],
+)
+def test_rules_vault_reads_swallow_vault_locked(
+    qtbot, service, monkeypatch, method, slot
+):
+    """FIBR-0211 — three vault reads in RulesWidget sat outside every guard: the
+    ``_refresh`` pair (every handler calls it AFTER its own guarded write returns)
+    and the ``leaf_categories_grouped`` call that builds the edit dialog in both
+    ``_on_add`` and ``_on_edit``. Each must swallow like its siblings; no
+    ``sys.excepthook`` is installed anywhere in ``src/``, so an escape reaches Qt."""
+    from finbreak.errors import VaultLockedError
+    from finbreak.ui.rules import RulesWidget
+
+    cs = CategorizationService(service.vault)
+    rule = cs.add_rule("aaa", _leaf_id(service, "Groceries"))
+    widget = RulesWidget(service)
+    qtbot.addWidget(widget)
+    widget._select_rule(rule.id)  # _on_edit needs a selected row to get past its guard
+
+    def locked(*a, **k):
+        raise VaultLockedError("the vault is locked")
+
+    monkeypatch.setattr(widget._categorization, method, locked)
+    getattr(widget, slot)()  # must not raise
+    assert widget._error.text() == "", "VaultLockedError is swallowed silently"
+
+
 def test_INV11_move_up_reorders_the_list(qtbot, service):
     from finbreak.ui.rules import RulesWidget
 

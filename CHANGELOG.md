@@ -40,6 +40,12 @@ signaling per
 
 ### Fixed
 
+- **The vault locking itself mid-action no longer closes the app** (FIBR-0211)
+  Five places read your data a moment after an auto-lock could have
+  fired — on the Forecast tab, when deleting a category, and three times on the
+  Rules tab. Each now stops quietly, like every other handler, instead of
+  letting the error escape.
+
 - **A damaged window settings file no longer stops finbreak from starting** (FIBR-0210)
   Every value read from `window.ini` now falls back to its default
   instead of raising: an empty or non-numeric `last_tab`, and a truncated
