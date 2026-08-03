@@ -2980,6 +2980,30 @@ because retrofitting them is a data migration.
   Kind: fix.
   Lanes: importers, tests.
   Source: user-request-2026-07-28 (real statement checked in-session).
+  Spec ACCEPTED (2026-08-03): docs/specs/FIBR-0190.md, converged after 4
+  cold-eyes loops (2 cold lanes each). Not yet implemented — next step is TDD,
+  red first.
+
+  Corrections to this bullet, all measured against the real statement:
+  - 182 transaction rows, not 183. The generic fallback's "183 data rows"
+    counted the STATEMENT OPENING BALANCE line as a row.
+  - The statement prints NO closing balance anywhere in 12 pages, and no
+    "Statement from ... to ..." period line (it prints From:/To:). So Family E
+    must NOT join Family A's period-is-None refusal, or every E statement
+    bricks.
+  - The balance's minus is LEADING (-730.55), the opposite of Family A's
+    trailing convention. 0 of 182 rows carry a trailing-minus balance.
+  - Row dates are Title-case on all 182 rows, so _MON_RE needs no re.I.
+  - The last page prints Payments / Deposits column totals and both are EXACT
+    column sums, so Family E gets a real completeness gate where Savings has
+    none — it catches a truncated tail, which the per-row running-balance chain
+    is blind to.
+
+  The spec's design point the reviews kept returning to: parse()'s family chain
+  ends in a bare `else: _parse_family_c(...)`, so omitting an explicit
+  `elif family is Family.E` routes every E statement into the credit-card
+  parser, which does not fail cleanly — it matches with the balance captured as
+  the amount, sign-flipped. Wrong money, no exception.
 
 - 📋 [FIBR-0191] **Amount-range (min/max) filter on the Transactions tab.**
   Split out of FIBR-0109 (2026-07-28) as the one piece its absorb target
