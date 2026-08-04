@@ -170,6 +170,12 @@ signaling per
 
 ### Security
 
+- **Updated the library that checks update signatures to its patched version** (FIBR-0221)
+  `cryptography` 49.0.0 had a published flaw (CVE-2026-69247). finbreak
+  uses it to verify that a downloaded update really came from us, so it is
+  now pinned to the fixed 50.0.0. Nothing else changed — the version bump
+  needed no code changes.
+
 - **Backups are harder to attack, and survive a power cut** (FIBR-0212)
   Restoring a maliciously-crafted backup file can no longer make
   finbreak allocate half a gigabyte of memory before you have even logged in.

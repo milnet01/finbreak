@@ -4267,6 +4267,23 @@ is a future error tomorrow.
   still exits 0 with the 7 suppressions honoured; ruff + 1369 passed,
   2 skipped.
 
+- ✅ [FIBR-0221] **cryptography 49.0.0 carries CVE-2026-69247; the pinned version failed the pip-audit gate.**
+  Surfaced by ./scripts/ci-local.sh's pip-audit stage while closing
+  FIBR-0190 — unrelated to that work, but a red gate and a real advisory
+  on a dep we pin ourselves. cryptography is an EXPLICIT runtime dep, not
+  just transitive: services/update.py and services/update_key.py import it
+  directly for Ed25519 verification of downloaded updates (FIBR-0054 D1),
+  so this is our signature-checking library.
+
+  Resolved (2026-08-04): pinned cryptography==50.0.0 (the advisory's fix
+  version). No caller change needed — the Ed25519PublicKey /
+  InvalidSignature API the two call sites use is unchanged across the
+  major. Full gate re-run green: 1610 passed / 2 skipped, pip-audit clean.
+  **Layman:** A security library finbreak uses had a published flaw; it is now on the fixed version.
+  Kind: security.
+  Lanes: dependencies, security.
+  Source: in-session-2026-08-04.
+
 ## How to add an item
 
 1. Allocate the next ID:

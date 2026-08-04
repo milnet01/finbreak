@@ -53,7 +53,7 @@ dependencies = [
     # dep because update.py now imports it directly — so a future pdfplumber that
     # drops pdfminer.six can't silently remove our signature gate (dependencies.md;
     # cryptography is NOT a network package, so test_INV8 runtime-deps is unaffected).
-    "cryptography==49.0.0",
+    "cryptography==50.0.0",
     # Bundled CA certificate set for the update check's HTTPS (FIBR-0054). The
     # frozen AppImage runs on any distro whose system CA store may sit at a path
     # the frozen OpenSSL wasn't built for (the v0.1.0 no-prompt bug: built on
