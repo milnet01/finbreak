@@ -1412,6 +1412,35 @@ lands on top.
   Kind: enhancement.
   Source: user-report-2026-08-03.
 
+- 📋 [FIBR-0222] **A huge exponent crashes the Add-transaction slot before the 64-bit bound is reached.**
+  Surfaced by the FIBR-0219 spec review; VERIFIED against source, and
+  independent of that item (it reproduces on today's shipping code).
+
+  MEASURED 2026-08-04:
+  `parse_transaction("2026-07-01", "1e999999", "x", 2)` raises
+  `decimal.Overflow`, not `ValueError`. The value is a finite Decimal, so
+  the `is_finite()` check passes; the fractional-digit check passes; then
+  `to_minor` does `amount.scaleb(exponent).to_integral_value()` and
+  `scaleb` overflows the Decimal context BEFORE `_MAX_AMOUNT_MINOR` is
+  ever compared.
+
+  `decimal.Overflow` is an `ArithmeticError`, so `ManualEntryDialog._on_add`'s
+  `except ValueError` does not catch it and the Qt slot dies. Reachable by
+  typing `1e999999` into the Amount field today.
+
+  This is exactly the class FIBR-0216 closed when it added the 64-bit
+  `_MAX_AMOUNT_MINOR` guard ("a class no caller catches, unlike the
+  ValueError every other rejection here raises") — the guard just sits one
+  step too late to catch an exponent this large.
+
+  Fix shape: bound the exponent before scaling (or wrap `to_minor`'s call
+  and re-raise as `ValueError`), so every rejection out of
+  `parse_transaction` remains a `ValueError` as its docstring promises.
+  Needs a regression leg driving the dialog, not just the parser.
+  **Layman:** Typing a a number like 1e999999 into the Add-transaction box closes the dialog instead of showing "that's too big".
+  Kind: fix.
+  Source: cold-eyes-FIBR-0219-loop2-2026-08-04.
+
 ## P13 — Packaging & release
 
 ### 📦 Packaging
