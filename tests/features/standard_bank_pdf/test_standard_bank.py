@@ -18,16 +18,19 @@ from PySide6.QtWidgets import QDialog
 
 from conftest import _PW, _acct
 from finbreak.importers.standard_bank import (
+    _E_ROW,
     _MONEY,
     Family,
     StandardBankImporter,
     _cc_opening,
     _detect_number_format,
     _infer_years,
+    _looks_like_row,
     _parse_amount,
     _parse_family_a,
     _parse_family_b,
     _parse_family_c,
+    _parse_family_e,
     _span,
     _split_credit_card_line,
     _table_region,
@@ -48,6 +51,22 @@ def _fx(name: str) -> bytes:
 
 def _parse(name: str, password: str | None = None):
     return StandardBankImporter().parse(_fx(name), 2, password)
+
+
+def _text(name: str) -> str:
+    """The fixture's extracted text layer — what ``parse`` sees before detection.
+    A repo grep cannot read a PDF's text stream, so the FIBR-0190 D6 / INV-2 legs
+    extract it here instead."""
+    import pdfplumber
+
+    with pdfplumber.open(io.BytesIO(_fx(name))) as pdf:
+        return "\n".join((p.extract_text() or "") for p in pdf.pages)
+
+
+# The fixtures that pre-date Family E — the corpus FIBR-0190 must not disturb.
+_PRE_E_FIXTURES = sorted(
+    p.name for p in _FIXTURES.glob("*.pdf") if not p.name.startswith("family_e_")
+)
 
 
 def _encrypt(raw: bytes, *, user: str, owner: str = "owner-pw") -> bytes:
@@ -438,6 +457,251 @@ def test_D13_quiet_month_returns_empty_draft_with_period():
 
 def test_INV2_non_sb_pdf_returns_none():
     assert _parse("non_sb.pdf") is None
+
+
+# --------------------------------------------------------------------------- #
+# Family E — the "Payments / Deposits" current-account layout (FIBR-0190)
+# --------------------------------------------------------------------------- #
+_E_TOTALS_MSG = "Payments/Deposits totals don't match"
+
+
+def test_FIBR0190_INV1_family_e_detected():
+    # §7.1 — the header block `Date Description Payments Deposits Balance` plus the
+    # legal marker is the fifth transactional layout. Before FIBR-0190 this fell
+    # through to the generic PDF path, which imported ZERO of its rows.
+    assert detect_standard_bank(_text("family_e_current.pdf")) is Family.E
+
+
+@pytest.mark.parametrize(
+    "name, expected",
+    [
+        ("checksum_fail_a.pdf", Family.A),
+        ("completeness_fail_a.pdf", Family.A),
+        ("family_a_current.pdf", Family.A),
+        ("family_a_rcp_euro.pdf", Family.A),
+        ("family_b_homeloan.pdf", Family.B),
+        ("family_b_no_closing.pdf", Family.B),
+        ("family_c_creditcard.pdf", Family.C),
+        ("family_c_fail.pdf", Family.C),
+        ("family_d_moneymarket.pdf", Family.D),
+        ("mixed_footer_a.pdf", Family.A),
+        ("non_sb.pdf", None),
+        ("quiet_month_a.pdf", Family.A),
+        ("savings_no_closing.pdf", Family.A),
+    ],
+)
+def test_FIBR0190_INV2_existing_fixtures_detect_as_before(name, expected):
+    # §7.2 — adding E steals no existing statement. Parametrised so a regression in
+    # one family isn't masked behind a bundled assert.
+    assert detect_standard_bank(_text(name)) is expected
+
+
+def test_FIBR0190_INV2_covers_every_pre_e_fixture():
+    # Guards the leg above against a new fixture landing uncovered (its list is
+    # hand-written, so a glob mismatch is the failure mode).
+    assert len(_PRE_E_FIXTURES) == 13
+
+
+def test_FIBR0190_INV4_INV10_INV11_family_e_end_to_end():
+    # §7.3 — amounts, dates and signs on the happy path. The stored amount is the
+    # running-balance delta (INV-4); "Payments" is the money-OUT column despite the
+    # word (INV-10); the date is re-assembled from three capture groups (INV-11).
+    r = _parse("family_e_current.pdf")
+    assert [d.amount_minor for d in r.drafts] == [
+        -10000,
+        -25000,
+        -5000,
+        43000,
+        -33055,
+        -100000,
+    ]
+    assert [d.occurred_on for d in r.drafts] == [
+        "2026-02-02",
+        "2026-02-03",
+        "2026-02-04",
+        "2026-02-07",
+        "2026-02-09",
+        "2026-02-11",
+    ]
+    # the wrapped description is folded whole into its transaction
+    assert (
+        r.drafts[1].description == "CARD PURCHASE 4067 ****1234 SUPERMARKET BRANCH 0042"
+    )
+    # E prints no "Statement from … to …" line (D7) — the span is min/max parsed date
+    assert (r.period_start, r.period_end) == ("2026-02-02", "2026-02-11")
+
+
+def test_FIBR0190_INV9_dmy_lead_widening_is_opt_in():
+    # §7.4 / D5 — E's rows lead with a date, which no other family's do. Widening
+    # `_looks_like_row` globally would promote a Family-A continuation line that
+    # happens to start "12 Jan 25" into a row, and A's strict grammar would then
+    # refuse the whole statement. The widening must be opt-in.
+    line = "12 Jan 25 PAYMENT -10.00 90.00"
+    assert _looks_like_row(line) is False
+    assert _looks_like_row(line, dmy_lead=True) is True
+
+
+@pytest.mark.parametrize(
+    "line, desc, amt, bal",
+    [
+        # a 2-decimal-looking token INSIDE the description: the `$`-anchored lazy
+        # description means the LAST two money tokens win (D3).
+        (
+            "05 Feb 26 TRANSFER TO 12.34 ACCOUNT -20.00 580.00",
+            "TRANSFER TO 12.34 ACCOUNT",
+            "-20.00",
+            "580.00",
+        ),
+        # a masked card number and bare digits in the description
+        (
+            "03 Feb 26 CARD PURCHASE 4067 ****1234 -250.00 650.00",
+            "CARD PURCHASE 4067 ****1234",
+            "-250.00",
+            "650.00",
+        ),
+        # an R-prefixed reference token: no decimals, so `_MONEY` can't match it
+        (
+            "04 Feb 26 SERVICE FEE REF R000395711 -50.00 600.00",
+            "SERVICE FEE REF R000395711",
+            "-50.00",
+            "600.00",
+        ),
+        # a LEADING-minus balance (the opposite of Family A's trailing convention)
+        (
+            "11 Feb 26 INSURANCE PREMIUM ORDER -1,000.00 -300.55",
+            "INSURANCE PREMIUM ORDER",
+            "-1,000.00",
+            "-300.55",
+        ),
+        # money-in: no printed sign
+        (
+            "07 Feb 26 SALARY ACME PAYROLL 430.00 1,030.00",
+            "SALARY ACME PAYROLL",
+            "430.00",
+            "1,030.00",
+        ),
+    ],
+    ids=[
+        "embedded_decimal",
+        "masked_card",
+        "r_reference",
+        "negative_balance",
+        "money_in",
+    ],
+)
+def test_FIBR0190_INV3_row_grammar_accepts(line, desc, amt, bal):
+    m = _E_ROW.match(line)
+    assert m is not None
+    assert (m.group(4), m.group(5), m.group(6)) == (desc, amt, bal)
+
+
+def test_FIBR0190_INV3_row_grammar_rejects_trailing_minus_balance():
+    # D3 — a trailing-minus balance does not occur in the measured statement (0/182)
+    # and is deliberately NOT admitted: failing the grammar refuses the statement
+    # all-or-nothing, which is safer than guessing a sign.
+    assert _E_ROW.match("09 Feb 26 RENT PAYMENT LANDLORD -330.55 699.45-") is None
+
+
+def test_FIBR0190_INV3_folded_line_that_fails_the_grammar_raises_never_skips():
+    # §7.9 — the fold accepts a date-led line under `dmy_lead=True`; the grammar
+    # rejects it (one money token, not two). That must RAISE, not `continue` — a
+    # skip is exactly how a mis-parse becomes a silent under-import.
+    with pytest.raises(ValueError, match="didn't parse cleanly"):
+        _parse_family_e(
+            [
+                "STATEMENT OPENING BALANCE 1,000.00",
+                "12 Jan 26 ODD LINE 500.00",
+            ],
+            2,
+            "us",
+        )
+
+
+def test_FIBR0190_INV5_missing_opening_marker_raises():
+    # §7.5 — the message is `_parse_family_e`'s SUFFIXED one, not `_capture_opening`'s:
+    # `parse` runs the family parser first, and this fixture has rows (§4.4).
+    with pytest.raises(ValueError) as exc:
+        _parse("family_e_no_opening.pdf")
+    assert str(exc.value) == (
+        "couldn't find the opening balance on this statement — "
+        "try your bank's CSV or OFX export"
+    )
+
+
+@pytest.mark.parametrize(
+    "name", ["family_e_totals_fail.pdf", "family_e_deposits_fail.pdf"]
+)
+def test_FIBR0190_INV6_printed_total_mismatch_raises(name):
+    # §7.6 — BOTH halves have a red fixture. Each prints exactly one (mismatched)
+    # total, so between them they also kill the "gate on both totals present"
+    # mutation, which would skip a lone total and import cleanly. The rows in each
+    # are internally consistent — only the printed total is wrong, as a dropped tail
+    # would leave it — so the per-row chain cannot be what fails.
+    with pytest.raises(ValueError, match=_E_TOTALS_MSG):
+        _parse(name)
+
+
+def test_FIBR0190_INV6_totals_message_is_distinct_from_the_per_row_gate():
+    # The per-row gate describes a *running balance* disagreement, which is factually
+    # wrong for a truncated tail (every surviving row still reconciles). §4.5 gives
+    # the totals gate its own wording; the test contract requires them distinguishable.
+    with pytest.raises(ValueError) as exc:
+        _parse("family_e_totals_fail.pdf")
+    assert str(exc.value) == (
+        "this statement didn't add up — its printed Payments/Deposits totals "
+        "don't match its transactions; try your bank's CSV or OFX export"
+    )
+
+
+def test_FIBR0190_INV7_INV8_no_totals_imports_on_per_row_gate_alone():
+    # §7.7 / D9 — one statement has been observed, so absent totals must degrade to
+    # Family-A behaviour rather than refuse. `closing_minor` is withheld (D10).
+    r = _parse("family_e_no_totals.pdf")
+    assert len(r.drafts) == 6
+    assert r.closing_balance_minor is None
+
+
+def test_FIBR0190_INV8_closing_minor_from_verified_totals():
+    # §7.8 — E prints no closing balance, but its final running balance IS the
+    # closing figure and the totals gate is what makes it trustworthy (D10).
+    r = _parse("family_e_current.pdf")
+    assert r.closing_balance_minor == -30055  # opening 1,000.00 + Σ = -300.55
+
+
+def test_FIBR0190_INV8_lone_matching_total_verifies_but_withholds_closing_minor():
+    # §7.8a — the ONLY leg that discriminates "return the anchor whenever any label
+    # verified". The lone `Payments` total matches, so the import succeeds (D9) —
+    # but only half the sum was corroborated, so FIBR-0171's forecast anchor gets
+    # None rather than a number nothing checked (D10).
+    r = _parse("family_e_one_total.pdf")
+    assert len(r.drafts) == 6
+    assert r.closing_balance_minor is None
+
+
+@pytest.mark.parametrize(
+    "name, message",
+    [
+        ("family_e_amount_corrupt.pdf", "amount doesn't match its balance change"),
+        ("family_e_sign_flipped.pdf", "sign doesn't match its balance change"),
+    ],
+    ids=["magnitude", "sign"],
+)
+def test_FIBR0190_INV4_per_row_gate_red(name, message):
+    # §7.11 — the only legs that falsify INV-4. The end-to-end "amount equals the
+    # bracketing balance difference" assertion is true by construction (the delta IS
+    # what's stored), so it stays green with the `_verify_row` call deleted or given
+    # `check_sign=False`. These two fixtures are what notice.
+    with pytest.raises(ValueError, match=message):
+        _parse(name)
+
+
+@pytest.mark.parametrize("name", _PRE_E_FIXTURES)
+def test_FIBR0190_D6_no_existing_fixture_carries_the_e_opening_marker(name):
+    # §7.10 — the premise that makes widening `_anchor_balance` / `_capture_opening`
+    # globally safe (D6). It must be a text-EXTRACTION leg: the fixtures are binary
+    # PDFs whose text streams a repo grep cannot read, so a `workspace_search`
+    # returning 0 hits would prove nothing.
+    assert "statement opening balance" not in _text(name).lower()
 
 
 # --------------------------------------------------------------------------- #

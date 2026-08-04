@@ -6,7 +6,7 @@ table geometry the generic FIBR-0009 path relies on. A recognised statement feed
 the existing ``preview_result`` -> dedup -> ``commit_import`` pipeline exactly like
 OFX (self-describing, so it skips column-mapping).
 
-Four layout families dispatch inside this single module (D1):
+Five layout families dispatch inside this single module (D1):
 
 * **A** — transactional (Current / Savings / Revolving-Credit): right-anchored
   ``…desc… [amount][-] MM DD balance[-]``; year inferred from the period line.
@@ -14,12 +14,17 @@ Four layout families dispatch inside this single module (D1):
   dates, no printed amount sign).
 * **D** — Money Market / investment: ``YYYY MM DD desc [±R amount] R balance``.
 * **C** — credit card: two-columns-per-line, section-signed, no running balance.
+* **E** — the Current-account "Payments / Deposits" layout (FIBR-0190):
+  ``D[D] Mon YY desc [-]amount balance``; a **leading** minus on both, and no
+  printed period or closing balance.
 
-Signs are budget-view (money out negative): the balance families (A/B/D) take the
-printed magnitude carrying the **running-balance delta** sign (INV-7); the credit
-card flips its printed sign (INV-6). Integrity is all-or-nothing (INV-11): a
-per-row ``|delta| == printed`` gate (A/B/D) plus a completeness gate against the
-statement's independently-printed closing figure where one prints.
+Signs are budget-view (money out negative): the balance families (A/B/D/E) take
+the printed magnitude carrying the **running-balance delta** sign (INV-7); the
+credit card flips its printed sign (INV-6). Integrity is all-or-nothing (INV-11):
+a per-row ``|delta| == printed`` gate (A/B/D/E) plus a completeness gate — against
+the statement's independently-printed closing figure where one prints, or (E,
+which prints none) against its printed ``Payments`` / ``Deposits`` column totals
+(FIBR-0190 §4.5).
 
 The decrypt + caps are reused from FIBR-0009; this module adds no dependency and no
 schema change.
@@ -52,6 +57,7 @@ class Family(StrEnum):
     B = "B"  # Home Loan
     C = "C"  # credit card
     D = "D"  # Money Market / investment
+    E = "E"  # Current account, "Payments / Deposits" layout (FIBR-0190)
 
 
 _LEGAL_MARKER = "standard bank of south africa"
@@ -123,6 +129,12 @@ _TERMINATORS = (
 )
 
 _BROUGHT_FORWARD = "brought forward"  # anchor marker, matched case-insensitively
+
+# Family E's opening anchor — it prints this instead of "Balance Brought Forward"
+# (FIBR-0190 §4.4). Widening the two marker scans globally is safe where widening
+# the *shape* predicate ``_looks_like_row`` is not (D5 vs D6): this is an exact
+# phrase, and no pre-E fixture contains it (asserted as a test, FIBR-0190 §7.10).
+_E_OPENING = "statement opening balance"
 
 # Family-C brought-forward anchor: the phrase IMMEDIATELY followed by the balance
 # (e.g. "21 Jul 25 Balance Brought Forward 6,849.68"). Requiring the amount to abut
@@ -282,9 +294,11 @@ def _table_region(page_lines: list[str], family: Family) -> slice:
 
 # A validated ``D[D] Mon YY`` date — the 3-letter month must be a real month (so a
 # random 3-letter token in a description is neither a split point nor reaches the
-# ``_cc_iso`` lookup, INV-6).
+# ``_dmy_iso`` lookup, INV-6). Title-case with no ``re.I``: Family C and Family E
+# both print it that way (FIBR-0190 §2.2 measured 182/182 E rows Title-case).
 _MON_RE = "(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)"
 _CC_DATE = re.compile(rf"\d{{1,2}} {_MON_RE} \d{{2}}")
+_E_DATE_LEAD = re.compile(rf"^\s*\d{{1,2}} {_MON_RE} \d{{2}}\b")
 _AMOUNT_TAIL = re.compile(
     r"-?[\d.,]+[.,]\d{2}$"
 )  # a segment ending in a 2-decimal amount
@@ -379,7 +393,8 @@ def detect_standard_bank(full_text: str) -> Family | None:
     """The recognised SB family, or ``None`` (-> generic fallback, INV-2/INV-13a).
 
     Requires the legal marker document-wide AND a family header signature (over a
-    sliding header-block window), most-specific-first C->D->B->A (D4)."""
+    sliding header-block window), most-specific-first C->D->E->B->A (D4;
+    FIBR-0190 D2 adds E)."""
     if _LEGAL_MARKER not in full_text.lower():
         return None
     low = full_text.lower()
@@ -389,6 +404,10 @@ def detect_standard_bank(full_text: str) -> Family | None:
         return Family.C
     if _signature_present(full_text, "withdrawals", "deposits", "balance"):
         return Family.D
+    if _signature_present(
+        full_text, "date", "description", "payments", "deposits", "balance"
+    ):
+        return Family.E
     if _signature_present(
         full_text, "posting", "effective", "debit", "credit", "balance"
     ):
@@ -409,14 +428,24 @@ _CLOSING_MARKERS = {
     Family.B: ("closing balance",),
     Family.C: ("closing balance",),
     Family.D: ("balance as at",),
+    # E prints NO closing figure anywhere in the document (FIBR-0190 §2.2) — an
+    # explicit empty tuple so `_capture_closing` returns None rather than KeyError,
+    # and so the fact is stated where a reader looks for it. Its completeness gate
+    # is `_verify_e_totals` instead (§4.5).
+    Family.E: (),
 }
 
 
 def _capture_opening(region_lines: list[str], fmt: Fmt) -> Decimal:
-    """The first brought-forward anchor's balance (``opening_balance``; the anchor
-    repeats per page on a multi-page statement, D12 — the first is the opening)."""
+    """The first opening anchor's balance (``opening_balance``; the anchor repeats
+    per page on a multi-page statement, D12 — the first is the opening). The marker
+    is "brought forward" (A/B/D) or E's "statement opening balance" (FIBR-0190 D6).
+
+    For E this is reachable only on a **zero-row** statement: `parse` runs the family
+    parser first, and `_parse_family_e` raises its own suffixed message from inside
+    the per-row loop (FIBR-0190 §4.4)."""
     for line in region_lines:
-        if _BROUGHT_FORWARD in line.lower():
+        if _BROUGHT_FORWARD in line.lower() or _E_OPENING in line.lower():
             toks = _money_tokens(line)
             if toks:
                 bal = toks[-1]
@@ -426,8 +455,9 @@ def _capture_opening(region_lines: list[str], fmt: Fmt) -> Decimal:
 
 def _capture_closing(full_text: str, family: Family, fmt: Fmt) -> Decimal | None:
     """The statement's independently-printed closing figure, or ``None`` when the
-    family prints none (Savings; INV-10). Scans the full document text (the A/RCP
-    closings print on a summary page outside the transaction region)."""
+    family prints none (Savings, and every Family-E statement; INV-10). Scans the
+    full document text (the A/RCP closings print on a summary page outside the
+    transaction region)."""
     for line in full_text.splitlines():
         low = line.lower()
         for marker in _CLOSING_MARKERS[family]:
@@ -448,11 +478,12 @@ def _verify_checksum(
 ) -> None:
     """The completeness gate (INV-11), ``parse``-side. Raises the friendly
     all-or-nothing ``ValueError`` on non-reconciliation. A ``None`` closing is
-    family-aware: skip for Family A (Savings legitimately prints none), raise for
+    family-aware: skip for Family A (Savings legitimately prints none) and for
+    Family E (which never prints one — its gate is `_verify_e_totals`), raise for
     B/D/C (they always print a closing; C has no per-row fallback gate)."""
     if closing is None:
-        if family is Family.A:
-            return  # Savings — the per-row gate already covered correctness
+        if family in (Family.A, Family.E):
+            return  # per-row gate covered correctness (E adds its own totals gate)
         raise ValueError(
             "couldn't find the closing balance to check this statement against — "
             "try your bank's CSV or OFX export"
@@ -474,6 +505,66 @@ def _verify_checksum(
             "this statement didn't add up — its running balance and transactions "
             "disagree; try your bank's CSV or OFX export"
         )
+
+
+# Family E's summary page prints each column total alone on its own line, e.g.
+# "Payments -R1,730.55" (FIBR-0190 §2.2). The R prefix is optional: the row tokens
+# are bare, so a summary printing bare totals must not silently disable the gate.
+_E_TOTAL = re.compile(rf"^\s*(Payments|Deposits)\s+-?R?({_MONEY.pattern})\s*$", re.I)
+
+# Its own wording, deliberately NOT the `_verify_checksum` one: every existing
+# message describes a *running balance* disagreement, which is factually wrong for
+# the case this gate exists to catch — a truncated tail, where every surviving row
+# still reconciles (FIBR-0190 D8/§4.5).
+_E_TOTALS_MISMATCH = (
+    "this statement didn't add up — its printed Payments/Deposits totals don't "
+    "match its transactions; try your bank's CSV or OFX export"
+)
+
+
+def _verify_e_totals(
+    full_text: str,
+    drafts: list[TransactionDraft],
+    opening: Decimal,
+    exponent: int,
+    fmt: Fmt,
+) -> int | None:
+    """Family E's completeness gate: |Σ money-out| vs the printed ``Payments`` total
+    and |Σ money-in| vs ``Deposits`` (FIBR-0190 §4.5). Returns the final running
+    balance in minor units when **both** printed and verified, else ``None``.
+
+    This is the part of E that is *stronger* than Family A: the per-row chain
+    catches an interior dropped row but is blind to a truncated **tail** (every
+    surviving row still reconciles). The totals catch exactly that.
+
+    Each label is verified **independently** (D9): a lone total still catches a
+    dropped tail on its half, so skipping it would be strictly weaker than checking
+    it. A label that prints more than once is treated as absent — per-page subtotals
+    are plausible, and first/last-wins would silently compare against one."""
+    seen: dict[str, list[str]] = {"payments": [], "deposits": []}
+    for line in full_text.splitlines():
+        m = _E_TOTAL.match(line)
+        if m:
+            seen[m.group(1).lower()].append(m.group(2))
+    money_out = sum(d.amount_minor for d in drafts if d.amount_minor < 0)
+    money_in = sum(d.amount_minor for d in drafts if d.amount_minor > 0)
+    verified = 0
+    for label, total in (("payments", money_out), ("deposits", money_in)):
+        toks = seen[label]
+        if len(toks) != 1:
+            continue  # absent, or ambiguous (a repeated label) — degrade to A
+        # Compare MAGNITUDES in minor units — both conversions written out, because
+        # `amount_minor` is already an int in minor units while `_parse_amount`
+        # returns a MAJOR-unit Decimal. The sign is owned by the per-row gate, and a
+        # signed comparison would raise on a valid "Payments R<amount>" summary.
+        if abs(total) != to_minor(_parse_amount(toks[0], fmt), exponent):
+            raise ValueError(_E_TOTALS_MISMATCH)
+        verified += 1
+    if verified < 2:
+        # A single verified total corroborates only one half of `opening + Σ`, so
+        # FIBR-0171's forecast anchor gets None rather than an unchecked number (D10).
+        return None
+    return to_minor(opening, exponent) + sum(d.amount_minor for d in drafts)
 
 
 # --------------------------------------------------------------------------- #
@@ -537,19 +628,22 @@ def _is_boilerplate(line: str) -> bool:
     return len(toks) >= 2 and all(t.lower() in _HEADER_TOKENS for t in toks)
 
 
-def _fold(lines: list[str]) -> list[tuple[str, list[str]]]:
+def _fold(lines: list[str], *, dmy_lead: bool = False) -> list[tuple[str, list[str]]]:
     """Group region lines into (transaction line, [continuation lines]) — a
     continuation is any in-region line with no date+amount tail, folded into the
     preceding transaction's description (INV-10). Lines before the first transaction,
     blank lines, and page-break boilerplate (``_is_boilerplate``, FIBR-0119) are
-    dropped."""
+    dropped.
+
+    ``dmy_lead`` is a pass-through to the predicate (FIBR-0190 D5) — the fold's own
+    logic is unchanged."""
     groups: list[tuple[str, list[str]]] = []
     for line in lines:
         if not line.strip():
             continue
         if _is_boilerplate(line):
             continue  # page footer / letterhead / repeated header — never folded
-        if _looks_like_row(line):
+        if _looks_like_row(line, dmy_lead=dmy_lead):
             groups.append((line, []))
         elif groups:
             groups[-1][1].append(line.strip())
@@ -561,9 +655,20 @@ _ISO_LEAD = re.compile(r"^\s*\d{4}-\d{2}-\d{2}\b")
 _YMD_LEAD = re.compile(r"^\s*\d{4}\s+\d{1,2}\s+\d{1,2}\b")
 
 
-def _looks_like_row(line: str) -> bool:
+def _looks_like_row(line: str, *, dmy_lead: bool = False) -> bool:
     """A transaction/anchor line for Families A/B/D (a brought-forward anchor, or a
-    date + trailing balance). Family C rows are handled by the de-interleave."""
+    date + trailing balance). Family C rows are handled by the de-interleave.
+
+    ``dmy_lead=True`` additionally accepts a line **leading** with a validated
+    ``D[D] Mon YY`` date, or carrying E's opening marker — Family E only. The
+    widening is opt-in because it is a *shape* predicate that can fire on incidental
+    text: a Family-A continuation line that happens to start "12 Jan 25" would be
+    promoted to a row and then rejected by A's strict grammar, turning a working
+    import into an all-or-nothing refusal (FIBR-0190 D5). E accepts that hazard for
+    itself — refusing beats silently folding a real transaction into the previous
+    row's description — and the region bounds it."""
+    if dmy_lead and (_E_DATE_LEAD.search(line) or _E_OPENING in line.lower()):
+        return True
     return bool(
         _BROUGHT_FORWARD in line.lower()
         or _TRAILING_TAIL.search(line)
@@ -573,9 +678,11 @@ def _looks_like_row(line: str) -> bool:
 
 
 def _anchor_balance(line: str, fmt: Fmt) -> Decimal | None:
-    """If ``line`` is a brought-forward anchor, its (signed) balance; else ``None``.
-    Handles the dated page-1 anchor and the undated continuation-page repeat (D12)."""
-    if _BROUGHT_FORWARD not in line.lower():
+    """If ``line`` is an opening anchor — "brought forward" (A/B/D) or E's "statement
+    opening balance" (FIBR-0190 D6) — its (signed) balance; else ``None``. Handles the
+    dated page-1 anchor and the undated continuation-page repeat (D12)."""
+    low = line.lower()
+    if _BROUGHT_FORWARD not in low and _E_OPENING not in low:
         return None
     toks = _money_tokens(line)
     if not toks:
@@ -624,7 +731,7 @@ def _split(
 
 def _verify_row(delta: Decimal, amt_tok: str, fmt: Fmt, *, check_sign: bool) -> None:
     """The per-row INV-7b gate: the running-balance ``delta`` must equal the printed
-    amount in **magnitude** and (where a sign prints — A/D, not the sign-less B) in
+    amount in **magnitude** and (where a sign prints — A/D/E, not the sign-less B) in
     **direction**. A mismatch is a mis-parse -> the all-or-nothing ``ValueError``."""
     if abs(delta) != _parse_amount(amt_tok, fmt):
         raise ValueError(
@@ -767,6 +874,65 @@ def _parse_family_d(lines: list[str], exponent: int, fmt: Fmt) -> ParseResult:
     return ParseResult(drafts, errors, None, None)
 
 
+# Family E's row: ``D[D] Mon YY  desc  [-]amount  [-]balance`` (FIBR-0190 §4.3).
+# The `$` anchor plus the lazy description is what protects the description — the
+# LAST two money tokens on the line win, so an embedded price can never be read as
+# the amount; composing `_MONEY` (two decimals) additionally excludes reference and
+# rate tokens. Both minuses are **leading** — the opposite of Family A's trailing
+# convention, and a trailing minus is deliberately NOT admitted (D3): it does not
+# occur, and refusing the statement beats guessing a sign.
+_E_ROW = re.compile(
+    rf"^\s*(\d{{1,2}}) ({_MON_RE}) (\d{{2}})\s+(.*?)\s+"
+    rf"(-?{_MONEY.pattern})\s+(-?{_MONEY.pattern})\s*$"
+)
+
+
+def _parse_family_e(lines: list[str], exponent: int, fmt: Fmt) -> ParseResult:
+    """Family E (Current account, "Payments / Deposits") — ``D[D] Mon YY desc
+    [-]amount balance``, FIBR-0190.
+
+    NOTE **"Payments" is the money-OUT column**, despite the word ordinarily
+    suggesting money in. That inversion is the single most confusable thing here.
+    Nothing below actually consults which column a figure came from: the stored
+    amount is the running-balance **delta** and the printed sign is only the
+    cross-check (INV-7), exactly as A/B/D do it.
+
+    Takes no ``period``: E prints no "Statement from … to …" line, and needs none —
+    every row carries a 2-digit year, so there is nothing to infer (D7)."""
+    groups = _fold(lines, dmy_lead=True)
+    prev_balance: Decimal | None = None
+    parsed: list[TransactionDraft | RowError] = []
+    row = 0
+    for line, cont in groups:
+        bf = _anchor_balance(line, fmt)
+        if bf is not None:
+            prev_balance = bf
+            continue
+        m = _E_ROW.match(line)
+        if not m:
+            raise ValueError(_MISPARSE)
+        d, mon, yy, desc, amt_tok, bal_tok = m.groups()
+        # _signed_balance, NOT _parse_amount: E's negative balances print a LEADING
+        # minus and _parse_amount strips it, which would read every overdrawn row
+        # as positive.
+        balance = _signed_balance(bal_tok, fmt)
+        if prev_balance is None:
+            raise ValueError(
+                "couldn't find the opening balance on this statement — "
+                "try your bank's CSV or OFX export"
+            )
+        delta = balance - prev_balance
+        _verify_row(delta, amt_tok, fmt, check_sign=True)
+        row += 1
+        full_desc = " ".join([desc.strip()] + cont).strip()
+        parsed.append(
+            _draft(row, _dmy_iso(f"{d} {mon} {yy}"), delta, full_desc, exponent)
+        )
+        prev_balance = balance
+    drafts, errors = _split(parsed)
+    return ParseResult(drafts, errors, None, None)
+
+
 def _is_cc_skip_line(line: str) -> bool:
     """A zero-date Family-C line that is a **non-transaction**, not a continuation:
     a section header (every word one of credit(s)/debit(s)) or the masked
@@ -810,7 +976,7 @@ def _parse_family_c(lines: list[str], exponent: int, fmt: Fmt) -> ParseResult:
             printed = _parse_amount(amt_tok, fmt)
             # printed purchase (no sign) -> budget negative; printed credit (-) -> +.
             signed = -printed if not _is_negative(amt_tok) else printed
-            staged.append((_cc_iso(date_s), desc.strip(), signed))
+            staged.append((_dmy_iso(date_s), desc.strip(), signed))
     drafts, errors = _split(
         [
             _draft(i + 1, date_iso, signed, desc, exponent)
@@ -820,7 +986,7 @@ def _parse_family_c(lines: list[str], exponent: int, fmt: Fmt) -> ParseResult:
     return ParseResult(drafts, errors, None, None)
 
 
-def _cc_iso(date_s: str) -> str:
+def _dmy_iso(date_s: str) -> str:
     d, mon, yy = date_s.split()
     month = _MON3.get(mon.lower())
     if month is None:  # defensive — the validated _CC_DATE regex should preclude it
@@ -906,6 +1072,13 @@ class StandardBankImporter:
             result = _parse_family_b(region_lines, exponent, fmt)
         elif family is Family.D:
             result = _parse_family_d(region_lines, exponent, fmt)
+        elif family is Family.E:
+            # Explicit, NOT left to the terminal `else` — Family C's parser does not
+            # fail cleanly on an E statement. `_split_credit_card_line` finds the
+            # "28 Feb 26" boundaries and the C segment grammar matches with the
+            # **balance** captured as the amount, sign-flipped: wrong money, no
+            # exception (FIBR-0190 §4.3).
+            result = _parse_family_e(region_lines, exponent, fmt)
         else:
             result = _parse_family_c(region_lines, exponent, fmt)
 
@@ -927,6 +1100,14 @@ class StandardBankImporter:
         # figure the checksum verified, in signed minor units, or None when the
         # statement prints none (Savings / Family A rides the per-row gate).
         closing_minor = None if closing is None else to_minor(closing, exponent)
+        if family is Family.E:
+            # E prints no closing figure, but its final running balance IS one — and
+            # its printed column totals are what make that trustworthy. This must sit
+            # AFTER the assignment above, which would otherwise overwrite it with
+            # None on the next line (FIBR-0190 §4.5).
+            closing_minor = _verify_e_totals(
+                full_text, result.drafts, opening, exponent, fmt
+            )
         return ParseResult(result.drafts, [], start, end, closing_minor)
 
 
