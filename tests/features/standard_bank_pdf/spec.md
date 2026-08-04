@@ -16,6 +16,14 @@ number (`00 000 000 0`); `reportlab` stays a probe/authoring tool, never a proje
 or test dependency. Encrypted variants are produced in-test with `pikepdf`. No real
 statement, account number, or ID number appears anywhere.
 
+**No generator script is committed** — an in-tree one would be a `reportlab` entry
+point, which the rule above forbids. To author or extend the Family E set, the
+recipe is `docs/specs/FIBR-0190.md` **§ 4.6** (page split, which page reprints the
+column header, which shapes each row must carry) together with **§ 4.2** — a
+transaction page needs a money-bearing line directly *above* its column header, or
+`_table_region`'s "header carries no money token" guard picks the wrong line and
+the real header folds into the previous row's description.
+
 Coverage map:
 
 - **Pure helpers (no PDF):** `_detect_number_format` US/EU (INV-8/8a); `_parse_amount`
