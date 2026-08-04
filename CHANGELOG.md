@@ -47,6 +47,19 @@ signaling per
 
 ### Fixed
 
+- **A Standard Bank current-account statement that imported nothing at all now imports** (FIBR-0190)
+  Standard Bank prints its current-account statements in more than one
+  layout. One of them heads the money-out column **Payments** and money-in
+  **Deposits** — and finbreak recognised neither word, so it fell back to
+  its general-purpose PDF reader, which could not tell the columns apart on
+  a page with no ruled lines. The result was an import that offered zero
+  transactions out of a hundred and eighty-two.
+
+  finbreak now reads that layout directly. It also checks its own work
+  against the Payments and Deposits totals the statement prints on its last
+  page: if the two disagree, the import is refused with an explanation
+  rather than silently dropping the rows it missed.
+
 - **The Forecast no longer says "only" when your cash total is complete** (FIBR-0216)
   If you held any credit card or investment account, the projected
   balance always carried a "(... only)" note suggesting it was partial — even

@@ -2916,7 +2916,7 @@ because retrofitting them is a data migration.
   Kind: feature.
   Source: user-request-2026-07-28.
 
-- 📋 [FIBR-0190] **A current Standard Bank Current-account statement imports ZERO of its 183 rows — the "Payments / Deposits" column layout matches no Family signature, and the generic fallback can't split the columns.**
+- ✅ [FIBR-0190] **A current Standard Bank Current-account statement imports ZERO of its 183 rows — the "Payments / Deposits" column layout matches no Family signature, and the generic fallback can't split the columns.**
   Verified 2026-07-28 against a real 12-page, 3-month SBSA Current-account
   statement (2026-02-28 -> 2026-05-27, 183 transaction rows; NOT committed —
   personal data, see "needs a sample" below).
@@ -3004,6 +3004,21 @@ because retrofitting them is a data migration.
   `elif family is Family.E` routes every E statement into the credit-card
   parser, which does not fail cleanly — it matches with the balance captured as
   the amount, sign-flipped. Wrong money, no exception.
+  Resolved (2026-08-04): Family E shipped per docs/specs/FIBR-0190.md.
+  detect_standard_bank gains the five-token "Date Description Payments
+  Deposits Balance" signature in the slot C->D->E->B->A; _E_ROW parses
+  `D[D] Mon YY desc [-]amount [-]balance` (both minuses LEADING, the
+  opposite of Family A); _looks_like_row/_fold gained an OPT-IN dmy_lead
+  keyword so no other family's fold changed; _anchor_balance and
+  _capture_opening learned "statement opening balance"; _cc_iso became the
+  shared _dmy_iso. E prints no closing figure, so its completeness gate is
+  _verify_e_totals against the printed Payments/Deposits column totals,
+  each verified independently on magnitudes in minor units — and
+  closing_balance_minor is supplied only when BOTH printed and verified.
+  8 synthetic reportlab fixtures + 46 test legs; 8 mutations of the new
+  code were each caught by at least one leg. Suite 1610 passed / 2 skipped.
+  Cross-doc: FIBR-0050 (5 enumerations that said "A/B/D" or named Savings
+  as the sole closing-less family), the test contract, CHANGELOG.
 
 - 📋 [FIBR-0191] **Amount-range (min/max) filter on the Transactions tab.**
   Split out of FIBR-0109 (2026-07-28) as the one piece its absorb target
