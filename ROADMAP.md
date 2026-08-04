@@ -1366,6 +1366,28 @@ lands on top.
   **Layman:** If your computer is set to a language that writes numbers as 1.234,56 you cannot type an amount back the way finbreak just showed it to you.
   Kind: fix.
   Source: code-quality-review-2026-08-03 (split out of FIBR-0216).
+  Spec written and gated (2026-08-04): docs/specs/FIBR-0219.md, ACCEPTED
+  after 5 cold-eyes loops (§13 is the ledger). The design call this bullet
+  left open is made: validate with QLocale (which checks group PLACEMENT, so
+  de_DE rejects "-12.34" instead of reading it as -1234), rebuild the Decimal
+  exactly from the string, accept when both conventions agree, refuse when
+  they disagree — and, the part the bullet did not anticipate, refuse by
+  SHAPE when only one convention parses at all.
+
+  That last rule exists because the review found the two-parser test is blind
+  to the real hazard: en_ZA (the base-currency locale) reads "1,500" as 1.5
+  while the C convention simply rejects it, so one candidate survives and is
+  stored as 150 minor units where the user meant 150 000. Silent 1000x, and
+  a regression against today's refusal. Two further variants of the same hole
+  were found and closed in later loops (a bounded head let "1234,500"
+  through; a hardcoded separator set let de_CH's "1'234.500" through).
+
+  Also surfaced and filed separately: FIBR-0222, a pre-existing
+  decimal.Overflow from to_minor's scaleb that escapes _on_add as a non-
+  ValueError and crashes the dialog — reachable today, independent of this
+  item.
+
+  Next: TDD implementation against INV-1..INV-9.
 
 - 📋 [FIBR-0220] **Agreeing with a "~ guess" cannot teach the app — the no-nag gate has no escape hatch.**
   Reported by the user 2026-08-03. VERIFIED against source; the current
