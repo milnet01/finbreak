@@ -10,11 +10,28 @@ ADRs, journals, design docs) is in [naming.md](naming.md); ROADMAP.md
 and CHANGELOG.md format details live in a separate sub-spec at
 [`roadmap-format.md`](roadmap-format.md).
 
-The **structure** of a spec or ADR is out of scope here — this
-standard governs project-level files (§ 2), API contracts (§ 4) and
-markdown style (§ 7). A project that writes specs supplies its own
-spec-format contract and names it in `CLAUDE.md`; having none is the
-finding, not this omission.
+The **structure** of a spec or ADR is out of scope here — the
+sections below are the whole of it. A project that writes specs
+supplies its own spec-format contract and names it in `CLAUDE.md`;
+having none is the finding, not this omission.
+
+| § | Governs |
+|---|---|
+| [1](#1-principles) | Principles every doc is held to |
+| [2](#2-project-level-files) | README, CLAUDE.md, LICENSE, SECURITY.md, CoC, CONTRIBUTING |
+| [3](#3-roadmapmd-and-changelogmd-formats) | ROADMAP / CHANGELOG high-level rules |
+| [4](#4-api--contract-docs) | API / plugin / machine-readable contracts |
+| [5](#5-in-code-documentation) | Comments and docstrings |
+| [6](#6-screenshots) | Screenshot paths, filenames, formats |
+| [7](#7-markdown-style) | Markdown style, including link targets |
+| [8](#8-doc-reviews) | Doc-review cadence and fold-in |
+| [9](#9-anti-patterns) | The scannable breach checklist |
+| [10](#10-project-overrides) | This project's departures from the above |
+
+**Normative force:** *must* / *required* is a rule — breaching it is a
+defect. *Should* is a rule with a stated escape: depart from it and say
+why in the doc. *Typical* / *avoid* is guidance, and a reader may weigh
+it against the situation.
 
 
 ## 1. Principles
@@ -52,10 +69,22 @@ Don't repeat the install steps in README + INSTALL + CONTRIBUTING
 
 ## 2. Project-level files
 
+Three rules below (§ 2.4, § 2.5, § 2.6) apply only to a project **open
+to outside participation**. That is two distinct halves, and they are
+not the same population — a repo can take issues without taking
+patches:
+
+- **accepts issues** — outsiders can report bugs → § 2.4.
+- **accepts patches** — outsiders can contribute code → § 2.5, § 2.6.
+
+A project open to neither needs none of the three.
+
 ### 2.1 README.md
 
-Required sections. Additional sections are allowed anywhere; the
-ones below must appear, and in this relative order:
+Required content blocks. Additional sections are allowed anywhere; the
+blocks below must appear, and in this relative order. Items 1 and 2 are
+**not headings** — a masthead block and a single prose line — so a
+check that walks H2s starts at item 3:
 
 1. **Masthead** — project name, one-line description, and badges
    *as available* (e.g. license; build once CI exists). The version
@@ -70,7 +99,7 @@ ones below must appear, and in this relative order:
 4. **Install** — one-line install for each supported platform.
 5. **Quickstart** — minimal command sequence to use the project.
 6. **Plugin / extension** (if applicable) — link to the plugin
-   author contract.
+   author contract (`PLUGINS.md`, per § 4).
 7. **Documentation** — links to `docs/`, including the standards
    folder.
 8. **License** — single line + link.
@@ -104,30 +133,30 @@ dependency's license requires it.
 
 ### 2.4 SECURITY.md
 
-For projects that accept external bug reports: disclosure policy,
+For a project that **accepts issues** (§ 2): disclosure policy,
 contact email, GPG key (if used), supported-version table.
 
 ### 2.5 CODE_OF_CONDUCT.md
 
-For projects that accept external contributions — the same trigger
-as § 2.4. Contributor Covenant 2.1 verbatim is the default; don't
-write your own unless the project has a specific reason. A solo or
-private project needs none.
+For a project that **accepts patches** (§ 2). Contributor Covenant
+2.1 verbatim is the default; don't write your own unless the project
+has a specific reason.
 
-### 2.6 CONTRIBUTING.md (optional)
+### 2.6 CONTRIBUTING.md
 
-For projects accepting external contributors: build steps, test
-expectations, how to file issues, how to propose features. Should
-link to **every** standard in this folder — enumerate them from the
-folder, not from memory, or the list silently goes stale as
-standards are added.
+For a project that **accepts patches** (§ 2): build steps, test
+expectations, how to file issues, how to propose features. Must point
+at every standard in this folder — that is every `*.md` here **except
+`README.md`**, which is the index rather than a standard. A link to
+the folder plus the full list by name satisfies it; a partial list
+does not. Enumerate from the folder, never from memory, or the list
+silently goes stale as standards are added.
 
 
 ## 3. ROADMAP.md and CHANGELOG.md formats
 
-The detailed format specs for both files — used by the Ants
-Terminal Roadmap dialog and any tooling that consumes them
-deterministically — live in
+The detailed format specs for both files — used by any tooling that
+consumes them deterministically — live in
 [`roadmap-format.md`](roadmap-format.md) (split out for
 token efficiency; only relevant when authoring those files).
 
@@ -136,9 +165,10 @@ The high-level rules:
 - `ROADMAP.md` is the single place to track unshipped work;
   shipped work moves to `CHANGELOG.md`.
 - `ROADMAP.md` uses status emojis (✅🚧📋💭), theme emojis,
-  and stable per-bullet IDs (the generic `PROJ-NNNN` pattern from
-  `.roadmap-counter` — `FIBR-NNNN` in this project) plus phase IDs
-  (`P##`, `FP##`, `DS##`, `DOC##`, `R##`).
+  and stable per-bullet IDs on the generic `PROJ-NNNN` pattern —
+  the prefix is the project's, the number comes from
+  `.roadmap-counter` — plus phase IDs (`P##`, `FP##`, `DS##`,
+  `DOC##`, `R##`).
 - `CHANGELOG.md` follows
   [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) with
   an `[Unreleased]` block at the top.
@@ -156,7 +186,7 @@ machine-readable surface (`PLUGINS.md`, `API.md`,
 - **Document every public symbol.** If a function is exported,
   it's part of the contract.
 - **Include the version it was added in.** Helps consumers know
-  what they can rely on. Example: `Added in 0.6.5`.
+  what they can rely on. Example: `Added in X.Y.Z`.
 - **Show input + output examples.** Type signatures alone aren't
   enough.
 - **Mark deprecation explicitly.** `Deprecated since X.Y.Z; use
@@ -167,9 +197,9 @@ machine-readable surface (`PLUGINS.md`, `API.md`,
 
 ## 5. In-code documentation
 
-Defer to [coding § 3](coding.md). Default is no comments; only
-WHY non-obvious things need them. Don't write multi-paragraph
-docstrings.
+Owned by [coding § 3](coding.md) — read it there. In short: default
+is no comments, only WHY non-obvious things need them, and no
+multi-paragraph docstrings.
 
 
 ## 6. Screenshots
@@ -179,11 +209,10 @@ directory naming (including other image / icon assets) is in
 [naming.md](naming.md).
 
 - **Path** — `docs/screenshots/` **or** `assets/screenshots/`.
-  Pick one per project and use it for every screenshot (§ 1.5); two
-  homes in one repo is the failure. This project uses
-  `assets/screenshots/`.
+  Pick one per project (record it in § 10) and use it for every
+  screenshot (§ 1.5); two homes in one repo is the failure.
 - **Filename** — `<feature>-<state>.png`
-  (`terminal-tabs-active.png`, not `Screenshot 2026-04-28.png`).
+  (`import-preview-empty.png`, not `Screenshot 2026-04-28.png`).
 - **Format** — PNG for UI, JPG for photographic content.
 - **Caption** every screenshot in the surrounding prose.
 - **Replace, don't accumulate.** When the feature changes, swap
@@ -232,17 +261,35 @@ Findings from a doc review fold into the ROADMAP under
 
 ## 9. Anti-patterns
 
+A scannable checklist of breaches, kept complete on purpose. Where an
+entry is the negative of a rule stated above, it cites that rule —
+the rule is canonical (§ 1.5) and this is the index into it.
+
 - ❌ Lorem ipsum or placeholder text in committed docs.
 - ❌ Screenshots that show the previous version's UI.
 - ❌ "We" / "I" — use second person ("you") or impersonal third
   person ("the user").
 - ❌ Markdown that doesn't render correctly on GitHub (test it).
 - ❌ Documentation for a feature that hasn't shipped (goes in
-  ROADMAP.md instead).
+  ROADMAP.md instead) — § 1.4.
 - ❌ Stale CLI flag references — sweep every doc when a flag
   changes.
-- ❌ Relative dates in committed docs (`recently`, `last week`).
+- ❌ Relative dates in committed docs (`recently`, `last week`) —
+  § 1.3.
 - ❌ A README so long a new contributor bounces off the page.
+
+
+## 10. Project overrides
+
+This standard is written to be copied verbatim into another project
+(see the [standards README](README.md)), so everything above is
+generic. Anything true only of **this** project goes here, appended as
+a new bullet — mirroring [naming § 9](naming.md).
+
+- **Screenshot home (§ 6)** — this project uses
+  `assets/screenshots/`.
+- **Roadmap ID prefix (§ 3)** — this project's bullets are
+  `FIBR-NNNN`.
 
 
 ## Cold-eyes loop log
@@ -250,3 +297,4 @@ Findings from a doc review fold into the ROADMAP under
 | Loop | Date | Lanes | C | H | M | L | Outcome |
 |---|---|---|---|---|---|---|---|
 | 1 | 2026-08-05 | 2 × general-purpose, cold, genre pinned `standard` | 0 | 3 | 7 | 7 | 17 verified, 8 unverified and dropped. All 17 fixed. Dimension tally: dim 2×4, dim 6×5, dim 4×3, dim 7×2, dim 5×2, dim 1×1. The run's own trigger (FIBR-0230's new § 7 link-target bullet) was itself found under-scoped — it bound only `~/…`, so an absolute path or a `file://` URL complied with the letter and broke for the same reader; broadened to any path outside the repository. § 2.6's "all four standards docs" and the masthead's four-peer list both dated from the P00 scaffold (2026-06-30), when four was right; `naming.md` and `dependencies.md` landed 2026-07-03 and neither line followed. `CONTRIBUTING.md` had already been built from the stale rule and listed four — fixed as collateral. § 2.6 now names no count at all, so it cannot rot again. § 8 restated four § 9 anti-patterns; reduced to a pointer plus its three unique items (delete N−1). Dropped as unverified: the README *does* link CHANGELOG + ROADMAP from its version line, its `## Status` *does* carry the capability list (a naming mismatch, not a missing section), and line 81 already says "machine-wide". Surfaced, not fixed: no `SECURITY.md` / `CODE_OF_CONDUCT.md` on a public repo accepting bug reports (project-side, not a doc edit), and the same stale peer-list in `coding.md` / `commits.md` / `testing.md` (three docs this run did not review — each edit would trip its own rule-14 gate). |
+| 2 | 2026-08-05 | 2 × general-purpose, cold, genre pinned `standard` | 0 | 2 | 5 | 6 | 13 verified, 0 unverified. All fixed. Dimension tally: dim 6×4, dim 1×3, dim 7×2, dim 2×2, dim 11×2, dim 13×2, dim 4×1. Origin split: **7 fix collateral, 8 draft defects** — the loop earned itself. Both lanes independently led with the same collateral: loop 1 had written project-specific facts (`assets/screenshots/`, `FIBR-NNNN`) into a standard whose own index tells other projects to copy it *verbatim*, so every downstream copy would have shipped two false claims. `naming.md § 9` already had the pattern; § 10 Project overrides now mirrors it and holds both, plus the pre-existing tool-specific "Ants Terminal Roadmap dialog" reference and a product-specific filename example. Loop 1's § 2.5 rewrite asserted "the same trigger as § 2.4" — false, since accepting issues and accepting patches are different populations, and § 2.6 had a third phrasing; § 2 now defines one trigger in two named halves and all three cite it. Loop 1's "enumerate them from the folder" was unimplementable as written (the folder holds the index and a sub-spec too) — now "every `*.md` except `README.md`". Loop 1's scope sentence enumerated 3 of 8 governed sections, implying § 6 was out of scope while § 6 says it owns screenshot filenames; replaced by the § 1–10 table, which doubles as the TOC four lane-votes across both loops asked for. § 9 kept its complete checklist but now cites the owning rule on each entry that restates one, which is § 1.5's shape rather than a breach of it. Added a normative-force key (must / should / typical), the one gap no lane could work around: the doc mixed all three with nothing telling a conformer which bound them. |
