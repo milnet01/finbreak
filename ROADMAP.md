@@ -1599,7 +1599,7 @@ lands on top.
   Kind: fix.
   Source: in-session-2026-08-05 (FIBR-0223 call-site sweep).
 
-- 🚧 [FIBR-0225] **Lint the gate's own delivery machinery: shellcheck + actionlint stages.**
+- ✅ [FIBR-0225] **Lint the gate's own delivery machinery: shellcheck + actionlint stages.**
   The gate checked `src/` and `tests/` thoroughly and never looked at the
   11 shell scripts and 3 workflows that BUILD, TEST and PUBLISH every
   release. A bug in `release-linux.sh` ships a broken release and no
@@ -1624,6 +1624,13 @@ lands on top.
   **Layman:** The scripts that build and publish releases are now checked by the same gate that checks the app.
   Kind: security.
   Source: user-request-2026-08-05 (scan the system for audit tools we could add to the gate).
+  Resolved (2026-08-05): both stages live in ci-local.sh, pinned in
+  ci-setup.sh (shellcheck 0.11.0, actionlint 1.7.12), verified in the CI
+  image via ci-docker.sh — not just on the desktop, since the change
+  touches ci-setup.sh and a green local run cannot prove the clean-runner
+  install path. Container run exit 0; gate green 1691 passed, 2 skipped.
+  FIBR-0001 INV-1 amended (also picking up the undocumented mypy stage
+  from FIBR-0061). Commit e3959e2.
 
 - 📋 [FIBR-0226] **Harden the workflows against zizmor's supply-chain findings.**
   `zizmor 1.29.0` (installed, NOT yet in the gate) reports **14 findings
