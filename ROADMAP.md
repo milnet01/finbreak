@@ -4521,6 +4521,121 @@ because retrofitting them is a data migration.
   Lanes: tests.
   Source: in-session-2026-08-02 v0.1.19 release.
 
+- 📋 [FIBR-0231] **Plain-English monthly summary — the app says what happened, in a sentence.**
+  Tiles, a donut, a trend line, a drill-down, a forecast and alerts all
+  ask the reader to work out what the numbers MEAN. Many people can't,
+  don't, or get it wrong — and then conclude they are bad with money.
+  This is the one feature that does the reading for them:
+
+    "September cost you R2,340 more than your usual month. Almost all
+     of it was one thing — a R1,900 vet bill. Take that out and you
+     were R440 better than normal."
+
+  Every input already exists: category totals (`ReportingService`),
+  recurring medians (`RecurringService`), and the spike detection that
+  already powers the alerts (`AlertService`). This is a presentation
+  layer over existing services, not a new subsystem.
+
+  Deliberately NOT FIBR-0175 (compare periods side by side) — that
+  puts two columns next to each other and still leaves the reading to
+  the user. The value here is the interpretation, not the comparison.
+
+  The hard part is honest phrasing: the sentence must not overclaim on
+  thin data, and must degrade to something shorter and vaguer rather
+  than inventing a narrative when the month is unremarkable.
+  **Layman:** The app tells you in plain words what happened to your money this month, instead of leaving you to read a chart.
+  Kind: feature.
+  Source: user-request-2026-08-05 (layman-comprehension suggestions).
+
+- 📋 [FIBR-0232] **"Safe to spend" — one number for what's left after everything still due this month.**
+  The cash-flow forecast (FIBR-0171) already projects a balance forward
+  through every known recurring payment to a horizon. This derives ONE
+  figure from it and puts it where a nervous user will actually look:
+
+    "After everything still due this month, you have R1,240 left."
+
+  That is the question a layman actually asks. Today the app answers it
+  with a line graph they have to interpret first.
+
+  Must degrade honestly, and this is the whole risk of the item: the
+  number is only meaningful in `ForecastMode.ANCHORED`. In `NET_FLOW`
+  (no account has a persisted closing balance) there IS no safe-to-spend
+  figure, and the card must say so — showing a projected CHANGE as
+  though it were money in hand is exactly the harm to avoid.
+
+  Pairs with the forecast-uncertainty item: a number the app cannot
+  stand behind should not be printed at all.
+  **Layman:** One number telling you what you can still spend this month, after the bills that haven't gone off yet.
+  Kind: feature.
+  Source: user-request-2026-08-05 (layman-comprehension suggestions).
+
+- 📋 [FIBR-0233] **Committed vs free income — show what share of income is spoken for before the month starts.**
+  Not a budget — no targets, no envelopes, no discipline required. That
+  is FIBR-0022, and this is deliberately the opposite: a mirror, not a
+  tool. One line and one bar:
+
+    "71% of your income is spoken for before the month starts — rent,
+     debit orders, subscriptions. R4,100 is yours to decide about."
+
+  The recurring detector (FIBR-0142) already identifies the committed
+  OUT streams and carries `monthly_equivalent` for each; income is
+  already separated from spending on the dashboard.
+
+  People systematically misjudge this ratio. Seeing it reframes "I am
+  hopeless with money" into "I have less room than I thought" — which
+  is true, actionable, and considerably kinder.
+
+  Open question for the spec: what counts as committed. Confirmed
+  recurring OUT items are the obvious core; whether suggested-but-
+  undecided streams are included changes the headline percentage, so
+  the rule must be stated on the card, not just in code.
+  **Layman:** Shows how much of your pay is already promised to bills before you spend anything.
+  Kind: feature.
+  Source: user-request-2026-08-05 (layman-comprehension suggestions).
+
+- 📋 [FIBR-0234] **Show the yearly equivalent beside every recurring amount.**
+  A presentation change rather than a feature: anywhere a recurring
+  amount is shown, show its yearly equivalent beside it.
+
+    "R85/week → R4,420/year"
+
+  `RecurringItem.monthly_equivalent` already exists (FIBR-0142 D8), so
+  the cadence normalisation is done and this is a formatting change on
+  top of it.
+
+  Small repeated amounts are the single thing laymen underestimate most
+  badly, and this is the cheapest correction to that error the app can
+  make — which is what earns it a place despite being cosmetic.
+
+  Two cares: rounding (a yearly figure derived from a weekly median
+  should not imply false precision), and phrasing that does not read as
+  a promise — it is an equivalent at today's rate, not a prediction.
+  **Layman:** Shows what a small regular payment adds up to over a year, which is usually far more than people expect.
+  Kind: enhancement.
+  Source: user-request-2026-08-05 (layman-comprehension suggestions).
+
+- 📋 [FIBR-0235] **Show the forecast's uncertainty — a band and a data-basis label, not a confident line.**
+  The app forecasts and detects patterns. A layman who trusts a
+  confident-looking WRONG forecast is a real harm — this is money, and
+  a crisp single line reads as certainty the data does not support.
+
+  Two changes:
+
+  - Draw the projection as a band rather than one line.
+  - Label the basis on its face ("based on 3 months of data").
+
+  `ForecastMode` already distinguishes ANCHORED from NET_FLOW, so the
+  weaker case is known to the code — it is just not visible enough at a
+  glance to change how the number is read.
+
+  Pairs with the "safe to spend" item, which must not print a figure it
+  cannot stand behind. Consider these together: the same honesty rule
+  drives both, and shipping the number without the caveat is worse than
+  shipping neither.
+  **Layman:** Makes it obvious how sure (or unsure) the app is about a prediction, so nobody leans on a guess.
+  Kind: ux.
+  Source: user-request-2026-08-05 (layman-comprehension suggestions).
+
 ### ⚡ Performance
 
 - ✅ [FIBR-0025] **Enable SQLite WAL mode.** Set
