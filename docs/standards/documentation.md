@@ -175,6 +175,11 @@ directory naming (including other image / icon assets) is in
   Don't force-wrap inside code blocks or tables.
 - Links: `[text](url)` not `<url>`, unless the URL itself is
   meant as the visible text.
+- Link targets must resolve for a reader who is not on this
+  machine — GitHub, a previewer and an editor all follow the
+  same target. A machine-local path (`~/.claude/skills/...`)
+  goes in inline code, named as machine-local, and never in a
+  link target.
 - Lists: `- ` for bullets, `1. ` for numbered. Don't mix `*` and
   `-` in one file.
 - Inline code: backticks for filenames, function names, CLI
