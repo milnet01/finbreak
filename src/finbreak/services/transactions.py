@@ -87,24 +87,9 @@ def parse_transaction(
     if -cast(int, amount.normalize().as_tuple().exponent) > exponent:
         raise ValueError("amount has more fractional digits than the currency allows")
 
-    try:
-        amount_minor = to_minor(amount, exponent)
-    except Overflow as exc:
-        # The bound below is one step too late for an exponent this large: "1e999999"
-        # is finite and carries no fractional digits, so it passes both checks above
-        # and then overflows the Decimal context inside `scaleb` itself. `Overflow`
-        # is an ArithmeticError, so it escaped ManualEntryDialog's `except ValueError`
-        # and killed the slot — FIBR-0216's crash class exactly, one guard earlier
-        # (FIBR-0222). Same rejection, so deliberately the same message.
-        raise ValueError("amount is too large to store") from exc
+    amount_minor = to_minor_storable(amount, exponent)
     if amount_minor == 0:
         raise ValueError("amount must be non-zero")
-    if not -_MAX_AMOUNT_MINOR <= amount_minor <= _MAX_AMOUNT_MINOR:
-        # Every other rejection here is a ValueError the callers already catch and
-        # render. Without this one a pasted "1E19" sails through and only fails at
-        # the INSERT, as an OverflowError — a different class, uncaught, escaping
-        # ManualEntryDialog's slot (FIBR-0216).
-        raise ValueError("amount is too large to store")
     return occurred_on, amount_minor, description
 
 
@@ -123,6 +108,38 @@ def to_minor(amount: Decimal, exponent: int) -> int:
     that already round-tripped through ``to_display_decimal``, so the scaling is
     exact there."""
     return int(amount.scaleb(exponent).to_integral_value())
+
+
+def to_minor_storable(amount: Decimal, exponent: int) -> int:
+    """``to_minor``, plus the two magnitude rejections storing the result forces —
+    both raised as ``ValueError``, the class every caller already catches.
+
+    Scaling money is only half the job: an amount can be finite, correctly signed
+    and correctly precise and still be unstorable, in two ways that surface as two
+    *different* uncaught exception types, at two different distances from here.
+
+    - Too large an **exponent** ("1e999999") overflows the Decimal context inside
+      `scaleb` itself, raising `decimal.Overflow` right here (FIBR-0222).
+    - Too large a **value** (1e30) scales cleanly and only fails later, at the
+      INSERT, as `OverflowError` past SQLite's signed 64-bit INTEGER (FIBR-0216).
+
+    Neither is a `ValueError`, so both walked through the `except ValueError` that
+    `ManualEntryDialog`, `csv_importer` and the import wizard each render with, and
+    killed the Qt slot silently. Same rejection, so deliberately the same message.
+
+    The `Overflow` catch sits **after** the scaling rather than as a second
+    magnitude bound before it, so `_MAX_AMOUNT_MINOR` stays the ONE stated bound
+    and cannot drift from a duplicate expressed as an exponent. `Overflow` is
+    caught narrowly rather than `DecimalException`: with a finite operand and a
+    currency exponent of 0-3 it is the only trapped signal reachable there.
+    """
+    try:
+        amount_minor = to_minor(amount, exponent)
+    except Overflow as exc:
+        raise ValueError("amount is too large to store") from exc
+    if not -_MAX_AMOUNT_MINOR <= amount_minor <= _MAX_AMOUNT_MINOR:
+        raise ValueError("amount is too large to store")
+    return amount_minor
 
 
 class TransactionService:

@@ -5,7 +5,8 @@ The Standard Bank importer already computes the closing balance for its
 completeness checksum, then discarded it; this feature persists it. OFX reads the
 `<LEDGERBAL>` ledger balance. CSV / manual leave it `None`.
 
-Enforces tests/features/forecast/spec.md INV-7/INV-8. tmp_path only; no network.
+Enforces tests/features/forecast/spec.md INV-7/INV-7a/INV-8. tmp_path only; no
+network.
 """
 
 from pathlib import Path
@@ -92,3 +93,33 @@ def test_INV8_ofx_without_ledger_balance_does_not_crash() -> None:
     _, result = OfxImporter().parse(_ofx_stmt(ledger=None), 2)[0]
     assert result.closing_balance_minor is None
     assert result.drafts, "the sibling transaction still imports"
+
+
+# --------------------------------------------------------------------------- #
+# INV-7a (FIBR-0223) — an unstorable <BALAMT> is a friendly ValueError
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize(
+    ("ledger", "why"),
+    [
+        # ofxparse's `toDecimal` hands the token straight to `Decimal(...)` and
+        # catches only InvalidOperation, so exponent notation survives the parse.
+        # Scaling it overflows the Decimal context inside `scaleb` —
+        # `decimal.Overflow` is an ArithmeticError, so it walks through
+        # `_select_ofx`'s `except ValueError` and kills the slot (FIBR-0222's
+        # class, on the one to_minor call site that had no guard).
+        ("1e999999", "exponent large enough to overflow the scaling itself"),
+        # Scales cleanly to 10**32, so nothing raises here — it dies far away, at
+        # the INSERT, as an OverflowError past SQLite's signed 64-bit INTEGER.
+        # `_on_import` catches only (ValueError, FinbreakError), so that one is a
+        # dead slot at commit time rather than at parse time.
+        ("1e30", "past SQLite's 64-bit INTEGER, but scales fine"),
+        ("-1e30", "same bound, negative"),
+    ],
+)
+def test_INV7a_ofx_unstorable_ledger_balance_is_a_valueerror(ledger, why) -> None:
+    """FIBR-0223 — the closing balance is the ONE amount in an OFX file that does
+    not go through `parse_transaction`, so it inherited none of that function's
+    money contract. Each spelling above reaches a crash the import wizard cannot
+    show; `ValueError` is the class INV-4 promises for unusable input."""
+    with pytest.raises(ValueError, match="closing balance"):
+        OfxImporter().parse(_ofx_stmt(ledger=ledger), 2)

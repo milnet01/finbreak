@@ -47,6 +47,13 @@ signaling per
 
 ### Fixed
 
+- **An OFX file with an unusable closing balance is reported, not a silent dead end** (FIBR-0223)
+  A `<LEDGERBAL>` amount too large to store used to kill the import
+  step with no message and no rows — either while reading the file or,
+  for a slightly smaller figure, at the moment you pressed Import.
+  Both now say so: "this OFX file's closing balance is not a usable
+  amount".
+
 - **Typing a huge number like `1e999999` into the Add-transaction Amount field no longer kills the dialog** (FIBR-0222)
   The value overflowed the decimal scaling one step before the 64-bit
   size check could reject it, and that failure was a class the dialog

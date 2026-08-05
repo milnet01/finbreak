@@ -1502,7 +1502,7 @@ lands on top.
   parser's side. All three verified RED before the fix. spec.md INV-4b now
   states that ValueError is the class for every rejection, magnitude included.
 
-- 📋 [FIBR-0223] **The OFX closing-balance scaling is the one to_minor call site with no ValueError guard.**
+- ✅ [FIBR-0223] **The OFX closing-balance scaling is the one to_minor call site with no ValueError guard.**
   Surfaced while sweeping to_minor's call sites for FIBR-0222. PARTLY
   verified — read the code, did NOT reach it with an input.
 
@@ -1535,6 +1535,69 @@ lands on top.
   **Layman:** A corrupt bank file could crash the import wizard instead of reporting the bad line.
   Kind: fix.
   Source: in-session-2026-08-05 (FIBR-0222 call-site sweep).
+  Resolved (2026-08-05): REACHABLE — the open question is answered no.
+  ofxparse's `toDecimal` hands `<BALAMT>` straight to `Decimal(...)` and
+  catches only InvalidOperation, so exponent notation survives the parse;
+  a real OFX document carrying `1e999999` drove `decimal.Overflow` out of
+  `OfxImporter.parse` end to end (confirmed RED before the fix).
+
+  The pass also found a SECOND crash on the same line, not in the bullet:
+  `1e30` scales cleanly to 10**32 and dies far away at the INSERT as an
+  `OverflowError` past SQLite's 64-bit INTEGER. `_select_ofx` catches
+  ValueError at parse time and `_on_import` catches it at commit time, so
+  each was a dead Qt slot at a different moment.
+
+  Fix: extracted `to_minor_storable` in services/transactions.py — the
+  scaling plus BOTH magnitude rejections, raised as the ValueError every
+  caller already renders. `parse_transaction` now calls it too, so
+  `_MAX_AMOUNT_MINOR` stays the ONE stated bound rather than being copied
+  into the importer (FIBR-0222's design call, preserved). The OFX site
+  re-raises in this file's INV-4 voice ("this OFX file's closing balance
+  is not a usable amount").
+
+  Covered by tests/features/forecast/spec.md INV-7a — three legs in
+  test_importer_capture.py (huge exponent, ±1e30), all confirmed RED
+  first. Gate green: 1691 passed, 2 skipped.
+
+  The standard_bank.py sites named above did NOT close with this one; the
+  residue is filed separately (see the bullet below).
+
+- 📋 [FIBR-0224] **The Standard Bank closing balance can still exceed what SQLite can store.**
+  Split out of FIBR-0223 rather than fixed with it — the reachability
+  story is different and the test cost is much higher (it needs crafted
+  PDF fixtures, not a 6-line SGML string).
+
+  `standard_bank.py:1102` is the same shape FIBR-0223 just closed:
+  `closing_minor = None if closing is None else to_minor(closing,
+  exponent)`, with no bound. Two halves, and only the first is closed:
+
+  - **Exponent overflow: NOT reachable, verified.** `_parse_amount`
+    strips `R`, spaces, `-` and separators and parses what is left, and
+    `_money_tokens` never yields a token containing an `e`, so `scaleb`
+    cannot overflow the Decimal context there. FIBR-0223's first failure
+    mode does not exist on this path.
+  - **The 64-bit bound: reachable, unverified by an input.** A plain
+    digit run of 20+ digits parses fine, scales fine, and only dies at
+    the INSERT as `OverflowError` — the class `_on_import` does not
+    catch. `_verify_checksum` (line 1095) runs FIRST and is a strong
+    gate: it requires `opening_m + Σ drafts == closing_m`, and every
+    draft is already bounded by `parse_transaction`. But `opening` is
+    NOT bounded (`to_minor` at 492/493), so a statement printing a huge
+    opening AND a matching huge closing reconciles and reaches 1102.
+    Narrow, but a crafted file, and this is untrusted input.
+
+  Fix shape is one line plus a wrap, mirroring FIBR-0223: route 1102
+  (and 492/493) through `to_minor_storable` and re-raise in this file's
+  own voice. The work is the fixtures: a Family B/D statement whose
+  opening and closing both exceed int64 and still reconcile.
+
+  Also unswept: `services/forecast.py:227` and `services/alerts.py:211`
+  and `228` scale a recurring item's amount through bare `to_minor`.
+  Those read values that already round-tripped through the DB (so they
+  are bounded by construction), but that has not been checked.
+  **Layman:** A crafted PDF statement could crash the import at the last step instead of reporting a bad figure.
+  Kind: fix.
+  Source: in-session-2026-08-05 (FIBR-0223 call-site sweep).
 
 ## P13 — Packaging & release
 

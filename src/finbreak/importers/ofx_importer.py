@@ -33,7 +33,7 @@ from ofxparse.ofxparse import AccountType
 
 from finbreak.importers.base import ParseResult, RowError
 from finbreak.models import OfxAccountInfo, TransactionDraft
-from finbreak.services.transactions import parse_transaction, to_minor
+from finbreak.services.transactions import parse_transaction, to_minor_storable
 
 # Whole-file transaction cap (D13/INV-10) — orders of magnitude above any real
 # personal statement. One-line-tunable; the byte cap is _MAX_IMPORT_BYTES (import_).
@@ -150,7 +150,23 @@ class OfxImporter:
         # is present, so a bare access raises AttributeError — and this runs OUTSIDE
         # the wizard's boundary try/except. ``getattr(..., None)`` guards it.
         balance = getattr(statement, "balance", None)
-        closing_balance_minor = None if balance is None else to_minor(balance, exponent)
+        # The closing balance is the ONE amount in an OFX file that does not go
+        # through `parse_transaction`, so it inherited none of that function's money
+        # contract (FIBR-0223). ofxparse's `toDecimal` hands `<BALAMT>` straight to
+        # `Decimal(...)` and catches only InvalidOperation, so "1e999999" survives
+        # the parse and then overflows the scaling here, while "1e30" scales cleanly
+        # and dies far away at the INSERT — `decimal.Overflow` and `OverflowError`,
+        # neither of them the `ValueError` the wizard catches. `to_minor_storable`
+        # rejects both as one; re-raise in this file's INV-4 voice, since what the
+        # user needs to know is which file is unusable, not which bound it broke.
+        try:
+            closing_balance_minor = (
+                None if balance is None else to_minor_storable(balance, exponent)
+            )
+        except ValueError as exc:
+            raise ValueError(
+                "this OFX file's closing balance is not a usable amount"
+            ) from exc
         return ParseResult(
             drafts, errors, period_start, period_end, closing_balance_minor
         )
