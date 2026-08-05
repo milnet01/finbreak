@@ -47,6 +47,23 @@ signaling per
 
 ### Fixed
 
+- **Manual entry now accepts an amount written the way your computer writes numbers** (FIBR-0219)
+  If your system writes numbers the European way — `1.234,56` — you can now
+  type an amount back exactly as finbreak displays it. The plain `12.34` form
+  keeps working everywhere, so nothing you type today stops working.
+
+  When a typed number could genuinely mean two different things, finbreak
+  **asks instead of guessing**: `1,500` might be one thousand five hundred or
+  one and a half, and guessing wrong on a money field is off by a factor of a
+  thousand. The message names both readings in your own number format. One
+  consequence worth knowing: on a comma-decimal system, a three-digit tail
+  after a dot (`1.500`, `1234.500`) is now refused rather than stored as 1.5 —
+  type `1,50`, `1.50` or `1500` instead.
+
+  Importing a bank statement is unchanged and stays independent of your
+  desktop's language, so the same file imports to the same numbers on every
+  machine.
+
 - **A Standard Bank current-account statement that imported nothing at all now imports** (FIBR-0190)
   Standard Bank prints its current-account statements in more than one
   layout. One of them heads the money-out column **Payments** and money-in

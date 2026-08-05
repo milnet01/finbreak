@@ -170,6 +170,35 @@ Do not delete revoked entries — the history is the value.
 - **Confirmed by phase:** DS01 (debt sweep)
 
 
+## allowlist-004 — coding.md § 5.2: the FIBR-0219 ambiguity message is untranslated
+
+- **Status:** active
+- **Tool / rule:** `coding.md § 5.2` (every user-facing string in `ui/` goes
+  through `tr()` / `QCoreApplication.translate`) — fires for `/audit` and
+  `/indie-review` alike, no tool rule id.
+- **Location:** `src/finbreak/ui/_amount.py`, `_ambiguous()` — the
+  `"amount is ambiguous: … (grouped) … (decimal) — retype it using the format
+  the app displays"` string, plus the `"amount is not a valid number"` reraise in
+  `parse_amount_input`.
+- **Why this is a false positive:** it is a **parser** rejection message, not UI
+  chrome, and it joins an existing family that is untranslated by established
+  convention: every `parse_transaction` rejection (`"amount is not a valid
+  number"`, `"amount must be non-zero"`, `"amount is too large to store"`,
+  `"description must not be empty"`) is plain English today, and
+  `ManualEntryDialog._on_add` renders whichever one it catches **verbatim** via
+  `self._error.setText(str(exc))`. Translating this one string alone would give
+  the same error label a mixed-language voice depending on which rejection fired.
+  The deviation is that the precedent is a *services*-layer one while this
+  message is authored in `ui/`, which is what § 5.2 governs — recorded here
+  knowingly rather than discovered mid-audit. Scoped to these strings only; the
+  standard is **not** amended, and translating the parser layer app-wide remains
+  a separate item. Full reasoning: `docs/specs/FIBR-0219.md` § 9 decision 3.
+- **Suppression applied:** none — no rule id to suppress; this entry is the
+  record.
+- **Logged:** 2026-08-05
+- **Confirmed by phase:** FIBR-0219 (implementation)
+
+
 ## What does NOT belong here
 
 - **Findings that are real but blocked by a missing feature.**

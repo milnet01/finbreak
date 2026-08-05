@@ -1330,7 +1330,7 @@ lands on top.
   Kind: fix.
   Source: user-report-2026-08-03.
 
-- 📋 [FIBR-0219] **Amount input is C-locale only, and the obvious fix silently multiplies by 100.**
+- ✅ [FIBR-0219] **Amount input is C-locale only, and the obvious fix silently multiplies by 100.**
   Split out of FIBR-0216 because implementing it turned up a hazard the original
   finding did not name, which changes what the fix has to be.
 
@@ -1361,8 +1361,10 @@ lands on top.
   `"e.g. -12.34"` while the parser is C-locale only, so a translated build asked
   for `-12,34` and then rejected it — actively misleading. It is now a
   non-translatable `-12.34`, an example of a machine format (coding.md § 5.2),
-  so the hint cannot disagree with the parser. That removes the harm without
-  pretending the locale gap is closed.
+  so the hint cannot disagree with the parser. That removed the harm ahead of
+  the locale gap; the gap itself is now closed here, and the placeholder stays
+  exactly as FIBR-0216 left it — INV-3 makes the C form valid under every
+  locale, so hint and parser still cannot disagree.
   **Layman:** If your computer is set to a language that writes numbers as 1.234,56 you cannot type an amount back the way finbreak just showed it to you.
   Kind: fix.
   Source: code-quality-review-2026-08-03 (split out of FIBR-0216).
@@ -1388,6 +1390,26 @@ lands on top.
   item.
 
   Next: TDD implementation against INV-1..INV-9.
+  Resolved (2026-08-05): `parse_amount_input` + `_locale_decimal` in
+  `src/finbreak/ui/_amount.py`, wired at the one typed-amount seam
+  (`ManualEntryDialog._on_add`). QLocale validates group PLACEMENT, the Decimal is
+  rebuilt exactly from the string (never Qt's float), the two conventions must
+  agree, and a `^[+-]?\d+(?:[.,]\d+)*[.,]\d{3}$` shape guard refuses the
+  one-surviving-candidate case AFTER the agreement test — so en_US keeps the
+  `.`-tail forms it stores today. `parse_transaction` and the three importers are
+  untouched and stay C-locale only (INV-1).
+
+  75 legs in `tests/features/amount_input/` cover INV-1..INV-9 across
+  en_US / en_ZA / de_DE / fr_FR / sv_SE. TDD: the suite went red on exactly one
+  leg — the positive dialog leg the spec names as the only one that fails when the
+  call site is omitted — and green on wiring it.
+
+  Accepted trade recorded in the spec's § 6: under the comma-decimal locales
+  `1.500`, `1.250`, `2.000`, `0.100`, `12.500` and `1234.500` are stored today and
+  are refused after this, because the same shape is how `1,500` → 1.5 arrives.
+  `1,50`, `1.50` and `1500` all work. The mirror hazard under a `.`-decimal locale
+  (a European pasting `1.500`) is deliberately retained — the app does the same
+  today and refusing it would cost every en_US user.
 
 - 📋 [FIBR-0220] **Agreeing with a "~ guess" cannot teach the app — the no-nag gate has no escape hatch.**
   Reported by the user 2026-08-03. VERIFIED against source; the current

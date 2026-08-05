@@ -29,6 +29,7 @@ from finbreak.errors import VaultLockedError
 from finbreak.services.accounts import AccountService
 from finbreak.services.auth import AuthService
 from finbreak.services.transactions import TransactionService
+from finbreak.ui._amount import parse_amount_input
 
 
 class ManualEntryDialog(QDialog):
@@ -50,12 +51,14 @@ class ManualEntryDialog(QDialog):
         # in FIBR-0083 (Settings), which owns this now (not FIBR-0014).
         self._date.setDisplayFormat("yyyy/MM/dd")
         self._amount = QLineEdit()
-        # The example is NOT tr()-able (FIBR-0216). The parser is C-locale only —
-        # `Decimal("-12.34")` — while this hint was translatable, so a German build
-        # would say "z. B. -12,34" and then reject exactly what it asked for. An
-        # example of a machine-readable format is data, like a currency code
-        # (coding.md § 5.2); the label beside it carries the translatable words.
-        # Accepting the locale form is FIBR-0219, and is NOT a one-liner: see there.
+        # The example is NOT tr()-able (FIBR-0216), and it stays "-12.34" now that
+        # `parse_amount_input` accepts the locale form too (FIBR-0219). The hint
+        # and the parser must not be able to disagree: the C form is accepted
+        # under EVERY locale (FIBR-0219 INV-3), so this one literal is honest
+        # everywhere, while a translated "z. B. -12,34" would promise a shape the
+        # parser refuses under en_US. An example of a machine-readable format is
+        # data, like a currency code (coding.md § 5.2); the label beside it
+        # carries the translatable words.
         self._amount.setPlaceholderText("-12.34")
         self._description = QLineEdit()
         self._error = QLabel()
@@ -92,7 +95,15 @@ class ManualEntryDialog(QDialog):
         occurred_on = self._date.date().toString(Qt.DateFormat.ISODate)
         try:
             self._transactions.add_transaction(
-                account_id, occurred_on, self._amount.text(), self._description.text()
+                account_id,
+                occurred_on,
+                # The ONE locale-aware seam (FIBR-0219). It hands `add_transaction`
+                # a Decimal, which passes straight through to the unchanged,
+                # C-locale-only `parse_transaction` — every other rejection (zero,
+                # non-finite, over-precise, past the 64-bit bound) stays single-homed
+                # there, and its ValueError contract is what the handler below reads.
+                parse_amount_input(self._amount.text()),
+                self._description.text(),
             )
         except VaultLockedError:
             # add_transaction reads the vault (the currency exponent) before
