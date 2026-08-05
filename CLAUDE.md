@@ -98,13 +98,17 @@ python -m pip install .                  # runtime deps — the self-test test l
 ```
 
 **Run the full gate** — the same stages CI runs (lint, format-check,
-**shellcheck**, **actionlint**, **zizmor**, bandit, pip-audit, gitleaks,
+**shellcheck**, **actionlint**, **zizmor**, bandit, pip-audit **×2**, gitleaks,
 **mypy**, tests; FIBR-0001 INV-1/INV-2). Note the mypy stage: a green `pytest`
 alone is **not** a green gate. The shellcheck/actionlint/zizmor stages cover the
 gate's own delivery machinery — the shell scripts and workflows that build and
 publish releases, which no Python stage reads. `zizmor` is the supply-chain half
 of that: it fails the gate if a workflow `uses:` reverts from a commit SHA to a
-mutable tag, or a checkout starts persisting its token (FIBR-0226):
+mutable tag, or a checkout starts persisting its token (FIBR-0226). `pip-audit`
+runs **twice** against two different advisory databases — the default PyPI one
+and OSV.dev (`-s osv`, FIBR-0227) — because neither is a superset and only
+OSV.dev carries the malicious-package feed that catches a hijacked release with
+no CVE. That second run costs ~28s of the gate's runtime:
 
 ```bash
 ./scripts/ci-local.sh
@@ -120,8 +124,9 @@ in this clone; a **fresh clone must enable it once**:
 git config core.hooksPath .githooks
 ```
 
-(A rare `pip-audit` pypi timeout can make the hook flake on a non-finding —
-retry, or `git push --no-verify` for that one transient case only.)
+(A rare `pip-audit` timeout — against either pypi or osv.dev — can make the
+hook flake on a non-finding; retry, or `git push --no-verify` for that one
+transient case only. Those two are the gate's only network-dependent stages.)
 
 **Reproduce GitHub CI EXACTLY before pushing** — the local gate runs on your
 desktop, which already has system libraries (Qt's `libGL`/`libEGL`/fontconfig,

@@ -1759,7 +1759,7 @@ lands on top.
   assumed, which was the one part of this decision that could have been
   quietly wrong.
 
-- 📋 [FIBR-0227] **Audit tools measured and REJECTED for the gate — the evidence, so nobody re-runs this.**
+- ✅ [FIBR-0227] **Audit tools measured and REJECTED for the gate — the evidence, so nobody re-runs this.**
   Every tool below is INSTALLED on this machine and was run against the
   real tree today. Recording the counts so this scan is not repeated from
   scratch — a rejected tool looks identical to an unconsidered one.
@@ -1791,6 +1791,14 @@ lands on top.
   - **trivy** — container/image scanning; finbreak ships no container.
 
   CORRECTION (verified after the note below was first written): installing
+  osv-scanner is NOT the cheapest way to get OSV coverage. `pip-audit`
+  already takes `-s/--vulnerability-service {osv,pypi,esms}` and defaults
+  to `pypi`; `pip-audit -s osv` queries api.osv.dev directly and runs
+  clean on this tree today. OSV.dev's own data-source list confirms it
+  imports the **OpenSSF Malicious Packages** feed (verified against
+  google.github.io/osv.dev/data/, not recalled). So the gap closes with a
+  flag on the existing stage, not a new binary.
+
   DECIDED (user, 2026-08-05): add `pip-audit -s osv` as a SECOND
   pip-audit stage, accepting the extra network dependency. Flipped
   considered → planned; the recommendation in the CORRECTION block
@@ -1817,30 +1825,53 @@ lands on top.
   The REJECTED-tool evidence above (deptry / vulture / typos / semgrep /
   yamllint / shfmt / pyright / trivy, each run against the real tree with
   counts) stands as-is — do not re-run that scan from scratch.
-osv-scanner is NOT the cheapest way to get OSV coverage. `pip-audit`
-already takes `-s/--vulnerability-service {osv,pypi,esms}` and defaults
-to `pypi`; `pip-audit -s osv` queries api.osv.dev directly and runs
-clean on this tree today. OSV.dev's own data-source list confirms it
-imports the **OpenSSF Malicious Packages** feed (verified against
-google.github.io/osv.dev/data/, not recalled). So the gap closes with a
-flag on the existing stage, not a new binary.
+  Resolved (2026-08-05): `pip-audit -s osv` shipped as gate stage 8,
+  alongside the existing `-s pypi` stage 7 — both kept, as decided.
 
-The remaining trade-off is real and is why this is still `considered`
-rather than done: the two services are different databases (PyPI
-Advisory DB vs OSV.dev), neither a superset, so getting both means TWO
-network-dependent stages on a gate that runs on every push — and
-CLAUDE.md already records that a rare pip-audit timeout flakes the
-pre-push hook. Recommend adding `pip-audit -s osv` as a second stage and
-reverting if the flake rate becomes annoying.
+  VERIFIED BOTH DIRECTIONS before it landed, per the FIBR-0226 ordering
+  rule that a stage must be green on the current tree first:
+  - Green: `pip-audit -s osv` → "No known vulnerabilities found",
+    exit 0, 27.8s. That ~28s is the real, measured cost added to a
+    ~1m45s gate; it is recorded in CLAUDE.md so the slowdown is not a
+    mystery later.
+  - Red: the same command against a `jinja2==2.11.2` pin found 10
+    vulnerabilities and exited 1 — so the stage can actually fail, which
+    a green-only check does not establish.
 
-STILL WORTH A LOOK (not installed, from the online research):
-  **osv-scanner** (google, v2.4.0). It is not a duplicate of `pip-audit`:
-  it queries OSV.dev, which carries the **OpenSSF Malicious Packages**
-  feed, so it catches a hijacked/typosquatted package that has no CVE —
-  the failure mode `pip-audit`'s CVE-only view structurally cannot see.
-  That is the single biggest remaining gap for a project that ships signed
-  desktop binaries. Also considered and deferred: SBOM generation (syft /
-  CycloneDX) attached to releases.
+  Landed in ONE commit, as the guard requires: the gate stage, the
+  FIBR-0001 INV-1 table row (7 rows renumbered, now 11), and the
+  `tests/features/harness/` bound (10 → 11 rows; the NAME count stays 9,
+  because both parsers key on the tool name and `pip-audit` was already
+  in the set — the same shape as `ruff` running twice).
+
+  Two pre-existing rot spots fixed on the way past, both made worse by
+  the renumber: `docs/specs/FIBR-0001.md` and `scripts/ci-local.sh` each
+  claimed "stages 8 and 9 are red with the dev group alone", which meant
+  mypy/pytest before `zizmor` was inserted as stage 5 and had been
+  silently wrong since. Both now name the tools instead of numbering
+  them — FIBR-0001's own cold-eyes lesson about copied counts.
+
+  Blast radius swept: `docs/security-model.md` T7 (now names the no-CVE
+  hijacked/typosquatted case the OSV feed is what covers) and its § 6
+  tool table + notes (which also record why `osv-scanner` is NOT in the
+  gate: a flag on an installed tool reaches the same data), plus
+  CLAUDE.md's gate-stage list and its pip-audit flake note.
+
+  The REJECTED-tool evidence in this bullet stands untouched — it is
+  still the record that stops that scan being re-run.
+
+  SETTLED, so it is not re-opened: **osv-scanner** (google, v2.4.0) was
+  the candidate that started this — it queries OSV.dev, which carries the
+  OpenSSF Malicious Packages feed, and that gap was real. The CORRECTION
+  above is what closed it: the same data is a FLAG on a tool the gate
+  already installs, so the second binary buys nothing and is not being
+  added. `docs/security-model.md § 6` records that reasoning where a
+  future reader of the gate will actually meet it.
+
+  STILL DEFERRED (not installed, from the same online research): SBOM
+  generation (syft / CycloneDX) attached to releases. Untouched by this
+  item — no decision taken either way.
+
   **Layman:** A record of which code-checking tools we tried and why they weren't worth adding.
   Kind: investigate.
   Source: user-request-2026-08-05 (system scan + online research).

@@ -96,11 +96,17 @@ def test_INV1_the_comparison_is_not_vacuous() -> None:
     expected count ignored that `ruff` runs twice. This guard is why that
     surfaced here instead of as a permanently-green pair of assertions.)
 
-    Nine distinct tool NAMES across ten stages — `ruff` runs twice, as
-    `check` and as `format --check`.
+    Nine distinct tool NAMES across eleven stages — two tools run twice:
+    `ruff` as `check` and as `format --check`, and `pip-audit` against
+    each of its two vulnerability services (`-s pypi`, `-s osv`).
+
+    That both parsers key on the tool name alone is why adding the second
+    `pip-audit` stage moved the row count and left the name count where it
+    was; a bound that tracked only names would not have noticed the stage
+    at all.
     """
-    assert len(_TABLE_ROW.findall(_spec())) == 10, (
-        "INV-1's stage table no longer has 10 rows — update this bound "
+    assert len(_TABLE_ROW.findall(_spec())) == 11, (
+        "INV-1's stage table no longer has 11 rows — update this bound "
         "deliberately when a stage is added or removed."
     )
     assert len(_stages_in_spec()) == 9, "INV-1 table parse found the wrong names"

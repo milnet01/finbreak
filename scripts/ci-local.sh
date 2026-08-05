@@ -9,8 +9,10 @@
 # Assumes the environment scripts/ci-setup.sh builds (CLAUDE.md "Build and
 # test" documents it for humans): the `dev` dependency group AND the runtime
 # deps (pip install .) — mypy type-checks tests/ without ignoring PySide6, and
-# conftest imports PySide6 at collection time, so stages 8 and 9 are red with
-# the dev group alone. gitleaks, shellcheck, actionlint and zizmor are separate
+# conftest imports PySide6 at collection time, so the mypy and pytest stages are
+# red with the dev group alone (named, not numbered: this comment used to say
+# "stages 8 and 9" and the numbers rotted the moment a stage was inserted above
+# them). gitleaks, shellcheck, actionlint and zizmor are separate
 # binaries, not pip packages, and must be on PATH; ci-setup.sh pins all four.
 #
 # FIBR-0003 later appends a build smoke-test stage to this same script.
@@ -69,8 +71,21 @@ zizmor .github/workflows/
 echo "== bandit =="
 bandit -c pyproject.toml -r src -q
 
-echo "== pip-audit =="
+# Two pip-audit stages, and the second is not redundant: the default `-s pypi`
+# reads the PyPI Advisory Database, `-s osv` queries OSV.dev. Different
+# databases, neither a superset — only OSV.dev imports the OpenSSF Malicious
+# Packages feed, i.e. the hijacked or typosquatted release that carries no CVE
+# and that a CVE-only view structurally cannot see. Worth a second stage for a
+# project that ships signed desktop binaries. Both were verified green on this
+# tree, and `-s osv` verified red against a known-vulnerable pin, before this
+# landed. The accepted cost is a SECOND network-dependent stage on a gate that
+# runs on every push (~28s); if the flake rate becomes annoying, dropping the
+# osv stage again is a legitimate outcome, not a regression.
+echo "== pip-audit (pypi) =="
 pip-audit
+
+echo "== pip-audit (osv) =="
+pip-audit -s osv
 
 echo "== gitleaks =="
 gitleaks dir . --no-banner --redact --config .gitleaks.toml

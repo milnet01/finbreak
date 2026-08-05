@@ -207,6 +207,16 @@ signaling per
 
 ### Security
 
+- **Second dependency-audit stage: `pip-audit -s osv` alongside the existing PyPI-source run** (FIBR-0227)
+  The quality gate now checks dependencies against **two** advisory
+  databases instead of one. The PyPI Advisory Database and OSV.dev are
+  different databases and neither is a superset; only OSV.dev imports
+  the OpenSSF Malicious Packages feed, which is what catches a hijacked
+  or typosquatted release that carries no CVE at all — the failure mode
+  a CVE-only view structurally cannot see. Both stages are kept; the
+  second is a flag on a tool already installed, not a new binary, so
+  `osv-scanner` is deliberately not added. Costs ~28s on every gate run.
+
 - **Release builds now use exact, tamper-proof versions of their build tools** (FIBR-0226)
   The helper tools GitHub runs when building a finbreak release were
   named by a moving label ("version 7"), which whoever owns that tool
