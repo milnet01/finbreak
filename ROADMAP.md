@@ -1902,8 +1902,24 @@ lands on top.
   **Layman:** Three "see this document" links in the docs are broken for anyone reading them.
   Kind: doc-fix.
   Source: in-session-2026-08-05 (cold-eyes FIBR-0001, doc_integrity sweep).
+  Correction (2026-08-05, found while closing FIBR-0229): it is
+    **six** sites, not three. `doc_integrity` only walks `docs/`, so the
+    three it reported are the three it can see. `grep -rn ']( *~/'
+    --include=*.md .` finds three more the checker never reads:
+    `CLAUDE.md:4`, `CLAUDE.md:30` and `ROADMAP.md:4889` — same link,
+    same defect, same fix.
 
-- 📋 [FIBR-0229] **`.claude/workflow.md`'s status header is four items stale.**
+    This matters for the verify step this bullet already specifies:
+    `doc_integrity` returning `broken_link: 0` will NOT prove the fix
+    complete, because it never looked at half the sites. Verify with the
+    grep as well.
+
+    Not fixed while here — FIBR-0229 was a workflow-header change and
+    two of the six sites are in `CLAUDE.md`, which it did touch;
+    drive-by-fixing them would have buried this correction in an
+    unrelated diff. Left whole for one deliberate pass.
+
+- ✅ [FIBR-0229] **`.claude/workflow.md`'s status header is four items stale.**
   §1's status header is dated **2026-08-02** and describes the v0.1.19
   release as the current state. Four items have landed since and none of
   them updated it: `FIBR-0223` (OFX unstorable balance), `FIBR-0225`
@@ -1933,6 +1949,37 @@ lands on top.
   **Layman:** The project's "where are we right now" note still describes work from three days ago.
   Kind: doc-fix.
   Source: in-session-2026-08-05 (surfaced while closing FIBR-0226).
+  Resolved (2026-08-05): §1 rebuilt as a thin pointer, not a
+    rewritten narrative — the user's call when asked. It was worse than
+    this bullet recorded: §1 was **128 KB of the file's 216 KB**, and
+    the drift ran weeks, not four items (`Active item ID` still named
+    FIBR-0004, closed 2026-07-02; `Last update` 2026-07-18; `Last debt
+    sweep` said "(none yet)" though DS02 completed 2026-07-26).
+
+    The bullet's open question resolved differently than it was framed.
+    It asked whether `/close-phase` should maintain §1 — but
+    `/close-phase` **already does** (its steps 5a and 9 set the active
+    item, reset the checkboxes and bump the date). The header did not
+    drift for want of a maintainer; it drifted because most recent work
+    is self-directed and never enters the phase loop. So "make
+    /close-phase do it" would have fixed nothing.
+
+    What §1 now holds is only what lives nowhere else: repo visibility,
+    convergence checkpoint, debt-sweep threshold, active item + the nine
+    step checkboxes. Everything derivable now points at ROADMAP.md,
+    which the `roadmap_log` verb writes on every status change and so
+    cannot rot. The duplicated FIBR-0004/FIBR-0009 close records were
+    dropped — both exist in full at `docs/journal/<ID>.md`.
+
+    §3 (the session journal) deliberately untouched: append-only history
+    cannot be stale, and it was not the thing that was lying.
+
+    `CLAUDE.md` updated in the same commit or the fix would have created
+    fresh drift — its "Where state lives" list described §1 as holding
+    "current phase", and its resumption flow told a session to recover
+    state from it. Both now name ROADMAP.md as the authority.
+
+    Result: 216 KB → 91 KB (-58%); §1 146 lines → 73.
 
 ## P13 — Packaging & release
 

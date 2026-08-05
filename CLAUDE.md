@@ -9,15 +9,21 @@ skill.
 Read these in order on every session start:
 
 1. **This file** — stable rules and conventions.
-2. **`.claude/workflow.md`** — live status header (current
-   phase, active item, step number, blockers, last-update
-   timestamp). After reading, **summarise back to the user**
-   before doing any work.
-3. **`docs/standards/{coding,naming,dependencies,documentation,testing,commits}.md`**
+2. **`ROADMAP.md`** — **the authority on current state**: what
+   is open, in progress and next. Written by the `roadmap_log`
+   MCP verb on every status change, so it does not drift.
+   Query it with `roadmap_query` rather than reading 4000 lines.
+3. **`.claude/workflow.md` §1** — the small set of facts that
+   live nowhere else: repo visibility, convergence checkpoint,
+   debt-sweep threshold, active item + step. Deliberately thin
+   (FIBR-0229); it is *not* a narrative of recent work. After
+   reading both, **summarise back to the user** before doing any
+   work.
+4. **`docs/standards/{coding,naming,dependencies,documentation,testing,commits}.md`**
    — the six shareable v1 standards.
-4. **`docs/specs/<active-id>.md`** — the contract for the
+5. **`docs/specs/<active-id>.md`** — the contract for the
    currently-active roadmap item.
-5. **`docs/audit-allowlist.md`** — read **additionally** before
+6. **`docs/audit-allowlist.md`** — read **additionally** before
    invoking `/audit` or `/code-quality-review` so already-confirmed
    project-specific false positives aren't re-flagged. The
    allowlist is the closed-loop memory for this project — see
@@ -259,8 +265,10 @@ however small.
 
 Per the app-workflow skill:
 
-1. **Parallel batch:** read this file + `.claude/workflow.md`
-   status header + active-item details (one tool-call batch).
+1. **Parallel batch (one tool-call batch):** this file +
+   `.claude/workflow.md` §1 + `roadmap_query` for the open
+   items. **State comes from the ROADMAP, not from §1** — §1
+   carries only the settings and the active item (FIBR-0229).
 2. Once `Kind` is known from the active item, read the
    matching `docs/standards/<which>.md` (single read).
 3. **Summarise back to the user:** "We're on `<ID>` step
