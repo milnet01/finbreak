@@ -1,31 +1,26 @@
-# Dependabot config — automated dependency PRs.
-# Activate by renaming this file or extending it once tech
-# stack is set in P01. See:
+# Dependabot config — automated dependency PRs. LIVE, not a template: this
+# path is what GitHub reads, so the entry below is running today. (An earlier
+# header said "activate by renaming this file", which was never true and
+# suggested the actions were unwatched.) See:
 # https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
 
 version: 2
 updates:
-  # GitHub Actions itself — keep workflow runners current.
+  # GitHub Actions — and this entry is HALF of FIBR-0226, not a nicety.
+  # Every `uses:` in .github/workflows/ is pinned to a commit SHA so a
+  # mutable tag cannot be repointed into a finbreak release build. But a
+  # hash is unreadable and never tells you it is stale, so on its own it
+  # rots and quietly breaks the standing "dependencies stay latest" policy.
+  # Dependabot is what closes that: it understands the `# vX.Y.Z` trailing
+  # comment and rewrites the hash AND the comment together on a new release.
+  # Remove this entry and the pins become frozen rather than pinned.
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
 
-  # Add your project's package manager(s) here once P01 sets
-  # them up. Examples (uncomment and adjust):
-  #
-  # - package-ecosystem: "pip"
-  #   directory: "/"
-  #   schedule:
-  #     interval: "weekly"
-  #
-  # - package-ecosystem: "npm"
-  #   directory: "/"
-  #   schedule:
-  #     interval: "weekly"
-  #
-  # - package-ecosystem: "cargo"
-  #   directory: "/"
-  #   schedule:
-  #     interval: "weekly"
+  # No `pip` ecosystem entry, deliberately. Python deps are pinned `==` in
+  # pyproject.toml and refreshed as a reviewed sweep (/debt-sweep), where a
+  # bump is checked against the glibc floor and the frozen-bundle stacks —
+  # judgement a per-package PR cannot make. Revisit if that stops holding.

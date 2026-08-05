@@ -67,6 +67,22 @@ curl -sSfL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_
 $SUDO install -m 0755 /tmp/actionlint /usr/local/bin/actionlint
 actionlint --version
 
+# actionlint checks whether a workflow is CORRECT; zizmor checks whether it is
+# SAFE — the supply-chain half neither it nor any Python stage can see: a `uses:`
+# on a mutable tag, `${{ }}` interpolation reaching a `run:` block, over-broad
+# `permissions:`, a checkout leaving its token in .git/config. That matters more
+# here than on a typical repo, because these workflows produce the SIGNED
+# artifacts users download (FIBR-0226). Same pin rationale as the two above.
+#
+# It runs OFFLINE by default, so unlike pip-audit this stage adds no network
+# dependency to the gate and cannot flake on a registry timeout.
+echo "== zizmor (the gate audits its own workflows for supply-chain risk) =="
+ZIZMOR_VERSION=1.29.0
+curl -sSfL "https://github.com/zizmorcore/zizmor/releases/download/v${ZIZMOR_VERSION}/zizmor-x86_64-unknown-linux-gnu.tar.gz" \
+    | tar -xz -C /tmp zizmor
+$SUDO install -m 0755 /tmp/zizmor /usr/local/bin/zizmor
+zizmor --version
+
 echo "== python: dev group + runtime deps =="
 # PEP 735 `--group` needs pip >= 25.1; the base image's pip may be older.
 python -m pip install --quiet --root-user-action=ignore --upgrade pip

@@ -207,6 +207,16 @@ signaling per
 
 ### Security
 
+- **Release builds now use exact, tamper-proof versions of their build tools** (FIBR-0226)
+  The helper tools GitHub runs when building a finbreak release were
+  named by a moving label ("version 7"), which whoever owns that tool
+  can silently repoint at different code — and that code would end up
+  inside a signed download. Each is now nailed to one exact, unchangeable
+  version, with an automatic weekly check that keeps them current rather
+  than frozen. The build also stops leaving its access token lying around
+  where later steps could read it, and a new checker (zizmor) fails the
+  build if any of this is ever undone.
+
 - **Updated the library that checks update signatures to its patched version** (FIBR-0221)
   `cryptography` 49.0.0 had a published flaw (CVE-2026-69247). finbreak
   uses it to verify that a downloaded update really came from us, so it is

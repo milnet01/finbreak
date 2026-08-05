@@ -96,15 +96,15 @@ def test_INV1_the_comparison_is_not_vacuous() -> None:
     expected count ignored that `ruff` runs twice. This guard is why that
     surfaced here instead of as a permanently-green pair of assertions.)
 
-    Eight distinct tool NAMES across nine stages — `ruff` runs twice, as
+    Nine distinct tool NAMES across ten stages — `ruff` runs twice, as
     `check` and as `format --check`.
     """
-    assert len(_TABLE_ROW.findall(_spec())) == 9, (
-        "INV-1's stage table no longer has 9 rows — update this bound "
+    assert len(_TABLE_ROW.findall(_spec())) == 10, (
+        "INV-1's stage table no longer has 10 rows — update this bound "
         "deliberately when a stage is added or removed."
     )
-    assert len(_stages_in_spec()) == 8, "INV-1 table parse found the wrong names"
-    assert len(_stages_in_script()) == 8, "gate stage parse found the wrong names"
+    assert len(_stages_in_spec()) == 9, "INV-1 table parse found the wrong names"
+    assert len(_stages_in_script()) == 9, "gate stage parse found the wrong names"
 
 
 # --------------------------------------------------------------------------- #

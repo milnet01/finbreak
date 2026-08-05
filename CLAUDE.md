@@ -69,19 +69,21 @@ for the full table and reasoning):
 
 The harness contract is [`docs/specs/FIBR-0001.md`](docs/specs/FIBR-0001.md).
 
-**Requirements:** Python ≥ 3.12 and three standalone binaries on `PATH` — none
-of them pip packages, all three pinned by `scripts/ci-setup.sh`:
+**Requirements:** Python ≥ 3.12 and the standalone binaries below on `PATH` —
+none of them pip packages, all pinned by `scripts/ci-setup.sh` (that script is
+the list; no count is stated here, so adding one cannot make this go stale):
 
 | Binary | Pinned | Why the version matters |
 |---|---|---|
 | [`gitleaks`](https://github.com/gitleaks/gitleaks/releases) | 8.30.1 | a different build runs a different rule engine over the same `.gitleaks.toml` |
 | [`shellcheck`](https://github.com/koalaman/shellcheck/releases) | 0.11.0 | rule set differs per release; distro builds lag badly |
 | [`actionlint`](https://github.com/rhysd/actionlint/releases) | 1.7.12 | ships its own checks *and* shells out to `shellcheck` |
+| [`zizmor`](https://github.com/zizmorcore/zizmor/releases) | 1.29.0 | audit set grows per release; a newer build fails a tree an older one passed |
 
 Each is version-sensitive the same way: an older build runs a **different rule
 set over the same files**, so a local gate can pass where CI fails (or vice
 versa). Check with `gitleaks version`, `shellcheck --version`,
-`actionlint --version`.
+`actionlint --version`, `zizmor --version`.
 
 **One-time dev setup** — isolated env + the pinned dev toolchain (ruff,
 bandit, pip-audit, pytest, pytest-qt, mypy + `types-PyYAML`) **and the runtime
@@ -96,11 +98,13 @@ python -m pip install .                  # runtime deps — the self-test test l
 ```
 
 **Run the full gate** — the same stages CI runs (lint, format-check,
-**shellcheck**, **actionlint**, bandit, pip-audit, gitleaks, **mypy**, tests;
-FIBR-0001 INV-1/INV-2). Note the mypy stage: a green `pytest` alone is **not** a
-green gate. The shellcheck/actionlint stages cover the gate's own delivery
-machinery — the shell scripts and workflows that build and publish releases,
-which no Python stage reads:
+**shellcheck**, **actionlint**, **zizmor**, bandit, pip-audit, gitleaks,
+**mypy**, tests; FIBR-0001 INV-1/INV-2). Note the mypy stage: a green `pytest`
+alone is **not** a green gate. The shellcheck/actionlint/zizmor stages cover the
+gate's own delivery machinery — the shell scripts and workflows that build and
+publish releases, which no Python stage reads. `zizmor` is the supply-chain half
+of that: it fails the gate if a workflow `uses:` reverts from a commit SHA to a
+mutable tag, or a checkout starts persisting its token (FIBR-0226):
 
 ```bash
 ./scripts/ci-local.sh
@@ -131,8 +135,8 @@ image CI uses** (`python:3.12-slim-bookworm`, fresh installs):
 ```
 
 `ci.yml` and `ci-docker.sh` both run the same image and both call
-`scripts/ci-setup.sh` (environment: system libs + the three pinned binaries —
-gitleaks, shellcheck, actionlint — + deps) then
+`scripts/ci-setup.sh` (environment: system libs + the pinned non-pip binaries —
+gitleaks, shellcheck, actionlint, zizmor — + deps) then
 `scripts/ci-local.sh` (the gate) — one definition each, so local and CI cannot
 drift. If a dependency bump needs a new system library, add it in **one place**
 (`ci-setup.sh`).
@@ -218,8 +222,8 @@ however small.
 - `scripts/ci-local.sh` — the one-command quality + security gate (`--build`
   adds the FIBR-0003 bundling smoke-test).
 - `scripts/ci-setup.sh` — the shared CI **environment** prep (system libs
-  PySide6 needs + the three pinned non-pip binaries — gitleaks, shellcheck,
-  actionlint — + Python deps). Called by BOTH `ci.yml` and
+  PySide6 needs + the pinned non-pip binaries — gitleaks, shellcheck,
+  actionlint, zizmor — + Python deps). Called by BOTH `ci.yml` and
   `ci-docker.sh` so the environment has a single definition.
 - `scripts/ci-docker.sh` — reproduce the GitHub CI run exactly, locally, in the
   same `python:3.12-slim-bookworm` image (`ci-setup.sh` + `ci-local.sh`). Run

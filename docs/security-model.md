@@ -348,6 +348,7 @@ be checkable. Enforcement arrives in step with the code:
 | **mypy** | type errors (defence in depth; `FIBR-0061`) | CI + `scripts/ci-local.sh` |
 | **shellcheck** | bugs in the release/build shell scripts (`FIBR-0225`) | CI + `scripts/ci-local.sh` |
 | **actionlint** | workflow defects + shell bugs inside `run:` blocks (`FIBR-0225`) | CI + `scripts/ci-local.sh` |
+| **zizmor** | workflow **supply-chain** risk — a `uses:` on a mutable tag, `${{ }}` injection into `run:`, over-broad `permissions:`, a checkout persisting its token (`FIBR-0226`) | CI + `scripts/ci-local.sh` |
 | **pytest** | the INV-* assertions, **added per phase** as the code each invariant governs lands | CI + `scripts/ci-local.sh` |
 
 > **This table maps tools to threats; it is not the gate's stage
@@ -357,8 +358,8 @@ be checkable. Enforcement arrives in step with the code:
 > sit at five tools while the gate ran nine.
 
 The four original scanners (bandit, pip-audit, gitleaks, ruff) and the
-test harness are wired in P01 (FIBR-0001) — `mypy`, `shellcheck` and
-`actionlint` joined later, per the table; the per-INV pytest assertions
+test harness are wired in P01 (FIBR-0001) — `mypy`, `shellcheck`,
+`actionlint` and `zizmor` joined later, per the table; the per-INV assertions
 (INV-1/2/3/4/5b/5c/7/9/10/11/12) arrive with the later phases that build
 the vault, crypto, import, export, and logging paths. The CI workflow
 and the local script run the **same** gate list (one source of
@@ -369,3 +370,5 @@ runs only in CI and the **dev-time** local gate — outside the
 shipped-app boundary, so it does not violate INV-8 (which constrains
 the *shipped application*). `semgrep` is intentionally **not** in the
 gate — `bandit` covers Python security patterns for this codebase.
+`zizmor` runs **offline** (its default), so `pip-audit` remains the only
+stage that can fail on a network timeout rather than a real finding.

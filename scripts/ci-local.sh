@@ -10,8 +10,8 @@
 # test" documents it for humans): the `dev` dependency group AND the runtime
 # deps (pip install .) — mypy type-checks tests/ without ignoring PySide6, and
 # conftest imports PySide6 at collection time, so stages 8 and 9 are red with
-# the dev group alone. gitleaks, shellcheck and actionlint are separate
-# binaries, not pip packages, and must be on PATH; ci-setup.sh pins all three.
+# the dev group alone. gitleaks, shellcheck, actionlint and zizmor are separate
+# binaries, not pip packages, and must be on PATH; ci-setup.sh pins all four.
 #
 # FIBR-0003 later appends a build smoke-test stage to this same script.
 #
@@ -56,6 +56,15 @@ shellcheck "${SH_FILES[@]}" .githooks/pre-push
 # looking at .yml. Auto-discovers .github/workflows/.
 echo "== actionlint =="
 actionlint
+
+# The supply-chain half actionlint does not cover: a `uses:` pinned to a mutable
+# tag, `${{ }}` interpolation reaching a `run:` block, over-broad `permissions:`,
+# a checkout persisting its token. The tree was made clean first (FIBR-0226 pinned
+# all 6 `uses:` to commit SHAs and set persist-credentials: false) and the stage
+# added after — a stage that is red on day one is a broken build, not a gate.
+# Default persona, and offline by default: no network, so it cannot flake.
+echo "== zizmor =="
+zizmor .github/workflows/
 
 echo "== bandit =="
 bandit -c pyproject.toml -r src -q

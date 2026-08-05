@@ -1652,7 +1652,7 @@ lands on top.
   set and regression-locks --redact and the git ls-files selector.
   Gate green 1698 passed, 2 skipped. Commits 0441d4c, fef5867, e48d16d.
 
-- 📋 [FIBR-0226] **Harden the workflows against zizmor's supply-chain findings.**
+- ✅ [FIBR-0226] **Harden the workflows against zizmor's supply-chain findings.**
   `zizmor 1.29.0` (installed, NOT yet in the gate) reports **14 findings
   on .github/workflows: 6 high, 3 low, 5 suppressed**. Measured today, not
   recalled. Unlike shellcheck/actionlint (both clean, added as FIBR-0225),
@@ -1704,6 +1704,42 @@ lands on top.
     `tests/features/harness/` fails: that suite now asserts the spec
     table and `ci-local.sh` agree as an unordered set. That is the
     guard working as designed, not an obstacle.
+  Resolved (2026-08-05): all three parts landed, in the decided order.
+  (1) All 6 `uses:` across ci.yml / build-smoke.yml / windows-build.yml
+  pinned to full commit SHAs with the tag in a trailing comment —
+  actions/checkout v7.0.1 (3d3c42e), actions/upload-artifact v7.0.1
+  (043fb46), actions/setup-python **v7.0.0** (5fda3b9). setup-python was
+  bumped v6 → v7 rather than pinning a stale v6 SHA: v7's only removal is
+  the `pip-install` input, which no workflow uses, and pinning below
+  latest would have violated the standing deps-stay-latest policy on day
+  one. (2) `.github/dependabot.yml` already carried a `github-actions`
+  entry, but its header claimed the file was an inactive template
+  ("activate by renaming this file") — corrected, and the entry now
+  states in-file that it is half of this decision, because removing it
+  turns the pins from maintained into frozen. A `pip` entry was
+  deliberately NOT added; the reason is recorded in the file. (3)
+  `persist-credentials: false` on all 3 checkouts. Then, and only then,
+  the `zizmor` stage: pinned 1.29.0 in ci-setup.sh (same shape as
+  shellcheck/actionlint), invoked as `zizmor .github/workflows/` in
+  ci-local.sh, and added as row 5 of FIBR-0001 INV-1's table with
+  tests/features/harness/'s bounds moved 9→10 rows / 8→9 names in the
+  same commit.
+
+  Verified, not assumed: `zizmor .github/workflows/` went 14 findings
+  (6 high, 3 low) → "No findings to report" (5 suppressed at the default
+  persona). The stage was then proven to actually FAIL — reverting one
+  pin to a tag exits 14, dropping a persist-credentials exits 13 — so it
+  is a gate, not decoration. Full gate green: 1698 passed, 2 skipped,
+  1m45s. zizmor runs OFFLINE by default, so it adds no network dependency
+  and pip-audit stays the only stage that can flake on a timeout.
+
+  Doc blast radius swept: FIBR-0001 (INV-1 table + stages 3–5 prose + the
+  "stage added last" rationale), CLAUDE.md (binary table + gate stage
+  list + 2 ci-setup descriptions), security-model.md § 6 (tool/threat row
+  + the offline note), CHANGELOG Security. The "three pinned binaries"
+  counts were rewritten as SELECTORS rather than bumped to four —
+  FIBR-0001's own cold-eyes convergence lesson is that a copied count
+  goes stale silently, so no count is now stated anywhere.
 
 - 📋 [FIBR-0227] **Audit tools measured and REJECTED for the gate — the evidence, so nobody re-runs this.**
   Every tool below is INSTALLED on this machine and was run against the

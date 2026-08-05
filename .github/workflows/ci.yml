@@ -32,7 +32,19 @@ jobs:
       - name: Install git for checkout
         run: apt-get update -qq && apt-get install -y --no-install-recommends git ca-certificates
 
-      - uses: actions/checkout@v7
+      # Pinned to a commit SHA, not a tag (FIBR-0226). A tag is mutable: whoever
+      # controls the action repo can repoint v7 and it lands in a finbreak build.
+      # The trailing comment carries the human-readable version, and .github/
+      # dependabot.yml rewrites BOTH on a new release — that pairing is the whole
+      # decision, because a hash pin nobody maintains rots silently.
+      #
+      # persist-credentials: false — checkout otherwise leaves the job's token in
+      # .git/config, readable by every later step (zizmor `artipacked`). Nothing
+      # here pushes; the gate's git use (ls-files, check-ignore, rev-parse) is
+      # local and needs no credential.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       # System libs (PySide6's OS deps) + gitleaks + Python deps. Shared with
       # scripts/ci-docker.sh — one definition, so local and CI can't diverge.
