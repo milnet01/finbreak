@@ -2700,6 +2700,8 @@ because retrofitting them is a data migration.
   **Layman:** Let a person select and import many statement files at once (e.g. a whole folder of monthly PDFs) instead of importing them one at a time.
   Kind: feature.
   Source: user-request-2026-07-11 (dogfooding v0.1.0).
+  Priority (2026-08-05, user): named as the most useful feature to
+  build after FIBR-0231 — take this next unless redirected.
 
 - 📋 [FIBR-0086] **Account numbers + import auto-detect — match a statement to its account (prompt to create if new).**
   Motivated by dogfooding v0.1.0. The account-number STORAGE half shipped separately as FIBR-0193 (2026-07-30): `accounts.account_number` is a nullable column in the ENCRYPTED vault, added by schema migration **v12 -> v13** — so this bullet is now DETECTION + MATCHING only, and no new column is needed. On import, extract the statement's account number and match it to a configured account (normalised: strip spaces/dashes; match on TRAILING digits when the statement masks it, e.g. "xxxx1234"), auto-selecting the account instead of today's manual pick. Availability varies by format: OFX <ACCTID> (reliable), PDF printed number (the Standard Bank / generic parsers can surface it), CSV often carries none — so auto-detect is a SMART DEFAULT with a manual fallback whenever the number is absent or matches zero/multiple accounts (never silently import to the wrong account — cf. FIBR-0059). When the detected number matches no account, prompt to create one, pre-filled from statement metadata (number, bank name if printed, type/currency where available) and asking the user for the rest. ENABLER for FIBR-0085 (batch import) — auto-detect is what makes multi-file import usable (you cannot hand-map a folder of files); reduces reliance on FIBR-0059 (change-account fix). Deps: FIBR-0005 (accounts), FIBR-0007/0008/0009 (importers must surface the statement's number), FIBR-0052 (statement provenance).
@@ -4023,6 +4025,20 @@ because retrofitting them is a data migration.
   **Layman:** Two rulebooks disagree about what to call a spec file. Pick one so the next spec doesn't get named wrong.
   Kind: doc.
   Source: cold-eyes-2026-07-28 loop 2 on docs/specs/FIBR-0193.md.
+  DECIDED (2026-08-05, user): `<ID>-<topic>.md` wins — a filename a
+  human can read and parse without opening it. So `naming.md` line 85
+  (`<ID>.md`) and its line-207 counter-example are the side that changes,
+  not the shared spec-format.
+  Two pieces of work, deliberately separated: (a) amend `naming.md` —
+  a `docs/standards/` edit, so it trips the rule-14 /cold-eyes gate on
+  its own; (b) back-migrate the existing corpus. Measured 2026-08-05:
+  54 specs match `FIBR-NNNN.md` (`ls docs/specs/*.md | grep -cE
+  '/FIBR-[0-9]+\.md$'`) and 374 inbound citations name those filenames
+  (`grep -rnoE 'FIBR-[0-9]{4}\.md' --include=*.md --include=*.py
+  --include=*.sh . | wc -l`), so (b) is a scripted rename plus a
+  citation sweep, not a hand edit.
+  First file written under the new rule:
+  `docs/specs/FIBR-0231-plain-english-month-summary.md`.
 
 - 📋 [FIBR-0197] **Two feature spec.md files still pin LATEST_SCHEMA_VERSION == 5.**
   `tests/features/pdf_import/spec.md` INV-8 pins `LATEST_SCHEMA_VERSION == 5`
