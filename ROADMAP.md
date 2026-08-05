@@ -2021,7 +2021,7 @@ lands on top.
 
     Result: 216 KB → 91 KB (-58%); §1 146 lines → 73.
 
-- 📋 [FIBR-0230] **Nothing stops the ~/ link defect recurring — the standard has no rule about link targets.**
+- ✅ [FIBR-0230] **Nothing stops the ~/ link defect recurring — the standard has no rule about link targets.**
   FIBR-0228 removed six markdown links to
   `~/.claude/skills/app-workflow/SKILL.md` — a shell path that
   resolves for no reader (not GitHub, not a previewer, not an
@@ -2055,6 +2055,78 @@ lands on top.
   **Layman:** The docs rulebook doesn't yet say "don't link to a file on your own computer", so the broken links just fixed could come back.
   Kind: doc-fix.
   Source: in-session-2026-08-05 (FIBR-0228 close).
+  Resolved (2026-08-05): the § 7 bullet is in, and the rule-14
+  /cold-eyes gate ran to 3 loops (45 verified findings, all fixed;
+  loop rows in the doc). The bullet's own suggested wording turned
+  out to be under-scoped — it bound only `~/…`, so an absolute path
+  or a `file://` URL complied with the letter and broke for the same
+  reader. Shipped wording covers any path outside the repository,
+  with a ❌/✅ pair. Verify step passes: `grep -rn ']( *~/'` returns
+  zero and the bullet exists in § 7.
+
+  The gate cost was the item, as predicted here — and it earned its
+  keep: it found the new rule's hole, and a stale "four standards
+  docs" count in § 2.6 that `CONTRIBUTING.md` had already been built
+  from (both fixed). § 2.6 now states no count at all, so it cannot
+  rot again. Two findings were surfaced rather than swept and are
+  filed as FIBR-0236 (three sibling standards carry the same stale
+  peer count) and FIBR-0237 (no SECURITY.md / CODE_OF_CONDUCT.md
+  though § 2.4/§ 2.5 require both here).
+
+- 📋 [FIBR-0236] **Three standards still say "the other three standards" and list three.**
+  `coding.md:4-5`, `commits.md:4-5` and `testing.md:4-5` each open
+  "Pairs with the other **three** standards in this folder" and then
+  name three. There are five others. All three lines date from the P00
+  scaffold commit `3783608` (2026-06-30), when three was correct;
+  `naming.md` and `dependencies.md` landed in `90085bf` (2026-07-03)
+  and none of the three mastheads followed.
+
+  `dependencies.md` and `naming.md` — written after the split — say
+  "the other standards" with no count and list all five correctly, so
+  the fix is to match them: drop the numeral rather than correct it, or
+  it rots again on the next standard added.
+
+  Found by the FIBR-0230 cold-eyes run while sweeping the blast radius
+  of the same defect in `documentation.md` (fixed there, along with the
+  same stale count in `CONTRIBUTING.md`). Surfaced rather than swept
+  because each of the three is a `docs/standards/` edit that trips the
+  rule-14 `/cold-eyes` gate on its own — that review cost, not the
+  wording, is the whole item.
+
+  Verify after: `grep -rn 'other three standards' docs/standards/`
+  returns zero, and each masthead names all five peers.
+  **Layman:** Three of the rulebooks still describe a smaller set of rulebooks than the project actually has.
+  Kind: doc-fix.
+  Source: cold-eyes-2026-08-05 (FIBR-0230 loop 1, surfaced not fixed).
+
+- 📋 [FIBR-0237] **No SECURITY.md and no CODE_OF_CONDUCT.md, though the standard requires both here.**
+  `documentation.md § 2.4` requires `SECURITY.md` for a project that
+  **accepts issues**, and § 2.5 requires `CODE_OF_CONDUCT.md` for one
+  that **accepts patches**. finbreak is a public repo whose
+  `CONTRIBUTING.md` documents both filing issues and proposing changes,
+  so both preconditions are met and neither file exists at the repo
+  root.
+
+  Both lanes of the FIBR-0230 cold-eyes run raised this independently,
+  across two loops. It is a *project-side* gap, not a defect in the
+  rule — which is why that run surfaced it rather than editing it away.
+  The rule itself was verified as correctly scoped in loop 3.
+
+  § 2.4 names the contents: disclosure policy, contact email, GPG key
+  (if used), supported-version table. § 2.5's default is Contributor
+  Covenant 2.1 verbatim.
+
+  Note the interaction with FIBR-0133 (Windows code signing, blocked):
+  a `SECURITY.md` that names a disclosure contact is also the thing
+  most open-source-programme applications look for, so this is cheap
+  and may unblock more than it costs.
+
+  Verify after: both files exist at the repo root, `SECURITY.md`
+  carries all four items § 2.4 lists, and `CODE_OF_CONDUCT.md` is
+  Covenant 2.1 verbatim.
+  **Layman:** The project's own rulebook says a public project taking bug reports needs a security-contact file and a code of conduct; neither exists yet.
+  Kind: doc.
+  Source: cold-eyes-2026-08-05 (FIBR-0230 loops 1-2, surfaced not fixed).
 
 ## P13 — Packaging & release
 
