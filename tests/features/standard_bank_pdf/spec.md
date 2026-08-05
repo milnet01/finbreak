@@ -46,12 +46,24 @@ Coverage map:
   (unlike a closing-less Savings, which imports on the per-row gate alone); a
   credit card that doesn't reconcile rides the completeness gate alone; a
   reconciling quiet month returns an empty-draft `ParseResult` with the period.
+- **Unstorable balances (INV-11b, FIBR-0224):** the opening and closing figures are
+  the only amounts on a statement that never pass through `parse_transaction`, so
+  the 64-bit storage bound has to be applied where they are converted. The
+  completeness gate cannot stand in for it — `family_b_unstorable_balances.pdf`
+  prints an opening and a closing that both exceed `2**63-1` and **reconcile**, so
+  it passes every existing gate and used to surface as an `OverflowError` at the
+  INSERT (not a class the wizard catches). Legs: the fixture end-to-end; both
+  `_verify_checksum` conversions, on deliberately non-reconciling pairs so the
+  bound must win over the "didn't add up" message; and `_verify_e_totals`, the one
+  path that derives a stored balance from an opening `_verify_checksum` never saw
+  (E prints no closing, so that gate early-returns). Only the magnitude half of
+  FIBR-0222 is reachable here — `_MONEY` never matches a token containing `e`.
 - **Family E — the "Payments / Deposits" current-account layout (FIBR-0190).**
   Eight synthetic fixtures (`family_e_*.pdf`), all rows internally consistent
   except where a leg needs a red one:
   - **FIBR-0190 INV-1/INV-2:** the header block
     `Date Description Payments Deposits Balance` + the legal marker detects as
-    `Family.E`; every one of the **13 pre-E fixtures** still detects as the family
+    `Family.E`; every one of the **14 pre-E fixtures** still detects as the family
     it detected as before (parametrised, one leg per fixture).
   - **FIBR-0190 INV-4/INV-10/INV-11 (end-to-end):** six drafts from
     `family_e_current.pdf` — amounts (the running-balance **delta**, money-out
@@ -85,7 +97,7 @@ Coverage map:
     when **both** totals printed and verified; `None` when neither prints, and
     `None` on `family_e_one_total.pdf` — a lone total that *matches*, which imports
     but corroborates only half the sum (D10).
-  - **FIBR-0190 D6:** a text-**extraction** leg asserts none of the 13 pre-E
+  - **FIBR-0190 D6:** a text-**extraction** leg asserts none of the 14 pre-E
     fixtures contains `statement opening balance` — the premise that makes widening
     `_anchor_balance` / `_capture_opening` globally safe. It must extract, not grep:
     a repo search cannot read a binary PDF's text stream.

@@ -45,7 +45,11 @@ from finbreak.importers.pdf_importer import (
     _normalise_to_plaintext,
 )
 from finbreak.models import TransactionDraft
-from finbreak.services.transactions import parse_transaction, to_minor
+from finbreak.services.transactions import (
+    parse_transaction,
+    to_minor,
+    to_minor_storable,
+)
 
 Fmt = str  # Literal["us", "eu"] — kept loose to avoid a typing import churn.
 
@@ -469,6 +473,33 @@ def _capture_closing(full_text: str, family: Family, fmt: Fmt) -> Decimal | None
     return None
 
 
+def _storable(amount: Decimal, exponent: int) -> int:
+    """``to_minor``, plus the magnitude bound storing the result forces (FIBR-0224).
+
+    The opening and closing balances are the only amounts on a statement that never
+    pass through ``parse_transaction``, so they inherited none of its money contract
+    — the PDF twin of the OFX hole FIBR-0223 closed. A plain digit run past SQLite's
+    signed 64-bit INTEGER parses, scales, and even **reconciles** (the completeness
+    gate compares the two unbounded figures against each other, so a statement
+    printing a huge opening AND a matching huge closing sails through it), then dies
+    far away at the INSERT as ``OverflowError`` — neither of the two classes
+    ``_on_import`` catches, so a dead slot at commit time rather than a message.
+
+    Only one of FIBR-0222's two spellings can arrive here: ``_MONEY`` never matches a
+    token containing ``e``, so ``decimal.Overflow`` is unreachable on this path and
+    the magnitude bound is what does the work. Re-raised in this file's own voice, as
+    every other refusal here is — what the user needs to know is that the statement
+    is unusable, not which bound it broke.
+    """
+    try:
+        return to_minor_storable(amount, exponent)
+    except ValueError as exc:
+        raise ValueError(
+            "this statement's opening or closing balance is too large to store — "
+            "try your bank's CSV or OFX export"
+        ) from exc
+
+
 def _verify_checksum(
     family: Family,
     opening: Decimal,
@@ -489,8 +520,10 @@ def _verify_checksum(
             "try your bank's CSV or OFX export"
         )
     total = sum(d.amount_minor for d in drafts)
-    opening_m = to_minor(opening, exponent)
-    closing_m = to_minor(closing, exponent)
+    # Bounded BEFORE the comparison below, so an unstorable figure is reported as
+    # what it is rather than as a phantom "didn't add up" (FIBR-0224).
+    opening_m = _storable(opening, exponent)
+    closing_m = _storable(closing, exponent)
     if family is Family.C:
         # Drafts carry the flipped budget sign; the printed convention is +purchase.
         reconciled = opening_m - total
@@ -564,7 +597,10 @@ def _verify_e_totals(
         # A single verified total corroborates only one half of `opening + Σ`, so
         # FIBR-0171's forecast anchor gets None rather than an unchecked number (D10).
         return None
-    return to_minor(opening, exponent) + sum(d.amount_minor for d in drafts)
+    # E is the one family that reaches a stored balance with an opening
+    # `_verify_checksum` never converted — it prints no closing, so that gate takes
+    # its `closing is None` early return before either bound (FIBR-0224).
+    return _storable(opening, exponent) + sum(d.amount_minor for d in drafts)
 
 
 # --------------------------------------------------------------------------- #
@@ -1099,7 +1135,11 @@ class StandardBankImporter:
         # Persist the closing balance for the forecast anchor (FIBR-0171 D4): the
         # figure the checksum verified, in signed minor units, or None when the
         # statement prints none (Savings / Family A rides the per-row gate).
-        closing_minor = None if closing is None else to_minor(closing, exponent)
+        # `_storable`, not `to_minor`: belt-and-braces today (a non-None closing has
+        # already been bounded by the gate on the line above), but it keeps "every
+        # balance conversion in this file is bounded" a local property rather than
+        # one that depends on the gate above never gaining another early return.
+        closing_minor = None if closing is None else _storable(closing, exponent)
         if family is Family.E:
             # E prints no closing figure, but its final running balance IS one — and
             # its printed column totals are what make that trustworthy. This must sit

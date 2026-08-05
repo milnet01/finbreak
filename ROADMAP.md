@@ -1562,7 +1562,7 @@ lands on top.
   The standard_bank.py sites named above did NOT close with this one; the
   residue is filed separately (see the bullet below).
 
-- 📋 [FIBR-0224] **The Standard Bank closing balance can still exceed what SQLite can store.**
+- ✅ [FIBR-0224] **The Standard Bank closing balance can still exceed what SQLite can store.**
   Split out of FIBR-0223 rather than fixed with it — the reachability
   story is different and the test cost is much higher (it needs crafted
   PDF fixtures, not a 6-line SGML string).
@@ -1598,6 +1598,31 @@ lands on top.
   **Layman:** A crafted PDF statement could crash the import at the last step instead of reporting a bad figure.
   Kind: fix.
   Source: in-session-2026-08-05 (FIBR-0223 call-site sweep).
+  Resolved (2026-08-05): both halves closed, plus a THIRD site the
+  analysis missed. `_storable` (standard_bank.py) wraps
+  `to_minor_storable` and re-raises in this file's voice; all four
+  balance conversions now route through it — `_verify_checksum`
+  492/493, `_verify_e_totals`, and `parse`'s closing_minor.
+
+  The missed site is `_verify_e_totals`. Family E prints no closing,
+  so `_verify_checksum` takes its `closing is None` early return and
+  never converts the opening — which `_verify_e_totals` then scales
+  into `opening + Σ` and persists as the forecast anchor. Same defect
+  class, different family, and it was not in the original analysis.
+
+  Regression cover: `family_b_unstorable_balances.pdf` — opening
+  99,999,999,999,999,999.00 + 69.00 == closing, both past 2**63-1,
+  so it RECONCILES and clears every pre-existing gate (reproduced
+  before the fix: parse returned 10000000000000006800 and the INSERT
+  died with OverflowError). Plus direct legs on both gates, on
+  deliberately non-reconciling pairs so the bound must win over the
+  "didn't add up" message. Filed as INV-11b in the test contract;
+  pre-E fixture count 13 → 14 in the two guard assertions.
+
+  The unswept tail is CLEAN, not fixed: forecast.py:227 and
+  alerts.py:211/228 each scale a `RecurringItem.amount`, which is
+  `to_display_decimal(stored_minor)` — a round-trip of a value the
+  DB already holds, so bounded by construction. Verified, no change.
 
 - ✅ [FIBR-0225] **Lint the gate's own delivery machinery: shellcheck + actionlint stages.**
   The gate checked `src/` and `tests/` thoroughly and never looked at the

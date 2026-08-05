@@ -54,6 +54,14 @@ signaling per
 
 ### Fixed
 
+- **Standard Bank PDF import: a statement whose opening or closing balance is too large to store is now refused with a message instead of crashing the import** (FIBR-0224)
+  A crafted statement printing balances beyond the storage limit could
+  reconcile against itself and so clear every integrity check, then fail
+  at the final save step with an error the import wizard could not show.
+  Both balance figures are now checked where they are converted — on
+  every statement layout, including the one that derives its closing
+  balance from its printed column totals.
+
 - **An OFX file with an unusable closing balance is reported, not a silent dead end** (FIBR-0223)
   A `<LEDGERBAL>` amount too large to store used to kill the import
   step with no message and no rows — either while reading the file or,

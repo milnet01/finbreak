@@ -34,8 +34,11 @@ from finbreak.importers.standard_bank import (
     _span,
     _split_credit_card_line,
     _table_region,
+    _verify_checksum,
+    _verify_e_totals,
     detect_standard_bank,
 )
+from finbreak.models import TransactionDraft
 from finbreak.services.auth import AuthService
 from finbreak.services.import_ import ImportService
 from finbreak.services.transactions import read_minor_unit_exponent
@@ -449,6 +452,76 @@ def test_INV11_savings_no_closing_imports_on_per_row_gate():
     assert [d.amount_minor for d in r.drafts] == [200]  # +2.00 interest
 
 
+# --------------------------------------------------------------------------- #
+# INV-11b (FIBR-0224) — a balance too large to store is a friendly ValueError
+# --------------------------------------------------------------------------- #
+# The opening and closing balances are the only amounts on a statement that never
+# pass through `parse_transaction`, so they inherited none of its money contract —
+# the PDF twin of the OFX hole FIBR-0223 closed. Only ONE of FIBR-0222's two
+# spellings can reach here: `_MONEY` never matches a token containing `e`, so the
+# `decimal.Overflow` half is unreachable, while the 64-bit bound is not.
+_UNSTORABLE_MSG = "balance is too large to store"
+
+
+def test_FIBR0224_INV11b_reconciling_unstorable_balances_refuse():
+    """The completeness gate cannot catch this one, because the statement *does*
+    reconcile — opening + 69.00 == closing, with both figures past 2**63-1. Before
+    the fix `parse` returned a closing_balance_minor of 10000000000000006800 and
+    the crash landed at the INSERT as `OverflowError`, which is neither of the two
+    classes `_on_import` catches — a dead slot at commit time, not at parse time.
+    """
+    with pytest.raises(ValueError, match=_UNSTORABLE_MSG):
+        _parse("family_b_unstorable_balances.pdf")
+
+
+@pytest.mark.parametrize(
+    ("opening", "closing"),
+    [
+        pytest.param(Decimal("99999999999999999.00"), Decimal("10.00"), id="opening"),
+        pytest.param(Decimal("10.00"), Decimal("99999999999999999.00"), id="closing"),
+    ],
+)
+def test_FIBR0224_checksum_gate_bounds_both_figures(opening, closing):
+    # Both conversions are on the path to storage, and the OPENING is what makes
+    # the reconciling fixture above possible at all: bound only the closing and a
+    # crafted statement still walks a huge opening through to `opening + Σ`.
+    # These pairs deliberately do NOT reconcile, which puts the magnitude bound and
+    # the "didn't add up" comparison in competition — the bound must win. It sits
+    # ahead of the comparison, so an unstorable figure is reported as what it is
+    # rather than as a phantom reconciliation failure (both are ValueError, so only
+    # the message tells them apart).
+    with pytest.raises(ValueError, match=_UNSTORABLE_MSG):
+        _verify_checksum(
+            Family.B,
+            opening,
+            [TransactionDraft(1, "2025-03-02", 6900, "Fake Service Fee")],
+            closing,
+            2,
+        )
+
+
+def test_FIBR0224_family_e_totals_gate_bounds_the_opening():
+    """Family E reaches `_verify_e_totals` carrying an opening `_verify_checksum`
+    never converted: E prints no closing, so the gate takes its `closing is None`
+    early return before either conversion. The figure derived here (`opening + Σ`)
+    is persisted as the forecast anchor, so the bound belongs on this path too.
+    """
+    drafts = [
+        TransactionDraft(1, "2026-01-02", -10000, "Fake Debit"),
+        TransactionDraft(2, "2026-01-03", 5000, "Fake Credit"),
+    ]
+    with pytest.raises(ValueError, match=_UNSTORABLE_MSG):
+        # Both printed totals match the drafts, so the gate verifies and proceeds
+        # to the conversion rather than refusing on a totals mismatch.
+        _verify_e_totals(
+            "Payments 100.00\nDeposits 50.00",
+            drafts,
+            Decimal("99999999999999999.00"),
+            2,
+            "us",
+        )
+
+
 def test_D13_quiet_month_returns_empty_draft_with_period():
     r = _parse("quiet_month_a.pdf")
     assert r.drafts == []
@@ -481,6 +554,7 @@ def test_FIBR0190_INV1_family_e_detected():
         ("family_a_rcp_euro.pdf", Family.A),
         ("family_b_homeloan.pdf", Family.B),
         ("family_b_no_closing.pdf", Family.B),
+        ("family_b_unstorable_balances.pdf", Family.B),
         ("family_c_creditcard.pdf", Family.C),
         ("family_c_fail.pdf", Family.C),
         ("family_d_moneymarket.pdf", Family.D),
@@ -499,7 +573,7 @@ def test_FIBR0190_INV2_existing_fixtures_detect_as_before(name, expected):
 def test_FIBR0190_INV2_covers_every_pre_e_fixture():
     # Guards the leg above against a new fixture landing uncovered (its list is
     # hand-written, so a glob mismatch is the failure mode).
-    assert len(_PRE_E_FIXTURES) == 13
+    assert len(_PRE_E_FIXTURES) == 14
 
 
 def test_FIBR0190_INV4_INV10_INV11_family_e_end_to_end():
