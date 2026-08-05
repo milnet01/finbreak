@@ -47,6 +47,12 @@ signaling per
 
 ### Fixed
 
+- **Typing a huge number like `1e999999` into the Add-transaction Amount field no longer kills the dialog** (FIBR-0222)
+  The value overflowed the decimal scaling one step before the 64-bit
+  size check could reject it, and that failure was a class the dialog
+  did not catch. It now shows "amount is too large to store", like
+  every other rejected amount.
+
 - **Manual entry now accepts an amount written the way your computer writes numbers** (FIBR-0219)
   If your system writes numbers the European way — `1.234,56` — you can now
   type an amount back exactly as finbreak displays it. The plain `12.34` form

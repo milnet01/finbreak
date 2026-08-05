@@ -10,7 +10,7 @@ so the scale lives in one place.
 from __future__ import annotations
 
 from datetime import date
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, Overflow
 from typing import cast
 
 from sqlcipher3 import dbapi2
@@ -87,7 +87,16 @@ def parse_transaction(
     if -cast(int, amount.normalize().as_tuple().exponent) > exponent:
         raise ValueError("amount has more fractional digits than the currency allows")
 
-    amount_minor = to_minor(amount, exponent)
+    try:
+        amount_minor = to_minor(amount, exponent)
+    except Overflow as exc:
+        # The bound below is one step too late for an exponent this large: "1e999999"
+        # is finite and carries no fractional digits, so it passes both checks above
+        # and then overflows the Decimal context inside `scaleb` itself. `Overflow`
+        # is an ArithmeticError, so it escaped ManualEntryDialog's `except ValueError`
+        # and killed the slot — FIBR-0216's crash class exactly, one guard earlier
+        # (FIBR-0222). Same rejection, so deliberately the same message.
+        raise ValueError("amount is too large to store") from exc
     if amount_minor == 0:
         raise ValueError("amount must be non-zero")
     if not -_MAX_AMOUNT_MINOR <= amount_minor <= _MAX_AMOUNT_MINOR:

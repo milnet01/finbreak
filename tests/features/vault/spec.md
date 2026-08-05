@@ -35,7 +35,11 @@ touches the network or real financial data (testing.md § 6).
 - **INV-4b** — Money input is validated, never silently mutated: more
   fractional digits than the exponent, a non-finite decimal, zero, an empty
   description, or a non-ISO date each raise `ValueError`; a non-zero value of
-  either sign within the exponent is accepted. Source: FIBR-0004 INV-4b.
+  either sign within the exponent is accepted. `ValueError` is the class for
+  **every** rejection, magnitude included — past SQLite's signed 64-bit INTEGER
+  (FIBR-0216) and an exponent large enough to overflow the scaling itself
+  (FIBR-0222), which `ManualEntryDialog` must show rather than die on.
+  Source: FIBR-0004 INV-4b.
 - **INV-5** — Neither file present → first-run; both present → unlock; a
   mixed pair raises `VaultStateError`; a first-run password mismatch / empty
   password / bad currency raises `ValueError` and writes nothing; first-run

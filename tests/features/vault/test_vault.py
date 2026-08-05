@@ -400,11 +400,38 @@ def test_INV4a_money_round_trips_exactly(service):
         ("2026-07-01", "1E19", "too large"),
         ("2026-07-01", "-1E19", "too large, negative"),
         ("2026-07-01", "92233720368547758.08", "one minor unit over the bound"),
+        # FIBR-0222 — an exponent large enough to overflow the Decimal context
+        # inside the scaling itself, one step BEFORE the 64-bit bound above is
+        # compared. `decimal.Overflow` is an ArithmeticError, not a ValueError,
+        # so it escaped ManualEntryDialog's handler exactly like FIBR-0216's
+        # OverflowError did — same class of crash, one guard too late.
+        ("2026-07-01", "1e999999", "huge exponent"),
+        ("2026-07-01", "-1e999999", "huge exponent, negative"),
     ],
 )
 def test_INV4b_rejects_bad_money_input(occurred_on, amount, description):
     with pytest.raises(ValueError):
         parse_transaction(occurred_on, amount, description, exponent=2)
+
+
+def test_INV4b_dialog_refuses_a_huge_exponent_instead_of_dying(qtbot, service):
+    """FIBR-0222 — the rejection above is only worth anything if it reaches the
+    user. A `decimal.Overflow` walked straight through `_on_add`'s `except
+    ValueError` and killed the Qt slot, silently: no error text, no row, no
+    traceback the user could see. Drives the DIALOG, not the parser, because
+    that class distinction is invisible from `parse_transaction`'s side."""
+    from finbreak.ui.manual_entry import ManualEntryDialog
+
+    service.first_run(bytearray(_PW), "ZAR")
+    transactions = TransactionService(service._vault)
+    dialog = ManualEntryDialog(service)
+    qtbot.addWidget(dialog)
+    dialog._amount.setText("1e999999")
+    dialog._description.setText("huge")
+    dialog._add_button.click()
+
+    assert dialog._error.text() != "", "the refusal is shown in-dialog"
+    assert transactions.list_transactions() == [], "and nothing is stored"
 
 
 @pytest.mark.parametrize(

@@ -1456,7 +1456,7 @@ lands on top.
   Kind: enhancement.
   Source: user-report-2026-08-03.
 
-- 📋 [FIBR-0222] **A huge exponent crashes the Add-transaction slot before the 64-bit bound is reached.**
+- ✅ [FIBR-0222] **A huge exponent crashes the Add-transaction slot before the 64-bit bound is reached.**
   Surfaced by the FIBR-0219 spec review; VERIFIED against source, and
   independent of that item (it reproduces on today's shipping code).
 
@@ -1484,6 +1484,57 @@ lands on top.
   **Layman:** Typing a a number like 1e999999 into the Add-transaction box closes the dialog instead of showing "that's too big".
   Kind: fix.
   Source: cold-eyes-FIBR-0219-loop2-2026-08-04.
+  Resolved (2026-08-05): reproduced first — `parse_transaction("2026-07-01",
+  "1e999999", "x", 2)` raised `decimal.Overflow` from `to_minor`'s `scaleb`,
+  and the dialog leg died in `_on_add` rather than showing an error.
+  `parse_transaction` now wraps the `to_minor` call and re-raises `Overflow`
+  as `ValueError("amount is too large to store")` — deliberately the same
+  message as the 64-bit bound below it, since it is the same rejection. Guard
+  placement: after the scaling rather than a second magnitude bound before it,
+  so `_MAX_AMOUNT_MINOR` stays the ONE stated bound and cannot drift from a
+  duplicate expressed as an exponent. `Overflow` is caught narrowly, not
+  `DecimalException`: with a finite operand and a currency exponent of 0-3 it
+  is the only trapped signal reachable there (a huge NEGATIVE exponent is
+  already rejected one check earlier, verified).
+  Regression legs in tests/features/vault/: two rows on the INV-4b reject
+  table (both signs) plus `test_INV4b_dialog_refuses_a_huge_exponent_instead_of_dying`,
+  which drives ManualEntryDialog — the class distinction is invisible from the
+  parser's side. All three verified RED before the fix. spec.md INV-4b now
+  states that ValueError is the class for every rejection, magnitude included.
+
+- 📋 [FIBR-0223] **The OFX closing-balance scaling is the one to_minor call site with no ValueError guard.**
+  Surfaced while sweeping to_minor's call sites for FIBR-0222. PARTLY
+  verified — read the code, did NOT reach it with an input.
+
+  `src/finbreak/importers/ofx_importer.py:153` scales the `<LEDGERBAL>`
+  straight through: `closing_balance_minor = None if balance is None else
+  to_minor(balance, exponent)`. Every OTHER amount in that file goes
+  through `parse_transaction`, whose ValueError the row loop catches into
+  `RowError`; this one has no guard, and its own neighbouring comment
+  records that this line runs OUTSIDE the wizard's boundary try/except
+  (the reason `getattr(statement, "balance", None)` is there at all).
+
+  So a `<BALAMT>` large enough to overflow `scaleb` raises
+  `decimal.Overflow` — an ArithmeticError, uncaught — exactly the class
+  FIBR-0222 just closed inside `parse_transaction`. FIBR-0222's fix does
+  NOT cover this path.
+
+  NOT YET VERIFIED: whether ofxparse admits exponent notation in
+  `<BALAMT>` at all. Three attempts to build a driving fixture failed for
+  unrelated reasons (the hand-rolled OFX would not parse, and reusing
+  `tests/features/ofx_import`'s own `_stmt`/`_txn` helpers outside pytest
+  did not either) — so the reachability is open, not disproven. Start
+  there: if ofxparse rejects the token first, this is unreachable and the
+  bullet closes as a note; if it does not, the fix is a try/except around
+  the one call, mirroring FIBR-0222.
+
+  Also worth a look in the same pass: `standard_bank.py:492/493/560/567`
+  and `1102` scale PDF-derived amounts through the same helper.
+  `_parse_amount` strips separators and never yields an `e`, so plain
+  digit runs cannot overflow the context — believed safe, unverified.
+  **Layman:** A corrupt bank file could crash the import wizard instead of reporting the bad line.
+  Kind: fix.
+  Source: in-session-2026-08-05 (FIBR-0222 call-site sweep).
 
 ## P13 — Packaging & release
 
