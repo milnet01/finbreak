@@ -69,12 +69,19 @@ for the full table and reasoning):
 
 The harness contract is [`docs/specs/FIBR-0001.md`](docs/specs/FIBR-0001.md).
 
-**Requirements:** Python ≥ 3.12 and the `gitleaks` binary on `PATH` (a Go
-binary, not a pip package — install from your distro or the
-[gitleaks releases](https://github.com/gitleaks/gitleaks/releases)). Use
-**≥ 8.30.1** — the version `scripts/ci-setup.sh` pins. An older distro build can
-run a different rule engine over the same `.gitleaks.toml`, so a local gate can
-pass where CI fails (or vice versa); check with `gitleaks version`.
+**Requirements:** Python ≥ 3.12 and three standalone binaries on `PATH` — none
+of them pip packages, all three pinned by `scripts/ci-setup.sh`:
+
+| Binary | Pinned | Why the version matters |
+|---|---|---|
+| [`gitleaks`](https://github.com/gitleaks/gitleaks/releases) | 8.30.1 | a different build runs a different rule engine over the same `.gitleaks.toml` |
+| [`shellcheck`](https://github.com/koalaman/shellcheck/releases) | 0.11.0 | rule set differs per release; distro builds lag badly |
+| [`actionlint`](https://github.com/rhysd/actionlint/releases) | 1.7.12 | ships its own checks *and* shells out to `shellcheck` |
+
+Each is version-sensitive the same way: an older build runs a **different rule
+set over the same files**, so a local gate can pass where CI fails (or vice
+versa). Check with `gitleaks version`, `shellcheck --version`,
+`actionlint --version`.
 
 **One-time dev setup** — isolated env + the pinned dev toolchain (ruff,
 bandit, pip-audit, pytest, pytest-qt, mypy + `types-PyYAML`) **and the runtime
@@ -88,9 +95,12 @@ python -m pip install --group dev
 python -m pip install .                  # runtime deps — the self-test test loads them
 ```
 
-**Run the full gate** — the same stages CI runs (lint, format-check, bandit,
-pip-audit, gitleaks, **mypy**, tests; FIBR-0001 INV-1/INV-2). Note the mypy
-stage: a green `pytest` alone is **not** a green gate:
+**Run the full gate** — the same stages CI runs (lint, format-check,
+**shellcheck**, **actionlint**, bandit, pip-audit, gitleaks, **mypy**, tests;
+FIBR-0001 INV-1/INV-2). Note the mypy stage: a green `pytest` alone is **not** a
+green gate. The shellcheck/actionlint stages cover the gate's own delivery
+machinery — the shell scripts and workflows that build and publish releases,
+which no Python stage reads:
 
 ```bash
 ./scripts/ci-local.sh

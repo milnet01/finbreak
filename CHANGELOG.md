@@ -31,6 +31,13 @@ signaling per
 
 ### Changed
 
+- **Behind the scenes: the build now also checks its own release scripts** (FIBR-0225)
+  The scripts and workflows that build, test and publish each release
+  were the one part of the project nothing checked automatically — a
+  mistake in them could ship a broken download. Two standard checkers
+  (shellcheck, actionlint) now run on every build, alongside the ones
+  that already check the app itself.
+
 - **Importing a statement no longer re-sorts your whole history** (FIBR-0213)
   An import now only categorises the transactions it just added.
   Before, it quietly re-sorted every automatically-categorised transaction in

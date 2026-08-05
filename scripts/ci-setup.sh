@@ -29,8 +29,10 @@ $SUDO apt-get update -qq
 # another lib, add it here (and only here — CI and ci-docker.sh both read it).
 # git is a RUNTIME dependency of the gate, not just of checkout: the gitignore
 # and bundling feature tests shell out to `git check-ignore` / `git rev-parse`.
+# xz-utils: the shellcheck release below ships as .tar.xz, and the slim image
+# carries gzip but not xz.
 $SUDO apt-get install -y --no-install-recommends \
-    curl ca-certificates git \
+    curl ca-certificates git xz-utils \
     libgl1 libegl1 libglib2.0-0 libxkbcommon0 libdbus-1-3 libfontconfig1
 
 # The gate's feature tests run `git` against the checkout. In a container the
@@ -46,6 +48,24 @@ curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_V
     | tar -xz -C /tmp gitleaks
 $SUDO install -m 0755 /tmp/gitleaks /usr/local/bin/gitleaks
 gitleaks version
+
+# Both are single static binaries rather than pip packages, and both are VERSION-
+# SENSITIVE the same way gitleaks is: a different release runs a different rule
+# set over the same files, so an unpinned distro build can pass locally and fail
+# in CI. Pin here, the one place both ci.yml and ci-docker.sh read.
+echo "== shellcheck (the gate lints its own shell scripts) =="
+SHELLCHECK_VERSION=0.11.0
+curl -sSfL "https://github.com/koalaman/shellcheck/releases/download/v${SHELLCHECK_VERSION}/shellcheck-v${SHELLCHECK_VERSION}.linux.x86_64.tar.xz" \
+    | tar -xJ -C /tmp "shellcheck-v${SHELLCHECK_VERSION}/shellcheck"
+$SUDO install -m 0755 "/tmp/shellcheck-v${SHELLCHECK_VERSION}/shellcheck" /usr/local/bin/shellcheck
+shellcheck --version | grep version:
+
+echo "== actionlint (the gate lints its own workflows) =="
+ACTIONLINT_VERSION=1.7.12
+curl -sSfL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" \
+    | tar -xz -C /tmp actionlint
+$SUDO install -m 0755 /tmp/actionlint /usr/local/bin/actionlint
+actionlint --version
 
 echo "== python: dev group + runtime deps =="
 # PEP 735 `--group` needs pip >= 25.1; the base image's pip may be older.

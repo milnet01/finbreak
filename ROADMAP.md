@@ -1599,6 +1599,123 @@ lands on top.
   Kind: fix.
   Source: in-session-2026-08-05 (FIBR-0223 call-site sweep).
 
+- 🚧 [FIBR-0225] **Lint the gate's own delivery machinery: shellcheck + actionlint stages.**
+  The gate checked `src/` and `tests/` thoroughly and never looked at the
+  11 shell scripts and 3 workflows that BUILD, TEST and PUBLISH every
+  release. A bug in `release-linux.sh` ships a broken release and no
+  Python stage can see it.
+
+  Both tools are CLEAN on the current tree (0 findings each), so this is a
+  regression guard rather than a backlog — the cheapest kind of stage to
+  add, and it was simply never wired up. `actionlint` additionally pipes
+  each workflow `run:` block through `shellcheck`, covering shell bugs
+  embedded in YAML that the plain `shellcheck` stage cannot see (it is not
+  looking at .yml).
+
+  Pinned in `ci-setup.sh` (shellcheck 0.11.0, actionlint 1.7.12 — both the
+  current upstream latest, both matching the versions installed locally)
+  for exactly the reason gitleaks is pinned: a different release runs a
+  different rule set over the same files, so an unpinned build passes
+  locally and fails in CI. Both release URLs verified 200.
+
+  Amends FIBR-0001 INV-1, which enumerated the P01 stage list and had also
+  drifted: it never recorded the `mypy` stage FIBR-0061 added. Both gaps
+  closed in one edit; INV-1 now carries a "stages added after P01" list.
+  **Layman:** The scripts that build and publish releases are now checked by the same gate that checks the app.
+  Kind: security.
+  Source: user-request-2026-08-05 (scan the system for audit tools we could add to the gate).
+
+- 📋 [FIBR-0226] **Harden the workflows against zizmor's supply-chain findings.**
+  `zizmor 1.29.0` (installed, NOT yet in the gate) reports **14 findings
+  on .github/workflows: 6 high, 3 low, 5 suppressed**. Measured today, not
+  recalled. Unlike shellcheck/actionlint (both clean, added as FIBR-0225),
+  this one has real work behind it, so it is filed rather than wired in —
+  a stage that fails on day one is not a gate, it is a broken build.
+
+  - **6 × `unpinned-uses` (high).** `actions/checkout@v7`,
+    `actions/setup-python@v6`, `actions/upload-artifact@v7` are pinned to
+    a TAG, not a commit hash. A tag is mutable: whoever controls the
+    action repo can repoint it, and it lands in a finbreak release build.
+    This matters more here than on a typical repo because those workflows
+    produce the SIGNED artifacts users download.
+  - **3 × `artipacked` (low).** `actions/checkout` leaves the credential
+    in `.git/config` unless `persist-credentials: false`. Auto-fixable.
+
+  TENSION TO RESOLVE FIRST — this needs a user call, not just a fix. Hash
+  pinning conflicts with the standing "dependencies stay latest" policy:
+  a hash pin is invisible to the eye and does not tell you it is stale, so
+  it needs Dependabot (which understands hash pins and rewrites them with
+  the tag in a comment) or it silently rots. Recommend: adopt hash pins
+  AND enable Dependabot for `github-actions` in the same change, or
+  consciously accept tag pinning and add a `zizmor.yml` that suppresses
+  `unpinned-uses` with the reason written down. Do not half-do it.
+
+  Add the `zizmor` stage to `ci-local.sh` only once the tree is clean,
+  alongside the FIBR-0225 stages.
+  **Layman:** Pin the build robots to exact versions so a hijacked one can't slip into a release.
+  Kind: security.
+  Source: user-request-2026-08-05 (audit-tool scan; measured, not recalled).
+
+- 💭 [FIBR-0227] **Audit tools measured and REJECTED for the gate — the evidence, so nobody re-runs this.**
+  Every tool below is INSTALLED on this machine and was run against the
+  real tree today. Recording the counts so this scan is not repeated from
+  scratch — a rejected tool looks identical to an unconsidered one.
+
+  - **deptry** — 501 "issues", ~all bogus: it flags first-party
+    `finbreak` imports and `PySide6` (which IS in dependencies) as
+    missing, i.e. it has not been told about the `src/` layout. Would need
+    real config before it says anything true. Revisit only with config.
+  - **vulture** (`--min-confidence 80`) — dominated by false positives:
+    pytest fixtures requested for their side effects (`theme_isolation`
+    ×14) read as "unused variable". Useful ad-hoc after a refactor, wrong
+    as a blocking stage.
+  - **typos** — 261 hits, sampled and mostly wrong for this codebase:
+    `mis` (from hyphenated "mis-assigns"), `Flate` (PDF **FlateDecode**, a
+    real term), `unparseable` (valid variant), plus sentinel strings in
+    `_selftest.py`. Would need a `_typos.toml` allowlist first; the real
+    win would be user-visible strings only.
+  - **semgrep** (`p/python`, `p/secrets`) — 2 findings, BOTH wrong here:
+    it calls `os.chmod(dir, 0o700)` "widely permissive" and suggests
+    `0o644`, which for the private vault directory is the opposite of
+    correct; the other already carries a `# nosec`. Adds nothing over
+    bandit on this codebase.
+  - **yamllint** — line-length noise at its 80-col default; actionlint
+    already covers the workflow issues that matter.
+  - **shfmt** — 997 diff lines of pure indentation churn (it wants 2-space,
+    the scripts use 4). Formatting-only, no correctness signal.
+  - **pyright** — mypy already runs and is green. Two type checkers is
+    double the suppression maintenance for overlapping signal.
+  - **trivy** — container/image scanning; finbreak ships no container.
+
+  CORRECTION (verified after the note below was first written): installing
+osv-scanner is NOT the cheapest way to get OSV coverage. `pip-audit`
+already takes `-s/--vulnerability-service {osv,pypi,esms}` and defaults
+to `pypi`; `pip-audit -s osv` queries api.osv.dev directly and runs
+clean on this tree today. OSV.dev's own data-source list confirms it
+imports the **OpenSSF Malicious Packages** feed (verified against
+google.github.io/osv.dev/data/, not recalled). So the gap closes with a
+flag on the existing stage, not a new binary.
+
+The remaining trade-off is real and is why this is still `considered`
+rather than done: the two services are different databases (PyPI
+Advisory DB vs OSV.dev), neither a superset, so getting both means TWO
+network-dependent stages on a gate that runs on every push — and
+CLAUDE.md already records that a rare pip-audit timeout flakes the
+pre-push hook. Recommend adding `pip-audit -s osv` as a second stage and
+reverting if the flake rate becomes annoying.
+
+STILL WORTH A LOOK (not installed, from the online research):
+  **osv-scanner** (google, v2.4.0). It is not a duplicate of `pip-audit`:
+  it queries OSV.dev, which carries the **OpenSSF Malicious Packages**
+  feed, so it catches a hijacked/typosquatted package that has no CVE —
+  the failure mode `pip-audit`'s CVE-only view structurally cannot see.
+  That is the single biggest remaining gap for a project that ships signed
+  desktop binaries. Also considered and deferred: SBOM generation (syft /
+  CycloneDX) attached to releases.
+  **Layman:** A record of which code-checking tools we tried and why they weren't worth adding.
+  Kind: investigate.
+  Source: user-request-2026-08-05 (system scan + online research).
+
 ## P13 — Packaging & release
 
 ### 📦 Packaging

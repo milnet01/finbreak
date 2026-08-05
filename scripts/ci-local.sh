@@ -7,8 +7,9 @@
 # and local runs cannot drift (INV-2).
 #
 # Assumes the `dev` dependency group is installed (see CLAUDE.md "Build and
-# test": python -m pip install --group dev). gitleaks is a separate binary, not
-# a pip package, and must be on PATH.
+# test": python -m pip install --group dev). gitleaks, shellcheck and actionlint
+# are separate binaries, not pip packages, and must be on PATH; ci-setup.sh
+# installs all three at pinned versions.
 #
 # FIBR-0003 later appends a build smoke-test stage to this same script.
 #
@@ -31,6 +32,20 @@ ruff check src tests
 
 echo "== ruff format --check =="
 ruff format --check src tests
+
+# The gate's own delivery machinery was the one part of the repo nothing checked:
+# 11 shell scripts (including the release path) and 3 workflows, none linted. A
+# bug in release-linux.sh ships a broken release, and the Python stages above
+# cannot see it. Both tools are clean as of adding them, so they are a regression
+# guard, not a backlog.
+echo "== shellcheck =="
+shellcheck scripts/*.sh .githooks/pre-push
+
+# Also pipes every workflow `run:` block through shellcheck (installed above) —
+# shell bugs inside YAML that the stage above never sees, because it is not
+# looking at .yml. Auto-discovers .github/workflows/.
+echo "== actionlint =="
+actionlint
 
 echo "== bandit =="
 bandit -c pyproject.toml -r src -q
