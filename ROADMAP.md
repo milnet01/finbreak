@@ -1682,8 +1682,30 @@ lands on top.
   **Layman:** Pin the build robots to exact versions so a hijacked one can't slip into a release.
   Kind: security.
   Source: user-request-2026-08-05 (audit-tool scan; measured, not recalled).
+  DECIDED (user, 2026-08-05): take the hash pins AND Dependabot
+  TOGETHER — the "not half of either" option. The tension flagged above
+  is settled; do not re-open it or re-present it as a choice.
 
-- 💭 [FIBR-0227] **Audit tools measured and REJECTED for the gate — the evidence, so nobody re-runs this.**
+  What that means concretely when this is built:
+  - Pin every `uses:` in all 3 workflows to a full commit SHA, with the
+    human-readable tag in a trailing comment (`# v7.0.1`) — that is the
+    form Dependabot writes and reads back.
+  - Add `.github/dependabot.yml` with a `package-ecosystem:
+    "github-actions"` entry so the pins are maintained rather than
+    frozen. Without it the pins rot silently and the standing
+    "dependencies stay latest" policy is quietly violated — that
+    coupling is the whole reason the two were made one decision.
+  - Then fix the 3 `artipacked` LOWs (`persist-credentials: false` on
+    each checkout) and add the `zizmor` stage to `ci-local.sh` +
+    `ci-setup.sh` (pin 1.29.0, same shape as shellcheck/actionlint).
+    Add the stage LAST, once the tree is clean — a stage that fails on
+    day one is a broken build, not a gate.
+  - The stage must also be added to FIBR-0001 INV-1's table, or
+    `tests/features/harness/` fails: that suite now asserts the spec
+    table and `ci-local.sh` agree as an unordered set. That is the
+    guard working as designed, not an obstacle.
+
+- 📋 [FIBR-0227] **Audit tools measured and REJECTED for the gate — the evidence, so nobody re-runs this.**
   Every tool below is INSTALLED on this machine and was run against the
   real tree today. Recording the counts so this scan is not repeated from
   scratch — a rejected tool looks identical to an unconsidered one.
@@ -1715,6 +1737,32 @@ lands on top.
   - **trivy** — container/image scanning; finbreak ships no container.
 
   CORRECTION (verified after the note below was first written): installing
+  DECIDED (user, 2026-08-05): add `pip-audit -s osv` as a SECOND
+  pip-audit stage, accepting the extra network dependency. Flipped
+  considered → planned; the recommendation in the CORRECTION block
+  above is now the agreed plan, not an option to re-weigh.
+
+  Rationale, so it is not re-litigated: the two services are different
+  databases (PyPI Advisory DB vs OSV.dev), neither a superset, and only
+  OSV.dev carries the OpenSSF Malicious Packages feed — the hijacked or
+  typosquatted package with no CVE, which the CVE-only view structurally
+  cannot see. That matters for a project shipping signed desktop
+  binaries. Verified clean on this tree today.
+
+  Build notes:
+  - Keep BOTH stages: the existing default (`pypi`) plus `-s osv`. One
+    is not a replacement for the other.
+  - The accepted cost is a second network-dependent stage on a gate that
+    runs on every push; CLAUDE.md already records that a rare pip-audit
+    timeout flakes the pre-push hook. Revert this stage if the flake
+    rate becomes annoying — that is a legitimate outcome, not a failure.
+  - Adding it changes the gate's stage set, so FIBR-0001 INV-1's table
+    must gain the row in the SAME commit or `tests/features/harness/`
+    goes red by design.
+
+  The REJECTED-tool evidence above (deptry / vulture / typos / semgrep /
+  yamllint / shfmt / pyright / trivy, each run against the real tree with
+  counts) stands as-is — do not re-run that scan from scratch.
 osv-scanner is NOT the cheapest way to get OSV coverage. `pip-audit`
 already takes `-s/--vulnerability-service {osv,pypi,esms}` and defaults
 to `pypi`; `pip-audit -s osv` queries api.osv.dev directly and runs
