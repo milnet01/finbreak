@@ -4634,6 +4634,28 @@ because retrofitting them is a data migration.
   **Layman:** The app tells you in plain words what happened to your money this month, instead of leaving you to read a chart.
   Kind: feature.
   Source: user-request-2026-08-05 (layman-comprehension suggestions).
+  Spec DRAFTED but NOT ready to implement (2026-08-06).
+  `docs/specs/FIBR-0231-plain-english-month-summary.md` (1213 lines) —
+  first file under the FIBR-0196 `<ID>-<topic>.md` rule.
+  /cold-eyes ran 3 loops x 3 cold lanes (9 reviews): loop 1 fixed 29
+  findings, loop 2 fixed 31, loop 3 found 24 more and STOPPED
+  UNCONVERGED on the skill's collateral trigger (collateral dominating
+  draft defects two loops running). Nothing was fixed in loop 3.
+  The 24 remaining findings are written up transferably at
+  `docs/reviews/FIBR-0231-loop3-tail.md` — fold them in directly; do NOT
+  re-run the review to rediscover them.
+  Two blockers: (1) the common-day-count rule is neutral only for
+  uniform spend, so a month-end debit order manufactures a false verdict
+  AND a false named cause every February; (2) the derived baseline floor
+  makes the absolute materiality gate dead, leaving INV-6's "relative
+  only" leg with no solution and its §11 row naming a defence that
+  cannot exist.
+  Design that DID hold across all three loops: the cause is a merchant
+  family's excess over its own baseline (not the largest row) — loop 1's
+  correction, re-verified by loop 2 and loop 3 and never re-raised.
+  Next: fold the tail in, trim ~80-100 lines of review archaeology into
+  the loop log (all three lanes named the same trim), then ONE confirming
+  loop — not a fresh review.
 
 - 📋 [FIBR-0232] **"Safe to spend" — one number for what's left after everything still due this month.**
   The cash-flow forecast (FIBR-0171) already projects a balance forward
@@ -4723,6 +4745,34 @@ because retrofitting them is a data migration.
   **Layman:** Makes it obvious how sure (or unsure) the app is about a prediction, so nobody leans on a guess.
   Kind: ux.
   Source: user-request-2026-08-05 (layman-comprehension suggestions).
+
+- 📋 [FIBR-0238] **Add a deterministic "What checks this" tally check so the row count stops being hand-counted.**
+  Every spec carrying a §11-style "What checks this" table closes it with a
+  prose tally ("Eighteen rows, five with a bolded `nothing`"). That tally
+  was miscounted by hand THREE times in a single FIBR-0231 session — 19
+  for 18, 20 for 22, and 26/10 for 28/11 — twice in the same direction,
+  and each time it was a cold reviewer who caught it, at review prices.
+
+  The rule this trips is documentation.md § 8.2 / spec-format.md § 5.7:
+  the same class caught twice becomes a mechanical check. It is trivially
+  deterministic — count table rows under the heading, count rows matching
+  `**nothing**`, compare against the two numbers in the following
+  paragraph.
+
+  FIBR-0231 works around it locally by stating the awk command beside the
+  figure, which is the right shape but the wrong home: every spec with
+  such a table needs it, not one. The check belongs in `/doc-lint`
+  (a new finding kind, e.g. `tally_mismatch`), which already owns the
+  deterministic half and is already run at /write-spec write time, before
+  a /cold-eyes dispatch, and in /debt-sweep.
+
+  Note `/doc-lint` is a machine-local global skill
+  (`~/.claude/skills/doc-lint/`), not part of this repo — so this item is
+  a pointer to work that lands there, and the verify step is that a spec
+  with a deliberately wrong tally comes back with the new finding.
+  **Layman:** Specs end with a little "here is what tests each rule" table and a sentence counting its rows. I keep miscounting that sentence by hand; this makes the computer count it instead.
+  Kind: doc.
+  Source: in-session-2026-08-06 (FIBR-0231 cold-eyes run, 3 miscounts of one table).
 
 ### ⚡ Performance
 

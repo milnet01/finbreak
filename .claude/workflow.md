@@ -41,9 +41,9 @@ this**, so treat a stale date as "recent work was out-of-band", not as
 
 | Field | Value |
 |---|---|
-| **Active item ID** | (none — pick the next 📋 from `ROADMAP.md`) |
-| **Blocked on** | Nothing blocking. |
-| **Last update** | 2026-08-05 |
+| **Active item ID** | FIBR-0231 (spec drafted, gate stopped unconverged — see below) |
+| **Blocked on** | Nothing blocking; 24 verified spec findings await fold-in. |
+| **Last update** | 2026-08-06 |
 
 ### Step progress
 
@@ -51,7 +51,14 @@ While an item is active, Claude marks the current step 🚧; completed
 steps flip to ✅. Resets to all ⬜ when a new item becomes active. The
 nine steps are defined in `~/.claude/skills/app-workflow/SKILL.md`.
 
-1. ⬜ Verify spec
+1. 🚧 Verify spec — **step 1 is where FIBR-0231 sits.** The spec exists at
+   `docs/specs/FIBR-0231-plain-english-month-summary.md` and is **not** cleared
+   for code. `/cold-eyes` ran 3 loops × 3 lanes and stopped unconverged on its
+   own collateral trigger; **24 verified findings** (2 CRITICAL) are written up
+   at `docs/reviews/FIBR-0231-loop3-tail.md`. **Fold that file in directly — do
+   not re-run the review to rediscover it.** Then trim the ~80–100 lines of
+   review archaeology into the §13 loop log (all three lanes named the same
+   trim), then run **one confirming loop**.
 2. ⬜ Verify dependencies
 3. ⬜ Write tests first
 4. ⬜ Implement until tests pass
