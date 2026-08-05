@@ -217,7 +217,7 @@ resume work without it.
   deferred because they're blocked by an unbuilt feature.
 - [docs/audit-allowlist.md](docs/audit-allowlist.md) —
   project-specific false-positive memory for `/audit` and
-  `/indie-review`.
+  `/code-quality-review`.
 - [docs/ideas.md](docs/ideas.md) — mid-flight ideas pending a
   user-decision on placement (created on first use).
 - [docs/standards/](docs/standards/) — coding, naming, dependencies,

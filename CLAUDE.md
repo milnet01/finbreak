@@ -18,7 +18,7 @@ Read these in order on every session start:
 4. **`docs/specs/<active-id>.md`** — the contract for the
    currently-active roadmap item.
 5. **`docs/audit-allowlist.md`** — read **additionally** before
-   invoking `/audit` or `/indie-review` so already-confirmed
+   invoking `/audit` or `/code-quality-review` so already-confirmed
    project-specific false positives aren't re-flagged. The
    allowlist is the closed-loop memory for this project — see
    the [app-workflow skill](~/.claude/skills/app-workflow/SKILL.md)

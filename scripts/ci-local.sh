@@ -34,12 +34,20 @@ echo "== ruff format --check =="
 ruff format --check src tests
 
 # The gate's own delivery machinery was the one part of the repo nothing checked:
-# 11 shell scripts (including the release path) and 3 workflows, none linted. A
-# bug in release-linux.sh ships a broken release, and the Python stages above
-# cannot see it. Both tools are clean as of adding them, so they are a regression
-# guard, not a backlog.
+# every shell script plus 3 workflows, none linted. A bug in release-linux.sh or
+# packaging/obs/obs-submit.sh ships a broken release, and the Python stages above
+# cannot see it (ruff/bandit/mypy/pytest all scope to src/tests). All clean as of
+# adding this, so it is a regression guard, not a backlog.
+#
+# Selected via `git ls-files`, NOT a fixed glob: the first cut of this stage used
+# `scripts/*.sh` and silently missed the 7 packaging recipes under packaging/obs/
+# and packaging/flatpak/ — i.e. exactly the publish path it claimed to cover. A
+# directory glob has to be widened by hand every time scripts appear somewhere
+# new, and nothing tells you it went stale. The hook has no .sh suffix, so it is
+# named separately.
 echo "== shellcheck =="
-shellcheck scripts/*.sh .githooks/pre-push
+mapfile -t SH_FILES < <(git ls-files '*.sh')
+shellcheck "${SH_FILES[@]}" .githooks/pre-push
 
 # Also pipes every workflow `run:` block through shellcheck (installed above) —
 # shell bugs inside YAML that the stage above never sees, because it is not
