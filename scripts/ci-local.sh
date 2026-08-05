@@ -6,10 +6,12 @@
 # re-listing the stages — so the gate list has a single source of truth and CI
 # and local runs cannot drift (INV-2).
 #
-# Assumes the `dev` dependency group is installed (see CLAUDE.md "Build and
-# test": python -m pip install --group dev). gitleaks, shellcheck and actionlint
-# are separate binaries, not pip packages, and must be on PATH; ci-setup.sh
-# installs all three at pinned versions.
+# Assumes the environment scripts/ci-setup.sh builds (CLAUDE.md "Build and
+# test" documents it for humans): the `dev` dependency group AND the runtime
+# deps (pip install .) — mypy type-checks tests/ without ignoring PySide6, and
+# conftest imports PySide6 at collection time, so stages 8 and 9 are red with
+# the dev group alone. gitleaks, shellcheck and actionlint are separate
+# binaries, not pip packages, and must be on PATH; ci-setup.sh pins all three.
 #
 # FIBR-0003 later appends a build smoke-test stage to this same script.
 #
