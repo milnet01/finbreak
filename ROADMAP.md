@@ -1996,6 +1996,41 @@ lands on top.
 
     Result: 216 KB → 91 KB (-58%); §1 146 lines → 73.
 
+- 📋 [FIBR-0230] **Nothing stops the ~/ link defect recurring — the standard has no rule about link targets.**
+  FIBR-0228 removed six markdown links to
+  `~/.claude/skills/app-workflow/SKILL.md` — a shell path that
+  resolves for no reader (not GitHub, not a previewer, not an
+  editor). The sites are fixed; the *cause* is not.
+
+  `docs/standards/documentation.md § 7` ("Markdown style") has a
+  Links bullet at line 176, but it governs link **form** only —
+  `[text](url)` not `<url>`. Nothing there says a link target must
+  resolve for a reader who is not on this machine. So the next
+  session that writes a doc referencing the app-workflow skill can
+  re-add the exact link FIBR-0228 removed, in good faith, and
+  nothing catches it.
+
+  Fix: one bullet under § 7, roughly — "Link targets must resolve
+  for a reader outside this machine. A machine-local path
+  (`~/...`) goes in inline code with a note that it is
+  machine-local, never in a link target." The wording is the whole
+  job; the check already exists.
+
+  Note the review cost, which is why this is a separate item and
+  not a drive-by: editing any `docs/standards/` file trips the
+  rule-14 `/cold-eyes` gate. That is a deliberate pass, not a
+  one-line commit — budget for it rather than being surprised.
+
+  Verify after: `grep -rn ']( *~/' --include=*.md .` returns zero
+  (it does today), and the new bullet exists in § 7. Note that
+  `doc_integrity` alone does NOT cover this — it only walks
+  `docs/`, so it never reads `CLAUDE.md` or `ROADMAP.md`, which is
+  exactly how FIBR-0228 undercounted itself as three sites when it
+  was six.
+  **Layman:** The docs rulebook doesn't yet say "don't link to a file on your own computer", so the broken links just fixed could come back.
+  Kind: doc-fix.
+  Source: in-session-2026-08-05 (FIBR-0228 close).
+
 ## P13 — Packaging & release
 
 ### 📦 Packaging
