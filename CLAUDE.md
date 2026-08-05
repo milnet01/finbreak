@@ -131,7 +131,8 @@ image CI uses** (`python:3.12-slim-bookworm`, fresh installs):
 ```
 
 `ci.yml` and `ci-docker.sh` both run the same image and both call
-`scripts/ci-setup.sh` (environment: system libs + gitleaks + deps) then
+`scripts/ci-setup.sh` (environment: system libs + the three pinned binaries —
+gitleaks, shellcheck, actionlint — + deps) then
 `scripts/ci-local.sh` (the gate) — one definition each, so local and CI cannot
 drift. If a dependency bump needs a new system library, add it in **one place**
 (`ci-setup.sh`).
@@ -198,7 +199,8 @@ header.
 - `scripts/ci-local.sh` — the one-command quality + security gate (`--build`
   adds the FIBR-0003 bundling smoke-test).
 - `scripts/ci-setup.sh` — the shared CI **environment** prep (system libs
-  PySide6 needs + gitleaks + Python deps). Called by BOTH `ci.yml` and
+  PySide6 needs + the three pinned non-pip binaries — gitleaks, shellcheck,
+  actionlint — + Python deps). Called by BOTH `ci.yml` and
   `ci-docker.sh` so the environment has a single definition.
 - `scripts/ci-docker.sh` — reproduce the GitHub CI run exactly, locally, in the
   same `python:3.12-slim-bookworm` image (`ci-setup.sh` + `ci-local.sh`). Run

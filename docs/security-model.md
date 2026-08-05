@@ -345,10 +345,20 @@ be checkable. Enforcement arrives in step with the code:
 | **pip-audit** | dependencies with known CVEs (T7) | CI + `scripts/ci-local.sh` |
 | **gitleaks** | secrets staged for commit (T6) | CI + `scripts/ci-local.sh` |
 | **ruff** | general correctness/lint (defence in depth) | CI + `scripts/ci-local.sh` |
+| **mypy** | type errors (defence in depth; `FIBR-0061`) | CI + `scripts/ci-local.sh` |
+| **shellcheck** | bugs in the release/build shell scripts (`FIBR-0225`) | CI + `scripts/ci-local.sh` |
+| **actionlint** | workflow defects + shell bugs inside `run:` blocks (`FIBR-0225`) | CI + `scripts/ci-local.sh` |
 | **pytest** | the INV-* assertions, **added per phase** as the code each invariant governs lands | CI + `scripts/ci-local.sh` |
 
-The four scanners (bandit, pip-audit, gitleaks, ruff) and the test
-harness are wired in P01 (FIBR-0001); the per-INV pytest assertions
+> **This table maps tools to threats; it is not the gate's stage
+> list.** `FIBR-0001` INV-1 holds the authoritative, ordered list of
+> what `scripts/ci-local.sh` runs — where the two differ, that table
+> governs. Stating the stage list in two places is what let this one
+> sit at five tools while the gate ran nine.
+
+The four original scanners (bandit, pip-audit, gitleaks, ruff) and the
+test harness are wired in P01 (FIBR-0001) — `mypy`, `shellcheck` and
+`actionlint` joined later, per the table; the per-INV pytest assertions
 (INV-1/2/3/4/5b/5c/7/9/10/11/12) arrive with the later phases that build
 the vault, crypto, import, export, and logging paths. The CI workflow
 and the local script run the **same** gate list (one source of
