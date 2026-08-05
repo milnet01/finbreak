@@ -1791,6 +1791,33 @@ STILL WORTH A LOOK (not installed, from the online research):
   Kind: investigate.
   Source: user-request-2026-08-05 (system scan + online research).
 
+- 📋 [FIBR-0228] **Three docs link to a ~/ path that resolves nowhere.**
+  Surfaced by `doc_integrity` during the FIBR-0001 cold-eyes run and
+  deliberately NOT fixed there — pre-existing, and in three files that
+  review did not cover (stay-in-lane). Recorded so it is not
+  re-discovered.
+
+  `docs/audit-allowlist.md:27`, `docs/ideas.md:10` and
+  `docs/known-issues.md:7` each render a markdown link whose target is
+  `~/.claude/skills/app-workflow/SKILL.md`. The skill genuinely exists
+  on this machine, so the reference is not *wrong* — but `~` is a shell
+  expansion, not a URL, so the link resolves for no reader: not on
+  GitHub, not in a markdown previewer, not in an editor. It is the only
+  `broken_link` class left in `docs/` (verified: 3 findings, 0 dead
+  anchors, across 122 checked docs).
+
+  Fix is a judgement call, hence planned rather than done: either drop
+  the link and leave the path as inline code (honest — it is a
+  machine-local file, not a project doc), or point at whatever
+  in-project doc describes the workflow. Prefer the first; a link that
+  cannot resolve is worse than plain text naming the same file.
+
+  Cheap to verify after: `doc_integrity` over `docs/` should come back
+  with `broken_link: 0`.
+  **Layman:** Three "see this document" links in the docs are broken for anyone reading them.
+  Kind: doc-fix.
+  Source: in-session-2026-08-05 (cold-eyes FIBR-0001, doc_integrity sweep).
+
 ## P13 — Packaging & release
 
 ### 📦 Packaging
