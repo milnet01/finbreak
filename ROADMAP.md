@@ -1740,6 +1740,24 @@ lands on top.
   counts were rewritten as SELECTORS rather than bumped to four —
   FIBR-0001's own cold-eyes convergence lesson is that a copied count
   goes stale silently, so no count is now stated anywhere.
+  Runner verification (2026-08-05, AFTER the note above was written — that
+  note predates these runs). The `setup-python` v6 → v7.0.0 bump needed
+  proof, because NEITHER workflow that uses setup-python runs on push:
+  `build-smoke.yml` is dispatch+weekly and `windows-build.yml` is
+  dispatch-only. So a green CI push proves the checkout pin and nothing
+  else. Both were dispatched deliberately and both passed: build-smoke ✅,
+  windows-build ✅ 8m9s (freeze + clean-room `.exe`, i.e. the pinned
+  `upload-artifact@043fb46` exercised too). Push CI ✅ 3m30s. Do not
+  re-litigate whether v7.0.0 works on a real runner — it has been run.
+
+  Dependabot verification: the push triggered a Dependabot Updates run
+  that completed **success and opened ZERO PRs**, including a dedicated
+  `for actions/setup-python` check. Zero PRs is the positive result here,
+  not a null one — it means Dependabot parsed the `<sha> # vX.Y.Z` form,
+  resolved each pin, and found all three already at latest. That is the
+  hash-pin/Dependabot coupling demonstrated end to end rather than
+  assumed, which was the one part of this decision that could have been
+  quietly wrong.
 
 - 📋 [FIBR-0227] **Audit tools measured and REJECTED for the gate — the evidence, so nobody re-runs this.**
   Every tool below is INSTALLED on this machine and was run against the
@@ -1853,6 +1871,37 @@ STILL WORTH A LOOK (not installed, from the online research):
   **Layman:** Three "see this document" links in the docs are broken for anyone reading them.
   Kind: doc-fix.
   Source: in-session-2026-08-05 (cold-eyes FIBR-0001, doc_integrity sweep).
+
+- 📋 [FIBR-0229] **`.claude/workflow.md`'s status header is four items stale.**
+  §1's status header is dated **2026-08-02** and describes the v0.1.19
+  release as the current state. Four items have landed since and none of
+  them updated it: `FIBR-0223` (OFX unstorable balance), `FIBR-0225`
+  (shellcheck + actionlint stages), `FIBR-0228` (filed), `FIBR-0226`
+  (hash pins + zizmor). Its gate figure is also stale — it records
+  **1455 passed**, the gate now runs **1698 passed, 2 skipped**.
+
+  Why this matters more than an ordinary stale doc: `CLAUDE.md`'s
+  "Resumption flow" makes reading this header a MANDATORY session-start
+  step and requires summarising it back to the user before doing any
+  work. So the one file a fresh session is told to trust for "where are
+  we" is the one that has been drifting — a session that follows the
+  rule correctly gets a confidently-wrong answer about the current
+  state, which is worse than having no header at all.
+
+  Not fixed inline when found (2026-08-05) deliberately: rewriting a
+  70 KB status header is its own piece of work, and doing it as a
+  drive-by inside a security change would have buried it in an unrelated
+  diff. Surfaced to the user in the same breath.
+
+  Worth deciding as part of this, not just re-writing the header once:
+  whether `/close-phase` should update §1, or whether the header should
+  shrink to a pointer at the ROADMAP (which is never stale, because the
+  verbs write it). A header that must be hand-maintained will drift
+  again; that is the pattern this bullet is evidence of, not the
+  exception.
+  **Layman:** The project's "where are we right now" note still describes work from three days ago.
+  Kind: doc-fix.
+  Source: in-session-2026-08-05 (surfaced while closing FIBR-0226).
 
 ## P13 — Packaging & release
 
