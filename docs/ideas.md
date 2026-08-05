@@ -6,9 +6,9 @@
 > against the current architecture; **only added to the
 > roadmap on user say-so**.
 
-The
-[app-workflow skill](~/.claude/skills/app-workflow/SKILL.md)
-"New ideas" section governs the flow: capture here →
+The "New ideas" section of the `app-workflow` skill
+(`~/.claude/skills/app-workflow/SKILL.md`, machine-local)
+governs the flow: capture here →
 recommend a placement → user decides → either insert into
 ROADMAP.md as a new item, or leave here until later.
 

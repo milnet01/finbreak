@@ -23,8 +23,8 @@ tokens and tempting "skip without thinking" reflexes.
 > than left ambiguous, so a future session does not "tidy" the old
 > tokens.
 
-The
-[app-workflow skill](~/.claude/skills/app-workflow/SKILL.md)
+The `app-workflow` skill
+(`~/.claude/skills/app-workflow/SKILL.md`, machine-local)
 reads this file **before** triaging audit findings, so
 already-confirmed false positives are discarded without
 re-evaluating.

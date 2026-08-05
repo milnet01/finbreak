@@ -1,8 +1,8 @@
 # finbreak — Project instructions for Claude Code
 
 Scaffolded from the **Ants App-Build** template; follows the
-[`app-workflow`](~/.claude/skills/app-workflow/SKILL.md)
-skill.
+`app-workflow` skill — a machine-local file at
+`~/.claude/skills/app-workflow/SKILL.md`, not part of this repo.
 
 ## Where state lives
 
@@ -27,8 +27,8 @@ Read these in order on every session start:
    invoking `/audit` or `/code-quality-review` so already-confirmed
    project-specific false positives aren't re-flagged. The
    allowlist is the closed-loop memory for this project — see
-   the [app-workflow skill](~/.claude/skills/app-workflow/SKILL.md)
-   "False-positive learning" section.
+   the "False-positive learning" section of the `app-workflow`
+   skill (`~/.claude/skills/app-workflow/SKILL.md`).
 
 ## Closing a phase
 

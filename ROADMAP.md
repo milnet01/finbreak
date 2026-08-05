@@ -1876,7 +1876,7 @@ lands on top.
   Kind: investigate.
   Source: user-request-2026-08-05 (system scan + online research).
 
-- 📋 [FIBR-0228] **Three docs link to a ~/ path that resolves nowhere.**
+- ✅ [FIBR-0228] **Three docs link to a ~/ path that resolves nowhere.**
   Surfaced by `doc_integrity` during the FIBR-0001 cold-eyes run and
   deliberately NOT fixed there — pre-existing, and in three files that
   review did not cover (stay-in-lane). Recorded so it is not
@@ -1918,6 +1918,21 @@ lands on top.
     two of the six sites are in `CLAUDE.md`, which it did touch;
     drive-by-fixing them would have buried this correction in an
     unrelated diff. Left whole for one deliberate pass.
+  Resolved (2026-08-05): all six sites take the preferred fix — the
+  markdown link is dropped and the path stays as inline code, with
+  "machine-local" naming why it is not a project doc. Sites:
+  `CLAUDE.md:4`, `CLAUDE.md:30`, `docs/ideas.md:10`,
+  `docs/known-issues.md:7`, `docs/audit-allowlist.md:27`,
+  `ROADMAP.md` (the § 3.8 pointer near the phase-loop diagram).
+
+  Verified BOTH ways, per this bullet's own correction: `doc_integrity`
+  over `docs/` returns `broken_link: 0` and `dead_anchor: 0` across 122
+  checked docs, AND `grep -rn ']( *~/' --include=*.md .` returns zero.
+  Widened the grep past `--include=*.md` as well — no `~/` markdown link
+  survives anywhere in the tree.
+
+  Doc-only, and it does not touch `docs/specs/FIBR-0001.md`, so the gate
+  was correctly skipped per the project's doc-only push rule.
 
 - ✅ [FIBR-0229] **`.claude/workflow.md`'s status header is four items stale.**
   §1's status header is dated **2026-08-02** and describes the v0.1.19
@@ -4886,5 +4901,5 @@ Phase closes
 ```
 
 See `docs/standards/roadmap-format.md § 3.8` and the
-[app-workflow skill](~/.claude/skills/app-workflow/SKILL.md)
-for the full pattern.
+`app-workflow` skill (`~/.claude/skills/app-workflow/SKILL.md`,
+machine-local) for the full pattern.

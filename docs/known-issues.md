@@ -3,10 +3,10 @@
 > **Status:** Empty until first deferral.
 > **Bar for entry:** high — only items genuinely blocked by
 > an unbuilt dependency, with the dependency named
-> explicitly. The
-> [app-workflow skill](~/.claude/skills/app-workflow/SKILL.md)'s
-> default disposition is to fold every actionable finding
-> into a fix-pass; this file is the exception case.
+> explicitly. The `app-workflow` skill
+> (`~/.claude/skills/app-workflow/SKILL.md`, machine-local)
+> defaults to folding every actionable finding into a
+> fix-pass; this file is the exception case.
 
 
 ## Format
