@@ -332,96 +332,96 @@ vault that locks mid-render is caught by the existing guards.
 
 ## 5. Invariants
 
-**INV-1 — integer-only arithmetic.** No `Decimal` or `float` appears in
-`services/month_summary.py`. Every figure is integer minor units; the crossing to
-`Decimal` happens once, in the strip, via `to_display_decimal`.
-*Breaks when:* a percentage is computed as `movement / baseline` instead of by
-cross-multiplication.
-*Test:* `grep -nE "Decimal|float\(" src/finbreak/services/month_summary.py`
-returns nothing.
+- **INV-1** — integer-only arithmetic. No `Decimal` or `float` appears in
+  `services/month_summary.py`. Every figure is integer minor units; the crossing to
+  `Decimal` happens once, in the strip, via `to_display_decimal`.
+  *Breaks when:* a percentage is computed as `movement / baseline` instead of by
+  cross-multiplication.
+  *Test:* `grep -nE "Decimal|float\(" src/finbreak/services/month_summary.py`
+  returns nothing.
 
-**INV-2 — confirmed transfers are excluded from every figure.** From `M`'s spend,
-from every baseline month's spend, and from the cause candidate set.
-*Breaks when:* a transfer between two of the user's own accounts is counted as
-spending, which would make every month with a transfer look expensive.
-*Test:* a vault with one confirmed transfer pair produces the identical
-`MonthSummary` to the same vault with those two rows deleted.
+- **INV-2** — confirmed transfers are excluded from every figure. From `M`'s spend,
+  from every baseline month's spend, and from the cause candidate set.
+  *Breaks when:* a transfer between two of the user's own accounts is counted as
+  spending, which would make every month with a transfer look expensive.
+  *Test:* a vault with one confirmed transfer pair produces the identical
+  `MonthSummary` to the same vault with those two rows deleted.
 
-**INV-3 — the strip is absent for the two year modes.** `MODE_YEAR_TO_DATE` and
-`MODE_SPECIFIC_YEAR` render nothing, and the detector is not called.
-*Breaks when:* a mode check keys on "not a specific month" and lets year-to-date
-through, summarising a 7-month window as though it were a month.
-*Test:* the strip's `isHidden()` is true under both year modes and false under all
-three month modes, given a vault with sufficient history.
+- **INV-3** — the strip is absent for the two year modes. `MODE_YEAR_TO_DATE` and
+  `MODE_SPECIFIC_YEAR` render nothing, and the detector is not called.
+  *Breaks when:* a mode check keys on "not a specific month" and lets year-to-date
+  through, summarising a 7-month window as though it were a month.
+  *Test:* the strip's `isHidden()` is true under both year modes and false under all
+  three month modes, given a vault with sufficient history.
 
-**INV-4 — windows are like-for-like.** When `M` is partial, `M`'s window and all
-three baseline windows cover day 1 to `min(today.day, <month length>)`.
-*Breaks when:* a half-finished month is compared against three full ones, which
-makes every month look ~50% cheaper than usual until it ends.
-*Test:* on 14 March with identical daily spend in every month, `movement_minor ==
-0`; with the baselines taken over full months it is strongly negative.
+- **INV-4** — windows are like-for-like. When `M` is partial, `M`'s window and all
+  three baseline windows cover day 1 to `min(today.day, <month length>)`.
+  *Breaks when:* a half-finished month is compared against three full ones, which
+  makes every month look ~50% cheaper than usual until it ends.
+  *Test:* on 14 March with identical daily spend in every month, `movement_minor ==
+  0`; with the baselines taken over full months it is strongly negative.
 
-**INV-5 — insufficient history yields `None`, never a guess.** Each of §4.7's
-three conditions independently returns `None`.
-*Breaks when:* a vault two months old produces "your usual month".
-*Test:* one leg per §4.7 condition, each asserting `summarise_month(...) is None`,
-and each with the blocking condition relaxed to assert a non-`None` result — so
-the leg cannot pass against a detector that returns `None` unconditionally.
+- **INV-5** — insufficient history yields `None`, never a guess. Each of §4.7's
+  three conditions independently returns `None`.
+  *Breaks when:* a vault two months old produces "your usual month".
+  *Test:* one leg per §4.7 condition, each asserting `summarise_month(...) is None`,
+  and each with the blocking condition relaxed to assert a non-`None` result — so
+  the leg cannot pass against a detector that returns `None` unconditionally.
 
-**INV-6 — `NORMAL` unless both materiality gates pass.** A movement clearing only
-the relative gate, or only the absolute one, yields `NORMAL`.
-*Breaks when:* one gate is dropped, and the strip starts announcing R30 movements
-as news.
-*Test:* four legs — neither gate, relative only, absolute only, both — asserting
-`NORMAL, NORMAL, NORMAL, HIGHER`.
+- **INV-6** — `NORMAL` unless both materiality gates pass. A movement clearing only
+  the relative gate, or only the absolute one, yields `NORMAL`.
+  *Breaks when:* one gate is dropped, and the strip starts announcing R30 movements
+  as news.
+  *Test:* four legs — neither gate, relative only, absolute only, both — asserting
+  `NORMAL, NORMAL, NORMAL, HIGHER`.
 
-**INV-7 — a cause is attached only to a `HIGHER` verdict.** `MonthSummary.cause`
-is `None` whenever `verdict` is `LOWER` or `NORMAL`, whatever the transaction set.
-*Breaks when:* a month that came in R2,000 *under* baseline is captioned "almost
-all of it was one thing — a R1,900 vet bill", which reads as an explanation and
-is a non sequitur.
-*Test:* a `LOWER` month containing a transaction larger than `_CAUSE_NUM/_CAUSE_DEN`
-of `abs(movement)` still yields `cause is None`.
+- **INV-7** — a cause is attached only to a `HIGHER` verdict. `MonthSummary.cause`
+  is `None` whenever `verdict` is `LOWER` or `NORMAL`, whatever the transaction set.
+  *Breaks when:* a month that came in R2,000 *under* baseline is captioned "almost
+  all of it was one thing — a R1,900 vet bill", which reads as an explanation and
+  is a non sequitur.
+  *Test:* a `LOWER` month containing a transaction larger than `_CAUSE_NUM/_CAUSE_DEN`
+  of `abs(movement)` still yields `cause is None`.
 
-**INV-8 — the correction template is selected by the sign of `residual`.** Not by
-the sign of `movement`.
-*Breaks when:* §2.1's error ships — a month that is still over budget after
-removing its biggest expense is described as "better than normal".
-*Test:* `movement=2340, cause=1900` yields `residual_minor == 440` (positive → the
-"even without it" template); `movement=1460, cause=1900` yields `-440` (negative →
-"better than normal"). The two must select different templates.
+- **INV-8** — the correction template is selected by the sign of `residual`. Not by
+  the sign of `movement`.
+  *Breaks when:* §2.1's error ships — a month that is still over budget after
+  removing its biggest expense is described as "better than normal".
+  *Test:* `movement=2340, cause=1900` yields `residual_minor == 440` (positive → the
+  "even without it" template); `movement=1460, cause=1900` yields `-440` (negative →
+  "better than normal"). The two must select different templates.
 
-**INV-9 — the summary is scoped to the same accounts as the tiles.** The strip and
-`ReportingService.summary` receive the identical `account_ids`.
-*Breaks when:* selecting one account leaves a whole-vault sentence above
-single-account tiles, so the strip contradicts the figures beneath it.
-*Test:* with two accounts, selecting one produces a `spend_minor` equal to that
-account's expenditure alone, and different from the "All accounts" value.
+- **INV-9** — the summary is scoped to the same accounts as the tiles. The strip and
+  `ReportingService.summary` receive the identical `account_ids`.
+  *Breaks when:* selecting one account leaves a whole-vault sentence above
+  single-account tiles, so the strip contradicts the figures beneath it.
+  *Test:* with two accounts, selecting one produces a `spend_minor` equal to that
+  account's expenditure alone, and different from the "All accounts" value.
 
-**INV-10 — the service emits no user-facing string.** `MonthSummary` carries an
-enum and integers; no field holds prose beyond `MonthCause.description`, which is
-the user's own transaction text passed through unmodified.
-*Breaks when:* a sentence is assembled in the service, where `tr()` is
-unavailable, silently making the feature untranslatable.
-*Test:* `grep -n "tr(\|QCoreApplication" src/finbreak/services/month_summary.py`
-returns nothing, **and** the strip renders a full three-sentence summary from a
-hand-constructed `MonthSummary` with no service involved.
+- **INV-10** — the service emits no user-facing string. `MonthSummary` carries an
+  enum and integers; no field holds prose beyond `MonthCause.description`, which is
+  the user's own transaction text passed through unmodified.
+  *Breaks when:* a sentence is assembled in the service, where `tr()` is
+  unavailable, silently making the feature untranslatable.
+  *Test:* `grep -n "tr(\|QCoreApplication" src/finbreak/services/month_summary.py`
+  returns nothing, **and** the strip renders a full three-sentence summary from a
+  hand-constructed `MonthSummary` with no service involved.
 
-**INV-11 — the clock is injected.** `summarise_month` and
-`MonthSummaryService.summary` take `today: date`; neither calls `date.today()`.
-*Breaks when:* the suite passes in August and fails on 1 March, or a partial-month
-test becomes unwritable.
-*Test:* `grep -n "date.today()" src/finbreak/services/month_summary.py` returns
-nothing.
+- **INV-11** — the clock is injected. `summarise_month` and
+  `MonthSummaryService.summary` take `today: date`; neither calls `date.today()`.
+  *Breaks when:* the suite passes in August and fails on 1 March, or a partial-month
+  test becomes unwritable.
+  *Test:* `grep -n "date.today()" src/finbreak/services/month_summary.py` returns
+  nothing.
 
-**INV-12 — a mid-render lock does not crash the dashboard.** A `VaultLockedError`
-raised by the summary read propagates to the existing slot guards rather than
-being swallowed or escaping as a different type.
-*Breaks when:* the service catches `VaultLockedError` itself and returns a
-partial summary computed from rows it did manage to read — a sentence about a
-fraction of the month, presented as the month.
-*Test:* a stand-in raising `VaultLockedError` from the repository leaves
-`_on_period_changed` returning cleanly and the strip showing its prior content.
+- **INV-12** — a mid-render lock does not crash the dashboard. A `VaultLockedError`
+  raised by the summary read propagates to the existing slot guards rather than
+  being swallowed or escaping as a different type.
+  *Breaks when:* the service catches `VaultLockedError` itself and returns a
+  partial summary computed from rows it did manage to read — a sentence about a
+  fraction of the month, presented as the month.
+  *Test:* a stand-in raising `VaultLockedError` from the repository leaves
+  `_on_period_changed` returning cleanly and the strip showing its prior content.
 
 ## 6. Failure modes
 
@@ -518,8 +518,12 @@ the deliverable rather than a number that rots.
 Four repository reads are added per `HomeView.refresh()`: one
 `drill_rows_in_range` over `M`'s window and three `rows_in_range` over the
 baseline months. Both are indexed range scans over `occurred_on`, the same shape
-`summary`, `monthly_trend` and `drill_down` already issue (4 existing call sites
-in `services/`; `grep -rn "rows_in_range" src/finbreak/services/`).
+`summary`, `monthly_trend` and `drill_down` already issue — five existing call
+sites in `services/`, four `rows_in_range` and one `drill_rows_in_range`
+(`grep -rn "rows_in_range" src/finbreak/services/ | wc -l` → 5, of which
+`grep -rn "drill_rows_in_range(" src/finbreak/services/ | wc -l` → 1; the plain
+grep matches both names, which is why the split is stated rather than the bare
+total).
 
 No timing figure is stated here, because none has been measured — per the
 authoring rule that a number arrives with the command that produced it. If the
