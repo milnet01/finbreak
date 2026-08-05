@@ -182,6 +182,25 @@ visibility once per session via
 the result is recorded in `.claude/workflow.md` § 1 status
 header.
 
+### Doc-only pushes skip the gate (user directive 2026-08-05)
+
+A push that touches **only** documentation does not need
+`./scripts/ci-local.sh` — neither run by hand first, nor via the
+pre-push hook. Push it with `git push --no-verify`. The gate takes
+~1m45s and no Python stage reads prose, so paying it for a ROADMAP
+annotation or a CHANGELOG line is pure waiting.
+
+**One exception, and it is easy to miss.** `tests/features/harness/`
+(FIBR-0001 INV-1) reads **`docs/specs/FIBR-0001.md`** and compares its
+stage table against `scripts/ci-local.sh`. So a "doc-only" edit to
+*that one spec* can genuinely turn the suite red. Run the gate — or at
+least `pytest tests/features/harness/` (well under a second) — when
+the diff touches it.
+
+Rule of thumb: doc-only **and** not `docs/specs/FIBR-0001.md` → skip
+the gate. Anything else → gate as usual. A code change never skips,
+however small.
+
 ## Module map
 
 `src` layout; the package is `finbreak`, found by pytest via
