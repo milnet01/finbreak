@@ -1631,6 +1631,26 @@ lands on top.
   install path. Container run exit 0; gate green 1691 passed, 2 skipped.
   FIBR-0001 INV-1 amended (also picking up the undocumented mypy stage
   from FIBR-0061). Commit e3959e2.
+  Cold-eyes on FIBR-0001 (2026-08-05, 3 loops, 2 cold lanes each):
+  32 verified findings, all fixed. Converged at loop 3 — findings
+  halved each loop (14 → 12 → 6).
+
+  It found a real gap in THIS item as shipped: the shellcheck stage
+  globbed `scripts/*.sh` and so skipped the seven packaging recipes
+  under packaging/obs/ and packaging/flatpak/ — the OBS/Flathub publish
+  path the stage's own rationale claimed to cover. Now selected via
+  `git ls-files '*.sh'`, which cannot go stale; all seven were already
+  clean. Also caught loop 1 abbreviating the gitleaks row to
+  `gitleaks dir .`, dropping --redact — on a public repo that is the
+  difference between catching a leaked credential and printing it into
+  a world-readable CI log.
+
+  The durable outcome is tests/features/harness/: INV-1's "one list"
+  guarantee was prose discipline with no check behind it, which is why
+  the gate list drifted twice in one day undetected. The suite now
+  compares the spec's stage table against ci-local.sh as an unordered
+  set and regression-locks --redact and the git ls-files selector.
+  Gate green 1698 passed, 2 skipped. Commits 0441d4c, fef5867, e48d16d.
 
 - 📋 [FIBR-0226] **Harden the workflows against zizmor's supply-chain findings.**
   `zizmor 1.29.0` (installed, NOT yet in the gate) reports **14 findings
