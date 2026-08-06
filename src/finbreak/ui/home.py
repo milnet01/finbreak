@@ -51,6 +51,7 @@ from finbreak.models import (
 from finbreak.services.accounts import AccountService
 from finbreak.services.alerts import AlertService
 from finbreak.services.auth import AmountPrefs, AuthService
+from finbreak.services.month_summary import MonthSummaryService
 from finbreak.services.recurring import RecurringService
 from finbreak.services.reporting import (
     MODE_CURRENT_MONTH,
@@ -64,6 +65,7 @@ from finbreak.services.reporting import (
 from finbreak.ui._amount import _NEGATIVE_TEXT, _POSITIVE_TEXT, _format_amount
 from finbreak.ui._table_state import remember_columns
 from finbreak.ui.charts import ChartTheme, build_breakdown_donut, build_trend_chart
+from finbreak.ui.month_summary import MonthSummaryStrip
 
 
 @dataclass
@@ -92,6 +94,11 @@ class HomeView(QWidget):
         auth: AuthService,
         recurring: RecurringService,
         alerts: AlertService,
+        # FIBR-0231: added LAST, before ``amount_prefs`` — which is the sixth
+        # positional slot today, so inserting ahead of it would silently re-bind
+        # any positional sixth argument to this service. Every caller passes
+        # ``amount_prefs`` by keyword.
+        month_summary: MonthSummaryService,
         amount_prefs: AmountPrefs | None = None,
         parent: QWidget | None = None,
     ):
@@ -101,6 +108,7 @@ class HomeView(QWidget):
         self._auth = auth
         self._recurring = recurring
         self._alerts = alerts
+        self._month_summary = month_summary
         self._amount_prefs = amount_prefs or AmountPrefs(NegativeStyle.MINUS, True)
         # Guards the programmatic selector loads from re-triggering a persist.
         self._loading = False
@@ -158,6 +166,11 @@ class HomeView(QWidget):
         layout = QVBoxLayout(content)
 
         layout.addLayout(self._build_selectors())
+
+        # The plain-English summary (FIBR-0231) is the FIRST thing on the page: a
+        # reader who stops after one line must have read the most useful line.
+        self._month_strip = MonthSummaryStrip()
+        layout.addWidget(self._month_strip)
 
         # The slim Net strip above the columns (D4) — re-homes the old Net tile.
         self._net_value = QLabel("")
@@ -363,6 +376,16 @@ class HomeView(QWidget):
 
     # --- render ------------------------------------------------------------ #
     def refresh(self) -> None:
+        # FIBR-0231 INV-13: clear the month strip FIRST, before any vault read.
+        # refresh() has eight call sites and only two are wrapped in an
+        # `except VaultLockedError`; one line here closes all eight, because
+        # whatever raises, and wherever, the strip is already empty. A stale
+        # figure in a tile is ambiguous; a stale SENTENCE naming a month is a
+        # positive false claim.
+        self._month_strip.clear()
+        # One clock reading for the whole render (FIBR-0231 § 4.9): the strip and
+        # the tiles must not straddle midnight, which is what INV-10 asserts.
+        today = date.today()
         # Getting-started iff the vault holds zero transactions (INV-7).
         if self._reporting.transaction_count() == 0:
             self._stack.setCurrentIndex(0)
@@ -376,9 +399,17 @@ class HomeView(QWidget):
         symbol = self._reporting.base_currency()
         self._drill_symbol = symbol
 
+        # The plain-English summary sits above the tiles it characterises, so it
+        # is account-scoped exactly as they are (FIBR-0231 INV-11) and reads the
+        # same ``today``. ``None`` — a year mode, or too little history — hides
+        # the strip entirely; the service owns that decision, not this view.
+        self._month_strip.set_summary(
+            self._month_summary.summary(prefs, account_ids, today), symbol
+        )
+
         # The Net strip (D4) is the one summary()-sourced figure; the column headers
         # come from the drill nodes, which equal Summary by FIBR-0138 INV-1.
-        self._render_net(self._reporting.summary(prefs, account_ids), symbol)
+        self._render_net(self._reporting.summary(prefs, account_ids, today), symbol)
 
         # One drill_down() feeds all three columns (D2). HomeView (a QObject) owns the
         # tr()-ed fixed strings, keeping the non-QObject ReportingService translation-
@@ -390,7 +421,7 @@ class HomeView(QWidget):
             uncategorised=self.tr("Uncategorised"),
         )
         income, spending, transfers = self._reporting.drill_down(
-            prefs, account_ids, labels=labels
+            prefs, account_ids, today, labels=labels
         )
         # Node → column map (load-bearing: drill_down order ≠ display order, D2). The
         # branch colour is gated on amount_prefs.colour; Transfers has no sign colour.
@@ -403,9 +434,9 @@ class HomeView(QWidget):
         )
         self._render_column("transfers", transfers, None, symbol)
 
-        self._render_trend(self._reporting.monthly_trend(prefs, account_ids))
+        self._render_trend(self._reporting.monthly_trend(prefs, account_ids, today))
         # The recurring card is unscoped (INV-3/D5): summary(today) takes no prefs.
-        self._render_recurring(self._recurring.summary(date.today()), symbol)
+        self._render_recurring(self._recurring.summary(today), symbol)
         # Alerts are likewise unscoped + clock-injected (FIBR-0172 D8/INV-16).
         self.refresh_alerts()
         self._stack.setCurrentIndex(1)

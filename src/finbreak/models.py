@@ -574,3 +574,61 @@ class SpendingAlert:
     amount_minor: int
     baseline_minor: int
     on: date | None
+
+
+class MonthVerdict(StrEnum):
+    """What the plain-English month summary says a month did (FIBR-0231 § 4.6).
+    ``NORMAL`` is a real verdict, not an absence: an unremarkable month collapses
+    to one short sentence rather than to silence."""
+
+    HIGHER = "higher"
+    LOWER = "lower"
+    NORMAL = "normal"
+
+
+@dataclass(frozen=True)
+class MonthCause:
+    """The merchant family a HIGHER month's movement is attributed to
+    (FIBR-0231 § 4.6). The unit is a **family**, never a row, and the quantity is
+    its **excess over its own baseline** — a routine bill present in every
+    baseline month has an excess of 0 and so explains nothing (§ 2.2).
+
+    ``excess_minor`` is deliberately the only figure carried: it is what the gate
+    tested, what slot 3 removes and what slot 2 prints. The family's *gross*
+    spend in M is a different and, for a family with real baseline spend, false
+    number to print ("R1,900 more than usual" when the excess is R1,500).
+    ``name`` is carried at FULL length — the 40-character display truncation is
+    the strip's (INV-12)."""
+
+    merchant_key: str
+    name: str
+    excess_minor: int
+
+
+@dataclass(frozen=True)
+class MonthSummary:
+    """The facts behind the Home month-summary strip (FIBR-0231 § 4.7).
+
+    **Facts, never prose** — an enum verdict, integers and booleans. The only
+    ``str``s are ``month`` (``"YYYY-MM"``) and ``MonthCause.name``, which is
+    derived from the user's own transaction text. Every sentence is assembled in
+    ``ui.month_summary``, where ``tr()`` exists (INV-12).
+
+    ``exponent`` rides along so the strip can format without a vault handle;
+    ``show_year`` is computed by the service, which already has ``today``.
+    ``residual_minor`` is ``None`` **iff no correction sentence is warranted** —
+    no cause, or a residual below the materiality floor — so
+    ``residual_minor is not None`` is the strip's render condition and the strip
+    evaluates no threshold of its own (§ 4.6)."""
+
+    month: str
+    partial: bool
+    days: int
+    exponent: int
+    show_year: bool
+    verdict: MonthVerdict
+    spend_minor: int
+    baseline_minor: int
+    movement_minor: int
+    cause: MonthCause | None
+    residual_minor: int | None

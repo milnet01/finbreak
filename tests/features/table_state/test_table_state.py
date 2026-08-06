@@ -341,6 +341,7 @@ def _txn_view(service: AuthService):
 def _home_view(service: AuthService):
     """The five-service HomeView construction, following tests/features/dashboard/."""
     from finbreak.services.alerts import AlertService
+    from finbreak.services.month_summary import MonthSummaryService
     from finbreak.services.recurring import RecurringService
     from finbreak.services.reporting import ReportingService
     from finbreak.ui.home import HomeView
@@ -351,6 +352,7 @@ def _home_view(service: AuthService):
         service,
         recurring=RecurringService(service.vault),
         alerts=AlertService(service.vault),
+        month_summary=MonthSummaryService(service.vault),
     )
 
 

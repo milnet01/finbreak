@@ -41,8 +41,8 @@ this**, so treat a stale date as "recent work was out-of-band", not as
 
 | Field | Value |
 |---|---|
-| **Active item ID** | FIBR-0231 (spec CLEARED FOR CODE; step 3 TDD is next) |
-| **Blocked on** | Nothing. Next is step 3 — TDD, `tests/features/month_summary/`. |
+| **Active item ID** | FIBR-0231 (TDD done, implementation green; steps 5–9 next) |
+| **Blocked on** | Nothing. Next is `/close-phase` (steps 5–9). |
 | **Last update** | 2026-08-06 |
 
 ### Step progress
@@ -58,9 +58,15 @@ nine steps are defined in `~/.claude/skills/app-workflow/SKILL.md`.
    its 26 findings all fixed. Two design changes landed: §4.4's common-day-count
    rule was replaced (complete months compare whole; only a partial month
    truncates), and the absolute materiality gate is belt-and-braces.
-2. 🚧 Verify dependencies
-3. ⬜ Write tests first
-4. ⬜ Implement until tests pass
+2. ✅ Verify dependencies — **none added.** § 3 decision 6: no new dependency, no
+   schema change, no settings key; every figure comes from `ReportingRepository`.
+3. ✅ Write tests first — `tests/features/month_summary/` (`spec.md` + the four
+   files § 7 mandates, split by capability). Written and confirmed **red** before
+   any implementation existed.
+4. ✅ Implement until tests pass — `services/month_summary.py`,
+   `ui/month_summary.py`, three `models.py` shapes, the `HomeView` +
+   `main_window` wiring, and the six-file `HomeView(` test ripple. **Gate green:
+   1785 passed / 2 skipped**, ruff + mypy clean.
 5. ⬜ Run `/audit` — in parallel with 6
 6. ⬜ Run `/code-quality-review` — in parallel with 5
 7. ⬜ Fold all actionable findings into one new fix-pass

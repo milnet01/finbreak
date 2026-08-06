@@ -129,6 +129,13 @@ logic. Notable screens:
 - **ReportingService** — aggregates transactions by category, account, and
   period into the numbers the dashboard and PDF need. Main responsibility:
   turn rows into breakdowns.
+- **MonthSummaryService** — prepares one month's like-for-like windows and
+  merchant families for the pure `summarise_month` detector, which returns the
+  facts behind the dashboard's plain-English summary strip (FIBR-0231). A
+  read-only vault-scoped service exactly like ReportingService — no layering
+  change. Main responsibility: decide what a month *did*, in figures; the
+  sentence itself is assembled in `ui/month_summary.py`, so the service stays
+  translation-free.
 - **PdfExportService** — renders the chosen sections to PDF (Qt engine), then
   encrypts with a password (pikepdf). Main responsibility: produce the locked
   shareable report.

@@ -61,6 +61,7 @@ def _set_cat(service, txn_id, cat_id):
 
 def _home(service):
     from finbreak.services.alerts import AlertService
+    from finbreak.services.month_summary import MonthSummaryService
     from finbreak.services.recurring import RecurringService
     from finbreak.ui.home import HomeView
 
@@ -70,6 +71,7 @@ def _home(service):
         service,
         recurring=RecurringService(service.vault),
         alerts=AlertService(service.vault),
+        month_summary=MonthSummaryService(service.vault),
     )
 
 

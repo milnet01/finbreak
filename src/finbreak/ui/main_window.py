@@ -75,6 +75,7 @@ from finbreak.services.auth import (
 )
 from finbreak.services.backup import BackupService
 from finbreak.services.categorization import CategorizationService
+from finbreak.services.month_summary import MonthSummaryService
 from finbreak.services.password_hint import HintPolicyError, validate_hint
 from finbreak.services.pdf_export import PdfExportService, period_filename_slug
 from finbreak.services.recurring import RecurringService
@@ -711,6 +712,7 @@ class MainWindow(QMainWindow):
             self._service,
             RecurringService(self._service.vault),
             AlertService(self._service.vault),
+            MonthSummaryService(self._service.vault),
             amount_prefs=self._amount_prefs,
         )
         self._home_tab.setObjectName("tab_home")

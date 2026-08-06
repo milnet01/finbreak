@@ -25,6 +25,7 @@ from finbreak.services.accounts import AccountService
 from finbreak.services.auth import AuthService
 from finbreak.services.categories import CategoryService
 from finbreak.services.categorization import CategorizationService
+from finbreak.services.month_summary import MonthSummaryService
 from finbreak.services.recurring import RecurringService
 from finbreak.services.reporting import (
     MODE_SPECIFIC_MONTH,
@@ -569,6 +570,7 @@ def _home(service):
         service,
         recurring=RecurringService(service.vault),
         alerts=AlertService(service.vault),
+        month_summary=MonthSummaryService(service.vault),
     )
 
 

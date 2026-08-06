@@ -135,6 +135,7 @@ from finbreak.services.accounts import AccountService  # noqa: E402
 from finbreak.services.auth import AuthService  # noqa: E402
 from finbreak.services.categories import CategoryService  # noqa: E402
 from finbreak.services.categorization import CategorizationService  # noqa: E402
+from finbreak.services.month_summary import MonthSummaryService  # noqa: E402
 from finbreak.services.recurring import RecurringService  # noqa: E402
 from finbreak.services.reporting import (  # noqa: E402
     MODE_SPECIFIC_MONTH,
@@ -221,6 +222,7 @@ def _home(service, amount_prefs=None):
         service,
         recurring=RecurringService(service.vault),
         alerts=AlertService(service.vault),
+        month_summary=MonthSummaryService(service.vault),
         amount_prefs=amount_prefs,
     )
 

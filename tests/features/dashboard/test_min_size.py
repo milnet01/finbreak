@@ -21,6 +21,7 @@ from finbreak.repositories.transactions import TransactionRepository
 from finbreak.services.accounts import AccountService
 from finbreak.services.alerts import AlertService
 from finbreak.services.auth import AuthService
+from finbreak.services.month_summary import MonthSummaryService
 from finbreak.services.recurring import RecurringService
 from finbreak.services.reporting import ReportingService
 
@@ -50,6 +51,7 @@ def _home(svc: AuthService):
         svc,
         RecurringService(svc.vault),
         AlertService(svc.vault),
+        MonthSummaryService(svc.vault),
     )
 
 

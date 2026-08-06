@@ -61,6 +61,16 @@ def merchant_name(description: str) -> str:
     cosmetic in ``services.recurring``, where the same key is a **filter**: a
     merchant split across two groups can drop each below ``_MIN_OCCURRENCES`` and
     vanish from the recurring list, and so from the forecast that projects it.
+
+    ``services.month_summary`` (FIBR-0231) is the **third** consumer and the
+    **second** filter case, and the sharpest of the three: the key groups a
+    month's spend rows into merchant families, and the cause clause names the
+    family whose spend most exceeds its own baseline. Both directions bite — a
+    merchant split across two keys halves its excess and can drop it under the
+    60% gate, and two shops folding to one key manufacture an excess and can name
+    the wrong payee. So a change here can gain, lose or change a user's cause
+    *sentence* with no change to their data.
+
     Steps: strip; shed leading
     noise prefixes; drop digit-heavy reference tokens (a run of ≥ 3 digits, or a
     majority-digit token); strip edge punctuation; title-case, else fall back to the

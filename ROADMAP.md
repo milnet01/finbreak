@@ -4612,7 +4612,7 @@ because retrofitting them is a data migration.
   Lanes: tests.
   Source: in-session-2026-08-02 v0.1.19 release.
 
-- 📋 [FIBR-0231] **Plain-English monthly summary — the app says what happened, in a sentence.**
+- 🚧 [FIBR-0231] **Plain-English monthly summary — the app says what happened, in a sentence.**
   Tiles, a donut, a trend line, a drill-down, a forecast and alerts all
   ask the reader to work out what the numbers MEAN. Many people can't,
   don't, or get it wrong — and then conclude they are bad with money.
@@ -4702,6 +4702,20 @@ because retrofitting them is a data migration.
   re-derived to 33 rows / 11 nothings.
   SPEC IS CLEARED FOR CODE. Next: step 3, TDD via /write-code —
   tests/features/month_summary/ (4 files per §7).
+  Progress (2026-08-06): TDD complete — implementation green. New
+  tests/features/month_summary/ (spec.md + 4 files, 81 tests, the § 7
+  capability split honoured); src/finbreak/services/month_summary.py (the
+  pure summarise_month detector + MonthSummaryService),
+  src/finbreak/ui/month_summary.py (MonthSummaryStrip, all 18 templates),
+  models.py gains MonthVerdict / MonthCause / MonthSummary. Wired into
+  HomeView (month_summary is the sixth positional parameter, before
+  amount_prefs) + main_window; refresh() now clears the strip as its first
+  statement and reads date.today() once for the strip and the tiles alike.
+  Six existing HomeView call-sites in tests updated. Whole suite 1785
+  passed / 2 skipped; ruff + mypy clean. Docs: text.py's merchant_name
+  docstring now names this as its third consumer and second filter case;
+  design.md's service list gains MonthSummaryService. Next: /close-phase
+  (steps 5-9).
 
 - 📋 [FIBR-0232] **"Safe to spend" — one number for what's left after everything still due this month.**
   The cash-flow forecast (FIBR-0171) already projects a balance forward
@@ -5226,6 +5240,31 @@ is a future error tomorrow.
   Kind: security.
   Lanes: dependencies, security.
   Source: in-session-2026-08-04.
+
+- 📋 [FIBR-0239] **design.md's service list and architecture diagram are two services behind.**
+  Noticed while adding MonthSummaryService to `docs/design.md`'s
+  "Service layer — one service per concern" list (FIBR-0231 § 12). The
+  list, and the mermaid `subgraph Svc` diagram above it, both name
+  Auth / Import / Categorization / TransferDetection / Reporting /
+  PdfExport / Update / Crypto — but NOT `RecurringService` (FIBR-0142)
+  or `AlertService` (FIBR-0172), both of which shipped and both of
+  which HomeView constructs today. So the list was already incomplete
+  before this item touched it.
+
+  Left as-is rather than fixed in passing: repairing pre-existing doc
+  debt inside a feature commit is out of that commit's lane, and the
+  mermaid diagram needs the same two nodes plus their edges, which is a
+  second decision (the diagram is deliberately not exhaustive — it omits
+  the repositories layer's members too, so "add every service" may be
+  the wrong answer for the picture even where it is right for the list).
+
+  Fix: add RecurringService and AlertService to the prose list; decide
+  separately whether the diagram tracks the list or stays a sketch, and
+  say which in the diagram's caption so the next session does not have
+  to re-derive the answer.
+  **Layman:** An internal architecture document lists most of the app's parts but has quietly fallen behind by two.
+  Kind: doc-fix.
+  Source: in-session-2026-08-06 (surfaced while landing FIBR-0231).
 
 ## How to add an item
 
