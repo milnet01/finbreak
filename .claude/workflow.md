@@ -41,8 +41,8 @@ this**, so treat a stale date as "recent work was out-of-band", not as
 
 | Field | Value |
 |---|---|
-| **Active item ID** | FIBR-0231 (TDD done, implementation green; steps 5–9 next) |
-| **Blocked on** | Nothing. Next is `/close-phase` (steps 5–9). |
+| **Active item ID** | FIBR-0085 (batch statement import) — FIBR-0231 closed by `/close-phase` 2026-08-06 |
+| **Blocked on** | Nothing. Next is step 1 — verify the spec (none written yet; read FIBR-0086 alongside, described there as its enabler). |
 | **Last update** | 2026-08-06 |
 
 ### Step progress
@@ -51,22 +51,10 @@ While an item is active, Claude marks the current step 🚧; completed
 steps flip to ✅. Resets to all ⬜ when a new item becomes active. The
 nine steps are defined in `~/.claude/skills/app-workflow/SKILL.md`.
 
-1. ✅ Verify spec — `docs/specs/FIBR-0231-plain-english-month-summary.md` is
-   **CLEARED FOR CODE** (2026-08-06). Four `/cold-eyes` loops; the loop-3 tail
-   (`docs/reviews/FIBR-0231-loop3-tail.md`) was folded in whole, and the
-   confirming loop 4 returned **zero CRITICAL and no design-level defect** with
-   its 26 findings all fixed. Two design changes landed: §4.4's common-day-count
-   rule was replaced (complete months compare whole; only a partial month
-   truncates), and the absolute materiality gate is belt-and-braces.
-2. ✅ Verify dependencies — **none added.** § 3 decision 6: no new dependency, no
-   schema change, no settings key; every figure comes from `ReportingRepository`.
-3. ✅ Write tests first — `tests/features/month_summary/` (`spec.md` + the four
-   files § 7 mandates, split by capability). Written and confirmed **red** before
-   any implementation existed.
-4. ✅ Implement until tests pass — `services/month_summary.py`,
-   `ui/month_summary.py`, three `models.py` shapes, the `HomeView` +
-   `main_window` wiring, and the six-file `HomeView(` test ripple. **Gate green:
-   1785 passed / 2 skipped**, ruff + mypy clean.
+1. ⬜ Verify spec
+2. ⬜ Verify dependencies
+3. ⬜ Write tests first
+4. ⬜ Implement until tests pass
 5. ⬜ Run `/audit` — in parallel with 6
 6. ⬜ Run `/code-quality-review` — in parallel with 5
 7. ⬜ Fold all actionable findings into one new fix-pass

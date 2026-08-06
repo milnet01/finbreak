@@ -23,6 +23,31 @@ signaling per
 
 ### Added
 
+- **The dashboard now tells you what your month did, in a sentence** (FIBR-0231)
+  A short line at the top of Home says in plain words what happened to
+  your money — "September cost you R2,340 more than your usual month.
+  Most of it was one thing — Vet, R1,900 more than usual." — instead of
+  leaving you to work it out from the charts. "Your usual month" is the
+  three months before it, compared like for like.
+
+  It is deliberately quiet. When the month is ordinary it says so in a
+  few words. When there isn't enough history to know what usual means,
+  when the month hasn't happened yet, or when it holds no spending at
+  all, it says nothing rather than guessing. Mid-month it says "so far"
+  and keeps that qualifier in every sentence, so a partial month never
+  reads as a finished one.
+
+  Two things it will not do. It never blames a routine bill for a month
+  it did not move: the cause is a merchant's spending above that
+  merchant's own normal, so your rent — identical every month — explains
+  nothing and is never named. And it never tells you a month was better
+  than normal when the arithmetic says otherwise; the "take that out"
+  sentence is chosen by what is actually left over, not by which
+  direction the month moved.
+
+  Year periods render nothing — that needs a year-over-year comparison,
+  which is its own feature.
+
 - **Delete several statements at once, and a Delete all button** (FIBR-0202)
   The Statements tab takes a plural selection too, and a new Delete all clears every recorded import. The warning message states truthfully what the batch will destroy: the obvious way to build it would have said nothing is permanently removed while in fact destroying transactions. Change account still works on one statement at a time, and deleting a single statement reads exactly as it did before.
 

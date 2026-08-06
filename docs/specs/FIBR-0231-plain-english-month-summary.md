@@ -1,10 +1,15 @@
 # FIBR-0231 — Plain-English monthly summary: the app does the reading
 
-**Status:** 🚧 **CLEARED FOR CODE** (2026-08-06) — four `/cold-eyes` loops, the
-last returning **zero CRITICAL and no design-level defect**, with its findings
-(test legs that could not fail, and stale rationale) all fixed in place. Those
-last fixes have not themselves been read cold; TDD is the next reader. Review
-history is §13, superseded draft decisions §13.1.
+**Status:** ✅ **SHIPPED** (2026-08-06). Four `/cold-eyes` loops before code, then
+TDD, then `/close-phase`: three independent cold review lanes returned **zero
+CRITICAL and zero HIGH in the code**, the arithmetic lane finding nothing at any
+severity. The adversarial *test* lane — which mutated the implementation rather
+than reading it — found 2 HIGH and 6 MEDIUM, every one a test that could not
+fail; all fixed and mutation-proved. Two claims in this document were **wrong and
+are corrected in place**: §4.9's "whatever raises, and wherever" (the prefs write
+precedes `refresh()`) and §4.8 condition 3's "the strip first speaks on the 7th"
+(condition 2 binds first). Review history is §13, superseded draft decisions
+§13.1; the close record is `docs/journal/FIBR-0231.md`.
 **Kind:** feature.
 **Source:** ROADMAP FIBR-0231 (user-request-2026-08-05, layman-comprehension
 suggestions).

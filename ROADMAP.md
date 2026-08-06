@@ -4612,7 +4612,7 @@ because retrofitting them is a data migration.
   Lanes: tests.
   Source: in-session-2026-08-02 v0.1.19 release.
 
-- 🚧 [FIBR-0231] **Plain-English monthly summary — the app says what happened, in a sentence.**
+- ✅ [FIBR-0231] **Plain-English monthly summary — the app says what happened, in a sentence.**
   Tiles, a donut, a trend line, a drill-down, a forecast and alerts all
   ask the reader to work out what the numbers MEAN. Many people can't,
   don't, or get it wrong — and then conclude they are bad with money.
@@ -4716,6 +4716,30 @@ because retrofitting them is a data migration.
   docstring now names this as its third consumer and second filter case;
   design.md's service list gains MonthSummaryService. Next: /close-phase
   (steps 5-9).
+  Resolved (2026-08-06): SHIPPED. Steps 5-9 closed by /close-phase.
+  /audit + /code-quality-review (3 independent cold lanes) returned 0
+  CRITICAL and 0 HIGH in the CODE; the arithmetic lane found nothing at
+  any severity, verified by EXECUTION (the L_min-1 head cap, leap-February
+  and year-boundary windows, the family-mean divisor, the ladder's order,
+  every threshold operator, and a 144-month brute force confirming §6.1's
+  February bias never reaches the gate). The adversarial test lane, which
+  applied 45 mutations rather than reading, found 2 HIGH + 6 MEDIUM — all
+  of them TESTS that could not fail, not defects in behaviour. Notably a
+  mutation emitting the WRONG MONTH passed all 81 tests, and the
+  round-half-up mean leg was vacuous twice over (expected value a verbatim
+  copy of the line under test; fixture sum 1 mod 3, where truncation gives
+  the same answer). All 17 actionable findings fixed inline and
+  mutation-proved; no FP## spawned, nothing deferred. Three code fixes in
+  ui/home.py, chief of them _on_period_changed clearing the strip BEFORE
+  its prefs write — the one path refresh()'s own clear cannot reach.
+  Spec corrected in two places rather than left to drift: §4.9's
+  "whatever raises, and wherever" claim, and §4.8's false gloss that the
+  strip first speaks on the 7th (condition 2's whole-month floor over a
+  truncated baseline binds first; a R100/day vault speaks on day 10).
+  §11 re-derived mechanically 33 -> 36 rows, 11 nothings unchanged.
+  allowlist-005 added (cppcheck fed .py files). Gate green 1791/2, mypy
+  clean, spec_lint + doc_integrity 0, 18/18 citations resolve. Journal
+  docs/journal/FIBR-0231.md; tag FIBR-0231-complete.
 
 - 📋 [FIBR-0232] **"Safe to spend" — one number for what's left after everything still due this month.**
   The cash-flow forecast (FIBR-0171) already projects a balance forward
