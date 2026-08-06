@@ -2863,7 +2863,7 @@ because retrofitting them is a data migration.
   trees and Reset layout remain, and they are FIBR-0192's.
   Resolved (2026-08-02): unblocked by FIBR-0192, which was this bullet's stated blocker. Every table and tree the app shows now resizes, drag-reorders and remembers its layout per tab — the Forecast events table and the three Home breakdown trees were the last two unwired surfaces, and Window → Reset layout now returns them all to their build-time defaults in the same click.
 
-- 📋 [FIBR-0085] **Batch statement import — import several statement files in one go.**
+- 🚧 [FIBR-0085] **Batch statement import — import several statement files in one go.**
   Motivated by dogfooding v0.1.0. Today the import wizard handles ONE file per run (FIBR-0007 CSV / FIBR-0008 OFX / FIBR-0009 PDF). Add multi-file selection that runs each file through the existing preview -> dedup -> commit pipeline, with per-file semantics (a bad/duplicate file is reported and skipped, never aborting the batch) and a summary dialog listing each file's outcome (imported N / skipped-duplicate / failed-why) + transaction counts. Mixed formats (CSV/OFX/PDF) allowed in one batch; per-file mapping where the format needs it (CSV mapping profile selection, PDF password prompt). Reuses the existing importers + FIBR-0052 statement provenance; the new work is the multi-file wizard flow + aggregate reporting. Deps: FIBR-0007/0008/0009 (importers), FIBR-0052 (per-statement provenance so each imported file is a distinct statement row).
   **Layman:** Let a person select and import many statement files at once (e.g. a whole folder of monthly PDFs) instead of importing them one at a time.
   Kind: feature.
@@ -5641,6 +5641,14 @@ is a future error tomorrow.
   **Layman:** The "reproduce CI exactly on my own machine" check stops working when GitHub itself is down, which is exactly when you most want it.
   Kind: chore.
   Source: in-session-2026-08-06 (GitHub Actions major outage, 15:22 UTC).
+  Context for a later session reading red CI on main: the two failed
+  runs on `983559e` (2026-08-06, 15:53 and 16:23 UTC) were THIS outage,
+  not a code defect. Both died before any gate stage ran — the first
+  never acquired a runner, the second failed to download
+  `actions/checkout` ("Service Unavailable"). The tree was green
+  throughout: `./scripts/ci-local.sh` passed all 11 stages, 1840 passed /
+  3 skipped, mypy clean over 178 files. Do not re-investigate those two
+  runs; re-run them once Actions is healthy.
 
 ## How to add an item
 

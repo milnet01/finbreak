@@ -42,7 +42,7 @@ this**, so treat a stale date as "recent work was out-of-band", not as
 | Field | Value |
 |---|---|
 | **Active item ID** | FIBR-0085 (batch statement import). FIBR-0086 closed by `/close-phase` 2026-08-06, which unblocks it |
-| **Blocked on** | Nothing. No spec yet — step 1 is `/write-spec`. |
+| **Blocked on** | Nothing. Spec accepted; step 3 (TDD) is next. |
 | **Last update** | 2026-08-06 |
 
 ### Step progress
@@ -51,9 +51,17 @@ While an item is active, Claude marks the current step 🚧; completed
 steps flip to ✅. Resets to all ⬜ when a new item becomes active. The
 nine steps are defined in `~/.claude/skills/app-workflow/SKILL.md`.
 
-1. ⬜ Verify spec
-2. ⬜ Verify dependencies
-3. ⬜ Write tests first
+1. ✅ Verify spec — `docs/specs/FIBR-0085-batch-statement-import.md`,
+   status accepted 2026-08-06. Gated by `/cold-eyes`: 3 loops × 3 lanes,
+   95 findings fixed. **Stopped at loop 3 by user decision, not
+   converged clean** — loops 2 and 3 were collateral-dominated. Read the
+   spec's §13 loop log before trusting it as settled.
+2. ✅ Verify dependencies — FIBR-0086 (the auto-detect enabler) shipped
+   and closed 2026-08-06; nothing else blocks.
+3. 🚧 Write tests first — `tests/features/batch_import/` (spec.md +
+   test_batch_import.py), 15 invariants. Four need mutation-checking:
+   INV-4 (twice — including the only-`new_count`-cumulative shape),
+   INV-5's no-preview leg, INV-7, INV-9. See the spec §7.
 4. ⬜ Implement until tests pass
 5. ⬜ Run `/audit` — in parallel with 6
 6. ⬜ Run `/code-quality-review` — in parallel with 5
