@@ -101,6 +101,9 @@ _TERMINAL: frozenset[str] = frozenset(
 # on the review screen instead (§ 3 decision 5).
 _BLOCKING: frozenset[str] = frozenset({"needs_password", "needs_mapping"})
 
+# Every outcome that still owes the user an answer — the three INV-3 names.
+_UNANSWERED: frozenset[str] = _BLOCKING | {"needs_account"}
+
 # The reply a widget pushes back for one question: a password, a column mapping,
 # or `None` for "the user declined this file".
 type Answer = str | ColumnMapping | None
@@ -409,6 +412,15 @@ class BatchImportService:
                 record.outcome = "needs_mapping"
                 return
             mapping = profile.column_mapping()
+        else:
+            # A hand-set mapping has not been through the form-boundary checks a
+            # saved profile passed on its way in, and `CsvImporter.parse`
+            # documents that it assumes a validated one. The single-file path
+            # gets this from `ImportService.preview`, which the batch cannot
+            # call yet — it has no account. A mapping that does not fit fails
+            # THIS FILE with the validator's own friendly message, rather than
+            # parsing garbage or taking the batch down.
+            ImportService._validate_mapping(mapping, header)
         self._settle_parse(
             record, CsvImporter().parse(record.source_text, mapping, self._exponent)
         )
@@ -540,16 +552,25 @@ class BatchImportService:
 
     @staticmethod
     def can_import(files: Sequence[BatchFile]) -> bool:
-        """Whether `Import all` may be pressed: at least one file ``ready`` AND
-        no file still ``needs_account`` (INV-3). The second half is what makes
-        the review-screen account question a gate rather than a suggestion.
+        """Whether `Import all` may be pressed: at least one file ``ready`` and
+        no file still ``needs_account``, ``needs_password`` or ``needs_mapping``
+        (INV-3). The ``needs_account`` half is what makes the review-screen
+        account question a gate rather than a suggestion.
+
+        The other two are gated here as well as by the flow. § 4.6 states this
+        button's rule in terms of ``needs_account`` alone, on the grounds that
+        ASK exhausts the other two before REVIEW is ever reached — but the batch
+        table is on screen from the start of SCAN (§ 6) and a password prompt
+        sits *over* it, so "unreachable" was a property of the flow rather than
+        of the button. INV-3's first leg asserts the button, so the button
+        enforces it.
 
         Files that are ``failed``, ``skipped`` or ``already_imported`` do not
         block it — they stay listed with their reason and are simply not
         committed. They are the report, not an obstacle.
         """
-        outcomes = [record.outcome for record in files]
-        return "ready" in outcomes and "needs_account" not in outcomes
+        outcomes = {record.outcome for record in files}
+        return "ready" in outcomes and not (outcomes & _UNANSWERED)
 
     # -- RUN ------------------------------------------------------------------
     def run_step(self, files: Sequence[BatchFile], index: int) -> int:

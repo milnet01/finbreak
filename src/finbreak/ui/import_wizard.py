@@ -2,19 +2,28 @@
 saved profile), preview, and import (FIBR-0007 D9/INV-10).
 
 A **non-modal** stacked ``QWidget`` (not a ``QDialog``/``QWizard``), so the idle
-auto-lock can swap it away like any other screen (app.py comments). Its three
-steps live in an internal ``QStackedLayout``: (0) pick file + account; (1) map
+auto-lock can swap it away like any other screen (app.py comments). Its four
+steps live in an internal ``QStackedLayout``: (0) pick file(s) + account; (1) map
 columns — shown only when no saved profile matches; (2) preview + confirm-period
-+ Import. All strings go through ``tr()`` and every widget sits in a Qt layout
-manager, so the screen is translation-ready and RTL-safe (coding.md § 5.2).
++ Import; (3) the batch review table. All strings go through ``tr()`` and every
+widget sits in a Qt layout manager, so the screen is translation-ready and
+RTL-safe (coding.md § 5.2).
+
+Selecting **one** file routes to steps 0-2, entirely unchanged. Selecting **two
+or more** starts a batch (FIBR-0085): step 3 plus the scan/ask/run chain at the
+foot of this file, with every decision in ``services/batch_import.py``. Step 1 is
+shared — the batch re-shows it to collect one file's mapping — which is why its
+Next and Cancel are batch-aware rather than wired straight through.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import datetime
+from pathlib import Path
 from typing import cast
 
-from PySide6.QtCore import QDate, QSignalBlocker, Qt, Signal, Slot
+from PySide6.QtCore import QDate, QSignalBlocker, Qt, QTimer, Signal, Slot
 from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -51,14 +60,31 @@ from finbreak.models import ColumnMapping, ImportProfile, OfxAccountInfo
 from finbreak.services.account_match import match_account
 from finbreak.services.accounts import AccountService
 from finbreak.services.auth import AuthService
+from finbreak.services.batch_import import (
+    CANCELLED,
+    BatchFile,
+    BatchImportService,
+    next_question,
+)
 from finbreak.services.import_ import ImportPreview, ImportService
 from finbreak.services.transactions import read_minor_unit_exponent, to_display_decimal
 from finbreak.ui._table_state import remember_columns
 from finbreak.ui.account_create import CreateAccountDialog
+from finbreak.ui.import_batch import BatchReviewWidget
 from finbreak.ui.modal import show_modal
 from finbreak.ui.password_dialog import PasswordDialog
 
-_STEP_PICK, _STEP_MAP, _STEP_PREVIEW = 0, 1, 2
+# `_STEP_BATCH` is APPENDED after the existing three, so indices 0-2 keep their
+# meaning and the 24 absolute `_stack.currentIndex()` assertions across six
+# suites stay true. Appending rather than inserting is what makes that so, and
+# is the reason to append (FIBR-0085 § 7).
+_STEP_PICK, _STEP_MAP, _STEP_PREVIEW, _STEP_BATCH = 0, 1, 2, 3
+
+# INV-8. "Prompt", never "attempt": the automatic tries against stored passwords
+# (§ 4.4) are attempts and are bounded separately by INV-9. The single-file
+# path's `_on_pdf_password` re-prompts by recursion with no counter at all,
+# which is exactly what a copy-paste of it into the batch would reproduce.
+_MAX_PASSWORD_PROMPTS = 3
 _ERROR_ROW_BRUSH = QBrush(QColor(122, 59, 59))  # muted red — flags a RowError row
 
 _MAX_DATE_SAMPLES = 50  # detector sampling bound (FIBR-0146 D8)
@@ -116,11 +142,29 @@ class ImportWizardWidget(QWidget):
         # other outcome, which is what keeps creation unreachable from `no_number`.
         self._pending_hint: SourceAccountHint | None = None
 
+        # -- batch state (FIBR-0085) -----------------------------------------
+        # All of it inert until >= 2 files are selected: one file routes to the
+        # single-file flow above, entirely unchanged (§ 4.1).
+        self._batch = BatchImportService(service.vault)
+        self._batch_files: list[BatchFile] = []
+        self._batch_index = 0
+        self._batch_running = False
+        self._batch_cancelled = False
+        # The record whose mapping `_STEP_MAP` is currently collecting, or None
+        # when that page is being driven by the single-file flow. It is what
+        # makes the page's Next/Cancel batch-aware without rewiring them.
+        self._batch_asking: BatchFile | None = None
+        # Prompts raised per record so far (INV-8), keyed by identity — two
+        # records can share a path (an OFX fan-out) and `BatchFile` compares by
+        # value, so neither the path nor a list index is a safe key.
+        self._batch_prompts: dict[int, int] = {}
+
         self._stack = QStackedLayout()
         self._error = QLabel()
         self._stack.addWidget(self._build_pick_step())
         self._stack.addWidget(self._build_map_step())
         self._stack.addWidget(self._build_preview_step())
+        self._stack.addWidget(self._build_batch_step())
 
         outer = QVBoxLayout(self)
         outer.addLayout(self._stack)
@@ -230,7 +274,12 @@ class ImportWizardWidget(QWidget):
         layout.addLayout(buttons)
 
         self._map_next_button.clicked.connect(self._on_map_next)
-        cancel.clicked.connect(self.done)
+        # NOT wired straight to `done` like the other two steps' Cancels. This
+        # page is REUSED by the batch's ask pass, and `MainWindow._on_import_done`
+        # answers `done` by rebuilding the workspace — so declining the mapping
+        # for one file in a thirty-file batch would destroy the entire batch and
+        # every answer already given (INV-14).
+        cancel.clicked.connect(self._on_map_cancel)
         # FIBR-0146 D5/D6 single-owner wiring: a date-COLUMN change re-detects
         # (_on_date_column_changed); a FORMAT change (picker OR the custom field's
         # text) clears the ambiguity flag, shows/hides the custom field, then
@@ -350,20 +399,37 @@ class ImportWizardWidget(QWidget):
         cancel.clicked.connect(self.done)
         return page
 
+    # -- step 3: batch review (FIBR-0085) -------------------------------------
+    def _build_batch_step(self) -> QWidget:
+        self._batch_review = BatchReviewWidget(self._batch, self._accounts, self)
+        self._batch_review.import_requested.connect(self._on_batch_import)
+        self._batch_review.cancelled.connect(self._on_batch_cancel)
+        # The ONE control that emits `done` (INV-14) — never the end of RUN,
+        # never either Cancel.
+        self._batch_review.closed.connect(self.done)
+        return self._batch_review
+
     # -- navigation / actions -------------------------------------------------
     def _goto_step(self, index: int) -> None:
         self._stack.setCurrentIndex(index)
 
     @Slot()
     def _on_pick_file(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(
+        paths, _ = QFileDialog.getOpenFileNames(
             self,
-            self.tr("Choose a statement file"),
+            self.tr("Choose statement files"),
             "",
             self.tr("Statement files (*.csv *.ofx *.qfx *.pdf);;All files (*)"),
         )
-        if path:
-            self._select_file(path)
+        if not paths:
+            return  # cancelled — stay on the pick step, as today
+        if len(paths) == 1:
+            # One file routes to the existing single-file flow, ENTIRELY
+            # unchanged (§ 4.1). It is also the better screen: a one-row review
+            # table is worse than the preview it would replace.
+            self._select_file(paths[0])
+            return
+        self._select_files(paths)
 
     def _select_file(self, path: str) -> None:
         """Load the picked file and route by format. **OFX** (FIBR-0008 D10):
@@ -886,7 +952,22 @@ class ImportWizardWidget(QWidget):
             except (ValueError, FinbreakError) as exc:
                 self._error.setText(str(exc))
                 return
+        if self._batch_asking is not None:
+            self._answer_batch_mapping(mapping)
+            return
         self._run_preview(mapping)
+
+    @Slot()
+    def _on_map_cancel(self) -> None:
+        """Cancel on the map step. For a single file that is "abandon the
+        import", as it has always been; **while the batch is driving this page
+        it declines ONE FILE** (§ 4.1/INV-14) and must not emit `done`."""
+        if self._batch_asking is None:
+            self.done.emit()
+            return
+        record, self._batch_asking = self._batch_asking, None
+        self._batch.answer(record, None)  # -> skipped
+        self._resume_ask()
 
     def _mapping_from_form(self) -> ColumnMapping:
         style = self._amount_style.currentData()
@@ -1188,3 +1269,173 @@ class ImportWizardWidget(QWidget):
             self._accounts.get_pdf_password(final_account) is None
         ):
             self._accounts.set_pdf_password(final_account, password)
+
+    # -- the batch (FIBR-0085) ------------------------------------------------
+    #
+    # SCAN -> ASK -> REVIEW -> RUN, driven one file per event-loop turn. Every
+    # decision lives in `services/batch_import.py`; what is here is the chain,
+    # the dialogs, and the wiring between them.
+
+    def _select_files(self, paths: list[str]) -> None:
+        """Start a batch over >= 2 selected files (§ 4.3)."""
+        self._error.clear()
+        self._batch_files = self._batch.build(paths)
+        self._batch_index = 0
+        self._batch_running = False
+        self._batch_cancelled = False
+        self._batch_asking = None
+        self._batch_prompts.clear()
+        # The table goes on screen BEFORE the scan starts, so it fills in row by
+        # row as each file is classified (§ 6). There is no separate progress
+        # dialog: the table is the progress indicator.
+        self._batch_review.set_files(self._batch_files)
+        self._goto_step(_STEP_BATCH)
+        self._arm(self._scan_next)
+
+    def _arm(self, slot: Callable[[], None]) -> None:
+        """Queue the next turn of the batch chain.
+
+        The **three-argument** overload is required, not stylistic (§ 4.7):
+        the context object is what makes a pending callback drop when the widget
+        is destroyed — which is precisely what an idle auto-lock does to the
+        wizard via ``MainWindow._set_live``. A two-argument
+        ``QTimer.singleShot(0, callable)`` would keep a bound method alive past
+        the widget's death and resume a batch into a locked vault (INV-7).
+        Between turns the event loop runs, so the UI repaints and Cancel is live.
+        """
+        QTimer.singleShot(0, self, slot)
+
+    @Slot()
+    def _scan_next(self) -> None:
+        if self._batch_cancelled:
+            return
+        if self._batch_index >= len(self._batch_files):
+            self._begin_ask()
+            return
+        self._batch_index = self._batch.scan_step(self._batch_files, self._batch_index)
+        self._batch_review.refresh()
+        self._arm(self._scan_next)
+
+    @Slot()
+    def _begin_ask(self) -> None:
+        """Hand out the next password or mapping question, or enter REVIEW.
+
+        Only those two: they block the parse, so they genuinely cannot wait. The
+        account question is settled on the review screen instead (§ 3 decision
+        5) — a file-by-file account prompt is the babysitting decision 1
+        rejects, under another name.
+        """
+        if self._batch_cancelled:
+            return
+        record = next_question(self._batch_files)
+        if record is None:
+            self._batch.review(self._batch_files)
+            self._batch_review.refresh()
+            return
+        if record.outcome == "needs_password":
+            self._ask_password(record)
+        else:
+            self._ask_mapping(record)
+
+    def _resume_ask(self) -> None:
+        """Shared tail of every answered question: repaint, return to the table,
+        and queue the next question on its own turn."""
+        self._batch_review.refresh()
+        self._goto_step(_STEP_BATCH)
+        self._arm(self._begin_ask)
+
+    def _ask_password(self, record: BatchFile) -> None:
+        raised = self._batch_prompts.get(id(record), 0)
+        if raised >= _MAX_PASSWORD_PROMPTS:
+            self._batch.answer(record, None)  # -> skipped; the batch continues
+            self._resume_ask()
+            return
+        self._batch_prompts[id(record)] = raised + 1
+        dialog = PasswordDialog(Path(record.path).name, self)
+        # `show_modal` wires only `accepted`, so a Cancel is otherwise
+        # unobservable and this pass would wait forever on a dialog that has
+        # already been freed (§ 4.4). Nothing else sets a `rejected` handler, so
+        # adding one at the call site conflicts with nothing.
+        dialog.rejected.connect(lambda: self._on_batch_password(record, None, False))
+        show_modal(
+            dialog,
+            lambda: self._on_batch_password(
+                record, dialog.password(), dialog.remember()
+            ),
+        )
+
+    def _on_batch_password(
+        self, record: BatchFile, password: str | None, remember: bool
+    ) -> None:
+        record.remember_password = remember
+        self._batch.answer(record, password)  # None declines -> skipped
+        self._resume_ask()
+
+    def _ask_mapping(self, record: BatchFile) -> None:
+        """Re-show the existing map step for one file (§ 4.1).
+
+        That page is a large form — five column combos, amount style, invert,
+        the date-format picker with live preview, the profile-name field — and
+        an unfamiliar CSV in a batch needs exactly that form. Re-implementing it
+        in a second widget would be the largest duplication in the codebase.
+        """
+        if record.source_text is None:  # defensive: SCAN sets it before asking
+            self._batch.answer(record, None)
+            self._resume_ask()
+            return
+        self._batch_asking = record
+        self._error.clear()
+        self._text = record.source_text
+        self._header = read_header(record.source_text)
+        self._populate_mapping_combos(self._header)
+        self._autodetect_date_format()
+        self._update_date_preview()
+        self._profile_name.clear()
+        self._goto_step(_STEP_MAP)
+
+    def _answer_batch_mapping(self, mapping: ColumnMapping) -> None:
+        record, self._batch_asking = self._batch_asking, None
+        if record is not None:
+            self._batch.answer(record, mapping)
+        self._resume_ask()
+
+    @Slot()
+    def _on_batch_import(self) -> None:
+        self._error.clear()
+        self._batch_index = 0
+        self._batch_running = True
+        self._arm(self._run_next)
+
+    @Slot()
+    def _run_next(self) -> None:
+        if self._batch_cancelled:
+            return
+        if self._batch_index >= len(self._batch_files):
+            self._batch_running = False
+            # The report is shown BEFORE anything is torn down: emitting `done`
+            # here would have `MainWindow._on_import_done` rebuild the workspace
+            # and destroy the very table the report is written into (INV-14).
+            self._batch_review.finish()
+            return
+        self._batch_index = self._batch.run_step(self._batch_files, self._batch_index)
+        self._batch_review.refresh()
+        self._arm(self._run_next)
+
+    @Slot()
+    def _on_batch_cancel(self) -> None:
+        """Abandon the batch (§ 4.6). Before RUN it drops the whole thing and
+        returns to the pick step; during RUN it stops the chain and leaves the
+        report standing. Neither emits `done`."""
+        self._batch_cancelled = True
+        self._batch.stop_from(self._batch_files, self._batch_index, CANCELLED)
+        if self._batch_running:
+            self._batch_running = False
+            self._batch_review.finish()
+            return
+        # Every held password is discarded unwritten: `_settle_password` only
+        # writes once a destination settles, and none now will.
+        self._batch_files = []
+        self._batch_asking = None
+        self._batch_prompts.clear()
+        self._batch_review.set_files(self._batch_files)
+        self._goto_step(_STEP_PICK)

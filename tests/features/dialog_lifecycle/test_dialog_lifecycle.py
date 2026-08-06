@@ -25,8 +25,24 @@ from conftest import _pump_deferred_delete
 from finbreak.ui.modal import show_modal
 
 _UI_DIR = Path(ui_pkg.__file__).parent
-_FILES = ("home.py", "rules.py", "statements.py", "import_wizard.py")
-_EXEC = re.compile(r"\.exec\(")
+# Five members since FIBR-0085: `import_batch.py` is a content widget like the
+# rest, and a new UI module sits OUTSIDE this guard until it is named here — a
+# guard that silently does not cover new code is worse than no guard.
+_FILES = (
+    "home.py",
+    "rules.py",
+    "statements.py",
+    "import_wizard.py",
+    "import_batch.py",
+)
+# Two tokens, not one (FIBR-0085 INV-6). `.exec(` catches `dialog.exec()`, but a
+# modal `QProgressDialog` driven by a bare `QApplication.processEvents()` loop
+# carries no `.exec(` token at all — it would pass the original grep untouched
+# while re-entering the event loop exactly as FIBR-0065 forbids. The batch
+# import is the first feature with a long-running loop and therefore the first
+# with a reason to reach for that pattern, so the guard names it too. It binds
+# the whole `_FILES` set, which tightens it for the four older members free.
+_EXEC = re.compile(r"\.exec\(|processEvents")
 
 
 def test_INV1_no_blocking_dialog_exec_in_content_widgets() -> None:
@@ -41,8 +57,11 @@ def test_INV1_no_blocking_dialog_exec_in_content_widgets() -> None:
                 continue
             offenders.append(f"{name}:{lineno}: {line.strip()}")
     assert not offenders, (
-        "blocking .exec( found — convert to the non-blocking show_modal pattern "
-        "(FIBR-0065 INV-1):\n" + "\n".join(offenders)
+        "a blocking .exec( or an event-pumping processEvents was found — both "
+        "re-enter the event loop, which is the FIBR-0065 crash class. Convert to "
+        "the non-blocking show_modal pattern, and drive a long loop one turn per "
+        "QTimer.singleShot (FIBR-0065 INV-1 / FIBR-0085 INV-6):\n"
+        + "\n".join(offenders)
     )
 
 
