@@ -41,8 +41,8 @@ this**, so treat a stale date as "recent work was out-of-band", not as
 
 | Field | Value |
 |---|---|
-| **Active item ID** | FIBR-0085 (batch statement import) — FIBR-0231 closed by `/close-phase` 2026-08-06 |
-| **Blocked on** | Nothing. Next is step 1 — verify the spec (none written yet; read FIBR-0086 alongside, described there as its enabler). |
+| **Active item ID** | FIBR-0086 (account-number import auto-detect) — user directive 2026-08-06: built BEFORE FIBR-0085, which is now blocked on it. FIBR-0231 closed by `/close-phase` 2026-08-06 |
+| **Blocked on** | Nothing. Next is step 1 — verify the spec (none written yet). |
 | **Last update** | 2026-08-06 |
 
 ### Step progress

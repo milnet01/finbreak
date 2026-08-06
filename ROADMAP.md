@@ -2722,12 +2722,32 @@ because retrofitting them is a data migration.
   Priority (2026-08-06, user directive): this is the NEXT item after
   FIBR-0231 closes. Named by the user in the FIBR-0231 handoff session;
   recorded here because it lived only in that conversation.
+  Sequencing DECIDED (2026-08-06, user directive): FIBR-0086
+  (account-number auto-detect) is built FIRST, and this item follows it.
+  Claude recommended the reverse (batch import with one user-picked
+  account for the whole batch, auto-detect as a follow-up); the user
+  chose to build the enabler first so batch import can auto-file each
+  file from the moment it ships. This bullet is therefore BLOCKED on
+  FIBR-0086, not merely helped by it.
+  Design DECIDED (2026-08-06, user): per-file extra input (PDF password,
+  CSV mapping choice) is collected UP FRONT — scan the selected files,
+  ask for everything needed in one pass, then run the batch unattended
+  to the end. Rejected: pausing at each file as it is reached (forces
+  the user to babysit a 30-file import, defeating the purpose), and
+  skipping files that need input (a folder of password-locked bank PDFs
+  is the common case, not an edge case).
 
 - 📋 [FIBR-0086] **Account numbers + import auto-detect — match a statement to its account (prompt to create if new).**
   Motivated by dogfooding v0.1.0. The account-number STORAGE half shipped separately as FIBR-0193 (2026-07-30): `accounts.account_number` is a nullable column in the ENCRYPTED vault, added by schema migration **v12 -> v13** — so this bullet is now DETECTION + MATCHING only, and no new column is needed. On import, extract the statement's account number and match it to a configured account (normalised: strip spaces/dashes; match on TRAILING digits when the statement masks it, e.g. "xxxx1234"), auto-selecting the account instead of today's manual pick. Availability varies by format: OFX <ACCTID> (reliable), PDF printed number (the Standard Bank / generic parsers can surface it), CSV often carries none — so auto-detect is a SMART DEFAULT with a manual fallback whenever the number is absent or matches zero/multiple accounts (never silently import to the wrong account — cf. FIBR-0059). When the detected number matches no account, prompt to create one, pre-filled from statement metadata (number, bank name if printed, type/currency where available) and asking the user for the rest. ENABLER for FIBR-0085 (batch import) — auto-detect is what makes multi-file import usable (you cannot hand-map a folder of files); reduces reliance on FIBR-0059 (change-account fix). Deps: FIBR-0005 (accounts), FIBR-0007/0008/0009 (importers must surface the statement's number), FIBR-0052 (statement provenance).
   **Layman:** Give each account its account number so importing a statement automatically files it under the right account — and if it's an account finbreak hasn't seen, it offers to create it, pre-filled from the statement.
   Kind: feature.
   Source: user-request-2026-07-11 (dogfooding v0.1.0).
+  Promoted to ACTIVE ITEM (2026-08-06, user directive): built BEFORE
+  FIBR-0085 (batch statement import), which is now blocked on it. The
+  user chose to build this enabler first so batch import can auto-file
+  each statement to its account from the moment it ships, rather than
+  shipping batch import with a single user-picked account for the whole
+  batch and retrofitting detection later.
 
 - 📋 [FIBR-0087] **Per-account currency — support offshore/foreign-currency accounts in the portfolio (revisits FIBR-0021).**
   The user wants to include an offshore account in their portfolio — the "real multi-currency need" FIBR-0021 deferred to (it chose single base_currency for v1, set at first-run, and said revisit when this arises). Per FIBR-0021's own "if revisited" note: add a currency column on accounts (default = the vault base currency), CHOOSE the currency when ADDING an account (the user's ask), QLocale-format each amount in its account's currency, and enforce that the dashboard NEVER sums across currencies without explicit conversion. Needs its OWN design/spec — the hard decisions: (a) consolidated totals across currencies — NO live FX rates (that would widen the network surface beyond the one FIBR-0054 update egress), so either per-currency subtotals or a user-entered/stored conversion rate; (b) how the dashboard presents mixed currencies (per-currency subtotals vs one converted total). Schema migration (currently v7 -> v8). Deps: FIBR-0005 (accounts), FIBR-0012 (dashboard totals). Kept SEPARATE from FIBR-0083 (date/time formatting).
@@ -4874,6 +4894,24 @@ because retrofitting them is a data migration.
   **Layman:** Specs end with a little "here is what tests each rule" table and a sentence counting its rows. I keep miscounting that sentence by hand; this makes the computer count it instead.
   Kind: doc.
   Source: in-session-2026-08-06 (FIBR-0231 cold-eyes run, 3 miscounts of one table).
+
+- 📋 [FIBR-0240] **Credit-card statement account auto-detect — needs a stable card identifier.**
+  Deferred from FIBR-0086 (§9). Standard Bank credit-card statements (importer Family C) are EXCLUDED from import auto-detect because neither number on the page is usable as a matching key. The text after the statement's `account number` label is the DEBIT-ORDER account (the current account that pays the card) — measured 2026-08-06 across 13 real statements, where it normalises to exactly the user's current-account number, so matching on it would file every card statement under the current account. The card's own identifier is a masked PAN (printed as `Account NNNN **** **** NNNN`) which is NOT stable: the same corpus shows it changing mid-sequence on a card reissue — four statements carry one PAN, the following nine carry another. Revisit if SB starts printing a non-PAN account number on the statement, or if the user accepts re-entering the last four digits after each reissue. Until then credit-card imports keep the manual account pick.
+  **Layman:** Credit-card statements still need you to pick the account by hand — the number printed on them belongs to the account that pays the card, not to the card itself.
+  Kind: feature.
+  Source: spec-FIBR-0086-2026-08-06 (measured against 13 real SBSA credit-card statements).
+
+- 📋 [FIBR-0241] **Masked / trailing-digit account matching on import.**
+  Deferred from FIBR-0086 (§3 decision 3, §9). The FIBR-0086 bullet originally asked to match on TRAILING digits when a statement masks its account number (e.g. "xxxx1234"). Measured 2026-08-06 across 48 real Standard Bank statements: NO statement presents a masked number as its OWN identifier. The only masked self-identifier is the credit-card PAN, which FIBR-0232 excludes for separate reasons; every other masked string in the corpus (printed as `*****NNNNNNN`) is a COUNTERPARTY inside a transaction row, which must never be matched on. So the loosened matching path had nothing to exercise it and was left unbuilt rather than shipped untested. Revisit trigger: the first real statement or OFX file whose own identifier is masked.
+  **Layman:** If a bank ever prints only the last few digits of its own account number, finbreak will need a looser matching rule — no statement we have does that today.
+  Kind: feature.
+  Source: spec-FIBR-0086-2026-08-06 (48-statement corpus measurement).
+
+- 📋 [FIBR-0242] **Account auto-detect for statement Family E.**
+  Deferred from FIBR-0086 (§4.2, §9). FIBR-0086 enables header account-number extraction for importer families A, B and D. Family E (the Current-account "Payments / Deposits" layout added by FIBR-0190) is omitted because no Family E statement exists in the user's 48-file corpus — it would be expected to print a Family-A-style `Account Number` label, but including it would ship an untested claim about a layout nobody has seen. Add `Family.E` to `_ACCOUNT_NUMBER_FAMILIES` in `importers/standard_bank.py` and add a synthetic extraction test once a real Family E statement is available to measure against.
+  **Layman:** One statement layout is left out of automatic account-filing because we have no real example of it to check against.
+  Kind: feature.
+  Source: spec-FIBR-0086-2026-08-06.
 
 ### ⚡ Performance
 
