@@ -53,9 +53,9 @@ nine steps are defined in `~/.claude/skills/app-workflow/SKILL.md`.
 
 1. ✅ Verify spec
 2. ✅ Verify dependencies (storage half already shipped as FIBR-0193; no new deps)
-3. ⬜ Write tests first
-4. ⬜ Implement until tests pass
-5. ⬜ Run `/audit` — in parallel with 6
+3. ✅ Write tests first (32 tests; INV-1 and INV-2a red states constructed per §7)
+4. ✅ Implement until tests pass (gate green 1823/3 at `73f3e71`)
+5. 🚧 Run `/audit` — in parallel with 6
 6. ⬜ Run `/code-quality-review` — in parallel with 5
 7. ⬜ Fold all actionable findings into one new fix-pass
 8. ⬜ Update CHANGELOG, flip status, write journal

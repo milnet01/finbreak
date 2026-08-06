@@ -2816,7 +2816,7 @@ because retrofitting them is a data migration.
   skipping files that need input (a folder of password-locked bank PDFs
   is the common case, not an edge case).
 
-- 📋 [FIBR-0086] **Account numbers + import auto-detect — match a statement to its account (prompt to create if new).**
+- 🚧 [FIBR-0086] **Account numbers + import auto-detect — match a statement to its account (prompt to create if new).**
   Motivated by dogfooding v0.1.0. The account-number STORAGE half shipped separately as FIBR-0193 (2026-07-30): `accounts.account_number` is a nullable column in the ENCRYPTED vault, added by schema migration **v12 -> v13** — so this bullet is now DETECTION + MATCHING only, and no new column is needed. On import, extract the statement's account number and match it to a configured account (normalised: strip spaces/dashes; match on TRAILING digits when the statement masks it, e.g. "xxxx1234"), auto-selecting the account instead of today's manual pick. Availability varies by format: OFX <ACCTID> (reliable), PDF printed number (the Standard Bank / generic parsers can surface it), CSV often carries none — so auto-detect is a SMART DEFAULT with a manual fallback whenever the number is absent or matches zero/multiple accounts (never silently import to the wrong account — cf. FIBR-0059). When the detected number matches no account, prompt to create one, pre-filled from statement metadata (number, bank name if printed, type/currency where available) and asking the user for the rest. ENABLER for FIBR-0085 (batch import) — auto-detect is what makes multi-file import usable (you cannot hand-map a folder of files); reduces reliance on FIBR-0059 (change-account fix). Deps: FIBR-0005 (accounts), FIBR-0007/0008/0009 (importers must surface the statement's number), FIBR-0052 (statement provenance).
   **Layman:** Give each account its account number so importing a statement automatically files it under the right account — and if it's an account finbreak hasn't seen, it offers to create it, pre-filled from the statement.
   Kind: feature.
@@ -2849,6 +2849,30 @@ because retrofitting them is a data migration.
   it has not had a zero-finding cold pass. Deferred: FIBR-0240 (card
   auto-detect), FIBR-0241 (masked matching), FIBR-0242 (Family E),
   FIBR-0243 (OFX account type).
+  Progress (2026-08-06): TDD done and pushed (`73f3e71`). Extraction,
+  normalisation, the matching ladder, the wizard wiring and the
+  create-from-statement dialog all land; 32 new tests, gate green
+  1823 passed / 3 skipped against a 1791 baseline, so no existing test
+  moved (INV-6 holds).
+  Three spec claims were verified rather than taken on trust. The
+  family-C guard sits in the extractor, and its red state was constructed
+  per §7 — the generic extractor was written first and watched to read the
+  debit-order account. The capture class was likewise built greedy first
+  and watched to swallow the following date column. And the §4.5 ordering
+  was checked by reversing it: INV-7a goes red while INV-7 stays green,
+  confirming INV-7a is the only thing standing between the design and a
+  wrong-account commit.
+  One thing the spec did not anticipate: §4.6's create path needed a NEW
+  dialog. There was no reusable account-create UI — accounts could only be
+  made from the Accounts tab's inline form — so `ui/account_create.py` is a
+  small addition beyond the spec's file list. It takes the mirror of §4.5's
+  rule: the preview already exists when Create is pressed, so the combo
+  update is deliberately NOT blocked, because the signal is what retargets
+  the preview.
+  INV-8's test now exists and normalises the haystack, so it catches a
+  spaced spelling a substring grep would miss. Run against the real corpus
+  over all 506 tracked files: clean.
+  Next: steps 5-9 via `/close-phase`.
 
 - 📋 [FIBR-0087] **Per-account currency — support offshore/foreign-currency accounts in the portfolio (revisits FIBR-0021).**
   The user wants to include an offshore account in their portfolio — the "real multi-currency need" FIBR-0021 deferred to (it chose single base_currency for v1, set at first-run, and said revisit when this arises). Per FIBR-0021's own "if revisited" note: add a currency column on accounts (default = the vault base currency), CHOOSE the currency when ADDING an account (the user's ask), QLocale-format each amount in its account's currency, and enforce that the dashboard NEVER sums across currencies without explicit conversion. Needs its OWN design/spec — the hard decisions: (a) consolidated totals across currencies — NO live FX rates (that would widen the network surface beyond the one FIBR-0054 update egress), so either per-currency subtotals or a user-entered/stored conversion rate; (b) how the dashboard presents mixed currencies (per-currency subtotals vs one converted total). Schema migration (currently v7 -> v8). Deps: FIBR-0005 (accounts), FIBR-0012 (dashboard totals). Kept SEPARATE from FIBR-0083 (date/time formatting).
