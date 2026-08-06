@@ -27,6 +27,7 @@ These four are configuration and state that no other file records.
 | Field | Value |
 |---|---|
 | **Repo visibility** | PUBLIC (cached 2026-06-30; push freely per global rule § 6) |
+| **Push held** | 2026-08-06: 13 commits + tag `FIBR-0085-complete` unpushed, held ONLY by the GitHub Actions outage that began 15:22 UTC — not by anything wrong with them. The gate is green locally (1860 passed / 3 skipped). The two red CI runs on `983559e` are the outage (15m35s vs a normal ~3min, died before any stage ran), not a defect. Check Actions is healthy, then push the batch; re-run those two. Clear this row once pushed. |
 | **Convergence checkpoint** | 5 (consecutive `FP##` items immediately preceding any ✅-`implement`-Kind close in the active release block — see `~/.claude/commands/close-phase.md § 5a-6`) |
 | **Debt-sweep phase threshold** | 5 (auto-prompt for `/debt-sweep` after this many phases without one) |
 | **Last debt sweep** | 2026-07-26 (DS02 — all lanes, all severities, 4 commits) |
