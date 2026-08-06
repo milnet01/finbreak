@@ -42,7 +42,7 @@ this**, so treat a stale date as "recent work was out-of-band", not as
 | Field | Value |
 |---|---|
 | **Active item ID** | FIBR-0086 (account-number import auto-detect) — user directive 2026-08-06: built BEFORE FIBR-0085, which is now blocked on it. FIBR-0231 closed by `/close-phase` 2026-08-06 |
-| **Blocked on** | Nothing. Next is step 1 — verify the spec (none written yet). |
+| **Blocked on** | Nothing. Step 1 done — `docs/specs/FIBR-0086-account-number-auto-detect.md` written and through 3 cold-eyes loops (stopped on the collateral-dominated trend, not a clean pass; see the ROADMAP bullet). Next is step 3, TDD. |
 | **Last update** | 2026-08-06 |
 
 ### Step progress
@@ -51,8 +51,8 @@ While an item is active, Claude marks the current step 🚧; completed
 steps flip to ✅. Resets to all ⬜ when a new item becomes active. The
 nine steps are defined in `~/.claude/skills/app-workflow/SKILL.md`.
 
-1. ⬜ Verify spec
-2. ⬜ Verify dependencies
+1. ✅ Verify spec
+2. ✅ Verify dependencies (storage half already shipped as FIBR-0193; no new deps)
 3. ⬜ Write tests first
 4. ⬜ Implement until tests pass
 5. ⬜ Run `/audit` — in parallel with 6

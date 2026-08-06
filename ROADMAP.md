@@ -2748,6 +2748,28 @@ because retrofitting them is a data migration.
   each statement to its account from the moment it ships, rather than
   shipping batch import with a single user-picked account for the whole
   batch and retrofitting detection later.
+  Spec written and gated (2026-08-06):
+  `docs/specs/FIBR-0086-account-number-auto-detect.md`. Grounded in the
+  user's real 48-statement SBSA corpus, measured in scratchpad only —
+  every number in the spec is a synthetic stand-in preserving the
+  structural relationships (INV-8).
+  Cold-eyes: 3 loops x 3 lanes = 9 reviews. 62 findings verified and
+  fixed, 3 dismissed. Severity by loop: C3/H5/M6/L7, C3/H6/M5/L10,
+  C2/H4/M3/L8. Two design bugs found that no reading caught: (1) the
+  draft's UI ordering would have COMMITTED the import to the old account
+  while displaying the matched one (QSignalBlocker suppresses the only
+  caller of ImportService.retarget); (2) normalise_account_number
+  ("xxxx1234") -> "1234", so masked ids could match a real account,
+  silently implementing the trailing-digit matching the spec had
+  explicitly declined. Two lane CRITICALs were REFUTED by running them
+  rather than reading them.
+  STOPPED AT LOOP 3, not converged-clean: loops 2 and 3 were both
+  dominated by collateral from the previous loop's own fixes (9 and 15
+  vs 2 draft defects each), which is the signal to stop dispatching and
+  sweep instead. The spec is implementable and internally consistent;
+  it has not had a zero-finding cold pass. Deferred: FIBR-0240 (card
+  auto-detect), FIBR-0241 (masked matching), FIBR-0242 (Family E),
+  FIBR-0243 (OFX account type).
 
 - 📋 [FIBR-0087] **Per-account currency — support offshore/foreign-currency accounts in the portfolio (revisits FIBR-0021).**
   The user wants to include an offshore account in their portfolio — the "real multi-currency need" FIBR-0021 deferred to (it chose single base_currency for v1, set at first-run, and said revisit when this arises). Per FIBR-0021's own "if revisited" note: add a currency column on accounts (default = the vault base currency), CHOOSE the currency when ADDING an account (the user's ask), QLocale-format each amount in its account's currency, and enforce that the dashboard NEVER sums across currencies without explicit conversion. Needs its OWN design/spec — the hard decisions: (a) consolidated totals across currencies — NO live FX rates (that would widen the network surface beyond the one FIBR-0054 update egress), so either per-currency subtotals or a user-entered/stored conversion rate; (b) how the dashboard presents mixed currencies (per-currency subtotals vs one converted total). Schema migration (currently v7 -> v8). Deps: FIBR-0005 (accounts), FIBR-0012 (dashboard totals). Kept SEPARATE from FIBR-0083 (date/time formatting).
