@@ -1,4 +1,4 @@
-# FIBR-0085 — Import a folder of statements in one unattended run
+# FIBR-0085 — Import many statements in one unattended run
 
 **Status:** spec draft (2026-08-06).
 **Kind:** feature.
@@ -10,21 +10,43 @@ multi-file import usable; you cannot hand-map a folder.
 this spec's §4.8 `already_imported` signal from a span match to a true file
 fingerprint.
 
-**Layman:** Pick a whole folder of bank statements at once — finbreak reads
-them all, asks for every password it needs in one go, shows you a single list
-of what is about to land in which account, and then imports the lot without
-you having to sit there.
+**Layman:** Select many bank statements at once — finbreak reads them all,
+asks for every password it needs in one go, shows you a single list of what is
+about to land in which account, and then imports the lot without you having to
+sit there.
+
+## Contents
+
+- [1. Goal](#1-goal) · [2. Problem](#2-problem) ·
+  [3. Scope decisions](#3-scope-decisions-agreed-with-the-user)
+- [4. Design](#4-design) — [4.1 Where the work lands](#41-where-the-work-lands) ·
+  [4.2 The per-file record](#42-the-per-file-record) ·
+  [4.3 Four passes](#43-four-passes) ·
+  [4.4 PDF passwords](#44-resolving-a-pdf-password-with-no-pick-step-account) ·
+  [4.5 Cumulative dedup](#45-cumulative-dedup--the-reviewed-number-is-the-number-that-lands) ·
+  [4.6 The review step](#46-the-review-step) ·
+  [4.7 Driving the passes](#47-driving-the-passes-with-no-nested-event-loop) ·
+  [4.8 Outcomes](#48-outcomes-and-what-each-one-tells-the-user)
+- [5. Invariants](#5-invariants) · [6. Failure modes](#6-failure-modes) ·
+  [7. Tests](#7-tests) · [8. Alternatives](#8-alternatives-considered-and-rejected)
+- [9. Out of scope](#9-out-of-scope) · [10. Resource cost](#10-resource-cost) ·
+  [11. What checks this](#11-what-checks-this) ·
+  [12. Cross-doc impact](#12-cross-doc-impact) ·
+  [13. Cold-eyes loop log](#13-cold-eyes-loop-log)
 
 ## 1. Goal
 
 A user selects many statement files in one dialog. finbreak reads each one,
-works out which account it belongs to, and asks — **once, up front** — for
-every piece of information it still needs (a PDF password, a column mapping
-for an unfamiliar CSV, an account for a file it could not match). It then
-shows one review table listing every file, its destination account, and the
-number of transactions that will land. On confirmation the whole batch imports
-without further interaction, and a per-file report says what happened. Today
-the same work is N separate wizard runs.
+works out which account it belongs to, and asks — **before anything is
+committed** — for every piece of information it still needs (a PDF password, a
+column mapping for an unfamiliar CSV, an account for a file it could not
+match). It then shows one review table listing every file, its destination
+account, and the number of transactions that will land. On confirmation the
+whole batch imports without further interaction, and a per-file report says
+what happened. Today the same work is N separate wizard runs.
+
+"Before anything is committed" is the precise claim, and §2.2 shows why the
+stronger-sounding "before any work" is impossible.
 
 ## 2. Problem
 
@@ -38,7 +60,9 @@ instance scalars — `_text`, `_header`, `_source_path`, `_preview`,
 a payload-free `Signal()` that `MainWindow._on_import_done` handles by
 rebuilding the workspace, so finishing an import tears the screen down.
 
-Three consequences, which the invariants in §5 trace back to:
+Three consequences. The third is what INV-1, INV-2 and INV-4 are built on; the
+first two are motivation for the feature and carry no invariant, which is
+correct — "this is slow" is not a contract:
 
 1. **Importing 30 monthly statements is 30 full round-trips** through
    file-choose → parse → preview → import → workspace rebuild → reopen.
@@ -113,23 +137,51 @@ gather every outstanding question, ask them all, then commit.
 
 4. **The batch does not ask for per-file coverage periods.** The single-file
    preview step exposes two `QDateEdit`s defaulted from the parsed
-   min/max dates. The batch uses those parsed defaults unedited. Asking 30
-   times is exactly the babysitting decision 1 rejects, and a statement's own
-   dates are the right answer in every case the corpus contains. A file
-   needing a hand-set period is imported singly, which still works.
+   min/max dates. The batch passes `preview.period_start` / `preview.period_end`
+   unedited. Asking 30 times is exactly the babysitting decision 1 rejects, and
+   a statement's own dates are the right answer in every case the corpus
+   contains. A file needing a hand-set period is imported singly, which still
+   works.
 
-5. **The batch never creates an account without being asked**, but it does
-   offer. A file whose number matches nothing reaches the review screen with
-   its account cell unset and a Create affordance prefilled from the
-   statement, reusing `ui/account_create.py::CreateAccountDialog`.
+   **Both fields are `str | None`, and the batch has removed the only UI that
+   could supply them, so the `None` case is a defined outcome rather than an
+   oversight:** a file whose parse yields no dated row becomes `failed` with
+   *"No dated transactions found in this file"* and is never handed to
+   `commit_import`. Without that rule the file reaches
+   `ImportService._validate_span`, whose `date.fromisoformat(None)` raises
+   `TypeError`, which it catches and re-raises as
+   `ValueError("period endpoints must be valid ISO-8601 dates")` — verified
+   2026-08-06 — telling the user their dates are malformed when the file simply
+   had none.
+
+5. **The account question is settled on the review screen, not before it.**
+   A file whose number matches nothing, matches several, or carries none
+   reaches the review table with its account cell reading *— pick one —*; the
+   user sets it there, alongside every other file's destination. This is the
+   design the user approved, and seeing all destinations together is the point
+   of a batch: a file-by-file account prompt is decision 1's babysitting under
+   another name. §4.3 therefore routes only **passwords and mappings** through
+   the ASK pass — those two block the parse, so they genuinely cannot wait.
+
+6. **The batch never creates an account without being asked**, but it does
+   offer. An unmatched row's picker carries a Create affordance prefilled from
+   the statement, reusing `ui/account_create.py::CreateAccountDialog`.
 
 ## 4. Design
 
 ### 4.1 Where the work lands
 
 Two new modules and one extended widget. The split follows `docs/design.md`'s
-layering: orchestration is a service, and the service is headless so the whole
-of §4.3 and §4.5 is testable without Qt.
+layering: orchestration is a service, and the service is headless — so SCAN's
+classify/parse/match ladder, `cumulative_counts` (§4.5) and the RUN step are
+testable without Qt. **ASK is not, and is not claimed to be**: it is
+`PasswordDialog` and the wizard's `_STEP_MAP` page, so it lives in the widget
+and reaches the service through a callback the service does not own.
+
+**`ImportService` itself is unchanged.** The list-taking role §2.1 says it
+lacks is deliberately *not* added to it — `services/batch_import.py` holds the
+per-file loop and calls the existing one-file methods. That keeps
+`commit_import`'s single-file transaction boundary exactly as INV-2 requires.
 
 ```
 src/finbreak/services/batch_import.py   NEW — the orchestration + the record
@@ -157,20 +209,22 @@ and a guard that silently does not cover new code is worse than no guard
 ### 4.2 The per-file record
 
 `ImportPreview` carries no filename, no format and no hint — a batch has to
-keep its own association. One frozen-shell dataclass per selected file, in
-`services/batch_import.py`:
+keep its own association. One **mutable** record per selected file (every field
+but `path` is written as the passes advance), in `services/batch_import.py`:
 
 ```python
 # --- services/batch_import.py ----------------------------------------------
 
 Outcome = Literal[
     "ready",             # parsed, account known, will commit
-    "already_imported",  # span exists and zero new rows (§4.8)
+    "already_imported",  # span exists and zero new rows (§4.8); set in REVIEW
     "needs_password",    # a locked PDF, no working password yet
     "needs_mapping",     # a CSV whose header matches no saved profile
     "needs_account",     # parsed, but match_account did not resolve one
-    "failed",            # unreadable / unparseable; carries `reason`
+    "failed",            # unreadable / unparseable / no dated rows; see `reason`
     "skipped",           # the user declined to answer this file's question
+    "committed",         # RUN completed it; `result` carries the counts
+    "not_attempted",     # RUN was cancelled or stopped before reaching it
 ]
 
 
@@ -180,50 +234,92 @@ class BatchFile:
 
     path: str                                   # full path; basename for display
     outcome: Outcome
-    preview: ImportPreview | None = None        # None until parsed
+    parsed: ParseResult | None = None           # kept: the account may be set later
+    preview: ImportPreview | None = None        # None until an account is known
     hint: SourceAccountHint | None = None       # ParseResult.source_account
     account_id: int | None = None               # the destination, once settled
     reason: str = ""                            # user-facing text for `failed`
     result: ImportResult | None = None          # None until committed
-    new_count: int = 0                          # §4.5 cumulative, not preview.new_count
+    new_count: int = 0                          # §4.5 cumulative
+    duplicate_count: int = 0                    # §4.5 cumulative
 ```
 
-`new_count` is deliberately **not** read from `preview.new_count`. §4.5 says
-why.
+**Every one of the nine `Outcome` members is reachable**, and the Status column
+(§4.6) renders exactly this field — so the two post-run states are members
+rather than a second, derived vocabulary. `committed` and `not_attempted` are
+written by RUN; `already_imported` by REVIEW; the rest by SCAN and ASK.
 
-The batch itself is an ordinary list, ordered by the sort order of the paths
-as the file dialog returned them, and that order is the commit order (INV-4
-depends on there being one).
+**`parsed` is kept deliberately.** §3 decision 5 settles the account on the
+review screen, so a `needs_account` file arrives there with a `ParseResult` and
+no `ImportPreview` — and `ImportService.retarget` takes an `ImportPreview`, so
+it cannot be the call that first targets one. §4.6 says which call is.
 
-### 4.3 Three passes
+Both counts are **cumulative** and neither is read from the preview: a preview
+dedups against committed rows only, which is the whole of §4.5.
+
+The batch is an ordinary list, **sorted by path**, and that order is the commit
+order. It is sorted rather than taken as the dialog returned it because
+`QFileDialog`'s selection order is not a defined sort, and INV-4's
+reproducibility depends on two runs over the same files claiming rows in the
+same order.
+
+### 4.3 Four passes
 
 ```
-SCAN   for each file, in order:
-         classify by extension/sniff  (reuse _looks_like_ofx / _looks_like_pdf)
-         PDF   -> decrypt (§4.4); locked -> needs_password, stop this file
-         CSV   -> match_profile(header); no match -> needs_mapping, stop
-         parse -> ParseResult
-         match_account(result.source_account, accounts)
-             matched   -> account_id set
-             otherwise -> needs_account
-         preview_result(result, account_id)   [only once account_id is known]
+SCAN   refuse the batch outright if len(files) > _MAX_BATCH_FILES  (INV-11)
+       for each file, in path order:
+         stop the scan if drafts held so far > _MAX_BATCH_DRAFTS   (INV-11)
+           -> remaining files become `not_attempted`
+         classify by extension/sniff  (reuse ImportWizardWidget._looks_like_ofx
+                                       / _looks_like_pdf)
+         PDF  -> decrypt (§4.4); locked -> needs_password, stop this file
+                 then StandardBankImporter.parse(...) -> ParseResult, else the
+                 generic table route
+         OFX  -> OfxImporter.parse(data, exponent) -> [(info, ParseResult), ...]
+         CSV  -> match_profile(header); no match -> needs_mapping, stop this file
+                 CsvImporter().parse(text, mapping, exponent) -> ParseResult
+         store it as `parsed`
+         if parsed.period_start is None -> failed, "No dated transactions
+                                           found in this file" (§3 decision 4)
+         match_account(parsed.source_account, accounts)
+             matched   -> account_id set; preview_result(parsed, account_id)
+                          -> preview; outcome `ready`
+             otherwise -> needs_account   (no preview yet — §4.2)
 
-ASK    for each file whose outcome is not `ready`, one at a time:
-         needs_password -> PasswordDialog, at most 3 attempts (INV-8)
+ASK    passwords and mappings ONLY (§3 decision 5), one file at a time:
+         needs_password -> PasswordDialog, at most 3 PROMPTS (INV-8)
          needs_mapping  -> the existing _STEP_MAP page for that file
-         needs_account  -> AccountPickerDialog, with Create (§3 decision 5)
-       an answered file re-enters SCAN from where it stopped;
-       a declined file becomes `skipped`
+       an answered file re-enters SCAN at the step that stopped it — a
+       password resumes at decrypt, a mapping at CsvImporter().parse — and
+       runs the rest of the ladder;
+       a declined or exhausted file becomes `skipped`
 
-REVIEW recompute the cumulative counts (§4.5) and show the table (§4.6).
+REVIEW show the table (§4.6). Then, on entry and after every account change:
+         for each file still `needs_account`: leave it; Import all stays off
+         cumulative_counts(files)          -> sets new_count + duplicate_count
+         for each `ready` file:            -> `already_imported` when
+             id_for_span(account_id, period_start, period_end) is not None
+             AND new_count == 0                                    (§4.8)
        No commit has happened yet.
 
-RUN    for each `ready` file, in order: commit_import(...) -> ImportResult
-       record it; continue past any failure (INV-1)
+RUN    for each `ready` file, in path order:
+         commit_import(preview, preview.period_start, preview.period_end, path)
+             -> ImportResult, stored on the record; outcome `committed`
+         a raised exception -> `failed` with its message; CONTINUE (INV-1)
+       on cancel, every file not yet reached -> `not_attempted`
 ```
 
-The ASK pass runs to exhaustion before REVIEW: there is no path from a
-`needs_*` outcome to a commit (INV-3).
+`commit_import`'s arguments are spelled out because all four are load-bearing:
+the period pair is §3 decision 4's parsed default (its `None` case is already
+`failed` at SCAN, so the values reaching here are `str`), and `path` is the full
+path — `commit_import` stores `Path(source_filename).name` itself.
+
+**Passwords and mappings block the parse; an account does not.** That is the
+whole reason ASK carries the first two and REVIEW carries the third: a file
+cannot be read at all without its password or mapping, whereas a parsed file is
+merely waiting to be told where it goes. **No file is committed while any file
+is `needs_password`, `needs_mapping` or `needs_account`** — the first two are
+exhausted by ASK, the third gates `Import all` in REVIEW (INV-3).
 
 ### 4.4 Resolving a PDF password with no pick-step account
 
@@ -244,11 +340,17 @@ already hold — and it is what makes a folder of same-bank PDFs need **zero**
 prompts after the first month. Each distinct password is tried at most once
 per file, so the cost is bounded by the account count.
 
-A password entered during the ASK pass with *Remember* ticked is stored
-against the file's **settled destination account**, which by then is known —
-not against a pick-step guess. That is the shape FIBR-0249 asks for on the
-single-file path; this spec does not fix the single-file path, it declines to
-copy the defect.
+A password entered during the ASK pass with *Remember* ticked is **held on the
+record, not written immediately** — at prompt time the file is still unparsed,
+so its destination account is not yet known, and there is nothing to key the
+password to. It is written by `AccountService.set_pdf_password` once the
+destination settles (at SCAN for a matched file, at REVIEW for one the user
+places by hand), and **dropped unwritten if the file never settles one** —
+`failed`, `skipped` or left `needs_account` when the user leaves the screen.
+
+That is the shape FIBR-0249 asks for on the single-file path, where the
+password is keyed to whatever the pick step happened to hold. This spec does
+not fix the single-file path; it declines to copy the defect.
 
 ### 4.5 Cumulative dedup — the reviewed number is the number that lands
 
@@ -266,20 +368,29 @@ batch computes them cumulatively:
 
 ```python
 def cumulative_counts(files: Sequence[BatchFile]) -> None:
-    """Set `new_count` on each `ready` file to what its commit will insert.
+    """Set `new_count` AND `duplicate_count` on each `ready` file to what its
+    commit will actually insert and drop.
 
     Walks the batch in commit order, keeping the drafts already claimed by
-    earlier files, per destination account. The key is ImportService._key's —
-    (occurred_on, amount_minor, normalise_text(description)) — so this is the
-    same equality the commit will apply, not a second opinion about it.
+    earlier files, per destination account. The key is the one
+    ImportService._key builds — (occurred_on, amount_minor,
+    self._normalise(description)), where _normalise delegates to the shared
+    text.normalise_text — so this is the same equality the commit will apply,
+    not a second opinion about it.
     """
 ```
 
-Scoped per `account_id`, because dedup is: two files landing in different
-accounts never dedup against each other however identical their rows.
+Scoped per `account_id`, because dedup is per-account: two files landing in
+different accounts never dedup against each other however identical their rows.
 
-This is one invariant (INV-4) and it is the reason `BatchFile.new_count`
-exists as a separate field from `preview.new_count`.
+**Both counts move together, and that is not a detail.** Making only
+`new_count` cumulative while the Duplicate column kept reading
+`preview.duplicate_count` would put two numbers computed under different rules
+side by side on the approval screen: the second file's shared rows would be
+subtracted from New and never appear under Duplicate, so New + Duplicate would
+not account for the file's rows and the user could not reconcile what they were
+approving. This is INV-4, and it is why `BatchFile` carries both counts as
+fields of its own rather than reading either from the preview.
 
 ### 4.6 The review step
 
@@ -293,19 +404,40 @@ tables share one key and cross-corrupt widths).
 |---|---|
 | File | `Path(path).name` — the basename, matching what `commit_import` stores |
 | Account | the destination account's name, or *— pick one —* |
-| New | `BatchFile.new_count` (§4.5) |
-| Duplicate | `preview.duplicate_count` |
+| New | `BatchFile.new_count` (§4.5, cumulative) |
+| Duplicate | `BatchFile.duplicate_count` (§4.5, cumulative) |
 | Status | the `Outcome`, rendered per §4.8 |
 
-The Account cell is clickable on every row and opens `AccountPickerDialog`;
-choosing a different account calls `ImportService.retarget(preview, id)`,
-re-stores the returned preview, and re-runs `cumulative_counts` over the whole
-batch — because one row's destination changes which rows every *other* row in
-that account may claim.
+**Two selected files can share a basename** — `statement.pdf` from two folders
+is the ordinary case, and §8 rejects filename-based duplicate detection for
+exactly this reason. When two rows' basenames collide, both show the parent
+directory as well (`2025/statement.pdf`). The full path is the tooltip on every
+row regardless.
 
-`Import all` is enabled iff at least one file is `ready`. Files that are
-`failed`, `skipped` or `already_imported` stay listed with their reason and
-are not committed — they are the report, not an obstacle.
+**Setting an account.** The Account cell is clickable on rows that have a
+`parsed` result — that is, every row except `failed` — and opens
+`AccountPickerDialog` with the Create affordance of §3 decision 6. Which call
+follows depends on whether a preview exists yet, and the two are not
+interchangeable:
+
+- **No preview** (the row was `needs_account`): `preview_result(parsed,
+  account_id)` builds the first one, and the row becomes `ready`.
+  `ImportService.retarget` cannot be used here — it takes an `ImportPreview`
+  and there is none.
+- **A preview exists** (the user is changing an already-settled row):
+  `ImportService.retarget(preview, account_id)`, whose returned preview
+  replaces the stored one.
+
+Either way `cumulative_counts` then re-runs over the whole batch, because one
+row's destination changes which rows every *other* row in that account may
+claim.
+
+`Import all` is enabled iff at least one file is `ready` **and no file is still
+`needs_account`** — the second half is what makes §3 decision 5's
+review-screen account question a gate rather than a suggestion (INV-3). Files
+that are `failed`, `skipped` or `already_imported` do not block it: they stay
+listed with their reason and are simply not committed — they are the report,
+not an obstacle.
 
 ### 4.7 Driving the passes with no nested event loop
 
@@ -317,10 +449,18 @@ before any are chosen:
   calls `processEvents()` to stay responsive, and re-entrancy is exactly the
   FIBR-0065 crash class: an idle auto-lock fires inside the nested loop,
   `MainWindow._lock()` destroys the widget, and the code after the loop reads
-  a deleted C++ object. `tests/features/dialog_lifecycle/` INV-1 is a source
-  grep that fails on any `.exec(` in the wizard, so this is a mechanical
-  refusal and not a preference.
+  a deleted C++ object.
   Source: <https://doc.qt.io/qt-6/qprogressdialog.html>
+
+  **Only half of that is mechanically enforced today, and the spec should not
+  claim otherwise.** `tests/features/dialog_lifecycle/` INV-1 greps for
+  `\.exec\(`, which catches `dialog.exec()` and `progress.exec()` — but a
+  modal `QProgressDialog` driven by a bare `QApplication.processEvents()` loop
+  carries no `.exec(` token and would pass that grep untouched. INV-6
+  therefore extends the guard to the `processEvents` token as well, which is
+  what turns this bullet into a mechanical refusal rather than a preference.
+  `processEvents` appears nowhere under `src/` today, so the extended guard
+  starts green.
 - **A `QThread` worker is rejected**, though `ui/_worker.py::DeriveWorker` and
   `ui/_update_worker.py::DownloadWorker` are the house pattern. Both do work
   that never touches the vault — an Argon2id derivation and an HTTP download.
@@ -355,19 +495,35 @@ the file still carry new rows, which is the ordinary "the bank re-issued this
 month with three more transactions" case, and reporting that as already
 imported would be a lie the user acts on.
 
-Per-file report lines, shown on the same table after the run:
+Per-file report lines, shown on the same table after the run. Every row is one
+`Outcome` member (§4.2), so the Status column needs no second vocabulary:
 
 | Outcome | Line |
 |---|---|
-| committed | *53 added, 0 duplicates* — from `ImportResult` |
+| `committed` | *53 added, 0 duplicates* — from `ImportResult` |
 | `already_imported` | *Already imported — nothing new in this file* |
-| `failed` | *Couldn't read this file — <reason>* |
-| `skipped` | *Skipped — you didn't supply a password* (or mapping / account) |
-| not attempted | *Not imported — the batch was cancelled* |
+| `failed` (at SCAN) | *Couldn't read this file — <reason>* |
+| `failed` (at RUN) | *Couldn't import this file — <reason>* |
+| `skipped` | *Skipped — you didn't supply a password* (or mapping) |
+| `not_attempted` | *Not imported — the batch was cancelled* |
 
-Failure text reuses the wizard's existing friendly strings, including
+**`failed` carries two wordings because it is reachable from two passes**, and
+one sentence cannot serve both: a SCAN failure genuinely could not read the
+file, whereas INV-1's failure is a `ValueError` out of `commit_import` on a
+file that read perfectly. Telling a user their file was unreadable when the
+commit rejected its date span sends them to fix the wrong thing. The record's
+`reason` carries the underlying message either way.
+
+SCAN failure text reuses the wizard's existing friendly strings, including
 `_show_pdf_read_error`'s *"Couldn't read this PDF — try your bank's CSV or OFX
 export."*, rather than a second vocabulary for the same errors.
+
+**The report is shown before the screen is torn down.** `ImportWizardWidget`
+signals completion with a payload-free `done`, which `MainWindow._on_import_done`
+handles by rebuilding the workspace — so emitting `done` at the end of RUN would
+destroy the very table the report is written into. The batch therefore emits
+`done` only when the user dismisses the report (a `Close` button on the review
+step), not when the last file commits.
 
 ## 5. Invariants
 
@@ -390,42 +546,60 @@ export."*, rather than a second vocabulary for the same errors.
   rather than a puzzling SQLite error.
 
 - **INV-3** — No file is committed while any file in the batch is
-  `needs_password`, `needs_mapping` or `needs_account`.
+  `needs_password`, `needs_mapping` or `needs_account`. The first two are
+  exhausted by ASK; the third disables `Import all` in REVIEW (§4.6).
   *Test:* `tests/features/batch_import/test_batch_import.py::test_INV3_no_commit_before_every_question_answered`
-  — a batch containing one locked PDF whose prompt is never answered commits
-  nothing at all, including the files that were `ready`.
-  *Breaks when:* the review step is reachable with an unanswered record, e.g.
-  the ASK pass advances on dialog `finished` rather than on an answer.
+  — two legs, because the two halves are enforced by different mechanisms: a
+  batch containing one locked PDF whose prompt is never answered commits
+  nothing at all, including the files that were `ready`; and a batch reaching
+  REVIEW with one `needs_account` row has `Import all` disabled.
+  *Breaks when:* ASK advances on dialog `finished` rather than on an answer;
+  or `Import all` is gated on "at least one `ready`" alone, which is true
+  while another row still has no destination.
 
-- **INV-4** — For each `ready` file, the New count shown on the review step
-  equals its `ImportResult.inserted_count` after the run, given no change to
-  the vault between the two.
-  *Test:* `tests/features/batch_import/test_batch_import.py::test_INV4_reviewed_count_is_the_committed_count`
+- **INV-4** — For each `ready` file, the New **and** Duplicate counts shown on
+  the review step equal its `ImportResult.inserted_count` and
+  `duplicate_count` after the run, given no change to the vault between the
+  two.
+  *Test:* `tests/features/batch_import/test_batch_import.py::test_INV4_reviewed_counts_are_the_committed_counts`
   — two overlapping CSVs targeting one account, sharing four rows; the review
-  shows the second file's four shared rows as duplicates and the sum of the
-  two New counts equals the row count in the vault afterwards.
-  *Breaks when:* `cumulative_counts` is skipped and `preview.new_count` is
-  displayed, which counts each file against the committed vault alone and so
-  reports the four shared rows twice.
+  shows the second file's four shared rows under Duplicate and not under New,
+  and the sum of the two New counts equals the row count in the vault
+  afterwards.
+  *Breaks when:* `cumulative_counts` is skipped and the preview's own counts
+  are displayed, which count each file against the committed vault alone —
+  reporting the four shared rows twice under New. It breaks *asymmetrically*
+  if only `new_count` is made cumulative: the four rows then vanish from New
+  without appearing under Duplicate, so the row no longer accounts for the
+  file's transactions at all.
 
-- **INV-5** — For every file, `match_account` runs before `preview_result`,
-  and the account shown on a review row is the account that row's
-  `ImportPreview.account_id` targets.
+- **INV-5** — For every file, `match_account` runs before any preview is
+  built, and the account shown on a review row is the account that row's
+  `ImportPreview.account_id` targets — including after the user changes it.
   *Test:* `tests/features/batch_import/test_batch_import.py::test_INV5_displayed_account_is_the_targeted_account`
-  — after changing one row's account through the review table, that file's
-  `preview.account_id` equals the displayed account, and its rows land there.
-  *Breaks when:* a review-row account change updates the cell without calling
-  `ImportService.retarget` — the FIBR-0086 §4.5 wrong-account commit, reached
-  through a new door.
+  — three legs, one per route into a destination: a matched file, a
+  `needs_account` file given an account on the review screen (which builds its
+  first preview via `preview_result`), and an already-`ready` file changed on
+  the review screen (which goes through `retarget`). In each, that file's
+  `preview.account_id` equals the displayed account and its rows land there.
+  *Breaks when:* a review-row account change updates the cell without
+  re-pointing the preview — the FIBR-0086 §4.5 wrong-account commit reached
+  through a new door — or when the no-preview route calls `retarget`, which
+  takes an `ImportPreview` and has none to take.
 
-- **INV-6** — No batch code path blocks the event loop with a nested dialog
-  loop: no `.exec(` token appears in `ui/import_wizard.py` or
+- **INV-6** — No batch code path blocks the event loop, by a nested dialog
+  loop **or** by pumping events inside one: neither a `.exec(` nor a
+  `processEvents` token appears in `ui/import_wizard.py` or
   `ui/import_batch.py`.
   *Test:* `tests/features/dialog_lifecycle/test_dialog_lifecycle.py::test_INV1_no_blocking_dialog_exec_in_content_widgets`,
-  with `"import_batch.py"` added to its `_FILES` tuple.
-  *Breaks when:* the new module is written with `dialog.exec()`, or is created
-  and not added to `_FILES` — in which case the guard passes while covering
-  nothing, so the test's own tuple is part of the contract.
+  with `"import_batch.py"` added to its `_FILES` tuple and `processEvents`
+  added to its `_EXEC` pattern.
+  *Breaks when:* the new module is written with `dialog.exec()`; or is created
+  and not added to `_FILES`, in which case the guard passes while covering
+  nothing; or a modal `QProgressDialog` is driven by a bare
+  `QApplication.processEvents()` loop, which carries no `.exec(` token and so
+  passes the unextended grep while re-entering the event loop exactly as
+  FIBR-0065 forbids. Both the tuple and the pattern are part of the contract.
 
 - **INV-7** — An idle auto-lock during a batch stops it. Files already
   committed stay committed; no further file is attempted; nothing is
@@ -437,10 +611,12 @@ export."*, rather than a second vocabulary for the same errors.
   without the context object, so the pending callback survives the widget and
   resumes against a locked vault.
 
-- **INV-8** — A locked PDF is prompted for at most three times, after which
-  the file becomes `needs_password` → `skipped` and the batch continues.
-  Cancelling the prompt skips that file immediately.
-  *Test:* `tests/features/batch_import/test_batch_import.py::test_INV8_password_attempts_are_bounded`
+- **INV-8** — A locked PDF raises at most three **user prompts**, after which
+  the file becomes `skipped` and the batch continues. Cancelling a prompt
+  skips that file immediately. ("Prompt" throughout, never "attempt" — §4.4's
+  automatic tries against stored passwords are attempts and are bounded
+  separately by INV-9.)
+  *Test:* `tests/features/batch_import/test_batch_import.py::test_INV8_password_prompts_are_bounded`
   — a locked fixture answered wrongly three times leaves one `skipped` file
   and a completed batch.
   *Breaks when:* the re-prompt recurses without a counter, which is exactly
@@ -456,37 +632,77 @@ export."*, rather than a second vocabulary for the same errors.
   is tried once per account holding it — invisible on success and a
   quadratic-looking stall on a large account list.
 
-- **INV-10** — `already_imported` is reported only when the period span
-  already exists **and** the file's cumulative new count is zero.
-  *Test:* `tests/features/batch_import/test_batch_import.py::test_INV10_reissued_span_with_new_rows_is_not_already_imported`
-  — re-importing a statement re-issued with three extra transactions over the
-  same dates reports `ready` with three new rows, not `already_imported`.
+- **INV-10** — `already_imported` is reported when the period span already
+  exists **and** the file's cumulative new count is zero, and in no other
+  case.
+  *Test:* `tests/features/batch_import/test_batch_import.py::test_INV10_already_imported_needs_both_halves`
+  — both directions, since one alone cannot tell a two-part predicate from
+  either of its halves: re-importing an unchanged statement reports
+  `already_imported`, while the same statement re-issued with three extra
+  transactions over the same dates reports `ready` with three new rows.
   *Breaks when:* the check is `id_for_span(...) is not None` alone, which
-  reports a re-issue as already-imported and loses the three rows.
+  reports the re-issue as already-imported and loses its three rows; or is
+  `new_count == 0` alone, which reports a first-time import of an all-duplicate
+  file as already-imported when no span exists.
 
 - **INV-11** — The batch refuses more than 200 files up front, and stops the
-  scan once 200,000 drafts are held, reporting both in plain English rather
-  than failing.
+  scan once 200,000 drafts are held. Neither cap raises: the refused or
+  unscanned files are reported as `not_attempted`.
   *Test:* `tests/features/batch_import/test_batch_import.py::test_INV11_batch_caps`
   — 201 synthetic paths are refused before any file is read; a scan crossing
-  the draft cap stops with the files scanned so far marked and the rest not
-  attempted.
+  the draft cap stops with the files scanned so far marked and the rest
+  `not_attempted`.
   *Breaks when:* neither cap is enforced and a folder of large PDFs holds
-  every preview in memory at once (§10).
+  every preview in memory at once (§10). The *wording* of the two messages is
+  not covered — see §11.
 
 - **INV-12** — No real statement data enters the repository with this work:
   every fixture under `tests/features/batch_import/` is synthetic.
-  *Test:* `tests/features/account_detect/test_no_real_data.py` covers the
-  tracked tree and is extended to the new fixture directory.
+  *Test:* `tests/features/account_detect/test_no_real_data.py`, extended to
+  the new fixture directory. **It covers only files git tracks and only when
+  `FINBREAK_CORPUS_NUMBERS` is set, skipping silently otherwise** (FIBR-0248),
+  and it cannot see git history (FIBR-0247) — so this invariant is
+  substantially weaker than its test name suggests, and §11 records that
+  rather than the bare pass.
   *Breaks when:* a real statement is copied in as a batch fixture — the
   repository is public and `gitleaks` does not detect account numbers.
 
+- **INV-13** — A file whose parse yields no dated row never reaches
+  `commit_import`: it becomes `failed` at SCAN with a reason naming the
+  absent dates.
+  *Test:* `tests/features/batch_import/test_batch_import.py::test_INV13_undated_file_fails_before_commit`
+  — a CSV whose every row has an unparseable date is `failed`, its reason
+  mentions dates, and `commit_import` is never called for it.
+  *Breaks when:* `preview.period_start` is passed through as `None`, which
+  reaches `ImportService._validate_span` and surfaces
+  *"period endpoints must be valid ISO-8601 dates"* — a message about
+  malformed dates for a file that had none at all.
+
+- **INV-14** — The post-run report is visible before the screen is torn down:
+  `ImportWizardWidget.done` is emitted on the user's dismissal of the report,
+  never at the end of RUN.
+  *Test:* `tests/features/batch_import/test_batch_import.py::test_INV14_done_waits_for_the_report`
+  — a `qtbot` spy on `done` records zero emissions after the last file
+  commits, and exactly one after the report's Close is clicked.
+  *Breaks when:* RUN emits `done` when the last file commits — which is what
+  the single-file `_on_import` does, so it is the natural thing to copy;
+  `MainWindow._on_import_done` then rebuilds the workspace and destroys the
+  table the report was about to be written into.
+
 ## 6. Failure modes
 
-**The scan is slow and looks hung.** Thirty large PDFs at a second each is
-half a minute. The one-file-per-turn chain (§4.7) keeps the event loop live,
-so the review table fills in row by row as files are scanned and the count
-advances. There is no separate progress dialog.
+**The scan is slow and looks hung.** The one-file-per-turn chain (§4.7) keeps
+the event loop live, so `_STEP_BATCH` is shown from the **start of SCAN**, not
+at REVIEW, and its table fills in row by row as each file is classified and
+parsed. A row not yet reached shows its basename with the other four columns
+blank and a Status of *Waiting*; the pass names in §4.3 are the phases of the
+run, not the moment the screen appears. `Import all` stays disabled until
+REVIEW. There is no separate progress dialog — the table is the progress
+indicator.
+
+Concretely: thirty PDFs of the size in the user's corpus take on the order of
+tens of seconds to scan. That figure is an **estimate, not a measurement** —
+no batch exists to time yet — and §10 records what to measure once one does.
 
 **The vault locks mid-scan rather than mid-run.** Nothing has been committed,
 so there is nothing to be consistent about: the wizard is destroyed, the
@@ -494,9 +710,15 @@ pending callback drops (INV-7), and the user unlocks and starts again.
 
 **A file is both locked and unmappable.** A PDF whose password is supplied and
 which then yields no usable table falls to `failed` with the existing
-`candidate_tables` message. Its password attempt is not wasted — the
-*Remember* tick still stores it against the destination account if one was
-settled, so the retry needs no prompt.
+`candidate_tables` message. Its password is **not** stored, because a `failed`
+file never settles a destination account and §4.4 writes the password only
+against a settled one — so the retry will prompt again. That is the honest
+consequence of keying stored passwords to accounts rather than to files; a
+file that never reaches an account has nowhere to put it.
+
+**A file has no dated rows at all.** It becomes `failed` at SCAN before any
+preview is built (INV-13), because §3 decision 4 removed the `QDateEdit` pair
+that is the single-file path's only way to supply a period by hand.
 
 **Two files claim the same span in one batch.** The first to commit creates
 the `statement_periods` row; the second reuses it via `id_for_span`, so
@@ -527,28 +749,30 @@ New directory `tests/features/batch_import/` — `spec.md` plus
 `test_batch_import.py`, per `testing.md`. Fixtures are synthetic strings and
 generated PDFs, never real statements (INV-12).
 
-| Locks | Test |
-|---|---|
-| INV-1, INV-2 | `test_INV1_failure_does_not_abort_batch`, `test_INV2_per_file_transaction_boundary` |
-| INV-3 | `test_INV3_no_commit_before_every_question_answered` |
-| INV-4 | `test_INV4_reviewed_count_is_the_committed_count` |
-| INV-5 | `test_INV5_displayed_account_is_the_targeted_account` (`qtbot`) |
-| INV-7 | `test_INV7_autolock_mid_batch_stops_the_run` (`qtbot`) |
-| INV-8, INV-9 | `test_INV8_password_attempts_are_bounded`, `test_INV9_stored_passwords_tried_once_each` |
-| INV-10, INV-11 | `test_INV10_reissued_span_with_new_rows_is_not_already_imported`, `test_INV11_batch_caps` |
+**§11 is the canonical invariant → test mapping; this section does not repeat
+it.** What lives here is what §11's one-line cells cannot carry: which legs a
+test needs, which need `qtbot`, and which must be mutation-checked.
 
-INV-6 and INV-12 extend tests that already exist, in their own suites —
-`tests/features/dialog_lifecycle/` and `tests/features/account_detect/`
-respectively. Neither gets a copy here; a second home for either check is a
-second rule that will disagree with the first.
+**Qt-driven legs.** INV-5, INV-7 and INV-14 drive real widgets and need
+`qtbot`. INV-3's second leg (`Import all` disabled) and INV-8 (three prompts)
+also reach dialogs: both use a signal-emitting `QDialog` stand-in rather than
+the real `PasswordDialog`, following the pattern
+`tests/features/dialog_lifecycle/` established when FIBR-0065 converted the
+blocking pop-ups — a fake that emits `accepted` is what makes a non-blocking
+flow testable at all. INV-1, INV-2, INV-4, INV-9, INV-10, INV-11 and INV-13
+are headless against `services/batch_import.py`.
 
-**Every test is seen red before the fix**, per `testing.md`. Three deserve
+**Every test is seen red before the fix**, per `testing.md`. Four deserve
 explicit mutation, because each is a clause that could pass against an
-implementation that does not have the property:
+implementation lacking the property:
 
-- **INV-4** must be watched failing with `cumulative_counts` removed — that
-  is, with `preview.new_count` displayed. If it still passes, the two fixture
-  files do not actually overlap and the test proves nothing.
+- **INV-4** must be watched failing twice — once with `cumulative_counts`
+  removed entirely, and once with only `new_count` made cumulative. The second
+  is the one that matters: it is the shape the spec had before review, and a
+  test asserting only the New column would stay green through it.
+- **INV-5**'s no-preview leg must be watched failing with `retarget`
+  substituted for `preview_result`. If it passes, the fixture's file already
+  had a preview and the leg is testing the wrong route.
 - **INV-7** must be watched failing with the two-argument
   `QTimer.singleShot(0, callable)`. If it still passes, the lock is landing
   between the chain's last turn and the assertion rather than mid-run.
@@ -556,18 +780,39 @@ implementation that does not have the property:
   `stored_passwords`. If it still passes, the two accounts do not in fact
   share a password string.
 
-The ripple: `tests/features/dialog_lifecycle/test_dialog_lifecycle.py`'s
-`_FILES` gains `"import_batch.py"`, and any `app_shell` assertion counting the
-wizard's stack pages moves from three to four.
+**The ripple, and it is smaller than it looks.**
+`tests/features/dialog_lifecycle/test_dialog_lifecycle.py` gains
+`"import_batch.py"` in `_FILES` and `processEvents` in its pattern (INV-6), and
+its `spec.md` states both; `tests/features/account_detect/test_no_real_data.py`
+gains the new fixture directory (INV-12).
+
+**No existing wizard test changes.** There are **24** `_stack.currentIndex()`
+assertions across **six** suites — `pdf_import` (10), `import_` (5),
+`standard_bank_pdf` (4), `import_date_detect` (2), `ofx_import` (2),
+`account_detect` (1) — and `app_shell` has none. Every one asserts an absolute
+index of 0, 1 or 2:
+
+```console
+$ grep -rho "_stack.currentIndex() == [0-9]" tests/ | sort | uniq -c
+      1 _stack.currentIndex() == 0
+     10 _stack.currentIndex() == 1
+      9 _stack.currentIndex() == 2
+```
+
+The remaining four (all in `standard_bank_pdf`) compare against the wizard's
+own `_STEP_PREVIEW` / `_STEP_PICK` constants rather than literals, so they are
+safe by construction whatever the numbering.
+
+`_STEP_BATCH = 3` is **appended** after the existing three, so indices 0–2 keep
+their meaning and all 24 assertions stay true. Appending rather than inserting
+is what makes that so, and is the reason to append.
 
 ## 8. Alternatives considered (and rejected)
 
 **A separate batch widget that does not touch the wizard.** Cleaner
-separation, and it avoids growing a 1,235-line file. Rejected because an
-unfamiliar CSV in a batch needs the map step's entire form, and the choice
-would be between duplicating that form or refusing to map CSVs in a batch —
-the first is the largest duplication in the codebase, the second contradicts
-§3 decision 1.
+separation, and it avoids growing a 1,235-line file. Rejected for the reason
+§4.1 gives: an unfamiliar CSV in a batch needs the map step's entire form, and
+the alternatives are duplicating it or refusing to map CSVs in a batch.
 
 **A `QThread` batch worker.** The house pattern for slow work, and it would
 keep the UI perfectly smooth. Rejected in §4.7: the existing workers touch no
@@ -625,6 +870,28 @@ module-level constants in `services/import_.py` and `importers/pdf_importer.py`
 respectively, not class attributes, and the new pair follows suit. The per-file
 16 MiB read cap still applies to each file and is not relaxed.
 
+**Two time costs are bounded by argument rather than by a measured budget, and
+both are stated so the first real batch can check them.**
+
+- **`cumulative_counts` re-runs on every review-row account change** (§4.6),
+  walking every held draft once: **O(total drafts)**, so at the
+  `_MAX_BATCH_DRAFTS` cap it is a single pass over 200,000 tuples on the GUI
+  thread. That is a hash-and-compare per draft, not I/O, and it is bounded by
+  the cap rather than by the file count.
+- **§4.4 tries each distinct stored password once per locked file**: **O(files
+  × distinct passwords)** decrypt attempts, and a decrypt is the expensive
+  operation here. Distinct passwords is bounded by the account count, which
+  this app's users have in single digits — but nothing enforces that, which is
+  what INV-9's *Breaks when* means by "a quadratic-looking stall on a large
+  account list".
+
+Neither has a numeric budget because there is nothing to measure yet — the
+first implementation is the first batch. **What to measure when it exists:** the
+`cumulative_counts` wall time at the draft cap, and the decrypt-attempt count on
+a folder of locked PDFs. If either bites, the fix is a cached per-account draft
+index and a most-recently-successful password ordering, neither of which changes
+this contract.
+
 ## 11. What checks this
 
 | Rule | What catches a breach |
@@ -632,21 +899,33 @@ respectively, not class attributes, and the new pair follows suit. The per-file
 | INV-1 | `tests/features/batch_import/test_batch_import.py::test_INV1_failure_does_not_abort_batch` |
 | INV-2 | `tests/features/batch_import/test_batch_import.py::test_INV2_per_file_transaction_boundary` |
 | INV-3 | `tests/features/batch_import/test_batch_import.py::test_INV3_no_commit_before_every_question_answered` |
-| INV-4 | `tests/features/batch_import/test_batch_import.py::test_INV4_reviewed_count_is_the_committed_count` |
+| INV-4 | `tests/features/batch_import/test_batch_import.py::test_INV4_reviewed_counts_are_the_committed_counts` |
 | INV-5 | `tests/features/batch_import/test_batch_import.py::test_INV5_displayed_account_is_the_targeted_account` |
-| INV-6 | `tests/features/dialog_lifecycle/test_dialog_lifecycle.py::test_INV1_no_blocking_dialog_exec_in_content_widgets` (with `_FILES` extended) |
+| INV-6 | `tests/features/dialog_lifecycle/test_dialog_lifecycle.py::test_INV1_no_blocking_dialog_exec_in_content_widgets` (with `_FILES` **and** the token pattern extended) |
 | INV-7 | `tests/features/batch_import/test_batch_import.py::test_INV7_autolock_mid_batch_stops_the_run` |
-| INV-8 | `tests/features/batch_import/test_batch_import.py::test_INV8_password_attempts_are_bounded` |
+| INV-8 | `tests/features/batch_import/test_batch_import.py::test_INV8_password_prompts_are_bounded` |
 | INV-9 | `tests/features/batch_import/test_batch_import.py::test_INV9_stored_passwords_tried_once_each` |
-| INV-10 | `tests/features/batch_import/test_batch_import.py::test_INV10_reissued_span_with_new_rows_is_not_already_imported` |
-| INV-11 | `tests/features/batch_import/test_batch_import.py::test_INV11_batch_caps` |
+| INV-10 | `tests/features/batch_import/test_batch_import.py::test_INV10_already_imported_needs_both_halves` |
+| INV-11 | `tests/features/batch_import/test_batch_import.py::test_INV11_batch_caps` — the two caps only |
 | INV-12 | `tests/features/account_detect/test_no_real_data.py` — **but only for files git tracks, and only when `FINBREAK_CORPUS_NUMBERS` is set**; the guard skips silently otherwise (FIBR-0248) and cannot see git history (FIBR-0247) |
-| §3 decision 4 — no period editing in a batch | **nothing** — an absence of UI, which no test asserts; a cold reader of the review step |
-| §4.8 report wording | **nothing** — user-facing strings, checked by reading |
+| INV-13 | `tests/features/batch_import/test_batch_import.py::test_INV13_undated_file_fails_before_commit` |
+| INV-14 | `tests/features/batch_import/test_batch_import.py::test_INV14_done_waits_for_the_report` |
+| §3 decision 4 — no period editing in a batch | **nothing** — an absence of UI, which no test asserts; caught only by a cold reader of the review step |
+| §4.6 basename-collision disambiguation | **nothing** — a display rule with no assertion; caught by reading |
+| §4.8 report wording, incl. the two `failed` phrasings | **nothing** — user-facing strings, checked by reading |
+| INV-11's cap *messages* being plain English | **nothing** — the test asserts the caps bind and the files are `not_attempted`, not how either is worded |
+| §10's two unbudgeted time costs | **nothing** — stated as complexity arguments with a named thing to measure once a real batch exists; no test bounds either |
 | §10 draft-count cap being the *right* number | **nothing** — INV-11 proves the cap is enforced, not that 200,000 is well chosen; revisit if a real batch approaches it |
 
-Fifteen rows, **three** with a bolded `nothing`, plus one heavily qualified.
-That is this spec's honest error budget.
+Twenty rows — fourteen invariants plus six unguarded rules — **six** with a
+bolded `nothing`, plus one heavily qualified (INV-12). Counted 2026-08-06 with
+`awk '/^## 11\./,/^## 12\./' <this file> | grep -c '^|.*|$'` → 22, less the
+header and separator rows.
+
+That is this spec's honest error budget, and it **grew** during review rather
+than shrinking: three of the six `nothing` rows were previously not stated at
+all, which made the budget look smaller than it was rather than making the
+spec safer.
 
 ## 12. Cross-doc impact
 
@@ -657,9 +936,15 @@ That is this spec's honest error budget.
 - **`ROADMAP.md`** — FIBR-0085 → 🚧 at implementation start, → ✅ at close.
 - **`README.md`** — the "what works today" list gains batch import; per the
   standing release rule the whole section is re-verified, not appended to.
+- **`tests/features/dialog_lifecycle/spec.md`** — its INV-1 clause names the
+  four files and the `.exec(` token; INV-6 changes both (a fifth file, plus
+  `processEvents`), so the feature-test contract changes with the test.
 - **`docs/specs/FIBR-0086-account-number-auto-detect.md`** — no change. Its
   §4.5 ordering is consumed, not amended; INV-5 restates the consequence for
   the batch path rather than editing FIBR-0086's contract.
+- **`docs/specs/FIBR-0088.md`** (when written) and the **FIBR-0249** bullet —
+  no change now, but both are cited from §9 as the owners of what this spec
+  defers; neither is edited by this work.
 - **`docs/design.md`** — no change. § Concurrency's "import runs on the GUI
   thread" survives this work, which is §4.7's whole argument.
 
@@ -667,3 +952,4 @@ That is this spec's honest error budget.
 
 | Loop | Date | Lanes | CRIT | HIGH | MED | LOW | Outcome |
 |------|------|-------|------|------|-----|-----|---------|
+| 1 | 2026-08-06 | 3 (cold, shared packet) | 3 | 8 | 13 | 11 | 35 verified, 1 dismissed. All 35 fixed. Dimensions: dim 7×6, dim 5×6, dim 2×4, dim 10×5, dim 4×4, dim 6×5, dim 15×4, dim 9×3, dim 1×3, dim 11×3, dim 12×1. Two CRITICALs were design defects no reading caught: the review table's Duplicate column stayed non-cumulative while New became cumulative, so New + Duplicate would not account for a file's rows on the screen the user approves; and `already_imported` was a declared outcome no pass ever assigned. A third resolved a contradiction between §3 decision 5 and §4.3 over *when* the account question is asked — settled by the user's own approved mock-up, which shows an unresolved row on the review screen. Added INV-13 (undated file never reaches `commit_import`; `_validate_span` would have reported malformed dates for a file that had none) and INV-14 (`done` deferred to report dismissal, else `MainWindow._on_import_done` destroys the report table). Self-inflicted collateral caught by 4b-x/4c and fixed in-loop: a duplicated §7 block, a dead TOC anchor, a missing TOC row, a wrong §11 self-count (18 vs 20), and a false ripple claim — `app_shell` has zero stack assertions; the 24 real ones live in six other suites and all survive appending `_STEP_BATCH = 3`. |
