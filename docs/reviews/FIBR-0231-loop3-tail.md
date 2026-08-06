@@ -1,12 +1,14 @@
 # FIBR-0231 — cold-eyes loop 3 deferred tail
 
-**Status:** verified and **unfixed**. Written 2026-08-06 when the run stopped at
-loop 3 on `/cold-eyes`' collateral trigger (see `docs/specs/FIBR-0231-plain-english-month-summary.md`
-§13 loop 3 for why it stopped rather than looping again).
+**Status:** ✅ **ALL 24 FOLDED IN** 2026-08-06 via `/apply-fixes` — 0 deferred,
+0 dismissed. See the spec's §13 `fold` row for what each fix changed and §13.1
+for the archaeology the trim moved out of the body. **The findings below are
+left verbatim as the dated review record**; they describe the loop-2 document,
+not the current one.
 
-> These are verified and unfixed. Do **not** re-review to rediscover them — a
-> fresh loop costs a full three-lane dispatch to regenerate what is already
-> written here. Fold them in directly.
+Written 2026-08-06 when the run stopped at loop 3 on `/cold-eyes`' collateral
+trigger (see `docs/specs/FIBR-0231-plain-english-month-summary.md` §13 loop 3 for
+why it stopped rather than looping again).
 
 Three lanes, cold, on the 1203-line loop-2 document. **CRITICAL 2 · HIGH 3 ·
 MEDIUM 9 · LOW 9 · INFO 1** (verified 24, unverified 0). Every arithmetic

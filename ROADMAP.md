@@ -4656,6 +4656,30 @@ because retrofitting them is a data migration.
   Next: fold the tail in, trim ~80-100 lines of review archaeology into
   the loop log (all three lanes named the same trim), then ONE confirming
   loop — not a fresh review.
+  Progress (2026-08-06): the loop-3 tail is FOLDED IN — all 24 findings,
+  0 deferred, 0 dismissed, via /apply-fixes. Both blockers are closed by
+  DESIGN changes, not prose. (1) The common-day-count rule is GONE: a
+  complete month is now compared whole calendar month against whole
+  calendar months, and only a partial month truncates — to a head capped
+  below every window month's last day, so a fixed monthly debit is inside
+  all four windows or none. The February bias that rule was introduced to
+  remove is back, argued on the merits: 8.70% against a 10% gate, so it
+  never renders a verdict alone, and it is TRUE rather than invented.
+  (2) The absolute materiality gate is now stated as belt-and-braces —
+  above the baseline floor, relative-pass implies absolute-pass, so INV-6
+  dropped to three legs and the floor is asserted directly over the
+  constants. Also: month_has_rows dropped (has-data is now a SPEND row,
+  so an income-only baseline month reads as the partial import it almost
+  always is); strip clear() added and called as refresh()'s first
+  statement, closing all eight call sites; slot 2 split three ways
+  because "All of it and more" was false at excess == movement; INV-14's
+  sign check rewritten (the specified search could not fire — the
+  currency symbol sits between the sign and the first digit); INV-1
+  gained the AST leg that sees its own stated breach. The ~90 lines of
+  review archaeology moved to the spec's new §13.1; §11 is 32 rows /
+  11 nothings, re-derived by its stated awk. Spec is 1437 lines,
+  spec_lint + doc_integrity clean, 14/14 invariants parse.
+  Next: ONE confirming /cold-eyes loop — not a fresh review — then TDD.
 
 - 📋 [FIBR-0232] **"Safe to spend" — one number for what's left after everything still due this month.**
   The cash-flow forecast (FIBR-0171) already projects a balance forward

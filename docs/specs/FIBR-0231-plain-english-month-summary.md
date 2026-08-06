@@ -1,15 +1,15 @@
 # FIBR-0231 — Plain-English monthly summary: the app does the reading
 
-**Status:** 🚧 **DRAFT — NOT ready to implement** (2026-08-06). `/cold-eyes` ran
-**3 loops × 3 cold lanes** and **stopped unconverged** on its own
-collateral trigger (§13 loop 3). **24 verified findings remain unfixed**, two of
-them CRITICAL, and they are written up transferably in
-[`docs/reviews/FIBR-0231-loop3-tail.md`](../reviews/FIBR-0231-loop3-tail.md) —
-fold them in directly; do **not** re-run the review to rediscover them.
-The two blockers: §4.4's common-day-count rule manufactures a false verdict *and*
-a false named cause every February for any user with a month-end debit order, and
-the derived baseline floor makes the absolute materiality gate dead, leaving
-INV-6's "relative only" leg with no solution.
+**Status:** 🚧 **DRAFT — one confirming cold-eyes loop owed** (2026-08-06).
+`/cold-eyes` ran **3 loops × 3 cold lanes** and stopped unconverged on its own
+collateral trigger; its 24-finding tail
+([`docs/reviews/FIBR-0231-loop3-tail.md`](../reviews/FIBR-0231-loop3-tail.md))
+has now been **folded in whole** — see §13 loop 3 and §13.1. Two of the fixes
+changed the design rather than the prose: §4.4's common-day-count rule was
+**replaced** (it manufactured a false verdict *and* a false named cause every
+February for any user with a month-end debit order), and the absolute
+materiality gate is now stated as belt-and-braces rather than load-bearing (the
+derived floor makes it unreachable). One confirming loop is owed before code.
 **Kind:** feature.
 **Source:** ROADMAP FIBR-0231 (user-request-2026-08-05, layman-comprehension
 suggestions).
@@ -141,11 +141,12 @@ a two-question batch.
    optionally cause, then optionally correction. Each slot has its own evidence
    test, so an unremarkable month collapses to one short sentence without a
    separate "brief mode".
-3. **The current (incomplete) month is included, and every window is truncated to
-   a common day count.** *(Author.)* The user's chosen option keeps
-   `MODE_CURRENT_MONTH`, so the strip must appear mid-month — which makes a
-   full-month baseline wrong by construction. §4.4 truncates rather than
-   projecting; projection is the invention property 1 forbids.
+3. **The current (incomplete) month is included, and only *it* truncates.**
+   *(Author.)* The user's chosen option keeps `MODE_CURRENT_MONTH`, so the strip
+   must appear mid-month — which makes a full-month baseline wrong by
+   construction. §4.4 truncates the partial case rather than projecting;
+   projection is the invention property 1 forbids. A **complete** month is
+   compared whole against whole months, for the reason §4.4 works through.
 4. **Account-scoped, following the Home account selector.** *(Author.)* The
    recurring card and the alert count are deliberately unscoped (FIBR-0012 D5,
    FIBR-0172 D8), but those sit *beside* figures rather than describing them. This
@@ -177,9 +178,11 @@ every `StrEnum` (`AccountType`, `CategorySource`, `NegativeStyle`, `CategoryKind
 words. `MonthSummaryInput` stays in the service: it is an intra-service
 detector-input, exactly like `alerts.py`'s `CategorySpikeInput`.
 
-`home.py` is 615 lines (`wc -l src/finbreak/ui/home.py`), the largest UI module
-after `main_window.py`; the strip gets its own module rather than growing it
-further, which is also what lets the templates be tested without a `HomeView`.
+`home.py` is 615 lines — the **third**-largest UI module, after
+`main_window.py` (1785) and `import_wizard.py` (1058); measured 2026-08-06 by
+`wc -l src/finbreak/ui/*.py`. The strip gets its own module rather than growing
+it further, which is also what lets the templates be tested without a
+`HomeView`.
 
 Placement in `HomeView._build_dashboard`: between `self._build_selectors()` and
 the Net strip. It is the first thing on the page because a reader who stops after
@@ -227,8 +230,16 @@ Let `M` be the summarised month — `(end.year, end.month)` from
 | State | Test | Treatment |
 |---|---|---|
 | **future** | `M`'s first day > `today` | render nothing (§4.8 condition 4) |
-| **partial** | `M` contains `today`, and `today` is before `M`'s last day | truncated windows, "so far" phrasing |
-| **complete** | otherwise | truncated windows, plain phrasing |
+| **partial** | `M` contains `today` | truncated windows, "so far" phrasing |
+| **complete** | `today` is strictly after `M`'s last day | whole-month windows, plain phrasing |
+
+**`M` stays partial through its own last day**, which is why the partial test is
+"contains `today`" and not "contains `today` and `today` is before the last day".
+On the morning of 31 August the month is a day from over and its month-end debits
+have not landed; classifying it complete renders "August looked like a normal
+month" hours before the largest debits of the month post. The window is one day —
+arithmetically honest either way — but the *phrasing* is not provisional in
+exactly the case that most needs it to be.
 
 **The future state is reachable in two clicks and must be handled explicitly.**
 `home.py:255` is `self._year_picker.setRange(1970, 9999)` and `home.py:250` adds
@@ -239,53 +250,102 @@ strip confidently announces that a month which has not happened was much cheaper
 than usual — the most reassuring possible sentence, invented entirely out of
 absent data.
 
-### 4.4 Like-for-like windows — one rule, not two
+### 4.4 Like-for-like windows — whole months when complete, a common head when not
 
-Every window — `M`'s and all `_BASELINE_MONTHS` baseline months' — runs from day 1
-to a **common day count**:
+`len(x)` is month `x`'s length from `calendar.monthrange`, and
+`L_min = min(len(M), len(b₁), len(b₂), len(b₃))`.
 
 ```
-days = min(elapsed, len(M), len(b₁), len(b₂), … )
+complete M:  window(x) = the whole of calendar month x, for M and every baseline
+             days      = len(M)
+
+partial  M:  window(x) = days [1 .. head] of x, for M and every baseline
+             head      = min(today.day, L_min − 1)
+             days      = head
 ```
 
-where `elapsed` is `today.day` when `M` is partial and `len(M)` when it is
-complete, and `len(x)` is that month's length from `calendar.monthrange`.
+`days` is the field `MonthSummary` carries: the number of days **of `M`** its
+window covers. For a complete `M` the four windows are deliberately *not* the
+same length — that is the point of the rule.
 
-**One rule, applied to both states, because the two-rule version was wrong.** An
-earlier draft truncated only in the partial branch and gave complete months their
-full `[first, last]` bounds. That leaves the *default* mode — `MODE_PREVIOUS_MONTH`,
-always complete — comparing months of unequal length. Worked, for perfectly
-uniform daily spend `d`:
+**Why a complete month is not truncated.** A common day count sounds like the
+neutral choice and is neutral only for **perfectly uniform** spend. Real spend is
+a mixture of daily flow and fixed monthly events, and a fixed event lands on a
+different *day number* in a short month than in a long one — banks pull a debit
+order back to the last available day. Truncation then includes it on one side of
+the comparison and excludes it from the other. Worked at exponent 2, rent R7,000
+by debit order on the 30th (February: the 28th) and R5,000 of other spend over
+days 1–20, **behaviour never changing**:
+
+```
+M = February (28d); baselines Nov(30) Dec(31) Jan(31); days = 28
+  Nov/Dec/Jan windows [1..28] = R5,000 each   (rent on the 30th — OUTSIDE)
+  M window          [1..28]   = R12,000       (rent on the 28th — INSIDE)
+  movement = +R7,000 -> HIGHER, and the landlord's own baseline reads 0,
+  so the cause clause names it: "All of it was one thing — Landlord."
+```
+
+Every clause of that sentence is false, it fires every February for any user with
+a month-end debit order, and the March mirror (`days = 28` again, now dropping
+March's day-30 rent while keeping February's day-28 rent) renders the reassuring
+inverse. §2.2's merchant-family rule does **not** save it: truncation applies to
+the family's baseline windows too, so the landlord's baseline is 0 and its excess
+is the full R7,000.
+
+**And the artefact it was introduced to remove is not a fabrication.** Comparing
+whole months of unequal length does bias February, for uniform daily spend `d`:
 
 ```
 M = February (28d), baseline Nov(30) Dec(31) Jan(31), mean 30.667d
-  movement / baseline = (28 − 30.667) / 30.667 = −8.70%
+  100 × |movement| = 8.70 × baseline   ->  8.70%, against a 10% gate
 ```
 
-A user whose spending never changed would see February pushed 8.70 points toward
-`LOWER` every year — 87% of the way to the 10% relative gate — on a calendar
-artefact alone. That is an invented narrative. The common-day-count rule removes
-it: with `days = 28` for all four windows, uniform spend yields `movement = 0`.
+February is the worst case in the calendar (March is +3.33%, April 0%). The bias
+never clears the relative gate on its own, so it invents no narrative — it is a
+**standing bias** that can tip a genuine −1.5% month to `LOWER`, recorded in §6.1.
+It is also *true*: a household that buys groceries daily really did spend less in
+February, and "February cost you less than your usual month" is what a reader
+means by the comparison. Trading a sub-threshold, true bias for a supra-threshold
+fabrication with a named payee is the wrong direction, and §1 property 1
+(never invent) outranks property 3 (never over-reassure).
 
-`elapsed` is `today.day`, which **includes the partly-elapsed current day**. The
-alternative (`today.day - 1`) is equally defensible; `today.day` is chosen so the
-strip's window matches the Transactions tab's notion of "up to today", and the
-resulting bias is recorded in §6.
+**Why the partial head is capped at `L_min − 1`.** A partial `M` must truncate —
+there is no whole month to compare — and the same debit-order trap applies. The
+cap excludes **every** window month's final day, which is the day a nominally
+later debit is pulled back to, so a fixed monthly payment is either inside all
+four windows or outside all four. Any four consecutive months contain at most two
+31-day months, so `L_min ≤ 30` always and the cap is at most 29; with a February
+in range it is 27. The consequence is that the window **stops advancing** near
+month end — on day 30 of a March with February in its baseline the strip still
+describes days 1–27 — which is the honest reading, and the "so far" phrasing says
+so. The `_MIN_ELAPSED_DAYS` gate (§4.8 condition 3) is unaffected: the cap is
+never below 27.
 
-The residual cost of truncation is real and stated in §6: when a short month is
-in the baseline, the last days of the longer months are excluded from every
-window, and month-end debit orders cluster exactly there.
+`today.day` **includes the partly-elapsed current day**. The alternative
+(`today.day - 1`) is equally defensible; `today.day` is chosen so the strip's
+window matches the Transactions tab's notion of "up to today".
+
+What this rule does **not** fix is a bank moving a debit off a weekend by a day or
+two, which lands it on a different day number for reasons no window rule can see.
+That is stated in §6.1 rather than mitigated.
 
 ### 4.5 What counts as spend
 
 Spend is the sum of magnitudes of rows with `amount_minor < 0` in the window,
 excluding confirmed transfers — the same exclusion every reporting figure applies
-via `TransferDetectionService.confirmed_transfer_txn_ids()` (4 call sites in
-`src/`: `reporting.py`, `alerts.py`, `recurring.py`, `pdf_export.py`. The bare
-`grep -rn "confirmed_transfer_txn_ids" src/ | wc -l` returns 6, because it also
-matches the `def` in `transfer_detection.py` and a mention in that module's
-docstring — the count is stated as call sites, so the two non-calls are named
-rather than folded in).
+via `TransferDetectionService.confirmed_transfer_txn_ids()`, called from
+`reporting.py`, `alerts.py`, `recurring.py` and `pdf_export.py`.
+
+**A row that is not spend is not a family member either.** §4.6's families are
+built from the window's spend rows alone, so a positive row never joins a family,
+never shifts which row is a family's *earliest* (and so never changes
+`MonthCause.name`), and never nets against an excess. This is also the one place
+the grouping differs from `RecurringService`'s: `recurring.py:175-181` keys on
+`(direction, merchant_key)` because it groups inflows and outflows alike, whereas
+every row here is an outflow, so the direction component is constant and the key
+reduces to `merchant_key`. The *derivation* of the key —
+`normalise_text(merchant_name(description))` — is identical, which is what §4.6
+reuses.
 
 Uncategorised rows **are** included. A spike alert excludes them because it must
 name a category; a month total must not, or the sentence would describe a
@@ -299,8 +359,10 @@ still be nominated as a cause, recorded in §6.
 
 `ReportingService.summary` buckets `amount_minor == 0` into expenditure (`else:
 expenditure_minor += -amount_minor`) where the rule above excludes it. The two
-agree — a zero row contributes zero either way — and INV-10 pins the agreement so
-they cannot drift apart silently.
+agree, because a zero row contributes zero either way. INV-10's fixture carries
+one so the agreement is **documented at the point it matters** — but no assertion
+over it can go red, since `-0 == 0` on both sides, and §11 says so rather than
+claiming coverage the leg does not have.
 
 **All four windows are read with
 `ReportingRepository.drill_rows_in_range(start_iso, end_iso, account_ids)`** —
@@ -330,15 +392,17 @@ _MIN_ELAPSED_DAYS = 7        # a partial month says nothing until day 7
 _MIN_MONTH_BASELINE_MAJOR = _MIN_MOVE_MAJOR * _MATERIAL_DEN // _MATERIAL_NUM
 ```
 
-**The floor is derived rather than picked, and the derivation is the point.** An
-earlier draft set it to 50 — inherited from `alerts.py`'s per-category floor,
-which measures a different quantity (§4.2). Measured against that value at
-exponent 2: a baseline of R60 clears the floor, a spend of R159 clears the
-relative gate (100 × 9900 ≥ 10 × 6000) and **fails** the absolute one
-(9900 < 10000), so a **+165% swing renders "looked like a normal month"** — the
-reassuring verdict, on arithmetic that does not support it, which is exactly what
-§1 property 3 forbids. At the derived value (1000, i.e. R1,000) the two gates
-coincide at the floor and no such dead zone exists.
+**The floor is derived rather than picked, and it makes the absolute gate
+redundant — which is stated here rather than left for an implementer to notice.**
+§4.8 condition 2 guarantees `baseline >= minor(_MIN_MONTH_BASELINE_MAJOR)` for
+anything that renders at all. The relative gate then requires
+`abs(movement) >= baseline / 10 >= minor(_MIN_MOVE_MAJOR)` — which *is* the
+absolute threshold. So **relative-pass implies absolute-pass, at every exponent**:
+above the floor the relative gate binds everywhere and the absolute gate can never
+change an outcome; below the floor nothing renders. The absolute gate is kept as
+belt-and-braces and becomes load-bearing only if the floor is ever lowered.
+§4.6, INV-6 and §11 are written to that fact rather than around it. The evidence
+for the derived value — and for why the inherited 50 was wrong — is in §13.1.
 
 ### 4.6 The three slots
 
@@ -354,13 +418,15 @@ _MATERIAL_DEN * abs(movement) >= _MATERIAL_NUM * baseline     # relative
 abs(movement) >= minor(_MIN_MOVE_MAJOR)                        # absolute
 ```
 
-Both, because either alone misfires: 10% of a small baseline is noise, and a
-fixed absolute move against a large baseline is unremarkable. Material and
-positive → `HIGHER`; material and negative → `LOWER`; otherwise → `NORMAL`.
+**Above the §4.8 floor the relative gate is the one that binds** — the absolute
+gate cannot fail while the relative one passes (§4.5). It is written as a
+conjunction anyway, so that lowering the floor cannot silently re-open the dead
+zone the floor was derived to close. Material and positive → `HIGHER`; material
+and negative → `LOWER`; otherwise → `NORMAL`.
 
 **Slot 2 — cause.** The unit is a **merchant family**, not a row (§2.2). For
 each family in `M` — keyed by `normalise_text(merchant_name(description))` from
-`finbreak.text`, the same grouping `RecurringService` uses — compute
+`finbreak.text`, over the window's **spend rows only** (§4.5) — compute
 
 ```
 excess(f) = spend_in_M(f) − baseline_mean(f)
@@ -404,10 +470,18 @@ between two refreshes of the same data.
 
 Re-run against §2.2's vault: rent's `excess` is `7000 − 7000 = 0`, so rent is not
 the candidate. The candidate is the living-costs family at `6500 − 5000 = 1500`,
-which *does* clear `0.6 × 1500 = 900` — so that vault renders a cause with
-`residual == 0`, and slot 3 is correctly omitted. Against §2.1's vault, the vet
-family's `excess` is `1900 − 0 = 1900`, clearing `0.6 × 2340 = 1404`. The rule
-selects the right object in both, and in neither does it select rent.
+which *does* clear `0.6 × 1500 = 900`. Its excess **equals** the movement exactly,
+so slot 2 takes the `excess == movement` template ("All of it was one thing") and
+`residual == 0` correctly omits slot 3. Against §2.1's vault, the vet family's
+`excess` is `1900 − 0 = 1900`, clearing `0.6 × 2340 = 1404`. The rule selects the
+right object in both, and in neither does it select rent.
+
+**Slot 2 splits three ways, not two.** `excess < movement` → "Most of it";
+`excess == movement` → "All of it"; `excess > movement` → "All of it and more".
+The equality case is not a corner: it is where §2.2's own flagship vault lands
+(excess R1,500, movement R1,500), and folding it into the `>` branch claims "and
+more" about a quantity that is exactly equal — a small false clause in the
+sentence the whole rejected-design argument rests on.
 
 **Slot 3 — correction.** Rendered only when slot 2 rendered *and*
 `abs(residual) >= minor(_MIN_MOVE_MAJOR)`, where `residual = movement − excess`.
@@ -430,8 +504,10 @@ owns them and calls `tr()` on each. Named placeholders per `coding.md`.
 | 1 | `NORMAL`, partial | `"So far, {month} looks like a normal month."` |
 | 2 | `excess < movement`, complete | `"Most of it was one thing — {name}, {amount} more than usual."` |
 | 2 | `excess < movement`, partial | `"So far, most of it has been one thing — {name}, {amount} more than usual."` |
-| 2 | `excess >= movement`, complete | `"All of it and more was one thing — {name}, {amount} more than usual."` |
-| 2 | `excess >= movement`, partial | `"So far, all of it and more has been one thing — {name}, {amount} more than usual."` |
+| 2 | `excess == movement`, complete | `"All of it was one thing — {name}, {amount} more than usual."` |
+| 2 | `excess == movement`, partial | `"So far, all of it has been one thing — {name}, {amount} more than usual."` |
+| 2 | `excess > movement`, complete | `"All of it and more was one thing — {name}, {amount} more than usual."` |
+| 2 | `excess > movement`, partial | `"So far, all of it and more has been one thing — {name}, {amount} more than usual."` |
 | 3 | `residual < 0`, complete | `"Take that out and you were {amount} better than normal."` |
 | 3 | `residual < 0`, partial | `"Take that out and you are {amount} better than normal so far."` |
 | 3 | `residual > 0`, complete | `"Even without it you were {amount} above normal."` |
@@ -466,14 +542,25 @@ deterministic instead of depending on the real system date.
 No template needs Qt's `%n` numerus form — every one interpolates an amount, a
 name or a year, never a count.
 
+**The rendered slots are one label, joined by a single space.** The strip holds
+**one** word-wrapping `QLabel` and sets its text to the rendered slots joined with
+`" "`, following `ui/forecast.py`'s clause assembly — not three labels in a
+layout. One label is what makes the block wrap as prose rather than breaking at
+slot boundaries, and it is what INV-13's "the strip is hidden" and INV-14's
+per-combination assertions both read.
+
 `MonthCause.name` is derived from raw bank text (§6.4), so the label sets
 `Qt.TextFormat.PlainText` — a description containing `<b>` or `<img src=…>` would
 otherwise be rendered as rich text by `QLabel`'s default `AutoText` sniffing,
 showing something other than the user's transaction and attempting a local
-resource load. The label word-wraps and elides `name` to 40 characters. **The
-elision is the strip's, not the service's** — `MonthCause.name` is carried at
-full length so INV-12's "derived from the user's own text" stays true of the
-data and the truncation stays a display concern.
+resource load. `name` is **truncated to 40 characters** before interpolation: if
+it is longer, the first 39 characters plus `…` (U+2026). Plain character
+truncation, deliberately **not** `QFontMetrics.elidedText`, which measures pixels
+and would make the rendered sentence depend on the widget's width — and so make
+INV-14's assertions depend on layout. **The truncation is the strip's, not the
+service's** — `MonthCause.name` is carried at full length so INV-12's "derived
+from the user's own text" stays true of the data and the shortening stays a
+display concern.
 
 ### 4.7 The seam and the shapes
 
@@ -504,7 +591,7 @@ class MonthCause:
 class MonthSummary:
     month: str                 # "YYYY-MM"
     partial: bool
-    days: int                  # the §4.4 common day count
+    days: int                  # days of M its §4.4 window covers
     exponent: int              # so the strip can format without a vault handle
     show_year: bool            # M's year differs from today's (§4.6)
     verdict: MonthVerdict
@@ -522,9 +609,8 @@ class MonthSummaryInput:
     days: int
     show_year: bool
     spend_minor: int
-    month_has_rows: bool                # M held >= 1 non-transfer row in its window
     prior_minor: tuple[int, ...]        # one per baseline month that held >= 1
-                                        # non-transfer row in ITS window
+                                        # non-transfer SPEND row in ITS window
     started: bool                       # False iff M's first day is after today
     candidate: MonthCause | None        # greatest-excess family, excess > 0
 
@@ -546,6 +632,7 @@ class MonthSummaryStrip(QWidget):
     def set_summary(
         self, summary: MonthSummary | None, symbol: str
     ) -> None: ...    # None hides the strip
+    def clear(self) -> None: ...    # hides the strip; needs no symbol
 ```
 
 **`MonthSummaryService.summary` owns the §3 decision 1 mode allow-list** and
@@ -566,32 +653,39 @@ are everything it needs from it, and the service computes them all. **`symbol` i
 a parameter of the strip's `set_summary`, not a field** — `HomeView.refresh()`
 already holds `symbol = self._reporting.base_currency()` and passes the same
 value to `_render_net`, so carrying it through the service would duplicate a fact
-the call site has. `exponent` **is** a field, because the opposite is true of it:
-`read_minor_unit_exponent` is not imported in `home.py`
-(`grep -n read_minor_unit_exponent src/finbreak/ui/home.py` returns nothing), so
-the strip has no other source. `negative_style` is not needed at all — every
-rendered amount is a magnitude (§4.6).
+the call site has. **`clear()` exists because that is not true everywhere**:
+`HomeView`'s `except VaultLockedError` blocks must hide the strip (INV-13) and
+have no `symbol` in scope — `base_currency()` is itself a vault read that would
+raise the same exception. A hide path must therefore not require one.
+
+`exponent` **is** a field, because the opposite is true of it:
+`read_minor_unit_exponent` is not imported in `home.py`, so the strip has no
+other source. `negative_style` is not needed at all — every rendered amount is a
+magnitude (§4.6).
 
 **Field values for a future `M`.** The service builds a complete input before the
 detector can reject it, so §4.3's third state needs values: `started = False`,
-`partial = False`, `days = min(len(M), len(b₁), …)`, `month_has_rows = False`.
-None is consulted — condition 4 fires first — but every field is non-optional and
-an implementer must not have to guess. `partial = False` matters specifically:
-setting it `True` would let condition 3 fire first, and INV-5's condition-4 leg
-would then pass without ever exercising `started`.
+`partial = False`, `days = len(M)`. None is consulted — condition 4 fires first —
+but every field is non-optional and an implementer must not have to guess.
+`partial = False` matters specifically: setting it `True` would let condition 3
+fire first, and INV-5's condition-4 leg would then pass without ever exercising
+`started`. `spend_minor` and `prior_minor` are **computed normally, not forced** —
+nothing in `services/transactions.py` guards against a post-dated row and no date
+editor sets `setMaximumDate`, so a future month genuinely can hold rows.
 
-**`prior_minor` carries only months that had rows**, so
-`len(prior_minor) < _BASELINE_MONTHS` *is* the has-data test — there is no
-separate count field, which would be a second representation of the same fact and
-could be set inconsistently by a hand-constructed fixture. The service is what
-knows the difference between "no rows" and "rows summing to zero", because a
-tuple of totals cannot express it.
+**A month "has data" iff its window holds at least one non-transfer *spend* row**
+(`amount_minor < 0`) — for `M` and for each baseline month alike, over that
+month's own §4.4 window. `prior_minor` carries only such months, so
+`len(prior_minor) < _BASELINE_MONTHS` *is* the has-data test, and every entry in
+it is strictly positive.
 
-**Every has-rows test runs over the truncated `[day 1, day days]` window**, not
-the whole calendar month — for `M` and for each baseline month alike. A month
-whose only rows fall on days 29–31 is a gap for a window ending at day 28, and
-counting it as data would contribute a spurious `0` that drags the baseline down
-and pushes `M` toward `HIGHER`.
+**There is deliberately no `month_has_rows` field.** Under the spend-row test the
+fact it would carry is exactly `spend_minor > 0`, so §4.8 condition 5 tests
+`spend_minor == 0` directly. (An earlier draft added the field because a tuple of
+totals cannot distinguish "no rows" from "rows summing to zero" — true while the
+test was *any* row, and no longer true once it is a spend row, since a negative
+amount cannot sum to zero. §4.8 condition 1 carries the ruling that made the
+test a spend row.)
 
 ### 4.8 The silence ladder
 
@@ -599,10 +693,17 @@ and pushes `M` toward `HIGHER`.
 this order:
 
 1. `len(prior_minor) < _BASELINE_MONTHS`. "Your usual month" is a claim about
-   three months. **A baseline month with no non-transfer rows in its window is
-   missing data, not a zero-spend month**, and the service omits such months from
-   `prior_minor` (§4.7). A month holding only income rows counts as *having data*
-   and contributes a genuine `0` — it is a real zero-spend month, not a gap.
+   three months. **A baseline month with no non-transfer *spend* rows in its
+   window is missing data, not a zero-spend month**, and the service omits such
+   months from `prior_minor` (§4.7). That includes a month holding only income
+   rows: in a personal-finance vault a month with a salary and no card spend is
+   in practice always a partial import — the salary account imported, the card
+   account not — and admitting it as a real `0` deflates both the baseline *and*
+   every family's mean. Worked at exponent 2: baselines December R12,000, January
+   R12,000, November income-only, unchanged R12,000 of spend in `M` →
+   `baseline = R8,000`, `movement = +R4,000` → `HIGHER`, with every family's mean
+   cut by a third so the 60% cause gate becomes easy to clear. Treating it as a
+   gap costs a month of history and silences the strip instead.
 2. `baseline < minor(_MIN_MONTH_BASELINE_MAJOR)`. Too little money moving to
    characterise.
 3. `partial and days < _MIN_ELAPSED_DAYS`. Six days pro-rated against six days is
@@ -610,30 +711,17 @@ this order:
    past every threshold. The comparison is `<`, so the strip first speaks on the
    7th.
 4. `not started` — `M`'s first day is after `today` (§4.3).
-5. `not month_has_rows` — `M` held no non-transfer row in its window. An
-   un-imported month between two imported ones would otherwise report the most
-   reassuring possible sentence out of absent data, exactly as a future month
-   would. A month that genuinely had rows and zero spend is **not** silenced,
-   which is why the test is the row flag and not `spend == 0`.
+5. `spend_minor == 0` — `M` held no non-transfer spend row in its window, by the
+   same test condition 1 applies to the baselines. An un-imported month between
+   two imported ones would otherwise report the most reassuring possible sentence
+   out of absent data, exactly as a future month would.
 
 The strip is also absent, without consulting the detector, when `HomeView` is
 showing its getting-started page (`transaction_count() == 0`, FIBR-0012 INV-7).
 
-**What this ladder does not catch, stated because the gap is larger than the
-cases it does catch.** Condition 5 is all-or-nothing. A *partly* imported month —
-one of two accounts imported, or the first ten days of a statement period — has
-rows, has non-zero spend, passes all five conditions, and renders "October cost
-you R8,000 less than your usual month" out of data that is simply absent. Partial
-import is the normal state of a vault between statement downloads, so this is
-more reachable than either case condition 5 covers. The mirror applies to a
-baseline month with one imported row, which drags the baseline down and inflates
-`HIGHER`.
-
-It is **accepted for v1, not mitigated**, and §6 carries it as a failure mode
-with a `nothing` row in §11. The honest gate needs to know a month's *expected*
-coverage, which is FIBR-0038's territory (statement coverage tracking + gap
-detection); §9 records the dependency rather than this spec inventing a
-coverage heuristic in passing.
+**Condition 5 is all-or-nothing, and the gap that leaves is larger than the case
+it closes** — a *partly* imported month passes every condition here and renders a
+confident false verdict. That is §6.9, stated there in full rather than twice.
 
 ### 4.9 Wiring
 
@@ -646,10 +734,13 @@ positional `amount_prefs` binds to `recurring`; a sixth service parameter widens
 that trap rather than creating it.
 
 `HomeView.refresh()` calls the service and passes the result to the strip, at the
-point where `_render_net` is called today.
+point where `_render_net` is called today. It computes `today = date.today()`
+**once**, at the top, and passes that one value to both
+`MonthSummaryService.summary` and the reporting reads — the strip and the tiles
+must not straddle midnight, which is precisely the equality INV-10 asserts.
 
-**Error handling — stated correctly, because an earlier draft stated it wrongly.**
-`HomeView.refresh()` has **8** call sites, of which **6 are unguarded**:
+**Error handling.** `HomeView.refresh()` has **8** call sites, of which **6 are
+unguarded**:
 
 | Site | Guarded by `except VaultLockedError` |
 |---|---|
@@ -663,17 +754,22 @@ point where `_render_net` is called today.
 | `main_window.py:1506` (`_refresh_after_statement_change`) | no |
 
 (`grep -n "self\.refresh()\|_home_tab\.refresh()" src/finbreak/ui/home.py
-src/finbreak/ui/main_window.py` → 8, 2026-08-05. The unfiltered
-`grep -n "refresh()"` over the same two files returns 18: it also matches the
-nine other tabs' refreshes and a docstring mention at `home.py:73`.)
+src/finbreak/ui/main_window.py` → 8, 2026-08-05.)
 
-The exposure is **pre-existing and unchanged by this item**: `refresh()` already
-issues `transaction_count()`, `base_currency()` and `summary()` against the vault
-before this feature adds a fourth read, so every one of those six sites can
-already raise `VaultLockedError` today. This spec therefore adds no new failure
-mode — which is a different and weaker claim than "both slots are guarded", and
-it is the true one. INV-13 pins the weaker claim and tests one `main_window` path
-as well as the two guarded slots.
+The **exception** is pre-existing and unchanged: `refresh()` already issues
+`transaction_count()`, `base_currency()` and `summary()` against the vault before
+this feature adds a fourth read, so every one of those six sites can already raise
+`VaultLockedError` today. The **harm is not**. Before this item the residue of a
+mid-refresh lock is a stale *figure* in a tile, which is ambiguous; after it, the
+residue is a stale *sentence naming a month*, which is a positive false claim —
+the thing INV-13 ranks above everything but non-invention.
+
+**So `refresh()`'s first statement is `self._month_strip.clear()`**, before
+`transaction_count()`. One line, no new guard, and it closes all eight sites
+rather than the two that happen to be wrapped: whatever raises, and wherever, the
+strip is already empty. The two guarded slots then need nothing beyond what they
+do today, and the six unguarded ones stop being a question. INV-13 pins the clear
+and exercises one unguarded path as well as a guarded one.
 
 ## 5. Invariants
 
@@ -682,9 +778,10 @@ as well as the two guarded slots.
   *Breaks when:* a percentage is computed as `movement / baseline` instead of by
   cross-multiplication — which silently returns a `float` and defeats the whole
   minor-unit discipline.
-  *Test:* two legs, because a grep alone cannot see the stated breach —
-  `movement / baseline` contains neither `Decimal` nor `float(`. (a) for a
-  returned `MonthSummary`, each of `days`, `exponent`, `spend_minor`,
+  *Test:* three legs, because the stated breach is invisible to the first two —
+  `movement / baseline` keeps the float inside the comparison, so every returned
+  field stays `int`, and it contains neither `Decimal` nor `float(`.
+  (a) for a returned `MonthSummary`, each of `days`, `exponent`, `spend_minor`,
   `baseline_minor`, `movement_minor` — plus `cause.excess_minor` when `cause` is
   not `None` — satisfies `type(v) is int`, and `residual_minor` satisfies it or
   is `None`. **The field list is enumerated, not swept**: a
@@ -693,15 +790,19 @@ as well as the two guarded slots.
   `False` (measured 2026-08-05), and `residual_minor` is legitimately `None`
   whenever `cause` is;
   (b) `grep -nE "\bDecimal\(|\bfloat\(" src/finbreak/services/month_summary.py`
-  returns nothing.
-  **Leg (a) is the catcher; leg (b) is a cheap tripwire with two stated
-  limits**, both measured 2026-08-05 rather than assumed. It matches the
-  *constructor* form deliberately: the bare-word pattern `\bDecimal\b` also
-  matches the word "Decimal" in a module docstring, and this module's docstring
-  will say why it holds no `Decimal` — so the bare-word leg goes red on correct
-  code. In exchange, leg (b) does **not** see `from decimal import Decimal` or a
-  bare `x: Decimal` annotation. Neither reaches a wrong figure on its own, and
-  leg (a) plus the gate's `mypy` stage catch what does.
+  returns nothing;
+  (c) **no true division anywhere in the module** — parse it with
+  `ast.parse(Path(...).read_text())` and assert `ast.walk` yields no `ast.Div`
+  node. An AST walk rather than a `/` grep, because a grep fights docstrings,
+  comments and path literals; `//` is `ast.FloorDiv` and is unaffected, and
+  every division in this design is integer by construction (§4.2, §4.6).
+  **Leg (c) is the catcher for the breach this invariant names**; leg (a)
+  catches a float that *escapes* into a returned field; leg (b) is a cheap
+  tripwire whose two blind spots (a bare `from decimal import Decimal`, a bare
+  `x: Decimal` annotation) are covered by leg (a) plus the gate's `mypy` stage.
+  It matches the *constructor* form deliberately: `\bDecimal\b` also matches the
+  word "Decimal" in this module's own docstring, which will say why the module
+  holds none.
 
 - **INV-2** — confirmed transfers are excluded from every figure. From `M`'s
   spend, from every baseline month's spend, and from the cause candidate set.
@@ -710,21 +811,28 @@ as well as the two guarded slots.
   *Test:* a vault with one confirmed transfer pair produces the identical
   `MonthSummary` to the same vault with those two rows deleted.
 
-- **INV-3** — every window shares one day count. `M`'s window and every baseline
-  window run from day 1 to the same `days` (§4.4), in both the partial and the
-  complete state.
-  *Breaks when:* only the partial branch truncates — then a uniform-spend February
-  reads 8.70% below baseline against a 10% gate, every year, on the default
-  period mode.
+- **INV-3** — a payment that recurs on the same nominal day of every month
+  contributes **nothing** to `movement`. It is inside all four §4.4 windows or
+  outside all four, never inside some — in the complete state because each window
+  is a whole calendar month, and in the partial state because the head is capped
+  below every window month's last day.
+  *Breaks when:* the windows are truncated to a common day count. Then a rent
+  debit on the 30th falls inside February's truncated window (the bank takes it
+  on the 28th) and outside every other month's, and the strip announces a R7,000
+  overspend with the landlord named as its cause — every February, on a vault
+  whose behaviour never changed. §4.4 works the case.
   *Test:* **at service level** (`test_month_summary_service.py`), because the
   detector never performs the windowing — it is handed pre-summed windows, so a
-  detector-level leg passes against an engine that truncated nothing. Seed a
-  vault with identical daily spend in every month, `M` = 2026-02 (non-leap), and
-  assert `movement_minor == 0` and `days == 28`; the same fixture computed over
-  full-month windows yields a strongly negative movement. Add a leap leg —
-  `M` = 2028-02 asserting `days == 29` — which also exercises
-  `calendar.monthrange`. The fixture years are pinned because `days` for a
-  February is 28 or 29 depending on them.
+  detector-level leg passes against an engine that windowed anything at all.
+  Seed a vault with R250/day on days 1–20 of every month **plus** R7,000 on each
+  month's last day, and assert `movement_minor == 0` for `M` = 2026-02 complete
+  (`days == 28`). A common-day-count implementation returns `+700000` here.
+  Second leg, same vault, `M` = 2026-03 partial at `today = 2026-03-29`: assert
+  `movement_minor == 0` and `days == 27` — the head capped at `L_min − 1 = 27` by
+  February, excluding the last-day debit from all four windows. Third leg,
+  `M` = 2028-02 complete, asserting `days == 29`, which exercises
+  `calendar.monthrange`. The fixture years are pinned because a February's length
+  depends on them.
 
 - **INV-4** — the strip is absent for every mode outside the three month modes.
   `MODE_YEAR_TO_DATE`, `MODE_SPECIFIC_YEAR` and any unrecognised token all yield
@@ -746,25 +854,27 @@ as well as the two guarded slots.
   and each with the blocking condition relaxed to assert a non-`None` result — so
   no leg can pass against a detector that returns `None` unconditionally.
   **Each fixture must clear the other four conditions independently**, or it
-  passes for the wrong reason: the condition-4 (`not started`) fixture in
-  particular must set `partial = False` per §4.7, since a future month marked
-  partial trips condition 3 first and the leg would stay green against a detector
-  that ignores `started` entirely.
+  passes for the wrong reason. The condition-4 (`not started`) fixture is the one
+  that has to be built deliberately against **two** of them: `partial = False`,
+  or condition 3 fires first; and `spend_minor > 0`, or condition 5 does. §4.7
+  prescribes `partial = False` for a future `M` and leaves `spend_minor`
+  computed rather than forced, precisely so this leg is constructible — a future
+  month can hold post-dated rows. With either relaxation missing, the leg stays
+  green against a detector that ignores `started` entirely.
 
-- **INV-6** — `NORMAL` unless both materiality gates pass. A movement clearing
-  only the relative gate, or only the absolute one, yields `NORMAL`.
-  *Breaks when:* one gate is dropped, and the strip starts announcing R30
-  movements as news.
-  *Test:* four legs — neither gate, relative only, absolute only, both —
-  asserting `NORMAL, NORMAL, NORMAL, HIGHER`. Each fixture must clear §4.8 first,
-  or the leg tests the silence ladder instead. The "relative only" leg is the one
-  the derived floor makes constructible at all: with
-  `_MIN_MONTH_BASELINE_MAJOR` at its derived value the two gates coincide exactly
-  at the floor, so a fixture clearing the relative gate and failing the absolute
-  one must sit *at* `baseline == minor(_MIN_MONTH_BASELINE_MAJOR)` with
-  `abs(movement)` one minor unit under `minor(_MIN_MOVE_MAJOR)`. A leg still
-  passing with a baseline an order of magnitude below the floor is evidence the
-  floor was hard-coded rather than derived.
+- **INV-6** — `NORMAL` unless the movement is material. A movement clearing only
+  the absolute gate yields `NORMAL`.
+  *Breaks when:* the relative gate is dropped, and the strip starts announcing a
+  R150 movement against a R20,000 baseline as news.
+  *Test:* **three** legs — neither gate, absolute only, both — asserting
+  `NORMAL, NORMAL, HIGHER`. Each fixture must clear §4.8 first, or the leg tests
+  the silence ladder instead. There is deliberately **no "relative only" leg**:
+  §4.5 shows that above the §4.8 floor relative-pass implies absolute-pass at
+  every exponent, so that cell is empty and a fixture written for it would fail
+  the relative gate too, silently duplicating the "neither" leg and passing green
+  against an implementation with no relative gate at all. The floor's derivation
+  is asserted directly instead, by the leg named in §11 — a comparison of the
+  constants, not a fixture.
 
 - **INV-7** — a cause is a family's **excess**, never a raw row. The candidate is
   the merchant family with the greatest `spend_in_M − baseline_mean`, and the
@@ -780,13 +890,10 @@ as well as the two guarded slots.
   (a) the §2.2 vault — "Landlord" R7,000 in all four months, one grocer at
   R5,000 in each baseline month and R6,500 in `M` — yields `cause.merchant_key`
   = the grocer, **not** the landlord, with `excess_minor == 150000` and
-  `residual_minor == 0`, so slot 3 is omitted. (Rent's excess is 0, so it is not
-  a candidate; the grocer's R1,500 excess is 100% of the R1,500 movement and
-  clears `0.6 × 1500 = 900` comfortably. An earlier draft of this clause asserted
-  `cause is None` here on the claim that R1,500 "does not clear 0.6 × 1500" —
-  arithmetically false, and a leg that would have gone **red against a correct
-  implementation**, pushing an implementer to weaken the very rule §2.2
-  establishes.)
+  `residual_minor == 0`, so slot 3 is omitted and slot 2 takes the
+  `excess == movement` template. (Rent's excess is 0, so it is not a candidate;
+  the grocer's R1,500 excess is 100% of the R1,500 movement and clears
+  `0.6 × 1500 = 900` comfortably.)
   (b) a `cause is None` fixture built to fail the gate honestly: movement R1,500
   spread across three unrelated merchants at R500 excess each, so the greatest
   excess is 500 and `100 × 50000 < 60 × 150000`.
@@ -817,34 +924,37 @@ as well as the two guarded slots.
   `spend_minor = 1_146_000` → `movement_minor = 146_000`, cause excess `190_000`
   → `residual_minor == -44_000` (negative → "better than normal"). The two must
   select different templates.
-  *Note the second fixture is also §4.6's `excess >= movement` case* — 190,000 is
+  *Note the second fixture is also §4.6's `excess > movement` case* — 190,000 is
   130% of 146,000 — so it must render slot 2's "All of it and more was one thing"
   variant. `residual < 0` and `excess > movement` are the same condition, which
   is why the "Most of it" wording could not be left unconditional: it would have
   described a quantity larger than the movement it was apportioning.
 
-- **INV-10** — the strip's spend agrees with the tile below it. For a **complete**
-  `M` whose `days` equals `len(M)`, and the same `account_ids`,
+- **INV-10** — the strip's spend agrees with the tile below it. For **every**
+  complete `M`, and the same `account_ids` and `today`,
   `spend_minor == to_minor(ReportingService.summary(...).expenditure, exponent)`.
+  The equality is unconditional in the complete state because §4.4 gives a
+  complete `M` the whole calendar month — the same bounds `resolve_period` hands
+  the tile.
   *Breaks when:* §4.5's independent definition of expenditure drifts from
   `summary`'s, and the sentence describes a different number than the figure
   directly beneath it — the on-screen contradiction §3 decision 4 exists to
-  prevent.
-  *Test:* seed a vault whose `M` is a complete month **no longer than any of its
-  three baseline months**, so `days == len(M)` and no truncation applies — e.g.
-  `M` = February with November/December/January baselines. (Do **not** ask for
-  four consecutive 31-day months: the longest run in the Gregorian calendar is
-  two, so that fixture is unconstructible — measured 2026-08-05.) Then assert
-  `summary.spend_minor == to_minor(ReportingService(vault).summary(prefs,
-  account_ids, today).expenditure, exponent)` for the same `prefs` and
-  `account_ids`. Include one `amount_minor == 0` row — the only value the two
-  definitions bucket differently — so the leg goes red if either side changes how
-  it treats it.
+  prevent. Also when `refresh()` computes `date.today()` twice across a midnight
+  boundary (§4.9).
+  *Test:* seed a vault, `M` = a complete month with three baseline months, and
+  assert `summary.spend_minor == to_minor(ReportingService(vault).summary(prefs,
+  account_ids, today).expenditure, exponent)` for the same `prefs`,
+  `account_ids` and `today`. Add a second leg with `M` = February and
+  November/December/January baselines — under a common-day-count rule the two
+  sides would differ there, so the leg pins §4.4's complete-state half.
+  Include one `amount_minor == 0` row, the only value the two definitions bucket
+  differently. **That row documents the agreement; it cannot make the leg red** —
+  §4.5 shows both definitions contribute `0` — and §11 records it as documented
+  rather than covered.
   *Scope, stated so the leg is not read as covering more:* the equality is
-  asserted only for a complete `M` with no short month in its baseline. For a
-  partial `M`, and for a complete `M` truncated by a short baseline month, the
-  two legitimately differ — `resolve_period` gives the tile the **full** month
-  bounds while §4.4 stops the strip at `days`. §6 records both.
+  asserted only for a **complete** `M`. For a partial `M` the two legitimately
+  differ — `resolve_period` gives the tile the full month bounds while §4.4 stops
+  the strip at `head`. §6.7 records it.
 
 - **INV-11** — the summary is scoped to the same accounts as the tiles. The strip
   and `ReportingService.summary` receive the identical `account_ids`.
@@ -853,81 +963,103 @@ as well as the two guarded slots.
   *Test:* with two accounts, `spend_minor` for a single-account selection equals
   that account's expenditure alone and differs from the "All accounts" value.
   This asserts *scoping*, not numeric equality with the tile — INV-10 owns that,
-  under its narrower conditions.
+  for a complete `M`.
 
 - **INV-12** — the service emits no user-facing string. `MonthSummary` carries an
   enum, integers and booleans; the only prose is `MonthCause.name`, **derived
   from** the user's own transaction text by `merchant_name` and carried at full
-  length (the 40-character elision is the strip's, §4.6).
+  length (the 40-character truncation is the strip's, §4.6).
   *Breaks when:* a sentence is assembled in the service, where `tr()` is
   unavailable, silently making the feature untranslatable.
-  *Test:* `grep -nE "\.tr\(|QCoreApplication" src/finbreak/services/month_summary.py`
-  returns nothing — anchored on `.tr(` because the **unanchored** `tr(` an
-  earlier draft specified also matches `str(` (verified 2026-08-05 against a
-  scratch module: `grep -n "tr(\|QCoreApplication"` hits a `str(...)` call, while
-  `\btr\(` does not — the word boundary fails against the preceding `s`, so `\b`
-  is *not* the fix and `\.` is). Plus: the strip renders a full three-sentence
-  summary from a hand-constructed `MonthSummary` with no service involved.
+  *Test:* `grep -nE "\btr\(|QCoreApplication" src/finbreak/services/month_summary.py`
+  returns nothing. The word-boundary anchor is what excludes `str(` — `\b` fails
+  between the `s` and the `t`, verified 2026-08-05 — and it is preferred over
+  `\.tr\(`, which excludes `str(` equally but additionally misses a bare
+  `tr("…")` call, the very form an imported `tr` would take. Plus: the strip
+  renders a full three-sentence summary from a hand-constructed `MonthSummary`
+  with no service involved.
 
 - **INV-13** — a mid-render lock leaves no stale sentence and adds no failure
   mode. `MonthSummaryService.summary` lets `VaultLockedError` propagate rather
-  than catching it, and `HomeView`'s two guarded slots **hide the strip** before
-  returning.
+  than catching it, and `HomeView.refresh()` **clears the strip as its first
+  statement** (§4.9), so no path through it can leave one standing.
   *Breaks when:* (i) the service catches `VaultLockedError` itself and returns a
   partial summary computed from rows it did manage to read — a sentence about a
-  fraction of the month, presented as the month; or (ii) the guard returns
-  without hiding, so the strip keeps asserting "September cost you R2,340 more
-  than your usual month" while the selector now reads October. A stale *figure*
-  in a tile is ambiguous; a stale *sentence* naming a month is a positive false
-  claim, which §1 property 3 ranks above everything but non-invention.
+  fraction of the month, presented as the month; or (ii) the strip is hidden only
+  in the two guarded slots, so the six unguarded call sites keep it asserting
+  "September cost you R2,340 more than your usual month" while the selector now
+  reads October. A stale *figure* in a tile is ambiguous; a stale *sentence*
+  naming a month is a positive false claim, which §1 property 3 ranks above
+  everything but non-invention.
   *Test:* three legs. (a) a stand-in that raises `VaultLockedError` **only on the
   month-summary read** — not on the first vault call — so `refresh()` actually
-  reaches it; `refresh()`'s first statement is `transaction_count()`, so a
-  stand-in raising on any read makes the leg pass against an implementation that
-  never calls the service at all. (b) after that raise, `_on_period_changed`
-  returns cleanly **and the strip is hidden**. (c) `MonthSummaryService.summary`
-  propagates `VaultLockedError` rather than returning a partial `MonthSummary`,
-  asserted directly on the service — the `_refresh_tab` path cannot distinguish
-  this, because `transaction_count()` already raises there today whether or not
-  the service swallows anything.
+  reaches it; `transaction_count()` runs before the service read, so a stand-in
+  raising on any read makes the leg pass against an implementation that never
+  calls the service at all. (b) after that raise the strip is hidden, asserted on
+  **both** a guarded slot (`_on_period_changed`, which must also return cleanly)
+  and an **unguarded** one (`main_window._refresh_tab`, which propagates) — the
+  unguarded leg is what fails against a fix that only touched the two `except`
+  blocks. (c) `MonthSummaryService.summary` propagates `VaultLockedError` rather
+  than returning a partial `MonthSummary`, asserted directly on the service.
 
 - **INV-14** — every reachable combination has a template, across **all three
   slots**, and no rendered amount carries a sign. Slot 1 is exhaustive over
   `MonthVerdict × {partial, complete}` (6), slot 2 over
-  `{excess < movement, excess >= movement} × {partial, complete}` (4), slot 3
-  over `{residual < 0, residual > 0} × {partial, complete}` (4), plus the two
-  `{month}` forms.
+  `{excess < movement, excess == movement, excess > movement} × {partial,
+  complete}` (6), slot 3 over `{residual < 0, residual > 0} × {partial,
+  complete}` (4), plus the two `{month}` forms — **18 template strings**.
   *Breaks when:* an implementer writes three templates and interpolates "so far"
   ad hoc, so a mid-month cause or correction sentence is unqualified past tense
   about a month that is a third over — the mitigation §6.2 explicitly relies on;
   or the signed `movement_minor` / `residual_minor` reach `_format_amount`
   unmodified, rendering "cost you -R500 less than your usual month".
-  *Test:* a leg iterating all sixteen combinations against hand-constructed
-  `MonthSummary` values, asserting each renders a non-empty string and no two
-  produce the same string; plus a leg asserting **no** rendered slot-1 or slot-3
-  string contains `-` or `(` before a digit, run under both `NegativeStyle`
-  settings so a magnitude that was accidentally signed cannot hide behind the
-  bracket style.
+  *Test:* two legs.
+  (a) all 18 templates render a non-empty string and **no two are equal**. The 18
+  are a **union of three per-slot sets plus the month forms, not a product** —
+  slot 2's and slot 3's conditions are the same quantity (`residual = movement −
+  excess`), so a product sweep over independent axes would construct
+  `excess == movement` together with `residual < 0`, which is unreachable, and go
+  red against a correct build. Each slot's templates are rendered from
+  hand-constructed values chosen for that slot: for slot 2's `==` cell pin
+  `residual_minor == 0` so slot 3 is absent by construction.
+  (b) **no rendered amount carries a sign**, asserted positively rather than by
+  character search: for a slot rendering value `v`, build
+  `expected = _format_amount(to_display_decimal(abs(v), exponent), symbol)` and
+  assert the slot contains `expected` and contains neither `f"-{expected}"` nor
+  `f"({expected})"`. A search for "`-` or `(` before a digit" **cannot fire** —
+  `_format_amount` composes `body = f"{sym} {magnitude}"` and returns
+  `f"-{body}"` or `f"({body})"`, so a signed amount reads `-R 500,00`, whose
+  character after the sign is the currency symbol (verified against
+  `ui/_amount.py`). Nor is the leg run "under both `NegativeStyle` settings":
+  `set_summary` takes no style parameter (§4.7), so there is nothing to vary —
+  the positive assertion covers both notations at once, since neither wrapper
+  form may appear.
 
 ## 6. Failure modes
 
 Stated, not hidden. Each is a consequence the design accepts.
 
-1. **Truncation drops the end of long months when a short one is in the
-   baseline.** §4.4: summarising a 31-day March whose baseline includes February
-   sets `days = 28`, so 3 of March's days (~9.7% of that month) are excluded from
-   every window. Because the exclusion is applied to *all four* windows the
-   comparison stays like-for-like, but the figure is no longer the whole month's
-   spend, and it will not match the Net tile (INV-10 is scoped around this).
-   **The bias is not bounded by day count alone**: month-end debit orders cluster
-   on days 28–31, so a single R2,000 insurance debit on the 29th is dropped
-   entirely. The direction is toward understating both sides.
-2. **A partial month's verdict can flip day to day.** The relative gate scales
-   with the window but the absolute gate is a fixed `minor(_MIN_MOVE_MAJOR)`
-   regardless of whether `days` is 7 or 28. So the same proportional overspend
-   reads `NORMAL` on the 8th and `HIGHER` on the 15th. Accepted rather than
-   pro-rated: the constants are full-month figures applied unscaled, and the "so
-   far" phrasing is what tells the reader the figure is provisional.
+1. **A complete February reads low for a household that spends daily.** §4.4
+   compares whole calendar months, so a month shorter than its baselines carries
+   fewer days of flow spend. The worst case in the calendar is February against a
+   Nov/Dec/Jan baseline, at **8.70%** for perfectly uniform daily spend — under
+   the 10% relative gate, so it never renders a verdict on its own, but it can
+   tip a genuine −1.5% month to `LOWER`. It is a **standing bias, not an invented
+   narrative**: February really did cost less. Accepted as the far smaller of the
+   two errors available (§4.4 works the alternative). What is *not* handled at
+   all is a bank moving a debit off a weekend by a day or two — that shifts a
+   fixed payment between windows for reasons no window rule can see, and it can
+   move a payment in or out of a partial month's head.
+2. **A partial month's verdict can flip day to day, and jumps at month end.** In
+   a small early window a single grocery run swings the ratio past the relative
+   gate, and the §4.8 floor can flip the strip from silent to speaking as the
+   truncated baseline crosses `minor(_MIN_MONTH_BASELINE_MAJOR)`. Separately,
+   §4.4 freezes the partial head at `L_min − 1`, so a month's final days are
+   invisible until `M` turns complete — at which point the window jumps from
+   ~27 days to the whole month and the month-end debits land at once, which can
+   change the verdict overnight. Accepted rather than pro-rated: the constants
+   are full-month figures applied unscaled, and the "so far" phrasing is what
+   tells the reader the figure is provisional.
 3. **A month whose spending moved for a good reason still reads as a warning.**
    Moving house, a deliberate annual insurance payment, a planned holiday. The
    strip has no notion of intent; the cause clause is the mitigation, since
@@ -935,7 +1067,8 @@ Stated, not hidden. Each is a consequence the design accepts.
 4. **`MonthCause.name` is derived from raw bank text.** It may be cryptic
    ("POS 4455 \*\*\*\*1234"). `merchant_name` cleans it, but cleaning is
    best-effort. An ugly true description beats a tidy wrong one. §4.6 pins
-   `PlainText` and elision so it cannot inject markup or break the layout.
+   `PlainText` and 40-character truncation so it cannot inject markup or break
+   the layout.
 5. **Three baseline months is a short memory.** A user with genuinely seasonal
    spending will see December called expensive every year. Accepted: a 12-month
    baseline needs a year of history before the feature works at all.
@@ -952,20 +1085,22 @@ Stated, not hidden. Each is a consequence the design accepts.
    data change. A split payment across *different* merchants still defeats the
    clause entirely — that one degrades to the verdict alone, which is the correct
    direction.
-7. **The strip's window and the Net tile's differ whenever `days < len(M)`.**
-   `resolve_period` gives the tile the full month bounds; §4.4 stops the strip at
-   `days`. That happens for every partial month, and for a complete month
-   truncated by a short baseline month (failure mode 1). The `partial` flag
-   drives the "so far" phrasing for the first case; the second is silent, and
-   INV-10 is scoped around both.
-8. **The absolute gates go soft for exponent-0 currencies.** `minor(100)` is 100
-   for JPY or KRW — well under a dollar — so for such a vault only the relative
-   gate binds and the misfire the absolute gate exists to prevent can occur. The
-   thresholds are tuned for exponent-2 currencies; `base_currency()` is
-   user-settable, so this is reachable rather than hypothetical. Accepted for v1
-   and recorded rather than silently carried.
+7. **The strip's window and the Net tile's differ for a partial month.**
+   `resolve_period` gives the tile the full month bounds
+   (`_month_bounds(today.year, today.month)` for `MODE_CURRENT_MONTH`); §4.4
+   stops the strip at `head`, which is capped below `today.day` near month end.
+   The `partial` flag drives the "so far" phrasing, and INV-10 is scoped to the
+   complete state, where the two now agree exactly.
+8. **The thresholds go soft for exponent-0 currencies.** `minor(1000)` is 1000
+   for JPY or KRW — roughly US$6.50 a month — so the §4.8 floor admits vaults the
+   strip should stay silent on, and the relative gate then characterises a
+   month's worth of trivial movement. (The failure is the *floor* scaling, not
+   the absolute gate going soft: §4.5 shows the relative gate binds at every
+   exponent.) The thresholds are tuned for exponent-2 currencies;
+   `base_currency()` is user-settable, so this is reachable rather than
+   hypothetical. Accepted for v1 and recorded rather than silently carried.
 9. **A partly imported month renders a confident, false verdict.** §4.8's
-   condition 5 catches only a month with *no* rows. A month where one of two
+   condition 5 catches only a month with *no spend rows at all*. A month where one of two
    accounts was imported, or the first ten days of a statement period, has rows
    and low spend and renders "October cost you R8,000 less than your usual
    month" out of absent data. Partial import is the normal state of a vault
@@ -996,16 +1131,26 @@ rendering* is a UI test.
 - **`test_month_summary.py`** — the detector, hermetic, no vault and no Qt.
   INV-1(a), INV-1(b), INV-5, INV-6, INV-8, INV-9.
 - **`test_month_summary_service.py`** — the service against a real vault fixture.
-  INV-2, INV-3, INV-4, INV-7 (all three legs), INV-10, INV-11, INV-12's grep leg,
-  and INV-13 leg (c).
+  INV-2, INV-3 (all three legs), INV-4, INV-7 (all three legs), INV-10, INV-11,
+  INV-12's grep leg, INV-13 leg (c), and the §4.6 **tie-break** leg. The tie-break
+  belongs here for the same reason INV-7 does: `MonthSummaryInput.candidate` is a
+  *single, already-chosen* `MonthCause`, so a two-equal-families fixture cannot be
+  expressed at the detector boundary at all.
 - **`test_month_summary_strip.py`** — the strip under `qtbot`, fed
-  hand-constructed `MonthSummary` values. INV-12's render leg, INV-14's sixteen
-  combinations and its no-signed-amount leg, `isHidden()` on `None`, and a leg
-  feeding a `name` containing `<b>markup</b>` asserting the literal text survives.
+  hand-constructed `MonthSummary` values. INV-12's render leg, INV-14's 18
+  templates and its no-signed-amount leg, **INV-9's template-selection leg** (the
+  two hand-constructed residual values INV-9 specifies, asserting the two select
+  *different* slot-3 templates — the detector cannot select a template, so a
+  detector-only INV-9 would assert nothing but the sign of `residual_minor` and
+  a strip keying slot 3 off `movement` would pass it), `isHidden()` after
+  `clear()` and on `None`, a leg feeding a `name` containing `<b>markup</b>`
+  asserting the literal text survives, and a leg feeding a 60-character `name`
+  asserting it renders as 39 characters plus `…`.
 - **`test_month_summary_home.py`** — `HomeView`-level, seeded vault. The strip
   appears and hides as the period selector moves across all five modes, and
-  INV-13 legs (a) and (b) — both of which drive `_on_period_changed`, a `HomeView`
-  slot needing `qtbot`, so neither can live in the service or strip file.
+  INV-13 legs (a) and (b) — which drive `_on_period_changed` (guarded) and an
+  unguarded `refresh()` call site, both needing `qtbot`, so neither can live in
+  the service or strip file.
 
 Ripple into existing suites: every file constructing `HomeView` gains the sixth
 service argument. The set is whatever `grep -rln "HomeView(" tests/` returns at
@@ -1031,8 +1176,19 @@ comment records that the Home page assertions moved to `tests/features/dashboard
    the natural v2 once vaults have the history, and it changes only
    `_BASELINE_MONTHS` plus the §4.8 gate.
 5. **Project the current month to a full-month estimate.** Rejected: it is the
-   invention property 1 forbids. A common day count (§4.4) answers the same
+   invention property 1 forbids. A common head window (§4.4) answers the same
    question without asserting anything about days that have not happened.
+8. **Truncate every window — complete months included — to a common day count.**
+   Rejected on evidence: it is the design an earlier draft carried, and it
+   manufactures a false verdict *and* a false named cause every February for any
+   user with a month-end debit order. §4.4 works the counterexample and states
+   what it was bought with (a sub-threshold February bias, §6.1).
+9. **Rescale each baseline month's spend to `M`'s length.** Rejected: it removes
+   the §6.1 bias for flow spend but silently rescales fixed monthly payments too
+   — a R7,000 rent in a 31-day baseline month becomes R6,322 against a February —
+   so it trades a true bias for a small invented one, and it cannot help the
+   partial state at all, where a full baseline month pro-rated against a
+   part-elapsed `M` reads the month-end debits as already spent.
 6. **Put the strip in a dialog, or on its own tab.** Rejected: a feature whose
    entire purpose is to save the reader effort cannot be behind a click.
 7. **Let the strip speak for year modes with year-over-year phrasing.** Rejected
@@ -1072,11 +1228,7 @@ comment records that the Home page assertions moved to `tests/features/dashboard
 
 The range scans are indexed on `occurred_on`, the same shape `summary`,
 `monthly_trend` and `drill_down` already issue — five existing call sites in
-`services/`, four `rows_in_range` and one `drill_rows_in_range`
-(`grep -rn "rows_in_range" src/finbreak/services/ | wc -l` → 5, of which
-`grep -rn "drill_rows_in_range(" src/finbreak/services/ | wc -l` → 1; the plain
-grep matches both names, which is why the split is stated rather than the bare
-total).
+`services/`, four `rows_in_range` and one `drill_rows_in_range`.
 
 The merchant grouping runs `normalise_text(merchant_name(...))` over the rows of
 **all four** windows. That is the cost §2.2's fix adds over the per-row design:
@@ -1086,36 +1238,41 @@ No timing figure is stated here, because none has been measured — per the
 authoring rule that a number arrives with the command that produced it. If the
 added reads prove material, the three baseline months are exactly the months
 `monthly_trend` already fetches and the two could share one query. That is
-deliberately **not** done in v1, because the sharing would couple the strip's
-window arithmetic to the trend chart's, and §4.4's common day count makes those
-windows differ whenever a short month is involved.
+deliberately **not** done in v1 for two reasons, either sufficient: the trend
+chart reads `rows_in_range`, which carries no `description`, so it cannot feed
+§4.6's per-family sums; and §4.4's partial-state head makes the two sets of
+windows differ whenever `M` is partial.
 
 ## 11. What checks this
 
 | Rule | What catches a breach |
 |------|----------------------|
-| INV-1 | `test_month_summary.py` — leg (a), the enumerated-field `type(v) is int` assertion; the grep is leg (b) |
+| INV-1 | `test_month_summary.py` — leg (c), the `ast.Div` walk, is the catcher for the named breach; leg (a) catches a leaked float, leg (b) is the grep tripwire |
 | INV-2 | `test_month_summary_service.py` |
-| INV-3 | `test_month_summary_service.py` (uniform-spend February, leap and non-leap) |
+| INV-3 | `test_month_summary_service.py` — three legs: a last-day debit against a complete February, the same against a partial March at the capped head, and the leap-year `days` |
 | INV-4 | `test_month_summary_service.py` |
 | INV-5 | `test_month_summary.py` (five conditions × relaxed counterpart) |
-| INV-6 | `test_month_summary.py` (four-leg gate matrix) |
+| INV-6 | `test_month_summary.py` (three-leg gate matrix: neither / absolute-only / both) |
 | INV-7 | `test_month_summary_service.py` — three legs, incl. (c) the non-zero-baseline cause family |
 | INV-8 | `test_month_summary.py` |
-| INV-9 | `test_month_summary.py` + the strip's template-selection leg |
-| INV-10 | `test_month_summary_service.py` |
+| INV-9 | `test_month_summary.py` (the residual sign) + `test_month_summary_strip.py`'s template-selection leg (§7) — the detector cannot select a template, so the strip leg is what catches a slot 3 keyed off `movement` |
+| INV-10 | `test_month_summary_service.py` — two legs, the second with `M` = February |
 | INV-11 | `test_month_summary_service.py` |
 | INV-12 | grep leg (service file) + the strip test's hand-constructed `MonthSummary` |
-| INV-13 | `test_month_summary_home.py` legs (a)(b) + `test_month_summary_service.py` leg (c) |
-| INV-14 | `test_month_summary_strip.py` (sixteen-combination matrix + the no-signed-amount leg) |
+| INV-13 | `test_month_summary_home.py` legs (a)(b), (b) over a guarded **and** an unguarded call site + `test_month_summary_service.py` leg (c) |
+| INV-14 | `test_month_summary_strip.py` (18 distinct templates + the positive no-signed-amount leg) |
+| §4.4's whole-month rule for a complete `M` | INV-3 leg 1 (a common-day-count implementation returns `+700000` there) + INV-10's February leg |
+| §4.4's partial head cap at `L_min − 1` | INV-3 leg 2 — `days == 27` for a partial March with February in its baseline |
 | §4.5's "all four windows use `drill_rows_in_range`" | INV-7 leg (c) — the **only** fixture shape that goes red when a baseline window is read without `description`; every zero-baseline cause fixture stays green against that regression |
-| §4.5's derived `_MIN_MONTH_BASELINE_MAJOR` | INV-6's "relative only" leg — constructible only at the floor where the two gates coincide, so a leg that still passes with a baseline far below the floor shows the value was hard-coded |
-| §4.6's tie-break (equal excesses resolve to the smaller `merchant_key`) | `test_month_summary.py` — a two-equal-families fixture asserted on `cause.merchant_key` |
-| §4.6's `PlainText` and elision | `test_month_summary_strip.py` — the `<b>markup</b>` leg covers `PlainText`; **nothing** covers elision, which is a layout property no assertion in this suite reads |
+| §4.5's derived `_MIN_MONTH_BASELINE_MAJOR` | `test_month_summary.py` — a leg asserting `_MIN_MONTH_BASELINE_MAJOR == _MIN_MOVE_MAJOR * _MATERIAL_DEN // _MATERIAL_NUM`, computed from the constants. It is asserted directly because the behavioural leg that would have covered it does not exist: above the floor relative-pass implies absolute-pass, so there is no "relative only" fixture (§4.5, INV-6) |
+| §4.6's tie-break (equal excesses resolve to the smaller `merchant_key`) | `test_month_summary_service.py` — two equal-excess families with no baseline spend, asserted on `cause.merchant_key`. It cannot live in the detector file: `MonthSummaryInput.candidate` is a single already-chosen `MonthCause` |
+| §4.6's `PlainText` and 40-character truncation | `test_month_summary_strip.py` — the `<b>markup</b>` leg covers `PlainText`, the 60-character-name leg covers the truncation. Truncation is assertable **because** §4.6 specifies characters rather than `QFontMetrics.elidedText`, which would have made it a pixel property no assertion here could read |
+| §4.9's clear-at-the-top of `refresh()` | INV-13 leg (b)'s unguarded call site — a fix confined to the two `except VaultLockedError` blocks fails it |
 | §4.6's family-mean divisor (`_BASELINE_MONTHS`, absent months counting 0) | INV-7 leg (c) — a family present in all three baseline windows; **nothing** covers a family present in only *some*, which is where the two candidate divisors diverge most |
-| §4.5/§4.6's specific threshold *values* (10%, 100, 60%, 7 days) | **nothing** — the tests assert behaviour either side of each constant by reading it, so changing a constant moves the test with it. Deliberate: these are tuning values, not contract. What is pinned is that *both* materiality gates exist (INV-6), that the cause gate tests an excess (INV-7), and that each silence condition fires (INV-5). The baseline floor is exempt: it is derived, and the row above covers it |
-| §6.1's truncation bias staying tolerable | **nothing** — no leg asserts a bound, and this spec does not claim one. The bias is not bounded by day count, because month-end debits cluster in exactly the dropped days |
-| §6.2's day-to-day verdict instability | **nothing** — no leg drives the same vault across successive `today` values |
+| §4.5/§4.6's specific threshold *values* (10%, 100, 60%, 7 days) | **nothing** — the tests assert behaviour either side of each constant by reading it, so changing a constant moves the test with it. Deliberate: these are tuning values, not contract. What is pinned is that the relative gate exists (INV-6), that the cause gate tests an excess (INV-7), and that each silence condition fires (INV-5). The baseline floor is exempt: it is derived, and the row above covers it |
+| §4.5's zero-amount-row agreement with `ReportingService.summary` | **nothing** — INV-10's fixture carries such a row so the agreement is documented where it matters, but both definitions contribute `0`, so no assertion over it can go red. Recorded rather than claimed as coverage |
+| §6.1's February bias staying under the relative gate | **nothing** — no leg asserts the 8.70% bound. §4.4 derives it for uniform spend; a real vault's mixture is not bounded by that derivation |
+| §6.2's day-to-day verdict instability, and the month-end jump | **nothing** — no leg drives the same vault across successive `today` values |
 | §6.6's fuzzy-grouper risk (a merchant split across two keys, or two shops folded into one) | **nothing** — and it is not closable by this suite: `merchant_name` is documented as refined per release, so the failure is a future upstream change, not a defect in this code |
 | §6.9's partly-imported month | **nothing** — accepted for v1; the honest gate needs FIBR-0038 (§9) |
 | §6.10's un-netted refund | **nothing** — no leg builds a charge-and-refund family |
@@ -1123,26 +1280,26 @@ windows differ whenever a short month is involved.
 | §4.2's decision to keep `_BASELINE_MONTHS` and `_MIN_MONTH_BASELINE_MAJOR` separate from `alerts.py`'s | **nothing** — a future edit could import either and every test would stay green. The distinct *name* of the floor is the only mechanical defence; the rationale is recorded in §4.2 and the constants' own comments |
 | §6.8's exponent-0 degradation | **nothing** — no leg runs a zero-exponent vault |
 
-**Twenty-eight rows, eleven** with a bolded `nothing`
-(`awk '/^## 11\./,/^## 12\./' <this file> | awk '/^\| /{n++; if ($0 ~ /\*\*nothing\*\*/) k++} END{print n-1, k}'`
-→ `28 11`; the command is stated because this tally has been miscounted by hand
-three times in this document's history, twice in the same direction):
-elision, the family-mean divisor's partial-presence case, the threshold values,
-the truncation bias, the verdict instability, the fuzzy grouper, the
+The tally is emitted, never counted by hand:
+
+```
+awk '/^## 11\./,/^## 12\./' docs/specs/FIBR-0231-plain-english-month-summary.md \
+  | awk '/^\| /{n++; if ($0 ~ /\*\*nothing\*\*/) k++} END{print n-1, k}'
+```
+
+→ **`32 11`**: thirty-two rows, eleven with a bolded `nothing` — the family-mean
+divisor's partial-presence case, the threshold values, the zero-row agreement,
+the February bias, the verdict instability, the fuzzy grouper, the
 partly-imported month, the un-netted refund, whether the sentence communicates,
-the constant-independence decision, and the exponent-0 degradation.
+the constant-independence decision, and the exponent-0 degradation. Of the
+eleven:
 
-The count **rose** from the previous revision, and that is the table working
-rather than failing: four of the new `nothing`s name failure modes this revision
-added to §6 after they were found, and naming an uncovered gap is exactly what
-the row is for. Of the eleven:
-
-- **Three are closable and deliberately not closed in v1** — an elision leg, a
-  zero-exponent-vault leg, and a partial-presence family-mean leg are all
-  writable.
-- **Four are design limits this spec states rather than tests it declined to
-  write**: the unbounded truncation bias, the accepted verdict instability, the
-  partly-imported month (which needs FIBR-0038), and the un-netted refund.
+- **Two are closable and deliberately not closed in v1** — a zero-exponent-vault
+  leg and a partial-presence family-mean leg are both writable.
+- **Five are design limits this spec states rather than tests it declined to
+  write**: the February bias, the accepted verdict instability, the
+  partly-imported month (which needs FIBR-0038), the un-netted refund, and the
+  zero-row agreement that no implementation change can move.
 - **One is not closable here at all** — the fuzzy grouper's risk is a future
   upstream change to `merchant_name`, not a property of this code.
 - **Three are the honest floor**: tuning values that are deliberately not
@@ -1211,3 +1368,70 @@ Fresh log — this document has not been reviewed under any other id.
 | 1 | 2026-08-05 | 3, strong, cold, shared byte-identical packet (dims: 5×9, 15×6, 6×6, 4×5, 13×4, 2×4, 10×4, 1×3, 7×2, 12×1) | 3 | 6 | 12 | 8 | 29 verified, 1 unverified. All fixed. **The CRITICAL rewrote the design's core rule, and it was the same defect §2.1 was written to prevent, one layer deeper.** All three lanes independently constructed the case: the cause clause selected *the largest single expenditure row* in the month and gated it only from below (≥60% of the movement), so on an ordinary vault the largest row is rent — present identically in every baseline month, explaining nothing. Executed against this spec's own constants: baseline R12,000, spend R13,500, movement +R1,500 → HIGHER; rent R7,000 clears the gate by **7.8×**; residual −R5,500 selects the *reassuring* template. Emitted: "Most of it was one thing — a R7,000 rent payment. Take that out and you were R5,500 better than normal", on a month that was R1,500 over. INV-8 (now INV-9) stayed green throughout, because it pins the sentence's *grammar* and the evidence was never required to be evidence. Fixing the gate alone was insufficient — in that vault the vet bill of §2.1 would not even be *selected*, rent being larger — so the unit changed from a row to a **merchant family** and the quantity from magnitude to **excess over that family's own baseline**, reusing `RecurringService`'s `merchant_key`. New §2.2 works the case; INV-7 pins both vaults. Second CRITICAL, all three lanes: **the feature's actual deliverable was absent** — only slot 3's two templates were specified, so the verdict (×3 verdicts ×2 states) and cause strings, and the "so far" phrasing §6 relied on as its whole mitigation, existed nowhere; §7 asked for tests against them. A nine-row template table now lives in §4.6 and INV-14 pins exhaustiveness. Third, lanes B and C: **`M` itself was never guarded** — only the baseline was. `home.py:255` is `setRange(1970, 9999)`, so a future month is two clicks away, and with three months of prior data `movement = −baseline` clears both gates by construction, announcing that a month which has not happened was much cheaper than usual; an un-imported gap month does the same. §4.8 gained conditions 4 and 5. HIGHs: §4.9 claimed "both slots that reach `refresh()`" and carried a **verified** stamp — measured, there are **8** call sites and **6** are unguarded (`home.py:117,352`, `main_window.py:797,828,1497,1506`), so the sentence is replaced by the inventory and the claim narrowed to the true, weaker one (the exposure is pre-existing; the read adds no new type); the complete-month branch was **not** truncated, leaving a uniform-spend February at **−8.70%** against a 10% gate on the *default* period mode, three times the partial bias the doc did record — the two branches collapse into one common-day-count rule (INV-3); §4.8 condition 1 was **inexpressible** through `MonthSummaryInput`, a tuple of totals being unable to distinguish "no rows" from "rows summing to zero", now `prior_months_with_data` with the income-only case ruled on explicitly; INV-9's worked values were **major units in `_minor` fields** — `movement=2340` at exponent 2 is R23.40, below `minor(100)`, so the verdict is NORMAL, cause None, and the leg asserts `440` against `None` — restated with a baseline so both fixtures clear the gates; INV-1's grep could not see its own stated breach (`movement / baseline` contains neither token), now a `type(v) is int` assertion with the grep demoted to leg (b); §7 assigned vault- and Qt-dependent invariants to a hermetic detector file, and INV-4 to a strip file with no `HomeView` — four files now, split by capability. MEDIUMs fixed: `_MIN_BASELINE_MAJOR` collided with `alerts.py` on **name and value** while §4.2 argued only against the *other* import — renamed `_MIN_MONTH_BASELINE_MAJOR` and the rationale extended to both; the strip could not format anything, `read_minor_unit_exponent` not being imported in `home.py`, so `exponent` moved onto `MonthSummary`; `MonthSummaryService`'s signature was never given and the mode gate had no stated home — both now in §4.7, the allow-list inside `summary()` so INV-4 is testable without Qt; the output dataclasses moved to `models.py`, where all 30+ cross-layer shapes and every `StrEnum` already live; `QLabel`'s default `AutoText` would render `<b>`/`<img>` in raw bank text — `PlainText` + elision pinned; §4.5's "6 call sites" counted a `def` and a docstring (4 real); §7's ripple list was 2-of-5 with a false `app_shell/` entry; the partial-month verdict instability, the tile/strip window divergence, and the zero-amount-row bucketing became §6 entries and INV-10. LOWs: §1 property 1 contradicted slot 1 always rendering; `floor()` renamed `minor()`; `elapsed_days` undefined when complete (now `days`, defined in both states); the allow-list-vs-deny-list ambiguity for an unrecognised mode; 60% cannot be called "almost all" (template says "most of it"); exponent-0 currencies; the `today.day` off-by-one and its comment. **One finding dismissed as unverified:** two lanes reported a dangling "§13" reference — an artefact of the orchestrator's own scrubbed packet, which replaced `## 13. Cold-eyes loop log` with an unnumbered heading. The real document was always correct; the scrubber was fixed for loop 2. **Every prescribed grep was executed before landing (4b-x), and two of the fixes were wrong.** (i) The replacement INV-1 leg `\bDecimal\b|\bfloat\(` **fired on correct code** — `\b` matches the word "Decimal" in the module's own docstring, which will say why the module holds none; narrowed to the constructor form `\bDecimal\(|\bfloat\(`, whose two blind spots (a bare import, a bare annotation) are now stated with leg (a) named as the real catcher. (ii) The justification written for INV-12's anchor was false: `\btr\(` does **not** match `str(` — the word boundary fails against the preceding `s`. The lanes' claim was about the *unanchored* `tr(` the earlier draft specified, which does match (`label = str(month)`); the sentence now cites the pattern that actually misfires. Both corrections came from running the greps, not from reading them. 4c then caught one more piece of this loop's own collateral before the commit: the rewrite left **INV-10 with no `*Test:*` clause at all** (a `*Scope:*` clause had displaced it), which `spec_lint` reported as `invariant_no_test` — added, with the `amount_minor == 0` row that is the only value the two expenditure definitions bucket differently. INV count 12 → 14; §11 18 rows / 5 `nothing`s → **22 / 7** (this figure was written as "20 / 7" at the time and corrected in loop 2 — the third hand-miscount of this one table, which is why §11 now states the command that produces it); 603 → 922 lines. Not converged — loop 2 owed. |
 | 2 | 2026-08-05 | 3, strong, cold, same shared packet shape, scrubber defect fixed (dims: 5×8, 13×7, 4×6, 6×6, 15×6, 10×4, 2×3, 1×2, 9×1, 7×1, 11×1) | 3 | 8 | 12 | 8 | 31 verified, 0 unverified. All fixed. **Origin split: ~6 draft defects, ~25 fix collateral** — a decisive first-split margin, which licenses the harder 4b sweep rather than a stop; loop 1 was a structural rewrite (row → merchant family) and this loop is overwhelmingly its ripples. **All three CRITICALs are loop 1's own.** (1) §4.5 still prescribed `rows_in_range` for the baseline windows while §4.6's new `excess` needs per-family sums on *both* sides — and `rows_in_range` returns no `description`. §10 then contradicted §4.5 *and itself* between its own two paragraphs. Following §4.5 makes every family's baseline 0, which collapses `excess(f)` to `spend_in_M(f)` — **silently restoring the largest-row rule §2.2 exists to reject**, with every fixture whose cause family has zero baseline spend staying green. All four windows now read `drill_rows_in_range`, and INV-7 gained leg (c) — a cause family with *non-zero* baseline spend — as the only fixture shape that can catch the regression. (2) INV-7's own worked expectation was **arithmetically false**: it asserted `cause is None` for the §2.2 vault "because living's R1,500 excess does not clear `0.6 × 1500`" — but 0.6 × 1500 = 900 and 1500 clears it by 1.67×. The leg would have gone **red against a correct implementation**, and the natural repair is to weaken the cause gate §2.2 spent a section establishing. Restated: the candidate *is* the grocer, with `residual == 0` so slot 3 is correctly omitted; a separate honest `cause is None` fixture spreads the movement across three merchants. (3) §4.8's condition 5 tested a fact `MonthSummaryInput` does not carry — the identical "a tuple of totals cannot distinguish no-rows from rows-summing-to-zero" argument loop 1 made for the *baseline* and did not apply to `M`; added `month_has_rows`, and dropped `prior_months_with_data` as a second representation of `len(prior_minor)`. HIGHs: the templates interpolate the two **signed** fields with no `abs` rule, so `LOWER` renders "cost you -R500 less than your usual month" and slot 3 "you were (R440) better than normal" under the bracket style — `{amount}` is now always a magnitude, pinned by an INV-14 leg run under both `NegativeStyle` settings; `excess > movement` is **the same condition as** `residual < 0`, so slot 2's unconditional "Most of it" described a quantity larger than the movement it apportioned — INV-9's own second fixture (excess 130% of movement) demonstrates it, and slot 2 gained an "All of it and more" variant; the family mean's **divisor and rounding were unspecified**, a R600 swing on a family seen once in three windows, with §4.8 condition 1 actively teaching the opposite convention — now `_BASELINE_MONTHS` with absent windows contributing 0, §4.2's rounding idiom, and the distinction from condition 1 stated; INV-3 and INV-7 were filed against a hermetic detector that is *handed* the windows and the candidate already computed, making both legs vacuous — moved to service level, and §7's split is now stated as a contract with the rule that decides it; INV-10's fixture asked for four consecutive 31-day months, which **do not exist** (longest Gregorian run is two, measured); a *partly* imported month passes all five silence conditions and renders the same false reassurance condition 5 exists to prevent, now §6.9 with FIBR-0038 named in §9 as the dependency; and `_MIN_MONTH_BASELINE_MAJOR = 50`, inherited from `alerts.py`'s per-category floor, left the relative gate **dead** below a R1,000 baseline — measured, a R60 baseline with R159 spend is a **+165% swing rendering "looked like a normal month"** — so the floor is now *derived* (`_MIN_MOVE_MAJOR * _MATERIAL_DEN // _MATERIAL_NUM`) and the two gates coincide exactly at it. MEDIUMs: the strip had no source for the currency symbol (the same argument loop 1 made for `exponent` and did not finish) — `set_summary(summary, symbol)` is now the stated seam; `{month}`'s year suffix had no template, no clock and would have been built by concatenation against `coding.md` — two `month` templates plus a service-computed `show_year`; INV-13's stand-in raised on the *first* vault read, so the leg passed against an implementation that never calls the service, and its `_refresh_tab` leg could not distinguish the wrong implementation at all — three scoped legs now, and the invariant additionally requires the guards to **hide** the strip rather than leave a stale sentence naming last month; `MODE_SPECIFIC_MONTH` with a missing year/month passed the allow-list and summarised a different month than the selector shows; slot 3 had no materiality floor, so a R0.40 residual rendered; slots 2 and 3 had no partial variants, so §6.2's whole mitigation covered one sentence of three; `MonthCause.name` had three mutually exclusive definitions across §4.6/§4.7/§6/INV-12 and no rule for *which* row supplies it; `MonthCause.spend_minor` was consumed by nothing and invited the sentence to print the gross figure — dropped; refunds are never netted, now stated in §4.5 and §6.10; `merchant_name` is documented as a **filter** for `services.recurring` and this is the second such case, now §6.6 and a §12 docstring amendment. LOWs: `days`/`partial`/`started` undefined for the future state, with the specific trap that `partial=True` would make INV-5's condition-4 leg vacuous; INV-3's `days == 28` leg is wrong in a leap year; INV-1 leg (a)'s field sweep reds on `bool` (`type(True) is int` is `False`, measured) and on a legitimate `None`; §4.9's cited grep returns 18 lines, not the 8 its table shows; INV-12 cited a measurement "against" a module that does not exist; INV-10's scope clause named a divergence unreachable under its own scope; §4.4's "three times larger" compared against a figure no longer in the document; §10 undercounted the added reads by two. **4b-x:** every prescribed command was executed — the derived floor was checked to remove the dead zone at every baseline from R1,000 up, the four-consecutive-31-day-months impossibility was computed rather than asserted, and §11's tally is now emitted by a stated `awk` rather than counted. INV count 14 → 14; §11 22 rows / 7 `nothing`s → **28 / 11**, the rise being four newly-named failure modes and two new covered rows; 922 → 1203 lines. Not converged — loop 3 owed as the confirming pass. |
 | 3 | 2026-08-06 | 3, strong, cold, same shared packet shape (dims: 15×7, 4×7, 13×6, 6×5, 5×4, 10×4, 2×2, 12×2, 9×1, 1×1) | 2 | 3 | 9 | 9 | 24 verified, 0 unverified. **STOPPED UNCONVERGED — nothing fixed this loop.** Origin split: ~1 draft defect vs ~23 fix collateral, which is collateral dominating for the **second consecutive loop** and fires `/cold-eyes`' stop-and-consolidate trigger; the project's `--max-loops 7` funds more loops but the trigger is independent of the cap, and past this point a growing share of each loop's findings are defects the previous loop's fixes introduced. **The whole tail is written up at lane-level detail in [`docs/reviews/FIBR-0231-loop3-tail.md`](../reviews/FIBR-0231-loop3-tail.md)** — it is not lost, and re-running the review to rediscover it would cost a full three-lane dispatch to regenerate what is already on disk. Headline findings, both of which change what gets built: (1) **§4.4's common-day-count rule is neutral only for *uniform* spend** — a fixed-day-of-month debit order occupies a different day *number* in February than in a 30/31-day month, so truncation includes it on one side of the comparison and excludes it from the other. Worked by lane C against this spec's own constants: rent R7,000 on the 30th (Feb: the 28th) plus R5,000 of other spend, behaviour never changing, renders *"February cost you R7,000 more than your usual month. All of it and more was one thing — Landlord, R7,000 more than usual"* — every clause false, annually, and §2.2's merchant-family fix does not save it because §4.7 truncates the family baseline windows too, so the landlord's own baseline reads 0. The March mirror renders the reassuring inverse. §6.1 asserts the bias is symmetric and "understates both sides"; it is neither. (2) **The derived floor killed the absolute materiality gate** — all three lanes independently: condition 2 guarantees `baseline >= minor(1000)`, so the relative gate's threshold `baseline/10 >= minor(100)` *is* the absolute one, and relative-pass implies absolute-pass at every exponent. INV-6's "relative only" leg is therefore **empty**, the fixture loop 2 prescribed for it fails the relative gate too (`100 × 9999 < 10 × 100000`), so the leg silently duplicates "neither gate" and **passes green against an implementation with no relative gate at all** — while §11 records it as the sole defence of the derived floor. §4.6's "Both, because either alone misfires", §6.2's day-8/day-15 mechanism and §6.8's exponent-0 analysis are all downstream of the same collapse. HIGHs: INV-14's sign check asserts "no `-` or `(` **before a digit**", but `_format_amount` puts the currency symbol between the sign and the first digit (`-R 500,00`), so the leg passes against precisely the defect its own *Breaks when* names — and its "under both `NegativeStyle` settings" sweep is unrunnable, `set_summary` having no style parameter; INV-1's stated breach (`movement / baseline`) is invisible to **both** its legs, the float never leaving the comparison. MEDIUMs: "All of it and more" is false at `excess == movement`, which is exactly where INV-7 leg (a) — the §2.2 flagship vault — lands; the tie-break test is filed in the hermetic detector file where `candidate` is a single pre-chosen input, the one place loop 2's own routing correction did not reach; INV-5's condition-4 fixture is blocked by conditions 4 and 5 at once (§4.7 sets `month_has_rows = False`), the identical vacuity the paragraph catches for `partial`; INV-9's strip leg is allocated in §11 and in no §7 file, so a strip selecting the correction template on the sign of `movement` — §2.1's exact error — passes the invariant as filed; `set_summary`'s required `symbol` cannot be supplied from the `except VaultLockedError` block that INV-13 requires to hide the strip; clearing the strip at the **top** of `refresh()` would close all eight call sites for one line; an income-only baseline month is admitted as real data when in practice it is always a partial import; INV-10's zero-row clause cannot go red. LOWs incl. `home.py` being the **third**-largest UI module (main_window 1785, import_wizard 1058) not the second; INV-12's grep rationale refuting itself (`\btr\(` *does* exclude `str(`, so `\b` **is** a fix and `\.tr\(` is the weaker choice); §4.4 calling an 8.70% bias "an invented narrative" when it does not clear the 10% gate. **Split judgement: 2 of 3 lanes said do not split** — §2.1/§2.2 are what make §4.6 legible — but **all three independently named the same trim**: ~80–100 lines of review archaeology ("an earlier draft set it to 50", §11's commentary about its own tally, the parenthetical grep justifications) addressed to a reviewer rather than to the implementer §14 names as the audience. That belongs here in §13. **Next session: fold the tail in, do the trim, then one confirming loop — not a fresh review.** |
+| fold | 2026-08-06 | none — `/apply-fixes` over the loop-3 tail, no review dispatched | — | — | — | — | **All 24 findings folded in; 0 deferred, 0 dismissed.** Two changed the design rather than the prose. (1) **§4.4's common-day-count rule is gone.** A complete `M` is now compared **whole calendar month against whole calendar months**, and only a partial `M` truncates — to a head capped at `L_min − 1`, below every window month's last day. That is the tail's option (c), taken over (a)/(b) because the defect fabricates a verdict *and* a named payee annually. The cost it buys back is §6.1's February bias, which is sub-threshold (8.70% against a 10% gate), *true* rather than invented, and now argued on the merits in §4.4 with the rejected alternatives recorded as §8.8 and §8.9 so the collapse cannot be re-proposed as new. Consequences swept: §3 decision 3, §4.3, §4.7's `days`, INV-3 (restated from "every window shares one day count" to "a payment recurring on the same nominal day contributes nothing to `movement`" — a claim about the failure, not about the mechanism), **INV-10 became unconditional for a complete `M`** (the strip and the tile now read the same bounds, which is a strengthening, not a rewording), §6.1, §6.7, §8.5, §10 and two §11 rows. (2) **The absolute materiality gate is stated as belt-and-braces.** Above the §4.8 floor, relative-pass implies absolute-pass at every exponent, so INV-6 dropped to three legs (neither / absolute-only / both) and the "relative only" leg — which would have duplicated "neither" and passed green against an implementation with no relative gate — is gone; §11's floor row is now a direct assertion over the constants, and §4.6, §6.2 and §6.8 are rewritten to the same fact. Also folded: `month_has_rows` **dropped** (the has-data test is now ≥1 non-transfer *spend* row, which makes the field exactly `spend_minor > 0` — an income-only baseline month is a partial import, not a real zero); `MonthSummaryStrip.clear()` added, because the `except VaultLockedError` block that must hide the strip has no `symbol` in scope; `refresh()` clears the strip as its **first** statement, closing all eight call sites for one line instead of guarding six; slot 2 split three ways (`<` / `==` / `>`) because "All of it and more" was false at `excess == movement`, which is where §2.2's own flagship vault lands — 16 templates → **18**; INV-14's sign check rewritten as a positive assertion (the specified `[-(]\d` search cannot fire — `_format_amount` puts the currency symbol between the sign and the first digit) and its unrunnable `NegativeStyle` sweep dropped; INV-1 gained an `ast.Div` leg, the only one that sees its own stated breach; INV-9's strip leg allocated to a real §7 file; the tie-break test moved to the service file, where a two-family fixture is expressible; INV-5's condition-4 fixture unblocked; `home.py` re-ranked third-largest (measured); INV-12's grep anchored `\btr\(`; `name` truncation specified in characters, which also **closed** a `nothing` row; sentence joining and the single `QLabel` specified; `today` computed once in `refresh()`. **The trim ran too:** ~90 lines of review archaeology moved to §13.1 below, and §11's tally is now emitted by its stated `awk` (`32 11`, re-derived rather than carried forward) with its three paragraphs of self-commentary cut to one. 1214 → the current length. **One confirming loop owed** — not a fresh review. |
+
+### 13.1 Superseded draft decisions and their evidence
+
+Moved here from §§4–11 on 2026-08-06, when all three loop-3 lanes independently
+named the same trim: roughly ninety lines of *review archaeology* — the record of
+what an earlier draft got wrong, and of which greps were run to check a claim —
+sitting in a document §14 addresses to an implementer. It is kept, because the
+evidence is what stops a rule being re-proposed as new; it is kept *here*, because
+none of it tells anyone what to build.
+
+**The baseline floor was 50 before it was derived.** The value was inherited from
+`alerts.py`'s `_MIN_BASELINE_MAJOR`, which floors *one category's* three-month
+average where this one floors a *whole month's* spend (§4.2). Measured against 50
+at exponent 2: a baseline of R60 clears the floor, a spend of R159 clears the
+relative gate (`100 × 9900 ≥ 10 × 6000`) and **fails** the absolute one
+(`9900 < 10000`), so a **+165% swing renders "looked like a normal month"** — the
+reassuring verdict on arithmetic that does not support it, which is what §1
+property 3 forbids. The derived value closes that dead zone by making the two
+gates coincide exactly at the floor. What loop 3 then found is the other side of
+the same coin, and it is in §4.5: making them coincide at the floor makes the
+absolute gate redundant *above* it.
+
+**INV-7 leg (a) once asserted `cause is None`** for the §2.2 vault, on the claim
+that the grocer's R1,500 excess "does not clear `0.6 × 1500`". It clears it by
+1.67×. The leg would have gone **red against a correct implementation**, and the
+natural repair — weakening the cause gate — is exactly the rule §2.2 exists to
+establish.
+
+**INV-10's fixture once asked for four consecutive 31-day months.** The longest
+run in the Gregorian calendar is two, so the fixture was unconstructible;
+computed rather than asserted, 2026-08-05.
+
+**INV-12's anchor was justified backwards once.** The claim that `\btr\(` matches
+`str(` is false — the word boundary fails between the `s` and the `t`. What does
+match is the *unanchored* `tr(` an earlier draft specified. Verified 2026-08-05
+against a scratch module holding a `str(...)` call.
+
+**INV-1's grep was `\bDecimal\b|\bfloat\(` for one loop, and fired on correct
+code**: `\b` matches the word "Decimal" in the module's own docstring, which will
+say why the module holds none. Narrowed to the constructor form.
+
+**Grep counts whose bare form disagrees with the figure in the text.** Each was
+stated inline for a loop, which is the archaeology this section absorbs:
+
+- `grep -rn "confirmed_transfer_txn_ids" src/ | wc -l` → **6**, against the four
+  call sites §4.5 names. The extra two are the `def` in
+  `transfer_detection.py` and a mention in that module's docstring.
+- `grep -n "refresh()" src/finbreak/ui/{home,main_window}.py` → **18**, against
+  the eight `refresh()` call sites §4.9 tabulates. The rest are the nine other
+  tabs' refreshes and a docstring mention at `home.py:73`. The filtered form is
+  `grep -n "self\.refresh()\|_home_tab\.refresh()"`.
+- `grep -rn "rows_in_range" src/finbreak/services/` → **5**, of which
+  `drill_rows_in_range(` is **1**; the plain pattern matches both names, which is
+  why §10 states the split.
+- `grep -n read_minor_unit_exponent src/finbreak/ui/home.py` → nothing, which is
+  why `exponent` is a `MonthSummary` field (§4.7).
+
+**§11's tally was miscounted by hand three times**, twice in the same direction,
+before the `awk` that emits it was written into the section. That is why §11
+states a command rather than a number reached by counting.
+
+**`month_has_rows` existed for one loop.** It was added because a tuple of totals
+cannot distinguish "no rows" from "rows summing to zero" — true while the has-data
+test was *any* non-transfer row. Once the test became a *spend* row (§4.8
+condition 1), the fact it carried was exactly `spend_minor > 0`, so it became a
+second representation of a derivable value and was dropped.

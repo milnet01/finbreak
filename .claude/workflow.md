@@ -41,8 +41,8 @@ this**, so treat a stale date as "recent work was out-of-band", not as
 
 | Field | Value |
 |---|---|
-| **Active item ID** | FIBR-0231 (spec drafted, gate stopped unconverged — see below) |
-| **Blocked on** | Nothing blocking; 24 verified spec findings await fold-in. |
+| **Active item ID** | FIBR-0231 (spec drafted, tail folded in, one confirming loop owed — see below) |
+| **Blocked on** | Nothing blocking; one confirming `/cold-eyes` loop before code. |
 | **Last update** | 2026-08-06 |
 
 ### Step progress
@@ -51,14 +51,16 @@ While an item is active, Claude marks the current step 🚧; completed
 steps flip to ✅. Resets to all ⬜ when a new item becomes active. The
 nine steps are defined in `~/.claude/skills/app-workflow/SKILL.md`.
 
-1. 🚧 Verify spec — **step 1 is where FIBR-0231 sits.** The spec exists at
-   `docs/specs/FIBR-0231-plain-english-month-summary.md` and is **not** cleared
-   for code. `/cold-eyes` ran 3 loops × 3 lanes and stopped unconverged on its
-   own collateral trigger; **24 verified findings** (2 CRITICAL) are written up
-   at `docs/reviews/FIBR-0231-loop3-tail.md`. **Fold that file in directly — do
-   not re-run the review to rediscover it.** Then trim the ~80–100 lines of
-   review archaeology into the §13 loop log (all three lanes named the same
-   trim), then run **one confirming loop**.
+1. 🚧 Verify spec — **step 1 is where FIBR-0231 sits.** The spec at
+   `docs/specs/FIBR-0231-plain-english-month-summary.md` is **not yet** cleared
+   for code. `/cold-eyes` ran 3 loops × 3 lanes and stopped unconverged; its
+   24-finding tail (`docs/reviews/FIBR-0231-loop3-tail.md`) has been **folded in
+   whole** — 0 deferred, 0 dismissed — and the ~90 lines of review archaeology
+   moved to the spec's new §13.1. Two fixes changed the design: §4.4's
+   common-day-count rule was replaced (complete months compare whole; only a
+   partial month truncates, to a head capped below every window month's last
+   day), and the absolute materiality gate is now belt-and-braces. **Next: ONE
+   confirming `/cold-eyes` loop — not a fresh review** — then step 3 (TDD).
 2. ⬜ Verify dependencies
 3. ⬜ Write tests first
 4. ⬜ Implement until tests pass
