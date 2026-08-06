@@ -54,7 +54,7 @@ nine steps are defined in `~/.claude/skills/app-workflow/SKILL.md`.
 
 1. ✅ Verify spec — `docs/specs/FIBR-0252-standard-bank-row-errors.md`,
    `/cold-eyes` converged at loop 5 (5 loops × 3 cold lanes = 15 reviews;
-   117 verified findings, all fixed). Status: accepted.
+   121 verified findings, all fixed). Status: accepted.
 2. ✅ Verify dependencies — none new. The fix is one line; the fixture is
    generated with reportlab, which stays probe-only (no dependency group).
 3. 🚧 Write tests first
