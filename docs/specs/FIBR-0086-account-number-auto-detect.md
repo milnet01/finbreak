@@ -1,6 +1,15 @@
 # FIBR-0086 — Detect a statement's account number and file it automatically
 
-**Status:** spec draft (2026-08-06).
+**Status:** SHIPPED 2026-08-06 (`FIBR-0086-complete`). Close record:
+[`docs/journal/FIBR-0086.md`](../journal/FIBR-0086.md).
+
+**As built, this document was amended in four places after code review** —
+each marked *(as built)* below, so a later reader does not "restore" the
+drafted behaviour: the mask guard became a whitelist and is applied to both
+sides (§4.4 rule 2, INV-9); non-matched outcomes re-seed the combo from the
+pick step explicitly rather than leaving it untouched (§4.5); §4.6's create
+path needed a **new** dialog, `ui/account_create.py`, because no reusable
+account-create UI existed; and INV-8's scanner matches a wider separator set.
 **Kind:** feature.
 **Source:** ROADMAP FIBR-0086 (user-request-2026-07-11, dogfooding v0.1.0);
 promoted ahead of FIBR-0085 by user directive 2026-08-06.
@@ -438,8 +447,25 @@ The rules, in order:
 
 1. `hint` is `None`, or `hint.number` normalises to `""` →
    `no_number`. Nothing is pre-selected.
-2. `hint.number` contains a **masking character** (`*`, `x` or `X`) →
-   `no_number`. This is what actually *enforces* §3 decision 3's deferral, and
+2. **(as built)** `hint.number` is not a **plain number** — i.e. it contains
+   anything other than digits, spaces and dashes → `no_number`, **and the same
+   test excludes a stored `account_number` from being a candidate in rule 3.**
+   Two corrections to the drafted rule, both from code review:
+   - It was drafted as a denylist of `*`, `x` and `X`. That reads as safe and
+     is not: `####1234` and `ending 1234` mask just as well and fell straight
+     through normalisation, becoming exactly the trailing-digit match this rule
+     exists to prevent. A whitelist of what a *number* may contain is the
+     correct polarity.
+   - It was drafted one-sided, checking only the statement. Nothing stops a
+     user typing a card's printed PAN spelling into an account — family C gets
+     no auto-prefill, so typing it by hand is the only route — and
+     `1234 **** **** 5678` normalises to `12345678`, which a full statement
+     number can equal by coincidence.
+
+   The check runs on the **raw** value, before normalisation, because
+   normalisation strips non-digits and so destroys the evidence: `"xxxx1234"`
+   becomes `"1234"` (verified 2026-08-06). This is what actually *enforces*
+   §3 decision 3's deferral, and
    without it the deferral is a comment rather than a rule: normalisation
    strips non-digits, so `"xxxx1234"` becomes `"1234"` (verified 2026-08-06)
    and would match a stored account numbered `1234` — matching on a masked
@@ -498,6 +524,19 @@ statement is better evidence than a default the user may never have touched.
 `no_number`, `no_match` and `ambiguous` leave the existing pick-step seeding
 untouched (§3 decision 5) — they change the *label*, never the selection.
 
+**(as built)** "Keeps the pick step's value" below is implemented by
+**re-seeding from the pick step explicitly**, not by leaving the combo
+untouched. The two are only the same thing on the *first* preview: on the OFX
+statement chooser this runs again for a second statement in the same file,
+where the combo may still hold the account auto-matched for the **first** one —
+so "untouched" silently filed statement 2 under a guess drawn from statement
+1's number, and on `no_number` it did so with no label to explain it.
+
+Also as built: a **manual** override of the destination retires the label and
+the create button, because neither describes the destination any more — a stale
+*"Matched account number …"* on the final, irreversible screen asserts a match
+that is no longer true.
+
 - **`matched`** — the combo is set to the matched account per the sequence
   above, and a label beneath it reads *"Matched account number 11 222 333 4
   printed on this statement."* The user can still change it afterwards, which
@@ -519,7 +558,18 @@ which is the correct behaviour for CSV, for Family C and for Family E.
 
 ### 4.6 Create-from-statement prefill
 
-The create button opens the existing account-create path pre-filled from
+**(as built)** There was no existing account-create path to open: accounts
+could only be made from the Accounts tab's inline form, so this shipped a new
+`ui/account_create.py` (`CreateAccountDialog`), opened through the non-blocking
+`show_modal` helper. Two consequences worth stating, both from code review:
+the combo update after creation is deliberately **not** under a
+`QSignalBlocker` — the mirror of §4.5, because the preview already exists by
+then and the signal is what retargets it; and the confirmation line reports the
+number **actually stored**, since the prefilled box is editable and clearing it
+stores `NULL` — claiming a match there would promise auto-filing that cannot
+happen and make every later import offer to create the account again.
+
+The create button opens an account-create dialog pre-filled from
 three statement-derived values:
 
 | Field | Source | Available for |
@@ -667,9 +717,12 @@ confirming.
   would pass a leak of exactly this shape. That gap is why this invariant
   needs a test of its own rather than a pointer at the existing gate.
 
-- **INV-9** — A `hint.number` containing a masking character (`*`, `x`, `X`)
-  yields `no_number`, so it never matches an account and never reaches the
-  create form (which only `no_match` offers).
+- **INV-9** — **(as built)** A `hint.number` that is not a plain number
+  (digits, spaces and dashes only) yields `no_number`, so it never matches an
+  account and never reaches the create form (which only `no_match` offers) —
+  **and a stored `account_number` that is not a plain number never matches
+  either.** Widened from the drafted `*`/`x`/`X` denylist and made symmetric;
+  see §4.4 rule 2 for why each half was wrong.
   *Test:* `tests/features/account_detect/test_match.py::test_masked_number_never_matches`
   — `match_account(SourceAccountHint("xxxx1234"), [account numbered "1234"])`
   returns `no_number`, not `matched`.
