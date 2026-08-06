@@ -219,6 +219,78 @@ scariest unknown (native-library bundling) up front.
   Kind: security.
   Source: in-session-2026-08-06 (gap found while closing FIBR-0244).
 
+- 📋 [FIBR-0247] **The INV-8 leak scanner cannot see git history, so a redaction reads as a fix.**
+  tests/features/account_detect/test_no_real_data.py walks `git ls-files`,
+  which is the working tree only. A real number published in an earlier
+  commit is invisible to it.
+  This is live, not hypothetical: FIBR-0244 redacted 4 real values in
+  `0664d55` and, per the user's decision, left history intact. Those
+  values remain reachable in this PUBLIC repo via `git log -p` and the
+  GitHub commit view, while the guard reports green.
+  The hazard is the false assurance, not the leak itself (which the user
+  accepted knowingly): a future developer pastes a number, notices,
+  commits a redaction, sees the test pass, and concludes it is closed.
+  Wanted: either scan history too (`git rev-list --all` + `git grep` per
+  commit is O(history) but runs once pre-push), or — cheaper and probably
+  better — have the test SAY what it does not cover, and add the same
+  sentence to the spec's §11 table. A guard whose blind spot is documented
+  is honest; one that looks total is worse than none.
+  **Layman:** Our check for leaked bank numbers only looks at the current files, not at older versions — so a number we cleaned up still sits in the published history while the check says all clear.
+  Kind: test.
+  Source: in-session-2026-08-06 (FIBR-0086 review lane 3).
+
+- 📋 [FIBR-0248] **FINBREAK_CORPUS_NUMBERS is wired nowhere, so INV-8 skips on every run.**
+  The variable appears only in the test that reads it and in two spec
+  documents. It is absent from `scripts/ci-local.sh`, `.githooks/pre-push`
+  and CLAUDE.md's "Run the full gate" and push-policy sections.
+  So the pre-push hook runs INV-8's test as a SKIP every time, and the
+  invariant's only enforcement is a developer remembering an undocumented
+  environment variable. CI genuinely cannot hold the values, and that part
+  is by design — but the local half was never wired up.
+  Wanted: read the keys from a gitignored file (e.g. `.corpus-numbers`,
+  already outside the repo) with the env var as an override, and name it
+  in CLAUDE.md's gate section so it is discoverable. Then the pre-push hook
+  enforces it for whoever has the file, and still skips cleanly for whoever
+  does not.
+  **Layman:** The leaked-bank-number check needs a setting that nothing sets, so in practice it never actually runs.
+  Kind: chore.
+  Source: in-session-2026-08-06 (FIBR-0086 review lane 3).
+
+- 📋 [FIBR-0249] **A remembered statement password is stored against the pick-step account, which auto-detect now routinely changes.**
+  `_begin_decrypt` / `_after_decrypt` look up and persist the remembered
+  PDF password against `_target_account_id()` at decrypt time. That is
+  necessarily the PICK-STEP account, because auto-detect cannot run until
+  the PDF has been decrypted and parsed.
+  Pre-existing FIBR-0057 behaviour, but FIBR-0086 changes its frequency:
+  "the destination moves after decrypt" went from rare to routine.
+  Consequence: the password is written against whichever account sorts
+  first alphabetically; `_carry_stored_pw_to_committed_account` COPIES it
+  to the committed account rather than moving it, so a statement password
+  ends up permanently on an unrelated account. And next month the
+  stored-password auto-try consults the pick-step account again, so the
+  user is re-prompted anyway — the feature silently stops working for them.
+  Wanted: move rather than copy on commit, and re-key the stored password
+  once the destination is settled.
+  **Layman:** When you tick "remember this password" for a locked PDF, it gets saved against whichever account was selected before the app worked out the right one — so it lands on an unrelated account and you get asked again next month.
+  Kind: fix.
+  Source: in-session-2026-08-06 (FIBR-0086 review lane 2).
+
+- 📋 [FIBR-0250] **normalise_account_number's zero-strip is ASCII-only while its digit filter is not.**
+  `re.sub(r"\D", "", raw)` is Unicode-aware and keeps Arabic-Indic or
+  fullwidth digits; `.lstrip("0")` then does nothing to them, so the key
+  never equals its ASCII counterpart.
+  Verified: a fullwidth spelling returns unchanged rather than normalising.
+  Bounded — it can only fail to match, never mis-match, so the outcome is
+  `no_match` (offer to create a duplicate), not a wrong filing. No
+  collision could be constructed.
+  Not worth fixing on its own; fix it when something else touches this
+  function. `unicodedata.digit()` per character, or restricting the filter
+  to `[0-9]`, would close it — the latter also makes the function's
+  contract match its docstring.
+  **Layman:** An account number written in non-Western digits would not be recognised as the same number, so the app would offer to create a duplicate account.
+  Kind: fix.
+  Source: in-session-2026-08-06 (FIBR-0086 review lane 1).
+
 ### 📦 Packaging
 
 - ✅ [FIBR-0003] **P01: bundling smoke-test (de-risk
@@ -2816,7 +2888,7 @@ because retrofitting them is a data migration.
   skipping files that need input (a folder of password-locked bank PDFs
   is the common case, not an edge case).
 
-- 🚧 [FIBR-0086] **Account numbers + import auto-detect — match a statement to its account (prompt to create if new).**
+- ✅ [FIBR-0086] **Account numbers + import auto-detect — match a statement to its account (prompt to create if new).**
   Motivated by dogfooding v0.1.0. The account-number STORAGE half shipped separately as FIBR-0193 (2026-07-30): `accounts.account_number` is a nullable column in the ENCRYPTED vault, added by schema migration **v12 -> v13** — so this bullet is now DETECTION + MATCHING only, and no new column is needed. On import, extract the statement's account number and match it to a configured account (normalised: strip spaces/dashes; match on TRAILING digits when the statement masks it, e.g. "xxxx1234"), auto-selecting the account instead of today's manual pick. Availability varies by format: OFX <ACCTID> (reliable), PDF printed number (the Standard Bank / generic parsers can surface it), CSV often carries none — so auto-detect is a SMART DEFAULT with a manual fallback whenever the number is absent or matches zero/multiple accounts (never silently import to the wrong account — cf. FIBR-0059). When the detected number matches no account, prompt to create one, pre-filled from statement metadata (number, bank name if printed, type/currency where available) and asking the user for the rest. ENABLER for FIBR-0085 (batch import) — auto-detect is what makes multi-file import usable (you cannot hand-map a folder of files); reduces reliance on FIBR-0059 (change-account fix). Deps: FIBR-0005 (accounts), FIBR-0007/0008/0009 (importers must surface the statement's number), FIBR-0052 (statement provenance).
   **Layman:** Give each account its account number so importing a statement automatically files it under the right account — and if it's an account finbreak hasn't seen, it offers to create it, pre-filled from the statement.
   Kind: feature.
@@ -2873,6 +2945,32 @@ because retrofitting them is a data migration.
   spaced spelling a substring grep would miss. Run against the real corpus
   over all 506 tracked files: clean.
   Next: steps 5-9 via `/close-phase`.
+  Resolved (2026-08-06): shipped. Journal: docs/journal/FIBR-0086.md.
+  Closed after three cold review lanes over the code. No CRITICALs — the
+  §4.5 ordering and the family-C guard both survived mutation — but one
+  real wrong-account bug and four unlocked test paths, all fixed in
+  `fe8e872`. The bug: a multi-statement OFX inherited the previous
+  statement's match, because on a non-matched outcome "leave the combo
+  alone" only equals "the pick step's account" on the FIRST statement.
+  Worst on no_number, where the blank label made an app-made guess look
+  like the user's own pick. Also fixed: a manual override left the
+  "Matched account number …" label live on the final irreversible screen;
+  the mask guard was one-sided (statement checked, stored number not) and
+  a three-character denylist that #### and "ending 1234" walked straight
+  through; and the post-create label promised auto-filing for an account
+  stored with no number.
+  The unlocked paths matter as much. INV-2's own named test could not
+  fail — its foreign number sat in a row with no label, and the extractor
+  is label-anchored. INV-7a was locked on OFX only, though families A/B/D
+  are PDF-only. Nothing asserted the explanation is ever shown. Family D,
+  the only family printing the "Account number:" spelling, had no test.
+  Every fix was mutation-tested: revert it, exactly one test reddens.
+  Gate green 1840 passed / 3 skipped against a 1791 baseline.
+  Deferred with evidence: FIBR-0247 (the INV-8 scanner cannot see git
+  history, so a redaction reads as a fix), FIBR-0248 (its env var is wired
+  nowhere, so it skips every run), FIBR-0249 (remembered PDF password
+  keyed to the pick-step account), FIBR-0250 (ASCII-only zero-strip).
+  Unblocks FIBR-0085 (batch import).
 
 - 📋 [FIBR-0087] **Per-account currency — support offshore/foreign-currency accounts in the portfolio (revisits FIBR-0021).**
   The user wants to include an offshore account in their portfolio — the "real multi-currency need" FIBR-0021 deferred to (it chose single base_currency for v1, set at first-run, and said revisit when this arises). Per FIBR-0021's own "if revisited" note: add a currency column on accounts (default = the vault base currency), CHOOSE the currency when ADDING an account (the user's ask), QLocale-format each amount in its account's currency, and enforce that the dashboard NEVER sums across currencies without explicit conversion. Needs its OWN design/spec — the hard decisions: (a) consolidated totals across currencies — NO live FX rates (that would widen the network surface beyond the one FIBR-0054 update egress), so either per-currency subtotals or a user-entered/stored conversion rate; (b) how the dashboard presents mixed currencies (per-currency subtotals vs one converted total). Schema migration (currently v7 -> v8). Deps: FIBR-0005 (accounts), FIBR-0012 (dashboard totals). Kept SEPARATE from FIBR-0083 (date/time formatting).

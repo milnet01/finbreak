@@ -41,8 +41,8 @@ this**, so treat a stale date as "recent work was out-of-band", not as
 
 | Field | Value |
 |---|---|
-| **Active item ID** | FIBR-0086 (account-number import auto-detect) — user directive 2026-08-06: built BEFORE FIBR-0085, which is now blocked on it. FIBR-0231 closed by `/close-phase` 2026-08-06 |
-| **Blocked on** | Nothing. Step 1 done — `docs/specs/FIBR-0086-account-number-auto-detect.md` written and through 3 cold-eyes loops (stopped on the collateral-dominated trend, not a clean pass; see the ROADMAP bullet). Next is step 3, TDD. |
+| **Active item ID** | FIBR-0085 (batch statement import). FIBR-0086 closed by `/close-phase` 2026-08-06, which unblocks it |
+| **Blocked on** | Nothing. No spec yet — step 1 is `/write-spec`. |
 | **Last update** | 2026-08-06 |
 
 ### Step progress
@@ -51,11 +51,11 @@ While an item is active, Claude marks the current step 🚧; completed
 steps flip to ✅. Resets to all ⬜ when a new item becomes active. The
 nine steps are defined in `~/.claude/skills/app-workflow/SKILL.md`.
 
-1. ✅ Verify spec
-2. ✅ Verify dependencies (storage half already shipped as FIBR-0193; no new deps)
-3. ✅ Write tests first (32 tests; INV-1 and INV-2a red states constructed per §7)
-4. ✅ Implement until tests pass (gate green 1823/3 at `73f3e71`)
-5. 🚧 Run `/audit` — in parallel with 6
+1. ⬜ Verify spec
+2. ⬜ Verify dependencies
+3. ⬜ Write tests first
+4. ⬜ Implement until tests pass
+5. ⬜ Run `/audit` — in parallel with 6
 6. ⬜ Run `/code-quality-review` — in parallel with 5
 7. ⬜ Fold all actionable findings into one new fix-pass
 8. ⬜ Update CHANGELOG, flip status, write journal

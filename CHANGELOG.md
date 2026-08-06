@@ -23,6 +23,20 @@ signaling per
 
 ### Added
 
+- **Statements now file themselves under the right account** (FIBR-0086)
+  When you import a statement, finbreak reads the account number printed
+  on it and pre-selects the matching account for you, with a line saying
+  why it chose that one. If it is an account finbreak has never seen, it
+  offers to create it, pre-filled from the statement. You can always
+  change the choice, and nothing is imported until you press Import.
+  Where it cannot be sure, it does not guess: a statement matching more
+  than one account, or carrying no readable number, leaves the choice
+  exactly where you set it and says why it could not decide.
+  Credit-card statements are deliberately left alone. The number they
+  print under "account number" is the account that PAYS the card, not the
+  card itself — so reading it would file every card statement under your
+  current account.
+
 - **The dashboard now tells you what your month did, in a sentence** (FIBR-0231)
   A short line at the top of Home says in plain words what happened to
   your money — "September cost you R2,340 more than your usual month.
