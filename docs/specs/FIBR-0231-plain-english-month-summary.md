@@ -1260,9 +1260,24 @@ comment records that the Home page assertions moved to `tests/features/dashboard
    so it trades a true bias for a small invented one, and it cannot help the
    partial state at all, where a full baseline month pro-rated against a
    part-elapsed `M` reads the month-end debits as already spent.
-8. **Put the strip in a dialog, or on its own tab.** Rejected: a feature whose
+8. **Align every window to both month start *and* month end** — a head of `h`
+   days from day 1 plus a tail of `t` days ending on the last day, with
+   `h + t = L_min`. Rejected, and it is the **near miss worth recording**,
+   because it looks strictly better than either rule §4.4 chose between: it is
+   exact for uniform daily flow *and* exact for a last-day debit, since a
+   month-end payment falls in every window's tail whatever the month's length.
+   What kills it is the **hole between the two bands**. For a 31-day month
+   against a February baseline `L_min = 28`, so days `(29 − t) … (31 − t)` fall
+   in neither band — with `t = 4`, days 25–27. A debit order on the 26th is then
+   inside February's tail (days 25–28) and inside no 30/31-day month's window at
+   all, which reproduces the fabricated-verdict-with-a-named-payee failure §4.4
+   exists to remove, three days earlier in the month. Changing `t` only *moves*
+   the hole: its width is `len(M) − L_min` and no choice of `t` closes it.
+   Whole calendar months have no hole, which is why they win despite §6.1.
+
+9. **Put the strip in a dialog, or on its own tab.** Rejected: a feature whose
    entire purpose is to save the reader effort cannot be behind a click.
-9. **Let the strip speak for year modes with year-over-year phrasing.** Rejected
+10. **Let the strip speak for year modes with year-over-year phrasing.** Rejected
    by the user (§3 decision 1); it is FIBR-0175's shape, not this one's.
 
 ## 9. Out of scope

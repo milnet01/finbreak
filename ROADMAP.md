@@ -2702,6 +2702,9 @@ because retrofitting them is a data migration.
   Source: user-request-2026-07-11 (dogfooding v0.1.0).
   Priority (2026-08-05, user): named as the most useful feature to
   build after FIBR-0231 — take this next unless redirected.
+  Priority (2026-08-06, user directive): this is the NEXT item after
+  FIBR-0231 closes. Named by the user in the FIBR-0231 handoff session;
+  recorded here because it lived only in that conversation.
 
 - 📋 [FIBR-0086] **Account numbers + import auto-detect — match a statement to its account (prompt to create if new).**
   Motivated by dogfooding v0.1.0. The account-number STORAGE half shipped separately as FIBR-0193 (2026-07-30): `accounts.account_number` is a nullable column in the ENCRYPTED vault, added by schema migration **v12 -> v13** — so this bullet is now DETECTION + MATCHING only, and no new column is needed. On import, extract the statement's account number and match it to a configured account (normalised: strip spaces/dashes; match on TRAILING digits when the statement masks it, e.g. "xxxx1234"), auto-selecting the account instead of today's manual pick. Availability varies by format: OFX <ACCTID> (reliable), PDF printed number (the Standard Bank / generic parsers can surface it), CSV often carries none — so auto-detect is a SMART DEFAULT with a manual fallback whenever the number is absent or matches zero/multiple accounts (never silently import to the wrong account — cf. FIBR-0059). When the detected number matches no account, prompt to create one, pre-filled from statement metadata (number, bank name if printed, type/currency where available) and asking the user for the rest. ENABLER for FIBR-0085 (batch import) — auto-detect is what makes multi-file import usable (you cannot hand-map a folder of files); reduces reliance on FIBR-0059 (change-account fix). Deps: FIBR-0005 (accounts), FIBR-0007/0008/0009 (importers must surface the statement's number), FIBR-0052 (statement provenance).
