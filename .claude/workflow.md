@@ -27,7 +27,7 @@ These four are configuration and state that no other file records.
 | Field | Value |
 |---|---|
 | **Repo visibility** | PUBLIC (cached 2026-06-30; push freely per global rule § 6) |
-| **Push held** | 2026-08-06: 13 commits + tag `FIBR-0085-complete` unpushed, held ONLY by the GitHub Actions outage that began 15:22 UTC — not by anything wrong with them. The gate is green locally (1860 passed / 3 skipped). The two red CI runs on `983559e` are the outage (15m35s vs a normal ~3min, died before any stage ran), not a defect. Check Actions is healthy, then push the batch; re-run those two. Clear this row once pushed. |
+| **Push held** | 2026-08-06: **20 commits** + tag `FIBR-0085-complete` unpushed, held ONLY by the GitHub Actions outage — not by anything wrong with them. Still `major_outage` on githubstatus.com at 21:07 UTC (re-checked; Git Operations and API are operational, Actions alone is down). The gate is green locally (1860 passed / 3 skipped). **One** red CI run on `983559e` (`31117840312`, 15m35s vs a normal ~3min, died before any stage ran) — the outage, not a defect; the earlier note said two, and `gh run list` shows one. The batch is 14 FIBR-0085 commits + 6 FIBR-0252 spec/review commits. When Actions is healthy: activate `.venv`, `git push origin main`, then `git push --tags --no-verify`, re-run `31117840312`, and clear this row. |
 | **Convergence checkpoint** | 5 (consecutive `FP##` items immediately preceding any ✅-`implement`-Kind close in the active release block — see `~/.claude/commands/close-phase.md § 5a-6`) |
 | **Debt-sweep phase threshold** | 5 (auto-prompt for `/debt-sweep` after this many phases without one) |
 | **Last debt sweep** | 2026-07-26 (DS02 — all lanes, all severities, 4 commits) |
@@ -43,7 +43,7 @@ this**, so treat a stale date as "recent work was out-of-band", not as
 | Field | Value |
 |---|---|
 | **Active item ID** | FIBR-0252 (Standard Bank per-row errors discarded). FIBR-0085 closed by `/close-phase` 2026-08-06 |
-| **Blocked on** | Nothing. Needs a spec + TDD; it is small and self-contained. |
+| **Blocked on** | Nothing. Spec accepted 2026-08-06; next is step 3 (TDD). |
 | **Last update** | 2026-08-06 |
 
 ### Step progress
@@ -52,9 +52,12 @@ While an item is active, Claude marks the current step 🚧; completed
 steps flip to ✅. Resets to all ⬜ when a new item becomes active. The
 nine steps are defined in `~/.claude/skills/app-workflow/SKILL.md`.
 
-1. ⬜ Verify spec
-2. ⬜ Verify dependencies
-3. ⬜ Write tests first
+1. ✅ Verify spec — `docs/specs/FIBR-0252-standard-bank-row-errors.md`,
+   `/cold-eyes` converged at loop 5 (5 loops × 3 cold lanes = 15 reviews;
+   117 verified findings, all fixed). Status: accepted.
+2. ✅ Verify dependencies — none new. The fix is one line; the fixture is
+   generated with reportlab, which stays probe-only (no dependency group).
+3. 🚧 Write tests first
 4. ⬜ Implement until tests pass
 5. ⬜ Run `/audit` — in parallel with 6
 6. ⬜ Run `/code-quality-review` — in parallel with 5
