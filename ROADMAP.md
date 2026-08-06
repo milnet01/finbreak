@@ -342,6 +342,30 @@ scariest unknown (native-library bundling) up front.
   Kind: fix.
   Source: in-session-2026-08-06 (FIBR-0252 spec, blast-radius scan).
 
+- 📋 [FIBR-0254] **The batch report line contradicts the Errors column, and mis-pluralises "1 rows".**
+  Two defects in `ui/import_batch.py::report_line`, both pre-existing and
+  both made reachable on Standard Bank files by FIBR-0252.
+
+  1. The `", {n} rows couldn't be read"` clause is appended ONLY on the
+     `committed` branch. An `already_imported` record (a span exists and
+     zero rows are new) returns "Already imported — nothing new in this
+     file" while the Errors column beside it reads N — the Status and
+     Errors cells of one row contradicting each other.
+  2. `"{n} rows couldn't be read"` has no singular form, so one
+     unreadable row reads "1 rows couldn't be read".
+
+  Reachable via CSV and OFX today (both collect per-row errors);
+  FIBR-0252 makes Standard Bank PDFs a third source, which is the
+  user's own corpus.
+
+  Fix: append the error clause on every outcome that can carry one, not
+  just `committed`, and give the count a singular form. Deliberately NOT
+  bundled into FIBR-0252, which is confined to the parse-side error
+  channel.
+  **Layman:** In the multi-file import table, a file that was already imported says "nothing new in this file" while the Errors column next to it shows unreadable rows — and a single bad row reads "1 rows couldn't be read".
+  Kind: fix.
+  Source: in-session-2026-08-06 (FIBR-0252 cold-eyes loop 2, blast-radius scan).
+
 ### 📦 Packaging
 
 - ✅ [FIBR-0003] **P01: bundling smoke-test (de-risk

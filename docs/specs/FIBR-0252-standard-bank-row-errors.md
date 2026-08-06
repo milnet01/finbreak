@@ -10,6 +10,13 @@
 throws that fact away and tells you "53 added" with no hint that anything was
 skipped. After this, the skipped line is counted and shown.*
 
+[1. Goal](#1-goal) · [2. Problem](#2-problem) · [3. Scope decisions](#3-scope-decisions-agreed-with-the-user) ·
+[4. Design](#4-design) · [5. Invariants](#5-invariants) · [6. Failure modes](#6-failure-modes) ·
+[7. Tests](#7-tests) · [8. Alternatives](#8-alternatives-considered-and-rejected) ·
+[9. Out of scope](#9-out-of-scope) · [10. Resource cost](#10-resource-cost) ·
+[11. What checks this](#11-what-checks-this) · [12. Cross-doc impact](#12-cross-doc-impact) ·
+[13. Cold-eyes loop log](#13-cold-eyes-loop-log)
+
 ## 1. Goal
 
 `StandardBankImporter.parse` returns the per-row errors its family parser produced,
@@ -21,10 +28,17 @@ does.
 
 **No draft, balance-check or coverage-span behaviour changes**: the same rows
 import, against the same gates, with the same span. Three consequences do follow,
-and §4.3 accounts for each rather than claiming nothing moves — the batch report
-line above; `ImportResult.error_count`, which stops being a constant zero for
-Standard Bank files; and one pre-existing banner that becomes newly reachable on
-Family A and E (§6, tracked as FIBR-0253).
+and each is accounted for rather than waved past:
+
+- the batch report line above — §1 here, and §11 records what checks it;
+- `ImportResult.error_count`, which stops being a constant zero for Standard Bank
+  files — §4.3;
+- two pre-existing reporting defects that become newly reachable on Standard Bank
+  files: the FIBR-0146 preview banner (FIBR-0253) and `report_line`'s Status/Errors
+  contradiction and mis-pluralisation (FIBR-0254) — §6, deferred in §9.
+
+The banner becomes reachable on **every** family, not only the closing-less ones;
+§6 shows why, and it is the reasoning this spec's own error class defeats.
 
 ## 2. Problem
 
@@ -100,11 +114,11 @@ consequence visible by adding a column that reads the channel.
 
 ## 3. Scope decisions (agreed with the user)
 
-- **The user asked for this as its own item**, rather than as a fix in passing
-  during the FIBR-0085 close, precisely because it changes what the single-file
-  preview shows (2026-08-06). That is honoured: the preview change is specified and
-  tested here, not left as a side effect.
-- Everything else below follows from §2.
+- **The user asked for this as its own item** rather than as a fix in passing during
+  the FIBR-0085 close (2026-08-06). §8 carries the reasoning; what it means here is
+  that the preview change is specified and tested, not left as a side effect.
+
+No other preference calls were made — every remaining choice follows from §2.
 
 ## 4. Design
 
@@ -128,11 +142,7 @@ legal marker, with the generated PDF committed and reportlab left probe-only (it
 in no dependency group).
 
 **The whole page, not just the rows** — the sibling suite commits no generator
-script, so the recipe has to be here or the fixture cannot be regenerated. Every
-line below is load-bearing: without the `Statement from … to …` line `_parse_period`
-returns `None` and Family A raises `_MISPARSE` before any row is read, and without
-the legal marker `detect_standard_bank` returns `None` and `parse` never reaches a
-family at all.
+script, so this recipe is the only way to regenerate the fixture.
 
 ```
 Standard Bank
@@ -151,13 +161,36 @@ The Standard Bank of South Africa Limited (Reg. No. 1962/000738/06)
 ```
 
 Fake account number and fake payees throughout — the repo is public, and the
-no-real-data rule binds fixtures absolutely.
+no-real-data rule binds fixtures absolutely. INV-6 is what checks that, because the
+guard that covers the rest of the repo cannot read inside a `.pdf`.
 
-Observed on an equivalent scratchpad build of this page: 2 drafts (rows 1 and 3),
-the zero-amount line as row 2, `period_start`/`period_end` `2026-05-01` /
-`2026-05-31`, and a reconciling `1,000.00 − 100.00 + 250.00 = 1,150.00` so the
-completeness gate passes. That last part matters for INV-1: the test must fail
-pre-fix for the reason under test, not because the statement was rejected outright.
+**Which lines are load-bearing, measured by ablation** — each line dropped in turn
+from this exact page, the result re-parsed. Written down because "every line
+matters" was the easy claim and it is false; four of the thirteen are decoration,
+and a regenerator needs to know which four.
+
+| Line | Dropping it |
+|---|---|
+| `Statement from 1 May 2026 to 31 May 2026` | `ValueError` — `_parse_period` returns `None`, Family A raises `_MISPARSE` |
+| `Details Service Fee Debits Credits Date Balance` | returns `None` — not detected as SB at all |
+| `The Standard Bank of South Africa Limited (Reg. No. …)` | returns `None` — the legal marker is half of detection |
+| `BALANCE BROUGHT FORWARD 05 01 1,000.00` | `ValueError` — no opening balance |
+| either money row | `ValueError` — the running balance no longer reconciles |
+| `PRESTIGE CURRENT ACCOUNT Account Number 00 000 000 0` | parses, but `source_account` becomes `None` (the FIBR-0086 hint) |
+| `Balance at date of statement 1,150.00` | parses, but `closing_balance_minor` becomes `None` (legal on Family A) |
+| `Standard Bank`, `BANK STATEMENT / TAX INVOICE`, `Month-end Balance R1,000.00`, `Please verify all transactions…` | **no effect** — decoration, kept only so the page reads like a real statement |
+
+`Month-end Balance R1,000.00` is worth calling out as decoration specifically: it is
+the page's only other money token above the column header, so it *looks* like it
+feeds `_table_region`'s header guard or `_capture_opening`. Dropping it changes
+nothing.
+
+Baseline for the whole page, measured: 2 drafts (rows 1 and 3), the zero-amount line
+as row 2, `period_start`/`period_end` `2026-05-01` / `2026-05-31`,
+`closing_balance_minor` `115000`, `source_account.number` `00 000 000 0`, and a
+reconciling `1,000.00 − 100.00 + 250.00 = 1,150.00`. That last part matters for
+INV-1: the test must fail pre-fix for the reason under test, not because the
+statement was rejected outright.
 
 Family A is chosen because it is the layout whose real-world corpus carries waived
 fees, and because its checksum path is the one that stays green with a row missing.
@@ -181,10 +214,10 @@ would be tempting "improvements" that would break the contract:
   waived fee look like a truncated statement.
 - **The row cap.** `_MAX_PDF_ROWS` keeps bounding `len(result.drafts)`. Error rows
   are bounded upstream instead, by the `len(region_lines) > _MAX_PDF_ROWS` gate —
-  not by the cap itself but by a small constant multiple of it, since `parse`'s own
-  comment notes a region line can yield "at most a couple of drafts" (Family C
-  de-interleaving). Either way the input is bounded before any per-row work, so
-  propagation opens no new unbounded-input surface.
+  so at most `2 × _MAX_PDF_ROWS`, since `parse`'s own comment notes a region line
+  can yield "at most a couple of drafts" (Family C de-interleaving). Either way the
+  input is bounded before any per-row work, so propagation opens no new
+  unbounded-input surface.
 - **What commit *writes*.** `commit_import` inserts drafts only; no error row has
   ever become a transaction and none does now. **But errors do reach it**, and this
   is the one consequence a reader of this section would otherwise miss:
@@ -225,22 +258,28 @@ the in-memory decrypt) are all upstream of it and are listed as unchanged in §4
   row to `drafts` to "keep the numbering contiguous".
   *Deliberately not claimed:* region lines the grammar never matched. Those are
   handled upstream of `_draft` and carry no `row_number` — an anchor-balance line
-  `continue`s, and an unmatched line raises `_MISPARSE` rather than degrading. They
-  are in neither channel by design, and widening INV-2 to cover them would state a
-  contract the code does not implement.
+  `continue`s, a Family C section header or zero-date continuation line is skipped
+  or folded into the preceding description, and any other unmatched line raises
+  `_MISPARSE` rather than degrading. They are in neither channel by design, and
+  widening INV-2 to cover them would state a contract the code does not implement.
 
-- **INV-3** — propagating errors changes no draft, no span, no closing balance and
-  no checksum outcome. A statement that imported before **commits** identically —
-  the same rows, the same span, the same stored closing balance. What changes is
-  what the import *reports*.
-  *Test:* the existing Standard Bank corpus legs in
-  `tests/features/standard_bank_pdf/test_standard_bank.py`, unmodified, still pass —
-  they assert draft counts, amounts and reconciliation across all five families.
-  Measured for this spec: of the 22 committed fixtures, the 11 that parse return
-  `errors=0`, 10 raise by design, and `non_sb.pdf` returns `None`. So no existing
-  leg's preview or draft list moves.
+- **INV-3** — propagating errors changes nothing else `parse` returns: the same
+  drafts, the same span, the same `closing_balance_minor`, the same checksum
+  outcome. What changes is only what the parse *reports* alongside them.
+  *Test:* `test_FIBR0252_parse_propagates_row_errors` asserts the full return on the
+  one fixture that exercises the changed path — `[d.amount_minor for d in r.drafts]
+  == [-10000, 25000]`, `r.period_start == "2026-05-01"`, `r.period_end ==
+  "2026-05-31"`, `r.closing_balance_minor == 115000` — so a fix that disturbed any
+  of them fails here.
   *Breaks when:* someone widens `_verify_checksum` to include error rows, or makes
   the row cap count them.
+  *Why the corpus is not the guard.* The obvious test surface — "the existing 22
+  fixtures still pass" — is **vacuous for this invariant**, and saying so is more
+  useful than claiming it. Measured: of the 22, the 11 that parse return `errors=0`,
+  10 raise by design, and `non_sb.pdf` returns `None`. Nothing in the corpus carries
+  a `RowError`, so nothing in it can regress on a change to the error channel; those
+  legs stay green either way. They remain a real regression sweep for the *parser*,
+  and no leg needs modifying — they are simply not what pins INV-3.
 
 - **INV-4** — a Standard Bank file with an unimportable row carries a non-zero
   `BatchFile.error_count`, and the review table renders it in the Errors column.
@@ -257,39 +296,62 @@ the in-memory decrypt) are all upstream of it and are listed as unchanged in §4
   in file order, and counts it in the summary line.
   *Test:* `tests/features/standard_bank_pdf/test_standard_bank.py::test_FIBR0252_preview_shows_the_error_row`
   — drives the wizard over the fixture with `qtbot` and asserts the preview table
-  holds 3 rows with row 2 labelled "Error", and that the summary line ends "· 1
-  error".
+  holds 3 rows; that the row whose **first cell reads `2`** carries "Error" in the
+  status column; and that the summary line ends "· 1 error". Stated by cell content,
+  not by table index, because `_fill_preview_table` sorts the interleaved entries by
+  `row_number` — statement row 2 does land at table index 1 here, but a test written
+  against the index would silently follow a re-ordering rather than catch it.
   *Breaks when:* `_fill_preview_table` stops interleaving, or
   `_apply_preview_counts` stops counting `preview.errors`.
 
+- **INV-6** — the committed fixture contains no real bank data.
+  *Test:* `tests/features/standard_bank_pdf/test_standard_bank.py::test_FIBR0252_fixture_is_synthetic`
+  — extracts the fixture's text and asserts the account number is the suite's fake
+  `00 000 000 0` and every payee is one of the `FAKE …` strings §4.2 lists.
+  *Breaks when:* someone regenerates the fixture from a real statement.
+  *Why it needs its own invariant:* the repo is public and the repo-wide corpus
+  guard **skips binary `.pdf` bytes** (`tests/features/batch_import/spec.md` records
+  this as INV-12's weakest link). So for a committed PDF there is no ambient check —
+  the one guard that would catch a mistake here is the one this file is invisible
+  to.
+
 ## 6. Failure modes
 
-- **Every row of a statement errors.** This reaches the preview as *0 new · 0
-  duplicate · N error* on **every family**, not just the closing-less ones — and the
-  reasoning that says otherwise is the trap worth recording, because it is the one
-  this spec's own error class defeats.
+- **Every row of a statement errors.** The outcome splits on whether the errored
+  rows *moved money*, and the split is the whole of this failure mode. `_draft`
+  returns a `RowError` for **any** `ValueError` out of `parse_transaction`, and that
+  function has seven rejection classes, not one: blank description, non-ISO date,
+  non-numeric amount, non-finite amount, more fractional digits than the currency
+  allows, `to_minor_storable`'s 64-bit storage bound (which raises `ValueError` too,
+  by contract), and — last — zero amount.
 
-  `_verify_checksum` compares `abs(opening ± Σ drafts)` against `abs(closing)`. With
-  every row errored, `Σ drafts` is `0`, so the comparison is `abs(opening) !=
-  abs(closing)` — and the only reachable `RowError` is "amount must be non-zero",
-  which means the errored rows moved no money and the printed opening and closing
-  are *equal by construction*. A fee-only month on Family B/C/D therefore
-  reconciles and is previewed, not rejected. Family A likewise (its closing may be
-  absent, taking the early return).
+  **Zero-amount rows (the common case, and the one `_draft`'s docstring names).**
+  The errored rows moved no money, so `Σ drafts` is `0` and the printed opening and
+  closing are equal by construction. `_verify_checksum` compares `abs(opening ± Σ)`
+  against `abs(closing)`, so it reconciles and the file is **previewed** as *0 new ·
+  0 duplicate · N error* — on **every** family, not just the closing-less ones.
+  Family E included: its gate compares each printed total against the drafts, and a
+  fee-only month prints `Payments 0.00`, which matches `abs(0)`. Only a **non-zero**
+  printed total rejects such a statement on E.
 
-  Family E is the one genuine exception, and only partly: `_verify_e_totals` raises
-  `_E_TOTALS_MISMATCH` when a printed `Payments`/`Deposits` total does not match the
-  drafts, and zero drafts match no non-zero total. So an all-errored E statement is
-  rejected **when either total prints**, and previewed only when neither does (the
-  `family_e_no_totals.pdf` shape).
+  **Money-moving rows (a blank description, a garbled date, an unstorable amount).**
+  The row's money is missing from `Σ drafts` while the printed closing still counts
+  it, so the balance gate **raises** and the whole statement is refused with the
+  friendly all-or-nothing message. No preview, no banner, no `error_count` — the
+  opposite outcome, and the reason this bullet is split. Verified rather than
+  reasoned: a Family A page whose middle row moves `100.00` under a blank
+  description yields `errors: [(2, 'description must not be empty')]` at the family
+  level with the surviving drafts summing to `15000` against a printed closing of
+  `105000` — a mismatch, so `parse` raises.
 
-  Whichever family it arrives on, that preview trips the FIBR-0146 D7 banner, whose
-  text names the CSV column-mapping step no PDF import visits. Pre-existing (already
-  reachable via OFX, which collects per-row errors today) and **out of scope** — §9.
-- **A statement with many error rows.** Bounded upstream: `len(region_lines) >
-  _MAX_PDF_ROWS` rejects before any per-row work, so the errors list is bounded by a
-  small constant multiple of that cap (§4.3). No new memory or render bound is
-  needed.
+  Where the first case does reach the preview, it trips the FIBR-0146 D7 banner,
+  whose text names the CSV column-mapping step no PDF import visits. Pre-existing
+  (already reachable via OFX, which collects per-row errors today) and **out of
+  scope** — §9. On the batch path the same file is reported by `report_line`, which
+  has its own two defects — also pre-existing, also newly reachable here — filed as
+  FIBR-0254 (§9).
+- **A statement with many error rows.** Bounded upstream — §4.3. No new memory or
+  render bound is needed.
 - **The fixture stops producing an error** — e.g. `parse_transaction` is one day
   changed to accept zero amounts. The risk that INV-1's test then goes green for the
   wrong reason is covered by INV-2's row-number assertion in the same test: if the
@@ -298,15 +360,22 @@ the in-memory decrypt) are all upstream of it and are listed as unchanged in §4
 
 ## 7. Tests
 
-Three new tests plus the unmodified corpus. Each new test must be seen red against
-pre-fix code before the fix lands; the INV-1 red state is already recorded in §2.
+Four new tests. Each must be seen red against pre-fix code before the fix lands,
+with one honest exception noted below; the INV-1 red state is already recorded in
+§2. No existing test is modified.
 
 | Test | Lives in | Locks |
 |---|---|---|
-| `test_FIBR0252_parse_propagates_row_errors` | `tests/features/standard_bank_pdf/test_standard_bank.py` | INV-1, INV-2 |
-| `test_FIBR0252_error_count_is_set_for_a_standard_bank_file` | `tests/features/batch_import/test_batch_import.py` | INV-4 |
+| `test_FIBR0252_parse_propagates_row_errors` | `tests/features/standard_bank_pdf/test_standard_bank.py` | INV-1, INV-2, INV-3 |
+| `test_FIBR0252_error_count_is_set_for_a_standard_bank_file` | `tests/features/batch_import/test_batch_import.py` (qtbot — it asserts a rendered cell) | INV-4 |
 | `test_FIBR0252_preview_shows_the_error_row` | `tests/features/standard_bank_pdf/test_standard_bank.py` (qtbot) | INV-5 |
-| existing corpus legs, unmodified | `tests/features/standard_bank_pdf/test_standard_bank.py` | INV-3 |
+| `test_FIBR0252_fixture_is_synthetic` | `tests/features/standard_bank_pdf/test_standard_bank.py` | INV-6 |
+
+**The exception: INV-6's test cannot be seen red**, because it asserts a property of
+a fixture this change introduces — there is no pre-fix state in which it fails
+meaningfully. That is a guard against a future mistake, not a regression test, and
+pretending otherwise would be the vacuous-red-run this project has been bitten by
+before. It is written and run green, deliberately.
 
 The existing `test_FIBR0216_zero_amount_row_degrades_instead_of_aborting_the_statement`
 stays as it is. It calls `_parse_family_a` directly, which is why it has passed for
@@ -353,11 +422,19 @@ existing draft list, preview row count or reconciliation moves.
 
 ## 9. Out of scope
 
+Two pre-existing reporting defects that this fix makes newly reachable on Standard
+Bank files. Both are deferred here, and this section is their single home — §1, §2,
+§6 and §8 point at it rather than restating the reasoning:
+
 - The FIBR-0146 D7 preview banner's CSV-only advice on a PDF or OFX import —
-  tracked by **FIBR-0253**. This is the single home for that deferral; §6 and §8
-  point here.
-- Every other importer's error handling — `csv_importer` and `ofx_importer` already
-  propagate correctly, so there is nothing to change.
+  **FIBR-0253**.
+- `report_line`'s Status/Errors contradiction on an `already_imported` file, and its
+  "1 rows couldn't be read" pluralisation — **FIBR-0254**.
+
+Also out of scope:
+
+- The other importers' error handling — `csv_importer` and `ofx_importer` are the
+  only other producers of a `ParseResult`, and both already propagate correctly.
 
 ## 10. Resource cost
 
@@ -372,29 +449,41 @@ bounded as §4.3 describes.
 |------|----------------------|
 | INV-1 | `test_standard_bank.py::test_FIBR0252_parse_propagates_row_errors` |
 | INV-2 | `test_standard_bank.py::test_FIBR0252_parse_propagates_row_errors` (row-number assertions) |
-| INV-3 | the existing `test_standard_bank.py` corpus legs across families A–E |
+| INV-3 | `test_standard_bank.py::test_FIBR0252_parse_propagates_row_errors` — its span / closing / amount assertions. **Not** the corpus legs: they carry no `RowError`, so they cannot regress on this change (INV-3's own note) |
 | INV-4 | `test_batch_import.py::test_FIBR0252_error_count_is_set_for_a_standard_bank_file` (field + rendered cell) |
 | INV-5 | `test_standard_bank.py::test_FIBR0252_preview_shows_the_error_row` |
+| INV-6 | `test_standard_bank.py::test_FIBR0252_fixture_is_synthetic` — the repo-wide corpus guard cannot read `.pdf` bytes, so this is the only check on the new fixture |
+| The batch report line's ", N rows couldn't be read" clause | covered **transitively** by INV-4 — it gates on the same `BatchFile.error_count` field INV-4 asserts. Its wording is not checked, and two known wording defects are deferred as FIBR-0254 |
 | §4.3's row-cap claim (`_MAX_PDF_ROWS` bounds drafts, not errors) | **nothing** — no test asserts the cap's operand; the existing `_MAX_PDF_ROWS` monkeypatch legs pass either way. Left as a limit, not a defect: the upstream `region_lines` gate is the real bound |
 | §4.3's `ImportResult.error_count` becoming non-zero for SB | **nothing** — knowingly unguarded. Nothing on the single-file path reads the field (verified: only `BatchReviewWidget` reads `error_count`, and off `BatchFile`), so there is no observable behaviour to assert. A test would pin a value no user can see |
 
 ## 12. Cross-doc impact
 
-- `tests/features/standard_bank_pdf/spec.md` — gains a per-row-error **channel**
-  clause and the new fixture. It already documents the *raising* gates (the per-row
-  and completeness gates and their distinct messages); what it has never documented
-  is the degrade-per-row `RowError` channel, which is how the boundary gap went
-  unnoticed.
-- `tests/features/batch_import/spec.md` — its Fixtures paragraph says "Synthetic
-  strings only … a **fake** decrypt function in place of any locked PDF", which
-  INV-4's test makes untrue. Amend it to admit the cross-suite SB fixture, and note
-  that the sentence its INV-12 rationale rests on ("No `.pdf` file is committed
-  under this directory at all") still holds. Its invariants are otherwise all
-  restatements of FIBR-0085's; the new leg is the first that is not, so label it as
-  a FIBR-0252 invariant rather than renumbering into that suite's sequence.
+- `tests/features/standard_bank_pdf/spec.md` — three changes. Its header names the
+  specs it enforces (`FIBR-0050`, `FIBR-0190`); add FIBR-0252. It already documents
+  the *raising* gates (the per-row and completeness gates and their distinct
+  messages) but never the degrade-per-row `RowError` **channel** — add that clause.
+  And add the fixture pointer in the form it already uses for Family E ("the recipe
+  is `docs/specs/FIBR-0190.md` § 4.6"): the `family_a_zero_fee.pdf` recipe is
+  **§ 4.2 of this spec**.
+- `tests/features/batch_import/spec.md` — its Fixtures paragraph opens "Synthetic
+  strings only", which INV-4's test makes untrue; amend **that clause specifically**.
+  The rest of the paragraph still holds and must not be swept away with it: the fake
+  decrypt function is untouched (the new fixture is unencrypted), and "No `.pdf`
+  file is committed under this directory at all" — the premise of its INV-12
+  rationale — stays literally true, since the fixture lives in the sibling suite.
+  That file also states every invariant in it is a restatement of FIBR-0085's, and
+  it already numbers INV-1…INV-15; INV-4 here would collide with a different INV-4
+  there. Adopt the convention the SB suite already uses for exactly this ("**Two
+  specs, two `INV-N` numberings.** A bare `INV-N` below means FIBR-0085's; this
+  spec's are qualified at the citation site as `FIBR-0252 INV-4`").
 - `CHANGELOG.md` — one **Fixed** entry.
 - `ROADMAP.md` — FIBR-0252 → 🚧 at implementation start, → ✅ at close; correct that
-  bullet's "all six SB families" to five (§2); FIBR-0253 filed (done).
+  bullet's "all six SB families" to five (§2); FIBR-0253 and FIBR-0254 filed (done).
+  **Also correct FIBR-0253's own rationale**, which says the banner is reachable
+  because "a Family A or E statement prints no closing balance, so
+  `_verify_checksum` returns early" — §6 shows that is the wrong reason and
+  understates the reach: it is reachable on every family.
 - No change to `docs/specs/FIBR-0085-batch-statement-import.md`: its §4.2
   `error_count` contract was always correct, and this makes it true on the Standard
   Bank path rather than amending it.
@@ -404,3 +493,4 @@ bounded as §4.3 describes.
 | Loop | Date | Lanes | CRIT | HIGH | MED | LOW | Outcome |
 |------|------|-------|------|------|-----|-----|---------|
 | 1 | 2026-08-06 | 3 (cold, shared packet, no prior-loop briefing) | 0 | 3 | 6 | 12 | 21 verified, 2 dismissed. All 21 fixed. Dimensions: dim 2×7, dim 5×5, dim 6×4, dim 15×3, dim 7×3, dim 13×2, dim 1×2, dim 4×2, dim 11×1. The three HIGHs were all §-level accuracy, and all three lanes ranked the same one first: §4.3's "errors have never reached `commit_import`" is **false** — `ImportService.commit_import` derives `ImportResult.error_count` from `len(preview.errors)`, so that field stops being a constant zero for SB files (verified as observable-by-nobody: no single-file surface reads it, now a `nothing` row in §11). Second, INV-4's test breaks `tests/features/batch_import/spec.md`'s "synthetic strings only" fixture policy, which §12 had not budgeted for. Third, §1's "no other behaviour changes" understated the tail (the batch report line gains ", N rows couldn't be read"). Two MEDIUMs were the same factual error found independently by all three lanes: §6 claimed Family B/C/D reject an all-errored statement, but with zero drafts `_verify_checksum` compares `abs(opening)` to `abs(closing)` and a fee-only month reconciles **by construction** — the very error class this spec is about. Family E qualified too (`_verify_e_totals` raises only when a total prints). Also: §2's consumer count was five, not six (`report_line` omitted); INV-2 over-claimed over unmatched region lines; the wizard class is `ImportWizardWidget`. **Dismissed:** the missing TOC (2 of 3 recent siblings carry none — not this corpus's convention) and "everything else follows from §2" (the skeleton's own prescribed wording). Phase 4c caught two errors in the loop's *own* fixes before commit: the fixture count is 22, not 21, and both re-stated tallies were corrected. Doc 296 → 406 lines. |
+| 2 | 2026-08-06 | 3 (cold, shared packet, no prior-loop briefing) | 0 | 4 | 8 | 14 | 26 verified, 1 dismissed. All 26 fixed. **No loop-1 finding resurfaced** — those fixes held. Dimensions: dim 2×6, dim 5×6, dim 6×5, dim 4×4, dim 15×3, dim 7×2, dim 1×2, dim 10×2, dim 9×1, dim 11×1. **Origin split: ~8 collateral vs ~3 draft defects — collateral dominates, so the response was 4b + consolidation, not a reflex loop 3.** The worst finding was collateral of loop 1's own fix: §6's "the only reachable `RowError` is 'amount must be non-zero'" is false — `parse_transaction` has **seven** rejection classes, so a money-moving row (blank description, garbled date, unstorable amount) can error, and then the surviving drafts no longer reconcile and `parse` **raises** instead of previewing. Verified by running it: a Family A page whose middle row moves 100.00 under a blank description gives `errors: [(2, 'description must not be empty')]` and a 15000-vs-105000 mismatch. §6 is now split by whether the errored rows moved money. Loop 1's Family E carve-out was wrong for the same reason in reverse: a fee-only month prints `Payments 0.00`, which **matches** zero drafts, so E previews too — only a non-zero printed total rejects. §1 contradicted §6 on family reach (all 3 lanes) and mis-routed two of three consequences to §4.3. Draft defects: **INV-3's test surface was vacuous** — the 22 corpus fixtures carry no `RowError`, so they pass identically before and after and cannot pin the invariant; INV-3 now rests on the new fixture's span/closing/amount assertions, and says why the corpus is not the guard. New **INV-6**: nothing checked the committed binary fixture is synthetic, because the repo-wide corpus guard skips `.pdf` bytes — on a public money-app repo that gap earns its own invariant. §4.2's "every line is load-bearing" was false and is now a **measured ablation table** (each of the 13 lines dropped in turn and re-parsed; 4 are decoration, including the `Month-end Balance` line all three lanes guessed was structural). Filed **FIBR-0254** (batch report line contradicts the Errors column on `already_imported`, and mis-pluralises "1 rows"). **Dismissed:** "everything else follows from §2" (skeleton wording, reworded anyway). The thrice-raised TOC finding was **conceded rather than dismissed a third time** — a section index costs 6 lines and ends a recurring non-finding. Phase 4b again caught drift from this loop's own fixes: §11's INV-3 row still named the corpus the same edit had just demoted. Doc 406 → 495 lines. |
