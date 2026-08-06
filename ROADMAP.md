@@ -366,6 +366,38 @@ scariest unknown (native-library bundling) up front.
   Kind: fix.
   Source: in-session-2026-08-06 (FIBR-0252 cold-eyes loop 2, blast-radius scan).
 
+- 📋 [FIBR-0255] **A closing-less Savings statement can import a wrong total with no gate firing.**
+  `_verify_checksum` takes its `closing is None` early return for
+  Family A and Family E, and `_verify_e_totals` degrades to nothing when
+  neither printed total is present. So on those layouts a row that
+  `_draft` rejects — one that DID move money — is dropped from the
+  drafts with no completeness gate left to notice the shortfall.
+
+  Reproduced end-to-end this session on a synthetic closing-less Savings
+  page whose middle row moves 100.00 under the invalid date `05 32`:
+
+      bad date, NO closing (Savings)   drafts=2 sum=15000 errors=[]
+      bad date, WITH closing           RAISES "this statement didn't add up …"
+
+  The page really moves -100 -100 +250 = +50; the import takes +150. A
+  transaction worth 100.00 vanishes and the totals are wrong by exactly
+  that, silently.
+
+  PRE-EXISTING and NOT introduced by FIBR-0252 — which is the mitigation,
+  not the cause: it makes the dropped row visible in the preview and the
+  Errors column instead of discarding the only trace. The remaining gap
+  is parser-side (these layouts have no completeness gate to fail), which
+  is why it is its own item rather than part of FIBR-0252.
+
+  Fix: give the closing-less layouts a completeness check they currently
+  lack, or refuse to import when a money-moving row was dropped and no
+  gate could verify the remainder. Both need their own design pass —
+  Family A Savings legitimately prints no closing, so this cannot simply
+  become an all-or-nothing refusal.
+  **Layman:** On a savings statement that prints no closing balance, a line the app cannot read is dropped and the totals come out wrong — with nothing to tell you it happened.
+  Kind: fix.
+  Source: in-session-2026-08-06 (FIBR-0252 cold-eyes loop 3, reproduced; filed at loop 4).
+
 ### 📦 Packaging
 
 - ✅ [FIBR-0003] **P01: bundling smoke-test (de-risk
