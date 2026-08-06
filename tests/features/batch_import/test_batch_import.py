@@ -26,6 +26,7 @@ from finbreak.services.accounts import AccountService
 from finbreak.services.auth import AuthService
 from finbreak.services.batch_import import (
     BatchImportService,
+    next_question,
     stored_passwords,
 )
 from finbreak.services.import_ import ImportService
@@ -220,7 +221,16 @@ def test_INV2_per_file_transaction_boundary(service, batch, tmp_path, monkeypatc
     batch.review(files)
     _run_all(batch, files)
 
+    # RE-OPEN the vault before asserting. Querying the connection that did the
+    # writing proves nothing about transaction boundaries: the vault runs with
+    # `isolation_level = ""`, so that connection can see its OWN uncommitted
+    # writes. Against a run wrapped in a single never-committed outer
+    # transaction, a same-connection assertion passes and the invariant is
+    # vacuous — only a fresh connection reads what actually landed on disk.
+    service.lock()
+    assert service.unlock(bytearray(_PW)) is True
     conn = service.vault.connection
+
     assert _count_rows(conn, account) == 4, (
         "only the two surviving files' rows may be present (2 + 2)"
     )
@@ -415,6 +425,67 @@ def test_INV10_already_imported_is_recomputed_both_ways(service, batch, tmp_path
     )
 
 
+def test_INV10_a_peers_retarget_returns_a_record_to_ready(service, batch, tmp_path):
+    """The transition `review` alone must make — and the one leg 3 above cannot.
+
+    Leg 3 calls `set_account` on the very record it then checks, and
+    `set_account` already sets `ready` itself, so a one-way `review` (flip to
+    `already_imported`, never back) passes it. The move that ONLY `review` can
+    make is on a record nobody touched: X is `already_imported` because a batch
+    PEER claimed its drafts, the peer is retargeted elsewhere, X's cumulative
+    new count rises again, and X must return to `ready`.
+
+    Under a one-way derivation X stays `already_imported` forever and RUN — which
+    commits only `ready` records — drops it without a word. That is the silent
+    data loss INV-10 exists for.
+    """
+    accounts = AccountService(service.vault)
+    first = _acct(service)
+    second = accounts.add_account("Second", AccountType.CURRENT.value).id
+
+    # An earlier import records the SPAN for `first` while carrying different
+    # rows — so the span-exists half of the two-part test holds for P and X
+    # without their rows being in the vault.
+    # The SAME date span as P and X below (three rows from 2026-01-01), with
+    # different descriptions — so it records the span without contributing any
+    # matching dedup key. A shorter file would record a DIFFERENT span and
+    # `id_for_span` would miss, leaving X plain `ready`.
+    span_only = _write(tmp_path, "span.csv", _rows(3, day_from=1, tag="z"))
+    seed = batch.build([span_only])
+    _scan_all(batch, seed)
+    _place(batch, seed, first)
+    batch.review(seed)
+    _run_all(batch, seed)
+
+    # P and X are identical files covering that same span.
+    shared = _rows(3, day_from=1, tag="p")
+    peer = _write(tmp_path, "p.csv", shared)
+    twin = _write(tmp_path, "x.csv", shared)
+    files = batch.build([peer, twin])
+    _scan_all(batch, files)
+    _place(batch, files, first)
+    batch.review(files)
+
+    p, x = files
+    assert (p.outcome, x.outcome) == ("ready", "already_imported"), (
+        f"outcomes = {(p.outcome, x.outcome)} — the precondition is that X is "
+        "already_imported ONLY because its peer claimed the same drafts"
+    )
+
+    # Retarget the PEER. Nothing touches X.
+    batch.set_account(p, second)
+    batch.review(files)
+
+    assert x.outcome == "ready", (
+        f"X's outcome = {x.outcome}. Its peer moved to another account, so its "
+        "rows are new again — a one-way derivation strands it unimportable"
+    )
+    _run_all(batch, files)
+    assert x.result is not None and x.result.inserted_count == 3, (
+        "X must commit the rows the review screen said it would"
+    )
+
+
 # -- INV-11 ------------------------------------------------------------------ #
 
 
@@ -427,17 +498,41 @@ def test_INV11_batch_caps(service, batch, tmp_path, monkeypatch):
     with a small stand-in — INV-11 proves the cap is enforced, not that 200,000
     is the right number (design spec § 11).
     """
-    missing = [str(tmp_path / f"nope{i:03d}.csv") for i in range(201)]
-    refused = batch.build(missing)
+    # Leg 1 — over the file cap. The refusal must SURVIVE THE SCAN: marking the
+    # records in `build` and then letting the chain read them anyway leaves the
+    # cap purely decorative. Real, REAL files here, so "nothing was read" is
+    # observable as `parsed is None` rather than as an incidental failure.
+    over = [
+        _write(tmp_path, f"over{i:03d}.csv", _rows(1, day_from=1, tag=f"o{i}"))
+        for i in range(201)
+    ]
+    refused = batch.build(over)
     assert len(refused) == 201
-    assert {record.outcome for record in refused} == {"not_attempted"}, (
-        "an over-cap selection is refused whole, before any file is read"
-    )
+    assert {record.outcome for record in refused} == {"not_attempted"}
     assert "limit" in refused[0].reason, (
         f"reason = {refused[0].reason!r}, expected it to name the size limit"
     )
+    _scan_all(batch, refused)
+    assert {record.outcome for record in refused} == {"not_attempted"}, (
+        "the scan re-scanned a refused batch — the file cap is decorative if "
+        "SCAN does not honour it"
+    )
+    assert all(record.parsed is None for record in refused), (
+        "a refused file must never be read, let alone parsed and held in memory"
+    )
 
-    monkeypatch.setattr("finbreak.services.batch_import._MAX_BATCH_DRAFTS", 3)
+    # Leg 1b — the boundary. EXACTLY the cap is allowed; a `>=` comparison here
+    # would refuse a legitimate 200-file batch, which is a user-visible bug the
+    # over-cap leg alone cannot see.
+    at_cap = [str(tmp_path / f"over{i:03d}.csv") for i in range(200)]
+    assert {r.outcome for r in batch.build(at_cap)} == {"waiting"}, (
+        "a selection of exactly the cap is allowed through"
+    )
+
+    # Leg 2 — the draft cap. `>=` before each file, per INV-11's "once 200,000
+    # are held"; the stand-in is small because INV-11 proves the cap is
+    # enforced, not that 200,000 is well chosen (design spec § 11).
+    monkeypatch.setattr("finbreak.services.batch_import._MAX_BATCH_DRAFTS", 4)
     paths = [
         _write(tmp_path, f"{n}.csv", _rows(2, day_from=1 + 4 * i, tag=n))
         for i, n in enumerate(("a", "b", "c"))
@@ -445,6 +540,9 @@ def test_INV11_batch_caps(service, batch, tmp_path, monkeypatch):
     files = batch.build(paths)
     _scan_all(batch, files)
 
+    # 2 drafts after a (< 4, so b is scanned), 4 after b (>= 4, so c is not).
+    # This pins the comparison as well as the cap: under `>` rather than `>=`,
+    # c would be scanned too.
     assert files[2].outcome == "not_attempted", (
         f"outcome = {files[2].outcome}, expected the scan to stop once the "
         "draft cap was reached"
@@ -452,6 +550,94 @@ def test_INV11_batch_caps(service, batch, tmp_path, monkeypatch):
     assert "limit" in files[2].reason
     assert files[0].parsed is not None and files[1].parsed is not None, (
         "the files scanned before the cap keep their parse"
+    )
+    assert files[2].parsed is None, "the capped file must not have been read"
+
+
+def test_INV11_the_draft_cap_binds_an_answered_file_too(
+    service, batch, tmp_path, monkeypatch
+):
+    """§ 4.3: an answered file "runs the rest of the ladder, INCLUDING the
+    draft-cap check".
+
+    The cap lives on the scan STEP, but ASK re-enters the ladder through
+    `answer`, which is a different door. Without the check there, a batch of
+    unmapped CSVs walks past the cap by one file per question answered — the
+    memory bound § 10 argues for is then not a bound at all.
+    """
+    monkeypatch.setattr("finbreak.services.batch_import._MAX_BATCH_DRAFTS", 3)
+    # An unmatched header, so this file is a mapping QUESTION rather than a scan.
+    # Names chosen so the UNMAPPED file sorts FIRST: it must reach
+    # `needs_mapping` while the batch is still under the cap, and the big file
+    # must push it over afterwards. Reversed, the scan cap refuses the odd file
+    # before it can become a question and the ASK door is never exercised.
+    odd = tmp_path / "a-odd.csv"
+    odd.write_text("When,What,How much\n2026-01-02,shop,-10.00\n", encoding="utf-8")
+    paths = [str(odd), _write(tmp_path, "b-big.csv", _rows(4, day_from=1, tag="b"))]
+
+    files = batch.build(paths)
+    _scan_all(batch, files)
+    held = batch.draft_total(files)
+    assert held >= 3, "precondition: the first file alone already reaches the cap"
+
+    pending = next_question(files)
+    assert pending is not None and pending.outcome == "needs_mapping"
+    batch.answer(
+        files,
+        pending,
+        ColumnMapping("When", "What", "How much", None, None, "%Y-%m-%d", False),
+    )
+
+    assert batch.draft_total(files) == held, (
+        f"drafts grew {held} -> {batch.draft_total(files)} — an answered file "
+        "parsed past the cap the scan had already stopped at"
+    )
+    assert pending.outcome == "not_attempted", (
+        f"outcome = {pending.outcome}, expected the answered file to be refused "
+        "by the same cap the scan honours"
+    )
+
+
+def test_INV3_nothing_is_importable_until_every_file_is_settled(
+    service, batch, tmp_path
+):
+    """`Import all` must stay off while ANY record is still unsettled —
+    including one merely `waiting` to be scanned.
+
+    This is the headless half of INV-3, and it is what stops RUN starting
+    mid-SCAN. The batch table is on screen from the first scan turn (§ 6), so a
+    button enabled the moment file 1 matches is a button the user can press
+    while thirty files are still unread: the run then commits against a review
+    table showing New = 0 for every row (nothing has been counted yet), which is
+    a direct INV-4 breach, and every later file is silently never asked.
+
+    An OFX file is used because it carries its own account number and so reaches
+    `ready` unaided — a CSV always stops at `needs_account`, which would gate the
+    button on a different clause and make the test vacuous.
+    """
+    accounts = AccountService(service.vault)
+    accounts.add_account("One", AccountType.CURRENT.value, account_number="000123456")
+
+    matched = _write_ofx(
+        tmp_path,
+        "bank.ofx",
+        _ofx_stmt(
+            _ofx_txn("20260105", "-10.00", "shop one", "F1"),
+            "000123456",
+            "20260101",
+            "20260131",
+        ),
+    )
+    later = _write(tmp_path, "zz-later.csv", _rows(2, day_from=10, tag="l"))
+
+    files = batch.build([matched, later])
+    index = batch.scan_step(files, 0)  # ONE turn: file 1 only
+    assert files[0].outcome == "ready", "precondition: the OFX matched its account"
+    assert files[index].outcome == "waiting", "precondition: file 2 is unscanned"
+
+    assert not BatchImportService.can_import(files), (
+        "Import all was live with a file still waiting to be scanned — RUN can "
+        "then start while the SCAN chain is still armed"
     )
 
 

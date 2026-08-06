@@ -29,14 +29,27 @@ from PySide6.QtWidgets import (
 
 
 class PasswordDialog(QDialog):
-    def __init__(self, account_name: str, parent: QWidget | None = None):
+    def __init__(
+        self,
+        account_name: str,
+        parent: QWidget | None = None,
+        remember_text: str | None = None,
+    ):
         super().__init__(parent)
         self.setWindowTitle(self.tr("PDF password"))
 
         self._field = QLineEdit()
         self._field.setEchoMode(QLineEdit.EchoMode.Password)
+        # `remember_text` overrides the label for a caller whose password is not
+        # keyed to the name in the title. The batch import (FIBR-0085 § 4.4)
+        # titles the prompt with the FILE — a thirty-file run has to say which
+        # one it is asking about — but stores the password against whichever
+        # account that file lands on, which may not be settled yet.
         self._remember = QCheckBox(
-            self.tr("Remember this password for {account}").format(account=account_name)
+            remember_text
+            or self.tr("Remember this password for {account}").format(
+                account=account_name
+            )
         )
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel

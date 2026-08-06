@@ -148,8 +148,13 @@ class ImportWizardWidget(QWidget):
         self._batch = BatchImportService(service.vault)
         self._batch_files: list[BatchFile] = []
         self._batch_index = 0
-        self._batch_running = False
-        self._batch_cancelled = False
+        # Which pass the batch is in. It is a GUARD, not bookkeeping: § 4.7
+        # returns to the event loop between every turn, so a click or a stale
+        # queued callback can arrive at any moment, and each chain slot refuses
+        # to run outside its own phase. Two chains armed at once step the same
+        # index and skip files silently — which is exactly what happened when
+        # `Import all` could be pressed mid-SCAN.
+        self._batch_phase = "idle"
         # The record whose mapping `_STEP_MAP` is currently collecting, or None
         # when that page is being driven by the single-file flow. It is what
         # makes the page's Next/Cancel batch-aware without rewiring them.
@@ -407,7 +412,23 @@ class ImportWizardWidget(QWidget):
         # The ONE control that emits `done` (INV-14) — never the end of RUN,
         # never either Cancel.
         self._batch_review.closed.connect(self.done)
+        self._batch_review.accounts_changed.connect(self._refill_account_combos)
         return self._batch_review
+
+    @Slot()
+    def _refill_account_combos(self) -> None:
+        """Re-list both account combos after the batch created an account.
+
+        Both are filled once in ``__init__``; a pre-RUN Cancel returns the user
+        to the pick step (§ 4.6), which would otherwise still be showing the
+        account set as it was before they created one."""
+        for combo in (self._account_combo, self._confirm_account_combo):
+            with QSignalBlocker(combo):
+                previous = combo.currentData()
+                combo.clear()
+                self._fill_account_combo(combo)
+                if previous is not None:
+                    combo.setCurrentIndex(combo.findData(previous))
 
     # -- navigation / actions -------------------------------------------------
     def _goto_step(self, index: int) -> None:
@@ -966,7 +987,7 @@ class ImportWizardWidget(QWidget):
             self.done.emit()
             return
         record, self._batch_asking = self._batch_asking, None
-        self._batch.answer(record, None)  # -> skipped
+        self._batch.answer(self._batch_files, record, None)  # -> skipped
         self._resume_ask()
 
     def _mapping_from_form(self) -> ColumnMapping:
@@ -1281,8 +1302,7 @@ class ImportWizardWidget(QWidget):
         self._error.clear()
         self._batch_files = self._batch.build(paths)
         self._batch_index = 0
-        self._batch_running = False
-        self._batch_cancelled = False
+        self._batch_phase = "scan"
         self._batch_asking = None
         self._batch_prompts.clear()
         # The table goes on screen BEFORE the scan starts, so it fills in row by
@@ -1307,7 +1327,7 @@ class ImportWizardWidget(QWidget):
 
     @Slot()
     def _scan_next(self) -> None:
-        if self._batch_cancelled:
+        if self._batch_phase != "scan":
             return
         if self._batch_index >= len(self._batch_files):
             self._begin_ask()
@@ -1325,11 +1345,16 @@ class ImportWizardWidget(QWidget):
         5) — a file-by-file account prompt is the babysitting decision 1
         rejects, under another name.
         """
-        if self._batch_cancelled:
+        if self._batch_phase not in ("scan", "ask"):
             return
+        self._batch_phase = "ask"
         record = next_question(self._batch_files)
         if record is None:
-            self._batch.review(self._batch_files)
+            try:
+                self._batch.review(self._batch_files)
+            except VaultLockedError:
+                return  # auto-lock fired between turns — the shell takes over
+            self._batch_phase = "review"
             self._batch_review.refresh()
             return
         if record.outcome == "needs_password":
@@ -1347,11 +1372,23 @@ class ImportWizardWidget(QWidget):
     def _ask_password(self, record: BatchFile) -> None:
         raised = self._batch_prompts.get(id(record), 0)
         if raised >= _MAX_PASSWORD_PROMPTS:
-            self._batch.answer(record, None)  # -> skipped; the batch continues
+            # -> skipped; the batch carries on
+            self._batch.answer(self._batch_files, record, None)
             self._resume_ask()
             return
         self._batch_prompts[id(record)] = raised + 1
-        dialog = PasswordDialog(Path(record.path).name, self)
+        # The file name, so a batch says WHICH file it is unlocking — but the
+        # remember label is overridden, because § 4.4 stores the password
+        # against the account the file eventually lands on, and the default
+        # label ("Remember this password for <name>") would promise it was
+        # remembered for a file.
+        dialog = PasswordDialog(
+            Path(record.path).name,
+            self,
+            remember_text=self.tr(
+                "Remember this password for the account this file lands in"
+            ),
+        )
         # `show_modal` wires only `accepted`, so a Cancel is otherwise
         # unobservable and this pass would wait forever on a dialog that has
         # already been freed (§ 4.4). Nothing else sets a `rejected` handler, so
@@ -1368,7 +1405,8 @@ class ImportWizardWidget(QWidget):
         self, record: BatchFile, password: str | None, remember: bool
     ) -> None:
         record.remember_password = remember
-        self._batch.answer(record, password)  # None declines -> skipped
+        # `None` declines -> skipped
+        self._batch.answer(self._batch_files, record, password)
         self._resume_ask()
 
     def _ask_mapping(self, record: BatchFile) -> None:
@@ -1380,7 +1418,7 @@ class ImportWizardWidget(QWidget):
         in a second widget would be the largest duplication in the codebase.
         """
         if record.source_text is None:  # defensive: SCAN sets it before asking
-            self._batch.answer(record, None)
+            self._batch.answer(self._batch_files, record, None)
             self._resume_ask()
             return
         self._batch_asking = record
@@ -1388,6 +1426,17 @@ class ImportWizardWidget(QWidget):
         self._text = record.source_text
         self._header = read_header(record.source_text)
         self._populate_mapping_combos(self._header)
+        # Reset the parts of the form `_populate_mapping_combos` does NOT touch.
+        # This page is reused per file, and a matched profile never refills it
+        # here (the record is `needs_mapping` precisely because none matched) —
+        # so without this, one file's "Amounts are reversed" tick silently
+        # FLIPS EVERY SIGN on the next file, and a stale debit/credit style
+        # reads the wrong columns. A money bug, and invisible unless the user
+        # rereads the whole form each time.
+        self._invert_amount.setChecked(False)
+        self._amount_style.setCurrentIndex(0)  # single amount column
+        with QSignalBlocker(self._date_format_custom):
+            self._date_format_custom.clear()
         self._autodetect_date_format()
         self._update_date_preview()
         self._profile_name.clear()
@@ -1396,22 +1445,34 @@ class ImportWizardWidget(QWidget):
     def _answer_batch_mapping(self, mapping: ColumnMapping) -> None:
         record, self._batch_asking = self._batch_asking, None
         if record is not None:
-            self._batch.answer(record, mapping)
+            self._batch.answer(self._batch_files, record, mapping)
         self._resume_ask()
 
     @Slot()
     def _on_batch_import(self) -> None:
+        """Start RUN — from REVIEW, once, and never from anywhere else.
+
+        The phase check is the second half of INV-3's gate. `can_import` stops
+        the button going live while a record is unsettled; this stops a click
+        that lands anyway (a second click during the run, a queued click) from
+        rewinding the index and arming a SECOND `_run_next` chain alongside the
+        first. Two chains stepping one index skip files silently.
+        """
+        if self._batch_phase != "review":
+            return
         self._error.clear()
         self._batch_index = 0
-        self._batch_running = True
+        self._batch_phase = "run"
+        self._batch_review.set_running(True)
         self._arm(self._run_next)
 
     @Slot()
     def _run_next(self) -> None:
-        if self._batch_cancelled:
+        if self._batch_phase != "run":
             return
         if self._batch_index >= len(self._batch_files):
-            self._batch_running = False
+            self._batch_phase = "report"
+            self._batch_review.set_running(False)
             # The report is shown BEFORE anything is torn down: emitting `done`
             # here would have `MainWindow._on_import_done` rebuild the workspace
             # and destroy the very table the report is written into (INV-14).
@@ -1426,10 +1487,11 @@ class ImportWizardWidget(QWidget):
         """Abandon the batch (§ 4.6). Before RUN it drops the whole thing and
         returns to the pick step; during RUN it stops the chain and leaves the
         report standing. Neither emits `done`."""
-        self._batch_cancelled = True
+        was_running = self._batch_phase == "run"
+        self._batch_phase = "report" if was_running else "idle"
         self._batch.stop_from(self._batch_files, self._batch_index, CANCELLED)
-        if self._batch_running:
-            self._batch_running = False
+        if was_running:
+            self._batch_review.set_running(False)
             self._batch_review.finish()
             return
         # Every held password is discarded unwritten: `_settle_password` only

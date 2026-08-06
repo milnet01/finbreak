@@ -96,13 +96,21 @@ Outcome = Literal[
 _TERMINAL: frozenset[str] = frozenset(
     {"committed", "failed", "skipped", "not_attempted"}
 )
+# Public alias — the review widget needs the same set to decide which rows may
+# still be given an account, and a second hand-written copy of it there is a
+# second definition that will drift.
+TERMINAL_OUTCOMES = _TERMINAL
 
 # What ASK is for. An account does NOT block a parse, which is why it is settled
 # on the review screen instead (§ 3 decision 5).
 _BLOCKING: frozenset[str] = frozenset({"needs_password", "needs_mapping"})
 
-# Every outcome that still owes the user an answer — the three INV-3 names.
-_UNANSWERED: frozenset[str] = _BLOCKING | {"needs_account"}
+# Every outcome that is not yet settled one way or the other. The three INV-3
+# names, PLUS `waiting`: a record nobody has reached yet owes no answer, but it
+# is just as unfinished, and leaving it out let `Import all` go live the moment
+# the FIRST file matched an account — while twenty-nine others were still
+# unread and the scan chain was still armed.
+_UNSETTLED: frozenset[str] = _BLOCKING | {"needs_account", "waiting"}
 
 # The reply a widget pushes back for one question: a password, a column mapping,
 # or `None` for "the user declined this file".
@@ -269,7 +277,9 @@ class BatchImportService:
         The cap is applied here, **before anything is read**, so an over-large
         selection costs no disk at all.
         """
-        files = [BatchFile(path=path) for path in sorted(paths)]
+        files = sorted(
+            (BatchFile(path=path) for path in paths), key=lambda r: r.sort_key
+        )
         if len(files) > _MAX_BATCH_FILES:
             for record in files:
                 record.outcome = "not_attempted"
@@ -291,10 +301,21 @@ class BatchImportService:
         the list stays in commit order and the returned index skips the
         statements this call already settled.
         """
+        record = files[index]
+        # A record that is already settled is never re-read. Without this the
+        # FILE CAP is decorative: `build` marks an over-cap selection
+        # `not_attempted`, and the widget arms the chain regardless, so every
+        # one of the 201 refused files was opened, parsed and held in memory —
+        # its outcome overwritten, its "reached its size limit" reason left
+        # stranded under a `needs_account` status — and the refused batch then
+        # imported in full. It also makes a re-entered chain idempotent rather
+        # than re-parsing a file and re-fanning-out an OFX.
+        if record.outcome in _TERMINAL:
+            return index + 1
         if self.draft_total(files) >= _MAX_BATCH_DRAFTS:
             self.stop_from(files, index, CAP_REACHED)
             return len(files)
-        extras = self.scan(files[index])
+        extras = self.scan(record)
         files[index + 1 : index + 1] = extras
         return index + 1 + len(extras)
 
@@ -451,14 +472,29 @@ class BatchImportService:
         self.set_account(record, match.account_id)
 
     # -- ASK ------------------------------------------------------------------
-    def answer(self, record: BatchFile, value: Answer) -> None:
+    def answer(
+        self, files: Sequence[BatchFile], record: BatchFile, value: Answer
+    ) -> None:
         """Apply the user's reply to the question ``next_question`` handed out.
 
         ``None`` declines (the record becomes ``skipped``); otherwise the record
         re-enters SCAN at the step that stopped it — a password resumes at
         decrypt, a mapping at ``CsvImporter().parse`` — and runs the rest of the
-        ladder.
+        ladder, **including the draft-cap check** (§ 4.3). ASK is a second door
+        into the ladder, and a cap enforced only on the scan step is one an
+        unmapped batch walks past by one file per question answered.
+
+        ``files`` is taken for that cap alone; the reply itself concerns one
+        record. A record that has already settled is ignored rather than
+        overwritten — a stale reply would otherwise turn a fully parsed file
+        into "Skipped — no column mapping was set".
         """
+        if record.outcome in _TERMINAL:
+            return
+        if value is not None and self.draft_total(files) >= _MAX_BATCH_DRAFTS:
+            record.outcome = "not_attempted"
+            record.reason = CAP_REACHED
+            return
         if value is None:
             # Never "you didn't supply a password": INV-8 also reaches `skipped`
             # after three WRONG ones, where the user supplied three and none
@@ -553,24 +589,30 @@ class BatchImportService:
     @staticmethod
     def can_import(files: Sequence[BatchFile]) -> bool:
         """Whether `Import all` may be pressed: at least one file ``ready`` and
-        no file still ``needs_account``, ``needs_password`` or ``needs_mapping``
-        (INV-3). The ``needs_account`` half is what makes the review-screen
-        account question a gate rather than a suggestion.
+        NO file still unsettled — not ``needs_account``, not ``needs_password``,
+        not ``needs_mapping``, and not merely ``waiting`` to be scanned (INV-3).
 
-        The other two are gated here as well as by the flow. § 4.6 states this
-        button's rule in terms of ``needs_account`` alone, on the grounds that
-        ASK exhausts the other two before REVIEW is ever reached — but the batch
-        table is on screen from the start of SCAN (§ 6) and a password prompt
-        sits *over* it, so "unreachable" was a property of the flow rather than
-        of the button. INV-3's first leg asserts the button, so the button
-        enforces it.
+        § 4.6 states this button's rule in terms of ``needs_account`` alone, on
+        the grounds that ASK exhausts the questions before REVIEW is reached.
+        That was a property of the *flow*, not of the button, and the flow does
+        not hold: the batch table is on screen from the first scan turn (§ 6),
+        and § 4.7 deliberately returns to the event loop between turns, so a
+        button enabled the moment file 1 matches is a button the user can press
+        with twenty-nine files still unread. Pressing it started RUN while the
+        SCAN chain was still armed — two chains stepping the same index, files
+        silently skipped by both, and a run committing against a review table
+        whose counts had never been computed (an INV-4 breach).
 
-        Files that are ``failed``, ``skipped`` or ``already_imported`` do not
-        block it — they stay listed with their reason and are simply not
-        committed. They are the report, not an obstacle.
+        So the gate is "every record has been settled", which is the property
+        INV-3 actually needs and which the button can enforce on its own.
+
+        Files that are ``failed``, ``skipped``, ``not_attempted`` or
+        ``already_imported`` do not block it — they stay listed with their
+        reason and are simply not committed. They are the report, not an
+        obstacle.
         """
         outcomes = {record.outcome for record in files}
-        return "ready" in outcomes and not (outcomes & _UNANSWERED)
+        return "ready" in outcomes and not (outcomes & _UNSETTLED)
 
     # -- RUN ------------------------------------------------------------------
     def run_step(self, files: Sequence[BatchFile], index: int) -> int:

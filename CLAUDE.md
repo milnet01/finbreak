@@ -226,6 +226,14 @@ however small.
   entry point that loads Qt + SQLCipher + qpdf (FIBR-0003). UI / services /
   repositories / crypto modules land from P02 (see
   [`docs/design.md`](docs/design.md) for the layered architecture).
+  - **Batch import (FIBR-0085)** spans three of those layers:
+    `services/batch_import.py` holds every decision (the scan ladder, the
+    stored-password ladder, the cumulative dedup counts, the caps) and is
+    Qt-free so all of it is testable headless; `ui/import_batch.py` is the
+    review-step table; `importers/sniff.py` is the Qt-free format detection
+    lifted off the wizard so the service could call it. `ui/import_wizard.py`
+    gained a fourth step and the scan/ask/run chain, and
+    `ui/account_picker.py` gained a Create-an-account affordance.
 - `tests/` — pytest suite. `tests/test_smoke.py` asserts the package imports;
   `tests/features/<name>/` (spec.md + test) and `tests/fixtures/<rule>/` arrive
   with the features they cover

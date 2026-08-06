@@ -19,8 +19,8 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QDialog
+from PySide6.QtCore import QTimer, Signal
+from PySide6.QtWidgets import QDialog, QPushButton
 
 from conftest import _PW, _acct
 from finbreak.importers.pdf_importer import PasswordError
@@ -69,6 +69,32 @@ def _rows(n: int, *, day_from: int = 1, tag: str = "a") -> list[list[str]]:
     ]
 
 
+_OFX_HEADER = (
+    "OFXHEADER:100\r\nDATA:OFXSGML\r\nVERSION:102\r\nSECURITY:NONE\r\n"
+    "ENCODING:USASCII\r\nCHARSET:1252\r\nCOMPRESSION:NONE\r\nOLDFILEUID:NONE\r\n"
+    "NEWFILEUID:NONE\r\n\r\n"
+)
+
+
+def _ofx(tmp_path: Path, name: str, acctid: str) -> str:
+    """A one-transaction OFX naming ``acctid`` — the only format here that
+    reaches `ready` unaided, because it carries its own account number. A CSV
+    always stops at `needs_account`."""
+    body = (
+        _OFX_HEADER + "<OFX>\n"
+        "<BANKMSGSRSV1><STMTTRNRS><TRNUID>1<STATUS><CODE>0<SEVERITY>INFO</STATUS>\n"
+        f"<STMTRS><CURDEF>ZAR<BANKACCTFROM><BANKID>250655<ACCTID>{acctid}"
+        "<ACCTTYPE>CHECKING</BANKACCTFROM>\n"
+        "<BANKTRANLIST><DTSTART>20260101\n<DTEND>20260131\n"
+        "<STMTTRN>\n<TRNTYPE>DEBIT\n<DTPOSTED>20260105\n<TRNAMT>-10.00\n"
+        "<NAME>shop\n<FITID>F1\n</STMTTRN>\n</BANKTRANLIST>\n"
+        "<LEDGERBAL><BALAMT>0.00<DTASOF>20260131</LEDGERBAL>\n"
+        "</STMTRS></STMTTRNRS></BANKMSGSRSV1>\n</OFX>\n"
+    )
+    (tmp_path / name).write_bytes(body.encode())
+    return str(tmp_path / name)
+
+
 def _wizard(qtbot, service) -> ImportWizardWidget:
     widget = ImportWizardWidget(service)
     qtbot.addWidget(widget)
@@ -109,7 +135,7 @@ def _stub_password(monkeypatch, *, password: str | None, remember: bool = False)
     shown: list[str] = []
 
     class _Stub(QDialog):
-        def __init__(self, account_name, parent=None):
+        def __init__(self, account_name, parent=None, remember_text=None):
             super().__init__(parent)
             shown.append(account_name)
 
@@ -161,15 +187,23 @@ def test_INV3_no_commit_before_every_question_answered(
     true while another row still has no destination — or no answer at all.
     """
     account = _acct(service)
+    # A MATCHED file, so the batch really does hold a `ready` record. With two
+    # CSVs (neither of which carries an account number) every record stops at
+    # `needs_account`, `can_import` returns False on its "at least one ready"
+    # clause alone, and BOTH legs pass against the exact implementation INV-3
+    # names as the break — the leg would be asserting nothing.
+    AccountService(service.vault).add_account(
+        "Matched", AccountType.CURRENT.value, account_number="000123456"
+    )
 
     # (a) — a prompt that never answers.
     class _NeverAnswers(QDialog):
-        def __init__(self, account_name, parent=None):
+        def __init__(self, account_name, parent=None, remember_text=None):
             super().__init__(parent)
 
     monkeypatch.setattr(wizard_mod, "PasswordDialog", _NeverAnswers)
     locked = _locked_pdf(monkeypatch, tmp_path)
-    good = _csv(tmp_path, "a.csv", _rows(2))
+    good = _ofx(tmp_path, "a-bank.ofx", "000123456")
 
     widget = _wizard(qtbot, service)
     widget._select_files([good, locked])
@@ -178,6 +212,10 @@ def test_INV3_no_commit_before_every_question_answered(
 
     files = widget._batch_files
     assert any(f.outcome == "needs_password" for f in files)
+    assert any(f.outcome == "ready" for f in files), (
+        "precondition: a record IS committable on its own merits, so the "
+        "assertion below turns on the outstanding question and nothing else"
+    )
     assert not BatchImportService.can_import(files), (
         "no file may be committable while a question is still outstanding"
     )
@@ -192,8 +230,12 @@ def test_INV3_no_commit_before_every_question_answered(
     widget2._select_files([good, _csv(tmp_path, "b.csv", _rows(2, day_from=5))])
     qtbot.waitUntil(lambda: widget2._stack.currentIndex() == _STEP_BATCH, timeout=3000)
     qtbot.waitUntil(
-        lambda: all(f.outcome == "needs_account" for f in widget2._batch_files),
+        lambda: any(f.outcome == "needs_account" for f in widget2._batch_files),
         timeout=3000,
+    )
+    files2 = widget2._batch_files
+    assert any(f.outcome == "ready" for f in files2), (
+        "precondition: the OFX matched, so only the unplaced CSV is in question"
     )
     assert not widget2._batch_review._import_button.isEnabled(), (
         "Import all must stay off while any row still says — pick one —"
@@ -224,6 +266,31 @@ def test_INV5_displayed_account_is_the_targeted_account(
     accounts = AccountService(service.vault)
     first = _acct(service)
     second = accounts.add_account("Second", AccountType.SAVINGS.value).id
+    matched_id = accounts.add_account(
+        "Matched", AccountType.CURRENT.value, account_number="000123456"
+    ).id
+
+    # Leg 0 — the MATCHED route, which INV-5 names first: `match_account` runs
+    # BEFORE the first preview is built, so a matched file arrives already
+    # pointing at its own account and the cell agrees with the preview without
+    # anyone touching the picker. Neither of the other two legs covers it,
+    # because a CSV carries no account number to match on.
+    matched_widget = _wizard(qtbot, service)
+    matched_widget._select_files(
+        [_ofx(tmp_path, "m-bank.ofx", "000123456"), _csv(tmp_path, "z.csv", _rows(1))]
+    )
+    qtbot.waitUntil(
+        lambda: matched_widget._batch_files[0].outcome == "ready", timeout=3000
+    )
+    hit = matched_widget._batch_files[0]
+    assert hit.preview is not None and hit.preview.account_id == matched_id, (
+        "a matched file's FIRST preview must already target the matched account "
+        "— building it before match_account runs is the wrong-account commit"
+    )
+    assert (
+        matched_widget._batch_review._table.item(0, import_batch_mod.COL_ACCOUNT).text()
+        == "Matched"
+    )
 
     paths = [
         _csv(tmp_path, "a.csv", _rows(2, tag="a")),
@@ -412,6 +479,127 @@ def test_INV8_cancelling_a_prompt_skips_that_file_immediately(
     )
 
 
+# -- one run at a time -------------------------------------------------------- #
+
+
+def test_a_second_import_all_cannot_arm_a_second_run(
+    qtbot, service, profile, tmp_path, monkeypatch
+):
+    """RUN starts once. A second `Import all` must not rewind the index and arm
+    a second chain alongside the first.
+
+    Two chains stepping the same `_batch_index` advance it twice per turn, so
+    roughly every other file is skipped by both — never committed, and never
+    reported as skipped either. This is the same defect that let `Import all` be
+    pressed mid-SCAN; the button being off during the run is one guard and the
+    phase check is the other, because a queued click can still arrive.
+    """
+    account = _acct(service)
+    widget = _wizard(qtbot, service)
+    widget._select_files(
+        [
+            _csv(tmp_path, "a.csv", _rows(2, day_from=1, tag="a")),
+            _csv(tmp_path, "b.csv", _rows(2, day_from=6, tag="b")),
+            _csv(tmp_path, "c.csv", _rows(2, day_from=11, tag="c")),
+        ]
+    )
+    qtbot.waitUntil(
+        lambda: all(f.outcome == "needs_account" for f in widget._batch_files),
+        timeout=3000,
+    )
+    _stub_picker(monkeypatch, account)
+    for row in range(3):
+        widget._batch_review._choose_account(row)
+
+    indices: list[int] = []
+    real_step = BatchImportService.run_step
+
+    def logging_step(self, batch_files, index):
+        indices.append(index)
+        if index == 0:
+            # QUEUE the second press rather than calling it inline. Called from
+            # inside `run_step`, the rewind to index 0 is immediately overwritten
+            # by `_run_next`'s own `self._batch_index = run_step(...)` assignment
+            # — so the defect hides and the test passes against it. A real click
+            # arrives between turns, which is what this reproduces. Delivered to
+            # the slot rather than the button, so the test still holds if the
+            # button's own disabling is what regresses.
+            QTimer.singleShot(0, widget, widget._on_batch_import)
+        return real_step(self, batch_files, index)
+
+    monkeypatch.setattr(BatchImportService, "run_step", logging_step)
+    widget._batch_review._import_button.click()
+    qtbot.wait(300)
+
+    assert indices == [0, 1, 2], (
+        f"run_step saw indices {indices} — a second chain was armed, so the "
+        "index was rewound and files were stepped by two passes at once"
+    )
+    assert not widget._batch_review._import_button.isEnabled(), (
+        "Import all must be off while the run is in flight"
+    )
+    assert all(f.outcome == "committed" for f in widget._batch_files), (
+        "every file still commits exactly once"
+    )
+    assert _count_rows(service.vault.connection, account) == 6
+
+
+# -- the reused mapping form -------------------------------------------------- #
+
+
+def test_the_mapping_form_does_not_carry_one_files_answers_into_the_next(
+    qtbot, service, tmp_path, monkeypatch
+):
+    """§ 4.1 reuses `_STEP_MAP` per file. Everything it does NOT refill must be
+    reset between records, or the previous file's answers are silently applied
+    to the next one.
+
+    "Amounts are reversed" is the sharp one: left ticked, it FLIPS EVERY SIGN on
+    the following file — income becomes expenditure and the whole dashboard
+    moves. Nothing refills it here, because the record is `needs_mapping`
+    precisely when no saved profile matched, so `_apply_profile_to_combos` (the
+    one place that would) is unreachable on this path.
+    """
+    first = _csv(
+        tmp_path,
+        "a-odd.csv",
+        [["2026-01-02", "shop", "-10.00"]],
+        header=["When", "What", "How much"],
+    )
+    second = _csv(
+        tmp_path,
+        "b-other.csv",
+        [["2026-01-03", "shop", "-20.00"]],
+        header=["Day", "Payee", "Value"],
+    )
+    widget = _wizard(qtbot, service)
+    widget._select_files([first, second])
+    qtbot.waitUntil(lambda: widget._stack.currentIndex() == _STEP_MAP, timeout=3000)
+    assert widget._batch_asking is not None
+    assert Path(widget._batch_asking.path).name == "a-odd.csv"
+
+    # Answer file 1 with the reversal ticked and a debit/credit style.
+    widget._invert_amount.setChecked(True)
+    widget._on_map_next()
+
+    qtbot.waitUntil(
+        lambda: (
+            widget._batch_asking is not None
+            and Path(widget._batch_asking.path).name == "b-other.csv"
+        ),
+        timeout=3000,
+    )
+    assert widget._stack.currentIndex() == _STEP_MAP
+    assert not widget._invert_amount.isChecked(), (
+        "the second file's mapping form arrived still holding the first file's "
+        "'Amounts are reversed' tick — every amount in it would import "
+        "sign-flipped"
+    )
+    assert widget._amount_style.currentIndex() == 0, (
+        "the amount style must start from the single-column default too"
+    )
+
+
 # -- INV-14 ------------------------------------------------------------------ #
 
 
@@ -469,16 +657,48 @@ def test_INV14_done_waits_for_the_report(
     cancels: list[int] = []
     widget2 = _wizard(qtbot, service)
     widget2.done.connect(lambda: cancels.append(1))
-    widget2._select_files([_csv(tmp_path, "c.csv", _rows(2, day_from=15, tag="c"))])
+    widget2._select_files(
+        [
+            _csv(tmp_path, "c.csv", _rows(2, day_from=15, tag="c")),
+            _csv(tmp_path, "e.csv", _rows(2, day_from=18, tag="e")),
+            _csv(tmp_path, "f.csv", _rows(2, day_from=21, tag="f")),
+        ]
+    )
     qtbot.waitUntil(
-        lambda: widget2._batch_files[0].outcome == "needs_account", timeout=3000
+        lambda: all(f.outcome == "needs_account" for f in widget2._batch_files),
+        timeout=3000,
     )
     _stub_picker(monkeypatch, account)
-    widget2._batch_review._choose_account(0)
+    for row in range(3):
+        widget2._batch_review._choose_account(row)
+
+    # Cancel the INSTANT the first file has committed. Waiting on a condition
+    # cannot do this: `qtbot.waitUntil` pumps the event loop, so the whole
+    # three-file chain finishes before the first poll returns and the click
+    # lands on an already-finished run — testing the wrong branch entirely.
+    # Interposing on `run_step` is the same trick INV-7 uses, for the same
+    # reason: a chain of `singleShot(0)` turns has no gap to click in.
+    real_step = BatchImportService.run_step
+
+    def cancelling_step(self, batch_files, index):
+        result = real_step(self, batch_files, index)
+        if index == 0:
+            widget2._batch_review._cancel_button.click()
+        return result
+
+    monkeypatch.setattr(BatchImportService, "run_step", cancelling_step)
     widget2._batch_review._import_button.click()
-    widget2._batch_review._cancel_button.click()
-    qtbot.wait(100)
+    qtbot.wait(200)
+    assert widget2._batch_files[0].outcome == "committed", (
+        "precondition: the run really did commit a prefix before the cancel"
+    )
     assert cancels == [], "the batch step's Cancel must not emit done"
+    assert widget2._batch_review._close_button.isVisible(), (
+        "a cancelled run still leaves the report standing, with its Close"
+    )
+    assert any(f.outcome == "not_attempted" for f in widget2._batch_files), (
+        "the files the cancel stopped short of must say so"
+    )
 
     # (c) — declining a mapping mid-batch. An unmatched header is what raises
     # the mapping question at all.
@@ -495,7 +715,16 @@ def test_INV14_done_waits_for_the_report(
         [odd, _csv(tmp_path, "d.csv", _rows(2, day_from=20, tag="d"))]
     )
     qtbot.waitUntil(lambda: widget3._stack.currentIndex() == _STEP_MAP, timeout=3000)
-    widget3._on_map_cancel()
+    # Click the REAL button. INV-14's named break is that a Cancel "stays wired
+    # to `done`" — a regression to `cancel.clicked.connect(self.done)` leaves
+    # `_on_map_cancel` itself perfectly correct, so calling the slot directly
+    # would pass straight through the defect.
+    map_cancel = next(
+        button
+        for button in widget3._stack.widget(_STEP_MAP).findChildren(QPushButton)
+        if button.text() == "Cancel"
+    )
+    map_cancel.click()
     qtbot.wait(100)
     assert declines == [], (
         "declining ONE file's mapping must not tear down the whole batch"

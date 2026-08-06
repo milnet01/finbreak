@@ -29,6 +29,7 @@ from PySide6.QtCore import Signal, Slot
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
+    QLabel,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -37,16 +38,19 @@ from PySide6.QtWidgets import (
 )
 
 from finbreak.errors import FinbreakError, VaultLockedError
+from finbreak.services import batch_import as batch
 from finbreak.services.accounts import AccountService
-from finbreak.services.batch_import import BatchFile, BatchImportService
+from finbreak.services.batch_import import (
+    TERMINAL_OUTCOMES,
+    BatchFile,
+    BatchImportService,
+)
 from finbreak.ui._table_state import remember_columns
 from finbreak.ui.account_create import CreateAccountDialog
 from finbreak.ui.account_picker import AccountPickerDialog
 from finbreak.ui.modal import show_modal
 
 COL_FILE, COL_ACCOUNT, COL_NEW, COL_DUPLICATE, COL_ERRORS, COL_STATUS = range(6)
-
-_UNPLACED = "— pick one —"
 
 
 def file_label(record: BatchFile, files: Sequence[BatchFile]) -> str:
@@ -88,6 +92,11 @@ class BatchReviewWidget(QWidget):
     import_requested = Signal()
     cancelled = Signal()
     closed = Signal()
+    # A batch can CREATE an account (§ 3 decision 6), and the wizard's own two
+    # account combos are filled once in its __init__ — so without this they
+    # would still be listing a stale set if a pre-RUN Cancel returned the user
+    # to the pick step. The single-file Create path already refreshes them.
+    accounts_changed = Signal()
 
     def __init__(
         self,
@@ -100,6 +109,10 @@ class BatchReviewWidget(QWidget):
         self._accounts = accounts
         self._files: list[BatchFile] = []
         self._finished = False
+        # True from the moment RUN starts until it stops. Distinct from
+        # `_finished`: during the run the table is neither a form (rows are
+        # landing in the vault) nor yet the report.
+        self._running = False
         self._account_names: dict[int, str] = {}
 
         self._table = QTableWidget(0, 6)
@@ -130,6 +143,11 @@ class BatchReviewWidget(QWidget):
         self._cancel_button = QPushButton(self.tr("Cancel"))
         self._close_button = QPushButton(self.tr("Close"))
         self._close_button.hide()  # appears only once RUN has finished
+        # This widget owns two dialogs of its own (the picker and Create), so it
+        # needs somewhere to show a rejection — it is not a child of the
+        # wizard's error label.
+        self._error = QLabel()
+        self._error.setWordWrap(True)
 
         buttons = QHBoxLayout()
         buttons.addWidget(self._cancel_button)
@@ -139,6 +157,7 @@ class BatchReviewWidget(QWidget):
 
         layout = QVBoxLayout(self)
         layout.addWidget(self._table)
+        layout.addWidget(self._error)
         layout.addLayout(buttons)
 
         self._import_button.clicked.connect(self.import_requested)
@@ -151,6 +170,8 @@ class BatchReviewWidget(QWidget):
         fills in row by row rather than hiding behind a progress dialog (§ 6)."""
         self._files = files
         self._finished = False
+        self._running = False
+        self._error.clear()
         self._close_button.hide()
         self._cancel_button.show()
         self._import_button.show()
@@ -181,9 +202,20 @@ class BatchReviewWidget(QWidget):
             # Blank when zero, so it draws the eye only when it matters.
             self._set(row, COL_ERRORS, self._number(record.error_count), record.path)
             self._set(row, COL_STATUS, self.report_line(record), record.path)
+        # Off during the run as well as after it. `can_import` stays true while
+        # any `ready` record remains, so without this the button is live for the
+        # whole run — and a second press rewinds the index and arms a SECOND
+        # chain alongside the first.
         self._import_button.setEnabled(
-            not self._finished and BatchImportService.can_import(self._files)
+            not self._finished
+            and not self._running
+            and BatchImportService.can_import(self._files)
         )
+
+    def set_running(self, running: bool) -> None:
+        """RUN has started (or stopped): the table is no longer a form."""
+        self._running = running
+        self.refresh()
 
     def finish(self) -> None:
         """RUN is over: the table is the report now, not a form (§ 4.6), and
@@ -204,9 +236,13 @@ class BatchReviewWidget(QWidget):
         return str(value) if value else ""
 
     def _account_name(self, record: BatchFile) -> str:
+        # The literal must sit INSIDE tr(): `lupdate` scans source text, so a
+        # module constant passed through tr() is never extracted and can never
+        # be translated (coding.md § 5.2).
+        unplaced = self.tr("— pick one —")
         if record.account_id is None:
-            return self.tr(_UNPLACED)
-        return self._account_names.get(record.account_id, self.tr(_UNPLACED))
+            return unplaced
+        return self._account_names.get(record.account_id, unplaced)
 
     def report_line(self, record: BatchFile) -> str:
         """What each outcome tells the user (§ 4.8).
@@ -239,9 +275,9 @@ class BatchReviewWidget(QWidget):
                 if record.preview is not None
                 else self.tr("Couldn't read this file — {why}")
             )
-            return template.format(why=record.reason)
+            return template.format(why=self._translated(record.reason))
         if outcome in ("skipped", "not_attempted"):
-            return record.reason
+            return self._translated(record.reason)
         return {
             "waiting": self.tr("Waiting…"),
             "ready": self.tr("Ready to import"),
@@ -249,6 +285,29 @@ class BatchReviewWidget(QWidget):
             "needs_mapping": self.tr("Needs its columns matched up"),
             "needs_account": self.tr("Pick an account"),
         }.get(outcome, "")
+
+    def _translated(self, reason: str) -> str:
+        """Translate a reason the SERVICE authored; pass anything else through.
+
+        `services/batch_import.py` is Qt-free by design (§ 4.1), so its six fixed
+        report sentences cannot call `tr()` where they are written. They are
+        translated here, at the one place they reach a screen. A reason that is
+        NOT one of them is an exception's own message — dynamic text, untranslated
+        by the same established convention every other rejection in this app
+        follows (`ManualEntryDialog._on_add` renders `str(exc)` verbatim).
+        """
+        return {
+            batch.CANCELLED: self.tr("Not imported — the batch was cancelled"),
+            batch.CAP_REACHED: self.tr(
+                "Not imported — the batch reached its size limit"
+            ),
+            batch.PDF_UNREADABLE: self.tr(
+                "Couldn't read this PDF — try your bank's CSV or OFX export."
+            ),
+            batch.UNDATED: self.tr("No dated transactions found in this file"),
+            batch.SKIPPED_LOCKED: self.tr("Skipped — we couldn't unlock this file"),
+            batch.SKIPPED_UNMAPPED: self.tr("Skipped — no column mapping was set"),
+        }.get(reason, reason)
 
     # -- setting an account ---------------------------------------------------
     @Slot(int, int)
@@ -266,10 +325,20 @@ class BatchReviewWidget(QWidget):
         ``None``), and excludes a row already written to the vault (retargeting
         it would silently re-dedup against rows that are already there).
         """
-        if self._finished or not 0 <= row < len(self._files):
+        # Not while the run is in flight either: retargeting a row the chain is
+        # about to reach would re-dedup it against a vault that is changing
+        # underneath, and retargeting one it has already committed is the
+        # silently-re-imported case § 4.6 excludes `committed` rows for.
+        if self._finished or self._running or not 0 <= row < len(self._files):
             return
         record = self._files[row]
-        if record.parsed is None or record.outcome == "committed":
+        # `parsed` alone is not enough. `_settle_parse` stores the parse BEFORE
+        # the undated check fails the record, so a `failed` row carries one; so
+        # does a `not_attempted` row that was `ready` when a cap or a cancel
+        # stopped the batch. The picker would open, the user would choose, and
+        # `set_account`'s own terminal guard would silently discard it — a dead
+        # control on the one screen the user is asked to trust.
+        if record.parsed is None or record.outcome in TERMINAL_OUTCOMES:
             return
         try:
             accounts = self._accounts.list_accounts()
@@ -306,6 +375,7 @@ class BatchReviewWidget(QWidget):
         show_modal(create, lambda: self._created(record, create))
 
     def _created(self, record: BatchFile, dialog: CreateAccountDialog) -> None:
+        self._error.clear()
         try:
             account = self._accounts.add_account(
                 dialog.entered_name(),
@@ -313,9 +383,15 @@ class BatchReviewWidget(QWidget):
                 account_number=dialog.entered_number(),
             )
         except VaultLockedError:
+            return  # auto-lock fired mid-edit — silent, like the other handlers
+        except (ValueError, FinbreakError) as exc:
+            # SAY SO. Swallowing this made the dialog vanish with the row still
+            # reading "— pick one —" and no hint that a duplicate name was the
+            # reason — the single-file twin (`_create_account_from`) has always
+            # shown the message.
+            self._error.setText(str(exc))
             return
-        except (ValueError, FinbreakError):
-            return
+        self.accounts_changed.emit()
         self._settle(record, account.id)
 
     def _settle(self, record: BatchFile, account_id: int) -> None:
