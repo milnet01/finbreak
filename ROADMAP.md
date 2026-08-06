@@ -302,6 +302,23 @@ scariest unknown (native-library bundling) up front.
   **Layman:** Get the .deb version of finbreak building on the build service too, so Debian and Ubuntu users get a native package (right now only the openSUSE/Fedora RPMs build; the .deb targets are skipped).
   Kind: package.
   Source: user-request-2026-07-23.
+  Progress (2026-08-06): user asked when Debian/xUbuntu would be
+  supported, from the OBS Build Results page showing Debian_13 and
+  xUbuntu_24.04 both "excluded: 1" while Fedora_44 and
+  openSUSE_Tumbleweed succeed. No new information — the two gaps above
+  are still exactly right, and packaging/obs/README.md's "Still open"
+  already names them. Recorded here only so the question is not
+  re-investigated from scratch a third time.
+
+  Sequencing recommendation, NOT yet a user decision: do FIBR-0159
+  (Flathub, already 🚧) BEFORE this item. Flathub reaches Debian,
+  Ubuntu, Mint, Fedora and openSUSE users through GNOME Software and KDE
+  Discover in ONE package, where this item buys two distros for two
+  distros' worth of debtransform work plus the per-distro library-name
+  shakeout the RPM bring-up needed. Native .deb is still worth having
+  for apt users, but it is the narrower win and nothing is blocked on
+  it: the AppImage already runs on any modern Linux, so no Debian or
+  Ubuntu user is currently without a way to install finbreak.
 
 - 🚧 [FIBR-0159] **Publish finbreak to Flathub — the cross-distro app store (GNOME Software / KDE Discover).**
   Flathub is the de-facto cross-distro app store: one submission surfaces finbreak
