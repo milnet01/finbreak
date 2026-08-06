@@ -41,8 +41,8 @@ this**, so treat a stale date as "recent work was out-of-band", not as
 
 | Field | Value |
 |---|---|
-| **Active item ID** | FIBR-0231 (spec drafted, tail folded in, one confirming loop owed — see below) |
-| **Blocked on** | Nothing blocking; one confirming `/cold-eyes` loop before code. |
+| **Active item ID** | FIBR-0231 (spec CLEARED FOR CODE; step 3 TDD is next) |
+| **Blocked on** | Nothing. Next is step 3 — TDD, `tests/features/month_summary/`. |
 | **Last update** | 2026-08-06 |
 
 ### Step progress
@@ -51,17 +51,14 @@ While an item is active, Claude marks the current step 🚧; completed
 steps flip to ✅. Resets to all ⬜ when a new item becomes active. The
 nine steps are defined in `~/.claude/skills/app-workflow/SKILL.md`.
 
-1. 🚧 Verify spec — **step 1 is where FIBR-0231 sits.** The spec at
-   `docs/specs/FIBR-0231-plain-english-month-summary.md` is **not yet** cleared
-   for code. `/cold-eyes` ran 3 loops × 3 lanes and stopped unconverged; its
-   24-finding tail (`docs/reviews/FIBR-0231-loop3-tail.md`) has been **folded in
-   whole** — 0 deferred, 0 dismissed — and the ~90 lines of review archaeology
-   moved to the spec's new §13.1. Two fixes changed the design: §4.4's
-   common-day-count rule was replaced (complete months compare whole; only a
-   partial month truncates, to a head capped below every window month's last
-   day), and the absolute materiality gate is now belt-and-braces. **Next: ONE
-   confirming `/cold-eyes` loop — not a fresh review** — then step 3 (TDD).
-2. ⬜ Verify dependencies
+1. ✅ Verify spec — `docs/specs/FIBR-0231-plain-english-month-summary.md` is
+   **CLEARED FOR CODE** (2026-08-06). Four `/cold-eyes` loops; the loop-3 tail
+   (`docs/reviews/FIBR-0231-loop3-tail.md`) was folded in whole, and the
+   confirming loop 4 returned **zero CRITICAL and no design-level defect** with
+   its 26 findings all fixed. Two design changes landed: §4.4's common-day-count
+   rule was replaced (complete months compare whole; only a partial month
+   truncates), and the absolute materiality gate is belt-and-braces.
+2. 🚧 Verify dependencies
 3. ⬜ Write tests first
 4. ⬜ Implement until tests pass
 5. ⬜ Run `/audit` — in parallel with 6

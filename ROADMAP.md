@@ -4680,6 +4680,25 @@ because retrofitting them is a data migration.
   11 nothings, re-derived by its stated awk. Spec is 1437 lines,
   spec_lint + doc_integrity clean, 14/14 invariants parse.
   Next: ONE confirming /cold-eyes loop — not a fresh review — then TDD.
+  Progress (2026-08-06, later): confirming /cold-eyes loop 4 RAN — 3 cold
+  lanes, zero CRITICAL, no design-level defect, and neither loop-3 blocker
+  re-raised. One lane independently re-derived the new §4.4 window
+  arithmetic, the §4.5 relative-implies-absolute proof and the slot
+  partition and found them correct — that is the confirmation the loop
+  was for. It still returned 26 verified findings (6 HIGH, 6 MEDIUM, 14
+  LOW), all fixed: every HIGH was a test leg that could not fail or a
+  rationale arguing from the wrong case. Biggest: slot 3's materiality
+  floor had no owner (the service could not encode it, the strip could
+  not reach the constant) — the detector now nulls residual_minor when no
+  correction is warranted; INV-10's second leg used February, the one
+  month that cannot distinguish the new rule from the rejected one;
+  INV-12's grep was green exactly when its invariant was broken. Two
+  prescribed predicates were executed before landing (the new _tr regex,
+  the float-literal AST walk). Spec is 1508 lines, spec_lint +
+  doc_integrity + doc_citations clean, 14/14 invariants parse, §11
+  re-derived to 33 rows / 11 nothings.
+  SPEC IS CLEARED FOR CODE. Next: step 3, TDD via /write-code —
+  tests/features/month_summary/ (4 files per §7).
 
 - 📋 [FIBR-0232] **"Safe to spend" — one number for what's left after everything still due this month.**
   The cash-flow forecast (FIBR-0171) already projects a balance forward
