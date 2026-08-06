@@ -291,6 +291,34 @@ scariest unknown (native-library bundling) up front.
   Kind: fix.
   Source: in-session-2026-08-06 (FIBR-0086 review lane 1).
 
+- 📋 [FIBR-0252] **StandardBankImporter.parse discards its per-row errors, so a dropped row is invisible.**
+  `standard_bank.py`'s `parse` returns `ParseResult(result.drafts, [],
+  start, end, ...)` — an empty error list, discarding the errors `_split`
+  had just separated out. So `ImportPreview.errors` is empty for every
+  Standard Bank statement, and FIBR-0085's new Errors column
+  (`BatchFile.error_count`, set from `len(parsed.errors)`) reads 0 for
+  all six SB families — which are exactly the layouts this user's own
+  corpus is made of.
+
+  FIBR-0085 § 4.2 carries `error_count` precisely because "a file where
+  40 of 50 rows failed commits 10 and would report '10 added' with no
+  hint that 40 vanished — in a money app a silently dropped row is the
+  defect". That argument is defeated on the SB path. `_draft`'s own
+  docstring names a reachable case (a printed `0.00` fee line).
+
+  PRE-EXISTING, not introduced by FIBR-0085 — last touched by FIBR-0086.
+  Filed rather than fixed in passing because it needs its own regression
+  test against a synthetic SB fixture with a deliberately unreadable row,
+  and because propagating the errors changes what the single-file preview
+  table shows too (it interleaves errors into the row list), which is a
+  visible behaviour change deserving its own pass.
+
+  Fix: return `result.errors` instead of `[]`, and add a test asserting a
+  malformed SB row reaches `ImportPreview.errors` rather than vanishing.
+  **Layman:** If a line on a Standard Bank statement cannot be read, the app throws that fact away — so you are told "53 added" with no hint that anything was skipped.
+  Kind: fix.
+  Source: code-quality-review-2026-08-06 (FIBR-0085 close, service lane).
+
 ### 📦 Packaging
 
 - ✅ [FIBR-0003] **P01: bundling smoke-test (de-risk

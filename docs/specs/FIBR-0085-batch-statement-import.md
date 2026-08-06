@@ -32,7 +32,8 @@ sit there.
 - [9. Out of scope](#9-out-of-scope) · [10. Resource cost](#10-resource-cost) ·
   [11. What checks this](#11-what-checks-this) ·
   [12. Cross-doc impact](#12-cross-doc-impact) ·
-  [13. Cold-eyes loop log](#13-cold-eyes-loop-log)
+  [13. Cold-eyes loop log](#13-cold-eyes-loop-log) ·
+  [14. As-built deviations](#14-as-built-deviations)
 
 ## 1. Goal
 
@@ -787,7 +788,7 @@ step), not when the last file commits.
 - **INV-3** — No file is committed while any file in the batch is
   `needs_password`, `needs_mapping` or `needs_account`. The first two are
   exhausted by ASK; the third disables `Import all` in REVIEW (§4.6).
-  *Test:* `tests/features/batch_import/test_batch_import.py::test_INV3_no_commit_before_every_question_answered`
+  *Test:* `tests/features/batch_import/test_batch_import_ui.py::test_INV3_no_commit_before_every_question_answered`
   — two legs, because the two halves are enforced by different mechanisms: a
   batch containing one locked PDF whose prompt is **left open** commits nothing
   at all, including the records that were `ready`; and a batch reaching REVIEW
@@ -825,7 +826,7 @@ step), not when the last file commits.
   `ImportPreview.account_id` targets — including after the user changes it. (A
   later `retarget` builds a replacement preview with no fresh `match_account`
   call, which is correct: the user's explicit choice outranks the statement.)
-  *Test:* `tests/features/batch_import/test_batch_import.py::test_INV5_displayed_account_is_the_targeted_account`
+  *Test:* `tests/features/batch_import/test_batch_import_ui.py::test_INV5_displayed_account_is_the_targeted_account`
   — three legs, one per route into a destination: a matched file, a
   `needs_account` file given an account on the review screen (which builds its
   first preview via `preview_result`), and an already-`ready` file changed on
@@ -856,7 +857,7 @@ step), not when the last file commits.
 - **INV-7** — An idle auto-lock during a batch stops it. Files already
   committed stay committed; no further file is attempted; nothing is
   half-written.
-  *Test:* `tests/features/batch_import/test_batch_import.py::test_INV7_autolock_mid_batch_stops_the_run`
+  *Test:* `tests/features/batch_import/test_batch_import_ui.py::test_INV7_autolock_mid_batch_stops_the_run`
   — `MainWindow._lock()` between two files; the vault re-opens with exactly
   the first file's rows.
   *Breaks when:* the chain is armed as `QTimer.singleShot(0, callable)`
@@ -868,7 +869,7 @@ step), not when the last file commits.
   skips that file immediately. ("Prompt" throughout, never "attempt" — §4.4's
   automatic tries against stored passwords are attempts and are bounded
   separately by INV-9.)
-  *Test:* `tests/features/batch_import/test_batch_import.py::test_INV8_password_prompts_are_bounded`
+  *Test:* `tests/features/batch_import/test_batch_import_ui.py::test_INV8_password_prompts_are_bounded`
   — a locked fixture answered wrongly three times leaves one `skipped` file
   and a completed batch.
   *Breaks when:* the re-prompt recurses without a counter, which is exactly
@@ -947,7 +948,7 @@ step), not when the last file commits.
   `ImportWizardWidget.done` is emitted only by the report's Close — never at
   the end of RUN, never by the batch step's Cancel, and never by the
   `_STEP_MAP` Cancel while the batch is driving that page.
-  *Test:* `tests/features/batch_import/test_batch_import.py::test_INV14_done_waits_for_the_report`
+  *Test:* `tests/features/batch_import/test_batch_import_ui.py::test_INV14_done_waits_for_the_report`
   — a `qtbot` spy on `done` records zero emissions after the last record
   commits, zero after Cancel stops a running batch, and zero after declining a
   mapping mid-batch; then exactly one after Close is clicked.
@@ -1029,9 +1030,13 @@ month's batch is silent.
 
 ## 7. Tests
 
-New directory `tests/features/batch_import/` — `spec.md` plus
-`test_batch_import.py`, per `testing.md`. Fixtures are synthetic strings and
-generated PDFs, never real statements (INV-12).
+New directory `tests/features/batch_import/` — `spec.md` plus **two** test
+files, per `testing.md`: `test_batch_import.py` (the headless invariants
+against `services/batch_import.py`) and `test_batch_import_ui.py` (the ones
+that drive real widgets). The split is the § 4.1 layering made visible; §11
+names which invariant lives in which. Fixtures are synthetic strings, and a
+`.pdf`-named file plus a fake decrypt in place of any real locked PDF — no
+statement bytes of any kind (INV-12).
 
 **§11 is the canonical invariant → test mapping; this section does not repeat
 it.** What lives here is what §11's one-line cells cannot carry: which legs a
@@ -1064,11 +1069,16 @@ implementation lacking the property:
   `stored_passwords`. If it still passes, the two accounts do not in fact
   share a password string.
 
-**The ripple, and it is smaller than it looks.**
-`tests/features/dialog_lifecycle/test_dialog_lifecycle.py` gains
-`"import_batch.py"` in `_FILES` and `processEvents` in its pattern (INV-6), and
-its `spec.md` states both; `tests/features/account_detect/test_no_real_data.py`
-gains the new fixture directory (INV-12).
+**The ripple, and it is smaller than it looks — smaller, as built, than this
+section claimed.** `tests/features/dialog_lifecycle/test_dialog_lifecycle.py`
+gains `"import_batch.py"` in `_FILES` and `processEvents` in its pattern
+(INV-6), and its `spec.md` states both. `tests/features/account_detect/
+test_no_real_data.py` needs **no change at all**: it walks `git ls-files` over
+the whole tree, so the new directory was already inside its scope the moment it
+existed. The point is moot besides — every fixture here is built in `tmp_path`,
+so nothing is committed under the directory for it to scan. Corrected on the
+as-built pass (§14); the original claim was written from the assumption that
+the guard was directory-scoped, and never checked.
 
 **No existing wizard test changes.** There are **24** `_stack.currentIndex()`
 assertions across **six** suites — `pdf_import` (10), `import_` (5),
@@ -1212,18 +1222,18 @@ this contract.
 |------|----------------------|
 | INV-1 | `tests/features/batch_import/test_batch_import.py::test_INV1_failure_does_not_abort_batch` |
 | INV-2 | `tests/features/batch_import/test_batch_import.py::test_INV2_per_file_transaction_boundary` |
-| INV-3 | `tests/features/batch_import/test_batch_import.py::test_INV3_no_commit_before_every_question_answered` |
+| INV-3 | `tests/features/batch_import/test_batch_import_ui.py::test_INV3_no_commit_before_every_question_answered` |
 | INV-4 | `tests/features/batch_import/test_batch_import.py::test_INV4_reviewed_counts_are_the_committed_counts` |
-| INV-5 | `tests/features/batch_import/test_batch_import.py::test_INV5_displayed_account_is_the_targeted_account` |
+| INV-5 | `tests/features/batch_import/test_batch_import_ui.py::test_INV5_displayed_account_is_the_targeted_account` |
 | INV-6 | `tests/features/dialog_lifecycle/test_dialog_lifecycle.py::test_INV1_no_blocking_dialog_exec_in_content_widgets` (with `_FILES` **and** the token pattern extended) |
-| INV-7 | `tests/features/batch_import/test_batch_import.py::test_INV7_autolock_mid_batch_stops_the_run` |
-| INV-8 | `tests/features/batch_import/test_batch_import.py::test_INV8_password_prompts_are_bounded` |
+| INV-7 | `tests/features/batch_import/test_batch_import_ui.py::test_INV7_autolock_mid_batch_stops_the_run` |
+| INV-8 | `tests/features/batch_import/test_batch_import_ui.py::test_INV8_password_prompts_are_bounded` |
 | INV-9 | `tests/features/batch_import/test_batch_import.py::test_INV9_stored_passwords_tried_once_each` |
 | INV-10 | `tests/features/batch_import/test_batch_import.py::test_INV10_already_imported_is_recomputed_both_ways` |
 | INV-11 | `tests/features/batch_import/test_batch_import.py::test_INV11_batch_caps` — the two caps only |
 | INV-12 | `tests/features/account_detect/test_no_real_data.py` — **but only for files git tracks, and only when `FINBREAK_CORPUS_NUMBERS` is set**; the guard skips silently otherwise (FIBR-0248) and cannot see git history (FIBR-0247) |
 | INV-13 | `tests/features/batch_import/test_batch_import.py::test_INV13_undated_file_fails_before_commit` |
-| INV-14 | `tests/features/batch_import/test_batch_import.py::test_INV14_done_waits_for_the_report` |
+| INV-14 | `tests/features/batch_import/test_batch_import_ui.py::test_INV14_done_waits_for_the_report` |
 | INV-15 | `tests/features/batch_import/test_batch_import.py::test_INV15_multi_statement_ofx_fans_out` |
 | §4.1 — one selected file routes to the unchanged single-file flow | **nothing** — no test asserts the routing, and the 24 existing `_stack.currentIndex()` assertions stay green either way, so they cannot catch it; only a cold reader of `_on_pick_file` would |
 | §4.3 — the ASK callback shape (`next_question` / `answer`) | **nothing** — an interface sketch, not a contract with a failure mode; the invariants constrain the behaviour, not the seam |
@@ -1280,3 +1290,59 @@ read as "these nine things nothing will catch for you".
 | 3 | 2026-08-06 | 3 (cold, shared packet, no prior-loop briefing) | 1 | 8 | 14 | 10 | 32 verified, 1 dismissed. All 32 fixed. **No loop-1 or loop-2 finding resurfaced.** Dimensions: dim 5×10, dim 7×8, dim 4×7, dim 6×5, dim 10×4, dim 9×3, dim 15×3, dim 1×2, dim 11×2, dim 2×2. All three lanes independently found the same CRITICAL, and it carried three distinct defects: `cumulative_counts`' signature took only the file list yet its docstring named "existing vault rows" as the baseline (unbuildable); its domain said `ready` while §4.3 said "every record with a preview"; and the `ready` reading is circular, since the function runs *before* the outcomes it would filter on are set — and it silently defeats INV-10's retarget leg. Also: reusing `_STEP_MAP` inherits a Cancel wired to `done`, so declining ONE mapping would have torn down a thirty-file batch; §10's memory bound ignored that CSV has no row cap (16 MiB of ~50-byte rows ≈ 335k drafts, so the true ceiling is ≈114 MiB, not 64); INV-4 and INV-1 genuinely trade against each other when an earlier record fails mid-RUN; four `Outcome` members had no display string; the OFX hint source was unstated. **Origin: essentially all collateral from loops 1–2** — the second consecutive collateral-dominated loop, which is the stop trigger. Consolidated the thrice-stated `already_imported` argument to one home. Run STOPPED here by prior agreement, not converged clean. Doc 1149 → 1280 lines. |
 | 2 | 2026-08-06 | 3 (cold, shared packet, no prior-loop briefing) | 2 | 8 | 10 | 8 | 28 verified, 0 dismissed. All 28 fixed. **No loop-1 finding resurfaced** — those fixes held. Dimensions: dim 5×9, dim 7×8, dim 4×5, dim 6×4, dim 10×4, dim 9×3, dim 2×2, dim 1×1, dim 11×1. Both CRITICALs were silent-data-loss: a multi-statement OFX (`OfxImporter.parse` returns a **list**) had no place in a one-record-per-file model, so every statement after the first would be discarded without a word — now INV-15 and a `statement_index` fan-out; and REVIEW's `ready → already_imported` flip was one-directional, so retargeting an `already_imported` row left it permanently unimportable because RUN commits only `ready` — now re-derived in both directions each pass. Also: `BatchFile` had no field for the password §4.4 said it "holds"; `exponent` was passed twice and sourced nowhere (it is vault-level `read_minor_unit_exponent`); the headless claim was false because the sniffers are `QWidget` staticmethods (now lifted to `importers/sniff.py`); single-file selection routing was undefined and §7's "no existing wizard test changes" depended on it; `not_attempted` had one wording for three causes; `error_count` never reached the screen, so 40 unparsed rows could vanish behind "10 added". **Origin split: ~8 collateral vs ~4 draft defects** — collateral now dominates 2:1, and lane C counted the `already_imported` rule stated 4× and the both-counts argument 3×, which is where the new contradictions appeared. Consolidated rather than dispatching loop 3. Doc 955 → 1149 lines. |
 | 1 | 2026-08-06 | 3 (cold, shared packet) | 3 | 8 | 13 | 11 | 35 verified, 1 dismissed. All 35 fixed. Dimensions: dim 7×6, dim 5×6, dim 2×4, dim 10×5, dim 4×4, dim 6×5, dim 15×4, dim 9×3, dim 1×3, dim 11×3, dim 12×1. Two CRITICALs were design defects no reading caught: the review table's Duplicate column stayed non-cumulative while New became cumulative, so New + Duplicate would not account for a file's rows on the screen the user approves; and `already_imported` was a declared outcome no pass ever assigned. A third resolved a contradiction between §3 decision 5 and §4.3 over *when* the account question is asked — settled by the user's own approved mock-up, which shows an unresolved row on the review screen. Added INV-13 (undated file never reaches `commit_import`; `_validate_span` would have reported malformed dates for a file that had none) and INV-14 (`done` deferred to report dismissal, else `MainWindow._on_import_done` destroys the report table). Self-inflicted collateral caught by 4b-x/4c and fixed in-loop: a duplicated §7 block, a dead TOC anchor, a missing TOC row, a wrong §11 self-count (18 vs 20), and a false ripple claim — `app_shell` has zero stack assertions; the 24 real ones live in six other suites and all survive appending `_STEP_BATCH = 3`. |
+
+## 14. As-built deviations
+
+Written at close, against the shipped code. Each is a place the build differs
+from §§ 1–13 above; the sections themselves are left as written, so the
+contract and its deviations stay separable.
+
+- **`BatchFile` carries two fields § 4.2 does not list** — `source_text` and
+  `mapping`. § 4.3 requires an answered file to "re-enter SCAN at the step that
+  stopped it", and § 4.2's record had nowhere to hold that resume state:
+  `pending_password` covers a password, nothing covered the already-read text
+  or the mapping ASK supplied. Without them an answered mapping re-reads the
+  file and re-extracts a PDF's table.
+
+- **`reason` also carries `not_attempted`'s two wordings.** § 4.2 scopes it to
+  "user-facing text for failed/skipped", and § 4.8 gives `not_attempted` two
+  sentences with no field to tell them apart. The two `failed` wordings needed
+  no field: a SCAN failure has no preview and a RUN failure does, which
+  distinguishes them exactly.
+
+- **`can_import` gates on every unsettled outcome, not just `needs_account`.**
+  § 4.6 states the rule as "at least one `ready` and no file still
+  `needs_account`", on the grounds that ASK exhausts the password and mapping
+  questions before REVIEW is reached. That was a property of the *flow*, and
+  the flow does not hold it: § 6 puts the table on screen from the first scan
+  turn and § 4.7 returns to the event loop between turns, so the button was
+  live — and pressable — with files still unread. Review found the resulting
+  two-chain interleaving as a CRITICAL. The shipped rule is "at least one
+  `ready` and nothing still `waiting`, `needs_password`, `needs_mapping` or
+  `needs_account`", plus an explicit phase guard in the widget, since a queued
+  click can arrive after the button is correctly disabled.
+
+- **`answer` takes the file list.** § 4.3's sketch is `answer(record, value)`;
+  the same section requires an answered file to run the ladder "INCLUDING the
+  draft-cap check", which needs the batch. § 11 already recorded this signature
+  as an interface sketch rather than a contract.
+
+- **`importers/pdf_importer.py` gained `default_table_index`.** § 4.1 lifts
+  only the two format sniffers off the wizard. The batch has no table chooser,
+  so its SCAN ladder must apply the same "most data rows" rule the wizard's
+  `_default_pdf_index` did — moved rather than duplicated (`coding.md` § 1.3).
+
+- **`PasswordDialog` gained an optional `remember_text`.** § 4.4 stores a
+  remembered password against the account the file lands on, but a batch must
+  title its prompt with the FILE (a thirty-file run has to say which one it is
+  asking about). The default label would then have read "Remember this password
+  for statement.pdf", promising something the design does not do.
+
+- **§ 7's `test_no_real_data.py` ripple is a no-op**, and § 7 now says so.
+
+- **Two guards the spec does not mention, both added after review found the
+  defect they prevent:** SCAN skips a record whose outcome is already terminal
+  (without it the § 4.3 file cap was decorative — `build` refused the batch and
+  the scan read all 201 files anyway), and the reused `_STEP_MAP` form is reset
+  between records (without it one file's "Amounts are reversed" tick silently
+  flipped every sign on the next).
