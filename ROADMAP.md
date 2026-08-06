@@ -365,6 +365,15 @@ scariest unknown (native-library bundling) up front.
   **Layman:** In the multi-file import table, a file that was already imported says "nothing new in this file" while the Errors column next to it shows unreadable rows — and a single bad row reads "1 rows couldn't be read".
   Kind: fix.
   Source: in-session-2026-08-06 (FIBR-0252 cold-eyes loop 2, blast-radius scan).
+  Precondition pinned (2026-08-06, FIBR-0252 cold-eyes loop 5): defect 1
+  is **re-import only**. `BatchImportService.review` reads the span from
+  `StatementPeriodRepository.id_for_span`, i.e. a `statement_periods` row
+  already in the vault — not the span the parse just produced. So a FIRST
+  import of a file with unreadable rows lands `ready` -> `committed` and
+  DOES append ", N rows couldn't be read" correctly. The contradiction
+  appears only on a second run of the same file, when the span exists and
+  the cumulative new count is zero. Defect 2 (the "1 rows" plural) is
+  unconditional.
 
 - 📋 [FIBR-0255] **A closing-less Savings statement can import a wrong total with no gate firing.**
   `_verify_checksum` takes its `closing is None` early return for
