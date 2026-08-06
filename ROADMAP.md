@@ -4913,6 +4913,21 @@ because retrofitting them is a data migration.
   Kind: feature.
   Source: spec-FIBR-0086-2026-08-06.
 
+- 📋 [FIBR-0243] **OFX account-type prefill — map &lt;ACCTTYPE&gt; onto finbreak's account types.**
+  Deferred from FIBR-0086 (§4.1, §9). `models.OfxAccountInfo` already carries
+  `account_type` straight from ofxparse, and the FIBR-0086 roadmap bullet asks
+  for "type/currency where available" — but FIBR-0086 deliberately leaves the
+  create-account type prefill empty for OFX imports. Reason: the OFX
+  `&lt;ACCTTYPE&gt;` vocabulary (CHECKING, SAVINGS, MONEYMRKT, CREDITLINE, ...)
+  does not map onto this app's account types without a translation table nobody
+  has validated against real files, and a WRONG prefilled type is worse than an
+  empty one the user fills in — it looks authoritative. Build the mapping when
+  there are real OFX files to validate it against; the corpus that grounded
+  FIBR-0086 is 48 PDFs and contains none.
+  **Layman:** When importing an OFX file, finbreak could guess whether an account is a cheque or savings account — it doesn't yet, because guessing wrong is worse than leaving it blank.
+  Kind: feature.
+  Source: spec-FIBR-0086-2026-08-06 cold-eyes loop 2.
+
 ### ⚡ Performance
 
 - ✅ [FIBR-0025] **Enable SQLite WAL mode.** Set
