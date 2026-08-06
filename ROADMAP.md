@@ -2891,7 +2891,7 @@ because retrofitting them is a data migration.
   trees and Reset layout remain, and they are FIBR-0192's.
   Resolved (2026-08-02): unblocked by FIBR-0192, which was this bullet's stated blocker. Every table and tree the app shows now resizes, drag-reorders and remembers its layout per tab — the Forecast events table and the three Home breakdown trees were the last two unwired surfaces, and Window → Reset layout now returns them all to their build-time defaults in the same click.
 
-- 🚧 [FIBR-0085] **Batch statement import — import several statement files in one go.**
+- ✅ [FIBR-0085] **Batch statement import — import several statement files in one go.**
   Motivated by dogfooding v0.1.0. Today the import wizard handles ONE file per run (FIBR-0007 CSV / FIBR-0008 OFX / FIBR-0009 PDF). Add multi-file selection that runs each file through the existing preview -> dedup -> commit pipeline, with per-file semantics (a bad/duplicate file is reported and skipped, never aborting the batch) and a summary dialog listing each file's outcome (imported N / skipped-duplicate / failed-why) + transaction counts. Mixed formats (CSV/OFX/PDF) allowed in one batch; per-file mapping where the format needs it (CSV mapping profile selection, PDF password prompt). Reuses the existing importers + FIBR-0052 statement provenance; the new work is the multi-file wizard flow + aggregate reporting. Deps: FIBR-0007/0008/0009 (importers), FIBR-0052 (per-statement provenance so each imported file is a distinct statement row).
   **Layman:** Let a person select and import many statement files at once (e.g. a whole folder of monthly PDFs) instead of importing them one at a time.
   Kind: feature.
@@ -2946,6 +2946,24 @@ because retrofitting them is a data migration.
   as a QTimer.singleShot(0, self, ...) chain rather than a QThread,
   because import stays on the GUI thread per design.md.
   Next: step 3, TDD against `tests/features/batch_import/`.
+  Resolved (2026-08-06): shipped. `services/batch_import.py` (headless:
+  the scan ladder, the stored-password ladder, `cumulative_counts`, the
+  two caps, the per-file run step), `ui/import_batch.py` (the review
+  table), `importers/sniff.py` (format detection lifted off the wizard so
+  the service could stay Qt-free), a fourth wizard step + the
+  scan/ask/run chain, and a Create affordance on the account picker.
+  TDD, 20 tests across a headless and a qtbot file, 13 mutation checks.
+  Close ran three cold review lanes: static layer clean (gate + semgrep
+  0), but the lanes found a CRITICAL two of them raised independently —
+  `Import all` went live mid-SCAN, so a RUN chain could be armed
+  alongside the SCAN chain and files were silently skipped by both — plus
+  a HIGH (the 200-file cap was decorative: refused files were read
+  anyway), a sign-flipping money bug in the reused mapping form, and a
+  VACUOUS INV-3 test of my own that passed against the exact
+  implementation the spec names as the break. All fixed with regression
+  tests. FIBR-0252 filed for a pre-existing Standard Bank defect the new
+  Errors column surfaced. As-built deviations recorded in the spec's new
+  §14.
 
 - ✅ [FIBR-0086] **Account numbers + import auto-detect — match a statement to its account (prompt to create if new).**
   Motivated by dogfooding v0.1.0. The account-number STORAGE half shipped separately as FIBR-0193 (2026-07-30): `accounts.account_number` is a nullable column in the ENCRYPTED vault, added by schema migration **v12 -> v13** — so this bullet is now DETECTION + MATCHING only, and no new column is needed. On import, extract the statement's account number and match it to a configured account (normalised: strip spaces/dashes; match on TRAILING digits when the statement masks it, e.g. "xxxx1234"), auto-selecting the account instead of today's manual pick. Availability varies by format: OFX <ACCTID> (reliable), PDF printed number (the Standard Bank / generic parsers can surface it), CSV often carries none — so auto-detect is a SMART DEFAULT with a manual fallback whenever the number is absent or matches zero/multiple accounts (never silently import to the wrong account — cf. FIBR-0059). When the detected number matches no account, prompt to create one, pre-filled from statement metadata (number, bank name if printed, type/currency where available) and asking the user for the rest. ENABLER for FIBR-0085 (batch import) — auto-detect is what makes multi-file import usable (you cannot hand-map a folder of files); reduces reliance on FIBR-0059 (change-account fix). Deps: FIBR-0005 (accounts), FIBR-0007/0008/0009 (importers must surface the statement's number), FIBR-0052 (statement provenance).

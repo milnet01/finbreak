@@ -23,6 +23,24 @@ signaling per
 
 ### Added
 
+- **Import a whole folder of statements in one go** (FIBR-0085)
+  Pick several statement files at once — a year of monthly PDFs, a mix of
+  CSV, OFX and PDF, whatever you have — and finbreak works through them
+  without stopping to ask at each one. Anything it genuinely cannot get
+  past, it asks for up front: passwords for locked PDFs, and the column
+  layout for a spreadsheet it has not seen before. After that it runs on
+  its own.
+
+  Then it shows you one screen listing every file: where each one is
+  going, how many transactions are new, how many are duplicates you
+  already have, and how many lines it could not read. You set the account
+  for anything it could not work out itself, and nothing is written until
+  you press Import all. Files it already has are marked "already imported"
+  rather than added twice, and a file that fails is reported with the
+  reason and skipped — it never stops the rest.
+
+  Picking a single file works exactly as it always did.
+
 - **Statements now file themselves under the right account** (FIBR-0086)
   When you import a statement, finbreak reads the account number printed
   on it and pre-selects the matching account for you, with a line saying
