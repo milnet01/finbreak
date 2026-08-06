@@ -34,8 +34,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from finbreak.errors import FinbreakError
-from finbreak.importers.base import ParseResult
+from finbreak.errors import FinbreakError, VaultLockedError
+from finbreak.importers.base import ParseResult, SourceAccountHint
 from finbreak.importers.csv_importer import read_header, read_rows
 from finbreak.importers.date_detect import KNOWN_DATE_FORMATS, detect_date_format
 from finbreak.importers.ofx_importer import OfxImporter
@@ -47,11 +47,13 @@ from finbreak.importers.pdf_importer import (
 )
 from finbreak.importers.standard_bank import StandardBankImporter
 from finbreak.models import ColumnMapping, ImportProfile, OfxAccountInfo
+from finbreak.services.account_match import match_account
 from finbreak.services.accounts import AccountService
 from finbreak.services.auth import AuthService
 from finbreak.services.import_ import ImportPreview, ImportService
 from finbreak.services.transactions import read_minor_unit_exponent, to_display_decimal
 from finbreak.ui._table_state import remember_columns
+from finbreak.ui.account_create import CreateAccountDialog
 from finbreak.ui.modal import show_modal
 from finbreak.ui.password_dialog import PasswordDialog
 
@@ -108,6 +110,10 @@ class ImportWizardWidget(QWidget):
         # user then re-targets the import (preview step), the committed rows land
         # on a different account, so the password is carried there too on commit.
         self._stored_pw: tuple[int, str] | None = None
+        # FIBR-0086: the statement's own account details, held only while the
+        # preview shows a `no_match` — the Create button reads it. None in every
+        # other outcome, which is what keeps creation unreachable from `no_number`.
+        self._pending_hint: SourceAccountHint | None = None
 
         self._stack = QStackedLayout()
         self._error = QLabel()
@@ -309,8 +315,23 @@ class ImportWizardWidget(QWidget):
         buttons.addStretch()
         buttons.addWidget(self._import_button)
 
+        # Why the destination above is (or is not) the statement's own account
+        # (FIBR-0086). Empty and hidden when the format carries no number — for
+        # CSV and credit-card statements the step looks exactly as it did before.
+        self._account_match_label = QLabel()
+        self._account_match_label.setObjectName("import_account_match")
+        self._account_match_label.setWordWrap(True)
+        self._account_match_label.hide()
+        # Offered ONLY on no_match (FIBR-0086 §4.6). Not on no_number: a masked or
+        # absent number must never become a permanently-stored account number.
+        self._create_account_button = QPushButton(self.tr("Create it"))
+        self._create_account_button.setObjectName("import_create_account")
+        self._create_account_button.clicked.connect(self._on_create_account)
+        self._create_account_button.hide()
+
         destination = QFormLayout()
         destination.addRow(self.tr("Import into account"), self._confirm_account_combo)
+        destination.addRow(self._account_match_label, self._create_account_button)
 
         layout = QVBoxLayout(page)
         layout.addLayout(destination)
@@ -360,6 +381,17 @@ class ImportWizardWidget(QWidget):
             self._confirm_account_combo.setCurrentIndex(
                 self._confirm_account_combo.findData(self._account_combo.currentData())
             )
+        # Clear the previous file's match explanation (FIBR-0086) — a CSV pick
+        # never sets one, so without this a prior OFX/PDF import's label would
+        # linger over a preview it does not describe.
+        self._account_match_label.clear()
+        self._account_match_label.hide()
+        # The Create button and the hint behind it go with it — the CSV path never
+        # calls _apply_account_match, so without this a prior file's no_match would
+        # leave a live button offering to create an account for a statement that is
+        # no longer on screen.
+        self._pending_hint = None
+        self._create_account_button.hide()
         # Reset BOTH choosers before the format dispatch (FIBR-0009 D7), so no
         # prior pick's chooser lingers on the shared map/preview steps — closing
         # both leak directions (OFX->PDF and PDF->CSV/OFX) a one-sided reset would
@@ -450,8 +482,115 @@ class ImportWizardWidget(QWidget):
         combo.setVisible(len(statements) > 1)
         self._preview_ofx_statement(0)
 
+    def _apply_account_match(self, result: ParseResult) -> None:
+        """Point the destination at the account the statement names (FIBR-0086).
+
+        **Must run BEFORE ``preview_result``.** The combo's ``currentIndexChanged``
+        is wired to ``_on_confirm_account_changed``, the only thing that re-points
+        an already-built preview (via ``ImportService.retarget``), and the blocker
+        below suppresses it. Seeding after the preview exists would therefore leave
+        ``self._preview`` aimed at the previous account while the combo displayed
+        the matched one — and ``commit_import`` persists ``self._preview``. The
+        user would approve a screen reading "Matched account number …" and the
+        transactions would land somewhere else.
+
+        Only ``matched`` ever changes the selection. ``no_match`` and ``ambiguous``
+        explain themselves and leave the pick step's choice alone; ``no_number``
+        shows nothing at all, which is the whole of today's behaviour.
+        """
+        match = match_account(result.source_account, self._accounts.list_accounts())
+        # As printed, never the normalised key: the number on screen is the one the
+        # user can read off the paper statement in front of them.
+        printed = result.source_account.number if result.source_account else ""
+
+        if match.outcome == "matched":
+            with QSignalBlocker(self._confirm_account_combo):
+                self._confirm_account_combo.setCurrentIndex(
+                    self._confirm_account_combo.findData(match.account_id)
+                )
+            text = self.tr(
+                "Matched account number {number} printed on this statement."
+            ).format(number=printed)
+        elif match.outcome == "ambiguous":
+            text = self.tr(
+                "This statement's account number matches more than one account — "
+                "pick one."
+            )
+        elif match.outcome == "no_match":
+            text = self.tr("No account has number {number}.").format(number=printed)
+        else:
+            text = ""
+
+        self._account_match_label.setText(text)
+        self._account_match_label.setVisible(bool(text))
+        # Creation is reachable from no_match ONLY. no_number covers a masked or
+        # unreadable number, which must never be stored as an account's number.
+        self._pending_hint = (
+            result.source_account if match.outcome == "no_match" else None
+        )
+        self._create_account_button.setVisible(self._pending_hint is not None)
+
+    @Slot()
+    def _on_create_account(self) -> None:
+        """Create the account the statement names, then import into it (§4.6).
+
+        Every prefilled field stays editable and nothing is written until the user
+        accepts the dialog.
+        """
+        if self._pending_hint is None:  # defensive: the button is hidden otherwise
+            return
+        dialog = CreateAccountDialog(
+            number=self._pending_hint.number,
+            name=self._pending_hint.name,
+            family=self._pending_hint.family,
+            parent=self,
+        )
+        # Non-blocking + parented (FIBR-0065 D1): an idle auto-lock destroys the
+        # dialog before the slot below can fire, rather than leaving a post-exec()
+        # read of a deleted object.
+        show_modal(dialog, lambda: self._create_account_from(dialog))
+
+    def _create_account_from(self, dialog: CreateAccountDialog) -> None:
+        """The accepted half of ``_on_create_account``, run as ``show_modal``'s
+        ``on_accept`` slot."""
+        if self._pending_hint is None:  # lock or a second accept — nothing pending
+            return
+        self._error.clear()
+        try:
+            account = self._accounts.add_account(
+                dialog.entered_name(),
+                dialog.entered_type(),
+                account_number=dialog.entered_number(),
+            )
+        except VaultLockedError:
+            return  # auto-lock fired mid-edit — silent, like the other handlers
+        except (ValueError, FinbreakError) as exc:
+            self._error.setText(str(exc))
+            return
+
+        # Both combos gain the new account, so the pick step lists it too.
+        for combo in (self._account_combo, self._confirm_account_combo):
+            combo.addItem(account.name, account.id)
+        # Deliberately NOT under a QSignalBlocker — the mirror image of
+        # _apply_account_match. The preview already exists by now, so we NEED
+        # currentIndexChanged to reach _on_confirm_account_changed and retarget it;
+        # blocking here would leave the preview aimed at the old account while the
+        # combo showed the new one — the wrong-account commit INV-7a locks out.
+        self._confirm_account_combo.setCurrentIndex(
+            self._confirm_account_combo.findData(account.id)
+        )
+        self._account_match_label.setText(
+            self.tr(
+                "Matched account number {number} printed on this statement."
+            ).format(number=self._pending_hint.number)
+        )
+        self._pending_hint = None
+        self._create_account_button.hide()
+
     def _preview_ofx_statement(self, index: int) -> None:
         _info, result = self._ofx_statements[index]
+        # Before preview_result — see _apply_account_match's docstring.
+        self._apply_account_match(result)
         try:
             preview = self._imports.preview_result(result, self._target_account_id())
         except (ValueError, FinbreakError) as exc:
@@ -592,6 +731,8 @@ class ImportWizardWidget(QWidget):
         try:
             sb_result = StandardBankImporter().parse(plaintext, self._exponent)
             if sb_result is not None:
+                # Before preview_result — see _apply_account_match's docstring.
+                self._apply_account_match(sb_result)
                 self._show_preview(
                     self._imports.preview_result(sb_result, self._target_account_id())
                 )

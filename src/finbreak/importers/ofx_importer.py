@@ -31,7 +31,7 @@ import re
 from ofxparse import OfxParser
 from ofxparse.ofxparse import AccountType
 
-from finbreak.importers.base import ParseResult, RowError
+from finbreak.importers.base import ParseResult, RowError, SourceAccountHint
 from finbreak.models import OfxAccountInfo, TransactionDraft
 from finbreak.services.transactions import parse_transaction, to_minor_storable
 
@@ -118,13 +118,27 @@ class OfxImporter:
         return [
             (
                 OfxAccountInfo(account.account_id or "", account.account_type or ""),
-                self._parse_statement(account.statement, exponent),
+                self._parse_statement(
+                    account.statement,
+                    exponent,
+                    # OFX is self-describing, so the account id IS the statement's
+                    # own number — no extraction needed (FIBR-0086 §4.1). The
+                    # <ACCTTYPE> beside it is deliberately unused: its vocabulary
+                    # does not map onto this app's account types without a
+                    # translation table nobody has validated, and a wrong
+                    # prefilled type is worse than an empty one.
+                    SourceAccountHint(account.account_id)
+                    if account.account_id
+                    else None,
+                ),
             )
             for account in accounts
         ]
 
     @staticmethod
-    def _parse_statement(statement, exponent: int) -> ParseResult:
+    def _parse_statement(
+        statement, exponent: int, source_account: SourceAccountHint | None = None
+    ) -> ParseResult:
         drafts: list[TransactionDraft] = []
         errors: list[RowError] = []
         # 1-based over this statement's transactions in file order (INV-3).
@@ -168,7 +182,12 @@ class OfxImporter:
                 "this OFX file's closing balance is not a usable amount"
             ) from exc
         return ParseResult(
-            drafts, errors, period_start, period_end, closing_balance_minor
+            drafts,
+            errors,
+            period_start,
+            period_end,
+            closing_balance_minor,
+            source_account,
         )
 
 

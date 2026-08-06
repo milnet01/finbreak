@@ -38,7 +38,7 @@ from collections.abc import Sequence
 from decimal import Decimal, InvalidOperation
 from enum import StrEnum
 
-from finbreak.importers.base import ParseResult, RowError
+from finbreak.importers.base import ParseResult, RowError, SourceAccountHint
 from finbreak.importers.pdf_importer import (
     _MAX_PDF_PAGES,
     _MAX_PDF_ROWS,
@@ -294,6 +294,61 @@ def _table_region(page_lines: list[str], family: Family) -> slice:
             end = j
             break
     return slice(start, end)
+
+
+# The label as printed. The corpus shows three spellings: "Account Number"
+# (families A and B), "account number" (C, excluded) and "Account number:" (D) —
+# hence the case-insensitive match and the optional colon.
+#
+# The captured run allows a SINGLE space or dash between digits (grouping, as in
+# "11 222 333 4") and therefore stops at a column gap of two or more spaces. It
+# deliberately does NOT use `[\d\s-]*`, which is greedy across any whitespace and
+# merges a following numeric column into the key: `Account Number 44 555 666 7
+# 2024 03 27` captures the date column too under the greedy form (FIBR-0086
+# INV-2a).
+_ACCOUNT_LABEL = re.compile(r"account\s+number\s*:?\s*((?:\d[ -]?)*\d)", re.IGNORECASE)
+
+# Families whose header label names THEIR OWN account. C is absent by design, not
+# by omission: its label names the debit-order account that pays the card, which
+# normalises to the current account's number exactly (FIBR-0086 §2.3).
+_ACCOUNT_NUMBER_FAMILIES = frozenset({Family.A, Family.B, Family.D})
+
+
+def extract_account_number(
+    page_lines: list[str], family: Family
+) -> SourceAccountHint | None:
+    """What this statement prints about ITS OWN account, or None.
+
+    Returns None for any family not in ``_ACCOUNT_NUMBER_FAMILIES`` — the guard
+    lives HERE, in the extractor, not only at the call site, so that calling it
+    directly with ``Family.C`` cannot yield the debit-order account. A
+    call-site-only guard would let the invariant's test pass while the function it
+    names stays wrong.
+
+    Reads only the header block ABOVE the transaction table, because other
+    accounts' numbers appear inside transaction rows (§2.4) — a current-account
+    statement prints the home loan's number in one. Scans the header block
+    top-down and takes the FIRST line matching ``_ACCOUNT_LABEL``; later matches
+    are ignored. (Every measured file has exactly one, so first-wins is only
+    reached by a layout that changes, and keeps that case deterministic rather
+    than order-dependent.) Values are returned as printed; the caller normalises.
+    """
+    if family not in _ACCOUNT_NUMBER_FAMILIES:
+        return None
+    header = page_lines[: _table_region(page_lines, family).start]
+    for line in header:
+        found = _ACCOUNT_LABEL.search(line)
+        if found is None:
+            continue
+        number = found.group(1).strip()
+        if not number:
+            continue
+        return SourceAccountHint(
+            number=number,
+            name=line[: found.start()].strip() or None,
+            family=str(family),
+        )
+    return None
 
 
 # A validated ``D[D] Mon YY`` date — the 3-letter month must be a real month (so a
@@ -1148,7 +1203,16 @@ class StandardBankImporter:
             closing_minor = _verify_e_totals(
                 full_text, result.drafts, opening, exponent, fmt
             )
-        return ParseResult(result.drafts, [], start, end, closing_minor)
+        # What this statement says about ITS OWN account (FIBR-0086), read from
+        # page 1's header only. The family check here is belt-and-braces — the
+        # extractor holds the same guard — so a future caller cannot reintroduce
+        # the §2.3 trap by dropping it.
+        hint = (
+            extract_account_number(pages[0], family)
+            if pages and family in _ACCOUNT_NUMBER_FAMILIES
+            else None
+        )
+        return ParseResult(result.drafts, [], start, end, closing_minor, hint)
 
 
 def _cc_opening(full_text: str, fmt: Fmt) -> Decimal:

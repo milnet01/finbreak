@@ -25,6 +25,24 @@ class RowError:
     reason: str
 
 
+@dataclass(frozen=True)
+class SourceAccountHint:
+    """What a statement says about the account it belongs to (FIBR-0086).
+
+    Everything here is as-PRINTED, never normalised — normalisation is a matching
+    concern and lives in ``services/account_match.py``. Every field except
+    ``number`` is best-effort: the formats differ in what they print.
+
+    ``family`` is typed ``str`` rather than the Standard Bank ``Family`` enum so
+    this module keeps depending on nothing but ``models`` — it is imported by
+    every importer, and a ``Family`` import here would make the shared value
+    object depend on one importer's."""
+
+    number: str  # as printed, grouping and padding intact
+    name: str | None = None  # the product name, where the layout prints one
+    family: str | None = None  # the Family value, as a str; None for non-SB
+
+
 @dataclass
 class ParseResult:
     """An importer's output: valid ``drafts`` + collected ``errors`` (both carry
@@ -44,3 +62,10 @@ class ParseResult:
     period_start: str | None
     period_end: str | None
     closing_balance_minor: int | None = None
+    # FIBR-0086, appended last so every existing positional construction is
+    # unchanged (the same reasoning as closing_balance_minor above). ``None`` when
+    # the format carries no account number, or the layout family is excluded from
+    # detection — credit-card statements label the debit-order account, not their
+    # own, so reading theirs would file every card statement under the current
+    # account (FIBR-0086 §2.3).
+    source_account: SourceAccountHint | None = None
