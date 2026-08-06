@@ -5583,6 +5583,34 @@ is a future error tomorrow.
   Kind: doc-fix.
   Source: in-session-2026-08-06 (surfaced while landing FIBR-0231).
 
+- 📋 [FIBR-0251] **ci-docker.sh cannot run during a GitHub outage — ci-setup.sh downloads its pinned binaries from GitHub releases.**
+  Surfaced 2026-08-06 while proving the tree green during a GitHub
+  Actions major outage. `scripts/ci-setup.sh` fetches the four pinned
+  non-pip binaries (gitleaks, shellcheck, actionlint, zizmor) from
+  GitHub release URLs, so `scripts/ci-docker.sh` inherits a hard
+  dependency on GitHub being up. Observed: gitleaks 8.30.1 installed,
+  then shellcheck's download returned `curl: (22) ... error: 504` and
+  the run died in `tar`.
+
+  Consequence: during a GitHub incident BOTH the CI run and the
+  containerised local reproduction are unavailable at once, leaving only
+  `scripts/ci-local.sh` on a desktop that already has the binaries on
+  PATH. That is the pre-push hook's path, so the gate itself still
+  works — this is a loss of the *reproduction* tool, not of the gate.
+
+  Options, cheapest first: (a) cache the four binaries in a local
+  directory and have ci-setup.sh reuse a present, version-matching copy
+  before reaching for the network; (b) let ci-docker.sh mount the host's
+  already-downloaded binaries; (c) accept it and document the fallback.
+  Note (a) must still verify the pinned version, or the cache becomes a
+  way to silently run an older rule set — the exact drift the pins in
+  CLAUDE.md exist to prevent.
+
+  Not urgent: the pre-push gate is unaffected.
+  **Layman:** The "reproduce CI exactly on my own machine" check stops working when GitHub itself is down, which is exactly when you most want it.
+  Kind: chore.
+  Source: in-session-2026-08-06 (GitHub Actions major outage, 15:22 UTC).
+
 ## How to add an item
 
 1. Allocate the next ID:
