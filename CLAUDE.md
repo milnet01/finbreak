@@ -285,3 +285,20 @@ The six standards (`coding`, `naming`, `dependencies`,
 [`docs/standards/`](docs/standards/) — see its
 [README](docs/standards/README.md) for the index, the
 closed-loop diagram, and which kinds each governs.
+
+### One standard is knowingly out of date: spec filenames
+
+`naming.md` line 85 still says a spec is `docs/specs/<ID>.md`, and its
+line-207 counter-example says the same. **That rule is superseded** —
+the user decided 2026-08-05 that specs are
+`docs/specs/<ID>-<topic>.md`, because a filename a human can read
+without opening it is worth the suffix. **Name a new spec the new way**;
+the first file under the new rule is
+`docs/specs/FIBR-0231-plain-english-month-summary.md`.
+
+`naming.md` is not amended yet on purpose. Editing any
+`docs/standards/` file trips the rule-14 `/cold-eyes` gate on its own,
+and back-migrating the 54 existing `FIBR-NNNN.md` specs means repointing
+374 inbound citations — so both halves are tracked as **FIBR-0196**
+rather than done in passing. This note exists so a session that reads
+`naming.md` and not that bullet does not name the next spec wrongly.
