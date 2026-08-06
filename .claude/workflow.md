@@ -27,7 +27,7 @@ These four are configuration and state that no other file records.
 | Field | Value |
 |---|---|
 | **Repo visibility** | PUBLIC (cached 2026-06-30; push freely per global rule § 6) |
-| **Push held** | 2026-08-06: **25 commits** + tag `FIBR-0085-complete` unpushed, held ONLY by the GitHub Actions outage — not by anything wrong with them. Still `major_outage` on githubstatus.com at 21:30 UTC (re-checked; the incident is still "investigating", and Pages is now down too — Git Operations, API and Webhooks are operational). The gate is green locally (1860 passed / 3 skipped). **One** red CI run on `983559e` (`31117840312`, 15m35s vs a normal ~3min, died before any stage ran) — the outage, not a defect; the earlier note said two, and `gh run list` shows one. The batch is 14 FIBR-0085 commits + 6 FIBR-0252 spec/review commits + 5 FIBR-0252 implementation commits. When Actions is healthy: activate `.venv`, `git push origin main`, then `git push --tags --no-verify`, re-run `31117840312`, and clear this row. |
+| **Push held** | 2026-08-07: **28 commits** + tags `FIBR-0085-complete` and `FIBR-0252-complete` unpushed, held ONLY by the GitHub Actions outage — not by anything wrong with them. Last checked 2026-08-06 21:30 UTC: `major_outage`, incident still "investigating", Pages down too; Git Operations, API and Webhooks operational. **Re-check before pushing** — this row is a snapshot, not a live reading. (An earlier version of this row said 20, then 25; both were arithmetic on a stale figure. `git rev-list --count @{u}..HEAD` is the authority.) The gate is green locally (1860 passed / 3 skipped). **One** red CI run on `983559e` (`31117840312`, 15m35s vs a normal ~3min, died before any stage ran) — the outage, not a defect; the earlier note said two, and `gh run list` shows one. The batch is 14 FIBR-0085 commits + 6 FIBR-0252 spec/review commits + the FIBR-0252 implementation and close commits. When Actions is healthy: activate `.venv`, `git push origin main`, then `git push --tags --no-verify`, re-run `31117840312`, and clear this row. |
 | **Convergence checkpoint** | 5 (consecutive `FP##` items immediately preceding any ✅-`implement`-Kind close in the active release block — see `~/.claude/commands/close-phase.md § 5a-6`) |
 | **Debt-sweep phase threshold** | 5 (auto-prompt for `/debt-sweep` after this many phases without one) |
 | **Last debt sweep** | 2026-07-26 (DS02 — all lanes, all severities, 4 commits) |
@@ -42,9 +42,9 @@ this**, so treat a stale date as "recent work was out-of-band", not as
 
 | Field | Value |
 |---|---|
-| **Active item ID** | FIBR-0252 (Standard Bank per-row errors discarded). FIBR-0085 closed by `/close-phase` 2026-08-06 |
-| **Blocked on** | Nothing. TDD green 2026-08-06; next is steps 5–6 (`/audit` + `/code-quality-review`). |
-| **Last update** | 2026-08-06 |
+| **Active item ID** | FIBR-0159 (publish to Flathub). FIBR-0252 closed by `/close-phase` 2026-08-07 |
+| **Blocked on** | Nothing. FIBR-0159 was already 🚧 before this close; it resumes at step 1. |
+| **Last update** | 2026-08-07 (FIBR-0252 closed by /close-phase) |
 
 ### Step progress
 
@@ -52,18 +52,10 @@ While an item is active, Claude marks the current step 🚧; completed
 steps flip to ✅. Resets to all ⬜ when a new item becomes active. The
 nine steps are defined in `~/.claude/skills/app-workflow/SKILL.md`.
 
-1. ✅ Verify spec — `docs/specs/FIBR-0252-standard-bank-row-errors.md`,
-   `/cold-eyes` converged at loop 5 (5 loops × 3 cold lanes = 15 reviews;
-   121 verified findings, all fixed). Status: accepted.
-2. ✅ Verify dependencies — none new. The fix is one line; the fixture is
-   generated with reportlab, which stays probe-only (no dependency group).
-3. ✅ Write tests first — five new legs + the synthetic fixture
-   `family_a_zero_fee.pdf`; four seen red for the reason under test, INV-6's
-   green by design (spec §7). `d97fc05`.
-4. ✅ Implement until tests pass — the one-line fix (`parse` returns
-   `result.errors`), plus the `_PRE_E_FIXTURES` count 14 → 15, the detection-list
-   entry, and the §12 amendments to both test-suite contracts (`d85f26e`).
-   Gate green: 1867 passed / 3 skipped.
+1. ⬜ Verify spec
+2. ⬜ Verify dependencies
+3. ⬜ Write tests first
+4. ⬜ Implement until tests pass
 5. ⬜ Run `/audit` — in parallel with 6
 6. ⬜ Run `/code-quality-review` — in parallel with 5
 7. ⬜ Fold all actionable findings into one new fix-pass

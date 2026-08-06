@@ -745,7 +745,7 @@ def test_INV14_done_waits_for_the_report(
 # -- FIBR-0252 INV-4 (render half) ------------------------------------------- #
 
 
-def test_FIBR0252_errors_column_shows_the_count(qtbot, service, tmp_path):
+def test_FIBR0252_errors_column_shows_the_count(qtbot, service, profile, tmp_path):
     """FIBR-0252 INV-4 — the review table's Errors column shows the count for a
     Standard Bank file with an unimportable row.
 
@@ -754,25 +754,53 @@ def test_FIBR0252_errors_column_shows_the_count(qtbot, service, tmp_path):
     duplicate of it: `BatchReviewWidget._number` renders `""` for a zero, so a
     correct `error_count` that never reaches a cell looks identical to the
     defect from the user's side — and the cell is the only half the user sees.
+
+    Two files, because one is a configuration the app never reaches: a
+    single-file selection is routed to `_select_file` (the preview flow) by
+    `ImportWizardWidget._on_files_chosen`, and `_select_files` is documented for
+    two or more. The CSV also keeps the assertion honest — its Errors cell must
+    stay blank while the statement's reads `1`.
     """
+    # Not discarded by accident: `_acct` creates nothing, it returns the seeded
+    # account's id. Calling it asserts the vault HAS an account, which is the
+    # precondition for `match_account` to run and find no match — the reason
+    # both records stop at `needs_account` rather than going `ready`.
     _acct(service)
     widget = _wizard(qtbot, service)
-    widget._select_files([str(_SB_FIXTURES / "family_a_zero_fee.pdf")])
+    widget._select_files(
+        [
+            str(_SB_FIXTURES / "family_a_zero_fee.pdf"),
+            _csv(tmp_path, "plain.csv", _rows(2)),
+        ]
+    )
     qtbot.waitUntil(
         lambda: (
-            bool(widget._batch_files)
-            and widget._batch_files[0].outcome == "needs_account"
+            len(widget._batch_files) == 2
+            and all(f.outcome == "needs_account" for f in widget._batch_files)
         ),
         timeout=3000,
     )
     # Precondition, so a wait that fell through could not leave this leg reading
-    # a table SCAN had not filled yet: the statement parsed, and the two money
-    # rows are its drafts. (The record stops at `needs_account` because no
-    # account carries the fixture's number.)
-    assert widget._batch_files[0].parsed is not None, "the fixture must have parsed"
+    # a table SCAN had not filled yet.
+    statement = next(
+        row
+        for row, record in enumerate(widget._batch_files)
+        if record.path.endswith("family_a_zero_fee.pdf")
+    )
+    assert widget._batch_files[statement].parsed is not None, (
+        "the fixture must have parsed"
+    )
 
-    cell = widget._batch_review._table.item(0, import_batch_mod.COL_ERRORS)
-    assert cell is not None and cell.text() == "1", (
-        f"Errors cell read {None if cell is None else cell.text()!r} — the "
-        "statement's unreadable row must be counted where the user can see it"
+    table = widget._batch_review._table
+    cells = [
+        table.item(row, import_batch_mod.COL_ERRORS).text()
+        for row in range(table.rowCount())
+    ]
+    assert cells[statement] == "1", (
+        f"Errors cells read {cells!r} — the statement's unreadable row must be "
+        "counted where the user can see it"
+    )
+    assert cells[1 - statement] == "", (
+        f"Errors cells read {cells!r} — a clean file's cell stays blank, so the "
+        "count draws the eye only when it matters"
     )

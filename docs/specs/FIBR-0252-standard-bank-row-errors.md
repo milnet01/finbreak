@@ -344,11 +344,23 @@ be.
   in file order, and counts it in the summary line.
   *Test:* `tests/features/standard_bank_pdf/test_standard_bank.py::test_FIBR0252_preview_shows_the_error_row`
   — drives the wizard over the fixture with `qtbot` and asserts the preview table
-  holds 3 rows; that the row whose **first cell reads `2`** carries "Error" in the
-  status column; and that the summary line ends "· 1 error". Stated by cell content,
-  not by table index, because `_fill_preview_table` sorts the interleaved entries by
-  `row_number` — statement row 2 does land at table index 1 here, but a test written
-  against the index would silently follow a re-ordering rather than catch it.
+  holds 3 rows; the **ordered** sequence of (row-number cell, status cell) pairs is
+  `[("1", "OK"), ("2", "Error"), ("3", "OK")]`; and the summary line ends
+  "· 1 error".
+  *Amended at implementation (2026-08-06).* This clause first prescribed only
+  "the row whose **first cell reads `2`** carries Error" — a content lookup with
+  no position in it. That is weaker than the invariant above it: a mapping keyed
+  on the row-number cell cannot fail on a re-ordering, which is exactly what
+  "stops interleaving" looks like. Verified by mutation: deleting
+  `_fill_preview_table`'s `entries.sort(...)` renders `1, 3, 2`, and the
+  content-only form stays **green** through it while the ordered form fails at
+  index 1. The built test is the ordered form. (The original reasoning — prefer
+  content over a bare table index — was sound about *what* to name the row by;
+  it just dropped the ordering claim on the way.)
+  *Also guarded, pre-existing:* `tests/features/import_/test_import.py::test_INV10c_preview_shows_rows_summary_and_period`
+  goes red on the same mutation, via the CSV path. So the interleave was never
+  unguarded overall — §11 was crediting the wrong leg for it, which is what the
+  amendment fixes.
   *Breaks when:* `_fill_preview_table` stops interleaving, or
   `_apply_preview_counts` stops counting `preview.errors`.
 
@@ -623,7 +635,7 @@ Helvetica text with no images or embedded fonts beyond the base set.
 | INV-2 | `test_standard_bank.py::test_FIBR0252_parse_propagates_row_errors` (row-number assertions) |
 | INV-3 | `test_standard_bank.py::test_FIBR0252_parse_propagates_row_errors` — its span / closing / amount assertions. **Not** the corpus legs: they carry no `RowError`, so they cannot regress on this change (INV-3's own note) |
 | INV-4 | `test_batch_import.py::test_FIBR0252_error_count_is_set_for_a_standard_bank_file` (field) + `test_batch_import_ui.py::test_FIBR0252_errors_column_shows_the_count` (rendered cell) |
-| INV-5 | `test_standard_bank.py::test_FIBR0252_preview_shows_the_error_row` |
+| INV-5 | `test_standard_bank.py::test_FIBR0252_preview_shows_the_error_row` — its **ordered** (row-number, status) sequence, which is what locks the interleave; a content-keyed mapping would not (INV-5's amendment note). Also caught, on the CSV path, by the pre-existing `test_import.py::test_INV10c_preview_shows_rows_summary_and_period` |
 | INV-6 | `test_standard_bank.py::test_FIBR0252_fixture_is_synthetic` — the repo-wide corpus guard cannot read `.pdf` bytes, so this is the only check on the new fixture |
 | The batch report line's ", N rows couldn't be read" clause | **nothing** — and it is worth being exact about why, because "transitively covered by INV-4" is the tempting answer and it is false. `report_line` appends the clause only on its `committed` branch; INV-4's tests *scan*, and never commit, so that branch is unexecuted. Its wording defects are deferred as FIBR-0254 |
 | §6's silent under-import (a money-moving error row on a statement with no printed closing) | **nothing**, deliberately — no gate exists to assert. This spec makes the row *visible*; closing the gap is FIBR-0255 (§9) |

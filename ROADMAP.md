@@ -291,7 +291,7 @@ scariest unknown (native-library bundling) up front.
   Kind: fix.
   Source: in-session-2026-08-06 (FIBR-0086 review lane 1).
 
-- 🚧 [FIBR-0252] **StandardBankImporter.parse discards its per-row errors, so a dropped row is invisible.**
+- ✅ [FIBR-0252] **StandardBankImporter.parse discards its per-row errors, so a dropped row is invisible.**
   `standard_bank.py`'s `parse` returns `ParseResult(result.drafts, [],
   start, end, ...)` — an empty error list, discarding the errors `_split`
   had just separated out. So `ImportPreview.errors` is empty for every
@@ -326,6 +326,20 @@ scariest unknown (native-library bundling) up front.
   assertion moved 14 -> 15 and its hand-written detection list gained an entry.
   Both test-suite contracts amended per §12. Gate green: 1867 passed /
   3 skipped. Next: steps 5-6 (/audit + /code-quality-review).
+  Resolved (2026-08-07): `parse` now returns `result.errors`. Five new tests
+  (INV-1..INV-6) plus the synthetic fixture `family_a_zero_fee.pdf`; four seen
+  red for the reason under test, INV-6's green by design. Both test-suite
+  contracts amended (§12); the SB suite's globbed fixture count moved 14 -> 15
+  and its detection list gained an entry. Closed by /close-phase: static layer
+  green, two independent cold review lanes — correctness returned NO defects
+  (traced `.errors` through all six consumers; dedup, commit-writes, both
+  balance gates, the row cap and the coverage span stay drafts-only, so no
+  money figure moves), test-validity returned 1 LOW + 2 INFO, all fixed inline
+  per the standing directive. The LOW was worth the lane: INV-5's leg asserted
+  an order-INSENSITIVE mapping while claiming "in file order", verified by
+  mutation; it is now an ordered sequence and the spec's §5/§11 were amended to
+  match what was built. Gate green 1867 passed / 3 skipped. Journal
+  `docs/journal/FIBR-0252.md`. FIBR-0253/0254/0255 stay out of scope (§9).
 
 - 📋 [FIBR-0253] **The all-rows-failed preview banner gives CSV-only advice on a PDF or OFX import.**
   `ui/import_wizard.py`'s FIBR-0146 D7 banner reads "None of the rows

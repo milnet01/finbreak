@@ -799,6 +799,9 @@ def test_FIBR0252_error_count_is_set_for_a_standard_bank_file(service, batch):
     returns `""` for a zero, so the field and its rendering are separate claims
     and only the second is what the user sees.
     """
+    # Not discarded by accident: `_acct` creates nothing, it returns the seeded
+    # account's id. Calling it asserts the vault HAS an account, which is the
+    # precondition for `match_account` to run at all.
     _acct(service)
     files = batch.build([str(_SB_FIXTURES / "family_a_zero_fee.pdf")])
     _scan_all(batch, files)

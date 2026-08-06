@@ -1067,10 +1067,12 @@ def test_FIBR0252_preview_shows_the_error_row(qtbot, service, tmp_path):
     `ImportPreview`, `_fill_preview_table` interleaves them by `row_number`, and
     `_apply_preview_counts` renders "· N error".
 
-    Located by CELL CONTENT, not by table index. Statement row 2 does land at
-    table index 1 here, but `_fill_preview_table` sorts the interleaved entries
-    by `row_number` — a test written against the index would silently follow a
-    re-ordering rather than catch it."""
+    Asserted as an ORDERED sequence of (row-number cell, status cell) pairs, so
+    it locks both halves of the invariant. A mapping keyed on the row-number
+    cell would read the same and check less: it cannot fail on a re-ordering,
+    which is precisely what INV-5's "stops interleaving" breakage looks like.
+    Dropping `_fill_preview_table`'s `entries.sort(...)` renders `1, 3, 2`, and
+    a set-like assertion stays green through it."""
     acct = _acct(service)
     path = _write(tmp_path, "zero-fee.pdf", _fx("family_a_zero_fee.pdf"))
     widget = _wizard(qtbot, service, acct)
@@ -1078,12 +1080,13 @@ def test_FIBR0252_preview_shows_the_error_row(qtbot, service, tmp_path):
 
     table = widget._preview_table
     assert table.rowCount() == 3, "two drafts plus the errored row, interleaved"
-    statuses = {
-        table.item(row, 0).text(): table.item(row, 4).text()
+    rows = [
+        (table.item(row, 0).text(), table.item(row, 4).text())
         for row in range(table.rowCount())
-    }
-    assert statuses == {"1": "OK", "2": "Error", "3": "OK"}, (
-        "the errored statement row must be shown as an Error row, in file order"
+    ]
+    assert rows == [("1", "OK"), ("2", "Error"), ("3", "OK")], (
+        "the errored statement row must be shown as an Error row, interleaved "
+        "into the drafts in file order"
     )
     assert widget._summary_label.text().endswith("· 1 error"), (
         f"summary read {widget._summary_label.text()!r} — the error must be counted"

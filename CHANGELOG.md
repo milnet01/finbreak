@@ -111,6 +111,21 @@ signaling per
 
 ### Fixed
 
+- **Standard Bank statements now tell you when a line couldn't be read** (FIBR-0252)
+  If a line on a Standard Bank statement could not be read — a waived fee
+  printed as 0.00, a garbled date — finbreak used to throw that fact away.
+  It would tell you "53 added" with no hint that anything had been skipped.
+  Now the skipped line is counted and shown: it appears in the import
+  preview as an Error row, in its right place among the others, and the
+  summary line counts it. When you import a folder of statements at once,
+  the review screen's Errors column shows the count per file instead of
+  always reading blank. Nothing about which transactions import has
+  changed — the same rows land, with the same totals; you are simply told
+  what didn't.
+
+  This affected every Standard Bank statement layout. CSV and OFX imports
+  already reported unreadable lines this way.
+
 - **Standard Bank PDF import: a statement whose opening or closing balance is too large to store is now refused with a message instead of crashing the import** (FIBR-0224)
   A crafted statement printing balances beyond the storage limit could
   reconcile against itself and so clear every integrity check, then fail
