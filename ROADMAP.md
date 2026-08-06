@@ -140,7 +140,7 @@ scariest unknown (native-library bundling) up front.
   Kind: feature.
   Source: user-request-2026-07-09.
 
-- 📋 [FIBR-0244] **Redact the real account number published in docs/specs/FIBR-0050.md.**
+- ✅ [FIBR-0244] **Redact the real account number published in docs/specs/FIBR-0050.md.**
   `docs/specs/FIBR-0050.md` line 180 contains the user's REAL Standard Bank
   RCP Loan account number, twice, inside a quoted parser example. It was
   committed in `507a5f7` on 2026-07-05 and is an ancestor of `origin/main`,
@@ -167,6 +167,57 @@ scariest unknown (native-library bundling) up front.
   **Layman:** One of our design documents accidentally contains a real bank account number and has been public on GitHub for a month; decide whether to just clean it up going forward or also rewrite the published history.
   Kind: security.
   Source: in-session-2026-08-06 (found during FIBR-0086 cold-eyes).
+  Resolved (2026-08-06): option (a) — redacted in HEAD, history left
+  intact (user decision 2026-08-06). The sweep found FOUR real values, not
+  the one this bullet filed, across six sites; each replaced by a
+  length-preserving synthetic stand-in per FIBR-0086 §2.2:
+  (1) the RCP Loan reference number, twice in docs/specs/FIBR-0050.md
+  § Family A; (2) the real card PAN mask and the real Investment account
+  number, both published by FIBR-0050's own "fixtures must never use
+  these" sentence — the prohibition was the leak, so the sentence now
+  names no values at all; (3) an unlabelled 10-digit number in the
+  letterhead/footer examples on ROADMAP.md FIBR-0115 + FIBR-0119 and
+  .claude/workflow.md §3; (4) the same number as a live TEST FIXTURE line
+  in tests/features/standard_bank_pdf/test_standard_bank.py — a real
+  number inside the suite the no-real-data rule most directly binds.
+  Characterised against the corpus before redacting, so a stand-in was not
+  swapped in for bank boilerplate: the RCP number appears in one folder
+  (that account's own) and the Investment number in one; the 10-digit one
+  appears across Credit Card, Home Loan and Investment, so it identifies
+  the customer or the print batch rather than any single account — not a
+  public bank registration number, and redacted on that basis.
+  _is_boilerplate() matches any all-digit line, so the fixture swap is
+  behaviour-neutral; tests/features/standard_bank_pdf/ 106 passed.
+  Verified zero residual occurrences repo-wide. The user's ID number was
+  never in the repo. Nothing rotated: these are privacy exposures, not
+  credentials.
+  Still open: the general check does not exist. This was found by grepping
+  long digit-runs, which would miss a real merchant, address or date-of-
+  birth. Filed as FIBR-0246.
+
+- 📋 [FIBR-0246] **A real-personal-data check the gate actually runs — gitleaks does not cover it.**
+  FIBR-0244 found four real values published across six sites, by grepping
+  for long digit-runs. That is a one-off, not a check: it would miss a real
+  merchant name, a real address, a real date of birth, or an account number
+  written with spaces or in a shorter grouping. gitleaks matches credential
+  and key patterns only, so every one of those passed CI since 2026-07-05.
+  Wanted: a gate stage that fails on real personal/financial data in
+  tracked files. Sketch — a deny-list file, gitignored and never committed,
+  holding the user's real values (account numbers in every grouping the
+  statements print, the card PAN and its mask, the ID number), plus a
+  committed rule set for the structural patterns (a bare 9-13 digit run
+  outside a fenced block known to be synthetic; a PAN-shaped group). Runs
+  over tracked files in ci-local.sh; absent deny-list degrades to the
+  structural rules alone so CI still works without the secret half.
+  Note the awkward part, which is why this is a spec and not a chore: the
+  deny-list is itself the most sensitive file in the project, and a check
+  that greps for real numbers must never print the match. Report path:line
+  and the rule that fired, never the value.
+  Scope also covers prose, not just fixtures — FIBR-0244's worst site was a
+  spec sentence forbidding the values by quoting them.
+  **Layman:** Add an automatic check that stops real bank details from ever being committed — the current security scanner only looks for passwords and keys, so it has never checked for these.
+  Kind: security.
+  Source: in-session-2026-08-06 (gap found while closing FIBR-0244).
 
 ### 📦 Packaging
 
@@ -3114,7 +3165,7 @@ because retrofitting them is a data migration.
   Resolved (2026-07-12): added AuthService.notify_activity() — restarts the running idle timer with its armed interval (no settings re-read; no-op when locked/headless) — and MainWindow now installs an application-wide event filter that calls it on MouseButtonPress/MouseMove/KeyPress/Wheel. The auto-lock now counts from the last interaction, not from unlock. TDD: 2 service-level tests (restart-when-unlocked via a spy timer; no-op-when-locked) + 1 shell-level test (a KeyPress through the app filter calls notify_activity). Gate green (607 passed/1 skipped), mypy/ruff/bandit/gitleaks clean.
 
 - 📋 [FIBR-0115] **Credit-card import: strip the "Continued on next page" footer from the last transaction's description.**
-  Surfaced while fixing FIBR-0112 (not that bug — amounts/checksum are unaffected). On a multi-page Family-C statement, the in-region "NNNN Continued on next page......" line has no transaction date, so _fold/_parse_family_c folds it into the PRECEDING transaction's description (e.g. "# International Txn Fee 0453155796 Continued on next page......"). Cosmetic data-quality issue affecting one row per page break. Fix: treat a line matching a "Continued on next page" / bare account-number footer as a skip line (like the "Debit"/"Credits" section headers in _is_cc_skip_line), not a description continuation. TDD with a synthetic fixture line.
+  Surfaced while fixing FIBR-0112 (not that bug — amounts/checksum are unaffected). On a multi-page Family-C statement, the in-region "NNNN Continued on next page......" line has no transaction date, so _fold/_parse_family_c folds it into the PRECEDING transaction's description (e.g. "# International Txn Fee 0400111222 Continued on next page......", number synthetic). Cosmetic data-quality issue affecting one row per page break. Fix: treat a line matching a "Continued on next page" / bare account-number footer as a skip line (like the "Debit"/"Credits" section headers in _is_cc_skip_line), not a description continuation. TDD with a synthetic fixture line.
   **Layman:** On multi-page credit-card statements, one transaction's description gets a stray "Continued on next page..." tacked onto it. Cosmetic only — the amounts are correct.
   Kind: fix.
   Source: dogfooding-2026-07-12.
@@ -3145,7 +3196,7 @@ because retrofitting them is a data migration.
   Resolved (2026-07-12): make-icons.sh applies an 18%-radius rounded-rectangle alpha mask to the master once, deriving every size (Linux hicolor PNGs, Windows .ico, macOS .iconset, runtime app.png) from the rounded temp; master stays square. Regenerated the set; regression test asserts transparent corners + opaque centre. Refreshed the dogfood install's hicolor icons so the launcher shows it now; the About-box (embedded app.png) rounds on the v0.1.7 install. Ships in v0.1.7.
 
 - ✅ [FIBR-0119] **Home Loan (Family B) import: page-break footer/letterhead folds into the previous transaction's description.**
-  Root-caused against a real SBSA Home Loan statement (2026-02-28; real file/password never committed, synthetic fixture/tests to follow). On a multi-page Family-B statement, a page break prints the registered-office letterhead (bare account number, "Standard Bank Centre …", "P O Box …", "Tel. Switchboard: … Fax: …") plus a repeated column header ("Debit Credit Balance" / "Date Date Fee") BETWEEN two transactions. None of those lines carries a date+amount, so _fold (standard_bank.py:489) — which appends every non-row in-region line to the preceding transaction as a description continuation — glued the whole block onto the last transaction before it (e.g. "Insurance Premium 0453155796 Standard Bank Centre … Debit Credit Balance Date Date Fee"). Amounts/dates/counts are unaffected (54 drafts still reconcile), so it imported "successfully" with a corrupt description; it also makes dedup fragile across statements where the same transaction appears with different page-break pollution. Fix: a shared _is_boilerplate() predicate (bare account/reference number; SB registered-office/contact markers; a repeated column-header line whose tokens are all table-header words) that _fold drops instead of folding — generalising the existing _is_cc_skip_line Family-C rule. TDD: pure synthetic _parse_family_b test (footer+header block between two rows → clean descriptions) + re-validated the two real Home Loan statements (27 / 54 drafts, clean descriptions) and the full synthetic A/B/C/D suite. NOTE: the "27 new · 27 duplicate" the user saw importing the 2026-02 statement after the 2025-08 one is CORRECT — the 2026-02 statement restarts at 2025-03-01 (54 drafts = the 27 overlapping the first statement, deduped, + 27 new); no dedup bug.
+  Root-caused against a real SBSA Home Loan statement (2026-02-28; real file/password never committed, synthetic fixture/tests to follow). On a multi-page Family-B statement, a page break prints the registered-office letterhead (bare account number, "Standard Bank Centre …", "P O Box …", "Tel. Switchboard: … Fax: …") plus a repeated column header ("Debit Credit Balance" / "Date Date Fee") BETWEEN two transactions. None of those lines carries a date+amount, so _fold (standard_bank.py:489) — which appends every non-row in-region line to the preceding transaction as a description continuation — glued the whole block onto the last transaction before it (e.g. "Insurance Premium 0400111222 Standard Bank Centre … Debit Credit Balance Date Date Fee"; number synthetic). Amounts/dates/counts are unaffected (54 drafts still reconcile), so it imported "successfully" with a corrupt description; it also makes dedup fragile across statements where the same transaction appears with different page-break pollution. Fix: a shared _is_boilerplate() predicate (bare account/reference number; SB registered-office/contact markers; a repeated column-header line whose tokens are all table-header words) that _fold drops instead of folding — generalising the existing _is_cc_skip_line Family-C rule. TDD: pure synthetic _parse_family_b test (footer+header block between two rows → clean descriptions) + re-validated the two real Home Loan statements (27 / 54 drafts, clean descriptions) and the full synthetic A/B/C/D suite. NOTE: the "27 new · 27 duplicate" the user saw importing the 2026-02 statement after the 2025-08 one is CORRECT — the 2026-02 statement restarts at 2025-03-01 (54 drafts = the 27 overlapping the first statement, deduped, + 27 new); no dedup bug.
   **Layman:** On a multi-page home-loan statement, one transaction's description got the whole page footer (bank address, phone/fax, column headers) glued onto the end — making it a paragraph long instead of a few words.
   Kind: fix.
   Source: dogfooding-2026-07-12.

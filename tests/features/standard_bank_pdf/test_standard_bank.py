@@ -379,7 +379,7 @@ def test_family_b_page_break_boilerplate_not_folded_into_description():
         "2025-11-01 BROUGHT FORWARD 1,000.00",
         "2025-11-01 2025-11-01 Service HL 69.00 1,069.00",
         "2025-11-03 2025-11-02 Insurance Premium 855.14 1,924.14",
-        "0453155796",
+        "0400111222",
         "Standard Bank Centre 1st Floor 5 Simmonds Street Johannesburg 2001",
         "P O Box 61690 Marshalltown 2107 South Africa www.standardbank.co.za",
         "Tel. Switchboard: +27 (0)11 636-9112 Fax: +27 (0)11 636-6299",

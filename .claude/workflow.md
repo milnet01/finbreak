@@ -289,7 +289,7 @@ Long delegated session ("what's next"). Outcomes:
   TDD** (`tests/features/{reporting,transactions_tab,dashboard}/` + settings/self-test legs) →
   `/close-phase`.
 - **FIBR-0119 SHIPPED** (dogfooding fix, user-reported mid-session) — the Home Loan (Family B)
-  PDF import folded a page-break footer/letterhead block ("Insurance Premium 0453155796 Standard
+  PDF import folded a page-break footer/letterhead block ("Insurance Premium 0400111222 Standard
   Bank Centre … Debit Credit Balance Date Date Fee") into the preceding transaction's
   description. Root-caused against the real 2026-02-28 statement (real file/password **never
   committed**): `_fold` appends every non-row in-region line to the preceding txn, and a
