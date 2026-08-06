@@ -297,7 +297,7 @@ scariest unknown (native-library bundling) up front.
   had just separated out. So `ImportPreview.errors` is empty for every
   Standard Bank statement, and FIBR-0085's new Errors column
   (`BatchFile.error_count`, set from `len(parsed.errors)`) reads 0 for
-  all six SB families — which are exactly the layouts this user's own
+  all five SB families — which are exactly the layouts this user's own
   corpus is made of.
 
   FIBR-0085 § 4.2 carries `error_count` precisely because "a file where
@@ -341,6 +341,16 @@ scariest unknown (native-library bundling) up front.
   **Layman:** If no row of a PDF statement can be read, the app tells you to check the column mapping — a screen that only exists for spreadsheet files, so the advice cannot be followed.
   Kind: fix.
   Source: in-session-2026-08-06 (FIBR-0252 spec, blast-radius scan).
+  Rationale corrected (2026-08-06, FIBR-0252 cold-eyes loop 3): the
+  reason given above — "a Family A or E statement prints no closing
+  balance, so `_verify_checksum` returns early" — is the WRONG reason and
+  understates the reach. When every row errors on a zero amount, the
+  drafts sum to zero, so the printed opening and closing are equal by
+  construction and the gate reconciles on EVERY family, not only the
+  closing-less ones. Measured on A and E; B/C/D follow from
+  `_verify_checksum` comparing `opening ± 0` against an equal `closing`.
+  Family E rejects only when a printed Payments/Deposits total is
+  non-zero. See FIBR-0252 §6.
 
 - 📋 [FIBR-0254] **The batch report line contradicts the Errors column, and mis-pluralises "1 rows".**
   Two defects in `ui/import_batch.py::report_line`, both pre-existing and
