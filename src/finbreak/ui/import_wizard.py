@@ -12,7 +12,6 @@ manager, so the screen is translation-ready and RTL-safe (coding.md § 5.2).
 from __future__ import annotations
 
 from datetime import datetime
-from pathlib import Path
 from typing import cast
 
 from PySide6.QtCore import QDate, QSignalBlocker, Qt, Signal, Slot
@@ -43,8 +42,10 @@ from finbreak.importers.pdf_importer import (
     PasswordError,
     PdfError,
     PdfImporter,
+    default_table_index,
     table_to_text,
 )
+from finbreak.importers.sniff import looks_like_ofx, looks_like_pdf
 from finbreak.importers.standard_bank import StandardBankImporter
 from finbreak.models import ColumnMapping, ImportProfile, OfxAccountInfo
 from finbreak.services.account_match import match_account
@@ -405,10 +406,10 @@ class ImportWizardWidget(QWidget):
             with QSignalBlocker(combo):
                 combo.clear()
             combo.hide()
-        if self._looks_like_ofx(path):
+        if looks_like_ofx(path):
             self._select_ofx(path)
             return
-        if self._looks_like_pdf(path):
+        if looks_like_pdf(path):
             self._select_pdf(path)
             return
         try:
@@ -437,25 +438,6 @@ class ImportWizardWidget(QWidget):
             self._text = None
             self._error.setText(str(exc))
             return
-
-    @staticmethod
-    def _looks_like_ofx(path: str) -> bool:
-        """OFX detection (FIBR-0008 D10): by extension (``.ofx``/``.qfx``), with a
-        **bounded** content-sniff fallback (the first 512 bytes only — never the
-        whole file, so the size cap can't be bypassed by the sniff) for a
-        mis-named file. A ``.csv`` extension is always CSV."""
-        lower = path.lower()
-        if lower.endswith((".ofx", ".qfx")):
-            return True
-        if lower.endswith(".csv"):
-            return False
-        try:
-            with Path(path).open("rb") as fh:
-                head = fh.read(512).lstrip().upper()
-        except OSError:
-            return False  # a missing/unreadable file falls through to the CSV path,
-            # which re-reads it and surfaces the OSError as a shown message.
-        return head.startswith(b"OFXHEADER") or b"<OFX" in head
 
     def _select_ofx(self, path: str) -> None:
         """Read (size-capped, D13) + parse the OFX file, populate the statement
@@ -633,26 +615,6 @@ class ImportWizardWidget(QWidget):
             self._error.clear()
             self._preview_ofx_statement(index)
 
-    @staticmethod
-    def _looks_like_pdf(path: str) -> bool:
-        """PDF detection (FIBR-0009 INV-7a): by ``.pdf`` extension, else a
-        **bounded** content-sniff (the first 512 bytes, ``lstrip``ped, tested for
-        the ``%PDF-`` magic — an ASCII literal, case-exact — never the whole file,
-        so the size cap can't be bypassed by the sniff). A CSV/OFX extension is
-        never PDF."""
-        lower = path.lower()
-        if lower.endswith(".pdf"):
-            return True
-        if lower.endswith((".csv", ".ofx", ".qfx")):
-            return False
-        try:
-            with Path(path).open("rb") as fh:
-                head = fh.read(512).lstrip()
-        except OSError:
-            return False  # a missing/unreadable file falls through to the CSV
-            # path, which re-reads it and surfaces the OSError as a message.
-        return head.startswith(b"%PDF-")
-
     def _select_pdf(self, path: str) -> None:
         """Read (size-capped, D10) + kick off the decrypt state machine (FIBR-0065
         D5). Locked PDFs prompt for a password **non-blocking**, so an idle
@@ -772,7 +734,7 @@ class ImportWizardWidget(QWidget):
         if candidates is None:
             return  # a friendly error was already surfaced
         self._pdf_candidates = candidates
-        default = self._default_pdf_index(candidates)
+        default = default_table_index(candidates)
         combo = self._pdf_table_combo
         with QSignalBlocker(combo):  # populate without firing _on_pdf_table_changed
             combo.clear()
@@ -816,13 +778,6 @@ class ImportWizardWidget(QWidget):
             # net, so it never crashes the slot. (indie-review L1)
             self._show_pdf_read_error(exc)
             return None
-
-    @staticmethod
-    def _default_pdf_index(candidates: list[list[list[str | None]]]) -> int:
-        """The default table = the one with the most **data** rows (the
-        transactions table dwarfs a summary table); ties break by first-occurrence
-        order — page then table — which ``max`` keeps (D7)."""
-        return max(range(len(candidates)), key=lambda i: len(candidates[i]) - 1)
 
     def _apply_pdf_table(self, index: int) -> ImportProfile | None:
         """Serialise candidate ``index`` to CSV text, re-fill the mapping combos

@@ -123,6 +123,17 @@ def table_to_text(table: _Table) -> str:
     return buffer.getvalue()
 
 
+def default_table_index(candidates: list[_Table]) -> int:
+    """The candidate to import when nobody picks one (FIBR-0009 D7): the table
+    with the most **data** rows (the transactions table dwarfs a summary table);
+    ties break by first-occurrence order — page then table — which ``max`` keeps.
+
+    Module-level rather than a wizard ``@staticmethod`` because the batch import
+    has no table chooser and must apply the identical rule from a headless
+    service (FIBR-0085 §4.3)."""
+    return max(range(len(candidates)), key=lambda i: len(candidates[i]) - 1)
+
+
 class PdfImporter:
     def candidate_tables(
         self, pdf_bytes: bytes, password: str | None = None
