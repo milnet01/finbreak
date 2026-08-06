@@ -552,6 +552,10 @@ def test_FIBR0190_INV1_family_e_detected():
         ("completeness_fail_a.pdf", Family.A),
         ("family_a_current.pdf", Family.A),
         ("family_a_rcp_euro.pdf", Family.A),
+        # A post-E addition (FIBR-0252), so it has no "as before" — but detection
+        # is exactly what breaks if its column header or legal marker is ever
+        # disturbed, which is why it earns a place in this list.
+        ("family_a_zero_fee.pdf", Family.A),
         ("family_b_homeloan.pdf", Family.B),
         ("family_b_no_closing.pdf", Family.B),
         ("family_b_unstorable_balances.pdf", Family.B),
@@ -573,7 +577,7 @@ def test_FIBR0190_INV2_existing_fixtures_detect_as_before(name, expected):
 def test_FIBR0190_INV2_covers_every_pre_e_fixture():
     # Guards the leg above against a new fixture landing uncovered (its list is
     # hand-written, so a glob mismatch is the failure mode).
-    assert len(_PRE_E_FIXTURES) == 14
+    assert len(_PRE_E_FIXTURES) == 15
 
 
 def test_FIBR0190_INV4_INV10_INV11_family_e_end_to_end():
@@ -779,6 +783,102 @@ def test_FIBR0190_D6_no_existing_fixture_carries_the_e_opening_marker(name):
 
 
 # --------------------------------------------------------------------------- #
+# FIBR-0252 — per-row errors reach the caller
+# --------------------------------------------------------------------------- #
+# The thirteen authored lines of `family_a_zero_fee.pdf`, whose recipe (and the
+# ablation table saying which of them are load-bearing) is
+# docs/specs/FIBR-0252-standard-bank-row-errors.md § 4.2. Held here as an
+# explicit allow-list for the INV-6 leg below.
+_ZERO_FEE_PAGE = [
+    "Standard Bank",
+    "BANK STATEMENT / TAX INVOICE",
+    "PRESTIGE CURRENT ACCOUNT Account Number 00 000 000 0",
+    "Month-end Balance R1,000.00",
+    "Statement from 1 May 2026 to 31 May 2026",
+    "Details Service Fee Debits Credits Date Balance",
+    "BALANCE BROUGHT FORWARD 05 01 1,000.00",
+    "FAKE SHOP PURCHASE 100.00- 05 02 900.00",
+    "SERVICE FEE WAIVED 0.00 05 03 900.00",
+    "FAKE SALARY DEPOSIT 250.00 05 04 1,150.00",
+    "Balance at date of statement 1,150.00",
+    "Please verify all transactions reflected on this statement.",
+    "The Standard Bank of South Africa Limited (Reg. No. 1962/000738/06)",
+]
+
+
+def _collapse(line: str) -> str:
+    """`pdfplumber` does not promise to reproduce authored spacing, so the INV-6
+    allow-list compares on collapsed whitespace rather than byte equality."""
+    return " ".join(line.split())
+
+
+def test_FIBR0252_parse_propagates_row_errors():
+    """FIBR-0252 INV-1/INV-2/INV-3 — `parse` returns the RowErrors its family
+    parser produced, instead of the literal `[]` that discarded them.
+
+    `test_FIBR0216_zero_amount_row_degrades_instead_of_aborting_the_statement`
+    above calls `_parse_family_a` DIRECTLY, which is why it passed for the whole
+    life of this defect: it proves the family parser produces the error and says
+    nothing about whether the public boundary returns it. This is that leg.
+
+    The row-number assertions are not decoration (INV-2, and § 6's third failure
+    mode): if `parse_transaction` were one day changed to accept zero amounts,
+    the waived-fee line would become a draft and the errors comparison would go
+    green against an empty list — `[1, 3]` is what notices.
+
+    The span / closing / amount assertions are INV-3: propagating errors changes
+    nothing else the parse returns. The 22-fixture corpus cannot pin that — none
+    of those fixtures carries a RowError, so they pass identically either side of
+    the fix (§ 11)."""
+    r = _parse("family_a_zero_fee.pdf")
+
+    assert [(e.row_number, e.reason) for e in r.errors] == [
+        (2, "amount must be non-zero")
+    ], "the printed 0.00 line is reported, not silently dropped"
+    assert [d.row_number for d in r.drafts] == [1, 3], (
+        "the errored row is in neither channel twice, and is not a draft"
+    )
+    # INV-3 — the same drafts, span and closing as before the change.
+    assert [d.amount_minor for d in r.drafts] == [-10000, 25000]
+    assert r.period_start == "2026-05-01"
+    assert r.period_end == "2026-05-31"
+    assert r.closing_balance_minor == 115000
+
+
+def test_FIBR0252_fixture_is_synthetic():
+    """FIBR-0252 INV-6 — the committed fixture carries no real CUSTOMER or
+    ACCOUNT data. Deliberately NOT "no real bank data": the detection marker
+    `The Standard Bank of South Africa Limited (Reg. No. 1962/000738/06)` is a
+    real published company registration number, it is REQUIRED for
+    `detect_standard_bank` to fire at all (§ 4.2's ablation table), and every
+    fixture in this suite carries it. Public corporate identity is not anybody's
+    banking data — which is the line this invariant draws.
+
+    A text-EXTRACTION leg, not a repo grep: the repo-wide corpus guard skips
+    binary `.pdf` bytes, so for a committed PDF this is the ONLY check there is.
+
+    An allow-list rather than a `FAKE`-prefix rule, which would be wrong on this
+    very page — `SERVICE FEE WAIVED`, `BALANCE BROUGHT FORWARD` and `Balance at
+    date of statement` carry no `FAKE`."""
+    allowed = {_collapse(line) for line in _ZERO_FEE_PAGE}
+    extracted = [
+        _collapse(line)
+        for line in _text("family_a_zero_fee.pdf").splitlines()
+        if line.strip()
+    ]
+
+    assert extracted, "the fixture must have an extractable text layer at all"
+    unexpected = [line for line in extracted if line not in allowed]
+    assert not unexpected, (
+        f"lines not in § 4.2's authored page: {unexpected} — the fixture was "
+        "regenerated from something other than the recipe"
+    )
+    assert "PRESTIGE CURRENT ACCOUNT Account Number 00 000 000 0" in extracted, (
+        "the account number must stay the suite's fake 00 000 000 0"
+    )
+
+
+# --------------------------------------------------------------------------- #
 # Bounds (INV-14)
 # --------------------------------------------------------------------------- #
 def test_INV14_row_cap_refuses(monkeypatch):
@@ -956,6 +1056,38 @@ def test_INV13_wizard_sb_checksum_failure_shows_friendly_message(
     widget._select_file(str(path))
     assert widget._stack.currentIndex() == _STEP_PICK, "checksum fail stays on pick"
     assert "didn't add up" in widget._error.text()
+
+
+def test_FIBR0252_preview_shows_the_error_row(qtbot, service, tmp_path):
+    """FIBR-0252 INV-5 — the single-file preview interleaves the errored row into
+    the row table in file order and counts it in the summary.
+
+    Everything downstream of `parse` was already wired for this and was being
+    starved by the empty list: `_preview_from_result` carries the errors into
+    `ImportPreview`, `_fill_preview_table` interleaves them by `row_number`, and
+    `_apply_preview_counts` renders "· N error".
+
+    Located by CELL CONTENT, not by table index. Statement row 2 does land at
+    table index 1 here, but `_fill_preview_table` sorts the interleaved entries
+    by `row_number` — a test written against the index would silently follow a
+    re-ordering rather than catch it."""
+    acct = _acct(service)
+    path = _write(tmp_path, "zero-fee.pdf", _fx("family_a_zero_fee.pdf"))
+    widget = _wizard(qtbot, service, acct)
+    widget._select_file(str(path))
+
+    table = widget._preview_table
+    assert table.rowCount() == 3, "two drafts plus the errored row, interleaved"
+    statuses = {
+        table.item(row, 0).text(): table.item(row, 4).text()
+        for row in range(table.rowCount())
+    }
+    assert statuses == {"1": "OK", "2": "Error", "3": "OK"}, (
+        "the errored statement row must be shown as an Error row, in file order"
+    )
+    assert widget._summary_label.text().endswith("· 1 error"), (
+        f"summary read {widget._summary_label.text()!r} — the error must be counted"
+    )
 
 
 def test_INV13_wizard_corrupt_pdf_shows_message_not_crash(qtbot, service, tmp_path):

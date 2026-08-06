@@ -11,8 +11,11 @@ one — the pattern ``tests/features/dialog_lifecycle/`` established when
 FIBR-0065 converted the blocking pop-ups. A fake that emits ``accepted`` is what
 makes a non-blocking flow testable at all.
 
-No real statement data and no ``.pdf`` bytes: the one locked-PDF fixture is a
-``.pdf``-named file of arbitrary bytes plus a fake decrypt (INV-12).
+No real statement data and no ``.pdf`` bytes committed here: the one locked-PDF
+fixture is a ``.pdf``-named file of arbitrary bytes plus a fake decrypt
+(INV-12). One leg (FIBR-0252 INV-4) reaches across to the SB suite's committed
+``family_a_zero_fee.pdf`` — synthetic too, and the only thing that can carry a
+RowError through the real scan ladder into a rendered cell.
 """
 
 from collections.abc import Iterator
@@ -37,6 +40,11 @@ pytestmark = pytest.mark.features
 
 _HEADER = ["Date", "Details", "Amount"]
 _MAPPING = ColumnMapping("Date", "Details", "Amount", None, None, "%Y-%m-%d", False)
+
+# The SB suite's committed synthetic fixtures — nothing binary lives under this
+# directory; FIBR-0252 INV-4's render half reaches across for the one statement
+# that carries a RowError.
+_SB_FIXTURES = Path(__file__).parent.parent / "standard_bank_pdf" / "fixtures"
 
 
 @pytest.fixture
@@ -731,4 +739,40 @@ def test_INV14_done_waits_for_the_report(
     )
     assert any(f.outcome == "skipped" for f in widget3._batch_files), (
         "the declined file is skipped, and the batch carries on"
+    )
+
+
+# -- FIBR-0252 INV-4 (render half) ------------------------------------------- #
+
+
+def test_FIBR0252_errors_column_shows_the_count(qtbot, service, tmp_path):
+    """FIBR-0252 INV-4 — the review table's Errors column shows the count for a
+    Standard Bank file with an unimportable row.
+
+    The separate half of `test_batch_import.py::
+    test_FIBR0252_error_count_is_set_for_a_standard_bank_file`, and not a
+    duplicate of it: `BatchReviewWidget._number` renders `""` for a zero, so a
+    correct `error_count` that never reaches a cell looks identical to the
+    defect from the user's side — and the cell is the only half the user sees.
+    """
+    _acct(service)
+    widget = _wizard(qtbot, service)
+    widget._select_files([str(_SB_FIXTURES / "family_a_zero_fee.pdf")])
+    qtbot.waitUntil(
+        lambda: (
+            bool(widget._batch_files)
+            and widget._batch_files[0].outcome == "needs_account"
+        ),
+        timeout=3000,
+    )
+    # Precondition, so a wait that fell through could not leave this leg reading
+    # a table SCAN had not filled yet: the statement parsed, and the two money
+    # rows are its drafts. (The record stops at `needs_account` because no
+    # account carries the fixture's number.)
+    assert widget._batch_files[0].parsed is not None, "the fixture must have parsed"
+
+    cell = widget._batch_review._table.item(0, import_batch_mod.COL_ERRORS)
+    assert cell is not None and cell.text() == "1", (
+        f"Errors cell read {None if cell is None else cell.text()!r} — the "
+        "statement's unreadable row must be counted where the user can see it"
     )

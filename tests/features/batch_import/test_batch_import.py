@@ -9,7 +9,11 @@ and INV-14 drive real widgets and live in ``test_batch_import_ui.py``.
 Every fixture is synthetic (INV-12): CSV text built in the body, OFX assembled
 from the same tag builders the ``ofx_import`` suite uses, and a **fake** decrypt
 in place of any locked PDF — no ``.pdf`` bytes are committed under this
-directory at all. No real statement data, no network (testing.md § 6).
+directory at all. One leg (FIBR-0252 INV-4) reaches across to the SB suite's
+committed ``family_a_zero_fee.pdf``, the way ``tests/features/forecast`` already
+does: a real statement PDF is the only thing that can carry a RowError through
+the whole scan ladder, and it is synthetic too. No real statement data, no
+network (testing.md § 6).
 """
 
 from collections.abc import Iterator
@@ -50,6 +54,11 @@ def service(paths) -> Iterator[AuthService]:
 
 _HEADER = ["Date", "Details", "Amount"]
 _MAPPING = ColumnMapping("Date", "Details", "Amount", None, None, "%Y-%m-%d", False)
+
+# The SB suite's committed synthetic fixtures — nothing is committed under this
+# directory (see the module docstring); FIBR-0252 INV-4 reaches across for the
+# one statement that carries a RowError.
+_SB_FIXTURES = Path(__file__).parent.parent / "standard_bank_pdf" / "fixtures"
 
 
 @pytest.fixture
@@ -768,3 +777,34 @@ def test_INV15_multi_statement_ofx_fans_out(service, batch, tmp_path):
     periods = StatementPeriodRepository(conn)
     assert periods.id_for_span(one, "2026-01-01", "2026-01-31") is not None
     assert periods.id_for_span(two, "2026-02-01", "2026-02-28") is not None
+
+
+# -- FIBR-0252 INV-4 (service half) ------------------------------------------ #
+
+
+def test_FIBR0252_error_count_is_set_for_a_standard_bank_file(service, batch):
+    """FIBR-0252 INV-4 — a Standard Bank file with an unimportable row lands a
+    non-zero `error_count` on its record.
+
+    `error_count` is a FIBR-0085 § 4.2 deliverable that had no test at all, and
+    on the Standard Bank path it was a constant zero: `_settle_parse` sets it
+    from `len(parsed.errors)`, and `StandardBankImporter.parse` returned `[]`.
+
+    Goes through the REAL `PdfImporter.decrypt_to_plaintext` via `_scan_pdf` —
+    the fixture is unencrypted, so the `password=None` rung of the ladder returns
+    usable plaintext and this suite's fake decrypt is not involved.
+
+    The rendered half of INV-4 is `test_batch_import_ui.py::
+    test_FIBR0252_errors_column_shows_the_count`: `BatchReviewWidget._number`
+    returns `""` for a zero, so the field and its rendering are separate claims
+    and only the second is what the user sees.
+    """
+    _acct(service)
+    files = batch.build([str(_SB_FIXTURES / "family_a_zero_fee.pdf")])
+    _scan_all(batch, files)
+
+    assert len(files) == 1
+    assert files[0].error_count == 1, (
+        f"error_count = {files[0].error_count} — the statement's waived-fee row "
+        "was dropped without being counted"
+    )

@@ -1212,7 +1212,15 @@ class StandardBankImporter:
             if pages and family in _ACCOUNT_NUMBER_FAMILIES
             else None
         )
-        return ParseResult(result.drafts, [], start, end, closing_minor, hint)
+        # The per-row errors travel with the drafts (FIBR-0252). A literal `[]`
+        # here discarded them, so a legitimately-unreadable row — the printed
+        # `0.00` line FIBR-0216 degrades on — vanished from the preview, the
+        # batch Errors column and `ImportResult.error_count`, and the statement
+        # still reported "N added" with no hint that anything was skipped. Only
+        # `drafts` feeds the balance gates; an error row carries no money.
+        return ParseResult(
+            result.drafts, result.errors, start, end, closing_minor, hint
+        )
 
 
 def _cc_opening(full_text: str, fmt: Fmt) -> Decimal:
