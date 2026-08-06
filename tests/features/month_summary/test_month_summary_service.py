@@ -160,6 +160,7 @@ def test_INV3_complete_february_compares_whole_months(service) -> None:
     _seed_flow(service, cheque, [(2025, 11), (2025, 12), (2026, 1), (2026, 2)])
     summary = _summary(service, _month_prefs(2026, 2), date(2026, 3, 15))
     assert summary is not None
+    assert summary.month == "2026-02"  # the month every slot-1 sentence names
     assert summary.partial is False
     assert summary.days == 28
     assert summary.movement_minor == 0
@@ -173,6 +174,7 @@ def test_INV3_partial_march_caps_its_head_below_every_windows_last_day(service) 
     _seed_flow(service, cheque, [(2025, 12), (2026, 1), (2026, 2), (2026, 3)])
     summary = _summary(service, _month_prefs(2026, 3), date(2026, 3, 29))
     assert summary is not None
+    assert summary.month == "2026-03"
     assert summary.partial is True
     assert summary.days == 27  # NOT today.day (29) — capped at L_min - 1
     assert summary.movement_minor == 0
@@ -185,6 +187,7 @@ def test_INV3_a_leap_february_carries_twenty_nine_days(service) -> None:
     _seed_flow(service, cheque, [(2027, 11), (2027, 12), (2028, 1), (2028, 2)])
     summary = _summary(service, _month_prefs(2028, 2), date(2028, 3, 15))
     assert summary is not None
+    assert summary.month == "2028-02"
     assert summary.days == 29
     assert summary.movement_minor == 0
 
@@ -225,11 +228,10 @@ def test_INV4_the_three_month_modes_are_summarised(moded, prefs) -> None:
     "prefs",
     [
         ReportPrefs(MODE_YEAR_TO_DATE),
-        ReportPrefs(MODE_SPECIFIC_YEAR, year=2026),
         ReportPrefs("nonsense"),
         ReportPrefs(MODE_SPECIFIC_MONTH, year=None, month=None),
     ],
-    ids=["year_to_date", "specific_year", "unrecognised", "specific_month_unfilled"],
+    ids=["year_to_date", "unrecognised", "specific_month_unfilled"],
 )
 def test_INV4_every_other_mode_renders_nothing(moded, prefs) -> None:
     """A deny-list ("not a year mode") would summarise year-to-date and a garbage
@@ -237,6 +239,81 @@ def test_INV4_every_other_mode_renders_nothing(moded, prefs) -> None:
     reason: ``resolve_period`` silently falls back while the selector still reads
     "Specific month"."""
     assert _summary(moded, prefs, _MID_MARCH) is None
+
+
+def test_INV4_specific_year_is_rejected_by_the_MODE_GATE_not_by_the_ladder(
+    service,
+) -> None:
+    """`MODE_SPECIFIC_YEAR` needs its own fixture, and the obvious one is a trap.
+    ``resolve_period`` maps it to ``end = <year>-12-31``, so `M` is **December**
+    — and read from inside that year December has not happened, so § 4.8
+    condition 4 returns ``None`` whatever the mode gate does. Deleting the
+    allow-list entirely would leave such a leg green.
+
+    Reading from the following January makes December a complete, fully-baselined
+    month: the ladder now passes end to end, and the only thing that can still
+    return ``None`` is the mode gate itself."""
+    cheque = _acct(service)
+    months = [(2026, 9), (2026, 10), (2026, 11), (2026, 12)]
+    _seed_four_months(service, cheque, months, {"Grocer": [5000, 5000, 5000, 6500]})
+    after = date(2027, 1, 15)
+
+    # The ladder is satisfied — the same December, asked for by month, speaks.
+    assert _summary(service, _month_prefs(2026, 12), after) is not None
+    # ...and asked for as a YEAR, it does not.
+    assert _summary(service, ReportPrefs(MODE_SPECIFIC_YEAR, year=2026), after) is None
+
+
+# --------------------------------------------------------------------------- #
+# The three fields the SERVICE derives from the clock — month, show_year, started
+#
+# The detector and the strip are both handed these ready-made, so a leg in either
+# of those files asserts only that a hand-supplied value travelled. Only here can
+# the derivation itself go wrong.
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize(
+    "today,expected_show_year",
+    [(date(2026, 5, 15), False), (date(2027, 1, 15), True)],
+    ids=["same_year_as_today", "earlier_year_than_today"],
+)
+def test_show_year_is_true_exactly_when_M_is_not_this_year(
+    service, today, expected_show_year
+) -> None:
+    """§ 4.6: "Which template applies is decided by ``MonthSummary.show_year``,
+    computed by the service, which already has ``today``." Get it wrong and a
+    month from a prior year renders as a bare "February cost you…"."""
+    cheque = _acct(service)
+    _seed_four_months(service, cheque, _FOUR, {"Grocer": [5000, 5000, 5000, 6500]})
+    summary = _summary(service, _M_APRIL, today)
+    assert summary is not None
+    assert summary.month == "2026-04"
+    assert summary.show_year is expected_show_year
+
+
+def test_a_future_month_holding_post_dated_rows_is_silent(service) -> None:
+    """§ 4.3's third state, at SERVICE level — INV-5's condition-4 leg is
+    detector-level and is handed ``started`` by hand, so nothing else exercises
+    the derivation. The month is reachable in two clicks (`home.py`'s year picker
+    ranges to 9999) and a mistyped year books a real row into it.
+
+    The relaxed counterpart reads the same vault from *after* September, so the
+    leg cannot pass because the fixture was unsummarisable for some other
+    reason.
+
+    **`today` is the 15th, not the 5th, and that is load-bearing.** ``partial`` is
+    ``started and today <= last``, so forcing ``started`` true also makes the
+    month *partial* — and from the 5th the head would be 5 days, under
+    ``_MIN_ELAPSED_DAYS``, so condition 3 would silence it and this leg would pass
+    against the very mutation it exists to catch. From the 15th no other
+    condition can fire and condition 4 is the only thing left."""
+    cheque = _acct(service)
+    months = [(2026, 6), (2026, 7), (2026, 8), (2026, 9)]
+    # Three healthy baselines, and ONE post-dated row in the future month.
+    _seed_four_months(service, cheque, months, {"Grocer": [5000, 5000, 5000, 500]})
+    september = _month_prefs(2026, 9)
+
+    assert _summary(service, september, date(2026, 8, 15)) is None  # not started
+    assert _summary(service, september, date(2026, 10, 5)) is not None  # it has now
 
 
 # --------------------------------------------------------------------------- #
@@ -328,6 +405,35 @@ def test_a_family_spread_over_several_rows_sums_before_the_gate(service) -> None
     assert summary.cause.excess_minor == minor(2400)
 
 
+def test_the_cause_name_comes_from_the_familys_EARLIEST_row_in_M(service) -> None:
+    """§ 4.6 pins the label to the family's earliest row "so the label cannot
+    change between two refreshes of the same data".
+
+    Making that observable takes care, and this is the one fixture shape that
+    can: within a family, two rows normally yield the *same* ``merchant_name``,
+    so which one supplies the label is invisible. A Unicode-decomposed spelling
+    and a precomposed one differ as strings — ``merchant_name`` preserves the
+    form — while ``normalise_text``'s NFC fold collapses them to one key. That is
+    not a contrived case: `text.py`'s own docstring records it as the real
+    PDF-versus-CSV import scenario the fold exists for."""
+    from finbreak.text import merchant_name
+
+    decomposed = "café rio"  # e + U+0301 COMBINING ACUTE
+    precomposed = "café rio"  # U+00E9 LATIN SMALL LETTER E WITH ACUTE
+    assert merchant_name(decomposed) != merchant_name(precomposed)  # else vacuous
+
+    cheque = _acct(service)
+    _seed_four_months(service, cheque, _FOUR, {"Living": [10000, 10000, 10000, 10000]})
+    _spend(service, cheque, "2026-04-03", 1200, decomposed)  # EARLIEST
+    _spend(service, cheque, "2026-04-20", 1200, precomposed)
+
+    summary = _summary(service, _M_APRIL, _MAY)
+    assert summary is not None
+    assert summary.cause is not None
+    assert summary.cause.merchant_key == "café rio"  # one family, not two
+    assert summary.cause.name == merchant_name(decomposed)
+
+
 # --------------------------------------------------------------------------- #
 # § 4.6 — the tie-break (equal excesses resolve to the smaller merchant_key)
 # --------------------------------------------------------------------------- #
@@ -374,7 +480,12 @@ def test_INV10_a_complete_months_spend_equals_the_net_tiles_expenditure(
     """Includes one ``amount_minor == 0`` row — the only value § 4.5's rule and
     ``ReportingService.summary`` bucket differently. That row **documents** the
     agreement; it cannot make this leg red, because both definitions contribute
-    ``0``."""
+    ``0``.
+
+    It also carries a plain **income** row, and that one can: spend is
+    ``amount_minor < 0`` (§ 4.5), so a salary must raise neither side of this
+    equality. Without it every row in the suite is an outflow, ``expenditure``
+    equals the vault total, and the two definitions cannot be told apart."""
     cheque = _acct(service)
     _seed_four_months(
         service,
@@ -384,6 +495,12 @@ def test_INV10_a_complete_months_spend_equals_the_net_tiles_expenditure(
     )
     TransactionRepository(service.vault.connection).add(
         cheque, "2026-04-09", 0, "Zero-value adjustment"
+    )
+    TransactionRepository(service.vault.connection).add(
+        cheque,
+        "2026-04-25",
+        minor(30000),
+        "Salary",  # income — never spend
     )
     summary = _summary(service, _M_APRIL, _MAY)
     assert summary is not None

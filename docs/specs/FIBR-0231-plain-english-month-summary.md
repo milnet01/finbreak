@@ -237,7 +237,7 @@ arithmetically honest either way — but the *phrasing* is not provisional in
 exactly the case that most needs it to be.
 
 **The future state is reachable in two clicks and must be handled explicitly.**
-`home.py:255` is `self._year_picker.setRange(1970, 9999)` and `home.py:250` adds
+`home.py:270` is `self._year_picker.setRange(1970, 9999)` and `home.py:265` adds
 all twelve months, so on 5 August 2026 a user can select "Specific month / 2026 /
 09".
 
@@ -732,11 +732,29 @@ this order:
    cut by a third so the 60% cause gate becomes easy to clear. Treating it as a
    gap costs a month of history and silences the strip instead.
 2. `baseline < minor(_MIN_MONTH_BASELINE_MAJOR)`. Too little money moving to
-   characterise.
+   characterise. **Note this floor is a whole-month-sized figure applied to a
+   possibly-truncated baseline** — see condition 3.
 3. `partial and days < _MIN_ELAPSED_DAYS`. Six days pro-rated against six days is
    arithmetically fine and epistemically worthless — one grocery run swings it
-   past every threshold. The comparison is `<`, so the strip first speaks on the
-   7th.
+   past every threshold. The comparison is `<`, so **this condition** stops
+   binding on the 7th.
+
+   **It does not follow that the strip speaks on the 7th, and an earlier draft
+   said it did.** Condition 2 is evaluated first and against the *same truncated
+   windows*, so early in a partial month it compares a few days of spend to a
+   whole month's floor, and it is condition 2 — not condition 3 — that is
+   actually binding. Worked at exponent 2, a household spending a uniform
+   R100/day: on day 7 the baseline is `7 × R100 = R700`, under the R1,000 floor,
+   so the strip is silent; it first speaks on **day 10**. At R50/day, day 20. At
+   roughly R33/day the head caps at `L_min − 1` before the baseline ever reaches
+   the floor, and the **current-month** strip never renders at all — though the
+   same vault renders normally for a complete month.
+
+   Left as-is rather than pro-rated: scaling the floor by `days / len(M)` would
+   re-open the dead zone §4.5 derived the floor to close, and silence on thin
+   data is §1 property 2's intended direction. What was wrong was only the
+   sentence claiming otherwise. Measured 2026-08-06 during the implementation
+   review.
 4. `not started` — `M`'s first day is after `today` (§4.3).
 5. `spend_minor == 0` — `M` held no non-transfer spend row in its window, by the
    same test condition 1 applies to the baselines. An un-imported month between
@@ -774,14 +792,14 @@ unguarded**:
 
 | Site | Guarded by `except VaultLockedError` |
 |---|---|
-| `home.py:117` (`__init__`) | no |
-| `home.py:328` (`_on_period_changed`) | yes |
-| `home.py:336` (`_on_account_changed`) | yes |
-| `home.py:352` (`set_amount_prefs`) | no |
-| `main_window.py:797` (`_refresh_tab`) | no |
-| `main_window.py:828` (`_show_home`) | no |
-| `main_window.py:1497` (`_on_import_done`) | no |
-| `main_window.py:1506` (`_refresh_after_statement_change`) | no |
+| `home.py:127` (`__init__`) | no |
+| `home.py:350` (`_on_period_changed`) | yes |
+| `home.py:358` (`_on_account_changed`) | yes |
+| `home.py:374` (`set_amount_prefs`) | no |
+| `main_window.py:799` (`_refresh_tab`) | no |
+| `main_window.py:830` (`_show_home`) | no |
+| `main_window.py:1499` (`_on_import_done`) | no |
+| `main_window.py:1508` (`_refresh_after_statement_change`) | no |
 
 (`grep -n "self\.refresh()\|_home_tab\.refresh()" src/finbreak/ui/home.py
 src/finbreak/ui/main_window.py` → 8, 2026-08-05.)
@@ -797,10 +815,26 @@ the thing INV-13 exists to prevent.
 
 **So `refresh()`'s first statement is `self._month_strip.clear()`**, before
 `transaction_count()`. One line, no new guard, and it closes all eight sites
-rather than the two that happen to be wrapped: whatever raises, and wherever, the
-strip is already empty. The two guarded slots then need nothing beyond what they
-do today, and the six unguarded ones stop being a question. INV-13 pins the clear
-and exercises one unguarded path as well as a guarded one.
+rather than the two that happen to be wrapped: whatever raises inside `refresh()`,
+and wherever it was called from, the strip is already empty.
+
+**One site needs a second clear, and it is the one that is not a `refresh()` call
+at all.** `_on_period_changed` **persists** the new period before it re-renders,
+and that write is itself a vault operation:
+
+```python
+self._auth.set_report_prefs(self._current_prefs())   # can raise
+self.refresh()                                       # ...so this never runs
+```
+
+A lock landing on the write returns from the `except` without `refresh()` ever
+being entered, so `refresh()`'s clear cannot help — while the selector has
+already moved, making the standing sentence name the wrong month. That slot
+therefore clears **before** the write. Corrected 2026-08-06 after the
+implementation review; the earlier claim that one line in `refresh()` closed
+every path was true of the eight `refresh()` call sites and false of the
+write-then-refresh ordering above it. INV-13 pins all three: a guarded slot, an
+unguarded one, and the prefs write.
 
 ## 5. Invariants
 
@@ -1055,12 +1089,17 @@ and exercises one unguarded path as well as a guarded one.
   raising on any read makes the leg pass against an implementation that never
   calls the service at all. (b) after that raise the strip is hidden, asserted on
   **both** a guarded slot (`_on_period_changed`, which must also return cleanly)
-  and an **unguarded** one (`set_amount_prefs`, `home.py:352`, which propagates)
+  and an **unguarded** one (`set_amount_prefs`, `home.py:374`, which propagates)
   — the unguarded leg is what fails against a fix that only touched the two
   `except` blocks. **Each leg must first drive a successful `refresh()` and
   assert the strip is showing a sentence**, then swap in the raising stand-in: a
   fresh `HomeView` has the strip hidden already, so without that precondition the
   assertion passes against exactly the implementation it exists to fail.
+  (b′) a **third** lock site, added 2026-08-06: `_on_period_changed`'s
+  `set_report_prefs` **write**, which precedes `refresh()` and so is the one path
+  `refresh()`'s own clear cannot cover (§4.9). Driven with an `AuthService` proxy
+  that raises only on the write; the slot must return cleanly with the strip
+  hidden.
   (c) `MonthSummaryService.summary` propagates `VaultLockedError` rather
   than returning a partial `MonthSummary`, asserted directly on the service.
 
@@ -1206,6 +1245,14 @@ rendering* is a UI test.
   belongs here for the same reason INV-7 does: `MonthSummaryInput.candidate` is a
   *single, already-chosen* `MonthCause`, so a two-equal-families fixture cannot be
   expressed at the detector boundary at all.
+  **Plus the three fields the service derives from the clock** — `month`,
+  `show_year` and `started` — which the detector and the strip are both *handed*,
+  so a leg in either of those files asserts only that a hand-supplied value
+  travelled. Added 2026-08-06: a mutation emitting the wrong `month` passed the
+  whole suite. `MonthCause.name`'s earliest-row rule belongs here too, and needs
+  a Unicode-decomposed/precomposed pair — within a family two rows otherwise
+  yield the *same* `merchant_name`, so which one supplies the label is
+  unobservable.
 - **`test_month_summary_strip.py`** — the strip under `qtbot`, fed
   hand-constructed `MonthSummary` values. INV-12's render leg, INV-14's 18
   templates and its no-signed-amount leg, **INV-9's template-selection leg** (the
@@ -1218,10 +1265,19 @@ rendering* is a UI test.
   asserting it renders as 39 characters plus `…`.
 - **`test_month_summary_home.py`** — `HomeView`-level, seeded vault. The strip
   appears and hides as the period selector moves across all five modes, and
-  INV-13 legs (a) and (b) — which drive `_on_period_changed` (guarded) and
-  `set_amount_prefs` (`home.py:352`, unguarded), both `HomeView` slots needing
-  `qtbot`, so neither can live in the service or strip file. Both unguarded and
-  guarded sites are `HomeView`'s own, so this file needs no `MainWindow`.
+  INV-13 legs (a), (b) and (b′) — which drive `_on_period_changed` (guarded),
+  `set_amount_prefs` (`home.py:374`, unguarded) and the `set_report_prefs`
+  **write** that precedes `refresh()`; all three are `HomeView` slots needing
+  `qtbot`, so none can live in the service or strip file. Every site is
+  `HomeView`'s own, so this file needs no `MainWindow`.
+  **It also owns the `HomeView` halves of INV-10 and INV-11**, added 2026-08-06:
+  the service suite proves the *service* reads one clock and scopes to the
+  accounts it is given, and can say nothing about whether the view hands it the
+  right arguments. Both legs use recording proxies over `MonthSummaryService`
+  and `ReportingService` and assert the two received the identical `today` and
+  the identical `account_ids`. The clock leg additionally needs a **ticking**
+  `date` stand-in whose `today()` advances per call: two real reads on the same
+  day are equal, so an equality assertion over them is vacuous.
 
 Ripple into existing suites: every file constructing `HomeView` gains the sixth
 service argument. The set is whatever `grep -rln "HomeView(" tests/` returns at
@@ -1342,10 +1398,13 @@ windows differ whenever `M` is partial.
 | INV-7 | `test_month_summary_service.py` — three legs, incl. (c) the non-zero-baseline cause family |
 | INV-8 | `test_month_summary.py` |
 | INV-9 | `test_month_summary.py` (the residual sign) + `test_month_summary_strip.py`'s template-selection leg (§7) — the detector cannot select a template, so the strip leg is what catches a slot 3 keyed off `movement` |
-| INV-10 | `test_month_summary_service.py` — two legs, the second with `M` = February |
-| INV-11 | `test_month_summary_service.py` |
+| INV-10 | `test_month_summary_service.py` — two legs, the second with `M` = February — **plus** `test_month_summary_home.py`'s ticking-clock leg, which is the only thing covering the invariant's *second* `Breaks when` (a `date.today()` read twice inside `refresh()`). The service legs cannot see the view's clock discipline; added 2026-08-06 |
+| INV-11 | `test_month_summary_service.py` for the service's scoping, **plus** `test_month_summary_home.py`'s recording-proxy leg for the wiring — the named breach ("selecting one account leaves a whole-vault sentence above single-account tiles") is a `HomeView` failure and the service leg is blind to it. Added 2026-08-06 |
 | INV-12 | grep leg (service file) + the strip test's hand-constructed `MonthSummary` |
-| INV-13 | `test_month_summary_home.py` legs (a)(b), (b) over a guarded **and** an unguarded call site + `test_month_summary_service.py` leg (c) |
+| INV-13 | `test_month_summary_home.py` legs (a)(b)(b′) — a guarded call site, an unguarded one, **and** the `set_report_prefs` write that precedes `refresh()` — + `test_month_summary_service.py` leg (c) |
+| The three fields the service derives from the clock — `month`, `show_year`, `started` | `test_month_summary_service.py`. Nothing covered these until 2026-08-06: the detector and the strip are both *handed* them, so their legs assert only that a hand-supplied value travelled. A mutation emitting the wrong `month` — the field every sentence names — passed all 81 tests. The `started` leg reads from the **15th**, not the 5th: forcing `started` true also makes the month partial, and from the 5th condition 3 would silence it and the leg would pass against its own mutation |
+| §4.6's `MonthCause.name` = the family's **earliest** row in `M` | `test_month_summary_service.py`, via a Unicode-decomposed/precomposed pair. This is the only fixture shape that can see it: within one family two rows normally yield the *same* `merchant_name`, so the earliest-row rule is unobservable — `merchant_name` preserves the composition form while `normalise_text`'s NFC fold collapses both to one key. Added 2026-08-06 |
+| §4.9's clear **before** the prefs write (the path `refresh()`'s own clear cannot reach) | INV-13 leg (b′) |
 | INV-14 | `test_month_summary_strip.py` (18 distinct templates + the positive no-signed-amount leg) |
 | §4.4's whole-month rule for a complete `M` | INV-3 leg 1 (a common-day-count implementation returns `+700000` there) + INV-10's February leg |
 | §4.4's partial head cap at `L_min − 1` | INV-3 leg 2 — `days == 27` for a partial March with February in its baseline |
@@ -1374,7 +1433,12 @@ awk '/^## 11\./,/^## 12\./' docs/specs/FIBR-0231-plain-english-month-summary.md 
   | awk '/^\| /{n++; if ($0 ~ /\*\*nothing\*\*/) k++} END{print n-1, k}'
 ```
 
-→ **`33 11`**: thirty-three rows, eleven with a bolded `nothing` — the family-mean
+→ **`36 11`**: thirty-six rows, eleven with a bolded `nothing`. (Was `33 11`.
+The implementation review of 2026-08-06 added **three** rows — the three
+clock-derived fields, the earliest-row name rule, and the pre-write clear — and
+*amended* two more in place, INV-10's and INV-11's, each of which gained a
+`HomeView` half. None of the three is a `nothing`, so the uncovered count is
+unchanged.) The eleven are the family-mean
 divisor's partial-presence case, the threshold values, the zero-row agreement,
 the February bias, the verdict instability, the fuzzy grouper, the
 partly-imported month, the un-netted refund, whether the sentence communicates,

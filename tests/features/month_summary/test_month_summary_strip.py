@@ -273,9 +273,13 @@ def test_INV14a_only_slot_one_carries_the_literal_so_far_prefix(qtbot) -> None:
     [
         ({"verdict": MonthVerdict.LOWER, "movement_minor": -minor(2340)}, -minor(2340)),
         ({"cause": _cause(2780), "residual_minor": -minor(440)}, -minor(440)),
-        ({"cause": _cause(1900), "residual_minor": minor(440)}, minor(1900)),
     ],
-    ids=["lower_movement", "negative_residual", "cause_excess"],
+    # `movement_minor` and `residual_minor` are the design's only SIGNED fields,
+    # so they are the only two cells this invariant has. A third case over
+    # `cause.excess_minor` reads like coverage and cannot fail — the detector
+    # gates the candidate on `excess > 0`, so no implementation can render it
+    # signed. Its rendering is covered by INV-14a's slot-2 legs instead.
+    ids=["lower_movement", "negative_residual"],
 )
 def test_INV14b_a_signed_field_renders_as_a_magnitude(
     qtbot, overrides, value_minor
@@ -403,3 +407,7 @@ def test_a_long_merchant_name_truncates_to_thirty_nine_characters_plus_ellipsis(
     )
     assert long_name not in text
     assert ("A" * 39) + "…" in text
+    # ...and NOT one character longer. `("A" * 39) + "…"` alone is satisfied by
+    # any cut from 39 to 59 characters, since the shorter run is a substring of
+    # the longer one — so the assertion above pins a lower bound, not the rule.
+    assert ("A" * 40) + "…" not in text

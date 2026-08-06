@@ -6,7 +6,9 @@ data). The toggle is observable via ``current_page().objectName()``
 (``home_page_empty`` / ``home_page_dashboard``, INV-7).
 
 The dashboard leads with the breakdown (FIBR-0143): for a chosen period (defaulting
-to last month, persisted) — a period + account selector, a slim **Net** strip, then
+to last month, persisted) — a period + account selector, the plain-English
+**month-summary** strip (FIBR-0231; hidden whenever the vault cannot support a
+comparison, and for every year mode), a slim **Net** strip, then
 three side-by-side columns (Expenditure / Income / Transfers), each a **pie** + a
 coloured header (name + total) + an expandable **breakdown tree**; below them a
 full-width **recurring-money** card and the demoted 12-month **trend** bar strip.
@@ -332,6 +334,13 @@ class HomeView(QWidget):
         if self._loading:
             return
         self._sync_picker_visibility()
+        # The selector has already moved, so any standing sentence now names the
+        # WRONG month — and refresh()'s own clear cannot save us here, because the
+        # persist below is itself a vault write that can raise VaultLockedError
+        # before refresh() is ever entered (FIBR-0231 INV-13). Clearing here is
+        # what makes § 4.9's guarantee — "whatever raises, and wherever, the strip
+        # is already empty" — true of this path too.
+        self._month_strip.clear()
         # Persist the new period (the account is NOT persisted, D6), then re-render.
         # An auto-lock mid-interaction surfaces as VaultLockedError from the write or
         # a subsequent vault read — caught (specifically, not a bare except) so the UI
@@ -383,8 +392,12 @@ class HomeView(QWidget):
         # figure in a tile is ambiguous; a stale SENTENCE naming a month is a
         # positive false claim.
         self._month_strip.clear()
-        # One clock reading for the whole render (FIBR-0231 § 4.9): the strip and
-        # the tiles must not straddle midnight, which is what INV-10 asserts.
+        # ONE clock reading for every figure the strip is compared against
+        # (FIBR-0231 § 4.9): the strip and the tiles must not straddle midnight,
+        # which is what INV-10 asserts. Deliberately not "every read in this
+        # method" — refresh_alerts() keeps its own date.today() (FIBR-0172
+        # D8/INV-16), and the alert count is unscoped, so it is not a figure the
+        # sentence is measured against.
         today = date.today()
         # Getting-started iff the vault holds zero transactions (INV-7).
         if self._reporting.transaction_count() == 0:

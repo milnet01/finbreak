@@ -210,6 +210,35 @@ Do not delete revoked entries — the history is the value.
 - **Confirmed by phase:** FIBR-0219 (implementation)
 
 
+## allowlist-005 — cppcheck is auto-detected on this Python project and reports every file as a syntax error
+
+- **Status:** active
+- **Tool / rule:** `cppcheck:syntaxError` (via `audit_run`'s auto-detection)
+- **Location:** class-level — **every** `.py` file cppcheck is handed. Seen as 6
+  findings at SARIF level `error` (rendered `severity: CRITICAL`) over
+  `models.py`, `text.py`, `services/month_summary.py`, `ui/home.py`,
+  `ui/main_window.py`, `ui/month_summary.py`.
+- **Why this is a false positive:** cppcheck is a **C/C++** static analyser and
+  finbreak is pure Python. `audit_run`'s tool auto-detection hands it whatever
+  paths the sweep is scoped to, and its C++ frontend then fails to tokenise
+  Python — every finding is the identical `No pair for character ("). Can't
+  process file. File is either invalid or unicode, which is currently not
+  supported.` at line 1. The message is a **parser** failure, not an analysis
+  result: cppcheck examined nothing, so the finding carries no information about
+  the file at all. It also surfaces in `parse_failures[]` / `parse_failures_detail[]`
+  on the same envelope, which is the honest signal — the SARIF `error` rows are
+  the same event double-counted at CRITICAL severity. Note the shape: **zero
+  findings plus zero confidence looks identical to a clean pass**, which is why
+  this is recorded rather than ignored.
+- **Suppression applied:** none inline (there is no Python-side syntax to
+  suppress a C++ analyser). The durable fix is to pass an explicit `tools:` list
+  to `audit_run` on this project — cppcheck and clazy should never be in it.
+  Recorded here so a sweep that forgets discards the class without re-litigating
+  six CRITICALs.
+- **Logged:** 2026-08-06
+- **Confirmed by phase:** FIBR-0231 (close)
+
+
 ## What does NOT belong here
 
 - **Findings that are real but blocked by a missing feature.**

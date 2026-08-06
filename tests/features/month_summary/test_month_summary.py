@@ -269,12 +269,21 @@ def test_baseline_floor_is_where_the_two_materiality_gates_cross() -> None:
 
 def test_baseline_average_is_the_integer_round_half_up_mean() -> None:
     """The same idiom ``detect_category_spikes`` uses, so the two features round
-    identically: ``(sum(prior) + K // 2) // K``."""
-    prior = (300_001, 300_001, 300_002)
+    identically: ``(sum(prior) + K // 2) // K``.
+
+    Two things this leg has to get right, and an earlier version got both wrong.
+    The expected value is a **literal**, not the formula re-typed — an expectation
+    computed the way the code computes it is an identity, not a test. And the
+    fixture's sum must be ``≡ 2 (mod 3)``: for a sum ``≡ 0`` or ``1``, plain
+    truncation returns the identical answer, so the one mutation this invariant
+    exists to catch survives it.
+    """
+    prior = (300_001, 300_001, 300_000)
+    assert sum(prior) % _BASELINE_MONTHS == 2  # the residue that separates them
     summary = summarise_month(_input(prior_minor=prior, spend_minor=300_001), _EXP)
     assert summary is not None
-    expected = (sum(prior) + _BASELINE_MONTHS // 2) // _BASELINE_MONTHS
-    assert summary.baseline_minor == expected
+    # 900_002 / 3 = 300_000.67 → 300_001 rounded half-up, 300_000 truncated.
+    assert summary.baseline_minor == 300_001
 
 
 # --------------------------------------------------------------------------- #
