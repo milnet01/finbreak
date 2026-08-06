@@ -1,6 +1,6 @@
 # FIBR-0085 — Import many statements in one unattended run
 
-**Status:** spec draft (2026-08-06).
+**Status:** accepted (2026-08-06).
 **Kind:** feature.
 **Source:** ROADMAP FIBR-0085 (user-request-2026-07-11, dogfooding v0.1.0).
 

@@ -2887,6 +2887,37 @@ because retrofitting them is a data migration.
   the user to babysit a 30-file import, defeating the purpose), and
   skipping files that need input (a folder of password-locked bank PDFs
   is the common case, not an edge case).
+  Spec written and gated (2026-08-06):
+  `docs/specs/FIBR-0085-batch-statement-import.md`, status accepted.
+  Cold-eyes: 3 loops x 3 lanes = 9 reviews. 95 findings verified and
+  fixed, 2 dismissed. Severity by loop: C3/H8/M13/L11, C2/H8/M10/L8,
+  C1/H8/M14/L10.
+  STOPPED AT LOOP 3 by user decision, NOT converged clean. Loops 2 and 3
+  were both dominated by collateral from the previous loop's own fixes,
+  which is the documented signal to stop dispatching. The spec is
+  implementable and internally consistent; it has not had a zero-finding
+  cold pass.
+  Five defects found that no reading caught, all silent-data-loss:
+  (1) the review table's Duplicate column stayed non-cumulative while New
+  went cumulative, so the approval screen's numbers would not account for
+  a file's rows; (2) `already_imported` was a declared outcome no pass
+  ever assigned; (3) a multi-statement OFX had no place in a
+  one-record-per-file model, so every statement after the first would be
+  discarded without a word; (4) the ready/already_imported flip was
+  one-directional, so a retargeted record could never be committed; and
+  (5) reusing the wizard's map step inherits a Cancel wired to `done`, so
+  declining one mapping would have torn down a thirty-file batch.
+  Two user decisions recorded in the spec's §3: one combined review
+  screen before anything commits, and `already imported` reported from
+  the existing period-span match rather than a content hash (FIBR-0088
+  keeps that upgrade and its migration).
+  Design decisions taken during review: ASK carries only passwords and
+  mappings (they block the parse) while the account question is settled
+  on the review screen, per the mock-up the user approved; one file
+  selected still routes to the unchanged single-file flow; the batch runs
+  as a QTimer.singleShot(0, self, ...) chain rather than a QThread,
+  because import stays on the GUI thread per design.md.
+  Next: step 3, TDD against `tests/features/batch_import/`.
 
 - ✅ [FIBR-0086] **Account numbers + import auto-detect — match a statement to its account (prompt to create if new).**
   Motivated by dogfooding v0.1.0. The account-number STORAGE half shipped separately as FIBR-0193 (2026-07-30): `accounts.account_number` is a nullable column in the ENCRYPTED vault, added by schema migration **v12 -> v13** — so this bullet is now DETECTION + MATCHING only, and no new column is needed. On import, extract the statement's account number and match it to a configured account (normalised: strip spaces/dashes; match on TRAILING digits when the statement masks it, e.g. "xxxx1234"), auto-selecting the account instead of today's manual pick. Availability varies by format: OFX <ACCTID> (reliable), PDF printed number (the Standard Bank / generic parsers can surface it), CSV often carries none — so auto-detect is a SMART DEFAULT with a manual fallback whenever the number is absent or matches zero/multiple accounts (never silently import to the wrong account — cf. FIBR-0059). When the detected number matches no account, prompt to create one, pre-filled from statement metadata (number, bank name if printed, type/currency where available) and asking the user for the rest. ENABLER for FIBR-0085 (batch import) — auto-detect is what makes multi-file import usable (you cannot hand-map a folder of files); reduces reliance on FIBR-0059 (change-account fix). Deps: FIBR-0005 (accounts), FIBR-0007/0008/0009 (importers must surface the statement's number), FIBR-0052 (statement provenance).
