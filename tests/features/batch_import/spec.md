@@ -10,6 +10,13 @@ Every invariant below is that document's, restated as an assertion; the section
 reference after each one is where its argument lives. This file is the test's
 contract, not a second design.
 
+**Two specs, two `INV-N` numberings.** A bare `INV-N` below means
+**FIBR-0085's**. One leg here enforces
+[`docs/specs/FIBR-0252-standard-bank-row-errors.md`](../../../docs/specs/FIBR-0252-standard-bank-row-errors.md)
+instead, and is qualified at the citation site as `FIBR-0252 INV-4` — the same
+convention `tests/features/standard_bank_pdf/spec.md` uses, and needed for the
+same reason: that spec's INV-4 is a different invariant from this one's.
+
 ## Invariants
 
 - **INV-1**: A file that fails does not stop the batch — every later file is
@@ -64,14 +71,37 @@ contract, not a second design.
 - **INV-15**: An OFX file carrying N statements produces N records, each with
   its own account, preview and review row. No statement is discarded. Source:
   FIBR-0085 § 5 INV-15 / § 4.2.
+- **FIBR-0252 INV-4** (the one invariant here that is not FIBR-0085's): a
+  Standard Bank file with an unimportable row carries a non-zero
+  `BatchFile.error_count`, **and** the review table renders that count in the
+  Errors column. Two legs in two files, because this suite is split by whether a
+  test needs Qt: the field headless in `test_batch_import.py`, the rendered cell
+  under `qtbot` in `test_batch_import_ui.py`. Both are needed —
+  `BatchReviewWidget._number` blanks a zero, so a correct field that never
+  reaches a cell is indistinguishable from the defect from the user's side.
+  `error_count` is a FIBR-0085 § 4.2 deliverable that had no test at all, so
+  this is net-new coverage of it rather than a duplicate. Source:
+  FIBR-0252 § 5 INV-4.
 
 ## Fixtures
 
-Synthetic strings only — CSV text built in the test body, OFX assembled from
-the same tag builders the `ofx_import` suite uses, and a **fake** decrypt
-function in place of any locked PDF. No `.pdf` file is committed under this
-directory at all, so INV-12's weakest link (the corpus guard skips binary
-`.pdf` bytes) is not exercised because there is nothing for it to miss.
+Synthetic throughout, but no longer synthetic *strings* only — CSV text built in
+the test body, OFX assembled from the same tag builders the `ofx_import` suite
+uses, a **fake** decrypt function in place of any locked PDF, and one committed
+PDF **borrowed from the sibling suite**: `FIBR-0252 INV-4`'s two legs read
+`tests/features/standard_bank_pdf/fixtures/family_a_zero_fee.pdf`, the way
+`tests/features/forecast` already reaches into the same directory. A real
+statement PDF is the only thing that carries a `RowError` through the whole scan
+ladder, which is what that invariant is about; the fixture is `reportlab`-
+generated fake data and is guarded as synthetic by `FIBR-0252 INV-6`, in the
+suite that owns it.
+
+The fake decrypt is untouched by that — the borrowed fixture is unencrypted, so
+it comes back through the `password=None` rung of the real ladder. And **no
+`.pdf` file is committed under this directory at all**, which is still literally
+true and is still why INV-12's weakest link (the corpus guard skips binary
+`.pdf` bytes) is not exercised here: there is nothing under this directory for
+it to miss.
 
 ## Out of scope
 

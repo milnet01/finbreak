@@ -291,7 +291,7 @@ scariest unknown (native-library bundling) up front.
   Kind: fix.
   Source: in-session-2026-08-06 (FIBR-0086 review lane 1).
 
-- 📋 [FIBR-0252] **StandardBankImporter.parse discards its per-row errors, so a dropped row is invisible.**
+- 🚧 [FIBR-0252] **StandardBankImporter.parse discards its per-row errors, so a dropped row is invisible.**
   `standard_bank.py`'s `parse` returns `ParseResult(result.drafts, [],
   start, end, ...)` — an empty error list, discarding the errors `_split`
   had just separated out. So `ImportPreview.errors` is empty for every
@@ -318,6 +318,14 @@ scariest unknown (native-library bundling) up front.
   **Layman:** If a line on a Standard Bank statement cannot be read, the app throws that fact away — so you are told "53 added" with no hint that anything was skipped.
   Kind: fix.
   Source: code-quality-review-2026-08-06 (FIBR-0085 close, service lane).
+  Progress (2026-08-06): step 3/4 done — TDD green. The one-line fix is in
+  (`parse` now returns `result.errors`), with the five specced tests and the
+  new synthetic fixture `family_a_zero_fee.pdf`. Four were seen red against
+  pre-fix code for the reason under test; INV-6's is green by design (§7).
+  The fixture makes the globbed `_PRE_E_FIXTURES` 15, so the SB suite's count
+  assertion moved 14 -> 15 and its hand-written detection list gained an entry.
+  Both test-suite contracts amended per §12. Gate green: 1867 passed /
+  3 skipped. Next: steps 5-6 (/audit + /code-quality-review).
 
 - 📋 [FIBR-0253] **The all-rows-failed preview banner gives CSV-only advice on a PDF or OFX import.**
   `ui/import_wizard.py`'s FIBR-0146 D7 banner reads "None of the rows

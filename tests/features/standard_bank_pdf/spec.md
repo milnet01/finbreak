@@ -1,14 +1,27 @@
 # tests/features/standard_bank_pdf — test contract
 
-Enforces `docs/specs/FIBR-0050.md` (cold-eyes converged, 9 loops) and
-`docs/specs/FIBR-0190.md` (Family E, 4 loops). The Standard Bank text-layer
+Enforces `docs/specs/FIBR-0050.md` (cold-eyes converged, 9 loops),
+`docs/specs/FIBR-0190.md` (Family E, 4 loops) and
+`docs/specs/FIBR-0252-standard-bank-row-errors.md` (per-row errors reach the
+caller, 5 loops). The Standard Bank text-layer
 reader: detection, the five family line-grammars, budget-view signs, US/European
 numbers, year inference, region bounding, the all-or-nothing integrity checksum,
 and the wizard round-trip (skips mapping like OFX).
 
-**Two specs, two `INV-N` numberings.** A bare `INV-N` below means **FIBR-0050's**;
-FIBR-0190's are qualified at the citation site (`FIBR-0190 INV-3`), the same
-convention `tests/features/auto_update/spec.md` uses for `FIBR-0131 INV-1`.
+**Three specs, three `INV-N` numberings.** A bare `INV-N` below means
+**FIBR-0050's**; FIBR-0190's and FIBR-0252's are qualified at the citation site
+(`FIBR-0190 INV-3`, `FIBR-0252 INV-1`), the same convention
+`tests/features/auto_update/spec.md` uses for `FIBR-0131 INV-1`. The
+qualification matters here: FIBR-0050's INV-1…INV-14 collide with every one of
+FIBR-0252's six.
+
+**Two gates, not one.** The all-or-nothing checksum above refuses a whole
+statement whose running balance does not reconcile. Alongside it runs a
+**degrade-per-row** channel (FIBR-0216): a row `parse_transaction` rejects — the
+legitimate printed `0.00` line, a garbled date — becomes a `RowError` instead of
+aborting the parse, and `parse` returns those errors beside the drafts for the
+preview to show (FIBR-0252 INV-1). Only drafts feed the balance gates; an error
+row carries no money.
 
 **Fixtures are 100% SYNTHETIC** — `tests/features/standard_bank_pdf/fixtures/*.pdf`
 are `reportlab`-generated blobs with invented merchants/amounts and a fake account
@@ -22,7 +35,12 @@ recipe is `docs/specs/FIBR-0190.md` **§ 4.6** (page split, which page reprints 
 column header, which shapes each row must carry) together with **§ 4.2** — a
 transaction page needs a money-bearing line directly *above* its column header, or
 `_table_region`'s "header carries no money token" guard picks the wrong line and
-the real header folds into the previous row's description.
+the real header folds into the previous row's description. `family_a_zero_fee.pdf`
+(the FIBR-0252 error-channel fixture) has its own recipe:
+`docs/specs/FIBR-0252-standard-bank-row-errors.md` **§ 4.2**, which prints the
+whole thirteen-line page plus an **ablation table** saying which of those lines
+are load-bearing — four are decoration, and the waived-fee line is the fixture's
+entire reason to exist (drop it and four invariants pass while proving nothing).
 
 Coverage map:
 
@@ -64,7 +82,11 @@ Coverage map:
   - **FIBR-0190 INV-1/INV-2:** the header block
     `Date Description Payments Deposits Balance` + the legal marker detects as
     `Family.E`; every one of the **14 pre-E fixtures** still detects as the family
-    it detected as before (parametrised, one leg per fixture).
+    it detected as before (parametrised, one leg per fixture). That leg reads a
+    **hand-written** `(filename, expected_family)` list, which no glob touches —
+    so its 14 stays 14, and its "as before" stays true of exactly those. The
+    post-E addition `family_a_zero_fee.pdf` (FIBR-0252) is in the list too,
+    expected to detect as `Family.A`; it has no "before".
   - **FIBR-0190 INV-4/INV-10/INV-11 (end-to-end):** six drafts from
     `family_e_current.pdf` — amounts (the running-balance **delta**, money-out
     negative despite the column being headed *Payments*), `occurred_on` asserted
@@ -97,10 +119,33 @@ Coverage map:
     when **both** totals printed and verified; `None` when neither prints, and
     `None` on `family_e_one_total.pdf` — a lone total that *matches*, which imports
     but corroborates only half the sum (D10).
-  - **FIBR-0190 D6:** a text-**extraction** leg asserts none of the 14 pre-E
+  - **FIBR-0190 D6:** a text-**extraction** leg asserts none of the 15 pre-E
     fixtures contains `statement opening balance` — the premise that makes widening
     `_anchor_balance` / `_capture_opening` globally safe. It must extract, not grep:
-    a repo search cannot read a binary PDF's text stream.
+    a repo search cannot read a binary PDF's text stream. This leg is parametrised
+    over a **glob**, so it picked up `family_a_zero_fee.pdf` on its own: 14 → 15.
+    (The constant keeps the name `_PRE_E_FIXTURES` even though it now holds a
+    post-E fixture — renaming it is churn across two files for no behavioural
+    gain.)
+- **Per-row errors reach the caller (FIBR-0252).** `family_a_zero_fee.pdf` — a
+  Family A page carrying `SERVICE FEE WAIVED 0.00` between two ordinary rows, so
+  it reconciles and previews rather than being refused.
+  - **FIBR-0252 INV-1/INV-2/INV-3:** `parse` returns `[(2, "amount must be
+    non-zero")]` beside drafts at rows `[1, 3]`, with the span, closing balance
+    and amounts unmoved. The **boundary** leg: the existing
+    `test_FIBR0216_…degrades_instead_of_aborting_the_statement` calls
+    `_parse_family_a` directly, which is why it stayed green for the whole life
+    of the defect. The corpus cannot pin INV-3 — none of those fixtures carries
+    a `RowError`, so they pass identically either side of the change.
+  - **FIBR-0252 INV-5:** the wizard preview interleaves the errored row in file
+    order (located by cell content, not table index — `_fill_preview_table`
+    sorts) and the summary reads `· 1 error`.
+  - **FIBR-0252 INV-6:** a text-**extraction** allow-list leg proves the fixture
+    is synthetic. It is the only check there is: the repo-wide corpus guard
+    skips binary `.pdf` bytes. Scoped to **customer and account** data, not "bank
+    data" — the legal marker is a real published company registration number and
+    detection cannot fire without it.
+  - **FIBR-0252 INV-4 lives next door**, in `tests/features/batch_import/`.
 - **Number format (INV-8):** detection is scoped to the transaction **region** — a
   European-format token in the footer (outside the region) does not trip the
   "mixes number formats" refusal (`mixed_footer_a`).
