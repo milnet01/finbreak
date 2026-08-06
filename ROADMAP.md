@@ -319,6 +319,29 @@ scariest unknown (native-library bundling) up front.
   Kind: fix.
   Source: code-quality-review-2026-08-06 (FIBR-0085 close, service lane).
 
+- 📋 [FIBR-0253] **The all-rows-failed preview banner gives CSV-only advice on a PDF or OFX import.**
+  `ui/import_wizard.py`'s FIBR-0146 D7 banner reads "None of the rows
+  could be imported. Go back and check the column mapping and the Date
+  format match your statement." Its visibility test in
+  `_apply_preview_counts` is purely count-based — `new_count == 0 and
+  duplicate_count == 0 and len(preview.errors) > 0` — so it fires on any
+  source, but its remedy names the CSV mapping step, which no PDF or OFX
+  import ever visits.
+
+  PRE-EXISTING and reachable today via OFX (`ofx_importer` collects
+  per-row errors). FIBR-0252 widens the reach to Standard Bank PDFs: a
+  Family A or E statement prints no closing balance, so `_verify_checksum`
+  returns early and a statement whose every row is unimportable reaches
+  the preview as 0 new / 0 duplicate / N error instead of raising.
+
+  Fix: either gate the banner on the CSV path (the only one with a
+  mapping step), or reword it to name a remedy that holds for every
+  source. Deliberately NOT bundled into FIBR-0252, which is confined to
+  the error channel itself.
+  **Layman:** If no row of a PDF statement can be read, the app tells you to check the column mapping — a screen that only exists for spreadsheet files, so the advice cannot be followed.
+  Kind: fix.
+  Source: in-session-2026-08-06 (FIBR-0252 spec, blast-radius scan).
+
 ### 📦 Packaging
 
 - ✅ [FIBR-0003] **P01: bundling smoke-test (de-risk
