@@ -31,21 +31,27 @@ _OFX_HEADER = (
 )
 
 
-def _ofx(acctid: str) -> bytes:
-    """A one-transaction bank statement carrying ``acctid`` as its account id."""
-    body = (
-        "<STMTTRN>\n<TRNTYPE>DEBIT\n<DTPOSTED>20260105\n<TRNAMT>-10.00\n"
-        "<NAME>Coffee\n<FITID>a1\n</STMTTRN>\n"
-    )
+def _stmt_body(acctid: str, fitid: str) -> str:
+    """One ``<STMTTRNRS>`` carrying ``acctid`` as its account id."""
     return (
-        _OFX_HEADER + "<OFX>\n<BANKMSGSRSV1><STMTTRNRS><TRNUID>1<STATUS><CODE>0"
-        "<SEVERITY>INFO</STATUS>\n"
+        "<STMTTRNRS><TRNUID>1<STATUS><CODE>0<SEVERITY>INFO</STATUS>\n"
         f"<STMTRS><CURDEF>ZAR<BANKACCTFROM><BANKID>250655<ACCTID>{acctid}"
         "<ACCTTYPE>CHECKING</BANKACCTFROM>\n"
         "<BANKTRANLIST><DTSTART>20260101\n<DTEND>20260131\n"
-        f"{body}</BANKTRANLIST>\n"
+        "<STMTTRN>\n<TRNTYPE>DEBIT\n<DTPOSTED>20260105\n<TRNAMT>-10.00\n"
+        f"<NAME>Coffee\n<FITID>{fitid}\n</STMTTRN>\n</BANKTRANLIST>\n"
         "<LEDGERBAL><BALAMT>0.00<DTASOF>20260131</LEDGERBAL>\n"
-        "</STMTRS></STMTTRNRS></BANKMSGSRSV1>\n</OFX>\n"
+        "</STMTRS></STMTTRNRS>"
+    )
+
+
+def _ofx(acctid: str) -> bytes:
+    """A one-transaction bank statement carrying ``acctid`` as its account id."""
+    return (
+        _OFX_HEADER
+        + "<OFX>\n<BANKMSGSRSV1>"
+        + _stmt_body(acctid, "a1")
+        + "</BANKMSGSRSV1>\n</OFX>\n"
     ).encode()
 
 
@@ -104,6 +110,59 @@ def test_match_preselects_but_does_not_commit(qtbot, service, tmp_path):
     txns = TransactionRepository(service.vault.connection)
     assert txns.count_for_account(target) == 0
     assert txns.count_for_account(seeded) == 0
+
+
+def test_each_outcome_explains_itself_on_screen(qtbot, service, tmp_path):
+    """§1's goal is a match made "with a visible statement of *why*".
+
+    Without this, deleting the whole labelling body leaves every other test green:
+    the only other label assertion is a negative one, and it passes vacuously
+    because a fresh file pick already hid the label.
+    """
+    svc = _accounts(service)
+    seeded = svc.list_accounts()[0].id
+    svc.add_account("Savings", "savings", account_number="22 333 444 5")
+
+    widget = _wizard(qtbot, service, seeded)
+
+    # Grouped on the statement, stored unspaced on the account: they normalise
+    # alike, so this still matches — and the label must show the GROUPED form.
+    widget._select_file(_write(tmp_path, _ofx("22 333 444 5")))
+    assert not widget._account_match_label.isHidden()
+    # Rendered AS PRINTED, not as the normalised key — the number on screen must
+    # be the one the user can read off the paper statement.
+    assert "22 333 444 5" in widget._account_match_label.text()
+    assert "223334445" not in widget._account_match_label.text()
+
+    widget._select_file(_write(tmp_path, _ofx("99 888 777 6")))
+    assert not widget._account_match_label.isHidden()
+    assert "99 888 777 6" in widget._account_match_label.text()
+
+    svc.add_account("Savings 2", "savings", account_number="0223334445")
+    widget._select_file(_write(tmp_path, _ofx("223334445")))
+    assert not widget._account_match_label.isHidden()
+    assert "more than one" in widget._account_match_label.text()
+
+
+def test_a_manual_override_retires_the_match_explanation(qtbot, service, tmp_path):
+    """Once the user re-points the destination themselves, the explanation no
+    longer describes it — and this is the final, irreversible screen."""
+    svc = _accounts(service)
+    seeded = svc.list_accounts()[0].id
+    svc.add_account("Savings", "savings", account_number="22 333 444 5")
+
+    widget = _wizard(qtbot, service, seeded)
+    widget._select_file(_write(tmp_path, _ofx("223334445")))
+    assert not widget._account_match_label.isHidden(), "fixture: expected a match"
+
+    widget._confirm_account_combo.setCurrentIndex(
+        widget._confirm_account_combo.findData(seeded)
+    )
+
+    assert widget._account_match_label.isHidden()
+    assert widget._create_account_button.isHidden()
+    assert widget._preview is not None
+    assert widget._preview.account_id == seeded
 
 
 # --- INV-7a ------------------------------------------------------------------
@@ -249,6 +308,95 @@ def test_create_with_no_name_surfaces_the_error(qtbot, service, tmp_path):
     assert "name" in widget._error.text().lower()
     # Still offered, so the user can correct it rather than losing the path.
     assert not widget._create_account_button.isHidden()
+
+
+def test_standard_bank_pdf_matches_before_it_previews(qtbot, service):
+    """INV-7a on the PDF path — the feature's PRIMARY target.
+
+    Families A, B and D are PDF-only; the corpus behind this design contains zero
+    OFX files. So locking the ordering on OFX alone leaves the path that actually
+    matters unguarded: reordering `_continue_after_decrypt` so the match runs after
+    `_show_preview` is the wrong-account commit, and it would ship green.
+
+    Asserts the ORDER of the two calls rather than a resulting account id, because
+    the committed synthetic fixtures all print an all-zeros number (which
+    normalises to empty and so cannot produce a `matched`). The order is the
+    property §4.5 makes load-bearing; a fixture-specific id would not be.
+    """
+    calls: list[str] = []
+    svc = _accounts(service)
+    widget = _wizard(qtbot, service, svc.list_accounts()[0].id)
+
+    real_match = widget._apply_account_match
+    real_preview = widget._imports.preview_result
+
+    def spy_match(result):
+        calls.append("match")
+        return real_match(result)
+
+    def spy_preview(result, account_id):
+        calls.append("preview")
+        return real_preview(result, account_id)
+
+    widget._apply_account_match = spy_match
+    widget._imports.preview_result = spy_preview
+
+    pdf = (
+        Path(__file__).resolve().parents[1]
+        / "standard_bank_pdf"
+        / "fixtures"
+        / "family_a_current.pdf"
+    ).read_bytes()
+    widget._continue_after_decrypt(pdf)
+
+    assert calls == ["match", "preview"], (
+        "the match must be seeded into the combo BEFORE the preview is built "
+        "against it; reversed, commit_import persists a preview aimed at the "
+        "previous account while the screen names the matched one"
+    )
+    # ...and the preview really was built for whatever the combo ended up showing.
+    assert widget._preview is not None
+    assert widget._preview.account_id == widget._confirm_account_combo.currentData()
+
+
+def test_a_second_ofx_statement_does_not_inherit_the_first_ones_match(
+    qtbot, service, tmp_path
+):
+    """A multi-statement OFX must not file statement 2 under statement 1's match.
+
+    `_apply_account_match` runs again per statement, and on a non-matched outcome
+    "leave the combo alone" is only the same as "the pick step's account" on the
+    FIRST statement. On the second it may still hold the account auto-matched for
+    the first — an app-made guess drawn from a different statement's number, shown
+    with no label to explain it.
+    """
+    svc = _accounts(service)
+    seeded = svc.list_accounts()[0].id
+    matched = svc.add_account("Savings", "savings", account_number="22 333 444 5").id
+
+    # Statement 0 matches Savings; statement 1 carries a number nothing matches.
+    two = (
+        _OFX_HEADER
+        + "<OFX>\n<BANKMSGSRSV1>\n"
+        + _stmt_body("223334445", "a1")
+        + _stmt_body("99 888 777 6", "b1")
+        + "</BANKMSGSRSV1>\n</OFX>\n"
+    ).encode()
+
+    widget = _wizard(qtbot, service, seeded)
+    widget._select_file(_write(tmp_path, two))
+    assert widget._confirm_account_combo.currentData() == matched, (
+        "fixture: st.0 matched"
+    )
+
+    widget._ofx_statement_combo.setCurrentIndex(1)
+
+    assert widget._confirm_account_combo.currentData() == seeded, (
+        "statement 1 matched nothing, so it must fall back to the PICK STEP's "
+        "account — not stay on the account statement 0 was matched to"
+    )
+    assert widget._preview is not None
+    assert widget._preview.account_id == seeded
 
 
 def test_create_dialog_prefills_from_the_statement() -> None:

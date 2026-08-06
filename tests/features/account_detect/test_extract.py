@@ -32,7 +32,10 @@ def _family_a_page(label_line: str) -> list[str]:
         "",
         "Details Service Date Balance",
         "PAYMENT RECEIVED 1,000.00 09 05 1,132.51",
-        "SBSA HOMEL 447556667 250920 500.00- 09 20 632.51",
+        # Carries a LABEL as well as a foreign number. Without the label this row
+        # is invisible to a label-anchored extractor at any scan width, so the
+        # INV-2 test below would pass against a whole-page scan and lock nothing.
+        "SBSA HOMEL account number 447556667 250920 500.00- 09 20 632.51",
     ]
 
 
@@ -171,6 +174,48 @@ def test_family_b_has_no_name_prefix() -> None:
     assert hint.number == "447556667"
     assert hint.name is None
     assert hint.family == "B"
+
+
+def test_family_d_reads_the_colon_spelling() -> None:
+    """Family D prints ``Account number:`` — the only family that does, and the
+    sole reason ``_ACCOUNT_LABEL`` carries an optional colon.
+
+    Without this, tightening the regex (dropping the ``:?``, or requiring a space
+    after the label) silently stops investment statements detecting and the whole
+    suite stays green.
+    """
+    page = [
+        "THE STANDARD BANK OF SOUTH AFRICA LIMITED",
+        "Account number: 5566 777 888 9",
+        "",
+        "Date Description Debit Credit Balance",
+        "2025 03 01 OPENING BALANCE R 1,000.00",
+    ]
+
+    hint = extract_account_number(page, Family.D)
+
+    assert hint is not None
+    assert hint.number == "5566 777 888 9"
+    assert hint.family == "D"
+
+
+def test_family_e_is_excluded() -> None:
+    """Family E is out of scope: no Family E statement existed in the corpus the
+    design was measured against, so including it would be an untested claim.
+
+    Asserted rather than left implicit — the repo's own family-E fixtures DO print
+    an ``Account Number`` label, so this is a scope decision that would otherwise
+    look like an oversight to the next reader.
+    """
+    page = [
+        "THE STANDARD BANK OF SOUTH AFRICA LIMITED",
+        "Account Number 11 222 333 4",
+        "",
+        "Date Description Payments Deposits Balance",
+        "01 Sep 25 OPENING BALANCE 1,000.00",
+    ]
+
+    assert extract_account_number(page, Family.E) is None
 
 
 def test_no_label_yields_none() -> None:

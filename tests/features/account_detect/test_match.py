@@ -127,6 +127,38 @@ def test_masked_number_never_matches(masked: str) -> None:
     assert match.candidates == ()
 
 
+@pytest.mark.parametrize("masked", ["####1234", "....1234", "ending 1234", "•••• 1234"])
+def test_masks_other_than_star_and_x_also_never_match(masked: str) -> None:
+    """The guard is a whitelist of what a NUMBER may contain, not a denylist of the
+    three mask characters this bank happens to print.
+
+    A denylist reads as safe and is not: every other masking convention falls
+    straight through normalisation, which strips non-digits, and becomes the
+    trailing-digit match the design declined to build.
+    """
+    match = match_account(SourceAccountHint(masked), [_account(1, "1234")])
+
+    assert match.outcome == "no_number"
+    assert match.account_id is None
+
+
+def test_a_masked_STORED_number_never_matches() -> None:
+    """The guard is symmetric, because the risk is.
+
+    Nothing stops the user typing a card's printed PAN spelling into an account —
+    family C gets no auto-prefill, so typing it by hand is the only way. Normalised,
+    ``1234 **** **** 5678`` becomes ``12345678``, which a full statement number can
+    equal by coincidence; checking only the statement's side closes half the hole.
+    """
+    card = _account(9, "1234 **** **** 5678")
+
+    match = match_account(SourceAccountHint("12 345 678"), [card])
+
+    assert match.outcome == "no_match"
+    assert match.account_id is None
+    assert match.candidates == ()
+
+
 def test_masked_check_precedes_normalisation() -> None:
     """The discriminator for 'the mask check runs first'.
 

@@ -331,7 +331,10 @@ class ImportWizardWidget(QWidget):
 
         destination = QFormLayout()
         destination.addRow(self.tr("Import into account"), self._confirm_account_combo)
-        destination.addRow(self._account_match_label, self._create_account_button)
+        # The wrapped explanation goes in the FIELD column and the short button in
+        # the label column: a QFormLayout gives the field column the width, and the
+        # sentence is what needs it.
+        destination.addRow(self._create_account_button, self._account_match_label)
 
         layout = QVBoxLayout(page)
         layout.addLayout(destination)
@@ -503,11 +506,24 @@ class ImportWizardWidget(QWidget):
         # user can read off the paper statement in front of them.
         printed = result.source_account.number if result.source_account else ""
 
+        # The destination this outcome implies. Every non-matched outcome returns
+        # to the PICK STEP's account explicitly rather than leaving the combo
+        # untouched — "untouched" is only the same thing on the first preview. On
+        # the OFX statement chooser this method runs again for a second statement
+        # in the same file, where the combo may still hold the account auto-matched
+        # for the FIRST one; leaving it there would silently file this statement
+        # under an account chosen from a different statement's number.
+        destination = (
+            match.account_id
+            if match.outcome == "matched"
+            else self._account_combo.currentData()
+        )
+        with QSignalBlocker(self._confirm_account_combo):
+            self._confirm_account_combo.setCurrentIndex(
+                self._confirm_account_combo.findData(destination)
+            )
+
         if match.outcome == "matched":
-            with QSignalBlocker(self._confirm_account_combo):
-                self._confirm_account_combo.setCurrentIndex(
-                    self._confirm_account_combo.findData(match.account_id)
-                )
             text = self.tr(
                 "Matched account number {number} printed on this statement."
             ).format(number=printed)
@@ -579,11 +595,23 @@ class ImportWizardWidget(QWidget):
         self._confirm_account_combo.setCurrentIndex(
             self._confirm_account_combo.findData(account.id)
         )
-        self._account_match_label.setText(
-            self.tr(
-                "Matched account number {number} printed on this statement."
-            ).format(number=self._pending_hint.number)
-        )
+        # Report what was actually STORED, not what the statement printed — the
+        # number box is editable, and clearing it stores NULL. Claiming a match on
+        # the printed number there would promise auto-filing that cannot happen,
+        # and every later import of this account would offer to create it again.
+        if account.account_number:
+            self._account_match_label.setText(
+                self.tr(
+                    "Matched account number {number} printed on this statement."
+                ).format(number=account.account_number)
+            )
+        else:
+            self._account_match_label.setText(
+                self.tr(
+                    "Created {name}. It has no account number, so future statements "
+                    "will not file themselves."
+                ).format(name=account.name)
+            )
         self._pending_hint = None
         self._create_account_button.hide()
 
@@ -1101,6 +1129,14 @@ class ImportWizardWidget(QWidget):
         account_id = self._confirm_account_combo.currentData()
         if account_id is None or account_id == self._preview.account_id:
             return
+        # The user has overridden the destination, so any FIBR-0086 explanation no
+        # longer describes it — a stale "Matched account number …" on the final,
+        # irreversible screen asserts a match that is no longer true, and a stale
+        # Create button would discard the account they just picked.
+        self._account_match_label.clear()
+        self._account_match_label.hide()
+        self._pending_hint = None
+        self._create_account_button.hide()
         self._error.clear()
         self._preview = self._imports.retarget(self._preview, account_id)
         self._apply_preview_counts(self._preview)

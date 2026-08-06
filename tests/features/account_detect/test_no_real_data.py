@@ -21,16 +21,26 @@ import pytest
 
 from finbreak.services.account_match import normalise_account_number
 
-# A digit run allowing a SINGLE space or dash between digits — the same shape the
-# extractor captures, so "11 222 333 4" is found as one run rather than four.
-_DIGIT_RUN = re.compile(r"(?:\d[ -]?)*\d")
+# A digit run allowing ANY single run of separator characters between digits.
+#
+# Deliberately wider than the extractor's own `[ -]?`, because this is a leak
+# guard, not a parser: it has to find a number however it was pasted. The prose in
+# this repo is hard-wrapped at ~80 columns, so a grouped number pasted into a spec
+# paragraph gets split at a group boundary — and "5566 777\n888 9" under the
+# narrow class is two sub-8-digit fragments that both fall under the floor and
+# vanish. Tabs, non-breaking spaces and en-dashes fail the same way.
+_DIGIT_RUN = re.compile(r"\d(?:[\s .\-‐-―]{0,4}\d)*")
 
 # Below this many digits a run cannot be an account number, and every file is full
 # of short ones (line numbers, dates, versions). The real keys are 9-11 digits.
 _MIN_DIGITS = 8
 
+# Binary only. `.svg` is deliberately NOT here — it is plain text and gets read.
+# `.pdf` is skipped because its bytes are compressed, so a real statement committed
+# as a fixture would not be caught by a text scan; that gap is the author's to hold
+# and is recorded in the spec's §11 "what checks this" table.
 _SKIP_SUFFIXES = frozenset(
-    {".png", ".jpg", ".jpeg", ".ico", ".pdf", ".gz", ".zip", ".svg", ".icns", ".woff2"}
+    {".png", ".jpg", ".jpeg", ".ico", ".pdf", ".gz", ".zip", ".icns", ".woff2"}
 )
 
 
@@ -47,6 +57,36 @@ def _tracked_files(root: Path) -> list[Path]:
         check=True,
     ).stdout
     return [root / name for name in listed.split("\0") if name]
+
+
+@pytest.mark.parametrize(
+    "spelling",
+    [
+        "5566 777 888 9",  # grouped, one line — the as-printed form
+        "55667778889",  # unspaced
+        "5566 777\n  888 9",  # hard-wrapped mid-number, 2-space continuation
+        "5566\t777\t888\t9",  # tab-separated
+        "5566-777-888-9",  # dash-separated
+        "00 5566 777 888 9",  # zero-padded
+    ],
+)
+def test_the_scanner_sees_every_spelling_a_leak_could_take(spelling: str) -> None:
+    """Guards the guard.
+
+    The scan is only worth its green result if it finds a number however it was
+    pasted. Prose here is hard-wrapped at ~80 columns, so a grouped number in a
+    spec paragraph really does get split mid-number — and that is the spelling the
+    rest of this feature encourages, since everything is stored and displayed
+    as-printed. A narrower separator class turns each fragment into a sub-8-digit
+    run that the floor discards, and the guard passes on a live leak.
+    """
+    hits = {
+        normalise_account_number(run)
+        for run in _DIGIT_RUN.findall(spelling)
+        if sum(ch.isdigit() for ch in run) >= _MIN_DIGITS
+    }
+
+    assert "55667778889" in hits
 
 
 def test_no_corpus_numbers_in_tree() -> None:

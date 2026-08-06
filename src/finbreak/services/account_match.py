@@ -26,6 +26,28 @@ from finbreak.models import Account
 # matches a real account numbered 1234.
 _MASK_CHARS = frozenset("*xX")
 
+# What a real account number is allowed to contain: digits, and the separators the
+# measured layouts use for grouping. Anything else means the value is not a plain
+# number — a mask, a label, a fragment — and must not be matched on.
+_PLAIN_NUMBER = re.compile(r"[\d -]*\Z")
+
+
+def _is_masked(raw: str) -> bool:
+    """Is this a masked / non-plain identifier rather than a full number?
+
+    Checked on the RAW value, before normalisation, because normalisation strips
+    non-digits and so destroys the evidence: ``xxxx1234`` becomes ``1234``, which
+    matches a real account numbered 1234 — the trailing-digit matching FIBR-0086
+    §3 decision 3 declined to build.
+
+    Deliberately a whitelist of what a number may contain, not a denylist of the
+    three mask characters the corpus happens to print: ``####1234`` and
+    ``ending 1234`` mask just as effectively and a denylist would let both match.
+    """
+    return bool(raw) and (
+        any(ch in _MASK_CHARS for ch in raw) or not _PLAIN_NUMBER.match(raw)
+    )
+
 
 def normalise_account_number(raw: str) -> str:
     """Digits only, leading zeros removed — the comparison key.
@@ -65,8 +87,7 @@ def match_account(
     if hint is None:
         return AccountMatch(None, "no_number", "", ())
 
-    # Before normalisation, deliberately: normalisation destroys the evidence.
-    if any(ch in _MASK_CHARS for ch in hint.number):
+    if _is_masked(hint.number):
         return AccountMatch(None, "no_number", "", ())
 
     key = normalise_account_number(hint.number)
@@ -79,6 +100,12 @@ def match_account(
         account.id
         for account in accounts
         if account.account_number
+        # A STORED number can be masked too — nothing stops the user typing the
+        # PAN spelling a card statement prints ("1234 **** **** 5678"), and
+        # normalisation would reduce it to "12345678", which a full statement
+        # number can then equal by coincidence. The guard has to be symmetric or
+        # it only closes the half the statement controls.
+        and not _is_masked(account.account_number)
         and normalise_account_number(account.account_number) == key
     )
 
