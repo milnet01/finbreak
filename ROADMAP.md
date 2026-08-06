@@ -140,6 +140,34 @@ scariest unknown (native-library bundling) up front.
   Kind: feature.
   Source: user-request-2026-07-09.
 
+- 📋 [FIBR-0244] **Redact the real account number published in docs/specs/FIBR-0050.md.**
+  `docs/specs/FIBR-0050.md` line 180 contains the user's REAL Standard Bank
+  RCP Loan account number, twice, inside a quoted parser example. It was
+  committed in `507a5f7` on 2026-07-05 and is an ancestor of `origin/main`,
+  so it has been PUBLIC on GitHub since then. Found 2026-08-06 while
+  writing FIBR-0086, whose INV-8 establishes that the no-real-data rule
+  binds prose (specs, ROADMAP, CHANGELOG, commit messages) and not only
+  test fixtures.
+  Note the gate does NOT cover this: `gitleaks` matches credential and key
+  patterns, and a bare 9-digit account number is not one — so the leak
+  passed every CI run since it landed.
+  Decision required from the user, because the options differ in cost and
+  none fully undoes publication: (a) redact the line in HEAD so the current
+  tree is clean — cheap, honest, leaves history intact; (b) additionally
+  rewrite published history (filter-repo + force-push) — messy, breaks
+  clones, and does not remove the value from forks, caches or anyone who
+  already pulled; (c) accept it. Recommendation: (a), plus rotating nothing
+  since an account number is not a credential — it is a privacy exposure,
+  not an access one.
+  When fixing, replace with a synthetic stand-in the way
+  `docs/specs/FIBR-0086-account-number-auto-detect.md` §2.2 does, so the
+  parser example still demonstrates what it was written to demonstrate.
+  Sweep the rest of `docs/` in the same pass: this was found by a targeted
+  grep for six known numbers, which is not a general check.
+  **Layman:** One of our design documents accidentally contains a real bank account number and has been public on GitHub for a month; decide whether to just clean it up going forward or also rewrite the published history.
+  Kind: security.
+  Source: in-session-2026-08-06 (found during FIBR-0086 cold-eyes).
+
 ### 📦 Packaging
 
 - ✅ [FIBR-0003] **P01: bundling smoke-test (de-risk
