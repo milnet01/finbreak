@@ -21,7 +21,9 @@ one configured account pre-selects that account in the wizard, with a visible
 statement of *why* it was selected. A statement matching no configured account
 offers to create one, pre-filled with the number, a name and a type read off
 the statement. A statement matching more than one account, or carrying no
-readable number, falls back to today's manual pick with nothing pre-selected.
+readable number, falls back to today's manual pick — the destination combo
+keeps the value the pick step gave it, and the wizard says why it could not
+choose.
 The user can always override. `ParseResult` gains one optional field — a
 `SourceAccountHint` carrying the number, and where the layout prints them a
 name and a family — and no schema change is required.
@@ -56,7 +58,7 @@ Two consequences:
 The design below is grounded in the user's real Standard Bank corpus
 (`/mnt/Emulators/storage_backup_2026-05-08/Statements/`, supplied 2026-08-06;
 **never committed** — `testing.md` §6). Forty-eight PDFs across six folders,
-read with `pdfplumber` at the supplied password. The probe extracted, from
+47 of them readable, read with `pdfplumber` at the supplied password. The probe extracted, from
 page 1 of each file, the text preceding an `account number` label and the
 digit-run following it.
 
@@ -85,12 +87,13 @@ digit-run following it.
 `Family` is the existing `importers/standard_bank.py::Family` StrEnum, as
 returned by `detect_standard_bank()`.
 
-Every folder yielded **exactly one distinct number across every file in it**
-— zero variation in the labelled account number. (The same corpus does vary
-elsewhere: §2.3's card PAN changes mid-sequence.) Five of the six yield a
-number that is *their own*
-account's (34 files); the Credit Card folder's is stable too, and belongs to
-a different account, which is §2.3.
+Every folder yielded **at most one distinct number, and never two** — every
+file that produced a number produced its folder's only one. (The same corpus
+does vary elsewhere: §2.3's card PAN changes mid-sequence, and 2 of the 13
+Credit Card files print no page-1 label at all.) Five of the six folders yield
+a number that is *their own* account's, on all 34 of their files; the Credit
+Card folder's is stable too, on the 11 that print one, and belongs to a
+different account — which is §2.3.
 
 **The label falls above the transaction table — measured against the boundary
 §4.2 actually specifies, not merely "near the top".** A first-N-lines probe
@@ -148,8 +151,9 @@ collision: `000112223334` normalises to `112223334`, which is the Current
 account's number exactly (row 1 of the table).
 
 So the natural implementation — *find the words "account number", take the
-digits* — would file **all 13 credit-card statements under the current
-account**. Under this design that lands as a wrong *pre-selection* rather
+digits* — would file the **11 credit-card statements that carry a page-1
+label under the current account** (the other 2 print none there, and a
+whole-document scan would take all 13). Under this design that lands as a wrong *pre-selection* rather
 than a silent write (INV-7 keeps the preview step), but it is still the
 failure the roadmap bullet forbids ("never silently import to the wrong
 account"): a confidently-labelled wrong default that a user clicking through
@@ -227,8 +231,18 @@ Preference calls, not deductions.
    Auto-detect changes the default, not the flow.
 
 5. **Ambiguity always degrades to manual, never to a guess.** Zero matches
-   and two-or-more matches both leave the combo unselected. This is the rule
-   the whole design is built to protect.
+   and two-or-more matches both leave the destination combo **exactly as it is
+   today** — seeded from the pick step — and show an explanatory label instead
+   of a match. Auto-detect only ever *changes* the selection on `matched`.
+   This is the rule the whole design is built to protect.
+
+   **It is deliberately not "clear the combo".** `_target_account_id()` is
+   typed `-> int` and returns `self._confirm_account_combo.currentData()`,
+   which is `None` for an unselected combo; `preview_result(result,
+   account_id: int)` cannot take that. So "nothing pre-selected" is not
+   implementable without widening two existing signatures, and it would buy
+   nothing: today's seeded default is already the manual behaviour this
+   degrades to.
 
 ## 4. Design
 
@@ -424,7 +438,7 @@ The rules, in order:
 
 1. `hint` is `None`, or `hint.number` normalises to `""` →
    `no_number`. Nothing is pre-selected.
-1a. `hint.number` contains a **masking character** (`*`, `x` or `X`) →
+2. `hint.number` contains a **masking character** (`*`, `x` or `X`) →
    `no_number`. This is what actually *enforces* §3 decision 3's deferral, and
    without it the deferral is a comment rather than a rule: normalisation
    strips non-digits, so `"xxxx1234"` becomes `"1234"` (verified 2026-08-06)
@@ -432,12 +446,13 @@ The rules, in order:
    tail by accident, which is precisely what decision 3 declined to build
    deliberately. The check is on the **raw** `hint.number`, before
    normalisation, because normalisation destroys the evidence.
-2. Otherwise collect every account whose stored `account_number` is non-`None`
+3. Otherwise collect every account whose stored `account_number` is non-`None`
    and normalises to the **same** string. Accounts with a `NULL`
    `account_number` never match anything — a fresh vault matches nothing.
-3. Exactly one candidate → `matched`, `account_id` set.
-4. Zero candidates → `no_match`. Offers creation (§4.5).
-5. Two or more → `ambiguous`. Nothing pre-selected; the wizard says so.
+4. Exactly one candidate → `matched`, `account_id` set.
+5. Zero candidates → `no_match`. Offers creation (§4.5).
+6. Two or more → `ambiguous`. The combo is left as the pick step set it and
+   the wizard says why it could not choose (§3 decision 5).
 
 Comparison is on the normalised form of *both* sides, so a user who typed
 `11 222 333 4`, `112223334` or `0112223334` when creating the account gets
@@ -458,6 +473,8 @@ preview is built, and the preview is built against the matched account:
 2. match_account(result.source_account, accounts)   -> AccountMatch
 3. seed _confirm_account_combo from the match, under QSignalBlocker
 4. preview = preview_result(result, _target_account_id())   <-- now the match
+   (_target_account_id() returns _confirm_account_combo.currentData(), which
+    step 3 has just set — verified against source 2026-08-06)
 5. show the preview step
 ```
 
@@ -478,18 +495,19 @@ step 0 → preview step is safe under its blocker: it also runs before
 
 Auto-detect also **overrides the step-0 pick** when it fires, because the
 statement is better evidence than a default the user may never have touched.
-`no_number`, `no_match` and `ambiguous` leave the existing step-0 seeding
-exactly as it is today.
+`no_number`, `no_match` and `ambiguous` leave the existing pick-step seeding
+untouched (§3 decision 5) — they change the *label*, never the selection.
 
 - **`matched`** — the combo is set to the matched account per the sequence
   above, and a label beneath it reads *"Matched account number 11 222 333 4
   printed on this statement."* The user can still change it afterwards, which
   goes through `_on_confirm_account_changed` and re-runs the
   duplicate-detection pass exactly as it does today.
-- **`ambiguous`** — nothing selected; the label reads *"This statement's
-  account number matches more than one account — pick one."*
-- **`no_match`** — nothing selected; the label offers creation with a
-  button, *"No account has number 22 333 444 5. Create it?"*
+- **`ambiguous`** — the combo keeps the pick step's value; the label reads
+  *"This statement's account number matches more than one account — pick
+  one."*
+- **`no_match`** — the combo keeps the pick step's value; the label offers
+  creation with a button, *"No account has number 22 333 444 5. Create it?"*
 
 **Every label renders `hint.number` as printed, never the normalised key.**
 The number on screen is the one the user can see on the paper statement in
@@ -497,7 +515,7 @@ front of them; showing `112223334` where the page says `11 222 333 4` invites
 them to conclude the app read it wrong.
 
 `no_number` shows no label at all: the wizard looks exactly as it does today,
-which is the correct behaviour for CSV and for Family C.
+which is the correct behaviour for CSV, for Family C and for Family E.
 
 ### 4.6 Create-from-statement prefill
 
@@ -506,20 +524,19 @@ three statement-derived values:
 
 | Field | Source | Available for |
 |---|---|---|
-| `account_number` | `hint.number`, **as printed** — but **blank** when it contains a masking character (`*`, `x`, `X`) | every detecting family |
+| `account_number` | `hint.number`, **as printed** | every detecting family |
 | `name` | `hint.name` | family A only |
 | `type` | derived from `hint.family` | families B, D |
 
 All three arrive through the single `SourceAccountHint` field of §4.1; there
 is no second seam.
 
-**The masking exception is stated here, in the section that defines the
-prefill**, and not only in §6's failure-mode list — a rule an implementer has
-to find in a failure-mode bullet is a rule that does not get built. A masked
-number is unusable as an identifier (§4.4 rule 1a already refuses to match on
-one), so prefilling it would persist a permanently wrong account number that
-looks authoritative. Blank instead, and the user types what the statement
-shows. INV-9 locks it.
+**A masked number never reaches this form at all**, so there is no masking
+case to handle here. §4.4 rule 2 classifies it `no_number`, and `no_number` is
+the one outcome that offers no creation button (§4.5) — creation is reachable
+only from `no_match`. An earlier draft of this spec carried a "blank the
+number when masked" rule here; it guarded a branch nothing could enter, and
+removing it is the shorter correct design rather than a loss of safety.
 
 `account_number` is stored **as printed**, not as the normalised key —
 storage keeps what the statement said, and every comparison normalises both
@@ -619,17 +636,6 @@ confirming.
   stale-account preview. This is the wrong-account commit, and the ordering in
   §4.5 is the only thing preventing it.
 
-- **INV-9** — A `hint.number` containing a masking character (`*`, `x`, `X`)
-  never matches an account, and never prefills the create form's number.
-  *Test:* `tests/features/account_detect/test_match.py::test_masked_number_never_matches`
-  — `match_account(SourceAccountHint("xxxx1234"), [account numbered "1234"])`
-  returns `no_number`, not `matched`.
-  *Breaks when:* the masking check is done after normalisation instead of
-  before it. Normalisation strips non-digits, so `"xxxx1234"` becomes
-  `"1234"` (verified 2026-08-06) and matches a real account numbered `1234` —
-  accidentally implementing the trailing-digit matching §3 decision 3
-  explicitly declined to build.
-
 - **INV-8** — No real statement, password, or account number from the user's
   corpus enters the repository. **This binds prose as well as fixtures** —
   this document, the ROADMAP bullets, the CHANGELOG and every commit message
@@ -660,6 +666,18 @@ confirming.
   credential and key patterns; a bare nine-digit run is not one, so the gate
   would pass a leak of exactly this shape. That gap is why this invariant
   needs a test of its own rather than a pointer at the existing gate.
+
+- **INV-9** — A `hint.number` containing a masking character (`*`, `x`, `X`)
+  yields `no_number`, so it never matches an account and never reaches the
+  create form (which only `no_match` offers).
+  *Test:* `tests/features/account_detect/test_match.py::test_masked_number_never_matches`
+  — `match_account(SourceAccountHint("xxxx1234"), [account numbered "1234"])`
+  returns `no_number`, not `matched`.
+  *Breaks when:* the masking check is done after normalisation instead of
+  before it. Normalisation strips non-digits, so `"xxxx1234"` becomes
+  `"1234"` (verified 2026-08-06) and matches a real account numbered `1234` —
+  accidentally implementing the trailing-digit matching §3 decision 3
+  explicitly declined to build.
 
 ## 6. Failure modes
 
@@ -695,16 +713,16 @@ confirming.
   surfaces rather than hides.
 - **A bank pads differently between two statements of the same account.**
   Covered by INV-5; both normalise identically.
-- **OFX `account_id` is masked by some institution.** It normalises to its
-  visible digits and almost certainly matches nothing → `no_match`, offering
-  creation with a **wrong number that the user may accept**, permanently
-  mis-numbering an account. This is the one failure mode with a lasting
-  effect, and it is **unmeasured**: the corpus is 48 PDFs and contains zero
-  OFX files, so §3 decision 3's evidence does not reach the format the
-  roadmap calls "reliable". Two rules contain it, both stated where they are
-  built rather than here: §4.4 rule 1a refuses to *match* on a masked number,
-  and §4.6 leaves the create prefill **blank** for one. INV-9 locks both.
-  §9 records the rest.
+- **OFX `account_id` is masked by some institution.** §4.4 rule 2 classifies
+  it `no_number`, so the wizard shows no label, offers no creation, and looks
+  exactly as it does today — the safe outcome. **Without that rule it would be
+  actively harmful**, because normalisation strips the mask: `"xxxx1234"`
+  becomes `"1234"` (verified 2026-08-06), which can *match* a real account
+  numbered 1234, or reach `no_match` and offer to create an account
+  permanently numbered `1234`. Rule 2 is therefore the mitigation, INV-9 locks
+  it, and this is **unmeasured territory**: the corpus is 48 PDFs with zero
+  OFX files, so §3 decision 3's evidence does not reach the format the roadmap
+  calls "reliable". §9 records the rest.
 
 ## 7. Tests
 
@@ -715,6 +733,9 @@ real corpus is read only in the scratchpad, never committed (INV-8).
 | File | Locks | Notes |
 |---|---|---|
 | `test_extract.py` | INV-1, INV-2, INV-2a | Synthetic per-family header blocks built to the shapes measured in §2.2, including a family-A header whose rows carry a foreign account number, and a label line with a trailing numeric column. |
+| `test_match.py` | INV-3, INV-4, INV-5, INV-9 | Pure-function tests over `match_account` / `normalise_account_number`; no vault. |
+| `test_wizard.py` | INV-7, INV-7a | `qtbot`; asserts the combo selection, that the preview's account equals the displayed one, and that no commit occurred. Probe widget reveal with `isHidden()`, not `isVisible()`: a widget on a non-current `QStackedLayout` page reports `isVisible() == False` even after `setVisible(True)`, because visibility needs the whole ancestor chain shown. |
+| `test_no_real_data.py` | INV-8 | Walks `git ls-files`, normalises each file's digit runs, and fails on any of the corpus keys supplied via `FINBREAK_CORPUS_NUMBERS`; skips when unset. |
 
 **Every `test_extract.py` fixture must contain a line `_table_region`
 recognises as that family's column header** — for family A, one carrying
@@ -723,9 +744,6 @@ token. Without it `_table_region` returns `slice(0, 0)`, the header slice is
 empty, and the test passes or fails for a reason unrelated to what it claims
 to lock (§6's first failure mode). Fixture shape: header lines → column-header
 line → transaction rows.
-| `test_match.py` | INV-3, INV-4, INV-5 | Pure-function tests over `match_account` / `normalise_account_number`; no vault. |
-| `test_wizard.py` | INV-7 | `qtbot`; asserts the combo selection and that no commit occurred. Probe widget reveal with `isHidden()`, not `isVisible()`: a widget on a non-current `QStackedLayout` page reports `isVisible() == False` even after `setVisible(True)`, because visibility needs the whole ancestor chain shown. |
-| `test_no_real_data.py` | INV-8 | Greps `git ls-files` for the corpus numbers supplied via `FINBREAK_CORPUS_NUMBERS`; skips when unset. |
 
 Every test must be seen to fail against pre-change code before the change
 lands (`testing.md`; `superpowers:test-driven-development`).
@@ -784,7 +802,9 @@ not appended last.
   re-entering the last four digits after each reissue. Tracked as FIBR-0240.
 - **Masked / trailing-digit matching** — deferred per §3 decision 3.
   Revisit trigger: the first real statement or OFX file whose *own*
-  identifier is masked. Tracked as FIBR-0241.
+  identifier is masked, **other than the Family C PAN** — that one already
+  exists in the corpus (§2.3) and FIBR-0240 owns it, so a trigger that
+  included it would fire on day one and mean nothing. Tracked as FIBR-0241.
 - **Family E extraction** — no Family E statement exists in the corpus.
   Revisit when one does. Tracked as FIBR-0242.
 - **OFX `<ACCTTYPE>` → account-type prefill** — the value is available on
@@ -822,8 +842,8 @@ reference to a frozen 3-field value object, or `None`.
 | INV-6 | `./scripts/ci-local.sh` — the full gate (a positional break fails many tests) |
 | INV-7 | `test_wizard.py::test_match_preselects_but_does_not_commit` |
 | INV-7a | `test_wizard.py::test_preview_account_matches_displayed_account` |
+| INV-8 | `test_no_real_data.py::test_no_corpus_numbers_in_tree` — covers full account numbers only. A pasted **masked tail** (§2.4's `*****NNNNNNN` counterparties) is a 7-digit fragment that will not match any of the five 9-to-11-digit keys, so that shape is **unchecked**; the author is the guard. **Only when `FINBREAK_CORPUS_NUMBERS` is set**; it skips in CI, which cannot hold the numbers. So CI does not catch this: a developer running it before a push does. Explicitly **not** `gitleaks`, which matches credential patterns and would pass a bare digit run. |
 | INV-9 | `test_match.py::test_masked_number_never_matches` |
-| INV-8 | `test_no_real_data.py::test_no_corpus_numbers_in_tree` — covers full account numbers only. A pasted **masked tail** (§2.4's `*****NNNNNNN` counterparties) is a 7-digit fragment that will not match a 9-digit key, so that shape is **unchecked**; the author is the guard. **Only when `FINBREAK_CORPUS_NUMBERS` is set**; it skips in CI, which cannot hold the numbers. So CI does not catch this: a developer running it before a push does. Explicitly **not** `gitleaks`, which matches credential patterns and would pass a bare digit run. |
 | §4.6 name prefill is correct for family A | **nothing** — the prefill is read from a synthetic fixture matching the measured shape, so a *real* layout change is caught only by a user noticing a wrong name. Low consequence: the field is editable before creation. |
 | §2.2's corpus measurements (one number per folder; label above `_table_region(...).start` on 34/34) | **nothing** — one-off scratchpad measurements over a corpus that is not in the repository and cannot be re-run in CI. Re-measure if the extraction rules or the `_table_region` header detection change. |
 | Auto-detect silently stopping (a layout change moves the label below the column header, §6) | **nothing** — every degraded path is indistinguishable from "this format carries no number". No metric, no warning. Accepted: the failure is safe, and the alternative is alerting on a condition that is also the normal CSV case. |
@@ -835,7 +855,7 @@ reference to a frozen 3-field value object, or `None`.
 - `CHANGELOG.md` — an `Added` entry at release.
 - `README.md` — the import section gains a line about automatic filing.
 - `docs/specs/FIBR-0085-*.md` — will cite this spec as its enabler when written.
-- ROADMAP — FIBR-0086 → 🚧 at implementation; FIBR-0240/0241/0242 filed from §9.
+- ROADMAP — FIBR-0086 → 🚧 at implementation; FIBR-0240/0241/0242/0243 filed from §9.
 - No standard changes. No ADR: this adds no dependency and no new layer.
 
 **INV-8 binds every one of those.** The invariant is not a testing rule — it
@@ -849,5 +869,6 @@ catches the files but **not** commit messages; those are on the author.
 
 | Loop | Date | Lanes | CRIT | HIGH | MED | LOW | Outcome |
 |------|------|-------|------|------|-----|-----|---------|
-| 2 | 2026-08-06 | 3 | 3 | 6 | 5 | 10 | 24 verified, all fixed; 1 dismissed (TOC — 0 of 3 siblings at 946–1594 lines carry one, so it is project convention). Dimensions: dim 4×6, dim 5×5, dim 2×4, dim 7×3, dim 6×3, dim 15×2, dim 11×1, dim 1×1, dim 10×1. Origin split: **2 draft defects, 9 collateral** — most of this loop answered loop 1's own fixes. **The decisive finding was a draft defect all 3 lanes found independently: §4.5 seeded the matched account into `_confirm_account_combo` under a `QSignalBlocker` AFTER the preview was built.** Verified against source — the blocker suppresses `currentIndexChanged`, which is wired to `_on_confirm_account_changed`, the only caller of `ImportService.retarget`; so the combo would display the matched account while `self._preview` stayed pointed at the old one, and `commit_import` persists `self._preview`. That is a wrong-account **commit**, introduced by this spec's own UI design. Fixed by specifying the order as a numbered sequence (match → seed → preview) with the reasoning inline, plus INV-7a. Second CRITICAL, verified by running it: `normalise_account_number("xxxx1234")` returns `"1234"`, so a masked id could match a real account numbered 1234 — §3 decision 3's deferral was enforced nowhere. Fixed with ladder rule 1a + INV-9. Third: §4.4's `normalised` comment and §4.6's as-printed rule gave opposite instructions for a persisted value (loop-1 collateral). |
+| 3 | 2026-08-06 | 3 | 2 | 4 | 3 | 8 | 17 verified, all fixed; 0 dismissed. Dimensions: dim 4×6, dim 7×3, dim 12×3, dim 5×3, dim 6×2. Origin split: **2 draft, 15 collateral — the second consecutive loop dominated by collateral**, which is loop-economics' stop-dispatching signal; answered by a harder 4b/4c sweep rather than a fourth cold loop. Both CRITICALs were contradictions loop 2 introduced. (a) Loop 2 wrote "leave the existing step-0 seeding exactly as it is today" against §3 decision 5's "leave the combo unselected" — and settling it surfaced that **"nothing pre-selected" was never implementable**: `_target_account_id()` is typed `-> int` and returns `_confirm_account_combo.currentData()` (verified against source), which is `None` on an unselected combo, and `preview_result` takes `account_id: int`. Settled as: no outcome ever clears the combo; only `matched` changes it. (b) Loop 2's masked-number rule routed to `no_number`, which made loop 2's own §4.6 blank-prefill rule and INV-9's second clause **unreachable** — creation is offered only from `no_match`. Removed the unreachable branch rather than routing around it. Also verified this loop and previously only assumed: `_target_account_id()`'s source combo, `ImportPreview.account_id`'s existence, and `ImportService.retarget`'s signature — all three underpin INV-7a. Mechanical: §7's table had been split in two by an interposed paragraph (3 of 4 rows rendering as literal pipes); the ladder's `1a.` was not a valid ordered-list marker; §7's Locks column omitted INV-7a and INV-9. |
+| 2 | 2026-08-06 | 3 | 3 | 6 | 5 | 10 | 24 verified, all fixed; 1 dismissed (TOC — 0 of 3 siblings at 946–1594 lines carry one, so it is project convention). Dimensions: dim 4×6, dim 5×5, dim 2×4, dim 7×3, dim 6×3, dim 15×2, dim 11×1, dim 1×1, dim 10×1. Origin split: **2 draft defects, 9 collateral** — most of this loop answered loop 1's own fixes. **The decisive finding was a draft defect all 3 lanes found independently: §4.5 seeded the matched account into `_confirm_account_combo` under a `QSignalBlocker` AFTER the preview was built.** Verified against source — the blocker suppresses `currentIndexChanged`, which is wired to `_on_confirm_account_changed`, the only caller of `ImportService.retarget`; so the combo would display the matched account while `self._preview` stayed pointed at the old one, and `commit_import` persists `self._preview`. That is a wrong-account **commit**, introduced by this spec's own UI design. Fixed by specifying the order as a numbered sequence (match → seed → preview) with the reasoning inline, plus INV-7a. Second CRITICAL, verified by running it: `normalise_account_number("xxxx1234")` returns `"1234"`, so a masked id could match a real account numbered 1234 — §3 decision 3's deferral was enforced nowhere. Fixed with a new ladder rule (numbered 1a at the time; renumbered to rule 2 in loop 3) + INV-9. Third: §4.4's `normalised` comment and §4.6's as-printed rule gave opposite instructions for a persisted value (loop-1 collateral). |
 | 1 | 2026-08-06 | 3 | 3 | 5 | 6 | 7 | 21 verified, all fixed; 2 dismissed unverified. Dimensions: dim 2×6, dim 6×4, dim 7×3, dim 4×3, dim 5×2, dim 10×1, dim 15×1, dim 9×1. **The three CRITICALs were the doc leaking the user's real account numbers into a PUBLIC repo against its own INV-8 (all 3 lanes, independently), INV-2 prescribing a real number as a committed fixture, and §4.6's name/type prefill having no transport through §4.1's one-field seam.** Fixes: every number replaced with a synthetic stand-in preserving the §2.3 collision; the seam widened to a `SourceAccountHint` value object; INV-8 rewritten to bind prose and given a real test (`gitleaks` cannot see a bare digit run). Two lane CRITICALs were **refuted by running them** — the claim that `_table_region(...).start` yields an empty header block and the feature never fires is false: measured 34/34 A/B/D files with the label above the boundary (margin 1–10 lines). Its residue was real and fixed (the reliability claim had been measured with a first-N-lines probe, not the specified boundary). One prescribed regex was executed before landing (4b-x): the greedy `[\d\s-]*` merges a following numeric column, the specified `[ -]?` form does not, with zero difference across all 34 files → new INV-2a. |
