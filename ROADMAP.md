@@ -670,15 +670,25 @@ scariest unknown (native-library bundling) up front.
   requirements rather than the spec's 2026-07-23 reading of them. Two
   blockers, two quality nits, one spec gap:
 
-    BLOCKER — all six metainfo `<screenshot>` URLs 404. Flathub's own
-    check fails: `flatpak-builder-lint appstream` exits 3 with six
-    `screenshot-image-not-found`, and `appstreamcli validate` agrees. The
-    FIBR-0155 "upload real PNGs" TODO was never done. The PNGs DO exist
-    in-repo (assets/screenshots/site/, six files, names already matching
-    the URLs); they were never uploaded to antsprojectshub.co.za. Docs
-    list invalid screenshots as a submission-blocking error.
+    BLOCKER (RESOLVED same day — see FIBR-0206) — all six metainfo
+    `<screenshot>` URLs 404. Flathub's own check fails:
+    `flatpak-builder-lint appstream` exits 3 with six
+    `screenshot-image-not-found`, and `appstreamcli validate` agrees.
+    Docs list invalid screenshots as a submission-blocking error.
 
-    BLOCKER — the cryptography closure drift, filed as FIBR-0256.
+    CORRECTION to this note as first written: it blamed an unfinished
+    FIBR-0155 "upload real PNGs" TODO and said the images "were never
+    uploaded". That was wrong, and FIBR-0206 had already established
+    the real cause on 2026-08-02 — the images have been published the
+    whole time; the metainfo simply guessed the hosted path from the
+    in-repo basenames. The site serves `/assets/img/shots/` with a
+    `finbreak-` prefix, so both the directory and the name differ. A
+    six-line URL correction fixed it; nothing needed uploading. Filing
+    a finding without first checking whether the roadmap already
+    carried its diagnosis is what produced the wrong cause here.
+
+    BLOCKER (RESOLVED same day — see FIBR-0256) — the cryptography
+    closure drift.
 
     NIT — screenshots are 1600x1000. The quality guidelines want
     <=1000x700, or 2000x1400 for HiDPI; 1600x1000 is neither. Re-capture
@@ -746,6 +756,36 @@ scariest unknown (native-library bundling) up front.
   **Layman:** The Flathub packaging now ships a small config that tells Flathub to build only for the PC (x86_64) chip we have the parts for; the design document should mention it.
   Kind: doc-fix.
   Source: in-session-2026-07-23.
+  Scope grew (2026-08-07): three more items to fold into § 5 in the same
+  edit, all verified against Flathub's live docs and by running the tools.
+  Batching them is deliberate — editing a spec trips the rule-14
+  `/cold-eyes` gate, so one amendment plus one review beats four.
+
+    1. `flatpak-builder-lint`. Flathub's docs tell submitters to run it
+       locally and its failures block the PR, yet neither § 5 nor
+       packaging/flatpak/README.md mentioned it. Two build-free checks:
+       `flatpak run --command=flatpak-builder-lint org.flatpak.Builder
+       manifest <manifest>` and `... appstream <metainfo>`; `... repo repo`
+       after a build. The manifest check already passes clean (exit 0).
+       Its `appstream` check is `appstreamcli` plus Flathub's own
+       overrides, so it outranks a bare `appstreamcli validate`.
+    2. Build via the `org.flatpak.Builder` flatpak, which is what Flathub's
+       infra runs; flatpak-build.sh line 53 uses a host `flatpak-builder`.
+       Fine for local iteration, worth naming as a difference.
+    3. The closure-vs-pyproject comparison is in § 5 as a MANUAL step and
+       that is exactly what failed (FIBR-0256). It now has a gate-runnable
+       test, so § 5 should cite the test rather than ask for the manual
+       diff.
+
+  Also for § 5: the exit criteria say `appstreamcli validate`, but the
+  gate's own INV-4/INV-5 invoke it with `--no-net`, which skips the
+  `<screenshot>` fetch entirely — the flag that let six dead URLs sit
+  under a green gate for months. § 5 should say plainly that the
+  pre-submit run is the networked one.
+
+  Already recorded on the FIBR-0159 bullet, no § 5 change needed: the
+  runtime branch 25.08 is current (freedesktop-sdk-25.08.15) and the
+  manifest is correctly pinned to v0.1.19.
 
 - 📋 [FIBR-0184] **bump.json's Flatpak re-pin todo names a tagging step the release path doesn't use, so `git rev-parse v<NEW>` fails locally.**
   Hit during the v0.1.18 release. The `.claude/bump.json` todo for the
@@ -816,7 +856,7 @@ scariest unknown (native-library bundling) up front.
   Kind: fix.
   Source: user-request-2026-07-28 (screenshot: duplicate panel icon).
 
-- 📋 [FIBR-0206] **AppStream metainfo points at six screenshots that 404 — appstreamcli validate fails.**
+- ✅ [FIBR-0206] **AppStream metainfo points at six screenshots that 404 — appstreamcli validate fails.**
   Found while validating the metainfo during the v0.1.19 bump.
   `appstreamcli validate packaging/obs/io.github.milnet01.finbreak.metainfo.xml`
   exits non-zero: `✘ Validation failed: warnings: 6`, all six
@@ -877,6 +917,33 @@ scariest unknown (native-library bundling) up front.
   `github.com/milnet01/finbreak` URLs, which need no second repo. Whichever
   is chosen, verify with `appstreamcli validate` afterwards; that is the
   check that is currently red.
+  Resolved (2026-08-07): took the second of the two candidate fixes this
+  bullet already identified — the six-line URL correction, mapping
+  `/img/finbreak/<name>.png` → `/assets/img/shots/finbreak-<name>.png`.
+  No upload was needed; the 2026-08-02 progress note had the diagnosis
+  exactly right.
+
+  Verified three ways: `appstreamcli validate` exits 0 (it fetches every
+  URL), Flathub's own `flatpak-builder-lint appstream` exits 0 where it
+  previously exited 3, and all six URLs were fetched directly — HTTP 200,
+  1600x1000 each.
+
+  This bullet asked for "a check that keeps them together", so one was
+  added: `test_FIBR0206_metainfo_screenshot_urls_use_the_hosted_path_shape`
+  in tests/features/obs_packaging/. It pins the URL *shape* rather than
+  reachability, deliberately — the gate must not depend on the network.
+  Proven non-vacuous by restoring one old URL and watching it redden.
+
+  Root cause worth keeping: INV-4 already ran `appstreamcli validate`, but
+  with `--no-net`, and that flag is exactly what hid this. Without the
+  network the validator never fetches an `<image>`, so six dead URLs sat
+  under a green gate for months. The lesson generalises past screenshots —
+  a validator invoked with its expensive checks disabled is a gate that
+  reports on something narrower than its name suggests.
+
+  Two docs asserting a 1:1 in-repo → hosted name mapping (which was never
+  true — the hosted names carry a `finbreak-` prefix) corrected in the same
+  commit: scripts/capture_screenshots.py and assets/screenshots/README.md.
 
 - 📋 [FIBR-0208] **The AppImage's bundled libxkbcommon segfaults on X11 keymap data it can't parse.**
   Found 2026-08-02 while probing FIBR-0200 in a throwaway environment; it
