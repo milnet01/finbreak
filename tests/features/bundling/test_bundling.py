@@ -83,6 +83,46 @@ def test_INV1_noargs_routes_to_gui(monkeypatch) -> None:
 
 
 @pytest.mark.features
+def test_FIBR0259_selftest_fail_names_qtnetwork(monkeypatch):
+    """A missing Qt6Network must FAIL the self-test, naming `qtnetwork`.
+
+    This is the leg whose ABSENCE shipped a Flatpak that could not start.
+    `libQt6Network.so.6` links against `libgssapi_krb5.so.2`, which the
+    freedesktop runtime does not provide, so `app.py`'s first import died —
+    while the self-test printed its OK sentinel, because its check list covered
+    QtWidgets, QtCharts, QtGui, QtCore, SQLCipher and pikepdf but never
+    QtNetwork. Every automated gate passed; a human launching the app found it
+    immediately.
+
+    Guards both halves: that `qtnetwork` is IN the ordered check list at all
+    (a check that is never run cannot fail), and that its failure is reported
+    under that name.
+    """
+    from finbreak import _selftest
+
+    assert "qtnetwork" in _selftest.CHECK_NAMES, (
+        "qtnetwork must be in the self-test's check list — it is the import "
+        "that a runtime without krb5 breaks, and the one omission that let a "
+        "non-starting bundle report success"
+    )
+
+    monkeypatch.setattr(_selftest, "_check_qt", lambda: None)
+
+    def _boom() -> None:
+        raise ImportError("libgssapi_krb5.so.2: cannot open shared object file")
+
+    monkeypatch.setattr(_selftest, "_check_qtnetwork", _boom)
+
+    out = io.StringIO()
+    rc = _selftest.run_self_test(out)
+
+    assert rc != 0, "a missing Qt6Network must exit non-zero"
+    assert out.getvalue().splitlines() == ["FINBREAK_SELFTEST_FAIL: qtnetwork"], (
+        f"expected the qtnetwork FAIL line only; got:\n{out.getvalue()}"
+    )
+
+
+@pytest.mark.features
 def test_INV1_selftest_fail_names_the_broken_stack(monkeypatch):
     """A failing stack → 'FINBREAK_SELFTEST_FAIL: <stack>' + non-zero.
 

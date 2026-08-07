@@ -1077,6 +1077,43 @@ scariest unknown (native-library bundling) up front.
   Lanes: packaging, testing.
   Source: in-session-2026-08-07 (FIBR-0159 submission-manifest build).
 
+- 🚧 [FIBR-0259] **The Flatpak build cannot launch — libQt6Network needs a Kerberos library the freedesktop runtime does not ship.**
+  `flatpak run io.github.milnet01.finbreak` dies before any window:
+  `ImportError: libgssapi_krb5.so.2: cannot open shared object file`,
+  raised from `app.py`'s `from PySide6.QtNetwork import QLocalServer`.
+
+  Verified, not inferred: `ldd` on the bundled
+  `PySide6/Qt/lib/libQt6Network.so.6` reports `libgssapi_krb5.so.2 => not
+  found`, and a `find /` inside the sandbox returns nothing for
+  `libgssapi*` or `libkrb5*`. Neither `org.freedesktop.Platform//25.08`
+  nor its Sdk ships it. A known PySide6-on-freedesktop-runtime problem;
+  the accepted fix is to build MIT krb5 as a manifest module.
+
+  **Why every gate missed it — the real lesson.** The FIBR-0003
+  `--self-test` sentinel is what "the native stack travelled" rests on,
+  and it loads QtWidgets, QtCharts, QtCore, QtGui, sqlcipher3 and pikepdf
+  — but NOT QtNetwork. So it printed FINBREAK_SELFTEST_OK against a build
+  that could not start. Every automated check agreed the Flatpak was
+  good: gate green, manifest lint 0, appstream lint 0, offline build
+  clean, standalone build clean. A human launching the app found it in
+  one command. The self-test's import list is a hand-maintained subset of
+  what the app actually imports, and nothing keeps the two in step.
+
+  Scope note: finbreak uses QtNetwork ONLY for the single-instance guard
+  (`QLocalServer`/`QLocalSocket` in `single_instance.py` and `app.py`) —
+  never for networking, which the sandbox blocks outright. So Kerberos is
+  pulled in for a library the app never functionally uses. Bundling krb5
+  is the standard, low-risk route and is what is being done; dropping the
+  QtNetwork dependency by reimplementing the guard on a lock file is the
+  smaller-surface alternative, worth considering separately rather than
+  under submission pressure.
+
+  Blocks FIBR-0159 — do not submit until the app launches.
+  **Layman:** The Linux app-store build was missing a system library and would not start at all; the self-check we relied on could not see the problem.
+  Kind: fix.
+  Lanes: packaging, testing.
+  Source: in-session-2026-08-07 (user ran the FIBR-0159 § 5 portal smoke test).
+
 ## P02 — Vertical slice: the security spine (target: after P01)
 
 **Theme:** the smallest end-to-end feature that touches every

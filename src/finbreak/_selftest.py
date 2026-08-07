@@ -45,6 +45,33 @@ def _check_qt() -> None:
         QApplication([])
 
 
+def _check_qtnetwork() -> None:
+    """Import ``PySide6.QtNetwork`` and construct a ``QLocalServer``, proving the
+    ``Qt6Network`` native library **and everything it links against** travel with
+    the bundle.
+
+    This check exists because its absence shipped a Flatpak that could not start
+    at all (FIBR-0259). ``libQt6Network.so.6`` links against
+    ``libgssapi_krb5.so.2``, which the freedesktop runtime does not provide, so
+    ``app.py``'s very first import died — while this self-test printed its
+    success sentinel, because it loaded QtWidgets, QtCharts, QtGui and QtCore
+    and never touched QtNetwork. Every automated gate agreed the build was good.
+
+    QtNetwork is not optional despite finbreak doing no networking: ``app.py``
+    and ``single_instance.py`` import ``QLocalServer``/``QLocalSocket`` for the
+    single-instance guard, so a bundle without it cannot launch. Constructing
+    the object (not merely importing) is what forces the shared library to
+    resolve.
+    """
+    from PySide6.QtNetwork import QLocalServer
+
+    server = QLocalServer()
+    # listen() is deliberately not called — binding a socket would collide with
+    # a real running instance. Constructing faults in the native library.
+    if server.serverName() != "":
+        raise RuntimeError("QLocalServer did not construct cleanly")
+
+
 def _check_qtcharts() -> None:
     """Import ``PySide6.QtCharts`` and construct a series object, proving the
     ``Qt6Charts`` native library travels into the frozen bundle (FIBR-0012 D12 /
@@ -263,6 +290,28 @@ def _check_pdfplumber() -> None:
         raise RuntimeError("pdfplumber did not extract the smoke table")
 
 
+# The ordered native-stack checks, by name; each resolves to `_check_<name>`.
+# Order matters — `icons` and `pdf_encrypt` need the QApplication `qt` builds,
+# and the first failure is the one reported.
+#
+# Keep this list matched to what the app actually imports at startup. It is a
+# hand-maintained subset, and the gap is not hypothetical: `qtnetwork` was
+# missing, so a Flatpak whose Qt6Network could not load its Kerberos dependency
+# printed the OK sentinel while dying on `app.py`'s first import (FIBR-0259).
+CHECK_NAMES = (
+    "qt",
+    "qtnetwork",
+    "qtcharts",
+    "icons",
+    "sqlcipher",
+    "pikepdf",
+    "pdf_encrypt",
+    "argon2",
+    "ofxparse",
+    "pdfplumber",
+)
+
+
 def run_self_test(out: TextIO | None = None) -> int:
     """Run every native-stack check in order; print one sentinel line.
 
@@ -272,17 +321,10 @@ def run_self_test(out: TextIO | None = None) -> int:
     test can monkeypatch any of them.
     """
     stream = sys.stdout if out is None else out
-    checks = (
-        ("qt", _check_qt),
-        ("qtcharts", _check_qtcharts),
-        ("icons", _check_icons),
-        ("sqlcipher", _check_sqlcipher),
-        ("pikepdf", _check_pikepdf),
-        ("pdf_encrypt", _check_pdf_encrypt),
-        ("argon2", _check_argon2),
-        ("ofxparse", _check_ofxparse),
-        ("pdfplumber", _check_pdfplumber),
-    )
+    # Resolved from CHECK_NAMES through module globals on every call, which is
+    # what lets a test monkeypatch any single check — binding the functions at
+    # import time instead would freeze the originals into a module constant.
+    checks = tuple((name, globals()[f"_check_{name}"]) for name in CHECK_NAMES)
     for name, check in checks:
         try:
             check()
