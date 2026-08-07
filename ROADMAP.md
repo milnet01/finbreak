@@ -666,6 +666,49 @@ scariest unknown (native-library bundling) up front.
   Kind: package.
   Lanes: packaging, release.
   Source: user-request-2026-07-23.
+  Pre-submit audit (2026-08-07), run against Flathub's CURRENT published
+  requirements rather than the spec's 2026-07-23 reading of them. Two
+  blockers, two quality nits, one spec gap:
+
+    BLOCKER — all six metainfo `<screenshot>` URLs 404. Flathub's own
+    check fails: `flatpak-builder-lint appstream` exits 3 with six
+    `screenshot-image-not-found`, and `appstreamcli validate` agrees. The
+    FIBR-0155 "upload real PNGs" TODO was never done. The PNGs DO exist
+    in-repo (assets/screenshots/site/, six files, names already matching
+    the URLs); they were never uploaded to antsprojectshub.co.za. Docs
+    list invalid screenshots as a submission-blocking error.
+
+    BLOCKER — the cryptography closure drift, filed as FIBR-0256.
+
+    NIT — screenshots are 1600x1000. The quality guidelines want
+    <=1000x700, or 2000x1400 for HiDPI; 1600x1000 is neither. Re-capture
+    at 2000x1400 while uploading.
+
+    NIT — `<summary>` is 55 chars ("Understand your personal finances,
+    privately and offline"). Guideline: <=35, ideally 10-25. `<name>`
+    "finbreak" is all-lowercase, which the guidelines also discourage,
+    but it is the brand and is defensible as-is.
+
+    SPEC GAP — neither § 5's checklist nor packaging/flatpak/README.md
+    mentions `flatpak-builder-lint`, which Flathub docs tell submitters
+    to run locally and whose failures block the PR. The manifest check
+    passes today (exit 0); the appstream check is what fails. § 5 also
+    says to build with the host `flatpak-builder` (flatpak-build.sh line
+    53), where Flathub asks for the `org.flatpak.Builder` flatpak —
+    already installed on this host. Fold both into the checklist.
+
+    VERIFIED GOOD — runtime branch `25.08` is still current and
+    installable (freedesktop-sdk-25.08.15); the manifest is correctly
+    re-pinned to v0.1.19 / f4de4c4 (the roadmap's older "currently
+    v0.1.16" remark is stale); the app id decision stands unchanged.
+
+    STILL OPEN, unchanged — the binary-wheel reviewer risk § 5 already
+    records. Research found no published Flathub policy blessing
+    pre-built manylinux wheels, and the one on-point Flathub Discourse
+    thread about a PySide6 app had a maintainer recommending a
+    from-source PySide6 build instead. That is a data point, not a
+    ruling, and the same thread's advice was "just create the submit PR,
+    it will be reviewed there".
 
 - 📋 [FIBR-0160] **Add openSUSE Leap 15.6 as an OBS target (deferred — Leap ships no python 3.12+).**
   Attempted 2026-07-23: added the Leap 15.6 target + a %if 0%{?sle_version}
@@ -866,6 +909,41 @@ scariest unknown (native-library bundling) up front.
   **Layman:** The app carries its own copy of a keyboard-layout library that is older than the system's keyboard data — it crashed in testing.
   Kind: fix.
   Source: in-session-2026-08-02 FIBR-0200 pre-check.
+
+- 📋 [FIBR-0256] **Flatpak dependency closure drifted off pyproject.toml and still carries the pre-CVE cryptography.**
+  `pyproject.toml` pins `cryptography==50.0.0` — bumped by FIBR-0221 for
+  CVE-2026-69247 — but `packaging/flatpak/python3-deps.yaml` still pins
+  `cryptography-49.0.0`. The closure was generated once at `dab5fe4`
+  (2026-07-23) and never regenerated, though
+  `generate-pip-sources.sh`'s own header says to re-run it on exactly
+  this trigger ("a new/bumped runtime dep in pyproject.toml").
+
+  Not yet user-affecting: the Flatpak is unpublished. But it blocks the
+  Flathub submission, and it fails closed rather than silently — the
+  manifest's finbreak module runs `pip3 install --no-index` (offline), so
+  a closure providing 49.0.0 against a `==50.0.0` requirement cannot
+  resolve. The 2026-07-23 "local build VALIDATED" note predates the bump
+  and no longer describes a build that would pass.
+
+  Every other pyproject pin still matches the closure; cryptography is
+  the only drift.
+
+  Fix has two halves:
+    1. Re-run `packaging/flatpak/generate-pip-sources.sh` and commit the
+       regenerated `python3-deps.yaml`, then re-validate the offline
+       build.
+    2. Close the gap that let it drift. FIBR-0159 § 5 lists "the
+       generated sha256 pins match the current pyproject.toml pins" as a
+       MANUAL pre-submit step and its own § 4 calls this an INV-3/INV-7
+       coverage gap — a manual step is what failed here. A cheap
+       gate-runnable test comparing the `[project.dependencies]` pins
+       against the versions in `python3-deps.yaml` would have caught it
+       the moment FIBR-0221 landed. `tests/features/flatpak_packaging/`
+       already exists to host it.
+  **Layman:** The Linux app-store build was still set to use an old version of a security library that we already replaced everywhere else — found before it ever shipped.
+  Kind: security.
+  Lanes: packaging, security.
+  Source: in-session-2026-08-07 (FIBR-0159 pre-submit audit).
 
 ## P02 — Vertical slice: the security spine (target: after P01)
 
