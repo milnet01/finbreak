@@ -343,6 +343,68 @@ def test_INV7_pyside6_pin_matches_pyproject() -> None:
     )
 
 
+def test_FIBR0256_every_pinned_dep_matches_the_closure() -> None:
+    """Generalise INV-7 from PySide6 to every `==` pin in pyproject.toml.
+
+    INV-7 guards exactly one dependency, and the closure drifted on a different
+    one: FIBR-0221 bumped `cryptography` 49.0.0 -> 50.0.0 for CVE-2026-69247 and
+    `python3-deps.yaml` kept 49.0.0 for two weeks (FIBR-0256). Nothing caught it
+    — the § 5 checklist lists this comparison, but as a MANUAL pre-submit step,
+    and a manual step is what failed.
+
+    Range specifiers (`beautifulsoup4>=4.9,<5`, `certifi>=2024.2.2`) are skipped
+    on purpose: they float by design, so pinning their resolved version here
+    would redden the gate every time an unrelated transitive is republished.
+    Only `==` pins are contracts.
+    """
+    deps = _require_deps()
+    pyproject = tomllib.loads(_PYPROJECT.read_text(encoding="utf-8"))
+
+    filenames = [
+        _source_filename(src)
+        for mod in _iter_modules(deps)
+        for src in mod["sources"]
+        if isinstance(src, dict)
+    ]
+
+    def normalise(name: str) -> str:
+        # PEP 503/427: a wheel/sdist filename carries the NORMALISED dist name,
+        # so argon2-cffi ships as argon2_cffi- and sqlcipher3-wheels as
+        # sqlcipher3_wheels-. Comparing the raw pyproject spelling matches
+        # nothing at all.
+        return re.sub(r"[-_.]+", "_", name).lower()
+
+    # A wheel is `name-version-<tags>.whl` and an sdist `name-version.tar.gz`, so
+    # the first two hyphen-separated fields are the pair we want. Splitting is
+    # what keeps the version comparison exact — normalising a whole filename
+    # turns its dots into underscores, so `6.11.1` would never match `6_11_1`.
+    closure: dict[str, set[str]] = {}
+    for filename in filenames:
+        stem = re.sub(r"\.(whl|tar\.gz|zip)$", "", filename)
+        parts = stem.split("-")
+        if len(parts) < 2:
+            continue
+        closure.setdefault(normalise(parts[0]), set()).add(parts[1])
+
+    pins = [d for d in pyproject["project"]["dependencies"] if "==" in d]
+    assert pins, "expected some == pins in pyproject.toml"
+
+    mismatches = []
+    for pin in pins:
+        name, version = pin.split("==", 1)
+        got = closure.get(normalise(name), set())
+        if version not in got:
+            mismatches.append(
+                f"{name}=={version} (closure has: {sorted(got) or 'nothing'})"
+            )
+
+    assert not mismatches, (
+        "packaging/flatpak/python3-deps.yaml has drifted off pyproject.toml — "
+        "re-run packaging/flatpak/generate-pip-sources.sh and commit the result. "
+        f"Drifted: {mismatches}"
+    )
+
+
 # --------------------------------------------------------------------------- #
 # INV-8 — window-centering disabled under Flatpak (the definite src/ change).
 # --------------------------------------------------------------------------- #

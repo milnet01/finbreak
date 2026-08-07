@@ -65,18 +65,50 @@ New apps go on the **`new-pr` base branch** of `github.com/flathub/flathub`
    the Sdk's `python3 --version` matches the pinned wheel ABI; `appstreamcli
    validate packaging/obs/io.github.milnet01.finbreak.metainfo.xml` passes; the
    metainfo `<screenshot>` URLs resolve to real images.
-3. Fork `flathub/flathub`, branch from `new-pr`, add **at the repo root**:
+
+   **Also confirm the closure still matches `pyproject.toml`.** Step 1's
+   "regenerate if the closure changed" is a judgement call, and it has already
+   been got wrong once: a `cryptography` CVE bump landed in `pyproject.toml` and
+   the closure kept the old pin for two weeks (FIBR-0256). Cheapest check is to
+   regenerate and `git diff` — an empty diff *is* the confirmation.
+
+3. **Run Flathub's own linter** — its docs tell submitters to, and a failure
+   blocks the PR. Neither check needs a build:
+
+   ```sh
+   flatpak install flathub org.flatpak.Builder      # one-time
+   flatpak run --command=flatpak-builder-lint org.flatpak.Builder \
+       manifest packaging/flatpak/io.github.milnet01.finbreak.yaml
+   flatpak run --command=flatpak-builder-lint org.flatpak.Builder \
+       appstream packaging/obs/io.github.milnet01.finbreak.metainfo.xml
+   ```
+
+   Both must exit 0. The `appstream` check is a wrapper around `appstreamcli`
+   *with Flathub's own overrides*, so it is the authority over a bare
+   `appstreamcli validate` — and unlike the gate's `--no-net` run it really does
+   fetch every `<screenshot>` URL. After a build, `... repo repo` lints the
+   exported OSTree repo too; Flathub runs the manifest and repo checks on its
+   own infrastructure regardless.
+
+   Flathub also asks that the build itself go through `org.flatpak.Builder`
+   rather than a host `flatpak-builder`; `flatpak-build.sh` still uses the host
+   one, which is fine for local iteration but is not what their infra runs.
+
+4. Fork `flathub/flathub`, branch from `new-pr`, add **at the repo root**:
    `io.github.milnet01.finbreak.yaml` + `python3-deps.yaml` + `flathub.json`
    (copies of these three, with the reused-asset install commands reaching the
    assets through the git clone — no `packaging/obs/` sits beside a submitted
    manifest, § 3.2). `flathub.json` restricts the buildbot to `x86_64` — the arch
    the pinned wheel closure covers (INV-9); without it the default aarch64 build
    fails on the x86_64-only wheels.
-4. Open a PR titled `Add io.github.milnet01.finbreak`. The reviewer checks it
+5. Open a PR titled `Add io.github.milnet01.finbreak`. The reviewer checks it
    builds entirely from pinned source, passes the linter, and has valid metainfo.
    Be ready to justify the binary (manylinux) wheels as upstream-published,
    pinned, SBOM-disclosed versions (§ 5 — Flathub tolerates but scrutinises them).
-5. On merge, Flathub creates the app's repo and builds/hosts it.
+   You can ask their bot for a test build by commenting `bot, build`.
+6. On merge, Flathub creates the app's repo and builds/hosts it. Accept the
+   repo-write invitation **within one week**, with 2FA enabled on the GitHub
+   account — both are Flathub requirements.
 
 ## Ongoing releases
 

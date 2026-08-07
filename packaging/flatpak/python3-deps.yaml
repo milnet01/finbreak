@@ -1,4 +1,4 @@
-# Generated with flatpak-pip-generator --runtime=org.freedesktop.Sdk//25.08 --prefer-wheels=PySide6,PySide6_Addons,PySide6_Essentials,argon2-cffi,argon2-cffi-bindings,beautifulsoup4,certifi,cffi,charset-normalizer,cryptography,lxml,packaging,pdfminer.six,pdfplumber,pikepdf,pillow,pycparser,pypdfium2,shiboken6,six,soupsieve,sqlcipher3-wheels,typing_extensions --wheel-arches=x86_64 --yaml -o /mnt/Games/Scripts/Linux/finbreak/packaging/flatpak/python3-deps PySide6==6.11.1 sqlcipher3-wheels==0.5.7 pikepdf==10.9.1 argon2-cffi==25.1.0 ofxparse==0.21 beautifulsoup4>=4.9,<5 pdfplumber==0.11.10 cryptography==49.0.0 certifi>=2024.2.2
+# Generated with flatpak-pip-generator --runtime=org.freedesktop.Sdk//25.08 --prefer-wheels=PySide6,PySide6_Addons,PySide6_Essentials,argon2-cffi,argon2-cffi-bindings,beautifulsoup4,certifi,cffi,charset-normalizer,cryptography,lxml,packaging,pdfminer.six,pdfplumber,pikepdf,pillow,pycparser,pypdfium2,shiboken6,six,soupsieve,sqlcipher3-wheels,typing_extensions --wheel-arches=x86_64 --yaml -o /mnt/Games/Scripts/Linux/finbreak/packaging/flatpak/python3-deps PySide6==6.11.1 sqlcipher3-wheels==0.5.7 pikepdf==10.9.1 argon2-cffi==25.1.0 ofxparse==0.21 beautifulsoup4>=4.9,<5 pdfplumber==0.11.10 cryptography==50.0.0 certifi>=2024.2.2
 name: python3-deps
 buildsystem: simple
 build-commands: []
@@ -53,8 +53,8 @@ modules:
         only-arches:
           - x86_64
       - type: file
-        url: https://files.pythonhosted.org/packages/df/b2/87e62e8c3e2f4b32e5fe99e0b86d576da1312593b39f47d8ceef365e95ed/packaging-26.2-py3-none-any.whl
-        sha256: 5fc45236b9446107ff2415ce77c807cee2862cb6fac22b8a73826d0693b0980e
+        url: https://files.pythonhosted.org/packages/63/34/ba1c580383c9eada3711951fef0795c80b829a078d72188184bcab9dd527/packaging-26.3-py3-none-any.whl
+        sha256: d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c
       - type: file
         url: https://files.pythonhosted.org/packages/a4/8e/533188d63f2b14bb6103bed6e048f2d5676622e2f902a3dff558ba4b40be/pikepdf-10.9.1-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
         sha256: 16b7edf32814256b2e50d31336a0301371a397c466bf7624bce7639e66c07b97
@@ -82,8 +82,8 @@ modules:
           - x86_64
       - &id005
         type: file
-        url: https://files.pythonhosted.org/packages/6f/08/f2e7d62c460faae0926f2d6e423694aa409ced3bc1fe2927a0a6e5f05416/cffi-2.1.0-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl
-        sha256: 799416bae98336e400981ff6e532d67d5c709cfb30afb79865a1315f94b0e224
+        url: https://files.pythonhosted.org/packages/95/95/86342356ff5953b3fb06f7ef7c5bee212d45e770abc7218d451b9148313c/cffi-2.1.1-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl
+        sha256: a931079504ecc49efed7744c476a5c343a92fabf66dec2db95edb1b2fdc770e2
         only-arches:
           - x86_64
       - &id007
@@ -109,8 +109,8 @@ modules:
         sha256: 4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274
       - &id003
         type: file
-        url: https://files.pythonhosted.org/packages/0f/2c/437fe806897c2d6cfdc3ee43a18da8bf8e568530a4ae9bac781541ca9896/soupsieve-2.9.1-py3-none-any.whl
-        sha256: 4f4477399246b7a0c720a88ca2454b11cd6bb9ae4c9d170140786e916776c14c
+        url: https://files.pythonhosted.org/packages/eb/dc/ad025c1ee131eba60c69f4dd5779b18fcf1e6b21a343e2162a84d5d133c7/soupsieve-2.9.2-py3-none-any.whl
+        sha256: 8089a26fd974ca7a1f30276d3d8492ab266ab15af581642dfe8aa162e0c1c823
       - &id004
         type: file
         url: https://files.pythonhosted.org/packages/49/d3/b8441a820a491ddfc024b0b0cf0393375b75ea13866d9c66727e54c2fc80/typing_extensions-4.16.0-py3-none-any.whl
@@ -136,8 +136,8 @@ modules:
         sha256: 68e5f26a1ad57ded6d1cfb85331d1c1a195314756471d97758c48498bb4dcdf5
       - &id008
         type: file
-        url: https://files.pythonhosted.org/packages/e6/8b/43011f7ebe515a8aa20d61f290a326cd890c2e738e16e59eaff8d9c3a412/cryptography-49.0.0-cp311-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl
-        sha256: 0e959b578856a3924bc0cbb710fc12c387b9412a951389f3ca61704a9e25f325
+        url: https://files.pythonhosted.org/packages/d9/41/029086c34d91052fc3b88bcc8056f709a7c915c7a23b235a54eb800b1c97/cryptography-50.0.0-cp311-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl
+        sha256: 06a32a980526a6ab9a4b9bf8f7385800791e2bb960903cb6b530e4817509a3b7
         only-arches:
           - x86_64
       - type: file
@@ -157,7 +157,7 @@ modules:
     buildsystem: simple
     build-commands:
       - pip3 install --verbose --exists-action=i --no-index --find-links="file://${PWD}"
-        --prefix=${FLATPAK_DEST} "cryptography==49.0.0" --no-build-isolation
+        --prefix=${FLATPAK_DEST} "cryptography==50.0.0" --no-build-isolation
     sources:
       - *id005
       - *id008
