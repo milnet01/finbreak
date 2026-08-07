@@ -719,6 +719,43 @@ scariest unknown (native-library bundling) up front.
     from-source PySide6 build instead. That is a data point, not a
     ruling, and the same thread's advice was "just create the submit PR,
     it will be reviewed there".
+  Re-validated (2026-08-07) after the FIBR-0256 closure regenerate, on a
+  real KDE-Wayland host. This supersedes the 2026-07-23 "local build
+  VALIDATED" note, which predated the cryptography bump.
+
+    * `flatpak-builder` builds green OFFLINE from the regenerated
+      sha256-pinned closure, and `--self-test` prints FINBREAK_SELFTEST_OK
+      (Qt + SQLCipher + qpdf travelled).
+    * The CVE fix actually reaches the bundle, not just the manifest:
+      `python3 -c "import cryptography; print(cryptography.__version__)"`
+      INSIDE the built flatpak prints **50.0.0**.
+    * Sandbox is network-isolated — an in-sandbox `socket.create_connection`
+      to 1.1.1.1:443 raises `OSError: [Errno 101] Network is unreachable`,
+      proving no `--share=network`.
+    * Updater inert at runtime, not merely under a monkeypatched test:
+      `/.flatpak-info` exists, `FLATPAK_ID` is set, and
+      `detect_installer()` returns `None` (INV-6).
+    * INV-8 verified where it actually matters: `_kde_wayland()` returns
+      **False** inside the flatpak on a session that genuinely IS KDE
+      Wayland (`XDG_SESSION_TYPE=wayland`, `XDG_CURRENT_DESKTOP=KDE`), so
+      the unreachable org.kde.KWin call is honestly suppressed.
+    * `flatpak-builder-lint manifest` exits 0; `... appstream` exits 0
+      after the FIBR-0206 URL fix.
+
+    `flatpak-builder-lint repo` reports two errors —
+    `appstream-screenshots-not-mirrored-in-ostree` and
+    `appstream-external-screenshot-url`. Checked against Flathub's linter
+    docs rather than assumed: both are EXPECTED on a local build, because
+    mirroring happens when the builder is invoked with
+    `--mirror-screenshots-url=https://dl.flathub.org/media`, which
+    Flathub's own infrastructure supplies. They would only be the
+    submitter's problem for an externally-uploaded app, which this is not.
+
+    STILL NEEDS A HUMAN — the two portal checks in § 5, which are the
+    gate for § 3.5's two risks and cannot be driven headlessly: (i) import
+    a file through the chooser, and (ii) export a PDF report and an
+    encrypted .fbk to a chosen location. The app is installed
+    (`flatpak run io.github.milnet01.finbreak`) and ready for that pass.
 
 - 📋 [FIBR-0160] **Add openSUSE Leap 15.6 as an OBS target (deferred — Leap ships no python 3.12+).**
   Attempted 2026-07-23: added the Leap 15.6 target + a %if 0%{?sle_version}
@@ -1011,6 +1048,34 @@ scariest unknown (native-library bundling) up front.
   Kind: security.
   Lanes: packaging, security.
   Source: in-session-2026-08-07 (FIBR-0159 pre-submit audit).
+
+- 📋 [FIBR-0258] **flatpak-build.sh never builds what gets submitted, so the submission config goes unvalidated.**
+  `flatpak-build.sh` rewrites the finbreak module's source to
+  `file://$REPO @ HEAD` before building (its "LOCAL build" branch). Handy
+  for iterating, but it means a green local build says nothing about the
+  manifest that would be submitted, which pins a release tag.
+
+  That is precisely how FIBR-0257 hid: the local build was green all
+  along because HEAD's pyproject matches the regenerated closure, while
+  the same manifest built unsubstituted fails outright at the pinned tag.
+  The gap is invisible — both runs print the same success lines.
+
+  Two halves:
+    1. Give the script a mode that builds the manifest AS SUBMITTED (no
+       source substitution) and make that the pre-submit path. The
+       § 5 checklist should name it, since "flatpak-builder builds green"
+       currently passes without exercising the submitted config at all.
+    2. `test_FIBR0256_every_pinned_dep_matches_the_closure` compares the
+       closure against HEAD's pyproject, which is right for the local
+       build and wrong for the submission. The invariant that actually
+       matters is that the closure satisfies the pyproject of the commit
+       the manifest PINS. Extend it to read that commit's pyproject via
+       git, skipping when the checkout is not a git repo — HEAD and the
+       pinned tag agreeing is the real precondition for submitting.
+  **Layman:** Our local test of the Linux app-store package quietly tests a different version than the one we would actually submit, so a broken submission can look fine.
+  Kind: test.
+  Lanes: packaging, testing.
+  Source: in-session-2026-08-07 (FIBR-0159 submission-manifest build).
 
 ## P02 — Vertical slice: the security spine (target: after P01)
 
@@ -5960,6 +6025,39 @@ is a future error tomorrow.
   throughout: `./scripts/ci-local.sh` passed all 11 stages, 1840 passed /
   3 skipped, mypy clean over 178 files. Do not re-investigate those two
   runs; re-run them once Actions is healthy.
+
+- 📋 [FIBR-0257] **The CVE-2026-69247 fix is committed but unreleased — every downloadable build still ships cryptography 49.0.0.**
+  FIBR-0221 pinned `cryptography==50.0.0` on 2026-08-04 and is marked ✅ —
+  but the newest release, v0.1.19, was tagged 2026-08-02. The fix has
+  never shipped. Verified per tag: v0.1.17, v0.1.18 and v0.1.19 all pin
+  `cryptography==49.0.0`.
+
+  This is not a transitive dep. `services/update.py` and
+  `services/update_key.py` import cryptography directly for the Ed25519
+  verification of downloaded updates (FIBR-0054 D1) — it is finbreak's
+  signature-checking library, and the flawed version is the one in every
+  build a user can currently download.
+
+  Found by building the Flathub SUBMISSION manifest, which pins finbreak
+  at v0.1.19: the offline build fails with `Could not find a version that
+  satisfies the requirement cryptography==49.0.0`, because the
+  regenerated closure now offers 50.0.0. The failure is the tag's
+  pyproject disagreeing with the closure — a real signal, not a
+  packaging wart.
+
+  Consequence for FIBR-0159: submitting the manifest as it stands would
+  either fail Flathub's build or, if the closure were reverted to match,
+  publish the vulnerable library to a much wider audience than the
+  current download page.
+
+  Fix: cut a release containing c98908b, then re-pin the Flatpak manifest
+  to that tag. `/release` owns the version bump and tagging; this bullet
+  just records that a release is now the blocking step for FIBR-0159 and
+  that the security fix is the reason, not a feature.
+  **Layman:** The security fix we made is sitting on our side and has never gone out to users; the version people can download today still has the flaw.
+  Kind: security.
+  Lanes: release, security.
+  Source: in-session-2026-08-07 (FIBR-0159 submission-manifest build).
 
 ## How to add an item
 
