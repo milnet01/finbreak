@@ -89,6 +89,37 @@
   </screenshots>
 
   <releases>
+    <release version="0.1.20" date="2026-08-07">
+      <description>
+        <p>Security:</p>
+        <ul>
+          <li>Updated the library finbreak uses to verify that a downloaded update really came from us; the previous version had a published flaw (CVE-2026-69247).</li>
+          <li>Dependencies are now checked against two advisory databases rather than one, which catches a hijacked or typosquatted package that carries no CVE at all.</li>
+          <li>Release builds pin their build tools to exact, unchangeable versions, so nobody can silently repoint a tool at different code that would land inside a signed download.</li>
+          <li>Restoring a maliciously-crafted backup can no longer exhaust memory before you have logged in, a backup survives a power cut straight after saving, and one written into a shared folder cannot be hijacked.</li>
+          <li>Another user on the same computer can no longer stop finbreak from starting.</li>
+        </ul>
+        <p>Added:</p>
+        <ul>
+          <li>Import a whole folder of statements in one go — a mix of CSV, OFX and PDF — reviewing everything on one screen before anything is written.</li>
+          <li>Statements file themselves under the right account, read from the account number printed on them, and offer to create the account if it is new.</li>
+          <li>The dashboard says in a sentence what your month did, and stays quiet when the month is ordinary or the history is too short to judge.</li>
+          <li>Delete several statements at once, and confirm or reject several suggested transfers at once.</li>
+        </ul>
+        <p>Changed:</p>
+        <ul>
+          <li>Importing a statement no longer re-sorts your whole history.</li>
+          <li>Accented shop names are matched consistently across import and categorisation.</li>
+        </ul>
+        <p>Fixed:</p>
+        <ul>
+          <li>Standard Bank statements now tell you when a line could not be read, instead of dropping it silently.</li>
+          <li>A Standard Bank statement with an out-of-range opening or closing balance is refused with a message instead of crashing the import.</li>
+          <li>An OFX file with an unusable closing balance is reported rather than failing silently.</li>
+          <li>Many smaller fixes across the Accounts, Forecast, Transactions and import screens.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.1.19" date="2026-08-02">
       <description>
         <p>Added:</p>

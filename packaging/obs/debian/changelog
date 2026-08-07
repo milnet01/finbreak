@@ -1,3 +1,41 @@
+finbreak (0.1.20) unstable; urgency=medium
+
+  * SECURITY: updated the library finbreak uses to verify that a downloaded
+    update really came from us; the previous version had a published flaw
+    (CVE-2026-69247).
+  * SECURITY: dependencies are now checked against two advisory databases
+    rather than one, catching a hijacked or typosquatted package that carries
+    no CVE at all.
+  * SECURITY: release builds pin their build tools to exact, unchangeable
+    versions, so a tool cannot be silently repointed at different code that
+    would land inside a signed download.
+  * SECURITY: restoring a maliciously-crafted backup can no longer exhaust
+    memory before you have logged in; a backup survives a power cut straight
+    after saving; and one written into a shared folder cannot be hijacked.
+  * SECURITY: another user on the same computer can no longer stop finbreak
+    from starting.
+  * Import a whole folder of statements in one go -- a mix of CSV, OFX and
+    PDF -- reviewing everything on one screen before anything is written.
+  * Statements file themselves under the right account, read from the account
+    number printed on them, and offer to create the account if it is new.
+  * The dashboard says in a sentence what your month did, and stays quiet when
+    the month is ordinary or the history is too short to judge.
+  * Delete several statements at once, and confirm or reject several suggested
+    transfers at once.
+  * Importing a statement no longer re-sorts your whole history.
+  * Accented shop names are matched consistently across import and
+    categorisation.
+  * Standard Bank statements now tell you when a line could not be read,
+    instead of dropping it silently.
+  * A Standard Bank statement with an out-of-range opening or closing balance
+    is refused with a message instead of crashing the import.
+  * An OFX file with an unusable closing balance is reported rather than
+    failing silently.
+  * Many smaller fixes across the Accounts, Forecast, Transactions and import
+    screens.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Fri, 07 Aug 2026 10:00:00 +0200
+
 finbreak (0.1.19) unstable; urgency=medium
 
   * The Accounts tab is now a sortable table of Name, Type, Account number,

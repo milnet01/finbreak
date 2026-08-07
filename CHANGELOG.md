@@ -21,6 +21,8 @@ signaling per
 
 ## [Unreleased]
 
+## [0.1.20] - 2026-08-07
+
 ### Added
 
 - **Import a whole folder of statements in one go** (FIBR-0085)

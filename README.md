@@ -13,7 +13,7 @@
 [![Status](https://img.shields.io/badge/status-pre--alpha-orange)]()
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-Current version: **0.1.19** (early preview). **[⬇ Download the latest
+Current version: **0.1.20** (early preview). **[⬇ Download the latest
 release](https://github.com/milnet01/finbreak/releases/latest)**, or see
 [CHANGELOG](CHANGELOG.md) for what's shipped and [ROADMAP](ROADMAP.md) for
 what's coming.
@@ -35,7 +35,18 @@ lot, with more polish and features to come. What works today:
 - a private, password-protected place to keep your finances (an encrypted
   vault),
 - importing statements from **CSV, OFX, and PDF** files (including
-  password-protected PDFs),
+  password-protected PDFs) — **several at once** if you like, so a year of
+  monthly statements or a mixed pile of CSV, OFX and PDF goes in one pass;
+  finbreak asks up front for anything it genuinely can't get past (a locked
+  PDF's password, the column layout of a spreadsheet it hasn't seen), then
+  works through the rest on its own and shows you one screen listing every
+  file — where each is going, how many transactions are new, how many are
+  duplicates you already have, and how many lines it couldn't read — with
+  nothing written until you press Import all,
+- **statements that file themselves** — finbreak reads the account number
+  printed on a statement and pre-selects the matching account, saying why it
+  chose it, and offers to create the account if it's one it hasn't seen; where
+  it can't be sure it doesn't guess, it says so and leaves the choice to you,
 - organising them into **accounts** — shown in a sortable table of Name, Type,
   Account number, Note and Status, whose column widths and order finbreak
   remembers; each account can keep a reference **account number** (shown as dots
@@ -65,7 +76,13 @@ lot, with more polish and features to come. What works today:
   savings account ✓ when the transactions you've imported bridge one statement's
   closing balance to the next, or ⚠ with the amount it's off by, so a missing or
   duplicated import doesn't go unnoticed,
-- a **dashboard** on the Home screen — the breakdown is the star: three
+- a **dashboard** on the Home screen that opens by telling you, in a sentence,
+  what your month actually did — "September cost you R2,340 more than your usual
+  month. Most of it was one thing — Vet, R1,900 more than usual." — instead of
+  leaving you to work it out from the charts; it stays quiet when the month is
+  ordinary, says "so far" while a month is still running, and says nothing at all
+  rather than guessing when there isn't enough history to know what usual means.
+  Below that the breakdown is the star: three
   side-by-side columns for **Spending**, **Income**, and **Transfers**, each
   with its own pie of where the money went, the big total up top, and an
   openable list beneath it (click into a category, down to a single one, then
@@ -157,6 +174,9 @@ Ed25519 `finbreak-*.exe.sig` the updater verifies (the `windows-build` CI workfl
 also builds it on demand for testers). It is **not code-signed** for Windows (no
 Authenticode "publisher" certificate yet), so SmartScreen shows an "unknown
 publisher" warning the first time you run it — choose **More info → Run anyway**.
+We applied to the SignPath Foundation's free certificate programme for
+open-source projects in July 2026 and were declined; the plan is to build up more
+of a public track record and reapply.
 Automatic updates work the same as on Linux — opt-in and off by default (see
 [Staying up to date](#staying-up-to-date-optional)).
 
