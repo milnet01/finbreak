@@ -1,6 +1,9 @@
 # flatpak-builder outputs + cached tooling (regenerated locally, never committed).
-.build/
-.repo/
+# Globbed rather than exact: a build of the manifest AS SUBMITTED needs its own
+# output dirs alongside the local one (FIBR-0258), and an OSTree repo left
+# untracked is thousands of files in `git status`.
+.build*/
+.repo*/
 .flatpak-builder/
 .local-manifest.yaml
 .flatpak-pip-generator.py
