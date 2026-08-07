@@ -332,6 +332,37 @@ def test_INV8_console_entry_point() -> None:
 # that assume a native, system-linked distro package; openSUSE aborts the build
 # on the accumulated badness without a filter file (FIBR-0155 §5).
 # --------------------------------------------------------------------------- #
+def test_FIBR0206_metainfo_screenshot_urls_use_the_hosted_path_shape() -> None:
+    """Pin the screenshot URL shape the download site actually serves.
+
+    INV-4 above runs `appstreamcli validate --no-net`, and `--no-net` is exactly
+    what let this rot: without the network the validator never fetches an
+    `<image>`, so all six URLs can 404 while the gate stays green. They did, for
+    months — the metainfo guessed `/img/finbreak/<name>.png` from the in-repo
+    basenames, while the site serves `/assets/img/shots/finbreak-<name>.png`
+    (FIBR-0206). A store listing whose screenshots 404 renders with none, and
+    Flathub's own appstream check fails on it.
+
+    This test stays offline on purpose — reachability needs a network the gate
+    must not depend on. It pins the *shape* verified live on 2026-08-07, which
+    is what a careless re-edit would break. A genuine site-layout change should
+    fail here and be re-verified against the live URLs, not silenced.
+    """
+    metainfo = _read(_METAINFO)
+    urls = re.findall(r"<image[^>]*>([^<]+)</image>", metainfo)
+    assert len(urls) == 6, f"expected the six curated screenshots, got {len(urls)}"
+
+    pattern = re.compile(
+        r"^https://antsprojectshub\.co\.za/assets/img/shots/finbreak-[a-z]+\.png$"
+    )
+    bad = [u for u in urls if not pattern.match(u)]
+    assert not bad, (
+        "screenshot URLs must use the site's hosted path shape "
+        "(/assets/img/shots/ + a finbreak- basename prefix); these do not: "
+        f"{bad}"
+    )
+
+
 def test_rpmlintrc_filters_bundled_tree_noise() -> None:
     rc = _read(_RPMLINTRC)
     assert "addFilter" in rc, "rpmlintrc must use addFilter() entries"

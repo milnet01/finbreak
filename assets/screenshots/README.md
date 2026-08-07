@@ -33,11 +33,24 @@ Options: `--themes midnight` (one theme), `--out <dir>`, `--width/--height`,
 
 ## Publishing
 
-The `site/` set maps 1:1 to the `<image>` URLs in
-`packaging/obs/io.github.milnet01.finbreak.metainfo.xml`
-(`https://antsprojectshub.co.za/img/finbreak/<name>.png`). Upload
-`site/*` to that path before a Flathub / OBS submit — a broken `<screenshot>`
-URL is a common reviewer rejection.
+The `site/` set corresponds to the `<image>` URLs in
+`packaging/obs/io.github.milnet01.finbreak.metainfo.xml` — but **the names are
+not identical**, so it is not a 1:1 copy:
+
+| in-repo | hosted |
+|---|---|
+| `site/dashboard.png` | `https://antsprojectshub.co.za/assets/img/shots/finbreak-dashboard.png` |
+
+The site repo (`milnet01/antsprojectshub`) holds them under
+`src/assets/img/shots/` and its build serves `/assets/img/shots/`, adding the
+`finbreak-` prefix. Both the directory and the prefix differ from the in-repo
+names; assuming they matched is exactly what put six 404 URLs in the metainfo
+(FIBR-0206), and a broken `<screenshot>` URL is a common reviewer rejection.
+
+These images are **already published** — a re-capture needs uploading to the
+site repo, but the metainfo URLs are correct as they stand. Verify with
+`appstreamcli validate packaging/obs/io.github.milnet01.finbreak.metainfo.xml`,
+which fetches every URL.
 
 ## Kept demo vault
 

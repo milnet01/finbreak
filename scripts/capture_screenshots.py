@@ -62,8 +62,12 @@ _SCREENS = [
 
 # The curated set that ships to Flathub metainfo + the website: a deliberate MIX
 # of dark (midnight) and light (ledger) to show off the theming, one shot per
-# headline feature. Copied to <out>/site/<hosted-name> with the exact filenames
-# the metainfo <image> URLs reference (antsprojectshub.co.za/img/finbreak/…).
+# headline feature. Copied to <out>/site/<name>.png.
+#
+# These local basenames are NOT the hosted ones: the site serves them from
+# /assets/img/shots/ with a `finbreak-` prefix (finbreak-dashboard.png), which is
+# the site build's naming, not ours. Assuming the two matched is what put six
+# 404 URLs in the metainfo (FIBR-0206) — see assets/screenshots/README.md.
 _SITE_SET = [
     ("dashboard.png", "midnight", "dashboard"),
     ("transactions.png", "ledger", "transactions"),
