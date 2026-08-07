@@ -20,9 +20,14 @@ paths = [
   # They are git-ignored transient build output (packaging/flatpak/.gitignore) —
   # same rationale as dist/ + build/. The committed manifest/deps/scripts are still
   # scanned (and clean).
+  # Globbed, not exact: a build of the manifest AS SUBMITTED needs its own
+  # output dirs beside the local one (.build-submit/, .repo-submit/ —
+  # FIBR-0258), and an exact `\.build/` misses them, so the scan crawls a few
+  # hundred MB of third-party wheels and fails the gate on their entropy.
+  # Matches packaging/flatpak/.gitignore's `.build*/` + `.repo*/`.
   '''\.flatpak-builder/''',
-  '''packaging/flatpak/\.build/''',
-  '''packaging/flatpak/\.repo/''',
+  '''packaging/flatpak/\.build[^/]*/''',
+  '''packaging/flatpak/\.repo[^/]*/''',
   # release/ holds ONLY the maintainer's local, git-ignored Ed25519 signing
   # *private* key (scripts/gen-signing-key.py). `gitleaks dir .` scans disk
   # regardless of .gitignore, so it would flag that key on every push. It can
