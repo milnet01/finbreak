@@ -76,28 +76,49 @@ for the full table and reasoning):
 The harness contract is [`docs/specs/FIBR-0001.md`](docs/specs/FIBR-0001.md).
 
 **Requirements:** Python ≥ 3.12 and the standalone binaries below on `PATH` —
-none of them pip packages, all pinned by `scripts/ci-setup.sh` (that script is
-the list; no count is stated here, so adding one cannot make this go stale):
+none of them pip packages. Every one carrying a version is pinned by
+`scripts/ci-setup.sh` (that script is the list; no count is stated here, so
+adding one cannot make this go stale):
 
 | Binary | Pinned | Why the version matters |
 |---|---|---|
+| [`git`](https://git-scm.com/) | any | **a run-time dependency of the gate, not just of checkout** — the gitignore and bundling feature tests shell out to `git check-ignore` / `git rev-parse` / `git ls-files` |
 | [`gitleaks`](https://github.com/gitleaks/gitleaks/releases) | 8.30.1 | a different build runs a different rule engine over the same `.gitleaks.toml` |
 | [`shellcheck`](https://github.com/koalaman/shellcheck/releases) | 0.11.0 | rule set differs per release; distro builds lag badly |
 | [`actionlint`](https://github.com/rhysd/actionlint/releases) | 1.7.12 | ships its own checks *and* shells out to `shellcheck` |
 | [`zizmor`](https://github.com/zizmorcore/zizmor/releases) | 1.29.0 | audit set grows per release; a newer build fails a tree an older one passed |
 
-Each is version-sensitive the same way: an older build runs a **different rule
-set over the same files**, so a local gate can pass where CI fails (or vice
-versa). Check with `gitleaks version`, `shellcheck --version`,
+Each **pinned** one is version-sensitive the same way: an older build runs a
+**different rule set over the same files**, so a local gate can pass where CI
+fails (or vice versa). Check with `gitleaks version`, `shellcheck --version`,
 `actionlint --version`, `zizmor --version`.
 
-**One-time dev setup** — isolated env + the pinned dev toolchain (ruff,
-bandit, pip-audit, pytest, pytest-qt, mypy + `types-PyYAML`) **and the runtime
-deps** (PySide6, SQLCipher, pikepdf), which the FIBR-0003 self-test guard imports:
+**One-time dev setup** — an isolated env, then `scripts/ci-setup.sh`, which
+installs *everything else the gate needs and does not itself provide*: the
+system libraries PySide6 dlopens, `git`, the pinned binaries above, the dev
+toolchain (ruff, bandit, pip-audit, pytest, pytest-qt, mypy + `types-PyYAML`)
+**and the runtime deps** (PySide6, SQLCipher, pikepdf), which the FIBR-0003
+self-test guard imports. It is the same script `ci.yml` and `ci-docker.sh` call,
+so a local environment cannot drift from CI's:
 
 ```bash
 python3 -m venv .venv
 . .venv/bin/activate
+./scripts/ci-setup.sh                    # ← the step that makes the gate runnable
+```
+
+**Do not skip that third line.** Without it `./scripts/ci-local.sh` below exits
+**127** at its first stage (`git: command not found`, `shellcheck: command not
+found`) — the venv is fine, the gate simply has no tools. Verified by executing
+this section in a clean container 2026-08-11 (FIBR-0260).
+
+`ci-setup.sh` assumes a **Debian/Ubuntu apt** host (the
+`python:3.12-slim-bookworm` image CI runs; it falls back to `sudo` when not
+root). On any other distro — this desktop is openSUSE — install the
+Requirements binaries, `git` and the Qt system libraries `ci-setup.sh` names by
+hand, then run its Python half yourself:
+
+```bash
 python -m pip install --upgrade pip      # PEP 735 --group needs pip >= 25.1
 python -m pip install --group dev
 python -m pip install .                  # runtime deps — the self-test test loads them
