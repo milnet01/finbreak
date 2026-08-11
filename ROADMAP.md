@@ -439,6 +439,32 @@ scariest unknown (native-library bundling) up front.
   Kind: fix.
   Source: in-session-2026-08-06 (FIBR-0252 cold-eyes loop 3, reproduced; filed at loop 4).
 
+- ✅ [FIBR-0260] **CLAUDE.md § Build and test omits the `ci-setup.sh` step and the `git` requirement.**
+  Found by EXECUTING the section literally in a fresh
+  `python:3.12-slim-bookworm` container (the image `ci.yml` runs) on
+  2026-08-11. (a) The "One-time dev setup" block's four steps all
+  succeed, then `./scripts/ci-local.sh` exits 127 — `git: command not
+  found`, `shellcheck: command not found` — because `scripts/ci-setup.sh`
+  is never named as the reader's own step, only as the pin list and as
+  something `ci.yml`/`ci-docker.sh` call. (b) `git` is a RUNTIME
+  dependency of the gate (the gitignore + bundling feature tests shell
+  out to `git check-ignore` / `git rev-parse` / `git ls-files`) and is
+  absent from the Requirements table a reader provisions from; the fact
+  appears only as background in the "Reproduce GitHub CI EXACTLY"
+  paragraph. Ordering is not the defect — the steps run in the order
+  given, they just cannot reach a green gate.
+  **Layman:** Following our own setup instructions on a clean machine did not actually get you to a working test run — two steps were missing from the list.
+  Kind: doc-fix.
+  Source: runbook-execution-2026-08-11.
+  Resolved 2026-08-11 (b9baf16): `scripts/ci-setup.sh` is now the third
+    line of the "One-time dev setup" block, with the apt/Debian assumption
+    stated and the manual Python half kept for other distros; `git` has a
+    row in the Requirements table naming it a RUN-time dependency of the
+    gate. Confirmed the way the defect was found — a fresh clone in a
+    fresh `python:3.12-slim-bookworm` container, the section followed
+    literally with nothing added: venv 0, ci-setup 0, self-test 0,
+    ci-local 0, "All gates passed" (1869 passed, 5 skipped).
+
 ### 📦 Packaging
 
 - ✅ [FIBR-0003] **P01: bundling smoke-test (de-risk
@@ -6095,6 +6121,51 @@ is a future error tomorrow.
   Kind: security.
   Lanes: release, security.
   Source: in-session-2026-08-07 (FIBR-0159 submission-manifest build).
+
+- ✅ [FIBR-0261] **`--self-test` aborts on a headless machine instead of running.**
+  `python -m finbreak --self-test` on a box with no display dies before
+  any check runs: "no Qt platform plugin could be initialized. Aborted
+  (core dumped)". Every caller sets `QT_QPA_PLATFORM=offscreen` for it —
+  `tests/conftest.py:17`, `build-smoke.sh`, `finbreak.spec`,
+  `debian/rules` — so no gate can ever catch this, yet FIBR-0003 INV-1
+  calls `--self-test` a PERMANENT diagnostic for a broken install on a
+  user's machine, and `_check_qt`'s own docstring says it constructs the
+  QApplication "offscreen". The one caller that never sets it is the
+  human following CLAUDE.md, and a headless server over SSH is precisely
+  where the diagnostic is needed. Fix in `__main__` (not the doc): when
+  `--self-test` is passed on a non-Windows/macOS host with no `DISPLAY`
+  and no `WAYLAND_DISPLAY`, default `QT_QPA_PLATFORM` to `offscreen`; an
+  explicit value still wins. Regression-locked by a test that runs the
+  CLI with those three variables stripped from the environment.
+  **Layman:** The built-in "is my install OK?" check crashed on a machine with no screen — exactly the machine you would run it on.
+  Kind: fix.
+  Source: runbook-execution-2026-08-11.
+  Resolved 2026-08-11 (220aefc): `__main__` defaults `QT_QPA_PLATFORM` to
+    `offscreen` when `--self-test` is passed on a non-Windows/macOS host
+    with no `DISPLAY` and no `WAYLAND_DISPLAY`; an explicit value still
+    wins, so conftest, build-smoke.sh and the OBS recipes are unchanged.
+    The regression test also repoints `XDG_RUNTIME_DIR` at an empty
+    directory — dropping the two display variables alone is NOT enough on
+    a Wayland desktop, where libwayland still finds the `wayland-0`
+    socket and the test passes vacuously. Confirmed red (exit -6, SIGABRT)
+    before the fix; the documented bare `python -m finbreak --self-test`
+    now prints FINBREAK_SELFTEST_OK in a display-less container.
+
+- 📋 [FIBR-0262] **`pytest tests/features/bundling/` alone aborts the interpreter.**
+  Pre-existing (reproduced on baf48b8, before the FIBR-0261 fix), found
+  while running that directory on its own. The three `..._selftest_fail_...`
+  tests monkeypatch `_check_qt` to a no-op, so no `QApplication` is
+  constructed, and the unpatched `_check_icons` then renders a `QPixmap`
+  — which aborts the process (SIGABRT) when no QApplication exists. In a
+  full-suite run an earlier test has already built one, so the whole gate
+  stays green and only the directory-alone / `-k` invocation dies; both
+  are invocations CLAUDE.md § "Run tests / a single test" documents.
+  Fix: patch `_check_icons` alongside `_check_qt` in those tests, or give
+  them the shared `qapp` fixture, so they stop depending on global state
+  another test happens to leave behind.
+  **Layman:** One folder of tests crashes if you run just that folder; run the whole suite and it passes, which is why nobody noticed.
+  Kind: test.
+  Source: in-session-2026-08-11.
 
 ## How to add an item
 

@@ -21,6 +21,16 @@ signaling per
 
 ## [Unreleased]
 
+### Fixed
+
+- **The built-in install check now works on a computer with no screen** (FIBR-0261)
+  `python -m finbreak --self-test` — the command that checks a broken
+  install by loading every piece finbreak needs — crashed instead of
+  answering when it was run on a machine with no display, such as a
+  server you are logged into remotely. That is exactly the machine you
+  would run it on, so it now falls back to drawing nothing and prints
+  its result as normal.
+
 ## [0.1.20] - 2026-08-07
 
 ### Added
