@@ -61,6 +61,64 @@ def test_INV1_selftest_ok_all_stacks():
 
 
 @pytest.mark.features
+@pytest.mark.skipif(
+    sys.platform in ("win32", "darwin"),
+    reason="Windows/macOS always have a window server; the headless default is "
+    "deliberately Linux/BSD-only (a frozen bundle there may not carry the "
+    "offscreen plugin)",
+)
+def test_FIBR0261_selftest_runs_headless_with_no_display_and_no_platform_var(tmp_path):
+    """--self-test must run on a machine with no display, not abort on it.
+
+    Every other caller exports ``QT_QPA_PLATFORM=offscreen`` for it —
+    ``tests/conftest.py``, ``build-smoke.sh``, ``finbreak.spec``,
+    ``debian/rules`` — so no other test can see this. The one caller that does
+    not is the human following CLAUDE.md's documented ``python -m finbreak
+    --self-test``, and FIBR-0003 INV-1 calls that a **permanent** diagnostic for
+    a broken install on a user's machine: a headless server over SSH is exactly
+    where it is needed, and exactly where Qt used to abort (SIGABRT, "no Qt
+    platform plugin could be initialized") before the first check ran.
+
+    Strips all three variables so the child is genuinely headless — with
+    ``QT_QPA_PLATFORM`` left in place (conftest sets it) the test would be
+    vacuous. ``XDG_RUNTIME_DIR`` is repointed at an empty directory as well,
+    because dropping ``WAYLAND_DISPLAY`` alone is NOT enough on a Wayland
+    desktop: libwayland falls back to the socket named ``wayland-0`` inside
+    that directory, so the child would still find the developer's compositor
+    and pass without the fix.
+    """
+    stripped = ("QT_QPA_PLATFORM", "DISPLAY", "WAYLAND_DISPLAY")
+    env = {k: v for k, v in os.environ.items() if k not in stripped}
+    env["PYTHONPATH"] = str(_PROJECT_ROOT / "src")
+    env["XDG_RUNTIME_DIR"] = str(tmp_path)  # exists, holds no compositor socket
+    assert not set(stripped) & env.keys(), (
+        "precondition: the child must inherit no display and no platform "
+        "override, or this test proves nothing"
+    )
+    assert not list(tmp_path.iterdir()), (
+        "precondition: the stand-in XDG_RUNTIME_DIR must be empty, or Qt may "
+        "still reach a display"
+    )
+
+    result = subprocess.run(
+        [sys.executable, "-m", "finbreak", "--self-test"],
+        cwd=_PROJECT_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+
+    assert result.returncode == 0, (
+        f"--self-test exited {result.returncode} with no display "
+        f"(negative = killed by a signal); stderr:\n{result.stderr}"
+    )
+    assert "FINBREAK_SELFTEST_OK" in result.stdout.splitlines(), (
+        f"missing exact FINBREAK_SELFTEST_OK line; stdout:\n{result.stdout}"
+    )
+
+
+@pytest.mark.features
 def test_INV1_noargs_routes_to_gui(monkeypatch) -> None:
     """No args now launches the GUI (FIBR-0004), not the retired NOT_BUILT stub.
 
