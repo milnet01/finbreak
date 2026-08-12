@@ -1,6 +1,6 @@
 # FIBR-0255 — Refuse a Standard Bank statement whose unreadable row moved money
 
-**Status:** spec draft (2026-08-12).
+**Status:** accepted (2026-08-12) — cleared for code; `review-contract` ran to the 3-loop cap, 13 findings, all verified and fixed, none filed.
 **Kind:** fix.
 **Source:** ROADMAP FIBR-0255 (in-session-2026-08-06, FIBR-0252 cold-eyes loop 3, reproduced; filed at loop 4).
 
