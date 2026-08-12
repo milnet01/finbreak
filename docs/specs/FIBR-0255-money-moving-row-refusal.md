@@ -49,11 +49,13 @@ Three facts make the consequence a silent wrong total rather than a caught one:
    only the draft list is short.
 2. `_verify_checksum` takes its `closing is None` early return for `Family.A` and
    `Family.E`. Family A Savings legitimately prints no closing figure.
-3. `_verify_e_totals` degrades to `None` when neither printed `Payments`/`Deposits`
-   total is present.
+3. `_verify_e_totals` verifies each printed `Payments`/`Deposits` total
+   independently and returns `None` when fewer than two are present. So with
+   **neither** total printed it checks nothing, and with **one** it checks only
+   that half — a shortfall on the unchecked column passes just as silently.
 
-So on a closing-less Family A statement, and on a Family E statement printing
-neither column total, **no gate is left to notice the shortfall**.
+So on a closing-less Family A statement, and on a Family E statement missing the
+column total covering the dropped row, **no gate is left to notice the shortfall**.
 
 Reproduced at the parser level (this session), on a synthetic closing-less Savings
 page whose middle row moves 100.00 under the invalid date `05 32`:
@@ -91,8 +93,11 @@ both are recorded here rather than in a commit message:
    closing-less layouts.** FIBR-0255's bullet offers both. §8 carries the
    reasoning for the one taken.
 2. **The refusal message names no row number and no internal reason.** Every
-   other refusal in this file is one sentence of plain English ending in *try
-   your bank's CSV or OFX export*; `occurred_on must be a valid ISO-8601 date` is
+   other **user-reachable** refusal in this file is one sentence of plain English
+   ending in *try your bank's CSV or OFX export* — `_dmy_iso`'s
+   `couldn't read the date …` is the sole exception and is marked defensive, its
+   own comment saying the validated date regex should preclude it;
+   `occurred_on must be a valid ISO-8601 date` is
    `parse_transaction`'s wording for a developer, not a statement a user can act
    on. §6 states what the user is left with instead.
 
@@ -239,7 +244,8 @@ document in front of them, the same reasoning FIBR-0190 D8 used when it gave
 ## 6. Failure modes
 
 - **A statement whose only defect is one unreadable money row now imports
-  nothing.** That is the intended trade, and it is the trade `INV-11` already
+  nothing.** That is the intended trade, and it is the trade FIBR-0050's `INV-11`
+  (not this spec's INV-1–INV-5) already
   makes everywhere a closing figure exists — this change only stops the outcome
   depending on whether the bank happened to print one. The user keeps the escape
   route every other refusal offers: the bank's CSV or OFX export, which has no
@@ -309,10 +315,16 @@ for p in sorted(glob.glob("tests/features/standard_bank_pdf/fixtures/*.pdf")):
 ```
 
 Each new **behavioural** test must be seen to **fail against pre-fix code** before
-the fix lands — the §2 repro is that failure for INV-1, already observed. The INV-4
-source-count test is exempt and cannot comply: it locks a property that already
-holds (verified: the grep returns `1` on the unmodified tree), so it is green before
-and after, guarding against a future regression rather than proving this one.
+the fix lands — the §2 repro is that failure for INV-1, already observed.
+
+**Two of the five cannot comply and are exempt**, because each locks a property
+that already holds and is green before and after: the INV-4 source-count test
+(verified: the grep returns `1` on the unmodified tree) and
+`test_FIBR0216_zero_fee_row_with_a_bad_date_still_degrades` (verified: §4.1's two
+measured lines are its assertions). Forcing either red is a signal you have written
+the wrong test — for the second, the only way to redden it is to key the guard on
+the rejection reason, which is exactly what it exists to forbid. **The fail-first
+set is the three tests that assert the new refusal**, INV-1's two and INV-3's.
 
 ## 8. Alternatives considered (and rejected)
 
@@ -358,7 +370,7 @@ and after, guarding against a future regression rather than proving this one.
 | INV-2 | `test_FIBR0216_zero_amount_row_degrades_instead_of_aborting_the_statement`, `test_FIBR0216_zero_fee_row_with_a_bad_date_still_degrades` |
 | INV-3 | `test_FIBR0255_money_moving_unreadable_row_refuses_the_statement` (asserts both the new phrase and the absence of the old) |
 | INV-4 | `test_FIBR0255_the_rule_is_stated_once_in_draft` |
-| INV-5 | **nothing automated** — the fixture sweep is a hand-run command recorded in §12; the suite's per-fixture tests catch a *changed* fixture outcome, but nothing asserts the corpus-wide shape |
+| INV-5 | **nothing automated** — the fixture sweep is the hand-run command in §7; the suite's per-fixture tests catch a *changed* fixture outcome, but nothing asserts the corpus-wide shape |
 | §3 decision 2 (no row number in the message) | **nothing** — a preference, not a contract; INV-3 pins only the sentence that ships |
 | §6 "`signed` is the money moved" | **nothing** — a future family parser passing something else compiles and passes every test above; INV-4's single call site is a review aid, not a check |
 
@@ -374,9 +386,14 @@ and after, guarding against a future regression rather than proving this one.
   rejection — INV-11's, INV-1's `errors`-on-success clause, and the
   `parse_transaction` bullet's. All three were already false when FIBR-0216 shipped
   the zero-amount carve-out, and INV-11 additionally enumerates the refusal wordings
-  without this one. Each now reads "of a row that moved money" and names FIBR-0255.
-  Nothing else in FIBR-0050 moved; it names no `_draft` carve-out anywhere
-  (`grep -c '_draft' docs/specs/FIBR-0050.md` → `0`).
+  without this one. INV-11 and the `parse_transaction` bullet now read "of a row
+  that moved money" and cite FIBR-0255; INV-1's clause was narrowed instead, to
+  "`errors` carries at most zero-amount rows, which move no money", the phrase
+  belonging to an errors-channel claim rather than a raise. Nothing else in
+  FIBR-0050 moved — those three are its only claims about the row channel
+  (`grep -n 'RowError\|degrad' docs/specs/FIBR-0050.md` → lines 95, 116-118, plus
+  two type listings and one unrelated marker-rename sentence) — and it names no
+  `_draft` carve-out anywhere (`grep -c '_draft' docs/specs/FIBR-0050.md` → `0`).
 - `docs/specs/FIBR-0252-standard-bank-row-errors.md` — §9 defers "the parser gap
   §6 uncovered" to this id, which is the pointer being honoured; §8's rejected
   alternative is addressed in §8 above. No edit: a converged spec's record of what
@@ -391,3 +408,4 @@ and after, guarding against a future regression rather than proving this one.
 |------|------|-------|----|----|----|----|---------|
 | 1 | 2026-08-12 | 3, cold, shared byte-identical packet (`review-contract`, `--genre spec`) | 1 | 3 | 0 | 1 | 5 verified, 0 unverified. All fixed. **The Q1 rewrote §4.1's central argument.** The draft claimed a zero-amount row could only ever be rejected for `"amount must be non-zero"`, making the amount and the rejection reason interchangeable discriminators. `parse_transaction` checks description and date *first*, so a printed `0.00` line with a garbled date returns `RowError(1, 'occurred_on must be a valid ISO-8601 date')` — reproduced. An implementer keying the guard on the reason would have refused whole statements over zero-fee rows, the exact FIBR-0216 regression INV-2 exists to block; §4.1 now states the rule as amount-not-reason and a fifth test locks it. Q2s: INV-1 scoped the refusal to gate-less families while §1 and §8 said all five (a family-conditional guard would have passed the invariant); §11 claimed FIBR-0050 needed no edit when its INV-11 enumerates the refusal wordings and asserts "any `parse_transaction` rejection raises" — false since FIBR-0216 — so three of its clauses were corrected in place; and `_draft`'s own docstring says "never aborting the statement", now listed as part of the change. Q4: the red-first rule was unsatisfiable for INV-4's source-count test, which is green before and after. |
 | 2 | 2026-08-12 | 2, cold, packet rebuilt from disk and widened to all five family parsers | 2 | 0 | 1 | 1 | 4 verified, 0 unverified. All fixed. **The Q1 that mattered: §4.3 cited the wrong wizard method.** It named `_on_import` as the caller that already handles a raising `parse`; `_on_import` wraps `commit_import` and is downstream. The real call site is `_continue_after_decrypt`, which catches `(PdfError, ValueError, FinbreakError)` and routes to `_show_pdf_read_error` — so the claim was true of the code and false of the citation, and an implementer checking the cited method would never have looked at the raising one. Both call sites are now named and grepped. Second Q1 was this skill's own loop-1 collateral: §11's FIBR-0050 bullet still read as a to-do after the edit had landed in the same commit. Q3: INV-5's *Test:* pointed at §7, §7 pointed at §12, and the sweep command existed nowhere — now stated in §7 and executed (its pre-fix output is the baseline the post-fix run must match). Q4: §10 claimed INV-1 fully covered while only A and E are tested; now `Partial:`. |
+| 3 | 2026-08-12 | 2, cold, packet rebuilt from disk with both `parse` call sites added | 2 | 1 | 0 | 1 | 4 verified, 0 unverified. All fixed. **Exit at `--max-loops 3`, with nothing filed** — every finding was fixable in the loop. **Half of it was this skill's own collateral**, which is the converging signal: §11's "each now reads 'of a row that moved money'" was false of one of the three FIBR-0050 clauses (INV-1's was narrowed differently), and §10 still sent a reader to §12 for a sweep loop 2 had moved to §7. The two draft defects: the red-first rule exempted one green-before-and-after test when there are two, and the only way to redden the second is to key the guard on the rejection reason — the very shape §4.1 forbids; and §3 decision 2's "every other refusal in this file ends in *try your bank's CSV or OFX export*" is falsified by `_dmy_iso`'s defensive raise. Two further corrections came from lane open questions rather than findings, so they are not in the tally: §2's third fact understated the Family E gap (a **one**-total statement is unguarded on its other half, not just a no-totals one), and §6's bare `INV-11` now says whose it is. |
