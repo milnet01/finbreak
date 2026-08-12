@@ -956,6 +956,50 @@ def test_INV4_unterminated_quote_surfaces_a_message_not_a_crash(
     assert widget._error.text(), "the malformed file must surface a user-facing message"
 
 
+def test_INV4_map_step_date_slots_survive_a_broken_body(qtbot, service, tmp_path):
+    """The same broken body, reached from the BATCH ask step — where nothing
+    guarded it (FIBR-0268).
+
+    The file pick above can never leave a broken body ON the map step: its
+    failure clears `_text` and refuses the file. A batch can. SCAN reads the
+    file, no profile matches, and ASK re-shows the map step for it — and from
+    there every date slot reads the body again. `_autodetect_date_format` and
+    `_update_date_preview` both go through `_date_samples`, so before this fix
+    the first of them raised a `ValueError` straight out of a Qt slot on the
+    documented way to use the screen (change the Date column, change the
+    format).
+    """
+    from finbreak.services.batch_import import BatchFile
+    from finbreak.ui.import_wizard import ImportWizardWidget
+
+    acct = _acct(service)
+    broken = ",".join(HEADER) + '\n2026-01-05,"' + ("x" * 200_000) + ",-10.00\n"
+
+    widget = ImportWizardWidget(service)
+    qtbot.addWidget(widget)
+    widget._account_combo.setCurrentIndex(widget._account_combo.findData(acct))
+
+    widget._ask_mapping(BatchFile(path=str(tmp_path / "b.csv"), source_text=broken))
+
+    # Precondition: the body really is unreadable, so every leg below is testing
+    # a guard that has something to catch (a readable body would pass vacuously).
+    with pytest.raises(ValueError):
+        widget._date_samples(widget._column_combos["date"].currentData())
+
+    assert widget._stack.currentIndex() == 1, "the map step is shown, not crashed past"
+    assert widget._error.text(), "the broken body surfaces a message"
+
+    # The two map-step slots, each on the path a user actually takes.
+    for slot in (
+        lambda: widget._on_date_column_changed(0),
+        widget._on_date_format_changed,
+    ):
+        widget._error.clear()
+        slot()  # must not raise out of the slot
+        assert widget._error.text(), "the broken body surfaces a message, every fire"
+        assert widget._date_format.currentData() == "%Y-%m-%d", "picker unchanged"
+
+
 # --------------------------------------------------------------------------- #
 # INV-5a — the preview says WHICH rows the dedup will drop
 # --------------------------------------------------------------------------- #

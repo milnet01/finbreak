@@ -860,11 +860,11 @@ class ImportWizardWidget(QWidget):
             if len(candidates) == 1:
                 self._run_preview(matched.column_mapping())
                 return
-            self._update_date_preview()  # matched, >1 table: refresh for the map step
+            # matched, >1 table: refresh for the map step
+            self._refresh_date_ui(detect=False)
         else:
             # FIBR-0146 D5(b): a generic (non-SB) PDF gets a date-format guess.
-            self._autodetect_date_format()
-            self._update_date_preview()
+            self._refresh_date_ui(detect=True)
         self._goto_step(_STEP_MAP)
 
     def _extract_pdf_tables(
@@ -903,11 +903,11 @@ class ImportWizardWidget(QWidget):
             matched = self._apply_pdf_table(index)
             if matched is not None:
                 self._apply_profile_to_combos(matched)
+                self._refresh_date_ui(detect=False)
             else:
                 # FIBR-0146 D5(b): a different unmatched table re-detects, so no
                 # stale format/preview from the previous table survives.
-                self._autodetect_date_format()
-            self._update_date_preview()  # single owner refresh (both branches)
+                self._refresh_date_ui(detect=True)
 
     def _apply_profile_to_combos(self, profile: ImportProfile) -> None:
         """Pre-fill the mapping combos from a matched profile (INV-7d), so a
@@ -1120,12 +1120,35 @@ class ImportWizardWidget(QWidget):
             )
         self._date_preview.setText(text)
 
+    def _refresh_date_ui(self, *, detect: bool) -> None:
+        """Run the map step's date pair — optional re-detect, then the preview —
+        under ONE ``ValueError`` guard (FIBR-0268).
+
+        Both halves read the loaded text through ``_date_samples``, so a
+        structurally-broken body (D8) raises out of whichever fires first. On the
+        file pick that raise is caught by ``_select_file``, which refuses the
+        file; every other caller is a Qt slot or a batch step with no net of its
+        own, and an escaping ``ValueError`` terminates the app. So they come
+        through here instead: the message lands on the map-step error label, the
+        picker keeps whatever it had, and the preview asserts nothing it can no
+        longer read.
+
+        ``_select_file`` deliberately does NOT use this — D5(a) must *refuse* a
+        broken file, not show the map step over it.
+        """
+        try:
+            if detect:
+                self._autodetect_date_format()
+            self._update_date_preview()
+        except ValueError as exc:
+            self._error.setText(str(exc))
+            self._date_preview.clear()
+
     @Slot(int)
     def _on_date_column_changed(self, _index: int) -> None:
         """User picked a different date column (FIBR-0146 D5c): re-detect for it
         (overriding any prior manual format pick — the column changed) and refresh."""
-        self._autodetect_date_format()
-        self._update_date_preview()
+        self._refresh_date_ui(detect=True)
 
     @Slot()
     def _on_date_format_changed(self) -> None:
@@ -1137,7 +1160,7 @@ class ImportWizardWidget(QWidget):
         self._date_ambiguous = False
         is_custom = self._date_format.currentData() is _CUSTOM_FORMAT
         self._date_format_custom.setVisible(is_custom)
-        self._update_date_preview()
+        self._refresh_date_ui(detect=False)
 
     def _run_preview(self, mapping: ColumnMapping) -> None:
         # _run_preview is only reached after _select_file loads the text (CSV).
@@ -1479,8 +1502,7 @@ class ImportWizardWidget(QWidget):
         self._amount_style.setCurrentIndex(0)  # single amount column
         with QSignalBlocker(self._date_format_custom):
             self._date_format_custom.clear()
-        self._autodetect_date_format()
-        self._update_date_preview()
+        self._refresh_date_ui(detect=True)
         self._profile_name.clear()
         self._goto_step(_STEP_MAP)
 
