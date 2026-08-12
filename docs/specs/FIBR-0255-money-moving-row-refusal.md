@@ -123,11 +123,28 @@ A/B/D/E, and the sign-flipped printed amount for Family C. `signed != 0` is
 therefore exactly the negation of FIBR-0216's safety premise — "it contributes 0
 to both" — and not an approximation of it.
 
-The discriminator is sound in both directions. A non-zero `signed` cannot scale to
-a zero `amount_minor`: `parse_transaction` rejects any amount with more fractional
-digits than the currency allows **before** it scales, so no surviving non-zero
-Decimal can round away. And a zero `signed` cannot reach any rejection other than
-`"amount must be non-zero"` on a row the family grammar has already matched.
+**The discriminator is the amount, never the rejection reason** — the two are not
+interchangeable, and reading them as equivalent is the one way to build this wrong.
+`parse_transaction` checks the description and the date **before** the amount, so a
+zero-amount row can be rejected for either. Measured against the current tree:
+
+```
+SERVICE FEE WAIVED 0.00 05 32 1,000.00   → RowError(1, 'occurred_on must be a valid ISO-8601 date')
+## 0.00 05 02 1,000.00                   → RowError(1, 'description must not be empty')
+```
+
+Both still degrade, and correctly — the row moved no money, which is the whole of
+FIBR-0216's premise. A guard keyed on `"amount must be non-zero"` would refuse the
+statement for either, breaking INV-2.
+
+In the other direction a non-zero `signed` cannot scale to a zero `amount_minor`:
+`parse_transaction` rejects any amount with more fractional digits than the currency
+allows **before** it scales, so no surviving non-zero Decimal can round away.
+
+`_draft`'s docstring is rewritten in the same change. It currently reads
+"degrading per row, **never** aborting the statement (FIBR-0216)", which this makes
+false, and a docstring stating the opposite of the guard beneath it is what a later
+reader would restore the old behaviour on.
 
 ### 4.2 The message
 
@@ -167,10 +184,11 @@ document in front of them, the same reasoning FIBR-0190 D8 used when it gave
 ## 5. Invariants
 
 - **INV-1** — A Standard Bank row `parse_transaction` rejects while `signed != 0`
-  raises `ValueError`; the parse yields no drafts at all, on a family whose
-  completeness gate cannot fire.
-  *Test:* `pytest tests/features/standard_bank_pdf/ -k FIBR0255_money_moving` —
-  the §2 four-line Family A page, asserted to raise.
+  raises `ValueError` on **every** family, whether or not a completeness gate could
+  have fired; the parse yields no drafts at all.
+  *Test:* `pytest tests/features/standard_bank_pdf/ -k FIBR0255_money_moving` — the
+  §2 four-line Family A page and the §7 Family E page, the two families where no
+  gate exists to catch the shortfall, each asserted to raise.
   *Breaks when:* the guard is keyed on the rejection *reason* rather than on the
   amount, so a bad date on a money-moving row degrades again and the drafts sum to
   +150 against a page that moves +50.
@@ -244,16 +262,31 @@ directly (`test_INV3a_family_a_keeps_embedded_mm_dd_in_description`,
 `test_FIBR0216_zero_amount_row_degrades_instead_of_aborting_the_statement`).
 Authoring a `reportlab` PDF for it would test `pdfplumber`, not this rule.
 
+The Family E page, so it need not be invented — `_iso` does not validate the day, so
+`32 Feb 26` reaches `parse_transaction` as an ISO-date rejection exactly as Family
+A's `05 32` does (measured: `_iso(2026, 2, 32)` → `'2026-02-32'`):
+
+```
+STATEMENT OPENING BALANCE 1000.00
+02 Feb 26 GROCERIES -100.00 900.00
+32 Feb 26 MYSTERY -100.00 800.00
+04 Feb 26 SALARY 250.00 1050.00
+```
+
 | Test | Locks |
 |---|---|
 | `test_FIBR0255_money_moving_unreadable_row_refuses_the_statement` | INV-1, INV-3 — the §2 Family A page raises; message asserted both ways |
 | `test_FIBR0255_money_moving_row_refuses_family_e_too` | INV-1 on the second gate-less family (E, no printed totals) |
+| `test_FIBR0216_zero_fee_row_with_a_bad_date_still_degrades` | §4.1's amount-not-reason rule — the case a reason-keyed guard would refuse |
 | `test_FIBR0216_zero_amount_row_degrades_instead_of_aborting_the_statement` | INV-2 — pre-existing, must stay green **unmodified** |
 | `test_FIBR0255_the_rule_is_stated_once_in_draft` | INV-4 — source-level count of `parse_transaction(` call sites |
 | fixture sweep, §5 INV-5 | INV-5 — run by hand at implementation, recorded in §12 |
 
-Each new test must be seen to **fail against pre-fix code** before the fix lands —
-the §2 repro is that failure for INV-1, already observed.
+Each new **behavioural** test must be seen to **fail against pre-fix code** before
+the fix lands — the §2 repro is that failure for INV-1, already observed. The INV-4
+source-count test is exempt and cannot comply: it locks a property that already
+holds (verified: the grep returns `1` on the unmodified tree), so it is green before
+and after, guarding against a future regression rather than proving this one.
 
 ## 8. Alternatives considered (and rejected)
 
@@ -296,7 +329,7 @@ the §2 repro is that failure for INV-1, already observed.
 | Rule | What catches a breach |
 |------|----------------------|
 | INV-1 | `test_FIBR0255_money_moving_unreadable_row_refuses_the_statement`, `test_FIBR0255_money_moving_row_refuses_family_e_too` |
-| INV-2 | `test_FIBR0216_zero_amount_row_degrades_instead_of_aborting_the_statement` |
+| INV-2 | `test_FIBR0216_zero_amount_row_degrades_instead_of_aborting_the_statement`, `test_FIBR0216_zero_fee_row_with_a_bad_date_still_degrades` |
 | INV-3 | `test_FIBR0255_money_moving_unreadable_row_refuses_the_statement` (asserts both the new phrase and the absence of the old) |
 | INV-4 | `test_FIBR0255_the_rule_is_stated_once_in_draft` |
 | INV-5 | **nothing automated** — the fixture sweep is a hand-run command recorded in §12; the suite's per-fixture tests catch a *changed* fixture outcome, but nothing asserts the corpus-wide shape |
@@ -310,17 +343,29 @@ the §2 repro is that failure for INV-1, already observed.
   Rewritten in the same commit.
 - `CHANGELOG.md` — one `Fixed` line under `[Unreleased]`; user-visible.
 - `ROADMAP.md` — FIBR-0255 flips to ✅ with a resolution note.
-- `docs/specs/FIBR-0050.md` — INV-11 states the all-or-nothing contract and is
-  *strengthened*, not contradicted, by this change; no edit. Its text does not
-  mention `_draft`'s carve-out at all (`grep -c '_draft' docs/specs/FIBR-0050.md`
-  → `0`).
+- `docs/specs/FIBR-0050.md` — **edited in the same commit.** INV-11 asserts "Any
+  gate failure, or any `parse_transaction` rejection, raises **one** friendly
+  `ValueError` … **no partial import**", and enumerates the refusal wordings. Two
+  things are wrong with it against this change, and the first is wrong *today*:
+  FIBR-0216 already made "any `parse_transaction` rejection raises" false for a
+  zero-amount row, and this change adds `_UNREADABLE_MONEY_ROW` as a wording the
+  enumeration does not carry. Left standing, an implementer reading INV-11 as
+  canonical writes the refusal with the "didn't add up" sentence INV-3 forbids.
+  **Three clauses move, all in the same direction and all false before this
+  change**: INV-11's, INV-1's "`errors` is always empty on success", and the
+  `parse_transaction` bullet's "raises on any rejection" — the last two falsified by
+  FIBR-0216/FIBR-0252 and left standing. Nothing else in FIBR-0050 moves; it names
+  no `_draft` carve-out anywhere (`grep -c '_draft' docs/specs/FIBR-0050.md` → `0`).
 - `docs/specs/FIBR-0252-standard-bank-row-errors.md` — §9 defers "the parser gap
   §6 uncovered" to this id, which is the pointer being honoured; §8's rejected
   alternative is addressed in §8 above. No edit: a converged spec's record of what
   it deferred stays as written.
-- `CLAUDE.md` — no change. The rule lives in `_draft`'s docstring and this spec.
+- `src/finbreak/importers/standard_bank.py` — `_draft`'s docstring, per §4.1. Not a
+  doc, listed here because it is the sentence a later reader would act on.
+- `CLAUDE.md` — no change; this adds no convention a session must be told about.
 
 ## 12. Cold-eyes loop log
 
 | Loop | Date | Lanes | Q1 | Q2 | Q3 | Q4 | Outcome |
 |------|------|-------|----|----|----|----|---------|
+| 1 | 2026-08-12 | 3, cold, shared byte-identical packet (`review-contract`, `--genre spec`) | 1 | 3 | 0 | 1 | 5 verified, 0 unverified. All fixed. **The Q1 rewrote §4.1's central argument.** The draft claimed a zero-amount row could only ever be rejected for `"amount must be non-zero"`, making the amount and the rejection reason interchangeable discriminators. `parse_transaction` checks description and date *first*, so a printed `0.00` line with a garbled date returns `RowError(1, 'occurred_on must be a valid ISO-8601 date')` — reproduced. An implementer keying the guard on the reason would have refused whole statements over zero-fee rows, the exact FIBR-0216 regression INV-2 exists to block; §4.1 now states the rule as amount-not-reason and a fifth test locks it. Q2s: INV-1 scoped the refusal to gate-less families while §1 and §8 said all five (a family-conditional guard would have passed the invariant); §11 claimed FIBR-0050 needed no edit when its INV-11 enumerates the refusal wordings and asserts "any `parse_transaction` rejection raises" — false since FIBR-0216 — so three of its clauses were corrected in place; and `_draft`'s own docstring says "never aborting the statement", now listed as part of the change. Q4: the red-first rule was unsatisfiable for INV-4's source-count test, which is green before and after. |
