@@ -17,6 +17,7 @@ import pytest
 from PySide6.QtWidgets import QDialog
 
 from conftest import _PW, _acct
+from finbreak.importers import standard_bank
 from finbreak.importers.standard_bank import (
     _E_ROW,
     _MONEY,
@@ -248,6 +249,83 @@ def test_FIBR0216_zero_amount_row_degrades_instead_of_aborting_the_statement():
         "the 0.00 row is reported, not fatal"
     )
     assert "non-zero" in r.errors[0].reason
+
+
+def test_FIBR0255_money_moving_unreadable_row_refuses_the_statement():
+    """FIBR-0255 INV-1/INV-3 — a row that MOVED MONEY and cannot be drafted refuses
+    the whole statement, on a layout with no completeness gate to catch it.
+
+    Family A Savings prints no closing, so `_verify_checksum` takes its
+    `closing is None` early return. `_verify_row` already advanced the running
+    balance past this row, so the chain still reconciles and only the draft list is
+    short: the page moves -100 -100 +250 = +50, and degrading would import +150.
+    """
+    lines = [
+        "BALANCE BROUGHT FORWARD 05 01 1,000.00",
+        "GROCERIES 100.00- 05 02 900.00",
+        "MYSTERY 100.00- 05 32 800.00",  # day 32 — no ISO date, and it moved 100.00
+        "SALARY 250.00 05 04 1,050.00",
+    ]
+    with pytest.raises(ValueError) as exc:
+        _parse_family_a(lines, 2, "us", ("2026-05-01", "2026-05-31"))
+
+    assert "moved money" in str(exc.value), "says WHY the statement is refused"
+    assert "try your bank's CSV or OFX export" in str(exc.value)
+    # INV-3: not the arithmetic wording. This statement DOES add up — its running
+    # balance reconciles row by row, which is how the row was verified before it
+    # was dropped. Only storing the row failed.
+    assert "didn't add up" not in str(exc.value)
+
+
+def test_FIBR0255_money_moving_row_refuses_family_e_too():
+    """FIBR-0255 INV-1 — the same on Family E, the second family whose completeness
+    gate can be absent (it prints no closing, and this page prints no
+    Payments/Deposits totals either). `_iso` does not validate the day, so
+    `32 Feb 26` reaches `parse_transaction` as an ISO-date rejection."""
+    lines = [
+        "STATEMENT OPENING BALANCE 1000.00",
+        "02 Feb 26 GROCERIES -100.00 900.00",
+        "32 Feb 26 MYSTERY -100.00 800.00",
+        "04 Feb 26 SALARY 250.00 1050.00",
+    ]
+    with pytest.raises(ValueError, match="moved money"):
+        _parse_family_e(lines, 2, "us")
+
+
+def test_FIBR0216_zero_fee_row_with_a_bad_date_still_degrades():
+    """FIBR-0255 §4.1 — the discriminator is the AMOUNT, never the rejection reason.
+
+    `parse_transaction` checks the description and the date BEFORE the amount, so a
+    printed `0.00` line can be rejected for its date instead of for being zero. It
+    still moved no money, so it still degrades — a guard keyed on
+    "amount must be non-zero" would refuse the statement here and break FIBR-0216.
+
+    Green before and after the FIBR-0255 fix on purpose: it locks the property the
+    fix must not disturb. Forcing it red means the guard was written on the reason.
+    """
+    lines = [
+        "BALANCE BROUGHT FORWARD 05 01 1,000.00",
+        "SERVICE FEE WAIVED 0.00 05 32 1,000.00",  # zero amount AND an unreadable date
+        "GROCERIES 100.00- 05 03 900.00",
+    ]
+    r = _parse_family_a(lines, 2, "us", ("2026-05-01", "2026-05-31"))
+
+    assert [d.amount_minor for d in r.drafts] == [-10000]
+    assert [e.row_number for e in r.errors] == [1]
+    assert "ISO-8601" in r.errors[0].reason, (
+        "rejected for its DATE, not for being zero — the case that separates "
+        "an amount-keyed guard from a reason-keyed one"
+    )
+
+
+def test_FIBR0255_the_rule_is_stated_once_in_draft():
+    """FIBR-0255 INV-4 — the rule lives in `_draft` and nowhere else. A future family
+    parser reaching `parse_transaction` around `_draft` would reintroduce the hole
+    for that family alone, and nothing else would notice."""
+    source = Path(standard_bank.__file__).read_text()
+    assert source.count("parse_transaction(") == 1, (
+        "one call site, inside _draft; the import line carries no parenthesis"
+    )
 
 
 def test_INV6a_family_c_keeps_embedded_price_amount_is_last_token():

@@ -23,6 +23,14 @@ signaling per
 
 ### Fixed
 
+- **A statement with an unreadable line that moved money is now refused, not imported with wrong totals** (FIBR-0255)
+  On a savings statement that prints no closing balance, a line the app
+  could not read was quietly dropped and everything else imported — so
+  your totals came out wrong by that line's amount, with nothing to tell
+  you. The app now refuses the whole statement and says why, pointing you
+  at your bank's CSV or OFX export. A printed 0.00 line still imports
+  fine, as before: it moves no money, so dropping it changes nothing.
+
 - **The built-in install check now works on a computer with no screen** (FIBR-0261)
   `python -m finbreak --self-test` — the command that checks a broken
   install by loading every piece finbreak needs — crashed instead of

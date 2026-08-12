@@ -17,11 +17,20 @@ FIBR-0252's six.
 
 **Two gates, not one.** The all-or-nothing checksum above refuses a whole
 statement whose running balance does not reconcile. Alongside it runs a
-**degrade-per-row** channel (FIBR-0216): a row `parse_transaction` rejects — the
-legitimate printed `0.00` line, a garbled date — becomes a `RowError` instead of
-aborting the parse, and `parse` returns those errors beside the drafts for the
-preview to show (FIBR-0252 INV-1). Only drafts feed the balance gates; an error
-row carries no money.
+**degrade-per-row** channel (FIBR-0216): a row `parse_transaction` rejects becomes
+a `RowError` instead of aborting the parse, and `parse` returns those errors beside
+the drafts for the preview to show (FIBR-0252 INV-1).
+
+**That channel is conditional on the row moving no money (FIBR-0255).** The
+legitimate printed `0.00` line degrades — it contributes 0 to every gate, so
+dropping it changes no arithmetic. A rejected row whose amount is **non-zero** does
+not: `_verify_row` has already walked the running balance past it, so the chain
+still reconciles while the drafts come up short, and on a closing-less Savings page
+or a Family E page missing the relevant column total no completeness gate is left
+to notice. Such a row raises its own refusal, distinct from the four "didn't add
+up" messages because the statement's arithmetic is fine. **The discriminator is the
+amount, never the rejection reason** — a `0.00` line with a garbled date is
+rejected for its *date* and still degrades.
 
 **Fixtures are 100% SYNTHETIC** — `tests/features/standard_bank_pdf/fixtures/*.pdf`
 are `reportlab`-generated blobs with invented merchants/amounts and a fake account
@@ -61,7 +70,8 @@ Coverage map:
 - **Integrity (INV-7b/11):** the per-row gate (a corrupted amount) and the
   completeness gate (rows reconcile but the printed closing disagrees) raise
   **distinct** messages; a Home-Loan with its closing removed is all-or-nothing
-  (unlike a closing-less Savings, which imports on the per-row gate alone); a
+  (unlike a closing-less Savings, which imports on the per-row gate alone — **but
+  refuses when an unreadable row moved money**, FIBR-0255 below); a
   credit card that doesn't reconcile rides the completeness gate alone; a
   reconciling quiet month returns an empty-draft `ParseResult` with the period.
 - **Unstorable balances (INV-11b, FIBR-0224):** the opening and closing figures are
@@ -137,6 +147,16 @@ Coverage map:
     `_parse_family_a` directly, which is why it stayed green for the whole life
     of the defect. The corpus cannot pin INV-3 — none of those fixtures carries
     a `RowError`, so they pass identically either side of the change.
+  - **FIBR-0255 INV-1/INV-3/INV-4:** an unreadable row that MOVED money refuses the
+    statement instead. Four legs, all on synthetic line lists rather than a fixture
+    (the defect is in the family parsers, which take a `list[str]`; a `reportlab`
+    PDF would test `pdfplumber`): the §2 Family A page and its Family E twin each
+    raise, with the message asserted to say *moved money* and **not** *didn't add
+    up*; a `0.00` row rejected for its **date** still degrades, which is the leg
+    that separates an amount-keyed guard from a reason-keyed one; and a source
+    count pins `parse_transaction(` to `_draft`'s single call site. INV-5 (no
+    committed fixture moves) is the hand-run sweep in that spec's §7 — verified
+    byte-identical before and after.
   - **FIBR-0252 INV-5:** the wizard preview interleaves the errored row in file
     order (located by cell content, not table index — `_fill_preview_table`
     sorts) and the summary reads `· 1 error`.

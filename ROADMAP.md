@@ -407,7 +407,7 @@ scariest unknown (native-library bundling) up front.
   the cumulative new count is zero. Defect 2 (the "1 rows" plural) is
   unconditional.
 
-- 🚧 [FIBR-0255] **A closing-less Savings statement can import a wrong total with no gate firing.**
+- ✅ [FIBR-0255] **A closing-less Savings statement can import a wrong total with no gate firing.**
   `_verify_checksum` takes its `closing is None` early return for
   Family A and Family E, and `_verify_e_totals` degrades to nothing when
   neither printed total is present. So on those layouts a row that
@@ -439,6 +439,7 @@ scariest unknown (native-library bundling) up front.
   Kind: fix.
   Source: in-session-2026-08-06 (FIBR-0252 cold-eyes loop 3, reproduced; filed at loop 4).
   Progress (2026-08-12): specced as docs/specs/FIBR-0255-money-moving-row-refusal.md and gated with review-contract — 3 loops, 13 verified findings, all fixed, none filed. Design chosen: refuse at the row rather than build a completeness gate for the closing-less layouts. _draft degrades a rejected row ONLY when it moved no money (signed == 0, FIBR-0216's own safety premise); a non-zero row raises a new refusal distinct from the four "didn't add up" messages, on every family. Loop 1 rewrote the central argument: a zero-amount row CAN be rejected for its date or description, so the rejection reason is not a proxy for the amount and the guard must key on the amount alone.
+  Resolved (2026-08-12): _draft now degrades a rejected row ONLY when it moved no money (signed == 0) and raises a new refusal otherwise, on every family — the all-or-nothing contract applied where FIBR-0216's own safety premise ("it contributes 0 to both") actually holds. The message is distinct from the four "didn't add up" ones because the statement's arithmetic IS fine; only storing one row failed. Spec: docs/specs/FIBR-0255-money-moving-row-refusal.md (review-contract, 3 loops + 1 implementation row, 14 findings, all fixed). Tests: 4 new legs in tests/features/standard_bank_pdf/, the two behavioural ones seen red pre-fix. The key subtlety, which cost the review its largest finding: the discriminator is the AMOUNT, never the rejection reason — parse_transaction checks description and date before the amount, so a printed 0.00 line with a garbled date arrives with signed == 0 and an ISO-date reason and must still degrade. No committed fixture moved (the 23-fixture sweep is byte-identical before and after). FIBR-0050 INV-11 and two neighbouring clauses were corrected in the same commit: they said the reader raises on ANY parse_transaction rejection, which FIBR-0216 had already made false. Gate green: 1875 passed, 3 skipped.
 
 - ✅ [FIBR-0260] **CLAUDE.md § Build and test omits the `ci-setup.sh` step and the `git` requirement.**
   Found by EXECUTING the section literally in a fresh

@@ -782,11 +782,24 @@ def _anchor_balance(line: str, fmt: Fmt) -> Decimal | None:
     return _signed_balance(bal, fmt)
 
 
+# Its own wording, deliberately NOT one of the four "this statement didn't add up"
+# messages (FIBR-0255 §4.2). This statement DOES add up — its running balance
+# reconciles row by row, which is how the row below was verified before it was
+# dropped. What failed is storing one row, and telling the user their arithmetic
+# disagrees would misdiagnose the one failure they have the document for. Same
+# reasoning as `_E_TOTALS_MISMATCH`'s own sentence (FIBR-0190 D8).
+_UNREADABLE_MONEY_ROW = (
+    "couldn't read one of this statement's transactions, and it moved money — "
+    "importing it would give you the wrong totals; try your bank's CSV or OFX export"
+)
+
+
 def _draft(
     row: int, occurred_on: str, signed: Decimal, description: str, exponent: int
 ) -> TransactionDraft | RowError:
     """One parsed row as a draft, or a ``RowError`` when the row itself is
-    unimportable — **degrading per row, never aborting the statement** (FIBR-0216).
+    unimportable — **degrading per row iff the row moved no money** (FIBR-0216,
+    narrowed to that case by FIBR-0255).
 
     Every call site is a bare loop or comprehension with no per-row guard, so a
     ``parse_transaction`` ValueError used to propagate out of `parse` and abort the
@@ -794,17 +807,32 @@ def _draft(
     fee, "interest capitalised 0.00" — which fails "amount must be non-zero" and
     read to the user as an app bug on an otherwise perfect statement.
 
-    This is **not** a hole in the all-or-nothing balance contract (INV-7b): a
-    balance MISMATCH still raises, because it means the parse is wrong and the
-    numbers cannot be trusted. A zero-amount row verified fine; it just carries no
-    money. Dropping it leaves every running balance and the credit-card
-    completeness gate untouched, since it contributes 0 to both. ``csv_importer``
-    degrades per row exactly this way."""
+    Degrading is safe for that row, and **only** for that row: it verified fine and
+    carries no money, so dropping it leaves every running balance and the
+    credit-card completeness gate untouched, since it contributes 0 to both.
+    ``csv_importer`` degrades per row exactly this way.
+
+    FIBR-0216 applied that conclusion to every rejection, where its premise covers
+    one. ``parse_transaction`` also rejects a bad date, a blank description, an
+    over-precise amount and an unstorable magnitude, and all four can fire on a row
+    that DID move money — whose delta ``_verify_row`` has already walked the running
+    balance past, so the chain still reconciles and only the draft list comes up
+    short. On a closing-less Savings page or a Family E page missing the relevant
+    column total there is then no completeness gate left to notice, and the import
+    is silently wrong by that row's amount (FIBR-0255 §2). So such a row raises: the
+    all-or-nothing contract (INV-7b/INV-11), applied where its reasoning holds.
+
+    **The discriminator is ``signed``, never the rejection reason.** They are not
+    interchangeable — the description and date are checked before the amount, so a
+    printed ``0.00`` line with a garbled date arrives here with ``signed == 0`` and
+    an ISO-date reason, and must still degrade."""
     try:
         occurred_on, amount_minor, description = parse_transaction(
             occurred_on, signed, description, exponent
         )
     except ValueError as exc:
+        if signed != 0:
+            raise ValueError(_UNREADABLE_MONEY_ROW) from exc
         return RowError(row, str(exc))
     return TransactionDraft(row, occurred_on, amount_minor, description)
 

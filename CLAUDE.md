@@ -255,6 +255,18 @@ however small.
     lifted off the wizard so the service could call it. `ui/import_wizard.py`
     gained a fourth step and the scan/ask/run chain, and
     `ui/account_picker.py` gained a Create-an-account affordance.
+  - **The Standard Bank import contract is stated in
+    [`docs/specs/FIBR-0050.md`](docs/specs/FIBR-0050.md) INV-11 — amend it in the
+    same commit that changes the behaviour.** It is the canonical "all-or-nothing,
+    and here is every way a statement can be refused" clause, and it had been
+    silently falsified twice before FIBR-0255 found it: FIBR-0216 added the
+    zero-amount degrade and FIBR-0252 made `parse` return per-row errors, neither
+    updating INV-11, which still read "any `parse_transaction` rejection raises …
+    no partial import". A session reading it as canonical builds to a contract
+    that has drifted. The matching trap in the code: `_draft` decides
+    degrade-vs-refuse on the **amount**, never on the rejection reason —
+    `parse_transaction` checks description and date first, so a printed `0.00`
+    line can be rejected for its *date* and must still degrade (FIBR-0255 §4.1).
 - `tests/` — pytest suite. `tests/test_smoke.py` asserts the package imports;
   `tests/features/<name>/` (spec.md + test) and `tests/fixtures/<rule>/` arrive
   with the features they cover
