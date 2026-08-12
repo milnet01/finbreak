@@ -571,7 +571,7 @@ scariest unknown (native-library bundling) up front.
   Kind: doc-fix.
   Source: in-session-2026-08-12 (review-contract gate on FIBR-0085, loop 2).
 
-- 📋 [FIBR-0268] **A malformed CSV body crashes out of the date-column slot, which catches nothing.**
+- ✅ [FIBR-0268] **A malformed CSV body crashes out of the date-column slot, which catches nothing.**
   `_date_samples` reads through `read_rows`, which translates a
   `csv.Error` from a structurally-broken body (an unterminated quote, a
   stray NUL, a field over `csv.field_size_limit`) into the friendly
@@ -599,6 +599,7 @@ scariest unknown (native-library bundling) up front.
   **Layman:** If a spreadsheet file is damaged part-way down, changing the Date column on the import screen can make the app fall over instead of showing a message.
   Kind: fix.
   Source: in-session-2026-08-12 (review-contract gate on FIBR-0146, loop 3).
+  Resolved (2026-08-12): the guard is one owner, `_refresh_date_ui(detect=)`, not two wrapped call sites — the bullet named D5(b) and D5(c), and the tree had six unguarded sites, because `_update_date_preview` reads `_date_samples` too and runs on every one of them. So `_on_date_format_changed`, `_on_pdf_table_changed` and the batch ask step were open as well. `_select_file` deliberately keeps its own catch: D5(a) must refuse the file, not show the map step over it. The reachable route is the batch (SCAN -> ASK re-shows the map step with a broken body loaded), which is what the regression test drives; the CSV pick cannot reach it. FIBR-0146 D8 amended in the same commit. c3fc050, gate green (1879 passed).
 
 ### 📦 Packaging
 

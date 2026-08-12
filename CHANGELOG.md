@@ -23,6 +23,12 @@ signaling per
 
 ### Fixed
 
+- **Importing a damaged spreadsheet no longer closes the app when you change the Date column** (FIBR-0268)
+  If a statement file is damaged part-way down, the import screen now
+  shows a message and leaves your date settings alone, instead of the
+  app disappearing. Previously this could happen when importing several
+  files at once and then adjusting the Date column or the date format.
+
 - **Advice you can actually follow when no row of a PDF or OFX statement can be read** (FIBR-0253)
   When nothing in a statement could be imported, finbreak always told
   you to go back and check the column mapping. Some statements never
