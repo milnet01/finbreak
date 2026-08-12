@@ -43,6 +43,7 @@ flatpak install flathub org.freedesktop.Platform//25.08 org.freedesktop.Sdk//25.
 packaging/flatpak/generate-pip-sources.sh   # regenerate python3-deps.yaml (online)
 packaging/flatpak/flatpak-build.sh          # build (OFFLINE) + install --user + self-test
 packaging/flatpak/flatpak-build.sh --run    # ...and launch the GUI
+LOCAL=0 packaging/flatpak/flatpak-build.sh  # build the manifest AS SUBMITTED
 ```
 
 The **build phase is network-free** (every source is sha256/commit-pinned) — the
@@ -51,6 +52,16 @@ offline-unbuildable sdist fails locally, before submission (§ 3.6). After it
 builds, run the **manual § 5 smoke checks** the build script prints (portal
 open/save, updater disabled, Center-window disabled under Flatpak+KDE-Wayland,
 zero app-initiated network).
+
+**The default build is not the submission.** `LOCAL=1` (the default, for dev
+iteration) rewrites the `finbreak` module's source to your local checkout at
+branch HEAD; `LOCAL=0` builds the committed manifest verbatim, from the release
+commit it pins — which is what Flathub builds. The two can disagree, and once
+did: the FIBR-0257 CVE bump was in HEAD and in the closure while the pinned tag
+still asked for the old `cryptography`, so every default build was green and the
+submission build failed outright. **`LOCAL=0` is the pre-submit path** (step 2
+below); the gate's `test_FIBR0258_closure_satisfies_the_pinned_commit` catches
+the same drift without a build.
 
 ## Submitting to Flathub (first time)
 
@@ -71,6 +82,12 @@ New apps go on the **`new-pr` base branch** of `github.com/flathub/flathub`
    been got wrong once: a `cryptography` CVE bump landed in `pyproject.toml` and
    the closure kept the old pin for two weeks (FIBR-0256). Cheapest check is to
    regenerate and `git diff` — an empty diff *is* the confirmation.
+
+   **Then build the manifest as submitted** — `LOCAL=0
+   packaging/flatpak/flatpak-build.sh` — and confirm it ends in
+   `FINBREAK_SELFTEST_OK`. A default (`LOCAL=1`) build proves nothing about the
+   submission: it swaps in your working tree. Last run green 2026-08-12 against
+   the v0.1.20 pin.
 
 3. **Run Flathub's own linter** — its docs tell submitters to, and a failure
    blocks the PR. Neither check needs a build:

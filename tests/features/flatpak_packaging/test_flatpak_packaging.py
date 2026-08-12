@@ -343,6 +343,58 @@ def test_INV7_pyside6_pin_matches_pyproject() -> None:
     )
 
 
+def _normalise(name: str) -> str:
+    # PEP 503/427: a wheel/sdist filename carries the NORMALISED dist name,
+    # so argon2-cffi ships as argon2_cffi- and sqlcipher3-wheels as
+    # sqlcipher3_wheels-. Comparing the raw pyproject spelling matches
+    # nothing at all.
+    return re.sub(r"[-_.]+", "_", name).lower()
+
+
+def _closure_versions(deps: Any) -> dict[str, set[str]]:
+    """Every distribution the pinned closure provides -> the versions it offers.
+
+    A wheel is `name-version-<tags>.whl` and an sdist `name-version.tar.gz`, so
+    the first two hyphen-separated fields are the pair we want. Splitting is
+    what keeps the version comparison exact — normalising a whole filename
+    turns its dots into underscores, so `6.11.1` would never match `6_11_1`.
+    """
+    closure: dict[str, set[str]] = {}
+    for mod in _iter_modules(deps):
+        for src in mod["sources"]:
+            if not isinstance(src, dict):
+                continue
+            stem = re.sub(r"\.(whl|tar\.gz|zip)$", "", _source_filename(src))
+            parts = stem.split("-")
+            if len(parts) < 2:
+                continue
+            closure.setdefault(_normalise(parts[0]), set()).add(parts[1])
+    return closure
+
+
+def _drifted_pins(pyproject_text: str, closure: dict[str, set[str]]) -> list[str]:
+    """The `==` pins in `pyproject_text` that `closure` cannot satisfy.
+
+    Range specifiers (`beautifulsoup4>=4.9,<5`, `certifi>=2024.2.2`) are skipped
+    on purpose: they float by design, so pinning their resolved version here
+    would redden the gate every time an unrelated transitive is republished.
+    Only `==` pins are contracts.
+    """
+    deps = tomllib.loads(pyproject_text)["project"]["dependencies"]
+    pins = [d for d in deps if "==" in d]
+    assert pins, "expected some == pins in pyproject.toml"
+
+    drifted = []
+    for pin in pins:
+        name, version = pin.split("==", 1)
+        got = closure.get(_normalise(name), set())
+        if version not in got:
+            drifted.append(
+                f"{name}=={version} (closure has: {sorted(got) or 'nothing'})"
+            )
+    return drifted
+
+
 def test_FIBR0256_every_pinned_dep_matches_the_closure() -> None:
     """Generalise INV-7 from PySide6 to every `==` pin in pyproject.toml.
 
@@ -352,56 +404,65 @@ def test_FIBR0256_every_pinned_dep_matches_the_closure() -> None:
     — the § 5 checklist lists this comparison, but as a MANUAL pre-submit step,
     and a manual step is what failed.
 
-    Range specifiers (`beautifulsoup4>=4.9,<5`, `certifi>=2024.2.2`) are skipped
-    on purpose: they float by design, so pinning their resolved version here
-    would redden the gate every time an unrelated transitive is republished.
-    Only `==` pins are contracts.
+    This is the WORKING TREE's contract — what `LOCAL=1 flatpak-build.sh` builds.
+    test_FIBR0258 below covers the pinned commit, which is what Flathub builds.
     """
-    deps = _require_deps()
-    pyproject = tomllib.loads(_PYPROJECT.read_text(encoding="utf-8"))
-
-    filenames = [
-        _source_filename(src)
-        for mod in _iter_modules(deps)
-        for src in mod["sources"]
-        if isinstance(src, dict)
-    ]
-
-    def normalise(name: str) -> str:
-        # PEP 503/427: a wheel/sdist filename carries the NORMALISED dist name,
-        # so argon2-cffi ships as argon2_cffi- and sqlcipher3-wheels as
-        # sqlcipher3_wheels-. Comparing the raw pyproject spelling matches
-        # nothing at all.
-        return re.sub(r"[-_.]+", "_", name).lower()
-
-    # A wheel is `name-version-<tags>.whl` and an sdist `name-version.tar.gz`, so
-    # the first two hyphen-separated fields are the pair we want. Splitting is
-    # what keeps the version comparison exact — normalising a whole filename
-    # turns its dots into underscores, so `6.11.1` would never match `6_11_1`.
-    closure: dict[str, set[str]] = {}
-    for filename in filenames:
-        stem = re.sub(r"\.(whl|tar\.gz|zip)$", "", filename)
-        parts = stem.split("-")
-        if len(parts) < 2:
-            continue
-        closure.setdefault(normalise(parts[0]), set()).add(parts[1])
-
-    pins = [d for d in pyproject["project"]["dependencies"] if "==" in d]
-    assert pins, "expected some == pins in pyproject.toml"
-
-    mismatches = []
-    for pin in pins:
-        name, version = pin.split("==", 1)
-        got = closure.get(normalise(name), set())
-        if version not in got:
-            mismatches.append(
-                f"{name}=={version} (closure has: {sorted(got) or 'nothing'})"
-            )
-
-    assert not mismatches, (
+    drifted = _drifted_pins(
+        _PYPROJECT.read_text(encoding="utf-8"), _closure_versions(_require_deps())
+    )
+    assert not drifted, (
         "packaging/flatpak/python3-deps.yaml has drifted off pyproject.toml — "
         "re-run packaging/flatpak/generate-pip-sources.sh and commit the result. "
-        f"Drifted: {mismatches}"
+        f"Drifted: {drifted}"
+    )
+
+
+def test_FIBR0258_closure_satisfies_the_pinned_commit() -> None:
+    """The submitted manifest builds finbreak from a PINNED commit, not HEAD.
+
+    Flathub builds the manifest verbatim, so its `pip3 install --no-index` runs
+    against the PINNED commit's `pyproject.toml` — that is the file whose pins
+    the closure actually has to satisfy. The two disagreed once already: the
+    FIBR-0257 CVE bump was in HEAD and in the closure while the pinned tag still
+    asked for `cryptography==49.0.0`, so every `LOCAL=1` build stayed green and
+    the submission build failed outright. Re-pinning the manifest to a release
+    that carries the current pins is the fix this guards.
+    """
+    manifest = _load(_MANIFEST)
+    commits = [
+        src["commit"]
+        for mod in _iter_modules(manifest)
+        if isinstance(mod, dict) and mod.get("name") == "finbreak"
+        for src in mod["sources"]
+        if isinstance(src, dict) and src.get("type") == "git" and "commit" in src
+    ]
+    assert len(commits) == 1, (
+        f"expected exactly one pinned finbreak git source, found {commits}"
+    )
+
+    if shutil.which("git") is None or not (_REPO_ROOT / ".git").exists():
+        pytest.skip("not a git checkout — cannot read the pinned commit's pyproject")
+    blob = f"{commits[0]}:pyproject.toml"
+    proc = subprocess.run(
+        ["git", "-C", str(_REPO_ROOT), "cat-file", "-p", blob],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        pytest.skip(f"pinned commit {commits[0][:8]} is not in this clone")
+    # Precondition: we are reading a real pyproject, not an empty/renamed blob —
+    # without this the pin list could be vacuous and the assertion meaningless.
+    assert "[project]" in proc.stdout, (
+        f"{commits[0][:8]}:pyproject.toml does not look like a pyproject"
+    )
+
+    drifted = _drifted_pins(proc.stdout, _closure_versions(_require_deps()))
+    assert not drifted, (
+        f"the manifest pins finbreak at {commits[0][:8]}, whose pyproject.toml "
+        "asks for versions packaging/flatpak/python3-deps.yaml does not provide — "
+        "re-pin the manifest to a release carrying the current pins (or regenerate "
+        f"the closure). Drifted: {drifted}"
     )
 
 

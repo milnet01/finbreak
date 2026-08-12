@@ -785,6 +785,7 @@ scariest unknown (native-library bundling) up front.
     encrypted .fbk to a chosen location. The app is installed
     (`flatpak run io.github.milnet01.finbreak`) and ready for that pass.
   Progress (2026-08-12): the launch blocker is CLEARED — FIBR-0259 is ✅. Between the 2026-08-07 re-validation above and today the app could not start at all under Flatpak (missing Kerberos library, ImportError before any window), which is what the user's § 5 portal attempt actually hit. The krb5 manifest module fixed it and the user confirmed a real launch today: window, full toolbar, "Ready", unlock dialog. So this bullet's closing line — "the app is installed and ready for that pass" — is true again, but it was NOT true for the five days in between; do not read that line as continuously verified. Two corrections to the notes above, both checked in the tree rather than recalled: the manifest is now pinned to tag v0.1.20 / commit 6c9cf8c (line 104-106), superseding both the "currently v0.1.16" and the "v0.1.19 / f4de4c4" remarks; and the FIBR-0259 fix also widened `--self-test` to import PySide6.QtNetwork and construct a QLocalServer, closing the gate hole that let a non-starting build pass every automated check. REMAINING, unchanged: (1) the two human portal checks in § 5 — import through the chooser, and export a PDF report + an encrypted .fbk to a chosen location; (2) re-pin to the newest release if one is cut before submission; (3) open the flathub/flathub new-pr PR, an outward-facing action still awaiting the user's explicit go-ahead.
+  Progress (2026-08-12): the manifest now builds green AS SUBMITTED. `LOCAL=0 packaging/flatpak/flatpak-build.sh` — no source substitution, so the finbreak module is built from the pinned v0.1.20 / 6c9cf8c clone, offline — installs the whole closure (cryptography-50.0.0) plus finbreak-0.1.20 and ends FINBREAK_SELFTEST_OK. That clears the last two automated blockers this bullet inherited: FIBR-0257 (the CVE fix had never shipped) and FIBR-0256 (the closure still offered cryptography 49.0.0) were both already fixed by the v0.1.20 release and are now flipped ✅ on evidence rather than on inference. FIBR-0258 is closed with them: `LOCAL=0` is documented as the pre-submit path in packaging/flatpak/README.md, and `test_FIBR0258_closure_satisfies_the_pinned_commit` now checks the closure against the pyproject of the commit the MANIFEST pins, not the working tree's. REMAINING is unchanged and is all human or outward-facing: (1) the two § 5 portal checks — import through the chooser, and export a PDF report + an encrypted .fbk to a chosen location; (2) re-pin if a newer release is cut first; (3) open the flathub/flathub new-pr PR, still awaiting explicit go-ahead.
 
 - 📋 [FIBR-0160] **Add openSUSE Leap 15.6 as an OBS target (deferred — Leap ships no python 3.12+).**
   Attempted 2026-07-23: added the Leap 15.6 target + a %if 0%{?sle_version}
@@ -1043,7 +1044,7 @@ scariest unknown (native-library bundling) up front.
   Kind: fix.
   Source: in-session-2026-08-02 FIBR-0200 pre-check.
 
-- 📋 [FIBR-0256] **Flatpak dependency closure drifted off pyproject.toml and still carries the pre-CVE cryptography.**
+- ✅ [FIBR-0256] **Flatpak dependency closure drifted off pyproject.toml and still carries the pre-CVE cryptography.**
   `pyproject.toml` pins `cryptography==50.0.0` — bumped by FIBR-0221 for
   CVE-2026-69247 — but `packaging/flatpak/python3-deps.yaml` still pins
   `cryptography-49.0.0`. The closure was generated once at `dab5fe4`
@@ -1077,8 +1078,9 @@ scariest unknown (native-library bundling) up front.
   Kind: security.
   Lanes: packaging, security.
   Source: in-session-2026-08-07 (FIBR-0159 pre-submit audit).
+  Resolved (2026-08-12) — verified already fixed, not newly fixed. `python3-deps.yaml` now pins cryptography 50.0.0, matching `pyproject.toml`; the closure was regenerated when v0.1.20 was cut. Proof is an offline LOCAL=0 build of the submission manifest: `Successfully installed ... cryptography-50.0.0`, then `finbreak-0.1.20`, ending FINBREAK_SELFTEST_OK. The gate-runnable check this bullet asked for (half 2) exists as `test_FIBR0256_every_pinned_dep_matches_the_closure`. The bullet was stale, not open.
 
-- 📋 [FIBR-0258] **flatpak-build.sh never builds what gets submitted, so the submission config goes unvalidated.**
+- ✅ [FIBR-0258] **flatpak-build.sh never builds what gets submitted, so the submission config goes unvalidated.**
   `flatpak-build.sh` rewrites the finbreak module's source to
   `file://$REPO @ HEAD` before building (its "LOCAL build" branch). Handy
   for iterating, but it means a green local build says nothing about the
@@ -1105,6 +1107,7 @@ scariest unknown (native-library bundling) up front.
   Kind: test.
   Lanes: packaging, testing.
   Source: in-session-2026-08-07 (FIBR-0159 submission-manifest build).
+  Resolved (2026-08-12), and the headline overstated the defect: `flatpak-build.sh` could always build the submission manifest — `LOCAL=0` skips the source substitution (lines 30-50) — but nothing outside a code comment named it, so the pre-submit path in practice was the LOCAL=1 build that proves nothing. Half 1: `packaging/flatpak/README.md` now documents `LOCAL=0` in the build section and as pre-submit step 2, with the FIBR-0257 example of why a green default build is not evidence. Half 2: `test_FIBR0258_closure_satisfies_the_pinned_commit` reads the pyproject of the commit the MANIFEST pins (`git cat-file`) and checks the closure satisfies it — skipping when git or the object is absent, and asserting it read a real pyproject first so it cannot pass vacuously.
 
 - ✅ [FIBR-0259] **The Flatpak build cannot launch — libQt6Network needs a Kerberos library the freedesktop runtime does not ship.**
   `flatpak run io.github.milnet01.finbreak` dies before any window:
@@ -6094,7 +6097,7 @@ is a future error tomorrow.
   3 skipped, mypy clean over 178 files. Do not re-investigate those two
   runs; re-run them once Actions is healthy.
 
-- 📋 [FIBR-0257] **The CVE-2026-69247 fix is committed but unreleased — every downloadable build still ships cryptography 49.0.0.**
+- ✅ [FIBR-0257] **The CVE-2026-69247 fix is committed but unreleased — every downloadable build still ships cryptography 49.0.0.**
   FIBR-0221 pinned `cryptography==50.0.0` on 2026-08-04 and is marked ✅ —
   but the newest release, v0.1.19, was tagged 2026-08-02. The fix has
   never shipped. Verified per tag: v0.1.17, v0.1.18 and v0.1.19 all pin
@@ -6126,6 +6129,7 @@ is a future error tomorrow.
   Kind: security.
   Lanes: release, security.
   Source: in-session-2026-08-07 (FIBR-0159 submission-manifest build).
+  Resolved (2026-08-12) — the release this bullet was waiting for is v0.1.20. `git show v0.1.20:pyproject.toml` pins `cryptography==50.0.0`, so the CVE-2026-69247 fix has shipped and the manifest is re-pinned to v0.1.20 / 6c9cf8c. The exact failure recorded here — an offline build that cannot satisfy `cryptography==49.0.0` — no longer reproduces: a LOCAL=0 build of the submission manifest installs cryptography-50.0.0 and finbreak-0.1.20 and ends FINBREAK_SELFTEST_OK. FIBR-0159 is no longer blocked on a release.
 
 - ✅ [FIBR-0261] **`--self-test` aborts on a headless machine instead of running.**
   `python -m finbreak --self-test` on a box with no display dies before
