@@ -23,6 +23,18 @@ signaling per
 
 ### Fixed
 
+- **The Linux app-store (Flatpak) build now starts — it could not open at all** (FIBR-0259)
+  The Flatpak build announced in 0.1.20 quit instantly, before any window
+  appeared, because it was missing a security library (Kerberos) that the
+  Linux app-store runtime does not include. finbreak never used that
+  library for anything — it came in attached to a piece of Qt used only to
+  stop you opening two copies of the app at once. The library is now
+  bundled, and the app opens normally.
+
+  The check that was supposed to catch this has been widened too: it
+  loaded every other piece finbreak needs but not that one, so it reported
+  a healthy build that could not start.
+
 - **A statement with an unreadable line that moved money is now refused, not imported with wrong totals** (FIBR-0255)
   On a savings statement that prints no closing balance, a line the app
   could not read was quietly dropped and everything else imported — so

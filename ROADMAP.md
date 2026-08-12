@@ -1105,7 +1105,7 @@ scariest unknown (native-library bundling) up front.
   Lanes: packaging, testing.
   Source: in-session-2026-08-07 (FIBR-0159 submission-manifest build).
 
-- 🚧 [FIBR-0259] **The Flatpak build cannot launch — libQt6Network needs a Kerberos library the freedesktop runtime does not ship.**
+- ✅ [FIBR-0259] **The Flatpak build cannot launch — libQt6Network needs a Kerberos library the freedesktop runtime does not ship.**
   `flatpak run io.github.milnet01.finbreak` dies before any window:
   `ImportError: libgssapi_krb5.so.2: cannot open shared object file`,
   raised from `app.py`'s `from PySide6.QtNetwork import QLocalServer`.
@@ -1142,6 +1142,7 @@ scariest unknown (native-library bundling) up front.
   Lanes: packaging, testing.
   Source: in-session-2026-08-07 (user ran the FIBR-0159 § 5 portal smoke test).
   Progress (2026-08-12): the fix is BUILT and gated; what remains is a human launching it. Verified in the tree, not recalled: packaging/flatpak/io.github.milnet01.finbreak.yaml carries a `krb5` module (line 59, krb5-1.22.2 from kerberos.org), and src/finbreak/_selftest.py now imports PySide6.QtNetwork and constructs a QLocalServer — so the gate hole that let this ship (the self-test loaded QtWidgets/QtCharts/QtCore/QtGui/sqlcipher3/pikepdf but never QtNetwork) is closed and would now fail on a build that cannot start. Landed in 51fd6a8 + baf48b8; FIBR-0261 then made that self-test run headless instead of aborting. Deliberately left 🚧 rather than ✅: every automated check agreed the build was good LAST time too, and only a human running `flatpak run io.github.milnet01.finbreak` found it. The single remaining step is that command producing a window. Still blocks FIBR-0159 — do not submit until it does.
+  Resolved (2026-08-12): the user ran `flatpak run io.github.milnet01.finbreak` and the app launched — window titled "finbreak" with the full toolbar (Home … Lock), status bar reading "Ready", and the "Unlock finbreak" master-password dialog. Screenshot supplied in-session. That is the exact exit condition this bullet held itself to, and it is the one check no automated gate could stand in for: the old failure was an ImportError raised before any window existed, so a window at all disproves it. The krb5 manifest module (packaging/flatpak/io.github.milnet01.finbreak.yaml) and the widened `--self-test` (now importing PySide6.QtNetwork and constructing a QLocalServer) are both confirmed good by a real launch rather than by the checks that agreed last time. No longer blocks FIBR-0159 — Flathub submission is clear to proceed.
 
 ## P02 — Vertical slice: the security spine (target: after P01)
 
