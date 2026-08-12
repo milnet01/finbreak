@@ -648,6 +648,57 @@ scariest unknown (native-library bundling) up front.
   Kind: ux.
   Source: in-session-2026-08-12 (review-contract gate on FIBR-0146, loop 2).
 
+- ✅ [FIBR-0271] **A bad amount cell showed the user `[&lt;class 'decimal.ConversionSyntax'&gt;]`.**
+  FIBR-0146 INV-3 is "no raw parser internals reach the UI", and D3
+  said the amount branch already had human messages so only the date
+  branch needed re-wording. False. `CsvImporter` builds the amount with
+  `Decimal(cell)` BEFORE `parse_transaction`, so a non-numeric cell
+  raises `decimal.InvalidOperation`, whose `str()` is the literal
+  `[&lt;class 'decimal.ConversionSyntax'&gt;]` — appended verbatim as the
+  `RowError` reason and rendered in the preview's Status column.
+
+  `parse_transaction`'s friendly "amount is not a valid number" is
+  unreachable from CSV: it receives an already-built `Decimal` and takes
+  its `isinstance(raw_amount, Decimal)` short-circuit.
+
+  Reproduced before fixing: a one-row CSV with `not-a-number` in the
+  amount column returned exactly that string.
+
+  The test that should have caught it asserted only that the reason was
+  non-empty and did not mention dates — which the gibberish satisfies.
+  It now asserts the message.
+
+  Fixed by a shared `CsvImporter._to_decimal` used by both amount
+  styles, mirroring the date branch: `could not read the amount "&lt;raw&gt;"`,
+  and `the amount cell is empty` for a blank cell.
+  **Layman:** If an amount on a statement could not be read, the import screen showed a line of programmer gibberish instead of saying which value it could not read.
+  Kind: fix.
+  Source: in-session-2026-08-12 (review-contract gate on FIBR-0146, loop 3).
+
+- 📋 [FIBR-0272] **FIBR-0146 keeps yielding fresh-region findings; consider splitting before the next gate.**
+  Three loops, 11 verified findings, every one fixed, tail empty. The
+  pattern is the point: loop 12 found three defects in regions loop 11
+  never reached, and loop 13 found two more in regions neither had. Only
+  three of the eleven were a previous loop's own collateral.
+
+  That is the same shape FIBR-0267 recorded for FIBR-0085 — a cold read
+  reaching fresh parts each pass rather than a document that regresses —
+  and the cause is size. FIBR-0146 is 700+ lines against siblings of
+  ~400-650.
+
+  Not urgent: the spec is implemented, shipped and now accurate as far
+  as three cold reads could reach. But the next amendment to it re-arms
+  the rule-14 gate, and that gate will keep costing a loop per unread
+  region until the document is split.
+
+  Candidate split: the detector contract (D2, INV-2, the 15-format table)
+  is self-contained and is the half other specs cite; the wizard wiring
+  (D4-D8, the map-step behaviour) is the half that keeps drifting against
+  the code.
+  **Layman:** The date-detection design document is long enough that each review pass reads different parts of it, so it should probably be split before it is reviewed again.
+  Kind: doc-fix.
+  Source: in-session-2026-08-12 (review-contract gate on FIBR-0146, loop 3, at the run cap).
+
 ### 📦 Packaging
 
 - ✅ [FIBR-0003] **P01: bundling smoke-test (de-risk

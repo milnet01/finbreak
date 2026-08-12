@@ -222,15 +222,49 @@ def test_csv_empty_date_cell_says_the_cell_is_empty():
 
 
 def test_csv_amount_error_text_unregressed():
-    """The date-parse split must not change the amount-error message (D3)."""
+    """The date-parse split must not change the amount-error message (D3).
+
+    INV-3 covers the amount branch too, and this test used to assert only that
+    the reason was non-empty and said nothing about dates — which a raw
+    `[<class 'decimal.ConversionSyntax'>]` satisfies, and that is exactly what
+    shipped (FIBR-0271). Now it asserts the message a person can act on.
+    """
     from finbreak.importers.csv_importer import CsvImporter
 
     result = CsvImporter().parse(
         _csv([["2026-07-20", "Coffee", "not-a-number"]]), _single_mapping(), 2
     )
     assert len(result.errors) == 1
-    assert "date" not in result.errors[0].reason.lower()
-    assert result.errors[0].reason  # a human amount message, unchanged
+    reason = result.errors[0].reason
+    assert "date" not in reason.lower()
+    assert reason == 'could not read the amount "not-a-number"'
+    for leak in ("decimal", "Decimal", "class ", "Traceback", "Syntax"):
+        assert leak not in reason, f"parser internals leaked: {reason!r}"
+
+
+def test_csv_empty_amount_cell_says_the_cell_is_empty():
+    """The empty-cell case gets its own sentence, as the date branch does —
+    `could not read the amount ""` names nothing the user can look for."""
+    from finbreak.importers.csv_importer import CsvImporter
+
+    result = CsvImporter().parse(
+        _csv([["2026-07-20", "Coffee", ""]]), _single_mapping(), 2
+    )
+    assert result.errors[0].reason == "the amount cell is empty"
+
+
+def test_csv_debit_credit_junk_amount_is_friendly_too_INV3():
+    """The debit/credit style builds its Decimal in a different helper, so it
+    needs its own leg — the same raw `InvalidOperation` escaped from there."""
+    from finbreak.importers.csv_importer import CsvImporter
+    from finbreak.models import ColumnMapping
+
+    mapping = ColumnMapping(
+        "Date", "Details", None, "Debit", "Credit", "%Y-%m-%d", False
+    )
+    text = "Date,Details,Debit,Credit\n2026-07-20,Coffee,not-a-number,\n"
+    result = CsvImporter().parse(text, mapping, 2)
+    assert result.errors[0].reason == 'could not read the amount "not-a-number"'
 
 
 def test_csv_valid_row_still_parses_INV6():

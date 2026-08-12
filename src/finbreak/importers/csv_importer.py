@@ -149,8 +149,28 @@ class CsvImporter:
         return ParseResult(drafts, errors, period_start, period_end)
 
     @staticmethod
+    def _to_decimal(raw: str) -> Decimal:
+        """``Decimal(raw)`` with INV-3's boundary on it (FIBR-0271).
+
+        ``InvalidOperation``'s own text is ``[<class
+        'decimal.ConversionSyntax'>]`` — a repr of an internal exception class,
+        shown verbatim in the preview's Status column because the caller renders
+        ``str(exc)``. The friendly "amount is not a valid number" in
+        ``parse_transaction`` never fires for a CSV: it receives an
+        already-built ``Decimal`` and short-circuits. So the wording belongs
+        here, where the raw cell is still in hand, and it mirrors the date
+        branch above — the offending value, never the parser's internals.
+        """
+        if raw == "":
+            raise ValueError("the amount cell is empty")
+        try:
+            return Decimal(raw)
+        except InvalidOperation:
+            raise ValueError(f'could not read the amount "{raw}"') from None
+
+    @staticmethod
     def _single_amount(row: dict, mapping: ColumnMapping) -> Decimal:
-        amount = Decimal(row[mapping.amount_column].strip())
+        amount = CsvImporter._to_decimal(row[mapping.amount_column].strip())
         return -amount if mapping.invert_amount else amount
 
     @staticmethod
@@ -163,7 +183,7 @@ class CsvImporter:
         credit = row[mapping.credit_column].strip()
         if bool(debit) == bool(credit):
             raise ValueError("exactly one of debit / credit must be populated")
-        magnitude = Decimal(debit or credit)
+        magnitude = CsvImporter._to_decimal(debit or credit)
         if magnitude < 0:
             raise ValueError("a debit/credit amount must be an unsigned magnitude")
         return -magnitude if debit else magnitude
