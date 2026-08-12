@@ -601,6 +601,53 @@ scariest unknown (native-library bundling) up front.
   Source: in-session-2026-08-12 (review-contract gate on FIBR-0146, loop 3).
   Resolved (2026-08-12): the guard is one owner, `_refresh_date_ui(detect=)`, not two wrapped call sites — the bullet named D5(b) and D5(c), and the tree had six unguarded sites, because `_update_date_preview` reads `_date_samples` too and runs on every one of them. So `_on_date_format_changed`, `_on_pdf_table_changed` and the batch ask step were open as well. `_select_file` deliberately keeps its own catch: D5(a) must refuse the file, not show the map step over it. The reachable route is the batch (SCAN -> ASK re-shows the map step with a broken body loaded), which is what the regression test drives; the CSV pick cannot reach it. FIBR-0146 D8 amended in the same commit. c3fc050, gate green (1879 passed).
 
+- 📋 [FIBR-0269] **The map step re-reads the whole statement on every date keystroke.**
+  `_date_samples` stops COLLECTING at `_MAX_DATE_SAMPLES` (50), but the
+  read it collects from does not stop: `read_rows` is
+  `list(csv.DictReader(...))`, so the whole file is materialised first.
+  And `_date_samples` runs twice per refresh (once in
+  `_autodetect_date_format`, once in `_update_date_preview`), on every
+  detect, every date-column change, and every keystroke in the Custom
+  format field via `_on_date_format_changed`.
+
+  So detection cost is constant in the row count (the 750-strptime
+  bound holds) while REFRESH cost is linear in it. FIBR-0146 D8 claimed
+  both were constant and concluded "no separate perf test needed"; the
+  D8 text is now corrected, and this is the code half.
+
+  Cheapest fix: cache the sampled rows against `self._text` (it only
+  changes when a file or PDF table is loaded), or give `read_rows` a
+  `limit` so the reader stops early. Neither changes any behaviour.
+  Measure before fixing — a 50k-row statement is the case that would
+  feel it, and no one has reported slowness.
+  **Layman:** On the import screen, typing in the date-format box makes the app re-read the entire file for every character — fine for a small statement, slow for a big one.
+  Kind: perf.
+  Source: in-session-2026-08-12 (review-contract gate on FIBR-0146, loop 2).
+
+- 📋 [FIBR-0270] **The all-rows-failed banner says "Go back" and the wizard has no way back.**
+  `_banner_text`'s mapped-source sentence is "None of the rows could be
+  imported. Go back and check the column mapping and the Date format
+  match your statement." The import wizard has no back control: the
+  only `_goto_step(_STEP_PICK)` calls are the initial build and the
+  finish/reset, and there is no `_goto_step(_STEP_MAP)` reachable from
+  the preview step.
+
+  So the remedy names a screen the user cannot return to. Re-picking
+  the file is the actual route, and for a CSV whose profile MATCHED it
+  does not even reach the map step — it jumps straight back to the same
+  failed preview, because the saved profile is what is wrong.
+
+  Two candidate fixes, not decided: add a Back button on the preview
+  step (returns to the map step where one exists), or reword the
+  banner to name the action that actually works. The first is better
+  for the matched-profile case only if it can also unstick the profile.
+
+  Found while gating FIBR-0146; the spec quotes the shipped string
+  correctly, so this is a code/UX item, not a doc one.
+  **Layman:** When nothing in a statement could be imported, the app tells you to go back and check the column mapping — but there is no back button to get there.
+  Kind: ux.
+  Source: in-session-2026-08-12 (review-contract gate on FIBR-0146, loop 2).
+
 ### 📦 Packaging
 
 - ✅ [FIBR-0003] **P01: bundling smoke-test (de-risk
