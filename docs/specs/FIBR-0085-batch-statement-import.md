@@ -579,9 +579,13 @@ def cumulative_counts(
     text.normalise_text — so this is the same equality the commit will apply,
     not a second opinion about it.
 
-    A record whose outcome is `committed`, `failed`, `skipped` or
-    `not_attempted` has no preview and is skipped; its drafts never enter any
-    other record's baseline.
+    A record is skipped when it has no preview OR its outcome is terminal
+    (`committed`, `failed`, `skipped`, `not_attempted`) — two independent
+    tests, and the second is the one that bites. A `committed` record HAS a
+    preview (RUN passes it to `commit_import`), and so does a RUN-`failed` one
+    (§4.8: it read perfectly and the commit refused it). Skipping on
+    `preview is None` alone would let already-committed drafts enter a later
+    record's baseline on any re-run, subtracting the same rows from New twice.
     """
 ```
 
@@ -611,8 +615,12 @@ tables share one key and cross-corrupt widths).
 | Account | the destination account's name, or *— pick one —* |
 | New | `BatchFile.new_count` (§4.5, cumulative) |
 | Duplicate | `BatchFile.duplicate_count` (§4.5, cumulative) |
-| Errors | `BatchFile.error_count` — blank when zero, so it draws the eye only when it matters |
+| Errors | `BatchFile.error_count` |
 | Status | the `Outcome`, rendered per §4.8 — including `waiting` before SCAN reaches the row |
+
+**All three count columns render blank at zero**, not `0` — one helper serves
+New, Duplicate and Errors — so a number in any of them draws the eye only when
+it matters.
 
 **Rows can share a basename**, two ways: `statement.pdf` from two folders (§8
 rejects filename-based duplicate detection for exactly this reason), and the
@@ -624,12 +632,16 @@ the **full path**. A fanned-out OFX statement always appends its index —
 file. The full path is the tooltip on every row regardless.
 
 **Setting an account.** The Account cell is clickable exactly on rows whose
-**`parsed` is not `None` and whose outcome is not `committed`** — which
-excludes `failed`, `skipped`, `not_attempted` and any row still `waiting` (all
-of which reach the table with nothing parsed), and excludes a row already
-written to the vault. (An earlier gloss said "every row except `failed`", which
-is false and would hand `preview_result` a `None`; and without the `committed`
-half a user could retarget a row after the run and silently re-dedup against
+**`parsed` is not `None` and whose outcome is not terminal** (`committed`,
+`failed`, `skipped`, `not_attempted` — the `TERMINAL_OUTCOMES` set §4.5 skips
+on, so the rule has one definition). The two tests are independent and both are
+needed: `waiting` is excluded by the parse test alone, but `parsed` alone would
+leave `failed` and `not_attempted` rows clickable — `_settle_parse` stores the
+parse *before* the undated check fails a record, and a `not_attempted` row was
+`ready` when a cap or a cancel stopped the batch, so both carry one. (An earlier
+gloss said "every row except `failed`", which is false and would hand
+`preview_result` a `None`; and without the terminal half a user could retarget a
+row after the run and silently re-dedup against
 rows that are already in the vault.) **The whole table becomes read-only once
 RUN finishes** — at that point it is the report, not a form. The cell
 opens `AccountPickerDialog` with the Create affordance of §3 decision 6. Which
@@ -737,11 +749,16 @@ All ten members appear here, because §4.6's Status column renders the outcome
 and a row sits in one of the middle four for the whole of ASK and REVIEW. An
 outcome with no string is a blank cell on screen.
 
-**The unreadable-row clause belongs to the row, not to `committed`** (FIBR-0254).
-`error_count` is set during SCAN, before any outcome is known, and §4.6's Errors
-column renders it for every outcome — so a clause appended on `committed` alone
-let an `already_imported` row read *"nothing new in this file"* beside a cell
-reading 4, one row contradicting itself. It is spelled *", 1 row couldn't be
+**The unreadable-row clause is carried by `committed` and `already_imported`,
+and by no other outcome** (FIBR-0254). `error_count` is set during SCAN, before
+any outcome is known, and §4.6's Errors column renders it for every outcome — so
+a clause appended on `committed` alone let an `already_imported` row read
+*"nothing new in this file"* beside a cell reading 4, one row contradicting
+itself. Those two are exactly the outcomes whose line reports a **result** and
+would otherwise say nothing about the rows that were dropped. Every other
+outcome carries its `reason` instead, which already explains the row; a
+`failed`, `skipped` or `not_attempted` line is not made truer by appending a
+count the Errors cell is already showing. It is spelled *", 1 row couldn't be
 read"* for a single row and *", N rows couldn't be read"* above one: two strings
 rather than a Qt `%n` plural, because no translation is loaded yet (FIBR-0017)
 and an untranslated `%n` renders its source text, giving *"1 row(s)"*.
@@ -1296,6 +1313,7 @@ read as "these nine things nothing will catch for you".
 
 | Loop | Date | Lanes | CRIT | HIGH | MED | LOW | Outcome |
 |------|------|-------|------|------|-----|-----|---------|
+| 4 | 2026-08-12 | 2 (`review-contract`, cold, shared packet, no prior-loop briefing) | — | — | — | — | Severity columns retired upstream; this loop's tally is **Q1 ×2 · Q2 ×2** — 4 verified, 0 dismissed, all fixed; 2 further verified findings filed rather than fixed (below). Run against the FIBR-0254 amendment; both lanes agreed on all four, and none of them was the amendment. §4.5's quoted docstring claimed a `committed`/`failed`/`skipped`/`not_attempted` record "has no preview and is skipped" — false, and the shipped `cumulative_counts` proves it: it skips on `preview is None` **or** `outcome in _TERMINAL`, two independent tests, because a committed record demonstrably has a preview (RUN hands it to `commit_import`). An implementer following the sentence writes the `preview is None` half alone and double-counts committed drafts into later baselines. §4.6 repeated the same error in its clickability gloss ("all of which reach the table with nothing parsed") — false for a RUN-`failed` row and for a cancelled `not_attempted` one, as `_choose_account`'s own comment says. §4.6's Errors column carried a "blank when zero" note the other two count columns also earn (one `_number` helper serves all three). The FIBR-0254 paragraph over-generalised its own rule ("belongs to the row, not to `committed`") while the table grants the clause to two outcomes — now names the carrying set and why the others are excluded. **Filed, not fixed** (both need a behaviour decision, not a wording repair): Cancel-during-SCAN is prescribed two contradictory ways by §4.3 and §4.6 (**FIBR-0265**), and the draft cap's outcome when it trips during ASK-resume is undefined (**FIBR-0266**). At 1357 lines this doc is over the size where a cold read stops reaching everything; loop 1 of this run found six defects in four sections, none in the amendment under review. |
 | 3 | 2026-08-06 | 3 (cold, shared packet, no prior-loop briefing) | 1 | 8 | 14 | 10 | 32 verified, 1 dismissed. All 32 fixed. **No loop-1 or loop-2 finding resurfaced.** Dimensions: dim 5×10, dim 7×8, dim 4×7, dim 6×5, dim 10×4, dim 9×3, dim 15×3, dim 1×2, dim 11×2, dim 2×2. All three lanes independently found the same CRITICAL, and it carried three distinct defects: `cumulative_counts`' signature took only the file list yet its docstring named "existing vault rows" as the baseline (unbuildable); its domain said `ready` while §4.3 said "every record with a preview"; and the `ready` reading is circular, since the function runs *before* the outcomes it would filter on are set — and it silently defeats INV-10's retarget leg. Also: reusing `_STEP_MAP` inherits a Cancel wired to `done`, so declining ONE mapping would have torn down a thirty-file batch; §10's memory bound ignored that CSV has no row cap (16 MiB of ~50-byte rows ≈ 335k drafts, so the true ceiling is ≈114 MiB, not 64); INV-4 and INV-1 genuinely trade against each other when an earlier record fails mid-RUN; four `Outcome` members had no display string; the OFX hint source was unstated. **Origin: essentially all collateral from loops 1–2** — the second consecutive collateral-dominated loop, which is the stop trigger. Consolidated the thrice-stated `already_imported` argument to one home. Run STOPPED here by prior agreement, not converged clean. Doc 1149 → 1280 lines. |
 | 2 | 2026-08-06 | 3 (cold, shared packet, no prior-loop briefing) | 2 | 8 | 10 | 8 | 28 verified, 0 dismissed. All 28 fixed. **No loop-1 finding resurfaced** — those fixes held. Dimensions: dim 5×9, dim 7×8, dim 4×5, dim 6×4, dim 10×4, dim 9×3, dim 2×2, dim 1×1, dim 11×1. Both CRITICALs were silent-data-loss: a multi-statement OFX (`OfxImporter.parse` returns a **list**) had no place in a one-record-per-file model, so every statement after the first would be discarded without a word — now INV-15 and a `statement_index` fan-out; and REVIEW's `ready → already_imported` flip was one-directional, so retargeting an `already_imported` row left it permanently unimportable because RUN commits only `ready` — now re-derived in both directions each pass. Also: `BatchFile` had no field for the password §4.4 said it "holds"; `exponent` was passed twice and sourced nowhere (it is vault-level `read_minor_unit_exponent`); the headless claim was false because the sniffers are `QWidget` staticmethods (now lifted to `importers/sniff.py`); single-file selection routing was undefined and §7's "no existing wizard test changes" depended on it; `not_attempted` had one wording for three causes; `error_count` never reached the screen, so 40 unparsed rows could vanish behind "10 added". **Origin split: ~8 collateral vs ~4 draft defects** — collateral now dominates 2:1, and lane C counted the `already_imported` rule stated 4× and the both-counts argument 3×, which is where the new contradictions appeared. Consolidated rather than dispatching loop 3. Doc 955 → 1149 lines. |
 | 1 | 2026-08-06 | 3 (cold, shared packet) | 3 | 8 | 13 | 11 | 35 verified, 1 dismissed. All 35 fixed. Dimensions: dim 7×6, dim 5×6, dim 2×4, dim 10×5, dim 4×4, dim 6×5, dim 15×4, dim 9×3, dim 1×3, dim 11×3, dim 12×1. Two CRITICALs were design defects no reading caught: the review table's Duplicate column stayed non-cumulative while New became cumulative, so New + Duplicate would not account for a file's rows on the screen the user approves; and `already_imported` was a declared outcome no pass ever assigned. A third resolved a contradiction between §3 decision 5 and §4.3 over *when* the account question is asked — settled by the user's own approved mock-up, which shows an unresolved row on the review screen. Added INV-13 (undated file never reaches `commit_import`; `_validate_span` would have reported malformed dates for a file that had none) and INV-14 (`done` deferred to report dismissal, else `MainWindow._on_import_done` destroys the report table). Self-inflicted collateral caught by 4b-x/4c and fixed in-loop: a duplicated §7 block, a dead TOC anchor, a missing TOC row, a wrong §11 self-count (18 vs 20), and a false ripple claim — `app_shell` has zero stack assertions; the 24 real ones live in six other suites and all survive appending `_STEP_BATCH = 3`. |

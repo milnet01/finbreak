@@ -375,6 +375,7 @@ scariest unknown (native-library bundling) up front.
   Family E rejects only when a printed Payments/Deposits total is
   non-zero. See FIBR-0252 §6.
   Resolved (2026-08-12). The count-based trigger is unchanged — it is right for every source — and only the sentence moves: `_banner_text()` returns the CSV wording when `_csv_source` is set and otherwise "None of the rows could be imported. Each row below says what went wrong with it.", which points at the per-row reasons the preview table already renders. `_csv_source` is cleared on every pick in `_select_file` and set only on the CSV fall-through past the OFX and PDF sniffs, so a PDF picked after a CSV cannot inherit the mapping remedy. Covered by `test_FIBR0253_banner_remedy_matches_the_source`, which drives the real `_select_file` dispatch for both legs rather than setting the flag by hand. FIBR-0146 D7 and INV-3 amended in the same commit.
+  Corrected same day (2026-08-12) by the rule-14 `review-contract` gate on FIBR-0146, before the first fix had been out of the tree an hour. Both cold lanes independently found the discriminator wrong: `_csv_source` treated every PDF as unmapped, but only a RECOGNISED Standard Bank statement skips the map step — a generic non-SB PDF is extracted to a CSV-text table and mapped exactly like a CSV. FIBR-0146's own bug report is a PDF with 165 error rows, so the first fix removed the mapping remedy from the very user D7 was written for: a regression, not merely an incomplete fix. Now keyed on `_has_mapping_step`, set on the CSV fall-through in `_select_file` AND past the SB reader in `_continue_after_decrypt`. The test gained a `non_sb.pdf` leg proven red against the previous code and green after — same file extension as the SB leg, opposite answer, which is why no filename or sniff test can stand in for it. D7, INV-3, the Test plan and the CHANGELOG entry were all corrected to match.
 
 - ✅ [FIBR-0254] **The batch report line contradicts the Errors column, and mis-pluralises "1 rows".**
   Two defects in `ui/import_batch.py::report_line`, both pre-existing and
@@ -469,6 +470,67 @@ scariest unknown (native-library bundling) up front.
     fresh `python:3.12-slim-bookworm` container, the section followed
     literally with nothing added: venv 0, ci-setup 0, self-test 0,
     ci-local 0, "All gates passed" (1869 passed, 5 skipped).
+
+- 📋 [FIBR-0264] **The day/month ambiguity nudge fires on a May statement, where the tie is not about day order.**
+  `detect_date_format` returns `ambiguous=True` for a May-only
+  named-month column, because English spells the abbreviated and full
+  month name identically, so `%d %b %Y` and `%d %B %Y` both parse every
+  row and tie on count. Verified: `["20 May 2026", "21 May 2026",
+  "22 May 2026"]` -> ambiguous=True, while the same call over
+  `"20 Jun 2026"` or `"20 January 2026"` -> ambiguous=False. Note the day
+  numbers are 20-22, so FIBR-0146 D2's stated precondition for a tie
+  (every sampled day-number <= 12) does not hold either; D2 was amended
+  in the same pass to state this second tie axis.
+
+  The parse is unaffected -- both candidates render May identically, so
+  whichever wins reads the column correctly. The defect is only the D6
+  nudge text: `_date_ambiguous` drives "the day and month might be the
+  other way around", which is not the axis this tie is on. A monthly
+  statement is normal input, so this is not a corner case.
+
+  Fix: make the nudge conditional on the tied candidates actually
+  differing in day/month order, or use a neutral "check these dates are
+  right" sentence when they do not. Left open deliberately: the review
+  that found it was a documentation gate, and changing user-facing
+  wording is a code decision that wants its own test.
+  **Layman:** On a statement dated in May, the app warns that the day and month might be swapped — but the dates are being read correctly and the warning describes a problem that isn't there.
+  Kind: fix.
+  Source: in-session-2026-08-12 (review-contract gate on FIBR-0146, loop 1).
+
+- 📋 [FIBR-0265] **FIBR-0085 gives Cancel-during-SCAN two contradictory behaviours.**
+  §4.3 says "Cancel during SCAN behaves the same way as during RUN:
+  every record not yet reached becomes `not_attempted` with the cancelled
+  wording" -- which implies the table stays on screen to show them.
+  §4.6 says Cancel "before RUN ... drops the whole batch ... and returns
+  to the pick step". SCAN is before RUN, so the two prescribe opposite
+  responses to the same press: on §4.6's reading §4.3's `not_attempted`
+  marking is unobservable and its stated purpose (not stranding rows
+  reading "Waiting...") is moot.
+
+  Not fixed in the gate that found it: settling it needs a decision about
+  what the button should do in three distinct phases (during SCAN, after
+  SCAN but before RUN, during RUN), not a wording repair. Check the
+  shipped behaviour first -- the code may already have picked one, in
+  which case this is a doc-only correction.
+  **Layman:** Two parts of the batch-import design describe what the Cancel button does mid-scan in ways that cannot both be true.
+  Kind: doc-fix.
+  Source: in-session-2026-08-12 (review-contract gate on FIBR-0085, loop 1).
+
+- 📋 [FIBR-0266] **FIBR-0085 leaves the draft-cap outcome undefined when it trips during ASK.**
+  §4.3 has ASK's resume path run "the rest of the ladder, INCLUDING the
+  draft-cap check", but the only stated consequence of tripping that cap
+  is SCAN's: "this and every later record become `not_attempted`; stop".
+  That is written for SCAN's path-ordered loop and has no meaning over
+  ASK's question queue -- "every later record" is undefined there.
+
+  An implementer must invent one of two behaviours: mark only the resumed
+  record `not_attempted` and carry on asking, or mark every remaining
+  unscanned record and abort ASK. The two produce different batches from
+  the same input. Left open because it is a behaviour decision, not a
+  wording repair.
+  **Layman:** The batch-import design says what happens when a run hits its size limit while scanning files, but not when it hits the same limit after the user answers a question.
+  Kind: doc-fix.
+  Source: in-session-2026-08-12 (review-contract gate on FIBR-0085, loop 1).
 
 ### 📦 Packaging
 

@@ -24,12 +24,14 @@ signaling per
 ### Fixed
 
 - **Advice you can actually follow when no row of a PDF or OFX statement can be read** (FIBR-0253)
-  When nothing in a statement could be imported, finbreak told you
-  to go back and check the column mapping — a step that exists only
-  for spreadsheet (CSV) files, so on a PDF or OFX statement it sent
-  you to a screen you were never shown. Those imports now point at
-  the reasons listed against each row underneath, which is where the
-  explanation actually is. CSV imports keep the mapping advice.
+  When nothing in a statement could be imported, finbreak always told
+  you to go back and check the column mapping. Some statements never
+  show you that screen — OFX files, and Standard Bank PDFs finbreak
+  recognises, both of which describe their own layout — so for those
+  the advice pointed at a screen you were never given. They now point
+  at the reasons listed against each row underneath, which is where
+  the explanation actually is. Spreadsheet (CSV) files and other PDFs
+  do get the mapping screen, and they keep the original advice.
 
 - **A file you had already imported no longer hides the rows it couldn't read** (FIBR-0254)
   In the multi-file import table, a statement finbreak had already

@@ -537,17 +537,19 @@ def test_whole_import_banner_D7(qtbot, service, tmp_path):
     assert widget._preview_banner.isHidden(), "0·0·0 -> no banner (nothing failed)"
 
 
-def test_FIBR0253_banner_remedy_matches_the_source(qtbot, service, tmp_path):
+def test_FIBR0253_banner_remedy_follows_the_map_step(qtbot, service, tmp_path):
     """FIBR-0253 — D7's trigger is right for every source; its remedy is not.
 
-    "Go back and check the column mapping" names a step only the CSV path has,
-    so on a PDF or OFX import it sends the user to a screen that does not
-    exist. The count-based trigger stays as D7 specifies (any source can reach
-    0 new · 0 dup · N error); only the sentence moves.
+    "Go back and check the column mapping" names the map step, and the split is
+    NOT CSV-vs-the-rest: a generic (non-SB) PDF is extracted to a CSV-text table
+    and mapped exactly like a CSV, and that is this spec's own bug report (a PDF
+    with 165 error rows). Only OFX and a *recognised* Standard Bank statement
+    skip mapping. Keying the remedy on CSV-ness denied it to the very user D7
+    was written for, which is what the FIBR-0253 review caught.
 
-    Both legs drive the real `_select_file` dispatch rather than setting the
-    flag by hand — the flag is only worth anything if the two sniffs actually
-    set it, and the PDF leg is the one that was broken.
+    Every leg drives the real `_select_file` dispatch rather than setting the
+    flag by hand — the flag is only worth anything if the format dispatch sets
+    it, and the dispatch is where the two PDF kinds part.
     """
     from finbreak.importers.base import RowError
     from finbreak.services.import_ import ImportPreview
@@ -556,24 +558,38 @@ def test_FIBR0253_banner_remedy_matches_the_source(qtbot, service, tmp_path):
     widget = _wizard(qtbot, service, acct)
     all_error = ImportPreview(acct, [], [RowError(1, "x")], 0, 0, None, None)
 
-    widget._select_file(_write(tmp_path, ["Date", "Details", "Amount"], []))
-    assert widget._csv_source is True, "precondition: a .csv reaches the CSV branch"
-    widget._apply_preview_counts(all_error)
-    assert not widget._preview_banner.isHidden(), "the D7 trigger is unchanged"
-    assert "column mapping" in widget._preview_banner.text(), (
-        "the CSV remedy is the one D7 specifies and must survive"
+    def banner_for(path: str) -> str:
+        widget._select_file(path)
+        widget._apply_preview_counts(all_error)
+        assert not widget._preview_banner.isHidden(), "the D7 trigger is unchanged"
+        return widget._preview_banner.text()
+
+    csv_text = banner_for(_write(tmp_path, ["Date", "Details", "Amount"], []))
+    assert widget._has_mapping_step is True, "precondition: a CSV is mapped"
+    assert "column mapping" in csv_text, (
+        "the mapped-source remedy is the one D7 specifies and must survive"
     )
 
-    sb_pdf = Path(__file__).parent.parent / "standard_bank_pdf" / "fixtures"
-    widget._select_file(str(sb_pdf / "family_a_zero_fee.pdf"))
-    assert widget._csv_source is False, (
-        "precondition: a .pdf never reaches the map step"
+    sb = Path(__file__).parent.parent / "standard_bank_pdf" / "fixtures"
+    sb_text = banner_for(str(sb / "family_a_zero_fee.pdf"))
+    assert widget._has_mapping_step is False, (
+        "precondition: a RECOGNISED SB statement skips the map step"
     )
-    widget._apply_preview_counts(all_error)
-    assert not widget._preview_banner.isHidden(), "a PDF still gets a banner"
-    text = widget._preview_banner.text()
-    assert "column mapping" not in text, f"unfollowable CSV advice on a PDF: {text!r}"
-    assert text.strip(), "a banner with no text is worse than the wrong one"
+    assert "column mapping" not in sb_text, f"unfollowable advice: {sb_text!r}"
+    assert sb_text.strip(), "a banner with no text is worse than the wrong one"
+
+    # The leg the first cut of this fix got wrong: a PDF the SB reader does not
+    # recognise falls through to the table extractor and the map step, so it
+    # keeps the mapping remedy. Same extension as the row above, opposite answer
+    # — which is why the flag cannot be a filename or sniff test.
+    generic_text = banner_for(str(sb / "non_sb.pdf"))
+    assert widget._has_mapping_step is True, (
+        "precondition: a generic PDF IS mapped (extracted to a CSV-text table)"
+    )
+    assert "column mapping" in generic_text, (
+        "a generic PDF sees the map step, so it must keep D7's mapping remedy — "
+        f"got {generic_text!r}"
+    )
 
 
 def test_date_column_change_redetects_off_column_0(qtbot, service, tmp_path):

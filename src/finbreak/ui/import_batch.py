@@ -341,11 +341,11 @@ class BatchReviewWidget(QWidget):
         """Open the destination picker for one row (§ 4.6).
 
         Clickable exactly on rows whose ``parsed`` is not ``None`` and whose
-        outcome is not ``committed`` — which excludes ``failed``, ``skipped``,
-        ``not_attempted`` and any row still ``waiting`` (all of which reach the
-        table with nothing parsed, so a picker would hand ``preview_result`` a
-        ``None``), and excludes a row already written to the vault (retargeting
-        it would silently re-dedup against rows that are already there).
+        outcome is not terminal. ``waiting`` is excluded by the parse test
+        (nothing is parsed yet, so a picker would hand ``preview_result`` a
+        ``None``); ``committed``, ``failed``, ``skipped`` and ``not_attempted``
+        are excluded by outcome, NOT by that test — see the comment below, which
+        is the half this docstring used to get wrong.
         """
         # Not while the run is in flight either: retargeting a row the chain is
         # about to reach would re-dedup it against a vault that is changing

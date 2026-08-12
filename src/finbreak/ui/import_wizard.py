@@ -117,10 +117,13 @@ class ImportWizardWidget(QWidget):
         self._text: str | None = None
         self._header: list[str] = []
         self._source_path: str = ""
-        # True while the picked file is on the CSV path — the only source with a
-        # column-mapping step, and so the only one the FIBR-0146 D7 banner's
-        # mapping remedy can name (FIBR-0253). Set per pick by `_select_file`.
-        self._csv_source: bool = False
+        # True while the picked file went through the MAP STEP — the CSV path and
+        # a generic (non-SB) PDF, which is extracted to a CSV-text table and
+        # mapped exactly like one. Only those two can be told to "go back and
+        # check the column mapping" (FIBR-0146 D7 / FIBR-0253); OFX and a
+        # recognised Standard Bank statement are self-describing and skip it.
+        # Set per pick by `_select_file` / `_continue_after_decrypt`.
+        self._has_mapping_step: bool = False
         self._preview: ImportPreview | None = None
         # OFX only (FIBR-0008): the parsed statements of the picked file, so the
         # chooser can re-preview a selected one without re-parsing. Empty on the
@@ -324,7 +327,9 @@ class ImportWizardWidget(QWidget):
         # at least one row errored (the tester's 0 new · 0 dup · 165 error state),
         # turning N identical cryptic rows into one actionable sentence. Text AND
         # visibility are both set in _apply_preview_counts, because the remedy
-        # depends on the source (FIBR-0253); this is the CSV wording as a default.
+        # depends on whether the file was mapped (FIBR-0253). No file is picked
+        # yet here, so this seeds the no-map-step wording; it is never displayed
+        # (the banner is hidden until a preview re-sets both).
         self._preview_banner = QLabel(self._banner_text())
         self._preview_banner.setObjectName("import_preview_banner")
         self._preview_banner.setWordWrap(True)
@@ -462,10 +467,10 @@ class ImportWizardWidget(QWidget):
         shows the mapping step (INV-10b)."""
         self._error.clear()
         self._source_path = path
-        # Cleared before the format dispatch below and set again only on the CSV
-        # fall-through, so an OFX or PDF pick after a CSV one cannot inherit the
-        # previous file's mapping-step remedy (FIBR-0253).
-        self._csv_source = False
+        # Cleared before the format dispatch below and set again only where the
+        # map step is really reached, so an OFX pick after a CSV one cannot
+        # inherit the previous file's mapping-step remedy (FIBR-0253).
+        self._has_mapping_step = False
         self._stored_pw = None  # a fresh file — drop any prior pick's remembered pw
         # Seed the preview step's destination picker from the pick-step choice
         # (FIBR-0057). The confirm combo is the single source of truth for the
@@ -503,8 +508,8 @@ class ImportWizardWidget(QWidget):
         if looks_like_pdf(path):
             self._select_pdf(path)
             return
-        # Past both sniffs is the CSV path, and the only one with a map step.
-        self._csv_source = True
+        # Past both sniffs is the CSV path, which always maps.
+        self._has_mapping_step = True
         try:
             text = self._imports.read_file(path)
             header = read_header(text)  # raises ValueError on an empty file
@@ -823,6 +828,12 @@ class ImportWizardWidget(QWidget):
         except (PdfError, ValueError, FinbreakError) as exc:
             self._show_pdf_read_error(exc)
             return
+        # Past the SB reader is the generic-PDF route: extracted to a CSV-text
+        # table and mapped like a CSV, so the D7 banner's mapping remedy applies
+        # here exactly as it does to a CSV (FIBR-0253). Set before the extract so
+        # both endings below carry it — the map step, and the matched-profile
+        # jump to preview, which leaves a mapping the user can still go back to.
+        self._has_mapping_step = True
         candidates = self._extract_pdf_tables(plaintext)
         if candidates is None:
             return  # a friendly error was already surfaced
@@ -1153,12 +1164,15 @@ class ImportWizardWidget(QWidget):
         """The D7 all-rows-failed sentence for the source in hand (FIBR-0253).
 
         D7's remedy — go back and check the column mapping and the Date format —
-        names the map step, which only the CSV path has. The same banner is
-        reachable from OFX and PDF (both collect per-row errors), where that
-        advice points at a screen the user was never shown and cannot reach. The
-        trigger stays count-based for every source; only the sentence moves.
+        names the map step, which only a mapped source reaches: a CSV, or a
+        generic (non-SB) PDF, which is extracted to a CSV-text table and mapped
+        the same way. The same banner is reachable from OFX and from a recognised
+        Standard Bank statement, which are self-describing and skip mapping
+        entirely, so there that advice points at a screen the user was never
+        shown. The trigger stays count-based for every source; only the sentence
+        moves.
         """
-        if self._csv_source:
+        if self._has_mapping_step:
             return self.tr(
                 "None of the rows could be imported. Go back and check the column "
                 "mapping and the Date format match your statement."
