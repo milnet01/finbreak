@@ -290,6 +290,7 @@ scariest unknown (native-library bundling) up front.
   **Layman:** An account number written in non-Western digits would not be recognised as the same number, so the app would offer to create a duplicate account.
   Kind: fix.
   Source: in-session-2026-08-06 (FIBR-0086 review lane 1).
+  Considered and deliberately left open (2026-08-12), on this bullet's own instruction: "fix it when something else touches this function". It was picked up alongside FIBR-0253/0254, then put back — nothing in that run touches `normalise_account_number`, and fixing it standalone is not the cheap change it looks like. `docs/specs/FIBR-0086` §4.4 quotes the implementation verbatim (line ~397), so the fix is a spec amendment plus its rule-14 cold-read gate; and `tests/features/account_detect/spec.md` INV-8's leak scanner normalises the haystack "the way `normalise_account_number` does", so its helper has to move in step or the scanner starts missing the spelling it guards against. That is three surfaces for a bug that, as recorded above, can only fail to match — never mis-match. The precondition for fixing it is unchanged: the next change that opens this function.
 
 - ✅ [FIBR-0252] **StandardBankImporter.parse discards its per-row errors, so a dropped row is invisible.**
   `standard_bank.py`'s `parse` returns `ParseResult(result.drafts, [],
@@ -341,7 +342,7 @@ scariest unknown (native-library bundling) up front.
   match what was built. Gate green 1867 passed / 3 skipped. Journal
   `docs/journal/FIBR-0252.md`. FIBR-0253/0254/0255 stay out of scope (§9).
 
-- 📋 [FIBR-0253] **The all-rows-failed preview banner gives CSV-only advice on a PDF or OFX import.**
+- ✅ [FIBR-0253] **The all-rows-failed preview banner gives CSV-only advice on a PDF or OFX import.**
   `ui/import_wizard.py`'s FIBR-0146 D7 banner reads "None of the rows
   could be imported. Go back and check the column mapping and the Date
   format match your statement." Its visibility test in
@@ -373,8 +374,9 @@ scariest unknown (native-library bundling) up front.
   `_verify_checksum` comparing `opening ± 0` against an equal `closing`.
   Family E rejects only when a printed Payments/Deposits total is
   non-zero. See FIBR-0252 §6.
+  Resolved (2026-08-12). The count-based trigger is unchanged — it is right for every source — and only the sentence moves: `_banner_text()` returns the CSV wording when `_csv_source` is set and otherwise "None of the rows could be imported. Each row below says what went wrong with it.", which points at the per-row reasons the preview table already renders. `_csv_source` is cleared on every pick in `_select_file` and set only on the CSV fall-through past the OFX and PDF sniffs, so a PDF picked after a CSV cannot inherit the mapping remedy. Covered by `test_FIBR0253_banner_remedy_matches_the_source`, which drives the real `_select_file` dispatch for both legs rather than setting the flag by hand. FIBR-0146 D7 and INV-3 amended in the same commit.
 
-- 📋 [FIBR-0254] **The batch report line contradicts the Errors column, and mis-pluralises "1 rows".**
+- ✅ [FIBR-0254] **The batch report line contradicts the Errors column, and mis-pluralises "1 rows".**
   Two defects in `ui/import_batch.py::report_line`, both pre-existing and
   both made reachable on Standard Bank files by FIBR-0252.
 
@@ -406,6 +408,7 @@ scariest unknown (native-library bundling) up front.
   appears only on a second run of the same file, when the span exists and
   the cumulative new count is zero. Defect 2 (the "1 rows" plural) is
   unconditional.
+  Resolved (2026-08-12). Both defects fixed in `BatchReviewWidget`: the unreadable-row clause moved out of the `committed` branch into `_with_unreadable_rows`, which `committed` and `already_imported` both call — so a re-imported file with unreadable rows no longer contradicts its own Errors cell — and the count has a singular form. The plural is two `tr` strings rather than Qt's `%n`, because no translation is loaded yet (FIBR-0017) and an untranslated `%n` renders its source text, which would have given "1 row(s)" — the same defect in a new spelling. Covered by `test_FIBR0254_report_line_owns_its_unreadable_rows` (tests/features/batch_import/test_batch_import_ui.py), each leg asserting its own precondition so a line that appended nothing could not pass. FIBR-0085 §4.8's outcome table amended in the same commit; its §11 coverage row in FIBR-0252 is left as that spec's own record of what it deferred here.
 
 - ✅ [FIBR-0255] **A closing-less Savings statement can import a wrong total with no gate firing.**
   `_verify_checksum` takes its `closing is None` early return for

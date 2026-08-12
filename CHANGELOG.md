@@ -23,6 +23,22 @@ signaling per
 
 ### Fixed
 
+- **Advice you can actually follow when no row of a PDF or OFX statement can be read** (FIBR-0253)
+  When nothing in a statement could be imported, finbreak told you
+  to go back and check the column mapping — a step that exists only
+  for spreadsheet (CSV) files, so on a PDF or OFX statement it sent
+  you to a screen you were never shown. Those imports now point at
+  the reasons listed against each row underneath, which is where the
+  explanation actually is. CSV imports keep the mapping advice.
+
+- **A file you had already imported no longer hides the rows it couldn't read** (FIBR-0254)
+  In the multi-file import table, a statement finbreak had already
+  imported said "Already imported — nothing new in this file" while
+  the Errors column beside it showed a count — one row telling you
+  two different things. The status now names the unreadable rows on
+  every outcome that can have them. A single bad row also reads
+  "1 row couldn't be read" rather than "1 rows".
+
 - **The Linux app-store (Flatpak) build now starts — it could not open at all** (FIBR-0259)
   The Flatpak build announced in 0.1.20 quit instantly, before any window
   appeared, because it was missing a security library (Kerberos) that the

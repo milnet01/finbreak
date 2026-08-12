@@ -117,6 +117,10 @@ class ImportWizardWidget(QWidget):
         self._text: str | None = None
         self._header: list[str] = []
         self._source_path: str = ""
+        # True while the picked file is on the CSV path — the only source with a
+        # column-mapping step, and so the only one the FIBR-0146 D7 banner's
+        # mapping remedy can name (FIBR-0253). Set per pick by `_select_file`.
+        self._csv_source: bool = False
         self._preview: ImportPreview | None = None
         # OFX only (FIBR-0008): the parsed statements of the picked file, so the
         # chooser can re-preview a selected one without re-parsing. Empty on the
@@ -318,14 +322,10 @@ class ImportWizardWidget(QWidget):
         )
         # Whole-import banner (FIBR-0146 D7) — shown only when nothing landed and
         # at least one row errored (the tester's 0 new · 0 dup · 165 error state),
-        # turning N identical cryptic rows into one actionable sentence. Text set
-        # once; visibility toggled in _apply_preview_counts.
-        self._preview_banner = QLabel(
-            self.tr(
-                "None of the rows could be imported. Go back and check the column "
-                "mapping and the Date format match your statement."
-            )
-        )
+        # turning N identical cryptic rows into one actionable sentence. Text AND
+        # visibility are both set in _apply_preview_counts, because the remedy
+        # depends on the source (FIBR-0253); this is the CSV wording as a default.
+        self._preview_banner = QLabel(self._banner_text())
         self._preview_banner.setObjectName("import_preview_banner")
         self._preview_banner.setWordWrap(True)
         self._preview_banner.hide()
@@ -462,6 +462,10 @@ class ImportWizardWidget(QWidget):
         shows the mapping step (INV-10b)."""
         self._error.clear()
         self._source_path = path
+        # Cleared before the format dispatch below and set again only on the CSV
+        # fall-through, so an OFX or PDF pick after a CSV one cannot inherit the
+        # previous file's mapping-step remedy (FIBR-0253).
+        self._csv_source = False
         self._stored_pw = None  # a fresh file — drop any prior pick's remembered pw
         # Seed the preview step's destination picker from the pick-step choice
         # (FIBR-0057). The confirm combo is the single source of truth for the
@@ -499,6 +503,8 @@ class ImportWizardWidget(QWidget):
         if looks_like_pdf(path):
             self._select_pdf(path)
             return
+        # Past both sniffs is the CSV path, and the only one with a map step.
+        self._csv_source = True
         try:
             text = self._imports.read_file(path)
             header = read_header(text)  # raises ValueError on an empty file
@@ -1143,6 +1149,25 @@ class ImportWizardWidget(QWidget):
         self._apply_preview_counts(preview)
         self._goto_step(_STEP_PREVIEW)
 
+    def _banner_text(self) -> str:
+        """The D7 all-rows-failed sentence for the source in hand (FIBR-0253).
+
+        D7's remedy — go back and check the column mapping and the Date format —
+        names the map step, which only the CSV path has. The same banner is
+        reachable from OFX and PDF (both collect per-row errors), where that
+        advice points at a screen the user was never shown and cannot reach. The
+        trigger stays count-based for every source; only the sentence moves.
+        """
+        if self._csv_source:
+            return self.tr(
+                "None of the rows could be imported. Go back and check the column "
+                "mapping and the Date format match your statement."
+            )
+        return self.tr(
+            "None of the rows could be imported. Each row below says what went "
+            "wrong with it."
+        )
+
     def _apply_preview_counts(self, preview: ImportPreview) -> None:
         """Refresh the dedup-dependent parts of the preview — the
         new/duplicate/error summary and the Import-enabled state. Shared by
@@ -1168,6 +1193,9 @@ class ImportWizardWidget(QWidget):
         # count-based (several faults land here — wrong date format/column, blank
         # date column, amount mis-map — so it names the general remedy, not one
         # cause). Any success/duplicate row, or a header-only 0·0·0 preview, hides it.
+        # The trigger is source-neutral but the remedy is not, so the text is
+        # re-chosen per preview (FIBR-0253) rather than fixed at construction.
+        self._preview_banner.setText(self._banner_text())
         self._preview_banner.setVisible(
             preview.new_count == 0
             and preview.duplicate_count == 0
