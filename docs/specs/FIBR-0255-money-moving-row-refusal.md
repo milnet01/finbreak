@@ -177,9 +177,17 @@ document in front of them, the same reasoning FIBR-0190 D8 used when it gave
 - **No call site changes.** All five `_draft` call sites keep their bare
   comprehension or `parsed.append(...)` shape, and every caller of
   `StandardBankImporter.parse` already handles a `ValueError` from a balance gate:
-  `services/batch_import.py` catches `(ValueError, OSError, FinbreakError)` on scan
-  and `(ValueError, FinbreakError)` on commit, marking the file `failed` with the
-  message as its reason; `ui/import_wizard.py::_on_import` catches the same pair.
+  there are exactly two, and both already catch it
+  (`grep -rn 'StandardBankImporter' src/ | grep -v standard_bank.py:` → two imports
+  and two calls):
+
+  - `services/batch_import.py::_scan_pdf` — the raise leaves it into `scan`'s
+    `except (ValueError, OSError, FinbreakError)`, which calls `_fail`, marking the
+    file `failed` with the message as its reason and continuing the batch.
+  - `ui/import_wizard.py::_continue_after_decrypt` — its own `try` catches
+    `(PdfError, ValueError, FinbreakError)` and routes to
+    `_show_pdf_read_error(exc)`. **Not `_on_import`**, which wraps `commit_import`
+    and is downstream of the parse.
 
 ## 5. Invariants
 
@@ -222,8 +230,9 @@ document in front of them, the same reasoning FIBR-0190 D8 used when it gave
 
 - **INV-5** — No committed fixture changes behaviour: the corpus's only `RowError`
   is `family_a_zero_fee.pdf`'s zero-amount row, which INV-2 preserves.
-  *Test:* the §7 fixture sweep → 12 fixtures parse, 10 raise, `non_sb.pdf` returns
-  `None`, and `family_a_zero_fee.pdf` is the only one with `errors=1`.
+  *Test:* the §7 fixture sweep, run before and after the fix → identical output both
+  times: 12 fixtures parse, 10 raise, `non_sb.pdf` returns `None`, and
+  `family_a_zero_fee.pdf` is the only one with `errors=1`.
   *Breaks when:* a future fixture is authored with an unreadable money-moving row
   and is expected to import.
 
@@ -280,7 +289,24 @@ STATEMENT OPENING BALANCE 1000.00
 | `test_FIBR0216_zero_fee_row_with_a_bad_date_still_degrades` | §4.1's amount-not-reason rule — the case a reason-keyed guard would refuse |
 | `test_FIBR0216_zero_amount_row_degrades_instead_of_aborting_the_statement` | INV-2 — pre-existing, must stay green **unmodified** |
 | `test_FIBR0255_the_rule_is_stated_once_in_draft` | INV-4 — source-level count of `parse_transaction(` call sites |
-| fixture sweep, §5 INV-5 | INV-5 — run by hand at implementation, recorded in §12 |
+| the fixture sweep below | INV-5 — hand-run, before and after; the two runs must agree |
+
+INV-5's sweep, so it need not be invented. Run it once before the fix and once
+after; every line must be identical:
+
+```bash
+PYTHONPATH=src python -c '
+import glob
+from finbreak.importers.standard_bank import StandardBankImporter
+imp = StandardBankImporter()
+for p in sorted(glob.glob("tests/features/standard_bank_pdf/fixtures/*.pdf")):
+    try:
+        r = imp.parse(open(p, "rb").read(), 2)
+    except ValueError as e:
+        print(f"{p.split(chr(47))[-1]:42s} RAISES {str(e)[:40]}"); continue
+    print(f"{p.split(chr(47))[-1]:42s} " + ("None" if r is None
+          else f"drafts={len(r.drafts)} errors={len(r.errors)}"))'
+```
 
 Each new **behavioural** test must be seen to **fail against pre-fix code** before
 the fix lands — the §2 repro is that failure for INV-1, already observed. The INV-4
@@ -328,7 +354,7 @@ and after, guarding against a future regression rather than proving this one.
 
 | Rule | What catches a breach |
 |------|----------------------|
-| INV-1 | `test_FIBR0255_money_moving_unreadable_row_refuses_the_statement`, `test_FIBR0255_money_moving_row_refuses_family_e_too` |
+| INV-1 | `Partial:` `test_FIBR0255_money_moving_unreadable_row_refuses_the_statement`, `test_FIBR0255_money_moving_row_refuses_family_e_too` — Families **A and E only**, the two with no completeness gate. B/C/D hold by construction (one guard, one `_draft`) and are covered only transitively, by INV-4 |
 | INV-2 | `test_FIBR0216_zero_amount_row_degrades_instead_of_aborting_the_statement`, `test_FIBR0216_zero_fee_row_with_a_bad_date_still_degrades` |
 | INV-3 | `test_FIBR0255_money_moving_unreadable_row_refuses_the_statement` (asserts both the new phrase and the absence of the old) |
 | INV-4 | `test_FIBR0255_the_rule_is_stated_once_in_draft` |
@@ -343,19 +369,14 @@ and after, guarding against a future regression rather than proving this one.
   Rewritten in the same commit.
 - `CHANGELOG.md` — one `Fixed` line under `[Unreleased]`; user-visible.
 - `ROADMAP.md` — FIBR-0255 flips to ✅ with a resolution note.
-- `docs/specs/FIBR-0050.md` — **edited in the same commit.** INV-11 asserts "Any
-  gate failure, or any `parse_transaction` rejection, raises **one** friendly
-  `ValueError` … **no partial import**", and enumerates the refusal wordings. Two
-  things are wrong with it against this change, and the first is wrong *today*:
-  FIBR-0216 already made "any `parse_transaction` rejection raises" false for a
-  zero-amount row, and this change adds `_UNREADABLE_MONEY_ROW` as a wording the
-  enumeration does not carry. Left standing, an implementer reading INV-11 as
-  canonical writes the refusal with the "didn't add up" sentence INV-3 forbids.
-  **Three clauses move, all in the same direction and all false before this
-  change**: INV-11's, INV-1's "`errors` is always empty on success", and the
-  `parse_transaction` bullet's "raises on any rejection" — the last two falsified by
-  FIBR-0216/FIBR-0252 and left standing. Nothing else in FIBR-0050 moves; it names
-  no `_draft` carve-out anywhere (`grep -c '_draft' docs/specs/FIBR-0050.md` → `0`).
+- `docs/specs/FIBR-0050.md` — **done, in this spec's own commit; no further edit is
+  due.** Three of its clauses said the SB reader raises on *any* `parse_transaction`
+  rejection — INV-11's, INV-1's `errors`-on-success clause, and the
+  `parse_transaction` bullet's. All three were already false when FIBR-0216 shipped
+  the zero-amount carve-out, and INV-11 additionally enumerates the refusal wordings
+  without this one. Each now reads "of a row that moved money" and names FIBR-0255.
+  Nothing else in FIBR-0050 moved; it names no `_draft` carve-out anywhere
+  (`grep -c '_draft' docs/specs/FIBR-0050.md` → `0`).
 - `docs/specs/FIBR-0252-standard-bank-row-errors.md` — §9 defers "the parser gap
   §6 uncovered" to this id, which is the pointer being honoured; §8's rejected
   alternative is addressed in §8 above. No edit: a converged spec's record of what
@@ -369,3 +390,4 @@ and after, guarding against a future regression rather than proving this one.
 | Loop | Date | Lanes | Q1 | Q2 | Q3 | Q4 | Outcome |
 |------|------|-------|----|----|----|----|---------|
 | 1 | 2026-08-12 | 3, cold, shared byte-identical packet (`review-contract`, `--genre spec`) | 1 | 3 | 0 | 1 | 5 verified, 0 unverified. All fixed. **The Q1 rewrote §4.1's central argument.** The draft claimed a zero-amount row could only ever be rejected for `"amount must be non-zero"`, making the amount and the rejection reason interchangeable discriminators. `parse_transaction` checks description and date *first*, so a printed `0.00` line with a garbled date returns `RowError(1, 'occurred_on must be a valid ISO-8601 date')` — reproduced. An implementer keying the guard on the reason would have refused whole statements over zero-fee rows, the exact FIBR-0216 regression INV-2 exists to block; §4.1 now states the rule as amount-not-reason and a fifth test locks it. Q2s: INV-1 scoped the refusal to gate-less families while §1 and §8 said all five (a family-conditional guard would have passed the invariant); §11 claimed FIBR-0050 needed no edit when its INV-11 enumerates the refusal wordings and asserts "any `parse_transaction` rejection raises" — false since FIBR-0216 — so three of its clauses were corrected in place; and `_draft`'s own docstring says "never aborting the statement", now listed as part of the change. Q4: the red-first rule was unsatisfiable for INV-4's source-count test, which is green before and after. |
+| 2 | 2026-08-12 | 2, cold, packet rebuilt from disk and widened to all five family parsers | 2 | 0 | 1 | 1 | 4 verified, 0 unverified. All fixed. **The Q1 that mattered: §4.3 cited the wrong wizard method.** It named `_on_import` as the caller that already handles a raising `parse`; `_on_import` wraps `commit_import` and is downstream. The real call site is `_continue_after_decrypt`, which catches `(PdfError, ValueError, FinbreakError)` and routes to `_show_pdf_read_error` — so the claim was true of the code and false of the citation, and an implementer checking the cited method would never have looked at the raising one. Both call sites are now named and grepped. Second Q1 was this skill's own loop-1 collateral: §11's FIBR-0050 bullet still read as a to-do after the edit had landed in the same commit. Q3: INV-5's *Test:* pointed at §7, §7 pointed at §12, and the sweep command existed nowhere — now stated in §7 and executed (its pre-fix output is the baseline the post-fix run must match). Q4: §10 claimed INV-1 fully covered while only A and E are tested; now `Partial:`. |
