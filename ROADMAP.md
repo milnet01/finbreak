@@ -1141,6 +1141,7 @@ scariest unknown (native-library bundling) up front.
   Kind: fix.
   Lanes: packaging, testing.
   Source: in-session-2026-08-07 (user ran the FIBR-0159 § 5 portal smoke test).
+  Progress (2026-08-12): the fix is BUILT and gated; what remains is a human launching it. Verified in the tree, not recalled: packaging/flatpak/io.github.milnet01.finbreak.yaml carries a `krb5` module (line 59, krb5-1.22.2 from kerberos.org), and src/finbreak/_selftest.py now imports PySide6.QtNetwork and constructs a QLocalServer — so the gate hole that let this ship (the self-test loaded QtWidgets/QtCharts/QtCore/QtGui/sqlcipher3/pikepdf but never QtNetwork) is closed and would now fail on a build that cannot start. Landed in 51fd6a8 + baf48b8; FIBR-0261 then made that self-test run headless instead of aborting. Deliberately left 🚧 rather than ✅: every automated check agreed the build was good LAST time too, and only a human running `flatpak run io.github.milnet01.finbreak` found it. The single remaining step is that command producing a window. Still blocks FIBR-0159 — do not submit until it does.
 
 ## P02 — Vertical slice: the security spine (target: after P01)
 
