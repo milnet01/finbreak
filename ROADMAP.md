@@ -6170,6 +6170,33 @@ is a future error tomorrow.
   Kind: test.
   Source: in-session-2026-08-11.
 
+- ✅ [FIBR-0263] **A batch-import UI test raced the report and turned CI red at random.**
+  `test_INV14_done_waits_for_the_report` waited only for every file's
+  outcome to reach `committed`, then asserted the report's Close button
+  was visible. `_run_next` sets that last outcome in one event-loop turn
+  and only reaches `finish()` — which shows Close — in the NEXT turn,
+  armed by `singleShot(0)`. So the wait's condition goes true one whole
+  turn before Close exists, and whether `waitUntil` returns there or
+  after the queued turn is scheduler luck.
+
+  Measured, not inferred: interposing on `run_step` shows that at the
+  instant the last file commits the state is `phase='run',
+  _finished=False` — Close still hidden — while the old predicate is
+  already true.
+
+  It won on every developer desktop and lost once on a loaded CI runner:
+  run 31622538238 red, the identical test green on the very next push
+  (1 failure in the last 40 CI runs). Fixed by waiting for
+  `_batch_phase == "report"` as well, which `_run_next` sets in the same
+  slot invocation as `finish()` with no event loop between them. This
+  also strengthens the neighbouring `emissions == []` assertion, which
+  could previously be checked before the run had finished at all.
+  Product behaviour is correct and unchanged — the defect was purely the
+  test's synchronisation.
+  **Layman:** A test was checking for the "Close" button a split second before the app had drawn it, so the build failed at random rather than because anything was broken.
+  Kind: test.
+  Source: in-session-2026-08-12 (CI failure triage, run 31622538238).
+
 ## How to add an item
 
 1. Allocate the next ID:

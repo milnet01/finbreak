@@ -647,8 +647,20 @@ def test_INV14_done_waits_for_the_report(
     widget._batch_review._choose_account(0)
     widget._batch_review._choose_account(1)
     widget._batch_review._import_button.click()
+    # Wait for the REPORT, not merely for the last commit. `_run_next` sets the
+    # final outcome to `committed` in one turn and only reaches `finish()` in the
+    # next, armed with `singleShot(0)` — so the outcomes-only condition is true
+    # one whole turn before Close exists. Whether `waitUntil`'s poll lands before
+    # or after that queued turn is scheduler luck: it wins on a developer desktop
+    # and lost on a loaded CI runner (run 31622538238 red, the identical test
+    # green on the very next push). `_batch_phase` is set to "report" in the same
+    # slot invocation as `finish()`, with no event loop between them, so this
+    # condition cannot observe a finished run whose Close has not appeared.
     qtbot.waitUntil(
-        lambda: all(f.outcome == "committed" for f in widget._batch_files),
+        lambda: (
+            all(f.outcome == "committed" for f in widget._batch_files)
+            and widget._batch_phase == "report"
+        ),
         timeout=3000,
     )
     assert emissions == [], "done must not fire when the last record commits"
