@@ -244,6 +244,28 @@ class BatchReviewWidget(QWidget):
             return unplaced
         return self._account_names.get(record.account_id, unplaced)
 
+    def _with_unreadable_rows(self, line: str, record: BatchFile) -> str:
+        """Append the unreadable-row clause to any outcome that can carry one.
+
+        ``error_count`` is set during SCAN, before the outcome is known, and the
+        Errors column renders it whatever that outcome turns out to be. Appending
+        the clause on the ``committed`` branch alone let an ``already_imported``
+        row read *"nothing new in this file"* beside a cell reading 4 — one row
+        contradicting itself (FIBR-0254).
+
+        The two counts are separate strings rather than Qt's ``%n`` plural: no
+        translation is loaded yet (FIBR-0017 is unshipped), and an untranslated
+        ``%n`` string renders its source text verbatim, so the user would read
+        *"1 row(s)"*. A translator still gets both forms.
+        """
+        if not record.error_count:
+            return line
+        if record.error_count == 1:
+            return line + self.tr(", 1 row couldn't be read")
+        return line + self.tr(", {n} rows couldn't be read").format(
+            n=record.error_count
+        )
+
     def report_line(self, record: BatchFile) -> str:
         """What each outcome tells the user (§ 4.8).
 
@@ -259,16 +281,16 @@ class BatchReviewWidget(QWidget):
         """
         outcome = record.outcome
         if outcome == "committed" and record.result is not None:
-            line = self.tr("{new} added, {dup} duplicates").format(
-                new=record.result.inserted_count, dup=record.result.duplicate_count
+            return self._with_unreadable_rows(
+                self.tr("{new} added, {dup} duplicates").format(
+                    new=record.result.inserted_count, dup=record.result.duplicate_count
+                ),
+                record,
             )
-            if record.error_count:
-                line += self.tr(", {n} rows couldn't be read").format(
-                    n=record.error_count
-                )
-            return line
         if outcome == "already_imported":
-            return self.tr("Already imported — nothing new in this file")
+            return self._with_unreadable_rows(
+                self.tr("Already imported — nothing new in this file"), record
+            )
         if outcome == "failed":
             template = (
                 self.tr("Couldn't import this file — {why}")

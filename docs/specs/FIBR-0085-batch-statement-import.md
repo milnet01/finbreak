@@ -720,8 +720,8 @@ Per-file report lines, shown on the same table after the run. Every row is one
 
 | Outcome | Line |
 |---|---|
-| `committed` | *53 added, 0 duplicates* — from `ImportResult`; *", 4 rows couldn't be read"* appended when `error_count > 0` |
-| `already_imported` | *Already imported — nothing new in this file* |
+| `committed` | *53 added, 0 duplicates* — from `ImportResult`; the unreadable-row clause below appended when `error_count > 0` |
+| `already_imported` | *Already imported — nothing new in this file*, plus the same unreadable-row clause when `error_count > 0` |
 | `failed` (at SCAN) | *Couldn't read this file — <reason>* |
 | `failed` (at RUN) | *Couldn't import this file — <reason>* |
 | `skipped` | *Skipped — we couldn't unlock this file* (or *…no column mapping was set*) |
@@ -736,6 +736,15 @@ Per-file report lines, shown on the same table after the run. Every row is one
 All ten members appear here, because §4.6's Status column renders the outcome
 and a row sits in one of the middle four for the whole of ASK and REVIEW. An
 outcome with no string is a blank cell on screen.
+
+**The unreadable-row clause belongs to the row, not to `committed`** (FIBR-0254).
+`error_count` is set during SCAN, before any outcome is known, and §4.6's Errors
+column renders it for every outcome — so a clause appended on `committed` alone
+let an `already_imported` row read *"nothing new in this file"* beside a cell
+reading 4, one row contradicting itself. It is spelled *", 1 row couldn't be
+read"* for a single row and *", N rows couldn't be read"* above one: two strings
+rather than a Qt `%n` plural, because no translation is loaded yet (FIBR-0017)
+and an untranslated `%n` renders its source text, giving *"1 row(s)"*.
 
 **Two outcomes carry two wordings each, for the same reason: each is reachable
 from two passes, and one sentence cannot serve both.**

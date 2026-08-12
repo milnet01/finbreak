@@ -30,8 +30,8 @@ from finbreak.importers.pdf_importer import PasswordError
 from finbreak.models import AccountType, ColumnMapping
 from finbreak.services.accounts import AccountService
 from finbreak.services.auth import AuthService
-from finbreak.services.batch_import import BatchImportService
-from finbreak.services.import_ import ImportService
+from finbreak.services.batch_import import BatchFile, BatchImportService
+from finbreak.services.import_ import ImportResult, ImportService
 from finbreak.ui import import_batch as import_batch_mod
 from finbreak.ui import import_wizard as wizard_mod
 from finbreak.ui.import_wizard import _STEP_BATCH, _STEP_MAP, ImportWizardWidget
@@ -815,4 +815,54 @@ def test_FIBR0252_errors_column_shows_the_count(qtbot, service, profile, tmp_pat
     assert cells[1 - statement] == "", (
         f"Errors cells read {cells!r} — a clean file's cell stays blank, so the "
         "count draws the eye only when it matters"
+    )
+
+
+# -- FIBR-0254 (the per-file report line) ------------------------------------ #
+
+
+def test_FIBR0254_report_line_owns_its_unreadable_rows(qtbot, service):
+    """FIBR-0254 — the unreadable-row clause belongs to the outcome, not to
+    `committed` alone, and one row reads as one row.
+
+    `error_count` is set during SCAN, before any outcome is known, and the
+    Errors column renders it whatever the outcome turns out to be. Appending
+    the clause only on the `committed` branch therefore let an
+    `already_imported` row's Status say "nothing new in this file" while the
+    cell beside it read 4 — one table row contradicting itself.
+
+    Each leg asserts its own precondition (the count is really on the record,
+    the committed line really rendered its counts), because a `report_line`
+    that appended nothing at all would otherwise satisfy the negative checks.
+    """
+    review = _wizard(qtbot, service)._batch_review
+
+    already = BatchFile(path="a.pdf", outcome="already_imported", error_count=4)
+    assert already.error_count == 4, "precondition: the Errors cell would read 4"
+    assert "4 rows couldn't be read" in review.report_line(already), (
+        "an already-imported file with unreadable rows must say so"
+    )
+
+    one = BatchFile(path="b.pdf", outcome="already_imported", error_count=1)
+    line = review.report_line(one)
+    assert "1 row couldn't be read" in line, f"singular expected, got {line!r}"
+    assert "1 rows" not in line
+
+    committed = BatchFile(
+        path="c.csv",
+        outcome="committed",
+        error_count=2,
+        result=ImportResult(
+            inserted_count=3, duplicate_count=0, error_count=2, period_recorded=True
+        ),
+    )
+    committed_line = review.report_line(committed)
+    assert "3 added" in committed_line, "precondition: the committed counts render"
+    assert "2 rows couldn't be read" in committed_line, (
+        "the committed branch keeps the clause it always had"
+    )
+
+    clean = BatchFile(path="d.csv", outcome="already_imported", error_count=0)
+    assert "couldn't be read" not in review.report_line(clean), (
+        "a file with no unreadable rows says nothing about unreadable rows"
     )
