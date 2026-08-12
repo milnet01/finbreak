@@ -532,6 +532,74 @@ scariest unknown (native-library bundling) up front.
   Kind: doc-fix.
   Source: in-session-2026-08-12 (review-contract gate on FIBR-0085, loop 1).
 
+- 📋 [FIBR-0267] **FIBR-0085 has five more verified doc-vs-code defects, and at 1357 lines wants splitting rather than another loop.**
+  Loop 2 confirmed loop 1's four fixes held and that the FIBR-0254
+  amendment is correct, then found five NEW defects in sections neither
+  loop-1 lane had reached. That pattern -- a fresh cold read finding
+  fresh regions each pass -- is the size signal, not a document that
+  keeps regressing. 1357 lines against siblings of ~400-650.
+
+  All five verified against the tree, none touching FIBR-0254:
+
+  1. §4.5 says the vault baseline is "read through ImportService (the
+  same reads _dedup performs)". The shipped `cumulative_counts` does
+  NO vault read: its only use of `imports` is `imports._key(draft)`,
+  and the vault half arrives already applied in
+  `preview.duplicate_row_numbers`. Building to the spec subtracts the
+  vault half twice and under-reports New (breaks INV-4).
+  2. §4.6 states account-cell clickability as "exactly" two tests;
+  `_choose_account` applies a third the spec states nowhere --
+  `self._finished or self._running`. Building the "exactly" rule
+  leaves the cell live DURING the run, so a user can retarget a row
+  the chain is about to reach.
+  3. §4.6 does not say whether Close appears after a CANCELLED run. A
+  cancelled RUN is neither "before RUN" nor plainly "finished", and
+  Close is the only emitter of `done` (INV-14) -- so an implementer
+  can strand the user on a screen with no exit.
+  4. §4.6's account-change route says "the row becomes `ready`" and names
+  only `cumulative_counts` as the follow-up, where §4.3's REVIEW block
+  requires outcomes re-derived in BOTH directions. Wiring §4.6 alone
+  means a retargeted `already_imported` row never returns to `ready`
+  (INV-10's third leg).
+  5. INV-6's *Breaks when* clause names an omission ("created and not
+  added to `_FILES`") that its own test cannot observe, because the
+  test greps only the members of `_FILES`. Unfalsifiable as written.
+
+  Do the split first, then fix these in the parts they land in. The
+  review instrument is fine; the document is too big for one cold read.
+  **Layman:** The batch-import design document describes the shipped code wrongly in five more places; it is also long enough that each review pass reaches different parts of it, so it should be split before it is reviewed again.
+  Kind: doc-fix.
+  Source: in-session-2026-08-12 (review-contract gate on FIBR-0085, loop 2).
+
+- 📋 [FIBR-0268] **A malformed CSV body crashes out of the date-column slot, which catches nothing.**
+  `_date_samples` reads through `read_rows`, which translates a
+  `csv.Error` from a structurally-broken body (an unterminated quote, a
+  stray NUL, a field over `csv.field_size_limit`) into the friendly
+  `ValueError` this module's boundary uses. The translation is right; the
+  catching is missing on two of the three entry points.
+
+  - D5(a), the CSV pick, runs inside `_select_file`'s try -> the message
+  is shown, picker left at its ISO default. Correct.
+  - D5(b) `_continue_after_decrypt` and D5(c) `_on_date_column_changed`
+  both call `_autodetect_date_format()` with no guard, and it calls
+  `_date_samples` directly. The `ValueError` escapes the Qt slot.
+
+  The header parses fine in this case, so `read_header` does not refuse
+  the file first -- the user reaches the map step normally and then
+  changes the Date column, which is the documented way to use the screen.
+
+  Found because FIBR-0146 D8 was amended to claim "on a raise the map
+  step shows the friendly message", and that claim turned out to be true
+  only on the CSV path. D8 now states the real coverage and points here
+  rather than describing behaviour the code does not have.
+
+  Fix: wrap the two unguarded call sites (or `_autodetect_date_format`
+  itself) and surface on the map-step error label, samples `[]`, picker
+  unchanged -- which is what D8 originally claimed for all three.
+  **Layman:** If a spreadsheet file is damaged part-way down, changing the Date column on the import screen can make the app fall over instead of showing a message.
+  Kind: fix.
+  Source: in-session-2026-08-12 (review-contract gate on FIBR-0146, loop 3).
+
 ### 📦 Packaging
 
 - ✅ [FIBR-0003] **P01: bundling smoke-test (de-risk
