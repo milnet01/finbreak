@@ -23,6 +23,12 @@ signaling per
 
 ### Fixed
 
+- **An unreadable amount now says which value it could not read, instead of showing programmer text** (FIBR-0271)
+  A statement row whose amount could not be read used to show a line of
+  internal Python text in the import preview. It now says `could not
+  read the amount "..."`, naming the value on your statement — the same
+  way an unreadable date already did — or tells you the cell is empty.
+
 - **Importing a damaged spreadsheet no longer closes the app when you change the Date column** (FIBR-0268)
   If a statement file is damaged part-way down, the import screen now
   shows a message and leaves your date settings alone, instead of the
