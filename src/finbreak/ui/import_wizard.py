@@ -365,6 +365,18 @@ class ImportWizardWidget(QWidget):
         self._import_button = QPushButton(self.tr("Import"))
         self._import_button.setEnabled(False)
         cancel = QPushButton(self.tr("Cancel"))
+        # FIBR-0270: D7's all-rows-failed banner tells the user to "go back and
+        # check the column mapping", and until now nothing could — the only
+        # _goto_step(_STEP_PICK) calls were the build and the finish/reset, and no
+        # _goto_step(_STEP_MAP) was reachable from here. The banner sentence was
+        # right; the wizard was wrong, so the control is what changes. Offered only
+        # for a source that HAS a map step — the same _has_mapping_step split
+        # FIBR-0253 drew for the banner text, so the advice and the way to follow
+        # it can never disagree. Visibility is set on arrival, in _show_preview.
+        self._back_button = QPushButton(self.tr("Back"))
+        self._back_button.setObjectName("import_back")
+        self._back_button.clicked.connect(self._on_preview_back)
+        self._back_button.hide()
 
         period = QFormLayout()
         period.addRow(self.tr("Period start"), self._period_start)
@@ -373,6 +385,9 @@ class ImportWizardWidget(QWidget):
         buttons = QHBoxLayout()
         buttons.addWidget(cancel)
         buttons.addStretch()
+        # Back sits beside Import, the wizard-conventional pairing — Cancel is the
+        # odd one out on the left and stays there.
+        buttons.addWidget(self._back_button)
         buttons.addWidget(self._import_button)
 
         # Why the destination above is (or is not) the statement's own account
@@ -518,6 +533,14 @@ class ImportWizardWidget(QWidget):
             self._header = header
             self._populate_mapping_combos(header)
             if matched is not None:
+                # Fill the map step from the profile before jumping past it, so
+                # FIBR-0270's Back lands on the mapping actually in force instead
+                # of combo defaults — the case re-picking the file cannot fix,
+                # because the saved profile is what is wrong. The generic-PDF
+                # matched jump already did this; the CSV one was the gap. Cheap
+                # and signal-blocked: it sets widgets, reads no rows, re-detects
+                # nothing (INV-4 — a matched profile's format is authoritative).
+                self._apply_profile_to_combos(matched)
                 self._run_preview(matched.column_mapping())
             else:
                 # FIBR-0146 D5(a): an unmatched CSV gets a date-format guess over
@@ -931,8 +954,10 @@ class ImportWizardWidget(QWidget):
             self._set_combo(self._column_combos["debit"], mapping.debit_column)
             self._set_combo(self._column_combos["credit"], mapping.credit_column)
         self._select_date_format(mapping.date_format)
-        # A matched profile is authoritative — never "ambiguous" (INV-4). Its
-        # caller refreshes _update_date_preview, so a stale nudge is cleared.
+        # A matched profile is authoritative — never "ambiguous" (INV-4). Every
+        # caller refreshes _update_date_preview before the map step is shown — the
+        # two that jump straight to the preview defer it to _on_preview_back
+        # (FIBR-0270) — so a stale nudge is always cleared before it can be read.
         self._date_ambiguous = False
         self._invert_amount.setChecked(bool(mapping.invert_amount))
 
@@ -1181,7 +1206,31 @@ class ImportWizardWidget(QWidget):
         self._fill_preview_table(preview)
         self._set_period_defaults(preview)
         self._apply_preview_counts(preview)
+        # FIBR-0270. Set on arrival rather than in _apply_preview_counts: whether
+        # there is a map step to return to depends on the SOURCE, not on the
+        # counts, and the preview-step account re-target (FIBR-0057) calls that
+        # method again without changing the source.
+        self._back_button.setVisible(self._has_mapping_step)
         self._goto_step(_STEP_PREVIEW)
+
+    @Slot()
+    def _on_preview_back(self) -> None:
+        """Return to the map step to correct the mapping (FIBR-0270).
+
+        Two routes here never displayed that page — a matched CSV profile and a
+        single-table PDF whose table matched — so both fill the form from the
+        matched profile at select time, and the date preview is refreshed here,
+        on the one path that actually shows the page (also the cheapest place:
+        ``_date_samples`` re-reads the statement, FIBR-0269).
+
+        ``detect=False`` deliberately: the format in force is a decision — a
+        saved profile, or whatever the user pressed Next on — and re-detecting
+        would silently overwrite it. Changing the date *column* on the returned-to
+        form still re-detects, through ``_on_date_column_changed``.
+        """
+        self._error.clear()
+        self._refresh_date_ui(detect=False)
+        self._goto_step(_STEP_MAP)
 
     def _banner_text(self) -> str:
         """The D7 all-rows-failed sentence for the source in hand (FIBR-0253).

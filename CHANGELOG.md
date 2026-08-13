@@ -23,6 +23,20 @@ signaling per
 
 ### Fixed
 
+- **The import screen now has a Back button, so "go back and check the column mapping" is advice you can follow** (FIBR-0270)
+  When no rows in a statement could be imported, finbreak told you to go
+  back and check the column mapping — but there was no way back. There is
+  now: a **Back** button on the last import screen returns you to the
+  column-mapping form, where you can fix the columns or the date format
+  and try again without starting over. It appears only for statements
+  that have a mapping form; files that describe their own layout (OFX,
+  and Standard Bank PDFs finbreak recognises) never had one to go back
+  to, and they get a message that does not mention it. If finbreak
+  matched a saved layout for the file and skipped the form entirely,
+  Back now opens that form with the saved layout filled in — so a saved
+  layout that has gone wrong can finally be corrected instead of failing
+  the same way every time.
+
 - **An unreadable amount now says which value it could not read, instead of showing programmer text** (FIBR-0271)
   A statement row whose amount could not be read used to show a line of
   internal Python text in the import preview. It now says `could not

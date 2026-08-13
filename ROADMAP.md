@@ -624,7 +624,7 @@ scariest unknown (native-library bundling) up front.
   Kind: perf.
   Source: in-session-2026-08-12 (review-contract gate on FIBR-0146, loop 2).
 
-- 📋 [FIBR-0270] **The all-rows-failed banner says "Go back" and the wizard has no way back.**
+- ✅ [FIBR-0270] **The all-rows-failed banner says "Go back" and the wizard has no way back.**
   `_banner_text`'s mapped-source sentence is "None of the rows could be
   imported. Go back and check the column mapping and the Date format
   match your statement." The import wizard has no back control: the
@@ -647,6 +647,32 @@ scariest unknown (native-library bundling) up front.
   **Layman:** When nothing in a statement could be imported, the app tells you to go back and check the column mapping — but there is no back button to get there.
   Kind: ux.
   Source: in-session-2026-08-12 (review-contract gate on FIBR-0146, loop 2).
+  Resolved (2026-08-13): took the Back button, not the reword. The
+  banner sentence was right and the wizard was wrong, so the control
+  is what changed — and leaving D7's strings alone keeps
+  `docs/specs/FIBR-0146.md` unamended and its rule-14 gate unarmed
+  (FIBR-0272 wants that spec split before it is reviewed again).
+
+  `_back_button` on the preview step, beside Import, shown only when
+  `_has_mapping_step` — the same flag FIBR-0253 keyed the banner text
+  on, so the advice and the way to follow it cannot disagree. OFX and
+  a recognised SB statement still get no Back and still get the other
+  sentence.
+
+  The matched-profile half the bullet flagged as hard: `_select_file`
+  now calls `_apply_profile_to_combos(matched)` before jumping past
+  the map step, so Back lands on the mapping actually in force rather
+  than combo defaults. The generic-PDF matched jump already did this;
+  the CSV one was the only gap. `_on_preview_back` refreshes the date
+  UI with `detect=False` (a stored format is a decision, not a guess)
+  and defers that read to the one path that shows the page — which is
+  also the cheapest place for it, given FIBR-0269.
+
+  Tests: `tests/features/import_back_step/` (spec.md + 4 tests,
+  INV-1..4), red on all four before the fix. INV-4's fixture puts the
+  date column at header[1] on purpose, so a form left at its defaults
+  fails instead of passing by coincidence. Gate green: 1885 passed,
+  3 skipped.
 
 - ✅ [FIBR-0271] **A bad amount cell showed the user `[&lt;class 'decimal.ConversionSyntax'&gt;]`.**
   FIBR-0146 INV-3 is "no raw parser internals reach the UI", and D3
