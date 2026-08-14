@@ -239,7 +239,7 @@ scariest unknown (native-library bundling) up front.
   Kind: test.
   Source: in-session-2026-08-06 (FIBR-0086 review lane 3).
 
-- 📋 [FIBR-0248] **FINBREAK_CORPUS_NUMBERS is wired nowhere, so INV-8 skips on every run.**
+- ✅ [FIBR-0248] **FINBREAK_CORPUS_NUMBERS is wired nowhere, so INV-8 skips on every run.**
   The variable appears only in the test that reads it and in two spec
   documents. It is absent from `scripts/ci-local.sh`, `.githooks/pre-push`
   and CLAUDE.md's "Run the full gate" and push-policy sections.
@@ -255,6 +255,34 @@ scariest unknown (native-library bundling) up front.
   **Layman:** The leaked-bank-number check needs a setting that nothing sets, so in practice it never actually runs.
   Kind: chore.
   Source: in-session-2026-08-06 (FIBR-0086 review lane 3).
+  Resolved (2026-08-14): built exactly what the bullet asked for — the keys
+  now come from a gitignored `.corpus-numbers` at the repo root (one per
+  line), with `FINBREAK_CORPUS_NUMBERS` kept as a one-off override, and
+  CLAUDE.md's gate section names it so it is discoverable. Whoever holds
+  the file gets INV-8 enforced by the pre-push hook from then on; whoever
+  does not — CI, always and by design — still gets a clean skip rather
+  than an error. Gate green (1910 passed, the corpus test still skipping
+  here because this machine has no file yet).
+
+  Two traps found while building it, neither in the bullet. The
+  `.gitignore` entry is verified by actually creating the file and
+  confirming `git check-ignore` refuses it, because committing that file
+  would plant in a PUBLIC repo precisely what the guard exists to catch —
+  asserting the rule rather than trusting the pattern. And a `#` comment is
+  stripped rather than merely tolerated: a hand-maintained file invites
+  labels, and "# account 1 of 3" would otherwise contribute `13` as a key,
+  which matches most of the tree and would get the guard switched off as
+  noise within a day.
+
+  Five loader tests cover file-when-env-unset, env-overrides-file,
+  absent-both-still-skips, comment digits, and both separators. Every
+  number in them is invented; the real values are never printed, never
+  written to a tracked file and never passed on a command line, and
+  CLAUDE.md now says so where a developer will read it.
+
+  Still true and unchanged: CI cannot hold the values, so this check is
+  local-only. FIBR-0246 and FIBR-0247 remain open and are the other two
+  halves of this guard.
 
 - 📋 [FIBR-0249] **A remembered statement password is stored against the pick-step account, which auto-detect now routinely changes.**
   `_begin_decrypt` / `_after_decrypt` look up and persist the remembered
