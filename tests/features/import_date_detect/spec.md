@@ -19,6 +19,7 @@ real statements, no network (testing.md § 6).
 | INV-4 | **Capability preserved; no saved layout lost.** The picker covers every known layout plus a **"Custom…"** raw-pattern field; a saved exotic format (`%Y.%m.%d`) round-trips through Custom — selected, filled verbatim, **and revealed** — and the produced mapping equals the stored format, never rewritten (`test_custom_roundtrip…`). A matched profile's format is authoritative and clears the ambiguity flag (`test_matched_profile_is_authoritative`). |
 | INV-5 | **i18n-clean.** The added strings ("Custom…", the preview label + fallbacks + ambiguity nudge, the banner) go through `tr()`; the combo entry **data** values are the fixed `%`-patterns, not the display example text (`test_added_strings_tr_wrapped_and_data_fixed_tokens`). |
 | INV-6 | **No new dependency; existing pipeline untouched.** Detection is stdlib `datetime`/`csv` only and feeds the unchanged `ColumnMapping` → `CsvImporter.parse` → `preview` path — a valid row still parses (`test_csv_valid_row_still_parses_INV6`); the whole `import_`/`ofx`/`pdf`/`standard_bank` suites stay green. The empty-format `strptime("", "")` → 1900-01-01 trap is closed at `_validate_mapping` (`test_validate_mapping_rejects_empty_date_format`, `test_empty_date_format_is_the_1900_trap`). |
+| INV-7 | **The statement is read once per load, not once per keystroke** (FIBR-0269). `_date_samples` bounds what it *collects* at 50, but `read_rows` materialises the whole file before that bound can bite, and both halves of a refresh (detect + preview) call it — so eight characters typed into the Custom-format field read the file **nine** times (81 ms a read on a 50k-row CSV, measured 2026-08-14, linear in the row count). Samples are cached per column against the loaded text; a new text drops them. Asserted by **counting reads, not seconds** — a timing assertion is flaky, a call count is not — with a precondition that the counter is wired to the reader the wizard actually calls (`test_FIBR0269_map_step_reads_the_statement_once_per_load`). |
 
 ## Layers
 
@@ -36,4 +37,5 @@ real statements, no network (testing.md § 6).
   preview fallbacks (blank / junk column); short-column clean branch; preview
   refreshed exactly once per fire (single owner); Custom round-trip; empty-Custom
   rejected on Next; matched-profile authoritative; whole-import banner (D7);
-  date-column change re-detects off column 0; `tr()` + fixed-token data (INV-5).
+  date-column change re-detects off column 0; `tr()` + fixed-token data (INV-5);
+  the loaded text read once per load rather than once per keystroke (INV-7).

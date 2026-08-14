@@ -139,6 +139,13 @@ class ImportWizardWidget(QWidget):
         # Set by _autodetect_date_format; cleared by any manual format change and
         # by a matched profile (authoritative, never "ambiguous").
         self._date_ambiguous: bool = False
+        # FIBR-0269: `_date_samples` results, per column, for ONE loaded text.
+        # `_date_sample_text` is the `self._text` they were read from; a new text
+        # is a different statement, so both are dropped. Identity, not equality —
+        # every assignment to `self._text` is a fresh object, and re-assigning the
+        # same object really does leave the samples valid.
+        self._date_sample_text: str | None = None
+        self._date_sample_cache: dict[str, list[str]] = {}
         # PDF only (FIBR-0057): the (account_id, password) a "remember" persisted
         # during THIS import, under the provisional file-select account. If the
         # user then re-targets the import (preview step), the committed rows land
@@ -1074,9 +1081,23 @@ class ImportWizardWidget(QWidget):
         serialised into. Stripping matches the importer (``csv_importer.py``) and
         the detector, so the preview strptimes the identical string the committed
         row uses (no false 'couldn't be read' on a padded cell). Bounded, so
-        detection cost is constant in the row count."""
+        detection cost is constant in the row count.
+
+        **Cached per column against the loaded text** (FIBR-0269). The 50-sample
+        bound stops the *collecting*, not the reading: ``read_rows`` materialises
+        the whole file first, and both halves of a refresh land here — so typing
+        eight characters into the Custom-format field read the statement nine
+        times. Measured 2026-08-14: 81 ms a read on a 50k-row CSV, linear in the
+        row count. The cache changes no behaviour, including on a broken body —
+        nothing is stored when the read raises, so the next call raises again."""
         if self._text is None:
             return []
+        if self._date_sample_text is not self._text:
+            self._date_sample_text = self._text
+            self._date_sample_cache = {}
+        cached = self._date_sample_cache.get(column)
+        if cached is not None:
+            return list(cached)  # a copy: the cache is not the caller's to hold
         samples: list[str] = []
         # Via ``read_rows``, NOT a bare DictReader: it carries the ``csv.Error``
         # guard, and csv.Error is not a ValueError so an unguarded reader here
@@ -1091,7 +1112,8 @@ class ImportWizardWidget(QWidget):
             samples.append(cell)
             if len(samples) >= _MAX_DATE_SAMPLES:
                 break
-        return samples
+        self._date_sample_cache[column] = samples
+        return list(samples)
 
     def _autodetect_date_format(self) -> None:
         """Guess the date format for the currently-selected date column and seed

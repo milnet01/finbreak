@@ -729,3 +729,52 @@ def test_added_strings_tr_wrapped_and_data_fixed_tokens(qtbot, service, tmp_path
     datas = [combo.itemData(i) for i in range(combo.count())]
     for _example, fmt in KNOWN_DATE_FORMATS:
         assert fmt in datas, "combo item DATA is the fixed % pattern"
+
+
+def test_FIBR0269_map_step_reads_the_statement_once_per_load(
+    qtbot, service, tmp_path, monkeypatch
+):
+    """INV-7: the loaded text is read ONCE per load, not once per keystroke.
+
+    ``_date_samples`` bounds what it *collects* at 50, but ``read_rows``
+    materialises the whole file before that bound can bite — and it ran twice per
+    refresh (detect + preview) on every keystroke in the Custom-format field.
+    Measured 2026-08-14: 81 ms per read on a 50k-row CSV, linear in the row count.
+    Counting reads, not seconds: a timing assertion is flaky, a call count is not.
+    """
+    import finbreak.ui.import_wizard as wizard_mod
+    from finbreak.ui.import_wizard import _CUSTOM_FORMAT
+
+    calls = {"n": 0}
+    real_read_rows = wizard_mod.read_rows
+
+    def _counting(text: str):
+        calls["n"] += 1
+        return real_read_rows(text)
+
+    monkeypatch.setattr(wizard_mod, "read_rows", _counting)
+
+    acct = _acct(service)
+    path = _write(tmp_path, HEADER, _DAY_FIRST)
+    widget = _wizard(qtbot, service, acct)
+    widget._select_file(path)
+    # Precondition: the counter is wired to the reader the wizard actually calls,
+    # so a zero below means "cached", never "never patched".
+    assert calls["n"] > 0, "precondition: the patched reader is the wizard's"
+
+    # Eight keystrokes in the Custom field, each firing _on_date_format_changed.
+    calls["n"] = 0
+    widget._date_format.setCurrentIndex(widget._date_format.findData(_CUSTOM_FORMAT))
+    for i in range(1, len("%d/%m/%Y") + 1):
+        widget._date_format_custom.setText("%d/%m/%Y"[:i])
+    assert calls["n"] == 0, (
+        f"same file, same column, {calls['n']} re-reads — the samples are already known"
+    )
+
+    # A different date column is genuinely new data: ONE read, not two (detect and
+    # preview share it).
+    calls["n"] = 0
+    widget._column_combos["date"].setCurrentIndex(
+        widget._column_combos["date"].findData("Details")
+    )
+    assert calls["n"] <= 1, f"detect + preview read the file {calls['n']} times"
