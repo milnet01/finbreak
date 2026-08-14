@@ -15,6 +15,8 @@ statements, no network (testing.md § 6).
 
 from __future__ import annotations
 
+import warnings
+
 import pytest
 
 # --------------------------------------------------------------------------- #
@@ -309,6 +311,51 @@ def test_validate_mapping_accepts_a_real_date_format():
     from finbreak.services.import_ import ImportService
 
     mapping = ColumnMapping("Date", "Details", "Amount", None, None, "%d/%m/%Y", False)
+    ImportService._validate_mapping(mapping, ["Date", "Details", "Amount"])  # no raise
+
+
+def test_FIBR0273_year_less_format_is_the_same_1900_trap():
+    """Precondition for the rejection below: a year-less format does NOT fail —
+    it silently succeeds and dates the row 1900, which is why validation has to
+    catch it. (CPython also warns here: 3.15 will change this to an exception or
+    a different default year, so the rejection closes both halves.)"""
+    from datetime import datetime
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        assert datetime.strptime("20/07", "%d/%m").date().isoformat() == "1900-07-20"
+
+
+@pytest.mark.parametrize(
+    "bad_format",
+    ["%d/%m", "%m/%d", "%d.%m", "%d %b", "  %d/%m  ", "%%Y/%d/%m"],
+)
+def test_FIBR0273_validate_mapping_rejects_a_year_less_date_format(bad_format):
+    """A format with no year token files the WHOLE statement in 1900 — the same
+    trap the empty format was closed for, reached by a different route. `%%Y` is
+    a literal percent followed by a literal Y, not a year, so a substring check
+    for "%Y" would wrongly accept the last case."""
+    from finbreak.models import ColumnMapping
+    from finbreak.services.import_ import ImportService
+
+    mapping = ColumnMapping("Date", "Details", "Amount", None, None, bad_format, False)
+    with pytest.raises(ValueError, match="no year"):
+        ImportService._validate_mapping(mapping, ["Date", "Details", "Amount"])
+
+
+@pytest.mark.parametrize(
+    "good_format",
+    ["%d/%m/%Y", "%d/%m/%y", "%Y-%m-%d", "%d %b %Y", "%b %d, %Y", "%G-W%V-%u", "%x"],
+)
+def test_FIBR0273_year_bearing_formats_still_accepted_INV4(good_format):
+    """INV-4 capability preserved: the rejection must not cost a layout that DOES
+    carry a year. `%y` (2-digit), `%G` (ISO year) and `%x` (locale date) all read
+    a year from the file, so all three stay importable through "Custom…" — a
+    check that only knew `%Y` would silently remove them."""
+    from finbreak.models import ColumnMapping
+    from finbreak.services.import_ import ImportService
+
+    mapping = ColumnMapping("Date", "Details", "Amount", None, None, good_format, False)
     ImportService._validate_mapping(mapping, ["Date", "Details", "Amount"])  # no raise
 
 

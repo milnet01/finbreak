@@ -77,7 +77,20 @@ list and the importer's friendly date error) are in
   **1900-01-01**, so a blank date cell (which PDF-serialised tables produce
   routinely) under an empty format would silently import as a phantom 1900 date
   rather than error. Rejecting the empty format forecloses that; the format is
-  never silently defaulted to ISO either. `_apply_profile_to_combos` selects the entry
+  never silently defaulted to ISO either.
+  **Amended 2026-08-14 (FIBR-0273), recording what was built:** the empty format
+  was only *one* route into that trap. A year-**less** format is the other —
+  `strptime("20/07", "%d/%m")` also succeeds, returning **1900-07-20**, so
+  `%d/%m` passed this very check and filed a whole statement in 1900 with the D6
+  preview showing it. `_validate_mapping` now also rejects a format carrying no
+  year directive ("this date format has no year in it — add %Y (or %y), or every
+  row will be dated 1900"). It scans `%`-directives rather than substring-matching,
+  so `"%%Y"` (a literal percent, then a literal `Y`) is correctly year-less; and
+  it treats `%y`, `%G`, `%x` and `%c` as year-bearing, because a format wrongly
+  called year-less would be *refused*, removing a layout "Custom…" exists to
+  preserve (INV-4) — the worse of the two errors. CPython deprecates year-less
+  parsing and Python 3.15 will raise or choose a different default year, so this
+  closes today's silent-wrong-year and tomorrow's crash together. `_apply_profile_to_combos` selects the entry
   whose data equals `mapping.date_format`, or — when the stored format is not in
   the known list — selects "Custom…", fills the raw field with it verbatim, **and
   explicitly makes `import_date_format_custom` visible** (the programmatic select is

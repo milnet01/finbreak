@@ -45,6 +45,32 @@ _SIGNATURE_DELIMITER = "\x1f"  # unit separator — cannot occur in a CSV header
 # (_MAX_OFX_TRANSACTIONS, _MAX_PDF_ROWS) live on their importers.
 _MAX_IMPORT_BYTES = 16 * 1024 * 1024  # 16 MiB
 
+# Every strptime directive that reads a YEAR from the input (FIBR-0273).
+# %y is the 2-digit year, %G the ISO-8601 week-based year, and %x/%c the
+# locale's date / date-and-time representations, all of which carry one. The
+# set is deliberately generous: a format wrongly called year-less would be
+# REFUSED, removing a layout the "Custom…" escape hatch exists to preserve
+# (FIBR-0146 INV-4), which is the worse of the two errors.
+_YEAR_DIRECTIVES = frozenset("YyGxc")
+
+
+def _has_year_token(date_format: str) -> bool:
+    """True if ``date_format`` reads a year from the input (FIBR-0273).
+
+    Scans ``%``-directives rather than substring-matching, so ``"%%Y"`` — a
+    literal percent followed by a literal ``Y`` — is correctly year-less. A
+    trailing lone ``%`` is not a directive and ends the scan.
+    """
+    i = 0
+    while i < len(date_format) - 1:
+        if date_format[i] != "%":
+            i += 1
+            continue
+        if date_format[i + 1] in _YEAR_DIRECTIVES:
+            return True
+        i += 2  # skip the whole directive, so "%%" cannot be misread
+    return False
+
 
 def signature_for(header: list[str]) -> str:
     """The exact header fingerprint (D4). Case, spacing, and order are all
@@ -392,6 +418,17 @@ class ImportService:
         # D4) so the format is never silently defaulted either.
         if not mapping.date_format.strip():
             raise ValueError("choose a date format")
+        # A format with no YEAR token is the same trap by another route
+        # (FIBR-0273): strptime("20/07", "%d/%m") succeeds and returns
+        # 1900-07-20, so a whole statement imports into 1900 with the live
+        # preview cheerfully showing it. CPython already deprecates this —
+        # 3.15 will raise or pick a different default year — so rejecting it
+        # closes today's silent-wrong-year AND tomorrow's crash.
+        if not _has_year_token(mapping.date_format):
+            raise ValueError(
+                "this date format has no year in it — add %Y (or %y), or every "
+                "row will be dated 1900"
+            )
         has_amount = mapping.amount_column is not None
         has_debit = mapping.debit_column is not None
         has_credit = mapping.credit_column is not None
