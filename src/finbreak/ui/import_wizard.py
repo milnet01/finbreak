@@ -150,7 +150,7 @@ class ImportWizardWidget(QWidget):
         # during THIS import, under the provisional file-select account. If the
         # user then re-targets the import (preview step), the committed rows land
         # on a different account, so the password is carried there too on commit.
-        self._stored_pw: tuple[int, str] | None = None
+        self._stored_pw: tuple[int, str, str | None] | None = None
         # FIBR-0086: the statement's own account details, held only while the
         # preview shows a `no_match` — the Create button reads it. None in every
         # other outcome, which is what keeps creation unreachable from `no_number`.
@@ -833,10 +833,15 @@ class ImportWizardWidget(QWidget):
         branch, so no ``(account_id, None)`` is ever stashed — then continue."""
         if remember and password:
             account_id = self._target_account_id()
+            # Read the provisional account's OWN password before overwriting it.
+            # A later re-target MOVES ours off this account (FIBR-0249), and the
+            # only safe way to do that is to know what was there rather than
+            # guess — which is what the copy-instead-of-move was working around.
+            prior = self._accounts.get_pdf_password(account_id)
             self._accounts.set_pdf_password(account_id, password)
             # Remember which account we stored it under (the provisional
             # file-select one), so a later re-target carries it across (FIBR-0057).
-            self._stored_pw = (account_id, password)
+            self._stored_pw = (account_id, password, prior)
         self._continue_after_decrypt(plaintext)
 
     def _continue_after_decrypt(self, plaintext: bytes) -> None:
@@ -1412,20 +1417,34 @@ class ImportWizardWidget(QWidget):
     def _carry_stored_pw_to_committed_account(self) -> None:
         """If a PDF password was remembered during this import (persisted against
         the provisional file-select account) and the user then re-targeted the
-        import to a different account (FIBR-0057), store it on the account the rows
-        actually landed on too — so its auto-apply works next time. Only fills an
-        empty slot (never clobbers a password already remembered for that account)
-        and leaves the provisional account's password intact (it may be that
-        account's own, since a stored-password auto-try that failed is exactly what
-        led to the manual prompt)."""
+        import to a different account (FIBR-0057), **move** it to the account the
+        rows actually landed on — so its auto-apply works next time, and no
+        account is left holding a password that is not its own.
+
+        Only fills an empty slot on the destination (never clobbers a password
+        already remembered there).
+
+        **Moves rather than copies (FIBR-0249).** A copy left this statement's
+        password permanently on whichever account the pick step happened to show
+        — since FIBR-0086's auto-detect, routinely not the destination — which
+        is a credential filed against the wrong record. The copy existed because
+        the provisional account's password *might* be its own (a stored-password
+        auto-try that failed is exactly what leads to the manual prompt), and
+        removing it blindly would destroy it. So `_after_decrypt` records what
+        was there **before** it wrote, and this restores that value: the
+        account's own password if it had one, and nothing if it did not.
+        """
         if self._stored_pw is None or self._preview is None:
             return
-        stored_account, password = self._stored_pw
+        stored_account, password, prior = self._stored_pw
         final_account = self._preview.account_id
-        if stored_account != final_account and (
-            self._accounts.get_pdf_password(final_account) is None
-        ):
+        if stored_account == final_account:
+            return  # it was stored where the rows landed; nothing to move
+        if self._accounts.get_pdf_password(final_account) is None:
             self._accounts.set_pdf_password(final_account, password)
+        # Restore the provisional account, whether or not the destination took
+        # ours: the entry we wrote there was never that account's to keep.
+        self._accounts.set_pdf_password(stored_account, prior)
 
     # -- the batch (FIBR-0085) ------------------------------------------------
     #

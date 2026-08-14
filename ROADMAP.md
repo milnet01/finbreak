@@ -878,6 +878,40 @@ scariest unknown (native-library bundling) up front.
   in the split halves, and it landed in a 400-line document instead of a
   746-line one (FIBR-0272).
 
+- 📋 [FIBR-0274] **The stored-password auto-try consults only the pick-step account, so a re-targeted statement re-prompts next month.**
+  `_begin_decrypt` looks the remembered password up with
+  `get_pdf_password(self._target_account_id())` — necessarily the PICK-STEP
+  account, because the destination is not known until the PDF has been
+  decrypted and parsed. FIBR-0249 moved the stored password onto the
+  account the rows actually land on, which is where it belongs. So when
+  those two differ, next month's auto-try looks in the wrong place and the
+  user is prompted again.
+
+  This gap is not new, but FIBR-0249 made it VISIBLE. Before it, the carry
+  COPIED, so the pick-step account also held a copy and the auto-try
+  happened to succeed — the convenience was a side-effect of the
+  wrong-account credential FIBR-0249 removed. Removing the defect removed
+  the accident; the lookup was always the real problem.
+
+  Not fixed with FIBR-0249 deliberately: the obvious remedy — fall back to
+  trying every stored PDF password when the pick-step account has none —
+  weakens the guarantee FIBR-0009 INV-4 states structurally in
+  `_begin_decrypt`'s docstring ("the stored password is attempted at most
+  once", which holds today because there is exactly one candidate and one
+  call site). Every password involved is the same user's, so this is a
+  usability and invariant question, not a privilege one — but it wants a
+  decision and a test, not a quiet widening.
+
+  Options, cheapest first: (a) try each distinct stored password once, in a
+  fixed order, and restate INV-4 as "each stored password at most once per
+  import"; (b) key remembered statement passwords by something stable about
+  the FILE (issuing bank, or the detected account number) rather than by
+  account; (c) accept the re-prompt and say so in the UI. (b) is the most
+  correct and the most work.
+  **Layman:** After the app learns that a locked statement belongs to a different account than the one first selected, it still looks for the remembered password under the first one next month — so you get asked for the password again.
+  Kind: enhancement.
+  Source: in-session-2026-08-14 (found while fixing FIBR-0249).
+
 ### 📦 Packaging
 
 - ✅ [FIBR-0003] **P01: bundling smoke-test (de-risk

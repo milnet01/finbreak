@@ -556,6 +556,77 @@ def test_FIBR0057_remembered_pdf_password_follows_a_retarget(
     )
 
 
+def test_FIBR0249_retarget_MOVES_the_password_off_the_provisional_account(
+    qtbot, service, tmp_path, monkeypatch
+):
+    """FIBR-0249: the carry COPIED, so a statement password stayed permanently on
+    an unrelated account. The provisional account is whichever the pick step
+    happened to show — since FIBR-0086 auto-detect, routinely not the
+    destination — so this is a credential filed against the wrong record, in a
+    money app, on a public-repo project that cares about exactly that."""
+    accounts = AccountService(service.vault)
+    current = accounts.add_account("Current acct", "current").id
+    credit = accounts.add_account("Credit Card acct", "credit_card").id
+    ImportService(service.vault).save_profile("bank", _PDF_HEADER, _PDF_MAPPING)
+    enc = _encrypt(_fixture("single_table.pdf"), user="secret")
+    path = _write(tmp_path, "locked.pdf", enc)
+    _patch_dialog(monkeypatch, [{"password": "secret", "remember": True}])
+
+    widget = _wizard(qtbot, service, current)
+    widget._select_file(str(path))
+    assert accounts.get_pdf_password(current) == "secret", (
+        "precondition: it is stored on the provisional account first, because "
+        "the destination is not known until the PDF is decrypted and parsed"
+    )
+
+    widget._confirm_account_combo.setCurrentIndex(
+        widget._confirm_account_combo.findData(credit)
+    )
+    widget._import_button.click()
+
+    assert accounts.get_pdf_password(credit) == "secret", "lands on the destination"
+    assert accounts.get_pdf_password(current) is None, (
+        "and is REMOVED from the provisional account, which never had a password "
+        "of its own — a copy leaves this statement's password on an unrelated one"
+    )
+
+
+def test_FIBR0249_a_password_the_provisional_account_already_had_is_restored(
+    qtbot, service, tmp_path, monkeypatch
+):
+    """The half a plain move would break, and the reason the original code copied.
+
+    If the provisional account already had its own remembered password, that one
+    is genuinely its own — a failed auto-try is exactly what leads to the manual
+    prompt. The old code kept it by never removing anything, which is why the
+    wrong-account copy survived. This remembers the prior value instead of
+    guessing, so the move restores it rather than destroying it.
+    """
+    accounts = AccountService(service.vault)
+    current = accounts.add_account("Current acct", "current").id
+    credit = accounts.add_account("Credit Card acct", "credit_card").id
+    accounts.set_pdf_password(current, "its-own-one")
+    ImportService(service.vault).save_profile("bank", _PDF_HEADER, _PDF_MAPPING)
+    enc = _encrypt(_fixture("single_table.pdf"), user="secret")
+    path = _write(tmp_path, "locked.pdf", enc)
+    # The stored "its-own-one" is auto-tried first, fails, and the user is
+    # prompted — the exact sequence the original docstring described.
+    _patch_dialog(monkeypatch, [{"password": "secret", "remember": True}])
+
+    widget = _wizard(qtbot, service, current)
+    widget._select_file(str(path))
+    widget._confirm_account_combo.setCurrentIndex(
+        widget._confirm_account_combo.findData(credit)
+    )
+    widget._import_button.click()
+
+    assert accounts.get_pdf_password(credit) == "secret", "destination gets this one"
+    assert accounts.get_pdf_password(current) == "its-own-one", (
+        "the provisional account's OWN password is restored, not left overwritten "
+        "with a password belonging to a different account"
+    )
+
+
 # --------------------------------------------------------------------------- #
 # INV-8 — v4->v5 migration + credential hygiene
 # --------------------------------------------------------------------------- #
