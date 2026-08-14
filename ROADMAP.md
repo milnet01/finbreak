@@ -717,7 +717,7 @@ scariest unknown (native-library bundling) up front.
   Kind: fix.
   Source: in-session-2026-08-12 (review-contract gate on FIBR-0146, loop 3).
 
-- 📋 [FIBR-0272] **FIBR-0146 keeps yielding fresh-region findings; consider splitting before the next gate.**
+- ✅ [FIBR-0272] **FIBR-0146 keeps yielding fresh-region findings; consider splitting before the next gate.**
   Three loops, 11 verified findings, every one fixed, tail empty. The
   pattern is the point: loop 12 found three defects in regions loop 11
   never reached, and loop 13 found two more in regions neither had. Only
@@ -740,6 +740,32 @@ scariest unknown (native-library bundling) up front.
   **Layman:** The date-detection design document is long enough that each review pass reads different parts of it, so it should probably be split before it is reviewed again.
   Kind: doc-fix.
   Source: in-session-2026-08-12 (review-contract gate on FIBR-0146, loop 3, at the run cap).
+  Resolved (2026-08-14): split, but NOT at the seam this bullet proposed.
+  `spec-format.md` §5.4 turned out to govern it — a spec that outruns the
+  review's cap is larger than the review's design point, and the remedy is
+  to split along §3.6's by-concern seams rather than loop again. Measuring
+  the two candidate halves inverted the choice: the detector half is only
+  ~140 lines, so extracting it would have left FIBR-0146 near 600 and
+  barely moved the gate cost. The wizard half is ~300 lines AND is the half
+  this bullet itself names as the one that keeps drifting, so that is what
+  moved. 746 → 422 + 413 lines, both inside the ~400-650 range of sibling
+  specs. The wizard half is now
+  docs/specs/FIBR-0146-wizard-date-step.md (D4-D8, INV-1/4/5, the
+  ui/import_wizard.py symbols, the wizard test plan); the parent keeps the
+  detector and importer contract, the shared Context and every frozen
+  record. Both files carry the SAME id, following the FIBR-0192 /
+  FIBR-0192-qt-facts precedent — that is what made it cheap, since all ~66
+  existing `FIBR-0146 D<n>` citations in code, tests and the ROADMAP
+  resolve unchanged and none was touched. Ids are permanent, so the
+  companion's decisions start at D4 and its invariants skip INV-2/3/6.
+  Every moved line is verbatim: no invariant re-cut, no decision reworded,
+  no renumbering. A script asserted all 27 section boundaries before
+  writing and then re-checked that no substantive line of the 746 was
+  missing from both halves; doc_integrity clean. Recorded as a `13-split`
+  loop-log row with no reviewer dispatched, following FIBR-0192's precedent
+  that a split is not a review loop; rule 14 was checked and no line
+  changes for a conformer. FIBR-0267 (the same diagnosis on FIBR-0085, 1357
+  lines) is still open and now has a worked precedent to copy.
 
 - 📋 [FIBR-0273] **A year-less Custom date format silently dates every row 1900, and Python 3.15 changes what it does.**
   `_validate_mapping` rejects an EMPTY date format (FIBR-0146 INV-6, the
