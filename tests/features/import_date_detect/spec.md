@@ -1,6 +1,9 @@
 # Feature test contract — statement date-format auto-detect + confirm (FIBR-0146)
 
-Enforces `docs/specs/FIBR-0146.md`. finbreak stops making a person type
+Enforces `docs/specs/FIBR-0146.md` (detector + importer: INV-2, INV-3, INV-6,
+D1–D3) and its companion `docs/specs/FIBR-0146-wizard-date-step.md` (the wizard
+half: INV-1, INV-4, INV-5, D4–D8 — where the wizard layer below is specified).
+finbreak stops making a person type
 programmer date codes: the import wizard reads the actual dates, **guesses** the
 layout, offers a plain-English picker with a **live preview**, and shows a
 friendly message when a row can't be read — so a bank whose dates aren't
