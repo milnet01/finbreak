@@ -23,6 +23,13 @@ signaling per
 
 ### Fixed
 
+- **A date format with no year no longer files your whole statement in 1900** (FIBR-0273)
+  On the import screen you can type your own date pattern. If that pattern
+  had no year in it — "%d/%m" rather than "%d/%m/%Y" — finbreak accepted it
+  and dated every single transaction in the year 1900, with no warning. It
+  now stops and tells you the year is missing. Patterns that do carry a
+  year, including the less common ones, are unaffected.
+
 - **The import screen no longer re-reads the whole statement for every character you type** (FIBR-0269)
   Typing in the date-format box on the import screen made finbreak read the
   entire statement file again for each character — nine full reads to type

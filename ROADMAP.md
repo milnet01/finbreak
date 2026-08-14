@@ -767,7 +767,7 @@ scariest unknown (native-library bundling) up front.
   changes for a conformer. FIBR-0267 (the same diagnosis on FIBR-0085, 1357
   lines) is still open and now has a worked precedent to copy.
 
-- 📋 [FIBR-0273] **A year-less Custom date format silently dates every row 1900, and Python 3.15 changes what it does.**
+- ✅ [FIBR-0273] **A year-less Custom date format silently dates every row 1900, and Python 3.15 changes what it does.**
   `_validate_mapping` rejects an EMPTY date format (FIBR-0146 INV-6, the
   1900-01-01 trap) but not a year-LESS one. `%d/%m` passes validation, and
   `strptime("20/07", "%d/%m")` returns 1900-07-20 — so a whole statement
@@ -797,6 +797,36 @@ scariest unknown (native-library bundling) up front.
   **Layman:** If you type a date format with no year in it (like "%d/%m"), every imported transaction is filed in the year 1900 with no warning — and a future Python may change that to something else again.
   Kind: fix.
   Source: in-session-2026-08-14 (surfaced by the FIBR-0269 test run).
+  Resolved (2026-08-14): `_validate_mapping` now rejects a date format with
+  no year directive — "this date format has no year in it — add %Y (or %y),
+  or every row will be dated 1900" — next to the existing empty-format
+  check, as the bullet proposed. Gate green (1900 passed).
+
+  Two details the bullet did not anticipate, both test-locked. The check
+  scans `%`-directives instead of substring-matching, because `"%%Y"` is a
+  literal percent followed by a literal `Y` and is genuinely year-less,
+  where `"%Y" in fmt` would accept it. And the year set is deliberately
+  GENEROUS — `%y`, `%G`, `%x` and `%c` all read a year, not just `%Y` —
+  because the asymmetry runs the other way from the bug: a format wrongly
+  called year-less is REFUSED, which silently removes a layout the
+  "Custom…" escape hatch exists to preserve (FIBR-0146 INV-4). Seven
+  year-bearing formats are asserted still accepted for exactly that reason.
+
+  Covered by INV-8 in tests/features/import_date_detect/spec.md: six
+  refusal cases (all proven red first), seven acceptance cases, and a
+  precondition test proving `strptime("20/07", "%d/%m")` really does return
+  1900-07-20 rather than assuming it.
+
+  The live preview needed no change and deliberately got none: showing
+  "Dates read as: 1900-07-20" is INV-1 working — the user sees the wrong
+  year before any write — and Next now refuses. Under Python 3.15 the
+  preview degrades to its existing "couldn't be read" fallback rather than
+  crashing, since `_update_date_preview` already catches ValueError.
+
+  Recorded as an after-the-fact amendment in
+  docs/specs/FIBR-0146-wizard-date-step.md D4 — the first amendment to land
+  in the split halves, and it landed in a 400-line document instead of a
+  746-line one (FIBR-0272).
 
 ### 📦 Packaging
 
