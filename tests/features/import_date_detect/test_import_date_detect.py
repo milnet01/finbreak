@@ -64,6 +64,49 @@ def test_dotted_all_days_le_12_is_ambiguous():
     assert guess.ambiguous is True
 
 
+@pytest.mark.parametrize(
+    "month_column",
+    [
+        ["20 May 2026", "21 May 2026", "22 May 2026"],  # the reported case
+        ["03 May 2026", "04 May 2026"],  # days <= 12 too: still not day/month
+        ["01 Sep 2026"],  # Sep/September differ, so %B does not tie here
+    ],
+)
+def test_FIBR0264_named_month_tie_that_reads_identically_is_not_ambiguous(month_column):
+    """A May statement fired the day/month nudge (FIBR-0264). English spells the
+    abbreviated and full month name identically, so `%d %b %Y` and `%d %B %Y`
+    both parse every row and tie on count — but they read every row to the SAME
+    date, so there is nothing for the user to check. The nudge says "the day and
+    month might be the other way around", which is not the axis this tie is on.
+    A monthly statement is normal input, not a corner case."""
+    from finbreak.importers.date_detect import detect_date_format
+
+    guess = detect_date_format(month_column)
+    assert guess.fmt == "%d %b %Y", "the fixed-order winner is unchanged"
+    assert guess.ambiguous is False, (
+        f"{month_column[0]!r}: both candidates read this identically, so the "
+        "day/month nudge describes a problem that isn't there"
+    )
+
+
+def test_FIBR0264_a_tie_that_reads_DIFFERENTLY_is_still_ambiguous():
+    """The other half, and the one that must not regress: when the tied
+    candidates disagree about what date a row is, the nudge is exactly right.
+    Asserted as dates, not just the flag — the flag is only meaningful because
+    these two readings differ."""
+    from datetime import datetime
+
+    from finbreak.importers.date_detect import detect_date_format
+
+    column = ["05/06/2026", "07/08/2026"]
+    assert datetime.strptime(column[0], "%d/%m/%Y") != datetime.strptime(
+        column[0], "%m/%d/%Y"
+    ), "precondition: these two really do read the same cell as different days"
+    guess = detect_date_format(column)
+    assert guess.fmt == "%d/%m/%Y"
+    assert guess.ambiguous is True
+
+
 def test_two_digit_year_ambiguity_fires_the_nudge():
     from finbreak.importers.date_detect import detect_date_format
 

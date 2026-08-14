@@ -50,7 +50,10 @@ KNOWN_DATE_FORMATS: list[tuple[str, str]] = [
 @dataclass(frozen=True)
 class DateFormatGuess:
     fmt: str | None  # best-guess strptime pattern, or None if nothing parsed any sample
-    ambiguous: bool  # >=2 formats tie for the max parse-count (> 0)
+    # >=2 formats tie for the max parse-count (> 0) AND read some row to a
+    # different date. A tie that reads identically (May's %b/%B) is not
+    # ambiguous to the user and does not set this (FIBR-0264).
+    ambiguous: bool
 
 
 def detect_date_format(samples: Sequence[str]) -> DateFormatGuess:
@@ -68,22 +71,42 @@ def detect_date_format(samples: Sequence[str]) -> DateFormatGuess:
 
     best_fmt: str | None = None
     best_count = 0
+    best_dates: dict[int, datetime] = {}
     tie = False
     for _example, fmt in KNOWN_DATE_FORMATS:
-        count = 0
-        for sample in cleaned:
+        dates: dict[int, datetime] = {}
+        for index, sample in enumerate(cleaned):
             try:
-                datetime.strptime(sample, fmt)
+                dates[index] = datetime.strptime(sample, fmt)
             except ValueError:
                 continue
-            count += 1
+        count = len(dates)
         if count == 0:
             continue
         if count > best_count:
-            best_fmt, best_count, tie = fmt, count, False
-        elif count == best_count:
+            best_fmt, best_count, best_dates, tie = fmt, count, dates, False
+        elif count == best_count and _reads_differently(best_dates, dates):
             tie = True
 
     if best_fmt is None:
         return DateFormatGuess(None, False)
     return DateFormatGuess(best_fmt, tie)
+
+
+def _reads_differently(best: dict[int, datetime], other: dict[int, datetime]) -> bool:
+    """True if two tied candidates disagree about what date some row is.
+
+    A tie on parse-count is not by itself something to warn about (FIBR-0264).
+    English spells the abbreviated and full month name identically for May, so
+    ``%d %b %Y`` and ``%d %B %Y`` both parse every row of a May statement and
+    tie — but they read every row to the *same* date, so the D6 nudge ("the day
+    and month might be the other way around") describes a problem that is not
+    there. A monthly statement is normal input, not a corner case.
+
+    Only a tie whose candidates produce a *different* date is ambiguous to the
+    user, and over one column of numeric dates the only way that happens is a
+    day/month transposition — which is exactly what the nudge says. Compared on
+    the rows both parsed; a disjoint pair agrees about nothing and is left
+    un-flagged, since it cannot be shown to disagree.
+    """
+    return any(other[i] != date for i, date in best.items() if i in other)
