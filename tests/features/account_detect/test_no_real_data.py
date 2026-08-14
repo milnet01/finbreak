@@ -6,10 +6,18 @@ shape — which is how one sat in a spec for a month (FIBR-0244). Hence a test o
 its own.
 
 The numbers this guards against are themselves the secret, so they are **not**
-committed: they come from ``FINBREAK_CORPUS_NUMBERS`` (comma-separated) and the
-test **skips** when it is unset. Run it with the variable set before any push
-touching this feature. CI cannot hold the values, so CI does not catch this — a
-developer running it before a push does.
+committed. They come from the gitignored ``.corpus-numbers`` file at the repo
+root (one per line), or from ``FINBREAK_CORPUS_NUMBERS`` (comma-separated),
+which overrides it for a one-off run. The test **skips** when neither is
+supplied. CI cannot hold the values, so CI does not catch this — a developer
+running the gate before a push does.
+
+**The file route exists because the variable alone did not work** (FIBR-0248):
+nothing set it — not ``ci-local.sh``, not ``.githooks/pre-push``, not
+CLAUDE.md — so this test skipped on every run for months, and the invariant's
+only enforcement was a developer remembering an undocumented environment
+variable. A skipping test reads as coverage while providing none. Create the
+file once and the pre-push hook enforces it from then on.
 """
 
 import os
@@ -20,6 +28,47 @@ from pathlib import Path
 import pytest
 
 from finbreak.services.account_match import normalise_account_number
+
+# Where the corpus numbers live when they are not in the environment (FIBR-0248).
+# Gitignored, so the file itself can never be the leak this test looks for.
+CORPUS_FILE = ".corpus-numbers"
+
+
+def corpus_numbers_raw(root: Path) -> str:
+    """The corpus account numbers as supplied, or `""` when none are (FIBR-0248).
+
+    ``FINBREAK_CORPUS_NUMBERS`` wins so a one-off run can override the file. The
+    variable was the ONLY route until FIBR-0248, and nothing set it — not
+    ``ci-local.sh``, not the pre-push hook, not CLAUDE.md — so this test skipped
+    on every run and the invariant's only enforcement was a developer
+    remembering an undocumented environment variable. A gitignored file is
+    checked in by nobody and read by every run.
+    """
+    from_env = os.environ.get("FINBREAK_CORPUS_NUMBERS", "").strip()
+    if from_env:
+        return from_env
+    try:
+        return (root / CORPUS_FILE).read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
+def corpus_keys(raw: str) -> set[str]:
+    """Normalised account keys from a comma- or newline-separated list.
+
+    Newlines are the natural separator for the file and commas for the
+    environment variable, so both are accepted. A ``#`` comment is stripped
+    rather than merely tolerated: a label like ``# account 1 of 3`` would
+    otherwise contribute the digits ``13`` as a key, and a two-digit key matches
+    most of the tree.
+    """
+    keys: set[str] = set()
+    for line in raw.replace(",", "\n").splitlines():
+        part = line.split("#", 1)[0].strip()
+        if part and (normalised := normalise_account_number(part)):
+            keys.add(normalised)
+    return keys
+
 
 # A digit run allowing ANY single run of separator characters between digits.
 #
@@ -97,21 +146,17 @@ def test_no_corpus_numbers_in_tree() -> None:
     ``112223334``. A needle-only grep would miss exactly the shape the rest of the
     design encourages.
     """
-    raw = os.environ.get("FINBREAK_CORPUS_NUMBERS", "").strip()
+    root = _repo_root()
+    raw = corpus_numbers_raw(root)
     if not raw:
         pytest.skip(
-            "FINBREAK_CORPUS_NUMBERS unset — the real numbers are deliberately not "
+            f"no corpus numbers supplied — set FINBREAK_CORPUS_NUMBERS or create "
+            f"{CORPUS_FILE} (gitignored). The real numbers are deliberately not "
             "committed, so this guard only runs where they are supplied."
         )
 
-    keys = {
-        normalised
-        for part in raw.split(",")
-        if (normalised := normalise_account_number(part.strip()))
-    }
-    assert keys, "FINBREAK_CORPUS_NUMBERS held no usable digits"
-
-    root = _repo_root()
+    keys = corpus_keys(raw)
+    assert keys, "the corpus numbers held no usable digits"
     offenders: list[str] = []
     for path in _tracked_files(root):
         if path.suffix.lower() in _SKIP_SUFFIXES or not path.is_file():
@@ -136,3 +181,54 @@ def test_no_corpus_numbers_in_tree() -> None:
         "the digit length and grouping. Note this binds prose — specs, ROADMAP, "
         "CHANGELOG — as well as fixtures."
     )
+
+
+# --- FIBR-0248: the loader that decides whether the guard above runs at all ---
+#
+# Every number below is invented. The real ones are never written to a file in
+# this repo, never printed, and never passed on a command line.
+
+
+def test_FIBR0248_reads_the_gitignored_file_when_the_env_var_is_unset(
+    tmp_path, monkeypatch
+):
+    """The bug: the env var was the only route and nothing set it, so the guard
+    skipped on every run — a test that never runs is worse than no test, because
+    it reads as coverage."""
+    monkeypatch.delenv("FINBREAK_CORPUS_NUMBERS", raising=False)
+    (tmp_path / CORPUS_FILE).write_text("11 222 333 4\n55667778\n", encoding="utf-8")
+
+    assert corpus_numbers_raw(tmp_path), "the file must be read when env is unset"
+    assert corpus_keys(corpus_numbers_raw(tmp_path)) == {"112223334", "55667778"}
+
+
+def test_FIBR0248_env_var_overrides_the_file(tmp_path, monkeypatch):
+    """A one-off run must be able to override a stale file."""
+    (tmp_path / CORPUS_FILE).write_text("11223344\n", encoding="utf-8")
+    monkeypatch.setenv("FINBREAK_CORPUS_NUMBERS", "99887766")
+
+    assert corpus_keys(corpus_numbers_raw(tmp_path)) == {"99887766"}
+
+
+def test_FIBR0248_absent_file_and_unset_env_still_skips_cleanly(tmp_path, monkeypatch):
+    """Whoever does not hold the corpus must still get a clean skip, not an
+    error — CI is exactly this case and always will be."""
+    monkeypatch.delenv("FINBREAK_CORPUS_NUMBERS", raising=False)
+
+    assert corpus_numbers_raw(tmp_path) == ""
+
+
+def test_FIBR0248_comment_digits_do_not_become_a_key():
+    """A hand-maintained file invites labels. `# account 1 of 3` would otherwise
+    contribute the key `13`, which matches most of the tree and would turn the
+    guard into noise until someone switched it off."""
+    keys = corpus_keys("# account 1 of 3\n11222333 4  # cheque\n")
+
+    assert keys == {"112223334"}, f"comment digits leaked into the keys: {keys}"
+
+
+@pytest.mark.parametrize("separator", [",", "\n"])
+def test_FIBR0248_both_separators_accepted(separator):
+    """Commas suit the env var, newlines suit the file; both routes feed one
+    parser, so neither can drift."""
+    assert corpus_keys(f"11222333 4{separator}55667778") == {"112223334", "55667778"}

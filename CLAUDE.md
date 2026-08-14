@@ -141,6 +141,26 @@ no CVE. That second run costs ~28s of the gate's runtime:
 ./scripts/ci-local.sh
 ```
 
+**One-time: the real-account-number leak guard needs a file only you can
+supply (FIBR-0086 INV-8, wired by FIBR-0248).** This repo is **public**, and a
+bank account number is not a credential, so `gitleaks` does not match one — a
+real number reached a spec once and sat there a month (FIBR-0244). The guard
+that catches that class needs the real numbers to search for, and they are the
+secret, so they are never committed. Put them in a **gitignored
+`.corpus-numbers`** at the repo root, one per line, as printed:
+
+```bash
+printf '%s\n' '1234 567 890 1' '9876543210' > .corpus-numbers   # never `cat` this
+```
+
+Without it `tests/features/account_detect/test_no_real_data.py` **skips**, and
+a skipping test reads as coverage while providing none — which is exactly what
+it did on every run before FIBR-0248. `FINBREAK_CORPUS_NUMBERS`
+(comma-separated) overrides the file for a one-off run. **Never print the
+values, redirect them to a tracked file, or paste them into a commit message,
+spec or ROADMAP entry** — the guard binds prose, not just fixtures. CI cannot
+hold them and never will, so this check is local-only by design.
+
 **Pre-push hook — the gate runs automatically before every `git push`.** CI
 (`ci.yml`) runs this exact script, so "green locally" already means "green in
 CI"; the only way a red push slips through is *forgetting to run the gate*. The

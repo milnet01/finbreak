@@ -118,3 +118,9 @@ screenshot*.png
 /vendor.tar.gz
 /vendor/
 /build-obs/
+
+# Real corpus account numbers for the FIBR-0086 INV-8 leak guard (FIBR-0248).
+# These ARE the secret the guard looks for, so the file must never be tracked —
+# committing it would plant in a PUBLIC repo exactly what the test exists to
+# catch. `FINBREAK_CORPUS_NUMBERS` overrides it for a one-off run.
+/.corpus-numbers
