@@ -23,6 +23,14 @@ signaling per
 
 ### Fixed
 
+- **The import screen no longer re-reads the whole statement for every character you type** (FIBR-0269)
+  Typing in the date-format box on the import screen made finbreak read the
+  entire statement file again for each character — nine full reads to type
+  one format. On a very large statement (50,000 rows) that was about
+  three-quarters of a second of frozen window; on a normal monthly
+  statement you would never have noticed. It now reads the file once when
+  you pick it and remembers what it found.
+
 - **The import screen now has a Back button, so "go back and check the column mapping" is advice you can follow** (FIBR-0270)
   When no rows in a statement could be imported, finbreak told you to go
   back and check the column mapping — but there was no way back. There is

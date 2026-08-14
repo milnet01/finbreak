@@ -601,7 +601,7 @@ scariest unknown (native-library bundling) up front.
   Source: in-session-2026-08-12 (review-contract gate on FIBR-0146, loop 3).
   Resolved (2026-08-12): the guard is one owner, `_refresh_date_ui(detect=)`, not two wrapped call sites — the bullet named D5(b) and D5(c), and the tree had six unguarded sites, because `_update_date_preview` reads `_date_samples` too and runs on every one of them. So `_on_date_format_changed`, `_on_pdf_table_changed` and the batch ask step were open as well. `_select_file` deliberately keeps its own catch: D5(a) must refuse the file, not show the map step over it. The reachable route is the batch (SCAN -> ASK re-shows the map step with a broken body loaded), which is what the regression test drives; the CSV pick cannot reach it. FIBR-0146 D8 amended in the same commit. c3fc050, gate green (1879 passed).
 
-- 📋 [FIBR-0269] **The map step re-reads the whole statement on every date keystroke.**
+- ✅ [FIBR-0269] **The map step re-reads the whole statement on every date keystroke.**
   `_date_samples` stops COLLECTING at `_MAX_DATE_SAMPLES` (50), but the
   read it collects from does not stop: `read_rows` is
   `list(csv.DictReader(...))`, so the whole file is materialised first.
@@ -623,6 +623,22 @@ scariest unknown (native-library bundling) up front.
   **Layman:** On the import screen, typing in the date-format box makes the app re-read the entire file for every character — fine for a small statement, slow for a big one.
   Kind: perf.
   Source: in-session-2026-08-12 (review-contract gate on FIBR-0146, loop 2).
+  Resolved (2026-08-14): measured first, as the bullet asked. One
+  `_date_samples` call costs 0.17 ms at 100 rows, 6.96 ms at 5k, 30.3 ms at
+  20k and 81.1 ms at 50k — linear, confirming the read is unbounded while
+  the 50-sample collection bound is not. Typing the eight characters of
+  `%d/%m/%Y` read the file NINE times (8 keystrokes + the combo change), so
+  ~0.7 s of frozen UI on a 50k-row statement and about 60 ms on the
+  few-hundred-row one a bank actually issues. Real, but only felt well past
+  the size of a real statement — recorded here so the next reader does not
+  re-derive it. Took the bullet's first fix: samples cached per column
+  against `self._text`, dropped whenever the text is replaced. Identity, not
+  equality — every assignment to `self._text` is a fresh object. No
+  behaviour change, including on a broken body: nothing is cached when the
+  read raises, so the next call raises again. Covered by INV-7 in
+  tests/features/import_date_detect/spec.md, which counts reads rather than
+  seconds and asserts the counter is wired to the reader the wizard really
+  calls, so a passing zero cannot mean "never patched".
 
 - ✅ [FIBR-0270] **The all-rows-failed banner says "Go back" and the wizard has no way back.**
   `_banner_text`'s mapped-source sentence is "None of the rows could be
@@ -724,6 +740,37 @@ scariest unknown (native-library bundling) up front.
   **Layman:** The date-detection design document is long enough that each review pass reads different parts of it, so it should probably be split before it is reviewed again.
   Kind: doc-fix.
   Source: in-session-2026-08-12 (review-contract gate on FIBR-0146, loop 3, at the run cap).
+
+- 📋 [FIBR-0273] **A year-less Custom date format silently dates every row 1900, and Python 3.15 changes what it does.**
+  `_validate_mapping` rejects an EMPTY date format (FIBR-0146 INV-6, the
+  1900-01-01 trap) but not a year-LESS one. `%d/%m` passes validation, and
+  `strptime("20/07", "%d/%m")` returns 1900-07-20 — so a whole statement
+  imports into 1900 with the preview showing "Dates read as: 1900-07-20"
+  and no other complaint. That is the same trap the empty format was
+  closed for, reached by a different route.
+
+  Surfaced 2026-08-14 by the FIBR-0269 read-count test, which types the
+  prefixes of `%d/%m/%Y` into the Custom field: CPython emits
+  `DeprecationWarning: Parsing dates involving a day of month without a
+  year specified is ambiguious` from `_strptime.pattern()` — at format
+  COMPILE time, so it fires whether or not a sample then parses. The
+  message says 3.15 "will either always raise an exception or use a
+  different default year (TBD)". So today's failure is a silent wrong
+  year; tomorrow's is a `ValueError` out of `_update_date_preview` and
+  `CsvImporter.parse` on a format that validated.
+
+  Both halves want the same fix: reject a date format that carries no year
+  token at `_validate_mapping`, next to the empty check, with a message in
+  the same plain register ("this format has no year in it"). That closes
+  the 1900 import and makes the 3.15 change a no-op for us rather than a
+  new crash. Check `%y` as well as `%Y`, and the named-month formats.
+
+  Note the four DeprecationWarnings the gate now prints against
+  `test_FIBR0269_map_step_reads_the_statement_once_per_load` are this, not
+  a defect in that test — they are the warning doing its job.
+  **Layman:** If you type a date format with no year in it (like "%d/%m"), every imported transaction is filed in the year 1900 with no warning — and a future Python may change that to something else again.
+  Kind: fix.
+  Source: in-session-2026-08-14 (surfaced by the FIBR-0269 test run).
 
 ### 📦 Packaging
 
