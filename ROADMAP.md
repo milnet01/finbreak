@@ -649,6 +649,48 @@ scariest unknown (native-library bundling) up front.
   **Layman:** The batch-import design document describes the shipped code wrongly in five more places; it is also long enough that each review pass reaches different parts of it, so it should be split before it is reviewed again.
   Kind: doc-fix.
   Source: in-session-2026-08-12 (review-contract gate on FIBR-0085, loop 2).
+  Progress (2026-08-14): scoped but NOT split — deliberately stopped short.
+  FIBR-0272 has now done the same job on FIBR-0146 (746 → 422 + 413), so
+  there is a worked precedent to copy; what follows is this document's map,
+  so the next session does not re-derive it.
+
+  Structure differs from FIBR-0146's: numbered `## 1..14` sections, no
+  D-items. 1376 lines, of which §4 Design is 622 (lines 171-793) and §5
+  Invariants 210 (794-1004). §4 has eight subsections and they align with a
+  REAL module boundary rather than a judgement call — CLAUDE.md's module
+  map already splits this feature three ways, and §4.2 (per-file record),
+  4.3 (four passes), 4.4 (PDF password with no pick-step account) and 4.5
+  (cumulative dedup) are the Qt-free `services/batch_import.py` decisions,
+  while 4.6 (review step), 4.7 (driving passes with no nested event loop)
+  and 4.8 (outcomes) are `ui/import_batch.py`. §4.1 "Where the work lands"
+  is shared orientation and belongs with whichever half keeps the id.
+
+  The promising part: each invariant in §5 is a self-contained bullet
+  carrying its own `*Test:*` line, and those name either
+  `test_batch_import.py` (service) or `test_batch_import_ui.py` (UI). So
+  the invariant allocation can be driven by an objective signal instead of
+  a reading — which is exactly what made FIBR-0146's invariant table the
+  hard part. A first pass suggested roughly 7 service / 5 UI / 1 spanning
+  (INV-15, 92 lines) / 6 unclassified.
+
+  Do NOT trust those counts. The classifier matched `- **INV-N**` outside
+  §5 as well (§7 and §11 refer back to them), which double-counted four ids
+  and produced one negative block size. The seam signal is real; that
+  measurement of it is not. Re-run it bounded strictly to lines 794-1004
+  before cutting anything.
+
+  Still unread and needing allocation: §6 failure modes, §7 tests, §9 out
+  of scope, §10 resource cost, §11 what checks this, §12 cross-doc impact.
+  §13 loop log and §14 as-built deviations are frozen records and stay with
+  the id, per the FIBR-0192 precedent that a split is recorded as a
+  loop-log row with no reviewer dispatched.
+
+  Method that worked on FIBR-0146 and should be reused: assert every
+  section boundary in a script BEFORE writing, move text verbatim rather
+  than retyping, then check that no substantive line of the original is
+  absent from both halves, then doc_integrity over the union. Keep the same
+  id with a `-<topic>.md` suffix so existing citations resolve untouched —
+  that is what made the last one cheap.
 
 - ✅ [FIBR-0268] **A malformed CSV body crashes out of the date-column slot, which catches nothing.**
   `_date_samples` reads through `read_rows`, which translates a
