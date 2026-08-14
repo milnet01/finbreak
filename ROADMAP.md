@@ -471,7 +471,7 @@ scariest unknown (native-library bundling) up front.
     literally with nothing added: venv 0, ci-setup 0, self-test 0,
     ci-local 0, "All gates passed" (1869 passed, 5 skipped).
 
-- 📋 [FIBR-0264] **The day/month ambiguity nudge fires on a May statement, where the tie is not about day order.**
+- ✅ [FIBR-0264] **The day/month ambiguity nudge fires on a May statement, where the tie is not about day order.**
   `detect_date_format` returns `ambiguous=True` for a May-only
   named-month column, because English spells the abbreviated and full
   month name identically, so `%d %b %Y` and `%d %B %Y` both parse every
@@ -496,6 +496,28 @@ scariest unknown (native-library bundling) up front.
   **Layman:** On a statement dated in May, the app warns that the day and month might be swapped — but the dates are being read correctly and the warning describes a problem that isn't there.
   Kind: fix.
   Source: in-session-2026-08-12 (review-contract gate on FIBR-0146, loop 1).
+  Resolved (2026-08-14): took the bullet's first option — make the nudge
+  conditional on the tied candidates actually differing — rather than the
+  neutral-sentence fallback, because it makes the flag and the sentence
+  mean the same thing instead of adding a second sentence to keep in sync.
+  `ambiguous` now requires a parse-count tie AND that the tied candidates
+  read some row to a DIFFERENT date. Over one column of dates the only way
+  that happens is a day/month transposition, which is precisely what "the
+  day and month might be the other way around" says.
+
+  May now reads unambiguous; the parse was never affected, so nothing about
+  which format wins changed. Gate green (1904 passed).
+
+  Three May columns asserted, two proven red first. One of them uses day
+  numbers <= 12 deliberately, so the fix cannot be confused with D2's
+  day-number precondition — the axis the bullet pointed out does not hold
+  here. The opposite leg is guarded as well: a transposed column stays
+  ambiguous, with a precondition asserting `%d/%m/%Y` and `%m/%d/%Y` really
+  do read the same cell as different days, so that leg cannot pass
+  vacuously. Covered by INV-9 in tests/features/import_date_detect/spec.md.
+
+  No spec amendment needed: FIBR-0146 D2 already states the %b/%B tie axis,
+  having been amended when this bullet was filed.
 
 - 📋 [FIBR-0265] **FIBR-0085 gives Cancel-during-SCAN two contradictory behaviours.**
   §4.3 says "Cancel during SCAN behaves the same way as during RUN:

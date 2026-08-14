@@ -23,6 +23,14 @@ signaling per
 
 ### Fixed
 
+- **No more "the day and month might be swapped" warning on a May statement** (FIBR-0264)
+  Importing a statement dated in May showed a warning that the day and
+  month might be the other way around — but the dates were being read
+  correctly and there was nothing to check. (May is the one month whose
+  short and long names are the same word, which was enough to confuse the
+  check.) The warning now appears only when the two possible readings would
+  genuinely give different dates.
+
 - **A date format with no year no longer files your whole statement in 1900** (FIBR-0273)
   On the import screen you can type your own date pattern. If that pattern
   had no year in it — "%d/%m" rather than "%d/%m/%Y" — finbreak accepted it
