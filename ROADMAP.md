@@ -284,7 +284,7 @@ scariest unknown (native-library bundling) up front.
   local-only. FIBR-0246 and FIBR-0247 remain open and are the other two
   halves of this guard.
 
-- 📋 [FIBR-0249] **A remembered statement password is stored against the pick-step account, which auto-detect now routinely changes.**
+- ✅ [FIBR-0249] **A remembered statement password is stored against the pick-step account, which auto-detect now routinely changes.**
   `_begin_decrypt` / `_after_decrypt` look up and persist the remembered
   PDF password against `_target_account_id()` at decrypt time. That is
   necessarily the PICK-STEP account, because auto-detect cannot run until
@@ -302,6 +302,35 @@ scariest unknown (native-library bundling) up front.
   **Layman:** When you tick "remember this password" for a locked PDF, it gets saved against whichever account was selected before the app worked out the right one — so it lands on an unrelated account and you get asked again next month.
   Kind: fix.
   Source: in-session-2026-08-06 (FIBR-0086 review lane 2).
+  Resolved (2026-08-14): moves rather than copies, as the bullet asked.
+  Gate green (1912 passed).
+
+  The copy had a real reason, which the bullet did not mention and a plain
+  move would have broken: the provisional account's password MIGHT be its
+  own, because a stored-password auto-try that failed is exactly what leads
+  to the manual prompt. The old code protected that by never removing
+  anything — which is what left this statement's password on an unrelated
+  account. Fix: `_after_decrypt` now records what was there BEFORE it
+  writes, and the carry restores that value — the account's own password if
+  it had one, nothing if it did not. So it knows instead of guessing. Both
+  halves are tested, the restore case being the one that would otherwise
+  have silently destroyed a user's own remembered password.
+
+  The prior value rides inside the `_stored_pw` tuple deliberately:
+  FIBR-0009 INV-11 greps the wizard source for any `self._*password`
+  attribute, so a separate field would have tripped a credential-hygiene
+  backstop.
+
+  The bullet's second half — "re-key once the destination is settled" — is
+  what the move does. But the bullet's re-prompt claim needs correcting for
+  the record: under the OLD copy the user was NOT re-prompted, because the
+  pick-step account held a copy and the auto-try succeeded off it. That
+  convenience was a side-effect of the wrong-account credential. Removing
+  the defect removes the accident, so the re-prompt is now real, and the
+  actual cause is that `_begin_decrypt` looks up only the pick-step
+  account. Filed as FIBR-0274 rather than fixed here: the obvious remedy
+  weakens FIBR-0009 INV-4's structural "attempted at most once", which
+  wants a decision and a test rather than a quiet widening.
 
 - 📋 [FIBR-0250] **normalise_account_number's zero-strip is ASCII-only while its digit filter is not.**
   `re.sub(r"\D", "", raw)` is Unicode-aware and keeps Arabic-Indic or

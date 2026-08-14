@@ -23,6 +23,14 @@ signaling per
 
 ### Fixed
 
+- **A remembered statement password no longer stays on an unrelated account** (FIBR-0249)
+  When you tick "remember this password" for a locked PDF statement,
+  finbreak has to save it before it knows which account the statement
+  belongs to — so it saves it against whichever account was selected at the
+  time. If the right account turned out to be a different one, the password
+  was left sitting on both. It now moves to the correct account, and if the
+  first account had a password of its own, that one is put back untouched.
+
 - **No more "the day and month might be swapped" warning on a May statement** (FIBR-0264)
   Importing a statement dated in May showed a warning that the day and
   month might be the other way around — but the dates were being read
