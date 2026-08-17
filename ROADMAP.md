@@ -3398,6 +3398,41 @@ lands on top.
   Kind: doc-fix.
   Source: user-request-2026-07-23.
 
+- 📋 [FIBR-0275] **A release can publish with no assets, and nothing notices — the README sends users to an empty page.**
+  `cut-release` / the bump recipe carry the version bump, the tag and
+  `gh release create`, but the AppImage and Windows `.exe` are built by a
+  SEPARATE manual step (`.claude/bump.json` `_comment` says so). Nothing
+  asserts the two ever meet. Cutting 0.1.21 published the release with
+  **0 assets**, and the only thing that caught it was reading
+  `gh release view --json assets` by hand.
+
+  That matters more than it looks, because three things point users at
+  those assets:
+  - `README.md` § Install step 1 — "Download the `finbreak-*-x86_64.AppImage`
+    from the latest release";
+  - the in-app updater, which resolves the newest release and looks for an
+    asset matching `AppImage`/`WindowsInstaller.asset_suffix()`;
+  - `FIBR-0203`, already ✅, which was the same class of failure once
+    removed — a release that existed but was invisible to the updater.
+
+  So the gap has bitten before and was closed as a one-off rather than
+  guarded.
+
+  Cheapest guard, and it needs no new machinery: a post-publish assertion
+  in the release path that `gh release view v<NEW> --json assets` returns at
+  least the AppImage plus its `.sig`, and fails loudly otherwise. A
+  stronger version also checks each asset name against the pattern the
+  updater actually greps for, which is the specific trap `.claude/bump.json`
+  already warns about in prose for the Windows `.exe` ("the name MUST match
+  `WindowsInstaller.asset_suffix()` '-x86_64.exe' or the updater won't find
+  it — no automated guard").
+
+  Note the ordering constraint: the assets cannot exist before the tag, so
+  this is a check that runs after `gh release create`, not a pre-flight.
+  **Layman:** If the person cutting a release forgets the separate build step, the download page is published empty and the app's own "download the latest release" link leads nowhere.
+  Kind: fix.
+  Source: in-session-2026-08-17 (found while cutting 0.1.21).
+
 ## Enhancements & performance backlog
 
 Ideas captured 2026-07-01 from a product / performance review
