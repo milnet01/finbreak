@@ -24,11 +24,13 @@ Read these in order on every session start:
 5. **`docs/specs/<active-id>.md`** — the contract for the
    currently-active roadmap item.
 6. **`docs/audit-allowlist.md`** — read **additionally** before
-   invoking `/audit` or `/code-quality-review` so already-confirmed
+   invoking `check-code` or `/code-quality-review` so already-confirmed
    project-specific false positives aren't re-flagged. The
    allowlist is the closed-loop memory for this project — see
    the "False-positive learning" section of the `app-workflow`
-   skill (`~/.claude/skills/app-workflow/SKILL.md`).
+   skill (`~/.claude/skills/app-workflow/audit-fold.md`).
+   (`check-code` replaced `/audit` on 2026-08-15; the allowlist
+   read is keyed to the job, not the old name.)
 
 ## Closing a phase
 
@@ -39,13 +41,20 @@ are done — see SKILL.md for the full description.
 
 finbreak is **correctness-critical** — it handles people's money, and a
 wrong-day / wrong-zone / wrong-total bug is exactly the class of error users
-won't forgive. So specs get more room to settle before code: run **`/cold-eyes`
-with `--max-loops 7`** for this project (not the skill's default of 5) — i.e.
-allow up to **7** convergence loops before pausing to ask how to proceed.
-Convergence is unchanged (a pass with no *substantive* structural / mechanical /
-architectural findings — polish-only converges); the higher cap simply gives the
-loop headroom to settle on this project's specs rather than hitting the ceiling
-mid-refinement. (User directive 2026-07-11.)
+won't forgive. So specs get more room to settle before code: run
+**`review-contract <path> --max-loops 7`** for this project — i.e. allow up to
+**7** convergence loops rather than the skill's default of 2 for a spec or plan
+and 3 for a standard or ADR. (User directive 2026-07-11, when the skill was
+`/cold-eyes`; that skill was replaced by `review-contract` on 2026-08-12 and
+the raised cap carries over unchanged.)
+
+**Convergence is the skill's, not a local definition**: a loop whose verified
+findings answer none of its four questions. Do not hold a spec to the older
+"no *substantive* structural / mechanical / architectural findings" bar —
+`review-contract` retired those dimensions and puts wording, structure and
+duplication outside the gate entirely, so looping on them buys nothing. And at
+the cap it **files the remaining findings and exits** rather than pausing to
+ask how to proceed; reaching the cap on a spec is a normal exit, not a failure.
 
 ## Tech stack
 
@@ -226,8 +235,16 @@ stable per-bullet ID for ROADMAP_FORMAT v1 projects
 (`FIBR-NNNN`).
 
 Every implementation phase ends with `git tag -a <ID>-complete`
-on the closing commit. Tags are local until the user explicitly
-authorises a push.
+on the closing commit. **Those phase tags** stay local until the
+user explicitly authorises a push.
+
+**A release tag `v<X.Y.Z>` is NOT covered by that** — it is pushed
+as part of cutting the release, without asking, per global
+`~/.claude/CLAUDE.md` § 6 ("a release push goes immediately and
+WITHOUT asking, on every repository"). An unpushed release tag is a
+half-cut release, and the next session cannot tell a queued one from
+a failed one. `scripts/release-linux.sh` assumes this: it creates
+the `vX.Y.Z` ref on the **remote** via `gh release create`.
 
 ## Push policy
 
@@ -243,27 +260,49 @@ header.
 A push that touches **only** documentation does not need
 `./scripts/ci-local.sh` — neither run by hand first, nor via the
 pre-push hook. Push it with `git push --no-verify`. The gate takes
-~1m45s and no Python stage reads prose, so paying it for a ROADMAP
-annotation or a CHANGELOG line is pure waiting.
+~1m45s and most of it is aimed at code, so paying it in full for a
+ROADMAP annotation or a CHANGELOG line is mostly waiting.
 
-**One exception, and it is easy to miss.** `tests/features/harness/`
-(FIBR-0001 INV-1) reads **`docs/specs/FIBR-0001.md`** and compares its
-stage table against `scripts/ci-local.sh`. So a "doc-only" edit to
-*that one spec* can genuinely turn the suite red. Run the gate — or at
-least `pytest tests/features/harness/` (well under a second) — when
-the diff touches it.
+**Two stages DO read prose, so the skip is not free.** Do not repeat
+the old justification for it — "no Python stage reads prose" — which
+was simply false:
+
+- **`tests/features/harness/`** (FIBR-0001 INV-1) reads
+  **`docs/specs/FIBR-0001.md`** and compares its stage table against
+  `scripts/ci-local.sh`, so a "doc-only" edit to *that one spec* can
+  genuinely turn the suite red.
+- **`tests/features/account_detect/test_no_real_data.py`** (FIBR-0086
+  INV-8) walks `git ls-files` and reads **every tracked text file** —
+  specs, ROADMAP, CHANGELOG included. That is deliberate: the guard
+  binds prose, because a real account number reached a spec once and
+  sat there a month (FIBR-0244). `gitleaks dir .` scans prose too, and
+  `.githooks/pre-push` exists because of a red **docs-only** commit
+  (`a0cc895`).
 
 Rule of thumb: doc-only **and** not `docs/specs/FIBR-0001.md` → skip
 the gate. Anything else → gate as usual. A code change never skips,
 however small.
 
+**Caveat on that rule, unresolved.** The leak guard is exactly the
+check a prose commit wants, and the skip sends prose commits past it.
+It is latent today only because the guard **skips** without
+`.corpus-numbers` (see the one-time setup above) — so on a machine
+that has the file, the skip has real teeth. Cheap mitigation while it
+stands: `pytest tests/features/account_detect/` before a prose push
+that adds numbers. Whether the directive should be narrowed is the
+user's call, raised 2026-08-17 and not decided.
+
 ## Cutting a release: `gh release create` is NOT the end
 
-`cut-release` and `.claude/bump.json` carry the version bump, the tag
-and the GitHub release **but not the downloads**. The AppImage and the
-Windows `.exe` are built and attached by `scripts/release-linux.sh` and
-`scripts/release-windows.sh`, and **nothing invokes those for you** —
-`bump.json`'s own `_comment` calls them "a separate manual step".
+`cut-release` carries the version bump, the tag and the GitHub release
+**but not the downloads**. `.claude/bump.json` carries less still — its
+`_comment` says "this recipe covers the version bump only -- the signed
+AppImage build + publish is a separate manual step". The AppImage and
+the Windows `.exe` are built and attached by `scripts/release-linux.sh`
+and `scripts/release-windows.sh`, and **nothing invokes those for you**.
+(`bump.json` names the lower-level `scripts/build-release-appimage.sh`
+and a hand-run `gh release create`; the two wrappers are what to run
+today.)
 
 **v0.1.20 published with ZERO assets and it went unnoticed for ten
 days.** Both the README's "download the latest release" link and the
@@ -274,26 +313,48 @@ between the next release and the same hole. (Same class as FIBR-0203,
 which was closed as a one-off rather than guarded — that is why it
 recurred.)
 
-So the Linux release path is, in order:
+So the release path is, in order — and the **push** is a step, not a
+tidy-up:
 
 ```bash
-. .venv/bin/activate                  # both scripts need cryptography
-./scripts/release-linux.sh            # AppImage + .sig + SHA256SUMS + SBOM
-./scripts/release-windows.sh          # dispatches windows-build.yml on the tag
+git commit … && git push origin main   # release-linux.sh needs the bump PUSHED
+. .venv/bin/activate                   # both scripts need cryptography
+./scripts/release-linux.sh             # AppImage + .sig + SHA256SUMS + linux SBOM
+./scripts/release-windows.sh           # .exe + .sig + windows SBOM
+# then re-pin the Flatpak commit: (below)
 ```
 
-Three things worth knowing before you run them:
+Four things worth knowing before you run them:
 
+- **The bump must be PUSHED, not merely committed.** `release-linux.sh`
+  refuses with "working tree is dirty — **commit + push** the bump
+  first", but it only tests `git status --porcelain` — so a
+  committed-but-unpushed bump *passes* and the script then creates the
+  tag on the **remote**, off the remote's HEAD, i.e. the pre-bump
+  commit. Nothing catches that. (`dist/` is gitignored, so a dirty tree
+  here is your own ROADMAP or CHANGELOG edit.) Do not pipe either script
+  through `grep`/`tail` while debugging — that masks its exit status and
+  a refusal reads as success.
 - **`release-linux.sh` is safe against a release that already exists** —
   step 7 branches to `gh release upload --clobber`. So a release created
   by hand first (as 0.1.21 was) is repaired rather than duplicated.
-- **It refuses a dirty tree**, and `dist/` is gitignored, so the usual
-  culprit is your own uncommitted ROADMAP or CHANGELOG edit. Commit
-  first. Do not pipe it through `grep`/`tail` while debugging — that
-  masks its exit status and a refusal reads as success.
 - **`release-windows.sh` needs no Windows machine**; it dispatches
   `windows-build.yml` on the tag and waits. Public repo, so the minutes
-  are free.
+  are free. It also needs `gh` with **workflow** scope, and both scripts
+  need `podman`/`docker` and the Ed25519 key at
+  `release/finbreak-signing.key` — gitignored, local-only, and already
+  present on this machine. **Do not run `scripts/gen-signing-key.py` to
+  "fix" a missing key**: it mints a *new* one, which `release-linux.sh`'s
+  hard gate against the committed `RELEASE_PUBLIC_KEY_B64` then rejects,
+  and a release signed with it would be invisible to every installed
+  copy's updater.
+- **Re-pin the Flatpak `commit:` afterwards.** `bump.json` bumps the
+  manifest's `tag:` mechanically, but its sibling `commit:` cannot be —
+  the sha does not exist until the release is tagged. `release-linux.sh`
+  prints the sha as its last line; set it in
+  `packaging/flatpak/io.github.milnet01.finbreak.yaml`. Nothing verifies
+  the two point at the same object, so this is the one step with no
+  guard at all.
 
 Finish by reading the result back — the script's own "DONE" line is
 printed before anything re-reads the release:
@@ -302,29 +363,53 @@ printed before anything re-reads the release:
 gh release view v<NEW> --json assets -q '[.assets[].name]|join(", ")'
 ```
 
-An empty list is a broken release, not a quiet one. A complete one
-carries the AppImage, its `.sig`, `SHA256SUMS`, `SHA256SUMS.sig`, the
-linux SBOM, and — once the Windows half lands — the `.exe` and its
-`.sig`.
+**A complete release carries EIGHT assets**, and anything less is broken
+rather than quiet: the AppImage, the `.exe`, a `.sig` for each,
+`SHA256SUMS`, `SHA256SUMS.sig`, and **both** SBOMs
+(`finbreak-<V>-linux.cdx.json` *and* `finbreak-<V>-windows.cdx.json`).
+Compare against v0.1.18, v0.1.19 and v0.1.21, which all carry exactly
+that set. A five-asset read-back means the Windows half has not landed —
+still building, or failed — and `release-windows.sh` exits non-zero
+*after* the Linux assets are already public, so a red Windows build
+leaves a `--latest` release the README and the updater both resolve to
+with no Windows download. Re-run it; do not walk away from a short list.
 
 **Expect transient GitHub API failures, and retry before diagnosing.**
-Cutting 0.1.21 hit three: a 503 on `gh repo view`, a 401 on
-`git push origin <tag>`, and a 503 on the `windows-build.yml` dispatch.
-The first two cleared on a plain retry. **The third did not** — it
-503'd twice from inside `release-windows.sh` while `gh release view`
-and `gh workflow list` both worked and githubstatus reported Actions
-operational. What cleared it was running the dispatch by hand:
+Cutting 0.1.21 hit them on four different endpoints — `gh repo view`
+(503), `git push origin <tag>` (401), the `windows-build.yml` dispatch
+(503, three times from inside the script while `gh release view` and
+`gh workflow list` both worked and githubstatus reported Actions
+operational), and the asset upload. Every one cleared on a retry.
+
+**The upload failure is the dangerous one, because it half-succeeded.**
+`release-windows.sh`'s final `gh release upload --clobber` deletes each
+existing asset before replacing it, so a 503 mid-list left v0.1.21
+carrying `SHA256SUMS.sig` but **not** `SHA256SUMS`, and `.exe.sig` but
+**not** the `.exe` — a signed release whose signed manifest was gone.
+Nothing reported an error loudly; the script had already printed its
+signing successes.
+
+If you land there, the artifacts in `dist/` are already built, signed
+and verified, so re-upload them rather than rebuilding — **one file per
+call, so a partial failure is visible**:
 
 ```bash
-gh workflow run windows-build.yml --ref v<NEW>
+for f in dist/finbreak-<V>-x86_64.exe dist/finbreak-<V>-x86_64.exe.sig \
+         dist/SHA256SUMS dist/SHA256SUMS.sig dist/finbreak-<V>-windows.cdx.json; do
+    gh release upload v<NEW> "$f" --clobber || echo "FAILED $f"
+done
 ```
 
-If that is where you end up, re-run `release-windows.sh` afterwards
-rather than finishing by hand — it records the newest run id first and
-waits for a *newer* one, so it simply dispatches again and the stray
-run is ignored. The steps you would be skipping are the Ed25519 signing
-and its verification against the committed public key, which is the
-half that must not be improvised.
+Then read the assets back again. A batched upload wrapped in a pipe is
+how the half-state goes unnoticed twice.
+
+If the *dispatch* is what is failing, run it by hand
+(`gh workflow run windows-build.yml --ref v<NEW>`) and then re-run
+`release-windows.sh` — it records the newest run id first and waits for
+a *newer* one, so it simply dispatches again and the stray run is
+ignored. Do not finish the Windows half by hand: the steps you would be
+skipping are the Ed25519 signing and its verification against the
+committed public key.
 
 ## Module map
 
