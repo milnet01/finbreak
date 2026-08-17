@@ -257,6 +257,75 @@ Rule of thumb: doc-only **and** not `docs/specs/FIBR-0001.md` → skip
 the gate. Anything else → gate as usual. A code change never skips,
 however small.
 
+## Cutting a release: `gh release create` is NOT the end
+
+`cut-release` and `.claude/bump.json` carry the version bump, the tag
+and the GitHub release **but not the downloads**. The AppImage and the
+Windows `.exe` are built and attached by `scripts/release-linux.sh` and
+`scripts/release-windows.sh`, and **nothing invokes those for you** —
+`bump.json`'s own `_comment` calls them "a separate manual step".
+
+**v0.1.20 published with ZERO assets and it went unnoticed for ten
+days.** Both the README's "download the latest release" link and the
+in-app updater resolve to that page, so both were dead the whole time.
+Found 2026-08-17 while cutting 0.1.21; the automated guard is
+**FIBR-0275**, and until it lands this note is the only thing standing
+between the next release and the same hole. (Same class as FIBR-0203,
+which was closed as a one-off rather than guarded — that is why it
+recurred.)
+
+So the Linux release path is, in order:
+
+```bash
+. .venv/bin/activate                  # both scripts need cryptography
+./scripts/release-linux.sh            # AppImage + .sig + SHA256SUMS + SBOM
+./scripts/release-windows.sh          # dispatches windows-build.yml on the tag
+```
+
+Three things worth knowing before you run them:
+
+- **`release-linux.sh` is safe against a release that already exists** —
+  step 7 branches to `gh release upload --clobber`. So a release created
+  by hand first (as 0.1.21 was) is repaired rather than duplicated.
+- **It refuses a dirty tree**, and `dist/` is gitignored, so the usual
+  culprit is your own uncommitted ROADMAP or CHANGELOG edit. Commit
+  first. Do not pipe it through `grep`/`tail` while debugging — that
+  masks its exit status and a refusal reads as success.
+- **`release-windows.sh` needs no Windows machine**; it dispatches
+  `windows-build.yml` on the tag and waits. Public repo, so the minutes
+  are free.
+
+Finish by reading the result back — the script's own "DONE" line is
+printed before anything re-reads the release:
+
+```bash
+gh release view v<NEW> --json assets -q '[.assets[].name]|join(", ")'
+```
+
+An empty list is a broken release, not a quiet one. A complete one
+carries the AppImage, its `.sig`, `SHA256SUMS`, `SHA256SUMS.sig`, the
+linux SBOM, and — once the Windows half lands — the `.exe` and its
+`.sig`.
+
+**Expect transient GitHub API failures, and retry before diagnosing.**
+Cutting 0.1.21 hit three: a 503 on `gh repo view`, a 401 on
+`git push origin <tag>`, and a 503 on the `windows-build.yml` dispatch.
+The first two cleared on a plain retry. **The third did not** — it
+503'd twice from inside `release-windows.sh` while `gh release view`
+and `gh workflow list` both worked and githubstatus reported Actions
+operational. What cleared it was running the dispatch by hand:
+
+```bash
+gh workflow run windows-build.yml --ref v<NEW>
+```
+
+If that is where you end up, re-run `release-windows.sh` afterwards
+rather than finishing by hand — it records the newest run id first and
+waits for a *newer* one, so it simply dispatches again and the stray
+run is ignored. The steps you would be skipping are the Ed25519 signing
+and its verification against the committed public key, which is the
+half that must not be improvised.
+
 ## Module map
 
 `src` layout; the package is `finbreak`, found by pytest via
