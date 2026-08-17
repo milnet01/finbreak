@@ -6,7 +6,12 @@ Scaffolded from the **Ants App-Build** template; follows the
 
 ## Where state lives
 
-Read these in order on every session start:
+**Items 1–3 are read on every session start; 4–6 are read when you need
+them, not up front.** § Resumption flow at the bottom of this file is the
+operative procedure and it governs — it reads 1–3 in one batch, summarises
+back, then pulls the *one* standard matching the active item's `Kind`. Do
+not read all six standards and the active spec before summarising: that is
+six-plus reads to answer a question the ROADMAP already answers.
 
 1. **This file** — stable rules and conventions.
 2. **`ROADMAP.md`** — **the authority on current state**: what
@@ -20,9 +25,12 @@ Read these in order on every session start:
    reading both, **summarise back to the user** before doing any
    work.
 4. **`docs/standards/{coding,naming,dependencies,documentation,testing,commits}.md`**
-   — the six shareable v1 standards.
+   — the six shareable v1 standards. Read the **one** matching the active
+   item's `Kind`, after the summarise-back — not all six.
 5. **`docs/specs/<active-id>.md`** — the contract for the
-   currently-active roadmap item.
+   currently-active roadmap item. Read it when you start work on that
+   item; not every item has one (see § Spec discipline in the global
+   rules — most work needs no spec).
 6. **`docs/audit-allowlist.md`** — read **additionally** before
    invoking `check-code` or `/code-quality-review` so already-confirmed
    project-specific false positives aren't re-flagged. The
@@ -117,9 +125,14 @@ python3 -m venv .venv
 ```
 
 **Do not skip that third line.** Without it `./scripts/ci-local.sh` below exits
-**127** at its first stage (`git: command not found`, `shellcheck: command not
-found`) — the venv is fine, the gate simply has no tools. Verified by executing
-this section in a clean container 2026-08-11 (FIBR-0260).
+**127** at the first tool it cannot find — the venv is fine, the gate simply has
+no tools. *Which* tool depends on what you skipped: skip `ci-setup.sh`
+entirely and it dies on `ruff: command not found`, because `ruff` is the
+gate's very first stage and the script's Python half is what installs it.
+Install the dev group by hand but not the pinned binaries (the openSUSE route
+below) and it gets as far as `shellcheck`/`git: command not found` instead.
+Either way the fix is the same. Verified by executing this section in a clean
+container 2026-08-11 (FIBR-0260).
 
 `ci-setup.sh` assumes a **Debian/Ubuntu apt** host (the
 `python:3.12-slim-bookworm` image CI runs; it falls back to `sudo` when not
@@ -171,9 +184,11 @@ spec or ROADMAP entry** — the guard binds prose, not just fixtures. CI cannot
 hold them and never will, so this check is local-only by design.
 
 **Pre-push hook — the gate runs automatically before every `git push`.** CI
-(`ci.yml`) runs this exact script, so "green locally" already means "green in
-CI"; the only way a red push slips through is *forgetting to run the gate*. The
-version-controlled hook at `.githooks/pre-push` closes that gap. It is enabled
+(`ci.yml`) runs this exact script, so a green local gate means green in CI
+**for everything the environment does not decide** — see the container caveat
+below for the part it cannot cover. The commonest way a red push slips through
+is simply *forgetting to run the gate*, and the version-controlled hook at
+`.githooks/pre-push` closes that gap. It is enabled
 in this clone; a **fresh clone must enable it once**:
 
 ```bash
@@ -184,11 +199,20 @@ git config core.hooksPath .githooks
 hook flake on a non-finding; retry, or `git push --no-verify` for that one
 transient case only. Those two are the gate's only network-dependent stages.)
 
-**Reproduce GitHub CI EXACTLY before pushing** — the local gate runs on your
-desktop, which already has system libraries (Qt's `libGL`/`libEGL`/fontconfig,
-`git`) that a clean CI runner lacks, so a green local gate can still hide a red
-CI. To catch that *before* pushing, run the gate inside the **same container
-image CI uses** (`python:3.12-slim-bookworm`, fresh installs):
+**Reproduce GitHub CI EXACTLY when the ENVIRONMENT could differ** — the local
+gate runs on your desktop, which already has system libraries (Qt's
+`libGL`/`libEGL`/fontconfig, `git`) that a clean CI runner lacks, so a green
+local gate can still hide a red CI. That is the one gap the pre-push hook
+cannot close, because the hook runs the same script in the same environment.
+
+**It is not required before every push** — that would put a multi-minute
+container rebuild in front of every commit. Run it when the diff could move
+the environment: a dependency added, bumped or removed; a change to
+`pyproject.toml`, `scripts/ci-setup.sh`, `ci.yml` or the Dockerfile-ish parts
+of the build scripts; a new module that dlopens a system library; or the first
+push after any of those. Otherwise `ci-local.sh` (or the hook) is enough. Run
+the gate inside the **same container image CI uses**
+(`python:3.12-slim-bookworm`, fresh installs):
 
 ```bash
 ./scripts/ci-docker.sh                # identical to the GitHub run; needs podman/docker
@@ -253,7 +277,16 @@ Inherits from the user's global `~/.claude/CLAUDE.md` § 6
 visibility once per session via
 `gh repo view --json visibility -q .visibility` and cache;
 the result is recorded in `.claude/workflow.md` § 1 status
-header.
+header. This repo is **public**, so commits push freely.
+
+**Commits, yes; `<ID>-complete` phase tags, no.** "Push freely" is
+about commits and release tags. A phase tag stays local until the
+user says otherwise (§ Commit conventions), so **push the branch
+alone — `git push origin main`, not `git push --follow-tags`** —
+unless you are cutting a release, where the `v<X.Y.Z>` tag goes with
+it. `--follow-tags` publishes every annotated tag reachable from what
+you are pushing, which is how a phase tag leaves the machine without
+anyone deciding to send it.
 
 ### Doc-only pushes skip the gate (user directive 2026-08-05)
 
@@ -283,14 +316,22 @@ Rule of thumb: doc-only **and** not `docs/specs/FIBR-0001.md` → skip
 the gate. Anything else → gate as usual. A code change never skips,
 however small.
 
-**Caveat on that rule, unresolved.** The leak guard is exactly the
-check a prose commit wants, and the skip sends prose commits past it.
-It is latent today only because the guard **skips** without
-`.corpus-numbers` (see the one-time setup above) — so on a machine
-that has the file, the skip has real teeth. Cheap mitigation while it
-stands: `pytest tests/features/account_detect/` before a prose push
-that adds numbers. Whether the directive should be narrowed is the
-user's call, raised 2026-08-17 and not decided.
+**Caveat on that rule, unresolved.** The skip sends prose commits past
+the two checks that exist to read prose. `gitleaks` is the sharper of
+the two, because it runs unconditionally — the pre-push hook exists
+*because* of a red docs-only commit it caught. The leak guard is latent
+today only because it **skips** without `.corpus-numbers`, so doing the
+one-time setup above makes the skip less safe, not more.
+
+**So, concretely, while this is undecided:** a doc-only push that adds
+**no** digits or key-shaped strings — a reworded paragraph, a status
+flip, a CHANGELOG line — takes the skip as written. One that adds an
+account number, a token, a key or a long digit run should run
+`./scripts/ci-local.sh` (or at least `pytest
+tests/features/account_detect/` **and** `gitleaks dir .`) rather than
+`--no-verify`. That is a narrowing of the 2026-08-05 directive on the
+one class the directive's own rationale did not consider; raised
+2026-08-17, and the user's to confirm or drop.
 
 ## Cutting a release: `gh release create` is NOT the end
 
@@ -313,16 +354,25 @@ between the next release and the same hole. (Same class as FIBR-0203,
 which was closed as a one-off rather than guarded — that is why it
 recurred.)
 
-So the release path is, in order — and the **push** is a step, not a
-tidy-up:
+So the release path is, in order — the bump comes first, and the
+**push** is a step rather than a tidy-up:
 
 ```bash
-git commit … && git push origin main   # release-linux.sh needs the bump PUSHED
-. .venv/bin/activate                   # both scripts need cryptography
-./scripts/release-linux.sh             # AppImage + .sig + SHA256SUMS + linux SBOM
-./scripts/release-windows.sh           # .exe + .sig + windows SBOM
+cut-release <X.Y.Z>          # bump every version-bearing file, commit, tag, push,
+                             #   and create the release — with NO assets on it
+. .venv/bin/activate         # both scripts need cryptography
+./scripts/release-linux.sh   # AppImage + .sig + SHA256SUMS + linux SBOM
+./scripts/release-windows.sh # .exe + .sig + windows SBOM
 # then re-pin the Flatpak commit: (below)
 ```
+
+**`cut-release` is what performs step 1**, including the commit, the tag
+and the push, so do not hand-run those as well. If you bump by hand
+instead, the bump must be committed **and pushed** before
+`release-linux.sh` — see the first bullet below. Either way step 1 must
+have happened: run `release-linux.sh` against an unbumped tree and it
+reads the *old* `__version__`, finds that release already exists, and
+`--clobber`s assets onto the **previous** release.
 
 Four things worth knowing before you run them:
 
@@ -339,15 +389,17 @@ Four things worth knowing before you run them:
   step 7 branches to `gh release upload --clobber`. So a release created
   by hand first (as 0.1.21 was) is repaired rather than duplicated.
 - **`release-windows.sh` needs no Windows machine**; it dispatches
-  `windows-build.yml` on the tag and waits. Public repo, so the minutes
-  are free. It also needs `gh` with **workflow** scope, and both scripts
-  need `podman`/`docker` and the Ed25519 key at
+  `windows-build.yml` on the tag and waits, so it needs `gh` with
+  **workflow + repo** scope but **no container runtime** — the freeze
+  happens on a GitHub runner. Public repo, so the minutes are free.
+  Only `release-linux.sh` needs `podman`/`docker` (it builds and
+  clean-rooms the AppImage locally). **Both** need the Ed25519 key at
   `release/finbreak-signing.key` — gitignored, local-only, and already
   present on this machine. **Do not run `scripts/gen-signing-key.py` to
-  "fix" a missing key**: it mints a *new* one, which `release-linux.sh`'s
-  hard gate against the committed `RELEASE_PUBLIC_KEY_B64` then rejects,
-  and a release signed with it would be invisible to every installed
-  copy's updater.
+  "fix" a missing key**: it mints a *new* one, which the hard gate
+  against the committed `RELEASE_PUBLIC_KEY_B64` then rejects, and a
+  release signed with it would be invisible to every installed copy's
+  updater.
 - **Re-pin the Flatpak `commit:` afterwards.** `bump.json` bumps the
   manifest's `tag:` mechanically, but its sibling `commit:` cannot be —
   the sha does not exist until the release is tagged. `release-linux.sh`
@@ -403,13 +455,18 @@ done
 Then read the assets back again. A batched upload wrapped in a pipe is
 how the half-state goes unnoticed twice.
 
-If the *dispatch* is what is failing, run it by hand
-(`gh workflow run windows-build.yml --ref v<NEW>`) and then re-run
-`release-windows.sh` — it records the newest run id first and waits for
-a *newer* one, so it simply dispatches again and the stray run is
-ignored. Do not finish the Windows half by hand: the steps you would be
-skipping are the Ed25519 signing and its verification against the
-committed public key.
+If the *dispatch* is what is failing, **just re-run
+`release-windows.sh` until it gets through** — the 503 is intermittent,
+not deterministic, and it took six attempts on 0.1.21. Do **not**
+dispatch by hand as a workaround: the script's line 48 is an unguarded
+`gh workflow run` under `set -euo pipefail`, so it dispatches its *own*
+run and waits for a run newer than the one it recorded on entry. Your
+hand-dispatched build is discarded, and you have burned a Windows
+freeze for nothing (that happened twice on 0.1.21).
+
+Finish the Windows half through the script, never by hand: the steps
+you would be skipping are the Ed25519 signing and its verification
+against the committed public key.
 
 ## Module map
 
@@ -511,9 +568,16 @@ without opening it is worth the suffix. **Name a new spec the new way**;
 the first file under the new rule is
 `docs/specs/FIBR-0231-plain-english-month-summary.md`.
 
-`naming.md` is not amended yet on purpose. Editing any
-`docs/standards/` file trips the rule-14 `/cold-eyes` gate on its own,
-and back-migrating the 54 existing `FIBR-NNNN.md` specs means repointing
-374 inbound citations — so both halves are tracked as **FIBR-0196**
-rather than done in passing. This note exists so a session that reads
+`naming.md` is not amended yet on purpose. Amending *this* rule changes
+what a conformer writes — the spec filename — so it trips rule 14's gate
+(`review-contract <path> --genre standard`); and back-migrating the 54
+existing `FIBR-NNNN.md` specs means repointing 374 inbound citations —
+so both halves are tracked as **FIBR-0196** rather than done in passing.
+
+**Not every `docs/standards/` edit owes that gate.** Rule 14's trigger is
+a *change of direction*, not an edit: "would someone conforming to this
+document now do something different? Name the line." A corrected date, a
+fixed count, a dead link or a reworded example changes nothing anyone
+writes — record the check in one line of the commit body and move on. In
+the grey zone, do **not** gate. This note exists so a session that reads
 `naming.md` and not that bullet does not name the next spec wrongly.
