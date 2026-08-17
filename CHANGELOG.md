@@ -21,6 +21,8 @@ signaling per
 
 ## [Unreleased]
 
+## [0.1.21] - 2026-08-17
+
 ### Fixed
 
 - **A remembered statement password no longer stays on an unrelated account** (FIBR-0249)

@@ -89,6 +89,26 @@
   </screenshots>
 
   <releases>
+    <release version="0.1.21" date="2026-08-17">
+      <description>
+        <p>Fixed:</p>
+        <ul>
+          <li>A remembered statement password no longer stays on an unrelated account when it moves to the correct one.</li>
+          <li>May statement dates no longer trigger a false "day and month might be swapped" warning.</li>
+          <li>A date format missing the year no longer files transactions in 1900 — the app now requires and checks for the year.</li>
+          <li>The import screen no longer re-reads the entire statement for every character you type in the date format box.</li>
+          <li>The import screen now has a Back button to return and adjust the column mapping if your import fails.</li>
+          <li>Unreadable amounts now show which value could not be read, instead of displaying internal error text.</li>
+          <li>Importing a damaged spreadsheet no longer closes the app when you change the Date column.</li>
+          <li>When no rows in an OFX or PDF statement can be imported, the error explanation now points to the per-row reasons instead of advising a column mapping screen.</li>
+          <li>The multi-file import table no longer hides unreadable rows when a statement has already been imported.</li>
+          <li>The Flatpak build now starts (it was missing a security library it did not actually use).</li>
+          <li>A statement with an unreadable line that moved money is now refused with an explanation, instead of importing with wrong totals.</li>
+          <li>The built-in install check now works on a computer with no display, such as a remote server.</li>
+        </ul>
+      </description>
+    </release>
+
     <release version="0.1.20" date="2026-08-07">
       <description>
         <p>Security:</p>

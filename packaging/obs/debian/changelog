@@ -1,3 +1,33 @@
+finbreak (0.1.21) unstable; urgency=medium
+
+  * The Linux app-store (Flatpak) build now starts -- the build announced in
+    0.1.20 could not open at all, because a security library the app-store
+    runtime does not ship was missing.
+  * A statement with an unreadable line that moved money is now refused with
+    a message, instead of being imported with wrong totals.
+  * A custom date format with no year no longer dates every transaction 1900;
+    finbreak now says the year is missing.
+  * A remembered statement password is moved to the account the transactions
+    actually land on, rather than left on an unrelated one.
+  * The "the day and month might be swapped" warning no longer appears on a
+    May statement, where the two readings agree.
+  * The import screen has a Back button, so the advice to go back and check
+    the column mapping is now advice you can follow.
+  * A statement finbreak had already imported no longer hides the rows it
+    could not read, and one bad row reads "1 row" rather than "1 rows".
+  * An unreadable amount names the value it could not read, instead of
+    showing internal programmer text.
+  * Importing a damaged spreadsheet no longer closes the app when the Date
+    column is changed.
+  * When no row of a PDF or OFX statement can be read, the advice points at
+    the per-row reasons rather than at a screen those formats never show.
+  * The import screen no longer re-reads the whole statement for every
+    character typed into the date-format box.
+  * The built-in install check (--self-test) now works on a machine with no
+    display, such as a server reached over SSH.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Mon, 17 Aug 2026 12:00:00 +0200
+
 finbreak (0.1.20) unstable; urgency=medium
 
   * SECURITY: updated the library finbreak uses to verify that a downloaded
