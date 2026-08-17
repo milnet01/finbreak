@@ -3432,6 +3432,37 @@ lands on top.
   **Layman:** If the person cutting a release forgets the separate build step, the download page is published empty and the app's own "download the latest release" link leads nowhere.
   Kind: fix.
   Source: in-session-2026-08-17 (found while cutting 0.1.21).
+  Progress (2026-08-17): still open — but the case is now stronger than
+  when this was filed, and the guard should check MORE than presence.
+
+  Cutting 0.1.21 hit the failure a second time, in a worse shape. The
+  final `gh release upload --clobber` in `release-windows.sh` took an
+  HTTP 503 part-way down its file list. `--clobber` deletes each existing
+  asset before replacing it, so the release was left carrying
+  `SHA256SUMS.sig` but NOT `SHA256SUMS`, and `.exe.sig` but NOT the
+  `.exe` — a signed release whose signed manifest had been deleted.
+  Nothing errored loudly: the script had already printed its signing and
+  verification successes, and the failure was the last line.
+
+  So presence-of-any-asset is too weak a guard. Three checks, cheapest
+  first:
+  1. the asset COUNT is 8;
+  2. every `.sig` has its subject present (a `.sig` without its artifact
+     is the partial-upload signature, and it is silent);
+  3. each name matches what the updater greps for — `AppImage` and
+     `WindowsInstaller.asset_suffix()`'s `-x86_64.exe`.
+
+  Also worth folding in: upload one file per call rather than batching,
+  so a partial failure is visible in the exit status.
+
+  Repaired by hand for 0.1.21; `/releases/latest` now resolves to
+  v0.1.21 with all 8 assets, and the published SHA256SUMS verifies
+  against the committed RELEASE_PUBLIC_KEY_B64.
+
+  v0.1.20 remains at ZERO assets and is NOT repaired — it is no longer
+  `latest`, so nothing resolves to it, but anyone holding that tag's URL
+  still gets an empty page. Decide separately whether to back-fill it
+  (FIBR-0203 is the precedent for doing so).
 
 ## Enhancements & performance backlog
 
