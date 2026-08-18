@@ -56,16 +56,13 @@ and 3 for a standard or ADR. (User directive 2026-07-11, when the skill was
 `/cold-eyes`; that skill was replaced by `review-contract` on 2026-08-12 and
 the raised cap carries over unchanged.)
 
-**Whether the 7 reaches a STANDARD is unsettled, and this run had to guess.**
-The directive says "for this project", but every word of its rationale is about
-specs — *specs get more room to settle before code*, and the closing sentence
-below speaks only of a spec's cap. A standard is never implemented, so the
-build cannot be its next reviewer, which is the skill's own reason for giving
-standards a higher default than specs. The 2026-08-18 gate on this file was run
-as a standard at the skill's default of **3** and reached it. Two sessions can
-read this differently and spend four loops apart, neither able to tell it
-breached. **User's to settle**; until then, say in the run report which cap you
-applied and why.
+**The 7 covers SPECS AND PLANS ONLY. A standard or an ADR keeps the skill's
+default of 3** (user decision 2026-08-18, settling an ambiguity the 2026-08-18
+gate on this file had to guess its way past). The rationale above is the reason:
+the extra loops exist because a wrong spec becomes wrong money-handling code,
+and a standard is not implemented. The evidence is that gate — three loops, 19
+verified findings, and by loop 3 half of them were the review's own collateral,
+so further loops mostly repair earlier repairs.
 
 **Convergence is the skill's, not a local definition**: a loop whose verified
 findings answer none of its four questions. Do not hold a spec to the older
@@ -290,12 +287,12 @@ stable per-bullet ID for ROADMAP_FORMAT v1 projects
 (`FIBR-NNNN`).
 
 Every implementation phase ends with `git tag -a <ID>-complete`
-on the closing commit. **Those phase tags** stay local until the
-user explicitly authorises a push — **as an intention. All 54 of them
-are in fact already on the remote**; § Push policy below holds the
-measurement and the open question, and it is the one home for it.
+on the closing commit. **Those phase tags are public, and that is
+fine** (user decision 2026-08-18) — they are build markers on a public
+repo and carry nothing private. § Push policy below has the reasoning
+and is the one home for it.
 
-**A release tag `v<X.Y.Z>` is NOT covered by that** — it is pushed
+**A release tag `v<X.Y.Z>` is a different thing again** — it is pushed
 as part of cutting the release, without asking, per global
 `~/.claude/CLAUDE.md` § 6 ("a release push goes immediately and
 WITHOUT asking, on every repository"). An unpushed release tag is a
@@ -312,34 +309,30 @@ visibility once per session via
 the result is recorded in `.claude/workflow.md` § 1 status
 header. This repo is **public**, so commits push freely.
 
-**Commits, yes; `<ID>-complete` phase tags, no.** "Push freely" is
-about commits and release tags. So when you push **by hand**, push the branch alone — **`git push origin main`,
-not `git push --follow-tags`.** `--follow-tags` publishes every annotated tag
-reachable from what you are pushing, which is how a phase tag leaves the
-machine without anyone deciding to send it.
+**Tags too — `--follow-tags` is fine here** (user decision 2026-08-18). This
+repo used to carry a rule that `<ID>-complete` phase tags stay local until you
+authorise a push. **That rule is retired, and the reason is worth keeping**: it
+was never enforceable. `cut-release` Phase 5 on a public repo is
+`git push --follow-tags origin <branch>`
+(`~/.claude/skills/cut-release/SKILL.md` § Phase 5), and `/close-phase` Step 6
+offers the same command in a prompt that names the `<ID>-complete` tag it is
+about to publish (`~/.claude/commands/close-phase.md`). Both take the push path
+every time on a public repo, so the tags went up automatically — measured
+2026-08-18, `git tag -l '*-complete'` returns 54 and the remote carries the same
+54. A rule that the project's own two prescribed procedures break on every run
+is a rule that was describing an intention rather than the repository.
 
-**But two prescribed procedures run that flag for you, and this is the whole
-problem.** `cut-release` Phase 5 on a public repo is
-`git push --follow-tags origin <branch>` (`~/.claude/skills/cut-release/SKILL.md`
-§ Phase 5), and `/close-phase` Step 6 offers the same command in a prompt that
-**names the `<ID>-complete` tag it is about to publish**
-(`~/.claude/commands/close-phase.md`, the fenced command and the two paragraphs
-defending `--follow-tags` over `--tags`). This repo is public, so both take the
-push path every time. An earlier draft of this paragraph claimed "nothing here
-ever needs the flag" — false, and it was the second wrong version in a day: the
-one before it carved out *unless you are cutting a release*, licensing the exact
-command the sentence beside it forbids, at precisely the moment someone reaches
-for it.
+**A phase tag is a build marker and carries nothing private**, so publishing it
+costs nothing on a public repo. Three earlier drafts of this paragraph tried to
+hold the line and each contradicted itself — one banned the flag outright while
+`cut-release` ran it, one carved out *unless you are cutting a release* (the
+exact command the sentence beside it forbade), and one claimed nothing here ever
+needed the flag. **Do not reinstate the ban without changing the tooling first.**
 
-**Read the next paragraph before relying on any of that.**
-
-> **The phase tags are ALREADY published — all 54 of them, measured
-> 2026-08-18.** `git tag -l '*-complete'` returns 54 and the remote carries the
-> same 54. So "a phase tag stays local until the user says otherwise" describes
-> an intention, not this repository. Whether to delete them from the remote or
-> retire the rule is the user's call and is **open**; until it is settled, do
-> not read the rule as a description of the current state, and do not assume a
-> phase tag you create is private.
+**Still `--follow-tags`, never `--tags`.** Global `~/.claude/CLAUDE.md` § 6
+forbids the latter by name: it publishes *every* local tag, including ones never
+meant to leave the machine, where `--follow-tags` sends only the annotated tags
+reachable from what you are already pushing.
 
 ### Doc-only pushes skip the FULL gate, never the prose checks (user directives 2026-08-05, 2026-08-18)
 
