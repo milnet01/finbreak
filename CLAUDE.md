@@ -288,50 +288,60 @@ it. `--follow-tags` publishes every annotated tag reachable from what
 you are pushing, which is how a phase tag leaves the machine without
 anyone deciding to send it.
 
-### Doc-only pushes skip the gate (user directive 2026-08-05)
+### Doc-only pushes skip the FULL gate, never the prose checks (user directives 2026-08-05, 2026-08-18)
 
-A push that touches **only** documentation does not need
-`./scripts/ci-local.sh` — neither run by hand first, nor via the
-pre-push hook. Push it with `git push --no-verify`. The gate takes
-~1m45s and most of it is aimed at code, so paying it in full for a
-ROADMAP annotation or a CHANGELOG line is mostly waiting.
+A push that touches **only** documentation does not run
+`./scripts/ci-local.sh`. It runs the prose checks below, then pushes with
+`git push --no-verify`. The full gate takes ~1m45s and most of it is aimed
+at code, so paying it for a ROADMAP annotation is mostly waiting — but the
+prose checks cost about **four seconds** (measured 2026-08-18: 2.0s +
+1.8s), which is not a saving worth reasoning about.
 
-**Two stages DO read prose, so the skip is not free.** Do not repeat
-the old justification for it — "no Python stage reads prose" — which
-was simply false:
+```bash
+pytest tests/features/account_detect/ tests/features/harness/   # ~2s
+gitleaks dir .                                                  # ~2s
+git push --no-verify origin main
+```
+
+**Three stages read prose, and those two commands are all three of them.**
+Do not repeat the old justification for the skip — "no Python stage reads
+prose" — which was simply false:
 
 - **`tests/features/harness/`** (FIBR-0001 INV-1) reads
   **`docs/specs/FIBR-0001.md`** and compares its stage table against
   `scripts/ci-local.sh`, so a "doc-only" edit to *that one spec* can
-  genuinely turn the suite red.
+  genuinely turn the suite red. **This is why the old
+  "not `docs/specs/FIBR-0001.md`" carve-out is gone rather than dropped**
+  — the check that enforced it now runs on every doc-only push, so the
+  exception has nothing left to do.
 - **`tests/features/account_detect/test_no_real_data.py`** (FIBR-0086
   INV-8) walks `git ls-files` and reads **every tracked text file** —
-  specs, ROADMAP, CHANGELOG included. That is deliberate: the guard
-  binds prose, because a real account number reached a spec once and
-  sat there a month (FIBR-0244). `gitleaks dir .` scans prose too, and
-  `.githooks/pre-push` exists because of a red **docs-only** commit
-  (`a0cc895`).
+  specs, ROADMAP, CHANGELOG included. That is deliberate: the guard binds
+  prose, because a real account number reached a spec once and sat there a
+  month (FIBR-0244).
+- **`gitleaks dir .`** scans prose too, and `.githooks/pre-push` exists
+  because of a red **docs-only** commit (`a0cc895`).
 
-Rule of thumb: doc-only **and** not `docs/specs/FIBR-0001.md` → skip
-the gate. Anything else → gate as usual. A code change never skips,
-however small.
+**Why this replaced the digit test.** Until 2026-08-18 the rule asked
+whether the commit added "digits or key-shaped strings", and demanded the
+checks only then. Two things retired it. The judgement falls to the person
+least able to make it — you have just written the prose and know what you
+meant by it, which is exactly when a pasted number does not read as one.
+And the judgement was buying **four seconds**. A branch that trades a
+silent, unrecoverable failure against four seconds should not be a branch.
 
-**Caveat on that rule, unresolved.** The skip sends prose commits past
-the two checks that exist to read prose. `gitleaks` is the sharper of
-the two, because it runs unconditionally — the pre-push hook exists
-*because* of a red docs-only commit it caught. The leak guard is latent
-today only because it **skips** without `.corpus-numbers`, so doing the
-one-time setup above makes the skip less safe, not more.
+**The leak guard went live on 2026-08-18**, when `.corpus-numbers` was
+created on this machine: `test_no_real_data.py` now runs instead of
+skipping (56 passed, 0 skipped, where it was 55 passed and 1 skipped). It
+passed on first run, so no real number is in the tracked tree today.
+Before that date the guard was inert and the skip was safer than it
+looked; it is not inert now, which is the change that makes this rule earn
+its keep. **A machine without `.corpus-numbers` runs the same two
+commands** — the guard skips there and `gitleaks` does not match an
+account number, so that machine has no cover for this class at all and
+should not push prose it has not read.
 
-**So, concretely, while this is undecided:** a doc-only push that adds
-**no** digits or key-shaped strings — a reworded paragraph, a status
-flip, a CHANGELOG line — takes the skip as written. One that adds an
-account number, a token, a key or a long digit run should run
-`./scripts/ci-local.sh` (or at least `pytest
-tests/features/account_detect/` **and** `gitleaks dir .`) rather than
-`--no-verify`. That is a narrowing of the 2026-08-05 directive on the
-one class the directive's own rationale did not consider; raised
-2026-08-17, and the user's to confirm or drop.
+**A code change never skips the full gate, however small.**
 
 ## Cutting a release: `gh release create` is NOT the end
 
