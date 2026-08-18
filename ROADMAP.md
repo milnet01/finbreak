@@ -3310,6 +3310,7 @@ lands on top.
 - 📋 [FIBR-0130] **P13: macOS `.dmg` packaging** (Flatpak/Flathub → FIBR-0159).
   The macOS `.app`-in-`.dmg` — the packaging remainder split out of FIBR-0015 when its Windows `.exe` slice closed (2026-07-13). The Flatpak/Flathub half moved to FIBR-0159 (see the scope update below). The SQLCipher crypto blocker is already cleared (the `sqlcipher3-wheels` fork ships macOS + Linux wheels of the same 4.12.0 engine, ADR-0009), so this is packaging-only: freeze the macOS app on a `macos-latest` runner (reusing the FIBR-0015 `windows_freeze_flags.py` collection list + `--self-test` clean-room); the artifact still meets ADR-0007's "no Python installed" launch bar. (The Flatpak manifest is FIBR-0159's, not this item's — see the scope update below.) Dependencies: FIBR-0015 (freeze tooling), FIBR-0037 (icon → `.icns`). Lanes: build, ci, packaging. Kind: chore. Source: split-from-FIBR-0015-2026-07-13.
   Scope update (2026-07-23): the Flatpak/Flathub half is now owned end-to-end by FIBR-0159 (docs/specs/FIBR-0159.md — freedesktop 25.08 runtime + pinned-wheel closure, portal-only sandbox). FIBR-0130 is left to deliver the macOS `.app`/`.dmg` only; do NOT re-author a Flatpak manifest here.
+  **Layman:** A proper macOS download you open and drag to Applications, like any other Mac app.
 
 - ✅ [FIBR-0131] **Windows in-app auto-update.**
   Extend the FIBR-0054 self-update stack (check GitHub → Ed25519-verify the download → the Later/Skip/Update-now dialog — all already cross-platform) to actually *install* the update on Windows, which `detect_installer()` currently returns `None` for (inert, INV-7). A running Windows `.exe` locks itself, so the Linux "os.replace the file then relaunch" trick can't be copied. **Design (user-approved 2026-07-13): a separate helper process does the swap** — the app writes the verified new `.exe` beside the old one and spawns a detached waiter (cmd/PowerShell) that waits for finbreak to exit, moves the new file over the old one, and relaunches it (the Windows analogue of the FIBR-0122 `/bin/sh` waiter; watch the same PyInstaller-onefile `_MEI`-teardown race). Adds a `WindowsInstaller` + `detect_installer()` returning it on a frozen Windows build, and an asset-picker that selects the `.exe` release asset on Windows. Also promote the Windows `.exe` from a CI artifact to a signed release asset (attach + an Ed25519 `.sig` for the updater to verify; FIBR-0015 D6 deferred this) and evaluate Authenticode code-signing (an unsigned self-swapping-and-relaunching `.exe` is what Defender/SmartScreen distrusts most; free-ish for OSS via Azure Trusted Signing / SignPath). Same two-cycle caveat as Linux — the relaunch only proves out on the update *after* it ships. Dependencies: FIBR-0054 (update infra), FIBR-0015 (Windows build). Lanes: services, ui, ci, security. Kind: feature. Source: user-request-2026-07-13.
@@ -3327,6 +3328,7 @@ lands on top.
   build, ci, packaging. Kind: chore. Source: planned.
   Note (2026-07-10): FIBR-0054 pulls a **Linux-only** slice of release automation forward — a thin `scripts/publish-release.sh` (or `gh release create`) that publishes the signed AppImage + `.sig` as GitHub Release `v0.1.0`, so the in-app updater has a real release to check/download. FIBR-0016 remains owner of the full multi-artifact publish + the Flathub submission/update flow; extend the Linux slice rather than replacing it.
   Note (2026-07-12, user request — "automate the release as much as possible"): the version-bump half is now automated — `.claude/bump.json` (added 2026-07-12) drives /bump and /release: source of truth src/finbreak/__init__.py, mechanical edits to pyproject.toml + tests/test_smoke.py + a dated CHANGELOG cut from [Unreleased], a post_check version-lockstep gate, and tag template v{NEW}. What remains MANUAL (the Linux-slice glue this item should close): after the bump, a human still runs scripts/build-release-appimage.sh (freeze + clean-room + sign), verifies the .sig against the committed RELEASE_PUBLIC_KEY_B64, extracts the CHANGELOG [X.Y.Z] section for notes, and runs `gh release create v<NEW> <appimage> <sig> --notes-file … --latest` (non-prerelease). Deliverable: a single `scripts/publish-release.sh` that chains bump (via the recipe) → full gate (ci-local.sh) → build+clean-room+sign → **verify .sig vs RELEASE_PUBLIC_KEY_B64 (hard gate — never publish an unverifiable release the in-app updater would reject)** → gh release create with the AppImage + .sig attached, notes from the changelog, non-prerelease so /releases/latest resolves. Idempotency + preconditions (clean tree, tag not already present, signing key available) checked up front. Keep it the Linux slice under FIBR-0016; the multi-artifact + Flathub publish stays the full-item scope. Spec-first per the item's own note (docs/specs/, cold-eyes) before coding.
+  **Layman:** One command builds every download, publishes the release and updates the store listings, instead of a person running several scripts by hand and hoping none was skipped.
 
 - ✅ [FIBR-0037] **P13: a proper branded app icon (not a flat
   glyph).** Design a polished, richly-shaded application icon —
@@ -3545,6 +3547,7 @@ because retrofitting them is a data migration.
   Requires an ADR + a security-model.md update at spec time. Target
   phase: P02. Dependencies: FIBR-0004. Lanes: crypto, security.
   Kind: security. Source: user-request-2026-07-01.
+  **Layman:** If you forget your master password, a recovery code you saved when the vault was created gets you back in — with no backdoor anyone else could use.
 
 - 📋 [FIBR-0020] **Biometric unlock (fingerprint / face) with capability
   detection.** Store a key-wrapped copy of the vault key in the OS secure
@@ -3555,6 +3558,7 @@ because retrofitting them is a data migration.
   is uneven, so degrade gracefully. Target phase: P12. Dependencies:
   FIBR-0004, FIBR-0019 (shares the key-wrapping envelope). Lanes: crypto,
   platform, ux. Kind: feature. Source: user-request-2026-07-01.
+  **Layman:** Unlock the vault with your fingerprint or face where your computer supports it, with the password always still available as a fallback.
 
 - ✅ [FIBR-0029] **Password reminder / hint (shown before unlock).**
   An optional user-set hint on the unlock screen to jog memory —
@@ -3668,6 +3672,7 @@ because retrofitting them is a data migration.
   phase: P10. Dependencies: FIBR-0006 (category tree), FIBR-0010 (rules).
   Lanes: reporting, ux. Kind: feature. Source: user-request-2026-07-01.
   Split 2026-07-15: the recurring/subscription-detection half is now FIBR-0142 (active, being built first per user pick). This bullet stays as the budgets tracking item (per-category monthly limits + over-budget dashboard signalling) — the follow-up after FIBR-0142 ships.
+  **Layman:** Set a monthly spending limit per category and see when you go over it, and have repeating charges like subscriptions spotted for you automatically.
 
 - 📋 [FIBR-0023] **Theming: separate theme sets for normal and
   colourblind vision + picker.** Ship **two families** of themes — a set
@@ -3689,6 +3694,7 @@ because retrofitting them is a data migration.
   chart series distinguishable. Target phase: P12. Dependencies:
   FIBR-0012, FIBR-0014. Lanes: ui, accessibility. Kind: ux.
   Source: user-request-2026-07-01.
+  **Layman:** Pick from a set of colour schemes, including a family designed to stay readable if you are colourblind.
 
 - 📋 [FIBR-0024] **Accessibility: keyboard navigation + screen-reader
   support.** Full keyboard control (focus order, shortcuts, no mouse-only
@@ -3697,6 +3703,7 @@ because retrofitting them is a data migration.
   (FIBR-0017) and theming (FIBR-0023) work. Target phase: P12.
   Dependencies: FIBR-0014. Lanes: ui, accessibility. Kind: accessibility.
   Source: user-request-2026-07-01.
+  **Layman:** Use the whole app with the keyboard alone, and have a screen reader announce what is on screen.
 
 - 📋 [FIBR-0034] **Import preview + undo (rollback a whole import batch).**
   Before an import lands, show a preview — "about to add 214 transactions
@@ -3707,6 +3714,7 @@ because retrofitting them is a data migration.
   Target phase: P06 (lands with the first import UI). Dependencies:
   FIBR-0007. Lanes: services, ui, repo, tests. Kind: feature.
   Source: user-request-2026-07-01.
+  **Layman:** See exactly what an import is about to add before it lands, and undo a whole import in one action if it turns out to be the wrong file.
 
 - ✅ [FIBR-0035] **Auto-categorisation that learns from corrections.**
   Extends the FIBR-0010 rules engine: when the user manually re-files a
@@ -3727,6 +3735,7 @@ because retrofitting them is a data migration.
   flow). Draws its series colour from the active theme (FIBR-0023) like the
   other charts. Target phase: P10. Dependencies: FIBR-0012. Lanes:
   reporting, ui, tests. Kind: feature. Source: user-request-2026-07-01.
+  **Layman:** A dashboard line showing whether your overall money position is trending up or down month by month.
 
 - 📋 [FIBR-0038] **Statement coverage tracking + gap detection.**
   Record each imported statement's coverage period (start/end date) per
@@ -3847,11 +3856,13 @@ because retrofitting them is a data migration.
   main_window._open_import() never disables the toolbar/menu, so clicking Home/Statements/Accounts/Categories/Rules mid-import silently rebuilds the workspace and destroys the in-progress wizard (chosen file, column mapping, unsaved preview) with no confirmation. Either confirm before discarding, or disable navigation chrome during an import (as locked states do).
   Kind: ux.
   Source: indie-review-2026-07-10 (M-shell1).
+  **Layman:** Clicking away mid-import warns you first, instead of silently throwing away the file and column choices you just made.
 
 - 📋 [FIBR-0073] **Add keyboard mnemonics to menus + dialog labels (a11y sweep).**
   Menu titles (File/View/Window/Help/Donate) have no '&' Alt-accelerators; no dialog uses label mnemonics. Weakens keyboard-only navigation vs a typical desktop app (WCAG-adjacent). One focused sweep across main_window + the dialogs.
   Kind: accessibility.
   Source: indie-review-2026-07-10 (shell L1 + dialog INFO).
+  **Layman:** Menus and dialog fields get Alt-key shortcuts, so the app can be driven from the keyboard like any other desktop program.
 
 - 📋 [FIBR-0074] **Dedicated per-bank PDF readers for ABSA / Nedbank / FNB (needs real anonymised sample statements).**
   Today ABSA/Nedbank/FNB statements CAN already be imported two ways: (1) their CSV/OFX exports (most reliable), and (2) the generic PDF table-extractor (pdf_importer.py) for any PDF with ruled transaction tables, via the column-mapping step. A DEDICATED zero-config text-layer reader like standard_bank.py (auto-detect + no mapping) needs REAL anonymised sample statements per bank to build and validate — the SB reader (FIBR-0050) required 6 real statements to catch layout edge cases; synthetic dummy PDFs exercise code paths but don't validate real-world layouts. Blocked on the user providing (or the project sourcing) a few real anonymised statements per bank. Until then, the generic extractor + CSV/OFX cover these banks.
@@ -6284,12 +6295,14 @@ because retrofitting them is a data migration.
   the dashboard fast at tens of thousands of transactions. Target phase:
   P10. Dependencies: FIBR-0012. Lanes: reporting, perf. Kind: perf.
   Source: user-request-2026-07-01.
+  **Layman:** The dashboard stays fast once you have tens of thousands of transactions, and editing one row no longer recalculates everything.
 
 - 📋 [FIBR-0028] **Virtual table model for the transaction list.** Back
   the transaction table with a `QAbstractTableModel` (lazy / virtual
   rows) rather than per-row widgets, so a large history scrolls smoothly.
   Target phase: P10. Dependencies: FIBR-0012. Lanes: ui, perf.
   Kind: perf. Source: user-request-2026-07-01.
+  **Layman:** A long transaction history scrolls smoothly instead of slowing down as it grows.
 
 ---
 
