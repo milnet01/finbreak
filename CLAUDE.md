@@ -56,6 +56,17 @@ and 3 for a standard or ADR. (User directive 2026-07-11, when the skill was
 `/cold-eyes`; that skill was replaced by `review-contract` on 2026-08-12 and
 the raised cap carries over unchanged.)
 
+**Whether the 7 reaches a STANDARD is unsettled, and this run had to guess.**
+The directive says "for this project", but every word of its rationale is about
+specs — *specs get more room to settle before code*, and the closing sentence
+below speaks only of a spec's cap. A standard is never implemented, so the
+build cannot be its next reviewer, which is the skill's own reason for giving
+standards a higher default than specs. The 2026-08-18 gate on this file was run
+as a standard at the skill's default of **3** and reached it. Two sessions can
+read this differently and spend four loops apart, neither able to tell it
+breached. **User's to settle**; until then, say in the run report which cap you
+applied and why.
+
 **Convergence is the skill's, not a local definition**: a loop whose verified
 findings answer none of its four questions. Do not hold a spec to the older
 "no *substantive* structural / mechanical / architectural findings" bar —
@@ -171,16 +182,32 @@ that catches that class needs the real numbers to search for, and they are the
 secret, so they are never committed. Put them in a **gitignored
 `.corpus-numbers`** at the repo root, one per line, as printed:
 
-```bash
-printf '%s\n' '1234 567 890 1' '9876543210' > .corpus-numbers   # never `cat` this
-```
+**Create it in an EDITOR, never on a command line** — open
+`.corpus-numbers` in a text editor, one account number per line, exactly as
+printed on the statement. Spacing and dashes do not matter: the guard runs
+`normalise_account_number` before comparing, and its search pattern allows any
+run of separators between digits, so a number split by a line-wrap is still
+found.
+
+A `printf … > .corpus-numbers` recipe stood here until 2026-08-18 and was the
+defect **FIBR-0276** filed: a shell command line lands in `~/.bash_history` —
+and in an agent's transcript — which the never-list below did not name. An
+editor writes to no history.
+
+**This is a step the user performs and an agent cannot.** The values are the
+user's real account numbers; an agent must not invent them, and must not read
+the file back to check.
 
 Without it `tests/features/account_detect/test_no_real_data.py` **skips**, and
 a skipping test reads as coverage while providing none — which is exactly what
-it did on every run before FIBR-0248. `FINBREAK_CORPUS_NUMBERS`
+it did on every run until the file existed on **2026-08-18**. FIBR-0248 wired
+the file route on 2026-08-14; it did not create the file, so the guard went on
+skipping for four more days. **Wiring a source is not the same as supplying
+one**, and only the second date is when the tree was first actually scanned. `FINBREAK_CORPUS_NUMBERS`
 (comma-separated) overrides the file for a one-off run. **Never print the
-values, redirect them to a tracked file, or paste them into a commit message,
-spec or ROADMAP entry** — the guard binds prose, not just fixtures. CI cannot
+values, type them onto a shell command line, redirect them to a tracked file,
+or paste them into a commit message, spec or ROADMAP entry** — the guard binds
+prose, not just fixtures. CI cannot
 hold them and never will, so this check is local-only by design.
 
 **Pre-push hook — the gate runs automatically before every `git push` that is
@@ -286,15 +313,23 @@ the result is recorded in `.claude/workflow.md` § 1 status
 header. This repo is **public**, so commits push freely.
 
 **Commits, yes; `<ID>-complete` phase tags, no.** "Push freely" is
-about commits and release tags. So **push the branch alone —
-`git push origin main`, never `git push --follow-tags`.** No exception, a
-release included: `cut-release` and `scripts/release-linux.sh` create the
-`v<X.Y.Z>` ref on the remote themselves (§ Cutting a release), so nothing here
-ever needs the flag. `--follow-tags` publishes every annotated tag reachable
-from what you are pushing, which is how a phase tag leaves the machine without
-anyone deciding to send it. **The carve-out that used to stand here — *unless
-you are cutting a release* — licensed the exact command the sentence beside it
-forbids**, and a release is precisely when someone would reach for it.
+about commits and release tags. So when you push **by hand**, push the branch alone — **`git push origin main`,
+not `git push --follow-tags`.** `--follow-tags` publishes every annotated tag
+reachable from what you are pushing, which is how a phase tag leaves the
+machine without anyone deciding to send it.
+
+**But two prescribed procedures run that flag for you, and this is the whole
+problem.** `cut-release` Phase 5 on a public repo is
+`git push --follow-tags origin <branch>` (`~/.claude/skills/cut-release/SKILL.md`
+§ Phase 5), and `/close-phase` Step 6 offers the same command in a prompt that
+**names the `<ID>-complete` tag it is about to publish**
+(`~/.claude/commands/close-phase.md`, the fenced command and the two paragraphs
+defending `--follow-tags` over `--tags`). This repo is public, so both take the
+push path every time. An earlier draft of this paragraph claimed "nothing here
+ever needs the flag" — false, and it was the second wrong version in a day: the
+one before it carved out *unless you are cutting a release*, licensing the exact
+command the sentence beside it forbids, at precisely the moment someone reaches
+for it.
 
 **Read the next paragraph before relying on any of that.**
 
@@ -336,7 +371,7 @@ it found.
 and it did.** Do not repeat the old justification for the skip — "no Python
 stage reads prose" — which was simply false. Nor the version that replaced it,
 "those two commands are all three of them", which was **also** false and is why
-the list below is now five:
+the list below is now four:
 
 - **`tests/features/harness/`** (FIBR-0001 INV-1) reads
   **`docs/specs/FIBR-0001.md`** and compares its stage table against
@@ -386,8 +421,17 @@ whenever you write one that reads a doc.
 *faster* than the two, having compared a warm run against a cold one. They are
 not; they are 0.27s slower, which is still nothing.)
 
-**What counts as "only documentation": every changed path ends in `.md`.**
-That is the whole test, and it is deliberately POSITIVE. The deny-list version
+**What counts as "only documentation": every path in
+`git diff --name-only @{u}..HEAD` ends in `.md`.** That is the whole test, and
+two things about it are deliberate.
+
+**The unit is the PUSH, not the last commit** — every commit going up, which is
+what that range gives you. Judge it by the commit you just made and an ungated
+code commit already queued behind it rides through the gate on a ROADMAP line's
+coat-tails, which breaches "a code change never skips the full gate" with
+nothing to notice it.
+
+**And the test is POSITIVE.** The deny-list version
 of this rule — *no file under `src/`, `tests/`, `scripts/`, `.github/` or
 `packaging/`* — lasted one review loop: `.githooks/pre-push` is under none of
 those, so a commit touching only that file passed the test word for word. It is

@@ -999,7 +999,7 @@ scariest unknown (native-library bundling) up front.
   Kind: enhancement.
   Source: in-session-2026-08-14 (found while fixing FIBR-0249).
 
-- 📋 [FIBR-0276] **The documented .corpus-numbers setup types real account numbers onto a command line.**
+- ✅ [FIBR-0276] **The documented .corpus-numbers setup types real account numbers onto a command line.**
   CLAUDE.md § Build and test prescribes:
 
       printf '%s\n' '1234 567 890 1' '9876543210' &gt; .corpus-numbers
@@ -1043,6 +1043,16 @@ scariest unknown (native-library bundling) up front.
   **Layman:** The instructions for saving your real account numbers locally tell you to type them into the terminal, where they get saved into your command history.
   Kind: doc-fix.
   Source: in-session-2026-08-18 (raised by a review-contract lane on CLAUDE.md, then by the user asking what the file is).
+
+  Resolved (2026-08-18): fixed. The bullet deferred this because amending the
+  setup command changes what a conformer types and so trips rule 14's gate on
+  its own (3 cold lanes) — "not worth that mid-session". That gate then ran on
+  CLAUDE.md for FIBR-0244, three cold lanes, and a loop-3 lane re-raised this
+  exact recipe. The deferral's condition was satisfied, so it was fixed inside
+  the gate that was already paid for rather than deferred a second time.
+  CLAUDE.md now prescribes an editor, states that the guard normalises so
+  spacing does not matter, says it is a step the user performs and an agent
+  cannot, and adds "type them onto a shell command line" to the never-list.
 
 - 📋 [FIBR-0277] **The dialog-lifecycle guard cannot see a UI module nobody added to its `_FILES` tuple.**
   `tests/features/dialog_lifecycle/test_dialog_lifecycle.py` iterates a
