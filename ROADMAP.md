@@ -983,6 +983,51 @@ scariest unknown (native-library bundling) up front.
   Kind: enhancement.
   Source: in-session-2026-08-14 (found while fixing FIBR-0249).
 
+- 📋 [FIBR-0276] **The documented .corpus-numbers setup types real account numbers onto a command line.**
+  CLAUDE.md § Build and test prescribes:
+
+      printf '%s\n' '1234 567 890 1' '9876543210' &gt; .corpus-numbers
+
+  Two lines below it says "**Never print the values, redirect them to a
+  tracked file, or paste them into a commit message, spec or ROADMAP
+  entry**". A shell command line is none of those literally, so the
+  prohibition does not cover it — but `~/.bash_history` is a plaintext
+  file in `$HOME` that survives reboots, is not gitignored (it is not in
+  the repo at all), and is exactly the kind of place nobody thinks to
+  check. If an agent runs the command, the values also land in that
+  session's transcript.
+
+  So the prescribed setup leaks the values into the one channel the
+  surrounding paragraph forgot to name, while reading as the safe route
+  because it is the documented one.
+
+  Fix: prescribe an editor instead, which touches no history at all —
+
+      kate .corpus-numbers        # or nano / gedit / vim
+
+  and state plainly that this is a step the USER performs, never an
+  agent: the values are the secret the guard exists to protect, and a
+  transcript is a durable copy.
+
+  Worth adding at the same time, because it is the question that follows:
+  an agent cannot create this file at all. Inventing plausible numbers
+  makes the guard PASS while searching for numbers that exist nowhere —
+  strictly worse than the current skip, because a skip is visibly absent
+  coverage and a fake pass is not. That is the FIBR-0248 failure wearing
+  a green tick.
+
+  Verified 2026-08-18: with numbers supplied the file runs 13 tests; with
+  none it runs 12 and skips 1. The mechanism is fine — only the
+  documented way of feeding it is not.
+
+  Filed rather than fixed in place because amending CLAUDE.md's setup
+  command changes what a conformer types, so it trips the rule-14 gate on
+  its own (3 cold lanes). Not worth that mid-session; it is a two-line
+  edit for whoever next opens that file for another reason.
+  **Layman:** The instructions for saving your real account numbers locally tell you to type them into the terminal, where they get saved into your command history.
+  Kind: doc-fix.
+  Source: in-session-2026-08-18 (raised by a review-contract lane on CLAUDE.md, then by the user asking what the file is).
+
 ### 📦 Packaging
 
 - ✅ [FIBR-0003] **P01: bundling smoke-test (de-risk
