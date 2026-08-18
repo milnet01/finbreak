@@ -183,8 +183,8 @@ values, redirect them to a tracked file, or paste them into a commit message,
 spec or ROADMAP entry** — the guard binds prose, not just fixtures. CI cannot
 hold them and never will, so this check is local-only by design.
 
-**Pre-push hook — the gate runs automatically before every `git push`.** CI
-(`ci.yml`) runs this exact script, so a green local gate means green in CI
+**Pre-push hook — the gate runs automatically before every `git push` that is
+not `--no-verify`.** CI (`ci.yml`) runs this exact script, so a green local gate means green in CI
 **for everything the environment does not decide** — see the container caveat
 below for the part it cannot cover. The commonest way a red push slips through
 is simply *forgetting to run the gate*, and the version-controlled hook at
@@ -196,8 +196,12 @@ git config core.hooksPath .githooks
 ```
 
 (A rare `pip-audit` timeout — against either pypi or osv.dev — can make the
-hook flake on a non-finding; retry, or `git push --no-verify` for that one
-transient case only. Those two are the gate's only network-dependent stages.)
+hook flake on a non-finding; retry, or `git push --no-verify` for that
+transient case. Those two are the gate's only network-dependent stages.)
+**That is not the only sanctioned `--no-verify`** — a doc-only push takes it as
+its normal route, having run the prose checks by hand instead (§ Doc-only
+pushes below). Read this line alone and you run the full gate on every ROADMAP
+annotation.
 
 **Reproduce GitHub CI EXACTLY when the ENVIRONMENT could differ** — the local
 gate runs on your desktop, which already has system libraries (Qt's
@@ -294,18 +298,31 @@ A push that touches **only** documentation does not run
 `./scripts/ci-local.sh`. It runs the prose checks below, then pushes with
 `git push --no-verify`. The full gate takes ~1m45s and most of it is aimed
 at code, so paying it for a ROADMAP annotation is mostly waiting — but the
-prose checks cost about **four seconds** (measured 2026-08-18: 2.0s +
-1.8s), which is not a saving worth reasoning about.
+prose checks cost about **two seconds** (measured 2026-08-18: pytest 1.56s,
+`gitleaks` 0.3s warm and 1.8s cold), which is not a saving worth reasoning
+about.
 
 ```bash
-pytest tests/features/account_detect/ tests/features/harness/   # ~2s
-gitleaks dir .                                                  # ~2s
+pytest tests/features/account_detect/ tests/features/harness/ \
+       tests/features/release_integrity/ \
+       tests/features/flatpak_packaging/                          # ~1.6s
+gitleaks dir . --no-banner --redact --config .gitleaks.toml       # ~0.3s
 git push --no-verify origin main
 ```
 
-**Three stages read prose, and those two commands are all three of them.**
-Do not repeat the old justification for the skip — "no Python stage reads
-prose" — which was simply false:
+**`gitleaks` is copied verbatim from `ci-local.sh`'s stage — do not shorten
+it.** `--config` is auto-discovered on this machine (checked 2026-08-18: bare
+`gitleaks dir .` and the full form both return *no leaks found*), so the flag
+that earns its place is **`--redact`**: without it a hit prints the secret in
+clear, and § Build and test three screens up says never to print those values.
+A check whose failure mode is "leak it to the terminal" is worse than the leak
+it found.
+
+**Four suites read tracked prose. This list is ENUMERATED, so it can go stale —
+and it did.** Do not repeat the old justification for the skip — "no Python
+stage reads prose" — which was simply false. Nor the version that replaced it,
+"those two commands are all three of them", which was **also** false and is why
+the list below is now five:
 
 - **`tests/features/harness/`** (FIBR-0001 INV-1) reads
   **`docs/specs/FIBR-0001.md`** and compares its stage table against
@@ -319,8 +336,43 @@ prose" — which was simply false:
   specs, ROADMAP, CHANGELOG included. That is deliberate: the guard binds
   prose, because a real account number reached a spec once and sat there a
   month (FIBR-0244).
+- **`tests/features/release_integrity/`** (INV-7) reads
+  **`docs/security-model.md`** and asserts the signed-`SHA256SUMS` note, an
+  `INV-13` definition, and that the 800 characters after it name `SHA256SUMS`
+  and match `sign|Ed25519`. **Reflowing that section is enough to turn it
+  red** — the paragraph does not have to be wrong, only rearranged. This suite
+  was missing from the list until 2026-08-18 and all three review lanes found
+  it independently.
+- **`tests/features/flatpak_packaging/`** asserts `packaging/flatpak/README.md`
+  **exists**, so moving or deleting that doc is a red doc-only push. Existence
+  only — it never reads the contents.
 - **`gitleaks dir .`** scans prose too, and `.githooks/pre-push` exists
   because of a red **docs-only** commit (`a0cc895`).
+
+**The membership rule is sharp: a suite belongs here if it reads a tracked
+doc's CONTENTS or requires one to EXIST.** To re-derive rather than guess, grep
+every `tests/**/*.py` for a `.md` string literal or a `"docs"` path segment —
+**5 files match, of which 3 qualify**; `bundling` only cites specs in its
+docstring, and `gitignore` names `docs/design.md` but tests it inside a fresh
+tmp repo holding a copy of `.gitignore` alone, so the file's real presence is
+irrelevant and deleting it turns nothing red.
+
+**That grep cannot find the fourth, which is the one that matters most.**
+`account_detect` walks `git ls-files` and reads every tracked text file without
+naming one, so no path literal betrays it. A derivation that misses the
+broadest member is not a substitute for the list — it is a way to check the
+list, and it must be run alongside knowing that suite is there.
+
+**Nothing binds this list to the tree**: a new doc-scraping suite lands and this
+section does not notice, which is the failure that produced the wrong list
+above. Guard filed as **FIBR-0278**. **All four cost 1.56s together** (measured
+2026-08-18), less than the two-suite list they replace, so there is no budget
+argument for trimming.
+
+**What counts as "only documentation":** no file under `src/`, `tests/`,
+`scripts/`, `.github/` or `packaging/` changed, and no `pyproject.toml`.
+A `.md` under any of those is still a doc for this purpose — the five suites
+above are what cover it. Anything else takes the full gate.
 
 **Why this replaced the digit test.** Until 2026-08-18 the rule asked
 whether the commit added "digits or key-shaped strings", and demanded the
@@ -342,6 +394,10 @@ account number, so that machine has no cover for this class at all and
 should not push prose it has not read.
 
 **A code change never skips the full gate, however small.**
+
+*This file's `review-contract` history lives in
+[`docs/reviews/CLAUDE-md-review-log.md`](docs/reviews/CLAUDE-md-review-log.md),
+not inline — an always-loaded file should not carry a growing audit table.*
 
 ## Cutting a release: `gh release create` is NOT the end
 
@@ -371,8 +427,10 @@ So the release path is, in order — the bump comes first, and the
 cut-release <X.Y.Z>          # bump every version-bearing file, commit, tag, push,
                              #   and create the release — with NO assets on it
 . .venv/bin/activate         # both scripts need cryptography
-./scripts/release-linux.sh   # AppImage + .sig + SHA256SUMS + linux SBOM
-./scripts/release-windows.sh # .exe + .sig + windows SBOM
+./scripts/release-linux.sh   # AppImage + .sig + SHA256SUMS + SHA256SUMS.sig
+                             #   + linux SBOM  -> FIVE assets
+./scripts/release-windows.sh # .exe + .sig + windows SBOM, and it RE-UPLOADS
+                             #   SHA256SUMS + .sig having merged into them
 # then re-pin the Flatpak commit: (below)
 ```
 

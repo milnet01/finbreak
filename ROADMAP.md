@@ -1063,6 +1063,47 @@ scariest unknown (native-library bundling) up front.
   Kind: test.
   Source: in-session-2026-08-18 (found while splitting FIBR-0085 for FIBR-0267).
 
+- 📋 [FIBR-0278] **Nothing binds CLAUDE.md's prose-check suite list to the tree, and it silently went stale.**
+  § Doc-only pushes prescribes an ENUMERATED list of test suites that read
+  tracked prose. On 2026-08-18 that list was two suites and the real answer
+  was four: `tests/features/release_integrity/` reads
+  `docs/security-model.md`, and `tests/features/flatpak_packaging/` requires
+  `packaging/flatpak/README.md` to exist. All three review lanes found it
+  independently, which is what a hand-maintained list with no binding looks
+  like from outside.
+
+  The same shape as FIBR-0277: a guard whose coverage is a list nobody
+  checks. A new doc-scraping suite lands and the section does not notice, so
+  a doc-only push skips the very check that would have caught it.
+
+  Fix: a test asserting that the suite list CLAUDE.md prescribes matches the
+  suites that actually read a tracked doc — parse the fenced `pytest` command
+  out of the section, derive the real set, and fail on a difference. The
+  derivation cannot be a path grep alone: `account_detect` walks
+  `git ls-files` and names no file, so it must be an explicit member of
+  whatever the test compares against.
+  **Layman:** The instructions list which quick checks to run before pushing a documentation change, and nothing keeps that list up to date — it was already missing half the checks.
+  Kind: test.
+  Source: in-session-2026-08-18 (review-contract loop 1 on CLAUDE.md, all 3 lanes).
+
+- 📋 [FIBR-0279] **commits.md calls `--no-verify` an anti-pattern; CLAUDE.md now makes it the normal doc-only route.**
+  `docs/standards/commits.md` § 132 says `--no-verify` "bypasses project
+  safety nets" and § 277 lists "Skipping hooks (`--no-verify`) without
+  explicit authorisation" as a ❌. The 2026-08-18 doc-only push rule makes
+  `git push --no-verify` the prescribed route for every documentation
+  commit, after running the prose checks by hand.
+
+  These are reconcilable — the CLAUDE.md rule IS the explicit authorisation
+  — but neither document points at the other, so a session reading only the
+  standard sees the project's normal doc-push route listed as a defect.
+
+  Filed rather than fixed in passing: adding the exception changes what a
+  conformer does, so it trips commits.md's own rule-14 gate and wants three
+  cold lanes rather than a drive-by edit.
+  **Layman:** Two of the project's own rule documents disagree about whether a shortcut used on every documentation change is allowed.
+  Kind: doc-fix.
+  Source: in-session-2026-08-18 (review-contract loop 1 on CLAUDE.md, blast-radius sweep).
+
 ### 📦 Packaging
 
 - ✅ [FIBR-0003] **P01: bundling smoke-test (de-risk
