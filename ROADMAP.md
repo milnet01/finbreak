@@ -1114,6 +1114,41 @@ scariest unknown (native-library bundling) up front.
   Kind: doc-fix.
   Source: in-session-2026-08-18 (review-contract loop 1 on CLAUDE.md, blast-radius sweep).
 
+- ✅ [FIBR-0280] **Doc-only pushes run the prose checks unconditionally, and CLAUDE.md was gated for it.**
+  User directive 2026-08-18, settling the caveat raised 2026-08-17 and left
+  UNRESOLVED in § Doc-only pushes. The old rule asked whether a commit added
+  "digits or key-shaped strings" and demanded the two prose-reading checks
+  only then; measured, they cost about two seconds against ~1m45s for the full
+  gate, so the branch traded a silent unrecoverable failure against two
+  seconds — and the judgement fell to whoever had just written the prose.
+
+  Resolved (2026-08-18): every doc-only push now runs the four prose-reading
+  suites plus `gitleaks`, then pushes with `--no-verify`. The full gate is
+  still skipped; a code change still never skips. The `docs/specs/FIBR-0001.md`
+  carve-out is gone because the suite enforcing it now runs every time, and the
+  test's unit is pinned to `git diff --name-only @{u}..HEAD` rather than the
+  last commit.
+
+  Gated under rule 14: `review-contract --genre standard`, 3 cold lanes ×
+  3 loops, cap reached. 19 verified findings, all fixed, 1 dismissed. Loop log
+  in `docs/reviews/CLAUDE-md-review-log.md`. The gate also retired the
+  `<ID>-complete` phase-tag rule (never enforceable — `cut-release` Phase 5 and
+  `/close-phase` Step 6 both run `--follow-tags` on a public repo, which is how
+  all 54 tags reached the remote) and settled `--max-loops 7` to specs and
+  plans only. Both were user decisions on stop conditions the gate surfaced.
+
+  **Commit-ID note, recorded rather than rewritten:** the six commits
+  `13400f8`, `dc64b34`, `2d30ec3`, `1c510d8`, `eb6cda9` and this one's
+  predecessors carry `FIBR-0244:` subjects. FIBR-0244 is the ✅ account-number
+  redaction item and is NOT this work — it was reached for because it is the
+  leak this section's guard exists to catch. The commits were already pushed
+  to a public repo, so they are left as written rather than history-rewritten;
+  this bullet is the true owner. A ledger audit finding those subjects should
+  come here.
+  **Layman:** Pushing a documentation-only change now always runs a two-second safety check instead of asking you to judge whether the text looked risky.
+  Kind: doc.
+  Source: user-directive-2026-08-18.
+
 ### 📦 Packaging
 
 - ✅ [FIBR-0003] **P01: bundling smoke-test (de-risk
