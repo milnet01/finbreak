@@ -347,7 +347,8 @@ about.
 ```bash
 pytest tests/features/account_detect/ tests/features/harness/ \
        tests/features/release_integrity/ \
-       tests/features/flatpak_packaging/                          # ~1.6s
+       tests/features/flatpak_packaging/ \
+       tests/features/prose_checks/                                # ~1.6s
 gitleaks dir . --no-banner --redact --config .gitleaks.toml       # ~0.3s
 git push --no-verify origin main
 ```
@@ -360,11 +361,11 @@ clear, and § Build and test three screens up says never to print those values.
 A check whose failure mode is "leak it to the terminal" is worse than the leak
 it found.
 
-**Four suites read tracked prose. This list is ENUMERATED, so it can go stale —
+**Five suites read tracked prose. This list is ENUMERATED, so it can go stale —
 and it did.** Do not repeat the old justification for the skip — "no Python
 stage reads prose" — which was simply false. Nor the version that replaced it,
 "those two commands are all three of them", which was **also** false and is why
-the list below is now four:
+the list below is now five:
 
 - **`tests/features/harness/`** (FIBR-0001 INV-1) reads
   **`docs/specs/FIBR-0001.md`** and compares its stage table against
@@ -388,6 +389,12 @@ the list below is now four:
 - **`tests/features/flatpak_packaging/`** asserts `packaging/flatpak/README.md`
   **exists**, so moving or deleting that doc is a red doc-only push. Existence
   only — it never reads the contents.
+- **`tests/features/prose_checks/`** (FIBR-0278) reads **this file** — it
+  parses the fenced `pytest` command in this very section and asserts it
+  matches its own `_READS_PROSE` ledger, and separately asserts every
+  directory under `tests/features/` is sorted into that ledger or into
+  `_NO_PROSE`. It is a member of its own list: editing this fenced command
+  without editing that ledger (or vice versa) is exactly what turns it red.
 - **`gitleaks dir .`** scans prose too, and `.githooks/pre-push` exists
   because of a red **docs-only** commit (`a0cc895`).
 
@@ -403,16 +410,21 @@ turns nothing red.
 literal betrays it — any search-based audit misses the broadest member.
 A recipe here claimed otherwise for one review loop and was deleted for being
 unreproducible: the plausible readings of it return 64 files and 4, and the
-list is four. **This list is maintained by hand and nothing binds it to the
-tree** — which is the failure that produced two wrong lists in one day. The
-guard that would bind it is **FIBR-0278**; until that lands, add a suite here
-whenever you write one that reads a doc.
+list was four (now five). **This list used to be maintained by hand with
+nothing binding it to the tree** — which is the failure that produced two
+wrong lists in one day. `tests/features/prose_checks/` (**FIBR-0278**) is
+that guard: it fails if this fenced command and its `_READS_PROSE` ledger
+disagree, and it fails if any suite directory is sorted into neither ledger.
+Add a suite to **both** places — this fenced command and the ledger it
+checks against — whenever you write one that reads a doc; the guard is what
+catches you if you only do one.
 
-**The two extra suites cost about a quarter of a second** — measured
-2026-08-18 back to back and both warm, 1.20s for the old two-suite list against
-1.47s for these four. (An earlier draft of this line claimed the four were
-*faster* than the two, having compared a warm run against a cold one. They are
-not; they are 0.27s slower, which is still nothing.)
+**The three extra suites cost about a third of a second** — measured
+2026-08-18 back to back and both warm, 1.01s (63 tests) for the old two-suite
+list against 1.36s (93 tests) for these five. (An earlier draft of this line
+claimed the wider list was *faster*, having compared a warm run against a cold
+one. It is not; it is 0.35s slower, which is still nothing. Take the warm
+number: the same recipe cold measured 3.09s immediately before it.)
 
 **What counts as "only documentation": every path in
 `git diff --name-only @{u}..HEAD` ends in `.md`.** That is the whole test, and

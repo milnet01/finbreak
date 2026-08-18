@@ -1092,7 +1092,7 @@ scariest unknown (native-library bundling) up front.
   `_show_unlock` call sites) rather than assumed. `transactions.py:384` is a
   `QMenu` context menu, the same shape as the existing `home.py` exemption.
 
-- 📋 [FIBR-0278] **Nothing binds CLAUDE.md's prose-check suite list to the tree, and it silently went stale.**
+- ✅ [FIBR-0278] **Nothing binds CLAUDE.md's prose-check suite list to the tree, and it silently went stale.**
   § Doc-only pushes prescribes an ENUMERATED list of test suites that read
   tracked prose. On 2026-08-18 that list was two suites and the real answer
   was four: `tests/features/release_integrity/` reads
@@ -1114,6 +1114,32 @@ scariest unknown (native-library bundling) up front.
   **Layman:** The instructions list which quick checks to run before pushing a documentation change, and nothing keeps that list up to date — it was already missing half the checks.
   Kind: test.
   Source: in-session-2026-08-18 (review-contract loop 1 on CLAUDE.md, all 3 lanes).
+
+  Resolved (2026-08-18): fixed, but NOT as filed. "Derive the real set" cannot
+  be built: CLAUDE.md's own § Doc-only pushes says "No grep re-derives this
+  list, so do not try to", and measuring it confirms why — a grep for `.md` /
+  `docs/` / `git ls-files` over `tests/features/*/*.py` matches 44 of the 50
+  suites, so a derived set would be noise. Built instead as the same shape
+  FIBR-0277 takes, which the bullet already predicted: classify everything and
+  fail on the unclassified.
+
+  New suite `tests/features/prose_checks/`, two invariants. INV-1 parses the
+  fenced `pytest` command out of § Doc-only pushes and asserts it equals a
+  `_READS_PROSE` ledger of five; INV-2 asserts every directory under
+  `tests/features/` is in that ledger or in `_NO_PROSE` (46), so a new suite in
+  neither goes red and somebody has to decide. It is a member of its own list —
+  it reads CLAUDE.md — so editing the fenced command without the ledger, or the
+  reverse, is what turns it red.
+
+  Proven red at `13400f8`, where the fenced command still named two suites: the
+  run failed naming `flatpak_packaging`, `release_integrity` and `prose_checks`
+  as present in the ledger and missing from CLAUDE.md.
+
+  CLAUDE.md updated with it: the fenced command gains the new suite, "four
+  suites" becomes five, and the timing line is re-measured (1.01s / 63 tests for
+  the old two-suite list against 1.36s / 93 for these five, both warm). The
+  earlier "maintained by hand and nothing binds it" paragraph now points at this
+  guard.
 
 - 📋 [FIBR-0279] **commits.md calls `--no-verify` an anti-pattern; CLAUDE.md now makes it the normal doc-only route.**
   `docs/standards/commits.md` § 132 says `--no-verify` "bypasses project
