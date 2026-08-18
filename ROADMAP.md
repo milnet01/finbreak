@@ -1054,7 +1054,7 @@ scariest unknown (native-library bundling) up front.
   spacing does not matter, says it is a step the user performs and an agent
   cannot, and adds "type them onto a shell command line" to the never-list.
 
-- 📋 [FIBR-0277] **The dialog-lifecycle guard cannot see a UI module nobody added to its `_FILES` tuple.**
+- ✅ [FIBR-0277] **The dialog-lifecycle guard cannot see a UI module nobody added to its `_FILES` tuple.**
   `tests/features/dialog_lifecycle/test_dialog_lifecycle.py` iterates a
   hand-maintained `_FILES` tuple. A UI module created and never added to it
   is not a failing case but an absent one: the test passes while covering
@@ -1072,6 +1072,25 @@ scariest unknown (native-library bundling) up front.
   **Layman:** A safety check that scans the app's screens for a known freeze-the-window mistake only looks at a hand-written list of files, so a new screen nobody remembered to add is silently not checked at all.
   Kind: test.
   Source: in-session-2026-08-18 (found while splitting FIBR-0085 for FIBR-0267).
+
+  Resolved (2026-08-18): fixed as filed. `test_dialog_lifecycle.py` gains INV-7
+  and a `_NOT_CONTENT_WIDGETS` mapping of 38 written reasons; together with the
+  five `_FILES` members it must account for every one of the 43 `ui/*.py`
+  modules, so a new screen in neither list turns the guard red. `_FILES`,
+  `_EXEC` and the INV-1 / INV-4 tests are unchanged — this is additive, and
+  INV-1's subject is still the converted content widgets.
+
+  Proven red by construction, not by a live defect: a scratch
+  `src/finbreak/ui/_fibr0277_probe.py` made INV-7 fail naming that file, and it
+  was deleted immediately after.
+
+  What the allowlist surfaced, now written down instead of invisible:
+  `main_window.py:1147` carries a genuinely blocking `StartOverDialog.exec()`.
+  It is out of the FIBR-0065 crash class because `_on_start_over` is reachable
+  only from `UnlockDialog.start_over_requested` — the vault is locked, so
+  auto-lock cannot fire mid-`exec()`. Verified against the call graph (the three
+  `_show_unlock` call sites) rather than assumed. `transactions.py:384` is a
+  `QMenu` context menu, the same shape as the existing `home.py` exemption.
 
 - 📋 [FIBR-0278] **Nothing binds CLAUDE.md's prose-check suite list to the tree, and it silently went stale.**
   § Doc-only pushes prescribes an ENUMERATED list of test suites that read

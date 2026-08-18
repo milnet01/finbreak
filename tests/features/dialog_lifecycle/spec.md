@@ -29,3 +29,21 @@ Contract for the non-blocking-pop-up conversion. Full design:
 The behavioural-parity (INV-5) and PDF-semantics (INV-6) checks live in the
 existing per-widget suites (categorisation / statements / pdf_import), re-pointed
 from the old `exec()` fakes to real signal-emitting `QDialog` subclasses.
+- **INV-7 (coverage guard)** — `_FILES` is a hand-maintained tuple, and INV-1's
+  grep only ever iterates its five names. A UI module created and never added to
+  it is not a failing case for INV-1, it is an *absent* one: the grep has
+  nothing to walk, so it passes while covering nothing, and no run reports the
+  omission (FIBR-0277). A module-level `_NOT_CONTENT_WIDGETS: dict[str, str]`
+  maps every `ui/*.py` file **not** in `_FILES` to a one-line written reason why
+  INV-1 does not need to cover it — most are "no `QDialog`, no pop-up" pure
+  helpers or tabs with an inline/direct-apply form, but a module that does own
+  or show a dialog gets its own specific sentence (e.g. `main_window.py`'s one
+  surviving `dialog.exec()`, defended by exactly which caller reaches it and why
+  the vault is always locked when it runs; `transactions.py`'s `QMenu.exec(`,
+  the same shape as `home.py`'s existing exemption). The test asserts
+  `set(p.name for p in _UI_DIR.glob("*.py")) == set(_FILES) | set(_NOT_CONTENT_WIDGETS)`
+  — both directions: an unclassified file fails it, and so does a stale entry
+  naming a file that no longer exists (a rename could otherwise land
+  unclassified under its new name while the guard stays green on the old one).
+  This is purely additive coverage — it does not change what INV-1 itself
+  checks or which five files it grep's.
