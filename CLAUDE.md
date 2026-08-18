@@ -264,7 +264,9 @@ stable per-bullet ID for ROADMAP_FORMAT v1 projects
 
 Every implementation phase ends with `git tag -a <ID>-complete`
 on the closing commit. **Those phase tags** stay local until the
-user explicitly authorises a push.
+user explicitly authorises a push — **as an intention. All 54 of them
+are in fact already on the remote**; § Push policy below holds the
+measurement and the open question, and it is the one home for it.
 
 **A release tag `v<X.Y.Z>` is NOT covered by that** — it is pushed
 as part of cutting the release, without asking, per global
@@ -284,13 +286,25 @@ the result is recorded in `.claude/workflow.md` § 1 status
 header. This repo is **public**, so commits push freely.
 
 **Commits, yes; `<ID>-complete` phase tags, no.** "Push freely" is
-about commits and release tags. A phase tag stays local until the
-user says otherwise (§ Commit conventions), so **push the branch
-alone — `git push origin main`, not `git push --follow-tags`** —
-unless you are cutting a release, where the `v<X.Y.Z>` tag goes with
-it. `--follow-tags` publishes every annotated tag reachable from what
-you are pushing, which is how a phase tag leaves the machine without
-anyone deciding to send it.
+about commits and release tags. So **push the branch alone —
+`git push origin main`, never `git push --follow-tags`.** No exception, a
+release included: `cut-release` and `scripts/release-linux.sh` create the
+`v<X.Y.Z>` ref on the remote themselves (§ Cutting a release), so nothing here
+ever needs the flag. `--follow-tags` publishes every annotated tag reachable
+from what you are pushing, which is how a phase tag leaves the machine without
+anyone deciding to send it. **The carve-out that used to stand here — *unless
+you are cutting a release* — licensed the exact command the sentence beside it
+forbids**, and a release is precisely when someone would reach for it.
+
+**Read the next paragraph before relying on any of that.**
+
+> **The phase tags are ALREADY published — all 54 of them, measured
+> 2026-08-18.** `git tag -l '*-complete'` returns 54 and the remote carries the
+> same 54. So "a phase tag stays local until the user says otherwise" describes
+> an intention, not this repository. Whether to delete them from the remote or
+> retire the rule is the user's call and is **open**; until it is settled, do
+> not read the rule as a description of the current state, and do not assume a
+> phase tag you create is private.
 
 ### Doc-only pushes skip the FULL gate, never the prose checks (user directives 2026-08-05, 2026-08-18)
 
@@ -298,7 +312,7 @@ A push that touches **only** documentation does not run
 `./scripts/ci-local.sh`. It runs the prose checks below, then pushes with
 `git push --no-verify`. The full gate takes ~1m45s and most of it is aimed
 at code, so paying it for a ROADMAP annotation is mostly waiting — but the
-prose checks cost about **two seconds** (measured 2026-08-18: pytest 1.56s,
+prose checks cost about **two seconds** (measured 2026-08-18: pytest 1.47s,
 `gitleaks` 0.3s warm and 1.8s cold), which is not a saving worth reasoning
 about.
 
@@ -349,38 +363,52 @@ the list below is now five:
 - **`gitleaks dir .`** scans prose too, and `.githooks/pre-push` exists
   because of a red **docs-only** commit (`a0cc895`).
 
-**The membership rule is sharp: a suite belongs here if it reads a tracked
-doc's CONTENTS or requires one to EXIST.** To re-derive rather than guess, grep
-every `tests/**/*.py` for a `.md` string literal or a `"docs"` path segment —
-**5 files match, of which 3 qualify**; `bundling` only cites specs in its
-docstring, and `gitignore` names `docs/design.md` but tests it inside a fresh
-tmp repo holding a copy of `.gitignore` alone, so the file's real presence is
-irrelevant and deleting it turns nothing red.
+**The membership rule: a suite belongs here if it reads a tracked doc's
+CONTENTS or requires one to EXIST.** Two near-misses, so the rule is not
+theoretical — `bundling` cites specs in its docstring only, and `gitignore`
+names `docs/design.md` but tests it inside a fresh tmp repo holding a copy of
+`.gitignore` alone, so that file's real presence is irrelevant and deleting it
+turns nothing red.
 
-**That grep cannot find the fourth, which is the one that matters most.**
-`account_detect` walks `git ls-files` and reads every tracked text file without
-naming one, so no path literal betrays it. A derivation that misses the
-broadest member is not a substitute for the list — it is a way to check the
-list, and it must be run alongside knowing that suite is there.
+**No grep re-derives this list, so do not try to.** `account_detect` walks
+`git ls-files` and reads every tracked text file without naming one, so no path
+literal betrays it — any search-based audit misses the broadest member.
+A recipe here claimed otherwise for one review loop and was deleted for being
+unreproducible: the plausible readings of it return 64 files and 4, and the
+list is four. **This list is maintained by hand and nothing binds it to the
+tree** — which is the failure that produced two wrong lists in one day. The
+guard that would bind it is **FIBR-0278**; until that lands, add a suite here
+whenever you write one that reads a doc.
 
-**Nothing binds this list to the tree**: a new doc-scraping suite lands and this
-section does not notice, which is the failure that produced the wrong list
-above. Guard filed as **FIBR-0278**. **All four cost 1.56s together** (measured
-2026-08-18), less than the two-suite list they replace, so there is no budget
-argument for trimming.
+**The two extra suites cost about a quarter of a second** — measured
+2026-08-18 back to back and both warm, 1.20s for the old two-suite list against
+1.47s for these four. (An earlier draft of this line claimed the four were
+*faster* than the two, having compared a warm run against a cold one. They are
+not; they are 0.27s slower, which is still nothing.)
 
-**What counts as "only documentation":** no file under `src/`, `tests/`,
-`scripts/`, `.github/` or `packaging/` changed, and no `pyproject.toml`.
-A `.md` under any of those is still a doc for this purpose — the five suites
-above are what cover it. Anything else takes the full gate.
+**What counts as "only documentation": every changed path ends in `.md`.**
+That is the whole test, and it is deliberately POSITIVE. The deny-list version
+of this rule — *no file under `src/`, `tests/`, `scripts/`, `.github/` or
+`packaging/`* — lasted one review loop: `.githooks/pre-push` is under none of
+those, so a commit touching only that file passed the test word for word. It is
+shell, and `ci-local.sh`'s shellcheck stage names it explicitly
+(`shellcheck "${SH_FILES[@]}" .githooks/pre-push`), so the "doc-only" route
+would have skipped the one stage that reads what you just changed.
+`.gitleaks.toml`, `.gitignore` and any stray `.sh`, `.toml` or `.yml` fail a
+deny-list the same way. **A closed list of directories cannot express "not
+code"; a suffix can.**
+
+**A `.md` anywhere counts** — `tests/features/<name>/spec.md` and
+`packaging/flatpak/README.md` included. The four suites and the `gitleaks`
+scan above are what cover those. Anything else takes the full gate.
 
 **Why this replaced the digit test.** Until 2026-08-18 the rule asked
 whether the commit added "digits or key-shaped strings", and demanded the
 checks only then. Two things retired it. The judgement falls to the person
 least able to make it — you have just written the prose and know what you
 meant by it, which is exactly when a pasted number does not read as one.
-And the judgement was buying **four seconds**. A branch that trades a
-silent, unrecoverable failure against four seconds should not be a branch.
+And the judgement was buying **under two seconds**. A branch that trades a
+silent, unrecoverable failure against two seconds should not be a branch.
 
 **The leak guard went live on 2026-08-18**, when `.corpus-numbers` was
 created on this machine: `test_no_real_data.py` now runs instead of
