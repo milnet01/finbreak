@@ -611,7 +611,7 @@ scariest unknown (native-library bundling) up front.
   Kind: doc-fix.
   Source: in-session-2026-08-12 (review-contract gate on FIBR-0085, loop 1).
 
-- 📋 [FIBR-0267] **FIBR-0085 has five more verified doc-vs-code defects, and at 1357 lines wants splitting rather than another loop.**
+- ✅ [FIBR-0267] **FIBR-0085 has five more verified doc-vs-code defects, and at 1357 lines wants splitting rather than another loop.**
   Loop 2 confirmed loop 1's four fixes held and that the FIBR-0254
   amendment is correct, then found five NEW defects in sections neither
   loop-1 lane had reached. That pattern -- a fresh cold read finding
@@ -691,6 +691,22 @@ scariest unknown (native-library bundling) up front.
   absent from both halves, then doc_integrity over the union. Keep the same
   id with a `-<topic>.md` suffix so existing citations resolve untouched —
   that is what made the last one cheap.
+
+  Resolved (2026-08-18): split THREE ways, not two — measured, the service
+  half of §4 is 352 lines against the review step's 190, so moving only the
+  widget out would have left the file near 1130. 1376 → 705
+  (`FIBR-0085-batch-statement-import.md`, the shared contract and every
+  frozen record) + 535 (`FIBR-0085-batch-import-service.md`, §§ 4.2–4.5 and
+  INV-1, 2, 4, 9, 10, 11, 13, 15) + 375
+  (`FIBR-0085-batch-import-review-step.md`, §§ 4.6–4.8 and INV-3, 5, 6, 7,
+  8, 14). The invariant allocation was driven by the test file each INV
+  already names, re-run bounded strictly to §5 as this bullet required; the
+  earlier count was wrong as warned. Same id, no renumbering, every moved
+  line verbatim — a script asserted all 27 section and 15 invariant
+  boundaries before writing, then checked no substantive line of the 1376
+  was absent from the union. All five defects re-verified still live against
+  the tree, then fixed in the parts they landed in. INV-6's real gap (a
+  guard that cannot observe its own omission) is filed as FIBR-0277.
 
 - ✅ [FIBR-0268] **A malformed CSV body crashes out of the date-column slot, which catches nothing.**
   `_date_samples` reads through `read_rows`, which translates a
@@ -1027,6 +1043,25 @@ scariest unknown (native-library bundling) up front.
   **Layman:** The instructions for saving your real account numbers locally tell you to type them into the terminal, where they get saved into your command history.
   Kind: doc-fix.
   Source: in-session-2026-08-18 (raised by a review-contract lane on CLAUDE.md, then by the user asking what the file is).
+
+- 📋 [FIBR-0277] **The dialog-lifecycle guard cannot see a UI module nobody added to its `_FILES` tuple.**
+  `tests/features/dialog_lifecycle/test_dialog_lifecycle.py` iterates a
+  hand-maintained `_FILES` tuple. A UI module created and never added to it
+  is not a failing case but an absent one: the test passes while covering
+  nothing, and no run reports the omission.
+
+  Found while fixing FIBR-0085 INV-6, whose *Breaks when* clause named
+  exactly this omission — a clause its own named test cannot observe, so it
+  was unfalsifiable as written. The spec now states the gap rather than
+  implying the guard closes it.
+
+  Fix: assert `_FILES` covers every `*.py` in `src/finbreak/ui/` bar a named
+  allowlist, so adding a UI module without listing it turns the guard red
+  instead of silently shrinking its coverage. The allowlist is what keeps it
+  honest — an unexplained exclusion has to be written down.
+  **Layman:** A safety check that scans the app's screens for a known freeze-the-window mistake only looks at a hand-written list of files, so a new screen nobody remembered to add is silently not checked at all.
+  Kind: test.
+  Source: in-session-2026-08-18 (found while splitting FIBR-0085 for FIBR-0267).
 
 ### 📦 Packaging
 

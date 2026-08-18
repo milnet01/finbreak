@@ -15,26 +15,81 @@ asks for every password it needs in one go, shows you a single list of what is
 about to land in which account, and then imports the lot without you having to
 sit there.
 
+
+> **Split three ways on 2026-08-18** (ROADMAP **FIBR-0267**). This file keeps
+> the shared contract and every frozen record; the design and invariants moved
+> to two companions under the **same id**:
+> [`FIBR-0085-batch-import-service.md`](FIBR-0085-batch-import-service.md) (the
+> Qt-free engine, §§ 4.2–4.5) and
+> [`FIBR-0085-batch-import-review-step.md`](FIBR-0085-batch-import-review-step.md)
+> (the widget, §§ 4.6–4.8).
+> **This move is structural, not an amendment: every line in all three files is
+> verbatim from the 1376-line original.** No invariant was re-cut, no section
+> renumbered and no id changed — which is why each companion's sections and
+> invariants start where they do and skip the numbers the other holds. Ids are
+> permanent (the [`FIBR-0192-qt-facts.md`](FIBR-0192-qt-facts.md) rule); the
+> gaps are the point, not an error. **Same id, deliberately**, so every
+> existing `FIBR-0085 §4.n` / `INV-n` citation in code, tests and the ROADMAP
+> resolves without being touched.
+> The five doc-vs-code defects FIBR-0267 carried were fixed **after** the move,
+> in the parts they landed in — see § 13.
+
+**Why the split.** Two `review-contract` loops on the combined document each
+found defects in regions the previous loop had never reached — the shape
+`spec-format.md` §5.4 calls the size gate, whose remedy is to split along
+§3.6's by-concern seams rather than keep looping. 1376 lines against siblings
+of ~400–650. **The seam is the module boundary `docs/design.md` already sets**,
+not a judgement call: §§ 4.2–4.5 are the headless `services/batch_import.py`
+decisions and §§ 4.6–4.8 are `ui/import_batch.py`, and §5's invariants sort
+themselves by the test file each already names — `test_batch_import.py` or
+`test_batch_import_ui.py`.
+
+**Three files, not two, and the arithmetic is why.** The service half of § 4 is
+352 lines against the review step's 190, so moving only the widget out would
+have left this file near 1130 — barely inside the gate it was called for. The
+shared framing (§§ 1–3, 4.1), the whole-batch sections (§§ 6, 7, 10, 11) and
+the frozen records (§§ 13, 14) are what both halves read, so they stay here as
+one home rather than being divided.
+
+**Read this first, then the half you are building.** This file owns the goal,
+the problem, the scope decisions agreed with the user, **§ 4.1 Where the work
+lands** (the module table both halves are cut along), the failure modes, the
+test plan, the canonical invariant → test mapping (§ 11), the resource
+budget, and the review history of all three files. One home, one copy: where a
+rule lives here, the companions cite it rather than restating it.
+
+**How a bare `§4.n` resolves.** The moved text is verbatim, so it still cites
+sections by number alone. Unless another spec is named in the same breath (a
+`FIBR-0086 §4.5` means that spec's), a `§4.n` is FIBR-0085's and lives in:
+**§§ 1–3, 4.1, 6–14** →
+[`FIBR-0085-batch-statement-import.md`](FIBR-0085-batch-statement-import.md) ·
+**§§ 4.2–4.5** →
+[`FIBR-0085-batch-import-service.md`](FIBR-0085-batch-import-service.md) ·
+**§§ 4.6–4.8** →
+[`FIBR-0085-batch-import-review-step.md`](FIBR-0085-batch-import-review-step.md).
+Numbers were not rewritten on purpose: renumbering is what would have broken the
+existing citations this split was shaped to preserve.
+
 ## Contents
 
-- [1. Goal](#1-goal) · [2. Problem](#2-problem) ·
-  [3. Scope decisions](#3-scope-decisions-agreed-with-the-user)
-- [4. Design](#4-design) — [4.1 Where the work lands](#41-where-the-work-lands) ·
-  [4.2 The per-file record](#42-the-per-file-record) ·
-  [4.3 Four passes](#43-four-passes) ·
-  [4.4 PDF passwords](#44-resolving-a-pdf-password-with-no-pick-step-account) ·
-  [4.5 Cumulative dedup](#45-cumulative-dedup--the-reviewed-number-is-the-number-that-lands) ·
-  [4.6 The review step](#46-the-review-step) ·
-  [4.7 Driving the passes](#47-driving-the-passes-with-no-nested-event-loop) ·
-  [4.8 Outcomes](#48-outcomes-and-what-each-one-tells-the-user)
-- [5. Invariants](#5-invariants) · [6. Failure modes](#6-failure-modes) ·
-  [7. Tests](#7-tests) · [8. Alternatives](#8-alternatives-considered-and-rejected)
-- [9. Out of scope](#9-out-of-scope) · [10. Resource cost](#10-resource-cost) ·
-  [11. What checks this](#11-what-checks-this) ·
-  [12. Cross-doc impact](#12-cross-doc-impact) ·
-  [13. Cold-eyes loop log](#13-cold-eyes-loop-log) ·
-  [14. As-built deviations](#14-as-built-deviations)
+**This file** — [1. Goal](#1-goal) · [2. Problem](#2-problem) ·
+[3. Scope decisions](#3-scope-decisions-agreed-with-the-user) ·
+[4.1 Where the work lands](#41-where-the-work-lands) ·
+[5. Invariants](#5-invariants) (INV-12 only) ·
+[6. Failure modes](#6-failure-modes) · [7. Tests](#7-tests) ·
+[8. Alternatives](#8-alternatives-considered-and-rejected) ·
+[9. Out of scope](#9-out-of-scope) · [10. Resource cost](#10-resource-cost) ·
+[11. What checks this](#11-what-checks-this) ·
+[12. Cross-doc impact](#12-cross-doc-impact) ·
+[13. Cold-eyes loop log](#13-cold-eyes-loop-log) ·
+[14. As-built deviations](#14-as-built-deviations)
 
+[**The service**](FIBR-0085-batch-import-service.md) — 4.2 The per-file record ·
+4.3 Four passes · 4.4 PDF passwords · 4.5 Cumulative dedup ·
+INV-1, 2, 4, 9, 10, 11, 13, 15
+
+[**The review step**](FIBR-0085-batch-import-review-step.md) — 4.6 The review
+step · 4.7 Driving the passes · 4.8 Outcomes · INV-3, 5, 6, 7, 8, 14
 ## 1. Goal
 
 A user selects many statement files in one dialog. finbreak reads each one,
@@ -249,700 +304,19 @@ a new UI module is outside the FIBR-0065 INV-1 guard until it is named there,
 and a guard that silently does not cover new code is worse than no guard
 (INV-6).
 
-### 4.2 The per-file record
-
-`ImportPreview` carries no filename, no format and no hint — a batch has to
-keep its own association. One **mutable** record per selected file (every field
-but `path` is written as the passes advance), in `services/batch_import.py`:
-
-```python
-# --- services/batch_import.py ----------------------------------------------
-
-Outcome = Literal[
-    "waiting",           # selected, not yet reached by SCAN  (initial value)
-    "ready",             # parsed, account known, will commit
-    "already_imported",  # span exists and zero new rows (§4.8); set in REVIEW
-    "needs_password",    # a locked PDF, no working password yet
-    "needs_mapping",     # a CSV whose header matches no saved profile
-    "needs_account",     # parsed, but match_account did not resolve one
-    "failed",            # unreadable / unparseable / no dated rows; see `reason`
-    "skipped",           # the user declined, or three prompts were exhausted
-    "committed",         # RUN completed it; `result` carries the counts
-    "not_attempted",     # a cap stopped SCAN, or cancel stopped RUN, before it
-]
-
-
-@dataclass
-class BatchFile:
-    """One selected file — or one STATEMENT within a multi-statement OFX —
-    from selection through to its committed result."""
-
-    path: str                                   # full path; basename for display
-    outcome: Outcome = "waiting"
-    statement_index: int | None = None          # OFX fan-out (below); else None
-    parsed: ParseResult | None = None           # kept: the account may be set later
-    preview: ImportPreview | None = None        # None until an account is known
-    hint: SourceAccountHint | None = None       # ParseResult.source_account
-    account_id: int | None = None               # the destination, once settled
-    reason: str = ""                            # user-facing text for failed/skipped
-    pending_password: str | None = None         # §4.4 — held, not yet written
-    remember_password: bool = False             # §4.4 — the dialog's tick
-    result: ImportResult | None = None          # None until committed
-    new_count: int = 0                          # §4.5 cumulative
-    duplicate_count: int = 0                    # §4.5 cumulative
-    error_count: int = 0                        # unparseable ROWS (below)
-```
-
-**All ten `Outcome` members are reachable**, and the Status column (§4.6)
-renders exactly this field — there is no second, derived vocabulary anywhere,
-including for the pre-scan state. Who writes what, named rather than counted:
-
-| Written by | Outcomes |
-|---|---|
-| initial value | `waiting` |
-| SCAN | `ready`, `needs_password`, `needs_mapping`, `needs_account`, `failed` |
-| ASK | `skipped` (declined or three prompts exhausted) |
-| REVIEW | `ready` ⇄ `already_imported`, re-derived every pass |
-| RUN | `committed`, and `failed` on a raised exception |
-| SCAN **or** RUN | `not_attempted` — a cap stopped the scan, or cancel stopped the run |
-
-**Two outcomes have two writers each**, `failed` and `not_attempted`, which is
-exactly why §4.8 gives each of them two wordings: the same outcome reached from
-two passes means two different things to the user.
-
-**`error_count` is carried because the review table would otherwise hide it.**
-`ImportPreview.errors` holds the rows that could not be parsed, and a file
-where 40 of 50 rows failed commits 10 and would report *"10 added"* with no
-hint that 40 vanished. In a money app a silently dropped row is the defect, so
-the count reaches the screen (§4.6) and the report (§4.8).
-
-**One `BatchFile` per statement, not per file.** `OfxImporter.parse` returns
-`[(OfxAccountInfo, ParseResult), ...]` — a single OFX file can carry several
-statements, each potentially for a *different* account, which is exactly why
-the wizard already keeps `_ofx_statements` as a list. SCAN therefore **fans a
-multi-statement OFX out into one record per statement**, sharing `path` and
-numbering them in `statement_index` (0-based, `None` for every other format).
-Consequences, all deliberate: each statement gets its own account, its own
-preview and its own review row; the File column disambiguates them (§4.6); and
-`_MAX_BATCH_DRAFTS` counts their drafts individually while `_MAX_BATCH_FILES`
-still counts *selected files*, because that is the number the user chose.
-Taking only the first statement was rejected — it silently discards the rest.
-
-**`OfxAccountInfo` is destructured and discarded; the hint comes from
-`parsed.source_account`.** `OfxImporter` already sets
-`source_account = SourceAccountHint(account.account_id)` per statement when
-that id is non-empty, so each fanned-out `ParseResult` carries its own account
-identity and INV-15's "matched to two different accounts" runs through exactly
-the same `match_account(parsed.source_account, accounts)` call as CSV and PDF.
-Reading `info` instead would be a second seam for a hint that already exists —
-the one thing FIBR-0086 §4.1 built `SourceAccountHint` to prevent. (`info`'s
-`account_type` is the only field with no home, and prefilling from it is
-deferred as FIBR-0243.)
-
-**`parsed` is kept deliberately.** §3 decision 5 settles the account on the
-review screen, so a `needs_account` row arrives there with a `ParseResult` and
-no `ImportPreview` — and `ImportService.retarget` takes an `ImportPreview`, so
-it cannot be the call that first targets one. §4.6 says which call is.
-
-Both counts are **cumulative** and neither is read from the preview: a preview
-dedups against committed rows only, which is the whole of §4.5.
-
-The batch is an ordinary list, ordered by **`(path, statement_index)`**, and
-that order is the commit order. It is sorted rather than taken as the dialog
-returned it because `QFileDialog`'s selection order is not a defined sort, and
-INV-4's reproducibility depends on two runs over the same files claiming rows
-in the same order. `statement_index` breaks the tie within one OFX file, whose
-statements share a path.
-
-### 4.3 Four passes
-
-`exponent` below is the vault's base-currency minor-unit exponent, read **once
-per batch** as `read_minor_unit_exponent(vault.connection)`
-(`services/transactions.py`). It is a vault-level setting, not per-account, so
-it is settled before SCAN starts and is unaffected by §3 decision 5 moving the
-account question to REVIEW.
-
-```
-SCAN   refuse the batch before reading anything, if
-           len(selected_files) > _MAX_BATCH_FILES                  (INV-11)
-       every record starts `waiting`; the table is already on screen (§6)
-       for each file, in path order:
-         if drafts held so far >= _MAX_BATCH_DRAFTS                (INV-11)
-             -> this and every later record become `not_attempted`; stop
-         classify by extension/sniff  (importers/sniff.py: looks_like_ofx /
-                                       looks_like_pdf — §4.1)
-         PDF  -> decrypt (§4.4); locked -> needs_password, stop this file
-                 StandardBankImporter.parse(pdf_bytes, exponent, password)
-                     -> ParseResult, or None if not a recognised SB statement
-                 None -> PdfImporter.candidate_tables(...) + table_to_text(...)
-                         then the CSV ladder below on that text
-         OFX  -> OfxImporter.parse(data, exponent) -> [(info, ParseResult), ...]
-                 FAN OUT: one record per statement, statement_index 0..N-1 (§4.2)
-                 the hint is `parsed.source_account`, exactly as for every other
-                 format — `info` is NOT the seam (below)
-         CSV  -> match_profile(header); no match -> needs_mapping, stop this file
-                 CsvImporter().parse(text, mapping, exponent) -> ParseResult
-         store it as `parsed`; error_count = len(parsed.errors)
-         if parsed.period_start is None OR parsed.period_end is None
-             -> failed, "No dated transactions found in this file"
-                                                          (§3 decision 4)
-         match_account(parsed.source_account, accounts)
-             matched   -> account_id set; preview_result(parsed, account_id)
-                          -> preview; outcome `ready`
-             otherwise -> needs_account   (no preview yet — §4.2)
-
-ASK    passwords and mappings ONLY (§3 decision 5), one file at a time:
-         needs_password -> PasswordDialog, at most 3 PROMPTS (INV-8)
-         needs_mapping  -> the existing _STEP_MAP page for that file
-       an answered file re-enters SCAN at the step that stopped it — a
-       password resumes at decrypt, a mapping at CsvImporter().parse — and
-       runs the rest of the ladder, INCLUDING the draft-cap check;
-       a declined or exhausted file becomes `skipped`
-
-REVIEW on entry and after EVERY account change, re-evaluate the whole batch:
-         cumulative_counts(files, imports)
-                                    sets new_count + duplicate_count on every
-                                    record with a preview (NOT only `ready` —
-                                    the outcomes below are not set yet)
-         for each record with a preview, set outcome in BOTH directions:
-             `already_imported`  when id_for_span(account_id, period_start,
-                                      period_end) is not None
-                                      AND new_count == 0            (§4.8)
-             `ready`             otherwise
-       records still `needs_account` keep that outcome; Import all stays off
-       No commit has happened yet.
-
-RUN    for each `ready` record, in (path, statement_index) order:
-         commit_import(preview, preview.period_start, preview.period_end, path)
-             -> ImportResult, stored on the record; outcome `committed`
-         (ValueError, FinbreakError) -> `failed` + its message; CONTINUE (INV-1)
-       on cancel, every record not yet reached -> `not_attempted` (cancelled)
-```
-
-**The caught set is `(ValueError, FinbreakError)`** — the same pair the
-single-file `_on_import` catches, not a bare `except Exception`. `coding.md`
-§2 forbids the broad form, and the narrow one is what makes INV-1 a contract
-rather than a swallow: an unexpected exception type still escapes and is a bug,
-where "continue past anything" would hide one behind a per-file report line.
-
-**Cancel during SCAN behaves the same way as during RUN**: every record not yet
-reached becomes `not_attempted` with the cancelled wording. Without that rule a
-cancelled scan would strand rows reading *Waiting…* forever, which §4.8 says is
-a state seen only while SCAN is running.
-
-**Ordering is `(path, statement_index or 0)`** — `statement_index` is
-`int | None`, and sorting a mixed `None`/`int` column raises `TypeError` in
-Python 3. Coalescing to 0 is safe because the only records that share a `path`
-are an OFX file's own statements, which all carry an `int`.
-
-**The REVIEW re-evaluation is two-directional, and that is load-bearing.** A
-one-way `ready → already_imported` flip looks equivalent and silently loses
-data: the user retargets a row that was `already_imported` under the wrong
-account, its rows are genuinely new under the right one, but nothing moves it
-back to `ready` — and RUN commits only `ready` records, so the file is
-dropped without a word. Re-deriving both outcomes from scratch on every pass is
-the shortest rule that cannot do that, and it is why the flip is expressed as
-*set the outcome* rather than *demote when*.
-
-`commit_import`'s arguments are spelled out because all four are load-bearing:
-the period pair is §3 decision 4's parsed default (its `None` case is already
-`failed` at SCAN, so the values reaching here are `str`), and `path` is the full
-path — `commit_import` stores `Path(source_filename).name` itself.
-
-**Passwords and mappings block the parse; an account does not.** That is the
-whole reason ASK carries the first two and REVIEW carries the third: a file
-cannot be read at all without its password or mapping, whereas a parsed file is
-merely waiting to be told where it goes. **No file is committed while any file
-is `needs_password`, `needs_mapping` or `needs_account`** — the first two are
-exhausted by ASK, the third gates `Import all` in REVIEW (INV-3).
-
-**The ASK callback**, the one seam between the widget and the headless service:
-
-```python
-# services/batch_import.py — the service ASKS; the widget ANSWERS.
-Answer = str | ColumnMapping | None          # password | mapping | declined
-
-def next_question(files: Sequence[BatchFile]) -> BatchFile | None:
-    """The next record needing a password or a mapping, or None when ASK is
-    exhausted. Pure — it reads outcomes, it does not show anything."""
-
-def answer(record: BatchFile, value: Answer) -> None:
-    """Apply the user's response: None declines (-> `skipped`), otherwise
-    resume SCAN at the step that stopped this record (§4.3)."""
-```
-
-The seam is **inverted rather than asynchronous** — the widget pulls a question,
-shows the dialog, and pushes the answer back from its slot. An `await`-shaped
-callback is what a reader reaches for first and it cannot work here: the
-non-blocking dialog contract (§4.7) means `show_modal` returns immediately and
-the answer arrives on a signal, so there is nothing to await inside a Qt slot.
-This shape keeps every decision in the service and every `QDialog` in the
-widget, with no Qt import on the service side.
-
-**A CSV that matches a saved profile but parses ambiguous dates** is *not*
-promoted to `needs_mapping`: the profile carries the `date_format` the user
-already confirmed for that exact header signature, and `detect_date_format`'s
-ambiguity flag (`_date_ambiguous`) exists to pick a default when there is no
-profile. Re-asking a question already answered is decision 1's babysitting.
-The consequence is stated rather than hidden: a bank that changes its date
-convention **without changing its header** would import silently under the old
-format — which is a pre-existing property of profile matching (FIBR-0007
-INV-9), not something this batch introduces, and the periods on the review
-screen are where it would show.
-
-### 4.4 Resolving a PDF password with no pick-step account
-
-`_begin_decrypt` cannot be reused as-is, because its stored-password lookup
-is keyed on `_target_account_id()` and a batch has no such account (§2.3). The
-batch tries the remembered password of **every** account before prompting:
-
-```python
-def stored_passwords(accounts: Sequence[Account],
-                     get: Callable[[int], str | None]) -> list[str]:
-    """Each account's remembered PDF password, de-duplicated, order stable."""
-```
-
-Attempt order per file: no password, then each distinct stored password once,
-then the user. All of them are the same person's own vault, so trying account
-A's password against account B's statement discloses nothing the user does not
-already hold.
-
-**A password the user types during this run joins the list for every later
-file in the same batch**, before any further prompting. Without that rule a
-first batch of thirty same-bank PDFs is thirty prompts — an "unattended"
-feature that asks thirty questions — because the stored-password list is empty
-until something is remembered, and *Remember* may never be ticked. With it,
-the common case is one prompt per distinct password per batch. Run-local
-passwords are held in memory for the run only; only a *Remember*-ticked one is
-ever written (above). Each distinct password is still tried at most once per
-file, so the cost stays bounded by (accounts + distinct passwords typed).
-
-A password entered during the ASK pass with *Remember* ticked is **held on the
-record, not written immediately** — in `BatchFile.pending_password` /
-`remember_password` (§4.2). At prompt time the file is still unparsed, so its
-destination account is not yet known and there is nothing to key the password
-to. It is written by `AccountService.set_pdf_password(account_id, value)`
-once the destination settles (at SCAN for a matched file, at REVIEW for one the
-user places by hand), and **dropped unwritten if the file never settles one** —
-`failed`, `skipped`, or left `needs_account` when the user leaves the screen.
-
-**How a decline is detected.** `PasswordDialog` is shown through the
-non-blocking `show_modal`, which wires only `accepted`; its Cancel has no slot
-at all today (§2.3), so "the user declined" is currently unobservable. The
-batch connects `rejected` on the dialog it constructs — `show_modal` sets no
-`rejected` handler, so adding one at the call site conflicts with nothing — and
-treats it as the decline that makes the record `skipped`. Without that
-connection INV-8's "cancelling a prompt skips that file immediately" has no
-mechanism, and a cancelled prompt would leave the pass waiting forever on a
-dialog that has already been freed.
-
-That is the shape FIBR-0249 asks for on the single-file path, where the
-password is keyed to whatever the pick step happened to hold. This spec does
-not fix the single-file path; it declines to copy the defect.
-
-### 4.5 Cumulative dedup — the reviewed number is the number that lands
-
-`ImportService._dedup` runs the multiset delta against **committed** rows
-only. Two files in one batch that overlap each other (a January statement and
-a January–February statement, both freshly downloaded) therefore each preview
-their shared rows as new: nothing has been committed yet, so nothing dedups
-them against each other. `commit_import` re-runs `_dedup` inside its own
-transaction, so the *result* is always correct — file B's commit sees file A's
-rows. The defect is confined to the review screen, which would promise more
-than lands.
-
-Since the user is being asked to approve those numbers (§3 decision 2), the
-batch computes them cumulatively:
-
-```python
-def cumulative_counts(
-    files: Sequence[BatchFile], imports: ImportService
-) -> None:
-    """Set `new_count` AND `duplicate_count` on every record WITH A PREVIEW.
-
-    Domain is `preview is not None` — NOT `outcome == "ready"`. Two reasons,
-    and the second is the one that bites: this runs BEFORE REVIEW sets the
-    ready/already_imported outcomes on the same pass, so "the ready records"
-    names a set that does not exist yet; and an `already_imported` record must
-    keep having its counts recomputed, or a later retarget can never see its
-    new_count rise above zero and it can never return to `ready` (INV-10).
-
-    The baseline for each record is the EXISTING VAULT ROWS for its account
-    PLUS the drafts claimed by earlier records in this batch. The vault half is
-    why `imports` is a parameter: the drafts-per-account baseline is read
-    through ImportService (the same reads _dedup performs), and a function
-    given only the file list cannot reach it.
-
-    Walks in commit order, per destination account. The key is the one
-    ImportService._key builds — (occurred_on, amount_minor,
-    self._normalise(description)), where _normalise delegates to the shared
-    text.normalise_text — so this is the same equality the commit will apply,
-    not a second opinion about it.
-
-    A record is skipped when it has no preview OR its outcome is terminal
-    (`committed`, `failed`, `skipped`, `not_attempted`) — two independent
-    tests, and the second is the one that bites. A `committed` record HAS a
-    preview (RUN passes it to `commit_import`), and so does a RUN-`failed` one
-    (§4.8: it read perfectly and the commit refused it). Skipping on
-    `preview is None` alone would let already-committed drafts enter a later
-    record's baseline on any re-run, subtracting the same rows from New twice.
-    """
-```
-
-Scoped per `account_id`, because dedup is per-account: two files landing in
-different accounts never dedup against each other however identical their rows.
-
-**Both counts move together, and that is not a detail.** Making only
-`new_count` cumulative while the Duplicate column kept reading
-`preview.duplicate_count` would put two numbers computed under different rules
-side by side on the approval screen: the second file's shared rows would be
-subtracted from New and never appear under Duplicate, so New + Duplicate would
-not account for the file's rows and the user could not reconcile what they were
-approving. This is INV-4, and it is why `BatchFile` carries both counts as
-fields of its own rather than reading either from the preview.
-
-### 4.6 The review step
-
-A fourth stack page, `_STEP_BATCH = 3`, holding an `ui/import_batch.py`
-`BatchReviewWidget`. One `QTableWidget`, objectName `"import_batch_table"` so
-it gets its own `columns/import_batch_table` key under
-`ui/_table_state.py::remember_columns` (the FIBR-0012 lesson: two unnamed
-tables share one key and cross-corrupt widths).
-
-| Column | Content |
-|---|---|
-| File | an escalating label — see *Rows can share a basename* below |
-| Account | the destination account's name, or *— pick one —* |
-| New | `BatchFile.new_count` (§4.5, cumulative) |
-| Duplicate | `BatchFile.duplicate_count` (§4.5, cumulative) |
-| Errors | `BatchFile.error_count` |
-| Status | the `Outcome`, rendered per §4.8 — including `waiting` before SCAN reaches the row |
-
-**All three count columns render blank at zero**, not `0` — one helper serves
-New, Duplicate and Errors — so a number in any of them draws the eye only when
-it matters.
-
-**Rows can share a basename**, two ways: `statement.pdf` from two folders (§8
-rejects filename-based duplicate detection for exactly this reason), and the
-several statements fanned out of one OFX file, which share a path outright.
-The File cell therefore renders, in order of escalation: the basename; the
-basename prefixed with its parent directory when that disambiguates; otherwise
-the **full path**. A fanned-out OFX statement always appends its index —
-`bank.ofx [2 of 3]` — since no path prefix can separate siblings from the same
-file. The full path is the tooltip on every row regardless.
-
-**Setting an account.** The Account cell is clickable exactly on rows whose
-**`parsed` is not `None` and whose outcome is not terminal** (`committed`,
-`failed`, `skipped`, `not_attempted` — the `TERMINAL_OUTCOMES` set §4.5 skips
-on, so the rule has one definition). The two tests are independent and both are
-needed: `waiting` is excluded by the parse test alone, but `parsed` alone would
-leave `failed` and `not_attempted` rows clickable — `_settle_parse` stores the
-parse *before* the undated check fails a record, and a `not_attempted` row was
-`ready` when a cap or a cancel stopped the batch, so both carry one. (An earlier
-gloss said "every row except `failed`", which is false and would hand
-`preview_result` a `None`; and without the terminal half a user could retarget a
-row after the run and silently re-dedup against
-rows that are already in the vault.) **The whole table becomes read-only once
-RUN finishes** — at that point it is the report, not a form. The cell
-opens `AccountPickerDialog` with the Create affordance of §3 decision 6. Which
-call follows depends on whether a preview exists yet, and the two are not
-interchangeable:
-
-- **No preview** (the row was `needs_account`): `preview_result(parsed,
-  account_id)` builds the first one, and the row becomes `ready`.
-  `ImportService.retarget` cannot be used here — it takes an `ImportPreview`
-  and there is none.
-- **A preview exists** (the user is changing an already-settled row):
-  `ImportService.retarget(preview, account_id)`, whose returned preview
-  replaces the stored one.
-
-Either way `cumulative_counts` then re-runs over the whole batch, because one
-row's destination changes which rows every *other* row in that account may
-claim.
-
-**The review step's three controls**, so abandonment is defined rather than
-implied: **Import all** starts RUN; **Cancel** abandons — before RUN it drops
-the whole batch (every held password discarded unwritten, §4.4) and returns to
-the pick step *without* emitting `done`, during RUN it stops the chain; and
-**Close** appears only once RUN has finished, and is the one control that
-emits `done` (INV-14).
-
-`Import all` is enabled iff at least one file is `ready` **and no file is still
-`needs_account`** — the second half is what makes §3 decision 5's
-review-screen account question a gate rather than a suggestion (INV-3). Files
-that are `failed`, `skipped` or `already_imported` do not block it: they stay
-listed with their reason and are simply not committed — they are the report,
-not an obstacle.
-
-### 4.7 Driving the passes with no nested event loop
-
-The scan and the run are loops over slow, blocking work — `pikepdf` decrypt,
-`pdfplumber` extraction, a write transaction. Two mechanisms are ruled out
-before any are chosen:
-
-- **A modal `QProgressDialog` is forbidden.** Qt's documented modal pattern
-  calls `processEvents()` to stay responsive, and re-entrancy is exactly the
-  FIBR-0065 crash class: an idle auto-lock fires inside the nested loop,
-  `MainWindow._lock()` destroys the widget, and the code after the loop reads
-  a deleted C++ object.
-  Source: <https://doc.qt.io/qt-6/qprogressdialog.html>
-
-  **Only half of that is mechanically enforced today, and the spec should not
-  claim otherwise.** `tests/features/dialog_lifecycle/` INV-1 greps for
-  `\.exec\(`, which catches `dialog.exec()` and `progress.exec()` — but a
-  modal `QProgressDialog` driven by a bare `QApplication.processEvents()` loop
-  carries no `.exec(` token and would pass that grep untouched. INV-6
-  therefore extends the guard to the `processEvents` token as well, which is
-  what turns this bullet into a mechanical refusal rather than a preference.
-  `processEvents` appears nowhere under `src/` today, so the extended guard
-  starts green.
-- **A `QThread` worker is rejected**, though `ui/_worker.py::DeriveWorker` and
-  `ui/_update_worker.py::DownloadWorker` are the house pattern. Both do work
-  that never touches the vault — an Argon2id derivation and an HTTP download.
-  The batch's work is SQLCipher reads and writes on `Vault.connection`, and
-  `docs/design.md` § Concurrency puts import on the GUI thread deliberately.
-  Moving a write transaction onto a second thread is a concurrency change to
-  the storage layer wearing a UI feature's clothes.
-
-The batch is driven by a **one-file-per-event-loop-turn chain**:
-
-```python
-QTimer.singleShot(0, self, self._scan_next)   # 3-arg form: `self` is the context
-```
-
-The three-argument overload is required, not stylistic. `MainWindow` already
-uses it (`QTimer.singleShot(0, self, self._maybe_check_for_update)`), and the
-context object is what makes the pending callback drop when the widget is
-destroyed — which is precisely what an idle auto-lock does to the wizard via
-`MainWindow._set_live`. A two-argument `QTimer.singleShot(0, callable)` would
-keep a bound method alive past the widget's death and resume a batch into a
-locked vault (INV-7).
-
-Between turns the event loop runs, so the UI repaints and a `Cancel` button is
-live. Cancel stops the chain; §4.8 says what the report then shows.
-
-### 4.8 Outcomes, and what each one tells the user
-
-`already_imported` is the two-part outcome §4.3's REVIEW block derives, both
-ways, on every pass. The rule and the argument for it live there; this section
-only says how each outcome reads on screen.
-
-Per-file report lines, shown on the same table after the run. Every row is one
-`Outcome` member (§4.2), so the Status column needs no second vocabulary:
-
-| Outcome | Line |
-|---|---|
-| `committed` | *53 added, 0 duplicates* — from `ImportResult`; the unreadable-row clause below appended when `error_count > 0` |
-| `already_imported` | *Already imported — nothing new in this file*, plus the same unreadable-row clause when `error_count > 0` |
-| `failed` (at SCAN) | *Couldn't read this file — <reason>* |
-| `failed` (at RUN) | *Couldn't import this file — <reason>* |
-| `skipped` | *Skipped — we couldn't unlock this file* (or *…no column mapping was set*) |
-| `not_attempted` (cancelled) | *Not imported — the batch was cancelled* |
-| `not_attempted` (cap) | *Not imported — the batch reached its size limit* |
-| `waiting` | *Waiting…* — before SCAN reaches the row |
-| `ready` | *Ready to import* |
-| `needs_password` | *Locked — we'll ask for the password* |
-| `needs_mapping` | *Needs its columns matched up* |
-| `needs_account` | *Pick an account* |
-
-All ten members appear here, because §4.6's Status column renders the outcome
-and a row sits in one of the middle four for the whole of ASK and REVIEW. An
-outcome with no string is a blank cell on screen.
-
-**The unreadable-row clause is carried by `committed` and `already_imported`,
-and by no other outcome** (FIBR-0254). `error_count` is set during SCAN, before
-any outcome is known, and §4.6's Errors column renders it for every outcome — so
-a clause appended on `committed` alone let an `already_imported` row read
-*"nothing new in this file"* beside a cell reading 4, one row contradicting
-itself. Those two are exactly the outcomes whose line reports a **result** and
-would otherwise say nothing about the rows that were dropped. Every other
-outcome carries its `reason` instead, which already explains the row; a
-`failed`, `skipped` or `not_attempted` line is not made truer by appending a
-count the Errors cell is already showing. It is spelled *", 1 row couldn't be
-read"* for a single row and *", N rows couldn't be read"* above one: two strings
-rather than a Qt `%n` plural, because no translation is loaded yet (FIBR-0017)
-and an untranslated `%n` renders its source text, giving *"1 row(s)"*.
-
-**Two outcomes carry two wordings each, for the same reason: each is reachable
-from two passes, and one sentence cannot serve both.**
-
-- `failed` — a SCAN failure genuinely could not read the file, whereas INV-1's
-  failure is a `ValueError` out of `commit_import` on a file that read
-  perfectly. Telling a user their file was unreadable when the commit rejected
-  its span sends them to fix the wrong thing.
-- `not_attempted` — a cancelled run and a cap-stopped scan are different
-  events, and "the batch was cancelled" is simply false for a user who
-  selected 201 files and cancelled nothing.
-
-The record's `reason` carries the underlying message in every case.
-
-**`skipped` never says "you didn't supply a password"**, because INV-8 also
-reaches `skipped` after three *wrong* passwords — where the user supplied
-three and none worked. *"We couldn't unlock this file"* is true of both routes.
-
-SCAN failure text reuses the wizard's existing friendly strings, including
-`_show_pdf_read_error`'s *"Couldn't read this PDF — try your bank's CSV or OFX
-export."*, rather than a second vocabulary for the same errors.
-
-**The report is shown before the screen is torn down.** `ImportWizardWidget`
-signals completion with a payload-free `done`, which `MainWindow._on_import_done`
-handles by rebuilding the workspace — so emitting `done` at the end of RUN would
-destroy the very table the report is written into. The batch therefore emits
-`done` only when the user dismisses the report (a `Close` button on the review
-step), not when the last file commits.
 
 ## 5. Invariants
 
-- **INV-1** — A file that fails does not stop the batch: every later file is
-  still attempted, and its own outcome records the reason.
-  *Test:* `tests/features/batch_import/test_batch_import.py::test_INV1_failure_does_not_abort_batch`
-  — a three-file batch whose middle `commit_import` raises `ValueError` ends
-  with files 1 and 3 committed and file 2 `failed`.
-  *Breaks when:* the run step lets an exception out of the per-file call, so
-  the `QTimer` chain is never re-armed and files 3..N are silently dropped.
+**Fourteen of the fifteen live in the companions**, sorted by the test
+file each names: **INV-1, 2, 4, 9, 10, 11, 13, 15** in
+[the service](FIBR-0085-batch-import-service.md#5-invariants) and **INV-3,
+5, 6, 7, 8, 14** in
+[the review step](FIBR-0085-batch-import-review-step.md#5-invariants).
+**§ 11 below is the canonical invariant → test mapping and still covers all
+fifteen** — that table was not divided.
 
-- **INV-2** — Each file commits in its own transaction. After a mid-batch
-  failure, the earlier files' transactions **and** their `statement_periods`
-  rows are present and the failed file has written neither.
-  *Test:* `tests/features/batch_import/test_batch_import.py::test_INV2_per_file_transaction_boundary`
-  — the INV-1 vault, re-opened, queried for both tables.
-  *Breaks when:* the run is wrapped in an outer `db.py::owned_transaction`,
-  whose bare `BEGIN` would in fact raise on the first inner call — the
-  invariant names the boundary so the failure is a caught contract breach
-  rather than a puzzling SQLite error.
-
-- **INV-3** — No file is committed while any file in the batch is
-  `needs_password`, `needs_mapping` or `needs_account`. The first two are
-  exhausted by ASK; the third disables `Import all` in REVIEW (§4.6).
-  *Test:* `tests/features/batch_import/test_batch_import_ui.py::test_INV3_no_commit_before_every_question_answered`
-  — two legs, because the two halves are enforced by different mechanisms: a
-  batch containing one locked PDF whose prompt is **left open** commits nothing
-  at all, including the records that were `ready`; and a batch reaching REVIEW
-  with one `needs_account` row has `Import all` disabled. ("Left open" is the
-  distinction from a *declined* prompt, which becomes `skipped` and does not
-  block the batch — §4.6.)
-  *Breaks when:* ASK advances on dialog `finished` rather than on an answer;
-  or `Import all` is gated on "at least one `ready`" alone, which is true
-  while another row still has no destination.
-
-- **INV-4** — For each `ready` file, the New **and** Duplicate counts shown on
-  the review step equal its `ImportResult.inserted_count` and
-  `duplicate_count` after the run, given no change to the vault between the
-  two **and no earlier record in the batch failing during RUN**. The second
-  exception is not a hedge: `cumulative_counts` subtracts the drafts an earlier
-  overlapping record was going to claim, so if that record raises and never
-  commits them, a later record legitimately inserts *more* rows than the
-  reviewed figure promised. INV-1 requires the batch to continue past that
-  failure, so the two invariants genuinely trade against each other and the
-  report — not the review screen — is the truth after a failure.
-  *Test:* `tests/features/batch_import/test_batch_import.py::test_INV4_reviewed_counts_are_the_committed_counts`
-  — two overlapping CSVs targeting one account, sharing four rows; the review
-  shows the second file's four shared rows under Duplicate and not under New,
-  and the sum of the two New counts equals the row count in the vault
-  afterwards.
-  *Breaks when:* `cumulative_counts` is skipped and the preview's own counts
-  are displayed, which count each file against the committed vault alone —
-  reporting the four shared rows twice under New. It breaks *asymmetrically*
-  if only `new_count` is made cumulative: the four rows then vanish from New
-  without appearing under Duplicate, so the row no longer accounts for the
-  file's transactions at all.
-
-- **INV-5** — For every file, `match_account` runs before the **first** preview
-  is built, and the account shown on a review row is the account that row's
-  `ImportPreview.account_id` targets — including after the user changes it. (A
-  later `retarget` builds a replacement preview with no fresh `match_account`
-  call, which is correct: the user's explicit choice outranks the statement.)
-  *Test:* `tests/features/batch_import/test_batch_import_ui.py::test_INV5_displayed_account_is_the_targeted_account`
-  — three legs, one per route into a destination: a matched file, a
-  `needs_account` file given an account on the review screen (which builds its
-  first preview via `preview_result`), and an already-`ready` file changed on
-  the review screen (which goes through `retarget`). In each, that file's
-  `preview.account_id` equals the displayed account and its rows land there.
-  *Breaks when:* a review-row account change updates the cell without
-  re-pointing the preview — the FIBR-0086 §4.5 wrong-account commit reached
-  through a new door — or when the no-preview route calls `retarget`, which
-  takes an `ImportPreview` and has none to take.
-
-- **INV-6** — No batch code path blocks the event loop, by a nested dialog
-  loop **or** by pumping events inside one: neither a `.exec(` nor a
-  `processEvents` token appears in any file of the dialog-lifecycle guard's
-  `_FILES` set, which this work extends from four members to five by adding
-  `ui/import_batch.py`. (The guard binds the whole set, not just the two
-  files this spec touches — extending the pattern tightens it for
-  `home.py`, `rules.py` and `statements.py` too, which is free and correct.)
-  *Test:* `tests/features/dialog_lifecycle/test_dialog_lifecycle.py::test_INV1_no_blocking_dialog_exec_in_content_widgets`,
-  with `"import_batch.py"` added to its `_FILES` tuple and `processEvents`
-  added to its `_EXEC` pattern.
-  *Breaks when:* the new module is written with `dialog.exec()`; or is created
-  and not added to `_FILES`, in which case the guard passes while covering
-  nothing; or a modal `QProgressDialog` is driven by a bare
-  `QApplication.processEvents()` loop, which carries no `.exec(` token and so
-  passes the unextended grep while re-entering the event loop exactly as
-  FIBR-0065 forbids. Both the tuple and the pattern are part of the contract.
-
-- **INV-7** — An idle auto-lock during a batch stops it. Files already
-  committed stay committed; no further file is attempted; nothing is
-  half-written.
-  *Test:* `tests/features/batch_import/test_batch_import_ui.py::test_INV7_autolock_mid_batch_stops_the_run`
-  — `MainWindow._lock()` between two files; the vault re-opens with exactly
-  the first file's rows.
-  *Breaks when:* the chain is armed as `QTimer.singleShot(0, callable)`
-  without the context object, so the pending callback survives the widget and
-  resumes against a locked vault.
-
-- **INV-8** — A locked PDF raises at most three **user prompts**, after which
-  the file becomes `skipped` and the batch continues. Cancelling a prompt
-  skips that file immediately. ("Prompt" throughout, never "attempt" — §4.4's
-  automatic tries against stored passwords are attempts and are bounded
-  separately by INV-9.)
-  *Test:* `tests/features/batch_import/test_batch_import_ui.py::test_INV8_password_prompts_are_bounded`
-  — a locked fixture answered wrongly three times leaves one `skipped` file
-  and a completed batch.
-  *Breaks when:* the re-prompt recurses without a counter, which is exactly
-  what `ui/import_wizard.py::_on_pdf_password` does today (§2.3) and what a
-  copy-paste of it into the batch would reproduce.
-
-- **INV-9** — Each distinct remembered password is tried at most once per
-  file, and only before the user is prompted.
-  *Test:* `tests/features/batch_import/test_batch_import.py::test_INV9_stored_passwords_tried_once_each`
-  — three accounts, two holding the same password string; a counting fake
-  records two **password-bearing** decrypt attempts, not three, and no prompt
-  when one succeeds. (The no-password attempt that opens the ladder is not
-  counted; asserting a bare total of two would fail against conforming code,
-  which makes three calls in all.)
-  *Breaks when:* `stored_passwords` returns duplicates, so a shared password
-  is tried once per account holding it — invisible on success and a
-  quadratic-looking stall on a large account list.
-
-- **INV-10** — Each record's outcome is **re-derived in both directions** on
-  every REVIEW pass: `already_imported` when the span exists **and** the
-  cumulative new count is zero, `ready` otherwise. A record never stays
-  `already_imported` once either half stops holding.
-  *Test:* `tests/features/batch_import/test_batch_import.py::test_INV10_already_imported_is_recomputed_both_ways`
-  — three legs: re-importing an unchanged statement reports
-  `already_imported`; the same statement re-issued with three extra
-  transactions over the same dates reports `ready`; and a record sitting at
-  `already_imported` that is **retargeted to a different account** returns to
-  `ready` and commits its rows.
-  *Breaks when:* either half of the test is dropped, or the derivation is made
-  one-way — §4.3 carries all three failure modes and why the two-directional
-  form is the shortest rule that avoids them.
-
-- **INV-11** — The batch refuses more than 200 **selected files** before
-  reading anything, and stops the scan once 200,000 drafts are held. Neither
-  cap raises: the refused or unscanned records are `not_attempted` and say
-  which cap stopped them.
-  *Test:* `tests/features/batch_import/test_batch_import.py::test_INV11_batch_caps`
-  — 201 synthetic paths are refused before any file is read; a scan crossing
-  the draft cap stops with the records scanned so far marked and the rest
-  `not_attempted`.
-  *Breaks when:* neither cap is enforced and a folder of large PDFs holds
-  every preview in memory at once (§10). Two boundary notes the test pins:
-  the file cap counts **selected files**, not fanned-out OFX statements, so a
-  200-file batch cannot be refused by its own fan-out; and the draft check is
-  `>=` before each file, matching this clause's "once 200,000 are held" — see
-  §10 for the peak that actually implies. The *wording* of the two messages is
-  not covered — see §11.
+Only INV-12 is here, because it is the one invariant that is about neither
+module: it binds the fixtures and the prose of all three files.
 
 - **INV-12** — No real statement data enters the repository with this work:
   every fixture under `tests/features/batch_import/` is synthetic.
@@ -955,52 +329,6 @@ step), not when the last file commits.
   *Breaks when:* a real statement is copied in as a batch fixture — the
   repository is public and `gitleaks` does not detect account numbers.
 
-- **INV-13** — A record whose parse yields **either** period endpoint `None`
-  never reaches `commit_import`: it becomes `failed` at SCAN with a reason
-  naming the absent dates.
-  *Test:* `tests/features/batch_import/test_batch_import.py::test_INV13_undated_file_fails_before_commit`
-  — two legs, one per endpoint, since `period_start` and `period_end` are
-  independently `str | None` on both `ParseResult` and `ImportPreview`: a CSV
-  whose every row has an unparseable date, and a synthetic `ParseResult`
-  carrying a start but no end. Each is `failed`, its reason mentions dates, and
-  `commit_import` is never called for it.
-  *Breaks when:* either endpoint is passed through as `None`, which reaches
-  `ImportService._validate_span` and surfaces *"period endpoints must be valid
-  ISO-8601 dates"* — a message about malformed dates for a file that had none
-  at all. Guarding only `period_start`, as an earlier draft did, leaves the
-  second leg red.
-
-- **INV-14** — The post-run report survives until the user dismisses it:
-  `ImportWizardWidget.done` is emitted only by the report's Close — never at
-  the end of RUN, never by the batch step's Cancel, and never by the
-  `_STEP_MAP` Cancel while the batch is driving that page.
-  *Test:* `tests/features/batch_import/test_batch_import_ui.py::test_INV14_done_waits_for_the_report`
-  — a `qtbot` spy on `done` records zero emissions after the last record
-  commits, zero after Cancel stops a running batch, and zero after declining a
-  mapping mid-batch; then exactly one after Close is clicked.
-  *Breaks when:* RUN emits `done` when the last record commits — which is what
-  the single-file `_on_import` does, so it is the natural thing to copy — or
-  either Cancel stays wired to `done` as all three existing steps' Cancel
-  buttons are (§2.1). The `_STEP_MAP` case is the worst of the three, because
-  it is reached by *reusing* that page: declining the mapping for one file in a
-  thirty-file batch would tear down the whole batch and every answer already
-  given. In each case `MainWindow._on_import_done` rebuilds the workspace and
-  destroys the table the report was about to be written into, and §6's "the
-  remainder report *Not imported — the batch was cancelled*" becomes
-  unobservable.
-
-- **INV-15** — An OFX file carrying N statements produces N records, each with
-  its own account, preview and review row. No statement is discarded.
-  *Test:* `tests/features/batch_import/test_batch_import.py::test_INV15_multi_statement_ofx_fans_out`
-  — a synthetic two-statement OFX naming two different account numbers yields
-  two records with `statement_index` 0 and 1, matched to two different
-  accounts, and both statements' rows land in their own account.
-  *Breaks when:* SCAN stores `OfxImporter.parse`'s list into the single
-  `parsed` slot and keeps only `[0]` — which reads as natural, because every
-  other format returns one `ParseResult` — silently discarding every statement
-  after the first. The wizard already models this correctly with its
-  `_ofx_statements` list and a chooser; a batch that collapses it would be a
-  regression against behaviour that ships today.
 
 ## 6. Failure modes
 
@@ -1313,6 +641,7 @@ read as "these nine things nothing will catch for you".
 
 | Loop | Date | Lanes | CRIT | HIGH | MED | LOW | Outcome |
 |------|------|-------|------|------|-----|-----|---------|
+| 5-split | 2026-08-18 | **none — no reviewer dispatched** | — | — | — | — | Not a review loop. The response to loop 5's stop (ROADMAP **FIBR-0267**, and `spec-format.md` §5.4, whose remedy for a document a cold read stops reaching all of is to split along §3.6's by-concern seams rather than keep looping). **Split three ways, and the arithmetic decided the number.** The bullet's map anticipated two halves along the module seam; measured, the service half of §4 is 352 lines against the review step's 190, so moving only the widget out would have left this file near 1130 and barely moved the gate cost. So the shared framing (§§ 1–3, 4.1), the whole-batch sections (§§ 6, 7, 10, 11) and the frozen records (§§ 13, 14) stay here as one home; §§ 4.2–4.5 and INV-1, 2, 4, 9, 10, 11, 13, 15 went to **[`FIBR-0085-batch-import-service.md`](FIBR-0085-batch-import-service.md)**; §§ 4.6–4.8 and INV-3, 5, 6, 7, 8, 14 went to **[`FIBR-0085-batch-import-review-step.md`](FIBR-0085-batch-import-review-step.md)**. **The invariant allocation was driven by a signal, not a reading**: every INV in §5 already names its own test file, and the split follows it — `test_batch_import.py` to the service, `test_batch_import_ui.py` to the review step. INV-12 alone stayed here, being about neither module. **Every moved line is verbatim**: a script asserted all 27 section boundaries and all 15 invariant boundaries before writing, and then checked that no substantive line of the 1376 was absent from the union of the three — the only misses were the old table of contents, rewritten by design. Section numbers were **not** renumbered, which is why each companion starts where it does; each file carries a note saying how a bare `§4.n` resolves. **Same id**, so every existing `FIBR-0085 §4.n` / `INV-n` citation resolves untouched. 1376 → 705 + 535 + 375, all three inside or near the ~400–650 sibling range; the total grows because each file carries its own front matter and cross-file note, and because the five fixes below added prose. **Then, and only then, loop 5's five findings were fixed in the parts they landed in** — all five re-verified against the tree first, and all five still live: §4.5's vault baseline, §4.6's third clickability test, Close after a cancelled run, the account-change route's REVIEW re-run, and INV-6's unobservable *Breaks when* clause (whose real gap is now stated and filed as **FIBR-0277**). Rows 1–5 above are frozen records of reviews of the combined document and are left as written. |
 | 5 | 2026-08-12 | 1 (`review-contract`, cold, rebuilt packet, no prior-loop briefing) | — | — | — | — | **Stopped here deliberately; the amendment converged, the document did not.** Tally **Q1 ×2 · Q2 ×1 · Q3 ×1 · Q4 ×1** — 5 verified, 0 dismissed, **0 fixed, all 5 filed as FIBR-0267**. The loop first confirmed every loop-4 fix held (`_number` blanking all three count columns; `cumulative_counts`' two independent skip tests; the `report_line` clause on exactly two outcomes) and raised **nothing** against the FIBR-0254 amendment, which is the convergence this run owed. What it found instead were five defects in sections no loop-4 lane had reached: §4.5's claim that the vault baseline is read through `ImportService` (the shipped function performs no vault read — the vault half arrives applied in `preview.duplicate_row_numbers`, so building to the spec subtracts it twice and breaks INV-4); §4.6's "exactly" two clickability tests where `_choose_account` applies a third (`_finished or _running`), so the cell would stay live during RUN; Close's behaviour after a *cancelled* run left undefined though it is INV-14's only `done` emitter; §4.6's account-change route naming only `cumulative_counts` where §4.3 requires outcomes re-derived both ways (INV-10's third leg); and INV-6's *Breaks when* clause naming an omission its own test cannot observe. **A fresh cold read reaching fresh regions each pass is the size signal, not a regressing document** — 1357 lines against siblings of ~400–650. Splitting is the fix; another loop on the whole would sample differently again. |
 | 4 | 2026-08-12 | 2 (`review-contract`, cold, shared packet, no prior-loop briefing) | — | — | — | — | Severity columns retired upstream; this loop's tally is **Q1 ×2 · Q2 ×2** — 4 verified, 0 dismissed, all fixed; 2 further verified findings filed rather than fixed (below). Run against the FIBR-0254 amendment; both lanes agreed on all four, and none of them was the amendment. §4.5's quoted docstring claimed a `committed`/`failed`/`skipped`/`not_attempted` record "has no preview and is skipped" — false, and the shipped `cumulative_counts` proves it: it skips on `preview is None` **or** `outcome in _TERMINAL`, two independent tests, because a committed record demonstrably has a preview (RUN hands it to `commit_import`). An implementer following the sentence writes the `preview is None` half alone and double-counts committed drafts into later baselines. §4.6 repeated the same error in its clickability gloss ("all of which reach the table with nothing parsed") — false for a RUN-`failed` row and for a cancelled `not_attempted` one, as `_choose_account`'s own comment says. §4.6's Errors column carried a "blank when zero" note the other two count columns also earn (one `_number` helper serves all three). The FIBR-0254 paragraph over-generalised its own rule ("belongs to the row, not to `committed`") while the table grants the clause to two outcomes — now names the carrying set and why the others are excluded. **Filed, not fixed** (both need a behaviour decision, not a wording repair): Cancel-during-SCAN is prescribed two contradictory ways by §4.3 and §4.6 (**FIBR-0265**), and the draft cap's outcome when it trips during ASK-resume is undefined (**FIBR-0266**). At 1357 lines this doc is over the size where a cold read stops reaching everything; loop 1 of this run found six defects in four sections, none in the amendment under review. |
 | 3 | 2026-08-06 | 3 (cold, shared packet, no prior-loop briefing) | 1 | 8 | 14 | 10 | 32 verified, 1 dismissed. All 32 fixed. **No loop-1 or loop-2 finding resurfaced.** Dimensions: dim 5×10, dim 7×8, dim 4×7, dim 6×5, dim 10×4, dim 9×3, dim 15×3, dim 1×2, dim 11×2, dim 2×2. All three lanes independently found the same CRITICAL, and it carried three distinct defects: `cumulative_counts`' signature took only the file list yet its docstring named "existing vault rows" as the baseline (unbuildable); its domain said `ready` while §4.3 said "every record with a preview"; and the `ready` reading is circular, since the function runs *before* the outcomes it would filter on are set — and it silently defeats INV-10's retarget leg. Also: reusing `_STEP_MAP` inherits a Cancel wired to `done`, so declining ONE mapping would have torn down a thirty-file batch; §10's memory bound ignored that CSV has no row cap (16 MiB of ~50-byte rows ≈ 335k drafts, so the true ceiling is ≈114 MiB, not 64); INV-4 and INV-1 genuinely trade against each other when an earlier record fails mid-RUN; four `Outcome` members had no display string; the OFX hint source was unstated. **Origin: essentially all collateral from loops 1–2** — the second consecutive collateral-dominated loop, which is the stop trigger. Consolidated the thrice-stated `already_imported` argument to one home. Run STOPPED here by prior agreement, not converged clean. Doc 1149 → 1280 lines. |
