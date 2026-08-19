@@ -4197,6 +4197,22 @@ lands on top.
   still gets an empty page. Decide separately whether to back-fill it
   (FIBR-0203 is the precedent for doing so).
   Progress (2026-08-19, commits d482545 + e49285e): the three-check guard is IMPLEMENTED and green, locked by a new INV-8 in tests/features/release_integrity/. Both release scripts now read their asset list back after publishing and refuse to report success on an incomplete set -- count (phase-correct: 5 after release-linux.sh, 8 after release-windows.sh), every .sig having its subject, and each name matching the updater's asset_suffix(). A fourth check reports a read-back that could not COMPLETE as its own failure and retries 3x, so the API's transient 503s do not cry wolf. Exercised against real data, not just source-scraped: the real v0.1.21 asset set passes, and zero assets / a dangling SHA256SUMS.sig at count 5 / a misnamed AppImage / a misnamed .exe each fail the check they should, with the dangling-sig case passing check 1 first -- which is the proof that check 2 is not redundant. STAYS OPEN, because the headline scenario is NOT fully closed. v0.1.20 published empty because cut-release created the release and release-linux.sh was never run at all; a guard living INSIDE release-linux.sh cannot fire when nobody runs release-linux.sh. What is covered now is "the asset step ran and the result is wrong". What is still uncovered is "the asset step never ran" -- which needs a check at the end of the whole release recipe, not inside one of its scripts. Also not done: the bullet's "upload one file per call". INV-4 asserts each upload block carries the whole asset list, so splitting it would redden that test, and the read-back already covers the partial state that change was meant to make visible. Recorded as a decision rather than an oversight.
+  Progress (2026-08-19): v0.1.20 is BACK-FILLED and the "remains at ZERO
+  assets and is NOT repaired" paragraph above is now historical. User
+  decision 2026-08-19, given the choice between leaving it, back-filling
+  and deleting the release. Built from a detached worktree at the v0.1.20
+  tag using THAT tag's own release scripts (not HEAD's), so the artifacts
+  are what 0.1.20 should have shipped. The tag's committed
+  RELEASE_PUBLIC_KEY_B64 is byte-identical to HEAD's, so the signatures
+  are the ones every installed copy's updater checks. v0.1.20 now carries
+  all EIGHT assets and the PUBLISHED SHA256SUMS verifies against that key
+  and names both platforms. /releases/latest still resolves to v0.1.22 --
+  release-linux.sh took its `gh release upload --clobber` branch, and
+  `--latest` appears only on the `gh release create` branch it did not
+  take. This closes the FIBR-0203-precedent half of this item and nothing
+  else: the item STAYS OPEN for the reason recorded above, that a guard
+  living inside release-linux.sh cannot fire when nobody runs
+  release-linux.sh.
 
 ## Enhancements & performance backlog
 
