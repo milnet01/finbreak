@@ -1252,7 +1252,7 @@ scariest unknown (native-library bundling) up front.
 
   Filed, not fixed: FIBR-0285.
 
-- 📋 [FIBR-0285] **The audit allowlist still keys its entries to `/code-quality-review`, a skill that no longer exists.**
+- ✅ [FIBR-0285] **The audit allowlist still keys its entries to `/code-quality-review`, a skill that no longer exists.**
   `review-code` replaced `/code-quality-review` on 2026-08-18. CLAUDE.md item 6
   was corrected in this gate, which exposed the copies:
 
@@ -1273,6 +1273,7 @@ scariest unknown (native-library bundling) up front.
   confirmed false positives, and CLAUDE.md item 6 says to read it before
   invoking `review-code`. A session that does read it finds entries keyed to a
   skill it is not running.
+  Resolved (2026-08-19, commit 032d273): both halves fixed, and both of the reasons this was filed rather than fixed had resolved. The entry-key format was not an open policy choice -- the file settled it on 2026-08-05 for the /indie-review rename (prose takes the current name; existing source tokens keep their original provenance) and this rename simply follows that precedent, so the naming note is now generalised to all three renames. Nothing machine-reads the key. The .claude/workflow.md half no longer diverges from its source: ~/.claude/skills/app-workflow/SKILL.md already says check-code / review-code, so the edit makes the copy match. Also corrected /audit -> check-code in the same prose, same defect class. Left alone deliberately: the indie-review:R-N and code-quality-review:R-7 source tokens on existing entries, and every /audit in .claude/workflow.md section 3, which is append-only session history -- both are dated records of what really ran under the old name.
   **Layman:** Two project documents still name a review tool that was renamed, including the format of the allowlist's own entries — so the memory that stops repeat false positives is filed under a name nothing will look up.
   Kind: doc-fix.
   Source: in-session-2026-08-19 (review-contract loop 2 on CLAUDE.md, blast-radius sweep).
