@@ -2139,6 +2139,48 @@ scariest unknown (native-library bundling) up front.
   flathub/flathub new-pr PR. The re-pin blocker is closed (the manifest
   already points at v0.1.22, the current release) and the § 5 blocker is
   closed by this run. Awaiting explicit user go-ahead for the submission.
+  CORRECTION (2026-08-20): "open the flathub/flathub new-pr PR" has been
+  stale since 2026-08-07. The PR EXISTS -- flathub/flathub#9662, "Add
+  io.github.milnet01.finbreak", base new-pr -- and it is CLOSED, not merged.
+  Every REMAINING list on this bullet above still describes it as un-opened;
+  they are wrong from this date.
+
+  What happened: the submission-checker bot auto-closed it 27 SECONDS after
+  it opened (13:14:46Z -> 13:15:13Z), diagnostics "Checklist(s) not completed
+  or missing" -- the PR body had replaced the submission template instead of
+  filling it in. At 15:20:56Z the submitter posted a comment completing the
+  full checklist (description, showcase video, sandbox justification, the
+  manylinux-wheel rationale) and asked for a reopen, which is precisely what
+  the bot's own message instructs: "please post a comment below instead of
+  opening or reopening (new) PRs". Since then: 13 days, two comments total,
+  no labels, no maintainer response, still closed.
+
+  So the next action is NOT to open a PR. Doing so contradicts the bot's
+  stated process and reads as PR-spam to the reviewers. The sanctioned route
+  is a follow-up comment on 9662.
+
+  Also live: the fork branch milnet01/flathub add-io.github.milnet01.finbreak
+  (head 0b42569, 2 commits -- the add plus "Bundle MIT krb5 -- Qt6Network
+  needs libgssapi_krb5") still pins tag v0.1.20 / 6c9cf8c. Current release is
+  v0.1.22 / 624722d, so a reopened 9662 would build a two-release-old
+  finbreak. Re-pinning that branch is a prerequisite to any bump comment.
+
+  Pre-submit checks re-run today and all green against v0.1.22:
+  flatpak-builder-lint manifest exit 0 (also exit 0 standalone, i.e. with the
+  manifest at a repo root and no packaging/obs beside it), flatpak-builder-lint
+  appstream exit 0 (that one really does fetch the <screenshot> URLs),
+  org.freedesktop.Platform//25.08 current at freedesktop-sdk-25.08.16
+  (2026-08-16), tests/features/flatpak_packaging 17/17 including the
+  FIBR-0258 closure-vs-pinned-commit check.
+
+  One deliberate NON-change: regenerating python3-deps.yaml today pulls
+  lxml 6.1.1->6.1.2, charset_normalizer 3.4.9->3.5.1 and pypdfium2
+  5.12.1->5.13.0. That is upstream drift, NOT a pyproject mismatch -- the
+  committed closure still satisfies the pinned commit. It was reverted rather
+  than submitted, because those three wheels have never been built here and
+  "builds entirely from pinned source" is the first thing a Flathub reviewer
+  checks. The bump belongs in the ongoing-releases flow, not inside a
+  submission.
 
 - 📋 [FIBR-0160] **Add openSUSE Leap 15.6 as an OBS target (deferred — Leap ships no python 3.12+).**
   Attempted 2026-07-23: added the Leap 15.6 target + a %if 0%{?sle_version}
