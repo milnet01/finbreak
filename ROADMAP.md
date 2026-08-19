@@ -1653,7 +1653,7 @@ scariest unknown (native-library bundling) up front.
   Kind: doc.
   Source: in-session-2026-08-19 (review-contract loop 2 on roadmap-format.md, surfaced not decided).
 
-- 📋 [FIBR-0295] **`act` is installed but unconfigured, so cut-release's mandatory pipeline phase cannot run.**
+- ✅ [FIBR-0295] **`act` is installed but unconfigured, so cut-release's mandatory pipeline phase cannot run.**
   `cut-release` Phase 2b requires EXECUTING `.github/workflows/*.yml`
   locally before the release commit, and explicitly forbids substituting
   a hand-written mirror. It runs that phase when `act` is present.
@@ -1689,9 +1689,74 @@ scariest unknown (native-library bundling) up front.
   Whichever is chosen, write it down -- the cost this time was working
   out from scratch that the phase could not run and why the substitute
   was acceptable.
+  Resolved (2026-08-19): option 2, the user's decision — record `ci-docker.sh`
+  as this project's sanctioned Phase 2b rather than configure `act`. Written
+  into CLAUDE.md § Cutting a release, and it names all three things the
+  substitute does not reach rather than the two this bullet guessed: the
+  `actions/checkout` step EXECUTING (its pin and `persist-credentials: false`
+  are still checked, because `zizmor` is a `ci-local.sh` stage and this run
+  executes `ci-local.sh` — measured, `zizmor .github/workflows/` exits 0 on the
+  real tree and 14 with the pin reverted to `@v7`); the `apt-get install git
+  ca-certificates` step, whose effect `ci-setup.sh` covers; and the TREE ITSELF,
+  which this bullet did not anticipate — `ci-docker.sh` does `cp -a` of the
+  working directory, so gitignored files travel into the container where
+  `actions/checkout` gives CI tracked files only. Measured by running that copy:
+  `.corpus-numbers` reaches the container. The section also pins a test for the
+  lapse condition, since "configured" settles nothing on its own — `actrc`
+  present AND `act push -W .github/workflows/ci.yml -n </dev/null` exiting 0;
+  today that dry run exits 1 on `level=fatal msg=EOF`, so the override stands.
+  Gated under rule 14 (`review-contract --genre standard --max-loops 3`): three
+  loops, 18 verified findings, all fixed, rows 7-9 of
+  docs/reviews/CLAUDE-md-review-log.md. The gate reached its cap with the
+  collateral share not falling, which is filed separately as FIBR-0296 —
+  CLAUDE.md is 899 lines and wants splitting.
   **Layman:** The tool that runs our GitHub checks on this machine has never been set up, so every release quietly falls back to a different check and someone has to work out why all over again.
   Kind: chore.
   Source: in-session-2026-08-19 (hit while cutting v0.1.22).
+
+- 📋 [FIBR-0296] **CLAUDE.md is 899 lines and its review no longer converges — split it.**
+  Filed by `review-contract`'s own cap note, not by a reader's impression.
+
+  The 2026-08-19 run (rows 7-9 of docs/reviews/CLAUDE-md-review-log.md)
+  reached its cap with verified findings falling 6 -> 7 -> 5 while the
+  share landing on text THAT RUN had written did not: 0/6, then 4/7, then
+  3/5. Each loop was substantially repairing the one before. Per the
+  skill's § At the cap that is a violent cap rather than a calm one, and
+  the prescribed response is NOT to re-run the gate -- a fresh run starts
+  at loop 1 against a document whose last two loops were each repairing
+  its predecessor.
+
+  The size signal is what to act on. CLAUDE.md is **899 lines**, past the
+  ~800-line range in which two cold reads can be expected to reach all of
+  it. And the failure mode the run kept producing is exactly what that
+  size causes: a rule stated in two or three places and corrected in one.
+  Three separate instances in one run --
+  - "ci-docker.sh reproduces CI exactly" in three places against the new
+    Phase 2b section saying it does not (loop 7, all three lanes);
+  - the no-drift caveat added to the ci-docker.sh module-map bullet and
+    not to its ci.yml neighbour four lines away (loop 9);
+  - the FIBR-0275 guard recorded as landed in one paragraph and as not
+    landed 65 lines below (loop 9, both lanes).
+
+  The 2026-08-18 run hit the same shape (rows 1-3): an absolute headline
+  with its exception twenty lines down, three times over.
+
+  What a split would have to preserve, and why this is not a five-minute
+  job: the file is loaded in full every session, so a split trades one
+  long read for several reads plus a routing decision, and a rule that
+  moves out of the always-loaded file is a rule some session will not
+  read. The candidates are the self-contained procedural blocks -- §
+  Cutting a release (~110 lines), § Build and test (~200), § Doc-only
+  pushes (~110) -- each of which is a runbook consulted at a moment, not
+  a standing rule needed on every turn. § Where state lives, § Push
+  policy, § Commit conventions and § Resumption flow are the part that
+  genuinely must stay resident.
+
+  Decide the split before writing it: a document that grows back is worse
+  than one that was never split.
+  **Layman:** Our main instructions file has grown big enough that a careful reader can no longer hold all of it, so fixing one rule keeps breaking another one somewhere else in the file.
+  Kind: doc.
+  Source: review-contract-2026-08-19 loop 3 cap note (FIBR-0295 gate).
 
 ### 📦 Packaging
 
