@@ -240,8 +240,13 @@ and in an agent's transcript — which the never-list below did not name. An
 editor writes to no history.
 
 **This is a step the user performs and an agent cannot.** The values are the
-user's real account numbers; an agent must not invent them, and must not read
-the file back to check.
+user's real account numbers, and an agent must not invent them. It must never
+**print, echo, quote or otherwise surface the file's contents** — not to check
+the user typed them correctly, not anywhere. That is the rule; *reading the
+bytes* is not. The one sanctioned read is the shell substitution below, which
+hands the values to `pytest` without them appearing on a command line, in
+`~/.bash_history`, or in a transcript. Counting lines is fine; showing one is
+not.
 
 Without it `tests/features/account_detect/test_no_real_data.py` **skips**, and
 a skipping test reads as coverage while providing none — which is exactly what
@@ -313,8 +318,9 @@ the gate inside the **same container image CI uses**
 ```
 
 **It runs CI's image and CI's two scripts — it is not the whole workflow.**
-Three steps of `ci.yml` it does not reach are named in § `cut-release` Phase 2b
-below; do not report a green run here as a full pipeline run.
+The two `ci.yml` steps it does not execute, and the tree it runs against, are
+named in § `cut-release` Phase 2b below; do not report a green run here as a
+full pipeline run.
 
 **Do not pass `--build` to it.** The flag reaches `ci-local.sh` and sets
 `FINBREAK_BUILD_SMOKE=1`, but `ci-setup.sh` installs no container runtime, so
@@ -433,6 +439,12 @@ pytest tests/features/account_detect/ tests/features/harness/ \
 gitleaks dir . --no-banner --redact --config .gitleaks.toml       # ~0.3s
 git push --no-verify origin main
 ```
+
+**Stop if either check fails — those are three independent commands, not a
+chain.** A red `pytest` or a `gitleaks` hit does not stop the `git push` on the
+line below it, and this route is the only thing standing in for the hook. Since
+the leak guard went live (below) a failure here means pushing a real account
+number. Read both results before the third line.
 
 **`gitleaks` is copied verbatim from `ci-local.sh`'s stage — do not shorten
 it.** `--config` is auto-discovered on this machine (checked 2026-08-18: bare
@@ -572,9 +584,12 @@ today.)
 **v0.1.20 published with ZERO assets and it went unnoticed for ten
 days.** Both the README's "download the latest release" link and the
 in-app updater resolve to that page, so both were dead the whole time.
-Found 2026-08-17 while cutting 0.1.21; the automated guard is
-**FIBR-0275**, and until it lands this note is the only thing standing
-between the next release and the same hole. (Same class as FIBR-0203,
+Found 2026-08-17 while cutting 0.1.21. **The guard LANDED on 2026-08-19**
+(FIBR-0275, INV-8): both release scripts now read the published asset
+list back and refuse to report success on an incomplete set. What it
+still cannot catch is nobody running `release-linux.sh` at all — which
+is exactly how v0.1.20 shipped empty — so the eight-asset read-back at
+the end of this section is still yours to run by hand. (Same class as FIBR-0203,
 which was closed as a one-off rather than guarded — that is why it
 recurred.)
 
@@ -582,8 +597,9 @@ So the release path is, in order — the bump comes first, and the
 **push** is a step rather than a tidy-up:
 
 ```bash
-cut-release <X.Y.Z>          # bump every version-bearing file, commit, tag, push,
-                             #   and create the release — with NO assets on it
+cut-release <X.Y.Z>          # a SKILL — invoke it; it is not on PATH. Bumps every
+                             #   version-bearing file, commits, tags, pushes, and
+                             #   creates the release — with NO assets on it
 . .venv/bin/activate         # both scripts need cryptography
 ./scripts/release-linux.sh   # AppImage + .sig + SHA256SUMS + SHA256SUMS.sig
                              #   + linux SBOM  -> FIVE assets
@@ -631,8 +647,9 @@ Four things worth knowing before you run them:
   the sha does not exist until the release is tagged. `release-linux.sh`
   prints the sha as its last line; set it in
   `packaging/flatpak/io.github.milnet01.finbreak.yaml`. Nothing verifies
-  the two point at the same object, so this is the one step with no
-  guard at all.
+  the two point at the same object — one of the two gaps left in the
+  release path, the other being that nothing checks `release-linux.sh`
+  was run at all (FIBR-0275).
 
 Finish by reading the result back — the script's own "DONE" line is
 printed before anything re-reads the release:
@@ -708,9 +725,12 @@ the substitute rather than configure `act`.
 
 **So Phase 2b here is `./scripts/ci-docker.sh`**, and the session's own
 Phase 2b report names the three uncovered items below. **Not the published
-release notes** — `release-linux.sh` builds those from the `CHANGELOG.md`
-`[X.Y.Z]` section and passes them as `--notes-file`, so they are what end users
-read on the download page, and a CI-coverage caveat does not belong there.
+release notes** — those are `cut-release`'s, lifted from the `CHANGELOG.md`
+`[X.Y.Z]` section, and they are what end users read on the download page, so a
+CI-coverage caveat does not belong there. (`release-linux.sh` sets notes only
+on its `gh release create` branch, which the documented order never reaches:
+`cut-release` has already created the release, so the script takes
+`gh release upload --clobber` and touches the notes not at all.)
 
 **Why the ban does not bite: `ci-docker.sh` is not a mirror of the pipeline, it
 is the pipeline's own two scripts.** `ci.yml` has one job, four steps — install
@@ -793,8 +813,9 @@ than left standing as a second answer.
   `ci-docker.sh` so the environment has a single definition.
 - `scripts/ci-docker.sh` — re-run CI's own image and CI's own two scripts
   locally (`python:3.12-slim-bookworm`, then `ci-setup.sh` + `ci-local.sh`). Run
-  before pushing to catch environment issues a configured desktop masks. Not the
-  whole workflow — § `cut-release` Phase 2b names the three steps it misses.
+  before pushing **when the diff could move the environment** — § Build and test
+  lists those triggers and says it is not required before every push. Not the
+  whole workflow either — § `cut-release` Phase 2b names what it misses.
 - `scripts/build-smoke.sh` (+ `_build-smoke-in-container.sh`) — freeze the app
   in a `python:3.12-slim-bookworm` container (glibc ~2.36) and launch it in a
   Python-free `debian:13-slim` container (FIBR-0003).
