@@ -1194,7 +1194,7 @@ scariest unknown (native-library bundling) up front.
   Kind: doc.
   Source: user-directive-2026-08-18.
 
-- 📋 [FIBR-0281] **CLAUDE.md still points sessions at hand-editing ROADMAP.md, and the roadmap DB is now the write path.**
+- ✅ [FIBR-0281] **CLAUDE.md still points sessions at hand-editing ROADMAP.md, and the roadmap DB is now the write path.**
   User decision 2026-08-18: this project uses the roadmap DB (`roadmap_query` /
   `roadmap_log`), not hand edits to ROADMAP.md. It enforces the format, is much
   cheaper to query than reading a 616 KB file, and updates items in place.
@@ -1222,6 +1222,13 @@ scariest unknown (native-library bundling) up front.
   Kind: doc.
   Source: user-decision-2026-08-18.
   Progress (2026-08-18): the store is now in sync and this file is generated from it. Two renderer defects were found and one is fixed at source: a bullet whose bold headline wrapped across lines rendered its continuation at column 0, which markdown reads as a new list item — 18 such headlines were un-wrapped before the first render, and the fix is durable because the store now holds each headline on one line. The second is open and belongs to the MCP: there is no way to remove an item from the store, and re-ingesting a file without it marks it orphaned WITHOUT dropping it, so it is re-injected on the next render — an accidental append is permanent and self-resurrecting, and clearing one needs a direct DELETE on the shared roadmap.sqlite. Both are logged in the Ants MCP feedback file. Still to do here: amend § Where state lives so it names the DB as the source of truth rather than this file, and state the freshness check a session owes before writing.
+  Resolved (2026-08-19): CLAUDE.md § Where state lives item 2 now names the roadmap DB as the source of truth, with ROADMAP.md as generated output that is never hand-edited, and § Resumption flow and `.claude/workflow.md` § 1 reworded to match. Gated with `review-contract --genre standard`, 3 loops (the cap for a standard here), 7 cold lanes, 15 verified findings all fixed, 4 dismissed on verification.
+
+  The freshness check this item asked for is NOT the one it proposed. `roadmap_migrate`'s dry-run counters do not measure staleness: measured on a tree where every ROADMAP.md change had come through `roadmap_log`, a dry run still reported 10 items updated (`body`, `layman`, `source`, `extras`), because the render → parse round trip is not lossless. That is a property of the round trip, so it applies to every run — and `updated_items[]` is the verb's plan to write those re-parsed bodies over correct ones in a store shared by every project on this machine. The rule written instead: `roadmap_query` on the id you are about to touch, read the body back, read it back again after every flip; plus a write `dry_run` for the file-side half, which resolves the locator and echoes `from_status` but returns no body. Both the finding and a clarification request are logged in the Ants MCP feedback file.
+
+  Two things the gate corrected that would otherwise have shipped: a hazard attached to the wrong condition (a non-dry migrate called destructive on "a clean tree", when the sanctioned external-merge case clobbers the same items), and a rule costing every session a needless call (that `status:"active"` cannot yield `Kind` — the envelope returns `kind` as a field even with `bodies_omitted: true`).
+
+  Filed, not fixed: FIBR-0285.
 
 - 📋 [FIBR-0285] **The audit allowlist still keys its entries to `/code-quality-review`, a skill that no longer exists.**
   `review-code` replaced `/code-quality-review` on 2026-08-18. CLAUDE.md item 6
