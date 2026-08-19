@@ -7,21 +7,27 @@
 > **Scope:** project-specific. Each project develops its own
 > list. There is no global allowlist.
 
-This file is the **closed-loop memory** for `/audit` and
-`/code-quality-review` false positives. Without it, the same false
+This file is the **closed-loop memory** for `check-code` and
+`review-code` false positives. Without it, the same false
 positive gets surfaced and dismissed every audit run, burning
 tokens and tempting "skip without thinking" reflexes.
 
-> **Naming note (2026-08-05).** The review skill was renamed
-> `/indie-review` → `/code-quality-review`; the old command no
-> longer exists. Prose in this file now says the new name.
-> **Existing entries keep their original `indie-review:R-N` source
-> tokens** — those are recorded provenance for a finding that really
-> was raised by the skill under its old name, and rewriting history
-> to match a rename would make the record less true, not more.
-> Write new entries with `code-quality-review:R-N`. Decided rather
-> than left ambiguous, so a future session does not "tidy" the old
-> tokens.
+> **Naming note — the same rule has now been applied to three
+> renames.** The review skill went `/indie-review` →
+> `/code-quality-review` (2026-08-05) → `review-code` (2026-08-18),
+> and the static-analysis skill went `/audit` → `check-code`
+> (2026-08-15). None of the old names exists any more.
+>
+> **The rule, settled 2026-08-05 and unchanged since:** prose in this
+> file says the CURRENT name, so a session running today's skill finds
+> the memory it is looking for. **Existing entries keep their original
+> source tokens** — `indie-review:R-N`, `code-quality-review:R-N` —
+> because those are recorded provenance for a finding that really was
+> raised by the skill under that name, and rewriting history to match
+> a rename would make the record less true, not more.
+>
+> So the token set here is deliberately mixed, and a future session
+> must not "tidy" it. **Write new entries with `review-code:R-N`.**
 
 The `app-workflow` skill
 (`~/.claude/skills/app-workflow/SKILL.md`, machine-local)
@@ -32,7 +38,7 @@ re-evaluating.
 
 ## How entries are added
 
-When `/audit` or `/code-quality-review` produces a finding F that
+When `check-code` or `review-code` produces a finding F that
 triage classifies as a tool false positive (verified, not just
 dismissed), Claude **must**:
 
@@ -47,7 +53,7 @@ dismissed), Claude **must**:
    `docs/journal/<ID>.md`.
 
 If a tool-level suppression isn't possible (e.g. semantic
-code-quality-review finding with no rule ID), the allowlist entry
+`review-code` finding with no rule ID), the allowlist entry
 alone is enough — triage subagents read it before flagging.
 
 
@@ -73,7 +79,7 @@ Do not delete revoked entries — the history is the value.
 
 - **Status:** active | revoked YYYY-MM-DD (<reason>)
 - **Tool / rule:** e.g. cppcheck:nullPointer, ruff:B902,
-  code-quality-review:R-7
+  review-code:R-7
 - **Location:** file:line, or finding signature for
   non-line-bound findings
 - **Why this is a false positive:** one paragraph. Be specific.
@@ -185,8 +191,8 @@ Do not delete revoked entries — the history is the value.
 
 - **Status:** active
 - **Tool / rule:** `coding.md § 5.2` (every user-facing string in `ui/` goes
-  through `tr()` / `QCoreApplication.translate`) — fires for `/audit` and
-  `/code-quality-review` alike, no tool rule id.
+  through `tr()` / `QCoreApplication.translate`) — fires for `check-code` and
+  `review-code` alike, no tool rule id.
 - **Location:** `src/finbreak/ui/_amount.py`, `_ambiguous()` — the
   `"amount is ambiguous: … (grouped) … (decimal) — retype it using the format
   the app displays"` string, plus the `"amount is not a valid number"` reraise in
