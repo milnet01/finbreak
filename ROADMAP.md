@@ -1273,7 +1273,7 @@ scariest unknown (native-library bundling) up front.
   Kind: doc-fix.
   Source: in-session-2026-08-19 (review-contract loop 2 on CLAUDE.md, blast-radius sweep).
 
-- 📋 [FIBR-0286] **`coding.md` and `testing.md` carry the stale peer count and the frozen model literal `commits.md` just shed.**
+- ✅ [FIBR-0286] **`coding.md` and `testing.md` carry the stale peer count and the frozen model literal `commits.md` just shed.**
   `docs/standards/coding.md:5` and `docs/standards/testing.md:5` both say
   this standard "Pairs with the other **three** standards in this folder"
   when the folder holds six shareable standards plus a sub-spec and the
@@ -1287,6 +1287,17 @@ scariest unknown (native-library bundling) up front.
   into the neighbours in passing: each is a contract document with its own
   rule-14 gate ahead of it, which is the same call `documentation.md`'s
   loop 1 made when it first surfaced the peer-count drift.
+  Resolved (2026-08-19, commit 473dd78). Both headers now enumerate all five
+  siblings and name no count, matching `naming.md`, `dependencies.md` and
+  `documentation.md`. `testing.md` § 8's frozen `Claude Opus 4.8` literal is
+  replaced by the placeholder-plus-pointer form `commits.md` § 1.5 owns.
+
+  Gated: no. The bullet said both files owed their own rule-14 gate; applying
+  that rule's own test says otherwise. A corrected count, a completed link
+  list and a stale example literal replaced by the pointer it should have been
+  change no line a conformer writes — the trailer they produce is the one
+  § 1.5 already prescribed. Recorded in the commit body per rule 14's No
+  branch, which also says not to gate in the grey zone.
   **Layman:** Two rule documents still say there are three sibling standards when there are six, and both show an out-of-date AI name that gets copied into commits.
   Kind: doc-fix.
   Source: in-session-2026-08-19 (review-contract loop 1 on commits.md, blast-radius sweep).
@@ -1410,7 +1421,7 @@ scariest unknown (native-library bundling) up front.
   Kind: doc-fix.
   Source: in-session-2026-08-19 (review-contract loop 3 on commits.md, deferred tail at the cap).
 
-- 📋 [FIBR-0291] **`commits.md` gives the release-commit subject as `X.Y.Z: theme — summary` and both its examples omit the summary.**
+- ✅ [FIBR-0291] **`commits.md` gives the release-commit subject as `X.Y.Z: theme — summary` and both its examples omit the summary.**
   § 1.2's Release row gives `X.Y.Z: theme — short summary` and § 5 gives
   `X.Y.Z: theme — summary`, but both worked examples read
   `0.2.0: CSV/OFX import + duplicate detection` — no em-dash segment at
@@ -1424,6 +1435,18 @@ scariest unknown (native-library bundling) up front.
   Lowest-value finding of the run and filed rather than fixed for that
   reason: the run had reached its cap of 3 loops for a standard, where
   the skill files the tail rather than looping again.
+  Resolved (2026-08-19, commit 84fa6c1). Settled against what writes the
+  subject rather than by picking a side: `cut-release` SKILL.md § Phase 3
+  writes `<X.Y.Z>: <one-line theme>`, and no release commit here (0.1.13
+  through 0.1.21) carries an em-dash segment. The examples were right; the
+  stated format was wrong, and both statements of it now read `X.Y.Z: theme`.
+
+  § 5 also now names where the em-dash form DOES belong — the GitHub release
+  title, `X.Y.Z — <theme>` in § 6's own block. That is almost certainly where
+  the drift came from, and naming it is what stops it coming back.
+
+  No new gate: this is FIBR-0279's own deferred tail, filed at the cap rather
+  than fixed, so the fix pass belongs to that run.
   **Layman:** A rule shows a commit title format with three parts, then every example it gives has only two.
   Kind: doc-fix.
   Source: in-session-2026-08-19 (review-contract loop 3 on commits.md, deferred tail at the cap).
