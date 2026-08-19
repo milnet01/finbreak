@@ -8,14 +8,16 @@ this section was a 128 KB hand-written narrative that drifted weeks out
 of date, because most work on this project lands outside the
 `/close-phase` loop that was its only maintainer (FIBR-0229).
 
-**So: for "where are we", read [`ROADMAP.md`](../ROADMAP.md), not this.**
-The roadmap is written by the `roadmap_log` MCP verb on every status
-change, so it cannot go stale the way prose can. `CHANGELOG.md` is the
+**So: for "where are we", query the roadmap DB with `roadmap_query`, not
+this.** [`ROADMAP.md`](../ROADMAP.md) is generated from that DB and is the
+copy under version control; the DB is the source of truth, and `roadmap_log`
+writes it on every status change, so neither can go stale the way prose can.
+(CLAUDE.md § Where state lives item 2 owns this rule, FIBR-0281.) `CHANGELOG.md` is the
 released-user-facing view of the same thing.
 
 | Where to look | For |
 |---|---|
-| [`ROADMAP.md`](../ROADMAP.md) | current state, what's next, every open 📋 / 🚧 item |
+| the roadmap DB (`roadmap_query`) | current state, what's next, every open 📋 / 🚧 item |
 | [`CHANGELOG.md`](../CHANGELOG.md) | what shipped to users, per release |
 | `docs/journal/<ID>.md` | the close record for a completed item |
 | §3 below | session-by-session narrative history (append-only) |

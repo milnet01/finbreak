@@ -19,8 +19,9 @@ six-plus reads to answer a question the ROADMAP already answers.
    generated file is what gets committed and pushed. **Never hand-edit that
    file** — the next render overwrites you. Query the DB with `roadmap_query`
    (by `id` / `ids`, or `mode:"headline_only"`) rather than reading a 600 KB
-   file; write through `roadmap_log`, which enforces the format and updates
-   items in place. Keep a bold headline on **one line**: a wrapped one renders
+   file; write through `roadmap_log`, which enforces the format and
+   **re-renders the whole file on every write** (`items_rendered: 277` on a
+   one-item annotate) — that render is what overwrites a hand edit. Keep a bold headline on **one line**: a wrapped one renders
    its continuation at column 0, which markdown reads as a new list item.
    (User decision 2026-08-18, FIBR-0281.)
 
@@ -34,16 +35,18 @@ six-plus reads to answer a question the ROADMAP already answers.
    with git leaves the item orphaned and the next render injects it back. Get
    an append right first time.
 
-   **`roadmap_migrate` is the re-ingest, for when the FILE is genuinely ahead**
-   — a hand edit, an external merge. It only reads `ROADMAP.md`, so a byte-
-   identical file afterwards is the verb working, not a failure. **Do not use
-   it as the routine freshness probe: its counters do not measure staleness.**
-   Measured 2026-08-19 on a tree where nothing had hand-edited the file, a
-   `dry_run` still reported **10 items updated** — the render → parse round
-   trip is not lossless for `body`, `layman` and `extras`. `items_rendered`
-   matching the file's bullet count is no all-clear either: it counts items,
-   not their contents, so a stale-bodied store passes it exactly as a fresh
-   one does.
+   **`roadmap_migrate` re-ingests the file into the store, and on this project
+   you should almost never need it.** It only reads `ROADMAP.md`, so a byte-
+   identical file afterwards is the verb working, not a failure. **Run it only
+   when you KNOW something other than `roadmap_log` wrote the file** — an
+   external merge, a restore from git. **Never on the strength of its
+   counters**, which do not measure staleness: measured 2026-08-19 on a tree
+   where every `ROADMAP.md` change had come through `roadmap_log`, a `dry_run`
+   still reported **10 items updated** (`body`, `layman`, `source`, `extras`),
+   because the render → parse round trip is not lossless. **So a non-dry run on
+   a clean tree is destructive** — its own `updated_items[]` is the plan to
+   write those re-parsed bodies over correct ones, in a store shared by every
+   project on this machine.
 
 3. **`.claude/workflow.md` §1** — the small set of facts that
    live nowhere else: repo visibility, convergence checkpoint,
@@ -475,7 +478,7 @@ deny-list the same way. **A closed list of directories cannot express "not
 code"; a suffix can.**
 
 **A `.md` anywhere counts** — `tests/features/<name>/spec.md` and
-`packaging/flatpak/README.md` included. The four suites and the `gitleaks`
+`packaging/flatpak/README.md` included. The five suites and the `gitleaks`
 scan above are what cover those. Anything else takes the full gate.
 
 **Why this replaced the digit test.** Until 2026-08-18 the rule asked
