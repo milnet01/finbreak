@@ -6466,6 +6466,46 @@ because retrofitting them is a data migration.
   Kind: feature.
   Source: spec-FIBR-0086-2026-08-06 cold-eyes loop 2.
 
+- 📋 [FIBR-0283] **Accounts have no bank field, so a multi-bank vault distinguishes them only by account number.**
+  The Accounts screen carries Name, Type, Account number, Note and
+  Status, and nothing else. A vault holding accounts at two banks
+  therefore records the owning bank nowhere at all: the only signal is
+  the account number itself, which is masked in the table by default
+  and is not something a person recognises on sight. Reported by the
+  user 2026-08-19 against a real vault of six accounts at one bank
+  plus one at another.
+
+  Scope:
+  - A `bank` field on the account record: schema migration, repository
+    and domain model.
+  - An input on the Accounts screen's add / update row, and a Bank
+    column in the accounts table.
+  - Carried through everywhere an account is named to the user - the
+    account picker, the import wizard's pick step, and account
+    headings in reports and PDF export.
+
+  Two design calls to settle when this is picked up, deliberately NOT
+  decided here:
+  - Free text with a suggestion list, versus a closed enum. A closed
+    list refuses a bank whose statements we cannot yet parse, and the
+    importer families are Standard Bank only today (FIBR-0050), with
+    other banks tracked as FIBR-0074 - so free text with suggestions
+    is the likely answer.
+  - Whether the field is optional. Existing accounts must migrate to
+    an empty bank rather than a guessed one; inferring it from an
+    account number is exactly the fragile guess this item removes.
+
+  Adjacent and out of scope: FIBR-0086's import auto-detect and
+  FIBR-0241's masked / trailing-digit matching both compare account
+  numbers alone. A bank on the account would narrow the candidate set
+  when two banks issue numbers sharing trailing digits, but making
+  auto-detect consume the field is separate work - file it as its own
+  item if wanted.
+  **Layman:** Add a "Bank" field to each account, so you can see at a glance which accounts are at which bank instead of having to match account numbers.
+  Kind: feature.
+  Source: user-request-2026-08-19.
+  Lanes: ui, repositories, services.
+
 ### ⚡ Performance
 
 - ✅ [FIBR-0025] **Enable SQLite WAL mode.**
