@@ -26,7 +26,7 @@
 > no `docs/roadmap/`. **But do not attempt the hand snip:** that
 > standard's § 3.12 records: "No store operation performs rotation
 > today", so on a store-backed roadmap rotation is unperformable and a
-> hand edit is lost at the next render (§3.5.1). Read the section to
+> hand edit is lost at the next render (§3.0). Read the section to
 > know what rotation *is*; there is nothing to run yet.
 
 ## 3. ROADMAP.md format spec
@@ -41,6 +41,42 @@ shipped bullet is **not deleted** — it stays where it is as ✅
 under a block retitled `shipped (YYYY-MM-DD)` (§3.7), and it is
 the *user-facing* record of the work that moves to the
 CHANGELOG.
+
+### 3.0 Two modes: hand-maintained and store-backed
+
+**Establish which mode a project is in before reading anything
+below.** Most of this document describes a `ROADMAP.md` the
+author edits; a large minority of its rules are unavailable when
+the file is generated, and the difference is not a detail — it
+decides whether an edit sticks or is silently thrown away.
+
+- **Hand-maintained** — `ROADMAP.md` *is* the roadmap, edited
+  directly. The author chooses each bullet's position, moves it,
+  deletes it, and retitles its release heading.
+  `.roadmap-counter` is the ID allocator.
+- **Store-backed** — `ROADMAP.md` is *rendered* from the Ants
+  roadmap DB, and `roadmap_log` is the only writer. **Every hand
+  edit to the file is undone by the next render**, which
+  re-emits the whole file on any write.
+
+**This project is store-backed.** `CLAUDE.md` § Where state
+lives item 2 owns the working rules; this section owns what the
+format spec means by the two modes.
+
+**Four operations the rest of this document describes are
+unavailable store-backed.** Where a later section teaches one,
+read it as hand-maintained unless it says otherwise:
+
+| Operation | Store-backed reality |
+|---|---|
+| **Positioning a bullet** by priority | `roadmap_log` appends to the end of the named section and takes no positional locator. Position is append order and carries no priority; §3.8's severity prefix inside the bold headline is the carrier. |
+| **Moving or deleting a bullet** | There is no delete op and no positional locator, so either hand edit is reverted and the item comes back. Retire an item by flipping its status, never by cutting it out of the file. |
+| **Retitling a heading** — `(target: …)` → `shipped (…)` | The heading is rendered from the store's section title and no `roadmap_log` op renames a section. Shipped-ness is carried by the bullets' ✅ alone. |
+| **Allocating an ID** from `.roadmap-counter` | `roadmap_log` allocates from the store and returns the ID in its write envelope. The counter is a lagging cache, so counter arithmetic names an ID that already belongs to another bullet (§3.5.1). |
+
+A fifth, archive rotation, is not specified in this copy at all
+— see the header note above, which records that no store
+operation performs it today either.
 
 ### 3.1 File header
 
@@ -177,19 +213,14 @@ The ID is a project-prefixed monotonic integer:
 - **Append-only** — once assigned, an ID never changes. It
   survives rewording, moving, status flips, and even being
   deleted (a deleted ID is *retired*; the next new bullet uses
-  the next free number, not the deleted one). **On a store-backed
-  project, moving and deleting are not available at all**:
-  `roadmap_log` has no delete op and no positional locator, so a
-  hand edit doing either is undone by the next render and the
-  item comes back. Retire such an item by flipping its status,
-  never by cutting it out of the file.
+  the next free number, not the deleted one). Moving and
+  deleting are hand-maintained-only — see §3.0.
 
-**Who allocates an ID depends on whether the roadmap is
-store-backed.** On this project it is: `ROADMAP.md` is *rendered*
-from the Ants roadmap DB, and `roadmap_log` allocates the next ID
-from that store and returns it in the write envelope. **That is
-the only sanctioned allocator here.** Never read a number out of
-a file and write it into a bullet by hand.
+**Who allocates an ID depends on the mode (§3.0).**
+Store-backed, `roadmap_log` allocates the next ID from the store
+and returns it in the write envelope, and **that is the only
+sanctioned allocator** — never read a number out of a file and
+write it into a bullet by hand.
 
 `.roadmap-counter` at the project root is a **cache of the
 high-water mark, not the allocator**, and three things follow:
@@ -207,15 +238,13 @@ high-water mark, not the allocator**, and three things follow:
   already belongs to another bullet — permanently, because IDs
   are append-only and a pushed commit cannot be rewritten.
 
-A project whose `ROADMAP.md` is a plain hand-maintained file with
-no store behind it has no other carrier, and there the counter
-*is* the high-water mark. Check which kind of project you are in
-before reaching for the recipe below — on a store-backed one it
-allocates a collision:
+Hand-maintained, the counter *is* the high-water mark and the
+recipe below is the allocator. Store-backed it allocates a
+collision, so check the mode (§3.0) before reaching for it:
 
 ```bash
-# FALLBACK ONLY, for a project with no roadmap store behind
-# ROADMAP.md. Not this project — use roadmap_log here.
+# Hand-maintained mode only (§3.0).
+# Store-backed — this project — use roadmap_log.
 echo $(($(cat .roadmap-counter) + 1)) > .roadmap-counter
 printf "PROJ-%04d\n" $(cat .roadmap-counter)
 ```
@@ -237,31 +266,23 @@ inserted (e.g. a `check-code` finding):
    finding goes lower. The author *chooses* the position based
    on priority.
 
-   **This step applies only where `ROADMAP.md` is
-   hand-maintained.** On a store-backed project (§3.5.1) it is
-   not available: `roadmap_log` appends to the end of the named
-   section and takes no positional locator, and a hand edit that
-   moves a bullet is reverted by the next render. **So position
-   there is append order and carries no priority at all** —
-   which makes step 3 below the only signal, rather than the
-   audit trail it is on a hand-maintained file.
+   **Hand-maintained mode only (§3.0).** Store-backed, position
+   is append order and carries no priority, which makes step 3
+   below the only signal rather than the audit trail it is here.
 2. **Assign the next free ID.** Don't shuffle existing IDs to
    keep the section monotonic — that's the anti-pattern this
    sub-spec prevents.
 3. **Record the priority in the bold headline**, using §3.8's
    severity prefix — `**CRITICAL — …**`, `**HIGH — …**`,
-   `**MEDIUM — …**`, `**LOW — …**`. On a store-backed project
-   it is the format's only priority carrier — on a
-   hand-maintained one it records the step-1 position choice as
-   well. Either way it is part of the headline the parser
-   already harvests, so it survives a re-render and needs no
-   field of its own.
+   `**MEDIUM — …**`, `**LOW — …**`. It rides inside the headline
+   the parser already harvests, so it survives a re-render and
+   needs no field of its own — which is why it, and not
+   position, is the priority carrier store-backed (§3.0).
 
 This means a section's IDs may be **non-monotonic** in document
 order (e.g. `0003, 0017, 0004, 0012`). That is correct and
 expected. The agent reads the file top-to-bottom and works the
-items in that order — subject to §3.5.4 step 4, which on a
-store-backed project puts the severity prefix ahead of position.
+items in that order — subject to §3.5.4 step 4.
 
 #### 3.5.3 Kinds and Sources
 
@@ -353,19 +374,19 @@ roadmap"*, it MUST:
    item** — that status means scope or feasibility is still
    uncertain (§3.3), so it is flipped to 📋 by a human before
    anyone builds it.
-4. Tackle bullets in document order — *not* in ID order. **On
-   a store-backed project, read the severity prefix first**
-   (§3.5.2 step 3): position there is append order, so a
-   CRITICAL item folded in last sits last. Only fold-in bullets
-   carry a prefix (§3.8), so the full order there is: prefixed
-   bullets by severity, then the rest in document order.
+4. Tackle bullets in document order — *not* in ID order.
+   **Store-backed (§3.0), read the severity prefix first**
+   (§3.5.2 step 3), because a CRITICAL item folded in last sits
+   last. Only fold-in bullets carry a prefix (§3.8), so the
+   order there is: prefixed bullets by severity, then the rest
+   in document order.
 5. When inserting new bullets (e.g. from an audit), follow
    §3.5.2.
 
 Do **not** "jump around" by ID. Do **not** reorder existing
 items to fit a perceived priority — that decision is the human
-author's, made through positioning on a hand-maintained file and
-through the headline severity on a store-backed one.
+author's, made through whichever carrier the mode gives them
+(§3.0).
 
 ### 3.6 Current-work signaling
 
@@ -424,12 +445,10 @@ Released versions move from `(target: YYYY-MM)` to
 read-only: items under them are expected to be ✅ and don't
 appear in the 📋/🚧/💭 filters.
 
-**On a store-backed project this retitle is not available.** The
-heading is rendered from the store's section title and no
-`roadmap_log` op renames a section, so a hand edit is undone by
-the next render (§3.5.1). There, shipped-ness is carried by the
-bullets' ✅ alone and the heading stays as rendered — do not read
-a block still saying `(target: …)` as unreleased.
+**Store-backed, this retitle is not available (§3.0)** —
+shipped-ness is carried by the bullets' ✅ alone and the heading
+stays as rendered, so do not read a block still saying
+`(target: …)` as unreleased.
 
 ### 3.8 Findings fold-in subsections
 
@@ -494,9 +513,9 @@ Conventions for any findings fold-in:
 - **Severity in the headline** — `**CRITICAL — …**`,
   `**HIGH — …**`, `**MEDIUM — …**`, `**LOW — …**`.
 - **Position by priority** — Tier-1 / CRITICAL items go above
-  existing Tier-2 / HIGH items. **Hand-maintained roadmaps
-  only**: on a store-backed project position is not authorable
-  (§3.5.2), and the severity prefix above is the carrier.
+  existing Tier-2 / HIGH items. **Hand-maintained mode only
+  (§3.0)**; store-backed, the severity prefix above is the
+  carrier.
 - **Write `Kind:` and `Source:` on every bullet** (§3.5.3). The
   source-stamped heading names the origin for human readers, but
   nothing binds it to the bullet's `Source:` field — so a bullet
@@ -510,10 +529,9 @@ Conventions for any findings fold-in:
 - ❌ Renumbering items when inserting. The whole point of stable
   IDs is to defeat this temptation.
 - ❌ Multiple status emojis on one bullet (`✅ 📋 …`).
-- ❌ Reordering bullets by ID. On a hand-maintained roadmap
-  position is priority and numerical order is not; on a
-  store-backed one position is append order and the §3.8
-  severity prefix is the carrier (§3.5.2).
+- ❌ Reordering bullets by ID. Priority is carried by position
+  or, store-backed, by the §3.8 severity prefix (§3.0, §3.5.2) —
+  numerical order carries it in neither mode.
 - ❌ More than ~3 🚧 bullets simultaneously.
 - ❌ Mixing `[ ]` / `[x]` task-list syntax with the emoji
   status system.
@@ -600,6 +618,8 @@ automated by anything.** `.claude/bump.json` carries a
 section, and `cut-release` applies the bump recipe, so 1 and 2
 happen as part of the bump. It does **not** flip roadmap bullets. Flip them to ✅ before
 invoking it, or it stops and the stop reads like a tool failure.
+Step 4 is a heading retitle, unavailable store-backed (§3.0,
+§3.7).
 
 **Read `cut-release` Phase 0e, not its § Not its job, for the
 changelog half.** That section lists steps 1 and 3 together as
@@ -609,9 +629,7 @@ Phase 0e carries the branch: "**Unless the recipe performs the
 cut itself — then 0e passes** … **So read the recipe before
 stopping.**" This project's recipe does perform it, so the cut is
 a bump step here. **Do not also cut `[Unreleased]` by hand** —
-the recipe would then insert a second dated heading. Step 4 is a heading
-change, and on a store-backed roadmap headings are rendered from
-the store, which no `roadmap_log` op renames.
+the recipe would then insert a second dated heading.
 
 
 
