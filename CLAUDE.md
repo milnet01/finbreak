@@ -97,20 +97,20 @@ are done — see SKILL.md for the full description.
 
 finbreak is **correctness-critical** — it handles people's money, and a
 wrong-day / wrong-zone / wrong-total bug is exactly the class of error users
-won't forgive. So specs get more room to settle before code: run
-**`review-contract <path> --max-loops 7`** for this project — i.e. allow up to
-**7** convergence loops rather than the skill's default of 2 for a spec or plan
-and 3 for a standard or ADR. (User directive 2026-07-11, when the skill was
-`/cold-eyes`; that skill was replaced by `review-contract` on 2026-08-12 and
-the raised cap carries over unchanged.)
+won't forgive. So a spec gets one loop more than the skill would give it: run
+**`review-contract <path> --max-loops 3`** for this project, on **every**
+genre. The skill's own default is 2 for a spec or plan and 3 for a standard or
+an ADR, so this raises the spec/plan cap by one and leaves a standard's where
+it already was.
 
-**The 7 covers SPECS AND PLANS ONLY. A standard or an ADR keeps the skill's
-default of 3** (user decision 2026-08-18, settling an ambiguity the 2026-08-18
-gate on this file had to guess its way past). The rationale above is the reason:
-the extra loops exist because a wrong spec becomes wrong money-handling code,
-and a standard is not implemented. The evidence is that gate — three loops, 19
-verified findings, and by loop 3 half of them were the review's own collateral,
-so further loops mostly repair earlier repairs.
+**The cap was 7 for specs and plans until 2026-08-19** (user directive
+2026-07-11, carried over unchanged when `review-contract` replaced
+`/cold-eyes`). It came down because the extra loops stopped paying once the
+skills and the app-workflow were redesigned. The measurement is this file's own
+2026-08-18 gate: three loops, 19 verified findings, and by loop 3 half of them
+were the review's own collateral — so a fourth loop mostly repairs the third's
+repairs. A spec reaching its cap is a normal exit; the build is the next
+reviewer.
 
 **Convergence is the skill's, not a local definition**: a loop whose verified
 findings answer none of its four questions. Do not hold a spec to the older
