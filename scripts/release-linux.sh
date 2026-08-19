@@ -190,6 +190,86 @@ else
         --title "finbreak $TAG" --notes-file "$NOTES" --latest
 fi
 
+# Step 7a — HARD GATE: read the published asset list back (FIBR-0275, INV-8).
+# v0.1.20 published with ZERO assets and nothing noticed for ten days, while
+# README § Install and the in-app updater both resolve to the release page.
+# This cannot be a pre-flight: the assets do not exist until the tag does.
+#
+# The expected total is FIVE — this phase's OWN count (the AppImage, its .sig,
+# SHA256SUMS, its .sig, the linux SBOM). release-windows.sh completes the
+# release to eight and checks for eight. A flat 8 here would fail every
+# release before the Windows half had ever run.
+echo "== release-linux: reading the published asset list back from $TAG =="
+
+ASSET_NAMES=""
+READBACK_OK=0
+for attempt in 1 2 3; do
+    if ASSET_NAMES="$(gh release view "$TAG" --json assets -q '.assets[].name' | sort)"; then
+        READBACK_OK=1
+        break
+    fi
+    echo "release-linux: asset read-back attempt $attempt failed — retrying in 5s" >&2
+    sleep 5
+done
+
+# A read-back that never completed is NOT the same finding as an incomplete
+# release, and saying so matters: the transient 503s this API hands out would
+# otherwise cry wolf on a release that is perfectly fine.
+if [ "$READBACK_OK" -ne 1 ]; then
+    echo "release-linux: could not read $TAG's assets back after 3 attempts. The release may well be complete — check with 'gh release view $TAG --json assets' before assuming otherwise." >&2
+    exit 1
+fi
+
+if [ -n "$ASSET_NAMES" ]; then
+    mapfile -t PUBLISHED <<< "$ASSET_NAMES"
+else
+    PUBLISHED=()
+fi
+ASSET_COUNT=${#PUBLISHED[@]}
+
+# Check 1 — the count. This is what v0.1.20 needed and did not have.
+if [ "$ASSET_COUNT" -ne 5 ]; then
+    {
+        printf 'release-linux: PUBLISH INCOMPLETE — %s carries %d asset(s), expected 5.\n' \
+            "$TAG" "$ASSET_COUNT"
+        printf 'Published now: %s\n' "${ASSET_NAMES:-<none>}"
+    } >&2
+    exit 1
+fi
+
+# Check 2 — every .sig has the artifact it signs. This is the v0.1.21 shape: a
+# 503 part-way down the final --clobber upload, which DELETES each asset
+# before replacing it, left SHA256SUMS.sig without SHA256SUMS and .exe.sig
+# without the .exe — a signed release whose signed manifest was gone. The
+# count alone accepts that, so this is not redundant with check 1.
+#
+# (Do not spell the publish command out in these comments. INV-4 and INV-8
+# both scrape this file for that literal, and a mention in a comment reads to
+# them as a real publish — which is how this guard first broke both.)
+for name in "${PUBLISHED[@]}"; do
+    case "$name" in
+    *.sig)
+        subject="${name%.sig}"
+        if ! printf '%s\n' "${PUBLISHED[@]}" | grep -Fxq -- "$subject"; then
+            echo "release-linux: PUBLISH INCOMPLETE — $name is published but $subject, the artifact it signs, is not" >&2
+            exit 1
+        fi
+        ;;
+    esac
+done
+
+# Check 3 — the AppImage carries the exact name the in-app updater greps for
+# (AppImageInstaller.asset_suffix() in src/finbreak/services/update_installer.py).
+# A correctly built, correctly signed AppImage under any other name is
+# invisible to every installed copy's updater — the trap .claude/bump.json
+# warns about in prose with "no automated guard". This is that guard.
+if ! printf '%s\n' "${PUBLISHED[@]}" | grep -q -- '-x86_64.AppImage$'; then
+    echo "release-linux: PUBLISH INCOMPLETE — no asset matches the updater's AppImage suffix -x86_64.AppImage" >&2
+    exit 1
+fi
+
+echo "== release-linux: asset read-back OK — $ASSET_COUNT/5 assets, every .sig has its subject =="
+
 # Step 8 — bring the tag home. The publish step above creates the ref on the
 # REMOTE only (nothing in this script tags locally), so without this the local
 # clone has no $TAG and the very next release step — .claude/bump.json's Flatpak

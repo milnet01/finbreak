@@ -483,7 +483,9 @@ def test_INV8_readback_checks_the_phase_correct_asset_count(
     after the Linux phase, which would leave that phase permanently red)."""
     text = script.read_text()
     found = _post_publish_readback(text)
-    assert found is not None, f"{script.name}: no post-publish read-back (see INV-8 check 1)"
+    assert found is not None, (
+        f"{script.name}: no post-publish read-back (see INV-8 check 1)"
+    )
     _, guard = found
 
     count_check = re.search(
@@ -510,7 +512,9 @@ def test_INV8_readback_checks_every_sig_has_its_subject(
     accepted outright."""
     text = script.read_text()
     found = _post_publish_readback(text)
-    assert found is not None, f"{script.name}: no post-publish read-back (see INV-8 check 1)"
+    assert found is not None, (
+        f"{script.name}: no post-publish read-back (see INV-8 check 1)"
+    )
     _, guard = found
 
     assert ".sig" in guard, (
@@ -521,7 +525,7 @@ def test_INV8_readback_checks_every_sig_has_its_subject(
         f"{script.name}: post-publish read-back mentions `.sig` but has no "
         "recognisable per-signature subject-presence construct (a "
         "`${name%.sig}`-style strip, a `*.sig)` case arm, or an "
-        "`endswith(\".sig\")`/`sub(\"\\\\.sig$\";...)` jq filter) — the "
+        '`endswith(".sig")`/`sub("\\\\.sig$";...)` jq filter) — the '
         "v0.1.21 defect was exactly a `.sig` published with its subject "
         "silently missing, which a bare asset COUNT does not catch"
     )
@@ -538,7 +542,9 @@ def test_INV8_readback_checks_names_the_updater_actually_greps_for(
     mis-named `.exe` is invisible to the updater with "no automated guard"."""
     text = script.read_text()
     found = _post_publish_readback(text)
-    assert found is not None, f"{script.name}: no post-publish read-back (see INV-8 check 1)"
+    assert found is not None, (
+        f"{script.name}: no post-publish read-back (see INV-8 check 1)"
+    )
     _, guard = found
 
     for pattern in name_patterns:
@@ -563,7 +569,9 @@ def test_INV8_readback_failure_actually_aborts_not_swallowed(
     human who thought to look."""
     text = script.read_text()
     found = _post_publish_readback(text)
-    assert found is not None, f"{script.name}: no post-publish read-back (see INV-8 check 1)"
+    assert found is not None, (
+        f"{script.name}: no post-publish read-back (see INV-8 check 1)"
+    )
     _, guard = found
 
     assert "|| true" not in guard, (

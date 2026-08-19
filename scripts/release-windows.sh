@@ -187,4 +187,87 @@ gh release upload "$TAG" "$DIST/$EXE" "$DIST/$EXE.sig" \
     "$DIST/SHA256SUMS" "$DIST/SHA256SUMS.sig" \
     "$DIST/finbreak-$VERSION-windows.cdx.json" --clobber
 
+# --- 8) HARD GATE: read the published asset list back (FIBR-0275, INV-8) ---
+# This is the phase that COMPLETES the release, so the expected total is EIGHT:
+# the AppImage + .sig and the linux SBOM from release-linux.sh, plus the .exe +
+# .sig, the windows SBOM, and the merged SHA256SUMS + .sig re-uploaded above.
+#
+# The upload this gate follows is the one that failed on 0.1.21: a 503
+# part-way down the final --clobber upload, which DELETES each asset before
+# replacing it. It left SHA256SUMS.sig without SHA256SUMS and .exe.sig without
+# the .exe, and nothing errored loudly — the script had already printed its
+# signing successes, and the upload was its last line.
+#
+# (Do not spell the publish command out in these comments. INV-4 and INV-8
+# both scrape this file for that literal, and a mention in a comment reads to
+# them as a real publish — which is how this guard first broke both.)
+echo "== release-windows: reading the published asset list back from $TAG =="
+
+ASSET_NAMES=""
+READBACK_OK=0
+for attempt in 1 2 3; do
+    if ASSET_NAMES="$(gh release view "$TAG" --json assets -q '.assets[].name' | sort)"; then
+        READBACK_OK=1
+        break
+    fi
+    echo "release-windows: asset read-back attempt $attempt failed — retrying in 5s" >&2
+    sleep 5
+done
+
+# A read-back that never completed is NOT the same finding as an incomplete
+# release. Distinguishing them keeps the gate from crying wolf on the
+# transient 503s this API hands out.
+if [ "$READBACK_OK" -ne 1 ]; then
+    echo "release-windows: could not read $TAG's assets back after 3 attempts. The release may well be complete — check with 'gh release view $TAG --json assets' before assuming otherwise." >&2
+    exit 1
+fi
+
+if [ -n "$ASSET_NAMES" ]; then
+    mapfile -t PUBLISHED <<< "$ASSET_NAMES"
+else
+    PUBLISHED=()
+fi
+ASSET_COUNT=${#PUBLISHED[@]}
+
+# Check 1 — the count, for the COMPLETE release.
+if [ "$ASSET_COUNT" -ne 8 ]; then
+    {
+        printf 'release-windows: PUBLISH INCOMPLETE — %s carries %d asset(s), expected 8.\n' \
+            "$TAG" "$ASSET_COUNT"
+        printf 'Published now: %s\n' "${ASSET_NAMES:-<none>}"
+    } >&2
+    exit 1
+fi
+
+# Check 2 — every .sig has the artifact it signs. A bare count would have
+# accepted the 0.1.21 state outright; this is the check that names it.
+for name in "${PUBLISHED[@]}"; do
+    case "$name" in
+    *.sig)
+        subject="${name%.sig}"
+        if ! printf '%s\n' "${PUBLISHED[@]}" | grep -Fxq -- "$subject"; then
+            echo "release-windows: PUBLISH INCOMPLETE — $name is published but $subject, the artifact it signs, is not" >&2
+            exit 1
+        fi
+        ;;
+    esac
+done
+
+# Check 3 — both platform artifacts carry the exact names the in-app updater
+# greps for: AppImageInstaller.asset_suffix() and WindowsInstaller
+# .asset_suffix() (src/finbreak/services/update_installer.py). A correctly
+# built, correctly signed artifact under any other name is invisible to every
+# installed copy's updater — the trap .claude/bump.json warns about in prose
+# with "no automated guard". This is that guard.
+if ! printf '%s\n' "${PUBLISHED[@]}" | grep -q -- '-x86_64.AppImage$'; then
+    echo "release-windows: PUBLISH INCOMPLETE — no asset matches the updater's AppImage suffix -x86_64.AppImage" >&2
+    exit 1
+fi
+if ! printf '%s\n' "${PUBLISHED[@]}" | grep -q -- '-x86_64.exe$'; then
+    echo "release-windows: PUBLISH INCOMPLETE — no asset matches the updater's Windows suffix -x86_64.exe" >&2
+    exit 1
+fi
+
+echo "== release-windows: asset read-back OK — $ASSET_COUNT/8 assets, every .sig has its subject =="
+
 echo "== release-windows: DONE — $TAG now carries the signed Windows .exe (+ .exe.sig that activates the updater) =="
