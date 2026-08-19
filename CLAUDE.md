@@ -8,9 +8,9 @@ Scaffolded from the **Ants App-Build** template; follows the
 
 **Items 1–3 are read on every session start; 4–6 are read when you need
 them, not up front.** § Resumption flow at the bottom of this file is the
-operative procedure and it governs — it reads 1–3 in one batch, summarises
-back, then pulls the *one* standard matching the active item's `Kind`. Do
-not read all six standards and the active spec before summarising: that is
+operative procedure and it governs — it reads 1–3 in one batch, then pulls
+the *one* standard matching the active item's `Kind`. Do not read all six
+standards and the active spec before summarising: that is
 six-plus reads to answer a question the roadmap DB already answers.
 
 1. **This file** — stable rules and conventions.
@@ -20,7 +20,11 @@ six-plus reads to answer a question the roadmap DB already answers.
    file** — the next render overwrites you. Query the DB with `roadmap_query`
    rather than reading a 600 KB file: **`status:"active"`** for the open items
    (that is planned + in-progress — the resumption flow's call), `id` / `ids`
-   for one item with its body, `mode:"headline_only"` for a cheap survey.
+   for one item **with its body**, `mode:"headline_only"` for a cheap survey.
+   **A filtered call withholds bodies** (the envelope says so, with
+   `bodies_omitted: true`) **but still returns `kind` as a field** — so the
+   survey answers § Resumption flow step 2 on its own; no second call is
+   owed. A targeted `id` / `ids` fetch returns bodies without `include_body`.
    Write through `roadmap_log`, which enforces the format and **re-renders the
    whole file on every write** (`items_rendered: 277` on a one-item annotate)
    — that render is what overwrites a hand edit. Keep a bold headline on **one
@@ -34,10 +38,11 @@ six-plus reads to answer a question the roadmap DB already answers.
    file-side half: `roadmap_log` locates against the **file** while
    `roadmap_query` reads the **store**, so a store-only item is queryable but
    not writable and refuses `bullet_not_found`. A `dry_run` on the write you
-   are about to make is the cheapest way to test both at once — it resolves
-   the locator and echoes `from_status`. And there is
-   **no delete verb**, so an `append` cannot be undone — reverting the file
-   with git leaves the item orphaned and the next render injects it back. Get
+   are about to make is the cheapest test of **that half** — it resolves the
+   locator and echoes `from_status`. It returns no body, so the read-back is
+   still owed. And there is **no delete verb**, so an `append` cannot be
+   undone — reverting the file with git leaves the item orphaned and the
+   next render injects it back. Get
    an append right first time.
 
    **`roadmap_migrate` re-ingests the file into the store, and on this project
@@ -58,13 +63,17 @@ six-plus reads to answer a question the roadmap DB already answers.
 
 3. **`.claude/workflow.md` §1** — the small set of facts that
    live nowhere else: repo visibility, convergence checkpoint,
-   debt-sweep threshold, active item + step. Deliberately thin
-   (FIBR-0229); it is *not* a narrative of recent work. After
+   debt-sweep threshold, active item + step. **The DB owns which items
+   are in progress; §1 owns which ONE of them is active, and the step
+   within it** — the DB can carry several 🚧 at once and does not say
+   which is being worked, so neither file answers the other's question.
+   Deliberately thin (FIBR-0229); it is *not* a narrative of recent work. After
    reading both, **summarise back to the user** before doing any
    work.
 4. **`docs/standards/{coding,naming,dependencies,documentation,testing,commits}.md`**
    — the six shareable v1 standards. Read the **one** matching the active
-   item's `Kind`, after the summarise-back — not all six.
+   item's `Kind` — not all six. (§ Resumption flow step 2 is where that
+   read happens, and it governs.)
 5. **`docs/specs/<active-id>.md`** — the contract for the
    currently-active roadmap item. Read it when you start work on that
    item; not every item has one (see § Spec discipline in the global

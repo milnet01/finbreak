@@ -12,8 +12,10 @@ of date, because most work on this project lands outside the
 this.** [`ROADMAP.md`](../ROADMAP.md) is generated from that DB and is the
 copy under version control; the DB is the source of truth, and `roadmap_log`
 writes it on every status change, so neither can go stale the way prose can.
-(CLAUDE.md § Where state lives item 2 owns this rule, FIBR-0281.)
-`CHANGELOG.md` is the released-user-facing view of the same thing.
+(CLAUDE.md § Where state lives item 2 owns this rule, FIBR-0281.) **§1 does
+still own which ONE open item is active, and its step** — the DB records
+statuses, not which 🚧 item is being worked. `CHANGELOG.md` is the
+released-user-facing view of the same thing.
 
 | Where to look | For |
 |---|---|
