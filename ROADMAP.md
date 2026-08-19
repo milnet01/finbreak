@@ -1568,7 +1568,7 @@ scariest unknown (native-library bundling) up front.
   Kind: doc-fix.
   Source: in-session-2026-08-19 (review-contract loop 3 on commits.md, deferred tail at the cap).
 
-- 🚧 [FIBR-0293] **`roadmap-format.md` states the store-backed carve-out five times and keeps missing one.**
+- ✅ [FIBR-0293] **`roadmap-format.md` states the store-backed carve-out five times and keeps missing one.**
   `review-contract` reached its cap of 3 loops on this document
   (FIBR-0288) and the cap was **violent**: all 8 of loop 3's findings traced
   to text the run itself had written. Per the skill, a binding cap on a
@@ -1595,9 +1595,62 @@ scariest unknown (native-library bundling) up front.
   Not urgent, and NOT a re-gate of the same document: this is one edit with a
   clear shape, and rule 14's test would send the result through a fresh gate
   on its own merits.
+  Resolved (2026-08-19, commits ed2e1d5, 57fae24, 0b5c575, 07ff5b1).
+
+  The branch is now stated once, in a new § 3.0: the two modes, which one
+  this project is in, and a table of the four operations the rest of the
+  document teaches that are unavailable store-backed. Fourteen repetition
+  sites became pointers -- including § 3.8's "Position by priority" bullet,
+  a site this bullet's own diagnosis had not listed, found by re-grepping
+  rather than working from the list.
+
+  Gated: `review-contract --genre standard --max-loops 3`, 9 cold lanes over
+  3 loops. 19 verified findings, 19 fixed, 1 dismissed, no deferred tail.
+  Loop log rows 4-6 are inline at the end of the document.
+
+  **A CALM cap this time** -- 2 of loop 3's 5 findings landed on text the run
+  wrote, against 8 of 8 at the previous run's cap. So the restructure did what
+  this bullet predicted: the document stopped repairing its own repairs.
+
+  What centralising exposed, and no per-rule carve-out ever could: § 3.0 named
+  § 3.8's severity prefix as the store-backed priority carrier, and the prefix
+  is mandated nowhere outside a findings fold-in -- zero of 285 bullets carry
+  one. The document was promising a mechanism that does not exist. The
+  over-claim is fixed; whether to ADD a carrier is a user decision, filed as
+  FIBR-0294 rather than decided by the gate.
   **Layman:** A rule document was written for a hand-edited roadmap, but ours is generated — so almost every rule needs an exception, and the exception keeps getting left out of one place.
   Kind: doc-fix.
   Source: in-session-2026-08-19 (review-contract cap report on roadmap-format.md).
+
+- 📋 [FIBR-0294] **Store-backed, the roadmap has no way to express priority at all — decide whether it needs one.**
+  Store-backed (roadmap-format.md § 3.0), `roadmap_log` appends to the
+  end of a section and takes no positional locator, so position carries
+  no priority. The only other carrier the format has is § 3.8's severity
+  prefix in the bold headline — and it is required ONLY inside a findings
+  fold-in. Measured 2026-08-19: **zero of 285 bullets carry one**, and
+  this roadmap has no fold-in sections at all.
+
+  So § 3.5.4 step 4's ranker has nothing to sort on, and priority is
+  currently not expressed anywhere on this roadmap.
+
+  All three cold lanes of the gate proposed making the prefix REQUIRED on
+  every actionable bullet. That was refused and filed here instead: it
+  puts 285 bullets in breach at a stroke, which is exactly what the
+  previous gate declined to do for `Kind:` (still at 257/285 and carrying
+  its own backfill).
+
+  Three options, and this is a user decision rather than a review finding:
+  1. Leave it. Priority is set by conversation and by section order; the
+     format simply does not model it, and § 3.0 now says so plainly.
+  2. Require the prefix on new bullets only, no backfill.
+  3. Require it everywhere and take the backfill, alongside `Kind:`.
+
+  The document is accurate either way -- it no longer claims a carrier
+  that does not exist. This item is only about whether to add one.
+
+  **Layman:** Our roadmap is generated, so you cannot drag an urgent item to the top; the one marking that could show urgency is optional and nobody uses it, so nothing on the list says what is urgent.
+  Kind: doc.
+  Source: in-session-2026-08-19 (review-contract loop 2 on roadmap-format.md, surfaced not decided).
 
 ### 📦 Packaging
 
