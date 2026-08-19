@@ -1,9 +1,13 @@
 <!-- ants-roadmap-format: 1 -->
 # finbreak — Roadmap
 
-> **Current version:** 0.1.7 (released 2026-07-12). See
-> [CHANGELOG.md](CHANGELOG.md) for what's shipped; this file
-> covers what's **planned**.
+> See [CHANGELOG.md](CHANGELOG.md) for what's shipped and the current
+> version; this file covers what's **planned**.
+>
+> *No version line here on purpose: this file is rendered from the
+> roadmap DB and is absent from `.claude/bump.json`, so a copy of the
+> version kept here would go stale — and did, for five releases
+> (FIBR-0289).*
 >
 > **Format:** v1 — see
 > [docs/standards/roadmap-format.md](docs/standards/roadmap-format.md).
@@ -1394,7 +1398,7 @@ scariest unknown (native-library bundling) up front.
   Kind: doc-fix.
   Source: in-session-2026-08-19 (review-contract loop 2 on commits.md, 4a step 3).
 
-- 📋 [FIBR-0289] **`ROADMAP.md`'s "Current version" header reads 0.1.7 on a tree past 0.1.21, and nothing bumps it.**
+- ✅ [FIBR-0289] **`ROADMAP.md`'s "Current version" header reads 0.1.7 on a tree past 0.1.21, and nothing bumps it.**
   `ROADMAP.md:3` reads "**Current version:** 0.1.7 (released 2026-07-12)".
   The tree is past **0.1.21**. This is a public repo, so the stale line is
   visible to anyone reading the roadmap.
@@ -1449,6 +1453,26 @@ scariest unknown (native-library bundling) up front.
   Unblocks on either of: that verb shipping, or the user authorising a single
   targeted `UPDATE section SET intro=…` against the one row (backup first).
   Nothing else in this item is open — the replacement text is decided.
+  Resolved (2026-08-19, user authorised the store write). The version line is
+  gone; the header now points at `CHANGELOG.md` for the current version and
+  says in one italic line why no copy is kept here, so nobody re-adds it.
+
+  How, since no verb writes a section intro: a single targeted
+  `UPDATE section SET intro=… WHERE section_id=290 AND project_id=10` against
+  `~/.local/share/ants-terminal/roadmap.sqlite`, after a full
+  `sqlite3.backup()` copy to the session scratchpad. The match was asserted
+  unique before the write and the write reported exactly 1 row changed.
+
+  Verified by forcing a re-render rather than by reading the store back: an
+  idempotent flip re-rendered all 285 items, and `git diff ROADMAP.md` shows
+  3 lines removed and 7 added in the header and nothing else. The write
+  envelope reported `discarded_external_edits: true` with 10 edit lines —
+  that is the same header delta counted from the store's side, not a loss.
+
+  Still true, and still the reason this needed a hand write: no `roadmap_log`
+  op can edit a section intro. Filed upstream as an Ants MCP finding asking
+  for `op:"amend_intro"`. Until that ships, any further preamble change takes
+  the same route and the same backup.
   **Layman:** The roadmap page tells a visitor the app is on a version from five releases ago.
   Kind: doc-fix.
   Source: in-session-2026-08-19 (review-contract loop 3 on commits.md, deferred tail at the cap).
