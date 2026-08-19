@@ -373,6 +373,34 @@ def test_INV10_family_c_folds_zero_date_continuation_skips_section_header():
     assert [d.amount_minor for d in r.drafts] == [10000, -5000]
 
 
+def test_FIBR0115_family_c_continued_on_next_page_footer_is_skipped_not_folded():
+    # FIBR-0115: a multi-page SBSA credit-card statement prints an IN-REGION
+    # "<account number> Continued on next page......" footer at every page break.
+    # It carries no date, so _fold glued it onto the PRECEDING transaction's
+    # description — one corrupted row per page break. Money is unaffected (the
+    # line has no amount); the description is what gets mangled.
+    #
+    # The genuine zero-date continuation on line 2 is the PRECONDITION, not
+    # decoration: a fix that simply skipped every zero-date line would pass the
+    # footer half of this test while silently dropping real second-line payees,
+    # which INV-10 requires be folded.
+    r = _parse_family_c(
+        [
+            "2 Apr 26 Fake Payment -100.00",
+            "*****9000740 06H54 ref",  # real continuation -> must STILL fold
+            "0400111222 Continued on next page......",  # page-break footer -> skipped
+            "3 Apr 26 Fake Shop 50.00",
+        ],
+        2,
+        "us",
+    )
+    assert [d.description for d in r.drafts] == [
+        "Fake Payment *****9000740 06H54 ref",
+        "Fake Shop",
+    ]
+    assert [d.amount_minor for d in r.drafts] == [10000, -5000]
+
+
 def test_FIBR0112_family_c_continuation_page_without_column_header_is_captured():
     # A real 3-page SBSA credit-card statement carries the transaction table onto a
     # final page that reprints NO "Date Description Amount" column header — it opens

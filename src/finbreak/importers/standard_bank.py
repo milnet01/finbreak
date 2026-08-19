@@ -1054,10 +1054,18 @@ def _parse_family_e(lines: list[str], exponent: int, fmt: Fmt) -> ParseResult:
 
 def _is_cc_skip_line(line: str) -> bool:
     """A zero-date Family-C line that is a **non-transaction**, not a continuation:
-    a section header (every word one of credit(s)/debit(s)) or the masked
-    "Account …" line (INV-10). These are skipped, not folded."""
+    a section header (every word one of credit(s)/debit(s)), the masked
+    "Account …" line, or the page-break "Continued on next page" footer
+    (INV-10). These are skipped, not folded."""
     low = line.strip().lower()
     if low.startswith("account"):
+        return True
+    # FIBR-0115: a multi-page statement prints "<account number> Continued on
+    # next page......" INSIDE the table region, so INV-10's region bound does not
+    # keep it out and it folded into the preceding transaction's description —
+    # one mangled row per page break. Matched as a substring because the phrase
+    # is preceded by the account number rather than starting the line.
+    if "continued on next page" in low:
         return True
     words = low.split()
     return bool(words) and all(
