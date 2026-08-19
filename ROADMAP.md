@@ -71,6 +71,9 @@ scariest unknown (native-library bundling) up front.
   pushing. Dependencies: none. Lanes: build, ci, tests,
   security. Kind: chore. Source: planned.
   Resolved (2026-07-01): closed by /close-phase. Local gate exits 0; CI green in 23s; INV-1..INV-6 all demonstrated (INV-5 secret-injection demo flipped gitleaks + bandit red, then green on removal). /audit + /indie-review both returned zero actionable findings on the same pass. Impl commit 6b6ac64; tag FIBR-0001-complete.
+  Kind: chore.
+  Source: planned.
+  Lanes: build, ci, tests.
 
 - ✅ [FIBR-0002] **P01: `.gitignore` + secret-leak guard.**
   Standard Python ignore set (build artefacts,
@@ -81,6 +84,8 @@ scariest unknown (native-library bundling) up front.
   Dependencies: FIBR-0001. Lanes: build, security. Kind: chore.
   Source: planned.
   Resolved 2026-07-01: .gitignore extended to block financial data (*.db/*.sqlite/*.sqlite3 + SQLite -wal/-shm/-journal sidecars) and build/packaging/tooling output; regression-locked by tests/features/gitignore/ (INV-1..INV-3 via git check-ignore --no-index). Spec cold-eyes-clean (4 loops); /audit + /indie-review zero actionable on the close pass (one indie-review LOW — global-git-excludes coupling — fixed inline). Full ci-local.sh gate green. Tag FIBR-0002-complete.
+  Kind: chore.
+  Lanes: build, security.
 
 - ✅ [FIBR-0053] **Pre-push git hook runs the CI gate locally before every push.**
   Prompted by a CI failure email (commit a0cc895: gitleaks flagged the
@@ -1786,6 +1791,9 @@ scariest unknown (native-library bundling) up front.
   packaging + publish pipeline is deferred to P13. Dependencies:
   FIBR-0001. Lanes: build, ci. Kind: chore. Source: planned.
   Resolved 2026-07-01: closed by /close-phase. `--self-test` loads all three native stacks; `build-smoke.sh` freezes a PyInstaller onefile + AppImage in a `python:3.12-slim-bookworm` container (glibc floor ~2.36; wheels' own floor 2.34) and both print `FINBREAK_SELFTEST_OK` in the Python-free `debian:13-slim` clean-room — ADR-0007's clean-machine criterion proven at P01. The de-risk empirically caught 5 real portability traps (host-glibc mismatch, static manylinux Python, missing Qt system libs, missing harfbuzz, missing libGL). Toolchain pinned (INV-4); opt-in build stage + weekly CI job keep the everyday gate fast. Impl commit 49e87b6; /audit + /indie-review zero actionable on the close pass (3 doc/comment drifts fixed inline). Tag FIBR-0003-complete.
+  Kind: chore.
+  Source: planned.
+  Lanes: build, ci.
 
 ---
 
@@ -2091,6 +2099,46 @@ scariest unknown (native-library bundling) up front.
   (`flatpak run io.github.milnet01.finbreak`) and ready for that pass.
   Progress (2026-08-12): the launch blocker is CLEARED — FIBR-0259 is ✅. Between the 2026-08-07 re-validation above and today the app could not start at all under Flatpak (missing Kerberos library, ImportError before any window), which is what the user's § 5 portal attempt actually hit. The krb5 manifest module fixed it and the user confirmed a real launch today: window, full toolbar, "Ready", unlock dialog. So this bullet's closing line — "the app is installed and ready for that pass" — is true again, but it was NOT true for the five days in between; do not read that line as continuously verified. Two corrections to the notes above, both checked in the tree rather than recalled: the manifest is now pinned to tag v0.1.20 / commit 6c9cf8c (line 104-106), superseding both the "currently v0.1.16" and the "v0.1.19 / f4de4c4" remarks; and the FIBR-0259 fix also widened `--self-test` to import PySide6.QtNetwork and construct a QLocalServer, closing the gate hole that let a non-starting build pass every automated check. REMAINING, unchanged: (1) the two human portal checks in § 5 — import through the chooser, and export a PDF report + an encrypted .fbk to a chosen location; (2) re-pin to the newest release if one is cut before submission; (3) open the flathub/flathub new-pr PR, an outward-facing action still awaiting the user's explicit go-ahead.
   Progress (2026-08-12): the manifest now builds green AS SUBMITTED. `LOCAL=0 packaging/flatpak/flatpak-build.sh` — no source substitution, so the finbreak module is built from the pinned v0.1.20 / 6c9cf8c clone, offline — installs the whole closure (cryptography-50.0.0) plus finbreak-0.1.20 and ends FINBREAK_SELFTEST_OK. That clears the last two automated blockers this bullet inherited: FIBR-0257 (the CVE fix had never shipped) and FIBR-0256 (the closure still offered cryptography 49.0.0) were both already fixed by the v0.1.20 release and are now flipped ✅ on evidence rather than on inference. FIBR-0258 is closed with them: `LOCAL=0` is documented as the pre-submit path in packaging/flatpak/README.md, and `test_FIBR0258_closure_satisfies_the_pinned_commit` now checks the closure against the pyproject of the commit the MANIFEST pins, not the working tree's. REMAINING is unchanged and is all human or outward-facing: (1) the two § 5 portal checks — import through the chooser, and export a PDF report + an encrypted .fbk to a chosen location; (2) re-pin if a newer release is cut first; (3) open the flathub/flathub new-pr PR, still awaiting explicit go-ahead.
+  Progress (2026-08-20): the manual § 5 live-host smoke is DONE and all five
+  checks pass, on KDE-Wayland, against a LOCAL=0 build -- the manifest as
+  submitted, from the pinned v0.1.22 commit (624722d, verified equal to the
+  tag), built offline. Self-test printed FINBREAK_SELFTEST_OK, so Qt +
+  SQLCipher + qpdf all travelled into the sandbox.
+
+  (1) Portal open: a CSV in $HOME -- which the sandbox has no filesystem
+  right to read -- was chosen through the xdg-desktop-portal chooser and
+  fully parsed: 10 rows, ISO dates read correctly, coverage period inferred
+  (2026/07/02..2026/07/28), dedup ran (0 duplicate). One row errored, and
+  correctly: a 0.00 opening-balance line the tester had put in the sample,
+  refused by transactions.py:92 "amount must be non-zero" and surfaced as a
+  per-row error while the other 9 imported (the FIBR-0252 model).
+
+  (2) Portal save, both output types, each to a chosen location. The PDF is
+  73,665 bytes, valid PDF 1.4, 2 pages, correct %PDF- header and %%EOF
+  trailer -- complete, not truncated. The .fbk is 90,698 bytes and grepping
+  it for the transaction descriptions returns ZERO hits, so the payload is
+  genuinely encrypted rather than a zip of readable data.
+
+  (3) Updater inert: Help -> Check for updates shows "Automatic updates
+  aren't available for this build of finbreak." That is the
+  _installer is None early return at main_window.py:1342, which returns
+  BEFORE any worker starts -- so no network attempt is made at all, rather
+  than one being made and failing. Screenshot-confirmed wording.
+
+  (4) INV-8 holds: Window -> Center window is greyed out (the unreachable
+  org.kde.KWin call honestly disabled, not a dead click) and Reset layout
+  works normally.
+
+  (5) Network isolation proven at the OS level, and proven properly: a
+  hostname connect fails with gaierror, which alone would only show there is
+  no resolver, so it was re-tested by raw IP -- 1.1.1.1:443 and
+  140.82.121.6:443 both return OSError [Errno 101] Network is unreachable.
+  No --share=network, confirmed empirically.
+
+  REMAINING is now exactly one thing, and it is outward-facing: open the
+  flathub/flathub new-pr PR. The re-pin blocker is closed (the manifest
+  already points at v0.1.22, the current release) and the § 5 blocker is
+  closed by this run. Awaiting explicit user go-ahead for the submission.
 
 - 📋 [FIBR-0160] **Add openSUSE Leap 15.6 as an OBS target (deferred — Leap ships no python 3.12+).**
   Attempted 2026-07-23: added the Leap 15.6 target + a %if 0%{?sle_version}
@@ -2480,6 +2528,9 @@ lands on top.
   vault.) Lanes: ui, services, repo, security, tests. Kind:
   implement. Source: planned.
   Shipped 2026-07-02. Security spine implemented TDD-first; audit (ruff/bandit/gitleaks/semgrep/mypy) clean and three cold 4-lane indie-review rounds converged (all findings fixed inline). Gate green 74 passed/1 skipped. Live language switching (retranslateUi) deferred to FIBR-0017 per user decision (spec deliverable shipped: tr() strings + RTL + QLocale amounts).
+  Kind: implement.
+  Source: planned.
+  Lanes: ui, services, repo, security, tests.
 
 ---
 
@@ -2495,6 +2546,8 @@ lands on top.
   FIBR-0004. Lanes: ui, services, repo, tests. Kind: implement.
   Source: planned.
   Resolved (2026-07-02): shipped P03. Account model + CRUD, AccountService (validation + delete guard), AccountsWidget (add/edit/delete), the account picker + Account column + id→name join, and the first forward-only schema-migration runner (v1→v2: seed Default, backfill, atomic BEGIN…COMMIT/ROLLBACK). Migration transaction mechanism verified empirically vs sqlcipher3 0.6.0. Closed via 2 audit + indie-review rounds (all findings fixed inline — key-wipe on newer-vault open, wired the edit form, strengthened the INV-4 rollback test to a true atomicity test); gate green 100 passed/1 skipped, mypy 0, audit 0.
+  Kind: implement.
+  Lanes: ui, services, repo, tests.
 
 ---
 
@@ -2542,6 +2595,9 @@ lands on top.
   migration. Dependencies: FIBR-0004, FIBR-0005. Lanes: services, repo, ui,
   tests. Kind: implement. Source: planned.
   Resolved (2026-07-02): shipped the categories aggregate (self-referential table + 2 seeded Type roots + 16 defaults), the QTreeWidget manager, and the v2→v3 migration. Spec cold-eyes-converged (7 loops); TDD; /audit + /indie-review 0 actionable on the closing pass. Gate green (122 passed/1 skipped, mypy 0). Transaction→category link deferred to P08 (FIBR-0010) by design. Journal: docs/journal/FIBR-0006.md. Tag FIBR-0006-complete.
+  Kind: implement.
+  Source: planned.
+  Lanes: services, repo, ui.
 
 ---
 
@@ -2568,6 +2624,9 @@ lands on top.
   data-model hook here (the first importer) so OFX (FIBR-0008) and PDF
   (FIBR-0009) populate it too.
   Resolved (2026-07-03): shipped via /close-phase. CsvImporter + ImportService (exact-signature profiles, multiset-delta dedup, atomic write + coverage-period), v3->v4 migration (import_profiles + statement_periods), non-modal wizard. 43 tests (INV-1..11); gate green 165 passed/1 skipped, mypy 0; audit 0 + indie-review 0 CRIT/HIGH/MED (one LOW fixed inline: preview renders decimals not minor units). Tag FIBR-0007-complete.
+  Kind: implement.
+  Source: planned.
+  Lanes: services, importers, ui.
 
 ---
 
@@ -2583,6 +2642,8 @@ lands on top.
   FIBR-0007. Lanes: importers, services, tests. Kind: implement.
   Source: planned.
   Resolved (2026-07-04): P06 OFX import shipped. Pure OfxImporter -> the same ParseResult/ImportService pipeline as CSV (D2 _preview_from_result seam); embedded DTSTART/DTEND period (D4); payee-else-memo (D5); all-or-nothing-per-statement error model (D15); resource caps (D13); wizard OFX branch skips mapping + a multi-account chooser (D8/D10); no schema change (D9). Spec cold-eyes-converged (8 loops). Gate green 199 passed / 1 skipped, mypy 0; /audit 0, /indie-review fixed inline (deferred the tz-DTPOSTED day-shift -> FIBR-0042). FIBR-0003 build smoke re-run green (all five native stacks travel, incl. ofxparse/lxml; fixed a latent argon2 dep-drift in the build script en route). Tag FIBR-0008-complete.
+  Kind: implement.
+  Lanes: importers, services, tests.
 
 ---
 
@@ -2601,6 +2662,8 @@ lands on top.
   Lanes: importers, services, security, ui, tests. Kind:
   implement. Source: planned.
   Resolved (2026-07-04): PdfImporter (extract-then-CSV-adapter) + in-memory pikepdf decrypt + opt-in remembered password (v5 column) + wizard PDF branch. TDD; gate green 240 passed/1 skipped, mypy 0; FIBR-0003 build smoke PASS (native PDF tree travels). /close-phase: /audit 0, /indie-review 3 lanes (2 clean, 1 LOW coverage gap fixed inline). Free-text/OCR PDFs deferred (§ Out of scope). See docs/journal/FIBR-0009.md.
+  Kind: implement.
+  Source: planned.
 
 ---
 
@@ -2681,6 +2744,8 @@ lands on top.
   Source: planned.
   Scope note (2026-07-09, spec drafted): the spec (docs/specs/FIBR-0010.md) grows this bullet's "rules-manager (view/add/edit)" summary to the full P08 slice — the transaction→category link (v6→v7), first-match-by-priority rules run on import + an explicit "Apply rules now", a manual per-transaction override that is frozen (never clobbered by re-import or a rule run), a Home Category column + "Set category…", the rules-manager tab (add/edit/delete/move/apply), an atomic delete-category cascade with a blast-radius confirm, and the learn-from-corrections offer pulled forward from FIBR-0035 (see that bullet). Deps widened to FIBR-0005/0006/0007/0051/0052.
   Resolved (2026-07-10): shipped. Rules engine + manual override + learning + delete-category cascade; schema v6->v7. TDD 45 tests; /audit 0, /indie-review 3 cold lanes + confirming pass (1 HIGH auto-lock + 3 MED test-coverage/naming + 1 LOW dedup-helper folded inline). Gate green 411/1, mypy 0. Tag FIBR-0010-complete; journal docs/journal/FIBR-0010.md.
+  Kind: implement.
+  Lanes: services, ui, repo, tests.
 
 ---
 
@@ -2699,6 +2764,9 @@ lands on top.
   services, ui, repo, tests. Kind: implement. Source: planned.
   Progress (2026-07-12): design brainstormed + approved by user. Chose ±3-day match window, a dedicated Transfers tab (no post-import pop-up), and a single decision table (v7→v8) recording confirmed/rejected pairs (pending candidates recomputed live). Next: write docs/specs/FIBR-0011.md → /cold-eyes (7-loop cap) → TDD.
   Resolved (2026-07-12): shipped by TDD. Schema v7→v8 (transfer_pairs decision table, dual ON DELETE CASCADE, canonical UNIQUE); TransferRepository (candidate self-join — equal-magnitude/opposite-sign/different-account/±TRANSFER_WINDOW_DAYS=3, per-decision commits); TransferDetectionService (candidates/confirm/reject/unlink/confirmed_transfers/confirmed_transfer_txn_ids [the FIBR-0012 exclusion primitive]/confirm_all); the 6th Transfers tab (suggested+confirmed tables, Confirm/Reject/Confirm all/Unlink, VaultLockedError-guarded). tests/features/transfers/ one case per INV-1..12 + edges (window 0/3/4, off-by-one, two-debits, same-account, Cartesian, empty-vault); schema-version + tab-count ripple across 9 suites. Spec /cold-eyes-converged loop 4. Close: /audit 0 in the new code (3 pre-existing FIBR-0054 updater semgrep warnings out of scope); /indie-review 2 cold lanes — data/logic CLEAN, UI/shell 2 LOW (auto-lock test parametrized over all 4 slots; stale tab-count docstrings) folded inline. Gate green 645/1, mypy 0. Unblocks FIBR-0012 (dashboard).
+  Kind: implement.
+  Source: planned.
+  Lanes: services, ui, repo, tests.
 
 ---
 
@@ -2725,6 +2793,8 @@ lands on top.
   **Layman:** The Home screen becomes a proper dashboard — a plain income-vs-spending summary, a pie chart of where your money goes, and month-by-month trends — while the transaction list moves to its own searchable, filterable tab.
   Design approved 2026-07-12 (brainstorming). Scope locked: QtCharts (ADR-0008, no new dep); ReportingService (period model default=previous month, persisted ReportPrefs; transfers never counted as income/expenditure anywhere); Home dashboard (period+account selectors, income/expenditure/net tiles, spending-by-category donut, monthly income-vs-expenditure grouped-bar trend); new Transactions tab absorbing FIBR-0109 (search + date-range + account + category filters, all combinable) with the transaction table relocated off Home. Tab order → Home·Transactions·Statements·Accounts·Categories·Rules·Transfers. Next: ADR-0008 + spec → /cold-eyes.
   Resolved 2026-07-13: shipped by TDD across 11 slices. ReportingService (pure period model + summary/spending_by_category/monthly_trend, transfers excluded, integer-exact) + ReportPrefs persistence; Home reworked into the QtCharts dashboard (donut + 12-month trend, ≤8-wedge collapse, empty-state placeholder); new Transactions tab with search+date+account+category filters (absorbs FIBR-0109); 7-tab shell, count live from Home's ReportingService, QtCharts self-test leg. Close: /audit 0 actionable; /indie-review 2 cold lanes → 3 findings all fixed inline (report_prefs year bound INV-2; per-table column-key objectNames; VaultLockedError-specific slot guards) + 2 regression tests. Gate green 712/1, mypy 0. Tag FIBR-0012-complete.
+  Kind: implement.
+  Lanes: services, ui, tests.
 
 ---
 
@@ -2744,6 +2814,8 @@ lands on top.
   UX (user, 2026-07-12): the export password must be OPTIONAL — the user can choose to add one, but an unprotected PDF export is a first-class supported outcome (not forced). So the "locked" in the headline is opt-in: the section-selection export flow offers an optional password field; empty → a normal unencrypted PDF, non-empty → the pikepdf AES-256 export-lock (ADR-0004). Design the dialog around that choice.
   In-progress 2026-07-13: spec docs/specs/FIBR-0013.md drafted (brainstorm-approved) and in /cold-eyes (project cap 7). Export password OPTIONAL per user; SC5 relaxed accordingly (discovery.md updated).
   Resolved 2026-07-13: P11 locked-PDF export SHIPPED by TDD (7 slices). PdfExportService (in-memory render → optional pikepdf AES-256, atomic export); ui/charts.py shared builders; ReportingService widened to an account set; ExportDialog (INV-14 gating + master-toggle state machine); File-menu + toolbar entry; --self-test encrypt leg. Close: /audit 0 in-scope; /indie-review 2 cold lanes → no CRIT/HIGH/MED, 3 LOW fixed inline (empty-donut placeholder, currency-symbol escaping, narrowed export except). Gate green 779/1. Tag FIBR-0013-complete.
+  Kind: implement.
+  Lanes: services, ui, security, tests.
 
 ---
 
@@ -2763,6 +2835,8 @@ lands on top.
   Note (2026-07-09): the Settings-screen scaffold + the user-configurable auto-lock timeout (+ base-currency read-only display) are pulled FORWARD into FIBR-0055 (near-term, user-requested); FIBR-0055's first cut delivers the scaffold + configurable auto-lock timeout + read-only currency only. This phase narrows to what remains: the encrypted-backup export/import (the only mitigation for a forgotten master password, ADR-0003), the dark-theme polish pass and its dark/light/follow-system theme toggle (a toggle needs the theme system this pass builds), stored-PDF-password management, and hosting the FIBR-0017 language switcher. If FIBR-0055 ships first, this becomes an extension of that Settings screen rather than a fresh one.
   Split (2026-07-13, in-session, user-approved): P12 bundled four independent pieces. Auto-lock is already shipped (mechanism FIBR-0114; user-configurable timeout + Settings scaffold + read-only currency via FIBR-0055). This item is now NARROWED to the encrypted backup export/restore only — the ADR-0003 forgotten-master-password mitigation, keyed by a SEPARATE backup password so it can actually recover a forgotten master password. The other three pieces are split into their own items: app-wide theme system -> FIBR-0127; stored-PDF-password management UI -> FIBR-0128; language-switcher hosting -> FIBR-0129 (note: overlaps FIBR-0017, which already owns the i18n picker — reconcile when either is specced). Build order: backup (this) first, then 0127, 0128, 0129. Spec: docs/specs/FIBR-0014.md (encrypted backup).
   Resolved 2026-07-13 (/close-phase). Shipped by TDD in 7 red→green slices + a fold-in of 6 cold-review findings. D2 SQLCipher mechanics (sqlcipher_export / PRAGMA rekey / cipher_compatibility / HMAC-on / no-plaintext-temp) validated by a throwaway spike on sqlcipher3-binary 0.6.0 (SQLCipher 4.12.0) before any code. BackupService(vault, auth) export/restore over a stdlib-zip .fbk (manifest.json + params.json + vault.db); separate backup password (fresh salt), INV-1..13. UI: Settings Export + pre-login Restore on unlock & first-run; synchronous main-thread export (INV-9); interrupted-restore reconciliation (INV-5). /audit 0 actionable (1 bandit B608 FP suppressed on a test); 2 cold review lanes → 6 findings (2 HIGH crypto/UI, 2 HIGH/MED, LOW) all fixed inline with regression tests. security-model.md T11 hedge dropped + .fbk untrusted surface added (cold-eyes clean). Gate green 841/1, mypy 0. Tag FIBR-0014-complete.
+  Source: planned.
+  Lanes: ui, services, security, tests.
 
 ---
 
@@ -4070,18 +4144,26 @@ lands on top.
   Kind: chore. Source: planned.
   Resolved 2026-07-13 (FIBR-0015-complete): the Windows `.exe` shipped by TDD (fixture-first cross-package regression + the INV-3 parity guard + the freeze driver). The one-time blocker — `sqlcipher3-binary` shipped Linux/macOS wheels only — was dissolved by swapping to `sqlcipher3-wheels` (the cross-platform fork, same SQLCipher 4.12.0 engine; ADR-0009), proven vault-portable both directions before the swap. `/audit` 0 actionable; `/indie-review` 2 cold lanes 0 defects; gate green 851/1. See docs/journal/FIBR-0015.md.
   Scope: this item delivered **only the Windows `.exe`**. The **Linux AppImage** already shipped under FIBR-0054 (`scripts/build-release-appimage.sh`); **macOS `.app`/`.dmg` + Flatpak/Flathub** are split to **FIBR-0130** (packaging-only — the `sqlcipher3-wheels` swap already cleared their SQLCipher blocker too). Superseded: the 2026-07-13 "compile SQLCipher on Windows" readiness-scan blocker and the "Wine + MSVC" local-build note — the Windows wheel makes both moot.
+  Source: planned.
+  Lanes: build, ci, packaging.
 
 - 📋 [FIBR-0130] **P13: macOS `.dmg` packaging**
   (Flatpak/Flathub → FIBR-0159).
   The macOS `.app`-in-`.dmg` — the packaging remainder split out of FIBR-0015 when its Windows `.exe` slice closed (2026-07-13). The Flatpak/Flathub half moved to FIBR-0159 (see the scope update below). The SQLCipher crypto blocker is already cleared (the `sqlcipher3-wheels` fork ships macOS + Linux wheels of the same 4.12.0 engine, ADR-0009), so this is packaging-only: freeze the macOS app on a `macos-latest` runner (reusing the FIBR-0015 `windows_freeze_flags.py` collection list + `--self-test` clean-room); the artifact still meets ADR-0007's "no Python installed" launch bar. (The Flatpak manifest is FIBR-0159's, not this item's — see the scope update below.) Dependencies: FIBR-0015 (freeze tooling), FIBR-0037 (icon → `.icns`). Lanes: build, ci, packaging. Kind: chore. Source: split-from-FIBR-0015-2026-07-13.
   Scope update (2026-07-23): the Flatpak/Flathub half is now owned end-to-end by FIBR-0159 (docs/specs/FIBR-0159.md — freedesktop 25.08 runtime + pinned-wheel closure, portal-only sandbox). FIBR-0130 is left to deliver the macOS `.app`/`.dmg` only; do NOT re-author a Flatpak manifest here.
   **Layman:** A proper macOS download you open and drag to Applications, like any other Mac app.
+  Kind: chore.
+  Source: split-from-FIBR-0015-2026-07-13.
+  Lanes: build, ci, packaging.
 
 - ✅ [FIBR-0131] **Windows in-app auto-update.**
   Extend the FIBR-0054 self-update stack (check GitHub → Ed25519-verify the download → the Later/Skip/Update-now dialog — all already cross-platform) to actually *install* the update on Windows, which `detect_installer()` currently returns `None` for (inert, INV-7). A running Windows `.exe` locks itself, so the Linux "os.replace the file then relaunch" trick can't be copied. **Design (user-approved 2026-07-13): a separate helper process does the swap** — the app writes the verified new `.exe` beside the old one and spawns a detached waiter (cmd/PowerShell) that waits for finbreak to exit, moves the new file over the old one, and relaunches it (the Windows analogue of the FIBR-0122 `/bin/sh` waiter; watch the same PyInstaller-onefile `_MEI`-teardown race). Adds a `WindowsInstaller` + `detect_installer()` returning it on a frozen Windows build, and an asset-picker that selects the `.exe` release asset on Windows. Also promote the Windows `.exe` from a CI artifact to a signed release asset (attach + an Ed25519 `.sig` for the updater to verify; FIBR-0015 D6 deferred this) and evaluate Authenticode code-signing (an unsigned self-swapping-and-relaunching `.exe` is what Defender/SmartScreen distrusts most; free-ish for OSS via Azure Trusted Signing / SignPath). Same two-cycle caveat as Linux — the relaunch only proves out on the update *after* it ships. Dependencies: FIBR-0054 (update infra), FIBR-0015 (Windows build). Lanes: services, ui, ci, security. Kind: feature. Source: user-request-2026-07-13.
   Sequencing (2026-07-14): the "evaluate Authenticode code-signing" clause above is split out to FIBR-0133 (SignPath, blocked on approval). FIBR-0131 ships the Ed25519-signed .exe release asset + the in-app Windows updater ONLY; publisher (Authenticode/SmartScreen) trust is FIBR-0133 and does not block this. Spec: docs/specs/FIBR-0131.md.
   Spec refinements (docs/specs/FIBR-0131.md, cold-eyes-converged): (1) the waiter is PowerShell (the "cmd/" option was dropped); it waits by exe IMAGE PATH, not a PID (tree-agnostic + PID-recycling-proof). (2) The .exe is ALREADY a published release asset (v0.1.9 ships finbreak-0.1.9-x86_64.exe); the only missing piece for the updater is the Ed25519 .exe.sig sidecar, which D5 adds — so "promote from a CI artifact" is really "add the .sig".
   Closed 2026-07-14 by /close-phase (code-complete). Spec cold-eyes-converged (6 loops x 3 lanes); TDD (WindowsInstaller image-path swap+relaunch behind the existing Installer seam; installer-driven asset-picker; UpdateInfo.appimage_url->asset_url). /audit 0 actionable (3 bandit assert-in-tests FPs, out of gate scope). /indie-review 2 cold lanes -> crypto/PowerShell/ordering verified sound, 1 MEDIUM fixed inline (spawn-before-wipe so a Popen failure can't strand a wiped key; Linux twin guarded too). Gate green 877/1; tag FIBR-0131-complete. CAVEAT (like Linux FIBR-0054): the live Windows swap+relaunch is a two-cycle manual verification on the user's Windows box, and needs a release that first attaches the Ed25519 .exe.sig (v0.1.9 shipped the .exe but no .sig). Journal docs/journal/FIBR-0131.md.
+  Kind: feature.
+  Source: user-request-2026-07-13.
+  Lanes: services, ui, ci, security.
 
 - 📋 [FIBR-0016] **P13: `scripts/publish-release.sh` + release automation.**
   One committed script builds every
@@ -4094,6 +4176,9 @@ lands on top.
   Note (2026-07-10): FIBR-0054 pulls a **Linux-only** slice of release automation forward — a thin `scripts/publish-release.sh` (or `gh release create`) that publishes the signed AppImage + `.sig` as GitHub Release `v0.1.0`, so the in-app updater has a real release to check/download. FIBR-0016 remains owner of the full multi-artifact publish + the Flathub submission/update flow; extend the Linux slice rather than replacing it.
   Note (2026-07-12, user request — "automate the release as much as possible"): the version-bump half is now automated — `.claude/bump.json` (added 2026-07-12) drives /bump and /release: source of truth src/finbreak/__init__.py, mechanical edits to pyproject.toml + tests/test_smoke.py + a dated CHANGELOG cut from [Unreleased], a post_check version-lockstep gate, and tag template v{NEW}. What remains MANUAL (the Linux-slice glue this item should close): after the bump, a human still runs scripts/build-release-appimage.sh (freeze + clean-room + sign), verifies the .sig against the committed RELEASE_PUBLIC_KEY_B64, extracts the CHANGELOG [X.Y.Z] section for notes, and runs `gh release create v<NEW> <appimage> <sig> --notes-file … --latest` (non-prerelease). Deliverable: a single `scripts/publish-release.sh` that chains bump (via the recipe) → full gate (ci-local.sh) → build+clean-room+sign → **verify .sig vs RELEASE_PUBLIC_KEY_B64 (hard gate — never publish an unverifiable release the in-app updater would reject)** → gh release create with the AppImage + .sig attached, notes from the changelog, non-prerelease so /releases/latest resolves. Idempotency + preconditions (clean tree, tag not already present, signing key available) checked up front. Keep it the Linux slice under FIBR-0016; the multi-artifact + Flathub publish stays the full-item scope. Spec-first per the item's own note (docs/specs/, cold-eyes) before coding.
   **Layman:** One command builds every download, publishes the release and updates the store listings, instead of a person running several scripts by hand and hoping none was skipped.
+  Kind: chore.
+  Source: planned.
+  Lanes: build, ci, packaging.
 
 - ✅ [FIBR-0037] **P13: a proper branded app icon (not a flat glyph).**
   Design a polished, richly-shaded application icon —
@@ -4116,6 +4201,8 @@ lands on top.
   theme accent colour. Lanes: design, packaging. Kind: ux.
   Source: user-request-2026-07-01.
   Resolved 2026-07-09 (FIBR-0037-complete): branded app icon shipped — a "spending by category" donut (green/blue/teal/orange segments) with a gold coin centre on a dark navy tile, chosen with the user after shrink-testing candidates for small-size legibility (holds at 24px). Single 1024 master assets/icon/finbreak.png; scripts/make-icons.sh derives the platform set (Linux PNGs 16-512, 7-size Windows .ico, macOS .iconset) so they can't drift. Runtime window icon travels as ui/icons/app.png package data, set via QApplication.setWindowIcon (every window/dialog + taskbar); --self-test renders it (bundle-travel proof). macOS .icns is a mac-build-time step from the .iconset (FIBR-0015). /audit 0, indie-review clean (1 stale-comment LOW folded). Gate green 344 passed/1 skipped, mypy 0. Unblocks FIBR-0015 (the builds need the icon).
+  Kind: ux.
+  Lanes: design, packaging.
 
 ---
 
@@ -4302,6 +4389,42 @@ phase when its dependencies land. Two are **foundational** (marked
 *Sequencing*) and must be designed at the noted phase, not deferred,
 because retrofitting them is a data migration.
 
+- 📋 [FIBR-0297] **CSV import maps no column automatically — every dropdown defaults to the first column even when the headers say what they are.**
+  `_set_header` (src/finbreak/ui/import_wizard.py:1013-1017) fills all five
+  column combos with the same header list and calls no setCurrentIndex, so
+  each lands on index 0. Observed on a CSV headed `Date,Description,Amount`:
+  Date column, Description column, Amount column, Debit column and Credit
+  column ALL read "Date" on arrival at the map step.
+
+  Nothing is wrong -- the mapping is correct once set, and the date-format
+  detector (FIBR-0146) and the saved-profile auto-match (FIBR-0007 INV-10a)
+  both work. The gap is that those two are the ONLY automatic help: a file
+  with no saved profile gets no column guess at all, however obvious its
+  headers.
+
+  Proposed: a header-name guess for the unmatched case only -- match each
+  role against a small set of conventional spellings, case- and
+  punctuation-insensitive (date / transaction date / posting date;
+  description / details / narrative / reference; amount / value; debit /
+  withdrawal; credit / deposit). Leave the combo on index 0 where nothing
+  matches, so the current behaviour is the fallback rather than a
+  regression.
+
+  Constraints worth stating before anyone builds it: the guess must not
+  fire when a profile matched (that path is already correct and INV-10a
+  jumps straight to preview), it must be visible and overridable rather
+  than silent, and it must not touch the date-format detector's
+  single-owner wiring (FIBR-0146 D5/D6), which re-detects on a date-COLUMN
+  change -- a guess that sets the date column has to go through the same
+  path or the format detection goes stale.
+
+  Not a Flatpak issue: reproduced through the sandbox but identical on a
+  host build; the code path has no platform branch.
+  **Layman:** When you import a spreadsheet for the first time, the app makes you tell it which column is the date, which is the description and which is the amount — even when the file already labels them exactly that.
+  Kind: enhancement.
+  Source: in-session-2026-08-20 (found during the FIBR-0159 Flatpak § 5 portal smoke).
+  Lanes: importers, ui.
+
 ### 🔒 Security & account recovery
 
 - ✅ [FIBR-0018] **Encrypted vault backup & restore.**
@@ -4318,6 +4441,9 @@ because retrofitting them is a data migration.
   backup_export / backup_restore / backup_verify dialogs. This bullet was
   kept only as the original provenance record per the 2026-07-13 merge
   note, which said to flip it alongside FIBR-0014; doing that now.
+  Kind: feature.
+  Source: user-request-2026-07-01.
+  Lanes: crypto, ux.
 
 - 📋 [FIBR-0019] **Master-password recovery via recovery key (key-wrapping).**
   At vault creation, generate a high-entropy recovery
@@ -4330,6 +4456,8 @@ because retrofitting them is a data migration.
   phase: P02. Dependencies: FIBR-0004. Lanes: crypto, security.
   Kind: security. Source: user-request-2026-07-01.
   **Layman:** If you forget your master password, a recovery code you saved when the vault was created gets you back in — with no backdoor anyone else could use.
+  Source: user-request-2026-07-01.
+  Lanes: crypto, security.
 
 - 📋 [FIBR-0020] **Biometric unlock (fingerprint / face) with capability detection.**
   Store a key-wrapped copy of the vault key in the OS secure
@@ -4341,6 +4469,9 @@ because retrofitting them is a data migration.
   FIBR-0004, FIBR-0019 (shares the key-wrapping envelope). Lanes: crypto,
   platform, ux. Kind: feature. Source: user-request-2026-07-01.
   **Layman:** Unlock the vault with your fingerprint or face where your computer supports it, with the password always still available as a fallback.
+  Kind: feature.
+  Source: user-request-2026-07-01.
+  Lanes: crypto.
 
 - ✅ [FIBR-0029] **Password reminder / hint (shown before unlock).**
   An optional user-set hint on the unlock screen to jog memory —
@@ -4353,6 +4484,9 @@ because retrofitting them is a data migration.
   crypto, ux. Kind: feature. Source: user-request-2026-07-01.
   Design resolved by user 2026-07-20 (autonomous run): (1) SET the hint via a "Set password hint…" button in Settings that prompts for the CURRENT master password, verifies it, then enforces hint ≠ password AND hint does-not-contain password (needs plaintext in hand — hence the confirm), and saves to the plaintext window.ini (readable pre-unlock, outside the encrypted vault). (2) SHOW the hint on the unlock screen behind a "Show hint" button (hidden by default, reveal-on-click — reduces shoulder-surf exposure). Defaults decided: ~100-char cap; a plaintext-storage warning shown when setting; empty/unset hint means no "Show hint" affordance appears. security-model.md gains the new plaintext artefact (hint) as an asset + an enforcement invariant (hint never equals/contains the password) — that doc edit runs through /cold-eyes per §14. Ready to spec.
   Resolved (2026-07-20, autonomous run): shipped. Optional plaintext password hint shown on the unlock screen behind a reveal-on-click "Show hint" button; SET from Settings ("Set password hint…" → confirm current password via new AuthService.verify_password, constant-time hmac.compare_digest against the session key). Enforced never to equal/contain the master password (pure services/password_hint.validate_hint: NFC-normalize + casefold both sides, unconditional containment — a short password can't be embedded verbatim; obfuscation out of scope). Stored in plaintext window.ini (key hint/text, readable pre-unlock). security-model.md gains A1 plaintext-artefact note + INV-11; that doc edit cold-eyes converged loop 1. Spec docs/specs/FIBR-0029.md cold-eyes converged loop 2 (loop 1 caught a short-password leak: dropped a len>=4 carve-out). 24 hint tests (INV-1..9); full gate green (1197 passed, 2 skipped). commit 4ddf725; tag FIBR-0029-complete.
+  Kind: feature.
+  Source: user-request-2026-07-01.
+  Lanes: crypto, ux.
 
 - ✅ [FIBR-0030] **"Forgotten password → start over" (destructive vault reset, double-confirmed).**
   Last resort on the unlock screen once the
@@ -4366,6 +4500,8 @@ because retrofitting them is a data migration.
   Lanes: crypto, ux. Kind: feature. Source: user-request-2026-07-01.
   Design confirmed by user 2026-07-20 + recon done (autonomous run). Affordance: new flat "Forgotten password? Start over…" button on UnlockDialog, modelled on _restore_button (ui/unlock.py:67-71 create, :103 layout, :108 click) + a new `start_over_requested` signal; the SHELL owns the flow (mirror restore_requested → main_window `_open_restore`). Double-confirm: Step 1 = QMessageBox.question with "cannot be undone" prose (model ui/statements.py:220-237); Step 2 = a small purpose-built QDialog whose OK is gated on a text field == "DELETE" (textChanged→_sync_ok→setEnabled, model ui/backup_export.py:79-106; the type-a-word gate is net-new). New primitive `AuthService.reset_vault()` (net-new; mirrors first_run/lock): call service.lock() first (idempotent, Windows-safe), then unlink BOTH paths.vault_path() AND paths.sidecar_path() (both must go or Vault.presence_state() raises VaultStateError on a mixed state) — reuse the unlink idiom at main_window.py:1020-1021. CRITICAL non-obvious: also unlink the SQLite WAL sidecars vault.db-wal / vault.db-shm (WAL mode is on, vault.py:104/174; NO path helper exists and nothing unlinks them today → they'd orphan). Clear the vault-coupled window.ini keys: UnlockThrottle().reset() (ui/_unlock_throttle.py:73-79) + clear_hint() (ui/_password_hint.py:42-45); LEAVE benign UI state (geometry/window_state/last_tab/theme/update-opt-in). Return to first-run: after delete call main_window `_route_pre_login()` (:1025-1031) → state() now "first_run" (both files gone) → _show_first_run(). Tests: new tests/features/vault_reset/; mirror test_backup_ui.py:67-75 (button fires signal) + :151-181 (shell flow builds MainWindow, invoke reset handler, assert both files gone + window._dialog is FirstRunDialog + throttle/hint keys absent in window_ini); conftest `paths`(:48-52) + autouse `window_ini`(:107-120) fixtures. NEXT: write docs/specs/FIBR-0030.md → /cold-eyes --max-loops 7 → reproduce-first TDD → close. (Note: FIBR-0019 recovery key referenced in the headline prose is context only — the hard dep is FIBR-0004, shipped; do not block on FIBR-0019.)
   Resolved (2026-07-21): shipped. AuthService.reset_vault() deletes the complete on-disk footprint (vault.db + KDF sidecar + both SQLite WAL sidecars vault.db-wal/-shm); UnlockDialog "Forgot password? Start over…" button + start_over_requested; StartOverDialog type-DELETE gate (exec()-driven, wires accepted->accept itself); shell _on_start_over does Step-1 warning -> Step-2 dialog -> try reset_vault (OSError->critical box) -> clear throttle+hint keys -> teardown -> first-run. security-model.md INV-12 (deletion-completeness hygiene) + T11 note. Spec docs/specs/FIBR-0030.md cold-eyes CONVERGED loop 6 (7-loop cap); reproduce-first TDD, 12 vault_reset tests, gate green 1209 passed. Tag FIBR-0030-complete.
+  Kind: feature.
+  Source: user-request-2026-07-01.
 
 - ✅ [FIBR-0031] **Failed-unlock throttling (exponential backoff).**
   Slow down brute-force guessing of the master password: after each wrong
@@ -4379,6 +4515,8 @@ because retrofitting them is a data migration.
   Source: user-request-2026-07-01.
   Duplicate of FIBR-0095 (2026-07-15): both describe failed-unlock exponential backoff on the master-password unlock screen. FIBR-0095 is the newer, verified record (confirmed 2026-07-11 that services/auth.py applies no backoff) and is the tracking item for the implementation. This bullet stays as the original provenance record — flip it ✅ alongside FIBR-0095 when the throttling ships.
   Resolved 2026-07-18 as the duplicate of FIBR-0095 (shipped) — failed-unlock exponential backoff is implemented and tested there (services/unlock_throttle.py + ui/_unlock_throttle.py, security-model INV-10).
+  Kind: security.
+  Lanes: security, ux.
 
 - ✅ [FIBR-0032] **Clipboard auto-clear for copied sensitive values.**
   When the user copies a sensitive value (account number, amount, a stored
@@ -4391,6 +4529,9 @@ because retrofitting them is a data migration.
   Scope check 2026-07-18 (autonomous run): DEFERRED pending a product/scope decision. Recon found the app has NO app-wired clipboard "Copy" affordances anywhere (no QClipboard/setText into clipboard in src/), so auto-clear is greenfield — it has nothing to clear until copy points are added first. Deciding what becomes copyable is a real fork: amount/description in the transactions context menu are natural + safe, but a "copy the stored statement PDF password" affordance would be a NEW exposure that regresses FIBR-0128 INV-1 (that secret currently never crosses into the UI). Needs a user call on (a) which values become copyable and (b) whether the PDF password is copyable at all, before writing the spec. Not silently guessing a UX+security scope. Kept 📋.
   Scope RESOLVED by user 2026-07-18: copyable values = transaction AMOUNT + DESCRIPTION only (add "Copy amount"/"Copy description" to the transactions list context menu), auto-clear after ~30s (configurable). The stored statement PDF password stays NON-copyable (no regression of FIBR-0128 INV-1); account number NOT copyable in this pass. Unblocked — ready to spec when its turn comes (currently queued behind FIBR-0033).
   Resolved (2026-07-20, autonomous run): shipped. "Copy amount"/"Copy description" added to the transactions context menu (rendered cell text + in-memory description — no vault read, lock-safe INV-8); PDF password + account numbers stay NON-copyable (FIBR-0128 INV-1 preserved). New ClipboardAutoClear(QObject) helper: single owned single-shot QTimer wired directly to clear_if_ours; live per-copy timeout; clears only if the clipboard still holds our value. AuthService clipboard_clear_seconds getter/setter, ALLOWED=(10,30,60,0), DEFAULT=30; Settings combo; 0="Never" honoured. security-model.md T13 threat row added + cold-eyes converged (loop 1, polish-only). Spec docs/specs/FIBR-0032.md cold-eyes converged loop 9. 23 clipboard tests (INV-1..8); full gate green (1164 passed, 2 skipped). commit 0b45573; tag FIBR-0032-complete.
+  Kind: security.
+  Source: user-request-2026-07-01.
+  Lanes: ui.
 
 - ✅ [FIBR-0033] **Backup restore-verification ("does my backup work?").**
   A one-click check that opens an encrypted backup (FIBR-0018) into a
@@ -4403,6 +4544,8 @@ because retrofitting them is a data migration.
   Dependency re-points: FIBR-0018 (the backup mechanism) is merged into and implemented by FIBR-0014, so this restore-verification builds on FIBR-0014's .fbk export/restore (docs/specs/FIBR-0014.md), not a separate FIBR-0018 deliverable.
   Started 2026-07-18 (autonomous run, after deferring FIBR-0032 on scope). One-click "does my backup work?" — open a .fbk (FIBR-0014) into a throwaway temp/in-memory copy, confirm it decrypts + schema/row-counts intact, discard it, WITHOUT touching the live vault. Spec -> /cold-eyes -> TDD -> close.
   Resolved (2026-07-19): shipped read-only backup verification. Service verify_backup(src, backup_password, *, on_key=None) -> VerifyResult + shared _open_backup_vault helper (caller owns work_dir; backup key+password wiped on every path incl. exceptions — INV-7); runs cipher_integrity_check (early-return corrupt), as-migrated schema == LATEST_SCHEMA_VERSION (INV-2), display-only counts; reason-code table (wrong_password/corrupt/bad_kdf_params/too_new/invalid/io_error). UI: BackupVerifyDialog + Settings "Verify backup…" button (settings_verify_backup) + main_window wiring (synchronous under wait cursor; no auto-lock, verify never touches the live vault — D7/INV-1). security-model.md T5 note (post-login read-only reuse of FIBR-0014 guards; no new pre-login surface). All 7 deliverables done. Reproduce-first TDD: 14 new tests. Full gate green (1142 passed, 1 skipped). One cold code-review lane: clean, no findings. Commit 42bca98, tag FIBR-0033-complete. (Retires duplicate scope none; distinct from FIBR-0014 restore.)
+  Kind: feature.
+  Lanes: crypto, ux.
 
 - ✅ [FIBR-0041] **Back-fill the CSV import path with the INV-5b resource-size cap.**
   security-model.md INV-5b binds an import resource budget (max file size / row count / parse time) to the import specs — naming FIBR-0007 (CSV) and FIBR-0008 (OFX) by id. FIBR-0008 pins the cap for the OFX path (D13: read_file_bytes stat-checks against _MAX_OFX_BYTES before read; a transaction-count cap). But FIBR-0007's CSV path (ImportService.read_file -> str) shipped WITHOUT a size cap, so security-model INV-5b's FIBR-0007 claim is currently unmet. Back-fill: apply the same size stat-check to read_file (or a shared bounded reader), pick a _MAX_CSV_BYTES constant, add a test (monkeypatch the cap down). Surfaced by the FIBR-0008 /cold-eyes (lane C, 2026-07-03).
@@ -4447,6 +4590,8 @@ because retrofitting them is a data migration.
   and revisiting only when a real multi-currency need arises. If revisited:
   currency column on accounts/transactions, QLocale-formatted display, and a
   rule that the dashboard never sums across currencies without conversion.
+  Source: user-request-2026-07-01.
+  Lanes: data.
 
 - 📋 [FIBR-0022] **Budgets + recurring / subscription detection.**
   Per-category monthly spending limits with progress + over-budget
@@ -4456,6 +4601,8 @@ because retrofitting them is a data migration.
   Lanes: reporting, ux. Kind: feature. Source: user-request-2026-07-01.
   Split 2026-07-15: the recurring/subscription-detection half is now FIBR-0142 (active, being built first per user pick). This bullet stays as the budgets tracking item (per-category monthly limits + over-budget dashboard signalling) — the follow-up after FIBR-0142 ships.
   **Layman:** Set a monthly spending limit per category and see when you go over it, and have repeating charges like subscriptions spotted for you automatically.
+  Kind: feature.
+  Source: user-request-2026-07-01.
 
 - 📋 [FIBR-0023] **Theming: separate theme sets for normal and colourblind vision + picker.**
   Ship **two families** of themes — a set
@@ -4478,6 +4625,8 @@ because retrofitting them is a data migration.
   FIBR-0012, FIBR-0014. Lanes: ui, accessibility. Kind: ux.
   Source: user-request-2026-07-01.
   **Layman:** Pick from a set of colour schemes, including a family designed to stay readable if you are colourblind.
+  Kind: ux.
+  Lanes: ui, accessibility.
 
 - 📋 [FIBR-0024] **Accessibility: keyboard navigation + screen-reader support.**
   Full keyboard control (focus order, shortcuts, no mouse-only
@@ -4487,6 +4636,8 @@ because retrofitting them is a data migration.
   Dependencies: FIBR-0014. Lanes: ui, accessibility. Kind: accessibility.
   Source: user-request-2026-07-01.
   **Layman:** Use the whole app with the keyboard alone, and have a screen reader announce what is on screen.
+  Kind: accessibility.
+  Lanes: ui, accessibility.
 
 - 📋 [FIBR-0034] **Import preview + undo (rollback a whole import batch).**
   Before an import lands, show a preview — "about to add 214 transactions
@@ -4498,6 +4649,8 @@ because retrofitting them is a data migration.
   FIBR-0007. Lanes: services, ui, repo, tests. Kind: feature.
   Source: user-request-2026-07-01.
   **Layman:** See exactly what an import is about to add before it lands, and undo a whole import in one action if it turns out to be the wrong file.
+  Kind: feature.
+  Lanes: services, ui, repo, tests.
 
 - ✅ [FIBR-0035] **Auto-categorisation that learns from corrections.**
   Extends the FIBR-0010 rules engine: when the user manually re-files a
@@ -4510,6 +4663,9 @@ because retrofitting them is a data migration.
   ui, tests. Kind: feature. Source: user-request-2026-07-01.
   Note (2026-07-09): the core learn-from-corrections behaviour (offer to *create* a rule from a manual correction; suggestion-only; manual override still wins) is pulled forward into FIBR-0010 (spec INV-5 / D11), per the 2026-07-09 user request. FIBR-0035's "*update* an existing rule" variant is subsumed by FIBR-0010 D6 (a learned rule inserts at top priority, beating the rule it corrects — no in-place update needed). Re-evaluate / close this bullet when FIBR-0010 ships.
   Resolved (2026-07-10): fully delivered by FIBR-0010. The create-a-rule-from-a-correction learning is FIBR-0010 INV-5/D11; the update-an-existing-rule variant is subsumed by D6 (a learned correction inserts at top priority, beating the rule it corrects — no in-place update needed). Suggestion-only + manual-override-wins guarantees both hold. No separate work remains.
+  Kind: feature.
+  Source: user-request-2026-07-01.
+  Lanes: services.
 
 - 📋 [FIBR-0036] **Net-worth-over-time trend.**
   A dashboard line showing
@@ -4520,6 +4676,9 @@ because retrofitting them is a data migration.
   other charts. Target phase: P10. Dependencies: FIBR-0012. Lanes:
   reporting, ui, tests. Kind: feature. Source: user-request-2026-07-01.
   **Layman:** A dashboard line showing whether your overall money position is trending up or down month by month.
+  Kind: feature.
+  Source: user-request-2026-07-01.
+  Lanes: reporting, ui, tests.
 
 - 📋 [FIBR-0038] **Statement coverage tracking + gap detection.**
   Record each imported statement's coverage period (start/end date) per
@@ -5294,7 +5453,6 @@ because retrofitting them is a data migration.
   **Layman:** Let someone tag each account as Business or Personal (or custom groups) and view the two separately, so a person with both kinds of accounts keeps them apart while still staying under one login.
   Kind: investigate.
   Source: user-request-2026-07-14.
-  Source: user-request-2026-07-14 (friend / external tester).
 
 - ✅ [FIBR-0138] **Expandable dashboard drill-down (Income / Spending / Transfers → categories → merchant → transactions).**
   Designed in-session 2026-07-14 (three user-approved brainstorm decisions). Enhances the FIBR-0012 dashboard: keep the donut + 12-month trend charts as the snapshot, add an expanding tree below them that drills the numbers.
@@ -5330,6 +5488,7 @@ because retrofitting them is a data migration.
   Source: user-request-2026-07-14.
   Active 2026-07-14 — brainstorm complete + user-approved (all decisions D1-D7 locked: bundled JSON library, user-rules-first, CategorySource.LIBRARY no-migration, existing import+Apply paths, Settings toggle default-ON, '~ guess' tag, rename falls through safely). NEXT: write spec docs/specs/FIBR-0139.md -> /cold-eyes (max-loops 7) -> TDD.
   Resolved (2026-07-14): SHIPPED by TDD. category_library.py (LibraryEntry, pure+total parse_library, fail-safe cached load_library, match_library) + data/category_library.json seed (every entry bound by name to a v3 DEFAULT_CATEGORIES leaf). CategorySource.LIBRARY (free-text column, no migration); categorize_with_library (rule beats library), _match_inputs (toggle-gated), _leaf_name_to_id (first-wins), library_enabled; recategorize_auto_rows + would_categorize rerouted. Settings toggle (default ON) wired through the shell; Transactions "~ guess" marker with every Category cell a bare-name SortableItem. data/*.json package-data + second --add-data pair in all three freeze sites; parity guard set-checks both targets. tests/features/category_library/ (INV-1..11) + autouse neutralise fixture + real_library marker. /audit (semgrep full) 0 actionable; /indie-review 2 cold lanes 0 CRIT/HIGH/MED, only LOW substring-precision (accepted D2 substring-only tradeoff, marked overridable guesses, money never touched). Gate green 934/1, mypy 0. Commit 24e7a91; tag FIBR-0139-complete; journal docs/journal/FIBR-0139.md. FIBR-0140 (learn-from-history) remains the deferred "later" half.
+  Lanes: services, ui, repo, tests.
 
 - 📋 [FIBR-0140] **Auto-categorise learns from your own history (statistical, no hand-written rule).**
   The 'later' half of the 2026-07-14 'both' decision (library now, learning later). Distinct from FIBR-0035 (offer-to-MAKE-a-rule, shipped) and FIBR-0092 (bulk re-categorize + rule preview): this auto-applies a category learned from the user's OWN past manual picks (merchant-keyed), ranked with/near the library, still overridable, manual always wins. Deps: the built-in category library item + FIBR-0010. Design TBD in its own brainstorm.
@@ -7155,6 +7314,8 @@ because retrofitting them is a data migration.
   Dependencies: FIBR-0004. Lanes: persistence, perf. Kind: perf.
   Source: user-request-2026-07-01.
   Resolved 2026-07-17 (commit 6c74966): journal_mode=WAL on the LIVE vault connection (set at create, converted on open) — readers no longer block the import writer. synchronous stays at the default FULL so per-commit fsync preserves the create() DB-durable-before-sidecar ordering (FIBR-0005 INV-5). The transient restore/backup-assembly connection (in_memory_temp) keeps the rollback journal, since backup._install moves vault.db at the file level without its -wal sidecar (FIBR-0014 INV-1 preserved).
+  Kind: perf.
+  Lanes: persistence, perf.
 
 - ✅ [FIBR-0026] **Index the import de-duplication lookup.**
   Add a DB
@@ -7166,6 +7327,8 @@ because retrofitting them is a data migration.
   Dependencies: FIBR-0007. Lanes: data, perf. Kind: perf.
   Source: user-request-2026-07-01.
   Resolved 2026-07-17 (commit 6c74966): the dedup lookup is now an indexed probe via the composite transactions(account_id, occurred_on, amount_minor) index (shipped under FIBR-0098). design.md's un-indexed MVP dedup is now index-backed.
+  Kind: perf.
+  Lanes: data, perf.
 
 - 📋 [FIBR-0027] **SQL-side dashboard aggregation + incremental refresh.**
   Compute dashboard summaries / charts with SQL `GROUP BY` rather than
@@ -7175,6 +7338,8 @@ because retrofitting them is a data migration.
   P10. Dependencies: FIBR-0012. Lanes: reporting, perf. Kind: perf.
   Source: user-request-2026-07-01.
   **Layman:** The dashboard stays fast once you have tens of thousands of transactions, and editing one row no longer recalculates everything.
+  Kind: perf.
+  Lanes: reporting, perf.
 
 - 📋 [FIBR-0028] **Virtual table model for the transaction list.**
   Back
@@ -7183,6 +7348,8 @@ because retrofitting them is a data migration.
   Target phase: P10. Dependencies: FIBR-0012. Lanes: ui, perf.
   Kind: perf. Source: user-request-2026-07-01.
   **Layman:** A long transaction history scrolls smoothly instead of slowing down as it grows.
+  Source: user-request-2026-07-01.
+  Lanes: ui, perf.
 
 ---
 
