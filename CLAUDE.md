@@ -14,10 +14,37 @@ not read all six standards and the active spec before summarising: that is
 six-plus reads to answer a question the ROADMAP already answers.
 
 1. **This file** — stable rules and conventions.
-2. **`ROADMAP.md`** — **the authority on current state**: what
-   is open, in progress and next. Written by the `roadmap_log`
-   MCP verb on every status change, so it does not drift.
-   Query it with `roadmap_query` rather than reading 4000 lines.
+2. **The roadmap DB** — **the source of truth on current state**: what is
+   open, in progress and next. `ROADMAP.md` is **generated from it**, and the
+   generated file is what gets committed and pushed. **Never hand-edit that
+   file** — the next render overwrites you. Query the DB with `roadmap_query`
+   (by `id` / `ids`, or `mode:"headline_only"`) rather than reading a 600 KB
+   file; write through `roadmap_log`, which enforces the format and updates
+   items in place. Keep a bold headline on **one line**: a wrapped one renders
+   its continuation at column 0, which markdown reads as a new list item.
+   (User decision 2026-08-18, FIBR-0281.)
+
+   **The freshness check a session owes before writing is a targeted
+   `roadmap_query` on the id it is about to touch — read the body back, and
+   read it back again after every flip or annotate**, because a note can land
+   mid-bullet and still report success. Two traps behind that: `roadmap_log`
+   locates against the **file** while `roadmap_query` reads the **store**, so
+   an item in one but not the other refuses `bullet_not_found`; and there is
+   **no delete verb**, so an `append` cannot be undone — reverting the file
+   with git leaves the item orphaned and the next render injects it back. Get
+   an append right first time.
+
+   **`roadmap_migrate` is the re-ingest, for when the FILE is genuinely ahead**
+   — a hand edit, an external merge. It only reads `ROADMAP.md`, so a byte-
+   identical file afterwards is the verb working, not a failure. **Do not use
+   it as the routine freshness probe: its counters do not measure staleness.**
+   Measured 2026-08-19 on a tree where nothing had hand-edited the file, a
+   `dry_run` still reported **10 items updated** — the render → parse round
+   trip is not lossless for `body`, `layman` and `extras`. `items_rendered`
+   matching the file's bullet count is no all-clear either: it counts items,
+   not their contents, so a stale-bodied store passes it exactly as a fresh
+   one does.
+
 3. **`.claude/workflow.md` §1** — the small set of facts that
    live nowhere else: repo visibility, convergence checkpoint,
    debt-sweep threshold, active item + step. Deliberately thin
@@ -684,7 +711,7 @@ Per the app-workflow skill:
 
 1. **Parallel batch (one tool-call batch):** this file +
    `.claude/workflow.md` §1 + `roadmap_query` for the open
-   items. **State comes from the ROADMAP, not from §1** — §1
+   items. **State comes from the roadmap DB, not from §1** — §1
    carries only the settings and the active item (FIBR-0229).
 2. Once `Kind` is known from the active item, read the
    matching `docs/standards/<which>.md` (single read).
