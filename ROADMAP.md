@@ -1754,6 +1754,20 @@ scariest unknown (native-library bundling) up front.
 
   Decide the split before writing it: a document that grows back is worse
   than one that was never split.
+  Second piece of evidence, recorded because it is a REVIEW COST rather
+  than a defect and would otherwise not be written anywhere. Across all
+  three loops of the 2026-08-19 gate, lanes spent an open question on the
+  same thing: this file cites `FIBR-0001 INV-1`, `tests/features/harness/
+  INV-5` and a bare `(INV-7)` without saying which are SPEC invariants and
+  which are SUITE invariants — and the two numberings genuinely diverge
+  (the harness suite's own INV-4 is what enforces the spec's INV-2). Every
+  citation checked out correct, so each one correctly failed the
+  materiality gate and none was fixed. But three lanes each had to stop
+  and say they could not settle it, in three consecutive loops, and any
+  future gate on this file pays the same toll. If the split happens, give
+  the moved sections a convention — spell suite invariants as
+  `<suite>/spec.md INV-n` and spec invariants as `<ID> INV-n` — rather
+  than leaving a bare `INV-7` to be resolved by whoever is reading.
   **Layman:** Our main instructions file has grown big enough that a careful reader can no longer hold all of it, so fixing one rule keeps breaking another one somewhere else in the file.
   Kind: doc.
   Source: review-contract-2026-08-19 loop 3 cap note (FIBR-0295 gate).
