@@ -679,6 +679,51 @@ Finish the Windows half through the script, never by hand: the steps
 you would be skipping are the Ed25519 signing and its verification
 against the committed public key.
 
+### `cut-release` Phase 2b on this project is `scripts/ci-docker.sh` (user decision 2026-08-19, FIBR-0295)
+
+`cut-release` Phase 2b runs the CI pipeline locally *before* the release
+commit, and the skill's own rule is to execute `.github/workflows/*.yml` with
+`act` and **never** substitute anything — because a hand-written mirror
+"returns green for a pipeline that will fail". **On this project the substitute
+is sanctioned, and this section is that authorisation.** `act` is installed on
+this machine (`/usr/bin/act`) and has never been configured: with no TTY its
+first run prints a runner-image menu and dies `level=fatal msg=EOF`, so the
+phase cannot run as designed. Filed as **FIBR-0295**; the decision is to adopt
+the substitute rather than configure `act`.
+
+**So Phase 2b here is `./scripts/ci-docker.sh`** — and the release notes say
+which steps it left uncovered, in those words.
+
+**Why the ban does not bite: `ci-docker.sh` is not a mirror of the pipeline, it
+is the pipeline's own two scripts.** `ci.yml` has one job, four steps — install
+`git`, `actions/checkout`, `./scripts/ci-setup.sh`, `./scripts/ci-local.sh` —
+inside `container: python:3.12-slim-bookworm`. `ci-docker.sh` runs the **same
+image** and calls the **same two scripts by name**. There is no second
+definition of the gate that could drift from the first, which is exactly the
+failure the skill's rule protects against, and FIBR-0001 INV-2 locks the
+single definition with `tests/features/harness/` enforcing it.
+
+**Three things it does NOT cover.** State them; do not report a full pipeline
+run.
+
+1. **`actions/checkout` itself** — its commit-SHA pin and
+   `persist-credentials: false`. A regression there is caught by the gate's
+   own `zizmor` stage, not by this run.
+2. **The `apt-get install git ca-certificates` step** before checkout. Its
+   *effect* is covered — `ci-setup.sh` installs `git` as well — but the step
+   itself never executes.
+3. **The tree under test, which is the one worth knowing.** `ci-docker.sh`
+   does `cp -a` of your working directory into the container, so gitignored
+   and untracked files travel with it; `actions/checkout` hands CI a clean
+   clone of **tracked files only**. Verified 2026-08-19 by running that `cp`
+   and listing the result: `.corpus-numbers` reaches the container. So a gate
+   stage that reads an untracked file passes here without having been tested
+   the way CI will run it.
+
+**If `act` is ever configured on this machine this override lapses** — Phase 2b
+goes back to executing the workflows themselves, and this section is deleted
+rather than left standing as a second answer.
+
 ## Module map
 
 `src` layout; the package is `finbreak`, found by pytest via
