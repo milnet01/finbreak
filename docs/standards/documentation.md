@@ -175,9 +175,11 @@ The high-level rules:
   shipped work moves to `CHANGELOG.md`.
 - `ROADMAP.md` uses status emojis (✅🚧📋💭), theme emojis,
   and stable per-bullet IDs on the generic `PROJ-NNNN` pattern —
-  the prefix is the project's, the number comes from
-  `.roadmap-counter` — plus phase IDs (`P##`, `FP##`, `DS##`,
-  `DOC##`, `R##`).
+  the prefix is the project's, and the number is allocated by
+  `roadmap_log` from the roadmap store, **not** read out of
+  `.roadmap-counter` (see [roadmap-format § 3.5.1](roadmap-format.md),
+  which owns the rule and the reason) — plus phase IDs (`P##`,
+  `FP##`, `DS##`, `DOC##`, `R##`).
 - `CHANGELOG.md` follows
   [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) with
   an `[Unreleased]` block at the top.

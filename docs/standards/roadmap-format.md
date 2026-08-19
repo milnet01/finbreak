@@ -156,15 +156,38 @@ The ID is a project-prefixed monotonic integer:
   deleted (a deleted ID is *retired*; the next new bullet uses
   the next free number, not the deleted one).
 
-The high-water mark lives in `.roadmap-counter` at the project
-root — a one-line file with the highest assigned integer. New
-IDs increment this counter atomically. Concurrent sessions
-read-modify-write under a brief flock so collisions are
-impossible. The counter file is checked into git so the next
-session starts from the right number.
+**Who allocates an ID depends on whether the roadmap is
+store-backed.** On this project it is: `ROADMAP.md` is *rendered*
+from the Ants roadmap DB, and `roadmap_log` allocates the next ID
+from that store and returns it in the write envelope. **That is
+the only sanctioned allocator here.** Never read a number out of
+a file and write it into a bullet by hand.
+
+`.roadmap-counter` at the project root is a **cache of the
+high-water mark, not the allocator**, and three things follow:
+
+- **It is not checked in here.** `.gitignore` has excluded it
+  since 2026-07-14 (commit `0b5c995`) on the grounds that it is
+  re-derived from `ROADMAP.md` when absent, so a fresh clone has
+  no counter at all and nothing is lost.
+- **It lags.** `roadmap_log op:"append"` reconciles it and says
+  so in its envelope (`counter_advanced_to`); `op:"append_batch"`
+  allocates the same way and does not. Measured 2026-08-19: the
+  file read `288` while `FIBR-0291` was already on the roadmap.
+- **So counter arithmetic is not a way to allocate an ID.** A
+  session that reads the counter and adds one names an ID that
+  already belongs to another bullet — permanently, because IDs
+  are append-only and a pushed commit cannot be rewritten.
+
+A project whose `ROADMAP.md` is a plain hand-maintained file with
+no store behind it has no other carrier, and there the counter
+*is* the high-water mark. Check which kind of project you are in
+before reaching for the recipe below — on a store-backed one it
+allocates a collision:
 
 ```bash
-# Allocate the next ID:
+# FALLBACK ONLY, for a project with no roadmap store behind
+# ROADMAP.md. Not this project — use roadmap_log here.
 echo $(($(cat .roadmap-counter) + 1)) > .roadmap-counter
 printf "PROJ-%04d\n" $(cat .roadmap-counter)
 ```
