@@ -187,8 +187,11 @@ entirely and it dies on `ruff: command not found`, because `ruff` is the
 gate's very first stage and the script's Python half is what installs it.
 Install the dev group by hand but not the pinned binaries (the openSUSE route
 below) and it gets as far as `shellcheck`/`git: command not found` instead.
-Either way the fix is the same. Verified by executing this section in a clean
-container 2026-08-11 (FIBR-0260).
+**The two fixes are NOT the same.** On an apt host, run `ci-setup.sh`. On this
+desktop it cannot help you — the script is apt-only — so install the
+Requirements binaries, `git` and the Qt libraries by hand per the openSUSE route
+below. Verified by executing this section in a clean container 2026-08-11
+(FIBR-0260).
 
 `ci-setup.sh` assumes a **Debian/Ubuntu apt** host (the
 `python:3.12-slim-bookworm` image CI runs; it falls back to `sudo` when not
@@ -254,18 +257,22 @@ it did on every run until the file existed on **2026-08-18**. FIBR-0248 wired
 the file route on 2026-08-14; it did not create the file, so the guard went on
 skipping for four more days. **Wiring a source is not the same as supplying
 one**, and only the second date is when the tree was first actually scanned. `FINBREAK_CORPUS_NUMBERS`
-(comma-separated) overrides the file for a one-off run — and **set it by
-substitution from the gitignored file, never by typing the numbers**:
-`FINBREAK_CORPUS_NUMBERS="$(paste -sd, .corpus-numbers)" pytest …` puts no
-value on the command line or into `~/.bash_history`. Typing them out is the
-very act the never-list below forbids, and the defect FIBR-0276 filed. **Never print the
+(comma-separated) overrides **where the numbers come from** — for a machine
+that keeps them elsewhere, or a run against a different set. **Its value comes
+from a gitignored file written in an editor and substituted in, never typed**:
+`FINBREAK_CORPUS_NUMBERS="$(paste -sd, <that-file>)" pytest …` puts no value on
+the command line or into `~/.bash_history`. Substituting from `.corpus-numbers`
+itself buys nothing — that is already the default. Typing them out is the very
+act the never-list below forbids, and the defect FIBR-0276 filed. **Never print the
 values, type them onto a shell command line, redirect them to a tracked file,
 or paste them into a commit message, spec or ROADMAP entry** — the guard binds
 prose, not just fixtures. CI cannot
 hold them and never will, so this check is local-only by design.
 
-**Pre-push hook — the gate runs automatically before every `git push` that is
-not `--no-verify`.** CI (`ci.yml`) runs this exact script, so a green local gate means green in CI
+**Pre-push hook — the gate runs automatically before a `git push`, unless you
+pass `--no-verify` or the push is tag-only** (that second case is the hook's
+own doing, and reaching for the flag there is what it exists to stop — see
+below). CI (`ci.yml`) runs this exact script, so a green local gate means green in CI
 **for everything the environment does not decide** — see the container caveat
 below for the part it cannot cover. The commonest way a red push slips through
 is simply *forgetting to run the gate*, and the version-controlled hook at
@@ -651,8 +658,10 @@ Four things worth knowing before you run them:
   release path, the other being that nothing checks `release-linux.sh`
   was run at all (FIBR-0275).
 
-Finish by reading the result back — the script's own "DONE" line is
-printed before anything re-reads the release:
+Finish by reading the result back yourself — **not** because the scripts skip
+it. Since 2026-08-19 each one re-reads its own upload and refuses to report
+success on an incomplete set, both doing so *before* they print "DONE". The gap
+is the one named above: nothing catches a script that was never run.
 
 ```bash
 gh release view v<NEW> --json assets -q '[.assets[].name]|join(", ")'
@@ -830,7 +839,9 @@ than left standing as a second answer.
 - `assets/` — the app icon set and the README screenshots.
 - `.github/workflows/ci.yml` — CI mirror; runs INSIDE `python:3.12-slim-bookworm`
   and calls `ci-setup.sh` then `ci-local.sh` — the same image + scripts as
-  `ci-docker.sh`, so local and CI cannot drift (single source of truth, INV-2).
+  `ci-docker.sh`, so the *gate definition* cannot drift (single source of truth,
+  INV-2). The workflow around that gate is a different thing — § `cut-release`
+  Phase 2b names what a local run does not reach.
 - `.github/workflows/build-smoke.yml` — the dedicated, opt-in build job
   (`workflow_dispatch` + weekly), not run on every push.
 - `.github/workflows/windows-build.yml` — the on-demand Windows `.exe` freeze
