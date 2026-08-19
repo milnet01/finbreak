@@ -1622,7 +1622,7 @@ scariest unknown (native-library bundling) up front.
   Kind: doc-fix.
   Source: in-session-2026-08-19 (review-contract cap report on roadmap-format.md).
 
-- 📋 [FIBR-0294] **Store-backed, the roadmap has no way to express priority at all — decide whether it needs one.**
+- ✅ [FIBR-0294] **Store-backed, the roadmap has no way to express priority at all — decide whether it needs one.**
   Store-backed (roadmap-format.md § 3.0), `roadmap_log` appends to the
   end of a section and takes no positional locator, so position carries
   no priority. The only other carrier the format has is § 3.8's severity
@@ -1647,7 +1647,7 @@ scariest unknown (native-library bundling) up front.
 
   The document is accurate either way -- it no longer claims a carrier
   that does not exist. This item is only about whether to add one.
-
+  Resolved (2026-08-19): user decision -- option 1, leave it. The format does not model priority and § 3.0 says so plainly; the severity prefix stays required only inside a § 3.8 findings fold-in. No backfill, no new mandate, no document change. Priority is set by conversation and by section order.
   **Layman:** Our roadmap is generated, so you cannot drag an urgent item to the top; the one marking that could show urgency is optional and nobody uses it, so nothing on the list says what is urgent.
   Kind: doc.
   Source: in-session-2026-08-19 (review-contract loop 2 on roadmap-format.md, surfaced not decided).
