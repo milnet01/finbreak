@@ -21,6 +21,8 @@ signaling per
 
 ## [Unreleased]
 
+## [0.1.22] - 2026-08-19
+
 ### Changed
 
 - **The README now explains how to make a desktop shortcut for the Linux AppImage**

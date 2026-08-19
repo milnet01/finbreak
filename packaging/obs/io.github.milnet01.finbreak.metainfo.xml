@@ -90,6 +90,18 @@
   </screenshots>
 
   <releases>
+    <release version="0.1.22" date="2026-08-19">
+      <description>
+        <p>Fixed:</p>
+        <ul>
+          <li>Imported credit-card statements no longer carry a stray "Continued on next page" on the last transaction of each page.</li>
+        </ul>
+        <p>Changed:</p>
+        <ul>
+          <li>The README now explains how to name a desktop shortcut for the Linux AppImage, so you do not end up with two finbreak icons in the panel.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.1.21" date="2026-08-17">
       <description>
         <p>Fixed:</p>

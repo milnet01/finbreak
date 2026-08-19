@@ -1,3 +1,14 @@
+finbreak (0.1.22) unstable; urgency=medium
+
+  * Imported credit-card statements no longer carry a stray "Continued on
+    next page" tacked onto the last transaction of each page. Amounts were
+    never affected; only the description text.
+  * The README now explains how to name a desktop shortcut for the Linux
+    AppImage, so a hand-made one does not leave two finbreak icons in the
+    panel.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Tue, 19 Aug 2026 20:45:00 +0200
+
 finbreak (0.1.21) unstable; urgency=medium
 
   * The Linux app-store (Flatpak) build now starts -- the build announced in
