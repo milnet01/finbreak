@@ -1325,6 +1325,75 @@ scariest unknown (native-library bundling) up front.
   Kind: doc-fix.
   Source: in-session-2026-08-19 (review-contract loop 2 on commits.md, 4a step 3).
 
+- 📋 [FIBR-0289] **`ROADMAP.md`'s "Current version" header reads 0.1.7 on a tree past 0.1.21, and nothing bumps it.**
+  `ROADMAP.md:3` reads "**Current version:** 0.1.7 (released 2026-07-12)".
+  The tree is past **0.1.21**. This is a public repo, so the stale line is
+  visible to anyone reading the roadmap.
+
+  It is not a hand-edit that got missed — nothing bumps it by design.
+  `ROADMAP.md` is rendered from the roadmap DB, and it does not appear in
+  `.claude/bump.json`'s `files[]` or its `post_check` drift gate, so no
+  release step touches it. Hand-editing the file is explicitly forbidden
+  (the next render reverts it), which means the fix has to be either a
+  render-side change or removing the line.
+
+  Removing it is the cheaper answer and the one this session leans to: the
+  header already links to `CHANGELOG.md`, which is bumped by the recipe
+  and always current, so the roadmap does not need to carry a second copy
+  of the version at all.
+
+  Found by `commits.md`'s gate: two lanes opened `bump.json` to check
+  whether § 5 was right to list `ROADMAP.md` as version-bearing, found it
+  absent, and noticed the header was stale as the proof.
+  **Layman:** The roadmap page tells a visitor the app is on a version from five releases ago.
+  Kind: doc-fix.
+  Source: in-session-2026-08-19 (review-contract loop 3 on commits.md, deferred tail at the cap).
+
+- 📋 [FIBR-0290] **The tag-push `--no-verify` habit is real practice written down in no project document.**
+  `.githooks/pre-push` runs the full gate on **every** push, so pushing a
+  branch and then its tag runs it twice on the same already-gated commit
+  — roughly three minutes of pure duplication, and long enough to have
+  caused a Bash timeout. The practice that grew up around this is to push
+  the branch gated and then the tag with `--no-verify`.
+
+  That is recorded only in this machine's agent memory. No project
+  document sanctions it: `CLAUDE.md` § Build and test names the
+  `pip-audit` network flake, § Doc-only pushes names the all-`.md` route,
+  and neither covers a tag push. `commits.md` § 2.3 defers to `CLAUDE.md`
+  for the enumeration, so it does not cover it either.
+
+  So it is currently either an unsanctioned habit or an authorisation
+  nobody wrote down. Decide which and record it — the safe reading is
+  that it IS legitimate (the commit the tag points at was gated seconds
+  earlier by the branch push, so the second run can only re-prove the
+  same result), which would make it a third standing authorisation for
+  `CLAUDE.md` § Build and test to state.
+
+  Raised by a lane as an open question against § 2.3's "live as of" list;
+  that list has since been deleted, so nothing in `commits.md` is wrong
+  today — the gap is on the `CLAUDE.md` side.
+  **Layman:** There is a shortcut we actually use when pushing a tag, and no project file says it is allowed.
+  Kind: doc-fix.
+  Source: in-session-2026-08-19 (review-contract loop 3 on commits.md, deferred tail at the cap).
+
+- 📋 [FIBR-0291] **`commits.md` gives the release-commit subject as `X.Y.Z: theme — summary` and both its examples omit the summary.**
+  § 1.2's Release row gives `X.Y.Z: theme — short summary` and § 5 gives
+  `X.Y.Z: theme — summary`, but both worked examples read
+  `0.2.0: CSV/OFX import + duplicate detection` — no em-dash segment at
+  all.
+
+  A conformer cannot tell whether the summary half is required, optional,
+  or dead text left over from an earlier format. Settle it against what
+  `cut-release` actually writes, then make the examples match the stated
+  format or the format match the examples.
+
+  Lowest-value finding of the run and filed rather than fixed for that
+  reason: the run had reached its cap of 3 loops for a standard, where
+  the skill files the tail rather than looping again.
+  **Layman:** A rule shows a commit title format with three parts, then every example it gives has only two.
+  Kind: doc-fix.
+  Source: in-session-2026-08-19 (review-contract loop 3 on commits.md, deferred tail at the cap).
+
 ### 📦 Packaging
 
 - ✅ [FIBR-0003] **P01: bundling smoke-test (de-risk native libs early).**
