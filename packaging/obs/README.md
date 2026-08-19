@@ -119,7 +119,7 @@ on the real OBS builders:
 ## Ongoing releases
 
 Each new finbreak version is a new package revision in the OBS repo (pulled by
-`zypper up` / `apt upgrade`). The `/bump` recipe keeps the metainfo `<release>`
+`zypper up` / `apt upgrade`). The `.claude/bump.json` recipe (run by `cut-release`) keeps the metainfo `<release>`
 and `debian/changelog` in lockstep with `CHANGELOG.md`. Re-run
 `vendor-wheels.sh` **only** when the dependency closure or a target's default
 python changes; otherwise repeat `osc service manualrun` → `osc commit`.

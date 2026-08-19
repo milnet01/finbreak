@@ -502,7 +502,7 @@ def test_INV8_gate_is_flatpak_specific(monkeypatch: pytest.MonkeyPatch) -> None:
 # INV-10 — the manifest's git tag tracks __version__.
 # INV-4 already gates the SHAPE of the pin (40-hex commit, no bare semver), but
 # nothing tied the `tag:` to the release it is supposed to build. The tag is
-# version-bearing, so /bump must carry it: without this gate a bump leaves the
+# version-bearing, so the bump recipe must carry it: without this gate a bump leaves the
 # manifest pinned to the PREVIOUS release and Flathub silently ships stale code.
 # (Its sibling `commit:` cannot be gated here — the tag's sha does not exist
 # until the release is tagged; .claude/bump.json carries that as a todo.)

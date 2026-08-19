@@ -131,8 +131,8 @@ New apps go on the **`new-pr` base branch** of `github.com/flathub/flathub`
 
 Each new finbreak version is a PR to the app's Flathub repo bumping the `finbreak`
 module's `tag:`/`commit:` and regenerating `python3-deps.yaml` **only if the
-closure changed**. `/bump` already keeps the metainfo `<release>` in lockstep with
-`CHANGELOG.md` (FIBR-0155 § 3.7).
+closure changed**. The `.claude/bump.json` recipe (run by `cut-release`) already
+keeps the metainfo `<release>` in lockstep with `CHANGELOG.md` (FIBR-0155 § 3.7).
 
 ## Follow-ups (not in the first cut)
 

@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- FIBR-0155: AppStream component consumed by software.opensuse.org, GNOME
      Software and KDE Discover. The <releases> block mirrors CHANGELOG.md and is
-     kept in lockstep by the /bump recipe (changelog-writer Mode A); the newest
+     kept in lockstep by the .claude/bump.json recipe, run by cut-release
+     (changelog-writer Mode A); the newest
      <release version> must equal __version__ (obs_packaging INV-6). Validate
      with `appstreamcli validate io.github.milnet01.finbreak.metainfo.xml`. -->
 <component type="desktop-application">

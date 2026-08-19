@@ -2,7 +2,8 @@
 # debian/rules — deb recipe for Debian + Ubuntu (FIBR-0155). Same three steps as
 # the RPM: freeze the --onedir payload, lay it out under /usr/lib/finbreak/,
 # install the desktop assets + launcher. Version comes from debian/changelog,
-# kept == __version__ by the /bump sync (obs_packaging INV-6).
+# kept == __version__ by the .claude/bump.json sync, run by cut-release
+# (obs_packaging INV-6).
 export DH_VERBOSE = 1
 
 %:
