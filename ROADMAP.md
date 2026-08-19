@@ -1477,7 +1477,7 @@ scariest unknown (native-library bundling) up front.
   Kind: doc-fix.
   Source: in-session-2026-08-19 (review-contract loop 3 on commits.md, deferred tail at the cap).
 
-- 📋 [FIBR-0290] **The tag-push `--no-verify` habit is real practice written down in no project document.**
+- ✅ [FIBR-0290] **The tag-push `--no-verify` habit is real practice written down in no project document.**
   `.githooks/pre-push` runs the full gate on **every** push, so pushing a
   branch and then its tag runs it twice on the same already-gated commit
   — roughly three minutes of pure duplication, and long enough to have
@@ -1500,6 +1500,40 @@ scariest unknown (native-library bundling) up front.
   Raised by a lane as an open question against § 2.3's "live as of" list;
   that list has since been deleted, so nothing in `commits.md` is wrong
   today — the gap is on the `CLAUDE.md` side.
+  Resolved (2026-08-19, commit 1aa16d5) — but NOT the way the bullet framed it.
+
+  The bullet asked whether the habit is legitimate and said to decide and
+  record it. Both offered answers were wrong: sanctioning the bypass documents
+  a workaround, which `coding.md` § 1.2 and `commits.md` § 2.3 both forbid, and
+  calling it unsanctioned leaves a 3-minute duplicate gate that guarantees
+  someone keeps reaching for the flag. So the cause was fixed and the habit has
+  nothing left to do.
+
+  The premise did check out first: `.githooks/pre-push` read nothing from stdin
+  and unconditionally `exec`ed the gate, so a branch push followed by its tag
+  ran the same gate twice on one already-gated commit — which is what
+  `cut-release` Phase 5 and `/close-phase` Step 6 do on every run.
+
+  The hook now reads the ref updates git supplies on stdin and exits early only
+  when **every** ref is a tag **and** every tagged commit is already reachable
+  from a remote-tracking branch. Both conditions are load-bearing: a tag whose
+  commit is not yet on the remote would publish ungated code, so it takes the
+  gate, as does a branch ref anywhere in the push and a hand-run hook with no
+  stdin.
+
+  Locked by `tests/features/harness/` INV-5 — five tests that RUN the hook in a
+  throwaway repo with a real origin and a stub gate dropping a sentinel, because
+  this hook reads as obviously right whichever way it behaves. Proven red
+  against the old hook: exactly one test fails (the skip) and the four guard
+  tests pass on both sides, which is what shows the skip is not too wide; a
+  fifth asserts the sentinel can appear at all, so none of the others can pass
+  vacuously.
+
+  `CLAUDE.md` § Build and test now says a tag push needs no `--no-verify`, and
+  that a gate running on one means the commit is not on the remote yet.
+  `commits.md` § 2.3 needed no edit — it defers here and enumerates nothing.
+
+  Full gate green: 1921 passed, 2 skipped (up 5 tests).
   **Layman:** There is a shortcut we actually use when pushing a tag, and no project file says it is allowed.
   Kind: doc-fix.
   Source: in-session-2026-08-19 (review-contract loop 3 on commits.md, deferred tail at the cap).
