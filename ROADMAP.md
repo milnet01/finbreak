@@ -1255,6 +1255,45 @@ scariest unknown (native-library bundling) up front.
   Kind: doc-fix.
   Source: in-session-2026-08-19 (review-contract loop 2 on CLAUDE.md, blast-radius sweep).
 
+- 📋 [FIBR-0286] **`coding.md` and `testing.md` carry the stale peer count and the frozen model literal `commits.md` just shed.**
+  `docs/standards/coding.md:5` and `docs/standards/testing.md:5` both say
+  this standard "Pairs with the other **three** standards in this folder"
+  when the folder holds six shareable standards plus a sub-spec and the
+  index. `docs/standards/testing.md:254` freezes
+  `Co-Authored-By: Claude Opus 4.8 (1M context)` in an example; the last 30
+  commits all carry `Claude Opus 5`, so a conformer copying the literal
+  mis-attributes the commit.
+
+  `commits.md`'s own gate fixed both in that file on 2026-08-19 by deleting
+  the count and replacing the frozen literal with a pointer. Not carried
+  into the neighbours in passing: each is a contract document with its own
+  rule-14 gate ahead of it, which is the same call `documentation.md`'s
+  loop 1 made when it first surfaced the peer-count drift.
+  **Layman:** Two rule documents still say there are three sibling standards when there are six, and both show an out-of-date AI name that gets copied into commits.
+  Kind: doc-fix.
+  Source: in-session-2026-08-19 (review-contract loop 1 on commits.md, blast-radius sweep).
+
+- 📋 [FIBR-0287] **Four live references under `packaging/` still route the version bump to the deleted `/bump` skill.**
+  `cut-release` replaced both `/release` and `/bump` on 2026-08-13, and
+  nothing named `/bump` can be invoked. Still naming it:
+  `packaging/flatpak/README.md:134`, `packaging/obs/README.md:122`,
+  `packaging/obs/io.github.milnet01.finbreak.metainfo.xml:4` and
+  `packaging/obs/debian/rules:5` — each claiming the `/bump` recipe keeps
+  the metainfo `<release>` block or the debian version in lockstep with
+  `__version__`.
+
+  `commits.md` § 5 carried the same dead route and was fixed on 2026-08-19
+  by its own gate. These four were left rather than swept in: they are
+  packaging docs and source comments with their own subject, and the
+  correct replacement text differs per file (`cut-release --bump-only` for
+  the standalone bump, `cut-release <X.Y.Z>` for the full path).
+
+  The underlying lockstep behaviour is unchanged — `.claude/bump.json` is
+  still the recipe; only the skill that reads it was renamed.
+  **Layman:** Four packaging files tell you to use a release tool that no longer exists.
+  Kind: doc-fix.
+  Source: in-session-2026-08-19 (review-contract loop 1 on commits.md, blast-radius sweep).
+
 ### 📦 Packaging
 
 - ✅ [FIBR-0003] **P01: bundling smoke-test (de-risk native libs early).**

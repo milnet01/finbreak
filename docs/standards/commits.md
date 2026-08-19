@@ -2,9 +2,9 @@
 # Commit Standards — v1
 
 A shareable contract for git commits in this project. Pairs with
-the other three standards in this folder ([coding](coding.md),
-[documentation](documentation.md), [testing](testing.md)) — see
-the [index](README.md) for the full set.
+the other standards in this folder — the [index](README.md) is the
+full set, and naming no count here is deliberate so this line cannot
+go stale as the set grows.
 
 This standard governs every commit, plus the release-orchestration
 work under ROADMAP bullets with `Kind: chore` or `release`.
@@ -53,6 +53,13 @@ use a category prefix instead:
 | Doc-only (typo, README tweak not tracked on roadmap) | `docs: short summary` | `docs: fix typo in security-model.md INV-2 section` |
 | Hotfix without prior ROADMAP entry (will be back-filled) | `fix: short summary` + `Refs: FIBR-NNNN` trailer | see §1.4 |
 
+**Where a phase ID exists for the category, the phase ID wins.** A
+debt sweep run as a `DS##` phase is `DS03: …`, not `chore: …`; a
+doc-fix pass run as `DOC##` is `DOC01: …`. The `chore:` / `docs:`
+prefixes above are for that same work done *outside* any phase. Both
+forms are live in this repo's history, and only the phase-ID form is
+findable by an ID grep.
+
 If the work was substantive enough to be tracked on the roadmap
 (any feature, any non-trivial fix, any refactor), it gets a
 ROADMAP item with an ID *first*, then the commit references that
@@ -94,16 +101,15 @@ WHAT.
 | Trailer | When |
 |---------|------|
 | `Co-Authored-By:` | Anyone who contributed materially (humans, AI agents) |
-| `Reviewed-by:` | After a `/indie-review` pass |
+| `Reviewed-by:` | After a `review-code` pass |
 | `Fixes:` | When the commit closes a tracker issue (Fixes: #42) |
 | `Refs:` | Cross-references — e.g. `Refs: FIBR-1235` for related ROADMAP items |
 | `Signed-off-by:` | DCO-required projects |
 
-For AI-assisted commits, include the AI's identifier:
-
-```
-Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
-```
+For AI-assisted commits, include the AI's identifier — the one the
+session's harness supplies, never a literal copied from this file.
+Freezing a model name in an example is how a commit ends up
+attributed to a model that did not write it.
 
 
 ## 2. Commit hygiene
@@ -194,8 +200,10 @@ use `git revert` + new commit instead.
 ### 4.1 Public vs private repos
 
 Push cadence (public: push freely; private: batch + ask once
-5+ commits/tags accrue) lives in the user's global
-`~/.claude/CLAUDE.md` § 6 — canonical source.
+5+ commits accrue) lives in the user's global
+`~/.claude/CLAUDE.md` § 6 — canonical source. **A release push is
+exempt there and goes immediately without asking**, so a release tag
+never sits in that queue.
 
 ### 4.2 Tag format
 
@@ -209,8 +217,12 @@ Don't create lightweight tags (`git tag vX.Y.Z`) for releases —
 they don't carry the release message.
 
 Push tags explicitly: `git push origin vX.Y.Z` for one,
-`git push --tags` for a batch. **Don't force-push tags under any
-circumstance** — if a tag collision happens, stop and ask.
+`git push --follow-tags origin <branch>` for a batch — that sends
+only the annotated tags reachable from what you are already pushing.
+**Never `git push --tags`**: it publishes every local tag, including
+ones never meant to leave the machine. The global
+`~/.claude/CLAUDE.md` § 6 forbids it by name. **Don't force-push tags
+under any circumstance** — if a tag collision happens, stop and ask.
 
 ### 4.3 Confirm before destructive operations
 
@@ -240,7 +252,7 @@ Tier-2 hardening:
 
 - ...
 
-Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+Co-Authored-By: <AI identifier, per §1.5>
 ```
 
 Note that the *bullets* inside the release body still cite
@@ -252,10 +264,13 @@ version-bearing file (`pyproject.toml`, packaging files,
 `README.md`, `ROADMAP.md`), `CHANGELOG.md` (new dated section),
 and the implementation changes themselves.
 
-If a `.claude/bump.json` recipe exists, the `/bump` skill handles
-the version-bearing-file edits. Otherwise, do it manually and run
-any project-specific drift checks (e.g.
-`packaging/check-version-drift.sh`) before committing.
+`cut-release <X.Y.Z>` owns the version-bearing-file edits, the
+release commit and the tag; `cut-release --bump-only` is the bump on
+its own, and `cut-release --check` is a read-only readiness report.
+A `.claude/bump.json` recipe is what that skill reads to find the
+version-bearing files. Edit them by hand only where no recipe and no
+skill exist, and then run whatever drift check the project actually
+ships before committing.
 
 
 ## 6. Releases on public hosts
@@ -271,9 +286,16 @@ gh release create vX.Y.Z \
 The notes body is the corresponding `[X.Y.Z]` section from
 `CHANGELOG.md`. Use a heredoc to preserve markdown formatting.
 
-CI (if wired up) will fire on the tag push and attach build
-artifacts (AppImage, MSI, .dmg) to the release automatically.
-Don't manually upload artifacts that CI will produce.
+**Do not assume CI attaches the assets.** It does so only where a
+workflow actually triggers on the tag *and* uploads them — check
+`.github/workflows/` for a `tags:` trigger before relying on it.
+**In this repo none does**, so `gh release create` publishes an
+*empty* release; the assets are attached by hand-running
+`./scripts/release-linux.sh` and then `./scripts/release-windows.sh`.
+Skipping that is how v0.1.20 shipped with zero assets and stayed that
+way for ten days, with the README download link and the in-app
+updater both resolving to it. [`CLAUDE.md`](../../CLAUDE.md)
+§ *Cutting a release* owns the full order.
 
 
 ## 7. Anti-patterns
@@ -293,8 +315,17 @@ Don't manually upload artifacts that CI will produce.
 - ❌ Committing build artifacts / `.env` / credentials.
 - ❌ Lightweight tags for releases (`git tag vX.Y.Z` without
   `-a`).
-- ❌ Pushing a release tag whose CI hasn't run / passed.
+- ❌ Pushing a release tag before the tagged commit's CI is green —
+  which here means the **branch** run, since no workflow fires on a
+  tag (§ 6).
 - ❌ Force-pushing tags.
 - ❌ ROADMAP IDs that don't actually exist (typos in the prefix
   or an ID that was never assigned) — verify against the allocation
   rules in [roadmap-format § 3.5.1](roadmap-format.md).
+
+
+## Cold-eyes loop log
+
+| Loop | Date | Lanes | Q1 | Q2 | Q3 | Outcome |
+|---|---|---|---|---|---|---|
+| 1 | 2026-08-19 | 3 × `review-lane`, cold, genre pinned `standard`; packet carried the workflow triggers, the live skill/command inventory and the quoted cross-references | 6 | 2 | 1 | **Nine verified, nine fixed; two dismissed.** First gate ever run on this file (FIBR-0279). **All three lanes independently found the same five defects**, the strongest signal in the run. **The most dangerous is § 6**, which claimed "CI (if wired up) will fire on the tag push and attach build artifacts (AppImage, MSI, .dmg) to the release automatically. Don't manually upload artifacts that CI will produce." No workflow in this repo has a `tags:` trigger, none attaches a release asset, and the project ships no MSI and no `.dmg` — so a conformer stops after `gh release create` and publishes an empty release. That is exactly the **v0.1.20** failure: `gh release view v0.1.20 --json assets` returns an empty list to this day, and it went unnoticed for ten days with the README download link and the in-app updater both resolving to it. **Two dead tools:** § 5 routed the version bump to the `/bump` skill, which `cut-release` replaced on 2026-08-13, and named `packaging/check-version-drift.sh`, which does not exist anywhere in the tree — so the live branch of that sentence had no route to the bump at all; and § 1.5 keyed the `Reviewed-by:` trailer to a `/indie-review` pass, a command that no longer exists. **§ 4.2 prescribed `git push --tags`**, which the global `~/.claude/CLAUDE.md` § 6 forbids by name and this project's `CLAUDE.md` repeats — while § 4.1 four lines above names that same global file as canonical, so the two halves of § 4 disagreed. **§ 7's "Pushing a release tag whose CI hasn't run / passed"** was unsatisfiable: no CI run is ever attached to a tag here, so one reader blocks the release forever and another tags as soon as `main` is green. **Three found by the orchestrator while verifying lane open questions:** the `chore:` / `docs:` subject forms collide with the `DS##` / `DOC##` phase IDs and both are live in this repo's history (69 category-prefix commits against 9 phase-ID ones), with only the second findable by an ID grep; § 4.1 said a private repo batches "5+ commits/tags", when a release tag can never legitimately queue; and both `Co-Authored-By:` examples froze `Claude Opus 4.8 (1M context)` while every commit in the last 30 carries `Claude Opus 5` — a conformer copies the literal and mis-attributes the commit. Two dismissed as changing no line: § 3.1's PR-or-direct-push parenthetical already covers this repo's direct-push default, and § 2.2 / § 7's "pre-commit hook" reads conditionally in a standard meant to be shared, though this repo ships only `pre-push`. Filed rather than fixed, as neighbouring documents with their own gates: the stale peer count and frozen model literal in `coding.md` / `testing.md`, and four live references to `/bump` under `packaging/`. |
