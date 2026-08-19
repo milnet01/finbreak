@@ -1141,7 +1141,7 @@ scariest unknown (native-library bundling) up front.
   earlier "maintained by hand and nothing binds it" paragraph now points at this
   guard.
 
-- 📋 [FIBR-0279] **commits.md calls `--no-verify` an anti-pattern; CLAUDE.md now makes it the normal doc-only route.**
+- ✅ [FIBR-0279] **commits.md calls `--no-verify` an anti-pattern; CLAUDE.md now makes it the normal doc-only route.**
   `docs/standards/commits.md` § 132 says `--no-verify` "bypasses project
   safety nets" and § 277 lists "Skipping hooks (`--no-verify`) without
   explicit authorisation" as a ❌. The 2026-08-18 doc-only push rule makes
@@ -1158,6 +1158,24 @@ scariest unknown (native-library bundling) up front.
   **Layman:** Two of the project's own rule documents disagree about whether a shortcut used on every documentation change is allowed.
   Kind: doc-fix.
   Source: in-session-2026-08-18 (review-contract loop 1 on CLAUDE.md, blast-radius sweep).
+  Resolved (2026-08-19): `commits.md` § 2.3 now names the standing
+  authorisation and defers the enumeration to `CLAUDE.md`; § 7's bullet
+  points at § 2.3; `CLAUDE.md` § Doc-only pushes points back. Gated with
+  `review-contract --genre standard`, 3 loops (the cap), 9 cold lanes,
+  19 verified findings all fixed, 2 dismissed. Loop-log rows 1-3 are
+  inline in the document.
+
+  The gate found far more than the trigger: § 6 claimed CI attaches
+  release assets on a tag push (no workflow here has a `tags:` trigger --
+  the v0.1.20 zero-asset failure exactly), § 5 routed the bump to the
+  deleted `/bump` skill and a drift script that does not exist, § 4.2
+  prescribed the `--tags` the global rules forbid by name, and § 6's
+  release-notes block piped a command that exists nowhere in the tree.
+
+  Cap was violent: 3 of loop 3's 5 findings landed on text the run itself
+  wrote. Deferred tail filed as FIBR-0289, FIBR-0290, FIBR-0291;
+  collateral in neighbouring documents as FIBR-0286, FIBR-0287,
+  FIBR-0288.
 
 - ✅ [FIBR-0280] **Doc-only pushes run the prose checks unconditionally, and CLAUDE.md was gated for it.**
   User directive 2026-08-18, settling the caveat raised 2026-08-17 and left
