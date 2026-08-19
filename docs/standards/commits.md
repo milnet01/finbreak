@@ -130,9 +130,22 @@ and only if you're certain.
 ### 2.3 Don't skip hooks
 
 `--no-verify`, `--no-gpg-sign`, etc. bypass project safety nets.
-Use only when the user explicitly authorises it for a specific
-commit. If a hook fails, investigate and fix the underlying issue
-(per [coding § 1.2](coding.md) — no workarounds).
+Use only when the user explicitly authorises it. If a hook fails,
+investigate and fix the underlying issue (per
+[coding § 1.2](coding.md) — no workarounds).
+
+**That authorisation can be standing rather than per-commit, and this
+project grants exactly one.** The doc-only push route in
+[`CLAUDE.md`](../../CLAUDE.md) § *Doc-only pushes* prescribes
+`git push --no-verify` for a push whose every path ends in `.md`, after
+running the prose checks by hand — so the pre-push gate is replaced by a
+narrower one, not simply dropped. Read that section rather than
+restating it here; it owns the prose-check list and the test for what
+counts as doc-only.
+
+**A code change never takes that route, however small.** Anything
+outside the standing authorisation is still § 7's anti-pattern, and a
+failing hook is still something to fix rather than skip.
 
 ### 2.4 Commit only files you mean to
 
@@ -274,7 +287,9 @@ Don't manually upload artifacts that CI will produce.
 - ❌ `git commit --amend` after a failed pre-commit hook.
 - ❌ `git add .` with no review.
 - ❌ Force-pushing to a shared branch.
-- ❌ Skipping hooks (`--no-verify`) without explicit authorisation.
+- ❌ Skipping hooks (`--no-verify`) without explicit
+  authorisation — § 2.3 names the one standing authorisation this
+  project grants, and it covers documentation pushes only.
 - ❌ Committing build artifacts / `.env` / credentials.
 - ❌ Lightweight tags for releases (`git tag vX.Y.Z` without
   `-a`).

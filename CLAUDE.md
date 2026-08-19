@@ -386,7 +386,11 @@ reachable from what you are already pushing.
 
 A push that touches **only** documentation does not run
 `./scripts/ci-local.sh`. It runs the prose checks below, then pushes with
-`git push --no-verify`. The full gate takes ~1m45s and most of it is aimed
+`git push --no-verify`. **This section is the standing authorisation
+[`docs/standards/commits.md` § 2.3](docs/standards/commits.md) requires** —
+that standard treats a skipped hook as an anti-pattern unless something
+explicitly authorises it, and points back here for the one case where
+something does. The full gate takes ~1m45s and most of it is aimed
 at code, so paying it for a ROADMAP annotation is mostly waiting — but the
 prose checks cost about **two seconds** (measured 2026-08-18: pytest 1.47s,
 `gitleaks` 0.3s warm and 1.8s cold), which is not a saving worth reasoning
