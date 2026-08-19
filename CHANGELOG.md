@@ -21,6 +21,25 @@ signaling per
 
 ## [Unreleased]
 
+### Changed
+
+- **The README now explains how to make a desktop shortcut for the Linux AppImage**
+  If you pin the AppImage to your panel or add it to your applications
+  menu, the shortcut file has to be named
+  `io.github.milnet01.finbreak.desktop` — under any other name your
+  desktop cannot tell the shortcut and the running window apart, and
+  you end up with two finbreak icons side by side. That was not
+  written down anywhere before.
+
+### Fixed
+
+- **Imported credit-card statements no longer carry a stray "Continued on next page"** (FIBR-0115)
+  On a credit-card statement that runs over more than one page, the
+  words "Continued on next page……" printed at each page break were
+  being tacked onto the end of the transaction just above them — one
+  messy description per page break. They are now left out. Your
+  amounts were never affected by this; only the description text.
+
 ## [0.1.21] - 2026-08-17
 
 ### Fixed

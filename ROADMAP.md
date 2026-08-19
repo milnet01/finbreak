@@ -3113,6 +3113,7 @@ lands on top.
   **Layman:** If you make your own shortcut for the AppImage, finbreak shows up twice in the taskbar — once for the shortcut and once for the running window.
   Kind: fix.
   Source: user-report-2026-08-03.
+  Progress (2026-08-19): option (a) SHIPPED -- the README's AppImage install section now tells you to name a hand-made shortcut io.github.milnet01.finbreak.desktop rather than finbreak.desktop, points Icon= at the installed hicolor id, and says outright that a differently-named one gives you two panel icons. It also names the StartupWMClass trap: right on X11, ignored on Wayland, which is what makes the wrong file look correct. The bullet called (a) "the minimum and should ship regardless of the rest", so this is that. STAYS OPEN for (b) and (c): the AppImage still installs no launcher of its own, so this is guidance a user has to find rather than a product that does the right thing unaided. (b) offering to install a correct launcher on first run remains the real fix. Also still unanswered, and recorded here so it is not lost: whether the docs should warn that a concurrent AppImage, RPM/deb and Flatpak install can shadow each other's launchers -- observed on the reporter's machine with three versions live at once.
 
 - ✅ [FIBR-0219] **Amount input is C-locale only, and the obvious fix silently multiplies by 100.**
   Split out of FIBR-0216 because implementing it turned up a hazard the original
@@ -5050,11 +5051,12 @@ because retrofitting them is a data migration.
   Source: dogfooding-2026-07-12.
   Resolved (2026-07-12): added AuthService.notify_activity() — restarts the running idle timer with its armed interval (no settings re-read; no-op when locked/headless) — and MainWindow now installs an application-wide event filter that calls it on MouseButtonPress/MouseMove/KeyPress/Wheel. The auto-lock now counts from the last interaction, not from unlock. TDD: 2 service-level tests (restart-when-unlocked via a spy timer; no-op-when-locked) + 1 shell-level test (a KeyPress through the app filter calls notify_activity). Gate green (607 passed/1 skipped), mypy/ruff/bandit/gitleaks clean.
 
-- 📋 [FIBR-0115] **Credit-card import: strip the "Continued on next page" footer from the last transaction's description.**
+- ✅ [FIBR-0115] **Credit-card import: strip the "Continued on next page" footer from the last transaction's description.**
   Surfaced while fixing FIBR-0112 (not that bug — amounts/checksum are unaffected). On a multi-page Family-C statement, the in-region "NNNN Continued on next page......" line has no transaction date, so _fold/_parse_family_c folds it into the PRECEDING transaction's description (e.g. "# International Txn Fee 0400111222 Continued on next page......", number synthetic). Cosmetic data-quality issue affecting one row per page break. Fix: treat a line matching a "Continued on next page" / bare account-number footer as a skip line (like the "Debit"/"Credits" section headers in _is_cc_skip_line), not a description continuation. TDD with a synthetic fixture line.
   **Layman:** On multi-page credit-card statements, one transaction's description gets a stray "Continued on next page..." tacked onto it. Cosmetic only — the amounts are correct.
   Kind: fix.
   Source: dogfooding-2026-07-12.
+  Resolved (2026-08-19, commit c1d8a9d): _is_cc_skip_line now recognises the "Continued on next page" page-break footer, matched as a substring because the account number precedes the phrase. Test-first; the regression test went red naming the glued-on footer, and carries a real zero-date continuation beside it so a fix that skipped every zero-date line could not pass. INV-10 amended in the same commit per CLAUDE.md -- and its claim that the region bound means "footer prose can never fold into a description" was corrected: that holds for POST-table prose only, and Family C prints an IN-REGION footer the bound never covered. The bullet also mentioned a bare account-number footer; that was NOT added, because an all-digits zero-date line can legitimately be a reference number on a real continuation, and skipping it would drop data rather than tidy it. Full gate green, 1932 passed.
 
 - ✅ [FIBR-0116] **Toolbar icons: muted theme-aware colour that brightens to vibrant on hover.**
   User request 2026-07-12: the toolbar glyphs are currently a single flat mid-grey (#808080, hand-authored monochrome SVGs loaded by ui/icons.py `icon()`; the toolbar is ToolButtonTextUnderIcon). Wanted: (1) each icon a MUTED colour by default, (2) the icon brightening to a VIBRANT version of that same hue while the mouse hovers, reverting on leave, and (3) colours chosen per the active theme (light/dark). Approach sketch: give each glyph a semantic accent colour, then re-tint at load time — either recolour the SVG per state (parse `stroke="#808080"` → muted/vibrant/theme variants and build a QIcon with Normal/Active pixmaps so Qt swaps to the Active pixmap on hover automatically), or drive it via a QProxyStyle / event-filter on the toolbar buttons. Theme-awareness ties into the theme system FIBR-0014 builds (dark/light/follow-system) — coordinate so the muted/vibrant palettes have a light AND dark variant. Related: FIBR-0014 (palette-adaptive re-tinting / dark-theme polish) — this is the specific hover-brighten behaviour, keep them cross-referenced. Icons live in src/finbreak/ui/icons/*.svg; loader is src/finbreak/ui/icons.py.
@@ -5947,7 +5949,7 @@ because retrofitting them is a data migration.
   feature `spec.md` prose fixes. FIBR-0086's bullet amended above (its storage
   half landed here, at v13 not v8). FIBR-0113 stays 🚧 — it ships next.
 
-- 📋 [FIBR-0194] **StatementsWidget.refresh leaves a stale selection that resolves to a different statement under an active sort.**
+- ✅ [FIBR-0194] **StatementsWidget.refresh leaves a stale selection that resolves to a different statement under an active sort.**
   Found while reviewing FIBR-0113's spec, which took StatementsWidget.refresh
   as its fill precedent. Verified against source and reproduced against real Qt
   (docs/reviews/FIBR-0113-selection-drift-repro.py).
@@ -5988,6 +5990,7 @@ because retrofitting them is a data migration.
   Kind: fix.
   Lanes: ui.
   Source: cold-eyes-2026-07-28 loop 5 on docs/specs/FIBR-0113.md (code-side observation, surfaced not fixed).
+  Resolved (2026-08-19): ALREADY FIXED by FIBR-0204, which took the better of the two routes this bullet offered. The bullet proposed a leading setRowCount(0) in StatementsWidget.refresh and said to check the other four tables on the same seam first; FIBR-0204 did check them, found four of five refilled in place, and put the clear inside fill_guard itself rather than in five call sites -- src/finbreak/ui/_table_state.py, whose docstring now states this defect and its reasoning in the same terms ("a wrong row-to-action map in a money app is unacceptable"). Verified 2026-08-19: no ui/*.py carries a local setRowCount(0) any more except main_window's unrelated one, and accounts.py carries a comment saying its own was removed for this reason. Covered by tests/features/table_state/ row 16 (sort-then-refill) and by the every-row assertion in tests/features/accounts/test_accounts.py. Closed on verification, not on recall.
 
 - 📋 [FIBR-0195] **Resolve the docs/plans/ gap once, project-wide, instead of re-arguing it in every spec.**
   spec-format §2 makes a plan mandatory "once the build order matters (a

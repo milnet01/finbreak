@@ -146,6 +146,17 @@ libraries installed:
 3. Launch it — double-click in your file manager, or run
    `./finbreak-*-x86_64.AppImage`.
 
+If you want finbreak in your applications menu or pinned to your panel, you
+need to make that shortcut yourself — the AppImage doesn't install one. **Name
+the file `io.github.milnet01.finbreak.desktop`** (put it in
+`~/.local/share/applications/`), *not* `finbreak.desktop`, and point its
+`Icon=` line at `io.github.milnet01.finbreak`. On Wayland, KDE and GNOME match
+a running window to its pinned shortcut by that exact filename, so a
+differently-named shortcut leaves you with **two** finbreak icons in the panel
+at once — the shortcut and the running window, side by side. (`StartupWMClass`
+looks like the setting that controls this, and it is the right one on X11, but
+Wayland ignores it.)
+
 Each release also ships a `.sig` file next to the AppImage — that's the
 signature finbreak uses to check updates are genuine; you don't need to do
 anything with it yourself.
