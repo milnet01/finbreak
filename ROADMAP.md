@@ -1294,6 +1294,37 @@ scariest unknown (native-library bundling) up front.
   Kind: doc-fix.
   Source: in-session-2026-08-19 (review-contract loop 1 on commits.md, blast-radius sweep).
 
+- 📋 [FIBR-0288] **`roadmap-format.md` § 3.5.1 describes `.roadmap-counter` as the ID allocator; it is a gitignored cache three IDs behind.**
+  `docs/standards/roadmap-format.md` § 3.5.1 says "The high-water mark
+  lives in `.roadmap-counter` at the project root", that "New IDs
+  increment this counter atomically", and that "The counter file is
+  checked into git so the next session starts from the right number".
+
+  Two of those are false here. The file is **gitignored** — commit
+  `0b5c995` (2026-07-14) put it there deliberately, "re-derived from
+  ROADMAP.md when absent" — so it is not checked in. And it is not what
+  allocates: `roadmap_log` allocates from the roadmap DB and reconciles
+  the counter afterwards. Measured 2026-08-19 it read `285` while `FIBR-0286` and
+  `FIBR-0287` were already on the roadmap, both allocated minutes earlier.
+
+  A session following § 3.5.1 to back-fill a hotfix ID reads `285`, writes
+  `Refs: FIBR-0286`, and names an ID already belonging to something else —
+  permanently, since IDs are append-only and a pushed commit cannot be
+  rewritten.
+
+  Found by `commits.md`'s own gate: its loop-2 fix cited § 3.5.1 as the
+  allocation route and the claim failed when executed. `commits.md` now
+  routes allocation to the DB and warns off the counter by name.
+  `roadmap-format.md` is a contract document with its own rule-14 gate, so
+  the correction was not carried across in passing.
+  Blast-radius sweep (same session): `docs/standards/documentation.md:179`
+  carries the same claim in one line — it names `.roadmap-counter` as
+  where stable IDs come from. Fix both, or fix `roadmap-format.md` and
+  leave a pointer there.
+  **Layman:** A rule document says IDs come from a small counter file, but that file is out of date and is not what actually issues them.
+  Kind: doc-fix.
+  Source: in-session-2026-08-19 (review-contract loop 2 on commits.md, 4a step 3).
+
 ### 📦 Packaging
 
 - ✅ [FIBR-0003] **P01: bundling smoke-test (de-risk native libs early).**

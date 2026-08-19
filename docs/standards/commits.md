@@ -60,6 +60,16 @@ prefixes above are for that same work done *outside* any phase. Both
 forms are live in this repo's history, and only the phase-ID form is
 findable by an ID grep.
 
+**A back-filled ID is allocated before the commit, never guessed.** The
+`Refs:` trailer has to name a real ID (§ 7) and IDs are append-only, so
+allocate through whatever actually hands them out — on this project the
+roadmap DB, by appending the bullet first — and fill the item's body in
+afterwards. A guessed number will not match what gets allocated next,
+and a pushed commit cannot be rewritten to agree with it.
+**Do not read a number out of `.roadmap-counter`**: it is gitignored and
+re-derived when absent, so it is a cache rather than the allocator. It
+read `285` on 2026-08-19 with `FIBR-0287` already on the roadmap.
+
 If the work was substantive enough to be tracked on the roadmap
 (any feature, any non-trivial fix, any refactor), it gets a
 ROADMAP item with an ID *first*, then the commit references that
@@ -140,18 +150,20 @@ Use only when the user explicitly authorises it. If a hook fails,
 investigate and fix the underlying issue (per
 [coding § 1.2](coding.md) — no workarounds).
 
-**That authorisation can be standing rather than per-commit, and this
-project grants exactly one.** The doc-only push route in
-[`CLAUDE.md`](../../CLAUDE.md) § *Doc-only pushes* prescribes
+**That authorisation can be standing rather than per-commit.**
+[`CLAUDE.md`](../../CLAUDE.md) is where this project's standing
+authorisations are enumerated; do not restate the list or its length
+here, because a second copy of either is what goes stale. Live as of
+2026-08-19: the **doc-only push route** (§ *Doc-only pushes* —
 `git push --no-verify` for a push whose every path ends in `.md`, after
-running the prose checks by hand — so the pre-push gate is replaced by a
-narrower one, not simply dropped. Read that section rather than
-restating it here; it owns the prose-check list and the test for what
-counts as doc-only.
+running the prose checks by hand, so the gate is replaced by a narrower
+one rather than dropped), and a **transient network-stage flake**
+(§ *Build and test* — a `pip-audit` timeout against pypi or osv.dev
+fails the hook on a non-finding).
 
-**A code change never takes that route, however small.** Anything
-outside the standing authorisation is still § 7's anti-pattern, and a
-failing hook is still something to fix rather than skip.
+**No standing authorisation covers a gate that failed on a real
+finding.** That is still § 7's anti-pattern, and the hook is telling you
+something to fix rather than skip.
 
 ### 2.4 Commit only files you mean to
 
@@ -275,16 +287,24 @@ ships before committing.
 
 ## 6. Releases on public hosts
 
-After a release commit + tag on a public GitHub repo:
+**Where a release skill cuts the release, it creates the GitHub release
+too — do not hand-run this step as well.** `cut-release <X.Y.Z>` (§ 5)
+commits, tags, pushes *and* runs `gh release create`, so on this project
+the release page already exists by the time you reach § 6 and the next
+thing owed is the assets, below.
+
+The block below is the hand-cut fallback, for a release no skill
+created:
 
 ```bash
 gh release create vX.Y.Z \
     --title "X.Y.Z — <theme>" \
-    --notes "$(extract-changelog-section X.Y.Z)"
+    --notes-file - <<'NOTES'
+<the [X.Y.Z] section of CHANGELOG.md, verbatim>
+NOTES
 ```
 
-The notes body is the corresponding `[X.Y.Z]` section from
-`CHANGELOG.md`. Use a heredoc to preserve markdown formatting.
+The heredoc into `--notes-file -` is what preserves the markdown.
 
 **Do not assume CI attaches the assets.** It does so only where a
 workflow actually triggers on the tag *and* uploads them — check
@@ -309,15 +329,16 @@ updater both resolving to it. [`CLAUDE.md`](../../CLAUDE.md)
 - ❌ `git commit --amend` after a failed pre-commit hook.
 - ❌ `git add .` with no review.
 - ❌ Force-pushing to a shared branch.
-- ❌ Skipping hooks (`--no-verify`) without explicit
-  authorisation — § 2.3 names the one standing authorisation this
-  project grants, and it covers documentation pushes only.
+- ❌ Skipping hooks (`--no-verify`) without explicit authorisation —
+  § 2.3 covers the standing authorisations, and `CLAUDE.md` is what
+  enumerates them.
 - ❌ Committing build artifacts / `.env` / credentials.
 - ❌ Lightweight tags for releases (`git tag vX.Y.Z` without
   `-a`).
-- ❌ Pushing a release tag before the tagged commit's CI is green —
-  which here means the **branch** run, since no workflow fires on a
-  tag (§ 6).
+- ❌ Tagging a commit already known to be red. The tag and its commit
+  leave in one `--follow-tags` push (§ 4.2), so there is no prior CI
+  run to inspect — the **pre-push gate** is the green signal, and it
+  runs the same `scripts/ci-local.sh` that `ci.yml` runs.
 - ❌ Force-pushing tags.
 - ❌ ROADMAP IDs that don't actually exist (typos in the prefix
   or an ID that was never assigned) — verify against the allocation
@@ -329,3 +350,4 @@ updater both resolving to it. [`CLAUDE.md`](../../CLAUDE.md)
 | Loop | Date | Lanes | Q1 | Q2 | Q3 | Outcome |
 |---|---|---|---|---|---|---|
 | 1 | 2026-08-19 | 3 × `review-lane`, cold, genre pinned `standard`; packet carried the workflow triggers, the live skill/command inventory and the quoted cross-references | 6 | 2 | 1 | **Nine verified, nine fixed; two dismissed.** First gate ever run on this file (FIBR-0279). **All three lanes independently found the same five defects**, the strongest signal in the run. **The most dangerous is § 6**, which claimed "CI (if wired up) will fire on the tag push and attach build artifacts (AppImage, MSI, .dmg) to the release automatically. Don't manually upload artifacts that CI will produce." No workflow in this repo has a `tags:` trigger, none attaches a release asset, and the project ships no MSI and no `.dmg` — so a conformer stops after `gh release create` and publishes an empty release. That is exactly the **v0.1.20** failure: `gh release view v0.1.20 --json assets` returns an empty list to this day, and it went unnoticed for ten days with the README download link and the in-app updater both resolving to it. **Two dead tools:** § 5 routed the version bump to the `/bump` skill, which `cut-release` replaced on 2026-08-13, and named `packaging/check-version-drift.sh`, which does not exist anywhere in the tree — so the live branch of that sentence had no route to the bump at all; and § 1.5 keyed the `Reviewed-by:` trailer to a `/indie-review` pass, a command that no longer exists. **§ 4.2 prescribed `git push --tags`**, which the global `~/.claude/CLAUDE.md` § 6 forbids by name and this project's `CLAUDE.md` repeats — while § 4.1 four lines above names that same global file as canonical, so the two halves of § 4 disagreed. **§ 7's "Pushing a release tag whose CI hasn't run / passed"** was unsatisfiable: no CI run is ever attached to a tag here, so one reader blocks the release forever and another tags as soon as `main` is green. **Three found by the orchestrator while verifying lane open questions:** the `chore:` / `docs:` subject forms collide with the `DS##` / `DOC##` phase IDs and both are live in this repo's history (69 category-prefix commits against 9 phase-ID ones), with only the second findable by an ID grep; § 4.1 said a private repo batches "5+ commits/tags", when a release tag can never legitimately queue; and both `Co-Authored-By:` examples froze `Claude Opus 4.8 (1M context)` while every commit in the last 30 carries `Claude Opus 5` — a conformer copies the literal and mis-attributes the commit. Two dismissed as changing no line: § 3.1's PR-or-direct-push parenthetical already covers this repo's direct-push default, and § 2.2 / § 7's "pre-commit hook" reads conditionally in a standard meant to be shared, though this repo ships only `pre-push`. Filed rather than fixed, as neighbouring documents with their own gates: the stale peer count and frozen model literal in `coding.md` / `testing.md`, and four live references to `/bump` under `packaging/`. |
+| 2 | 2026-08-19 | 3 × `review-lane`, cold, identical brief, packet rebuilt from disk | 2 | 2 | 1 | **Five verified, five fixed; nothing dismissed.** **Two of the five landed on text loop 1 wrote, and all three lanes found the first** — 4a-min's pattern at its clearest, since both landed in text a fix ADDED. Loop 1's § 2.3 said this project "grants exactly one" standing authorisation to skip a hook, and § 7's bullet said it "covers documentation pushes only"; `CLAUDE.md` grants a second and says so in terms — a `pip-audit` timeout against pypi or osv.dev fails the hook on a non-finding, and `git push --no-verify` is the sanctioned retry. So a conformer whose **code** push died on a network flake read § 2.3 as leaving them one lawful route (stop and ask) while `CLAUDE.md` told them to push. Fixed by deleting the count rather than correcting it: `CLAUDE.md` enumerates, this file does not, and a second copy of a list or its length is what goes stale. Loop 1's other addition — the § 7 bullet rekeying release-tag CI to "the **branch** run" — was unreachable under the tooling this document prescribes, because `cut-release` sends the commit and the tag up in one `--follow-tags` push (§ 4.2), so no prior run exists to inspect; rekeyed again to the pre-push gate, which runs the same `scripts/ci-local.sh` that `ci.yml` runs. **Three pre-existing.** § 6 told you to hand-run `gh release create` after the tag, while § 5 routes the release commit and tag through `cut-release`, which performs that command itself (`cut-release/SKILL.md:434`) — so a conformer following § 5 into § 6 runs it on a release that already exists. § 6's fenced block piped `$(extract-changelog-section X.Y.Z)` into `--notes`; that command exists nowhere in the tree (a whole-repo search returned exactly one hit, the line itself) and without `set -e` publishes a release with **empty notes** — replaced by the heredoc into `--notes-file -` that `scripts/release-linux.sh` itself uses, which also settles the block contradicting the sentence below it. And § 1.2's hotfix row required a `Refs: FIBR-NNNN` trailer for work with no roadmap entry while § 7 forbids citing an ID that was never assigned, saying nothing about when the back-filled ID is allocated — so one conformer guesses a number that will not match. **4a step 3 caught a false claim inside this loop's own fix**: the repair cited `.roadmap-counter` as the allocation route, and executing it showed the file reading `285` with `FIBR-0287` already on the roadmap. It is gitignored and re-derived when absent — a cache, not the allocator — so the fix now routes allocation to the roadmap DB and warns off the counter by name. Filed as **FIBR-0288**, since `roadmap-format.md` § 3.5.1 and `documentation.md:179` both still describe the counter as authoritative and each has its own gate. **Packet defect, not a document defect**: fact 10 still described two frozen `Claude Opus 4.8` literals loop 1 had already removed, and two lanes correctly reported it as evidence against the packet rather than filing a finding. Settled as non-findings: `.roadmap-counter` does exist so § 7's ID-verification route resolves; the scrubbed copy's line offsets are zero past line 300; and § 2.2 / § 7's conditional "pre-commit hook" and § 3.1's PR-or-direct-push parenthetical were each dismissed for a second consecutive loop. |
