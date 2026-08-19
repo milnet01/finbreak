@@ -6497,14 +6497,64 @@ because retrofitting them is a data migration.
 
   Adjacent and out of scope: FIBR-0086's import auto-detect and
   FIBR-0241's masked / trailing-digit matching both compare account
-  numbers alone. A bank on the account would narrow the candidate set
-  when two banks issue numbers sharing trailing digits, but making
-  auto-detect consume the field is separate work - file it as its own
-  item if wanted.
+  numbers alone. Now filed as FIBR-0284: a bank on the account gives
+  FIBR-0086's create-prompt somewhere to store the bank name it
+  already extracts, and is the precondition that makes FIBR-0241's
+  looser trailing-digit key safe to build.
   **Layman:** Add a "Bank" field to each account, so you can see at a glance which accounts are at which bank instead of having to match account numbers.
   Kind: feature.
   Source: user-request-2026-08-19.
   Lanes: ui, repositories, services.
+
+- 📋 [FIBR-0284] **Import auto-detect should use the account's bank as a matching signal, not the account number alone.**
+  BLOCKED ON FIBR-0283 (the `bank` field itself). File this now so the
+  dependency is visible; there is nothing to build until that field
+  exists.
+
+  FIBR-0086 shipped auto-detect matching on the FULL normalised account
+  number, and falls back to a manual pick whenever the number matches
+  zero or multiple accounts. Four places a bank on the account earns
+  its keep, in descending order of how real they are today:
+
+  1. It makes FIBR-0086's own create-prompt promise storable. That
+     bullet already says the prompt to create an unrecognised account
+     is "pre-filled from statement metadata (number, BANK NAME IF
+     PRINTED, type/currency where available)" - and there has never
+     been a field to put the bank name in. This is the one part that
+     is live the moment FIBR-0283 lands.
+
+  2. It is the precondition that makes FIBR-0241 safe. That item
+     loosens matching to trailing digits, which is a genuinely weaker
+     key; bank + last-four is materially safer than last-four alone.
+     Worth having in place BEFORE FIBR-0241 is built, not after.
+
+  3. Multi-match disambiguation. FIBR-0086's "matches multiple
+     accounts" branch currently falls back to a manual pick; a
+     detected bank narrows it to one. Theoretical against today's
+     single-bank corpus, and live the moment a second bank's account
+     is added.
+
+  4. A wrong-bank refusal signal. A statement clearly from bank X
+     whose only number match is an account at bank Y is evidence of a
+     collision rather than a match, and should refuse rather than
+     auto-file - cf. FIBR-0059, never silently import to the wrong
+     account.
+
+  Design note: detecting the bank FROM the statement is the limiting
+  factor, not storing it. The only dedicated reader today is Standard
+  Bank (FIBR-0050); other banks are FIBR-0074. So scope this to a
+  best-effort bank hint with a manual fallback, in the same
+  smart-default-never-silent shape FIBR-0086 already uses. Where no
+  bank can be read off the statement, behaviour must be exactly what
+  it is today.
+
+  Do NOT infer a bank from an account number's shape or prefix. That
+  is the fragile guess FIBR-0283 exists to remove, reintroduced one
+  layer down.
+  **Layman:** Once accounts know which bank they belong to, statement auto-filing can use that too - so it picks the right account when two accounts look alike, and refuses rather than guessing when the statement is clearly from a different bank.
+  Kind: feature.
+  Source: user-request-2026-08-19 (adjacency raised while filing FIBR-0283).
+  Lanes: services, importers, ui.
 
 ### ⚡ Performance
 
