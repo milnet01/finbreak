@@ -48,7 +48,7 @@ use a category prefix instead:
 
 | Type | Format | Example |
 |------|--------|---------|
-| Release | `X.Y.Z: theme — short summary` | `0.2.0: CSV/OFX import + duplicate detection` |
+| Release | `X.Y.Z: theme` | `0.2.0: CSV/OFX import + duplicate detection` |
 | Chore (debt sweep, gitignore tweak, dep bump) | `chore: short summary` | `chore: post-0.2.0 debt sweep` |
 | Doc-only (typo, README tweak not tracked on roadmap) | `docs: short summary` | `docs: fix typo in security-model.md INV-2 section` |
 | Hotfix with no ROADMAP entry yet | `fix: short summary`, no ID trailer | see §1.4 |
@@ -245,9 +245,17 @@ contexts.
 
 ## 5. Release commits (`Kind: release`)
 
-Release commits use the `X.Y.Z: theme — summary` format (the
-Release row of §1.2's table) plus a categorical body drawn from the
-CHANGELOG entry:
+Release commits use the `X.Y.Z: theme` format (the Release row of
+§1.2's table) plus a categorical body drawn from the CHANGELOG entry:
+
+**One line, one theme — there is no ` — summary` half.** Both forms
+carried one until 2026-08-19 (FIBR-0291) and neither worked example ever
+had it, so a conformer could not tell whether it was required, optional
+or dead text. It is dead text: `cut-release` § Phase 3 writes
+`<X.Y.Z>: <one-line theme>`, and not one release commit in this repo's
+history carries an em-dash segment. What *does* take the em-dash is the
+GitHub **release title** (`X.Y.Z — <theme>`, § 6's block) — a different
+string on a different object, and the likely source of the confusion.
 
 ```
 0.2.0: CSV/OFX import + duplicate detection
