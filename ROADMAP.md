@@ -1568,7 +1568,7 @@ scariest unknown (native-library bundling) up front.
   Kind: doc-fix.
   Source: in-session-2026-08-19 (review-contract loop 3 on commits.md, deferred tail at the cap).
 
-- 📋 [FIBR-0293] **`roadmap-format.md` states the store-backed carve-out five times and keeps missing one.**
+- 🚧 [FIBR-0293] **`roadmap-format.md` states the store-backed carve-out five times and keeps missing one.**
   `review-contract` reached its cap of 3 loops on this document
   (FIBR-0288) and the cap was **violent**: all 8 of loop 3's findings traced
   to text the run itself had written. Per the skill, a binding cap on a
