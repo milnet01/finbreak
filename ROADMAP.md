@@ -1223,6 +1223,31 @@ scariest unknown (native-library bundling) up front.
   Source: user-decision-2026-08-18.
   Progress (2026-08-18): the store is now in sync and this file is generated from it. Two renderer defects were found and one is fixed at source: a bullet whose bold headline wrapped across lines rendered its continuation at column 0, which markdown reads as a new list item — 18 such headlines were un-wrapped before the first render, and the fix is durable because the store now holds each headline on one line. The second is open and belongs to the MCP: there is no way to remove an item from the store, and re-ingesting a file without it marks it orphaned WITHOUT dropping it, so it is re-injected on the next render — an accidental append is permanent and self-resurrecting, and clearing one needs a direct DELETE on the shared roadmap.sqlite. Both are logged in the Ants MCP feedback file. Still to do here: amend § Where state lives so it names the DB as the source of truth rather than this file, and state the freshness check a session owes before writing.
 
+- 📋 [FIBR-0285] **The audit allowlist still keys its entries to `/code-quality-review`, a skill that no longer exists.**
+  `review-code` replaced `/code-quality-review` on 2026-08-18. CLAUDE.md item 6
+  was corrected in this gate, which exposed the copies:
+
+  - `docs/audit-allowlist.md` — 7 occurrences, and one of them is the ENTRY KEY
+    FORMAT: "Write new entries with `code-quality-review:R-N`" (line 22), with
+    a worked example at line 76. Existing entries already use that prefix, so
+    renaming it is a migration of the file's own data, not a word swap.
+  - `.claude/workflow.md` line 61 — step 6 of the nine-step loop, "Run
+    `/code-quality-review` — in parallel with 5". That list is a COPY; the
+    canonical nine steps live in `~/.claude/skills/app-workflow/SKILL.md`, so
+    editing it here alone makes the copy diverge from its source.
+
+  Filed rather than fixed in the gate that found it: neither is a sentence.
+  The allowlist half is a policy choice about existing entry keys, and the
+  workflow.md half needs the app-workflow skill changed first or it diverges.
+
+  Why it matters: the allowlist is this project's closed-loop memory for
+  confirmed false positives, and CLAUDE.md item 6 says to read it before
+  invoking `review-code`. A session that does read it finds entries keyed to a
+  skill it is not running.
+  **Layman:** Two project documents still name a review tool that was renamed, including the format of the allowlist's own entries — so the memory that stops repeat false positives is filed under a name nothing will look up.
+  Kind: doc-fix.
+  Source: in-session-2026-08-19 (review-contract loop 2 on CLAUDE.md, blast-radius sweep).
+
 ### 📦 Packaging
 
 - ✅ [FIBR-0003] **P01: bundling smoke-test (de-risk native libs early).**
@@ -4708,6 +4733,7 @@ because retrofitting them is a data migration.
   **Layman:** Let someone tag each account as Business or Personal (or custom groups) and view the two separately, so a person with both kinds of accounts keeps them apart while still staying under one login.
   Kind: investigate.
   Source: user-request-2026-07-14.
+  Source: user-request-2026-07-14 (friend / external tester).
 
 - ✅ [FIBR-0138] **Expandable dashboard drill-down (Income / Spending / Transfers → categories → merchant → transactions).**
   Designed in-session 2026-07-14 (three user-approved brainstorm decisions). Enhances the FIBR-0012 dashboard: keep the donut + 12-month trend charts as the snapshot, add an expanding tree below them that drills the numbers.

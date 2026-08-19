@@ -11,26 +11,31 @@ them, not up front.** § Resumption flow at the bottom of this file is the
 operative procedure and it governs — it reads 1–3 in one batch, summarises
 back, then pulls the *one* standard matching the active item's `Kind`. Do
 not read all six standards and the active spec before summarising: that is
-six-plus reads to answer a question the ROADMAP already answers.
+six-plus reads to answer a question the roadmap DB already answers.
 
 1. **This file** — stable rules and conventions.
 2. **The roadmap DB** — **the source of truth on current state**: what is
    open, in progress and next. `ROADMAP.md` is **generated from it**, and the
    generated file is what gets committed and pushed. **Never hand-edit that
    file** — the next render overwrites you. Query the DB with `roadmap_query`
-   (by `id` / `ids`, or `mode:"headline_only"`) rather than reading a 600 KB
-   file; write through `roadmap_log`, which enforces the format and
-   **re-renders the whole file on every write** (`items_rendered: 277` on a
-   one-item annotate) — that render is what overwrites a hand edit. Keep a bold headline on **one line**: a wrapped one renders
-   its continuation at column 0, which markdown reads as a new list item.
-   (User decision 2026-08-18, FIBR-0281.)
+   rather than reading a 600 KB file: **`status:"active"`** for the open items
+   (that is planned + in-progress — the resumption flow's call), `id` / `ids`
+   for one item with its body, `mode:"headline_only"` for a cheap survey.
+   Write through `roadmap_log`, which enforces the format and **re-renders the
+   whole file on every write** (`items_rendered: 277` on a one-item annotate)
+   — that render is what overwrites a hand edit. Keep a bold headline on **one
+   line**: a wrapped one renders its continuation at column 0, which markdown
+   reads as a new list item. (User decision 2026-08-18, FIBR-0281.)
 
-   **The freshness check a session owes before writing is a targeted
-   `roadmap_query` on the id it is about to touch — read the body back, and
-   read it back again after every flip or annotate**, because a note can land
-   mid-bullet and still report success. Two traps behind that: `roadmap_log`
-   locates against the **file** while `roadmap_query` reads the **store**, so
-   an item in one but not the other refuses `bullet_not_found`; and there is
+   **The freshness check a session owes before writing has two halves, because
+   the two verbs read different things.** `roadmap_query` on the id it is about
+   to touch, reading the body back — and again after every flip or annotate,
+   because a note can land mid-bullet and still report success. Then the
+   file-side half: `roadmap_log` locates against the **file** while
+   `roadmap_query` reads the **store**, so a store-only item is queryable but
+   not writable and refuses `bullet_not_found`. A `dry_run` on the write you
+   are about to make is the cheapest way to test both at once — it resolves
+   the locator and echoes `from_status`. And there is
    **no delete verb**, so an `append` cannot be undone — reverting the file
    with git leaves the item orphaned and the next render injects it back. Get
    an append right first time.
@@ -42,11 +47,14 @@ six-plus reads to answer a question the ROADMAP already answers.
    external merge, a restore from git. **Never on the strength of its
    counters**, which do not measure staleness: measured 2026-08-19 on a tree
    where every `ROADMAP.md` change had come through `roadmap_log`, a `dry_run`
-   still reported **10 items updated** (`body`, `layman`, `source`, `extras`),
-   because the render → parse round trip is not lossless. **So a non-dry run on
-   a clean tree is destructive** — its own `updated_items[]` is the plan to
-   write those re-parsed bodies over correct ones, in a store shared by every
-   project on this machine.
+   still reported **10 items updated** (`body`, `layman`, `source`, `extras`).
+   The cause is that the render → parse round trip is not lossless — **a
+   property of the round trip, so it applies to EVERY run, the sanctioned ones
+   included.** `updated_items[]` is the verb's plan to write those re-parsed
+   bodies over correct ones, in a store shared by every project on this
+   machine. **So always `dry_run` first and read `updated_items[]` item by
+   item**; anything you cannot account for as a real edit to the file is the
+   round trip, and a real run would clobber it.
 
 3. **`.claude/workflow.md` §1** — the small set of facts that
    live nowhere else: repo visibility, convergence checkpoint,
@@ -62,13 +70,14 @@ six-plus reads to answer a question the ROADMAP already answers.
    item; not every item has one (see § Spec discipline in the global
    rules — most work needs no spec).
 6. **`docs/audit-allowlist.md`** — read **additionally** before
-   invoking `check-code` or `/code-quality-review` so already-confirmed
+   invoking `check-code` or `review-code` so already-confirmed
    project-specific false positives aren't re-flagged. The
    allowlist is the closed-loop memory for this project — see
    the "False-positive learning" section of the `app-workflow`
    skill (`~/.claude/skills/app-workflow/audit-fold.md`).
-   (`check-code` replaced `/audit` on 2026-08-15; the allowlist
-   read is keyed to the job, not the old name.)
+   (`check-code` replaced `/audit` on 2026-08-15 and `review-code`
+   replaced `/code-quality-review` on 2026-08-18; the allowlist read is
+   keyed to the job, not the old name.)
 
 ## Closing a phase
 
