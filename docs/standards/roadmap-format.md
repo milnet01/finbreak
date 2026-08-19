@@ -13,6 +13,17 @@
 > `documentation.md` (§ 1–2 live there) and keeps its original
 > numbering so existing `documentation.md § 3 / § 4` cross-references
 > stay valid.
+>
+> **This copy's numbering does NOT track the machine-wide
+> `~/.claude/standards/roadmap-format.md`, which has since grown
+> sections this one does not carry.** The divergence that bites: there
+> § 3.9 is *Archive rotation* and anti-patterns are § 3.11, while here
+> § 3.9 is the anti-patterns. `cut-release` cites "`roadmap-format.md`
+> § 3.9" three times for rotation, so resolved against this file those
+> citations land on the wrong section. **Archive rotation is not
+> specified here at all** — read the machine standard for it. It is
+> not academic: `ROADMAP.md` is over 7,400 lines and this project has
+> no `docs/roadmap/`.
 
 ## 3. ROADMAP.md format spec
 
@@ -113,8 +124,9 @@ filter panel surfaces any emoji it sees in any `###` heading.
 ```markdown
 - 📋 [PROJ-0123] **One-line headline ending with a period.** Body
   spanning as many lines as needed; lines wrapped to roughly 70
-  columns. Cite `file:line` in backticks when relevant. End with
-  a `Lanes:` line declaring which subsystems own the work.
+  columns. Cite `file:line` in backticks when relevant. A
+  `Lanes:` line, where present, declares which subsystems own
+  the work and follows the body.
   Kind: implement.
   Lanes: SubsystemA, SubsystemB.
 ```
@@ -160,7 +172,12 @@ The ID is a project-prefixed monotonic integer:
 - **Append-only** — once assigned, an ID never changes. It
   survives rewording, moving, status flips, and even being
   deleted (a deleted ID is *retired*; the next new bullet uses
-  the next free number, not the deleted one).
+  the next free number, not the deleted one). **On a store-backed
+  project, moving and deleting are not available at all**:
+  `roadmap_log` has no delete op and no positional locator, so a
+  hand edit doing either is undone by the next render and the
+  item comes back. Retire such an item by flipping its status,
+  never by cutting it out of the file.
 
 **Who allocates an ID depends on whether the roadmap is
 store-backed.** On this project it is: `ROADMAP.md` is *rendered*
@@ -219,15 +236,19 @@ inserted (e.g. a `check-code` finding):
    hand-maintained.** On a store-backed project (§3.5.1) it is
    not available: `roadmap_log` appends to the end of the named
    section and takes no positional locator, and a hand edit that
-   moves a bullet is reverted by the next render. There, step 3
-   below is not decoration — the `Priority:` line is the only
-   carrier of priority the file has.
+   moves a bullet is reverted by the next render. **So position
+   there is append order and carries no priority at all** —
+   which makes step 3 below the only signal, rather than the
+   audit trail it is on a hand-maintained file.
 2. **Assign the next free ID.** Don't shuffle existing IDs to
    keep the section monotonic — that's the anti-pattern this
    sub-spec prevents.
-3. **Document the priority in the bullet body.** A line like
-   `Priority: CRITICAL — security blocker` makes the position
-   choice auditable.
+3. **Record the priority in the bold headline**, using §3.8's
+   severity prefix — `**CRITICAL — …**`, `**HIGH — …**`,
+   `**MEDIUM — …**`, `**LOW — …**`. That is the format's only
+   priority carrier: it is part of the headline the parser
+   already harvests, so it survives a re-render and needs no
+   field of its own.
 
 This means a section's IDs may be **non-monotonic** in document
 order (e.g. `0003, 0017, 0004, 0012`). That is correct and
@@ -323,13 +344,17 @@ roadmap"*, it MUST:
    item** — that status means scope or feasibility is still
    uncertain (§3.3), so it is flipped to 📋 by a human before
    anyone builds it.
-4. Tackle bullets in document order — *not* in ID order.
+4. Tackle bullets in document order — *not* in ID order. **On
+   a store-backed project, read the severity prefix instead**
+   (§3.5.2 step 3): position there is append order, so a
+   CRITICAL item folded in last sits last.
 5. When inserting new bullets (e.g. from an audit), follow
    §3.5.2.
 
 Do **not** "jump around" by ID. Do **not** reorder existing
-items to fit a perceived priority — let the human author make
-priority decisions through positioning.
+items to fit a perceived priority — that decision is the human
+author's, made through positioning on a hand-maintained file and
+through the headline severity on a store-backed one.
 
 ### 3.6 Current-work signaling
 
@@ -448,9 +473,14 @@ Conventions for any findings fold-in:
 - **Severity in the headline** — `**CRITICAL — …**`,
   `**HIGH — …**`, `**MEDIUM — …**`, `**LOW — …**`.
 - **Position by priority** — Tier-1 / CRITICAL items go above
-  existing Tier-2 / HIGH items.
-- **`Source:` may be left to the fold-in heading, which already
-  names it. `Kind:` may not — write it on every bullet (§3.5.3).**
+  existing Tier-2 / HIGH items. **Hand-maintained roadmaps
+  only**: on a store-backed project position is not authorable
+  (§3.5.2), and the severity prefix above is the carrier.
+- **Write `Kind:` and `Source:` on every bullet** (§3.5.3). The
+  source-stamped heading names the origin for human readers, but
+  nothing binds it to the bullet's `Source:` field — so a bullet
+  omitting the line reads as `Source: planned` to anything
+  counting by source.
 
 ### 3.9 ROADMAP anti-patterns
 
@@ -541,8 +571,17 @@ When a release ships:
 4. Released ROADMAP block changes from `(target: YYYY-MM)` to
    `shipped (YYYY-MM-DD)`.
 
-The `cut-release` skill automates steps 1–4 where a project
-uses it.
+**Steps 1 and 2 are mechanical here; steps 3 and 4 are not
+automated by anything.** `.claude/bump.json` carries a
+`CHANGELOG.md` entry that cuts `[Unreleased]` into the new dated
+section, and `cut-release` applies the bump recipe, so 1 and 2
+happen as part of the bump. It does **not** flip roadmap bullets:
+`~/.claude/skills/cut-release/SKILL.md` § Not its job says of
+steps 1 and 3: "This skill checks both and stops; it makes
+neither edit". Flip the bullets to ✅ before invoking it, or it
+stops and the stop reads like a tool failure. Step 4 is a heading
+change, and on a store-backed roadmap headings are rendered from
+the store, which no `roadmap_log` op renames.
 
 
 
@@ -551,3 +590,4 @@ uses it.
 | Loop | Date | Lanes | Q1 | Q2 | Q3 | Outcome |
 |---|---|---|---|---|---|---|
 | 1 | 2026-08-19 | 3 × `review-lane`, cold, genre pinned `standard`; packet carried the live counter/store measurements, the skill and command inventory, and the quoted `documentation.md` and `CLAUDE.md` windows | 1 | 8 | 1 | **Ten verified, ten fixed; none dismissed.** First gate ever run on this file (FIBR-0288). **Three defects were found independently by all three lanes**, the strongest signal in the run. **The most consequential is § 3.5.4 step 2**, which told an agent to work "the lowest version `##`" — while § 3.2 sanctions phase blocks for pre-1.0 projects and *every* `##` in this project's roadmap is `## P01`…`## P13`. So the execution contract had no defined starting block on exactly the projects § 3.2 says will use phase blocks: one runner stops, another picks arbitrarily. Restated as the first `##` in document order carrying a 📋 or 🚧, with non-work sections skipped (`## How to add an item` holds 0 status bullets, measured). **The `Kind:` contradiction was four-way and had been live since extraction**: § 3.5 and § 3.5.3 said **Required**, § 3.5.3's own opening called both fields "optional", a paragraph four lines later gave Kind-less bullets a silent `implement` default, § 3.9 said the lines are "usually inherited from the section", and the canonical example at § 3.5 carried no `Kind:` line at all. A validator built from one branch rejects what the other mandates; live data shows the split is real (256 `Kind:` lines against 284 rendered items). Settled toward Required — the store-backed writer demands `kind` on append — by deleting the default and the inheritance line and adding `Kind:` to the canonical bullet. The `Source: planned` default is true and was kept. **The prefix rule breached itself in the same sentence**: "4–6 ASCII letters, all caps" beside the examples `OBS` (3 letters) and `R5` (a letter and a digit), so a validator built from the rule rejects two IDs the standard offers as valid. Rule widened rather than examples dropped. **Two lanes found that this run's own § 3.5.1 fix had orphaned its neighbours** — § 3.5.2 and § 3.5.4 still taught hand-editing `ROADMAP.md` to place a bullet by priority, which on a store-backed project is reverted by the next render; `roadmap_log` appends to the end of a section and takes no positional locator, so position is not authorable there and the `Priority:` line is the only carrier. **One lane alone found step 3 admitted 💭** ("the first non-✅ bullet"), which starts research-phase work whose feasibility the author flagged as unknown; and **one alone found § 3.8's own example carries a wrapped bold headline**, the exact shape user decision FIBR-0281 forbids because the continuation renders at column 0 and splits the bullet. **Three found by the orchestrator:** § 3 said released work "moves out of the roadmap", while § 3.7 and § 4.3 retitle the block and keep the ✅ bullets in place (284 items rendered, ✅ included) — a release runner built from § 3 deletes them; § 4.2 closed the changelog categories to five while § 4 pins Keep a Changelog **1.1.0**, which defines six — `Deprecated` had no sanctioned home although this project's own `CHANGELOG.md` header and the `changelog_log` verb both carry it (verified against the 1.1.0 spec, not from recall); and the document named `/audit` ×3, `/indie-review` ×2 and `/release`, none of which can be invoked since the 2026-08-13/15 promotions. **The one Q3:** the `Kind:` list is explicitly closed and the theme list explicitly open, and `Source:` said neither — while this project already carries 71 bullets with an unlisted `Source: in-session-…`, so a Source filter gets written strict or permissive by guess. Stated open. **Settled as non-findings:** three lanes checked the rewritten § 3.5.1 counter paragraph against the live tree and none found anything false in it. **One packet defect, reported by a lane and accepted:** fact F5's rendered-bullet quote was cut short of the trailing `Kind:` / `Source:` lines, which made "the renderer drops `Kind:`" a reading the packet invited; the lane checked the file rather than trusting it. |
+| 2 | 2026-08-19 | 3 × `review-lane`, cold, identical brief, packet rebuilt from disk and its fact F5 repaired | 1 | 6 | 1 | **Eight verified, eight fixed; none dismissed.** **Six of the eight landed on text loop 1 wrote** — the largest class by far, and 4a-min's pattern exactly: every one is in what that loop *added*. **All three lanes found the run's only Q1, and it is loop 1's own**: the § 4.3 fix asserted "`cut-release` automates steps 1–4", and `~/.claude/skills/cut-release/SKILL.md` § Not its job says of steps 1 and 3 "This skill checks both and stops; it makes neither edit". A conformer would leave `[Unreleased]` populated and bullets at 🚧 expecting the tool to act, and read its stop as a tool failure. **This is what 4a step 3 exists to catch and the loop-1 fix pass did not run it** — the claim was written from the skill's name rather than from its text. Corrected against what the tree actually does: steps 1 and 2 *are* mechanical here because `.claude/bump.json` carries a `CHANGELOG.md` entry that cuts `[Unreleased]` into the dated section, while 3 and 4 are automated by nothing. **All three also found that loop 1 invented a field.** Its § 3.5.2 fix said "the `Priority:` line is the only carrier of priority the file has" — and `Priority:` is declared in neither the Required nor the Optional pieces, has no value set, and appears on **0 of the 284 rendered bullets** (the tree's only hit is `packaging/obs/debian/control`, an unrelated Debian field). Fixed by deletion rather than by defining it: § 3.8's severity prefix in the bold headline is a real, used carrier that rides inside the headline the parser already harvests, so the format needs no new field. That also collapsed a two-carrier contradiction one lane found on its own. **The third triple-agreement is 4a-min's classic miss**: loop 1 gave § 3.8's `Kind:`/`Source:` bullet a store-backed carve-out and left the bullet directly above it — "**Position by priority**" — untouched, so § 3.8 still told a conformer to hand-edit `ROADMAP.md` and lose the fold-in at the next render. **Two pre-existing, both real:** the § 3.5 template said a bullet ends "with a `Lanes:` line" while listing `Lanes:` as *optional* and the real render trails `Kind:` then `Source:` — a parser author reading it truncates every bullet's tail; and § 3.5.1's "survives … moving, and even being deleted" is unavailable on a store-backed project, where there is no delete op and no positional locator, so a hand deletion is undone and the item comes back. **The best single finding came from one lane and is a cross-document trap:** the machine-wide `~/.claude/standards/roadmap-format.md` numbers § 3.9 *Archive rotation* and anti-patterns § 3.11, while this copy's § 3.9 **is** the anti-patterns — and `cut-release` cites "`roadmap-format.md` § 3.9" three times for rotation. Resolved against this file those land on the wrong section, and it is not academic: `ROADMAP.md` is 7,436 lines with no `docs/roadmap/`. The header now states that this copy's numbering does not track the machine standard and that archive rotation is not specified here at all. **Settled as a non-finding:** two lanes raised the 256 `Kind:` lines against 284 items; that is a conformance gap in the project's data, which § 3.5.3 already routes to a backfill item, not a defect in the document. |
