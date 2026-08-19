@@ -21,8 +21,11 @@ sub-spec is **required** for any roadmap intended to render
 correctly in the Ants Terminal Roadmap dialog or be parsed
 deterministically by LLM agents.
 
-The roadmap is the single place to track unshipped work. Released
-work moves out of the roadmap into the CHANGELOG.
+The roadmap is the single place to track unshipped work. A
+shipped bullet is **not deleted** — it stays where it is as ✅
+under a block retitled `shipped (YYYY-MM-DD)` (§3.7), and it is
+the *user-facing* record of the work that moves to the
+CHANGELOG.
 
 ### 3.1 File header
 
@@ -112,6 +115,7 @@ filter panel surfaces any emoji it sees in any `###` heading.
   spanning as many lines as needed; lines wrapped to roughly 70
   columns. Cite `file:line` in backticks when relevant. End with
   a `Lanes:` line declaring which subsystems own the work.
+  Kind: implement.
   Lanes: SubsystemA, SubsystemB.
 ```
 
@@ -121,15 +125,16 @@ Required pieces:
 - **Stable ID** — `[PROJ-NNNN]` immediately after the emoji.
 - **Bold headline ending in a period** — stands alone as a
   one-line summary; this is what the dialog filters and the LLM
-  agent reads first.
+  agent reads first. **It must occupy a single source line.** A
+  wrapped headline renders its continuation at column 0, which
+  markdown reads as a new list item, so the bullet splits and the
+  parser harvests a truncated headline plus an orphan.
 - **`Kind: <kind>.`** — declares the type of work. One of the
-  ten values in §3.5.3. **Required** so the Roadmap
+  ten values in §3.5.3. **Required on every bullet, with no
+  exception and no section-level default**, so the Roadmap
   viewer (and any tooling that consumes the file
-  deterministically) can categorise without inferring from the
-  surrounding section heading. The dominant Kind for a section
-  may be inherited implicitly via a section-level convention,
-  but the canonical bullet form carries the field explicitly
-  to make every bullet self-describing.
+  deterministically) can categorise in one pass without
+  inferring from the surrounding section heading.
 
 Optional pieces:
 
@@ -146,9 +151,10 @@ Optional pieces:
 
 The ID is a project-prefixed monotonic integer:
 
-- **Prefix** — 4–6 ASCII letters, all caps. One per project.
-  Pick something short and grep-friendly. Examples: `ANTS`,
-  `MYPRJ`, `ENGINE`, `OBS`, `R5`.
+- **Prefix** — 2–6 ASCII characters, all caps, first character
+  a letter; digits allowed after it. One per project. Pick
+  something short and grep-friendly. Examples: `ANTS`, `MYPRJ`,
+  `ENGINE`, `OBS`, `R5`.
 - **Number** — zero-padded to 4 digits minimum (`0001`, `0042`,
   `1234`). Pad wider once a project crosses 9999.
 - **Append-only** — once assigned, an ID never changes. It
@@ -172,7 +178,7 @@ high-water mark, not the allocator**, and three things follow:
   no counter at all and nothing is lost.
 - **It lags.** `roadmap_log op:"append"` reconciles it and says
   so in its envelope (`counter_advanced_to`); `op:"append_batch"`
-  allocates the same way and does not. Measured 2026-08-19: the
+  allocates the same way and does not reconcile it at all. Measured 2026-08-19: the
   file read `288` while `FIBR-0291` was already on the roadmap.
 - **So counter arithmetic is not a way to allocate an ID.** A
   session that reads the counter and adds one names an ID that
@@ -201,13 +207,21 @@ This is the rule that everything else hangs on:
 Items in a section are executed **top-to-bottom**, regardless of
 their IDs. The ID identifies the bullet permanently; the
 position in the file declares its priority. When new items are
-inserted (e.g. a `/audit` finding):
+inserted (e.g. a `check-code` finding):
 
 1. **Insert at the position they should be tackled.** A
    CRITICAL audit finding goes near the top of the active
    release block (under the Tier-1 heading if one exists). A LOW
    finding goes lower. The author *chooses* the position based
    on priority.
+
+   **This step applies only where `ROADMAP.md` is
+   hand-maintained.** On a store-backed project (§3.5.1) it is
+   not available: `roadmap_log` appends to the end of the named
+   section and takes no positional locator, and a hand edit that
+   moves a bullet is reverted by the next render. There, step 3
+   below is not decoration — the `Priority:` line is the only
+   carrier of priority the file has.
 2. **Assign the next free ID.** Don't shuffle existing IDs to
    keep the section monotonic — that's the anti-pattern this
    sub-spec prevents.
@@ -228,8 +242,9 @@ represents. But different kinds of work have different
 follow-through (a documentation fix doesn't need a regression
 test; an audit-fix does), and different sources need
 traceability (a finding from a user report should remain
-attributable years later). Two optional metadata fields cover
-this without adding complexity to the bullet's surface form.
+attributable years later). Two metadata fields cover this without adding
+complexity to the bullet's surface form: `Kind:` on every
+bullet, `Source:` wherever it is not `planned`.
 
 **Recognised `Kind:` values:**
 
@@ -255,22 +270,27 @@ field on every bullet so the parser stays simple and one-pass.
 A backfill pass over the active roadmap is a `Kind: doc-fix`
 item.
 
-**Recognised `Source:` values:**
+**Recognised `Source:` values.** Unlike `Kind:`, this list is
+**open**: a project MAY add a value of its own on the same
+`<origin>-YYYY-MM-DD` shape, so a filter over `Source:` must be
+written to pass an unrecognised value through rather than reject
+it. (This project already carries `Source: in-session-YYYY-MM-DD`,
+which is not in the table below.)
 
 | Source | Meaning |
 |--------|---------|
 | `planned` | On the roadmap from project design (default; usually omitted) |
 | `user-YYYY-MM-DD` | User report on date YYYY-MM-DD |
-| `audit-YYYY-MM-DD` | `/audit` skill output on date YYYY-MM-DD |
-| `indie-review-YYYY-MM-DD` | `/indie-review` skill output on date YYYY-MM-DD |
-| `debt-sweep-YYYY-MM-DD` | `/debt-sweep` skill output on date YYYY-MM-DD |
+| `audit-YYYY-MM-DD` | `check-code` skill output on date YYYY-MM-DD |
+| `indie-review-YYYY-MM-DD` | `review-code` skill output on date YYYY-MM-DD |
+| `debt-sweep-YYYY-MM-DD` | `debt-sweep` skill output on date YYYY-MM-DD |
 | `doc-review-YYYY-MM-DD` | Documentation review on date YYYY-MM-DD |
 | `static-analysis` | ruff / bandit / semgrep ad-hoc (or other language-appropriate analysers) |
 | `regression` | Item was previously ✅ but a later change broke it |
 | `external-CVE-NNNN-NNNN` | Public CVE / advisory triggering this work |
 | `upstream-<dep>` | Driven by a dep / library upstream change |
 
-Most `/debt-sweep` findings get fixed inline during the sweep
+Most `debt-sweep` findings get fixed inline during the sweep
 itself (the skill's "trivial" bucket goes straight into a
 `chore: post-X.Y.Z debt sweep` commit) and never reach the
 roadmap. Only items the user must rule on (the "behavioural"
@@ -278,10 +298,12 @@ bucket) or items deferred as out-of-scope land here. Use
 `🧹 Debt-sweep fold-in (YYYY-MM-DD)` as the section heading and
 `Source: debt-sweep-YYYY-MM-DD` if declared explicitly.
 
-A bullet with no `Kind:` / `Source:` is implementation work for
-the planned roadmap (`Kind: implement`, `Source: planned`).
-That's the overwhelming majority case, so the format stays terse
-for it.
+A bullet with no `Source:` is `planned` — the overwhelming
+majority case, so the format stays terse for it. **`Kind:` has no
+matching default.** It is written on every bullet, because a
+parser that infers it from the section heading is no longer
+one-pass, and two readers of the same file would disagree about
+what a Kind-less bullet counts as.
 
 #### 3.5.4 LLM-agent execution contract
 
@@ -289,11 +311,18 @@ When an LLM agent (Claude Code, Codex, etc.) is told *"work the
 roadmap"*, it MUST:
 
 1. Read the file top-to-bottom.
-2. Skip past `##` release blocks until it finds the **active
-   release** (the lowest version `##` that contains any 📋 or 🚧
-   items).
-3. Within the active release, find the first non-✅ bullet under
-   each `###` theme section, prioritising 🚧 over 📋.
+2. Find the **active block** — the first `##` in document
+   order containing any 📋 or 🚧 item. This is stated in
+   document order rather than by version because §3.2 sanctions
+   phase blocks (`## P01 — Bootstrap`) for pre-1.0 projects, and
+   those cannot be ordered by version; a `##` section holding no
+   status bullets at all (`## How to add an item`) is not a
+   block and is skipped.
+3. Within the active block, find the first 🚧 or 📋 bullet under
+   each `###` theme section, prioritising 🚧. **Never start a 💭
+   item** — that status means scope or feasibility is still
+   uncertain (§3.3), so it is flipped to 📋 by a human before
+   anyone builds it.
 4. Tackle bullets in document order — *not* in ID order.
 5. When inserting new bullets (e.g. from an audit), follow
    §3.5.2.
@@ -361,8 +390,8 @@ appear in the 📋/🚧/💭 filters.
 
 ### 3.8 Findings fold-in subsections
 
-When an external review produces new items — `/audit`,
-`/indie-review`, a documentation review, a user bug report,
+When an external review produces new items — `check-code`,
+`review-code`, a documentation review, a user bug report,
 static-analysis run, an upstream advisory — fold them into a
 dedicated `###` subsection inside the active release block, with
 date and source stamped on the heading. The pattern is the same
@@ -401,10 +430,10 @@ Trivial findings were fixed inline during the sweep — see
 `chore: post-0.7.55 debt sweep` commit. The bullets below are
 the "behavioural" findings the user opted to defer.
 
-- 📋 [ANTS-0540] **`tests/features/vt_throughput/` invariant
-  list grew but spec.md unchanged.** Kind: test. Lanes: tests.
-- 📋 [ANTS-0541] **`README.md § Plugins` references removed
-  `ants.fs.read`.** Kind: doc-fix. Lanes: docs.
+- 📋 [ANTS-0540] **Invariant list grew but spec.md unchanged.**
+  `tests/features/vt_throughput/`. Kind: test. Lanes: tests.
+- 📋 [ANTS-0541] **`README.md § Plugins` cites a removed verb.**
+  It names `ants.fs.read`. Kind: doc-fix. Lanes: docs.
 ```
 
 Conventions for any findings fold-in:
@@ -420,7 +449,8 @@ Conventions for any findings fold-in:
   `**HIGH — …**`, `**MEDIUM — …**`, `**LOW — …**`.
 - **Position by priority** — Tier-1 / CRITICAL items go above
   existing Tier-2 / HIGH items.
-- **Kind/Source lines are usually inherited from the section.**
+- **`Source:` may be left to the fold-in heading, which already
+  names it. `Kind:` may not — write it on every bullet (§3.5.3).**
 
 ### 3.9 ROADMAP anti-patterns
 
@@ -491,8 +521,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Dated sections in **reverse chronological order**.
 - `**Theme:**` line is one sentence; sets the release's
   character.
-- Bullets categorical: Added / Changed / Fixed / Removed /
-  Security. Don't invent new categories.
+- Bullets categorical: Added / Changed / Deprecated / Removed /
+  Fixed / Security — the six Keep a Changelog 1.1.0 defines, and
+  the six `changelog_log` accepts. Don't invent new categories.
 - Bullets terse — one line each. Body paragraphs go in commits.
 - **Cite ROADMAP IDs** in bullets when applicable: `Added: live
   search filter (ANTS-1042).`. The bidirectional link helps
@@ -510,6 +541,13 @@ When a release ships:
 4. Released ROADMAP block changes from `(target: YYYY-MM)` to
    `shipped (YYYY-MM-DD)`.
 
-The `/release` skill (if used) automates steps 1–4.
+The `cut-release` skill automates steps 1–4 where a project
+uses it.
 
 
+
+## Cold-eyes loop log
+
+| Loop | Date | Lanes | Q1 | Q2 | Q3 | Outcome |
+|---|---|---|---|---|---|---|
+| 1 | 2026-08-19 | 3 × `review-lane`, cold, genre pinned `standard`; packet carried the live counter/store measurements, the skill and command inventory, and the quoted `documentation.md` and `CLAUDE.md` windows | 1 | 8 | 1 | **Ten verified, ten fixed; none dismissed.** First gate ever run on this file (FIBR-0288). **Three defects were found independently by all three lanes**, the strongest signal in the run. **The most consequential is § 3.5.4 step 2**, which told an agent to work "the lowest version `##`" — while § 3.2 sanctions phase blocks for pre-1.0 projects and *every* `##` in this project's roadmap is `## P01`…`## P13`. So the execution contract had no defined starting block on exactly the projects § 3.2 says will use phase blocks: one runner stops, another picks arbitrarily. Restated as the first `##` in document order carrying a 📋 or 🚧, with non-work sections skipped (`## How to add an item` holds 0 status bullets, measured). **The `Kind:` contradiction was four-way and had been live since extraction**: § 3.5 and § 3.5.3 said **Required**, § 3.5.3's own opening called both fields "optional", a paragraph four lines later gave Kind-less bullets a silent `implement` default, § 3.9 said the lines are "usually inherited from the section", and the canonical example at § 3.5 carried no `Kind:` line at all. A validator built from one branch rejects what the other mandates; live data shows the split is real (256 `Kind:` lines against 284 rendered items). Settled toward Required — the store-backed writer demands `kind` on append — by deleting the default and the inheritance line and adding `Kind:` to the canonical bullet. The `Source: planned` default is true and was kept. **The prefix rule breached itself in the same sentence**: "4–6 ASCII letters, all caps" beside the examples `OBS` (3 letters) and `R5` (a letter and a digit), so a validator built from the rule rejects two IDs the standard offers as valid. Rule widened rather than examples dropped. **Two lanes found that this run's own § 3.5.1 fix had orphaned its neighbours** — § 3.5.2 and § 3.5.4 still taught hand-editing `ROADMAP.md` to place a bullet by priority, which on a store-backed project is reverted by the next render; `roadmap_log` appends to the end of a section and takes no positional locator, so position is not authorable there and the `Priority:` line is the only carrier. **One lane alone found step 3 admitted 💭** ("the first non-✅ bullet"), which starts research-phase work whose feasibility the author flagged as unknown; and **one alone found § 3.8's own example carries a wrapped bold headline**, the exact shape user decision FIBR-0281 forbids because the continuation renders at column 0 and splits the bullet. **Three found by the orchestrator:** § 3 said released work "moves out of the roadmap", while § 3.7 and § 4.3 retitle the block and keep the ✅ bullets in place (284 items rendered, ✅ included) — a release runner built from § 3 deletes them; § 4.2 closed the changelog categories to five while § 4 pins Keep a Changelog **1.1.0**, which defines six — `Deprecated` had no sanctioned home although this project's own `CHANGELOG.md` header and the `changelog_log` verb both carry it (verified against the 1.1.0 spec, not from recall); and the document named `/audit` ×3, `/indie-review` ×2 and `/release`, none of which can be invoked since the 2026-08-13/15 promotions. **The one Q3:** the `Kind:` list is explicitly closed and the theme list explicitly open, and `Source:` said neither — while this project already carries 71 bullets with an unlisted `Source: in-session-…`, so a Source filter gets written strict or permissive by guess. Stated open. **Settled as non-findings:** three lanes checked the rewritten § 3.5.1 counter paragraph against the live tree and none found anything false in it. **One packet defect, reported by a lane and accepted:** fact F5's rendered-bullet quote was cut short of the trailing `Kind:` / `Source:` lines, which made "the renderer drops `Kind:`" a reading the packet invited; the lane checked the file rather than trusting it. |
