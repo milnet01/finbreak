@@ -49,9 +49,9 @@ The roadmap is the single place to track unshipped work. A
 shipped bullet is **not deleted** — it stays where it is as ✅
 under a block retitled `shipped (YYYY-MM-DD)` (§3.7 — that
 retitle is hand-maintained only; store-backed, the ✅ alone
-carries it, §3.0), and it is
-the *user-facing* record of the work that moves to the
-CHANGELOG.
+carries it, §3.0), and a **shipped** one is the user-facing
+record of the work that moves to the CHANGELOG. A ✅ that
+records work deliberately *not* built is not (§3.0).
 
 ### 3.0 Two modes: hand-maintained and store-backed
 
@@ -82,9 +82,9 @@ it as hand-maintained unless it says otherwise:
 | Operation | Store-backed reality |
 |---|---|
 | **Positioning a bullet** by priority | `roadmap_log` appends to the end of the named section and takes no positional locator. Position is append order and carries no priority. **Nothing fully replaces it:** §3.8's severity prefix is available on any bullet but *required only inside a §3.8 findings fold-in*, so an ordinary bullet carrying none sorts after the prefixed ones, in document order (§3.5.4 step 4). Measured: zero of this project's 285 bullets carry one, so priority is currently not expressed at all. |
-| **Moving or deleting a bullet** | There is no delete op and no positional locator, so either hand edit is reverted and the item comes back. Close an item you will not build by flipping it **✅ with a body note saying why** — ✅ is the only terminal status §3.3 defines, so a closed-unbuilt item joins the shipped census and that note is the only thing distinguishing it. Never cut it out of the file. |
+| **Moving or deleting a bullet** | There is no delete op and no positional locator, so either hand edit is reverted and the item comes back. Close an item you will not build by flipping it **✅ with a body note saying why** — ✅ is the only terminal status §3.3 defines, so a closed-unbuilt item joins the shipped census and that note is the only thing distinguishing it. **It is not user-facing work: never write a CHANGELOG line for it**, and never cut it out of the file. |
 | **Retitling a heading** — `(target: …)` → `shipped (…)` | The heading is rendered from the store's section title and no `roadmap_log` op renames a section. Shipped-ness is carried by the bullets' ✅ alone. |
-| **Allocating an ID** from `.roadmap-counter` | `roadmap_log` allocates from the store and returns the ID in its write envelope. The counter is a lagging cache, so counter arithmetic names an ID that already belongs to another bullet (§3.5.1). |
+| **Allocating an ID** from `.roadmap-counter` | `roadmap_log` allocates from the store and returns the ID in its write envelope. The counter is a cache that **may** lag, and the file does not say whether it has, so counter arithmetic can name an ID that already belongs to another bullet (§3.5.1). |
 
 **Two more run the other way, and a store-backed author needs
 both to know whether they have breached.** §3.1's format marker
@@ -156,6 +156,14 @@ Every actionable bullet starts with one of four status emojis:
 
 Plain narration bullets without a status emoji are allowed but
 won't match any status filter — they render as context-only.
+
+**A line carrying a status emoji but no `[PROJ-NNNN]` is not an
+actionable bullet either.** Every status filter and every census
+skips it; only emoji **plus** ID counts. This is not a
+hypothetical shape — the render emits four of them in this
+project's preamble as the status legend (`- 📋 Planned (next up
+for this phase)` and three siblings), ahead of the first `##`,
+so §3.5.4 step 2's active-block scan never reaches them.
 
 **Status transitions** follow `💭 → 📋 → 🚧 → ✅`. A bullet can
 skip 🚧 if the work is small enough to ship in one commit, but
@@ -259,14 +267,18 @@ high-water mark, not the allocator**, and three things follow:
   since 2026-07-14 (commit `0b5c995`) on the grounds that it is
   re-derived from `ROADMAP.md` when absent, so a fresh clone has
   no counter at all and nothing is lost.
-- **It lags.** `roadmap_log op:"append"` reconciles it and says
+- **It can lag, and the file never says whether it has.**
+  `roadmap_log op:"append"` reconciles it and says
   so in its envelope (`counter_advanced_to`); `op:"append_batch"`
   allocates the same way and does not reconcile it at all. Measured 2026-08-19: the
   file read `288` while `FIBR-0291` was already on the roadmap.
 - **So counter arithmetic is not a way to allocate an ID.** A
-  session that reads the counter and adds one names an ID that
-  already belongs to another bullet — permanently, because IDs
-  are append-only and a pushed commit cannot be rewritten.
+  session that reads the counter and adds one **may** name an ID
+  that already belongs to another bullet — and the damage is
+  permanent, because IDs are append-only and a pushed commit
+  cannot be rewritten. Finding the counter level proves nothing:
+  it says an `append` reconciled it, not that an `append_batch`
+  will not un-level it before you write.
 
 Hand-maintained, the counter *is* the high-water mark and the
 recipe below is the allocator. Store-backed it allocates a
@@ -392,7 +404,7 @@ bucket) or items deferred as out-of-scope land here. Use
 A bullet with no `Source:` is `planned` — the overwhelming
 majority case, so the format stays terse for it. **`Kind:` has no
 matching default.** It is written on every actionable bullet
-(§3.3 narration bullets carry none), because a
+(§3.3's two non-actionable shapes carry none), because a
 parser that infers it from the section heading is no longer
 one-pass, and two readers of the same file would disagree about
 what a Kind-less bullet counts as.
@@ -412,10 +424,12 @@ roadmap"*, it MUST:
    block and is skipped.
 3. Within the active block, find the first 🚧 or 📋 bullet under
    each `###` theme section, prioritising 🚧. **Store-backed
-   (§3.0), take the highest-severity one rather than the first**
-   — position there is append order, so a CRITICAL item appended
-   last would otherwise never enter the selection at all.
-   **Never start a 💭
+   (§3.0), take the highest-severity 🚧, else the
+   highest-severity 📋** — position there is append order, so a
+   CRITICAL item appended last would otherwise never enter the
+   selection at all. Where no bullet in the theme carries a
+   prefix, which is this project today, take the first in
+   document order. **Never start a 💭
    item** — that status means scope or feasibility is still
    uncertain (§3.3), so it is flipped to 📋 by a human before
    anyone builds it.
@@ -522,7 +536,7 @@ and heading wording change.
 
 ### 📚 Documentation review fold-in (2026-04-15)
 
-- 📋 [ANTS-0530] **PLUGINS.md OSC 8 surface mismatches code.**
+- 📋 [ANTS-0530] **MEDIUM — PLUGINS.md OSC 8 surface mismatches code.**
   Doc says `osc-8-handler`, code uses `osc8-handler`.
   Kind: doc-fix.
   Source: doc-review-2026-04-15.
@@ -538,12 +552,12 @@ Trivial findings were fixed inline during the sweep — see
 `chore: post-0.7.55 debt sweep` commit. The bullets below are
 the "behavioural" findings the user opted to defer.
 
-- 📋 [ANTS-0540] **Invariant list grew but spec.md unchanged.**
+- 📋 [ANTS-0540] **MEDIUM — Invariant list grew but spec.md unchanged.**
   `tests/features/vt_throughput/`.
   Kind: test.
   Source: debt-sweep-2026-04-28.
   Lanes: tests.
-- 📋 [ANTS-0541] **`README.md § Plugins` cites a removed verb.**
+- 📋 [ANTS-0541] **LOW — `README.md § Plugins` cites a removed verb.**
   It names `ants.fs.read`.
   Kind: doc-fix.
   Source: debt-sweep-2026-04-28.
@@ -694,3 +708,4 @@ the recipe would then insert a second dated heading.
 | 3 | 2026-08-19 | 3 × `review-lane`, cold, identical brief, packet rebuilt from disk | 0 | 6 | 2 | **Eight verified, eight fixed; one dismissed. Cap reached (3 for a standard); the run files its tail and exits.** **This is a VIOLENT cap and the number says so: all eight findings trace to text this run wrote** — five anchored directly in loop 1's or loop 2's additions, and the other three on pre-existing passages that only became contradictions when this run's carve-outs landed beside them. Nothing in the loop suggested a fourth would stop, which is the argument for the deletions below rather than another rewrite. **Not one Q1** — every defect was two passages disagreeing. **One dismissal, and it is the run's most useful negative result.** All three lanes reported that loop 2's § 4.3 fix was false where it says `[Unreleased]` is cut by the bump: `cut-release` § Not its job says of steps 1 and 3 "This skill checks both and stops; it makes neither edit". Opening the skill's **Phase 0e** settles it the other way — "**Unless the recipe performs the cut itself — then 0e passes** … **So read the recipe before stopping**" — and this project's recipe does perform it. The claim stands. **But three cold readers misreading one sentence identically is evidence about the sentence, not about the readers**, so it is fixed as a Q2: the paragraph now cites Phase 0e, scopes the § Not its job quote to step 3, and warns not to hand-cut `[Unreleased]` as well, which one lane traced to a **second** dated heading that `post_check`'s grep would pass. **The largest class is one rule stated in four or five places, with the carve-out reaching only some of them.** Loop 1 and loop 2 gave §§ 3.5.2, 3.5.4 and 3.8 a store-backed carve-out on position-is-priority and left § 3.9's anti-pattern and § 3.5.2's own closing paragraph unqualified — two lanes found it. The same shape hit `Kind:`: loop 1 wrote "Required on every bullet, with no exception" while § 3.5.3 says "every **actionable** bullet" and § 3.3 sanctions narration bullets that carry no status emoji, so a coverage checker built from one flags every narration bullet — found by two lanes, and a **third** statement of the rule was corrected by the post-fix sweep rather than by any lane. And loop 2's § 3.8 rewrite ("nothing binds [the heading] to the bullet's `Source:` field") left § 3.5's "when the section heading doesn't already make that clear" and § 3.5.3's "if declared explicitly" saying the opposite — all three lanes. **Two Q3s, both an obligation with no mechanism.** Loop 2's ordering fix told a store-backed agent to read the severity prefix, and only fold-in bullets carry one — so ordinary bullets had no rule at all; the fallback is now stated. And §§ 3 and 3.7 require a released block to be retitled `shipped (YYYY-MM-DD)` while loop 2's § 4.3 addition says no `roadmap_log` op renames a heading — the document named the obstacle and never said what to do instead; § 3.7 now states that shipped-ness is carried by ✅ alone there. **The best single finding came from one lane and is this run's own collateral at its most dangerous:** loop 2's header note called the § 3.9 archive-rotation divergence "not academic" and cited a 7,436-line `ROADMAP.md`, which invites the hand snip — and the machine standard's § 3.12 says "No store operation performs rotation today", so on a store-backed roadmap that edit is lost at the next render. The note now says so. **Deferred tail: none** — every verified finding was fixed inside the cap. |
 | 4 | 2026-08-19 | 3 × `review-lane`, cold, genre pinned `standard`; packet carried the complete `roadmap_log` op enum, live roadmap counts, `bump.json`, `cut-release` Phase 0e, and an explicit unverifiable-region note for the Ants Terminal viewer | 2 | 4 | 2 | **Eight verified, eight fixed; one dismissed. First loop of a NEW run** (trigger FIBR-0293, the structural fix the 2026-08-19 run's violent cap asked for — the store-backed carve-out now stated once in the new § 3.0 instead of seven times). **All three lanes independently found the run's best defect, and it is pre-existing rather than this run's:** § 4.1 and § 4.3 spell the dated changelog heading `## [X.Y.Z] — YYYY-MM-DD` with an EM DASH, while this project's `CHANGELOG.md` (all 21 released sections), `.claude/bump.json`'s `replace` string and that recipe's `post_check` grep (`^## \[$V\] - `) all use an ASCII HYPHEN. So a conformer hand-authoring or hand-repairing a dated section follows the standard and writes a heading the release gate then refuses. **Verifying that fix found its cause and a second defect:** the em dash comes from the machine-wide `~/.claude/standards/changelog-format.md`, which says the same thing — so the fix creates a CONTENT divergence from upstream where only a numbering divergence had been declared. Declared in the header note rather than left silent; the machine standard is the one that is wrong and fixing it is its own change under its own gate, filed rather than carried here. **Two Q3s, both an obligation with no mechanism, and both about what the RENDER does rather than what it refuses.** § 3.1 requires a format-version marker in the first five lines and § 3.2 advises an explicit `<a name>` anchor for stable cross-references; no `roadmap_log` op writes either, so a store-backed author could not tell whether they had breached. Measured: the marker IS emitted (line 1 of the 7,567-line render) and explicit anchors are neither emitted nor addable (zero in the render). § 3.0 now states both, because a section listing only what is UNAVAILABLE leaves the reader to guess about everything the render supplies. **The largest class was this run's own collateral, all of it in § 3.0's new text.** Its escape clause read "Where a **later** section teaches one" — and the § 3 preamble, which states the `shipped (YYYY-MM-DD)` retitle unconditionally, sits ABOVE § 3.0; two lanes found it. Widened to any other section and the preamble qualified in place. **One Q1 no lane found, and it is the previous run's loop-3 fix:** § 3.5.4 step 4 said "Only fold-in bullets carry a prefix (§ 3.8)" — measured, **zero** of 285 bullets carry a severity prefix and this roadmap has no fold-in sections at all, so the sentence was written from § 3.8's shape rather than from the data, and as a permission scope it contradicted § 3.5.2 step 3 (all three lanes). Deleted rather than corrected; nothing now restricts the prefix to fold-ins. The same edit settled one lane's separate finding that step 3's "prioritising 🚧" and step 4's severity order named different winners — severity now ranks WITHIN step 3's selection. **One dismissal, and two of three lanes called it right:** § 3.5.1's "Measured 2026-08-19: the file read `288`" reads against a live `.roadmap-counter` of 293, but the claim is true as a dated measurement and the paragraph already explains the gap (`op:"append"` reconciles, `append_batch` does not). True and inert — recorded, not fixed. |
 | 5 | 2026-08-19 | 3 × `review-lane`, cold, identical brief, packet rebuilt from disk with the newly measured prefix / anchor / counter facts added | 0 | 2 | 4 | **Six verified, six fixed. Not one Q1** -- every defect was an obligation with no mechanism, or two passages disagreeing. **All three lanes independently found the run's deepest defect, and it is what centralising the branch into § 3.0 exposed:** § 3.0 called § 3.8's severity prefix the priority carrier store-backed, and the prefix is mandated NOWHERE outside a § 3.8 findings fold-in -- § 3.5's Required pieces omit it, § 3.5.2 step 3 is scoped to insertions, and **zero of 285 rendered bullets carry one** with no fold-in sections in the file at all. So the document promised a priority mechanism that does not exist: an implementer building § 3.5.4 step 4's ranker ships a sorter with nothing to sort on. All three lanes proposed making the prefix REQUIRED; that is refused here and surfaced instead, because mandating it puts 285 bullets in breach at a stroke -- the precise situation loop 1 of the previous run declined to create for `Kind:`. What is fixed is the over-claim: the prefix is optional outside a fold-in, an ordinary bullet without one is unranked, and § 3.0 now records that priority is currently not expressed at all. **4a step 3's refute-the-claim rule caught the fix's own first draft**, which read *required on none* -- § 3.8 does mandate it for fold-in bullets, so the replacement was false in the other direction. Narrowed before it landed. **Two lanes found that the retirement instruction named no status.** § 3.0 said *retire an item by flipping its status* while § 3.3 defines four and none means retired, so one author flips ✅ (joining the shipped census), another parks it 📋 (where § 3.5.4 hands it to an agent to build). Settled by describing what this project does -- ✅ plus a body note -- and stating the census consequence rather than inventing a fifth emoji. **One lane found this run's own loop-1 collateral:** that fix said the prefix ranks *within step 3's selection*, and step 3 selects the FIRST bullet per theme section, so a CRITICAL appended last is never IN the selection its prefix was supposed to rank. Step 3 now takes the highest-severity candidate store-backed; step 4 ranks across sections. **One lane found the § 3.5.2 sentence the whole section hangs on** -- *the position in the file declares its priority* -- carrying no mode flag, while step 1 below it and the closing paragraph both carry one. The FIBR-0293 pattern one more time, in the framing sentence rather than in a rule. **One lane found field placement was never stated and the document's own two examples disagree:** § 3.5's canonical bullet puts `Kind:` and `Lanes:` on their own lines (as the render does), while § 3.8's two example bullets trail them after prose on a shared line. A parser anchored on the line start harvests nothing from the § 3.8 shape. Rule stated in § 3.5; both § 3.8 examples corrected. **One lane found § 3.5.3 names the harm of inferring `Kind:` and never states the consumer's contract on breach** -- live at 257 `Kind:` lines against 285 bullets. A Kind-less bullet is now *unclassified*, never inferred and never defaulted. **One packet defect, found by a lane and accepted:** fact F2 called the four ID-less emoji bullets *narration bullets*; they are the roadmap preamble's status LEGEND. The lane declined to settle it rather than reporting a document finding, which is the right call. |
+| 6 | 2026-08-19 | 3 × `review-lane`, cold, identical brief, packet rebuilt from disk with fact F2's legend mislabel repaired and F14 (where the severity prefix IS mandated) added | 1 | 3 | 1 | **Five verified, five fixed; none dismissed. Cap reached (3 for a standard); the run files its tail and exits.** **This is a CALM cap, and the number says so: 2 of the 5 findings land on text this run wrote, against 8 of 8 at the previous run's cap.** The majority were defects the document already held, which is the cap binding because there was more to find than three loops could hold — not the run oscillating. **All three lanes found this run's own loop-2 collateral**, and it is the clearest single result: loop 2 gave § 3.5.4 step 3 a store-backed override reading *take the highest-severity one rather than the first*, which was neither scoped to step 3's own 🚧-first rule nor given a fallback — so in a theme holding an unprefixed 🚧 and a CRITICAL 📋 one agent takes each, and on this project, where **no** bullet carries a prefix, the rule forbade taking the first and named no alternative at all. Now: highest-severity 🚧, else highest-severity 📋, else the first in document order. **Two lanes found the other half of loop 2's retirement fix.** That fix routed a closed-unbuilt item to ✅ and mitigated only the *census* consequence, while the § 3 preamble binds a ✅ bullet to the CHANGELOG as *the user-facing record of the work* — so a release author deriving entries from the ✅ set publishes a line for work deliberately never built. Both ends fixed: § 3.0 forbids the CHANGELOG line, the preamble is narrowed to a **shipped** ✅. **Two lanes found a shape the document has never classified**, and it is emitted by the render on every project: a line carrying a status emoji and no `[PROJ-NNNN]`. § 3.3 defined only *emoji + ID* (actionable) and *no emoji* (narration); the four status-legend lines in this project's preamble are neither, so two censuses of one file differ by four. § 3.3 now names the shape and excludes it, and § 3.5.3's parenthetical — which named narration as the only exempt shape — was corrected by the post-fix sweep rather than by any lane. **Two lanes found § 3.8's own examples breaching § 3.8's own convention**: its rule list requires a severity prefix on a fold-in bullet, and the three *complete* templates (ANTS-0530/0540/0541) — the ones an author copies, being the only ones showing `Kind:`/`Source:`/`Lanes:` — carry none, while the four abbreviated ones do. Prefixes added. **The run's one Q1 came from a single lane and sharpens a loop-2 dismissal rather than reversing it.** Loop 2 dismissed the *dated measurement* as true and inert, correctly. This lane found the *rule* built on it stated absolutely: *counter arithmetic names an ID that already belongs to another bullet*, and **It lags.** as a standing property — while `.roadmap-counter` is level with the highest ID today, so a reader who checks finds the premise false and takes the forbidden route. Narrowed to *may* lag, with the prohibition resting on unknowability: finding the counter level says an `append` reconciled it, not that an `append_batch` will not un-level it before you write. **Settled as non-findings:** § 4.2's *the six `changelog_log` accepts* — that verb's `category` enum is exactly those six, checked against the schema; nine lanes across three loops raised it as an open question because the packet never carried the fact, which is an orchestrator miss rather than a lane one. And § 3.7's `**Theme:**` line plus § 3.8's section prose are writable store-backed via `create_section`'s `intro_body` (two `**Theme:**` lines exist in the render), so they are not a fifth carve-out. **Deferred tail: none** — every verified finding was fixed inside the cap. |
