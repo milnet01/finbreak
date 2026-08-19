@@ -3803,7 +3803,7 @@ lands on top.
   peer count) and FIBR-0237 (no SECURITY.md / CODE_OF_CONDUCT.md
   though § 2.4/§ 2.5 require both here).
 
-- 📋 [FIBR-0236] **Three standards still say "the other three standards" and list three.**
+- ✅ [FIBR-0236] **Three standards still say "the other three standards" and list three.**
   `coding.md:4-5`, `commits.md:4-5` and `testing.md:4-5` each open
   "Pairs with the other **three** standards in this folder" and then
   name three. There are five others. All three lines date from the P00
@@ -3828,6 +3828,24 @@ lands on top.
   **Layman:** Three of the rulebooks still describe a smaller set of rulebooks than the project actually has.
   Kind: doc-fix.
   Source: cold-eyes-2026-08-05 (FIBR-0230 loop 1, surfaced not fixed).
+  Resolved (2026-08-19) — by two other items, neither of which knew this one
+  existed. Closed on its own stated verification, run today.
+
+  `commits.md` was fixed on 2026-08-19 by its own `review-contract` gate
+  (FIBR-0279), which dropped the list as well as the count. `coding.md` and
+  `testing.md` were fixed the same day by FIBR-0286, which enumerated all five
+  peers and named no count — the route this bullet asked for ("drop the numeral
+  rather than correct it, or it rots again on the next standard added").
+
+  Verification as written here: `grep -rn 'other three standards'
+  docs/standards/` returns **0**, and all six mastheads name their peers
+  correctly.
+
+  Worth recording, because it cost real duplicated work: this bullet and
+  FIBR-0286 are the same defect found twice, fourteen days apart, by two cold
+  reads that each swept the blast radius of a neighbouring document. Neither
+  found the other's roadmap entry. A `roadmap_query` on the defect's own words
+  before filing would have caught it.
 
 - 📋 [FIBR-0237] **No SECURITY.md and no CODE_OF_CONDUCT.md, though the standard requires both here.**
   `documentation.md § 2.4` requires `SECURITY.md` for a project that
