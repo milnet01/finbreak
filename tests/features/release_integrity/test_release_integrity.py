@@ -113,6 +113,27 @@ def _gh_release_blocks(text: str) -> list[str]:
     ]
 
 
+def _post_publish_readback(text: str) -> tuple[int, str] | None:
+    """Position + text of a ``gh release view … --json assets`` call occurring
+    STRICTLY AFTER the script's last publish command (``gh release
+    create``/``upload``), plus everything from that call to end-of-file (the
+    guard region). ``None`` if there is no publish command, or no such
+    read-back after it — the FIBR-0275 defect: neither script reads its
+    assets back at all."""
+    blocks = _gh_release_blocks(text)
+    if not blocks:
+        return None
+    publish_end = max(text.index(b) + len(b) for b in blocks)
+    after = text[publish_end:]
+    for m in re.finditer(r"gh release view\b", after):
+        end = _command_end(after, m.start())
+        candidate = after[m.start() : end]
+        if "--json" in candidate and "assets" in candidate:
+            abs_start = publish_end + m.start()
+            return abs_start, text[abs_start:]
+    return None
+
+
 def _has_sbom_existence_guard(text: str) -> bool:
     """A ``[ -f … ]`` test bound to the SBOM output (``$OUT``/``$SBOM`` var or a
     literal ``*.cdx.json`` path) — NOT the unrelated pre-existing ``[ -f
@@ -399,4 +420,159 @@ def test_FIBR0184_release_linux_fetches_the_tag_it_published():
     assert "git fetch" in tail and "--tags" in tail, (
         "release-linux.sh: no `git fetch --tags` after the release is published, "
         "so the published tag never reaches the local clone (FIBR-0184)"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# INV-8 — each release script reads its assets back after publishing and fails
+# loudly on an incomplete set (FIBR-0275). Source-scrape, mirroring INV-3b/4:
+# find the post-publish `gh release view --json assets` call, then scrape from
+# there to EOF for the phase-correct count, a per-.sig subject-presence
+# construct, the platform-correct asset_suffix() literal(s), and a failure
+# path that actually aborts rather than being swallowed.
+# --------------------------------------------------------------------------- #
+_SIG_SUBJECT_CONSTRUCT = re.compile(
+    r"%\.sig\b"  # bash ${name%.sig} — strip the .sig suffix
+    r'|\*\.sig["\')\s]*\)'  # case ... *.sig) — match .sig entries specifically
+    r'|endswith\(\s*"\.sig"\s*\)'  # jq: select(endswith(".sig"))
+    r'|sub\(\s*"\\\\\.sig\$?"'  # jq: sub("\\.sig$"; "")
+    r"|sed[^\n]*\\\.sig\$"  # sed 's/\.sig$//'
+)
+
+_INV8_CASES = [
+    pytest.param(
+        _RELEASE_LINUX,
+        5,
+        ["AppImage"],
+        id="release-linux.sh",
+    ),
+    pytest.param(
+        _RELEASE_WINDOWS,
+        8,
+        ["AppImage", "-x86_64.exe"],
+        id="release-windows.sh",
+    ),
+]
+
+
+@pytest.mark.parametrize("script, expected_count, name_patterns", _INV8_CASES)
+def test_INV8_post_publish_readback_present_and_positioned(
+    script, expected_count, name_patterns
+):
+    """Check 1 (§ INV-8): a `gh release view … --json assets` read-back exists,
+    strictly after the script's publish command — this is what v0.1.20 (0
+    assets, unnoticed 10 days) and v0.1.21 (a silently partial --clobber) had
+    neither of."""
+    text = script.read_text()
+    found = _post_publish_readback(text)
+    assert found is not None, (
+        f"{script.name}: no post-publish asset read-back found (expected a "
+        "`gh release view <TAG> --json assets` call AFTER the `gh release "
+        "create`/`upload` command that publishes this phase's assets) — this "
+        "is the FIBR-0275 gap: v0.1.20 published a release with 0 assets and "
+        "nothing noticed for 10 days"
+    )
+
+
+@pytest.mark.parametrize("script, expected_count, name_patterns", _INV8_CASES)
+def test_INV8_readback_checks_the_phase_correct_asset_count(
+    script, expected_count, name_patterns
+):
+    """Check 2 (§ INV-8): the guard compares the read-back to ITS OWN phase's
+    total — 5 after release-linux.sh, 8 after release-windows.sh (never 8
+    after the Linux phase, which would leave that phase permanently red)."""
+    text = script.read_text()
+    found = _post_publish_readback(text)
+    assert found is not None, f"{script.name}: no post-publish read-back (see INV-8 check 1)"
+    _, guard = found
+
+    count_check = re.search(
+        rf"(?:-eq|-ne|==|!=|>=|<=)\s*\"?\$?\{{?{expected_count}\b"
+        rf"|length\)?\s*(?:==|!=)\s*{expected_count}\b",
+        guard,
+    )
+    assert count_check, (
+        f"{script.name}: post-publish read-back does not compare the asset "
+        f"count against {expected_count} (this script's own phase total) — "
+        "a bare read-back that never checks the count would not have caught "
+        "v0.1.20's 0-asset release"
+    )
+
+
+@pytest.mark.parametrize("script, expected_count, name_patterns", _INV8_CASES)
+def test_INV8_readback_checks_every_sig_has_its_subject(
+    script, expected_count, name_patterns
+):
+    """Check 3 (§ INV-8): every `.sig` asset's subject (the artifact it signs)
+    must also be present. A bare count is not enough — the v0.1.21 failure
+    left 5 assets on the release (SHA256SUMS.sig without SHA256SUMS, .exe.sig
+    without .exe, plus 3 others), a count a naive `-eq` guard would have
+    accepted outright."""
+    text = script.read_text()
+    found = _post_publish_readback(text)
+    assert found is not None, f"{script.name}: no post-publish read-back (see INV-8 check 1)"
+    _, guard = found
+
+    assert ".sig" in guard, (
+        f"{script.name}: post-publish read-back never mentions `.sig` at all "
+        "— it cannot be checking that every signature's subject is present"
+    )
+    assert _SIG_SUBJECT_CONSTRUCT.search(guard), (
+        f"{script.name}: post-publish read-back mentions `.sig` but has no "
+        "recognisable per-signature subject-presence construct (a "
+        "`${name%.sig}`-style strip, a `*.sig)` case arm, or an "
+        "`endswith(\".sig\")`/`sub(\"\\\\.sig$\";...)` jq filter) — the "
+        "v0.1.21 defect was exactly a `.sig` published with its subject "
+        "silently missing, which a bare asset COUNT does not catch"
+    )
+
+
+@pytest.mark.parametrize("script, expected_count, name_patterns", _INV8_CASES)
+def test_INV8_readback_checks_names_the_updater_actually_greps_for(
+    script, expected_count, name_patterns
+):
+    """Check 4 (§ INV-8): each asset name is checked against what the in-app
+    updater greps for — AppImageInstaller/WindowsInstaller.asset_suffix()
+    (src/finbreak/services/update_installer.py): `-x86_64.AppImage` and
+    `-x86_64.exe`. `.claude/bump.json` already warns in prose that a
+    mis-named `.exe` is invisible to the updater with "no automated guard"."""
+    text = script.read_text()
+    found = _post_publish_readback(text)
+    assert found is not None, f"{script.name}: no post-publish read-back (see INV-8 check 1)"
+    _, guard = found
+
+    for pattern in name_patterns:
+        assert pattern in guard, (
+            f"{script.name}: post-publish read-back never checks an asset "
+            f"name against {pattern!r} (an asset_suffix() the in-app updater "
+            "greps for) — a mis-named artifact would publish successfully "
+            "and stay invisible to the updater, exactly what .claude/bump.json "
+            "already warns has 'no automated guard'"
+        )
+
+
+@pytest.mark.parametrize("script, expected_count, name_patterns", _INV8_CASES)
+def test_INV8_readback_failure_actually_aborts_not_swallowed(
+    script, expected_count, name_patterns
+):
+    """Check 5 (§ INV-8): an incomplete-set finding must abort the script
+    (propagate non-zero under `set -euo pipefail`), not be swallowed by a
+    `|| true` or discarded. A check that cannot fail the script is
+    indistinguishable from no check at all — which is what let v0.1.20 and
+    v0.1.21 both ship unnoticed even though nothing here was hidden from a
+    human who thought to look."""
+    text = script.read_text()
+    found = _post_publish_readback(text)
+    assert found is not None, f"{script.name}: no post-publish read-back (see INV-8 check 1)"
+    _, guard = found
+
+    assert "|| true" not in guard, (
+        f"{script.name}: post-publish read-back region contains `|| true`, "
+        "which swallows a non-zero exit — a guard that cannot fail the "
+        "script is indistinguishable from no guard at all"
+    )
+    assert re.search(r"\bexit\s+[1-9]\d*\b", guard), (
+        f"{script.name}: post-publish read-back region has no `exit <nonzero>` "
+        "— under `set -euo pipefail` a failed check must still actually abort "
+        "the script for 'fail loudly' to mean anything"
     )
