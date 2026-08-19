@@ -185,3 +185,137 @@ def test_INV4_ci_invokes_the_gate_script_and_restates_no_stage() -> None:
             f"ci.yml runs `{stage}` directly instead of via ci-local.sh — "
             f"that is a second definition of the gate list (INV-2)."
         )
+
+
+# --------------------------------------------------------------------------- #
+# INV-5 — the pre-push hook skips only an already-gated tag-only push          #
+# --------------------------------------------------------------------------- #
+#
+# Read, this hook looks obviously right either way; the whole risk is in which
+# ref lists it treats as safe. So these run it, with a stub gate that leaves a
+# sentinel, and assert on whether the sentinel appears.
+_HOOK = _ROOT / ".githooks" / "pre-push"
+_ZERO = "0" * 40
+
+
+def _hook_sandbox(tmp_path: Path) -> tuple[Path, Path, str]:
+    """A repo with an origin, one pushed commit and one unpushed commit.
+
+    Returns (worktree, sentinel path, pushed sha). The stub `ci-local.sh`
+    writes the sentinel, so its presence means the gate ran.
+    """
+    import subprocess
+
+    def git(*args: str, cwd: Path) -> str:
+        return subprocess.run(
+            ["git", *args],
+            cwd=cwd,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+
+    origin = tmp_path / "origin.git"
+    work = tmp_path / "work"
+    origin.mkdir()
+    work.mkdir()
+    subprocess.run(["git", "init", "--bare", "-q"], cwd=origin, check=True)
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=work, check=True)
+    git("config", "user.email", "t@example.invalid", cwd=work)
+    git("config", "user.name", "t", cwd=work)
+
+    (work / "scripts").mkdir()
+    sentinel = work / "gate-ran"
+    stub = work / "scripts" / "ci-local.sh"
+    stub.write_text(f'#!/usr/bin/env bash\ntouch "{sentinel}"\n', encoding="utf-8")
+    stub.chmod(0o755)
+
+    (work / "a.txt").write_text("1\n", encoding="utf-8")
+    git("add", "-A", cwd=work)
+    git("commit", "-qm", "one", cwd=work)
+    git("remote", "add", "origin", str(origin), cwd=work)
+    git("push", "-q", "origin", "main", cwd=work)
+    pushed = git("rev-parse", "HEAD", cwd=work)
+
+    # A second commit that never reaches origin.
+    (work / "a.txt").write_text("2\n", encoding="utf-8")
+    git("commit", "-qam", "two", cwd=work)
+
+    return work, sentinel, pushed
+
+
+def _run_hook(work: Path, stdin: str) -> int:
+    import shutil
+    import subprocess
+
+    hook = work / "pre-push"
+    shutil.copy(_HOOK, hook)
+    hook.chmod(0o755)
+    return subprocess.run(
+        [str(hook), "origin", "file://origin"],
+        cwd=work,
+        input=stdin,
+        text=True,
+        capture_output=True,
+    ).returncode
+
+
+def test_INV5_tag_push_of_a_pushed_commit_skips_the_gate(tmp_path: Path) -> None:
+    work, sentinel, pushed = _hook_sandbox(tmp_path)
+    rc = _run_hook(work, f"refs/tags/v1 {pushed} refs/tags/v1 {_ZERO}\n")
+    assert rc == 0
+    assert not sentinel.exists(), (
+        "the gate ran for a tag pointing at a commit already on the remote; "
+        "that commit was gated by the push that put it there, so this is the "
+        "duplicate run INV-5 exists to remove"
+    )
+
+
+def test_INV5_tag_push_of_an_unpushed_commit_runs_the_gate(tmp_path: Path) -> None:
+    work, sentinel, _pushed = _hook_sandbox(tmp_path)
+    import subprocess
+
+    head = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=work,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    _run_hook(work, f"refs/tags/v2 {head} refs/tags/v2 {_ZERO}\n")
+    assert sentinel.exists(), (
+        "the gate was skipped for a tag whose commit is NOT on the remote — "
+        "that publishes ungated code, which is the case INV-5 must not skip"
+    )
+
+
+def test_INV5_a_branch_ref_in_the_push_runs_the_gate(tmp_path: Path) -> None:
+    work, sentinel, pushed = _hook_sandbox(tmp_path)
+    _run_hook(
+        work,
+        f"refs/tags/v1 {pushed} refs/tags/v1 {_ZERO}\n"
+        f"refs/heads/main {pushed} refs/heads/main {_ZERO}\n",
+    )
+    assert sentinel.exists(), (
+        "a branch ref shared the push with a tag and the gate was skipped"
+    )
+
+
+def test_INV5_no_ref_list_runs_the_gate(tmp_path: Path) -> None:
+    work, sentinel, _pushed = _hook_sandbox(tmp_path)
+    _run_hook(work, "")
+    assert sentinel.exists(), (
+        "with no refs on stdin nothing is known about the push, so the gate "
+        "must run; a hand-run hook takes this path"
+    )
+
+
+def test_INV5_the_sandbox_is_not_vacuous(tmp_path: Path) -> None:
+    """The skip test only means something if the sentinel CAN appear."""
+    work, sentinel, _pushed = _hook_sandbox(tmp_path)
+    assert not sentinel.exists()
+    _run_hook(work, f"refs/heads/main {_ZERO} refs/heads/main {_ZERO}\n")
+    assert sentinel.exists(), (
+        "the stub gate never fired at all, so every other INV-5 assertion "
+        "about the sentinel proves nothing"
+    )

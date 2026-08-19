@@ -275,6 +275,20 @@ its normal route, having run the prose checks by hand instead (§ Doc-only
 pushes below). Read this line alone and you run the full gate on every ROADMAP
 annotation.
 
+**A tag-only push needs no `--no-verify` and never did: the hook skips it by
+itself.** Pushing a branch and then its tag used to run the same ~3-minute gate
+twice on one already-gated commit, which is where the habit of reaching for
+`--no-verify` on the tag came from — a bypass no project document sanctioned
+(FIBR-0290). The hook now reads the ref list git gives it and exits early when
+**every** ref is a tag **and** every tagged commit is already reachable from a
+remote-tracking branch. Anything else still takes the gate: a branch ref
+anywhere in the push, a tag whose commit is not yet on the remote (skipping
+that would publish ungated code), or a hand-run hook with no refs on stdin.
+Locked by `tests/features/harness/` INV-5, which runs the hook against a real
+throwaway repo rather than reading it. **So do not type `--no-verify` for a
+tag** — if the gate runs on one, that is the hook telling you the commit is not
+on the remote yet.
+
 **Reproduce GitHub CI EXACTLY when the ENVIRONMENT could differ** — the local
 gate runs on your desktop, which already has system libraries (Qt's
 `libGL`/`libEGL`/fontconfig, `git`) that a clean CI runner lacks, so a green

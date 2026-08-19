@@ -25,5 +25,56 @@ if [ -z "${VIRTUAL_ENV:-}" ] && [ -f .venv/bin/activate ]; then
     . .venv/bin/activate
 fi
 
+# A tag-only push whose commits are ALREADY on the remote cannot introduce
+# ungated code: the commit was gated by the push that put it there, so a second
+# run can only re-prove the same result. That case is a release tag going up
+# right behind its branch (cut-release Phase 5, /close-phase Step 6), and it
+# used to cost a second full ~3-minute gate -- long enough that the habit grew
+# of reaching for `git push --no-verify`, a bypass no project document
+# sanctioned (FIBR-0290). Skipping it here removes the reason for the habit.
+#
+# Both conditions are required. A tag whose commit is NOT yet on the remote
+# would publish ungated code, so it takes the gate like anything else, and any
+# branch ref in the same push does too. Git supplies the ref updates on stdin
+# as `<local ref> <local sha> <remote ref> <remote sha>`; with no stdin (a
+# hand-run hook) nothing is known, so the gate runs.
+ZERO=0000000000000000000000000000000000000000
+saw_ref=0
+tags_only=1
+
+while read -r _local_ref local_sha remote_ref _remote_sha; do
+    if [ -z "${remote_ref:-}" ]; then
+        continue
+    fi
+    saw_ref=1
+
+    case "$remote_ref" in
+        refs/tags/*) ;;
+        *) tags_only=0; break ;;
+    esac
+
+    # A tag deletion pushes nothing new.
+    if [ "$local_sha" = "$ZERO" ]; then
+        continue
+    fi
+
+    if ! commit=$(git rev-parse --verify --quiet "${local_sha}^{commit}"); then
+        tags_only=0
+        break
+    fi
+
+    # Reachable from any remote-tracking branch => already pushed, already gated.
+    if [ -z "$(git branch -r --contains "$commit" 2>/dev/null)" ]; then
+        tags_only=0
+        break
+    fi
+done
+
+if [ "$saw_ref" = 1 ] && [ "$tags_only" = 1 ]; then
+    echo "== pre-push: tag-only push of commits already on the remote =="
+    echo "== the gate ran when those commits were pushed; skipping =="
+    exit 0
+fi
+
 echo "== pre-push: running scripts/ci-local.sh (the CI gate) =="
 exec ./scripts/ci-local.sh
