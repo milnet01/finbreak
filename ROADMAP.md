@@ -1339,7 +1339,7 @@ scariest unknown (native-library bundling) up front.
   Kind: doc-fix.
   Source: in-session-2026-08-19 (review-contract loop 1 on commits.md, blast-radius sweep).
 
-- 📋 [FIBR-0288] **`roadmap-format.md` § 3.5.1 describes `.roadmap-counter` as the ID allocator; it is a gitignored cache three IDs behind.**
+- ✅ [FIBR-0288] **`roadmap-format.md` § 3.5.1 describes `.roadmap-counter` as the ID allocator; it is a gitignored cache three IDs behind.**
   `docs/standards/roadmap-format.md` § 3.5.1 says "The high-water mark
   lives in `.roadmap-counter` at the project root", that "New IDs
   increment this counter atomically", and that "The counter file is
@@ -1366,6 +1366,30 @@ scariest unknown (native-library bundling) up front.
   carries the same claim in one line — it names `.roadmap-counter` as
   where stable IDs come from. Fix both, or fix `roadmap-format.md` and
   leave a pointer there.
+  Resolved (2026-08-19, commits 7b2c180, d779f28, ce2d6b1, 0528ac5).
+
+  § 3.5.1 now says what is true: `roadmap_log` allocates from the store,
+  `.roadmap-counter` is a gitignored cache that lags (measured at 288 while
+  FIBR-0291 existed), and the bash recipe is scoped to projects with no store
+  behind `ROADMAP.md`. `documentation.md`'s one-line copy points here instead
+  of restating it.
+
+  Gated: `review-contract --genre standard --max-loops 3`, 9 cold lanes over
+  3 loops. 26 verified findings, 26 fixed, 1 dismissed. Loop log is inline at
+  the end of the document.
+
+  **Reached the cap, and it was a violent one** — all 8 of loop 3's findings
+  trace to text this run wrote, so the run was repairing its own repairs and
+  nothing suggested a fourth loop would stop. That is a fact about the
+  document, and it is filed as FIBR-0293 rather than papered over: the
+  standard describes a hand-maintained roadmap, this project's is
+  store-backed, and the run kept finding another place the two-branch
+  carve-out had not reached.
+
+  Worth knowing beyond the ID question: the machine-wide standard numbers
+  § 3.9 *Archive rotation* while this copy's § 3.9 is the anti-patterns, and
+  `cut-release` cites "§ 3.9" three times for rotation — so at a minor bump
+  those citations land on the wrong section here. Recorded in the header.
   **Layman:** A rule document says IDs come from a small counter file, but that file is out of date and is not what actually issues them.
   Kind: doc-fix.
   Source: in-session-2026-08-19 (review-contract loop 2 on commits.md, 4a step 3).
@@ -1485,6 +1509,37 @@ scariest unknown (native-library bundling) up front.
   **Layman:** A rule shows a commit title format with three parts, then every example it gives has only two.
   Kind: doc-fix.
   Source: in-session-2026-08-19 (review-contract loop 3 on commits.md, deferred tail at the cap).
+
+- 📋 [FIBR-0293] **`roadmap-format.md` states the store-backed carve-out five times and keeps missing one.**
+  `review-contract` reached its cap of 3 loops on this document
+  (FIBR-0288) and the cap was **violent**: all 8 of loop 3's findings traced
+  to text the run itself had written. Per the skill, a binding cap on a
+  standard is evidence about the document. This is the diagnosis.
+
+  The document describes a **hand-maintained** `ROADMAP.md` — the author
+  chooses a bullet's position, moves it, deletes it, retitles its release
+  block. This project's roadmap is **store-backed and rendered**, where none
+  of those are available. So nearly every rule needs a two-branch carve-out,
+  and the run kept finding another place the branch had not reached:
+  § 3.5.2, § 3.5.4, § 3.8, § 3.9, § 3.5.2's own closing paragraph, § 3.7,
+  § 4.3. Each fix was correct and each left another site.
+
+  **The fix is structural, not another carve-out.** State the branch once —
+  a short § 3.0 saying which mode a project is in and what is unavailable in
+  the store-backed one — and delete the per-rule repetitions. Five copies of
+  one rule is five things to keep true, which is what produced this pattern.
+
+  Size is a secondary factor and probably not the main one: 624 lines against
+  a 364-line largest sibling (`commits.md`), but still inside the ~800-line
+  range a cold read handles. Splitting § 4 (CHANGELOG) out from § 3 (ROADMAP)
+  is the obvious cut if a split is wanted anyway.
+
+  Not urgent, and NOT a re-gate of the same document: this is one edit with a
+  clear shape, and rule 14's test would send the result through a fresh gate
+  on its own merits.
+  **Layman:** A rule document was written for a hand-edited roadmap, but ours is generated — so almost every rule needs an exception, and the exception keeps getting left out of one place.
+  Kind: doc-fix.
+  Source: in-session-2026-08-19 (review-contract cap report on roadmap-format.md).
 
 ### 📦 Packaging
 
