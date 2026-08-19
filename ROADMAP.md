@@ -1653,6 +1653,46 @@ scariest unknown (native-library bundling) up front.
   Kind: doc.
   Source: in-session-2026-08-19 (review-contract loop 2 on roadmap-format.md, surfaced not decided).
 
+- 📋 [FIBR-0295] **`act` is installed but unconfigured, so cut-release's mandatory pipeline phase cannot run.**
+  `cut-release` Phase 2b requires EXECUTING `.github/workflows/*.yml`
+  locally before the release commit, and explicitly forbids substituting
+  a hand-written mirror. It runs that phase when `act` is present.
+
+  `act` IS present (`/usr/bin/act`) and has never been configured. Its
+  first run wants an interactive choice of runner image and writes
+  `~/.config/act/actrc`; with no TTY it prints the menu and dies
+  `level=fatal msg=EOF`. Measured 2026-08-19: `act push -W
+  .github/workflows/ci.yml -n` fails this way even as a dry run, so the
+  failure is configuration, not the workflow.
+
+  So the phase is neither "act present" nor "act absent" -- it looks
+  available and is not, which is the shape that costs a detour rather
+  than a decision.
+
+  What v0.1.22 did instead: ran `scripts/ci-docker.sh`. That is defensible
+  and not a hand-written mirror -- `ci.yml` is checkout -> `ci-setup.sh`
+  -> `ci-local.sh` inside `python:3.12-slim-bookworm`, and `ci-docker.sh`
+  runs the same image and the same two scripts, which FIBR-0001 INV-2
+  locks and the harness suite enforces. UNCOVERED by that substitution:
+  `actions/checkout` and the `apt-get install git` step before it.
+  Nothing else in the job.
+
+  Two ways to close it, and it is a decision rather than a bug:
+  1. Configure `act` once (write `~/.config/act/actrc` pinning a runner
+  image for `ubuntu-24.04`) and let Phase 2b run as designed. Costs a
+  one-off image pull; a machine-level change outside this repo.
+  2. Record `ci-docker.sh` as this project's sanctioned Phase 2b, with
+  the two uncovered steps named, so no future release re-derives the
+  argument. Cheaper, and honest, but it is a local override of a skill
+  rule and belongs in CLAUDE.md rather than in a session's head.
+
+  Whichever is chosen, write it down -- the cost this time was working
+  out from scratch that the phase could not run and why the substitute
+  was acceptable.
+  **Layman:** The tool that runs our GitHub checks on this machine has never been set up, so every release quietly falls back to a different check and someone has to work out why all over again.
+  Kind: chore.
+  Source: in-session-2026-08-19 (hit while cutting v0.1.22).
+
 ### 📦 Packaging
 
 - ✅ [FIBR-0003] **P01: bundling smoke-test (de-risk native libs early).**
