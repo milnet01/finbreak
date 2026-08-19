@@ -1390,6 +1390,41 @@ scariest unknown (native-library bundling) up front.
   Found by `commits.md`'s gate: two lanes opened `bump.json` to check
   whether § 5 was right to list `ROADMAP.md` as version-bearing, found it
   absent, and noticed the header was stale as the proof.
+  Progress (2026-08-19): diagnosed, and BLOCKED on tooling rather than on a
+  decision. Still 📋.
+
+  Located: the header is `section.intro` on the project's level-0 root section
+  (`roadmap.sqlite`, project 10, section 290, slug ''). It is stored, not
+  derived — which is why no release step bumps it and why a hand-edit to
+  `ROADMAP.md` is reverted by the next render.
+
+  Checked before choosing the fix: no standard requires the line.
+  `documentation.md` § 2.1 item 2 mandates a `Current version:` line in
+  **README.md** only, and README carries it correctly at 0.1.21, bumped
+  mechanically and drift-gated by `.claude/bump.json` + `release-linux.sh`.
+  `roadmap-format.md` says nothing about it. So deleting it is sound.
+
+  Both routes to actually delete it are closed:
+
+  - No `roadmap_log` op writes `intro`. `create_section` takes `intro_body`
+    only when creating a NEW heading; there is no amend-intro form.
+  - Writing `roadmap.sqlite` by hand was refused by the permission
+    classifier — correctly, it is a machine-global store shared by every
+    project on this machine.
+  - `roadmap_migrate` is the sanctioned re-ingest route for a hand-edited
+    file, but CLAUDE.md § Where state lives forbids it here on measured
+    grounds: the render → parse round trip is lossy and a dry run on a clean
+    tree plans ~10 item-body rewrites. Risking ten bodies to fix one
+    paragraph is the wrong trade.
+
+  Filed upstream as an Ants MCP finding (2026-08-19,
+  `finbreak_Ants_MCP_Feedback.md`): add `op:"amend_intro"` taking an existing
+  section — the empty slug for the root preamble — with `amend_body`'s
+  unique-match, `dry_run` and read-back guards.
+
+  Unblocks on either of: that verb shipping, or the user authorising a single
+  targeted `UPDATE section SET intro=…` against the one row (backup first).
+  Nothing else in this item is open — the replacement text is decided.
   **Layman:** The roadmap page tells a visitor the app is on a version from five releases ago.
   Kind: doc-fix.
   Source: in-session-2026-08-19 (review-contract loop 3 on commits.md, deferred tail at the cap).
