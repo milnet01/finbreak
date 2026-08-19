@@ -2,7 +2,8 @@
 # Testing Standards — v1
 
 A shareable contract for tests in this project. Pairs with the
-other three standards in this folder ([coding](coding.md),
+other standards in this folder ([coding](coding.md),
+[naming](naming.md), [dependencies](dependencies.md),
 [documentation](documentation.md), [commits](commits.md)) — see
 the [index](README.md) for the full set.
 
@@ -251,7 +252,7 @@ FIBR-0010: lock manual-override priority over re-import
 Adds INV-3 to tests/features/categorisation/spec.md and the
 corresponding assertion in test_categorisation.py.
 
-Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+Co-Authored-By: <AI identifier, per commits.md §1.5>
 ```
 
 When the test ships *with* a fix in the same commit (TDD's normal

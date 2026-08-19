@@ -2,7 +2,8 @@
 # Coding Standards — v1
 
 A shareable contract for code in this project. Pairs with the
-other three standards in this folder ([documentation](documentation.md),
+other standards in this folder ([naming](naming.md),
+[dependencies](dependencies.md), [documentation](documentation.md),
 [testing](testing.md), [commits](commits.md)) — see the
 [index](README.md) for the full set.
 
