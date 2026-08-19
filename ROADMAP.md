@@ -1291,7 +1291,7 @@ scariest unknown (native-library bundling) up front.
   Kind: doc-fix.
   Source: in-session-2026-08-19 (review-contract loop 1 on commits.md, blast-radius sweep).
 
-- 📋 [FIBR-0287] **Four live references under `packaging/` still route the version bump to the deleted `/bump` skill.**
+- ✅ [FIBR-0287] **Four live references under `packaging/` still route the version bump to the deleted `/bump` skill.**
   `cut-release` replaced both `/release` and `/bump` on 2026-08-13, and
   nothing named `/bump` can be invoked. Still naming it:
   `packaging/flatpak/README.md:134`, `packaging/obs/README.md:122`,
@@ -1308,6 +1308,22 @@ scariest unknown (native-library bundling) up front.
 
   The underlying lockstep behaviour is unchanged — `.claude/bump.json` is
   still the recipe; only the skill that reads it was renamed.
+  Resolved (2026-08-19, commit aa76a3d): every `/bump` reference now names
+  `cut-release`, or `.claude/bump.json` where the sentence is about the
+  recipe rather than the skill.
+
+  Scope was wider than the four filed here. A tree-wide grep found ten more
+  live sites — `.claude/bump.json` itself (×2, one of them pointing at the
+  deleted `~/.claude/skills/bump` directory), `docs/specs/FIBR-0155.md` (×3),
+  `docs/specs/FIBR-0159.md` (×3), `tests/features/flatpak_packaging/spec.md`
+  and its test comment. All fourteen are fixed, so the class is closed rather
+  than half-renamed; no follow-up item is owed.
+
+  Left alone deliberately: `docs/standards/commits.md` loop-log row 1, a dated
+  record of what that gate found, which must not be back-dated.
+
+  Full gate run (code files changed, so no doc-only route): 1916 passed,
+  2 skipped, all stages green.
   **Layman:** Four packaging files tell you to use a release tool that no longer exists.
   Kind: doc-fix.
   Source: in-session-2026-08-19 (review-contract loop 1 on commits.md, blast-radius sweep).
