@@ -249,7 +249,11 @@ it did on every run until the file existed on **2026-08-18**. FIBR-0248 wired
 the file route on 2026-08-14; it did not create the file, so the guard went on
 skipping for four more days. **Wiring a source is not the same as supplying
 one**, and only the second date is when the tree was first actually scanned. `FINBREAK_CORPUS_NUMBERS`
-(comma-separated) overrides the file for a one-off run. **Never print the
+(comma-separated) overrides the file for a one-off run — and **set it by
+substitution from the gitignored file, never by typing the numbers**:
+`FINBREAK_CORPUS_NUMBERS="$(paste -sd, .corpus-numbers)" pytest …` puts no
+value on the command line or into `~/.bash_history`. Typing them out is the
+very act the never-list below forbids, and the defect FIBR-0276 filed. **Never print the
 values, type them onto a shell command line, redirect them to a tracked file,
 or paste them into a commit message, spec or ROADMAP entry** — the guard binds
 prose, not just fixtures. CI cannot
@@ -289,7 +293,7 @@ throwaway repo rather than reading it. **So do not type `--no-verify` for a
 tag** — if the gate runs on one, that is the hook telling you the commit is not
 on the remote yet.
 
-**Reproduce GitHub CI EXACTLY when the ENVIRONMENT could differ** — the local
+**Reproduce GitHub CI's ENVIRONMENT when the diff could move it** — the local
 gate runs on your desktop, which already has system libraries (Qt's
 `libGL`/`libEGL`/fontconfig, `git`) that a clean CI runner lacks, so a green
 local gate can still hide a red CI. That is the one gap the pre-push hook
@@ -305,9 +309,20 @@ the gate inside the **same container image CI uses**
 (`python:3.12-slim-bookworm`, fresh installs):
 
 ```bash
-./scripts/ci-docker.sh                # identical to the GitHub run; needs podman/docker
-./scripts/ci-docker.sh --build        # ...plus the FIBR-0003 build smoke-test
+./scripts/ci-docker.sh                # CI's own image + both CI scripts; needs podman/docker
 ```
+
+**It runs CI's image and CI's two scripts — it is not the whole workflow.**
+Three steps of `ci.yml` it does not reach are named in § `cut-release` Phase 2b
+below; do not report a green run here as a full pipeline run.
+
+**Do not pass `--build` to it.** The flag reaches `ci-local.sh` and sets
+`FINBREAK_BUILD_SMOKE=1`, but `ci-setup.sh` installs no container runtime, so
+inside the container the test hits
+`pytest.skip("no container runtime (podman/docker) on PATH")`
+(`tests/features/bundling/test_bundling.py:299`) and the smoke-test **silently
+does not run** — a skip that reads as coverage. Run `./scripts/ci-local.sh
+--build` or `./scripts/build-smoke.sh` on the host instead.
 
 `ci.yml` and `ci-docker.sh` both run the same image and both call
 `scripts/ci-setup.sh` (environment: system libs + the pinned non-pip binaries —
@@ -691,8 +706,11 @@ first run prints a runner-image menu and dies `level=fatal msg=EOF`, so the
 phase cannot run as designed. Filed as **FIBR-0295**; the decision is to adopt
 the substitute rather than configure `act`.
 
-**So Phase 2b here is `./scripts/ci-docker.sh`** — and the release notes say
-which steps it left uncovered, in those words.
+**So Phase 2b here is `./scripts/ci-docker.sh`**, and the session's own
+Phase 2b report names the three uncovered items below. **Not the published
+release notes** — `release-linux.sh` builds those from the `CHANGELOG.md`
+`[X.Y.Z]` section and passes them as `--notes-file`, so they are what end users
+read on the download page, and a CI-coverage caveat does not belong there.
 
 **Why the ban does not bite: `ci-docker.sh` is not a mirror of the pipeline, it
 is the pipeline's own two scripts.** `ci.yml` has one job, four steps — install
@@ -706,9 +724,13 @@ single definition with `tests/features/harness/` enforcing it.
 **Three things it does NOT cover.** State them; do not report a full pipeline
 run.
 
-1. **`actions/checkout` itself** — its commit-SHA pin and
-   `persist-credentials: false`. A regression there is caught by the gate's
-   own `zizmor` stage, not by this run.
+1. **`actions/checkout` running at all** — a bad SHA, a network failure, a
+   revoked action. Its *static* properties are still checked here: `zizmor`
+   is a `ci-local.sh` stage, so this run does read `ci.yml`'s pin and
+   `persist-credentials: false`. Measured 2026-08-19 — `zizmor
+   .github/workflows/` exits **0** on the real tree and **14** with the pin
+   reverted to `actions/checkout@v7`. So do not list the pin as uncovered;
+   what is uncovered is the step executing.
 2. **The `apt-get install git ca-certificates` step** before checkout. Its
    *effect* is covered — `ci-setup.sh` installs `git` as well — but the step
    itself never executes.
@@ -720,9 +742,14 @@ run.
    stage that reads an untracked file passes here without having been tested
    the way CI will run it.
 
-**If `act` is ever configured on this machine this override lapses** — Phase 2b
-goes back to executing the workflows themselves, and this section is deleted
-rather than left standing as a second answer.
+**If `act` is ever configured on this machine this override lapses.**
+*Configured* means `~/.config/act/actrc` exists **and**
+`act push -W .github/workflows/ci.yml -n </dev/null` exits 0. Check both at
+Phase 2b — `act --version` succeeds on an unconfigured install and settles
+nothing. Measured 2026-08-19: `actrc` is absent and that dry run exits **1** on
+`level=fatal msg=EOF`, so the override stands. When it lapses, Phase 2b goes
+back to executing the workflows themselves and this section is deleted rather
+than left standing as a second answer.
 
 ## Module map
 
@@ -764,9 +791,10 @@ rather than left standing as a second answer.
   PySide6 needs + the pinned non-pip binaries — gitleaks, shellcheck,
   actionlint, zizmor — + Python deps). Called by BOTH `ci.yml` and
   `ci-docker.sh` so the environment has a single definition.
-- `scripts/ci-docker.sh` — reproduce the GitHub CI run exactly, locally, in the
-  same `python:3.12-slim-bookworm` image (`ci-setup.sh` + `ci-local.sh`). Run
-  before pushing to catch environment issues a configured desktop masks.
+- `scripts/ci-docker.sh` — re-run CI's own image and CI's own two scripts
+  locally (`python:3.12-slim-bookworm`, then `ci-setup.sh` + `ci-local.sh`). Run
+  before pushing to catch environment issues a configured desktop masks. Not the
+  whole workflow — § `cut-release` Phase 2b names the three steps it misses.
 - `scripts/build-smoke.sh` (+ `_build-smoke-in-container.sh`) — freeze the app
   in a `python:3.12-slim-bookworm` container (glibc ~2.36) and launch it in a
   Python-free `debian:13-slim` container (FIBR-0003).
