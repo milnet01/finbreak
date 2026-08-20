@@ -4836,6 +4836,38 @@ because retrofitting them is a data migration.
   phase: P02. Dependencies: FIBR-0004. Lanes: crypto, security.
   Kind: security.
   **Layman:** If you forget your master password, a recovery code you saved when the vault was created gets you back in — with no backdoor anyone else could use.
+  Spec accepted (2026-08-20):
+  docs/specs/FIBR-0019-master-password-recovery-key.md, 1027 lines.
+  review-contract reached its cap at loop 3 -- three loops, nine cold
+  lanes, 31 verified findings, all fixed, none dismissed. A CALM cap
+  (33% of the final loop landed on the run's own text, down from 45%),
+  so the spec ships and the build is the next reviewer.
+
+  The design: the database stops being encrypted directly by a
+  password-derived key. A random data key (DEK) encrypts it and is
+  wrapped twice in the sidecar -- once under a key from the master
+  password, once under a key from a 135-bit Crockford base32 recovery
+  code. Either credential unwraps the same DEK, so adding or changing a
+  credential re-wraps 32 bytes and never re-encrypts the database.
+
+  Twelve invariants, five test files, and a six-step migration for the
+  vaults already in the field with a resume rule per crash window.
+
+  NOT yet built. Next is write-test (the suite must be seen RED first),
+  then write-code. Two things implementation must not lose:
+
+  - The migration's master slot inherits the v1 salt AND the v1 cost
+    parameters. That is what makes the key already derived at unlock
+    BE the wrapping key -- no re-derivation, no carrying the plaintext
+    password past derivation, and no stranding a vault whose recorded
+    memory_kib sits below a later-raised pin.
+  - BackupService.restore_backup and FIBR-0014 D4 both still prescribe
+    the v1 restore path. Left alone they keep minting v1 vaults after
+    this ships. Section 11 lists all fourteen documents that change.
+
+  Also filed by the run, not fixed here: no roadmap item exists for
+  "change the master password" as a settings action, which this design
+  makes nearly free. Worth queueing.
   Source: user-request-2026-07-01.
   Lanes: crypto, security.
 

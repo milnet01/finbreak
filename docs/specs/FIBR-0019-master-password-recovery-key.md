@@ -1,6 +1,6 @@
 # FIBR-0019 — Master-password recovery via a recovery key
 
-**Status:** spec draft (2026-08-20).
+**Status:** accepted (2026-08-20) — `review-contract` reached its cap at loop 3 (this project's override for every genre). Three loops, nine cold lanes, 31 verified findings, all 31 fixed, none dismissed. A **calm** cap: 33% of the final loop's findings landed on text the run itself wrote, down from 45% at loop 2. Per the skill, a spec at its cap ships and the build is the next reviewer.
 **Kind:** security.
 **Source:** ROADMAP FIBR-0019 (user-request-2026-07-01); confirmed for the
 1.0 release 2026-08-20 (user decision recorded on FIBR-0304).
