@@ -868,8 +868,9 @@ working is cheaper than corrective rounds later.
 
 ## Standards reference
 
-The six standards (`coding`, `naming`, `dependencies`,
-`documentation`, `testing`, `commits`) plus `roadmap-format` live in
+The seven standards (`coding`, `naming`, `dependencies`,
+`documentation`, `testing`, `commits`, `versioning`) plus
+`roadmap-format` live in
 [`docs/standards/`](docs/standards/) — see its
 [README](docs/standards/README.md) for the index, the
 closed-loop diagram, and which kinds each governs.

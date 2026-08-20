@@ -1,10 +1,12 @@
+<!-- ants-versioning-standards: 1 -->
+
 # Versioning Standard — v1
 
 What finbreak's version number **means**. Binding on every release, every
 person and every agent cutting one. `CHANGELOG.md` has pledged Semantic
 Versioning since the project began and nothing said what that pledge covers
-for a desktop application, so the number drifted: thirteen delivered phases
-and 196 shipped roadmap items still published as `0.1.22` (measured
+for a desktop application, so the number drifted: 196 shipped roadmap items
+across all thirteen planned phases, still published as `0.1.22` (measured
 2026-08-20, FIBR-0299).
 
 **This standard owns what the number means. It does not own where the number
@@ -38,16 +40,23 @@ comparable, so do not weigh them as though they were.
 
 ## 2. The compatibility surface
 
-These five are what a version number promises about. A change that breaks any
+These six are what a version number promises about. A change that breaks any
 of them for an existing user is a MAJOR change, whatever its size.
 
 | Surface | Where it lives | Broken means |
 |---|---|---|
 | **The encrypted vault** | SQLCipher database; `LATEST_SCHEMA_VERSION` and its migrations | A vault written by the previous version cannot be opened, or opens with data missing or altered |
-| **The backup / export file** | `.fbk` archives; the PDF and CSV exports | A backup taken on the previous version cannot be restored |
+| **The backup file** | `.fbk` archives | A backup taken on the previous version cannot be restored |
+| **The export files** | the PDF and CSV exports | A field, column or layout is renamed, reordered or dropped. These are **output-only and never restored**, so "cannot be restored" is not their test — what breaks is whatever the user built on the old shape |
 | **The update path** | the signed release manifest, `RELEASE_PUBLIC_KEY_B64`, `services/update_fetch.py` | An installed copy can no longer see, verify or apply an update — including a signing-key rotation |
 | **Saved import profiles** | the per-bank mapping profiles stored in the vault (FIBR-0007) | A saved profile no longer maps its bank's statement, silently or otherwise |
-| **The documented command line** | `python -m finbreak --self-test` and any flag the README states | A documented invocation stops working |
+| **The documented command line** | `python -m finbreak --self-test`, documented in `CLAUDE.md` § Build and test. The README documents no invocation, so it adds nothing here today | A documented invocation stops working |
+
+**The backup and the exports are two rows because their failure modes are not
+the same one.** A `.fbk` is written to be read back by finbreak; a PDF or CSV
+export is written to be read by a person or a spreadsheet, and is never
+restored. One row covering both defined "broken" for the first and left the
+second with no test at all.
 
 **A forward migration that runs automatically and loses nothing is NOT a
 break.** Adding a schema version, migrating on open, and leaving the user with
@@ -82,10 +91,10 @@ documentation that ships inside the artifact. No new capability and no § 2
 break.
 
 **3.4 — A security fix does not get its own number.** It takes the number its
-*change* takes under 3.1 to 3.3, and ships as fast as `commits.md` § 4.1
-allows. Severity is communicated in the changelog and in `SECURITY.md`, never
-by inflating the version, which would tell every reader the wrong thing about
-compatibility.
+*change* takes under 3.1 to 3.3. Severity is communicated in the changelog —
+and in `SECURITY.md` once that file exists, which it does not today (§ 5
+condition 4) — never by inflating the version, which would tell every reader
+the wrong thing about compatibility.
 
 **3.5 — Documentation, tests, CI and roadmap work that ships in no artifact
 gets no release at all.** It rides along with the next one. Cutting a release
@@ -100,11 +109,15 @@ description of finbreak today: FIBR-0019 (master-password recovery) is a
 planned change to the vault's key envelope, and its own roadmap bullet says
 retrofitting it needs a full re-encrypt migration.
 
-**4.2 — While below 1.0, `0.MINOR.PATCH` shifts down one place.** A break of a
-§ 2 surface bumps MINOR — `0.1.22` → `0.2.0`. Everything else bumps PATCH.
+**4.2 — While below 1.0, `0.MINOR.PATCH` shifts down one place.** Anything
+MAJOR under § 3.1 — a § 2 break, **or** a change requiring user action — bumps
+MINOR, `0.1.22` → `0.2.0`. Everything else bumps PATCH. Stated in terms of
+§ 3's classes rather than § 2's surfaces on purpose: § 3.1 has two limbs, and
+a rule naming only the first sends a forced reinstall to PATCH.
+
 This is the one rule the project has been getting wrong by omission rather
-than by decision: every release so far has been a PATCH bump because nothing
-said when to do otherwise.
+than by decision: every release since `0.1.0` has been a PATCH bump because
+nothing said when to do otherwise.
 
 **4.3 — Below 1.0, a § 2 break is still announced exactly as § 3.1 requires.**
 The leading zero permits the break; it does not excuse shipping one silently.
@@ -134,7 +147,11 @@ never arrives. Ship 1.0 and let distribution catch up.
 
 **Where the gate cannot be met but the 0.x number understates the project,
 `0.9.z` is the honest interim** — "we believe this is it; the format is not
-frozen yet". It is a normal `0.MINOR` bump under § 4.2 and commits to nothing.
+frozen yet". **It is the single named exception to § 4.2 and § 6.2**: one
+deliberate signalling bump, taken once, decided by judgement rather than by
+what changed, and recorded as such in its changelog entry. It freezes nothing
+— § 2 stays unfrozen until 1.0 — and it is the only place in this standard
+where a number says something other than what § 3 would assign.
 
 ## 6. Anti-patterns
 
@@ -143,7 +160,8 @@ frozen yet". It is a normal `0.MINOR` bump under § 4.2 and commits to nothing.
 
 **6.2 — Bumping MINOR to signal that a lot of work happened.** The number
 describes compatibility, not productivity. A large release of pure fixes is a
-PATCH and there is nothing wrong with `0.1.23`.
+PATCH and there is nothing wrong with `0.1.23`. § 5's one-time `0.9.z` interim
+is the single named exception, and it is a decision rather than a habit.
 
 **6.3 — Reaching 1.0 by feeling ready.** § 5 is five checkable conditions
 precisely so this decision does not rest on a mood. If they hold, cut it; if
@@ -170,7 +188,10 @@ number is written is owned elsewhere; this file owns only what it means.
 |------|----------------------|
 | § 1.3, § 6.5 | **nothing** — the judgement precedes the tooling by design; `cut-release --check` reports readiness, not correctness of the number |
 | § 2, vault row | `tests/features/*/test_migration_v*.py` catch a migration that loses data; **nothing** catches a break with no migration written at all |
+| § 2, backup row | `tests/features/backup/` covers the `.fbk` round-trip, and `services/backup.py` refuses a backup from a newer schema outright |
+| § 2, exports row | **nothing** — no test pins a PDF or CSV export's field set or layout across a version boundary |
 | § 2, update path | `tests/features/auto_update/`, and `scripts/release-linux.sh`'s hard gate against the committed `RELEASE_PUBLIC_KEY_B64` |
+| § 2, saved import profiles | a profile lives in the vault, so a **schema** migration touching it is caught by the vault row's tests; **nothing** catches a change to how a stored profile is interpreted |
 | § 2, command line | `tests/features/bundling/` (`--self-test`) |
 | § 3.1's required-action note | **nothing** — reviewed by whoever reads the changelog |
 | § 3.5 | **nothing** — tracked by whoever cuts the release |
@@ -185,3 +206,9 @@ oversight.** Choosing a version number is a judgement about impact, and no
 tool reads a diff and decides whether an existing vault still opens. What
 tooling exists enforces *consistency* once the number is chosen. Inventing a
 checker for the rest would be worse than recording the gap.
+
+## Cold-eyes loop log
+
+| Loop | Date | Lanes | Q1 | Q2 | Q3 | Outcome |
+|---|---|---|---|---|---|---|
+| 1 | 2026-08-20 | 3 × `review-lane`, cold, genre pinned `standard`; packet carried the quoted cross-references, 14 verified source facts and the standard-skeleton shape | 3 | 2 | 2 | **Seven verified, seven fixed; one dismissed.** First gate on this file (FIBR-0299), written the same day. **All three lanes independently found the same two defects**, the strongest signal in the run, and both were the document arguing with itself about which number to publish. **§ 5's `0.9.z` interim** called itself "a normal `0.MINOR` bump under § 4.2" while § 4.2 made a MINOR bump below 1.0 *mean* a § 2 break, and § 6.2 named bumping MINOR to signal maturity as an anti-pattern by name — so a releaser judging the project near-complete published `0.9.0` on § 5's authority and `0.1.23` on §§ 4.2/6.2's, and under § 4.2 the two paths never reconverge. It is now the single **named** exception to both, which is what it always was in intent. **§ 3.1 has two limbs** — a § 2 break *or* a change requiring user action — and § 4.2's shift-down rule named only the first, sending a forced reinstall to PATCH through "everything else"; § 4.2 is now stated in terms of § 3's classes rather than § 2's surfaces. **The third Q1 was found by all three lanes too:** § 3.4 routed security severity to `SECURITY.md`, a file that does not exist (FIBR-0237) and which § 5 condition 4 lists as a *future* 1.0 gate — so every security release between now and 1.0 was told to use a channel it could not reach. **Two Q1s the orchestrator found**, one in Phase 1b before a lane was spent: § 3.4 cited `commits.md § 4.1` for how fast a security fix ships, and that section is about push cadence and says nothing about security urgency; and, while resolving a lane's open question, that the § 2 command-line row promised "any flag the README states" when the README documents **no** invocation at all — verified by grep, the only two `--` strings in it being a badge colour and a `zypper` argument. **Both Q3s were rules a conformer could not tell they had breached.** The § 2 backup row named `.fbk`, PDF and CSV together and defined "broken" only for the first, leaving someone reordering CSV export columns unable to tell MAJOR from PATCH — split into two rows, since an export is output-only and never restored. And "What checks this" carried rows for three of the (then) five surfaces and omitted the rest entirely, which is unreadable in a table whose own note says most rows read **nothing** on purpose: silence meant neither "checked" nor "uncaught". **Collateral, six items, all from adding one file to `docs/standards/`:** `CONTRIBUTING.md` names each standard individually and `documentation.md` § 2.6 requires it to name them all; `docs/standards/README.md` said "Six" in its intro and "seven … the six standards" in its adoption section; `README.md` and the project `CLAUDE.md` both list the standards by name; and the new file was missing the `<!-- ants-*-standards: 1 -->` first-line marker every other standard in the folder carries. The index row's own summary went stale from this loop's own § 2 split and was corrected with it. **One dismissed as changing no line built:** the opening said "thirteen delivered phases" when P01, P12 and P13 still carry open items — true, inert, and corrected author-side by narrowing rather than fixed as a finding. **Settled as non-findings:** the SemVer 2.0.0 § 4 paraphrase is accurate; every catcher named in the table resolves (three migration tests, `auto_update`, `bundling`, the `release-linux.sh` hard gate at three call sites, `tests/test_smoke.py`); and `backup.py`'s guard is against restoring a *newer* backup, which does not contradict § 2's promise about older ones, since restore opens and migrates forward. |

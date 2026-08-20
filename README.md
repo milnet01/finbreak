@@ -252,7 +252,7 @@ resume work without it.
 - [docs/ideas.md](docs/ideas.md) — mid-flight ideas pending a
   user-decision on placement (created on first use).
 - [docs/standards/](docs/standards/) — coding, naming, dependencies,
-  documentation, testing, commits (+ roadmap-format).
+  documentation, testing, commits, versioning (+ roadmap-format).
 - [.claude/workflow.md](.claude/workflow.md) — live workflow
   state and rules.
 

@@ -13,7 +13,7 @@ explicit.
 | [documentation.md](documentation.md) | README / CLAUDE.md / SECURITY.md structure, API contracts, screenshots, markdown style. Governs `Kind: doc / doc-fix` work. |
 | [testing.md](testing.md) | TDD policy, test types, spec-first authoring, INV numbering, coverage, anti-patterns. Governs `Kind: test` work + the regression-test follow-through for `fix / audit-fix / review-fix`. |
 | [commits.md](commits.md) | The `<ID>: <description>` mandate, hygiene, branching, push policy, release commits. Governs every commit. |
-| [versioning.md](versioning.md) | What the version NUMBER means — the compatibility surface (vault, backup, update path, import profiles, CLI), MAJOR/MINOR/PATCH, the pre-1.0 shift, and the five-condition 1.0 gate. Cross-cutting: governs `Kind: release` and the number every other Kind's change implies. Where the number is *written* is `releases.md` § 1 + `.claude/bump.json`, not here. |
+| [versioning.md](versioning.md) | What the version NUMBER means — the six-surface compatibility promise (vault, backup, exports, update path, import profiles, CLI), MAJOR/MINOR/PATCH, the pre-1.0 shift, and the five-condition 1.0 gate. Cross-cutting: governs `Kind: release` and the number every other Kind's change implies. Where the number is *written* is `releases.md` § 1 + `.claude/bump.json`, not here. |
 
 Sub-spec extracted from `documentation.md` for token efficiency:
 
@@ -50,7 +50,7 @@ existing code, no "ask the original author".
 
 ## Adopting these standards in another project
 
-Copy the seven standard files in this folder (the six standards
+Copy the eight standard files in this folder (the seven standards
 **plus** the `roadmap-format.md` sub-spec, which the closed loop
 above depends on — not this `README.md`) verbatim into your
 project's `docs/standards/`
@@ -64,9 +64,10 @@ Any project-specific tweaks to a standard should be added as a
 new section at the bottom of the relevant file, prefixed with
 `## <Project> overrides`.
 
-## Versioning
+## Versioning of these standards
 
-Each standard carries a v1 marker in its first-line HTML
+(Not to be confused with [versioning.md](versioning.md), which governs the
+*application's* version number.) Each standard carries a v1 marker in its first-line HTML
 comment:
 
 ```html

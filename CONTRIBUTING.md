@@ -9,8 +9,9 @@ before opening an issue or PR so we're on the same page.
 - **`ROADMAP.md`** — what's planned, with stable IDs.
 - **`CHANGELOG.md`** — what's shipped (Keep-a-Changelog).
 - **`docs/standards/`** — coding, naming, dependencies,
-  documentation, testing, commits, plus the `roadmap-format`
-  sub-spec. The shareable v1 contracts the project follows.
+  documentation, testing, commits, versioning, plus the
+  `roadmap-format` sub-spec. The shareable v1 contracts the
+  project follows.
 - **`docs/specs/`** — per-feature specs.
 - **`docs/decisions/`** — Architecture Decision Records.
 - **`.claude/workflow.md`** — live workflow state and rules.
