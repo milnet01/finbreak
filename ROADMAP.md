@@ -4703,6 +4703,14 @@ lands on top.
   big to take now, versioning.md 5's named interim applies: cut 0.9.0
   ("we believe this is it; the format is not frozen yet"), which is the
   one judgement-based exception to 4.2 and 6.2.
+  Answered (2026-08-20, user): FIBR-0019 SHIPS IN 1.0. The open
+  question above is closed -- we do not freeze the vault format
+  without a recovery key, and we do not cut 0.9.0 as an interim.
+  The reasoning the user accepted: the key envelope has to exist at
+  vault-creation time, so building it now is cheap, while
+  retrofitting it later is a full re-encrypt migration over real
+  financial data. So the blocker list stands at four, unchanged,
+  with FIBR-0019 as the long pole and the only one needing a spec.
   **Layman:** The plan for calling the app finished: what has to be true first, and which four jobs are standing in the way.
   Kind: release.
   Source: user-decision-2026-08-20 ("what gets us to v1.0?").
