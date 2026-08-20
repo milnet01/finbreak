@@ -1777,7 +1777,7 @@ scariest unknown (native-library bundling) up front.
   Kind: doc.
   Source: review-contract-2026-08-19 loop 3 cap note (FIBR-0295 gate).
 
-- 📋 [FIBR-0299] **No versioning standard: we pledge semver in CHANGELOG.md but nowhere says what our numbers MEAN.**
+- 🚧 [FIBR-0299] **No versioning standard: we pledge semver in CHANGELOG.md but nowhere says what our numbers MEAN.**
   releases.md 1 governs version LOCKSTEP -- every version-bearing file
   moves together -- and says nothing about what the number means.
   CHANGELOG.md's header pledges Semantic Versioning. Between them,
