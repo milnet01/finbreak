@@ -4834,7 +4834,7 @@ because retrofitting them is a data migration.
   (vault creation); retrofitting needs a full re-encrypt migration.
   Requires an ADR + a security-model.md update at spec time. Target
   phase: P02. Dependencies: FIBR-0004. Lanes: crypto, security.
-  Kind: security. Source: user-request-2026-07-01.
+  Kind: security.
   **Layman:** If you forget your master password, a recovery code you saved when the vault was created gets you back in — with no backdoor anyone else could use.
   Source: user-request-2026-07-01.
   Lanes: crypto, security.
