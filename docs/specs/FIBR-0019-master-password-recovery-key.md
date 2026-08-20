@@ -223,8 +223,8 @@ two, and a distinguishing error is an oracle.
 **Entropy.** 135 bits, from `secrets.randbits(135)`. That is above the 128-bit
 symmetric floor with no padding waste: 135 is exactly 27 base32 symbols.
 
-**Encoding.** Crockford base32 — the symbol set excludes `I`, `L`, `O` and
-`U`, decoding is case-insensitive, `i`/`l` decode as `1` and `o` as `0`, and
+**Encoding.** Crockford base32 — the **data** alphabet excludes `I`, `L`,
+`O` and `U`, decoding is case-insensitive, `i`/`l` decode as `1` and `o` as `0`, and
 hyphens are ignored on input. It is designed for exactly this job: a secret a
 human transcribes from paper.
 (`Source:` https://www.crockford.com/base32.html,
@@ -238,11 +238,26 @@ failure. It is a **usability** device and carries no security weight — §5
 INV-6 states that as a contract, because treating it as authentication is the
 plausible mistake.
 
+**Its alphabet is 37 symbols, not 32, and that is the detail a builder gets
+wrong.** Crockford's check alphabet is the 32 data symbols plus `*`, `~`,
+`$`, `=` and `U` — so `U`, excluded from the data alphabet for accidental
+obscenity, returns as a legal **final** symbol, and so do four punctuation
+marks. The 37 is load-bearing: it is the least prime above 32, which is what
+gives the check its detection properties, so a mod-32 check over the data
+alphabet alone is a different and weaker construction and is **not** what
+this spec means. Two consequences the implementation must honour: a code's
+last group may read `RST$` or `RSTU`, and **Input normalisation removes
+hyphens, spaces and case only — it must not strip `*~$=`**, which would
+destroy the very symbol it is there to read.
+
 **Display.** Seven hyphen-separated groups of four:
 
 ```
 A1B2-C3D4-E5F6-G7H8-J9K0-MNPQ-RSTV
 ```
+
+That example ends in a data symbol; one ending `RST$` or `RSTU` is equally
+valid, per the check-symbol alphabet above.
 
 **Input.** Hyphens, spaces and case are normalised away before decoding, so a
 user may type it as shown, in one run, or in lower case.
@@ -299,7 +314,11 @@ DEK:
 - **The Argon2id parameters stay pinned and shared.** Both slots use the same
   cost, so neither route is cheaper to attack than the other. `validate_params`
   keeps enforcing the directional memory floor and the exact-length format
-  match; it moves to reading `kdf` rather than the flat object.
+  match, **per slot**: the cost parameters come from `kdf`, and the
+  salt-length legs are checked against *that slot's* salt — so `salt_len: 16`
+  beside a 4-byte `slots.master.salt_hex` is rejected. Reading `kdf` alone
+  would silently drop the real-salt-length leg that `security-model.md`
+  INV-2's exact-format match requires.
 - **The file remains plaintext and `0o600`.** It holds no unwrapped key
   material and no password. §5 INV-4 is the contract. What it now *does* hold
   is a wrapped DEK, and that falsifies a named invariant. INV-7 of
@@ -309,11 +328,16 @@ DEK:
   unwrapped key material*, which is strictly weaker than *no secret*, and the
   weakening must be written down rather than glossed.
 
-**A version-1 sidecar is still the on-disk shape of every vault in the
-field.** `load_and_validate_params` already refuses an unrecognised
-`format_version` with `KdfPolicyError`, which is what makes an older build
-fail closed rather than misread a v2 file — §13 owns the forward migration and
-§15 raises the backward direction as an open question.
+**A version-1 sidecar is the on-disk shape of every vault in the field, so
+the shipped loader reads BOTH.** `load_and_validate_params` dispatches on
+`format_version`: 1 yields today's flat shape and is the only migration
+source, 2 yields the slots shape. A v2-only loader would reject every vault
+in the field — it fails twice over, on `_REQUIRED_SIDECAR_FIELDS` and again
+on the version check — and §13's migration could then never run, because it
+needs the v1 vault *open* in order to copy it. An **older** build meeting a
+v2 file still fails closed on those same two checks, which is what §13.3
+means by a clear error; §15 raises the backward direction as an open
+question.
 
 ### 4.5 Vault creation
 
@@ -327,7 +351,11 @@ and `AuthService.complete_first_run` grows the envelope:
    `DeriveWorker` — **two Argon2id derivations**, so first-run cost roughly
    doubles (§14).
 5. Wrap the DEK into both slots.
-6. `Vault.create(dek, …)` — unchanged apart from what it is handed.
+6. `Vault.create(dek, …)`, **with its sidecar write removed.** `create`
+   today ends by calling `_write_sidecar(params)`, which serialises the flat
+   v1 object — so leaving it alone writes a v1 file that step 7 overwrites,
+   or leaves one standing if creation stops in between. Writing the sidecar
+   becomes step 7's alone.
 7. Write the v2 sidecar **last**, preserving the existing
    vault-before-sidecar create order (FIBR-0004 INV-5).
 8. **Then** show the recovery code, once, with copy and "save to a file"
@@ -384,8 +412,12 @@ delete one slot, rewrite the sidecar atomically. The database is untouched.
 
 ## 5. Invariants
 
-- **INV-1** — The SQLCipher raw key is a random DEK, never a value derived
-  directly from a credential.
+- **INV-1** — **The installed vault's** SQLCipher raw key is a random DEK,
+  never a value derived directly from a credential. **Scope: `vault.db` in
+  the application data directory.** It does not fire on the `vault.db`
+  *inside* a `.fbk` container, which `BackupService.export_backup` keys with
+  `derive_key(backup_password, …)` and which keeps that schedule unchanged
+  (§9).
   *Test:* `tests/features/recovery_key/test_envelope.py::test_dek_is_not_derived_from_any_credential`
   — derives KEK-master from the master password and `slots.master.salt_hex`,
   attempts `PRAGMA key` with those bytes, asserts the vault does **not** open.
@@ -424,13 +456,19 @@ delete one slot, rewrite the sidecar atomically. The database is untouched.
   `test_INV7_sidecar_holds_no_secret`, whose exact-key-set assertion this
   format necessarily breaks (§11).
 
-- **INV-5** — The recovery code is never persisted by the application, in any
-  form, to any **plaintext** surface.
+- **INV-5** — The recovery code is never persisted by the application **of
+  its own accord**, in any form, to any plaintext surface. The single
+  exception is the file the user explicitly names at the moment of display
+  (§4.5 step 8) — that is the user storing their own credential, not the app
+  retaining it, and it is the difference between the two that this invariant
+  is about.
   *Test:* `tests/features/recovery_key/test_recovery_code.py::test_code_never_reaches_a_plaintext_surface`
   — creates a vault with a known code, then asserts the code appears in no
   byte of `vault.kdf.json`, `window.ini`, the log file, or any other file the
   app wrote under its data directory, in Crockford, hyphenated, normalised or
-  raw-bytes form.
+  raw-bytes form — **excepting a file at a path the test itself supplied as
+  the user's choice**, which is the §4.5 step 8 carve-out and the one write
+  this invariant permits.
   *Breaks when:* the code is cached to make a "show it again" affordance work,
   or written to `window.ini` beside the password hint — `window.ini` is
   plaintext by design (FIBR-0052 INV-5), so that is the specific mistake with
@@ -487,27 +525,45 @@ delete one slot, rewrite the sidecar atomically. The database is untouched.
   — exhausts the password allowance, then asserts a recovery attempt is
   refused by the same backoff; and the reverse, that failed recovery attempts
   advance the counter the password route reads.
-  *Breaks when:* the recovery dialog instantiates its own `UnlockThrottle`
-  rather than sharing the one the unlock flow already holds.
+  *Breaks when:* the recovery path does not consult the backoff before
+  deriving, or does not record a failed unwrap as a failed attempt.
+  **Not** when it constructs its own `UnlockThrottle` — that class is
+  stateless beyond `window.ini`, opening a fresh `QSettings` per method, so
+  two instances share the counter by construction and an invariant written
+  against instance identity would test nothing.
 
 - **INV-11** — A stored password hint may contain neither the master password
   nor the recovery code.
+  **The check must work without the code, and that constraint decides its
+  shape.** INV-5 forbids retaining the code, and the hint is set from
+  Settings long after the one-time display, so nothing in memory holds it.
+  Instead: scan the hint for any 28-symbol Crockford candidate, verify its
+  check symbol locally, and where one passes, attempt `unwrap_dek` against
+  `slots.recovery`. A successful unwrap proves the hint carries the live
+  code. No candidate, or no successful unwrap, and the hint is accepted — so
+  the common case costs no key derivation at all.
   *Test:* `tests/features/recovery_key/test_recovery_code.py::test_hint_rejects_the_recovery_code`
-  — asserts a hint equal to, or containing, the recovery code is rejected.
-  *Breaks when:* `validate_hint` keeps its current two-argument signature.
-  Verified 2026-08-20 that it does:
-  `validate_hint (hint: 'str', password: 'str') -> 'None'` — it is not passed
-  the code and so cannot inspect it. This invariant fails against today's code.
+  — asserts a hint containing the real code is rejected, a hint containing a
+  well-formed but *wrong* code is accepted, and a hint containing no
+  candidate performs no derivation.
+  *Breaks when:* the check is implemented by retaining the plaintext code,
+  which breaches INV-5 while appearing to satisfy this one. Note that
+  `validate_hint(hint, password)` gains no third parameter under this design
+  (its signature was verified 2026-08-20); what it gains is read access to
+  the sidecar's recovery slot.
 
 - **INV-12** — Declining a recovery key still builds the envelope.
   *Test:* `tests/features/recovery_key/test_sidecar_v2.py::test_declining_still_writes_the_envelope`
   — creates a vault while declining, asserts `format_version == 2`, asserts
   `slots.master` is present and `slots.recovery` is absent, then adds a
-  recovery key afterwards and asserts the database file's **SHA-256 is
-  byte-identical** across the add — proving it is a re-wrap and not a
-  re-encrypt. A hash, not a modification time: mtime has filesystem-dependent
-  granularity and SQLite touches the file on open, so an mtime assertion
-  would be flaky in one direction and vacuous in the other.
+  recovery key afterwards and asserts **the DEK is byte-identical across the
+  add** — unwrap `slots.master` before and after, compare the bytes — which
+  is what re-wrap-rather-than-re-encrypt actually means. **Not a hash of
+  `vault.db`**: vaults are opened `journal_mode = WAL`, so pages sit in
+  `vault.db-wal` until a checkpoint and the main file's bytes move on open
+  and close with no logical write at all. A file hash would be flaky in one
+  direction and vacuous in the other; an mtime assertion is worse on both
+  counts.
   *Breaks when:* declining short-circuits to the v1 format, which is the
   cheap-looking implementation and the one that reintroduces two key
   schedules (D2).
@@ -520,7 +576,8 @@ delete one slot, rewrite the sidecar atomically. The database is untouched.
 | The supplied credential unwraps its slot | Wrong password, wrong code, tampered slot | `KeyUnwrapError`, reported to the user as a failed attempt with no distinction between the causes (§4.2). Advance the shared throttle. |
 | The DEK opens the database | Slot unwrapped but SQLCipher refuses | The pairing is broken — sidecar and database are from different vaults, or the database is damaged. Refuse, and point the user at restore-from-backup. Do **not** offer the destructive reset from this state; it is indistinguishable to the user from a wrong password, and the consequences differ absolutely. |
 | Migration completes | Power loss, kill, disk-full at any of S1–S6 | §13's resume rules. INV-7 is the contract. |
-| Disk has room for a second copy | Disk full during S1 | Fail before touching anything. The original pair is untouched, and the next unlock retries. |
+| The vault is two files | It is four: vaults are opened `journal_mode = WAL`, so `vault.db-wal` and `vault.db-shm` exist alongside | A `-wal` written under the OLD key surviving S5 would have SQLite recover the NEW database from it. S5 closes both connections and removes the siblings before the swap. `security-model.md` INV-12 already counts those two as part of the vault's on-disk footprint. |
+| Disk has room for a second copy | Disk full during S1 | The original pair is untouched, so the vault still opens. But `export_to` pre-creates its target `O_EXCL` and unlinks nothing on failure, so a partial `vault.db.migrating` survives — which is why S1 unlinks any existing one before it starts. Without that, every later attempt raises `FileExistsError` and the migration wedges permanently. |
 | The recovery slot exists | User declined, or removed it | The recovery route is not offered. The "forgot password" affordance shows the backup-restore and start-over routes only, exactly as today. |
 | The user still has the code | They lost it too | Nothing changes: FIBR-0018 restore and FIBR-0030 reset remain, unchanged and still the last resorts. This spec adds a route; it removes none. |
 
@@ -541,8 +598,9 @@ New suite `tests/features/recovery_key/`, with `spec.md` beside it per
 (`testing.md` § 1). Four of the twelve invariants fail against today's code for
 reasons already established rather than assumed: INV-1 because every current
 call site passes a derived key as the database key (§2.1); INV-11 because
-`validate_hint` has no parameter for the code (§5); INV-4 because the current
-sidecar has seven flat fields (§4.4); INV-12 because `format_version` is 1
+nothing today can reach `slots.recovery` to trial-unwrap a candidate, there
+being no such slot (§5); INV-4 because the current sidecar has seven flat
+fields (§4.4); INV-12 because `format_version` is 1
 (`src/finbreak/models.py`).
 
 **Registration.** `recovery_key` must be added to `_NO_PROSE` in
@@ -620,6 +678,11 @@ inferred from this section.
   nothing about it beyond leaving `slots` an open map.
 - **Rotating the DEK itself.** That is a re-encrypt, and nothing here requires
   one.
+- **Re-shaping the `.fbk` container.** Its inner `vault.db` stays keyed
+  directly by `derive_key(backup_password, …)` — it is a transport format
+  opened once by `restore_backup`, not an installed vault with credentials to
+  add, so an envelope would buy it nothing. What *does* change is where a
+  restore lands: §11 requires `restore_backup` to install a v2 vault.
 - **Recovering a vault whose sidecar is lost.** Out of scope permanently: the
   wrapped DEK lives only there, which is what makes the design sound.
 - **Multi-device or escrow recovery.** Contradicts the local-only posture of
@@ -671,6 +734,7 @@ currently asserts the opposite.
 | `CHANGELOG.md` | A user-facing entry saying plainly what the recovery code is, and that existing vaults upgrade automatically on next unlock. |
 | `tests/features/vault/test_vault.py` | `test_INV7_sidecar_holds_no_secret` asserts the exact seven-field key set and necessarily fails. Replaced by INV-4's test, not deleted — the property still matters, the shape changed. |
 | `tests/features/prose_checks/test_prose_checks.py` | `recovery_key` added to `_NO_PROSE` (§7). |
+| `src/finbreak/vault.py` | `create` ends by calling `_write_sidecar(params)`, serialising the flat v1 object — §4.5 step 6 removes that write, leaving the sidecar to step 7. `close` also needs the WAL siblings dealt with at §13's S5. |
 | `src/finbreak/services/backup.py` | `restore_backup` re-keys a restored copy with `rekey(master_key)`. It must instead mint a DEK and write a v2 sidecar, or a restore silently produces a v1 vault — reintroducing exactly the second key schedule D2 exists to prevent. **This is the interaction most likely to be missed.** |
 | ROADMAP | FIBR-0302 (no test restores a `.fbk` from an earlier release) becomes materially more urgent: this change alters what a restored vault looks like. |
 
@@ -678,6 +742,7 @@ currently asserts the opposite.
 
 | Loop | Date | Lanes | Q1 | Q2 | Q3 | Q4 | Outcome |
 |------|------|-------|----|----|----|----|---------|
+| 1 | 2026-08-20 | 3, cold — genre spec, packet 138 KB / 45 windows, zero-check clean | 5 | 3 | 2 | 1 | **Eleven verified, eleven fixed; none dismissed.** **Two findings came back from all three lanes independently**, the strongest signal the loop produced. First: INV-11 requires the plaintext recovery code to check a hint against it, while INV-5 forbids retaining it and the hint is set from Settings long after the one-time display — so the check had no input at all. Rewritten to need no stored code: scan the hint for a check-symbol-valid Crockford candidate and trial-unwrap it against `slots.recovery`. Second: §4.3 excluded `U` from the alphabet while specifying a **mod-37** check symbol, whose alphabet is the 32 data symbols plus `*~$=U` — so two builders emit different codes and a code written on paper under one is rejected by the other, permanently, since D5 makes it valid forever. **The best single finding was a false claim about the tree**: §4.5 called `Vault.create` "unchanged apart from what it is handed", and `create` ends by calling `_write_sidecar(params)`, which serialises the flat v1 object — a conformer would have shipped first-run writing a v1 sidecar, the exact second key schedule D2 exists to prevent. **Two more were migration defects that would have wedged a user's vault**: `export_to` pre-creates `O_EXCL` and unlinks nothing, so an interrupted S1 leaves debris that makes every retry raise `FileExistsError` (S1 now unlinks first); and a vault is four files, not two — `journal_mode = WAL` means a `-wal` written under the OLD key would survive S5 and have SQLite recover the new database from it (S5 now closes both connections and removes the siblings). Also fixed: INV-10's *Breaks when* named instance identity, but `UnlockThrottle` is stateless beyond `window.ini` so two instances share the counter by construction and the invariant would have tested nothing; §4.4's "moves to reading `kdf`" read as a v2-only loader, which would reject every vault in the field and leave §13's migration unable to run; INV-1 was unqualified and false of the `.fbk` container's credential-derived key; §15's release arithmetic said `0.2.0` where versioning.md § 4.2 sends a § 3.2 MINOR shifted down one place to PATCH; and INV-12's SHA-256-of-`vault.db` witness is flaky under WAL, replaced by comparing the unwrapped DEK. Three collateral items swept and fixed. **One defect was mine, in the brief**: the packet asserted `roadmap_query` returns ten bullets where it returns seven — two lanes flagged it and correctly declined to file it; corrected before loop 2, per *a lane finding that contradicts the brief is evidence against the brief first*. |
 
 ## 13. Migration / compatibility
 
@@ -690,11 +755,11 @@ Given a v1 sidecar and a password that opens the vault:
 
 | Step | Action |
 |---|---|
-| **S1** | Generate the DEK. Write `vault.db.migrating` via `Vault.export_to(dek)`. `fsync`. |
+| **S1** | Unlink any existing `vault.db.migrating` — `export_to` pre-creates `O_EXCL`, so a stale one from an interrupted run wedges every retry. Generate the DEK. Write `vault.db.migrating` via `Vault.export_to(dek)`. `fsync`. |
 | **S2** | Open `vault.db.migrating` with the DEK. Run `PRAGMA integrity_check` and compare per-table row counts against the live vault. Abort on any mismatch, deleting the temporary file. |
 | **S3** | Build the v2 sidecar, plus two fields present **only** while migrating: `migration_pending: true` and `legacy_salt_hex` (the v1 salt). Write to `vault.kdf.json.migrating`. `fsync`. |
 | **S4** | `os.replace` the sidecar. |
-| **S5** | `os.replace` the database. |
+| **S5** | Close both connections first — the live vault's and the verified migrating one's — so each checkpoints and drops its `-wal` / `-shm` siblings, then remove any that remain. **Then** `os.replace` the database. |
 | **S6** | Rewrite the sidecar without `migration_pending` or `legacy_salt_hex`. `os.replace`. |
 
 The original pair is not modified until S4, and by then the replacement has
@@ -723,8 +788,10 @@ On open, with a v2 sidecar carrying `migration_pending`:
      and tell the user the vault and its key record disagree. Do not offer the
      destructive reset from here.
 
-A v1 sidecar with no `.migrating` files is simply a vault that has not
-migrated yet — open as today, then run S1–S6.
+A v1 sidecar means the vault has not migrated — open as today, then run
+S1–S6. **A stray `vault.db.migrating` beside a v1 sidecar is debris from an
+interrupted S1, never a usable vault**: nothing was swapped, so S1 unlinks it
+and starts again.
 
 ### 13.3 Compatibility
 
@@ -759,13 +826,15 @@ migrated yet — open as today, then run S1–S6.
 
 ## 15. Open questions
 
-1. **What release number does this take?** `docs/standards/versioning.md`
-   § 3.2 makes a new user-visible capability MINOR, and § 4.2 shifts that down
-   one place below 1.0 — so `0.2.0`. But § 4.2's own test is stated in terms
-   of § 3.1's classes, and § 2's carve-out says an automatic forward migration
-   is not a break. The two readings give `0.2.0` and `0.1.23`. This is
-   versioning.md's question, not this spec's, and it should be settled before
-   the release rather than at it.
+1. **Does this force user action, in § 3.1's sense?** That is the whole
+   question; the arithmetic under it is not in doubt.
+   `docs/standards/versioning.md` § 4.2 reserves the MINOR bump for a
+   § 3.1-class change — a § 2 break **or** a change requiring user action —
+   and sends everything else to PATCH. A new capability is § 3.2 MINOR, and
+   MINOR shifted down one place is PATCH: `0.1.23`. So `0.2.0` is owed only
+   if showing the user a recovery code to write down, or migrating their
+   vault, counts as requiring user action. Settle it before the release
+   rather than at it.
 
 2. **Should 1.0 refuse to ship while any supported path can still produce a v1
    vault?** §10 records that nothing can tell us a given user's vault migrated.
