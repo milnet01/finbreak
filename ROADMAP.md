@@ -4499,7 +4499,7 @@ phase when its dependencies land. Two are **foundational** (marked
 *Sequencing*) and must be designed at the noted phase, not deferred,
 because retrofitting them is a data migration.
 
-- 📋 [FIBR-0297] **CSV import maps no column automatically — every dropdown defaults to the first column even when the headers say what they are.**
+- 🚧 [FIBR-0297] **CSV import maps no column automatically — every dropdown defaults to the first column even when the headers say what they are.**
   `_set_header` (src/finbreak/ui/import_wizard.py:1013-1017) fills all five
   column combos with the same header list and calls no setCurrentIndex, so
   each lands on index 0. Observed on a CSV headed `Date,Description,Amount`:

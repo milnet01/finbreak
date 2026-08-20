@@ -104,6 +104,7 @@ _NO_PROSE = frozenset(
         "gitignore",
         "import_",
         "import_back_step",
+        "import_column_detect",
         "import_date_detect",
         "month_summary",
         "obs_packaging",
