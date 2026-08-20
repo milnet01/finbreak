@@ -2181,6 +2181,33 @@ scariest unknown (native-library bundling) up front.
   "builds entirely from pinned source" is the first thing a Flathub reviewer
   checks. The bump belongs in the ongoing-releases flow, not inside a
   submission.
+  Progress (2026-08-20, user go-ahead): both sanctioned steps DONE. The
+  submission is now waiting on Flathub, not on us.
+
+  (1) Fork branch milnet01/flathub add-io.github.milnet01.finbreak re-pinned
+  to v0.1.22 / 624722d, pushed as a FAST-FORWARD on top of the existing head
+  (0b42569 -> 278759c) rather than a force-push -- so the branch's second
+  commit, "Bundle MIT krb5 -- Qt6Network needs libgssapi_krb5", is preserved.
+  Verified that fix is already present in this repo's own manifest, so the
+  re-pin is a 2-line diff (tag + commit) and regresses nothing. Remote head
+  confirmed 278759c after the push.
+
+  (2) Follow-up comment posted on flathub/flathub#9662
+  (issuecomment-5352889722) -- a comment, per the submission-checker bot's own
+  instruction not to open or reopen a PR. It notes the checklist was completed
+  in the 2026-08-07 comment, states the new pin, lists today's green checks
+  (both linters exit 0, runtime 25.08 current, offline build ending
+  FINBREAK_SELFTEST_OK), and repeats the standing offer to build any manylinux
+  wheel from source. Confirmed as the thread's third comment.
+
+  PR state is still CLOSED and only a Flathub maintainer can change that. So
+  the next action on this bullet is NOT ours: it is waiting for a reopen. Do
+  not open a new PR while 9662 stands -- that is what the bot forbids and it
+  reads as PR-spam to the reviewers.
+
+  If the silence continues, the escalation is Flathub's Matrix room or
+  Discourse rather than a second PR. Give the bump a reasonable window first;
+  the previous wait was 13 days with no response.
 
 - 📋 [FIBR-0160] **Add openSUSE Leap 15.6 as an OBS target (deferred — Leap ships no python 3.12+).**
   Attempted 2026-07-23: added the Leap 15.6 target + a %if 0%{?sle_version}
