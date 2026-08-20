@@ -44,6 +44,7 @@ from PySide6.QtWidgets import (
 
 from finbreak.errors import FinbreakError, VaultLockedError
 from finbreak.importers.base import ParseResult, SourceAccountHint
+from finbreak.importers.column_detect import guess_columns
 from finbreak.importers.csv_importer import read_header, read_rows
 from finbreak.importers.date_detect import KNOWN_DATE_FORMATS, detect_date_format
 from finbreak.importers.ofx_importer import OfxImporter
@@ -550,8 +551,12 @@ class ImportWizardWidget(QWidget):
                 self._apply_profile_to_combos(matched)
                 self._run_preview(matched.column_mapping())
             else:
+                # FIBR-0297: guess the columns from the header's own words FIRST,
+                # so the D5(a) detect below reads the guessed date column rather
+                # than whichever column happened to be first.
+                self._guess_mapping_combos()
                 # FIBR-0146 D5(a): an unmatched CSV gets a date-format guess over
-                # the (default) date column before the map step is shown. This is
+                # the selected date column before the map step is shown. This is
                 # INSIDE the guard: the header is line 1, so a file whose *rows*
                 # are structurally broken parses its header fine and only trips
                 # when the detector reads the body (INV-4).
@@ -898,6 +903,9 @@ class ImportWizardWidget(QWidget):
             # matched, >1 table: refresh for the map step
             self._refresh_date_ui(detect=False)
         else:
+            # FIBR-0297: columns first, so the D5(b) detect below reads the
+            # guessed date column.
+            self._guess_mapping_combos()
             # FIBR-0146 D5(b): a generic (non-SB) PDF gets a date-format guess.
             self._refresh_date_ui(detect=True)
         self._goto_step(_STEP_MAP)
@@ -940,6 +948,10 @@ class ImportWizardWidget(QWidget):
                 self._apply_profile_to_combos(matched)
                 self._refresh_date_ui(detect=False)
             else:
+                # FIBR-0297: re-guess for THIS table's header before re-detecting
+                # — a different table has different columns, not just a different
+                # date format.
+                self._guess_mapping_combos()
                 # FIBR-0146 D5(b): a different unmatched table re-detects, so no
                 # stale format/preview from the previous table survives.
                 self._refresh_date_ui(detect=True)
@@ -1015,6 +1027,32 @@ class ImportWizardWidget(QWidget):
                 combo.clear()
                 for name in header:
                     combo.addItem(name, name)
+
+    def _guess_mapping_combos(self) -> None:
+        """Pre-select each mapping combo from the header's own words (FIBR-0297).
+
+        Fires only on the **unmatched** paths — a matched profile is authoritative
+        and jumps past the map step entirely (FIBR-0007 INV-10a), so the guess must
+        add nothing to it. A role the header does not name is left alone, which
+        keeps the long-standing first-column default as the fallback.
+
+        Signal-blocked, exactly as ``_populate_mapping_combos`` is and for the same
+        reason (FIBR-0146 D5): setting the date combo must fire no re-detect here,
+        because **the caller** runs auto-detect right after — one owner, no double
+        refresh. It matters more than a double refresh would suggest: on D5(a)'s
+        CSV pick the re-detect would run under ``_refresh_date_ui``'s ValueError
+        catch instead of ``_select_file``'s, which D8 requires to *refuse* a
+        structurally-broken file rather than show the map step over it.
+        """
+        guess = guess_columns(self._header)
+        for role, combo in self._column_combos.items():
+            name = getattr(guess, role)
+            if name is None:
+                continue
+            index = combo.findData(name)
+            if index >= 0:
+                with QSignalBlocker(combo):
+                    combo.setCurrentIndex(index)
 
     @Slot()
     def _on_map_next(self) -> None:
@@ -1592,6 +1630,10 @@ class ImportWizardWidget(QWidget):
         self._amount_style.setCurrentIndex(0)  # single amount column
         with QSignalBlocker(self._date_format_custom):
             self._date_format_custom.clear()
+        # FIBR-0297: AFTER the resets above — this page is reused per file, so a
+        # guess written before them would be wiped — and before the D5(d) detect,
+        # which must read this file's guessed date column.
+        self._guess_mapping_combos()
         self._refresh_date_ui(detect=True)
         self._profile_name.clear()
         self._goto_step(_STEP_MAP)
