@@ -2570,6 +2570,47 @@ scariest unknown (native-library bundling) up front.
   Progress (2026-08-12): the fix is BUILT and gated; what remains is a human launching it. Verified in the tree, not recalled: packaging/flatpak/io.github.milnet01.finbreak.yaml carries a `krb5` module (line 59, krb5-1.22.2 from kerberos.org), and src/finbreak/_selftest.py now imports PySide6.QtNetwork and constructs a QLocalServer — so the gate hole that let this ship (the self-test loaded QtWidgets/QtCharts/QtCore/QtGui/sqlcipher3/pikepdf but never QtNetwork) is closed and would now fail on a build that cannot start. Landed in 51fd6a8 + baf48b8; FIBR-0261 then made that self-test run headless instead of aborting. Deliberately left 🚧 rather than ✅: every automated check agreed the build was good LAST time too, and only a human running `flatpak run io.github.milnet01.finbreak` found it. The single remaining step is that command producing a window. Still blocks FIBR-0159 — do not submit until it does.
   Resolved (2026-08-12): the user ran `flatpak run io.github.milnet01.finbreak` and the app launched — window titled "finbreak" with the full toolbar (Home … Lock), status bar reading "Ready", and the "Unlock finbreak" master-password dialog. Screenshot supplied in-session. That is the exact exit condition this bullet held itself to, and it is the one check no automated gate could stand in for: the old failure was an ImportError raised before any window existed, so a window at all disproves it. The krb5 manifest module (packaging/flatpak/io.github.milnet01.finbreak.yaml) and the widened `--self-test` (now importing PySide6.QtNetwork and constructing a QLocalServer) are both confirmed good by a real launch rather than by the checks that agreed last time. No longer blocks FIBR-0159 — Flathub submission is clear to proceed.
 
+- 📋 [FIBR-0298] **Nothing owns refreshing the Flatpak pip closure, so its transitive wheels age silently between releases.**
+  packaging/flatpak/python3-deps.yaml is a sha256-pinned closure regenerated
+  only by a human running generate-pip-sources.sh. `pyproject.toml` pins the
+  DIRECT deps, and test_FIBR0258_closure_satisfies_the_pinned_commit checks the
+  closure against the pinned commit's pyproject -- so a direct-dep drift is
+  caught. Nothing watches the TRANSITIVE wheels, which the generator resolves to
+  whatever is latest at generation time and then freezes.
+
+  Measured 2026-08-20: regenerating moved lxml 6.1.1 -> 6.1.2,
+  charset_normalizer 3.4.9 -> 3.5.1 and pypdfium2 5.12.1 -> 5.13.0. The gate was
+  green before and after, because no check looks at this. The closure was last
+  generated 2026-08-07, so that is 13 days of drift on three packages, none of
+  them named in pyproject.toml.
+
+  Why it matters rather than being tidiness: FIBR-0256 is the same class one
+  level up -- a cryptography CVE bump landed in pyproject.toml and the closure
+  kept the old pin for two weeks. That one was caught only because someone
+  looked. lxml and pypdfium2 are both C-extension parsers fed untrusted input
+  (OFX and PDF statements), which is the worst place to carry a stale library.
+
+  NOT the same as check-dependencies' job, which reads manifests -- these
+  versions appear in no manifest. The closure is the only record.
+
+  Cheapest guard, and it needs no new tooling: a gate stage (or a scheduled CI
+  job, since it needs network and the gate's offline stages must stay offline)
+  that runs generate-pip-sources.sh into a temp file and fails on a non-empty
+  diff against the committed closure. The README already calls an empty diff
+  "the confirmation" -- this just makes something other than a human perform it.
+  A scheduled job is probably the better shape: a hard gate failure on upstream
+  publishing a wheel would block unrelated work.
+
+  Deliberately NOT done on 2026-08-20: the three bumps above were reverted
+  rather than taken, because they had never been built here and the tree was
+  minutes from a Flathub submission whose reviewers check that it builds from
+  pinned source. Taking them needs a LOCAL=0 rebuild to prove the offline build
+  still ends FINBREAK_SELFTEST_OK. Do that first; do not bump and push.
+  **Layman:** The Linux app-store build freezes an exact list of code libraries. Nothing checks whether newer, possibly security-fixed versions of them have come out, so the build can quietly ship old ones.
+  Kind: security.
+  Source: in-session-2026-08-20 (found during the FIBR-0159 pre-submit checks).
+  Lanes: packaging, security.
+
 ## P02 — Vertical slice: the security spine (target: after P01)
 
 **Theme:** the smallest end-to-end feature that touches every
