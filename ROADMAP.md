@@ -1777,6 +1777,41 @@ scariest unknown (native-library bundling) up front.
   Kind: doc.
   Source: review-contract-2026-08-19 loop 3 cap note (FIBR-0295 gate).
 
+- 📋 [FIBR-0299] **No versioning standard: we pledge semver in CHANGELOG.md but nowhere says what our numbers MEAN.**
+  releases.md 1 governs version LOCKSTEP -- every version-bearing file
+  moves together -- and says nothing about what the number means.
+  CHANGELOG.md's header pledges Semantic Versioning. Between them,
+  nothing states the 0.x -> 1.0 criteria, so the number has drifted from
+  reality: 196 shipped roadmap items and all thirteen planned phases
+  delivered, still published as 0.1.22.
+
+  Write docs/standards/versioning.md: what MAJOR/MINOR/PATCH mean for a
+  desktop app whose real compatibility surface is the encrypted vault
+  format, the backup/export format and the update mechanism -- not a code
+  API. State the 1.0 gate explicitly.
+
+  Gate it with review-contract --genre standard (rule 14: a new standard
+  changes what a conformer writes). A global versioning standard is being
+  written in parallel; compare the two once both exist.
+  **Layman:** Nothing written down says when the app stops being a 0.x preview and becomes version 1.0.
+  Kind: doc.
+  Source: in-session-2026-08-20 (user question: what gets us to v1.0?).
+
+- 📋 [FIBR-0300] **README.md's status badge still reads pre-alpha after 196 shipped items and 22 releases.**
+  README.md line 13 carries
+  `[![Status](https://img.shields.io/badge/status-pre--alpha-orange)]()`.
+  It is the first thing a visitor to a public repo sees, and it has been
+  false for a long time: every planned phase P01-P13 has delivered its
+  headline work, P02 through P11 have zero open items, and the project
+  publishes signed releases with eight assets.
+
+  Fix is one line, but pick the wording against the versioning standard
+  (sibling item) rather than in isolation -- badge and version number
+  should tell the same story.
+  **Layman:** The front page of the project still calls it pre-alpha, which puts people off something far more finished than that.
+  Kind: doc-fix.
+  Source: in-session-2026-08-20 (found answering the v1.0 question).
+
 ### 📦 Packaging
 
 - ✅ [FIBR-0003] **P01: bundling smoke-test (de-risk native libs early).**
@@ -4499,7 +4534,7 @@ phase when its dependencies land. Two are **foundational** (marked
 *Sequencing*) and must be designed at the noted phase, not deferred,
 because retrofitting them is a data migration.
 
-- 🚧 [FIBR-0297] **CSV import maps no column automatically — every dropdown defaults to the first column even when the headers say what they are.**
+- ✅ [FIBR-0297] **CSV import maps no column automatically — every dropdown defaults to the first column even when the headers say what they are.**
   `_set_header` (src/finbreak/ui/import_wizard.py:1013-1017) fills all five
   column combos with the same header list and calls no setCurrentIndex, so
   each lands on index 0. Observed on a CSV headed `Date,Description,Amount`:
@@ -4530,6 +4565,21 @@ because retrofitting them is a data migration.
 
   Not a Flatpak issue: reproduced through the sandbox but identical on a
   host build; the code path has no platform branch.
+  Resolved (2026-08-20): new pure module importers/column_detect.py
+  (guess_columns -> ColumnGuess) matches each role against the
+  conventional spellings, case- and punctuation-insensitively, and
+  returns the original header string. Wired at the four D5 fire points
+  that reach the map step unmatched -- the unmatched CSV, both
+  generic-PDF no-match branches, and the batch ask step -- signal-blocked
+  and BEFORE the existing date detect, so the FIBR-0146 single-owner
+  wiring reads the guessed date column. Not wired at D5(c), the user's
+  own column change. A role the header does not name is left alone, so
+  the first-column default stays the fallback. Contract:
+  tests/features/import_column_detect/ (INV-1..INV-7), 21 tests. No spec
+  under spec-format.md 1 -- one subsystem, obvious shape. Matcher check:
+  13 real header shapes, every verdict read, no wrong-role claims.
+  Follow-up noted, not filed: "Merchant" and "Effective Date" are common
+  real columns the synonym set does not cover. Commit cddb78f.
   **Layman:** When you import a spreadsheet for the first time, the app makes you tell it which column is the date, which is the description and which is the amount — even when the file already labels them exactly that.
   Kind: enhancement.
   Source: in-session-2026-08-20 (found during the FIBR-0159 Flatpak § 5 portal smoke).

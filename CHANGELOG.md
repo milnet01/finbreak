@@ -21,6 +21,17 @@ signaling per
 
 ## [Unreleased]
 
+### Added
+
+- **CSV import now guesses the column mapping from the file's own headers** (FIBR-0297)
+  Importing a spreadsheet for the first time no longer starts with every
+  dropdown pointing at the first column. Headers the file already spells
+  out — Date, Description, Amount, and common wordings like Transaction
+  Date, Details, Narrative, Withdrawal and Deposit — are matched up for
+  you, ignoring case and punctuation. Anything not recognised is left for
+  you to set, exactly as before, and every guess stays visible and
+  changeable before you import.
+
 ## [0.1.22] - 2026-08-19
 
 ### Changed
