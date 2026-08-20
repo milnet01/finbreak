@@ -23,6 +23,15 @@ signaling per
 
 ### Added
 
+- **SECURITY.md and CODE_OF_CONDUCT.md, and a private channel to report a vulnerability** (FIBR-0237)
+  There was no private way to report a security bug before this —
+  GitHub's private advisory form was disabled on the repository, so
+  the only channel was a public issue, which is the wrong place to
+  put one. The form is now enabled and `SECURITY.md` points at it,
+  alongside what to expect, which versions get fixes (the latest,
+  no backports) and how to verify a signed release yourself.
+  `CODE_OF_CONDUCT.md` is Contributor Covenant 2.1.
+
 - **CSV import now guesses the column mapping from the file's own headers** (FIBR-0297)
   Importing a spreadsheet for the first time no longer starts with every
   dropdown pointing at the first column. Headers the file already spells

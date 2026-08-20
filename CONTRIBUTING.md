@@ -18,8 +18,14 @@ before opening an issue or PR so we're on the same page.
 
 ## Reporting bugs
 
-Open an issue using the **Bug report** template. Please
-include:
+**A security bug is the exception — do not open a public issue
+for one.** If the bug could leak, corrupt or destroy someone's
+vault, or let a malicious statement file do something it should
+not, report it privately instead:
+[`SECURITY.md`](SECURITY.md) says how and what to expect.
+
+For everything else, open an issue using the **Bug report**
+template. Please include:
 
 - The project version (`grep version README.md` or the latest
   release tag).
@@ -58,9 +64,15 @@ before review.
 
 ## Code of conduct
 
-Be respectful. Disagreements are fine; personal attacks are
-not. The project maintainer reserves the right to close issues
-or PRs that violate this.
+[`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) — Contributor Covenant
+2.1 — is the one that governs, and it applies to issues, PRs and
+every other project space. The short version has not changed:
+disagreements are fine, personal attacks are not, and the
+maintainer will close anything that crosses that line.
+
+Report a problem privately through the
+[advisory form](https://github.com/milnet01/finbreak/security/advisories/new),
+not in a public thread.
 
 ## Questions
 

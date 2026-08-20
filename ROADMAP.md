@@ -4380,7 +4380,7 @@ lands on top.
   found the other's roadmap entry. A `roadmap_query` on the defect's own words
   before filing would have caught it.
 
-- 📋 [FIBR-0237] **No SECURITY.md and no CODE_OF_CONDUCT.md, though the standard requires both here.**
+- ✅ [FIBR-0237] **No SECURITY.md and no CODE_OF_CONDUCT.md, though the standard requires both here.**
   `documentation.md § 2.4` requires `SECURITY.md` for a project that
   **accepts issues**, and § 2.5 requires `CODE_OF_CONDUCT.md` for one
   that **accepts patches**. finbreak is a public repo whose
@@ -4408,6 +4408,36 @@ lands on top.
   **Layman:** The project's own rulebook says a public project taking bug reports needs a security-contact file and a code of conduct; neither exists yet.
   Kind: doc.
   Source: cold-eyes-2026-08-05 (FIBR-0230 loops 1-2, surfaced not fixed).
+  Resolved (2026-08-20): both files exist at the repo root.
+
+  SECURITY.md carries all four things documentation.md 2.4 names.
+  Disclosure policy, supported-version table (latest release only,
+  no backports -- which follows from versioning.md 3.4) and a
+  scope section that defers to security-model.md 4 and 5 rather
+  than restating them. The CONTACT is GitHub's private advisory
+  form, enabled on the repo in this change; it was disabled, so
+  there was no private channel at all before today. No email
+  address is published and no GPG key -- both are stated, with the
+  reason, rather than left as a silent omission against 2.4's
+  "contact email, GPG key (if used)". User decision 2026-08-20:
+  publishing a solo maintainer's personal address on a public repo
+  buys spam, and the advisory form is already an encrypted private
+  channel.
+
+  CODE_OF_CONDUCT.md is Contributor Covenant 2.1 verbatim, fetched
+  from the canonical EthicalSource source rather than typed from
+  memory, with only the [INSERT CONTACT METHOD] placeholder filled.
+
+  Rode along, because each was a copy of a rule these files now
+  own: CONTRIBUTING.md's inline conduct paragraph became a pointer
+  and its bug section grew the "not a public issue for a security
+  bug" carve-out it lacked; README's documentation list gained all
+  three files; versioning.md 3.4's parenthetical "once that file
+  exists, which it does not today" was true when written this week
+  and is not now.
+
+  Closes condition 4 of the FIBR-0304 v1.0 gate. Three blockers
+  remain: FIBR-0019, FIBR-0208, FIBR-0217.
 
 ## P13 — Packaging & release
 

@@ -233,6 +233,13 @@ resume work without it.
 
 ## Documentation
 
+- [SECURITY](SECURITY.md) — how to report a vulnerability
+  privately, which versions get fixes, and how to verify a
+  signed release.
+- [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md) — Contributor Covenant
+  2.1.
+- [CONTRIBUTING](CONTRIBUTING.md) — how to file an issue or
+  propose a change.
 - [ROADMAP](ROADMAP.md) — what's planned, with stable IDs.
 - [CHANGELOG](CHANGELOG.md) — what's shipped, Keep-a-Changelog
   format with an `[Unreleased]` block at the top.

@@ -97,10 +97,11 @@ limbs and every restatement of it in this document has so far dropped the
 second, sending a forced reinstall to PATCH. One home for the test.
 
 **3.4 — A security fix does not get its own number.** It takes the number its
-*change* takes under 3.1 to 3.3. Severity is communicated in the changelog —
-and in `SECURITY.md` once that file exists, which it does not today (§ 5
-condition 4) — never by inflating the version, which would tell every reader
-the wrong thing about compatibility.
+*change* takes under 3.1 to 3.3. Severity is communicated in the changelog and
+in the GitHub Security Advisory `SECURITY.md` promises for a confirmed report —
+never by inflating the version, which would tell every reader the wrong thing
+about compatibility. (`SECURITY.md` landed 2026-08-20 under FIBR-0237; this
+clause read "once that file exists, which it does not today" until then.)
 
 **3.5 — Documentation, tests, CI and roadmap work that ships in no artifact
 gets no release at all.** It rides along with the next one. Cutting a release
