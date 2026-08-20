@@ -4982,6 +4982,33 @@ because retrofitting them is a data migration.
   Source: claude-suggestion-2026-07-11.
   Resolved (2026-07-21): spec cold-eyes-converged over 8 loops (security/cross-ref lane clean 6–8; release-shell hardened), then reproduce-first TDD (10 tests, INV-1..7). Ships gen-checksums.sh (merge-aware manifest helper), two-phase signed SHA256SUMS with an anti-laundering fetch-verify gate + release-view fail-closed fetch, per-platform CycloneDX SBOM (freeze-before-PyInstaller, pip-audit -r --no-deps), and security-model INV-13. Gate green (1219 passed).
 
+- 📋 [FIBR-0305] **Change the master password from Settings — nearly free once FIBR-0019 lands.**
+  Surfaced by the FIBR-0019 review gate and verified as untracked:
+  `roadmap_query query:"master password" status:all` returns seven
+  bullets and none of them is this.
+
+  Today there is no user-facing change-password flow at all. `Vault.rekey`
+  exists but is called only by `BackupService.restore_backup`, which
+  re-keys a restored COPY to a password chosen at restore time — never the
+  live vault's own password.
+
+  FIBR-0019 changes the economics completely. Under envelope encryption
+  the master password only ever wraps a 32-byte data key, so changing it
+  is: derive a KEK from the new password against a fresh salt, re-wrap the
+  same DEK, rewrite the sidecar. The database is not touched. Before
+  FIBR-0019 the same feature meant `PRAGMA rekey` over every page.
+
+  Blocked by FIBR-0019 — the envelope has to exist first. Small once it
+  does, and it shares the Settings surface and the current-password gate
+  that FIBR-0019 section 4.7 already specifies for managing the recovery
+  key.
+
+  Deliberately NOT added to the FIBR-0304 v1.0 gate: it is a new
+  user-visible capability, not a condition of freezing the format.
+  **Layman:** Once the recovery-key work is in, changing your master password becomes a quick, safe operation instead of re-encrypting the whole vault — but nothing yet tracks actually adding the button.
+  Kind: feature.
+  Source: review-contract-2026-08-20 (FIBR-0019 gate, surfaced not fixed).
+
 ### 🎨 Features & accessibility
 
 - ✅ [FIBR-0021] **Multi-currency decision (ADR).**
