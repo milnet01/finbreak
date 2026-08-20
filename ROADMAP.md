@@ -1777,7 +1777,7 @@ scariest unknown (native-library bundling) up front.
   Kind: doc.
   Source: review-contract-2026-08-19 loop 3 cap note (FIBR-0295 gate).
 
-- 🚧 [FIBR-0299] **No versioning standard: we pledge semver in CHANGELOG.md but nowhere says what our numbers MEAN.**
+- ✅ [FIBR-0299] **No versioning standard: we pledge semver in CHANGELOG.md but nowhere says what our numbers MEAN.**
   releases.md 1 governs version LOCKSTEP -- every version-bearing file
   moves together -- and says nothing about what the number means.
   CHANGELOG.md's header pledges Semantic Versioning. Between them,
@@ -1793,6 +1793,38 @@ scariest unknown (native-library bundling) up front.
   Gate it with review-contract --genre standard (rule 14: a new standard
   changes what a conformer writes). A global versioning standard is being
   written in parallel; compare the two once both exist.
+  Resolved (2026-08-20): docs/standards/versioning.md written and gated
+  under rule 14 (review-contract --genre standard, this project's cap of
+  3). It owns what the number MEANS; releases.md 1 and .claude/bump.json
+  keep owning where it lives.
+
+  Shape: a six-row compatibility surface (vault, backup, export, update
+  path, saved import profiles, launcher command); MAJOR/MINOR/PATCH keyed
+  to that surface plus a required-user-action limb; below 1.0 the mapping
+  shifts down one place; a five-condition 1.0 gate that deliberately
+  excludes any third party's queue, so Flathub (FIBR-0159) and code
+  signing (FIBR-0133) cannot hold the version back.
+
+  Gate: 3 loops, 3 cold lanes each, 23 verified findings all fixed
+  (7 / 9 / 7), 1 dismissed as inert. Loop 3 was a VIOLENT cap -- five of
+  seven findings landed on text the run itself wrote -- but at 238 lines
+  this is the smallest standard in the folder, so the cause was
+  duplication rather than size: one rule restated in four places, each
+  copy drifting. Fixed by consolidation (3.2 and 3.3 now defer to 3.1
+  instead of restating its test). Per the violent-cap rule the gate is
+  not re-run on this document.
+
+  Two real product gaps the review surfaced, filed not fixed: FIBR-0301
+  (nothing catches a signing-key rotation that strands installed
+  updaters) and FIBR-0302 (no test restores a .fbk from an earlier
+  release).
+
+  Collateral fixed: CONTRIBUTING.md, docs/standards/README.md, README.md
+  and CLAUDE.md all enumerate the standards and needed the seventh added;
+  the new file was missing the first-line v1 marker its siblings carry.
+
+  Sibling FIBR-0300 (the stale pre-alpha badge) stays open -- its wording
+  should be picked against this standard.
   **Layman:** Nothing written down says when the app stops being a 0.x preview and becomes version 1.0.
   Kind: doc.
   Source: in-session-2026-08-20 (user question: what gets us to v1.0?).
@@ -1811,6 +1843,52 @@ scariest unknown (native-library bundling) up front.
   **Layman:** The front page of the project still calls it pre-alpha, which puts people off something far more finished than that.
   Kind: doc-fix.
   Source: in-session-2026-08-20 (found answering the v1.0 question).
+
+- 📋 [FIBR-0301] **Nothing catches a signing-key rotation that strands every installed copy's updater.**
+  docs/standards/versioning.md 2 names the update path as a
+  compatibility surface whose break includes "a signing-key rotation".
+  Neither existing catcher covers that:
+
+  - `scripts/release-linux.sh`'s hard gate verifies the signature against
+    the `RELEASE_PUBLIC_KEY_B64` committed in the SAME tree, so rotating
+    the key and the constant together passes green.
+  - Every test in `tests/features/auto_update/` is same-build; none
+    verifies a release against a PREVIOUSLY SHIPPED key.
+
+  So a rotation ships, the gate is green, and every installed copy is
+  permanently unable to verify an update -- the exact break the surface
+  row exists to name. CLAUDE.md already warns not to run
+  `gen-signing-key.py` to "fix" a missing key for this reason; nothing
+  enforces it.
+
+  Wanted: a test that verifies a release artifact against a pinned
+  historical public key, so changing the committed constant turns
+  something red.
+  **Layman:** If the release signing key is ever changed, every already-installed copy would silently stop being able to update, and no test would notice.
+  Kind: test.
+  Source: review-contract-2026-08-20 (FIBR-0299 loop 3, lane finding).
+
+- 📋 [FIBR-0302] **No test restores a .fbk backup written by an earlier release.**
+  `tests/features/backup/test_backup.py`'s round-trip is same-build: it
+  exports from a seed and verifies with one version, asserting
+  `res.schema_version == LATEST_SCHEMA_VERSION`. It never crosses a
+  version boundary.
+
+  `services/backup.py:376-381` guards the OTHER direction (refusing a
+  backup from a NEWER schema), and `:354` opens and migrates an older
+  backup forward -- so the product does support the older direction, and
+  nothing pins it.
+
+  docs/standards/versioning.md 2 makes "a backup taken on any earlier
+  release cannot be restored" a MAJOR break, so this is the surface's
+  primary failure mode with no catcher.
+
+  Wanted: a fixture .fbk written at an older schema version, restored by
+  the current build. The same shape would cover saved import profiles,
+  whose round-trip is same-build for the same reason.
+  **Layman:** Backups are only ever tested by writing and reading them with the same version, so a change that made old backups unrestorable would not be caught.
+  Kind: test.
+  Source: review-contract-2026-08-20 (FIBR-0299 loop 3, lane finding).
 
 ### 📦 Packaging
 
