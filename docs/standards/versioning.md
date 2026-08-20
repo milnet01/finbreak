@@ -202,7 +202,7 @@ number is written is owned elsewhere; this file owns only what it means.
 | § 2, export row | **nothing** — no test pins the PDF export's field set or layout across a version boundary |
 | § 2, update path | `tests/features/auto_update/`, and `scripts/release-linux.sh`'s hard gate against the committed `RELEASE_PUBLIC_KEY_B64` |
 | § 2, saved import profiles | a profile lives in the vault, so a **schema** migration touching it is caught by the vault row's tests; **nothing** catches a change to how a stored profile is interpreted |
-| § 2, command line | `tests/features/bundling/` (`--self-test`) |
+| § 2, launcher command | `tests/features/obs_packaging/` asserts `pyproject`'s `[project.scripts]` maps `finbreak` → `finbreak.__main__:main`, and `tests/features/flatpak_packaging/` asserts the manifest's `command` is the bare `finbreak`. A rename that missed either turns both red |
 | § 3.1's required-action note | **nothing** — reviewed by whoever reads the changelog |
 | § 3.5 | **nothing** — tracked by whoever cuts the release |
 | § 4.2 | **nothing** — tracked by FIBR-0299; no tool reads a diff and proposes a number |
