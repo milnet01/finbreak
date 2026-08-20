@@ -154,6 +154,28 @@ the §4.5 step 8 display once, with the same Keep / Decline and the same step-9
 write on Keep. It is offered **after** the migration rather than before, so a
 declined offer or a closed window costs nothing already done.
 
+**D8 — Nothing is migrated until a rollback copy of the pre-migration vault
+exists on disk.** *User, 2026-08-20*, choosing the safest of three options for
+§13's one-way door — the alternatives declined were a release note alone, and
+a warn-and-continue dialog with no copy.
+
+**The mechanism is a byte copy of the existing pair, not a `.fbk` export**,
+and the substitution is deliberate. A `.fbk` needs a *new* backup password,
+which means prompting the user for one at the first unlock after an update —
+the cost the decision was taken knowing about. It buys nothing here: the
+v1 `vault.db` and `vault.kdf.json` are **already** encrypted, under the very
+password the user has just typed, so copying them preserves exactly the same
+protection with no new credential, no prompt, and no second key schedule to
+reason about. It is also *more* recoverable: because the copy is keyed by the
+password already in hand, the app can detect one and offer to roll back by
+itself, where a `.fbk` would need the user to remember a password they set
+during an interrupted upgrade.
+
+What is given up is that the copy cannot be opened through the existing
+restore UI, being a raw pair rather than a `.fbk`. §13.3's rollback branch is
+what replaces that, and it is automatic. If a `.fbk` is wanted instead, this
+is the decision to revisit — the safety level is identical either way.
+
 ## 4. Design
 
 ### 4.1 The envelope
@@ -389,7 +411,7 @@ raises first and the version check is never reached. `ui/unlock.py` renders
 the resulting `KdfPolicyError` as the security-settings file being *missing or
 damaged*, with a suggestion to restore from a backup — over an intact vault.
 Verified 2026-08-20 by feeding a v2-shaped sidecar to the real loader.
-§13.4 and §15.3 both rest on this being stated accurately.
+§13.4 and D8's rollback copy both rest on this being stated accurately.
 
 ### 4.5 Vault creation
 
@@ -675,6 +697,18 @@ delete one slot, rewrite the sidecar atomically. The database is untouched.
   cheap-looking implementation and the one that reintroduces two key
   schedules (D2).
 
+- **INV-13** — No byte of the live pair is modified until a rollback copy
+  exists, is complete, and opens with the user's current key.
+  *Test:* `tests/features/recovery_key/test_migration.py::test_no_swap_without_a_verified_rollback_copy`
+  — injects a failure into the copy step, then into its verification, and
+  asserts in both cases that `vault.db` and `vault.kdf.json` are
+  byte-identical to their pre-migration hashes and that the vault still opens
+  with the original password.
+  *Breaks when:* the copy is taken but not opened before S1 proceeds — a
+  truncated or short-written copy then reads as a rollback that exists, which
+  is worse than none, because it is the thing the user would be told to fall
+  back on. Verifying it by *opening* it is the whole of the difference.
+
 ## 6. Failure modes
 
 | Assumption | When it breaks | Behaviour required |
@@ -684,6 +718,7 @@ delete one slot, rewrite the sidecar atomically. The database is untouched.
 | The DEK opens the database | Slot unwrapped but SQLCipher refuses | The pairing is broken — sidecar and database are from different vaults, or the database is damaged. Refuse, and point the user at restore-from-backup. Do **not** offer the destructive reset from this state; it is indistinguishable to the user from a wrong password, and the consequences differ absolutely. |
 | Migration completes | Power loss, kill, disk-full at any of S1–S6 | §13's resume rules. INV-7 is the contract. |
 | The vault is two files | It is four: vaults are opened `journal_mode = WAL`, so `vault.db-wal` and `vault.db-shm` exist alongside | A `-wal` written under the OLD key surviving S5 would have SQLite recover the NEW database from it. S5 closes both connections and removes the siblings before the swap. `security-model.md` INV-12 already counts those two as part of the vault's on-disk footprint. |
+| The rollback copy can be written and re-opened | Disk full, or the copy does not open | Abort before S1. Nothing has been touched, so the vault is exactly as it was; report it and let the user free space and retry. **Never proceed without it** — that is INV-13, and a migration that skips its own safety net when the disk is tight is one that skips it exactly when it is most needed. |
 | Disk has room for a second copy | Disk full during S1 | The original pair is untouched, so the vault still opens. But `export_to` pre-creates its target `O_EXCL` and unlinks nothing on failure, so a partial `vault.db.migrating` survives — which is why S1 unlinks any existing one before it starts. Without that, every later attempt raises `FileExistsError` and the migration wedges permanently. |
 | The recovery slot exists | User declined, or removed it | The recovery route is not offered. The "forgot password" affordance shows the backup-restore and start-over routes only, exactly as today. |
 | The user still has the code | They lost it too | Nothing changes: FIBR-0018 restore and FIBR-0030 reset remain, unchanged and still the last resorts. This spec adds a route; it removes none. |
@@ -698,17 +733,18 @@ New suite `tests/features/recovery_key/`, with `spec.md` beside it per
 | `test_envelope.py` | INV-1, INV-2, INV-3 | yes — `keywrap` and `crypto` are Qt-free |
 | `test_sidecar_v2.py` | INV-4, INV-12 | yes |
 | `test_recovery_code.py` | INV-5, INV-6, INV-11 | INV-5 and INV-6 yes — `recovery_code` is pure. **INV-11 no**: its trial-unwrap seam lives in `ui/_password_hint.py`, which imports Qt, so that test needs `qtbot`. |
-| `test_migration.py` | INV-7, INV-8 | yes — vault-level, no UI |
+| `test_migration.py` | INV-7, INV-8, INV-13 | yes — vault-level, no UI |
 | `test_recovery_unlock.py` | INV-9, INV-10 | needs `qtbot` |
 
 **Every one of these must be seen to fail before the change exists**
-(`testing.md` § 1). Four of the twelve invariants fail against today's code for
-reasons already established rather than assumed: INV-1 because every current
+(`testing.md` § 1). Five of the thirteen invariants fail against today's code
+for reasons already established rather than assumed: INV-1 because every current
 call site passes a derived key as the database key (§2.1); INV-11 because
 nothing today can reach `slots.recovery` to trial-unwrap a candidate, there
 being no such slot (§5); INV-4 because the current sidecar has seven flat
 fields (§4.4); INV-12 because `format_version` is 1
-(`src/finbreak/models.py`).
+(`src/finbreak/models.py`); and INV-13 because no migration exists to take a
+rollback copy before.
 
 **Registration.** `recovery_key` must be added to `_NO_PROSE` in
 `tests/features/prose_checks/test_prose_checks.py` — that suite fails if any
@@ -813,13 +849,14 @@ inferred from this section.
 | INV-10 | `tests/features/recovery_key/test_recovery_unlock.py::test_recovery_attempts_share_the_password_backoff` |
 | INV-11 | `tests/features/recovery_key/test_recovery_code.py::test_hint_rejects_the_recovery_code` |
 | INV-12 | `tests/features/recovery_key/test_sidecar_v2.py::test_declining_still_writes_the_envelope` |
+| INV-13 | `tests/features/recovery_key/test_migration.py::test_no_swap_without_a_verified_rollback_copy` |
 | The construction is cryptographically sound | **nothing** — no test in this project can establish that. It rests on AES-256-GCM and Argon2id as used, and on §4.2's AAD binding being complete. The mitigations are that no primitive is hand-rolled and that `bandit` and `pip-audit` run in the gate; neither reads a design. |
 | The user actually stored the recovery code | **nothing** — unknowable to the app. §4.5's acknowledgement step records only that a screen was dismissed. This is a real limit, not a defect, and the honest mitigation is copy that says what is being given up rather than a checkbox that implies proof. |
 | The recovery code is not written down somewhere insecure | **nothing** — outside the trust boundary (`docs/security-model.md` § 4). |
 | The user has not lost both credentials | **nothing** — FIBR-0018 restore and FIBR-0030 reset remain the last resorts, unchanged. |
 | The migration ran at all on a given user's machine | **nothing** at the time of writing — the app has no telemetry and will not gain any. A vault that never gets unlocked never migrates, which is harmless but means "every field vault is v2" is not a statement anyone can make. §15 raises what, if anything, 1.0 should do about it. |
 
-Five of seventeen rows say `nothing`. **Three** of the five are limits of
+Five of eighteen rows say `nothing`. **Three** of the five are limits of
 what software can know about a human — whether the user stored the code,
 stored it safely, and has not lost both credentials — and are recorded rather
 than fixed. A fourth, whether a given user's vault migrated at all, is a
@@ -902,15 +939,17 @@ Given a v1 sidecar and a password that opens the vault:
 
 | Step | Action |
 |---|---|
+| **S0** | Copy `vault.db` and `vault.kdf.json` to `vault.db.pre-v2` and `vault.kdf.json.pre-v2` (D8). `fsync` both, then **open the copy with the key already in hand and read from it**; abort the whole migration if it does not open. Nothing below runs until this succeeds. |
 | **S1** | Unlink any existing `vault.db.migrating` — `export_to` pre-creates `O_EXCL`, so a stale one from an interrupted run wedges every retry. Generate the DEK. Write `vault.db.migrating` via `Vault.export_to(dek)`. `fsync`. |
 | **S2** | Open `vault.db.migrating` with the DEK. Run `PRAGMA integrity_check` and compare per-table row counts against the live vault. Abort on any mismatch, deleting the temporary file. |
 | **S3** | Build the v2 sidecar. `slots.master` takes the v1 salt and the v1 cost parameters (§13.1), and `kdf` records those same costs. One field is present **only** while migrating: `migration_pending: true`. Write to `vault.kdf.json.migrating`. `fsync`. |
 | **S4** | `os.replace` the sidecar. |
 | **S5** | Close both connections first — the live vault's and the verified migrating one's — so each checkpoints and drops its `-wal` / `-shm` siblings, then remove any that remain. **Then** `os.replace` the database. |
-| **S6** | Rewrite the sidecar without `migration_pending`. `os.replace`. |
+| **S6** | Rewrite the sidecar without `migration_pending`. `os.replace`. Then remove the `.pre-v2` pair: S2 verified the replacement row for row before anything was swapped, so past this point the copy protects nothing and is one more plaintext-adjacent artefact to look after. |
 
-The original pair is not modified until S4, and by then the replacement has
-been built and verified.
+The original pair is not modified until S4 — and from S0 onward a verified
+rollback copy of it exists regardless, which is what INV-13 locks. By S4 the
+replacement has been built and verified too.
 
 **One property of S1's product needs recording: it is written at an explicit
 cipher level.** `Vault.export_to` issues
@@ -956,10 +995,20 @@ On open, with a v2 sidecar carrying `migration_pending`:
      nothing, and tell the user the vault and its key record disagree. Do not
      offer the destructive reset from here.
 
+**A `.pre-v2` pair beside a v2 sidecar is the rollback route, and the app
+offers it rather than hiding it.** It is keyed by the password the user
+already types, so where every branch above is exhausted — the password
+unwrapped `slots.master`, and no database it names will open — the app says a
+pre-upgrade copy exists and offers to restore it, instead of the bare "vault
+and key record disagree" refusal. **That is the whole return on D8: the
+terminal branch stops being terminal.**
+
 A v1 sidecar means the vault has not migrated — open as today, then run
-S1–S6. **A stray `vault.db.migrating` beside a v1 sidecar is debris from an
-interrupted S1, never a usable vault**: nothing was swapped, so S1 unlinks it
-and starts again.
+S0–S6. Two kinds of debris can sit beside a v1 sidecar and **neither is a
+usable vault**: a stray `vault.db.migrating` from an interrupted S1, which S1
+unlinks; and a stray `.pre-v2` pair from a run that aborted before S4, which
+S0 overwrites. In both cases nothing was ever swapped, so the live pair is
+untouched and the migration simply starts again.
 
 ### 13.4 Compatibility
 
@@ -971,16 +1020,21 @@ and starts again.
   helpful error: §4.4 records that the required-fields gate fires first, so
   the user is told the security-settings file is *missing or damaged* and
   pointed at a backup restore, over an intact vault. That is a real one-way
-  door **presented as data loss**, which is what makes §15.3's question
-  sharper than a release note.
+  door **presented as data loss** — which is precisely why D8 requires a
+  verified rollback copy before anything is touched, rather than a release
+  note. A user who downgrades finds an intact `.pre-v2` pair waiting, and
+  §13.3 offers it back.
 - **`.fbk` backups** — a backup exported before this change restores into a
   vault that must end up v2 (§11). A backup exported after it likewise. §9
   defers the cross-version test itself to FIBR-0302.
 
 ## 14. Resource cost
 
-- **Disk, transient:** one full copy of the vault during S1–S5, released at
-  S6. Peak usage is roughly twice the vault size, once, at migration.
+- **Disk, transient:** two full copies during the migration — the `.pre-v2`
+  rollback pair from S0 and the `vault.db.migrating` replacement from S1 —
+  both released at S6. Peak usage is roughly **three times** the vault size,
+  once. On a personal-finance vault that is megabytes, and S0 aborts cleanly
+  if the disk cannot take it (§6).
 - **Disk, permanent:** the sidecar grows by two slots — **~480 bytes**,
   measured by rendering the JSON at the field widths §4.4 fixes (240 bytes a
   slot). An earlier draft said "under 300", which was an estimate rather than
@@ -1015,13 +1069,7 @@ and starts again.
    build, a restore path missed in §11 — then "one key schedule" is an
    intention rather than a fact.
 
-3. **How loudly should the one-way door be announced?** §13.4 makes
-   downgrade impossible after migration. A user who upgrades, migrates, and
-   then wants to go back to the previous AppImage cannot open their vault. The
-   options are a release note, a pre-migration prompt, or an automatic `.fbk`
-   export before S1. The third is the safest and the most intrusive.
-
-4. **Should the recovery code be shown again on demand?** D5 makes it
+3. **Should the recovery code be shown again on demand?** D5 makes it
    permanently valid, but INV-5 forbids storing it, so the app cannot show it
    twice — only replace it. Whether the Settings affordance should therefore
    read "Replace" rather than "View" is a UX call with a security consequence,
