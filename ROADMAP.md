@@ -4665,6 +4665,48 @@ lands on top.
   living inside release-linux.sh cannot fire when nobody runs
   release-linux.sh.
 
+- 📋 [FIBR-0304] **Cut v1.0.0 — the gate is five conditions and four named blockers.**
+  User-approved 2026-08-20 on the question "what gets us to v1.0?".
+  docs/standards/versioning.md 5 owns the CRITERIA; this item owns the
+  current blocker list, because a standard naming today's roadmap ids
+  goes stale and a roadmap bullet does not.
+
+  Why now: 196 shipped items across all thirteen planned phases, P02-P11
+  with zero open items, 23 published releases -- all still numbered
+  0.1.22 because nothing said when to stop.
+
+  BLOCKERS, and only these four:
+  - FIBR-0019 (recovery key) -- 5 condition 1. Its own body says the key
+    envelope must exist at vault creation and retrofitting needs a full
+    re-encrypt migration, so doing it before 1.0 is cheap and after is a
+    migration over real financial data.
+  - FIBR-0208 (AppImage libxkbcommon segfault) -- 5 condition 3, a crash
+    on a mainstream Linux configuration.
+  - FIBR-0237 (no SECURITY.md / CODE_OF_CONDUCT.md) -- 5 condition 4.
+  - FIBR-0217 (dark-theme PDF page numbers black on dark) -- a visible
+    defect in a headline feature; 5 condition 5.
+  Plus FIBR-0300, the stale pre-alpha badge, whose wording should be
+  picked against this standard rather than in isolation.
+
+  EXPLICITLY NOT BLOCKERS, decided rather than overlooked:
+  - FIBR-0159 (Flathub) and FIBR-0133 (SignPath code signing). Both are
+    stuck on a third party, and versioning.md 5 rules out any third
+    party's queue as a gate by name -- a version number that waits on
+    somebody else's inbox never arrives.
+  - The 48-item features backlog, i18n, macOS, Snap/AUR/winget and the
+    performance items. Those are 1.1 and 1.2.
+
+  OPEN QUESTION FOR THE USER, not yet answered: does FIBR-0019 ship IN
+  1.0, or do we freeze the vault format without it? Freezing without it
+  means either living with "forget your password, lose everything"
+  permanently, or paying a full re-encrypt migration later. If it is too
+  big to take now, versioning.md 5's named interim applies: cut 0.9.0
+  ("we believe this is it; the format is not frozen yet"), which is the
+  one judgement-based exception to 4.2 and 6.2.
+  **Layman:** The plan for calling the app finished: what has to be true first, and which four jobs are standing in the way.
+  Kind: release.
+  Source: user-decision-2026-08-20 ("what gets us to v1.0?").
+
 ## Enhancements & performance backlog
 
 Ideas captured 2026-07-01 from a product / performance review
