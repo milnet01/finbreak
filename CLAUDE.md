@@ -71,7 +71,7 @@ six-plus reads to answer a question the roadmap DB already answers.
    reading both, **summarise back to the user** before doing any
    work.
 4. **`docs/standards/{coding,naming,dependencies,documentation,testing,commits}.md`**
-   — the six shareable v1 standards. Read the **one** matching the active
+   — the seven shareable v1 standards. Read the **one** matching the active
    item's `Kind` — not all six. (§ Resumption flow step 2 is where that
    read happens, and it governs.)
 5. **`docs/specs/<active-id>.md`** — the contract for the

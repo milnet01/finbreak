@@ -13,7 +13,7 @@ explicit.
 | [documentation.md](documentation.md) | README / CLAUDE.md / SECURITY.md structure, API contracts, screenshots, markdown style. Governs `Kind: doc / doc-fix` work. |
 | [testing.md](testing.md) | TDD policy, test types, spec-first authoring, INV numbering, coverage, anti-patterns. Governs `Kind: test` work + the regression-test follow-through for `fix / audit-fix / review-fix`. |
 | [commits.md](commits.md) | The `<ID>: <description>` mandate, hygiene, branching, push policy, release commits. Governs every commit. |
-| [versioning.md](versioning.md) | What the version NUMBER means — the six-surface compatibility promise (vault, backup, exports, update path, import profiles, CLI), MAJOR/MINOR/PATCH, the pre-1.0 shift, and the five-condition 1.0 gate. Cross-cutting: governs `Kind: release` and the number every other Kind's change implies. Where the number is *written* is `releases.md` § 1 + `.claude/bump.json`, not here. |
+| [versioning.md](versioning.md) | What the version NUMBER means — the six-surface compatibility promise (vault, backup, export, update path, import profiles, launcher command), MAJOR/MINOR/PATCH, the pre-1.0 shift, and the five-condition 1.0 gate. Cross-cutting: governs `Kind: release` and the number every other Kind's change implies. Where the number is *written* is `releases.md` § 1 + `.claude/bump.json`, not here. |
 
 Sub-spec extracted from `documentation.md` for token efficiency:
 
