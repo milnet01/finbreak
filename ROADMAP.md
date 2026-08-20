@@ -1890,6 +1890,68 @@ scariest unknown (native-library bundling) up front.
   Kind: test.
   Source: review-contract-2026-08-20 (FIBR-0299 loop 3, lane finding).
 
+- 📋 [FIBR-0303] **Amend versioning.md with the two rules the fleet survey found missing: pre-release suffixes and schema-vs-app independence.**
+  A survey of every other project on this machine found two rules worth
+  adopting and a list worth NOT adopting. Hold this until the global
+  versioning standard lands, then make ONE amendment and gate it once --
+  docs/standards/versioning.md hit a VIOLENT cap on 2026-08-20 (five of
+  loop 3's seven findings landed on text the run itself wrote), so it
+  must not be re-gated casually.
+
+  1. PRE-RELEASE / RC SUFFIX -- versioning.md says nothing, and the
+     tooling cannot express one: `.claude/bump.json`'s version_pattern is
+     suffix-free `([0-9]+\.[0-9]+\.[0-9]+)`, as is `cut-release`.
+     Ants_Terminal's rule is the one to take: the `-rcN` suffix lives
+     ONLY at the git tag, the GitHub-release title and the asset
+     filename, never in a version-bearing source file -- which is exactly
+     why a suffix-free bump pattern is correct rather than a limitation.
+     Three projects spell it three ways (`-rc1`, `-rc.1`, `-pre.1`); take
+     whatever the global standard settles on rather than inventing a
+     fourth.
+
+     The finbreak-specific half nobody else has: `_parse_version`
+     (services/update.py:64) returns None for any segment that is not a
+     plain ASCII decimal, so a `0.2.0-rc.1` tag is UNUSABLE to the
+     updater and is silently skipped. That is the right behaviour --
+     Ants_Terminal buys the same safety with a separate zsync channel --
+     but here it is incidental, undocumented, and one "fix" to accept
+     suffixes away from pushing an RC to every stable user. Write it down
+     as load-bearing.
+
+  2. SCHEMA VERSION IS INDEPENDENT OF THE APP VERSION -- perch states the
+     general rule ("Two version lines are independent of the app version
+     and never move with it"). finbreak has `LATEST_SCHEMA_VERSION = 13`
+     against `__version__ = "0.1.22"` and versioning.md never says they
+     are unrelated, though its 2 vault row leans on the schema.
+     DOOM_Ants carries the same warning for an internal engine constant.
+
+  DO NOT LIFT, and the reasons matter:
+  - Vestige's derived/computed version numbers (a weekly train, numbers
+    from git tags). A computed number makes "is this breaking?"
+    unanswerable by construction, which is the opposite of this
+    standard's whole premise.
+  - OneUp's "MAJOR because the engine is replaced" -- it grades an
+    internal rewrite with no user-visible change, contradicting 1.1.
+  - Any project's own list of breaking surfaces ( 2 is finbreak's).
+  - Any "where the version lives" list -- releases.md 1 owns lockstep.
+  - Rolodex's two "when unsure" decision questions. Useful, but they
+    restate 3's test in a second place, and a rule restated in several
+    places drifting apart is precisely what caused this document's
+    violent cap. If wanted, replace 3's prose rather than adding beside
+    it.
+
+  VALIDATION worth recording: the global roadmap's own survey (CFG-0173)
+  names the central unanswered question as "SemVer is written for things
+  other code imports; most projects here are not that". versioning.md
+  1.2 already answers it for finbreak. On three axes -- 1.0 criteria,
+  security-fix versioning, and deprecation -- finbreak's is now the most
+  complete document on the machine; only DOOM_Ants states any 1.0 exit
+  condition, only Rolodex states a security-fix rule, and nothing anywhere
+  handles deprecation.
+  **Layman:** Two gaps the new versioning rules do not cover yet: what a release-candidate version looks like, and that the vault's internal format number is separate from the app's version number.
+  Kind: doc.
+  Source: fleet-survey-2026-08-20 (other projects' versioning standards, after FIBR-0299).
+
 ### 📦 Packaging
 
 - ✅ [FIBR-0003] **P01: bundling smoke-test (de-risk native libs early).**
