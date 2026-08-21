@@ -5141,7 +5141,7 @@ because retrofitting them is a data migration.
   Kind: feature.
   Source: review-contract-2026-08-20 (FIBR-0019 gate, surfaced not fixed).
 
-- 📋 [FIBR-0307] **FP02 — fix-pass after FIBR-0019: thirteen findings from check-code and review-code.**
+- 🚧 [FIBR-0307] **FP02 — fix-pass after FIBR-0019: thirteen findings from check-code and review-code.**
   Every one is a defect FIBR-0019 introduced; pre-existing findings are filed separately. Verified independently before filing.
 
   TWO ARE SEVERE.
@@ -5183,6 +5183,36 @@ because retrofitting them is a data migration.
   into keywrap.py so the next reviewer does not re-raise it. Reading
   FIBR-0004 D5's actual wording is the missing input; the lane could not,
   it was outside its packet.
+  Progress (2026-08-21): findings 1 and 2 -- both severe -- are fixed,
+  pushed and gate-green (61ac651). Eleven remain.
+
+  Finding 1 (d2e11ef): verify_check_symbol now compares the check VALUE
+  through a fold-aware table, so a printed 1 written as I is accepted.
+  Three new legs cover the fold, one locks that it does not widen to a
+  wrong check value, five cover the non-data check symbols a naive fold
+  would drop, and one reproduces the INV-11 hint bypass end to end -- it
+  failed DID NOT RAISE before the fix.
+
+  Finding 2 (6c73120): _open_with raises VaultStateError instead of
+  returning False. No caller reaches it with an unproven credential, so
+  the False was always a broken pairing. Measured before the fix: a
+  correct password against a mispaired vault rendered "Could not unlock.
+  Try again in 1s.", charging the throttle too. Both dialog routes already
+  caught VaultStateError, so _PAIRING_BROKEN is now reachable. The blast
+  radius a lane flagged as unmeasured is measured: _unlock_v1's
+  post-migration fallback re-opens a database that key opened moments
+  earlier, so a failure there is a real anomaly and the pairing message is
+  correct. Full suite 1980 passed, mypy clean.
+
+  New suite tests/features/recovery_key/test_failure_modes.py reaches the
+  broken-pairing state without corrupting a byte -- it leaves the vault's
+  own sidecar beside a different vault's database.
+
+  The open question on un-wipeable DEK copies is decided (user, 2026-08-21):
+  it sits inside FIBR-0004 D5's accepted best-effort gap, whose wording
+  describes this exact shape -- an API returns immutable bytes, they are
+  copied into a wipeable buffer and the original reference dropped. To be
+  documented in keywrap.py under FP02 rather than fixed.
   **Layman:** The recovery-key feature works, but a careful review found thirteen problems in it — two of which could cost a user their data.
   Kind: review-fix.
   Source: close-phase-2026-08-21 (check-code + 3 review-code lanes over f704605..HEAD).
