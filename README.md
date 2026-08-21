@@ -116,6 +116,11 @@ lot, with more polish and features to come. What works today:
   Forecast tab and the Home dashboard's breakdown lists; if you'd rather start
   fresh, **Window → Reset layout** puts the window size *and* every table's
   columns back the way they looked on a new install, in one click, and
+- a **recovery code** — a second way in, given to you once when your vault is
+  created. Forgetting your master password used to mean losing everything;
+  now the code unlocks the vault and asks you to choose a new password. You
+  can decline it, replace it, or remove it later from **Settings**, and an
+  existing vault is upgraded automatically the next time you unlock it,
 - everyday **conveniences and safety** — an optional password hint on the unlock
   screen, amounts and descriptions you copy are cleared from the clipboard after a
   short while, repeated wrong unlock attempts are slowed down, you can set
@@ -198,9 +203,12 @@ then, you can run from source with Python 3.12+ (see
 ## Quickstart
 
 1. **Launch finbreak.** The first time, you'll create your vault by
-   choosing a **master password**. This password encrypts everything — keep
-   it safe, because there is **no way to recover your data if you forget
-   it**.
+   choosing a **master password**. finbreak then shows you a **recovery
+   code** — one line of letters and numbers, shown once. Write it down or
+   save it somewhere away from this computer: it can unlock your vault if
+   you ever forget your password. finbreak keeps no copy, so if you lose
+   **both** your password and your recovery code, your data cannot be
+   recovered.
 2. **Add an account** (for example, your current account).
 3. **Import a statement** — point finbreak at a CSV, OFX, or PDF file from
    your bank. It reads the transactions and files them into categories.

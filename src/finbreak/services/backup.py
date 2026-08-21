@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import secrets
 import tempfile
 import zipfile
 import zlib
@@ -29,8 +30,16 @@ from pathlib import Path
 from sqlcipher3.dbapi2 import DatabaseError
 
 import finbreak
-from finbreak.crypto import derive_key, load_and_validate_params
+from finbreak.crypto import (
+    KEY_LEN,
+    SlotRecord,
+    derive_key,
+    load_and_validate_params,
+    new_sidecar,
+    write_sidecar_v2,
+)
 from finbreak.errors import BackupError, KdfPolicyError, SchemaVersionError
+from finbreak.keywrap import SLOT_MASTER, wrap_dek
 from finbreak.migrations import LATEST_SCHEMA_VERSION
 from finbreak.services.auth import AuthService, _wipe
 from finbreak.vault import SQLCIPHER_COMPAT, Vault
@@ -199,6 +208,7 @@ class BackupService:
             raise ValueError("new master password must not be empty")
         master_pw = bytearray(new_master_password, "utf-8")
         master_key: bytearray | None = None
+        dek: bytearray | None = None
         install_dir = self._vault.vault_path.parent
         try:
             # The whole assembly lives in a temp dir INSIDE AppDataLocation, so the
@@ -216,13 +226,36 @@ class BackupService:
                     # salt, rekey to it, and persist THAT same params object as the
                     # sidecar — one object, so the sidecar salt and rekey key can't
                     # disagree and brick the vault (D4).
+                    #
+                    # Under FIBR-0019 the derived value is KEK-master and the
+                    # database is re-keyed to a fresh random DEK, exactly as
+                    # first-run does: a restore that wrote a v1 sidecar would put
+                    # a SECOND key schedule back in the field on every restore,
+                    # which is the one thing D2 exists to prevent. FIBR-0014 D4
+                    # is amended to match. The restored vault has no recovery
+                    # slot — Settings' Add is how one is put back (§ 4.7).
                     master_params = self._auth.new_params()
                     master_key = derive_key(
                         master_pw, master_params.salt, master_params
                     )
                     on_key("master", master_key)
-                    backup_vault.rekey(master_key)  # not a copy — see open() below
-                    backup_vault._write_sidecar(master_params)
+                    dek = bytearray(secrets.token_bytes(KEY_LEN))
+                    on_key("dek", dek)
+                    backup_vault.rekey(dek)  # not a copy — see open() below
+                    wrapped = wrap_dek(
+                        bytes(master_key), bytes(dek), SLOT_MASTER, master_params
+                    )
+                    write_sidecar_v2(
+                        backup_vault.sidecar_path,
+                        new_sidecar(
+                            master_params,
+                            {
+                                SLOT_MASTER: SlotRecord.from_wrap(
+                                    master_params.salt, wrapped
+                                )
+                            },
+                        ),
+                    )
                 finally:
                     backup_vault.close()
                 self._install(
@@ -242,6 +275,7 @@ class BackupService:
             raise BackupError(str(exc)) from exc
         finally:
             _wipe(master_key)
+            _wipe(dek)
             _wipe(master_pw)
 
     # -- verify ---------------------------------------------------------------

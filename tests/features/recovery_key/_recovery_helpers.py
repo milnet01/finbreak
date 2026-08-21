@@ -277,7 +277,24 @@ def open_after_restart(
     A v1 sidecar means the Argon2id output IS the database key. A v2 sidecar
     means derive KEK-master from ``slots.master``'s salt, unwrap, and open with
     the resulting DEK. Raises whatever the real path would raise.
+
+    A v2 sidecar carrying ``migration_pending`` runs § 13.3's resume ladder
+    first, by calling the PRODUCTION one — because that is what a fresh app
+    start does, and it is what makes INV-7 true (§ 13.3's own heading says so).
+    Between S4 and S5 the sidecar describes the new schedule while the database
+    is still on the old one; unwrapping and opening without the ladder finds a
+    DEK that no database on disk answers to, which is a gap in this simulation
+    rather than in the migration. The ladder is entered only AFTER the slot has
+    unwrapped, which is § 13.3's step 0: a mistyped password must be a failed
+    attempt, never a user told their vault is corrupt.
+
+    ``cipher_compatibility`` is passed on every v2 open, as § 13.2 requires:
+    ``export_to`` writes the migrated database at an explicit level where a
+    ``create``d one takes the library default, and the two agreeing today is
+    exactly what stops agreeing after a ``sqlcipher3-wheels`` bump.
     """
+    from finbreak.services import vault_migration
+
     data = read_sidecar(sidecar_path)
     vault = Vault(vault_path, sidecar_path)
     if "sidecar_version" not in data:
@@ -292,7 +309,13 @@ def open_after_restart(
         )
         vault.open(derive_key(bytearray(password), params.salt, params))
         return vault
-    vault.open(unwrap_slot(password, data, "master"))
+    dek = unwrap_slot(password, data, "master")
+    if data.get("migration_pending"):
+        vault_migration.resume(
+            vault_path, sidecar_path, kek_for(password, data, "master"), dek
+        )
+        data = read_sidecar(sidecar_path)
+    vault.open(dek, cipher_compat=data.get("cipher_compatibility"))
     return vault
 
 

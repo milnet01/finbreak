@@ -618,10 +618,16 @@ def test_create_failure_after_conn_live_resets_lock_state(paths, monkeypatch):
 def test_INV5_first_run_writes_vault_before_sidecar(service, paths, monkeypatch):
     vault_path, sidecar_path = paths
 
-    def boom(self, params):
+    # The ORDER is the contract and it is unchanged; what moved is which
+    # function writes the sidecar. FIBR-0019 § 4.5 step 6 takes create() off the
+    # sidecar entirely (`write_sidecar=False`) and step 7 writes the v2 slots
+    # object instead, precisely so a crash between the two cannot leave a v1
+    # sidecar standing over a DEK-keyed database. So the crash is injected into
+    # the writer first-run now calls.
+    def boom(sidecar_path, sidecar):
         raise RuntimeError("simulated crash before the sidecar is written")
 
-    monkeypatch.setattr(Vault, "_write_sidecar", boom)
+    monkeypatch.setattr("finbreak.services.auth.write_sidecar_v2", boom)
     with pytest.raises(RuntimeError):
         service.first_run(bytearray(_PW), "ZAR")
 
@@ -769,18 +775,28 @@ def test_INV6_idle_autolock_routes_ui_back_to_unlock(qtbot, service):
 # INV-7 — no plaintext secret on disk or in logs; 0o600 perms
 # --------------------------------------------------------------------------- #
 def test_INV7_sidecar_holds_no_secret(service, paths):
+    """FIBR-0004 INV-7, in the weaker form FIBR-0019 leaves it.
+
+    The sidecar no longer holds "only the salt + non-secret KDF parameters +
+    format version": it now carries a WRAPPED DEK, which is none of those three.
+    The honest replacement claim is *no UNWRAPPED key material*, and it is
+    strictly weaker — FIBR-0019 § 4.4 says so rather than glossing it, and
+    FIBR-0019 INV-4 is where the full scan lives (every form of the DEK, both
+    KEKs, the password and the recovery code, in hex, base32 and raw bytes).
+    What stays here is the shape: an exact key set, so a debug field or a cached
+    derived key cannot be added to this file unnoticed.
+    """
     _, sidecar_path = paths
     service.first_run(bytearray(_PW), "ZAR")
     text = sidecar_path.read_text()
     assert _PW.decode() not in text
-    assert set(json.loads(text)) == {
-        "format_version",
+    assert set(json.loads(text)) == {"sidecar_version", "kdf", "slots"}
+    assert set(json.loads(text)["kdf"]) == {
         "memory_kib",
         "time_cost",
         "parallelism",
         "key_len",
         "salt_len",
-        "salt_hex",
     }
 
 

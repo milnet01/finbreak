@@ -26,12 +26,26 @@ from finbreak.crypto import (
     ARGON2_TIME_COST,
     KEY_LEN,
     SALT_LEN,
+    SlotRecord,
+    VaultSidecar,
     derive_key,
     load_and_validate_params,
+    new_sidecar,
+    read_sidecar_v2,
+    sidecar_version,
+    write_sidecar_v2,
 )
-from finbreak.errors import VaultLockedError, VaultStateError
-from finbreak.models import FORMAT_VERSION, KdfParams, NegativeStyle
+from finbreak.errors import (
+    KdfPolicyError,
+    KeyUnwrapError,
+    VaultLockedError,
+    VaultStateError,
+)
+from finbreak.keywrap import SLOT_MASTER, SLOT_RECOVERY, unwrap_dek, wrap_dek
+from finbreak.models import FORMAT_VERSION, SIDECAR_VERSION, KdfParams, NegativeStyle
 from finbreak.repositories.settings import SettingsRepository
+from finbreak.services import vault_migration
+from finbreak.services.recovery_code import decode, generate_code, normalise
 from finbreak.services.reporting import (
     MODE_CURRENT_MONTH,
     MODE_PREVIOUS_MONTH,
@@ -174,6 +188,11 @@ class AuthService:
         self._sidecar_path = sidecar_path
         self._key: bytearray | None = None
         self._timer: QTimer | None = None
+        # Set when THIS unlock converted a v1 vault (D2), and read exactly once
+        # by the shell so it can make D7's offer. Session state, deliberately
+        # not persisted: a declined or closed offer costs nothing already done,
+        # and re-offering it on every launch would be nagging.
+        self._just_migrated = False
         # Invoked after an idle auto-lock so the UI can route away from the now
         # -locked vault (else the next action hits a closed connection). Set by
         # the UI shell; None in headless use.
@@ -213,61 +232,158 @@ class AuthService:
             salt=secrets.token_bytes(SALT_LEN),
         )
 
-    def first_run(self, password: bytearray, base_currency: str) -> None:
-        """Headless convenience: derive then create, in one call (assumes validated)."""
+    def first_run(self, password: bytearray, base_currency: str) -> str:
+        """Headless convenience: derive then create, in one call (assumes validated).
+
+        Returns the display-form recovery code for the one-time § 4.5 step 8
+        display. Nothing else can learn it — INV-5 forbids retaining it — so the
+        caller either hands it to the user now or it is gone.
+        """
         params = self.new_params()
         raw = derive_raw(password, params)
-        self.complete_first_run(raw, params, base_currency)
+        return self.complete_first_run(raw, params, base_currency)
 
     def complete_first_run(
         self, raw: bytes, params: KdfParams, base_currency: str
-    ) -> None:
-        """Main-thread step: create the vault and take ownership of the key."""
+    ) -> str:
+        """Main-thread step: build the key envelope, create the vault, take the DEK.
+
+        ``raw`` is KEK-**master** — the Argon2id output over the user's password
+        and ``params.salt``. It is no longer the database key: SQLCipher gets a
+        random DEK, and the KEK only wraps it (FIBR-0019 § 4.5, INV-1).
+
+        Returns the display-form recovery code (step 8). The code is generated
+        here and retained nowhere, so this return is the only route by which
+        anything can learn it (INV-5). Its slot is NOT written: that is step 9,
+        on Keep, and is :meth:`add_recovery_key` — declining is simply never
+        calling it, which is what keeps a declined code's slot off disk (INV-12).
+        """
         # Copy the derived key into a wipeable buffer BEFORE the presence-state
         # guard, so *every* failure path — including "vault already exists"
         # (two instances racing first-run) — wipes it, not just the create()
         # failure. Previously the guard raised with the key copy un-wiped
         # (INV-3 leak). (indie-review M-auth2)
-        key = bytearray(raw)
+        kek_master = bytearray(raw)
+        # A bytearray, not bytes: security-model.md INV-3 requires a wipeable
+        # buffer, and this one is SQLCipher's raw key for the vault's whole life.
+        dek = bytearray(secrets.token_bytes(KEY_LEN))
+        code = generate_code()
         try:
             if self._vault.presence_state() != "first_run":
                 raise VaultStateError("cannot first-run over an existing vault")
+            # write_sidecar=False: create() would serialise the flat v1 record,
+            # which does not describe this vault at all. The sidecar is step 7's
+            # alone, and writing it last preserves the vault-before-sidecar
+            # create order (FIBR-0004 INV-5).
             self._vault.create(
-                key, params, base_currency, CURRENCY_EXPONENTS[base_currency]
+                dek,
+                params,
+                base_currency,
+                CURRENCY_EXPONENTS[base_currency],
+                write_sidecar=False,
+            )
+            wrapped = wrap_dek(bytes(kek_master), bytes(dek), SLOT_MASTER, params)
+            write_sidecar_v2(
+                self._sidecar_path,
+                new_sidecar(
+                    params, {SLOT_MASTER: SlotRecord.from_wrap(params.salt, wrapped)}
+                ),
             )
         except Exception:
-            _wipe(key)  # don't leave the key in memory on any failure
+            _wipe(dek)  # don't leave the key in memory on any failure
             raise
-        self._key = key
+        finally:
+            _wipe(kek_master)
+        self._key = dek
         self._arm_timer()
-        log.info("first-run: vault created")
+        log.info("first-run: vault created with a key envelope")
+        return code
 
     # --- recovery key (FIBR-0019) ------------------------------------------ #
-    # STUBS. FIBR-0019 is not implemented; these exist so
-    # tests/features/recovery_key/ executes against a real call rather than
-    # dying at import (testing.md § 1). See docs/specs/FIBR-0019-master
-    # -password-recovery-key.md § 4.5 / § 4.6 / § 4.7.
-    #
-    # NOTE the seam `first_run` is expected to grow: § 4.5 has it GENERATE the
-    # recovery code (step 4) and hand it back for the one-time display (step 8),
-    # so its return widens from None to the display-form code. Step 7 writes the
-    # v2 sidecar carrying `slots.master` ONLY; `add_recovery_key` below is step 9
-    # (on Keep) and is what puts `slots.recovery` on disk. Declining is simply
-    # never calling it, so a declined code's slot never reaches the file (INV-12).
+    def read_sidecar(self) -> VaultSidecar:
+        """The v2 sidecar, or ``VaultStateError`` if this vault is still v1.
+
+        Every slot operation below goes through this rather than caching it: the
+        file is the single source of truth for what slots exist, and a cached
+        copy would let an Add race a Remove.
+        """
+        if sidecar_version(self._sidecar_path) != SIDECAR_VERSION:
+            raise VaultStateError("this vault has not been migrated to the envelope")
+        return read_sidecar_v2(self._sidecar_path)
+
+    def has_recovery_key(self) -> bool:
+        """Whether ``slots.recovery`` is on disk — what gates the § 4.6 route and
+        the § 4.7 Add / Replace / Remove affordances."""
+        try:
+            return SLOT_RECOVERY in self.read_sidecar().slots
+        except (VaultStateError, KdfPolicyError):
+            return False
+
+    def recovery_params(self) -> KdfParams:
+        """The KDF record the recovery route derives under — the shared costs
+        against ``slots.recovery``'s own salt."""
+        sidecar = self.read_sidecar()
+        if SLOT_RECOVERY not in sidecar.slots:
+            raise VaultStateError("this vault has no recovery key")
+        return sidecar.params_for(SLOT_RECOVERY)
 
     def add_recovery_key(self, code: str) -> None:
         """Wrap the session's DEK into ``slots.recovery`` and rewrite the sidecar.
 
-        § 4.5 step 9 (Keep) and § 4.7 (Add). A re-wrap of 32 bytes — the database
-        is untouched and the DEK does not change.
+        § 4.5 step 9 (Keep), and § 4.7's Add and Replace — Replace is this call
+        over an existing slot, which invalidates the previous code by overwriting
+        the only copy of the DEK it wrapped. A re-wrap of 32 bytes: the database
+        is untouched and the DEK does not change, which is what makes adding a
+        recovery key to an existing vault cheap rather than a re-encrypt (D3).
+
+        What Argon2id is fed is the DECODED 17-byte payload, never the text
+        (§ 4.3) — the same input § 4.6's unlock and INV-11's trial-unwrap use, or
+        a slot written by one would be unopenable by another.
         """
-        raise NotImplementedError("FIBR-0019")
+        self._write_slot(SLOT_RECOVERY, bytearray(decode(normalise(code))))
+
+    def remove_recovery_key(self) -> None:
+        """§ 4.7 Remove — delete ``slots.recovery`` and rewrite the sidecar.
+
+        The vault keeps opening on the master password; what is given up is the
+        second route, and the UI says so plainly before calling this.
+        """
+        if self._key is None:
+            raise VaultLockedError("the vault is locked")
+        write_sidecar_v2(
+            self._sidecar_path, self.read_sidecar().without_slot(SLOT_RECOVERY)
+        )
+        log.info("recovery key removed")
 
     def set_master_password(self, password: bytearray) -> None:
         """Re-derive KEK-master against a FRESH salt and re-wrap the same DEK into
         ``slots.master`` (§ 4.6 step 4). The DEK does not change, so nothing is
         re-encrypted; afterwards the old password no longer opens the vault."""
-        raise NotImplementedError("FIBR-0019")
+        self._write_slot(SLOT_MASTER, password)
+
+    def _write_slot(self, slot: str, secret: bytearray) -> None:
+        """Derive a KEK from ``secret`` against a FRESH salt, wrap the session's
+        DEK into ``slot``, and rewrite the sidecar atomically.
+
+        The one implementation behind every credential change (§ 4.7: "all three
+        are re-wraps"). ``secret`` is wiped here — ``derive_raw`` owns it.
+        """
+        if self._key is None:
+            raise VaultLockedError("the vault is locked")
+        sidecar = self.read_sidecar()
+        # The new slot inherits this vault's recorded costs, not today's pin: a
+        # migrated vault's slots must stay derivable under one schedule (§ 13.1).
+        params = sidecar.params_with_salt(secrets.token_bytes(SALT_LEN))
+        kek = bytearray(derive_raw(secret, params))
+        try:
+            wrapped = wrap_dek(bytes(kek), bytes(self._key), slot, params)
+        finally:
+            _wipe(kek)
+        write_sidecar_v2(
+            self._sidecar_path,
+            sidecar.with_slot(slot, SlotRecord.from_wrap(params.salt, wrapped)),
+        )
+        log.info("re-wrapped the %s slot", slot)
 
     # --- unlock ------------------------------------------------------------ #
     def load_params(self) -> KdfParams:
@@ -284,8 +400,70 @@ class AuthService:
         return self.complete_unlock(raw)
 
     def complete_unlock(self, raw: bytes) -> bool:
-        """Main-thread step: open the vault; ``False`` (no key) on a wrong key."""
-        key = bytearray(raw)
+        """Main-thread step: open the vault; ``False`` (no key) on a wrong key.
+
+        ``raw`` is what the sidecar's shape says it is (FIBR-0019 § 4.4): for a
+        **v2** vault it is KEK-master, which unwraps ``slots.master`` to the DEK
+        SQLCipher actually takes; for a **v1** vault it is still the database key
+        itself, and a successful open is followed by § 13's conversion (D2).
+        """
+        if sidecar_version(self._sidecar_path) == SIDECAR_VERSION:
+            return self._unlock_through_slot(bytearray(raw), SLOT_MASTER)
+        return self._unlock_v1(bytearray(raw))
+
+    def complete_recovery_unlock(self, raw: bytes) -> bool:
+        """The § 4.6 recovery route's main-thread step — ``raw`` is KEK-recovery.
+
+        Identical to the password route but for which slot it reads. The forced
+        new master password (D6) is the caller's next step, not this one's: this
+        opens the vault, and :meth:`set_master_password` is what leaves the user
+        with a working credential.
+        """
+        return self._unlock_through_slot(bytearray(raw), SLOT_RECOVERY)
+
+    def _unlock_through_slot(self, kek: bytearray, slot: str) -> bool:
+        """Unwrap ``slot`` with ``kek`` and open the vault with the resulting DEK.
+
+        A ``KeyUnwrapError`` is reported as an ordinary failed attempt with no
+        distinction between a wrong credential and a tampered slot — the caller
+        cannot act differently on the two, and an error that told them apart
+        would be an oracle (§ 4.2, § 6).
+        """
+        try:
+            sidecar = read_sidecar_v2(self._sidecar_path)
+            if slot not in sidecar.slots:
+                return False
+            try:
+                dek = unwrap_dek(
+                    bytes(kek),
+                    sidecar.slots[slot].wrapped,
+                    slot,
+                    sidecar.params_for(slot),
+                )
+            except KeyUnwrapError:
+                log.info("unlock failed")
+                return False
+            # § 13.3 step 0 is the branch above: the ladder is entered only once
+            # the slot has unwrapped, so a mistyped password is a failed attempt
+            # rather than a user being told their vault is corrupt.
+            if sidecar.migration_pending:
+                vault_migration.resume(
+                    self._vault.vault_path, self._sidecar_path, kek, dek
+                )
+                sidecar = read_sidecar_v2(self._sidecar_path)
+        finally:
+            _wipe(kek)
+        return self._open_with(dek, sidecar.cipher_compatibility)
+
+    def _unlock_v1(self, key: bytearray) -> bool:
+        """Open a pre-envelope vault, then convert it (D2).
+
+        Every vault in the field migrates at its next successful unlock, because
+        two key schedules in the field is the thing FIBR-0019 exists to avoid.
+        A failed conversion never costs the user their session: nothing is
+        swapped until § 13.2's S4, so the branch below re-opens exactly what was
+        there and the attempt simply repeats at the next unlock.
+        """
         try:
             self._vault.open(key)
         except DatabaseError:
@@ -296,6 +474,56 @@ class AuthService:
             # Any other open failure (e.g. a newer-than-supported vault raising
             # SchemaVersionError from the migration runner) must still wipe the
             # derived key before propagating — never leave it in memory (INV-3).
+            _wipe(key)
+            raise
+        try:
+            self._vault.close()
+            vault_migration.migrate_to_v2(
+                self._vault.vault_path, self._sidecar_path, key
+            )
+        except Exception:
+            log.exception("key-envelope migration failed")
+            if sidecar_version(self._sidecar_path) != SIDECAR_VERSION:
+                # Nothing was swapped, so the vault is exactly as it was.
+                return self._open_with(key, None)
+            # The sidecar was already replaced when the failure landed, which is
+            # § 13.3's window — the resume ladder owns it from here.
+            return self._unlock_through_slot(key, SLOT_MASTER)
+        sidecar = read_sidecar_v2(self._sidecar_path)
+        try:
+            dek = unwrap_dek(
+                bytes(key),
+                sidecar.slots[SLOT_MASTER].wrapped,
+                SLOT_MASTER,
+                sidecar.params_for(SLOT_MASTER),
+            )
+        finally:
+            _wipe(key)
+        log.info("vault migrated to the key envelope")
+        self._just_migrated = True
+        return self._open_with(dek, sidecar.cipher_compatibility)
+
+    def consume_migration_notice(self) -> bool:
+        """``True`` once if this unlock converted a v1 vault (D2/D7).
+
+        Every vault in the field is exactly the population this feature exists
+        for, so leaving them to discover Settings' *Add* would ship the recovery
+        key to nobody who already has data. The offer comes AFTER the migration
+        rather than before, so a declined offer or a closed window costs nothing
+        already done.
+        """
+        notice, self._just_migrated = self._just_migrated, False
+        return notice
+
+    def _open_with(self, key: bytearray, cipher_compat: int | None) -> bool:
+        """Open the vault with ``key`` and take ownership of it."""
+        try:
+            self._vault.open(key, cipher_compat=cipher_compat)
+        except DatabaseError:
+            _wipe(key)
+            log.info("unlock failed")
+            return False
+        except Exception:
             _wipe(key)
             raise
         self._key = key
@@ -319,9 +547,28 @@ class AuthService:
         """
         if self._key is None:
             raise VaultLockedError("the vault is locked")
-        raw = bytearray(derive_raw(password, self.load_params()))
+        params = self.load_params()
+        raw = bytearray(derive_raw(password, params))
         try:
-            return hmac.compare_digest(raw, self._key)
+            if sidecar_version(self._sidecar_path) != SIDECAR_VERSION:
+                return hmac.compare_digest(raw, self._key)
+            # Under the envelope the derived value is KEK-master, not the key the
+            # session holds — comparing the two directly would refuse the correct
+            # password on every v2 vault. Unwrap first, then compare the DEKs.
+            sidecar = read_sidecar_v2(self._sidecar_path)
+            try:
+                dek = unwrap_dek(
+                    bytes(raw),
+                    sidecar.slots[SLOT_MASTER].wrapped,
+                    SLOT_MASTER,
+                    sidecar.params_for(SLOT_MASTER),
+                )
+            except KeyUnwrapError:
+                return False
+            try:
+                return hmac.compare_digest(dek, self._key)
+            finally:
+                _wipe(dek)
         finally:
             _wipe(raw)
 

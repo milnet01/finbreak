@@ -1,13 +1,8 @@
 """Crockford base32 recovery codes — generate, format, normalise, check, decode
 (FIBR-0019 § 4.3).
 
-**STUB — FIBR-0019 is not implemented.** Every function raises
-``NotImplementedError`` so ``tests/features/recovery_key/`` executes against a
-real call (``testing.md`` § 1). The alphabets and sizes below are the spec's own
-fixed values.
-
 Pure and Qt-free, so it is testable headless. Three properties the
-implementation must honour, each of which the suite locks:
+implementation honours, each of which ``tests/features/recovery_key/`` locks:
 
 * **The check symbol's alphabet is 37 symbols, not 32** — the 32 data symbols
   plus ``*``, ``~``, ``$``, ``=`` and ``U``. 37 is the least prime above 32 and
@@ -23,6 +18,8 @@ implementation must honour, each of which the suite locks:
 
 from __future__ import annotations
 
+import secrets
+
 # Crockford's DATA alphabet: 32 symbols, excluding I, L, O and U (§ 4.3).
 DATA_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 # The CHECK alphabet: the 32 data symbols plus five more, U among them. A
@@ -35,35 +32,98 @@ PAYLOAD_BYTES = 17
 CODE_SYMBOLS = PAYLOAD_SYMBOLS + 1
 GROUP_SIZE = 4
 
+# Crockford decoding is case-insensitive and folds the three characters left out
+# of the DATA alphabet for being confusable: ``I``/``L`` read as ``1``, ``O`` as
+# ``0``. That fold is the whole reason § 4.3 chose this alphabet, and it is why
+# the KDF is fed ``decode()``'s output and never the text — a correctly
+# transcribed ``AIB2…`` and the printed ``A1B2…`` must derive the SAME key.
+_DECODE = {symbol: value for value, symbol in enumerate(DATA_ALPHABET)}
+_DECODE.update({"I": 1, "L": 1, "O": 0})
+
+# Every character a user may legitimately type as part of a code, once
+# normalised — the data alphabet, the three folded stand-ins, and the four
+# punctuation check symbols. Used to find candidate runs inside free text
+# (INV-11); never to validate one, which is `verify_check_symbol`'s job.
+INPUT_SYMBOLS = frozenset(DATA_ALPHABET + "ILOU*~$=")
+
+# The check symbol is taken modulo the size of the CHECK alphabet — 37, the
+# least prime above 32, which is what gives it its detection properties.
+_CHECK_MODULUS = len(CHECK_ALPHABET)
+
+
+def _payload_int(payload: str) -> int:
+    """The integer ``payload``'s data symbols encode, folding I/L/O and case."""
+    value = 0
+    for symbol in payload.upper():
+        try:
+            value = value * len(DATA_ALPHABET) + _DECODE[symbol]
+        except KeyError:
+            raise ValueError(f"not a Crockford data symbol: {symbol!r}") from None
+    return value
+
 
 def generate_code() -> str:
     """A fresh 135-bit code in display form — seven hyphen-separated groups of
     four, the 28th symbol being the mod-37 check symbol."""
-    raise NotImplementedError("FIBR-0019")
+    value = secrets.randbits(PAYLOAD_BITS)
+    symbols = []
+    for _ in range(PAYLOAD_SYMBOLS):
+        symbols.append(DATA_ALPHABET[value & 0x1F])
+        value >>= 5
+    payload = "".join(reversed(symbols))
+    return format_code(payload + check_symbol(payload))
 
 
 def format_code(symbols: str) -> str:
     """Group ``symbols`` four at a time, hyphen-separated (the display form)."""
-    raise NotImplementedError("FIBR-0019")
+    return "-".join(
+        symbols[i : i + GROUP_SIZE] for i in range(0, len(symbols), GROUP_SIZE)
+    )
 
 
 def normalise(text: str) -> str:
-    """Strip hyphens, spaces and case — and nothing else (§ 4.3 Input)."""
-    raise NotImplementedError("FIBR-0019")
+    """Strip hyphens, spaces and case — and nothing else (§ 4.3 Input).
+
+    Deliberately does NOT fold ``I``/``L``/``O`` and does NOT strip ``*~$=``:
+    the fold belongs to :func:`decode` (so a normalised payload still reads as
+    the user typed it), and stripping the punctuation would destroy the very
+    check symbol it is there to read.
+    """
+    return "".join(ch for ch in text.upper() if not ch.isspace() and ch != "-")
 
 
 def check_symbol(payload: str) -> str:
     """The mod-37 check symbol for a 27-symbol normalised payload."""
-    raise NotImplementedError("FIBR-0019")
+    return CHECK_ALPHABET[_payload_int(payload) % _CHECK_MODULUS]
 
 
 def verify_check_symbol(code: str) -> bool:
-    """``True`` iff ``code``'s 28th symbol matches its payload. A *typo
-    detector*: it carries no security weight (INV-6)."""
-    raise NotImplementedError("FIBR-0019")
+    """``True`` iff ``code``'s 28th symbol matches its payload.
+
+    A *typo detector*: it carries no security weight (INV-6). A locally
+    well-formed code is one that is not a transcription slip, never one that
+    has been shown to open anything.
+    """
+    text = code.upper()
+    if len(text) != CODE_SYMBOLS:
+        return False
+    try:
+        return check_symbol(text[:PAYLOAD_SYMBOLS]) == text[-1]
+    except ValueError:
+        return False
 
 
 def decode(code: str) -> bytes:
     """The 135-bit payload as ``PAYLOAD_BYTES`` big-endian bytes, check symbol
-    excluded — the one value Argon2id is ever fed (§ 4.3)."""
-    raise NotImplementedError("FIBR-0019")
+    excluded — the one value Argon2id is ever fed (§ 4.3).
+
+    Does not verify the check symbol: that is :func:`verify_check_symbol`'s
+    separate step, so the trailing symbol here need only be present.
+    """
+    text = code.upper()
+    if len(text) != CODE_SYMBOLS:
+        raise ValueError(
+            f"a recovery code is {CODE_SYMBOLS} symbols once normalised, "
+            f"got {len(text)}"
+        )
+    return _payload_int(text[:PAYLOAD_SYMBOLS]).to_bytes(PAYLOAD_BYTES, "big")

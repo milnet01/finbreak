@@ -1,22 +1,21 @@
 """Envelope key-wrapping — the DEK/KEK slot primitives (FIBR-0019 § 4.2).
 
-**STUB — FIBR-0019 is not implemented.** Every function here raises
-``NotImplementedError`` so ``tests/features/recovery_key/`` can be *seen to
-fail* against a real call rather than dying at import (``testing.md`` § 1 /
-FIBR-0019 § 7). The constants below carry their real, spec-fixed values; the
-behaviour does not exist yet.
-
-Qt-free and dependency-light on purpose (§ 4.2), so the envelope is testable
-headless. ``AESGCM`` from the already-pinned ``cryptography`` wheel is the
-wrapping primitive; ``unwrap_dek`` must raise ``KeyUnwrapError`` on ANY
-authentication failure and must never distinguish "wrong credential" from
-"tampered slot" — a distinguishing error is an oracle.
+Qt-free and dependency-light on purpose, so the envelope is testable headless.
+``AESGCM`` from the already-pinned ``cryptography`` wheel is the wrapping
+primitive; ``unwrap_dek`` raises ``KeyUnwrapError`` on ANY authentication
+failure and never distinguishes "wrong credential" from "tampered slot" — a
+distinguishing error is an oracle.
 """
 
 from __future__ import annotations
 
+import secrets
 from dataclasses import dataclass
 
+from cryptography.exceptions import InvalidTag
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+from finbreak.errors import KeyUnwrapError
 from finbreak.models import KdfParams
 
 # The two slot names the 1.0 envelope carries. FIBR-0020 (biometric unlock)
@@ -53,12 +52,25 @@ class Slot:
 
 def slot_aad(slot: str, params: KdfParams) -> bytes:
     """The § 4.2 additional authenticated data for ``slot`` under ``params``."""
-    raise NotImplementedError("FIBR-0019")
+    return "|".join(
+        (
+            AAD_PREFIX,
+            slot,
+            str(params.memory_kib),
+            str(params.time_cost),
+            str(params.parallelism),
+            str(params.key_len),
+        )
+    ).encode("utf-8")
 
 
 def wrap_dek(kek: bytes, dek: bytes, slot: str, params: KdfParams) -> Slot:
     """Wrap ``dek`` under ``kek`` into ``slot``, authenticated by ``slot_aad``."""
-    raise NotImplementedError("FIBR-0019")
+    nonce = secrets.token_bytes(NONCE_LEN)
+    return Slot(
+        nonce=nonce,
+        wrapped_dek=AESGCM(kek).encrypt(nonce, bytes(dek), slot_aad(slot, params)),
+    )
 
 
 def unwrap_dek(kek: bytes, slot_data: Slot, slot: str, params: KdfParams) -> bytearray:
@@ -66,5 +78,17 @@ def unwrap_dek(kek: bytes, slot_data: Slot, slot: str, params: KdfParams) -> byt
 
     Returns a wipeable ``bytearray`` (``security-model.md`` INV-3 — an
     immutable ``bytes`` cannot be zeroed, and this value is SQLCipher's raw key).
+
+    Every failure — a wrong credential, a flipped ciphertext or nonce bit, a
+    renamed slot, a malformed key length — raises the SAME error with the same
+    message. The caller cannot act differently on the causes, and an error that
+    told them apart would be an oracle (§ 4.2).
     """
-    raise NotImplementedError("FIBR-0019")
+    try:
+        return bytearray(
+            AESGCM(kek).decrypt(
+                slot_data.nonce, slot_data.wrapped_dek, slot_aad(slot, params)
+            )
+        )
+    except (InvalidTag, ValueError) as exc:
+        raise KeyUnwrapError(f"could not unwrap the {slot!r} slot") from exc

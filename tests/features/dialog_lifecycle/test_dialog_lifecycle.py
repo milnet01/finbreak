@@ -128,6 +128,19 @@ _NOT_CONTENT_WIDGETS: dict[str, str] = {
         "the shell's tracked _open_dialog path — 'never exec() — INV-9'. No "
         "banned token here."
     ),
+    "recovery_key.py": (
+        "RecoveryCodeDialog and NewMasterPasswordDialog: two QDialogs, both "
+        "shown non-blocking via main_window's tracked _open_dialog "
+        "(_show_recovery_offer, _on_change_recovery_key, "
+        "_on_recovery_unlocked). The module's build_recovery_offer BUILDS a "
+        "dialog and returns it unshown, precisely so no caller reaches for "
+        "exec() — an earlier draft did exec() it from FirstRunDialog's derive "
+        "handler and hung the first-run suite outright (FIBR-0019). Its "
+        "module-level helpers do use blocking QMessageBox.question/warning and "
+        "QInputDialog.getText for the § 4.7 confirmations, which is the same "
+        "pattern accounts.py, statements.py and categories.py already use and "
+        "carries no banned token."
+    ),
     # -- the two individually-defended exec()/QMenu cases --------------------- #
     "start_over.py": (
         "StartOverDialog: a QDialog. Its own docstring flags it as the app's "

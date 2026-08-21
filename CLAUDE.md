@@ -790,6 +790,20 @@ than left standing as a second answer.
   entry point that loads Qt + SQLCipher + qpdf (FIBR-0003). UI / services /
   repositories / crypto modules land from P02 (see
   [`docs/design.md`](docs/design.md) for the layered architecture).
+  - **The key envelope (FIBR-0019)** is four modules and one rule: the vault is
+    encrypted by a random **data key**, and each credential wraps its own copy
+    of it. `keywrap.py` is the AES-256-GCM slot primitive (Qt-free);
+    `services/recovery_code.py` is Crockford base32 — generate, format,
+    normalise, check-symbol, decode — and is pure; `services/vault_migration.py`
+    runs § 13's S0..S6 conversion of a v1 vault plus its resume ladder;
+    `ui/recovery_key.py` holds the one-time code display and the forced
+    new-password step. The v2 sidecar reader/writer lives in `crypto.py` beside
+    `load_and_validate_params`, which dispatches on `sidecar_version`.
+    **What Argon2id is fed for the recovery route is the DECODED 17-byte
+    payload, never the text** — Crockford maps `I`/`L` to `1` and `O` to `0`,
+    so deriving from the text would refuse a code the user transcribed
+    correctly. And `models.FORMAT_VERSION` stays `1`: it is the `.fbk` params
+    record's version, and bumping it breaks every backup restore.
   - **Batch import (FIBR-0085)** spans three of those layers:
     `services/batch_import.py` holds every decision (the scan ladder, the
     stored-password ladder, the cumulative dedup counts, the caps) and is

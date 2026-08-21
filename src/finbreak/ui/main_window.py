@@ -76,8 +76,9 @@ from finbreak.services.auth import (
 from finbreak.services.backup import BackupService
 from finbreak.services.categorization import CategorizationService
 from finbreak.services.month_summary import MonthSummaryService
-from finbreak.services.password_hint import HintPolicyError, validate_hint
+from finbreak.services.password_hint import HintPolicyError
 from finbreak.services.pdf_export import PdfExportService, period_filename_slug
+from finbreak.services.recovery_code import generate_code
 from finbreak.services.recurring import RecurringService
 from finbreak.services.reporting import ReportingService
 from finbreak.services.transactions import (
@@ -87,7 +88,12 @@ from finbreak.services.transactions import (
 from finbreak.services.update import UpdateInfo, UpdateService
 from finbreak.services.update_installer import Installer, detect_installer
 from finbreak.ui._clipboard import ClipboardAutoClear
-from finbreak.ui._password_hint import clear_hint, read_hint, write_hint
+from finbreak.ui._password_hint import (
+    clear_hint,
+    read_hint,
+    validate_hint_with_recovery,
+    write_hint,
+)
 from finbreak.ui._table_state import reset_columns
 from finbreak.ui._unlock_throttle import UnlockThrottle
 from finbreak.ui._update_worker import DownloadWorker, UpdateCheckWorker
@@ -104,6 +110,12 @@ from finbreak.ui.home import HomeView
 from finbreak.ui.icons import toolbar_icon
 from finbreak.ui.import_wizard import ImportWizardWidget
 from finbreak.ui.manual_entry import ManualEntryDialog
+from finbreak.ui.recovery_key import (
+    NewMasterPasswordDialog,
+    build_add_or_replace_offer,
+    build_recovery_offer,
+    remove_recovery_key,
+)
 from finbreak.ui.recurring import RecurringWidget
 from finbreak.ui.rules import RulesWidget
 from finbreak.ui.set_hint import SetHintDialog
@@ -295,6 +307,9 @@ class MainWindow(QMainWindow):
         self._installer = installer
         self._update_service = update_service
         self._pending_update: UpdateInfo | None = None  # a found offer, held (D15)
+        # First-run's freshly generated recovery code, held for the § 4.5 step 8
+        # display in _enter_unlocked. Session state only, cleared on show.
+        self._pending_recovery_code: str | None = None
         self._offered_update: UpdateInfo | None = None  # the one currently prompted
         self._unlocked = False  # gates the pending offer (D15)
         self._update_check_worker: UpdateCheckWorker | None = None
@@ -630,6 +645,7 @@ class MainWindow(QMainWindow):
         self._content.setCurrentWidget(self._placeholder_welcome)
         self._set_vault_chrome_enabled(False)
         dialog = FirstRunDialog(self._service, self)
+        dialog.recovery_code_ready.connect(self._hold_recovery_code)
         dialog.completed.connect(self._enter_unlocked)
         dialog.restore_requested.connect(self._open_restore)
         dialog.rejected.connect(self._on_first_run_rejected)
@@ -646,9 +662,24 @@ class MainWindow(QMainWindow):
     def _open_unlock_dialog(self) -> None:
         dialog = UnlockDialog(self._service, self)
         dialog.unlocked.connect(self._enter_unlocked)
+        dialog.recovery_unlocked.connect(self._on_recovery_unlocked)
         dialog.restore_requested.connect(self._open_restore)
         dialog.start_over_requested.connect(self._on_start_over)
         dialog.rejected.connect(self._teardown_dialog)  # cancel: stay locked
+        self._open_dialog(dialog)
+
+    def _on_recovery_unlocked(self) -> None:
+        """§ 4.6 step 4 / D6 — a recovery unlock never reaches the main window
+        until a new master password is set.
+
+        The vault IS open at this point; what is withheld is the workspace. The
+        dialog cannot be dismissed, so the only way past it is a working
+        credential — which is the whole point: a user arriving by this route has,
+        by construction, no password that works.
+        """
+        self._teardown_dialog()
+        dialog = NewMasterPasswordDialog(self._service, self)
+        dialog.accepted.connect(self._enter_unlocked)
         self._open_dialog(dialog)
 
     def _enter_unlocked(self) -> None:
@@ -661,6 +692,12 @@ class MainWindow(QMainWindow):
         if self._home_tab is not None:
             self._refresh_count(self._home_tab.transaction_count())
         self._status(self.tr("Unlocked"))
+        # § 4.5 step 8, and D7's offer to a vault that just converted — one
+        # site, because they are the same display on the same terms. It takes
+        # the single dialog slot BEFORE the held update offer is considered, so
+        # two app-modals cannot collide; D15's own guard does the rest.
+        if self._show_recovery_offer():
+            return
         # Show a held update offer now that we're unlocked + idle — after the
         # teardown + workspace build, so it never tears down the prompt it opens.
         self._maybe_show_pending_offer()
@@ -923,6 +960,8 @@ class MainWindow(QMainWindow):
         dialog.export_backup_requested.connect(self._open_backup_export)
         dialog.verify_backup_requested.connect(self._open_backup_verify)
         dialog.set_hint_requested.connect(self._open_set_hint)
+        dialog.recovery_key_change_requested.connect(self._on_change_recovery_key)
+        dialog.recovery_key_remove_requested.connect(self._on_remove_recovery_key)
         dialog.rejected.connect(self._teardown_dialog)  # cancel: no change
         self._open_dialog(dialog, defer=False)
 
@@ -1092,6 +1131,53 @@ class MainWindow(QMainWindow):
         dialog.rejected.connect(self._teardown_dialog)
         self._open_dialog(dialog, defer=False)
 
+    def _hold_recovery_code(self, code: str) -> None:
+        """Take first-run's freshly generated code, for the offer below.
+
+        Session state and nothing more: it is shown once, on the next line of
+        ``_enter_unlocked``, and cleared whether or not the user keeps it.
+        """
+        self._pending_recovery_code = code
+
+    def _show_recovery_offer(self) -> bool:
+        """§ 4.5 step 8 — show the one-time display if one is owed.
+
+        Owed in two cases, and they get the same dialog: first-run has just
+        handed over a code, or this unlock converted a vault to the envelope
+        (D2), which is offered one on the same terms (D7). After the migration
+        rather than before, so a declined offer or a closed window costs nothing
+        already done.
+        """
+        code = self._pending_recovery_code
+        self._pending_recovery_code = None
+        if code is None and self._service.consume_migration_notice():
+            code = generate_code()
+        if code is None:
+            return False
+        dialog = build_recovery_offer(self._service, code, self)
+        dialog.finished.connect(self._teardown_dialog)
+        self._open_dialog(dialog, defer=False)
+        return True
+
+    def _on_change_recovery_key(self) -> None:
+        """§ 4.7 Add / Replace, driven from Settings.
+
+        The shell owns it for the same reason it owns the hint: the
+        master-password gate and the re-wrap are AuthService work, and Settings
+        holding a reference to either would put key material in a preferences
+        dialog.
+        """
+        dialog = build_add_or_replace_offer(self._service, self)
+        if dialog is None:
+            return
+        dialog.accepted.connect(lambda: self._status(self.tr("Recovery code saved")))
+        dialog.finished.connect(self._teardown_dialog)
+        self._open_dialog(dialog, defer=False)
+
+    def _on_remove_recovery_key(self) -> None:
+        if remove_recovery_key(self._service, self):
+            self._status(self.tr("Recovery code removed"))
+
     def _on_set_hint_requested(self) -> None:
         # Verify the current password (authorizes the change), enforce the hint
         # policy, then write / clear — all synchronous (§ 3.2). The KDF bytearray is
@@ -1108,7 +1194,11 @@ class MainWindow(QMainWindow):
                 dialog.show_error(self.tr("That password is not correct."))
                 return
             try:
-                validate_hint(hint, pw_str)
+                # The recovery-code leg too (FIBR-0019 INV-11): a hint may
+                # contain neither the master password nor the recovery code, and
+                # the trial-unwrap that decides the second lives in the hint
+                # pair's I/O half, because the policy module stays pure.
+                validate_hint_with_recovery(hint, pw_str)
             except HintPolicyError as exc:
                 dialog.show_error(str(exc))
                 return

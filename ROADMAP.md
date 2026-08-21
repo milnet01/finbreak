@@ -1886,6 +1886,19 @@ scariest unknown (native-library bundling) up front.
   Wanted: a fixture .fbk written at an older schema version, restored by
   the current build. The same shape would cover saved import profiles,
   whose round-trip is same-build for the same reason.
+  Progress (2026-08-21): materially more urgent now that FIBR-0019 has
+  shipped, which its section 11 predicted. A restore no longer writes
+  the flat v1 sidecar -- BackupService.restore_backup mints a random DEK,
+  re-keys the restored copy to it and writes the v2 slots sidecar, so
+  what a restored vault LOOKS like has changed under this untested
+  surface. The .fbk container itself is unchanged (its inner vault.db
+  keeps its derive_key(backup_password, ...) schedule), so a backup taken
+  before the change still restores; nothing pins that, which is the whole
+  of this item.
+
+  The fixture wanted is now two, not one: a .fbk at an older SCHEMA
+  version, and a .fbk taken by a pre-envelope build. Both restore through
+  the same path and neither is covered.
   **Layman:** Backups are only ever tested by writing and reading them with the same version, so a change that made old backups unrestorable would not be caught.
   Kind: test.
   Source: review-contract-2026-08-20 (FIBR-0299 loop 3, lane finding).
@@ -4825,7 +4838,7 @@ because retrofitting them is a data migration.
   Source: user-request-2026-07-01.
   Lanes: crypto, ux.
 
-- 🚧 [FIBR-0019] **Master-password recovery via recovery key (key-wrapping).**
+- ✅ [FIBR-0019] **Master-password recovery via recovery key (key-wrapping).**
   At vault creation, generate a high-entropy recovery
   code the user stores safely; wrap the vault data-key under **both** the
   master password and the recovery code (envelope encryption) so a
@@ -4920,6 +4933,46 @@ because retrofitting them is a data migration.
   anything can learn it.
 
   Not pushed: the gate is red by design until write-code lands.
+  write-code done (2026-08-21). All thirteen invariants green; full
+  gate 1965 passed with only the two pre-existing FIBR-0306 harness
+  reds. Built: keywrap.py (AES-256-GCM slot wrap, slot name + costs as
+  AAD), services/recovery_code.py (Crockford base32, mod-37 check
+  symbol), the v2 slots sidecar in crypto.py with
+  load_and_validate_params dispatching on sidecar_version,
+  services/vault_migration.py (S0..S6 + the section 13.3 resume
+  ladder), AuthService's envelope first-run / slot re-wraps / unlock
+  dispatch / D2 auto-migration, the UnlockDialog recovery route, and
+  ui/recovery_key.py for the one-time display, the forced new password
+  and Settings' Add / Replace / Remove.
+
+  GREEN WAS NOT ACCEPTED ON ITS OWN, per the gap this bullet recorded.
+  Seven mutants were run against the implementation and every one was
+  watched to fail on its own assertion: INV-1 leg 1 (DEK = KEK-master)
+  and leg 2 (a credential-derived DEK under a non-fresh salt, which is
+  section 8.1's rejected design), INV-2 leg 3 (decode stops folding
+  I/L/O), INV-3 leg 4 (the AAD stops naming the slot), INV-7 (the
+  resume ladder removed), INV-11 leg 1 (the hint scanned raw rather
+  than normalised), INV-12 (the declined code's slot written anyway).
+  Three mutants survived a first attempt and each was a defective
+  mutation rather than a vacuous test -- worth knowing: INV-1 leg 2
+  does NOT fire on a DEK derived under a FRESH salt, because that is
+  random per vault; it fires on a non-fresh one, which is what section
+  8.1 actually is.
+
+  Two deliberate reconciliations against section 4, both recorded in
+  the spec's own amendment: the recovery KEK is derived at step 9
+  rather than step 4 (nothing observable differs, and Decline now
+  costs one derivation instead of two), and Vault.create keeps its v1
+  sidecar write behind a write_sidecar flag that first-run passes
+  False -- removing it outright would break the v1 fixtures every
+  migration test builds from.
+
+  One test-harness repair, and it was a real gap: _recovery_helpers'
+  open_after_restart claimed to open "the way a FRESH APP START would"
+  and did not run section 13.3's resume, so INV-7's S4-complete case
+  could not pass by any implementation -- between S4 and S5 the
+  sidecar names a DEK no database on disk answers to yet. It now calls
+  the production resume. No assertion was changed.
   Source: user-request-2026-07-01.
   Lanes: crypto, security.
 

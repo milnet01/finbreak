@@ -26,8 +26,10 @@ unavoidable it is glossed on first use.
 | # | Asset | Why it matters |
 |---|-------|----------------|
 | A1 | **The vault** — the SQLCipher database file holding every transaction, account, rule, and financial setting (base currency, minor-unit exponent, stored PDF passwords). *Non-sensitive UI state — window geometry / toolbar state / last-active tab, plus the opt-in update-check flag and any skipped-update version (FIBR-0054), and the optional user-authored password hint (FIBR-0029) — deliberately lives in a plaintext `window.ini` sibling, not the vault (FIBR-0052 INV-5, FIBR-0054 D4); it holds no financial data, so it is not an A1 asset. The hint is readable by anyone with device access (it must be, to help before unlock), so it is enforced at set-time never to be, nor contain, the master password (INV-11).* | The whole financial picture. Its disclosure is the worst case. |
-| A2 | **The master password** | Unlocks everything. Never stored anywhere. |
-| A3 | **The derived key** — the key Argon2id produces from the master password, passed to SQLCipher as its **raw** key (so Argon2id, not SQLCipher's built-in PBKDF2, is the KDF) | Decrypts the vault; lives only in memory while unlocked. |
+| A2 | **The master password** | Unlocks everything, by unwrapping a key slot — never by being the key. Never stored anywhere. *(Restated by FIBR-0019: it still unlocks everything, but no longer directly.)* |
+| A3 | **The key-encryption key (KEK)** — what Argon2id produces from a credential (the master password, or the recovery code) and that credential's own salt. *(Was "the derived key", passed to SQLCipher as its raw key; FIBR-0019 made it a KEK.)* | Decrypts one **slot**, not the vault; lives only in memory while unlocked. |
+| A3b | **The data key (DEK)** — 32 random bytes minted at vault creation, passed to SQLCipher as its **raw** key (so Argon2id, not SQLCipher's built-in PBKDF2, is still the KDF behind every credential) | Decrypts the vault. Never on disk unwrapped; lives only in memory while unlocked. |
+| A8 | **The recovery code** (FIBR-0019) — 135 bits, shown once at vault creation and never retained by the app | A full-strength second credential: it opens the vault exactly as the master password does. The user stores it; the app cannot help them if they lose it. |
 | A4 | **Stored statement-PDF passwords** (optional, opt-in) | Bank-document passwords; only ever live *inside* the encrypted vault. |
 | A5 | **Decrypted statement data in memory during import** | A locked PDF is decrypted in RAM only; must never touch disk. |
 | A6 | **Exported report PDFs** | Leave the app deliberately, password-locked by the user. |
@@ -169,10 +171,17 @@ be checkable. Enforcement arrives in step with the code:
   (the highest-memory one; OWASP states the five give equal
   defence, trading CPU for RAM), retrieved **2026-06-30** as a
   frozen dated snapshot, not a live "current guidance" target.
-  From a unique **16-byte random salt per vault** Argon2id derives
-  a **32-byte (256-bit) output** — SQLCipher's raw-key size; these
-  two lengths are finbreak's own choices (OWASP pins only memory /
-  time / parallelism). The parameters and salt are recorded with
+  From a unique **16-byte random salt per slot** Argon2id derives
+  a **32-byte (256-bit) output** — these two lengths are finbreak's
+  own choices (OWASP pins only memory / time / parallelism).
+  **Amended by FIBR-0019:** that output is now a **KEK**, and
+  SQLCipher's raw key is a random **DEK** the KEK wraps — so the
+  32 bytes are AES-256-GCM's key size *and* SQLCipher's raw-key
+  size, which are the same number for the same reason. The salt is
+  per **slot** rather than per vault: reusing one across slots
+  would make each KEK derivable from the other's work factor, for a
+  saving of 16 bytes. Both slots share one set of cost parameters,
+  so neither credential is cheaper to attack than the other. The parameters and salt are recorded with
   the vault. On open the app derives the key from the parameters
   **recorded with the vault** and **must refuse to proceed** unless
   the record passes two checks — a directional **strength floor**
@@ -191,12 +200,46 @@ be checkable. Enforcement arrives in step with the code:
   asserts the Argon2id output is passed as SQLCipher's **raw** key
   (raw-key pragma), so the "Argon2id is the KDF" claim (A3) is
   testable, not merely stated.
-- **INV-3 — Key lifetime.** The derived key and the plaintext
-  password exist in memory only while unlocked, are wiped on
-  lock/exit, and are dropped by auto-lock after the configured
+- **INV-3 — Key lifetime.** The **DEK**, **every KEK** and the
+  plaintext password exist in memory only while unlocked, are wiped
+  on lock/exit, and are dropped by auto-lock after the configured
   idle period. (A true wipe needs a *mutable* buffer — `bytearray`,
   not an immutable `str` — so the FIBR-0004 spec holds the password
   in a zeroable buffer; this is what makes "wiped" testable.)
+  Widened by FIBR-0019 from "the derived key" to all three: a KEK is
+  shorter-lived than the DEK — it is wiped as soon as it has
+  unwrapped or re-wrapped a slot — and the DEK is what the session
+  holds for its whole unlocked life.
+
+- **INV-3b — The sidecar holds no UNWRAPPED key material** (FIBR-0019
+  INV-4). The plaintext sidecar carries a wrapped DEK per slot, which
+  is ciphertext under AES-256-GCM and opens nothing without a
+  credential. It must never carry the DEK itself, either KEK, the
+  master password or the recovery code, in hex, base32 or raw form.
+  This **replaces** FIBR-0004 INV-7's "the sidecar contains only the
+  salt + non-secret KDF parameters + format version", which the
+  envelope falsifies; the replacement is strictly weaker and that is
+  recorded rather than glossed (ADR-0011).
+
+- **INV-3c — The recovery code is never persisted by the app of its
+  own accord** (FIBR-0019 INV-5), in any form, to any plaintext
+  surface. The single exception is a file the **user** explicitly
+  names at the moment of display — that is the user storing their own
+  credential, not the app retaining it, and the difference between
+  the two is what this invariant is about. In particular it never
+  reaches `window.ini`, which is plaintext by design and is where the
+  password hint already lives.
+
+- **INV-3d — Slot wrapping is authenticated and fails closed**
+  (FIBR-0019 INV-3). Any modification to a slot — a flipped
+  ciphertext or nonce bit, a renamed slot, a weakened cost parameter
+  — refuses to unwrap. The slot name and the Argon2id cost parameters
+  are bound as AES-GCM additional authenticated data, so a `recovery`
+  slot cannot be renamed to `master`; both are cheap edits to a
+  plaintext file and neither is detectable from the ciphertext alone.
+  The unwrap failure never distinguishes "wrong credential" from
+  "tampered slot": the caller cannot act differently on the two, and
+  an error that told them apart would be an oracle.
 - **INV-4 — No plaintext spill.** Decrypted input PDFs and any
   decrypted statement bytes are never *deliberately* written to
   disk, temp files, or logs. (Defending against the OS paging
@@ -298,7 +341,7 @@ be checkable. Enforcement arrives in step with the code:
   always clears the counter, so the legitimate owner is never
   permanently locked out.
 - **INV-11 — A stored password hint never contains the master password
-  verbatim.** The optional plaintext hint (FIBR-0029, in `window.ini`) is
+  **nor the recovery code** verbatim.** The optional plaintext hint (FIBR-0029, in `window.ini`) is
   enforced at set-time never to be, nor contain, the master password —
   compared NFC-normalized + casefolded, with **no** password-length
   exemption (a short password embedded verbatim is still caught). The
@@ -307,8 +350,23 @@ be checkable. Enforcement arrives in step with the code:
   to **verbatim** inclusion: internal obfuscation of the user's own hint
   (inserted spaces, zero-width characters, homoglyphs) is out of scope —
   substring matching cannot catch a user defeating their own safety net,
-  and the hint is plaintext-by-design regardless. Falsifiable by test
-  (`services/password_hint.validate_hint`).
+  and the hint is plaintext-by-design regardless.
+  **Widened by FIBR-0019 to the recovery code**, and the second leg
+  works differently of necessity: the app does not hold the code
+  (INV-3c forbids it) and the hint is set long after the one-time
+  display, so there is nothing to compare against. Instead the hint is
+  **normalised first** — the user holds the code as `A1B2-C3D4-…`,
+  whose longest unbroken run is four symbols, so scanning the raw text
+  finds no candidate and would cheerfully accept a hint that *is* the
+  code — then scanned for a 28-symbol Crockford candidate whose check
+  symbol verifies locally, and any candidate is trial-unwrapped against
+  `slots.recovery`. A successful unwrap proves the hint carries the live
+  code. A hint with no candidate — the common case — costs no key
+  derivation at all. Falsifiable by test
+  (`services/password_hint.validate_hint` for the password leg;
+  `ui/_password_hint.validate_hint_with_recovery` for the recovery leg,
+  which lives in the hint pair's I/O half because the policy module's
+  own contract is to be pure).
 - **INV-12 — The destructive reset leaves no vault fragment behind.** The
   double-confirmed "start over" reset (FIBR-0030) removes the vault's
   complete on-disk data footprint — the DB, the KDF sidecar, and **both**

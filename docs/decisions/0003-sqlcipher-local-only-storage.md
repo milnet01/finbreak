@@ -1,6 +1,7 @@
 # ADR-0003: SQLCipher + Argon2id, local-only, per-OS-user storage
 
-- **Status:** Accepted (superseded in part by FIBR-0054 — see banner)
+- **Status:** Accepted (superseded in part by FIBR-0054 and by
+  [ADR-0011](0011-recovery-key-envelope.md) — see banner)
 - **Date:** 2026-06-30
 - **Deciders:** Project lead, Claude
 - **Related:** [docs/discovery.md](../discovery.md), [docs/design.md](../design.md) (Security)
@@ -62,7 +63,12 @@ lock/auto-lock. The app makes **no network connections**.
 
 - **No password recovery** — a forgotten master password means unrecoverable
   data. Mitigated by an explicit encrypted backup-export feature, and clear
-  first-run warning copy.
+  first-run warning copy. **Superseded in part by
+  [ADR-0011](0011-recovery-key-envelope.md)** (FIBR-0019): a vault created or
+  migrated from 1.0 onward holds its data key wrapped under *two* credentials,
+  so a forgotten master password is recoverable with the recovery code the user
+  was given at creation. Losing **both** is still unrecoverable, and that part
+  of this consequence stands.
 - SQLCipher bindings add a native dependency that each platform's packaging must
   bundle correctly (validated in P01).
 - Argon2id parameters are pinned in security-model.md INV-2 (chosen

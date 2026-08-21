@@ -42,7 +42,11 @@ Sorted alphabetically; added during Phases B–C.
 | **Flatpak / Flathub** | Flatpak is a sandboxed Linux app package; Flathub is the cross-distro store that distributes it, reaching distro software centres. |
 | **Income** | Money flowing in from an external party (salary, sales). Distinct from a **transfer**. |
 | **Mapping profile** | A saved, user-confirmed description of one bank's CSV layout (which column is date / description / amount — a single signed amount column **or** a debit/credit pair, with an optional sign-invert — plus the date format) so future imports of that layout parse automatically. See ADR-0005. |
-| **Master password** | The single secret the user sets at first run; stretched via Argon2id into the key that decrypts the database. Never stored; no recovery if forgotten. |
+| **Master password** | The secret the user sets at first run; stretched via Argon2id into a KEK that unwraps the master slot, which yields the data key that decrypts the database. Never stored. Forgetting it is recoverable with the recovery code (FIBR-0019); losing both is not. |
+| **Recovery key / recovery code** | A second full-strength credential, shown once at vault creation and never kept by the app: 135 bits printed as 28 Crockford base32 symbols in seven groups of four. It opens the vault exactly as the master password does, by unwrapping its own slot. A used code stays valid. |
+| **Data key (DEK)** | The 32 random bytes that actually encrypt the vault — SQLCipher's raw key. Minted at vault creation, never written to disk unwrapped, and unchanged for the vault's life: changing a password re-wraps it rather than re-encrypting anything. |
+| **Key-encryption key (KEK)** | What Argon2id produces from a credential and that credential's salt. It decrypts one **slot**, not the vault. One per credential. |
+| **Slot** | One entry in the sidecar's `slots` map: a salt, a nonce and a copy of the data key wrapped under that credential's KEK. The master slot always exists; the recovery slot is there unless the user declined or removed it. |
 | **OFX** | Open Financial Exchange — a standardised statement file format many banks export, parsed generically (no mapping profile needed). |
 | **Transfer** | Money moved between the user's *own* accounts (e.g. a credit-card payment). A third classification beside income and expenditure, excluded from breakdown totals. Detected as suggestions the user confirms — see ADR-0006. |
 | **Vault** | Informal name for the encrypted SQLCipher database — the one place all data and any stored secrets live. |

@@ -1060,6 +1060,66 @@ untouched and the migration simply starts again.
   vault that must end up v2 (§11). A backup exported after it likewise. §9
   defers the cross-version test itself to FIBR-0302.
 
+## 13.5 Amendment — what was actually built (2026-08-21)
+
+Recorded after implementation, per `CLAUDE.md` rule 14: an amendment that
+records what was built does **not** re-arm the review gate, because the code
+already exists and a cold read *before implementation* has nothing left to
+protect. Nothing below changes direction for work still to come.
+
+**Two deliberate reconciliations against § 4.**
+
+1. **The recovery KEK is derived at § 4.5 step 9, not step 4.** The spec has
+   step 4 derive both KEKs and step 5 wrap both, with step 9 writing the
+   recovery slot on Keep. `AuthService.add_recovery_key` derives and wraps in
+   one call instead, because it is *also* § 4.7's **Add** — where no
+   pre-wrapped slot can exist — and two paths through one method is worse than
+   one derivation moved. Nothing observable differs: the DEK is identical
+   across the add (INV-12 asserts exactly that), and the Keep path still costs
+   § 14's two Argon2id derivations while **Decline now costs one**.
+
+2. **`Vault.create` keeps its v1 sidecar write, behind a keyword.** § 4.5 step
+   6 says to remove it. It is now `write_sidecar: bool = True`, and first-run
+   passes `False` — so the hazard the spec names is closed on the path that
+   matters (no v1 sidecar is ever written over a DEK-keyed database, and a
+   failure between the two leaves the clean vault-without-sidecar mixed state).
+   Removing it outright would have broken every v1 fixture the § 13 migration
+   tests build from, and a v1 vault is exactly what this feature must keep
+   being able to create in order to test migrating one.
+
+**Three surfaces § 4 named no home for**, resolved and recorded here so the
+next reader does not have to re-derive them:
+
+- **The v2 sidecar reader/writer lives in `crypto.py`**, beside
+  `load_and_validate_params`, which dispatches on the presence of
+  `sidecar_version`. `crypto.write_sidecar_json` is the one atomic writer for
+  both shapes, so the durability and permission posture cannot drift between
+  them; `Vault._write_sidecar` now calls it.
+- **`ui/recovery_key.py`** holds the one-time code display (step 8), the forced
+  new-password dialog (step 4 / D6) and Settings' Add / Replace / Remove
+  (§ 4.7). Two callers each, which is why it is not in `first_run.py`.
+- **§ 13.3's ladder is `vault_migration.resume`**, called from
+  `AuthService._unlock_through_slot` *after* the slot has unwrapped — which is
+  § 13.3's step 0, and what keeps a mistyped password a failed attempt rather
+  than a user told their vault is corrupt.
+
+**One test-harness gap, found by the build and repaired.**
+`tests/features/recovery_key/_recovery_helpers.py::open_after_restart` claimed
+to open the pair "the way a FRESH APP START would" and did not run § 13.3's
+resume. INV-7's S4-complete case could not therefore pass under **any**
+implementation: between S4 and S5 the sidecar names a DEK no database on disk
+answers to yet, which is precisely the window the resume exists for, and
+§ 13.3's own heading says it is what makes INV-7 true. The helper now calls the
+production `resume`. No assertion was changed.
+
+**Green was not accepted on its own.** Every one of the thirteen failed at an
+absent surface before the build, so no invariant assertion had been observed to
+fail. Seven mutants were run afterwards and each was watched to redden its own
+assertion — including the four § 5 warns the obvious implementation passes for
+the wrong reason. Worth recording: **INV-1 leg 2 does not fire on a DEK derived
+under a *fresh* salt**, because that is random per vault. It fires on a
+non-fresh one, which is what § 8.1 actually is.
+
 ## 14. Resource cost
 
 - **Disk, transient:** two full copies during the migration — the `.pre-v2`

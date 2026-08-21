@@ -8,12 +8,12 @@ sidecar is written atomically and both files are owner-only (INV-7).
 
 from __future__ import annotations
 
-import json
 import os
 from pathlib import Path
 
 from sqlcipher3 import dbapi2
 
+from finbreak.crypto import write_sidecar_json
 from finbreak.errors import VaultLockedError, VaultStateError
 from finbreak.migrations import run_migrations
 from finbreak.models import KdfParams
@@ -70,7 +70,13 @@ class Vault:
         )
 
     def create(
-        self, key: bytearray, params: KdfParams, base_currency: str, exponent: int
+        self,
+        key: bytearray,
+        params: KdfParams,
+        base_currency: str,
+        exponent: int,
+        *,
+        write_sidecar: bool = True,
     ) -> None:
         """Create the encrypted vault, its settings, and the sidecar (in that order).
 
@@ -78,6 +84,15 @@ class Vault:
         the sidecar last, so a crash mid-first-run leaves at most a
         vault-without-sidecar — caught as a mixed state next launch (INV-5).
         The connection is left open (the caller is now unlocked).
+
+        ``write_sidecar=False`` creates the database and stops, leaving the
+        sidecar to the caller (FIBR-0019 § 4.5 step 6/7). First-run takes that
+        branch: ``key`` is the random DEK there and ``params`` describes only
+        the master slot, so the flat v1 record this method would otherwise write
+        does not describe the vault at all. Writing it and overwriting it a
+        moment later would leave a v1 sidecar standing over a DEK-keyed database
+        if creation stopped in between — unopenable, where the vault-without-
+        sidecar this leaves instead is the clean mixed-state retry.
         """
         # Create the vault file owner-only BEFORE SQLCipher writes any ciphertext
         # into it, so there is never a window where the at-rest file sits at the
@@ -134,7 +149,8 @@ class Vault:
             # WAL — the ordering holds. Only ALSO lowering synchronous to NORMAL
             # would need the sidecar write deferred until the DB is durably flushed.
             run_migrations(conn)
-            self._write_sidecar(params)
+            if write_sidecar:
+                self._write_sidecar(params)
         except Exception:
             self._conn = None
             conn.close()
@@ -286,17 +302,10 @@ class Vault:
             conn.execute(f"PRAGMA temp_store = {prior_temp_store}")
 
     def _write_sidecar(self, params: KdfParams) -> None:
-        """Atomically write the plaintext sidecar as owner-only (coding.md § 7)."""
-        payload = json.dumps(params.to_sidecar_dict(), indent=2)
-        tmp_path = self._sidecar_path.with_name(self._sidecar_path.name + ".tmp")
-        # O_NOFOLLOW refuses to open through a symlink planted at the .tmp path,
-        # so the write can't be redirected to truncate/overwrite an attacker's
-        # target (0 on Windows, where the flag is absent — a no-op there).
-        fd = os.open(
-            tmp_path,
-            os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0),
-            0o600,
-        )
-        with os.fdopen(fd, "w") as handle:
-            handle.write(payload)
-        os.replace(tmp_path, self._sidecar_path)
+        """Atomically write the flat v1 sidecar as owner-only (coding.md § 7).
+
+        The atomic-write mechanics live in ``crypto.write_sidecar_json``, shared
+        with the v2 slots writer, so the durability and permission posture of
+        the two shapes cannot drift apart (coding.md § 1.3).
+        """
+        write_sidecar_json(self._sidecar_path, params.to_sidecar_dict())

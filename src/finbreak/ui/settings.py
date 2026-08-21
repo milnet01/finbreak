@@ -57,6 +57,12 @@ class SettingsDialog(QDialog):
     # verify → validate → write work (FIBR-0029 § 3.2 — mirrors Export backup, so
     # Settings holds no AuthService-hint reference).
     set_hint_requested = Signal()
+    # "Set up / Replace recovery code…" and "Remove recovery code" were clicked
+    # (FIBR-0019 § 4.7). Like the hint, Settings only signals intent: the shell
+    # owns the master-password gate and the re-wrap, so Settings holds no key
+    # material and no AuthService-recovery reference.
+    recovery_key_change_requested = Signal()
+    recovery_key_remove_requested = Signal()
 
     def __init__(
         self,
@@ -230,6 +236,33 @@ class SettingsDialog(QDialog):
         self._set_hint.setObjectName("settings_set_hint")
         self._set_hint.clicked.connect(self.set_hint_requested)
         form.addRow(self.tr("Password hint"), self._set_hint)
+
+        # The recovery key (FIBR-0019 § 4.7). All three actions are re-wraps of
+        # 32 bytes — the database is never touched — so this row is cheap
+        # whatever the vault's size. Remove is offered only where there is one to
+        # remove, so the control set states the vault's actual condition.
+        has_key = service.has_recovery_key()
+        self._recovery_status = QLabel(
+            self.tr("A recovery code is set.")
+            if has_key
+            else self.tr("No recovery code is set for this vault.")
+        )
+        self._recovery_status.setObjectName("settings_recovery_status")
+        self._recovery_status.setWordWrap(True)
+        self._change_recovery = QPushButton(
+            self.tr("Replace recovery code…")
+            if has_key
+            else self.tr("Set up a recovery code…")
+        )
+        self._change_recovery.setObjectName("settings_change_recovery")
+        self._change_recovery.clicked.connect(self.recovery_key_change_requested)
+        self._remove_recovery = QPushButton(self.tr("Remove recovery code"))
+        self._remove_recovery.setObjectName("settings_remove_recovery")
+        self._remove_recovery.setVisible(has_key)
+        self._remove_recovery.clicked.connect(self.recovery_key_remove_requested)
+        form.addRow(self.tr("Recovery code"), self._recovery_status)
+        form.addRow("", self._change_recovery)
+        form.addRow("", self._remove_recovery)
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel

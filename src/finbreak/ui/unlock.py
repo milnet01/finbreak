@@ -31,15 +31,30 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from finbreak.errors import KdfPolicyError, SchemaVersionError
+from finbreak.errors import KdfPolicyError, SchemaVersionError, VaultStateError
 from finbreak.services.auth import AuthService
+from finbreak.services.recovery_code import decode, normalise, verify_check_symbol
 from finbreak.ui._password_hint import read_hint
 from finbreak.ui._unlock_throttle import UnlockThrottle
 from finbreak.ui._worker import DeriveWorker
 
+# Shown when a credential unwrapped its slot and the resulting key still did not
+# open the database (§ 6). Single-homed: both routes render the same words.
+_PAIRING_BROKEN = (
+    "finbreak unlocked this vault's key record, but the vault file itself "
+    "could not be opened — the two do not belong together, or the vault file "
+    "is damaged. If you have a backup, restore it."
+)
+
 
 class UnlockDialog(QDialog):
     unlocked = Signal()
+    # A RECOVERY unlock — deliberately distinct from `unlocked` so the shell
+    # routes to the forced new-password step instead of the main window
+    # (FIBR-0019 § 4.6 step 4 / D6). A user arriving this way has, by
+    # construction, no working password; leaving them unlocked with no way back
+    # in tomorrow reproduces the problem one day later.
+    recovery_unlocked = Signal()
     unlock_failed = Signal()
     # "Forgot password? Restore from a backup" — the shell owns the pre-login
     # restore flow (FIBR-0014 INV-8/D5).
@@ -78,6 +93,22 @@ class UnlockDialog(QDialog):
         self._start_over_button.setObjectName("unlock_start_over")
         self._start_over_button.setFlat(True)
 
+        # The recovery route (§ 4.6). Built unconditionally so the seam always
+        # exists, and SHOWN only where `slots.recovery` is on disk: a vault whose
+        # owner declined or removed the key must not be offered a route it does
+        # not have (§ 6). Both routes share one throttle and one failure path —
+        # a recovery route outside FIBR-0095's backoff would be a way around it.
+        self._recovery_code = QLineEdit()
+        self._recovery_code.setPlaceholderText(self.tr("Recovery code"))
+        self._recovery_button = QPushButton(
+            self.tr("Forgot password? Use your recovery code")
+        )
+        self._recovery_button.setObjectName("unlock_recovery")
+        self._recovery_button.setFlat(True)
+        offer_recovery = self._service.has_recovery_key()
+        self._recovery_code.setVisible(offer_recovery)
+        self._recovery_button.setVisible(offer_recovery)
+
         # Optional password hint (FIBR-0029 § 3.3). Read ONCE at build, pre-unlock,
         # needing no key (INV-3). Only add the reveal-on-click affordance when a
         # hint is actually set — no button when there is nothing to show (INV-1).
@@ -108,6 +139,10 @@ class UnlockDialog(QDialog):
             layout.addWidget(self._hint_button)
             layout.addWidget(self._hint_label)
             self._hint_button.clicked.connect(self._reveal_hint)
+        # Before restore: recovering with a code you kept costs nothing, where
+        # restoring loses everything since the backup was taken.
+        layout.addWidget(self._recovery_code)
+        layout.addWidget(self._recovery_button)
         layout.addWidget(self._restore_button)
         # After (below) restore — it is the more drastic escape hatch (§ 3.1).
         layout.addWidget(self._start_over_button)
@@ -115,6 +150,8 @@ class UnlockDialog(QDialog):
 
         self._unlock_button.clicked.connect(self._on_unlock)
         self._password.returnPressed.connect(self._on_unlock)
+        self._recovery_button.clicked.connect(self._on_recovery_unlock)
+        self._recovery_code.returnPressed.connect(self._on_recovery_unlock)
         self._restore_button.clicked.connect(self.restore_requested)
         self._start_over_button.clicked.connect(self.start_over_requested)
 
@@ -192,6 +229,94 @@ class UnlockDialog(QDialog):
         # Start over is the same kind of dismissal-like route — no reset while a
         # derivation runs (FIBR-0030 § 3.1 / INV-9).
         self._start_over_button.setEnabled(not busy)
+        # The recovery route submits into the same single-worker slot, so it is
+        # locked out for exactly as long as the password route is.
+        self._recovery_button.setEnabled(not busy)
+        self._recovery_code.setEnabled(not busy)
+
+    @Slot()
+    def _on_recovery_unlock(self) -> None:
+        """The § 4.6 recovery route — the counterpart of :meth:`_on_unlock`.
+
+        Differs from the password route in exactly two places: which slot the
+        derived key unwraps, and the local check-symbol test below. Everything
+        else — the authoritative backoff gate, the single-worker guard, the
+        failure recording — is shared, because a recovery route outside
+        FIBR-0095's throttle would be an unthrottled guessing oracle (INV-10).
+        """
+        if self._worker is not None:
+            return  # a derivation is already in flight — ignore repeat submits
+        remaining = self._throttle.remaining(datetime.now(UTC))
+        if remaining > 0:
+            self._start_countdown(remaining)
+            return
+
+        # A bad check symbol proves a TYPO, not a guess, so it is reported at
+        # once and is NOT counted as an unlock attempt (§ 4.6). It is a usability
+        # device and carries no security weight — a code that passes it is still
+        # decided by the unwrap, and by nothing else (INV-6).
+        normalised = normalise(self._recovery_code.text())
+        if not verify_check_symbol(normalised):
+            self._error.setText(
+                self.tr(
+                    "That recovery code has a typo in it. Check it against the "
+                    "copy you saved and try again."
+                )
+            )
+            return
+        self._error.clear()
+        try:
+            params = self._service.recovery_params()
+        except (KdfPolicyError, VaultStateError):
+            self._error.setText(
+                self.tr(
+                    "This vault has no recovery code set, so it can only be "
+                    "unlocked with its master password."
+                )
+            )
+            self.unlock_failed.emit()
+            return
+
+        # Argon2id eats the DECODED 17-byte payload, never the text (§ 4.3) —
+        # the same input generation used, or a correctly transcribed code would
+        # derive a different key and be refused.
+        secret = bytearray(decode(normalised))
+        self._recovery_code.clear()
+        self._set_busy(True)
+
+        worker = DeriveWorker(secret, params, self)  # parented — Qt owns it
+        worker.done.connect(self._on_recovery_derived)
+        worker.failed.connect(self._on_failure)
+        worker.finished.connect(worker.deleteLater)
+        self._worker = worker
+        worker.start()
+
+    @Slot(bytes)
+    def _on_recovery_derived(self, raw: bytes) -> None:
+        self._worker = None
+        self._set_busy(False)
+        try:
+            unlocked = self._service.complete_recovery_unlock(raw)
+        except SchemaVersionError:
+            self._error.setText(
+                self.tr(
+                    "This vault was created by a newer version of finbreak. "
+                    "Please update finbreak to open it."
+                )
+            )
+            self.unlock_failed.emit()
+            return
+        except VaultStateError:
+            self._error.setText(self.tr(_PAIRING_BROKEN))
+            self.unlock_failed.emit()
+            return
+        if unlocked:
+            self._throttle.reset()  # a correct code clears the counter (INV-5)
+            # NOT `unlocked`: D6 requires a new master password before the main
+            # window is reachable, and the shell routes on this signal.
+            self.recovery_unlocked.emit()
+        else:
+            self._show_failure()
 
     @Slot(bytes)
     def _on_derived(self, raw: bytes) -> None:
@@ -199,6 +324,15 @@ class UnlockDialog(QDialog):
         self._set_busy(False)
         try:
             unlocked = self._service.complete_unlock(raw)
+        except VaultStateError:
+            # The slot unwrapped but SQLCipher refused the DEK: the sidecar and
+            # the database are from different vaults, or the database is damaged.
+            # Give it its own message — it is indistinguishable to the user from
+            # a wrong password, and the consequences differ absolutely, so the
+            # destructive reset is never suggested from this state (§ 6).
+            self._error.setText(self.tr(_PAIRING_BROKEN))
+            self.unlock_failed.emit()
+            return
         except SchemaVersionError:
             # A vault written by a newer build — distinct from a wrong password,
             # so it gets its own message rather than the generic failure.

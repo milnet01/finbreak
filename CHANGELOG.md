@@ -23,6 +23,18 @@ signaling per
 
 ### Added
 
+- **A recovery code — a second way into your vault if you forget your master password** (FIBR-0019)
+  Forgetting your master password used to mean losing everything.
+  finbreak now shows you a recovery code once, when your vault is
+  created: keep it somewhere safe and it can unlock your vault and let
+  you choose a new password. You can decline it, or replace or remove it
+  later from Settings. finbreak keeps no copy of the code, so losing
+  both it and your password is still unrecoverable. Existing vaults are
+  upgraded automatically the next time you unlock them — nothing to do,
+  and a copy of the old vault is taken first and only removed once the
+  upgrade has been checked. A vault upgraded this way cannot be opened
+  by an older finbreak.
+
 - **SECURITY.md and CODE_OF_CONDUCT.md, and a private channel to report a vulnerability** (FIBR-0237)
   There was no private way to report a security bug before this —
   GitHub's private advisory form was disabled on the repository, so

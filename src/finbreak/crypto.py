@@ -8,12 +8,17 @@ are frozen from security-model.md INV-2 (a dated OWASP snapshot); do not tune.
 from __future__ import annotations
 
 import json
+import os
+from collections.abc import Mapping
+from dataclasses import dataclass, replace
 from pathlib import Path
+from typing import Any
 
 from argon2.low_level import Type, hash_secret_raw
 
 from finbreak.errors import KdfPolicyError
-from finbreak.models import FORMAT_VERSION, KdfParams
+from finbreak.keywrap import SLOT_MASTER, Slot
+from finbreak.models import FORMAT_VERSION, SIDECAR_VERSION, KdfParams
 
 # Pinned Argon2id parameters (security-model.md INV-2). memory_cost is in KiB —
 # 47104 KiB is the "46 MiB" human gloss; the API argument is 47104, not 46.
@@ -108,7 +113,16 @@ def load_and_validate_params(sidecar_path: Path) -> KdfParams:
     Every malformed-input path (unreadable, non-JSON, wrong shape, missing
     field, bad hex) is normalised to ``KdfPolicyError`` so callers assert one
     failure type, never a bare ``JSONDecodeError`` / ``KeyError`` (INV-2c).
+
+    Dispatches on the sidecar's shape (FIBR-0019 § 4.4). A **v2** file yields
+    the ``master`` slot's params — the KDF record the password route derives
+    under, which is what every existing caller means by "this vault's params".
+    A **v1** file takes the flat path below, unchanged: it is the on-disk shape
+    of every vault in the field and § 13's only migration source.
     """
+    if sidecar_version(sidecar_path) == SIDECAR_VERSION:
+        return read_sidecar_v2(sidecar_path).params_for(SLOT_MASTER)
+
     try:
         data = json.loads(sidecar_path.read_text())
     except (OSError, json.JSONDecodeError) as exc:
@@ -132,3 +146,246 @@ def load_and_validate_params(sidecar_path: Path) -> KdfParams:
 
     validate_params(params)
     return params
+
+
+# --------------------------------------------------------------------------- #
+# The version-2 slots sidecar (FIBR-0019 § 4.4)
+# --------------------------------------------------------------------------- #
+# The `kdf` group's fields — the Argon2id cost parameters SHARED by every slot,
+# so neither route is cheaper to attack than the other — and the per-slot
+# record's, each slot carrying its own salt and its own wrapped copy of the DEK.
+_V2_KDF_FIELDS = frozenset(
+    {"memory_kib", "time_cost", "parallelism", "key_len", "salt_len"}
+)
+_V2_SLOT_FIELDS = frozenset({"salt_hex", "nonce_hex", "wrapped_dek_hex"})
+
+# The two optional top-level fields, and they have different lifetimes:
+# `migration_pending` is written at § 13.2's S3 and removed at S6, while
+# `cipher_compatibility` is written at S3 and STAYS — a migrated vault carries
+# it permanently, a vault created fresh never has it. Neither may be rejected as
+# a foreign key: a loader that refused an unrecognised v2 field would refuse the
+# resume sidecar on the next open and take § 13.3's resume down with it.
+MIGRATION_PENDING_FIELD = "migration_pending"
+CIPHER_COMPATIBILITY_FIELD = "cipher_compatibility"
+
+
+@dataclass(frozen=True)
+class SlotRecord:
+    """One slot as it sits on disk: its own salt, plus the wrapped DEK."""
+
+    salt: bytes
+    nonce: bytes
+    wrapped_dek: bytes
+
+    @property
+    def wrapped(self) -> Slot:
+        """The ciphertext half, in the shape ``keywrap.unwrap_dek`` consumes."""
+        return Slot(nonce=self.nonce, wrapped_dek=self.wrapped_dek)
+
+    @classmethod
+    def from_wrap(cls, salt: bytes, slot: Slot) -> SlotRecord:
+        return cls(salt=salt, nonce=slot.nonce, wrapped_dek=slot.wrapped_dek)
+
+    def to_dict(self) -> dict[str, str]:
+        return {
+            "salt_hex": self.salt.hex(),
+            "nonce_hex": self.nonce.hex(),
+            "wrapped_dek_hex": self.wrapped_dek.hex(),
+        }
+
+
+@dataclass(frozen=True)
+class VaultSidecar:
+    """A parsed v2 sidecar — the cost parameters, the slots, and the two
+    migration-only fields (§ 4.4).
+
+    ``memory_kib`` and friends record the parameters the slots were actually
+    derived under, **not necessarily today's pin**: a migrated vault carries the
+    v1 vault's own recorded costs (§ 13.1), which is what lets
+    ``validate_params``' directional floor keep opening it after the pin is
+    raised. A migrated vault is exactly as strong as it was, and no stronger.
+    """
+
+    memory_kib: int
+    time_cost: int
+    parallelism: int
+    key_len: int
+    salt_len: int
+    slots: dict[str, SlotRecord]
+    migration_pending: bool = False
+    cipher_compatibility: int | None = None
+
+    def params_for(self, slot: str) -> KdfParams:
+        """The per-slot ``KdfParams`` — the shared costs plus THAT slot's salt.
+
+        ``format_version`` is always ``FORMAT_VERSION`` (1), the params-record
+        version, and never the sidecar's 2: ``validate_params``' first check is
+        ``format_version != FORMAT_VERSION``, so building one from the file's
+        own version would refuse every v2 vault — which is exactly why § 4.4
+        gives the sidecar its own ``sidecar_version`` field name.
+        """
+        return self.params_with_salt(self.slots[slot].salt)
+
+    def params_with_salt(self, salt: bytes) -> KdfParams:
+        """The shared costs against an arbitrary salt — what a NEW slot derives
+        under, so an added slot inherits this vault's schedule exactly."""
+        return KdfParams(
+            format_version=FORMAT_VERSION,
+            memory_kib=self.memory_kib,
+            time_cost=self.time_cost,
+            parallelism=self.parallelism,
+            key_len=self.key_len,
+            salt_len=self.salt_len,
+            salt=salt,
+        )
+
+    def with_slot(self, name: str, record: SlotRecord) -> VaultSidecar:
+        """A copy carrying ``record`` at ``name`` — add or replace, never mutate."""
+        return replace(self, slots={**self.slots, name: record})
+
+    def without_slot(self, name: str) -> VaultSidecar:
+        return replace(self, slots={k: v for k, v in self.slots.items() if k != name})
+
+    def to_dict(self) -> dict[str, object]:
+        payload: dict[str, object] = {
+            "sidecar_version": SIDECAR_VERSION,
+            "kdf": {
+                "memory_kib": self.memory_kib,
+                "time_cost": self.time_cost,
+                "parallelism": self.parallelism,
+                "key_len": self.key_len,
+                "salt_len": self.salt_len,
+            },
+            "slots": {name: rec.to_dict() for name, rec in self.slots.items()},
+        }
+        # Written only when true / set, so a freshly created vault carries
+        # exactly the three top-level keys INV-4 pins.
+        if self.migration_pending:
+            payload[MIGRATION_PENDING_FIELD] = True
+        if self.cipher_compatibility is not None:
+            payload[CIPHER_COMPATIBILITY_FIELD] = self.cipher_compatibility
+        return payload
+
+
+def new_sidecar(params: KdfParams, slots: dict[str, SlotRecord]) -> VaultSidecar:
+    """A v2 sidecar taking its shared costs from ``params`` (whose own salt is
+    ignored — a salt belongs to a slot, never to the ``kdf`` group)."""
+    return VaultSidecar(
+        memory_kib=params.memory_kib,
+        time_cost=params.time_cost,
+        parallelism=params.parallelism,
+        key_len=params.key_len,
+        salt_len=params.salt_len,
+        slots=slots,
+    )
+
+
+def write_sidecar_json(sidecar_path: Path, payload: Mapping[str, object]) -> None:
+    """Atomically write the plaintext sidecar as owner-only (coding.md § 7).
+
+    The one writer for both shapes — ``Vault._write_sidecar``'s flat v1 record
+    and the v2 slots object — so the durability and permission posture cannot
+    drift between them.
+    """
+    text = json.dumps(payload, indent=2)
+    tmp_path = sidecar_path.with_name(sidecar_path.name + ".tmp")
+    # O_NOFOLLOW refuses to open through a symlink planted at the .tmp path, so
+    # the write can't be redirected to truncate/overwrite an attacker's target
+    # (0 on Windows, where the flag is absent — a no-op there).
+    fd = os.open(
+        tmp_path,
+        os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0),
+        0o600,
+    )
+    with os.fdopen(fd, "w") as handle:
+        handle.write(text)
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(tmp_path, sidecar_path)
+
+
+def write_sidecar_v2(sidecar_path: Path, sidecar: VaultSidecar) -> None:
+    write_sidecar_json(sidecar_path, sidecar.to_dict())
+
+
+def _read_json(sidecar_path: Path) -> dict[str, Any]:
+    try:
+        data = json.loads(sidecar_path.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        raise KdfPolicyError(f"sidecar unreadable or not JSON: {exc}") from exc
+    if not isinstance(data, dict):
+        raise KdfPolicyError("sidecar is not a JSON object")
+    return data
+
+
+def sidecar_version(sidecar_path: Path) -> int:
+    """``2`` for the slots shape, ``1`` for today's flat one.
+
+    Dispatch is on the PRESENCE of ``sidecar_version``: absent means the v1
+    shape every vault in the field is written in, which is § 13's only
+    migration source. A v2-only loader would reject all of them, and the
+    migration could then never run — it needs the v1 vault *open* to copy it.
+    """
+    data = _read_json(sidecar_path)
+    if "sidecar_version" not in data:
+        return 1
+    try:
+        version = int(data["sidecar_version"])
+    except (TypeError, ValueError) as exc:
+        raise KdfPolicyError(f"sidecar_version is not an integer: {exc}") from exc
+    if version != SIDECAR_VERSION:
+        raise KdfPolicyError(
+            f"unsupported sidecar_version {version} (expected {SIDECAR_VERSION})"
+        )
+    return version
+
+
+def read_sidecar_v2(sidecar_path: Path) -> VaultSidecar:
+    """Parse and validate the v2 slots sidecar, else ``KdfPolicyError``.
+
+    Every slot is validated **individually**: the cost parameters come from the
+    shared ``kdf`` group but the salt-length legs are checked against *that
+    slot's* salt, so ``salt_len: 16`` beside a 4-byte ``slots.master.salt_hex``
+    is rejected. Reading ``kdf`` alone would silently drop the real-salt-length
+    leg ``security-model.md`` INV-2's exact-format match requires.
+    """
+    data = _read_json(sidecar_path)
+    if sidecar_version(sidecar_path) != SIDECAR_VERSION:
+        raise KdfPolicyError("not a version-2 sidecar")
+
+    kdf = data.get("kdf")
+    slots_raw = data.get("slots")
+    if not isinstance(kdf, dict) or not _V2_KDF_FIELDS <= kdf.keys():
+        raise KdfPolicyError("v2 sidecar is missing one or more `kdf` fields")
+    if not isinstance(slots_raw, dict) or not slots_raw:
+        raise KdfPolicyError("v2 sidecar carries no `slots`")
+
+    slots: dict[str, SlotRecord] = {}
+    try:
+        for name, record in slots_raw.items():
+            if not isinstance(record, dict) or not _V2_SLOT_FIELDS <= record.keys():
+                raise KdfPolicyError(f"slot {name!r} is missing a required field")
+            slots[name] = SlotRecord(
+                salt=bytes.fromhex(record["salt_hex"]),
+                nonce=bytes.fromhex(record["nonce_hex"]),
+                wrapped_dek=bytes.fromhex(record["wrapped_dek_hex"]),
+            )
+        compat_raw = data.get(CIPHER_COMPATIBILITY_FIELD)
+        sidecar = VaultSidecar(
+            memory_kib=int(kdf["memory_kib"]),
+            time_cost=int(kdf["time_cost"]),
+            parallelism=int(kdf["parallelism"]),
+            key_len=int(kdf["key_len"]),
+            salt_len=int(kdf["salt_len"]),
+            slots=slots,
+            migration_pending=bool(data.get(MIGRATION_PENDING_FIELD, False)),
+            cipher_compatibility=None if compat_raw is None else int(compat_raw),
+        )
+    except (TypeError, ValueError) as exc:
+        raise KdfPolicyError(f"sidecar field has a bad value: {exc}") from exc
+
+    if SLOT_MASTER not in sidecar.slots:
+        raise KdfPolicyError("v2 sidecar carries no `master` slot")
+    for name in sidecar.slots:
+        validate_params(sidecar.params_for(name))
+    return sidecar

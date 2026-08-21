@@ -49,6 +49,11 @@ from finbreak.ui._worker import DeriveWorker
 
 class FirstRunDialog(QDialog):
     completed = Signal()
+    # The freshly generated recovery code, handed to the shell for § 4.5 step
+    # 8's one-time display. Emitted immediately BEFORE `completed`, and only
+    # once the vault exists. Nothing retains it — INV-5 forbids the app keeping
+    # it — so this signal is the only route by which anything can learn it.
+    recovery_code_ready = Signal(str)
     # "Restore from a backup instead" — a user with an existing `.fbk` restores it
     # rather than creating a fresh vault (FIBR-0014 INV-8/D5). The shell owns it.
     restore_requested = Signal()
@@ -127,7 +132,9 @@ class FirstRunDialog(QDialog):
         layout.addWidget(
             QLabel(
                 self.tr(
-                    "There is no password recovery — if you forget this password, "
+                    "finbreak will give you a recovery code once your vault "
+                    "exists — keep it somewhere safe and it can unlock your "
+                    "vault if you ever forget this password. If you lose both, "
                     "your data cannot be recovered."
                 )
             )
@@ -200,7 +207,7 @@ class FirstRunDialog(QDialog):
         if params is None:  # _on_submit always sets it before start — defensive
             return
         try:
-            self._service.complete_first_run(raw, params, currency)
+            code = self._service.complete_first_run(raw, params, currency)
             # The vault now exists — persist the datetime prefs at this post-create
             # site (D6), on the same guarded path as vault creation.
             self._service.set_datetime_prefs(
@@ -219,6 +226,13 @@ class FirstRunDialog(QDialog):
                 self.tr("Could not create the vault: {error}").format(error=exc)
             )
             return
+        # § 4.5 step 8 is the SHELL's, and the code is handed over here — after
+        # the vault exists, because a code displayed for a vault whose creation
+        # then failed is a code the user has carefully stored for nothing. This
+        # dialog does not show it itself: it is about to be torn down and its
+        # children with it. Emitted BEFORE `completed`, so the shell is holding
+        # the code by the time it enters the unlocked state.
+        self.recovery_code_ready.emit(code)
         self.completed.emit()
 
     @Slot(object)
