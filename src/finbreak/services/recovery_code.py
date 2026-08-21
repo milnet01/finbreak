@@ -50,6 +50,17 @@ INPUT_SYMBOLS = frozenset(DATA_ALPHABET + "ILOU*~$=")
 # least prime above 32, which is what gives it its detection properties.
 _CHECK_MODULUS = len(CHECK_ALPHABET)
 
+# Crockford's fold applies to the 28th symbol exactly as it does to the payload:
+# a printed ``1`` may be transcribed ``I`` or ``L``, a printed ``0`` as ``O``.
+# So the check is read as a VALUE, never compared as a character — comparing
+# characters refuses a code the user transcribed correctly, and (because INV-11's
+# hint scan gates on the same call) lets that same form past the guard and into
+# plaintext ``window.ini`` (FIBR-0307 finding 1). I/L/O are not themselves legal
+# check symbols, so folding them only ever accepts strings that were previously
+# rejected outright; it cannot accept a wrong check value.
+_CHECK_DECODE = {symbol: value for value, symbol in enumerate(CHECK_ALPHABET)}
+_CHECK_DECODE.update({"I": 1, "L": 1, "O": 0})
+
 
 def _payload_int(payload: str) -> int:
     """The integer ``payload``'s data symbols encode, folding I/L/O and case."""
@@ -103,12 +114,20 @@ def verify_check_symbol(code: str) -> bool:
     A *typo detector*: it carries no security weight (INV-6). A locally
     well-formed code is one that is not a transcription slip, never one that
     has been shown to open anything.
+
+    Compares the check *value* rather than the character, because Crockford's
+    fold reads ``I``/``L`` as ``1`` and ``O`` as ``0`` — so a printed ``…RST1``
+    written ``…RSTI`` is the same code, and :func:`decode` returns the same 17
+    bytes for both.
     """
     text = code.upper()
     if len(text) != CODE_SYMBOLS:
         return False
+    typed = _CHECK_DECODE.get(text[-1])
+    if typed is None:
+        return False
     try:
-        return check_symbol(text[:PAYLOAD_SYMBOLS]) == text[-1]
+        return _payload_int(text[:PAYLOAD_SYMBOLS]) % _CHECK_MODULUS == typed
     except ValueError:
         return False
 

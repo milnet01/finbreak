@@ -23,8 +23,10 @@ from finbreak.keywrap import Slot, unwrap_dek
 from finbreak.models import FORMAT_VERSION, SIDECAR_VERSION, KdfParams
 from finbreak.services.auth import AuthService
 from finbreak.services.recovery_code import (
+    CHECK_ALPHABET,
     CODE_SYMBOLS,
     DATA_ALPHABET,
+    PAYLOAD_BITS,
     PAYLOAD_SYMBOLS,
     check_symbol,
     decode,
@@ -219,6 +221,38 @@ def forge_wrong_code_with_a_valid_check_symbol(code: str) -> str:
     head = DATA_ALPHABET[(DATA_ALPHABET.index(payload[0]) + 1) % len(DATA_ALPHABET)]
     forged_payload = head + payload[1:]
     return format_code(forged_payload + check_symbol(forged_payload))
+
+
+def code_with_check_symbol(target: str) -> str:
+    """A deterministic display-form code whose check symbol is exactly ``target``.
+
+    FIBR-0307 finding 1 turns on WHICH check symbol a code carries: of the 37,
+    only ``0`` and ``1`` have confusable stand-ins in Crockford's fold (``O``,
+    and ``I``/``L``), so a leg built on :func:`generate_code` would exercise the
+    defect roughly two times in thirty-seven and pass by luck the rest. This
+    walks a fixed seed down to the nearest 135-bit payload whose mod-37 residue
+    is the one wanted, so the leg is exact and does not flake.
+    """
+    modulus = len(CHECK_ALPHABET)
+    ceiling = 1 << PAYLOAD_BITS
+    seed = int.from_bytes(b"FIBR-0307 fold", "big") % ceiling
+    value = seed - (seed % modulus) + CHECK_ALPHABET.index(target)
+    if value >= ceiling:
+        value -= modulus
+
+    symbols = []
+    for _ in range(PAYLOAD_SYMBOLS):
+        symbols.append(DATA_ALPHABET[value & 0x1F])
+        value >>= 5
+    payload = "".join(reversed(symbols))
+
+    assert check_symbol(payload) == target, (
+        "helper precondition: the constructed payload must carry the requested "
+        "check symbol, or every leg built on it is testing the wrong code.\n"
+        f"  expected: {target!r}\n"
+        f"  actual:   {check_symbol(payload)!r}"
+    )
+    return format_code(payload + target)
 
 
 def code_secret(code: str) -> bytes:

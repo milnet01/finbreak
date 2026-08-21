@@ -21,6 +21,7 @@ import pytest
 from _recovery_helpers import (
     MASTER_PASSWORD,
     code_secret,
+    code_with_check_symbol,
     create_vault,
     forge_wrong_code_with_a_valid_check_symbol,
     keep_recovery_key,
@@ -36,7 +37,13 @@ from finbreak.errors import KeyUnwrapError
 from finbreak.keywrap import SLOT_RECOVERY
 from finbreak.services.auth import AuthService
 from finbreak.services.password_hint import HintPolicyError, validate_hint
-from finbreak.services.recovery_code import decode, normalise, verify_check_symbol
+from finbreak.services.recovery_code import (
+    PAYLOAD_SYMBOLS,
+    decode,
+    format_code,
+    normalise,
+    verify_check_symbol,
+)
 
 pytestmark = pytest.mark.features
 
@@ -143,6 +150,115 @@ def test_valid_check_symbol_does_not_authenticate(
         "  expected: the vault stays closed\n"
         "  actual:   it opened"
     )
+
+
+# --------------------------------------------------------------------------- #
+# § 4.3 fold — the check symbol is folded too (FIBR-0307 finding 1)
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize(("typed", "printed"), [("I", "1"), ("L", "1"), ("O", "0")])
+def test_a_confusably_transcribed_check_symbol_is_not_a_typo(
+    typed: str, printed: str
+) -> None:
+    """Crockford's fold reads ``I``/``L`` as ``1`` and ``O`` as ``0``, and the
+    28th symbol is no exception. A user who writes the printed digit in the
+    confusable form has transcribed the code CORRECTLY.
+    """
+    code = normalise(code_with_check_symbol(printed))
+    substituted = code[:PAYLOAD_SYMBOLS] + typed
+
+    assert verify_check_symbol(code), (
+        "precondition: the printed form must verify, or the leg below proves "
+        "nothing about the fold.\n"
+        f"  expected: verify_check_symbol({code!r}) is True\n"
+        "  actual:   False"
+    )
+    assert decode(substituted) == decode(code), (
+        "precondition: substituting the CHECK symbol must not change the "
+        "credential -- decode() reads the 27-symbol payload only, so both "
+        "forms must feed Argon2id the same 17 bytes.\n"
+        f"  expected: both decode to {decode(code).hex()}\n"
+        f"  actual:   {decode(substituted).hex()}"
+    )
+    assert verify_check_symbol(substituted), (
+        f"§ 4.3: the printed {printed!r} written as {typed!r} is the SAME code "
+        "-- decode() proves it on the line above -- so refusing it reports a "
+        "typo the user did not make, and locks them out of the recovery route "
+        "before any derivation is attempted.\n"
+        f"  expected: verify_check_symbol({substituted!r}) is True\n"
+        "  actual:   False -- the 28th symbol is compared as a raw character "
+        "while the payload it is checked against is folded"
+    )
+
+
+def test_the_fold_does_not_widen_to_a_wrong_check_symbol() -> None:
+    """Folding must not turn the typo detector into a rubber stamp: ``I``/``L``/
+    ``O`` stand in for ``1``/``1``/``0`` and for nothing else."""
+    code = normalise(code_with_check_symbol("2"))
+    for typed in "ILO":
+        substituted = code[:PAYLOAD_SYMBOLS] + typed
+        assert not verify_check_symbol(substituted), (
+            "§ 4.3: the fold maps I/L to 1 and O to 0. A code whose check "
+            f"symbol is '2' must still be refused when its 28th symbol reads "
+            f"{typed!r}, or the check has stopped detecting transcription "
+            "slips altogether.\n"
+            f"  expected: verify_check_symbol({substituted!r}) is False\n"
+            "  actual:   True"
+        )
+
+
+@pytest.mark.parametrize("printed", ["U", "*", "~", "$", "="])
+def test_the_five_non_data_check_symbols_still_verify(printed: str) -> None:
+    """The check alphabet is 37 symbols, five of which are outside the data
+    alphabet entirely. A fold implemented over the DATA decode table alone would
+    drop these, refusing one issued code in every seven."""
+    code = normalise(code_with_check_symbol(printed))
+    assert verify_check_symbol(code), (
+        "§ 4.3: `*`, `~`, `$`, `=` and `U` are legal check symbols -- a code's "
+        f"last group may read `RST{printed}`. Refusing one is refusing a "
+        "correctly printed code.\n"
+        f"  expected: verify_check_symbol({code!r}) is True\n"
+        "  actual:   False"
+    )
+
+
+def test_hint_rejects_the_code_whose_check_symbol_was_transcribed_confusably(
+    paths: tuple[Path, Path], service: AuthService, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """INV-11's scan gates on ``verify_check_symbol``, so finding 1 is also a
+    one-character bypass of it: the live code, with its ``1`` written as ``I``,
+    yields no candidate, costs no derivation, and is written to plaintext
+    ``window.ini`` beside the vault it opens.
+    """
+    _vault_path, sidecar_path = paths
+    from finbreak.ui import _password_hint as hint_io
+
+    check = require_seam(
+        hint_io,
+        "validate_hint_with_recovery",
+        "INV-11's trial-unwrap lives in ui/_password_hint.py (§ 11).",
+    )
+    monkeypatch.setattr("finbreak.paths.sidecar_path", lambda: sidecar_path)
+
+    # Force the check symbol: the defect is reachable only for '0' and '1', and
+    # first_run would otherwise mint one of 37 at random.
+    printed = code_with_check_symbol("1")
+    monkeypatch.setattr("finbreak.services.auth.generate_code", lambda: printed)
+
+    code = create_vault(service)
+    assert code == printed, (
+        "precondition: the vault must have been created with the forced code, "
+        "or this leg is testing an unrelated one.\n"
+        f"  expected: {printed!r}\n"
+        f"  actual:   {code!r}"
+    )
+    keep_recovery_key(service, code)
+
+    substituted = format_code(normalise(code)[:PAYLOAD_SYMBOLS] + "I")
+    with pytest.raises(HintPolicyError):
+        check(
+            f"same as the one on the card: {substituted}", MASTER_PASSWORD.decode()
+        )
+
 
 
 # --------------------------------------------------------------------------- #
