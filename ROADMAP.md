@@ -4838,7 +4838,7 @@ because retrofitting them is a data migration.
   Source: user-request-2026-07-01.
   Lanes: crypto, ux.
 
-- ✅ [FIBR-0019] **Master-password recovery via recovery key (key-wrapping).**
+- 🚧 [FIBR-0019] **Master-password recovery via recovery key (key-wrapping).**
   At vault creation, generate a high-entropy recovery
   code the user stores safely; wrap the vault data-key under **both** the
   master password and the recovery code (envelope encryption) so a
@@ -4973,6 +4973,33 @@ because retrofitting them is a data migration.
   could not pass by any implementation -- between S4 and S5 the
   sidecar names a DEK no database on disk answers to yet. It now calls
   the production resume. No assertion was changed.
+  Re-opened (2026-08-21) by /close-phase: the close is BLOCKED and the ✅
+  above was premature. The code is built, pushed (7e6c11f) and green, but
+  check-code plus three review-code lanes found thirteen actionable
+  defects in it, batched into FP02 / FIBR-0307. Two are severe enough
+  that calling this shipped overstates it:
+
+  - verify_check_symbol compares the check symbol UNFOLDED, so roughly
+    2 of 37 issued codes are refused when the user transcribes 1 as I or
+    0 as O -- the exact confusion Crockford was chosen to remove -- and
+    the same call gates INV-11's hint scan, so the substituted form is
+    accepted into plaintext window.ini.
+  - A broken vault/sidecar pairing is reported as a wrong password with
+    the destructive reset on screen, which section 6 forbids by name.
+    The _PAIRING_BROKEN message written for it is unreachable.
+
+  Reverting to 🚧 rather than leaving ✅ is also the interlock that stops
+  a release going out over this: cut-release refuses when a CHANGELOG
+  section claims an id that is not ✅, and the FIBR-0019 entry is already
+  in [Unreleased]. It goes back to ✅ when FP02 closes and /close-phase
+  runs clean.
+
+  Worth recording for the next reviewer of this item: the thirteen
+  tests all passed, and the mutation checks all fired. Neither caught any
+  of the thirteen. INV-2 leg 3 in particular CANNOT catch the check-symbol
+  defect -- it substitutes inside `payload` and re-appends `check`
+  untouched, so the one position that is broken is the one position the
+  test holds fixed.
   Source: user-request-2026-07-01.
   Lanes: crypto, security.
 
@@ -5113,6 +5140,42 @@ because retrofitting them is a data migration.
   **Layman:** Once the recovery-key work is in, changing your master password becomes a quick, safe operation instead of re-encrypting the whole vault — but nothing yet tracks actually adding the button.
   Kind: feature.
   Source: review-contract-2026-08-20 (FIBR-0019 gate, surfaced not fixed).
+
+- 📋 [FIBR-0307] **FP02 — fix-pass after FIBR-0019: thirteen findings from check-code and review-code.**
+  Every one is a defect FIBR-0019 introduced; pre-existing findings are filed separately. Verified independently before filing.
+
+  TWO ARE SEVERE.
+
+  1. The check symbol is compared UNFOLDED, so a correctly transcribed code is refused. recovery_code.verify_check_symbol compares the 28th character raw while the 27-symbol payload is folded through I/L to 1 and O to 0. Check symbols 0 and 1 are both reachable, so a user who writes 1 as I is told their code has a typo, before any derivation -- and decode() proves it is the SAME code. Roughly 2 of 37 issued codes carry it. Worse, the same call gates INV-11's hint scan, so a hint holding the substituted form yields zero candidates and is accepted into plaintext window.ini: an INV-11 bypass by one character. Measured: verify_check_symbol False, decode equal True, candidates 0. Fix by comparing the DECODED check value, not the character.
+
+  2. A broken vault/sidecar pairing is reported as a wrong password, with the destructive reset on screen. auth._open_with catches DatabaseError and returns False, so 'slot unwrapped but SQLCipher refused' is indistinguishable from a wrong credential. The _PAIRING_BROKEN message written for exactly this is unreachable dead code -- unlock.py keys it on VaultStateError, which this path never raises. Section 6 forbids it in as many words: do NOT offer the destructive reset from this state, the consequences differ absolutely. Found independently by two lanes.
+
+  THE REST.
+
+  3. resume() runs S6 bookkeeping BEFORE opening the vault, so an ENOSPC or a held file at _finish locks the user out of a fully migrated, provably openable vault -- and it escapes unhandled from a Qt slot. Section 6 names disk-full at S1-S6 by name.
+  4. migrate_to_v2 never wipes the DEK it mints -- no try/finally at all. security-model INV-3 covers the DEK explicitly.
+  5. _unlock_through_slot wipes kek in its finally but leaks dek whenever resume() raises -- including resume's routine terminal branch.
+  6. resume branch 3 re-enters _convert, which swaps the live pair, with no rollback copy taken or verified. INV-13 is unconditional; section 13.3 step 3 says only 'restart from S1'.
+  7. D8's rollback offer is never made. rollback_copy_paths has no caller anywhere and no UI path names the .pre-v2 pair, so the terminal branch is still terminal -- which section 13.3 calls 'the whole return on D8'. Found by two lanes.
+  8. verify_rollback_copy reads sqlite_master only, so a copy truncated after the schema pages verifies. The replacement gets integrity_check plus row counts; the artefact the user falls back on gets a schema read. INV-13's own Breaks-when clause is about this.
+  9. No length validation on slot fields. read_sidecar_v2 accepts an 8-byte or 200-byte wrapped_dek and a 2-byte nonce (measured); WRAPPED_DEK_LEN = 48 is dead. It fails closed, but as KeyUnwrapError, so a corrupt key record reads to the user as a wrong password -- finding 2's confusion by a second route.
+  10. _on_change_recovery_key and _on_remove_recovery_key do not tear down the Settings dialog first, unlike every sibling handler. Two app-modals, an untracked dialog auto-lock cannot close, settings writes silently dropped on the next Save, and a stale 'No recovery code is set' on screen.
+  11. restore_backup writes no cipher_compatibility, while the .fbk database it installs was written at an explicit level and the migration records it. A wheels bump that moves the default makes a restored vault unopenable.
+  12. The section 4.7 helpers do not guard VaultLockedError. QInputDialog spins a nested loop; an idle auto-lock inside it makes verify_password raise out of the slot. Six other UI modules guard it.
+  13. Two smaller ones: 'Recovery code saved' is shown even after keep_recovery_code has reported a failure, and a copied recovery code is never cleared from the clipboard though ClipboardAutoClear exists and is used for transaction descriptions.
+  **Layman:** The recovery-key feature works, but a careful review found thirteen problems in it — two of which could cost a user their data.
+  Kind: review-fix.
+  Source: close-phase-2026-08-21 (check-code + 3 review-code lanes over f704605..HEAD).
+  Lanes: crypto, security, ux.
+
+- 📋 [FIBR-0308] **INV-11's hint scan misses the 27-symbol payload, which is the whole credential.**
+  A SPEC question, not an implementation defect -- ui/_password_hint._code_candidates implements section 5 INV-11 faithfully. INV-11 says to scan for a 28-symbol Crockford candidate and verify its check symbol. But the check symbol is a pure function of the 27-symbol payload (CHECK_ALPHABET[_payload_int(payload) % 37]), so the payload ALONE is the entire credential, and Argon2id is fed exactly those 27 symbols decoded. A hint holding the payload without its check symbol -- or with a mistyped one -- therefore passes the guard and is written to plaintext window.ini.
+
+  FP02 finding 1 is the narrow instance of this and is fixed there. This is the general case and needs INV-11's own wording changed: scan 27-symbol windows too, COMPUTING the check symbol rather than reading it, then trial-unwrap. Filed rather than fixed because amending an invariant is a spec change, and section 5 is what a conformer builds from.
+  **Layman:** The check that stops you putting your recovery code in your password hint only looks for the full code, not the part of it that actually matters.
+  Kind: security.
+  Source: close-phase-2026-08-21 (review-code lane 3, UI edges).
+  Lanes: security.
 
 ### 🎨 Features & accessibility
 
@@ -8496,6 +8559,41 @@ is a future error tomorrow.
   Kind: test.
   Source: in-session-2026-08-21.
   Lanes: tests, ci.
+
+- 📋 [FIBR-0309] **The sidecar write and its parameter validation have three pre-existing gaps.**
+  Surfaced rather than fixed in passing (coding.md 1.7). All three predate
+  FIBR-0019 -- confirmed against f704605: the atomic-write code came verbatim
+  from vault.py:292-302 when it moved to crypto.write_sidecar_json, and
+  validate_params' checks are untouched by that commit. FIBR-0019 widened the
+  blast radius of two of them, which is why they are filed now.
+
+  1. write_sidecar_json opens the temp file O_CREAT without O_EXCL, so the 0o600
+     mode argument is not applied when the file already exists. O_NOFOLLOW closes
+     the symlink case the comment names and nothing closes the ordinary-file case:
+     a pre-created vault.kdf.json.tmp keeps its own owner and mode and is renamed
+     over the sidecar. Precondition is write access to the data directory, so it
+     is a small hole in a defence the module deliberately mounts. Fix with O_EXCL
+     plus an unlink of any stale .tmp, or fchmod after opening.
+
+  2. No directory fsync after os.replace, in either write_sidecar_json or the
+     migration's S4/S5 renames -- so the docstring's word 'atomically' covers the
+     contents and not the rename. FIBR-0019 makes this bite harder: a user who
+     presses Keep, is told the code is live and files the paper copy can lose the
+     slot to a power cut, and INV-5 means the app can never show that code again.
+     ext4 and btrfs journal directory ops in order, so this is filesystem-
+     dependent rather than absent everywhere.
+
+  3. validate_params bounds neither time_cost nor parallelism nor the UPPER end of
+     memory_kib. A hand-edited time_cost of 0 surfaces as an argon2 exception
+     rather than the KdfPolicyError ui/unlock.py renders, against
+     load_and_validate_params' own stated posture that every malformed input is
+     normalised to one failure type. memory_kib 2147483647 passes the directional
+     floor and is attempted before any authentication can reject it, because the
+     AAD binds the value only after the derivation it sizes.
+  **Layman:** Three long-standing weaknesses in how the vault's security-settings file is written and checked — none introduced by the recovery key, but it made two of them matter more.
+  Kind: security.
+  Source: close-phase-2026-08-21 (review-code lane 1 + lane 2, FIBR-0019 close).
+  Lanes: crypto, security.
 
 ## How to add an item
 
