@@ -13,6 +13,7 @@ Prose in a spec cannot catch either. Reading both files and comparing them can.
 No network, no vault, no Qt.
 """
 
+import os
 import re
 from pathlib import Path
 
@@ -198,6 +199,25 @@ _HOOK = _ROOT / ".githooks" / "pre-push"
 _ZERO = "0" * 40
 
 
+# Neutralise INHERITED git configuration in the sandbox (FIBR-0306). A plain
+# `git init` inherits the user's global config, and a machine-wide
+# `core.hooksPath` therefore applied to this miniature repo — so the sandbox's
+# own SETUP push fired somebody else's pre-push hook, which auto-discovered the
+# stub `scripts/ci-local.sh` below and touched the sentinel BEFORE the
+# assertions began. `test_INV5_the_sandbox_is_not_vacuous` then failed on its
+# first line, and the tag-skip test failed on a sentinel it did not create.
+#
+# Both variables rather than `core.hooksPath` alone: pinning the one setting
+# known to have leaked fixes today's symptom and leaves the next global setting
+# someone adds free to do the same thing. This makes the sandbox hermetic
+# against all of them.
+_HERMETIC_GIT = {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_SYSTEM": os.devnull}
+
+
+def _sandbox_env() -> dict[str, str]:
+    return {**os.environ, **_HERMETIC_GIT}
+
+
 def _hook_sandbox(tmp_path: Path) -> tuple[Path, Path, str]:
     """A repo with an origin, one pushed commit and one unpushed commit.
 
@@ -213,14 +233,19 @@ def _hook_sandbox(tmp_path: Path) -> tuple[Path, Path, str]:
             check=True,
             capture_output=True,
             text=True,
+            env=_sandbox_env(),
         ).stdout.strip()
 
     origin = tmp_path / "origin.git"
     work = tmp_path / "work"
     origin.mkdir()
     work.mkdir()
-    subprocess.run(["git", "init", "--bare", "-q"], cwd=origin, check=True)
-    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=work, check=True)
+    subprocess.run(
+        ["git", "init", "--bare", "-q"], cwd=origin, check=True, env=_sandbox_env()
+    )
+    subprocess.run(
+        ["git", "init", "-q", "-b", "main"], cwd=work, check=True, env=_sandbox_env()
+    )
     git("config", "user.email", "t@example.invalid", cwd=work)
     git("config", "user.name", "t", cwd=work)
 
@@ -257,6 +282,7 @@ def _run_hook(work: Path, stdin: str) -> int:
         input=stdin,
         text=True,
         capture_output=True,
+        env=_sandbox_env(),
     ).returncode
 
 
@@ -281,6 +307,7 @@ def test_INV5_tag_push_of_an_unpushed_commit_runs_the_gate(tmp_path: Path) -> No
         check=True,
         capture_output=True,
         text=True,
+        env=_sandbox_env(),
     ).stdout.strip()
     _run_hook(work, f"refs/tags/v2 {head} refs/tags/v2 {_ZERO}\n")
     assert sentinel.exists(), (
