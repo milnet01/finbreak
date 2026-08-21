@@ -16,6 +16,13 @@ class KdfPolicyError(FinbreakError):
     field lengths, or a malformed / missing-field sidecar (FIBR-0004 INV-2b/2c)."""
 
 
+class KeyUnwrapError(FinbreakError):
+    """A wrapped DEK slot failed to authenticate — a wrong credential OR a
+    tampered slot (FIBR-0019 § 4.2 / INV-3). Deliberately ONE type for both: the
+    caller cannot act differently on them, and an error that distinguishes them
+    is an oracle."""
+
+
 class VaultStateError(FinbreakError):
     """The on-disk vault/sidecar pair is in a mixed presence state — one file
     present without the other (FIBR-0004 INV-5)."""

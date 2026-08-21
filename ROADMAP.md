@@ -73,7 +73,7 @@ scariest unknown (native-library bundling) up front.
   Resolved (2026-07-01): closed by /close-phase. Local gate exits 0; CI green in 23s; INV-1..INV-6 all demonstrated (INV-5 secret-injection demo flipped gitleaks + bandit red, then green on removal). /audit + /indie-review both returned zero actionable findings on the same pass. Impl commit 6b6ac64; tag FIBR-0001-complete.
   Kind: chore.
   Source: planned.
-  Lanes: build, ci, tests.
+  Lanes: build, ci, tests, security.
 
 - ✅ [FIBR-0002] **P01: `.gitignore` + secret-leak guard.**
   Standard Python ignore set (build artefacts,
@@ -2882,7 +2882,7 @@ lands on top.
   Resolved (2026-07-02): shipped the categories aggregate (self-referential table + 2 seeded Type roots + 16 defaults), the QTreeWidget manager, and the v2→v3 migration. Spec cold-eyes-converged (7 loops); TDD; /audit + /indie-review 0 actionable on the closing pass. Gate green (122 passed/1 skipped, mypy 0). Transaction→category link deferred to P08 (FIBR-0010) by design. Journal: docs/journal/FIBR-0006.md. Tag FIBR-0006-complete.
   Kind: implement.
   Source: planned.
-  Lanes: services, repo, ui.
+  Lanes: services, repo, ui, tests.
 
 ---
 
@@ -2911,7 +2911,7 @@ lands on top.
   Resolved (2026-07-03): shipped via /close-phase. CsvImporter + ImportService (exact-signature profiles, multiset-delta dedup, atomic write + coverage-period), v3->v4 migration (import_profiles + statement_periods), non-modal wizard. 43 tests (INV-1..11); gate green 165 passed/1 skipped, mypy 0; audit 0 + indie-review 0 CRIT/HIGH/MED (one LOW fixed inline: preview renders decimals not minor units). Tag FIBR-0007-complete.
   Kind: implement.
   Source: planned.
-  Lanes: services, importers, ui.
+  Lanes: services, importers, ui, repo, tests.
 
 ---
 
@@ -4825,7 +4825,7 @@ because retrofitting them is a data migration.
   Source: user-request-2026-07-01.
   Lanes: crypto, ux.
 
-- 📋 [FIBR-0019] **Master-password recovery via recovery key (key-wrapping).**
+- 🚧 [FIBR-0019] **Master-password recovery via recovery key (key-wrapping).**
   At vault creation, generate a high-entropy recovery
   code the user stores safely; wrap the vault data-key under **both** the
   master password and the recovery code (envelope encryption) so a
@@ -4868,6 +4868,58 @@ because retrofitting them is a data migration.
   Also filed by the run, not fixed here: no roadmap item exists for
   "change the master password" as a settings action, which this design
   makes nearly free. Worth queueing.
+  Progress (2026-08-21): picked up for the build. Correcting this
+  bullet's own record above -- the gate ran FOUR loops, not three. The
+  accepted spec is 1108 lines with THIRTEEN invariants, and the run
+  totalled twelve cold lanes and 37 verified findings, all fixed, none
+  dismissed. Loop 4 was violent (five of its six findings landed on text
+  the same session had written), which is what stopped the run there;
+  implementation is the next reviewer and the spec is not to be re-gated.
+
+  Now at write-test. The suite is tests/features/recovery_key/ per the
+  spec's sections 7 and 10 -- five files, thirteen tests, one per
+  invariant -- and it must be seen RED before write-code starts. Route 1:
+  none of the code exists yet, so there is nothing to revert.
+  write-test done (2026-08-21). tests/features/recovery_key/ holds
+  spec.md, the five files section 7 names, a shared _recovery_helpers.py,
+  and thirteen tests under section 10's exact names. Registered in
+  _NO_PROSE. Stubs added so the suite EXECUTES rather than dying at
+  collection: keywrap.py, services/recovery_code.py,
+  services/vault_migration.py, KeyUnwrapError, SIDECAR_VERSION = 2, and
+  two AuthService stubs. Every stub body raises NotImplementedError;
+  nothing is implemented. FORMAT_VERSION stays 1.
+
+  Run: 14 failed, 0 collection errors (INV-13 is parametrised over its
+  two injection points). ruff, ruff format and mypy all clean. Full gate:
+  16 failed, 1951 passed -- the 14 by design plus two pre-existing reds
+  now filed as FIBR-0306. No regression from the stubs.
+
+  One test was strengthened after the authoring pass. INV-3 leg 3
+  originally called validate_params on a hand-built KdfParams, which only
+  re-proves that crypto.py's floor rejects a halved memory_kib -- already
+  true today, and still true if the v2 load path never consults it. It
+  now writes the weakened sidecar to disk and calls
+  load_and_validate_params, the path AuthService.load_params actually
+  takes.
+
+  THE GAP, and write-code owes it. This is greenfield, so all thirteen
+  fail at the first absent surface -- first_run not returning a code,
+  migrate_to_v2 raising, or a named seam missing -- and NOT on their own
+  invariant assertion. So no invariant assertion here has yet been
+  observed to fail. Going green is therefore not sufficient evidence.
+  As each invariant is implemented, break its specific property on
+  purpose and watch THAT assertion fail before accepting the green.
+  The legs most worth this: INV-1 leg 2, INV-2 leg 3, INV-3 leg 4 and
+  INV-11 leg 1, each of which the spec says the obvious implementation
+  passes for the wrong reason.
+
+  Six naming seams were chosen that section 4 does not fix; spec.md
+  lists them with reasons. The load-bearing one is AuthService.first_run
+  widening from returning nothing to returning the display-form code --
+  INV-5 forbids retaining it, so there is no other route by which
+  anything can learn it.
+
+  Not pushed: the gate is red by design until write-code lands.
   Source: user-request-2026-07-01.
   Lanes: crypto, security.
 
@@ -4883,7 +4935,7 @@ because retrofitting them is a data migration.
   **Layman:** Unlock the vault with your fingerprint or face where your computer supports it, with the password always still available as a fallback.
   Kind: feature.
   Source: user-request-2026-07-01.
-  Lanes: crypto.
+  Lanes: crypto, platform, ux.
 
 - ✅ [FIBR-0029] **Password reminder / hint (shown before unlock).**
   An optional user-set hint on the unlock screen to jog memory —
@@ -4943,7 +4995,7 @@ because retrofitting them is a data migration.
   Resolved (2026-07-20, autonomous run): shipped. "Copy amount"/"Copy description" added to the transactions context menu (rendered cell text + in-memory description — no vault read, lock-safe INV-8); PDF password + account numbers stay NON-copyable (FIBR-0128 INV-1 preserved). New ClipboardAutoClear(QObject) helper: single owned single-shot QTimer wired directly to clear_if_ours; live per-copy timeout; clears only if the clipboard still holds our value. AuthService clipboard_clear_seconds getter/setter, ALLOWED=(10,30,60,0), DEFAULT=30; Settings combo; 0="Never" honoured. security-model.md T13 threat row added + cold-eyes converged (loop 1, polish-only). Spec docs/specs/FIBR-0032.md cold-eyes converged loop 9. 23 clipboard tests (INV-1..8); full gate green (1164 passed, 2 skipped). commit 0b45573; tag FIBR-0032-complete.
   Kind: security.
   Source: user-request-2026-07-01.
-  Lanes: ui.
+  Lanes: ui, security.
 
 - ✅ [FIBR-0033] **Backup restore-verification ("does my backup work?").**
   A one-click check that opens an encrypted backup (FIBR-0018) into a
@@ -5104,7 +5156,7 @@ because retrofitting them is a data migration.
   Resolved (2026-07-10): fully delivered by FIBR-0010. The create-a-rule-from-a-correction learning is FIBR-0010 INV-5/D11; the update-an-existing-rule variant is subsumed by D6 (a learned correction inserts at top priority, beating the rule it corrects — no in-place update needed). Suggestion-only + manual-override-wins guarantees both hold. No separate work remains.
   Kind: feature.
   Source: user-request-2026-07-01.
-  Lanes: services.
+  Lanes: services, ui, tests.
 
 - 📋 [FIBR-0036] **Net-worth-over-time trend.**
   A dashboard line showing
@@ -8328,6 +8380,47 @@ is a future error tomorrow.
   **Layman:** A test was checking for the "Close" button a split second before the app had drawn it, so the build failed at random rather than because anything was broken.
   Kind: test.
   Source: in-session-2026-08-12 (CI failure triage, run 31622538238).
+
+- 📋 [FIBR-0306] **Harness INV-5 sandbox inherits the machine-wide core.hooksPath and fails.**
+  Both `tests/features/harness/test_gate_stages.py::test_INV5_*`
+  tests fail on this machine at clean HEAD (f704605) -- confirmed in a
+  throwaway worktree, so nothing uncommitted causes it. They pass in
+  CI, which is why nothing caught it.
+
+  Cause, diagnosed 2026-08-21. A machine-wide pre-push hook was
+  installed that morning at `~/.claude/githooks/pre-push` and wired up
+  with `git config --global core.hooksPath ~/.claude/githooks`.
+  `_hook_sandbox` builds its miniature repo with a plain `git init`,
+  which inherits that global value -- the sandbox sets no
+  `core.hooksPath` of its own. So the sandbox's own SETUP push
+  (`git push -q origin main`, before the test has done anything) fires
+  the machine-wide hook, which auto-discovers a gate command, finds the
+  sandbox's stub `scripts/ci-local.sh`, and runs it. That stub's whole
+  job is to touch the `gate-ran` sentinel. So the sentinel exists
+  before the assertions start, and
+  `test_INV5_the_sandbox_is_not_vacuous` fails on its very first line,
+  `assert not sentinel.exists()`.
+
+  This is a test-ISOLATION defect, not a defect in
+  `.githooks/pre-push`. The tag-skip behaviour FIBR-0290 shipped is
+  fine; the harness around it is not hermetic. The fix is to neutralise
+  inherited git configuration in the sandbox -- run the subprocesses
+  with `GIT_CONFIG_GLOBAL=/dev/null` and `GIT_CONFIG_SYSTEM=/dev/null`,
+  or set `core.hooksPath` explicitly in the sandbox right after
+  `git init`. The first is broader and catches the next global setting
+  someone adds.
+
+  Worth noting for its own sake: the machine-wide hook auto-discovers
+  `scripts/ci-local.sh` in ANY repository it is enabled for. finbreak
+  sets its own local `core.hooksPath=.githooks`, so this project is
+  unaffected in normal use -- git reads the local value first.
+
+  Found while running the full gate before committing FIBR-0019's
+  write-test suite; unrelated to that work.
+  **Layman:** Two of our own tests now fail on this desktop because a new machine-wide git setting leaks into the miniature test repository they build.
+  Kind: test.
+  Source: in-session-2026-08-21.
+  Lanes: tests, ci.
 
 ## How to add an item
 

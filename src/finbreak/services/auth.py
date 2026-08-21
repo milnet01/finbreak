@@ -242,6 +242,33 @@ class AuthService:
         self._arm_timer()
         log.info("first-run: vault created")
 
+    # --- recovery key (FIBR-0019) ------------------------------------------ #
+    # STUBS. FIBR-0019 is not implemented; these exist so
+    # tests/features/recovery_key/ executes against a real call rather than
+    # dying at import (testing.md § 1). See docs/specs/FIBR-0019-master
+    # -password-recovery-key.md § 4.5 / § 4.6 / § 4.7.
+    #
+    # NOTE the seam `first_run` is expected to grow: § 4.5 has it GENERATE the
+    # recovery code (step 4) and hand it back for the one-time display (step 8),
+    # so its return widens from None to the display-form code. Step 7 writes the
+    # v2 sidecar carrying `slots.master` ONLY; `add_recovery_key` below is step 9
+    # (on Keep) and is what puts `slots.recovery` on disk. Declining is simply
+    # never calling it, so a declined code's slot never reaches the file (INV-12).
+
+    def add_recovery_key(self, code: str) -> None:
+        """Wrap the session's DEK into ``slots.recovery`` and rewrite the sidecar.
+
+        § 4.5 step 9 (Keep) and § 4.7 (Add). A re-wrap of 32 bytes — the database
+        is untouched and the DEK does not change.
+        """
+        raise NotImplementedError("FIBR-0019")
+
+    def set_master_password(self, password: bytearray) -> None:
+        """Re-derive KEK-master against a FRESH salt and re-wrap the same DEK into
+        ``slots.master`` (§ 4.6 step 4). The DEK does not change, so nothing is
+        re-encrypted; afterwards the old password no longer opens the vault."""
+        raise NotImplementedError("FIBR-0019")
+
     # --- unlock ------------------------------------------------------------ #
     def load_params(self) -> KdfParams:
         return load_and_validate_params(self._sidecar_path)

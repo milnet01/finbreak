@@ -45,9 +45,9 @@ this**, so treat a stale date as "recent work was out-of-band", not as
 
 | Field | Value |
 |---|---|
-| **Active item ID** | FIBR-0159 (publish to Flathub). FIBR-0252 closed by `/close-phase` 2026-08-07 |
-| **Blocked on** | Nothing. FIBR-0159 was already 🚧 before this close; it resumes at step 1. |
-| **Last update** | 2026-08-07 (FIBR-0252 closed by /close-phase) |
+| **Active item ID** | FIBR-0019 (master-password recovery via a recovery key) |
+| **Blocked on** | Nothing. Spec accepted 2026-08-21; the build starts at step 3 (`write-test`). FIBR-0159 stays 🚧 in the DB but is not the active item and is not a 1.0 blocker. |
+| **Last update** | 2026-08-21 (FIBR-0019 picked up by hand, outside `/close-phase`) |
 
 ### Step progress
 
@@ -55,9 +55,9 @@ While an item is active, Claude marks the current step 🚧; completed
 steps flip to ✅. Resets to all ⬜ when a new item becomes active. The
 nine steps are defined in `~/.claude/skills/app-workflow/SKILL.md`.
 
-1. ⬜ Verify spec
-2. ⬜ Verify dependencies
-3. ⬜ Write tests first
+1. ✅ Verify spec
+2. ✅ Verify dependencies
+3. 🚧 Write tests first
 4. ⬜ Implement until tests pass
 5. ⬜ Run `check-code` — in parallel with 6
 6. ⬜ Run `review-code` — in parallel with 5

@@ -15,6 +15,15 @@ from enum import StrEnum
 # Sidecar schema version. Bumped only when the on-disk KDF record layout changes.
 FORMAT_VERSION = 1
 
+# The VAULT SIDECAR's own version, under its own `sidecar_version` field
+# (FIBR-0019 § 4.4). Deliberately SEPARATE from FORMAT_VERSION above, which is
+# the shared *params record* version `to_sidecar_dict()` stamps and
+# `BackupService` writes into a `.fbk`'s params.json: bumping that one to 2
+# would stamp `format_version: 2` on a FLAT record and break every `.fbk`
+# restore. The two names also stop `validate_params`' first check —
+# `format_version != FORMAT_VERSION` — from refusing every v2 vault.
+SIDECAR_VERSION = 2
+
 
 class AccountType(StrEnum):
     """The closed set of account types (FIBR-0005 INV-2). The ``.value`` is the

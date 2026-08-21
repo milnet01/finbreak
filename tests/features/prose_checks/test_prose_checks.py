@@ -113,6 +113,10 @@ _NO_PROSE = frozenset(
         "pdf_export",
         "pdf_import",
         "reconciliation",
+        # FIBR-0019 recovery key -- reads no tracked document: its fixtures
+        # are vaults built under tmp_path and its only file scan is of that
+        # tmp data directory (INV-5), never the repository.
+        "recovery_key",
         "recurring",
         "reporting",
         "settings",
