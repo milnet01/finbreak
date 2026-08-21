@@ -5163,6 +5163,26 @@ because retrofitting them is a data migration.
   11. restore_backup writes no cipher_compatibility, while the .fbk database it installs was written at an explicit level and the migration records it. A wheels bump that moves the default makes a restored vault unopenable.
   12. The section 4.7 helpers do not guard VaultLockedError. QInputDialog spins a nested loop; an idle auto-lock inside it makes verify_password raise out of the slot. Six other UI modules guard it.
   13. Two smaller ones: 'Recovery code saved' is shown even after keep_recovery_code has reported a failure, and a copied recovery code is never cleared from the clipboard though ClipboardAutoClear exists and is used for transaction descriptions.
+  Open question, not one of the thirteen (2026-08-21, review-code lane 1).
+  Both wrap paths materialise the DEK as an un-wipeable `bytes`:
+  keywrap.wrap_dek does `bytes(dek)` for AESGCM.encrypt, and
+  AESGCM.decrypt RETURNS immutable bytes which unwrap_dek then copies into
+  the wipeable bytearray, leaving the original in the heap. One such copy
+  per wrap and per unwrap, never zeroed, surviving lock and auto-lock.
+  security-model INV-3 names the DEK explicitly.
+
+  It is NOT obviously a defect: crypto.derive_key's own docstring calls
+  the identical gap on `bytes(password)` "an accepted best-effort gap
+  (D5)". Two things make it worth deciding rather than inheriting -- the
+  accepted one is the PASSWORD and this is the database key, and an
+  in-place API exists here (Cipher + GCM with update_into on a caller-
+  owned buffer), so it is not API-forced the way hash_secret_raw's
+  `secret=` argument is.
+
+  DECIDE FIRST, then either fix it under FP02 or write the D5 reasoning
+  into keywrap.py so the next reviewer does not re-raise it. Reading
+  FIBR-0004 D5's actual wording is the missing input; the lane could not,
+  it was outside its packet.
   **Layman:** The recovery-key feature works, but a careful review found thirteen problems in it — two of which could cost a user their data.
   Kind: review-fix.
   Source: close-phase-2026-08-21 (check-code + 3 review-code lanes over f704605..HEAD).
