@@ -53,6 +53,14 @@ signaling per
   you to set, exactly as before, and every guess stays visible and
   changeable before you import.
 
+### Fixed
+
+- **Two of our own tests failed on a developer machine because of an unrelated git setting** (FIBR-0306)
+  Nothing users see — a test-only fix. The miniature repository two
+  tests build to check finbreak's own push checks was picking up a
+  setting from the developer's machine, which made the tests fail on
+  that desktop while passing everywhere else.
+
 ## [0.1.22] - 2026-08-19
 
 ### Changed

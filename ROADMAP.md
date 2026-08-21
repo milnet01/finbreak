@@ -8434,7 +8434,7 @@ is a future error tomorrow.
   Kind: test.
   Source: in-session-2026-08-12 (CI failure triage, run 31622538238).
 
-- 📋 [FIBR-0306] **Harness INV-5 sandbox inherits the machine-wide core.hooksPath and fails.**
+- ✅ [FIBR-0306] **Harness INV-5 sandbox inherits the machine-wide core.hooksPath and fails.**
   Both `tests/features/harness/test_gate_stages.py::test_INV5_*`
   tests fail on this machine at clean HEAD (f704605) -- confirmed in a
   throwaway worktree, so nothing uncommitted causes it. They pass in
@@ -8470,6 +8470,28 @@ is a future error tomorrow.
 
   Found while running the full gate before committing FIBR-0019's
   write-test suite; unrelated to that work.
+  Resolved (2026-08-21), commit 95056bb. Took the broader of the two
+  fixes this bullet named: every sandbox subprocess now runs with
+  GIT_CONFIG_GLOBAL=/dev/null and GIT_CONFIG_SYSTEM=/dev/null, rather
+  than pinning core.hooksPath alone, so the next global setting someone
+  adds cannot leak the same way.
+
+  Confirmed rather than assumed: `git config --global core.hooksPath`
+  still returns ~/.claude/githooks on this machine, and with it in place
+  the harness suite went from 2 failed to 12 passed. The full gate is
+  now 1967 passed, 2 skipped, 0 failed -- the first fully green gate on
+  this desktop since the machine-wide hook was installed. The sandbox is
+  not inert either: the sibling
+  test_INV5_tag_push_of_an_unpushed_commit_runs_the_gate still sees the
+  stub create its sentinel, so the hermetic env did not simply stop the
+  hook from ever running.
+
+  Picked up because it blocked the FIBR-0019 push: the pre-push hook
+  runs the gate, so a pre-existing red on this desktop meant a green
+  code change could not be pushed without --no-verify, which CLAUDE.md
+  sanctions only for a doc-only push or a pip-audit network flake.
+  Fixing it was the cheaper of the two, and it is a one-file change in
+  its own commit.
   **Layman:** Two of our own tests now fail on this desktop because a new machine-wide git setting leaks into the miniature test repository they build.
   Kind: test.
   Source: in-session-2026-08-21.
