@@ -46,8 +46,8 @@ this**, so treat a stale date as "recent work was out-of-band", not as
 | Field | Value |
 |---|---|
 | **Active item ID** | FIBR-0019 (master-password recovery via a recovery key) |
-| **Blocked on** | Nothing. Spec accepted 2026-08-21; the build starts at step 3 (`write-test`). FIBR-0159 stays 🚧 in the DB but is not the active item and is not a 1.0 blocker. |
-| **Last update** | 2026-08-21 (FIBR-0019 picked up by hand, outside `/close-phase`) |
+| **Blocked on** | Nothing. Built and pushed 2026-08-21 (7e6c11f); all thirteen invariants green and the full gate clean. Next is step 5/6 — `check-code` and `review-code` in parallel — then `/close-phase`. FIBR-0159 stays 🚧 in the DB but is not the active item and is not a 1.0 blocker. |
+| **Last update** | 2026-08-21 (FIBR-0019 write-test + write-code, by hand, outside `/close-phase`) |
 
 ### Step progress
 
@@ -57,8 +57,8 @@ nine steps are defined in `~/.claude/skills/app-workflow/SKILL.md`.
 
 1. ✅ Verify spec
 2. ✅ Verify dependencies
-3. 🚧 Write tests first
-4. ⬜ Implement until tests pass
+3. ✅ Write tests first
+4. ✅ Implement until tests pass
 5. ⬜ Run `check-code` — in parallel with 6
 6. ⬜ Run `review-code` — in parallel with 5
 7. ⬜ Fold all actionable findings into one new fix-pass
