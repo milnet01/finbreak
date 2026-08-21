@@ -516,13 +516,30 @@ class AuthService:
         return notice
 
     def _open_with(self, key: bytearray, cipher_compat: int | None) -> bool:
-        """Open the vault with ``key`` and take ownership of it."""
+        """Open the vault with ``key`` and take ownership of it.
+
+        Every caller arrives here with the credential already PROVEN: the slot
+        unwrapped (:meth:`_unlock_through_slot`), or the key has already opened
+        this same database once (:meth:`_unlock_v1`). A wrong password is
+        rejected before this point and never reaches it.
+
+        So a ``DatabaseError`` here is not a failed attempt — it is § 6's broken
+        pairing: the sidecar and the database do not belong together, or the
+        database is damaged. Returning ``False`` reported it as a wrong password,
+        which charged the throttle for a correct one and put the destructive
+        reset in front of a user whose data was intact and merely mispaired.
+        § 6 forbids that by name, and ``ui/unlock.py``'s ``_PAIRING_BROKEN`` is
+        written for this state and keys on ``VaultStateError`` (FIBR-0307
+        finding 2).
+        """
         try:
             self._vault.open(key, cipher_compat=cipher_compat)
-        except DatabaseError:
+        except DatabaseError as exc:
             _wipe(key)
-            log.info("unlock failed")
-            return False
+            log.warning("the unwrapped key did not open the vault")
+            raise VaultStateError(
+                "the key record unwrapped but the vault file did not open"
+            ) from exc
         except Exception:
             _wipe(key)
             raise

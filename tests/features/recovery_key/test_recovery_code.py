@@ -255,10 +255,7 @@ def test_hint_rejects_the_code_whose_check_symbol_was_transcribed_confusably(
 
     substituted = format_code(normalise(code)[:PAYLOAD_SYMBOLS] + "I")
     with pytest.raises(HintPolicyError):
-        check(
-            f"same as the one on the card: {substituted}", MASTER_PASSWORD.decode()
-        )
-
+        check(f"same as the one on the card: {substituted}", MASTER_PASSWORD.decode())
 
 
 # --------------------------------------------------------------------------- #
