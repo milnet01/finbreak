@@ -33,7 +33,7 @@ from finbreak.crypto import (
     read_sidecar_v2,
     write_sidecar_v2,
 )
-from finbreak.errors import VaultStateError
+from finbreak.errors import KdfPolicyError, VaultStateError
 from finbreak.keywrap import SLOT_MASTER, wrap_dek
 from finbreak.models import KdfParams
 from finbreak.vault import SQLCIPHER_COMPAT, Vault
@@ -157,6 +157,25 @@ def verify_rollback_copy(
     Verifying it by opening it is the whole of INV-13: a truncated or
     short-written copy that merely *exists* reads as a rollback route, which is
     worse than none — it is the thing the user would be told to fall back on.
+
+    **Opening it is not enough, and ``PRAGMA integrity_check`` is the whole of
+    the difference.** SQLCipher HMACs every page independently and checks each
+    one as it is read, so damage to the middle of a copy leaves page 1
+    perfectly decryptable: ``Vault.open``'s own guard read passes, a
+    ``sqlite_master`` count passes, and every row is still unreachable.
+    Measured 2026-08-24 on a 93-page vault — one flipped byte in page 11, 41,
+    81 and 93 in turn, and all four copies opened with their schema intact
+    while ``integrity_check`` caught every one (FIBR-0307 finding 8).
+
+    A copy that is merely SHORT needs none of this: SQLite refuses a file
+    smaller than its own header claims, at ``open``. So a truncation is not the
+    shape this guards against, however it reads — the shape is a copy of the
+    right length whose pages did not all survive the write.
+
+    Row counts are S2's tool and are deliberately not repeated here. There they
+    are compared against the live vault, which is what proves INV-8; at S0
+    nothing exists to compare them to, so a second full read of the pages
+    ``integrity_check`` has just walked would buy nothing.
     """
     if not copy_vault_path.exists() or not copy_sidecar_path.exists():
         raise VaultStateError("the rollback copy was not written")
@@ -164,9 +183,18 @@ def verify_rollback_copy(
     probe = Vault(copy_vault_path, copy_sidecar_path)
     probe.open(bytearray(key), in_memory_temp=True)
     try:
-        probe.connection.execute("SELECT count(*) FROM sqlite_master").fetchone()
+        integrity = probe.connection.execute("PRAGMA integrity_check").fetchone()[0]
+    except (DatabaseError, MemoryError) as exc:
+        # SQLCipher surfaces a page whose HMAC fails as whatever its deferred
+        # error maps to; both of these were seen in the measurement above. The
+        # caller needs one answer, and it is that this is not a rollback route.
+        raise VaultStateError(
+            f"the rollback copy could not be read end to end: {exc}"
+        ) from exc
     finally:
         probe.close()
+    if integrity != "ok":
+        raise VaultStateError(f"the rollback copy failed integrity_check: {integrity}")
 
 
 def migrate_to_v2(
@@ -192,8 +220,16 @@ def migrate_to_v2(
     copy_vault, copy_sidecar = write_rollback_copy(vault_path, sidecar_path)
     verify_rollback_copy(copy_vault, copy_sidecar, key)
 
+    # The DEK is minted HERE, so this is the only frame that can wipe it:
+    # _convert is lent the buffer and cannot know whether its caller still
+    # wants it. The finally is what covers an abort inside S1..S6 — which is
+    # precisely when a database key would otherwise be left in the heap
+    # (security-model INV-3, FIBR-0307 finding 4).
     dek = bytearray(secrets.token_bytes(KEY_LEN))
-    _convert(vault_path, sidecar_path, key, dek, params, step)
+    try:
+        _convert(vault_path, sidecar_path, key, dek, params, step)
+    finally:
+        dek[:] = bytes(len(dek))
 
 
 def _convert(
@@ -314,6 +350,62 @@ def rollback_copy_paths(vault_path: Path, sidecar_path: Path) -> tuple[Path, Pat
     )
 
 
+def _finish_quietly(
+    sidecar_path: Path, sidecar: VaultSidecar, vault_path: Path
+) -> None:
+    """S6 on the RESUME path, where the vault has just been proven to open.
+
+    Branches 1 and 2 reach S6 having opened the post-migration database with
+    the DEK, so INV-7's contract is already met and everything S6 does after
+    that is bookkeeping: clearing ``migration_pending`` and removing the
+    ``.pre-v2`` pair. § 6 hands a disk-full at S1..S6 to § 13's resume rules,
+    and those rules cannot mean "lock the user out of a vault that opens".
+
+    A failure leaves the sidecar exactly as it was, so the state stays
+    resumable and the next unlock re-enters branch 1 and finishes the job. Only
+    ``OSError`` is absorbed — the disk-full and held-file class § 6 names. Any
+    other failure here is a defect and still reaches the caller
+    (FIBR-0307 finding 3).
+    """
+    try:
+        _finish(sidecar_path, sidecar, vault_path)
+    except OSError as exc:
+        log.warning("migration resume: S6 bookkeeping did not complete: %s", exc)
+
+
+def _ensure_rollback_copy(vault_path: Path, sidecar_path: Path, key: bytearray) -> None:
+    """INV-13's gate for § 13.3's branch 3, which re-enters ``_convert``.
+
+    That restart runs S4, which replaces the live sidecar — a byte of the live
+    pair — so the gate applies here exactly as it does at S0: a copy that
+    exists, is complete, and opens with the key in hand. § 13.3 says only
+    "restart from S1", and INV-13 carries no carve-out for the resume path.
+
+    **The copy S0 already took is REUSED where it still verifies, and that is
+    not an optimisation.** It is the genuine pre-upgrade pair — a v1 database
+    beside a v1 sidecar — and the live pair here is no longer that: S4 has
+    already replaced the sidecar with the migration-pending v2 one. Copying the
+    live pair over it would leave a "rollback" that restores the very state the
+    user is stuck in. § 13.2's S0 overwrites a stray copy freely because there
+    the live pair IS the pre-upgrade pair; past S4 that stops being true
+    (D8, FIBR-0307 finding 6).
+
+    Where no usable copy is there, a fresh one is taken and verified, and a
+    failure to get one aborts before ``_convert`` — § 6's "never proceed
+    without it", which is most needed exactly when the disk is tight.
+    """
+    copy_vault, copy_sidecar = rollback_copy_paths(vault_path, sidecar_path)
+    try:
+        verify_rollback_copy(copy_vault, copy_sidecar, key)
+        return
+    except (VaultStateError, KdfPolicyError, DatabaseError, OSError) as exc:
+        log.warning(
+            "migration resume: the rollback copy is unusable (%s); retaking it", exc
+        )
+    copy_vault, copy_sidecar = write_rollback_copy(vault_path, sidecar_path)
+    verify_rollback_copy(copy_vault, copy_sidecar, key)
+
+
 def resume(
     vault_path: Path, sidecar_path: Path, kek_master: bytearray, dek: bytearray
 ) -> None:
@@ -331,7 +423,7 @@ def resume(
     # 1 — the DEK opens the live database: the crash was after S5.
     if _opens(vault_path, dek, compat):
         log.info("migration resume: crash was after S5; finishing")
-        _finish(sidecar_path, sidecar, vault_path)
+        _finish_quietly(sidecar_path, sidecar, vault_path)
         return
 
     # 2 — it opens the replacement instead: the crash was between S4 and S5.
@@ -339,7 +431,7 @@ def resume(
         if _opens(migrating_db, dek, compat):
             log.info("migration resume: crash was between S4 and S5; swapping")
             _swap_database(vault_path, migrating_db)
-            _finish(sidecar_path, sidecar, vault_path)
+            _finish_quietly(sidecar_path, sidecar, vault_path)
             return
         migrating_db.unlink(missing_ok=True)
         _drop_wal_siblings(migrating_db)
@@ -349,6 +441,7 @@ def resume(
     # reachable with no separate legacy salt: KEK-master IS the v1 key.
     if _opens(vault_path, kek_master, None):
         log.info("migration resume: crash was at or before S4; restarting from S1")
+        _ensure_rollback_copy(vault_path, sidecar_path, kek_master)
         _convert(
             vault_path,
             sidecar_path,

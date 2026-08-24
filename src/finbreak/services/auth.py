@@ -443,14 +443,22 @@ class AuthService:
             except KeyUnwrapError:
                 log.info("unlock failed")
                 return False
-            # § 13.3 step 0 is the branch above: the ladder is entered only once
-            # the slot has unwrapped, so a mistyped password is a failed attempt
-            # rather than a user being told their vault is corrupt.
-            if sidecar.migration_pending:
-                vault_migration.resume(
-                    self._vault.vault_path, self._sidecar_path, kek, dek
-                )
-                sidecar = read_sidecar_v2(self._sidecar_path)
+            try:
+                # § 13.3 step 0 is the branch above: the ladder is entered only
+                # once the slot has unwrapped, so a mistyped password is a
+                # failed attempt rather than a user told their vault is corrupt.
+                if sidecar.migration_pending:
+                    vault_migration.resume(
+                        self._vault.vault_path, self._sidecar_path, kek, dek
+                    )
+                    sidecar = read_sidecar_v2(self._sidecar_path)
+            except Exception:
+                # The DEK is live key material from the unwrap above, and every
+                # route out of here that is not _open_with owns wiping it —
+                # § 13.3's terminal branch is a ROUTINE outcome, not a crash, so
+                # this is the ordinary path (security-model INV-3, FP02 f.5).
+                _wipe(dek)
+                raise
         finally:
             _wipe(kek)
         return self._open_with(dek, sidecar.cipher_compatibility)

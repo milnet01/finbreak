@@ -9,6 +9,7 @@ is exactly one acceptable failure mode -- the vault still opens.
 
 from __future__ import annotations
 
+import errno
 from pathlib import Path
 from typing import Any
 
@@ -16,16 +17,35 @@ import pytest
 from _recovery_helpers import (
     MASTER_PASSWORD,
     create_v1_vault,
+    kek_for,
     open_after_restart,
+    opens_with,
     read_sidecar,
     row_digests,
 )
 from sqlcipher3.dbapi2 import DatabaseError
 
+from finbreak.errors import VaultStateError
+from finbreak.services import auth as auth_module
 from finbreak.services import vault_migration
-from finbreak.services.vault_migration import STEPS, migrate_to_v2
+from finbreak.services.auth import AuthService
+from finbreak.services.vault_migration import (
+    MIGRATING_SUFFIX,
+    STEPS,
+    migrate_to_v2,
+    rollback_copy_paths,
+    verify_rollback_copy,
+    write_rollback_copy,
+)
+from finbreak.vault import Vault
 
 pytestmark = pytest.mark.features
+
+# SQLCipher's page size for this project's vaults, measured rather than assumed
+# (``PRAGMA page_size`` on a freshly created v1 vault, 2026-08-24). Only the
+# damaged-copy leg below depends on it, and only to land its byte flip in a
+# page that holds rows rather than schema.
+_PAGE_SIZE = 4096
 
 
 class _Abort(RuntimeError):
@@ -194,3 +214,418 @@ def test_no_swap_without_a_verified_rollback_copy(
         f"INV-13: {broken_step} failed and the vault's contents still moved.\n"
         f"  expected: {before}\n  actual:   {after}"
     )
+
+
+# --------------------------------------------------------------------------- #
+# FP02 finding 3 — S6 is bookkeeping, and it may not lock the user out
+# --------------------------------------------------------------------------- #
+def test_a_failing_s6_does_not_lock_the_user_out(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """INV-7 past the swap: S5 is done, so the post-migration pair opens.
+
+    § 13.2's S6 clears ``migration_pending`` and removes the ``.pre-v2`` pair —
+    bookkeeping over a vault that already opens. § 6 names disk-full at S1–S6
+    and hands it to § 13's resume rules, whose contract is INV-7: there is no
+    instant at which neither pair opens. So an ENOSPC at S6 leaves the vault
+    resumable rather than unopenable, and the unlock it interrupts must still
+    succeed — a failure here is raised out of a Qt slot, where the user meets
+    it as a crash on a vault that was never damaged.
+    """
+    vault_path, sidecar_path, key, digests = _fresh_v1_vault(tmp_path, "enospc-at-s6")
+
+    def abort_before_s6(step: str) -> None:
+        if step == "S6":
+            raise _Abort("injected crash before S6")
+
+    with pytest.raises(_Abort):
+        migrate_to_v2(vault_path, sidecar_path, bytearray(key), on_step=abort_before_s6)
+
+    # Precondition: the migration really is PAST the swap with only its
+    # bookkeeping outstanding. Without this the leg could pass against a vault
+    # that never migrated at all, where S6 is not the thing being tested.
+    stalled = read_sidecar(sidecar_path)
+    assert stalled.get("migration_pending") is True, (
+        "precondition: S5 must have completed, leaving a migration-pending v2 "
+        "sidecar over the swapped database.\n"
+        "  expected: migration_pending == True\n"
+        f"  actual:   {stalled}"
+    )
+
+    def no_space(*_args: object, **_kwargs: object) -> None:
+        raise OSError(errno.ENOSPC, "No space left on device")
+
+    monkeypatch.setattr(vault_migration, "write_sidecar_v2", no_space)
+
+    try:
+        reopened = open_after_restart(vault_path, sidecar_path, MASTER_PASSWORD)
+    except Exception as exc:
+        pytest.fail(
+            "INV-7: S6 could not write its sidecar, and the user was locked out "
+            "of a vault that had already migrated and opens on demand. S6 is "
+            "bookkeeping; a failure in it leaves the state resumable and must "
+            "not reach the caller.\n"
+            "  expected: the vault opens with the original master password\n"
+            f"  actual:   {type(exc).__name__}: {exc}"
+        )
+
+    after = row_digests(reopened.connection)
+    reopened.close()
+    assert after == digests, (
+        "INV-7: the vault opened after a failed S6, but its contents moved.\n"
+        f"  expected: {digests}\n  actual:   {after}"
+    )
+
+    # And nothing pretended S6 ran: the vault stays resumable, so the next
+    # unlock finishes the bookkeeping once there is room for it.
+    still = read_sidecar(sidecar_path)
+    assert still.get("migration_pending") is True, (
+        "a failed S6 must leave the sidecar untouched, so the next unlock "
+        "re-enters § 13.3 branch 1 and finishes the job.\n"
+        "  expected: migration_pending still True\n"
+        f"  actual:   {still}"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# FP02 finding 4 — security-model INV-3: the minted DEK is wiped
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize("convert_fails", [False, True])
+def test_the_minted_dek_is_wiped_whatever_happens(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, convert_fails: bool
+) -> None:
+    """``migrate_to_v2`` mints the DEK, so it owns wiping it.
+
+    Nothing downstream can wipe a buffer it was only lent. The failure leg is
+    the one that bites: only a ``try``/``finally`` survives S1–S6 raising, and
+    a migration that aborts is exactly when key material is left behind.
+    """
+    vault_path, sidecar_path, key, _digests = _fresh_v1_vault(
+        tmp_path, f"dek-wipe-{convert_fails}"
+    )
+
+    real_convert = vault_migration._convert
+    handed: list[bytearray] = []
+    at_handover: list[bytes] = []
+
+    def spy(
+        vault_path_: Path,
+        sidecar_path_: Path,
+        kek_master: bytearray,
+        dek: bytearray,
+        params: Any,
+        step: Any,
+    ) -> None:
+        handed.append(dek)
+        at_handover.append(bytes(dek))
+        if convert_fails:
+            raise _Abort("injected failure inside S1..S6")
+        real_convert(vault_path_, sidecar_path_, kek_master, dek, params, step)
+
+    monkeypatch.setattr(vault_migration, "_convert", spy)
+
+    if convert_fails:
+        with pytest.raises(_Abort):
+            migrate_to_v2(vault_path, sidecar_path, bytearray(key))
+    else:
+        migrate_to_v2(vault_path, sidecar_path, bytearray(key))
+
+    # Preconditions: a DEK really was minted and handed over, and it was real
+    # key material at that moment. Without both, the all-zero assertion below
+    # would be satisfied by a buffer that never held anything.
+    assert len(handed) == 1, (
+        "precondition: migrate_to_v2 must mint exactly one DEK and hand it to "
+        "_convert.\n"
+        f"  expected: 1 handover\n  actual:   {len(handed)}"
+    )
+    assert at_handover[0] != bytes(len(at_handover[0])), (
+        "precondition: the DEK must be real key material when it is handed "
+        "over, or wiping it proves nothing.\n"
+        "  expected: a non-zero buffer\n"
+        f"  actual:   {len(at_handover[0])} zero bytes"
+    )
+
+    assert handed[0] == bytearray(len(handed[0])), (
+        "security-model INV-3: migrate_to_v2 minted the DEK and left it in the "
+        "heap. It owns that buffer and must wipe it in a finally, so an "
+        "aborted migration leaves no database key behind.\n"
+        f"  expected: {len(handed[0])} zero bytes\n"
+        f"  actual:   a buffer still holding key material"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# FP02 finding 5 — the unlock path wipes the DEK when the ladder raises
+# --------------------------------------------------------------------------- #
+def test_a_failed_resume_does_not_leak_the_dek(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``_unlock_through_slot`` wipes ``kek`` in its ``finally`` and must wipe
+    the DEK it unwrapped on the same terms.
+
+    § 13.3's terminal branch is a ROUTINE outcome, not a crash — it is what the
+    ladder does when every route is exhausted — so the leak it causes is on the
+    ordinary path, not an exotic one (security-model INV-3).
+    """
+    vault_path, sidecar_path, key, _digests = _stalled_before_s5(tmp_path, "dek-leak")
+
+    data = read_sidecar(sidecar_path)
+    kek = kek_for(MASTER_PASSWORD, data, "master")
+
+    real_unwrap = auth_module.unwrap_dek
+    unwrapped: list[bytearray] = []
+    at_unwrap: list[bytes] = []
+
+    def spy(*args: Any, **kwargs: Any) -> bytearray:
+        dek = real_unwrap(*args, **kwargs)
+        unwrapped.append(dek)
+        at_unwrap.append(bytes(dek))
+        return dek
+
+    def terminal(*_args: object, **_kwargs: object) -> None:
+        raise VaultStateError(
+            "the vault and its key record disagree: no database this sidecar "
+            "names can be opened with the key it holds"
+        )
+
+    monkeypatch.setattr(auth_module, "unwrap_dek", spy)
+    monkeypatch.setattr(vault_migration, "resume", terminal)
+
+    service = AuthService(vault_path, sidecar_path)
+    with pytest.raises(VaultStateError):
+        service.complete_unlock(bytes(kek))
+
+    # Preconditions: the slot really unwrapped, and to real key material — the
+    # ladder is entered only after that (§ 13.3 step 0), so a leg where the
+    # unwrap never happened would be testing nothing.
+    assert len(unwrapped) == 1, (
+        "precondition: the master slot must unwrap exactly once before the "
+        "ladder is entered.\n"
+        f"  expected: 1 unwrap\n  actual:   {len(unwrapped)}"
+    )
+    assert at_unwrap[0] != bytes(len(at_unwrap[0])), (
+        "precondition: the unwrapped DEK must be real key material.\n"
+        "  expected: a non-zero buffer\n"
+        f"  actual:   {len(at_unwrap[0])} zero bytes"
+    )
+
+    assert unwrapped[0] == bytearray(len(unwrapped[0])), (
+        "security-model INV-3: resume() raised and the DEK it was handed was "
+        "left in the heap. kek is wiped in the same method's finally; the DEK "
+        "unwrapped from it must be too, on every route out that does not hand "
+        "it to _open_with.\n"
+        f"  expected: {len(unwrapped[0])} zero bytes\n"
+        f"  actual:   a buffer still holding the database key"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# FP02 finding 6 — INV-13 is unconditional, and § 13.3 branch 3 swaps the pair
+# --------------------------------------------------------------------------- #
+def _stalled_before_s5(root: Path, name: str) -> tuple[Path, Path, bytearray, dict]:
+    """A vault stalled between S4 and S5 with the replacement removed.
+
+    That is § 13.3's branch 3: the sidecar is the pending v2 one, the database
+    is still the v1 one, no ``vault.db.migrating`` exists for branch 2 to find,
+    and KEK-master opens the live database — so the ladder restarts from S1,
+    re-entering ``_convert``, which replaces the live sidecar at S4.
+    """
+    vault_path, sidecar_path, key, digests = _fresh_v1_vault(root, name)
+
+    def abort_before_s5(step: str) -> None:
+        if step == "S5":
+            raise _Abort("injected crash before S5")
+
+    with pytest.raises(_Abort):
+        migrate_to_v2(vault_path, sidecar_path, bytearray(key), on_step=abort_before_s5)
+
+    migrating = vault_path.with_name(vault_path.name + MIGRATING_SUFFIX)
+    migrating.unlink()
+    return vault_path, sidecar_path, key, digests
+
+
+@pytest.mark.parametrize("copy_state", ["absent", "unreadable", "intact"])
+def test_the_ladder_never_restarts_without_a_verified_rollback_copy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, copy_state: str
+) -> None:
+    """INV-13 does not carve out the resume path.
+
+    § 13.3 branch 3 says only "restart from S1", and ``_convert``'s S4 replaces
+    the live sidecar — a byte of the live pair. So the same gate S0 applies has
+    to hold here: a rollback copy that exists, is complete, and opens with the
+    key in hand. The ``intact`` leg is the other half of it — the ``.pre-v2``
+    pair left by the original S0 is the GENUINE pre-upgrade vault, a v1 database
+    beside a v1 sidecar, and re-copying the live pair over it would leave a
+    "rollback" that is the same stalled state the user is trying to escape.
+    """
+    vault_path, sidecar_path, key, digests = _stalled_before_s5(
+        tmp_path, f"restart-{copy_state}"
+    )
+    copy_vault, copy_sidecar = rollback_copy_paths(vault_path, sidecar_path)
+
+    assert copy_vault.exists() and copy_sidecar.exists(), (
+        "precondition: S0 took a rollback copy and S6 never ran, so the pair "
+        "is on disk — which is the state § 13.3 says is the only one it "
+        "exists in.\n"
+        f"  expected: both of {copy_vault.name}, {copy_sidecar.name}\n"
+        f"  actual:   {copy_vault.exists()}, {copy_sidecar.exists()}"
+    )
+    if copy_state == "absent":
+        copy_vault.unlink()
+        copy_sidecar.unlink()
+    elif copy_state == "unreadable":
+        copy_sidecar.write_text("not a sidecar", encoding="utf-8")
+
+    real_convert = vault_migration._convert
+    entered: list[str] = []
+
+    def guard(
+        vault_path_: Path,
+        sidecar_path_: Path,
+        kek_master: bytearray,
+        dek: bytearray,
+        params: Any,
+        step: Any,
+    ) -> None:
+        entered.append("yes")
+        guard_vault, guard_sidecar = rollback_copy_paths(vault_path_, sidecar_path_)
+        assert guard_vault.exists() and guard_sidecar.exists(), (
+            "INV-13: the ladder re-entered S1 with no rollback copy on disk. "
+            "S4 replaces the live sidecar, so this is the live pair being "
+            "modified with no safety net — the exact thing INV-13 forbids, and "
+            "§ 6 says never to proceed without.\n"
+            f"  expected: both of {guard_vault.name}, {guard_sidecar.name}\n"
+            f"  actual:   {guard_vault.exists()}, {guard_sidecar.exists()}"
+        )
+        assert opens_with(guard_vault, guard_sidecar, bytearray(kek_master)), (
+            "INV-13: a rollback copy is on disk but does not open with the key "
+            "in hand, so it is not a rollback route — which is worse than "
+            "none, being the thing the user would be told to fall back on.\n"
+            "  expected: the copy opens with KEK-master\n"
+            "  actual:   it does not"
+        )
+        try:
+            preserved = read_sidecar(guard_sidecar)
+        except Exception as exc:
+            pytest.fail(
+                "INV-13: the rollback pair's sidecar does not parse, so the "
+                "pair is not a vault and cannot be restored. A copy that "
+                "exists but cannot be read is exactly the 'worse than none' "
+                "case INV-13 is about.\n"
+                "  expected: a readable sidecar beside the copy\n"
+                f"  actual:   {type(exc).__name__}: {exc}"
+            )
+        if copy_state == "intact":
+            assert "sidecar_version" not in preserved, (
+                "D8: the .pre-v2 sidecar left by S0 is the v1 one, and it is "
+                "what makes the copy a PRE-UPGRADE vault. Overwriting it with "
+                "the migration-pending v2 sidecar leaves a copy of the stalled "
+                "state instead of a rollback.\n"
+                "  expected: the original v1 sidecar\n"
+                f"  actual:   {preserved}"
+            )
+        real_convert(vault_path_, sidecar_path_, kek_master, dek, params, step)
+
+    monkeypatch.setattr(vault_migration, "_convert", guard)
+
+    reopened = open_after_restart(vault_path, sidecar_path, MASTER_PASSWORD)
+    after = row_digests(reopened.connection)
+    reopened.close()
+
+    assert entered == ["yes"], (
+        "precondition: § 13.3 branch 3 must have restarted from S1 — that is "
+        "the branch this leg is about.\n"
+        f"  expected: ['yes']\n  actual:   {entered}"
+    )
+    assert after == digests, (
+        "the ladder finished, but the vault's contents moved.\n"
+        f"  expected: {digests}\n  actual:   {after}"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# FP02 finding 8 — verifying the copy means reading it, not reading its schema
+# --------------------------------------------------------------------------- #
+def test_a_damaged_rollback_copy_does_not_verify(tmp_path: Path) -> None:
+    """INV-13's Breaks-when clause, on the artefact rather than on the timing.
+
+    S2 gives the REPLACEMENT ``PRAGMA integrity_check``. The copy the user
+    would actually fall back on got a ``sqlite_master`` read — and SQLCipher
+    checks each page's HMAC only as that page is read, so damage anywhere past
+    the schema is invisible to it.
+
+    **A truncated copy is NOT the shape**, though the finding this test closes
+    said it was: measured 2026-08-24, SQLite refuses a file shorter than its
+    own header claims, at ``open``, at every truncation from 2% to 50%. The
+    shape that gets through is a copy of the RIGHT length whose pages did not
+    all survive — a torn write, a bad sector, a half-flushed page cache.
+    """
+    directory = tmp_path / "damaged-copy"
+    directory.mkdir()
+    vault_path = directory / "vault.db"
+    sidecar_path = directory / "vault.kdf.json"
+    vault, _params, key = create_v1_vault(vault_path, sidecar_path)
+    _seed(vault.connection)
+
+    # Enough rows that the data lives well past the schema pages — the whole
+    # point is a truncation that removes ROWS and leaves the schema readable.
+    account_id = vault.connection.execute(
+        "SELECT id FROM accounts ORDER BY id"
+    ).fetchall()[0][0]
+    vault.connection.executemany(
+        "INSERT INTO transactions(occurred_on, amount_minor, description, "
+        "created_at, account_id) VALUES (?, ?, ?, ?, ?)",
+        [
+            (
+                "2026-03-01",
+                -100 - n,
+                f"filler row {n}",
+                "2026-01-01T00:00:00+00:00",
+                account_id,
+            )
+            for n in range(2000)
+        ],
+    )
+    vault.connection.commit()
+    vault.close()
+
+    copy_vault, copy_sidecar = write_rollback_copy(vault_path, sidecar_path)
+
+    pages = copy_vault.stat().st_size // _PAGE_SIZE
+    assert pages > 12, (
+        "precondition: the seeded vault must span enough pages that page 11 "
+        "holds rows rather than schema.\n"
+        f"  expected: > 12 pages\n  actual:   {pages}"
+    )
+
+    # Flip one byte in a page well past the schema. The copy keeps its length,
+    # so SQLite's own short-file refusal never fires, and page 1 still decrypts
+    # perfectly -- which is the whole reason a schema read cannot see this.
+    damaged = 10 * _PAGE_SIZE + 100
+    with copy_vault.open("r+b") as handle:
+        handle.seek(damaged)
+        byte = handle.read(1)
+        handle.seek(damaged)
+        handle.write(bytes([byte[0] ^ 0xFF]))
+
+    # Precondition: the damaged copy still passes the check this replaces --
+    # it opens, and its schema reads. A leg that is green because SQLCipher
+    # refused the file outright would prove nothing about the finding.
+    probe = Vault(copy_vault, copy_sidecar)
+    probe.open(bytearray(key), in_memory_temp=True)
+    try:
+        schema_rows = probe.connection.execute(
+            "SELECT count(*) FROM sqlite_master"
+        ).fetchone()[0]
+    finally:
+        probe.close()
+    assert schema_rows > 0, (
+        "precondition: the damaged copy must still open and read its schema, "
+        "which is exactly what the old verification did -- and is why that "
+        "verification could not see the damage.\n"
+        "  expected: sqlite_master readable, > 0 rows\n"
+        f"  actual:   {schema_rows}"
+    )
+
+    with pytest.raises(VaultStateError):
+        verify_rollback_copy(copy_vault, copy_sidecar, bytearray(key))
