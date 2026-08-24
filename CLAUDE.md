@@ -785,6 +785,19 @@ than left standing as a second answer.
 `src` layout; the package is `finbreak`, found by pytest via
 `pythonpath = ["src"]` (no editable install needed for the gate).
 
+**`invariant_check` needs the PACKAGE-relative path here, not the
+project-relative one — and answers `matched_count: 0` either way for some
+modules.** The verb substring-matches the path you pass against spec bodies,
+and this project's specs cite modules as `services/auth.py`, never
+`src/finbreak/services/auth.py`. Measured 2026-08-24: the project-relative
+form returned **0 matched specs over 64 scanned**, the package-relative form
+returned **16**. Worse, a spec may name a module only by SYMBOL — FIBR-0019
+writes ``vault_migration.resume`` and no path at all — so
+`services/vault_migration.py` also returns 0 while § 13 governs every line of
+it. **So a zero here is not "nothing governs this file"**: fall back to
+`workspace_search` on the module's bare name across `docs/specs/`, which is
+what finds the symbol-only citations.
+
 - `src/finbreak/` — the application package. `__init__.py` (`__version__`),
   plus `__main__.py` + `_selftest.py` — the `python -m finbreak --self-test`
   entry point that loads Qt + SQLCipher + qpdf (FIBR-0003). UI / services /

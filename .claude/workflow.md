@@ -47,7 +47,7 @@ this**, so treat a stale date as "recent work was out-of-band", not as
 |---|---|
 | **Active item ID** | FP02 / FIBR-0307 (fix-pass after FIBR-0019 — thirteen review findings) |
 | **Blocked on** | Nothing. FIBR-0019's close was ATTEMPTED and blocked: `check-code` plus three `review-code` lanes found thirteen actionable defects, batched into FP02. FIBR-0019 is back to 🚧 and returns to ✅ only when FP02 closes clean. FIBR-0159 stays 🚧 in the DB but is not the active item and is not a 1.0 blocker. |
-| **Last update** | 2026-08-22 (findings 1 and 2 fixed, pushed at 6af48f5) |
+| **Last update** | 2026-08-24 (findings 3, 4, 5, 6, 8 fixed, pushed at ff25718) |
 
 ### Step progress
 
@@ -84,18 +84,33 @@ the pass as a whole: the FIBR-0307 bullet already names, per finding, the
 spec section it breaches (verified at filing), and no finding names a
 dependency change.
 
-**2 of 13 findings closed** (2026-08-22) — the two severe ones, both
-pushed and gate-green:
+**7 of 13 findings closed**, all pushed and gate-green (1988 passed,
+2 skipped):
 
 | # | What | Commit |
 |---|---|---|
 | 1 | `verify_check_symbol` compared the check symbol unfolded, refusing a correctly transcribed code and bypassing INV-11's hint scan by one character | `d2e11ef` |
 | 2 | `auth._open_with` reported a broken vault/sidecar pairing as a wrong password, charging the throttle and steering to the destructive reset (§ 6 forbids it); `_PAIRING_BROKEN` was unreachable | `61ac651` |
+| 3 | an ENOSPC in S6's bookkeeping locked the user out of a vault that had already migrated and opens — on the resume path AND the first-migration path | `ff25718` |
+| 4 | `migrate_to_v2` minted the DEK and never wiped it | `ff25718` |
+| 5 | `_unlock_through_slot` leaked the DEK whenever `resume()` raised, including § 13.3's routine terminal branch | `ff25718` |
+| 6 | § 13.3 branch 3 re-entered `_convert` — whose S4 replaces the live sidecar — with no rollback copy taken or verified | `ff25718` |
+| 8 | `verify_rollback_copy` read `sqlite_master` and stopped, so page damage past the schema was invisible | `ff25718` |
 
-**Next is finding 3** — `vault_migration.resume()` runs S6 bookkeeping
-before opening the vault, so an ENOSPC or a held file at `_finish` locks
-the user out of a fully migrated, provably openable vault, and it escapes
-unhandled from a Qt slot.
+**Finding 8's stated repro does NOT hold, and this is worth not
+re-deriving.** A *truncated* copy is refused by SQLite at `open` (measured
+at every truncation from 2% to 50%). The shape that gets through is a copy
+of the RIGHT LENGTH whose pages did not all survive — SQLCipher checks each
+page's HMAC only as that page is read. `verify_rollback_copy`'s docstring
+carries the measurement.
+
+**Next is finding 7** — D8's rollback offer is never made:
+`rollback_copy_paths` has no caller anywhere, so the copy findings 6 and 8
+just made trustworthy is still unreachable, and § 13.3's terminal branch is
+still terminal. It is a UI affordance (offer + restore + wording), which is
+why it was not folded into the failure-path pass. Its contract is already
+written — spec § 13.3's last-but-two paragraph and D8 — so it needs no new
+spec. Then 9, 10, 11, 12, 13.
 
 **The open question on un-wipeable DEK copies is DECIDED** (user,
 2026-08-21): it sits inside FIBR-0004 D5's accepted best-effort gap,

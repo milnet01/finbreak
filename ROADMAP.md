@@ -5213,6 +5213,41 @@ because retrofitting them is a data migration.
   describes this exact shape -- an API returns immutable bytes, they are
   copied into a wipeable buffer and the original reference dropped. To be
   documented in keywrap.py under FP02 rather than fixed.
+  Progress (2026-08-24): the migration failure path is closed --
+  findings 3, 4, 5, 6 and 8 fixed, pushed, gate-green (ff25718).
+  Seven of thirteen done; six remain.
+
+  3: new _finish_quietly absorbs OSError only, so an ENOSPC in S6's
+  bookkeeping leaves the vault resumable instead of raising out of a Qt
+  slot. It closes the same hole on the FIRST-migration path too --
+  _unlock_v1 recovers from a failed migrate_to_v2 by re-entering the
+  ladder, which raised again.
+  4: migrate_to_v2 wipes the DEK it mints, in a finally.
+  5: _unlock_through_slot wipes the DEK on every route out that is not
+  _open_with, including 13.3's routine terminal branch.
+  6: new _ensure_rollback_copy applies INV-13's gate to branch 3, and
+  REUSES S0's copy where it still verifies -- past S4 the live pair is
+  no longer the pre-upgrade pair, so re-copying it would leave a
+  "rollback" restoring the state the user is stuck in (D8).
+
+  8's REPRO DOES NOT HOLD, and the fix's docstring records why so nobody
+  re-derives it. A truncated copy is refused by SQLite at open, measured
+  at every truncation from 2% to 50%. The real shape is a copy of the
+  RIGHT LENGTH whose pages did not all survive: one flipped byte in page
+  11, 41, 81 or 93 of a 93-page vault each gave an openable copy with a
+  readable schema, and PRAGMA integrity_check caught all four. Row counts
+  are deliberately not repeated at S0 -- S2 compares them against the live
+  vault, which is what proves INV-8, and at S0 there is nothing to
+  compare against.
+
+  Eight new legs, each proved red before its fix and each mutation-checked
+  alone: dropping the copy-reuse reddens only the "intact" leg, removing
+  the gate reddens "absent" and "unreadable", reverting the verifier to a
+  schema read reddens the damaged-copy leg. 1988 passed, 2 skipped.
+
+  Next is 7 -- rollback_copy_paths still has no caller, so the copy this
+  pass made trustworthy is still unreachable. Then 9-13, plus the decided
+  D5 note for keywrap.py.
   **Layman:** The recovery-key feature works, but a careful review found thirteen problems in it — two of which could cost a user their data.
   Kind: review-fix.
   Source: close-phase-2026-08-21 (check-code + 3 review-code lanes over f704605..HEAD).
