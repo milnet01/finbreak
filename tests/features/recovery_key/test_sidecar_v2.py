@@ -405,3 +405,41 @@ def test_the_recovery_route_still_refuses_its_own_damaged_slot(
 
     with pytest.raises(KdfPolicyError):
         AuthService(vault_path, sidecar_path).complete_recovery_unlock(bytes(kek))
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0310 P2 — "everything normalises to KdfPolicyError" means everything
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize(
+    ("label", "payload"),
+    [
+        ("non-UTF-8 bytes", b"\xff\xfe not utf-8 at all"),
+        ("nested past the recursion limit", b"[" * 200_000 + b"]" * 200_000),
+    ],
+    ids=["not_utf8", "deeply_nested"],
+)
+@pytest.mark.parametrize(
+    "reader",
+    ["load_and_validate_params", "read_sidecar_v2"],
+)
+def test_a_malformed_sidecar_always_raises_kdf_policy_error(
+    paths: tuple[Path, Path], label: str, payload: bytes, reader: str
+) -> None:
+    """Both readers promise one failure type, and three inputs escaped it.
+
+    Measured 2026-08-25: non-UTF-8 bytes raise ``UnicodeDecodeError`` out of
+    ``read_text`` -- BEFORE json sees them, so being a ValueError subclass does
+    not help -- and 200k nested brackets raise ``RecursionError`` out of
+    ``json.loads``, which is not a ValueError at all (FIBR-0310 P2).
+
+    Not a tidiness point. This file is reachable from an IMPORTED ``.fbk``, so
+    the bytes need not be the user's own, and the caller that asserts one type
+    is what stops the other kind reaching a Qt slot.
+    """
+    from finbreak import crypto
+
+    _vault_path, sidecar_path = paths
+    sidecar_path.write_bytes(payload)
+
+    with pytest.raises(KdfPolicyError):
+        getattr(crypto, reader)(sidecar_path)

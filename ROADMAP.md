@@ -5565,6 +5565,38 @@ because retrofitting them is a data migration.
   Next: P1, which is UNVERIFIED. Measuring the broad-except half of the
   claim first, since that half is answerable on Linux and if it is false
   the severity collapses regardless of the Windows answer.
+  P1 is CONFIRMED and fixed (2026-08-25). Measured on windows-latest /
+  CPython 3.12.10, via a probe step added to windows-build.yml -- the only
+  Windows job in the repo, and `ssh wintest` carries only the Microsoft
+  Store stub, not a real interpreter:
+
+    FSYNC_PROBE O_RDONLY: FAILED OSError(9, 'Bad file descriptor')
+    FSYNC_PROBE O_RDWR:   OK
+
+  So _fsync's O_RDONLY raised on Windows, S0 aborted, _unlock_v1's broad
+  except swallowed it and opened the v1 vault. No Windows vault would ever
+  have reached the v2 envelope and no Windows user would ever have been
+  offered a recovery key -- silently, on every unlock, with the app
+  working. _fsync now opens O_RDWR and the probe step is a GATE on that
+  idiom. The lane's cited corroboration was wrong as flagged, and
+  backup.py's _fsync_directory correctly KEEPS O_RDONLY: a directory
+  cannot be opened for writing, which is why it degrades instead of
+  raising.
+
+  P3 fixed, and it was worse than filed. The database and sidecar copies
+  were world-readable for the LENGTH of the copy (copyfile at the umask,
+  chmod after), which is what P3 said. The WAL sibling had no chmod at
+  all, so that copy -- holding the same rows -- was world-readable
+  permanently. Measured by running the new leg against the pre-P3 code.
+  _copy_owner_only pre-creates 0o600 with O_EXCL | O_NOFOLLOW, which also
+  closes the unlink-then-copy symlink window.
+
+  P4 fixed: "Save to a file" wrote the recovery code at the umask. Now
+  0o600, with a chmod for the overwrite case a mode argument cannot reach.
+
+  Next: P2, then P5, P6, P7, P10, P12. P8, P9 and P11 are spec work --
+  P9 (security-model T13) and P11 (FIBR-0014's on_key roles) go to
+  review-contract.
   **Layman:** The recovery-key fixes were reviewed again, and the review found nine places where those very fixes fell short — plus a dozen older problems around them.
   Kind: review-fix.
   Source: close-phase-2026-08-25 (check-code + 4 review-code lanes over 2689463..HEAD).

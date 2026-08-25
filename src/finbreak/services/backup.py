@@ -81,6 +81,13 @@ _MANIFEST_ENTRY = "manifest.json"
 _PARAMS_ENTRY = "params.json"
 _DB_ENTRY = "vault.db"
 
+# SQLite's WAL siblings — a vault on disk is FOUR files, not two (§ 6). Named
+# here for `_install`, which has to carry the INCUMBENT's aside with it; the
+# restored database has none of its own, because the assembly connection runs
+# with `in_memory_temp` and so keeps a self-contained rollback journal
+# (vault.open, FIBR-0014 INV-1). Mirrors vault_migration._WAL_SIBLINGS.
+_WAL_SIBLINGS = ("-wal", "-shm")
+
 
 def _noop_on_key(role: str, buffer: bytearray) -> None:
     return None
@@ -281,6 +288,13 @@ class BackupService:
             zipfile.BadZipFile,
             OSError,
             MemoryError,  # a bomb's allocation on a small machine (FIBR-0212)
+            # The two the sidecar reader can raise on a params record that came
+            # out of an imported .fbk — so, on bytes the user did not write.
+            # `_read_archive` above already catches UnicodeDecodeError for the
+            # MANIFEST and this tuple omitted it for the PARAMS, which is the
+            # same file read by a different reader (FIBR-0310 P2).
+            UnicodeDecodeError,
+            RecursionError,
         ) as exc:
             # Normalise every underlying failure to BackupError; on-disk state is
             # untouched (nothing installed) or recoverable from *.old (INV-4/5).
@@ -430,7 +444,23 @@ class BackupService:
         """Move any existing vault + sidecar aside to timestamped ``*.old`` copies,
         then install the restored pair (``vault.db`` first, then the sidecar; D4).
         The ``on_key("post_move_aside", ...)`` seam fires between the two so a test
-        can inject a failure with the old pair already safely aside (INV-5)."""
+        can inject a failure with the old pair already safely aside (INV-5).
+
+        **A vault is FOUR files, and the incumbent's ``-wal`` / ``-shm`` move with
+        it.** They were left where they were, which cost both halves of what this
+        method is for (FIBR-0310 P5). The restored database was installed beside
+        a WAL belonging to a DIFFERENT database under a DIFFERENT key — the § 6
+        hazard ``vault_migration`` names and handles twice. And the ``.old``
+        copy, whose whole purpose is being recoverable, was left without its
+        journal.
+
+        MOVED rather than unlinked, and the stamp goes before the suffix so the
+        ``.old`` set is a coherent SQLite triple: ``vault.db.<stamp>.old`` with
+        ``vault.db.<stamp>.old-wal`` beside it is the name SQLite looks for.
+        Unlinking would discard an uncommitted tail from exactly the vault the
+        user is stepping away from — and a leftover ``-wal`` means the app did
+        not close cleanly, which is one of the reasons someone restores.
+        """
         real_db = self._vault.vault_path
         real_sidecar = self._vault.sidecar_path
         if real_db.exists() or real_sidecar.exists():
@@ -441,6 +471,13 @@ class BackupService:
             stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%f")
             if real_db.exists():
                 os.replace(real_db, real_db.with_name(f"{real_db.name}.{stamp}.old"))
+            for suffix in _WAL_SIBLINGS:
+                sibling = real_db.with_name(real_db.name + suffix)
+                if sibling.exists():
+                    os.replace(
+                        sibling,
+                        real_db.with_name(f"{real_db.name}.{stamp}.old{suffix}"),
+                    )
             if real_sidecar.exists():
                 os.replace(
                     real_sidecar,
@@ -483,6 +520,12 @@ class BackupService:
             OSError,
             json.JSONDecodeError,
             UnicodeDecodeError,  # a non-UTF-8 manifest.json (json.loads raises this)
+            # A deeply nested manifest. json.loads raises RecursionError, which
+            # is NOT a ValueError, so JSONDecodeError above does not cover it —
+            # measured 2026-08-25 on 200k nested brackets. Same class of hostile
+            # input as the zip bomb below and the same answer: a refused backup
+            # (FIBR-0310 P2).
+            RecursionError,
             zlib.error,  # a corrupt DEFLATE stream in any entry (zf.open read)
             # A hostile entry that inflates further than this machine has RAM for.
             # The INV-12 caps + ratio bound it, but the bound is still 512 MiB and a

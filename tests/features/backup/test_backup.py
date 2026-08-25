@@ -1001,3 +1001,64 @@ def test_INV13_restore_records_the_cipher_level_it_wrote_at(tmp_path):
     probe = Vault(dest.vault.vault_path, dest.vault.sidecar_path)
     with pytest.raises(DatabaseError):
         probe.open(bytearray(dek), cipher_compat=SQLCIPHER_COMPAT - 1)
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0310 P5 — a vault is FOUR files, and the incumbent's WAL moves with it
+# --------------------------------------------------------------------------- #
+def test_the_incumbent_wal_moves_aside_with_its_database(tmp_path):
+    """``_install`` moved ``vault.db`` and the sidecar aside and left the
+    incumbent's ``-wal`` / ``-shm`` exactly where they were.
+
+    That cost both halves of what the move-aside is for. The restored database
+    was installed BESIDE a WAL belonging to a different database under a
+    different key -- the § 6 hazard ``vault_migration`` names and handles twice.
+    And the ``.old`` copy, whose whole purpose is being recoverable, was left
+    without its journal (FIBR-0310 P5).
+
+    A leftover ``-wal`` means the app did not close cleanly, which is one of
+    the reasons someone reaches for a restore in the first place -- so this is
+    the state the feature exists for, not an exotic one. The WAL planted here
+    is a REAL one, taken from the incumbent before its clean close.
+    """
+    fbk, _snapshot = _export_from_seed(tmp_path)
+    dest = _dest_auth(tmp_path)
+    dest.first_run(bytearray(b"the original dest master"), "USD")
+
+    # A genuine WAL for the incumbent: write, capture the -wal bytes, then let
+    # the clean close remove it and put those bytes back. That is what a crash
+    # would have left.
+    dest.vault.connection.execute(
+        "INSERT INTO accounts(name, type, created_at) VALUES (?, ?, ?)",
+        ("incumbent", "current", "2026-01-01T00:00:00+00:00"),
+    )
+    dest.vault.connection.commit()
+    live_db = dest.vault.vault_path
+    live_wal = live_db.with_name(live_db.name + "-wal")
+    assert live_wal.exists(), (
+        "precondition: the incumbent must be in WAL mode with an outstanding "
+        "journal, or there is no sibling for this leg to be about."
+    )
+    wal_bytes = live_wal.read_bytes()
+    dest.lock()
+    live_wal.write_bytes(wal_bytes)  # what an unclean shutdown leaves behind
+
+    BackupService(dest.vault, dest).restore_backup(fbk, _BACKUP_PW, _M2)
+
+    assert not live_wal.exists(), (
+        "the restored database was installed beside the INCUMBENT's WAL -- a "
+        "journal for a different database under a different key.\n"
+        f"  expected: no {live_wal.name}\n  actual:   still there"
+    )
+    moved = live_db.parent.glob(f"{live_db.name}.*.old-wal")
+    assert [p for p in moved], (
+        "the incumbent's WAL was not moved aside with its database, so the "
+        "*.old copy that exists to be recoverable has no journal.\n"
+        f"  expected: a {live_db.name}.<stamp>.old-wal\n"
+        f"  actual:   {sorted(p.name for p in live_db.parent.iterdir())}"
+    )
+    assert dest.unlock(bytearray(_M2, "utf-8")) is True, (
+        "the restored vault does not open. A foreign WAL beside it is exactly "
+        "what stops it."
+    )
+    dest.lock()

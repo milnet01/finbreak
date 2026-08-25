@@ -58,6 +58,27 @@ _REQUIRED_SIDECAR_FIELDS = frozenset(
 )
 
 
+# The malformed-sidecar failures that are NOT OSError or JSONDecodeError, and
+# were escaping the normalisation both readers below promise (FIBR-0310 P2).
+# Measured 2026-08-25 against a real file each: non-UTF-8 bytes raise
+# UnicodeDecodeError out of `read_text` — BEFORE json sees them, so being a
+# ValueError subclass does not help — and 200k nested brackets raise
+# RecursionError out of `json.loads`, which is not a ValueError at all.
+# MemoryError joins them for the same reason backup.py already catches it: a
+# huge file on a small machine is a refused sidecar, not an unhandled
+# exception out of a Qt slot (FIBR-0212).
+#
+# It matters beyond a tidy error type: this path is reachable from an IMPORTED
+# .fbk, so the bytes are not necessarily the user's own.
+_MALFORMED_SIDECAR = (
+    OSError,
+    json.JSONDecodeError,
+    UnicodeDecodeError,
+    RecursionError,
+    MemoryError,
+)
+
+
 def derive_key(password: bytearray, salt: bytes, params: KdfParams) -> bytearray:
     """Derive the vault's 32-byte raw key with Argon2id.
 
@@ -118,9 +139,12 @@ def validate_params(params: KdfParams) -> None:
 def load_and_validate_params(sidecar_path: Path) -> KdfParams:
     """Read the plaintext sidecar into a validated ``KdfParams``.
 
-    Every malformed-input path (unreadable, non-JSON, wrong shape, missing
-    field, bad hex) is normalised to ``KdfPolicyError`` so callers assert one
-    failure type, never a bare ``JSONDecodeError`` / ``KeyError`` (INV-2c).
+    Every malformed-input path — unreadable, non-UTF-8, non-JSON, nested past
+    the recursion limit, too large for this machine, wrong shape, missing
+    field, bad hex — is normalised to ``KdfPolicyError`` so callers assert one
+    failure type, never a bare ``JSONDecodeError`` / ``KeyError`` (INV-2c). The
+    set is ``_MALFORMED_SIDECAR``; three of those were escaping it until
+    FIBR-0310 P2, and this file is reachable from an imported ``.fbk``.
 
     Dispatches on the sidecar's shape (FIBR-0019 § 4.4). A **v2** file yields
     the ``master`` slot's params — the KDF record the password route derives
@@ -133,7 +157,7 @@ def load_and_validate_params(sidecar_path: Path) -> KdfParams:
 
     try:
         data = json.loads(sidecar_path.read_text())
-    except (OSError, json.JSONDecodeError) as exc:
+    except _MALFORMED_SIDECAR as exc:
         raise KdfPolicyError(f"sidecar unreadable or not JSON: {exc}") from exc
 
     if not isinstance(data, dict) or not _REQUIRED_SIDECAR_FIELDS <= data.keys():
@@ -321,7 +345,7 @@ def write_sidecar_v2(sidecar_path: Path, sidecar: VaultSidecar) -> None:
 def _read_json(sidecar_path: Path) -> dict[str, Any]:
     try:
         data = json.loads(sidecar_path.read_text())
-    except (OSError, json.JSONDecodeError) as exc:
+    except _MALFORMED_SIDECAR as exc:
         raise KdfPolicyError(f"sidecar unreadable or not JSON: {exc}") from exc
     if not isinstance(data, dict):
         raise KdfPolicyError("sidecar is not a JSON object")
