@@ -5627,6 +5627,52 @@ because retrofitting them is a data migration.
   REMAINING: P8, P10, P12 are code. P9 and P11 are spec changes and go to
   review-contract, not to a code fix. Then FP03's own close, steps 5 to 9 --
   and the fresh-context rule above applies to that review.
+  Progress (2026-08-25): P8 to P12 done and pushed, so ALL 21 findings
+  are closed -- nine regressions and twelve pre-existing. Full gate green
+  at each push; the last was 2043 passed / 2 skipped.
+
+  P8 -- keywrap's kek widens to `bytes | bytearray` and the eight
+  production sites pass their buffer through. `bytes(kek)` made an
+  immutable copy in the CALLER's frame, out of reach of the `finally` that
+  wipes the bytearray beside several of them: an INV-3 breach at eight
+  sites. Measured on the pinned cryptography 50.0.0 -- an AESGCM built
+  from a bytearray still decrypts after that bytearray is zeroed, so the
+  residual copy is OpenSSL's and unreachable from Python. `dek` stays
+  `bytes`: FIBR-0004 D5's accepted gap, and the new guard must not fire on
+  it. Two of the guard's three legs discriminate; a runtime-only test
+  cannot, since Python does not enforce an annotation.
+
+  P10 -- the finding was half wrong. Nothing connects unlock_failed, but
+  of the two documents said to claim otherwise only FIBR-0051 does;
+  unlock.py's docstring is accurate as written. The signal is KEPT: eleven
+  emit sites, eleven distinct failure branches, no double-emit, and a
+  failed unlock is the dialog's own business, so a shell slot would have
+  no work. Deleting it would only push six test sites onto reading label
+  text.
+
+  P12 -- six fixed, one DECLINED on measurement. The trial-unwrap
+  de-duplicates; the cap does not exist, because a derivation is 26 ms,
+  20 000 random 100-char hints averaged 2.0 candidates and peaked at 10,
+  and hill-climbing reached 24 -- a ~0.6 s worst case, and no cap value
+  both bounds that and never refuses an honest hint. My first draft capped
+  at 8 and its test was VACUOUS: validate_hint refused the 300-char probe
+  on length before the cap was reached, so mutating the cap out left the
+  leg green. That is the fourth vacuous leg this pass has produced.
+  Also: keep_recovery_code gained the VaultLockedError arm its three
+  siblings have (its broad arm warned "the vault is locked" on a dying
+  widget); verify_backup answers a MemoryError the way restore_backup
+  does; the unreadable-sidecar fail-open logs; check_symbol refuses a
+  payload that is not 27 symbols; set_hint's docstring names the live
+  chain; _open_dialog enforces the one-modal slot itself.
+
+  P9 and P11 did NOT go to review-contract, against this bullet's earlier
+  plan. Both are amendments recording what was built -- rule 14 says that
+  does not re-arm the gate, and the only one of the four questions that
+  could bite is Q1, which IS the finding. T13 now names the two copyable
+  surfaces and states no count, which is how it went stale.
+
+  NEXT: FP03's own close, steps 5 to 9. The fresh-context rule at the top
+  of this bullet applies to that review -- this session did the fixing.
   **Layman:** The recovery-key fixes were reviewed again, and the review found nine places where those very fixes fell short — plus a dozen older problems around them.
   Kind: review-fix.
   Source: close-phase-2026-08-25 (check-code + 4 review-code lanes over 2689463..HEAD).

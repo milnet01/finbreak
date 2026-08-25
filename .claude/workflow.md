@@ -47,7 +47,7 @@ this**, so treat a stale date as "recent work was out-of-band", not as
 |---|---|
 | **Active item ID** | FP03 / FIBR-0310 (fix-pass after FP02 — nine regressions from FP02, twelve pre-existing) |
 | **Blocked on** | Nothing. FIBR-0019's close was ATTEMPTED and blocked: `check-code` plus three `review-code` lanes found thirteen actionable defects, batched into FP02. FIBR-0019 is back to 🚧 and returns to ✅ only when FP02 closes clean. FIBR-0159 stays 🚧 in the DB but is not the active item and is not a 1.0 blocker. |
-| **Last update** | 2026-08-25 (FP03 in flight — all nine regressions R1–R9 fixed, plus P1–P7. Remaining: P8, P10, P12 (code); P9, P11 (spec, via review-contract). FIBR-0311 and FIBR-0312 filed off R3) |
+| **Last update** | 2026-08-25 (FP03's fixing is DONE — all 21 findings closed, R1–R9 and P1–P12, each pushed on a green gate. Next is FP03's own close, steps 5–9, and that review must run from a FRESH context: this session did the fixing. FIBR-0311 and FIBR-0312 filed off R3) |
 
 ### Step progress
 
