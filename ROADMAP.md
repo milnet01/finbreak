@@ -5336,6 +5336,23 @@ because retrofitting them is a data migration.
   Fourteen new legs across the four, each proved red first and each
   mutation-checked alone. Two measured repros worth not re-deriving: 9's
   held exactly as filed, and 8's did not.
+  Close ATTEMPTED and BLOCKED (2026-08-25). check-code was clean over
+  2689463..HEAD; review-code's four lanes found nine defects FP02 itself
+  introduced plus twelve pre-existing, folded into FP03 (FIBR-0310). FP02
+  stays in progress and FIBR-0019 stays behind it. Record:
+  docs/journal/FIBR-0307.md.
+
+  The one to know without reading it: FP02's clipboard fix does not work.
+  The auto-clear guard is parented to the dialog, so its timer dies when
+  the dialog is torn down — which both callers do the moment the user
+  answers. Measured, not argued. Its test passed only because it called
+  clear_if_ours() directly instead of letting the timer fire, which is the
+  second vacuous leg this pass produced after finding 8's stated repro did
+  not hold.
+
+  Nothing was added to docs/audit-allowlist.md; there were no confirmed
+  false positives. FIBR-0309 and FIBR-0308 were independently re-found by
+  this sweep and are not re-filed.
   **Layman:** The recovery-key feature works, but a careful review found thirteen problems in it — two of which could cost a user their data.
   Kind: review-fix.
   Source: close-phase-2026-08-21 (check-code + 3 review-code lanes over f704605..HEAD).
@@ -5349,6 +5366,107 @@ because retrofitting them is a data migration.
   Kind: security.
   Source: close-phase-2026-08-21 (review-code lane 3, UI edges).
   Lanes: security.
+
+- 📋 [FIBR-0310] **FP03 — fix-pass after FP02: nine regressions from the fix-pass itself, plus twelve pre-existing.**
+  check-code was clean on this scope. Every item below is a review-code
+  finding. NOT re-filed because they are already filed: FIBR-0309 covers the
+  .tmp O_EXCL gap, the missing directory fsync after os.replace (including
+  S4/S5) and validate_params' unbounded time_cost / parallelism / memory_kib;
+  FIBR-0308 covers INV-11's wording, of which lane 4's "a separator other
+  than a hyphen defeats the scan" is a second instance.
+
+  REGRESSIONS FROM FP02 — these are defects the fix-pass introduced.
+
+  R1. The clipboard auto-clear never fires. recovery_key.py __init__ calls
+  setParent(self) on the INJECTED guard, so its timer is a child of the
+  dialog, and both callers deleteLater() the dialog as soon as the user
+  answers. MEASURED 2026-08-25: guard parented to the dialog, timer active
+  after Copy, both destroyed together. So finding 13b is inert and a
+  vault-opening credential stays on the clipboard. The test passed only
+  because it called clear_if_ours() directly instead of letting the timer
+  fire -- a vacuous leg, and the second one this pass has produced.
+  R2. The Settings teardown has no return path. Every sibling flow that
+  tears Settings down replaces it; _on_change_recovery_key and
+  _on_remove_recovery_key can tear it down and open nothing, so Cancel at
+  the password gate makes Settings vanish. Re-open it when the gate
+  resolves, guarded on _dialog being empty and the vault still unlocked.
+  R3. Four new user-facing strings can never be translated. tr() takes a
+  module constant, and coding.md says lupdate extracts only literals. Three
+  pre-existing sites and recovery_key's _tr wrapper have the same defect.
+  R4. _ensure_rollback_copy's fallback writes the migration-pending v2
+  sidecar as the .pre-v2 sidecar, which its own docstring says would leave a
+  rollback restoring the stalled state. Falsifies restore_pre_upgrade_copy's
+  "the pair on disk is v1 again": the next unlock re-enters branch 3 and
+  restarts the migration the user asked to undo. Section 13.1 makes the fix
+  available -- rebuild a v1-shaped sidecar from slots.master's own params.
+  R5. _validate_slot_lengths widens a pre-existing lockout: one damaged
+  OPTIONAL slot now fails the whole sidecar by two more legs, so a corrupt
+  recovery slot bars the intact master route. Hard-fail on master only.
+  Do not prune -- auth round-trips the loaded object back to disk.
+  R6. The D5 docstring in keywrap is incomplete. It omits the KEK copy INV-3
+  names explicitly, and bytes(dek) is a no-op because every caller already
+  passes bytes(), so the copy it describes lives in the caller's frame.
+  R7. rollback_copy_paths' docstring says the UI's offer needs to name the
+  path. The offer shipped and names no path.
+  R8. _finish_quietly's "a failure leaves the sidecar as it was, so the
+  state stays resumable" is false when the OSError lands AFTER
+  write_sidecar_v2: migration_pending is cleared, nothing re-enters the
+  ladder, and the .pre-v2 pair persists forever -- an encrypted copy that
+  still opens under the OLD master password, surviving a later change.
+  R9. restore_rollback_copy moves the database then its -wal; a crash
+  between them drops the WAL tail. Currently masked only because
+  verify_rollback_copy's open checkpoints the copy first, so the guarantee
+  rests on a side effect rather than the ordering.
+
+  PRE-EXISTING.
+
+  P1. UNVERIFIED and the highest-severity item here: _fsync opens O_RDONLY
+  and fsyncs, which may fail on Windows, aborting every migration silently
+  via _unlock_v1's broad except -- so no Windows user would ever get a
+  recovery key. The lane cited backup.py's note as corroboration and that
+  note is about a DIRECTORY fsync, a different case, so the evidence does
+  not hold. The Windows box has no Python. MEASURE IT FIRST.
+  P2. UnicodeDecodeError, RecursionError and MemoryError escape
+  load_and_validate_params' documented "everything normalises to
+  KdfPolicyError", and the path is reachable from an imported .fbk, whose
+  BackupError tuple omits them too.
+  P3. write_rollback_copy copies at the process umask and chmods after, so
+  both files are world-readable during the copy; and unlink-then-copyfile
+  with no O_NOFOLLOW is a symlink trap. vault.py mounts both defences twice.
+  P4. The "Save to a file" affordance writes the recovery code 0644. Every
+  other secret-bearing write in the app is owner-only.
+  P5. backup._install moves neither the incumbent vault's -wal nor its -shm,
+  so a restore installs over a foreign-keyed WAL and the .old copy loses its
+  journal. Two other modules solve this and say why. Move, do not unlink.
+  P6. Resume branches 1 and 2 delete the .pre-v2 pair having proved only
+  that the database OPENS -- the weaker check verify_rollback_copy's own
+  measured docstring says is insufficient.
+  P7. _opens claims to be "a question, not a use" while Vault.open commits
+  run_migrations, so branch 3 writes to the live v1 database before any
+  rollback copy is secured.
+  P8. keywrap's kek: bytes annotation forces an un-wipeable KEK copy at
+  seven call sites, several beside a finally that wipes the bytearray and
+  misses the copy. Not the D5 gap -- AESGCM takes a bytearray, MEASURED on
+  the pinned cryptography 50.0.0. INV-3 names every KEK.
+  P9. security-model T13 is stale: it says ClipboardAutoClear is built in
+  exactly two places for the transactions list. There are four in three
+  files and the recovery code is copyable by design. Spec change.
+  P10. unlock_failed is a zombie: ten emit sites, no non-test consumer,
+  while unlock.py and FIBR-0051 both say the shell connects it.
+  P11. backup's on_key gained a "dek" role that its own comment and
+  FIBR-0014 Deliverable 1 do not list. Spec change; the code is right.
+  P12. Smaller: the hint trial-unwrap loop is uncapped and un-deduplicated,
+  so a 100-char hint can force dozens of 46 MiB Argon2 derivations on the UI
+  thread; keep_recovery_code is the one section 4.7 member with no
+  VaultLockedError arm; verify_backup does not catch the MemoryError
+  restore_backup does, off the same helper; _password_hint fails open on an
+  unreadable sidecar with no log line; check_symbol validates nothing;
+  set_hint.py's docstring names the pre-INV-11 call chain; _open_dialog
+  could enforce the one-modal invariant itself instead of trusting eleven
+  callers to remember, which is exactly what FP02 finding 10 was.
+  **Layman:** The recovery-key fixes were reviewed again, and the review found nine places where those very fixes fell short — plus a dozen older problems around them.
+  Kind: review-fix.
+  Source: close-phase-2026-08-25 (check-code + 4 review-code lanes over 2689463..HEAD).
 
 ### 🎨 Features & accessibility
 
