@@ -5381,7 +5381,7 @@ because retrofitting them is a data migration.
   Source: close-phase-2026-08-21 (review-code lane 3, UI edges).
   Lanes: security.
 
-- 📋 [FIBR-0310] **FP03 — fix-pass after FP02: nine regressions from the fix-pass itself, plus twelve pre-existing.**
+- 🚧 [FIBR-0310] **FP03 — fix-pass after FP02: nine regressions from the fix-pass itself, plus twelve pre-existing.**
   check-code was clean on this scope. Every item below is a review-code
   finding. NOT re-filed because they are already filed: FIBR-0309 covers the
   .tmp O_EXCL gap, the missing directory fsync after os.replace (including
@@ -5498,6 +5498,31 @@ because retrofitting them is a data migration.
   `ssh wintest` has no Python installed, so that is not the route.
   R1 is the opposite: measured and confirmed, so it needs no repro, only
   a fix and a test that lets the timer fire.
+  Progress (2026-08-25): R1, R2 and R3 are fixed, each with a test proved
+  to discriminate and each pushed on a green gate.
+
+  R1 -- the injected clipboard guard keeps its caller's owner;
+  build_recovery_offer parents it to the window. Its test was rewritten to
+  run the real factory, the real teardown and a real wait, because calling
+  clear_if_ours() by hand is the guard's own implementation and passed
+  against inert code.
+
+  R2 -- _reopen_settings_if_idle(), guarded on an empty slot and an
+  unlocked shell. Its third leg caught a defect in the fix's first draft:
+  locking the service alone leaves _unlocked True, which is why the leg now
+  uses _on_idle_timeout(), the production entry.
+
+  R3 -- widened by measurement. pyside6-lupdate drops a constant CONTEXT
+  and a wrapper call as well as a constant message, so the count was 16
+  strings across four modules, not four. Fixed in unlock.py, recovery_key,
+  _widgets and categories; verified against the real tree before and after.
+  tests/features/i18n/ is the new guard. services/pdf_export.py is excluded
+  BY NAME and filed as FIBR-0311 -- 30 sites, a third in f-strings, so
+  conforming it is a renderer refactor rather than this plumbing fix. Also
+  filed FIBR-0312 for the stale "expected to FAIL" status in
+  tests/features/recovery_key/spec.md.
+
+  Next: R4.
   **Layman:** The recovery-key fixes were reviewed again, and the review found nine places where those very fixes fell short — plus a dozen older problems around them.
   Kind: review-fix.
   Source: close-phase-2026-08-25 (check-code + 4 review-code lanes over 2689463..HEAD).
