@@ -216,24 +216,41 @@ def test_the_status_line_follows_the_write(
     )
 
 
-def test_a_copied_recovery_code_is_cleared_from_the_clipboard(qtbot: Any) -> None:
+def test_a_copied_recovery_code_is_cleared_from_the_clipboard(
+    qtbot: Any, service: AuthService, monkeypatch: Any
+) -> None:
     """Copy left the code on the clipboard indefinitely.
 
     ``ClipboardAutoClear`` already does this for a transaction description --
     the least sensitive thing the app copies. The recovery code is the most:
     it opens the vault on its own (FIBR-0307 finding 13).
+
+    This leg runs the whole caller's chain and lets the TIMER fire, because the
+    first version of it did neither: it built the dialog directly and called
+    ``clear_if_ours()`` by hand, which is the guard's own implementation rather
+    than anything the app arranges. That passed while the feature was inert --
+    the guard was re-parented to the dialog, so the pending timer was destroyed
+    with it the moment the user answered and the code stayed on the clipboard
+    (FIBR-0310 R1). So: the real factory, the real teardown, and a real wait.
     """
     from PySide6.QtGui import QGuiApplication
 
-    from finbreak.ui._clipboard import ClipboardAutoClear
-    from finbreak.ui.recovery_key import RecoveryCodeDialog
+    from finbreak.ui.recovery_key import build_recovery_offer
+
+    # The shortest timeout the guard can arm; the settings enum's floor is 10s,
+    # which is not a wait a test suite can take.
+    monkeypatch.setattr(service, "clipboard_clear_seconds", lambda: 1)
 
     board = QGuiApplication.clipboard()
     board.clear()
-    guard = ClipboardAutoClear(board, seconds_provider=lambda: 30)
+    window = MainWindow(service)
+    qtbot.addWidget(window)
+    window._enter_unlocked()
+
     code = "ABCD-EFGH-JKMN-PQRS-TVWX-YZ01-2345"
-    dialog = RecoveryCodeDialog(code, clipboard=guard)
-    qtbot.addWidget(dialog)
+    dialog = build_recovery_offer(service, code, window)
+    dialog.finished.connect(window._teardown_dialog)  # what the shell wires
+    window._open_dialog(dialog, defer=False)
     try:
         dialog._copy()
         assert board.text() == code, (
@@ -242,13 +259,15 @@ def test_a_copied_recovery_code_is_cleared_from_the_clipboard(qtbot: Any) -> Non
             f"  expected: {code!r}\n  actual:   {board.text()!r}"
         )
 
-        guard.clear_if_ours()  # what the armed timer does when it fires
-        assert board.text() == "", (
-            "the copy was not routed through the auto-clear guard, so the "
-            "recovery code sits on the clipboard until something else "
-            "overwrites it.\n"
-            "  expected: an empty clipboard\n"
-            f"  actual:   {board.text()!r}"
+        dialog.reject()  # the user answers, and the shell tears the dialog down
+        _pump_deferred_delete()
+        assert not shiboken6.isValid(dialog), (
+            "precondition: the dialog must actually be destroyed before the "
+            "clear is due -- that destruction is what killed the timer, so a "
+            "leg that leaves the dialog alive cannot see the defect.\n"
+            "  expected: a deleted dialog"
         )
+
+        qtbot.waitUntil(lambda: board.text() == "", timeout=5000)
     finally:
         board.clear()

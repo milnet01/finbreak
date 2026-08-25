@@ -14,7 +14,7 @@ is what INV-5 is about.
 
 from __future__ import annotations
 
-from PySide6.QtCore import QCoreApplication, Signal
+from PySide6.QtCore import QCoreApplication, QObject, Signal
 from PySide6.QtGui import QCloseEvent, QGuiApplication
 from PySide6.QtWidgets import (
     QDialog,
@@ -78,14 +78,23 @@ class RecoveryCodeDialog(QDialog):
         self._code = code
         # Copy goes through the auto-clear guard, as a transaction description
         # already does (FIBR-0032) — and this is the most sensitive thing the
-        # app copies, since it opens the vault on its own. Standalone
-        # construction takes the default timeout; `build_recovery_offer`
-        # injects one wired to the user's setting.
-        self._clipboard = clipboard or ClipboardAutoClear(
-            QGuiApplication.clipboard(),
-            seconds_provider=lambda: DEFAULT_CLIPBOARD_CLEAR_SECONDS,
-        )
-        self._clipboard.setParent(self)
+        # app copies, since it opens the vault on its own.
+        #
+        # Ownership decides whether the clear ever happens. A guard the dialog
+        # builds itself is the dialog's, and takes the default timeout. An
+        # INJECTED guard keeps the owner its caller gave it: re-parenting it
+        # here made the clear timer a child of this dialog, and both callers
+        # deleteLater() the dialog the moment the user answers — so the timer
+        # died with it and a vault-opening code stayed on the clipboard
+        # (FIBR-0310 R1).
+        if clipboard is None:
+            self._clipboard = ClipboardAutoClear(
+                QGuiApplication.clipboard(),
+                seconds_provider=lambda: DEFAULT_CLIPBOARD_CLEAR_SECONDS,
+                parent=self,
+            )
+        else:
+            self._clipboard = clipboard
         self.setWindowTitle(self.tr("Your recovery code"))
 
         explanation = QLabel(
@@ -290,11 +299,20 @@ def build_recovery_offer(
             # than raise out of the copy handler.
             return DEFAULT_CLIPBOARD_CLEAR_SECONDS
 
+    # The guard outlives the dialog on purpose. Both callers deleteLater() the
+    # dialog as soon as the user answers, which is well inside the clear
+    # timeout, so a guard owned by the dialog would be destroyed with its timer
+    # still pending and never clear (FIBR-0310 R1). Own it from the window
+    # instead — the application object where there is no window, so the guard
+    # always has an owner that outlasts the copy.
+    clipboard_owner: QObject | None = parent or QGuiApplication.instance()
     dialog = RecoveryCodeDialog(
         code,
         parent,
         clipboard=ClipboardAutoClear(
-            QGuiApplication.clipboard(), seconds_provider=clear_seconds
+            QGuiApplication.clipboard(),
+            seconds_provider=clear_seconds,
+            parent=clipboard_owner,
         ),
     )
 
