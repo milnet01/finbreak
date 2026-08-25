@@ -1061,3 +1061,80 @@ def test_a_symlink_at_the_copy_path_does_not_redirect_the_vault(
         "  expected: the target untouched\n"
         f"  actual:   {len(elsewhere.read_bytes())} bytes"
     )
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0310 P1 — the migration survives its own durability call
+# --------------------------------------------------------------------------- #
+def test_the_migration_completes_with_a_real_fsync(tmp_path: Path) -> None:
+    """``_fsync`` opened O_RDONLY, which POSIX allows and Windows refuses.
+
+    Measured on windows-latest / CPython 3.12.10, 2026-08-25: fsync on an
+    O_RDONLY descriptor raises ``OSError(9, 'Bad file descriptor')`` there, and
+    O_RDWR succeeds. S0 calls ``_fsync`` on the rollback copy, and
+    ``AuthService._unlock_v1`` wraps ``migrate_to_v2`` in ``except Exception``
+    and falls back to opening the v1 vault — so the migration was abandoned
+    silently on every unlock and no Windows user was ever offered a recovery
+    key (FIBR-0310 P1).
+
+    This leg cannot reproduce that platform, and does not pretend to: the
+    Windows side is gated in ``windows-build.yml``. What it locks is the shape
+    the defect took -- an OSError out of ``_fsync`` is swallowed and leaves a
+    vault that is still v1 -- so the failure is visible as "no migration"
+    rather than as an exception nobody sees.
+    """
+    vault_path, sidecar_path, key, digests = _fresh_v1_vault(tmp_path, "real-fsync")
+
+    # _fsync as the code calls it, against a file that exists: this is the call
+    # that raised on Windows.
+    vault_migration._fsync(vault_path)
+
+    migrate_to_v2(vault_path, sidecar_path, bytearray(key))
+
+    migrated = read_v2_sidecar(sidecar_path)
+    assert migrated.get("sidecar_version") == 2, (
+        "the migration did not reach the v2 envelope, so no recovery key can "
+        "be offered on this platform.\n"
+        "  expected: sidecar_version == 2\n"
+        f"  actual:   {migrated.get('sidecar_version')!r}"
+    )
+    reopened = open_after_restart(vault_path, sidecar_path, MASTER_PASSWORD)
+    after = row_digests(reopened.connection)
+    reopened.close()
+    assert after == digests, (
+        "the vault migrated but its contents moved.\n"
+        f"  expected: {digests}\n  actual:   {after}"
+    )
+
+
+def test_a_failing_fsync_abandons_the_migration_silently(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The half of P1 that IS reproducible here, and the reason it went unseen.
+
+    An OSError out of ``_fsync`` at S0 does not reach the user. ``_unlock_v1``
+    catches Exception, sees the sidecar is still v1 -- nothing was swapped --
+    and opens the vault. It works, every time, and never migrates. This leg
+    exists so the consequence is written down as a behaviour rather than only
+    in a comment.
+    """
+    vault_path, sidecar_path, key, _digests = _fresh_v1_vault(tmp_path, "fsync-eio")
+
+    def refuse(_path: Path) -> None:
+        raise OSError(errno.EBADF, "Bad file descriptor")
+
+    monkeypatch.setattr(vault_migration, "_fsync", refuse)
+
+    service = AuthService(vault_path, sidecar_path)
+    assert service.unlock(bytearray(MASTER_PASSWORD)) is True, (
+        "precondition: the vault must still OPEN. If it did not, the defect "
+        "would have been a visible lockout and someone would have reported it."
+    )
+    service.lock()
+
+    assert "sidecar_version" not in read_sidecar(sidecar_path), (
+        "the migration is supposed to have been abandoned here -- that is the "
+        "state P1 describes. If it migrated anyway, _fsync is no longer on the "
+        "path this leg is about and the leg is asserting nothing.\n"
+        f"  actual:   {read_sidecar(sidecar_path)}"
+    )

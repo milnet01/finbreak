@@ -30,35 +30,51 @@ jobs:
         with:
           python-version: "3.12"
 
-      # FIBR-0310 P1 — the durability idiom `vault_migration._fsync` uses, asked
-      # of Windows. It opens a file O_RDONLY and fsyncs it, which POSIX allows;
-      # Windows maps os.fsync to _commit -> FlushFileBuffers, which wants write
-      # access. If that raises, every v1 -> v2 migration aborts at S0 through
-      # _unlock_v1's broad except, and no Windows user is ever offered a
-      # recovery key. Nothing in the repo answered the question, and this is the
-      # only Windows job there is. Reports and never fails the build — a
-      # measurement, not a gate; the gate follows once the answer is known.
-      - name: Probe the fsync idiom the migration depends on
+      # FIBR-0310 P1 — `vault_migration._fsync` opens O_RDWR to fsync, and this
+      # is where that flag is answerable. POSIX allows fsync on a read-only
+      # descriptor, so Linux never asks the question; Windows maps os.fsync to
+      # _commit -> FlushFileBuffers, which wants write access.
+      #
+      # Measured here 2026-08-25 on windows-latest / CPython 3.12.10: O_RDONLY
+      # raised OSError(9, 'Bad file descriptor') and O_RDWR succeeded. With the
+      # old flag every v1 -> v2 migration aborted at S0, was swallowed by
+      # _unlock_v1's broad except, and no Windows user was ever offered a
+      # recovery key — silently, on every unlock.
+      #
+      # It FAILS the build if the flag the code relies on stops working, and
+      # only reports the O_RDONLY result: that one documents why the flag is
+      # what it is, and pinning a platform quirk we deliberately do not depend
+      # on would be a test of Windows rather than of finbreak.
+      - name: Check the fsync idiom the migration depends on
         shell: python
         run: |
           import os, sys, tempfile
           path = os.path.join(tempfile.mkdtemp(), "probe.bin")
           with open(path, "wb") as handle:
               handle.write(b"finbreak durability probe")
-          for name, flags in (("O_RDONLY", os.O_RDONLY), ("O_RDWR", os.O_RDWR)):
-              try:
-                  fd = os.open(path, flags)
-              except OSError as exc:
-                  print(f"FSYNC_PROBE {name}: open failed: {exc!r}")
-                  continue
+
+          def fsync_with(flags):
+              fd = os.open(path, flags)
               try:
                   os.fsync(fd)
-                  print(f"FSYNC_PROBE {name}: OK")
-              except OSError as exc:
-                  print(f"FSYNC_PROBE {name}: FAILED {exc!r}")
               finally:
                   os.close(fd)
+
           print(f"FSYNC_PROBE platform={sys.platform} python={sys.version.split()[0]}")
+          try:
+              fsync_with(os.O_RDONLY)
+              print("FSYNC_PROBE O_RDONLY: OK (it was not, on 2026-08-25)")
+          except OSError as exc:
+              print(f"FSYNC_PROBE O_RDONLY: FAILED {exc!r} (expected; see _fsync)")
+          try:
+              fsync_with(os.O_RDWR)
+              print("FSYNC_PROBE O_RDWR: OK")
+          except OSError as exc:
+              raise SystemExit(
+                  f"vault_migration._fsync's O_RDWR idiom no longer works here: {exc!r}. "
+                  "Every v1 -> v2 migration aborts at S0 and is swallowed by "
+                  "_unlock_v1, so no Windows user is offered a recovery key."
+              )
 
       # build-windows-exe.py: manifest-driven dep install (INV-6), single-Qt guard
       # (INV-2), then the PyInstaller onefile freeze with the canonical collection

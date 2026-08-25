@@ -67,7 +67,28 @@ def _suffixed(path: Path, suffix: str) -> Path:
 
 
 def _fsync(path: Path) -> None:
-    fd = os.open(path, os.O_RDONLY)
+    """Flush ``path`` to the platter. Raises if it cannot — INV-13 means a copy
+    that is not durable is not a copy.
+
+    ``O_RDWR``, not ``O_RDONLY``. POSIX allows fsync on a read-only descriptor;
+    Windows maps ``os.fsync`` to ``_commit`` and thence to
+    ``FlushFileBuffers``, which wants write access. **Measured on
+    windows-latest / CPython 3.12.10, 2026-08-25**: ``O_RDONLY`` raises
+    ``OSError(9, 'Bad file descriptor')`` and ``O_RDWR`` succeeds.
+
+    The consequence of the old flag was not a crash the user could see. S0
+    calls this on the rollback copy, ``migrate_to_v2`` is wrapped by
+    ``AuthService._unlock_v1``'s ``except Exception``, and the sidecar is still
+    v1 at that point — so the vault opened, the migration was abandoned, and
+    the next unlock did the same. **No Windows vault would ever have reached
+    the v2 envelope, and no Windows user would ever have been offered a
+    recovery key** (FIBR-0310 P1).
+
+    ``backup.py``'s ``_fsync_directory`` keeps ``O_RDONLY``, and that is not an
+    inconsistency: a directory cannot be opened for writing, which is why that
+    one degrades instead of raising.
+    """
+    fd = os.open(path, os.O_RDWR)
     try:
         os.fsync(fd)
     finally:
