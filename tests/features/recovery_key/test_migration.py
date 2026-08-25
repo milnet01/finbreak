@@ -37,6 +37,7 @@ from finbreak.services.auth import AuthService
 from finbreak.services.vault_migration import (
     MIGRATING_SUFFIX,
     STEPS,
+    _suffixed,
     migrate_to_v2,
     rollback_copy_paths,
     verify_rollback_copy,
@@ -820,4 +821,157 @@ def test_an_interrupted_restore_leaves_a_resumable_pair(
         "a half-finished restore must still leave a pair that opens and holds "
         "what it held — § 13.3 branch 3 is what picks it up.\n"
         f"  expected: {digests}\n  actual:   {after}"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0310 R8 — an interrupted S6 must not strand the pre-upgrade copy
+# --------------------------------------------------------------------------- #
+def test_a_failed_s6_unlink_does_not_strand_the_pre_upgrade_copy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """S6's two halves are ordered, and the removal is the one that goes first.
+
+    ``migration_pending`` is the only thing that brings anything back to S6.
+    Clearing it and THEN failing to unlink -- the disk-full and held-file class
+    § 6 names, which ``_finish_quietly`` absorbs -- leaves the ``.pre-v2`` pair
+    on disk with no bookkeeping left to remove it. Nothing ever tries again.
+
+    That artefact is an encrypted copy of the whole vault that still opens
+    under the master password of the day it was taken, sitting beside the live
+    one and surviving every later password change. So the leg that matters is
+    not "does the vault open" but "is the copy gone once there is room".
+    """
+    vault_path, sidecar_path, key, _digests = _fresh_v1_vault(tmp_path, "s6-unlink")
+
+    def abort_before_s6(step: str) -> None:
+        if step == "S6":
+            raise _Abort("injected crash before S6")
+
+    with pytest.raises(_Abort):
+        migrate_to_v2(vault_path, sidecar_path, bytearray(key), on_step=abort_before_s6)
+
+    copy_vault, copy_sidecar = rollback_copy_paths(vault_path, sidecar_path)
+    assert copy_vault.exists() and copy_sidecar.exists(), (
+        "precondition: S0's copy is on disk and S6 has not removed it -- that "
+        "is the state this leg is about.\n"
+        f"  expected: both of {copy_vault.name}, {copy_sidecar.name}\n"
+        f"  actual:   {copy_vault.exists()}, {copy_sidecar.exists()}"
+    )
+
+    real_unlink = Path.unlink
+    refuse = {"on": True}
+
+    def no_space(self: Path, *args: Any, **kwargs: Any) -> None:
+        if refuse["on"] and self.name.endswith(vault_migration.ROLLBACK_SUFFIX):
+            raise OSError(errno.ENOSPC, "No space left on device")
+        real_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", no_space)
+
+    open_after_restart(vault_path, sidecar_path, MASTER_PASSWORD).close()
+
+    stalled = read_sidecar(sidecar_path)
+    assert stalled.get("migration_pending") is True, (
+        "S6 could not remove the copy, and cleared the flag anyway. Nothing "
+        "re-enters the ladder now, so the pre-upgrade copy stays beside the "
+        "vault forever -- openable with the master password of the day it was "
+        "taken, whatever the user changes it to later (FIBR-0310 R8).\n"
+        "  expected: migration_pending still True\n"
+        f"  actual:   {stalled}"
+    )
+
+    # And it really does finish once the disk has room, rather than merely
+    # deferring: the flag being set is only worth anything if something acts
+    # on it.
+    refuse["on"] = False
+    open_after_restart(vault_path, sidecar_path, MASTER_PASSWORD).close()
+
+    assert not copy_vault.exists() and not copy_sidecar.exists(), (
+        "the next unlock re-entered S6 and still left the copy behind.\n"
+        "  expected: neither file\n"
+        f"  actual:   {copy_vault.exists()}, {copy_sidecar.exists()}"
+    )
+    finished = read_sidecar(sidecar_path)
+    assert finished.get("migration_pending") is not True, (
+        "S6 removed the copy but never cleared the flag, so every later unlock "
+        "re-enters the resume ladder for nothing.\n"
+        "  expected: migration_pending absent or False\n"
+        f"  actual:   {finished}"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0310 R9 — the copy is ONE file by the time it is restored
+# --------------------------------------------------------------------------- #
+def test_verifying_the_copy_leaves_it_with_no_wal(tmp_path: Path) -> None:
+    """``restore_rollback_copy`` moves the database and its ``-wal`` separately,
+    so a crash between them drops the tail -- a rollback quietly missing the
+    user's most recent rows. Verification checkpoints the copy so there is only
+    one file to move, and this leg is what makes that a guarantee rather than
+    a side effect of closing the probe (FIBR-0310 R9).
+
+    The rows in that tail are the assertion that matters. A copy checkpointed
+    by DISCARDING its WAL would also leave no ``-wal``, and would be the very
+    data loss this is about -- so the leg reads the tail back out of the copy
+    afterwards.
+
+    "Absent or empty" rather than absent, because the guarantee is about what
+    the WAL still CARRIES. Measured 2026-08-25: the explicit
+    ``wal_checkpoint(TRUNCATE)`` leaves a 0-byte ``-wal`` while the probe is
+    open, and closing the probe removes the file. The first of those is the one
+    that makes the tail safe; the second is SQLite tidying up, and a leg pinned
+    to it would go red on a harmless change of that behaviour.
+    """
+    vault_path, sidecar_path, key, _digests = _fresh_v1_vault(tmp_path, "wal-free")
+
+    # Reopen and write with the connection LEFT OPEN, so the copy is taken with
+    # an outstanding WAL -- the case write_rollback_copy carries the WAL for.
+    live = Vault(vault_path, sidecar_path)
+    live.open(bytearray(key))
+    live.connection.execute(
+        "INSERT INTO accounts(name, type, created_at) VALUES (?, ?, ?)",
+        ("in the tail", "current", "2026-02-01T00:00:00+00:00"),
+    )
+    live.connection.commit()
+    assert _suffixed(vault_path, "-wal").exists(), (
+        "precondition: the live vault must have an outstanding WAL, or the "
+        "copy this leg is about has no tail to lose."
+    )
+
+    copy_vault, copy_sidecar = write_rollback_copy(vault_path, sidecar_path)
+    live.close()
+    assert _suffixed(copy_vault, "-wal").exists(), (
+        "precondition: write_rollback_copy carries the live WAL to the copy, "
+        "which is the file the restore would then have to move separately.\n"
+        f"  expected: {_suffixed(copy_vault, '-wal').name}\n"
+        "  actual:   absent"
+    )
+
+    verify_rollback_copy(copy_vault, copy_sidecar, bytearray(key))
+
+    for suffix in ("-wal", "-shm"):
+        sibling = _suffixed(copy_vault, suffix)
+        size = sibling.stat().st_size if sibling.exists() else 0
+        assert size == 0, (
+            f"the verified copy's {suffix} still carries data, so restoring it "
+            "is two os.replace calls with a tail riding on the second, and a "
+            "crash between them drops it.\n"
+            f"  expected: {suffix} absent or empty\n"
+            f"  actual:   {size} bytes"
+        )
+
+    probe = Vault(copy_vault, copy_sidecar)
+    probe.open(bytearray(key))
+    names = [
+        row[0]
+        for row in probe.connection.execute("SELECT name FROM accounts").fetchall()
+    ]
+    probe.close()
+    assert "in the tail" in names, (
+        "the WAL is gone but its rows went with it -- the copy was truncated "
+        "rather than checkpointed, which is the data loss this leg exists to "
+        "prevent, arrived at from the other side.\n"
+        "  expected: the row committed to the WAL, folded into the copy\n"
+        f"  actual:   accounts = {names}"
     )

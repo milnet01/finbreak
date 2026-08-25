@@ -213,6 +213,22 @@ def verify_rollback_copy(
     probe.open(bytearray(key), in_memory_temp=True)
     try:
         integrity = probe.connection.execute("PRAGMA integrity_check").fetchone()[0]
+        if integrity == "ok":
+            # Fold the copy's WAL into the copy itself, so it is ONE file from
+            # here on. `restore_rollback_copy` moves the database and its `-wal`
+            # with two separate os.replace calls, and a crash between them drops
+            # the tail — a rollback quietly missing the user's most recent rows.
+            #
+            # It never happened, because closing the probe below checkpoints and
+            # removes the WAL anyway (measured 2026-08-25: the copy has a `-wal`
+            # after write_rollback_copy and none after this function). But that
+            # is close-time behaviour nothing here asked for, so the guarantee
+            # rested on a side effect of a function whose job is to READ
+            # (FIBR-0310 R9). Asking for it makes it a step that can be cited.
+            #
+            # After integrity_check, never before: a copy that fails is left
+            # exactly as it was found rather than written to.
+            probe.connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
     except (DatabaseError, MemoryError) as exc:
         # SQLCipher surfaces a page whose HMAC fails as whatever its deferred
         # error maps to; both of these were seen in the measurement above. The
@@ -358,21 +374,47 @@ def _swap_database(vault_path: Path, migrating_db: Path) -> None:
 
 
 def _finish(sidecar_path: Path, sidecar: VaultSidecar, vault_path: Path) -> None:
-    """S6 — clear ``migration_pending``, then remove the rollback pair.
+    """S6 — remove the rollback pair, then clear ``migration_pending``.
 
     S2 verified the replacement row for row before anything was swapped, so past
     this point the copy protects nothing and is one more plaintext-adjacent
     artefact to look after (D8's scope: the conversion window, and nothing
     after it).
+
+    **The removal goes FIRST, and the order is what makes an interrupted S6
+    survivable.** ``migration_pending`` is the only thing that brings anything
+    back here: clearing it first and then failing to unlink — the disk-full and
+    held-file class § 6 names, which :func:`_finish_quietly` absorbs — leaves
+    the ``.pre-v2`` pair on disk with no bookkeeping left to remove it, and
+    nothing ever tries again. That is an encrypted copy of the user's vault
+    that still opens under the master password they had at the time, sitting
+    beside the live one and surviving every later password change
+    (FIBR-0310 R8).
+
+    Failing the other way costs nothing. The flag stays set, the next unlock
+    takes § 13.3 branch 1 — the DEK opens the live database — and lands back
+    here, where the unlinks are ``missing_ok`` and the write is idempotent.
     """
-    write_sidecar_v2(sidecar_path, replace(sidecar, migration_pending=False))
     _suffixed(vault_path, ROLLBACK_SUFFIX).unlink(missing_ok=True)
     _drop_wal_siblings(_suffixed(vault_path, ROLLBACK_SUFFIX))
     _suffixed(sidecar_path, ROLLBACK_SUFFIX).unlink(missing_ok=True)
+    write_sidecar_v2(sidecar_path, replace(sidecar, migration_pending=False))
 
 
 def rollback_copy_paths(vault_path: Path, sidecar_path: Path) -> tuple[Path, Path]:
-    """Where D8's pre-upgrade pair sits — the UI's offer needs to name it."""
+    """Where D8's pre-upgrade pair sits, as a PAIR.
+
+    Both callers are in this module and each needs both paths at once:
+    :func:`rollback_copy_is_usable` verifies them together, and
+    :func:`restore_rollback_copy` moves them in a fixed order. So this is the
+    one place the two suffixes are derived side by side, and the ordering of
+    the returned tuple is part of it.
+
+    It said "the UI's offer needs to name it", and the offer shipped naming no
+    path — ``ui/unlock.py``'s ``_rollback_offer`` describes the copy in words
+    and never shows where it is. Nothing outside this module calls this at all
+    (FIBR-0310 R7).
+    """
     return (
         _suffixed(vault_path, ROLLBACK_SUFFIX),
         _suffixed(sidecar_path, ROLLBACK_SUFFIX),
@@ -414,10 +456,22 @@ def restore_rollback_copy(vault_path: Path, sidecar_path: Path) -> None:
     other order leaves a v1 sidecar over a database no v1 key opens, which
     reads to the user as a wrong password (§ 6).
 
-    The live pair's WAL siblings are dropped and the copy's own carried with it
-    — the mirror of :func:`write_rollback_copy`. A ``-wal`` written under the
-    OLD key beside the restored database would have SQLite recover that
-    database from it, which is § 6's hazard and the one S5 handles.
+    The live pair's WAL siblings are dropped: a ``-wal`` written under the OLD
+    key beside the restored database would have SQLite recover that database
+    from it, which is § 6's hazard and the one S5 handles.
+
+    **The copy is expected to have no WAL of its own**, and that is a
+    precondition rather than a hope. Every route here runs
+    :func:`verify_rollback_copy` first, which checkpoints the copy into a single
+    file precisely so this function moves ONE database rather than a database
+    and its tail — two ``os.replace`` calls, with a crash between them leaving a
+    rollback silently missing the user's most recent rows (FIBR-0310 R9).
+
+    The loop below is what happens if it is there anyway, and its order is the
+    less bad of two. Moving the WAL after the database can lose the tail; moving
+    it BEFORE leaves the migrated v2 database under a v1-keyed WAL, where
+    nothing opens and § 13.3 has no branch to recover by. Losing the tail leaves
+    a vault that opens.
     """
     copy_vault, copy_sidecar = rollback_copy_paths(vault_path, sidecar_path)
     _drop_wal_siblings(vault_path)
@@ -425,6 +479,11 @@ def restore_rollback_copy(vault_path: Path, sidecar_path: Path) -> None:
     for suffix in _WAL_SIBLINGS:
         sibling = _suffixed(copy_vault, suffix)
         if sibling.exists():
+            log.warning(
+                "the pre-upgrade copy still has a %s; it was not checkpointed "
+                "before the restore",
+                suffix,
+            )
             os.replace(sibling, _suffixed(vault_path, suffix))
     os.replace(copy_sidecar, sidecar_path)
     log.info("the pre-upgrade copy was restored over the live pair")
@@ -441,11 +500,17 @@ def _finish_quietly(
     ``.pre-v2`` pair. § 6 hands a disk-full at S1..S6 to § 13's resume rules,
     and those rules cannot mean "lock the user out of a vault that opens".
 
-    A failure leaves the sidecar exactly as it was, so the state stays
-    resumable and the next unlock re-enters branch 1 and finishes the job. Only
-    ``OSError`` is absorbed — the disk-full and held-file class § 6 names. Any
-    other failure here is a defect and still reaches the caller
-    (FIBR-0307 finding 3).
+    A failure leaves ``migration_pending`` set, so the state stays resumable and
+    the next unlock re-enters branch 1 and finishes the job. Only ``OSError`` is
+    absorbed — the disk-full and held-file class § 6 names. Any other failure
+    here is a defect and still reaches the caller (FIBR-0307 finding 3).
+
+    That sentence used to read "leaves the sidecar exactly as it was", and it
+    was false for the case it most needed to cover: :func:`_finish` cleared the
+    flag before unlinking, so an ``OSError`` on the unlink left the copy on disk
+    with nothing to bring anything back to it. :func:`_finish` now removes the
+    copy first, which is what makes the claim true rather than restated
+    (FIBR-0310 R8).
     """
     try:
         _finish(sidecar_path, sidecar, vault_path)
