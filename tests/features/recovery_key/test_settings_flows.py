@@ -17,6 +17,7 @@ and a "No recovery code is set" label still on screen after one had been set
 
 from __future__ import annotations
 
+import os
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -359,4 +360,57 @@ def test_an_auto_lock_during_the_gate_does_not_reopen_settings(
         "unlock screen the user needs next.\n"
         "  expected: not a SettingsDialog\n"
         f"  actual:   {type(window._dialog).__name__}"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0310 P4 — the saved recovery code is owner-only
+# --------------------------------------------------------------------------- #
+@pytest.mark.skipif(os.name != "posix", reason="file modes are a POSIX question")
+@pytest.mark.parametrize("pre_exists", [False, True], ids=["new", "overwrite"])
+def test_the_saved_recovery_code_is_owner_only(
+    qtbot: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, pre_exists: bool
+) -> None:
+    """ "Save to a file" writes a credential that opens the vault on its own.
+
+    A plain ``open()`` creates at the process umask -- 0644 on a normal
+    desktop, so every account on the machine can read it. Every other
+    secret-bearing write in the app is owner-only (coding.md § 7), and this one
+    was the exception (FIBR-0310 P4).
+
+    The overwrite leg is the half a mode argument cannot reach: an EXISTING
+    file keeps its own permissions through an O_CREAT open, and that is the
+    file the code is about to be written into.
+    """
+    from finbreak.ui.recovery_key import RecoveryCodeDialog
+
+    target = tmp_path / "finbreak-recovery-code.txt"
+    if pre_exists:
+        target.write_text("an older copy\n", encoding="utf-8")
+        target.chmod(0o644)
+
+    monkeypatch.setattr(
+        recovery_module.QFileDialog,
+        "getSaveFileName",
+        staticmethod(lambda *a, **k: (str(target), "")),
+    )
+
+    code = "ABCD-EFGH-JKMN-PQRS-TVWX-YZ01-2345"
+    dialog = RecoveryCodeDialog(code)
+    qtbot.addWidget(dialog)
+    dialog._save()
+
+    assert target.read_text(encoding="utf-8") == code + "\n", (
+        "precondition: the file must actually hold the code, or the mode this "
+        "leg asserts is the mode of the wrong thing.\n"
+        f"  expected: {code + chr(10)!r}\n"
+        f"  actual:   {target.read_text(encoding='utf-8')!r}"
+    )
+    mode = target.stat().st_mode & 0o777
+    assert mode == 0o600, (
+        "the saved recovery code is readable by other accounts on this "
+        "machine. It unlocks the vault on its own, so this is the whole "
+        "credential sitting in a world-readable file.\n"
+        "  expected: 0o600\n"
+        f"  actual:   {mode:#o}"
     )

@@ -14,6 +14,8 @@ is what INV-5 is about.
 
 from __future__ import annotations
 
+import os
+
 from PySide6.QtCore import QCoreApplication, QObject, Signal
 from PySide6.QtGui import QCloseEvent, QGuiApplication
 from PySide6.QtWidgets import (
@@ -152,7 +154,27 @@ class RecoveryCodeDialog(QDialog):
         if not path:
             return
         try:
-            with open(path, "w", encoding="utf-8") as handle:
+            # Owner-only, like every other secret-bearing write in the app
+            # (coding.md § 7). A plain open() creates at the process umask,
+            # which is 0644 on a normal desktop — a credential that opens the
+            # vault on its own, readable by every account on the machine
+            # (FIBR-0310 P4).
+            #
+            # The chmod covers the case the mode argument cannot: an EXISTING
+            # file the user chose to overwrite keeps its own permissions, and
+            # that is the file this code is about to be written into. Both are
+            # near no-ops on Windows, which has no umask and where chmod only
+            # toggles the read-only bit; the POSIX desktops are where the
+            # exposure is.
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            try:
+                os.chmod(path, 0o600)
+            except OSError:
+                # Refusing to save over a mode the platform will not change
+                # would deny the user the copy they asked for, and the write
+                # below is still the point of the affordance.
+                pass
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
                 handle.write(self._code + "\n")
         except OSError as exc:
             QMessageBox.warning(

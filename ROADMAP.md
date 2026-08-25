@@ -5523,6 +5523,48 @@ because retrofitting them is a data migration.
   tests/features/recovery_key/spec.md.
 
   Next: R4.
+  Progress (2026-08-25): R4 to R9 done, so ALL NINE regressions are fixed
+  and pushed, each on a green gate.
+
+  R4 -- _ensure_rollback_copy's retake now REBUILDS a v1 sidecar from
+  slots.master's params (write_rollback_copy grew a sidecar_payload
+  argument) instead of byte-copying the live v2 one. Second half, and it is
+  what makes this repair rather than only prevent: verify_rollback_copy now
+  rejects a copy whose sidecar is v2, so a copy left by an earlier run is
+  not kept and offered. The existing test's assertion was guarded by
+  `if copy_state == "intact"` -- the one leg where the retake never fires --
+  and is now unconditional, with a fourth leg, stale_v2, pinning the gate.
+
+  R5 -- read_sidecar_v2 hard-fails on master only; other slots are logged
+  and KEPT, never pruned, because AuthService round-trips the object back
+  to disk. Finding 9's distinct error moves to the route that uses the
+  slot (crypto.validate_slot, public for that, called by recovery_params
+  and _unlock_through_slot). That put a damaged slot and an absent one
+  through one UI handler saying "This vault has no recovery code set", so
+  they are now separate sentences and the damaged one points at the master
+  password -- which by this fix still works.
+
+  R6, R7 -- docstring accuracy. keywrap's D5 note omitted the KEK copy and
+  claimed a bytes(dek) that is a measured no-op; rollback_copy_paths
+  claimed a UI caller that does not exist.
+
+  R8 -- an ORDERING fix, not a docstring one. S6 cleared migration_pending
+  before unlinking, so an absorbed OSError stranded the .pre-v2 pair
+  forever: an encrypted copy openable with the master password of the day
+  it was taken. The removal goes first now.
+
+  R9 -- verify_rollback_copy asks for the checkpoint (PRAGMA
+  wal_checkpoint(TRUNCATE), after integrity_check so a damaged copy is
+  never written to) instead of getting it from the probe's close. Measured:
+  that truncates the WAL to 0 bytes with the probe still open.
+
+  Also filed off this work: FIBR-0311 (pdf_export's 30 untranslatable
+  strings) and FIBR-0312 (the stale "expected to FAIL" status in
+  tests/features/recovery_key/spec.md).
+
+  Next: P1, which is UNVERIFIED. Measuring the broad-except half of the
+  claim first, since that half is answerable on Linux and if it is false
+  the severity collapses regardless of the Windows answer.
   **Layman:** The recovery-key fixes were reviewed again, and the review found nine places where those very fixes fell short — plus a dozen older problems around them.
   Kind: review-fix.
   Source: close-phase-2026-08-25 (check-code + 4 review-code lanes over 2689463..HEAD).
