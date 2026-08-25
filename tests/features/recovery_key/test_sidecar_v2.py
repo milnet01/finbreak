@@ -8,6 +8,7 @@ starts holding a WRAPPED DEK -- which falsifies FIBR-0004 INV-7's "only the salt
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -26,12 +27,16 @@ from _recovery_helpers import (
     unwrap_slot,
 )
 
-from finbreak.keywrap import SLOT_MASTER, SLOT_RECOVERY
+from finbreak.errors import KdfPolicyError
+from finbreak.keywrap import NONCE_LEN, SLOT_MASTER, SLOT_RECOVERY, WRAPPED_DEK_LEN
 from finbreak.models import SIDECAR_VERSION
 from finbreak.services.auth import AuthService
 from finbreak.services.recovery_code import normalise
 
 pytestmark = pytest.mark.features
+
+# The sidecar's slot map, named once rather than spelled at every subscript.
+SLOTS = "slots"
 
 
 @pytest.fixture
@@ -206,3 +211,101 @@ def test_declining_still_writes_the_envelope(
         f"  expected: the DEK is byte-identical across the add\n"
         f"  actual:   before={dek_before.hex()} after={dek_after.hex()}"
     )
+
+
+# --------------------------------------------------------------------------- #
+# FP02 finding 9 — a slot's field LENGTHS are part of the format
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize(
+    ("field", "value", "what"),
+    [
+        ("nonce_hex", "aabb", "a 2-byte nonce"),
+        ("nonce_hex", "00" * 64, "a 64-byte nonce"),
+        ("wrapped_dek_hex", "00" * 8, "an 8-byte wrapped DEK"),
+        ("wrapped_dek_hex", "00" * 200, "a 200-byte wrapped DEK"),
+    ],
+    ids=["short-nonce", "long-nonce", "short-wrapped-dek", "long-wrapped-dek"],
+)
+def test_a_slot_of_the_wrong_length_is_not_a_wrong_password(
+    paths: tuple[Path, Path],
+    service: AuthService,
+    field: str,
+    value: str,
+    what: str,
+) -> None:
+    """§ 4.4 fixes both lengths, and the loader has to be the one enforcing it.
+
+    The nonce is 24 hex chars and ``wrapped_dek_hex`` is 48 bytes -- 32 of
+    ciphertext plus GCM's 16-byte tag. Neither was checked, so a damaged key
+    record reached ``unwrap_dek``, which fails closed as a ``KeyUnwrapError``
+    and is reported as a failed attempt: the user is told to check a password
+    that is correct, and the § 6 throttle is charged for it. That is finding
+    2's confusion arriving by a second route (FIBR-0307 finding 9).
+
+    A length is not an oracle. It sits in the plaintext sidecar and is
+    readable without any credential, and this gate runs BEFORE a password is
+    derived -- which is why ``unwrap_dek`` keeps one undifferentiated error for
+    everything it sees, and this refusal is a format check rather than a
+    distinction between two credentials.
+    """
+    vault_path, sidecar_path = paths
+    create_vault(service)
+    service.lock()
+
+    pristine = read_v2_sidecar(sidecar_path)[SLOTS][SLOT_MASTER]
+    assert len(bytes.fromhex(pristine["nonce_hex"])) == NONCE_LEN, (
+        "precondition: a freshly written slot must carry the length § 4.4 "
+        "states, or the values this leg calls malformed are not.\n"
+        f"  expected: {NONCE_LEN}\n"
+        f"  actual:   {len(bytes.fromhex(pristine['nonce_hex']))}"
+    )
+    assert len(bytes.fromhex(pristine["wrapped_dek_hex"])) == WRAPPED_DEK_LEN, (
+        "precondition: § 4.4 fixes the wrapped DEK at 32 bytes of ciphertext "
+        "plus GCM's 16-byte tag.\n"
+        f"  expected: {WRAPPED_DEK_LEN}\n"
+        f"  actual:   {len(bytes.fromhex(pristine['wrapped_dek_hex']))}"
+    )
+
+    damaged = read_v2_sidecar(sidecar_path)
+    damaged[SLOTS][SLOT_MASTER][field] = value
+    sidecar_path.write_text(json.dumps(damaged), encoding="utf-8")
+
+    try:
+        outcome: object = AuthService(vault_path, sidecar_path).unlock(
+            bytearray(MASTER_PASSWORD)
+        )
+    except KdfPolicyError:
+        return
+    pytest.fail(
+        f"the shipped loader accepted {what}, so the damaged key record was "
+        "handed to unwrap_dek and came back as an ordinary failed unlock -- "
+        "indistinguishable from a wrong password, and charging the throttle "
+        "for a vault whose password was right.\n"
+        "  expected: KdfPolicyError, which ui/unlock.py renders as the "
+        "security-settings file being damaged\n"
+        f"  actual:   unlock() returned {outcome!r}"
+    )
+
+
+def test_a_damaged_recovery_slot_is_refused_too(
+    paths: tuple[Path, Path], service: AuthService
+) -> None:
+    """The gate is per SLOT, and a master unlock still reads the whole record.
+
+    Refusing the sidecar outright is the existing behaviour rather than a new
+    strictness: ``validate_params`` already runs over every slot, so a damaged
+    recovery SALT blocks a master unlock today. A damaged recovery nonce or
+    wrapped DEK is the same class of damage and gets the same answer -- the key
+    record is not intact, and the message says so.
+    """
+    vault_path, sidecar_path = paths
+    code = create_vault(service)
+    keep_recovery_key(service, code)
+    service.lock()
+
+    damaged = read_v2_sidecar(sidecar_path)
+    damaged[SLOTS][SLOT_RECOVERY]["wrapped_dek_hex"] = "00" * 8
+    sidecar_path.write_text(json.dumps(damaged), encoding="utf-8")
+
+    with pytest.raises(KdfPolicyError):
+        AuthService(vault_path, sidecar_path).unlock(bytearray(MASTER_PASSWORD))

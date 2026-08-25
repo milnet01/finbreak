@@ -17,7 +17,12 @@ from typing import Any
 from argon2.low_level import Type, hash_secret_raw
 
 from finbreak.errors import KdfPolicyError
-from finbreak.keywrap import SLOT_MASTER, Slot
+from finbreak.keywrap import (
+    NONCE_LEN,
+    SLOT_MASTER,
+    WRAPPED_DEK_LEN,
+    Slot,
+)
 from finbreak.models import FORMAT_VERSION, SIDECAR_VERSION, KdfParams
 
 # Pinned Argon2id parameters (security-model.md INV-2). memory_cost is in KiB —
@@ -340,6 +345,33 @@ def sidecar_version(sidecar_path: Path) -> int:
     return version
 
 
+def _validate_slot_lengths(name: str, record: SlotRecord) -> None:
+    """§ 4.4's fixed sizes for the ciphertext half — the salt is validate_params'.
+
+    Without this the loader hands a malformed record to ``unwrap_dek``, which
+    fails closed with the one undifferentiated error it gives everything — and
+    the unlock path reports that as an ordinary failed attempt. So a damaged
+    key record told the user to check a password that was right, and charged
+    the § 6 throttle for it (FIBR-0307 finding 9).
+
+    **A length is not an oracle**, which is why the check belongs here and not
+    beside the unwrap. It is public: the sidecar is plaintext, so anyone who
+    can read the file can measure both fields without any credential. And this
+    runs before a password is derived at all. ``unwrap_dek`` still answers
+    everything it sees with one error, because the causes it can distinguish
+    ARE secret-dependent.
+    """
+    if len(record.nonce) != NONCE_LEN:
+        raise KdfPolicyError(
+            f"slot {name!r} has a {len(record.nonce)}-byte nonce, expected {NONCE_LEN}"
+        )
+    if len(record.wrapped_dek) != WRAPPED_DEK_LEN:
+        raise KdfPolicyError(
+            f"slot {name!r} has a {len(record.wrapped_dek)}-byte wrapped DEK, "
+            f"expected {WRAPPED_DEK_LEN}"
+        )
+
+
 def read_sidecar_v2(sidecar_path: Path) -> VaultSidecar:
     """Parse and validate the v2 slots sidecar, else ``KdfPolicyError``.
 
@@ -348,6 +380,9 @@ def read_sidecar_v2(sidecar_path: Path) -> VaultSidecar:
     slot's* salt, so ``salt_len: 16`` beside a 4-byte ``slots.master.salt_hex``
     is rejected. Reading ``kdf`` alone would silently drop the real-salt-length
     leg ``security-model.md`` INV-2's exact-format match requires.
+
+    The nonce and wrapped DEK are the same class of check and are
+    :func:`_validate_slot_lengths`'.
     """
     data = _read_json(sidecar_path)
     if sidecar_version(sidecar_path) != SIDECAR_VERSION:
@@ -386,6 +421,7 @@ def read_sidecar_v2(sidecar_path: Path) -> VaultSidecar:
 
     if SLOT_MASTER not in sidecar.slots:
         raise KdfPolicyError("v2 sidecar carries no `master` slot")
-    for name in sidecar.slots:
+    for name, record in sidecar.slots.items():
+        _validate_slot_lengths(name, record)
         validate_params(sidecar.params_for(name))
     return sidecar
