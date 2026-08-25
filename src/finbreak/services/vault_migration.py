@@ -18,7 +18,7 @@ import logging
 import os
 import secrets
 import shutil
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import replace
 from pathlib import Path
 
@@ -26,11 +26,14 @@ from sqlcipher3.dbapi2 import Connection, DatabaseError
 
 from finbreak.crypto import (
     KEY_LEN,
+    SIDECAR_VERSION,
     SlotRecord,
     VaultSidecar,
     load_and_validate_params,
     new_sidecar,
     read_sidecar_v2,
+    sidecar_version,
+    write_sidecar_json,
     write_sidecar_v2,
 )
 from finbreak.errors import KdfPolicyError, RollbackAvailableError, VaultStateError
@@ -115,8 +118,13 @@ def _opens(db_path: Path, key: bytearray, cipher_compat: int | None) -> bool:
     return True
 
 
-def write_rollback_copy(vault_path: Path, sidecar_path: Path) -> tuple[Path, Path]:
-    """S0, first half — byte-copy the live pair to ``*.pre-v2`` and fsync both.
+def write_rollback_copy(
+    vault_path: Path,
+    sidecar_path: Path,
+    *,
+    sidecar_payload: Mapping[str, object] | None = None,
+) -> tuple[Path, Path]:
+    """S0, first half — copy the live pair to ``*.pre-v2`` and fsync both.
 
     A byte copy of an already-encrypted pair, deliberately NOT a ``.fbk``: it
     needs no new backup password, so nothing is prompted for at the first unlock
@@ -126,14 +134,24 @@ def write_rollback_copy(vault_path: Path, sidecar_path: Path) -> tuple[Path, Pat
     A stray pair from a run that aborted before S4 is simply overwritten:
     nothing was ever swapped there, so the live pair it was taken from is the
     same one being copied now (§ 13.3).
+
+    ``sidecar_payload`` REPLACES the sidecar half — the database is still byte
+    copied — and exists for exactly one caller, the § 13.3 branch-3 retake,
+    where the live sidecar is no longer the pre-upgrade one. Writing it here
+    rather than overwriting the copy afterwards is deliberate: the two-step
+    version leaves a v2 ``.pre-v2`` on disk between the write and the fix, which
+    is the state this whole argument exists to prevent (FIBR-0310 R4).
     """
     copies: list[Path] = []
     for source in (vault_path, sidecar_path):
         dest = _suffixed(source, ROLLBACK_SUFFIX)
         dest.unlink(missing_ok=True)
-        shutil.copyfile(source, dest)
-        os.chmod(dest, 0o600)
-        _fsync(dest)
+        if source is sidecar_path and sidecar_payload is not None:
+            write_sidecar_json(dest, sidecar_payload)  # already fsynced + 0o600
+        else:
+            shutil.copyfile(source, dest)
+            os.chmod(dest, 0o600)
+            _fsync(dest)
         copies.append(dest)
     # Clear the copy's OWN stale siblings before copying the live ones, in that
     # order. A `-wal` left beside the copy by an earlier aborted run would
@@ -179,6 +197,17 @@ def verify_rollback_copy(
     """
     if not copy_vault_path.exists() or not copy_sidecar_path.exists():
         raise VaultStateError("the rollback copy was not written")
+    # A PRE-upgrade pair is v1 on both halves, by definition: S0 takes it before
+    # S4 replaces the sidecar. A v2 sidecar here means the copy was taken from a
+    # pair already mid-migration, and restoring it puts the user back in the
+    # state they asked to leave — the next unlock re-enters branch 3 and
+    # restarts the migration. `load_and_validate_params` accepts BOTH shapes, so
+    # nothing below would notice (FIBR-0310 R4).
+    if sidecar_version(copy_sidecar_path) == SIDECAR_VERSION:
+        raise VaultStateError(
+            "the rollback copy's key record is a v2 sidecar, so it is not a "
+            "pre-upgrade pair"
+        )
     load_and_validate_params(copy_sidecar_path)
     probe = Vault(copy_vault_path, copy_sidecar_path)
     probe.open(bytearray(key), in_memory_temp=True)
@@ -424,7 +453,9 @@ def _finish_quietly(
         log.warning("migration resume: S6 bookkeeping did not complete: %s", exc)
 
 
-def _ensure_rollback_copy(vault_path: Path, sidecar_path: Path, key: bytearray) -> None:
+def _ensure_rollback_copy(
+    vault_path: Path, sidecar_path: Path, key: bytearray, sidecar: VaultSidecar
+) -> None:
     """INV-13's gate for § 13.3's branch 3, which re-enters ``_convert``.
 
     That restart runs S4, which replaces the live sidecar — a byte of the live
@@ -444,11 +475,26 @@ def _ensure_rollback_copy(vault_path: Path, sidecar_path: Path, key: bytearray) 
     Where no usable copy is there, a fresh one is taken and verified, and a
     failure to get one aborts before ``_convert`` — § 6's "never proceed
     without it", which is most needed exactly when the disk is tight.
+
+    **The retake REBUILDS the sidecar half rather than copying it**, which is
+    what makes the paragraph above true of this branch rather than only of S0.
+    Byte-copying the live pair here writes the migration-pending v2 sidecar as
+    the ``.pre-v2`` one, so the "rollback" restores the stalled state and the
+    next unlock re-enters branch 3 and restarts the very migration the user
+    asked to undo (FIBR-0310 R4). The database needs no such treatment: branch 3
+    is reached only because KEK-master opens it, so it IS still the v1 database.
+    And the v1 sidecar is recoverable with nothing kept aside, because § 13.1's
+    inheritance means ``slots.master`` derives under the v1 record unchanged —
+    its params ARE the pre-upgrade sidecar.
     """
     if rollback_copy_is_usable(vault_path, sidecar_path, key):
         return
     log.warning("migration resume: the rollback copy is unusable; retaking it")
-    copy_vault, copy_sidecar = write_rollback_copy(vault_path, sidecar_path)
+    copy_vault, copy_sidecar = write_rollback_copy(
+        vault_path,
+        sidecar_path,
+        sidecar_payload=sidecar.params_for(SLOT_MASTER).to_sidecar_dict(),
+    )
     verify_rollback_copy(copy_vault, copy_sidecar, key)
 
 
@@ -487,7 +533,7 @@ def resume(
     # reachable with no separate legacy salt: KEK-master IS the v1 key.
     if _opens(vault_path, kek_master, None):
         log.info("migration resume: crash was at or before S4; restarting from S1")
-        _ensure_rollback_copy(vault_path, sidecar_path, kek_master)
+        _ensure_rollback_copy(vault_path, sidecar_path, kek_master, sidecar)
         _convert(
             vault_path,
             sidecar_path,

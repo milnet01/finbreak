@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import errno
 import os
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -448,7 +449,7 @@ def _stalled_before_s5(root: Path, name: str) -> tuple[Path, Path, bytearray, di
     return vault_path, sidecar_path, key, digests
 
 
-@pytest.mark.parametrize("copy_state", ["absent", "unreadable", "intact"])
+@pytest.mark.parametrize("copy_state", ["absent", "unreadable", "stale_v2", "intact"])
 def test_the_ladder_never_restarts_without_a_verified_rollback_copy(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, copy_state: str
 ) -> None:
@@ -479,6 +480,16 @@ def test_the_ladder_never_restarts_without_a_verified_rollback_copy(
         copy_sidecar.unlink()
     elif copy_state == "unreadable":
         copy_sidecar.write_text("not a sidecar", encoding="utf-8")
+    elif copy_state == "stale_v2":
+        # What an earlier buggy retake left behind: a v1 database beside the
+        # MIGRATION-PENDING v2 sidecar. Every check short of reading the shape
+        # passes it -- the pair exists, `load_and_validate_params` accepts both
+        # shapes, and KEK-master opens the database, because the database half
+        # is genuinely the v1 one. So it must be rejected on the sidecar's
+        # version and retaken, or the fix repairs new machines only and leaves
+        # every machine already carrying one still restoring the stalled state
+        # (FIBR-0310 R4).
+        shutil.copyfile(sidecar_path, copy_sidecar)
 
     real_convert = vault_migration._convert
     entered: list[str] = []
@@ -519,15 +530,19 @@ def test_the_ladder_never_restarts_without_a_verified_rollback_copy(
                 "  expected: a readable sidecar beside the copy\n"
                 f"  actual:   {type(exc).__name__}: {exc}"
             )
-        if copy_state == "intact":
-            assert "sidecar_version" not in preserved, (
-                "D8: the .pre-v2 sidecar left by S0 is the v1 one, and it is "
-                "what makes the copy a PRE-UPGRADE vault. Overwriting it with "
-                "the migration-pending v2 sidecar leaves a copy of the stalled "
-                "state instead of a rollback.\n"
-                "  expected: the original v1 sidecar\n"
-                f"  actual:   {preserved}"
-            )
+        assert "sidecar_version" not in preserved, (
+            "D8: a PRE-upgrade pair is v1 on both halves. Where S0's copy "
+            "survived, that means not overwriting its v1 sidecar; where the "
+            "copy had to be RETAKEN, it means rebuilding one rather than "
+            "byte-copying the live pair, whose sidecar S4 has already replaced "
+            "with the migration-pending v2 one. Either way a v2 sidecar here "
+            "makes the 'rollback' a copy of the stalled state: restoring it "
+            "puts KEK-master over a v2 sidecar, the next unlock re-enters "
+            "branch 3, and the migration the user asked to undo restarts "
+            "(FIBR-0310 R4).\n"
+            "  expected: a v1 sidecar beside the copy\n"
+            f"  actual:   {preserved}"
+        )
         real_convert(vault_path_, sidecar_path_, kek_master, dek, params, step)
 
     monkeypatch.setattr(vault_migration, "_convert", guard)
