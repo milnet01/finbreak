@@ -5806,6 +5806,40 @@ because retrofitting them is a data migration.
   FP03's regressions were tests passing against inert code). Lane 3's packet
   omitted FIBR-0014, backup.py's actual contract; the lane read it anyway and
   said so.
+  Open questions (2026-08-25): five the four lanes raised that are NOT folded
+  into the findings above, recorded so they do not die with the review
+  session. Two are finding-shaped and were left unfiled by their lane for a
+  stated reason; three need a decision rather than a fix.
+
+  Q1. crypto.py read_sidecar_v2:459 reads migration_pending as
+      bool(data.get(...)), so ANY truthy JSON value sets it -- including the
+      string "false" -- and it drives vault_migration.resume via
+      auth.py:468. Lane 1 did not file it because an attacker with sidecar
+      write access can write literal true anyway, and whether a spurious
+      resume on an already-migrated vault is destructive was outside its
+      lane. C1 and H1 above are what make that worth answering now.
+  Q2. ui/categories.py:174 -- `name = self._name.text().strip() or
+      item.text(0)` on an _on_update reached with a Type root selected would
+      pass the root's TRANSLATED label as a category name. The button is
+      disabled for roots (:248) and _on_add guards the equivalent case
+      explicitly (:153), so the asymmetry may be deliberate. Lane 4 could not
+      settle it without update_category's contract, outside its slice.
+  Q3. keywrap.slot_aad binds the slot name plus memory_kib, time_cost,
+      parallelism and key_len, and omits salt_len. security-model INV-3d says
+      "the Argon2id cost parameters are bound"; the salt is bound through the
+      derivation itself, and no document enumerates the AAD fields. Lane 1
+      constructed no attack and could not tell whether the omission is
+      deliberate. Decide, and write the answer down either way.
+  Q4. Are the vault.db.<stamp>.old pairs meant to be permanent? Nothing
+      removes them, so repeated restores accumulate full encrypted vault
+      copies indefinitely. FIBR-0014 INV-5 requires them to exist; no
+      document says for how long. H3 above fixes the reset half only -- the
+      retention policy is a separate decision.
+  Q5. backup.restore_backup asserts nothing about the vault being locked,
+      though FIBR-0014 INV-8 says restore is pre-login only and _install
+      depends on it (os.replace over an open vault.db fails on Windows). The
+      single caller is on the pre-login route, so the invariant is
+      caller-held rather than local. A presence check would make it local.
   **Layman:** The recovery-key work was reviewed again with fresh eyes; one serious problem can strand a half-upgraded vault with no way back, and several smaller fixes from last time only reached some of the places they needed to.
   Kind: review-fix.
   Source: close-phase-2026-08-25 (check-code + review-code x4 lanes, FP03 close, fresh context).
