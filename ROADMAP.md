@@ -5299,6 +5299,43 @@ because retrofitting them is a data migration.
   Full gate green.
 
   Remaining: 10-13, plus the decided D5 note for keywrap.py.
+  Progress (2026-08-25): findings 10, 11, 12 and 13 are closed, and with
+  them the whole list. The decided D5 note is written into keywrap.py
+  (80d354f). Every finding fixed, pushed and gate-green; steps 5-9 of the
+  phase loop are what remains for FP02 itself.
+
+  10 (00d259e): the two recovery handlers now tear Settings down first,
+  alone among the Settings-launched handlers in not having. _open_dialog
+  overwrites the single _dialog slot, so Settings was left shown and
+  UNTRACKED — a second app-modal, an idle auto-lock unable to close it, a
+  Save from it dropped by _on_settings_saved's isinstance guard, and a
+  label built once from has_recovery_key() still offering to remove a code
+  that was gone. Cancelling either flow now returns to the main window,
+  which is what Export backup and Set password hint already do.
+
+  11 (c7e7efe): restore_backup records cipher_compatibility. Its database
+  comes from export_to, which writes at an EXPLICIT level, while a created
+  vault takes the library default — so a sqlcipher3-wheels bump moving the
+  default would leave every restored vault unopenable, _open_with having
+  nothing to pass. The migration records it for exactly this reason. § 4.4
+  enumerated two lifetimes for the field and a restored vault fell outside
+  both, so the line is amended to say it is carried by every vault whose
+  database was written at an explicit level; that records what was built,
+  so no gate.
+
+  12 and 13 (074a8ec): the § 4.7 helpers guard VaultLockedError —
+  QInputDialog and QMessageBox both spin a nested loop, so the auto-lock
+  fires inside them and the vault call after it raised out of a Qt slot.
+  Both fail closed and silently, as settings.py does. "Recovery code
+  saved" now hangs off a new saved signal emitted only after the write,
+  not off accepted, which fires on the button — a failed re-wrap warned
+  and claimed success in the same breath, over the only copy INV-5 allows.
+  And a copied recovery code goes through ClipboardAutoClear, which
+  already covered transaction descriptions.
+
+  Fourteen new legs across the four, each proved red first and each
+  mutation-checked alone. Two measured repros worth not re-deriving: 9's
+  held exactly as filed, and 8's did not.
   **Layman:** The recovery-key feature works, but a careful review found thirteen problems in it — two of which could cost a user their data.
   Kind: review-fix.
   Source: close-phase-2026-08-21 (check-code + 3 review-code lanes over f704605..HEAD).

@@ -47,7 +47,7 @@ this**, so treat a stale date as "recent work was out-of-band", not as
 |---|---|
 | **Active item ID** | FP02 / FIBR-0307 (fix-pass after FIBR-0019 — thirteen review findings) |
 | **Blocked on** | Nothing. FIBR-0019's close was ATTEMPTED and blocked: `check-code` plus three `review-code` lanes found thirteen actionable defects, batched into FP02. FIBR-0019 is back to 🚧 and returns to ✅ only when FP02 closes clean. FIBR-0159 stays 🚧 in the DB but is not the active item and is not a 1.0 blocker. |
-| **Last update** | 2026-08-25 (findings 7 and 9 fixed, pushed at 44a965f) |
+| **Last update** | 2026-08-25 (all thirteen findings fixed, pushed at 80d354f) |
 
 ### Step progress
 
@@ -57,8 +57,8 @@ nine steps are defined in `~/.claude/skills/app-workflow/SKILL.md`.
 
 1. ✅ Verify spec
 2. ✅ Verify dependencies
-3. 🚧 Write tests first
-4. 🚧 Implement until tests pass
+3. ✅ Write tests first
+4. ✅ Implement until tests pass
 5. ⬜ Run `check-code` — in parallel with 6
 6. ⬜ Run `review-code` — in parallel with 5
 7. ⬜ Fold all actionable findings into one new fix-pass
@@ -98,6 +98,10 @@ no count is restated here:
 | 7 | D8's rollback offer was never made — `rollback_copy_paths` had no caller, so § 13.3's terminal branch stayed terminal with the user's pre-upgrade vault beside it | `dd6a95e` |
 | 8 | `verify_rollback_copy` read `sqlite_master` and stopped, so page damage past the schema was invisible | `ff25718` |
 | 9 | `read_sidecar_v2` accepted any length for a slot's nonce and wrapped DEK, so a damaged key record was reported as a wrong password and charged the throttle | `44a965f` |
+| 10 | the two recovery handlers left Settings shown and untracked, out of reach of auto-lock and of its own Save | `00d259e` |
+| 11 | `restore_backup` recorded no `cipher_compatibility`, though its database comes from `export_to`, which writes at an explicit level | `c7e7efe` |
+| 12 | the § 4.7 helpers let `VaultLockedError` escape a Qt slot when the auto-lock fired inside their nested loops | `074a8ec` |
+| 13 | "Recovery code saved" was shown after a failed write, and a copied code was never cleared from the clipboard | `074a8ec` |
 
 **Finding 8's stated repro does NOT hold, and this is worth not
 re-deriving.** A *truncated* copy is refused by SQLite at `open` (measured
@@ -106,11 +110,11 @@ of the RIGHT LENGTH whose pages did not all survive — SQLCipher checks each
 page's HMAC only as that page is read. `verify_rollback_copy`'s docstring
 carries the measurement.
 
-**Next is finding 10** — `_on_change_recovery_key` and
-`_on_remove_recovery_key` do not tear the Settings dialog down first, unlike
-every sibling handler: two app-modals, a dialog auto-lock cannot close,
-settings writes dropped on the next Save, and a stale "No recovery code is
-set" left on screen. Then 11, 12, 13.
+**All thirteen are closed, and so is the decided D5 note** (`80d354f`,
+documented in `keywrap.py` rather than fixed). What remains for FP02 is
+steps 5-9 of the phase loop — `check-code` + `review-code` over FP02's own
+changes, then the close. FIBR-0019 returns to ✅ only after that comes back
+clean.
 
 **The open question on un-wipeable DEK copies is DECIDED** (user,
 2026-08-21): it sits inside FIBR-0004 D5's accepted best-effort gap,
