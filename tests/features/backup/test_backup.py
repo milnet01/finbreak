@@ -21,8 +21,14 @@ from sqlcipher3.dbapi2 import DatabaseError
 
 import finbreak
 from conftest import _PW
-from finbreak.crypto import SALT_LEN, derive_key, load_and_validate_params
+from finbreak.crypto import (
+    SALT_LEN,
+    derive_key,
+    load_and_validate_params,
+    read_sidecar_v2,
+)
 from finbreak.errors import VaultLockedError
+from finbreak.keywrap import SLOT_MASTER, unwrap_dek
 from finbreak.migrations import LATEST_SCHEMA_VERSION
 from finbreak.models import FORMAT_VERSION, KdfParams
 from finbreak.services.auth import (
@@ -953,3 +959,45 @@ def test_INV7_verify_wipes_backup_key_via_on_key_seam(tmp_path):
     assert bytes(key_buf) == bytes(len(key_buf)), (
         "the backup key buffer is zeroed after verify returns (INV-7)"
     )
+
+
+def test_INV13_restore_records_the_cipher_level_it_wrote_at(tmp_path):
+    """A restored database is written at an EXPLICIT cipher level, so the
+    sidecar has to record it.
+
+    ``export_to`` sets ``PRAGMA backup.cipher_compatibility`` explicitly and the
+    restore installs that database, rekeyed. A ``create``d vault takes the
+    library default instead. The two agree today and stop agreeing the moment a
+    sqlcipher3-wheels bump moves the default -- at which point every restored
+    vault is unopenable by the build that restored it, because ``_open_with``
+    passes the sidecar's ``cipher_compatibility`` and there was none to pass.
+
+    The migration records the level for exactly this reason (FIBR-0019 § 13.2,
+    whose own comment spells it out). Restore wrote no ``cipher_compatibility``
+    at all -- the same database provenance, the same hazard, one of the two
+    writers covered (FIBR-0307 finding 11).
+    """
+    fbk, _snapshot = _export_from_seed(tmp_path)
+    dest = _dest_auth(tmp_path)
+    BackupService(dest.vault, dest).restore_backup(fbk, _BACKUP_PW, _M2)
+
+    sidecar = read_sidecar_v2(dest.vault.sidecar_path)
+    assert sidecar.cipher_compatibility == SQLCIPHER_COMPAT, (
+        "the restored sidecar must record the level its database was written "
+        "at, so every later open passes it. Without it the vault opens only "
+        "while the library default happens to match.\n"
+        f"  expected: cipher_compatibility == {SQLCIPHER_COMPAT}\n"
+        f"  actual:   {sidecar.cipher_compatibility!r}"
+    )
+
+    # Precondition: the recorded level is load-bearing rather than decorative.
+    # With the CORRECT key, opening the restored database at a different level
+    # fails -- which is what a moved library default would amount to.
+    params = sidecar.params_for(SLOT_MASTER)
+    kek = derive_key(bytearray(_M2, "utf-8"), params.salt, params)
+    dek = unwrap_dek(
+        bytes(kek), sidecar.slots[SLOT_MASTER].wrapped, SLOT_MASTER, params
+    )
+    probe = Vault(dest.vault.vault_path, dest.vault.sidecar_path)
+    with pytest.raises(DatabaseError):
+        probe.open(bytearray(dek), cipher_compat=SQLCIPHER_COMPAT - 1)

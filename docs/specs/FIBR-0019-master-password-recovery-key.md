@@ -372,9 +372,11 @@ DEK:
 - **Two fields are optional, they sit at the top level beside
   `sidecar_version`, and they have different lifetimes.**
   `migration_pending: true` is written at §13.2's S3 and removed at S6.
-  `cipher_compatibility` is written at S3 and **stays**: a migrated vault
-  carries it permanently, a vault created fresh never has it (§13.2). The JSON
-  above is the newly-created shape, which is why neither appears in it.
+  `cipher_compatibility` is written at S3 and **stays**. It is carried by every
+  vault whose database was written at an **explicit** cipher level — a migrated
+  one (§13.2), and a restored one, whose database comes from `export_to` — and
+  never by one created fresh, which takes the library default. The JSON above is
+  the newly-created shape, which is why neither appears in it.
   Neither is a foreign key — a loader that rejects an unrecognised v2 key
   would refuse the resume sidecar on the next open and take §13.3's resume
   down with it.

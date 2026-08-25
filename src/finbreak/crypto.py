@@ -166,8 +166,10 @@ _V2_SLOT_FIELDS = frozenset({"salt_hex", "nonce_hex", "wrapped_dek_hex"})
 
 # The two optional top-level fields, and they have different lifetimes:
 # `migration_pending` is written at § 13.2's S3 and removed at S6, while
-# `cipher_compatibility` is written at S3 and STAYS — a migrated vault carries
-# it permanently, a vault created fresh never has it. Neither may be rejected as
+# `cipher_compatibility` is written at S3 and STAYS. It is carried by every
+# vault whose database was written at an EXPLICIT cipher level — a migrated one
+# (§ 13.2) and a restored one, whose database comes from `export_to` — and never
+# by one created fresh, which takes the library default. Neither may be rejected as
 # a foreign key: a loader that refused an unrecognised v2 field would refuse the
 # resume sidecar on the next open and take § 13.3's resume down with it.
 MIGRATION_PENDING_FIELD = "migration_pending"

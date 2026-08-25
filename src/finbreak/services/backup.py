@@ -23,7 +23,7 @@ import tempfile
 import zipfile
 import zlib
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -245,15 +245,27 @@ class BackupService:
                     wrapped = wrap_dek(
                         bytes(master_key), bytes(dek), SLOT_MASTER, master_params
                     )
+                    # `cipher_compatibility` is recorded for the same reason
+                    # the migration records it (FIBR-0019 § 13.2): the database
+                    # being installed came from `export_to`, which writes at an
+                    # EXPLICIT level, while a `create`d vault takes the library
+                    # default. They agree today and stop agreeing the moment a
+                    # sqlcipher3-wheels bump moves the default — at which point
+                    # every restored vault would be unopenable by the build that
+                    # restored it, because `_open_with` passes what the sidecar
+                    # holds and there was nothing to pass (FIBR-0307 finding 11).
                     write_sidecar_v2(
                         backup_vault.sidecar_path,
-                        new_sidecar(
-                            master_params,
-                            {
-                                SLOT_MASTER: SlotRecord.from_wrap(
-                                    master_params.salt, wrapped
-                                )
-                            },
+                        replace(
+                            new_sidecar(
+                                master_params,
+                                {
+                                    SLOT_MASTER: SlotRecord.from_wrap(
+                                        master_params.salt, wrapped
+                                    )
+                                },
+                            ),
+                            cipher_compatibility=SQLCIPHER_COMPAT,
                         ),
                     )
                 finally:
