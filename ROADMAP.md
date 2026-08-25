@@ -5248,6 +5248,31 @@ because retrofitting them is a data migration.
   Next is 7 -- rollback_copy_paths still has no caller, so the copy this
   pass made trustworthy is still unreachable. Then 9-13, plus the decided
   D5 note for keywrap.py.
+  Progress (2026-08-25): finding 7 is closed — D8's rollback offer is
+  made (dd6a95e).
+
+  resume's terminal branch raises RollbackAvailableError where a .pre-v2
+  pair is beside the vault AND opens with the key just proven; the
+  distinction is drawn there because that is the only frame holding both
+  the key and the paths. It subclasses VaultStateError, so every existing
+  handler still fails closed with § 6's broken-pairing message, and
+  ui/unlock.py catches it first to offer the restore.
+
+  restore_rollback_copy moves the pair back, database first. An
+  interruption between the two files lands in § 13.3 branch 3, where
+  KEK-master opens the v1 database and the ladder restarts; the other
+  order would leave a v1 sidecar over a database no v1 key opens, which
+  reads as a wrong password. Declining changes nothing — only S6 removes
+  the copy, so the offer stands at the next unlock.
+
+  Password route only, and not by omission: a migration-pending sidecar
+  carries slots.master alone, so the recovery route never enters the
+  ladder.
+
+  Seven new legs, each proved red first and each mutation-checked alone.
+  Full gate green.
+
+  Remaining: 9-13, plus the decided D5 note for keywrap.py.
   **Layman:** The recovery-key feature works, but a careful review found thirteen problems in it — two of which could cost a user their data.
   Kind: review-fix.
   Source: close-phase-2026-08-21 (check-code + 3 review-code lanes over f704605..HEAD).
