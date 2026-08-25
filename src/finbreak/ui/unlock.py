@@ -69,6 +69,21 @@ def _pairing_broken() -> str:
 # § 13.3's terminal branch, where a verified pre-upgrade copy is beside the
 # vault. Offering it is "the whole return on D8" — the alternative is the
 # refusal above, with the user's own vault sitting in the same folder.
+def _recovery_slot_damaged() -> str:
+    """The recovery slot is malformed — NOT "you have no recovery code".
+
+    A user holding a code they saved would read that as having imagined setting
+    one. The master password still works, because a damaged optional slot no
+    longer bars it (FIBR-0310 R5), so the sentence points there.
+    """
+    return QCoreApplication.translate(
+        "UnlockDialog",
+        "finbreak's record of your recovery code is damaged, so it cannot be "
+        "used. Your master password still opens this vault — use that, then set "
+        "a new recovery code in Settings.",
+    )
+
+
 def _rollback_title() -> str:
     return QCoreApplication.translate(
         "UnlockDialog", "Restore the copy from before the update?"
@@ -315,7 +330,14 @@ class UnlockDialog(QDialog):
         self._error.clear()
         try:
             params = self._service.recovery_params()
-        except (KdfPolicyError, VaultStateError):
+        except KdfPolicyError:
+            # Told apart from "no recovery code" deliberately: the slot IS on
+            # disk and its record is malformed, which is a different thing to
+            # say and a different thing to do about it (FIBR-0310 R5).
+            self._error.setText(_recovery_slot_damaged())
+            self.unlock_failed.emit()
+            return
+        except VaultStateError:
             self._error.setText(
                 self.tr(
                     "This vault has no recovery code set, so it can only be "
@@ -345,6 +367,14 @@ class UnlockDialog(QDialog):
         self._set_busy(False)
         try:
             unlocked = self._service.complete_recovery_unlock(raw)
+        except KdfPolicyError:
+            # `recovery_params` above already refuses a malformed slot, so this
+            # is the file changing under us between the two calls. Guarded all
+            # the same: letting it out of a Qt slot is the crash class FIBR-0065
+            # exists to stop.
+            self._error.setText(_recovery_slot_damaged())
+            self.unlock_failed.emit()
+            return
         except SchemaVersionError:
             self._error.setText(
                 self.tr(

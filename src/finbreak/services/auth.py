@@ -33,6 +33,7 @@ from finbreak.crypto import (
     new_sidecar,
     read_sidecar_v2,
     sidecar_version,
+    validate_slot,
     write_sidecar_v2,
 )
 from finbreak.errors import (
@@ -325,6 +326,13 @@ class AuthService:
         sidecar = self.read_sidecar()
         if SLOT_RECOVERY not in sidecar.slots:
             raise VaultStateError("this vault has no recovery key")
+        # `read_sidecar_v2` hard-fails on `master` alone, so a damaged recovery
+        # slot loads (FIBR-0310 R5) and this is the recovery route's first look
+        # at it. Refusing HERE rather than after the derive is what keeps the
+        # two answers apart for the caller: "no recovery key" is a
+        # VaultStateError and "the record is damaged" a KdfPolicyError, and the
+        # UI has a different sentence for each.
+        validate_slot(sidecar, SLOT_RECOVERY)
         return sidecar.params_for(SLOT_RECOVERY)
 
     def add_recovery_key(self, code: str) -> None:
@@ -428,11 +436,21 @@ class AuthService:
         distinction between a wrong credential and a tampered slot — the caller
         cannot act differently on the two, and an error that told them apart
         would be an oracle (§ 4.2, § 6).
+
+        ``validate_slot`` runs here rather than only at load because
+        ``read_sidecar_v2`` hard-fails on `master` alone: an optional slot's
+        damage must not bar the routes that still work (FIBR-0310 R5). So the
+        route that USES a slot is what refuses a malformed one, with FIBR-0307
+        finding 9's distinct ``KdfPolicyError`` — "this record is damaged"
+        rather than the throttled "wrong credential" the unwrap below would
+        give. `master` reaches this having already been checked; the second run
+        is two length comparisons on plaintext and buys one code path.
         """
         try:
             sidecar = read_sidecar_v2(self._sidecar_path)
             if slot not in sidecar.slots:
                 return False
+            validate_slot(sidecar, slot)
             try:
                 dek = unwrap_dek(
                     bytes(kek),

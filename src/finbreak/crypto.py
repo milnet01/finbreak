@@ -8,6 +8,7 @@ are frozen from security-model.md INV-2 (a dated OWASP snapshot); do not tune.
 from __future__ import annotations
 
 import json
+import logging
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
@@ -24,6 +25,8 @@ from finbreak.keywrap import (
     Slot,
 )
 from finbreak.models import FORMAT_VERSION, SIDECAR_VERSION, KdfParams
+
+log = logging.getLogger(__name__)
 
 # Pinned Argon2id parameters (security-model.md INV-2). memory_cost is in KiB —
 # 47104 KiB is the "46 MiB" human gloss; the API argument is 47104, not 46.
@@ -374,6 +377,20 @@ def _validate_slot_lengths(name: str, record: SlotRecord) -> None:
         )
 
 
+def validate_slot(sidecar: VaultSidecar, name: str) -> None:
+    """§ 4.4's per-slot checks for one slot: its ciphertext lengths and the
+    cost record its own salt gives.
+
+    Public because the route that uses an OPTIONAL slot has to run it itself:
+    :func:`read_sidecar_v2` hard-fails on `master` alone, so a damaged
+    `recovery` slot loads (FIBR-0310 R5) and the recovery route is what has to
+    refuse it — with FIBR-0307 finding 9's distinct "the record is damaged"
+    rather than the throttled "wrong credential" an unwrap would give.
+    """
+    _validate_slot_lengths(name, sidecar.slots[name])
+    validate_params(sidecar.params_for(name))
+
+
 def read_sidecar_v2(sidecar_path: Path) -> VaultSidecar:
     """Parse and validate the v2 slots sidecar, else ``KdfPolicyError``.
 
@@ -423,7 +440,25 @@ def read_sidecar_v2(sidecar_path: Path) -> VaultSidecar:
 
     if SLOT_MASTER not in sidecar.slots:
         raise KdfPolicyError("v2 sidecar carries no `master` slot")
-    for name, record in sidecar.slots.items():
-        _validate_slot_lengths(name, record)
-        validate_params(sidecar.params_for(name))
+    for name in sidecar.slots:
+        try:
+            validate_slot(sidecar, name)
+        except KdfPolicyError:
+            # Damage in an OPTIONAL slot must not bar the routes that still
+            # work. `master` is the one slot every vault has and the one every
+            # other route depends on, so it hard-fails here; a damaged
+            # `recovery` slot would otherwise lock a user out of their own
+            # correct password because a credential they may never have used is
+            # corrupt (FIBR-0310 R5).
+            #
+            # The record is KEPT rather than pruned. `AuthService` reads this
+            # object, edits it and writes it back, so dropping the slot here
+            # would silently delete the damaged one from disk the next time
+            # anything touched the sidecar — turning a recoverable file into an
+            # unrecoverable one. The route that USES the slot validates it
+            # first, which is where FIBR-0307 finding 9's distinct error
+            # belongs for an optional credential.
+            if name == SLOT_MASTER:
+                raise
+            log.warning("sidecar slot %r is malformed; its route will refuse", name)
     return sidecar

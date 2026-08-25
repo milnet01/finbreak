@@ -287,16 +287,33 @@ def test_a_slot_of_the_wrong_length_is_not_a_wrong_password(
     )
 
 
-def test_a_damaged_recovery_slot_is_refused_too(
-    paths: tuple[Path, Path], service: AuthService
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("wrapped_dek_hex", "00" * 8),
+        ("nonce_hex", "00" * 4),
+        ("salt_hex", "00" * 4),
+    ],
+    ids=["wrapped_dek", "nonce", "salt"],
+)
+def test_a_damaged_recovery_slot_does_not_bar_the_master_route(
+    paths: tuple[Path, Path], service: AuthService, field: str, value: str
 ) -> None:
-    """The gate is per SLOT, and a master unlock still reads the whole record.
+    """Damage in an OPTIONAL slot must not lock the user out of a working one.
 
-    Refusing the sidecar outright is the existing behaviour rather than a new
-    strictness: ``validate_params`` already runs over every slot, so a damaged
-    recovery SALT blocks a master unlock today. A damaged recovery nonce or
-    wrapped DEK is the same class of damage and gets the same answer -- the key
-    record is not intact, and the message says so.
+    The gate is per slot, and so is the LOCKOUT it can cause. `master` is the
+    one slot every vault has and every other route leans on, so a malformed one
+    still refuses the whole record. `recovery` is a credential the user may
+    never have used, and refusing the sidecar over it locks them out of their
+    own correct password -- to protect them from a route they were not taking
+    (FIBR-0310 R5).
+
+    This leg previously asserted the opposite, on the grounds that refusing
+    outright was "the existing behaviour rather than a new strictness" because
+    `validate_params` already rejected a damaged recovery SALT. That was true
+    of the salt and made the widening to the nonce and wrapped DEK look free.
+    It was not: it added two more ways for an untouched credential to bar a
+    working one. The salt leg here is the pre-existing case, fixed with them.
     """
     vault_path, sidecar_path = paths
     code = create_vault(service)
@@ -304,8 +321,87 @@ def test_a_damaged_recovery_slot_is_refused_too(
     service.lock()
 
     damaged = read_v2_sidecar(sidecar_path)
-    damaged[SLOTS][SLOT_RECOVERY]["wrapped_dek_hex"] = "00" * 8
+    damaged[SLOTS][SLOT_RECOVERY][field] = value
+    sidecar_path.write_text(json.dumps(damaged), encoding="utf-8")
+
+    opened = AuthService(vault_path, sidecar_path)
+    assert opened.unlock(bytearray(MASTER_PASSWORD)) is True, (
+        f"a damaged recovery {field} barred the master password route. The "
+        "password is right, the master slot is intact, and the vault opens -- "
+        "the user is locked out by the corruption of a credential they may "
+        "never have used.\n"
+        "  expected: unlock() is True\n"
+        "  actual:   it refused"
+    )
+    opened.lock()
+
+
+def test_the_damaged_recovery_slot_survives_a_master_unlock(
+    paths: tuple[Path, Path], service: AuthService
+) -> None:
+    """The malformed record is KEPT on disk, not pruned as it is read.
+
+    ``AuthService`` reads the sidecar, edits it and writes it back, so a loader
+    that dropped the bad slot would delete it the next time anything touched
+    the file -- turning a file a user might still recover by hand into one
+    nobody can. Unlocking is such a touch: § 13.3's resume and the auto-lock
+    both rewrite the sidecar off a loaded object (FIBR-0310 R5).
+    """
+    vault_path, sidecar_path = paths
+    code = create_vault(service)
+    keep_recovery_key(service, code)
+    service.lock()
+
+    damaged = read_v2_sidecar(sidecar_path)
+    damaged[SLOTS][SLOT_RECOVERY]["nonce_hex"] = "00" * 4
+    sidecar_path.write_text(json.dumps(damaged), encoding="utf-8")
+
+    opened = AuthService(vault_path, sidecar_path)
+    assert opened.unlock(bytearray(MASTER_PASSWORD)) is True, (
+        "precondition: the master route must open, or this leg is asserting "
+        "about a file nothing wrote to."
+    )
+    opened.lock()
+
+    after = read_v2_sidecar(sidecar_path)
+    assert SLOT_RECOVERY in after[SLOTS], (
+        "the damaged recovery slot was dropped from the sidecar. Pruning it "
+        "makes the damage permanent on the first unlock after it happens, and "
+        "the user is never told.\n"
+        "  expected: the slot still on disk\n"
+        f"  actual:   slots = {sorted(after[SLOTS])}"
+    )
+    assert after[SLOTS][SLOT_RECOVERY]["nonce_hex"] == "00" * 4, (
+        "the damaged recovery slot was rewritten. Whatever replaced it, the "
+        "bytes the user had are gone.\n"
+        "  expected: the damaged record, byte for byte\n"
+        f"  actual:   {after[SLOTS][SLOT_RECOVERY]['nonce_hex']!r}"
+    )
+
+
+def test_the_recovery_route_still_refuses_its_own_damaged_slot(
+    paths: tuple[Path, Path], service: AuthService
+) -> None:
+    """Loosening the LOADER must not lose FIBR-0307 finding 9 for this route.
+
+    A user unlocking WITH the recovery code, against a damaged recovery slot,
+    still needs the distinct answer: the record is damaged. Handing it to
+    ``unwrap_dek`` gives the one undifferentiated failure, which the unlock
+    path reports as a wrong code and charges the § 6 throttle for -- telling
+    the user their correct code is wrong. The route that uses a slot is what
+    validates it now (FIBR-0310 R5).
+    """
+    vault_path, sidecar_path = paths
+    code = create_vault(service)
+    keep_recovery_key(service, code)
+    service.lock()
+
+    intact = read_v2_sidecar(sidecar_path)
+    kek = kek_for(code_secret(code), intact, SLOT_RECOVERY)
+
+    damaged = read_v2_sidecar(sidecar_path)
+    damaged[SLOTS][SLOT_RECOVERY]["nonce_hex"] = "00" * 4
     sidecar_path.write_text(json.dumps(damaged), encoding="utf-8")
 
     with pytest.raises(KdfPolicyError):
-        AuthService(vault_path, sidecar_path).unlock(bytearray(MASTER_PASSWORD))
+        AuthService(vault_path, sidecar_path).complete_recovery_unlock(bytes(kek))

@@ -14,6 +14,7 @@ whose vault was recoverable (FIBR-0307 finding 2).
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -253,4 +254,51 @@ def test_the_unlock_dialog_offers_the_pre_upgrade_copy(
         "left behind is what S6 exists to prevent. No leaves it untouched.\n"
         f"  expected: the copy present == {answer == 'no'}\n"
         f"  actual:   {copy_vault.exists()}, sidecar {copy_sidecar.exists()}"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0310 R5 — a damaged recovery slot is told apart from an absent one
+# --------------------------------------------------------------------------- #
+def test_a_damaged_recovery_slot_is_not_reported_as_an_absent_one(
+    qtbot: Any, paths: tuple[Path, Path], service: AuthService
+) -> None:
+    """Two different things must not share one sentence.
+
+    Loosening the loader (R5) means a damaged recovery slot now reaches
+    ``recovery_params``, where an absent one already raised. Both arrived at
+    the same handler, whose sentence is "This vault has no recovery code set" --
+    which a user holding a code they wrote down would read as having imagined
+    setting one, and which points them at no remedy. The master password DOES
+    still open the vault, so the damaged case says that instead.
+    """
+    from finbreak.ui.unlock import UnlockDialog, _recovery_slot_damaged
+
+    _vault_path, sidecar_path = paths
+    code = create_vault(service)
+    keep_recovery_key(service, code)
+    service.lock()
+
+    damaged = read_v2_sidecar(sidecar_path)
+    damaged["slots"][SLOT_RECOVERY]["nonce_hex"] = "00" * 4
+    sidecar_path.write_text(json.dumps(damaged), encoding="utf-8")
+
+    dialog = UnlockDialog(service)
+    qtbot.addWidget(dialog)
+    field = require_seam(dialog, "_recovery_code", "§ 4.6: the recovery input.")
+    submit = require_seam(
+        dialog, "_on_recovery_unlock", "§ 4.6: the recovery route's submit handler."
+    )
+    error = require_seam(dialog, "_error", "§ 6: the dialog's single error surface.")
+
+    field.setText(code)
+    submit()
+
+    assert error.text() == _recovery_slot_damaged(), (
+        "the recovery route reported a DAMAGED slot with the message for an "
+        "ABSENT one. The user's saved code is real and their record of it is "
+        "broken; telling them no code is set denies the first and hides the "
+        "second, and names no way forward (FIBR-0310 R5).\n"
+        f"  expected: {_recovery_slot_damaged()!r}\n"
+        f"  actual:   {error.text()!r}"
     )
