@@ -118,6 +118,13 @@ class UnlockDialog(QDialog):
     # construction, no working password; leaving them unlocked with no way back
     # in tomorrow reproduces the problem one day later.
     recovery_unlocked = Signal()
+    # The dialog's observable "that attempt failed" event. **Nothing in the
+    # shell connects it and nothing should**: a failed unlock is entirely this
+    # dialog's business — it sets the error text and stays open for a retry —
+    # so a shell slot would have no work to do. It is emitted on every failure
+    # branch below, each one beside the message it pairs with, which is what
+    # lets a test assert the branch it drove. Kept deliberately rather than
+    # deleted (FIBR-0310 P10); FIBR-0051 D2 says the re-homed dialog keeps it.
     unlock_failed = Signal()
     # "Forgot password? Restore from a backup" — the shell owns the pre-login
     # restore flow (FIBR-0014 INV-8/D5).
