@@ -8,7 +8,7 @@ likely intact and mispaired -- so § 6 forbids offering the destructive reset
 from it, and ``ui/unlock.py`` carries a message written for exactly this state.
 
 Why this exists: ``auth._open_with`` reported the second as the first, which
-left ``_PAIRING_BROKEN`` unreachable and put "Start over" in front of a user
+left ``_pairing_broken()`` unreachable and put "Start over" in front of a user
 whose vault was recoverable (FIBR-0307 finding 2).
 """
 
@@ -105,7 +105,7 @@ def test_the_unlock_dialog_names_the_broken_pairing(
     it keys on -- so the words a mispaired user needed were dead code while the
     generic "check your password and try again" was what they got.
     """
-    from finbreak.ui.unlock import _PAIRING_BROKEN, UnlockDialog
+    from finbreak.ui.unlock import UnlockDialog, _pairing_broken
 
     create_vault(service)
     service.lock()
@@ -130,12 +130,12 @@ def test_the_unlock_dialog_names_the_broken_pairing(
     # rather than on a proxy that could return a turn early.
     qtbot.waitUntil(lambda: bool(failed), timeout=30_000)
 
-    assert error.text() == _PAIRING_BROKEN, (
+    assert error.text() == _pairing_broken(), (
         "§ 6: the slot unwrapped and SQLCipher still refused the DEK, so this "
         "is a broken pairing and not a wrong password. Telling the user to "
         "check their password sends them to the destructive reset with their "
         "data intact but mispaired -- which § 6 forbids in as many words.\n"
-        f"  expected: {_PAIRING_BROKEN!r}\n"
+        f"  expected: {_pairing_broken()!r}\n"
         f"  actual:   {error.text()!r}"
     )
 

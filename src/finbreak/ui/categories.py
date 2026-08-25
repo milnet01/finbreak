@@ -37,7 +37,6 @@ from finbreak.models import Category
 from finbreak.services.auth import AuthService
 from finbreak.services.categories import CategoryService
 from finbreak.ui._widgets import (
-    _LABEL_CONTEXT,
     category_type_labels,
     select_combo_data,
 )
@@ -325,9 +324,9 @@ class CategoriesWidget(QWidget):
     def _reparent_label(type_label: str, name: str) -> str:
         """A ``"Type › Category"`` label for a Level-2 re-parent target, translatable
         via the one shared ``_LABEL_CONTEXT`` (never a hardcoded separator)."""
-        return QCoreApplication.translate(_LABEL_CONTEXT, "{parent} › {row}").format(
-            parent=type_label, row=name
-        )
+        return QCoreApplication.translate(
+            "CategoryTypeLabels", "{parent} › {row}"
+        ).format(parent=type_label, row=name)
 
     def _select_category(self, category_id: int) -> None:
         """Select the tree item for ``category_id`` anywhere in the tree, walked

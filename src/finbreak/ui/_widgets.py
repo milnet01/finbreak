@@ -38,9 +38,11 @@ def category_type_labels() -> dict[str, str]:
     ``CategoryKind`` token (FIBR-0123 INV-4). The token is the structural key;
     only the value is translated, under the one fixed ``_LABEL_CONTEXT``."""
     return {
-        CategoryKind.INCOME.value: QCoreApplication.translate(_LABEL_CONTEXT, "Income"),
+        CategoryKind.INCOME.value: QCoreApplication.translate(
+            "CategoryTypeLabels", "Income"
+        ),
         CategoryKind.EXPENDITURE.value: QCoreApplication.translate(
-            _LABEL_CONTEXT, "Expenditure"
+            "CategoryTypeLabels", "Expenditure"
         ),
     }
 
@@ -67,8 +69,8 @@ def add_grouped_categories(
     moves to the first enabled row; an already-selectable current (e.g. the
     picker's ``Uncategorised``) is left untouched."""
     labels = category_type_labels()
-    row_tag = QCoreApplication.translate(_LABEL_CONTEXT, "{name} ({type})")
-    breadcrumb = QCoreApplication.translate(_LABEL_CONTEXT, "{parent} › {row}")
+    row_tag = QCoreApplication.translate("CategoryTypeLabels", "{name} ({type})")
+    breadcrumb = QCoreApplication.translate("CategoryTypeLabels", "{parent} › {row}")
     parent_names = parent_names or {}
     for token, categories in grouped:
         if not categories:

@@ -35,17 +35,12 @@ from finbreak.services.auth import DEFAULT_CLIPBOARD_CLEAR_SECONDS, AuthService
 from finbreak.services.recovery_code import generate_code
 from finbreak.ui._clipboard import ClipboardAutoClear
 
-_TR_CONTEXT = "RecoveryKey"
-
-
-def _tr(text: str) -> str:
-    """Translate a string from a module-level function.
-
-    ``QObject.tr`` needs an instance; these helpers are functions, so the
-    translation goes through ``QCoreApplication.translate`` with an explicit
-    context — the standard Qt idiom for exactly this case.
-    """
-    return QCoreApplication.translate(_TR_CONTEXT, text)
+# ``QObject.tr`` needs an instance and several helpers here are module-level
+# functions, so their strings go through ``QCoreApplication.translate`` with an
+# explicit context. BOTH arguments are written out at every call. Measured
+# 2026-08-25: pyside6-lupdate extracts neither a constant context nor a call
+# routed through a wrapper function, so the one-argument `_tr` helper this
+# replaces produced an empty catalog for all eight of its sites (FIBR-0310 R3).
 
 
 class RecoveryCodeDialog(QDialog):
@@ -265,10 +260,12 @@ def keep_recovery_code(
     except Exception as exc:  # a failed re-wrap must be visible, not silent
         QMessageBox.warning(
             parent,
-            _tr("Could not save the recovery code"),
-            _tr("finbreak could not store your recovery code: {error}").format(
-                error=exc
+            QCoreApplication.translate(
+                "RecoveryKey", "Could not save the recovery code"
             ),
+            QCoreApplication.translate(
+                "RecoveryKey", "finbreak could not store your recovery code: {error}"
+            ).format(error=exc),
         )
         return False
     return True
@@ -338,8 +335,10 @@ def _confirm_master_password(service: AuthService, parent: QWidget | None) -> bo
     """
     text, accepted = QInputDialog.getText(
         parent,
-        _tr("Confirm your master password"),
-        _tr("Enter your master password to change your recovery code."),
+        QCoreApplication.translate("RecoveryKey", "Confirm your master password"),
+        QCoreApplication.translate(
+            "RecoveryKey", "Enter your master password to change your recovery code."
+        ),
         QLineEdit.EchoMode.Password,
     )
     if not accepted:
@@ -360,8 +359,8 @@ def _confirm_master_password(service: AuthService, parent: QWidget | None) -> bo
         buffer[:] = bytes(len(buffer))
     QMessageBox.warning(
         parent,
-        _tr("Wrong password"),
-        _tr("That password is not correct."),
+        QCoreApplication.translate("RecoveryKey", "Wrong password"),
+        QCoreApplication.translate("RecoveryKey", "That password is not correct."),
     )
     return False
 
@@ -392,13 +391,14 @@ def remove_recovery_key(service: AuthService, parent: QWidget | None = None) -> 
     """
     answer = QMessageBox.question(
         parent,
-        _tr("Remove your recovery code?"),
-        _tr(
+        QCoreApplication.translate("RecoveryKey", "Remove your recovery code?"),
+        QCoreApplication.translate(
+            "RecoveryKey",
             "Your recovery code will stop working immediately, and the copy you "
             "saved will be useless.\n\nAfter this, your master password is the "
             "only thing that can open your vault. If you forget it, your data "
             "cannot be recovered — restoring a backup or starting over would be "
-            "the only options left."
+            "the only options left.",
         ),
         QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         QMessageBox.StandardButton.No,

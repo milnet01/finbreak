@@ -8920,6 +8920,45 @@ is a future error tomorrow.
   Source: close-phase-2026-08-21 (review-code lane 1 + lane 2, FIBR-0019 close).
   Lanes: crypto, security.
 
+- 📋 [FIBR-0311] **services/pdf_export.py's translated strings extract to an empty catalog.**
+  The module routes 30 user-facing strings through a one-argument `_tr(text)`
+  wrapper, and pyside6-lupdate extracts nothing through a wrapper -- measured
+  2026-08-25 on a probe file. Its own docstring claims the opposite: "keeps every
+  user-facing string translatable".
+
+  Not fixed with the rest of FIBR-0310 R3 because the mechanical inline makes the
+  file worse: a third of the sites sit inside f-strings, where
+  `QCoreApplication.translate("PdfExport", "Income")` blows the 88-column limit
+  and the HTML becomes unreadable. The fix is to hoist the labels to locals
+  before each f-string, which is a readability refactor of the PDF renderer
+  rather than the plumbing change R3 was.
+
+  tests/features/i18n/ excludes this file BY NAME and carries a leg that goes RED
+  once it conforms, so the exclusion cannot outlive the work. Closing this item
+  means deleting `_KNOWN_OFFENDER`, its use, and that leg.
+  **Layman:** The PDF report's labels look translated in the code but would come out in English in every language.
+  Kind: refactor.
+  Source: in-session-2026-08-25 (FIBR-0310 R3).
+
+- 📋 [FIBR-0312] **tests/features/recovery_key/spec.md still says the suite is expected to fail.**
+  The spec carries a "## Status -- this suite is expected to FAIL" section
+  stating that FIBR-0019 is not implemented and that keywrap.py,
+  services/recovery_code.py, services/vault_migration.py and the two AuthService
+  methods "exist only as stubs raising NotImplementedError". All of them are
+  implemented and the suite is green.
+
+  The section's advice is still worth keeping in some form -- "do not adjust an
+  assertion to make one pass" -- but its premise is false, and a reader checking
+  whether the feature exists gets the wrong answer from the document written to
+  tell them.
+
+  Also stale in the same file: "Only Add is exercised, by INV-12; the other two
+  carry no invariant in section 5 and adding tests for them would be scope
+  creep". FP02 and FP03 both added Replace / Remove tests.
+  **Layman:** A test document still says the recovery-key feature is not built yet. It is.
+  Kind: doc-fix.
+  Source: in-session-2026-08-25 (noticed during FIBR-0310).
+
 ## How to add an item
 
 1. Allocate the next ID:

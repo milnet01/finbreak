@@ -102,6 +102,9 @@ _NO_PROSE = frozenset(
         # the project's top-level .gitignore -- the real file's presence or
         # contents never affects the result.
         "gitignore",
+        # Walks src/finbreak/*.py with ast, and plants its own probe file in
+        # tmp_path -- no tracked document is read or required to exist.
+        "i18n",
         "import_",
         "import_back_step",
         "import_column_detect",

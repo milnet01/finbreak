@@ -20,7 +20,7 @@ import logging
 import math
 from datetime import UTC, datetime
 
-from PySide6.QtCore import QTimer, Signal, Slot
+from PySide6.QtCore import QCoreApplication, QTimer, Signal, Slot
 from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
     QDialog,
@@ -47,30 +47,52 @@ from finbreak.ui._worker import DeriveWorker
 
 log = logging.getLogger(__name__)
 
-# Shown when a credential unwrapped its slot and the resulting key still did not
-# open the database (§ 6). Single-homed: both routes render the same words.
-_PAIRING_BROKEN = (
-    "finbreak unlocked this vault's key record, but the vault file itself "
-    "could not be opened — the two do not belong together, or the vault file "
-    "is damaged. If you have a backup, restore it."
-)
+# These four are FUNCTIONS rather than string constants, and that is what makes
+# them translatable. `self.tr(SOME_CONSTANT)` extracts to nothing — measured
+# 2026-08-25, pyside6-lupdate reads only literal arguments — so as constants
+# these four shipped as permanently untranslatable text (FIBR-0310 R3). A
+# function keeps the single copy the sharing needs while putting a literal where
+# lupdate can see it; the context is spelled to match `UnlockDialog.tr`.
+
+
+def _pairing_broken() -> str:
+    """A credential unwrapped its slot and the key still did not open the
+    database (§ 6). Single-homed: both routes render the same words."""
+    return QCoreApplication.translate(
+        "UnlockDialog",
+        "finbreak unlocked this vault's key record, but the vault file itself "
+        "could not be opened — the two do not belong together, or the vault file "
+        "is damaged. If you have a backup, restore it.",
+    )
+
 
 # § 13.3's terminal branch, where a verified pre-upgrade copy is beside the
 # vault. Offering it is "the whole return on D8" — the alternative is the
 # refusal above, with the user's own vault sitting in the same folder.
-_ROLLBACK_TITLE = "Restore the copy from before the update?"
-_ROLLBACK_OFFER = (
-    "finbreak could not open this vault, but it kept a copy of it from "
-    "before the last update finished — and your password opens that copy.\n\n"
-    "Restore it? Your accounts and transactions come back as they were "
-    "before the update, and finbreak will ask for your password again to "
-    "open them.\n\n"
-    "Nothing is deleted if you say No — you can do this next time instead."
-)
-_ROLLBACK_RESTORED = (
-    "The copy from before the update has been restored. Enter your password "
-    "again to open it."
-)
+def _rollback_title() -> str:
+    return QCoreApplication.translate(
+        "UnlockDialog", "Restore the copy from before the update?"
+    )
+
+
+def _rollback_offer() -> str:
+    return QCoreApplication.translate(
+        "UnlockDialog",
+        "finbreak could not open this vault, but it kept a copy of it from "
+        "before the last update finished — and your password opens that copy.\n\n"
+        "Restore it? Your accounts and transactions come back as they were "
+        "before the update, and finbreak will ask for your password again to "
+        "open them.\n\n"
+        "Nothing is deleted if you say No — you can do this next time instead.",
+    )
+
+
+def _rollback_restored() -> str:
+    return QCoreApplication.translate(
+        "UnlockDialog",
+        "The copy from before the update has been restored. Enter your password "
+        "again to open it.",
+    )
 
 
 class UnlockDialog(QDialog):
@@ -333,7 +355,7 @@ class UnlockDialog(QDialog):
             self.unlock_failed.emit()
             return
         except VaultStateError:
-            self._error.setText(self.tr(_PAIRING_BROKEN))
+            self._error.setText(_pairing_broken())
             self.unlock_failed.emit()
             return
         if unlocked:
@@ -362,7 +384,7 @@ class UnlockDialog(QDialog):
             # Give it its own message — it is indistinguishable to the user from
             # a wrong password, and the consequences differ absolutely, so the
             # destructive reset is never suggested from this state (§ 6).
-            self._error.setText(self.tr(_PAIRING_BROKEN))
+            self._error.setText(_pairing_broken())
             self.unlock_failed.emit()
             return
         except SchemaVersionError:
@@ -400,13 +422,13 @@ class UnlockDialog(QDialog):
         """
         answer = QMessageBox.question(
             self,
-            self.tr(_ROLLBACK_TITLE),
-            self.tr(_ROLLBACK_OFFER),
+            _rollback_title(),
+            _rollback_offer(),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.Yes,
         )
         if answer != QMessageBox.StandardButton.Yes:
-            self._error.setText(self.tr(_PAIRING_BROKEN))
+            self._error.setText(_pairing_broken())
             self.unlock_failed.emit()
             return
         try:
@@ -417,10 +439,10 @@ class UnlockDialog(QDialog):
             # (restore_rollback_copy's order is what guarantees that), so the
             # honest report is the refusal, not a claim that it worked.
             log.exception("restoring the pre-upgrade copy failed")
-            self._error.setText(self.tr(_PAIRING_BROKEN))
+            self._error.setText(_pairing_broken())
             self.unlock_failed.emit()
             return
-        self._error.setText(self.tr(_ROLLBACK_RESTORED))
+        self._error.setText(_rollback_restored())
         # Not `unlocked`: the vault is v1 again and still shut. The user types
         # their password once more and takes the ordinary v1 route (D2).
         self.unlock_failed.emit()
