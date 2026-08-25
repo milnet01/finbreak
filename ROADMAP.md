@@ -4754,6 +4754,20 @@ lands on top.
   retrofitting it later is a full re-encrypt migration over real
   financial data. So the blocker list stands at four, unchanged,
   with FIBR-0019 as the long pole and the only one needing a spec.
+  Blocker status (2026-08-25): THREE remain, not four. FIBR-0237
+  (SECURITY.md + CODE_OF_CONDUCT.md) is ✅ — both files are in the tree —
+  so the list above is stale on that one line and is not re-edited here,
+  because the bullet records the decision as it was taken.
+
+  Still blocking: FIBR-0019 (recovery key), FIBR-0208 (AppImage
+  libxkbcommon segfault), FIBR-0217 (dark-theme PDF page numbers). Plus
+  FIBR-0300's badge wording, to be picked against versioning.md § 5.
+
+  FIBR-0019 is further from done than its 🚧 suggests. FP02 closed all
+  thirteen of its review findings, then its own close attempt was BLOCKED:
+  review-code found nine defects FP02 itself introduced, now FP03
+  (FIBR-0310). FIBR-0019 returns to ✅ only when that chain closes clean.
+  The other two blockers are small self-contained defects.
   **Layman:** The plan for calling the app finished: what has to be true first, and which four jobs are standing in the way.
   Kind: release.
   Source: user-decision-2026-08-20 ("what gets us to v1.0?").
@@ -5464,6 +5478,26 @@ because retrofitting them is a data migration.
   set_hint.py's docstring names the pre-INV-11 call chain; _open_dialog
   could enforce the one-modal invariant itself instead of trusting eleven
   callers to remember, which is exactly what FP02 finding 10 was.
+  Work this from a FRESH context, and dispatch the review from one too.
+
+  The reason is measured rather than cautious. The session that wrote FP02
+  also reviewed it, twice — it ran the lanes that produced this list, and
+  nine of the findings are its own regressions. A reviewer sharing the
+  author's mental model is exactly what review-code's own rule about
+  same-session authorship warns of, and this pass is the evidence. Two of
+  the nine are tests that passed while the fix they covered was inert.
+
+  So: read the findings from this bullet rather than from a session that
+  remembers writing them, and when FP03 itself is reviewed, use a fresh
+  session or /code-review ultra (user-triggered — an agent cannot launch
+  it). If the same context both fixes and reviews a third time, expect the
+  same class of miss.
+
+  Order matters for two items. P1 is UNVERIFIED — measure the Windows
+  os.fsync behaviour before building anything on it; the Windows box at
+  `ssh wintest` has no Python installed, so that is not the route.
+  R1 is the opposite: measured and confirmed, so it needs no repro, only
+  a fix and a test that lets the timer fire.
   **Layman:** The recovery-key fixes were reviewed again, and the review found nine places where those very fixes fell short — plus a dozen older problems around them.
   Kind: review-fix.
   Source: close-phase-2026-08-25 (check-code + 4 review-code lanes over 2689463..HEAD).
