@@ -5597,6 +5597,36 @@ because retrofitting them is a data migration.
   Next: P2, then P5, P6, P7, P10, P12. P8, P9 and P11 are spec work --
   P9 (security-model T13) and P11 (FIBR-0014's on_key roles) go to
   review-contract.
+  Progress (2026-08-25): P2, P5, P6 and P7 done and pushed. Seven of the
+  twelve pre-existing findings are now closed (P1 to P7), on top of all
+  nine regressions. Full gate green at each push; the last was 2036 passed
+  / 2 skipped.
+
+  P2 -- crypto._MALFORMED_SIDECAR is the shared tuple both readers use.
+  Measured: non-UTF-8 bytes raise UnicodeDecodeError out of read_text
+  BEFORE json sees them (so being a ValueError subclass does not help) and
+  200k nested brackets raise RecursionError, which is not a ValueError at
+  all. backup.py's two tuples gained what they lacked -- the manifest half
+  already caught UnicodeDecodeError while the params half, the same file
+  through a different reader, did not.
+
+  P5 -- backup._install now moves the incumbent's -wal / -shm aside with
+  its database, stamp BEFORE suffix so the .old set is a coherent SQLite
+  triple (vault.db.<stamp>.old-wal is the name SQLite looks for). Moved,
+  never unlinked.
+
+  P6 -- _finish_if_readable gates S6's deletion of the .pre-v2 pair on
+  _reads_end_to_end (open + PRAGMA integrity_check) rather than on _opens.
+  A vault that opens but does not read keeps BOTH the copy and the pending
+  flag. The full read is paid only while migration_pending is set.
+
+  P7 -- Vault.open takes migrate=False, and _opens passes it. The probe was
+  running run_migrations, which COMMITS, so branch 3 wrote schema changes
+  to the live v1 database before any rollback copy existed.
+
+  REMAINING: P8, P10, P12 are code. P9 and P11 are spec changes and go to
+  review-contract, not to a code fix. Then FP03's own close, steps 5 to 9 --
+  and the fresh-context rule above applies to that review.
   **Layman:** The recovery-key fixes were reviewed again, and the review found nine places where those very fixes fell short — plus a dozen older problems around them.
   Kind: review-fix.
   Source: close-phase-2026-08-25 (check-code + 4 review-code lanes over 2689463..HEAD).
