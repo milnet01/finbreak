@@ -5677,7 +5677,7 @@ because retrofitting them is a data migration.
   Kind: review-fix.
   Source: close-phase-2026-08-25 (check-code + 4 review-code lanes over 2689463..HEAD).
 
-- 📋 [FIBR-0313] **FP04 — fix-pass after FP03: one critical migration dead-end, four high, and a long tail.**
+- 🚧 [FIBR-0313] **FP04 — fix-pass after FP03: one critical migration dead-end, four high, and a long tail.**
   check-code was clean on this scope: semgrep clean on both rulesets, bandit
   clean in src/ below the gate's threshold, no typo on an FP03-authored line.
   Its one finding (pyright reportOptionalSubscript,
