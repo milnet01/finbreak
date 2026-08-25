@@ -250,7 +250,7 @@ class BackupService:
                     on_key("dek", dek)
                     backup_vault.rekey(dek)  # not a copy — see open() below
                     wrapped = wrap_dek(
-                        bytes(master_key), bytes(dek), SLOT_MASTER, master_params
+                        master_key, bytes(dek), SLOT_MASTER, master_params
                     )
                     # `cipher_compatibility` is recorded for the same reason
                     # the migration records it (FIBR-0019 § 13.2): the database

@@ -64,33 +64,36 @@ def slot_aad(slot: str, params: KdfParams) -> bytes:
     ).encode("utf-8")
 
 
-def wrap_dek(kek: bytes, dek: bytes, slot: str, params: KdfParams) -> Slot:
+def wrap_dek(kek: bytes | bytearray, dek: bytes, slot: str, params: KdfParams) -> Slot:
     """Wrap ``dek`` under ``kek`` into ``slot``, authenticated by ``slot_aad``.
 
-    **Two** un-wipeable copies per wrap, and NEITHER is made in this frame.
-    ``dek`` and ``kek`` are both annotated ``bytes``, so every caller converts
-    before the call — ``wrap_dek(bytes(kek), bytes(dek), ...)`` at all four
-    sites. The ``bytes(dek)`` written below is therefore a no-op: measured
-    2026-08-25, ``bytes(b) is b`` for a ``bytes`` argument, so it returns the
-    object it was given and the copy the sentence describes was already made,
-    in the caller's frame, where the ``finally`` that wipes the bytearray does
-    not reach it (FIBR-0310 R6).
+    **The KEK is not copied here and callers must not copy it either.** It is
+    annotated ``bytes | bytearray`` so a caller holding the wipeable buffer
+    ``derive_key`` returns passes that buffer straight through; the old
+    ``bytes`` annotation forced ``wrap_dek(bytes(kek), ...)`` at every site,
+    and that copy landed in the *caller's* frame, out of reach of the
+    ``finally`` that wipes the bytearray beside several of them. INV-3 names
+    every KEK, so the copy was an INV-3 breach at eight sites (FIBR-0310 P8).
+    ``AESGCM`` takes the buffer and copies the key into its own context —
+    measured on the pinned ``cryptography`` 50.0.0: an ``AESGCM`` built from a
+    bytearray still decrypts after that bytearray is zeroed. That residual copy
+    is OpenSSL's and is not reachable from Python.
 
-    The KEK half matters as much as the DEK half and went unstated: INV-3 names
-    every KEK, and several call sites sit beside a ``finally`` that wipes their
-    bytearray and misses the copy passed here. Whether the annotation should be
-    widened so no copy is needed at all is FIBR-0310 P8, not this docstring.
+    **The DEK half is different and is left as it is.** ``dek`` stays ``bytes``,
+    so every caller converts before the call and the ``bytes(dek)`` written
+    below is a no-op: measured 2026-08-25, ``bytes(b) is b`` for a ``bytes``
+    argument, so the copy was already made in the caller's frame (FIBR-0310 R6).
 
     :func:`unwrap_dek` has the mirror of it — AESGCM returns immutable
     ``bytes``, which is copied into the wipeable buffer it hands back, leaving
     the original in the heap. All of them survive lock and auto-lock.
 
-    **This is FIBR-0004 D5's accepted best-effort gap, and it is recorded here
-    rather than fixed** (decided by the user 2026-08-21, FIBR-0307). D5's
-    wording describes this exact shape: a primitive returns immutable
-    ``bytes``, the value is copied into a ``bytearray`` and the original
-    reference dropped. ``crypto.derive_key`` carries the identical note on
-    ``bytes(password)``.
+    **That DEK copy is FIBR-0004 D5's accepted best-effort gap, and it is
+    recorded here rather than fixed** (decided by the user 2026-08-21,
+    FIBR-0307). D5's wording describes this exact shape: a primitive returns
+    immutable ``bytes``, the value is copied into a ``bytearray`` and the
+    original reference dropped. ``crypto.derive_key`` carries the identical
+    note on ``bytes(password)``.
 
     Two things make it worth having decided rather than inherited, so the next
     reviewer does not re-raise it. The gap D5 accepted is the PASSWORD, and
@@ -109,7 +112,9 @@ def wrap_dek(kek: bytes, dek: bytes, slot: str, params: KdfParams) -> Slot:
     )
 
 
-def unwrap_dek(kek: bytes, slot_data: Slot, slot: str, params: KdfParams) -> bytearray:
+def unwrap_dek(
+    kek: bytes | bytearray, slot_data: Slot, slot: str, params: KdfParams
+) -> bytearray:
     """Unwrap ``slot_data`` with ``kek``, or ``KeyUnwrapError``.
 
     Returns a wipeable ``bytearray`` (``security-model.md`` INV-3 — an

@@ -439,7 +439,7 @@ def _convert(
         replacement.close()
 
     step("S3")
-    wrapped = wrap_dek(bytes(kek_master), bytes(dek), SLOT_MASTER, params)
+    wrapped = wrap_dek(kek_master, bytes(dek), SLOT_MASTER, params)
     pending = replace(
         new_sidecar(params, {SLOT_MASTER: SlotRecord.from_wrap(params.salt, wrapped)}),
         migration_pending=True,

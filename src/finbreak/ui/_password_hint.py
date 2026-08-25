@@ -118,7 +118,7 @@ def validate_hint_with_recovery(hint: str, password: str) -> None:
     for candidate in candidates:
         kek = derive_key(bytearray(decode(candidate)), params.salt, params)
         try:
-            dek = unwrap_dek(bytes(kek), record.wrapped, SLOT_RECOVERY, params)
+            dek = unwrap_dek(kek, record.wrapped, SLOT_RECOVERY, params)
         except KeyUnwrapError:
             continue
         finally:

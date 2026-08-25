@@ -283,7 +283,7 @@ class AuthService:
                 CURRENCY_EXPONENTS[base_currency],
                 write_sidecar=False,
             )
-            wrapped = wrap_dek(bytes(kek_master), bytes(dek), SLOT_MASTER, params)
+            wrapped = wrap_dek(kek_master, bytes(dek), SLOT_MASTER, params)
             write_sidecar_v2(
                 self._sidecar_path,
                 new_sidecar(
@@ -384,7 +384,7 @@ class AuthService:
         params = sidecar.params_with_salt(secrets.token_bytes(SALT_LEN))
         kek = bytearray(derive_raw(secret, params))
         try:
-            wrapped = wrap_dek(bytes(kek), bytes(self._key), slot, params)
+            wrapped = wrap_dek(kek, bytes(self._key), slot, params)
         finally:
             _wipe(kek)
         write_sidecar_v2(
@@ -453,7 +453,7 @@ class AuthService:
             validate_slot(sidecar, slot)
             try:
                 dek = unwrap_dek(
-                    bytes(kek),
+                    kek,
                     sidecar.slots[slot].wrapped,
                     slot,
                     sidecar.params_for(slot),
@@ -535,7 +535,7 @@ class AuthService:
         sidecar = read_sidecar_v2(self._sidecar_path)
         try:
             dek = unwrap_dek(
-                bytes(key),
+                key,
                 sidecar.slots[SLOT_MASTER].wrapped,
                 SLOT_MASTER,
                 sidecar.params_for(SLOT_MASTER),
@@ -618,7 +618,7 @@ class AuthService:
             sidecar = read_sidecar_v2(self._sidecar_path)
             try:
                 dek = unwrap_dek(
-                    bytes(raw),
+                    raw,
                     sidecar.slots[SLOT_MASTER].wrapped,
                     SLOT_MASTER,
                     sidecar.params_for(SLOT_MASTER),

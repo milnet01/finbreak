@@ -247,9 +247,16 @@ testable headless:
 SLOT_MASTER = "master"
 SLOT_RECOVERY = "recovery"
 
-def wrap_dek(kek: bytes, dek: bytes, slot: str, params: KdfParams) -> Slot: ...
-def unwrap_dek(kek: bytes, slot_data: Slot, slot: str, params: KdfParams) -> bytearray: ...
+def wrap_dek(kek: bytes | bytearray, dek: bytes, slot: str, params: KdfParams) -> Slot: ...
+def unwrap_dek(kek: bytes | bytearray, slot_data: Slot, slot: str, params: KdfParams) -> bytearray: ...
 ```
+
+`kek` admits a `bytearray` so a caller passes the wipeable buffer `derive_key`
+returns straight through. A `bytes` annotation would force `bytes(kek)` at each
+site, and that copy lands in the *caller's* frame, out of reach of the `finally`
+that wipes the bytearray — an INV-3 breach at eight sites, amended here to match
+what shipped (FIBR-0310 P8). `dek` stays `bytes`: that copy is FIBR-0004 D5's
+accepted gap, recorded in `wrap_dek`'s docstring.
 
 `unwrap_dek` raises `KeyUnwrapError` (new, in `finbreak.errors`) on any
 authentication failure. It never distinguishes "wrong credential" from

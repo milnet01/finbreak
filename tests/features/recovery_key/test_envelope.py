@@ -11,9 +11,11 @@ replaces it.
 
 from __future__ import annotations
 
+import ast
 import json
 from collections.abc import Iterator
 from pathlib import Path
+from typing import get_args, get_type_hints
 
 import pytest
 from _recovery_helpers import (
@@ -31,11 +33,14 @@ from _recovery_helpers import (
 
 from finbreak.crypto import KEY_LEN, load_and_validate_params
 from finbreak.errors import KdfPolicyError, KeyUnwrapError
-from finbreak.keywrap import SLOT_MASTER, SLOT_RECOVERY, unwrap_dek
+from finbreak.keywrap import SLOT_MASTER, SLOT_RECOVERY, unwrap_dek, wrap_dek
 from finbreak.services.auth import AuthService
 from finbreak.services.recovery_code import decode, normalise
 
 pytestmark = pytest.mark.features
+
+_SRC_ROOT = Path(__file__).resolve().parents[3] / "src" / "finbreak"
+_WRAPPERS = frozenset({"wrap_dek", "unwrap_dek"})
 
 
 @pytest.fixture
@@ -246,3 +251,82 @@ def test_tampered_slot_fails_closed(
             SLOT_MASTER,
             slot_params(renamed, SLOT_MASTER),
         )
+
+
+# --------------------------------------------------------------------------- #
+# INV-3 — no un-wipeable KEK copy at a call site (FIBR-0310 P8)
+# --------------------------------------------------------------------------- #
+
+
+def _kek_arg(node: ast.Call) -> tuple[str, ast.expr] | None:
+    """A ``wrap_dek`` / ``unwrap_dek`` call as ``(name, kek argument)``, or None."""
+    if not isinstance(node.func, ast.Name) or node.func.id not in _WRAPPERS:
+        return None
+    for keyword in node.keywords:
+        if keyword.arg == "kek":
+            return node.func.id, keyword.value
+    return (node.func.id, node.args[0]) if node.args else None
+
+
+def _is_bytes_call(node: ast.expr) -> bool:
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "bytes"
+    )
+
+
+def test_no_call_site_copies_the_kek_into_bytes(service: AuthService) -> None:
+    """``security-model.md`` INV-3 — **every** KEK is wiped after use.
+
+    ``bytes(kek)`` at a call site defeats that: it makes an immutable copy in
+    the CALLER's frame, which the ``finally: _wipe(kek)`` beside several of
+    these sites cannot reach. The copy outlives the wipe and sits in the heap
+    until the allocator reuses it. Eight production sites did this, because
+    ``keywrap``'s ``kek: bytes`` annotation left them no other conforming
+    option (FIBR-0310 P8).
+
+    Three legs, and only the first two discriminate -- Python does not enforce
+    an annotation, so a ``bytearray`` reaches ``AESGCM`` either way and a purely
+    functional test passes against the defect.
+
+    SCOPE: the ``kek`` argument only. ``bytes(dek)`` is FIBR-0004 D5's accepted
+    best-effort gap, decided by the user 2026-08-21 and recorded in
+    ``wrap_dek``'s docstring; this guard must not fire on it.
+    """
+    # Leg 1 -- the annotation admits a bytearray, so a caller CAN pass one.
+    for func in (wrap_dek, unwrap_dek):
+        hints = get_type_hints(func)
+        assert bytearray in get_args(hints["kek"]), (
+            f"{func.__name__}'s kek annotation is {hints['kek']!r}: a caller "
+            "holding a bytearray has to copy it to conform"
+        )
+
+    # Leg 2 -- and no production call site makes that copy anyway.
+    offences: list[str] = []
+    seen = 0
+    for path in sorted(_SRC_ROOT.rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            call = _kek_arg(node)
+            if call is None:
+                continue
+            name, kek_arg = call
+            seen += 1
+            if _is_bytes_call(kek_arg):
+                rel = path.relative_to(_SRC_ROOT.parents[1])
+                offences.append(f"{rel}:{kek_arg.lineno} {name}(bytes(...), ...)")
+    assert seen >= 8, f"the walk found only {seen} call sites -- it has gone blind"
+    assert not offences, "un-wipeable KEK copies:\n  " + "\n  ".join(offences)
+
+    # Leg 3 -- not a discriminator, but it is what makes legs 1 and 2 safe: the
+    # pinned cryptography wheel really does take a bytearray key, so widening
+    # the annotation is not a promise the runtime breaks.
+    params = service.new_params()
+    kek = bytearray(range(KEY_LEN))
+    dek = bytearray(b"\x5a" * KEY_LEN)
+    slot = wrap_dek(kek, bytes(dek), SLOT_MASTER, params)
+    kek[:] = bytes(KEY_LEN)  # the wipe the annotation used to defeat
+    assert unwrap_dek(bytearray(range(KEY_LEN)), slot, SLOT_MASTER, params) == dek
