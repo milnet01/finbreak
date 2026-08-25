@@ -162,6 +162,7 @@ class Vault:
         *,
         in_memory_temp: bool = False,
         cipher_compat: int | None = None,
+        migrate: bool = True,
     ) -> None:
         """Open the vault with the raw key; a wrong key / tamper raises here.
 
@@ -169,7 +170,19 @@ class Vault:
         ``run_migrations`` runs, so a restore's migration rebuilds spill no
         plaintext to a temp store (FIBR-0014 INV-1b). ``cipher_compat`` applies a
         recorded ``cipher_compatibility`` level (before ``cipher_use_hmac=ON``) so
-        an older `.fbk` opens under a library whose default differs (INV-13)."""
+        an older `.fbk` opens under a library whose default differs (INV-13).
+
+        ``migrate=False`` opens WITHOUT running the schema migrations, for a
+        caller asking whether the key fits rather than intending to use the
+        vault. ``vault_migration._opens`` is that caller and its docstring said
+        so — "a question, not a use" — while ``run_migrations`` COMMITTED schema
+        writes to the live v1 database, in § 13.3 branch 3, before any rollback
+        copy had been secured. INV-13 says no byte of the live pair moves until
+        a verified copy exists, and this was a byte of it (FIBR-0310 P7).
+
+        A probe that skips them still proves everything it is asked to: the
+        guard read below is what decrypts and HMAC-checks page 1, so a wrong key
+        or a flipped byte still raises."""
         conn = self._connect(
             key, in_memory_temp=in_memory_temp, cipher_compat=cipher_compat
         )
@@ -192,6 +205,8 @@ class Vault:
             conn.close()
             raise
         self._conn = conn
+        if not migrate:
+            return  # a question, not a use — see `migrate` above
         # Migrations run on unlock (design.md "Persistence"). A failure rolls
         # back inside the runner, leaving a re-openable vault at its old
         # version; drop the connection and re-raise so nothing uses a

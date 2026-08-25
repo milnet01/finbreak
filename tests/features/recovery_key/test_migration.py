@@ -1138,3 +1138,113 @@ def test_a_failing_fsync_abandons_the_migration_silently(
         "path this leg is about and the leg is asserting nothing.\n"
         f"  actual:   {read_sidecar(sidecar_path)}"
     )
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0310 P6/P7 — the resume ladder's two checks
+# --------------------------------------------------------------------------- #
+def test_branch_3_does_not_write_to_the_live_vault_before_the_copy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``_opens`` said "a question, not a use" and ran schema migrations.
+
+    ``Vault.open`` calls ``run_migrations``, which COMMITS. So § 13.3 branch 3
+    asked "does KEK-master open this?" by WRITING to the live v1 database --
+    before ``_ensure_rollback_copy`` had secured anything. INV-13 says no byte
+    of the live pair moves until a verified copy exists (FIBR-0310 P7).
+    """
+    vault_path, sidecar_path, key, _digests = _fresh_v1_vault(tmp_path, "no-write")
+
+    def abort_before_s5(step: str) -> None:
+        if step == "S5":
+            raise _Abort("injected crash before S5")
+
+    with pytest.raises(_Abort):
+        migrate_to_v2(vault_path, sidecar_path, bytearray(key), on_step=abort_before_s5)
+    _suffixed(vault_path, MIGRATING_SUFFIX).unlink()
+
+    # The copy S0 took is removed, so branch 3 must retake one -- which is the
+    # window P7 is about: the ladder has not secured anything yet.
+    copy_vault, copy_sidecar = rollback_copy_paths(vault_path, sidecar_path)
+    copy_vault.unlink()
+    copy_sidecar.unlink()
+
+    ran: list[str] = []
+    real_run = vault_migration.Vault
+
+    class Watched(real_run):  # type: ignore[misc, valid-type]
+        def open(self, *args: Any, **kwargs: Any) -> None:
+            if kwargs.get("migrate", True):
+                ran.append(str(self.vault_path))
+            super().open(*args, **kwargs)
+
+    monkeypatch.setattr(vault_migration, "Vault", Watched)
+
+    real_ensure = vault_migration._ensure_rollback_copy
+    seen_before_copy: list[str] = []
+
+    def watch_ensure(*args: Any, **kwargs: Any) -> None:
+        seen_before_copy.extend(ran)
+        real_ensure(*args, **kwargs)
+
+    monkeypatch.setattr(vault_migration, "_ensure_rollback_copy", watch_ensure)
+
+    open_after_restart(vault_path, sidecar_path, MASTER_PASSWORD).close()
+
+    assert seen_before_copy == [], (
+        "the ladder opened a database WITH migrations before the rollback copy "
+        "was secured, so schema writes were committed to the live v1 vault "
+        "with no route back. That is a byte of the live pair moving, which "
+        "INV-13 forbids until a verified copy exists.\n"
+        "  expected: no migrating open before _ensure_rollback_copy\n"
+        f"  actual:   {seen_before_copy}"
+    )
+
+
+def test_s6_keeps_the_copy_when_the_vault_does_not_read_end_to_end(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """S6 deletes the user's only route back, on the weaker of two checks.
+
+    Branches 1 and 2 proved the DEK OPENS the post-migration database, and
+    this module measured on 2026-08-24 how little that proves: SQLCipher HMACs
+    every page independently, so damage in the middle leaves page 1 perfectly
+    decryptable -- it opens, its schema reads, and every row is unreachable
+    (FIBR-0310 P6).
+
+    A vault that opens but does not read keeps BOTH the copy and the pending
+    flag, so the rollback is still offered and the next unlock arrives here
+    again.
+    """
+    vault_path, sidecar_path, key, _digests = _fresh_v1_vault(tmp_path, "s6-unreadable")
+
+    def abort_before_s6(step: str) -> None:
+        if step == "S6":
+            raise _Abort("injected crash before S6")
+
+    with pytest.raises(_Abort):
+        migrate_to_v2(vault_path, sidecar_path, bytearray(key), on_step=abort_before_s6)
+
+    copy_vault, copy_sidecar = rollback_copy_paths(vault_path, sidecar_path)
+    assert copy_vault.exists(), "precondition: S0's copy is on disk, S6 has not run."
+
+    # The vault opens and does not read. Interposed rather than byte-flipped so
+    # the leg is about the DECISION -- open-is-enough versus reads-end-to-end --
+    # rather than about how a particular page happens to fail.
+    monkeypatch.setattr(vault_migration, "_reads_end_to_end", lambda *a, **k: False)
+
+    open_after_restart(vault_path, sidecar_path, MASTER_PASSWORD).close()
+
+    assert copy_vault.exists() and copy_sidecar.exists(), (
+        "S6 deleted the pre-upgrade copy for a vault that opens but does not "
+        "read. That copy is the user's only route back, and it was burned on "
+        "the strength of page 1 decrypting.\n"
+        f"  expected: both of {copy_vault.name}, {copy_sidecar.name}\n"
+        f"  actual:   {copy_vault.exists()}, {copy_sidecar.exists()}"
+    )
+    assert read_sidecar(sidecar_path).get("migration_pending") is True, (
+        "the copy was kept but the flag was cleared, so nothing re-enters the "
+        "ladder and the rollback is never offered again.\n"
+        "  expected: migration_pending still True\n"
+        f"  actual:   {read_sidecar(sidecar_path)}"
+    )

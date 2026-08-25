@@ -154,17 +154,69 @@ def _opens(db_path: Path, key: bytearray, cipher_compat: int | None) -> bool:
     """``True`` iff ``key`` opens ``db_path``. Closes what it opens.
 
     ``in_memory_temp`` keeps the probe from converting the file's journal mode
-    or spilling plaintext to a temp store — this is a question, not a use.
+    or spilling plaintext to a temp store, and ``migrate=False`` keeps it from
+    running the schema migrations — this is a question, not a use.
+
+    That last one was the sentence's claim and not its behaviour.
+    ``Vault.open`` runs ``run_migrations``, which COMMITS, so § 13.3 branch 3
+    asked "does KEK-master open this?" by writing to the live v1 database —
+    before ``_ensure_rollback_copy`` had secured anything. INV-13 says no byte
+    of the live pair moves until a verified copy exists (FIBR-0310 P7).
     """
     if not db_path.exists():
         return False
     probe = Vault(db_path, db_path)
     try:
-        probe.open(bytearray(key), in_memory_temp=True, cipher_compat=cipher_compat)
+        probe.open(
+            bytearray(key),
+            in_memory_temp=True,
+            cipher_compat=cipher_compat,
+            migrate=False,
+        )
     except DatabaseError:
         return False
     probe.close()
     return True
+
+
+def _reads_end_to_end(db_path: Path, key: bytearray, cipher_compat: int | None) -> bool:
+    """``True`` iff ``key`` opens ``db_path`` AND every page of it reads back.
+
+    The strong form of :func:`_opens`, and the difference is the one
+    :func:`verify_rollback_copy` measured on 2026-08-24: SQLCipher HMACs every
+    page independently, so damage in the middle of a file leaves page 1
+    perfectly decryptable — it opens, its schema is intact, and every row is
+    unreachable.
+
+    S6 on the resume path DELETES the pre-upgrade copy, which is the user's
+    only route back, and branches 1 and 2 reached it having asked only
+    :func:`_opens` (FIBR-0310 P6). A full read costs a pass over the vault, and
+    it is paid only while ``migration_pending`` is set — after an interrupted
+    migration, once.
+    """
+    if not db_path.exists():
+        return False
+    probe = Vault(db_path, db_path)
+    try:
+        probe.open(
+            bytearray(key),
+            in_memory_temp=True,
+            cipher_compat=cipher_compat,
+            migrate=False,
+        )
+    except DatabaseError:
+        return False
+    try:
+        return bool(
+            probe.connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+        )
+    except (DatabaseError, MemoryError):
+        # A page whose HMAC fails surfaces as whatever the deferred error maps
+        # to; both were seen in the measurement above. Either way this file does
+        # not read end to end.
+        return False
+    finally:
+        probe.close()
 
 
 def write_rollback_copy(
@@ -569,6 +621,35 @@ def _finish_quietly(
         log.warning("migration resume: S6 bookkeeping did not complete: %s", exc)
 
 
+def _finish_if_readable(
+    sidecar_path: Path,
+    sidecar: VaultSidecar,
+    vault_path: Path,
+    dek: bytearray,
+    cipher_compat: int | None,
+) -> None:
+    """S6, but only once the vault it is about to burn the rollback for READS.
+
+    Branches 1 and 2 established that the DEK opens the post-migration
+    database, and S6 then deletes the ``.pre-v2`` pair — the user's only route
+    back — on the strength of that. Opening is the weaker check, and this
+    module measured how much weaker on 2026-08-24: a file damaged in the middle
+    opens with its schema intact and every row unreachable (FIBR-0310 P6).
+
+    A vault that opens but does not read keeps BOTH: the copy stays, and
+    ``migration_pending`` stays set, so the rollback is still offered and the
+    next unlock arrives here again. INV-7's contract is untouched — the caller
+    goes on to open the vault either way, which is what the user gets.
+    """
+    if not _reads_end_to_end(vault_path, dek, cipher_compat):
+        log.warning(
+            "migration resume: the vault opens but does not read end to end; "
+            "keeping the pre-upgrade copy and leaving the migration pending"
+        )
+        return
+    _finish_quietly(sidecar_path, sidecar, vault_path)
+
+
 def _ensure_rollback_copy(
     vault_path: Path, sidecar_path: Path, key: bytearray, sidecar: VaultSidecar
 ) -> None:
@@ -631,7 +712,7 @@ def resume(
     # 1 — the DEK opens the live database: the crash was after S5.
     if _opens(vault_path, dek, compat):
         log.info("migration resume: crash was after S5; finishing")
-        _finish_quietly(sidecar_path, sidecar, vault_path)
+        _finish_if_readable(sidecar_path, sidecar, vault_path, dek, compat)
         return
 
     # 2 — it opens the replacement instead: the crash was between S4 and S5.
@@ -639,7 +720,7 @@ def resume(
         if _opens(migrating_db, dek, compat):
             log.info("migration resume: crash was between S4 and S5; swapping")
             _swap_database(vault_path, migrating_db)
-            _finish_quietly(sidecar_path, sidecar, vault_path)
+            _finish_if_readable(sidecar_path, sidecar, vault_path, dek, compat)
             return
         migrating_db.unlink(missing_ok=True)
         _drop_wal_siblings(migrating_db)
