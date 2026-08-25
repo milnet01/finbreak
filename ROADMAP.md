@@ -5677,6 +5677,140 @@ because retrofitting them is a data migration.
   Kind: review-fix.
   Source: close-phase-2026-08-25 (check-code + 4 review-code lanes over 2689463..HEAD).
 
+- 📋 [FIBR-0313] **FP04 — fix-pass after FP03: one critical migration dead-end, four high, and a long tail.**
+  check-code was clean on this scope: semgrep clean on both rulesets, bandit
+  clean in src/ below the gate's threshold, no typo on an FP03-authored line.
+  Its one finding (pyright reportOptionalSubscript,
+  tests/features/backup/test_backup.py:835) does not survive -- the line is
+  pre-existing (FIBR-0033, 42bca98) and the assert above it fails first on
+  None, so it is unreachable with None. Verified by running the equivalent.
+
+  NOT re-filed, already filed: FIBR-0309 covers write_sidecar_json's missing
+  O_EXCL and its stale .tmp (its own fix text names the unlink) and the
+  missing directory fsync in write_sidecar_json and at S4/S5. It does NOT
+  reach backup.py's restore install or restore_rollback_copy -- those are M2
+  and M3 here.
+
+  THE PATTERN, found independently by three lanes: an FP03 fix that reached
+  some call sites and not all. R5's validate_slot rule skips its third
+  consumer; P7's migrate=False reached two probes of three; P5's .old-wal is
+  carried aside and never restored. FP03 was itself cleaning up nine
+  regressions of that class and produced three more. Second pattern, four
+  instances across three lanes: a docstring certifying behaviour the code does
+  not have -- the cost of writing prose beside the fix with nothing checking
+  it against the code.
+
+  C1. vault_migration.py:644-649 + :713-716 -- _finish_if_readable returns on
+      the not-readable path, so RollbackAvailableError is never raised. Branch
+      1 matches on every later unlock, so the user is unlocked forever into a
+      vault with unreachable rows while a verified .pre-v2 pair sits beside it
+      unmentioned. The docstring says "the rollback is still offered".
+      Verified: that error is raised only from resume's terminal branch, which
+      branch 1 makes unreachable. Fix: pass kek_master down and raise when
+      rollback_copy_is_usable; correct the docstring.
+  H1. vault_migration.py:719-724 -- branch 2 replaces the live v1 database on
+      _opens alone, with neither S2's integrity_check + row compare nor
+      _ensure_rollback_copy. _opens is this module's own weak check that "a
+      file damaged in the middle" passes. Main road into C1.
+  H2. vault_migration.py:316 + :541 -- verify_rollback_copy omits
+      migrate=False, so run_migrations commits schema writes into the artefact
+      it certifies; Vault.open's docstring (P7) states the rule it breaks.
+      SchemaVersionError is not in rollback_copy_is_usable's except tuple (MRO
+      is SchemaVersionError -> FinbreakError), so a function typed -> bool
+      propagates on the last-resort path. Both verified.
+  H3. auth.py:652-665 -- reset_vault unlinks four paths and leaves the
+      vault.db.<stamp>.old triple with its sidecar (written on every restore,
+      deleted by nothing) and the .pre-v2 pair. security-model.md INV-12 says
+      "no file of a deleted vault remains" and rests its accepted residual on
+      fragments being "useless without the (now-gone) key" -- an .old pair
+      opens under the password the user had before the restore. Either the
+      code or INV-12 moves.
+  H4. backup.py:485-491 vs main_window.py:1353-1354 -- _install carries the
+      incumbent's -wal aside (P5); _reconcile_interrupted_restore restores two
+      files and stops, so the recovery path drops committed frames. Filed
+      MEDIUM by the lane, raised here on the threat model: silent loss of the
+      user's most recent transactions.
+
+  M1. backup.py:62 -- MAX_BACKUP_DB_BYTES is enforced on restore only, so a
+      vault over 512 MiB exports, reports success, and can never be restored
+      on any machine. Deliberately not raised above MEDIUM: total consequence,
+      low reachability. Fix at export time, where the user still has the
+      vault.
+  M2. backup.py:498-499 -- the restore install is neither fsynced nor
+      directory-fsynced, while export_backup and vault_migration._fsync both
+      are.
+  M3. vault_migration restore_rollback_copy -- its two os.replace calls have
+      the same missing-fsync exposure, on the user's last-resort path.
+  M4. vault_migration.py:170,202,316,408,419 -- Vault.open never wipes the
+      bytearray handed to it, so each defensive copy is an orphaned 32-byte
+      live KEK/DEK; one resume through branch 3 mints up to eight.
+  M5. unlock.py:503-505 -- _show_failure is shared, so a recovery-code user is
+      told to check their password, on a screen offering a destructive reset.
+  M6. recovery_key.py:87-92 -- the clipboard-is-None branch parents the guard
+      to the dialog, which is R1 verbatim, endorsed by its own docstring. No
+      live caller today, but it is the constructor default and a test that
+      builds the dialog plainly exercises the broken shape as coverage.
+  M7. recovery_key.py:255 -- NewMasterPasswordDialog._on_submit has no
+      VaultLockedError arm, unlike its three siblings (:282, :379, :441, all
+      P12). The vault is open so the idle timer is live; the broad arm renders
+      an internal exception onto a dialog already being destroyed.
+  M8. crypto.py:404-415 vs ui/_password_hint.py:137 -- validate_slot's stated
+      contract has a third consumer that skips it; a damaged recovery slot
+      raises argon2 HashingError, which is not caught by the surrounding
+      except (KdfPolicyError, OSError) -- unhandled out of a Qt slot.
+  M9. crypto.py:283-301 -- VaultSidecar.to_dict() drops unknown v2 fields, and
+      the writers are read-modify-write, so an older build deletes what a
+      newer one wrote. 4.1 anticipates FIBR-0020 arriving as a slot.
+  M10. FIBR-0019 D5 (spec line 139) vs main_window.py:671-683 -- D5 says the
+      UI offers regeneration after a recovery unlock; no such prompt exists.
+      Decide which side moves.
+
+  L1.  crypto.py:82 -- derive_key states no ownership of its buffer; auth
+       wipes it, ui/_password_hint.py:141 does not.
+  L2.  auth.py:529 -- sidecar_version can raise inside _unlock_v1's handler,
+       leaving the derived key un-wiped; every sibling path wipes.
+  L3.  vault_migration.py:262-268 -- the -wal rollback copy is not fsynced
+       while the database half is.
+  L4.  recovery_key.py:169-171 -- chmod by path after the fd is open
+       (CWE-367); os.fchmod meets the comment's stated purpose.
+  L5.  backup.py:187,608 -- <dest>.tmp is unlinked unconditionally without
+       checking this process created it.
+  L6.  ui/_password_hint.py:149 -- a user-facing string in ui/ outside both
+       coding.md 5.2 and allowlist-004, which is scoped to ui/_amount.py.
+  L7.  ui/_widgets.py:25 -- _LABEL_CONTEXT is dead, and three docstrings plus
+       FIBR-0154 still describe the form that would re-introduce R3.
+  L8.  unlock.py:126-127 -- P10's comment says unlock_failed fires on every
+       failure branch; the check-symbol typo branch returns without it.
+  L9.  recovery_key.py:334-342 -- each Settings Add/Replace leaves a QObject +
+       QTimer for the session.
+  L10. recovery_key.py:233-242 -- if set_master_password can never succeed the
+       modal blocks File > Quit, so _save_geometry never runs.
+  L11. backup.py:294-299 -- the comment asserts an exception route
+       crypto._MALFORMED_SIDECAR now normalises away.
+  L12. vault_migration.py:430-432 -- the row-count mismatch reaches
+       log.exception, putting per-table row counts in the plaintext log.
+  L13. main_window.py:1341-1342 -- FIBR-0014 D4's first-run reconciliation
+       branch does not exist; the app hard-errors on the mixed state.
+  L14. pyproject [tool.mypy] has no check-untyped-defs, so mypy skips the
+       bodies of unannotated tests -- most of this suite. Gate gap, found by
+       pyright seeing what mypy structurally cannot.
+  L15. 13.3's debris enumeration omits the stray vault.kdf.json.migrating an
+       S2/S3 abort leaves. Spec side, review-contract's.
+  L16. crypto.py:430-431 -- the sidecar is read and parsed twice per
+       read_sidecar_v2, three times via auth.read_sidecar. INFO, fails closed.
+
+  Coverage: 4 lanes over the 14 source files FP03 changed, ~7000 LoC, no
+  merges. NOT reviewed -- the rest of the tree (importers, reporting,
+  categorisation, pdf_export, update_fetch, packaging), main_window.py outside
+  five named regions, and the test suite (review-tests was not run, and two of
+  FP03's regressions were tests passing against inert code). Lane 3's packet
+  omitted FIBR-0014, backup.py's actual contract; the lane read it anyway and
+  said so.
+  **Layman:** The recovery-key work was reviewed again with fresh eyes; one serious problem can strand a half-upgraded vault with no way back, and several smaller fixes from last time only reached some of the places they needed to.
+  Kind: review-fix.
+  Source: close-phase-2026-08-25 (check-code + review-code x4 lanes, FP03 close, fresh context).
+  Lanes: crypto, security, migration, backup, ui.
+
 ### 🎨 Features & accessibility
 
 - ✅ [FIBR-0021] **Multi-currency decision (ADR).**
