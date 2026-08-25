@@ -279,6 +279,13 @@ def keep_recovery_code(
     """
     try:
         service.add_recovery_key(code)
+    except VaultLockedError:
+        # An idle auto-lock between the offer and Keep. The other three § 4.7
+        # routes all fail closed and SILENTLY here, and this one did not: the
+        # broad arm below caught it and raised a warning box saying "the vault
+        # is locked" -- on a window the shell is already swapping for the unlock
+        # screen, and in the words of an internal exception (FIBR-0310 P12).
+        return False
     except Exception as exc:  # a failed re-wrap must be visible, not silent
         QMessageBox.warning(
             parent,

@@ -4,8 +4,11 @@
 Opened from Settings (the only place "Set password hint…" lives). Modelled on
 ``ui/backup_export.py``'s validation-gated dialog: it only collects the hint text
 and the **current** master password; the shell (``main_window.py``) owns the work —
-``verify_password`` → ``validate_hint`` → ``write_hint`` / ``clear_hint`` — so this
-dialog holds no ``AuthService`` reference. Save is gated on a non-empty password
+``verify_password`` → ``validate_hint_with_recovery`` → ``write_hint`` /
+``clear_hint`` — so this dialog holds no ``AuthService`` reference. The middle
+step was ``validate_hint`` until FIBR-0019 INV-11 added the recovery-code leg;
+that leg is why the step lives in ``ui/_password_hint.py`` and not in the pure
+policy module. Save is gated on a non-empty password
 field (you must confirm to change anything); the hint may be blank (that clears it).
 A visible plaintext-storage warning makes the trade-off explicit.
 """

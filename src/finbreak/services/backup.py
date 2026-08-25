@@ -378,6 +378,15 @@ class BackupService:
             # A temp-write failure (disk-full / read-only temp); the helper raises
             # it raw, so verify must catch it here (D7).
             return VerifyResult(False, None, None, "io_error")
+        except MemoryError:
+            # `_read_fbk` normalises its own to BackupError, so this is the rest
+            # of the sequence the two callers share -- the temp writes, the open
+            # and the migration. `restore_backup` catches it there and this did
+            # not, so the same bomb on the same small machine was a refused
+            # restore and an unhandled exception out of a Qt slot on verify
+            # (FIBR-0212, FIBR-0310 P12). "invalid" is deliberately the same
+            # answer restore's BackupError maps to here.
+            return VerifyResult(False, None, None, "invalid")
 
     def _open_backup_vault(
         self, src: Path, backup_password: str, work_dir: Path, *, on_key: OnKey

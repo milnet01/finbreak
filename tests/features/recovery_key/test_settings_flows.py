@@ -28,7 +28,9 @@ from _recovery_helpers import MASTER_PASSWORD, create_vault
 from PySide6.QtWidgets import QMessageBox
 
 from conftest import _pump_deferred_delete
+from finbreak.errors import VaultLockedError
 from finbreak.services.auth import AuthService
+from finbreak.services.recovery_code import generate_code
 from finbreak.ui import main_window as shell_module
 from finbreak.ui import recovery_key as recovery_module
 from finbreak.ui.main_window import MainWindow
@@ -414,3 +416,73 @@ def test_the_saved_recovery_code_is_owner_only(
         "  expected: 0o600\n"
         f"  actual:   {mode:#o}"
     )
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0310 P12 — the two remaining one-modal / auto-lock gaps
+# --------------------------------------------------------------------------- #
+def test_an_auto_lock_before_keep_is_refused_silently(
+    monkeypatch: pytest.MonkeyPatch, service: AuthService
+) -> None:
+    """``keep_recovery_code`` was the one § 4.7 route with no ``VaultLockedError``
+    arm: its broad ``except Exception`` caught the auto-lock and raised a warning
+    box reading "the vault is locked" — an internal exception's words, on a
+    window the shell is already swapping for the unlock screen. Its three
+    siblings all fail closed and silently here (FIBR-0310 P12).
+    """
+    warnings: list[Any] = []
+    monkeypatch.setattr(
+        recovery_module.QMessageBox,
+        "warning",
+        staticmethod(lambda *a, **k: warnings.append(a)),
+    )
+    # A WELL-FORMED code: `add_recovery_key` decodes before it reaches the lock
+    # check, so a placeholder would raise ValueError and test the broad arm.
+    code = generate_code()
+    service.lock()
+    with pytest.raises(VaultLockedError):
+        service.add_recovery_key(code)  # precondition: this is the lock path
+
+    assert recovery_module.keep_recovery_code(service, code, None) is False, (
+        "nothing was written to a locked vault, so Keep must report that\n"
+        "  expected: False\n  actual:   True"
+    )
+    assert warnings == [], (
+        "a warning box on the auto-lock path lands on a dying widget and "
+        "quotes an internal exception; the siblings show none.\n"
+        f"  actual: {len(warnings)} warning(s)"
+    )
+
+    # And the arm is NARROW: a genuine re-wrap failure must still be visible.
+    def refuse(_code: str) -> None:
+        raise RuntimeError("the re-wrap failed")
+
+    monkeypatch.setattr(service, "add_recovery_key", refuse)
+    assert recovery_module.keep_recovery_code(service, code, None) is False
+    assert len(warnings) == 1, (
+        "a failed re-wrap must still warn -- the new arm must not swallow it\n"
+        f"  actual: {len(warnings)} warning(s)"
+    )
+
+
+def test_open_dialog_enforces_the_one_modal_slot_itself(
+    qtbot: Any, service: AuthService
+) -> None:
+    """The invariant was trusted to fifteen callers remembering to tear down
+    first; forgetting is FP02 finding 10, and it leaves a live app-modal with
+    nothing holding it. ``_open_dialog`` now does the teardown (FIBR-0310 P12).
+    """
+    window, settings = _shell_with_settings_open(qtbot, service)
+    replacement = SettingsDialog(service, "ZAR", window)
+
+    window._open_dialog(replacement, defer=False)  # deliberately no teardown
+
+    _assert_settings_gone(settings, "opening a second dialog")
+    assert window._dialog is replacement
+
+    # Re-opening the SAME dialog must not destroy it -- `_show_if_pending`
+    # re-checks the slot, and a self-teardown here would delete what it is
+    # about to show.
+    window._open_dialog(replacement, defer=False)
+    _pump_deferred_delete()
+    assert shiboken6.isValid(replacement) and window._dialog is replacement

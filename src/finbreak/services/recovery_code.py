@@ -104,7 +104,17 @@ def normalise(text: str) -> str:
 
 
 def check_symbol(payload: str) -> str:
-    """The mod-37 check symbol for a 27-symbol normalised payload."""
+    """The mod-37 check symbol for a 27-symbol normalised payload.
+
+    ``ValueError`` on any other length. The docstring said "27-symbol" and the
+    body checked nothing, so a caller passing a whole 28-symbol code -- the
+    easiest mistake to make against this signature -- got a plausible symbol
+    computed over the wrong number, silently (FIBR-0310 P12).
+    """
+    if len(payload) != PAYLOAD_SYMBOLS:
+        raise ValueError(
+            f"a check symbol covers {PAYLOAD_SYMBOLS} data symbols, got {len(payload)}"
+        )
     return CHECK_ALPHABET[_payload_int(payload) % _CHECK_MODULUS]
 
 

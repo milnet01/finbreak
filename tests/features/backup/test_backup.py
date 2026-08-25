@@ -919,6 +919,23 @@ def test_INV4_verify_io_error_reason(tmp_path, monkeypatch):
     assert res == VerifyResult(False, None, None, "io_error")
 
 
+def test_verify_memory_error_reason(tmp_path, monkeypatch):
+    # `_read_fbk` normalises its OWN MemoryError to BackupError, so this covers
+    # the rest of the sequence the two callers share -- the temp writes, the
+    # open, the migration. `restore_backup` caught it there and `verify_backup`
+    # did not, so the same bomb on the same small machine was a refused restore
+    # and an unhandled exception out of a Qt slot on verify (FIBR-0310 P12).
+    # "invalid" is deliberately the answer restore's BackupError maps to here.
+    fbk, _snap = _export_from_seed(tmp_path)
+
+    def boom(path, data):
+        raise MemoryError("no room for the inflated database")
+
+    monkeypatch.setattr(BackupService, "_write_owner_only", staticmethod(boom))
+    res = _verify_service(tmp_path).verify_backup(fbk, _BACKUP_PW)
+    assert res == VerifyResult(False, None, None, "invalid")
+
+
 def test_INV1_verify_leaves_live_vault_untouched(tmp_path):
     # Verify never opens or writes the live vault; its dir is byte-identical and
     # gains no files across every outcome (here: a valid verify over a live vault).

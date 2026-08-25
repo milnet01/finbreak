@@ -16,6 +16,8 @@ unset.
 
 from __future__ import annotations
 
+import logging
+
 from PySide6.QtCore import QSettings
 
 from finbreak import paths
@@ -30,6 +32,8 @@ from finbreak.services.recovery_code import (
     normalise,
     verify_check_symbol,
 )
+
+log = logging.getLogger(__name__)
 
 _HINT_KEY = "hint/text"
 
@@ -65,8 +69,21 @@ def _code_candidates(normalised_hint: str) -> list[str]:
     raw text finds no 28-symbol candidate and cheerfully accepts a hint that IS
     the recovery code. Runs are split on anything outside the input alphabet, so
     ordinary prose around the code cannot merge with it.
+
+    De-duplicated, keeping first-seen order: two identical windows unwrap
+    identically, so a repeated one is a second ~46 MiB derivation that can only
+    reach the answer the first already gave (FIBR-0310 P12).
+
+    **There is no cap on top of that, and the absence is measured rather than an
+    oversight.** ``MAX_HINT_LEN`` (100) leaves 73 windows, each verifying by
+    chance with probability 1/37. Measured 2026-08-25 on this machine: a
+    derivation is 26 ms; 20 000 random 100-symbol hints averaged 2.0 candidates
+    and peaked at 10, and hill-climbing to maximise the count reached 24 — so
+    the crafted worst case is ~0.6 s on the UI thread, against ~50 ms for an
+    ordinary hint. A cap would have to sit below 24 to bound anything and above
+    10 to never refuse an honest hint, and no value does both.
     """
-    candidates: list[str] = []
+    candidates: dict[str, None] = {}
     run: list[str] = []
     for char in [*normalised_hint, " "]:
         if char in INPUT_SYMBOLS:
@@ -77,8 +94,8 @@ def _code_candidates(normalised_hint: str) -> list[str]:
         for start in range(len(text) - CODE_SYMBOLS + 1):
             window = text[start : start + CODE_SYMBOLS]
             if verify_check_symbol(window):
-                candidates.append(window)
-    return candidates
+                candidates[window] = None
+    return list(candidates)
 
 
 def validate_hint_with_recovery(hint: str, password: str) -> None:
@@ -109,8 +126,13 @@ def validate_hint_with_recovery(hint: str, password: str) -> None:
         return
     try:
         sidecar = read_sidecar_v2(paths.sidecar_path())
-    except (KdfPolicyError, OSError):
-        return  # a v1 vault, or no readable sidecar: there is no slot to test
+    except (KdfPolicyError, OSError) as exc:
+        # A v1 vault, or no readable sidecar: there is no slot to test, so the
+        # hint is accepted. Logged because this is a fail-OPEN on a hint that
+        # already looked like it carried a code, and it left no trace at all
+        # (FIBR-0310 P12). The hint itself is never logged.
+        log.warning("hint holds a code-like sequence but no slot to test it: %s", exc)
+        return
     if SLOT_RECOVERY not in sidecar.slots:
         return
     params = sidecar.params_for(SLOT_RECOVERY)

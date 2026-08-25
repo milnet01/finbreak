@@ -39,8 +39,10 @@ from finbreak.services.auth import AuthService
 from finbreak.services.password_hint import HintPolicyError, validate_hint
 from finbreak.services.recovery_code import (
     PAYLOAD_SYMBOLS,
+    check_symbol,
     decode,
     format_code,
+    generate_code,
     normalise,
     verify_check_symbol,
 )
@@ -322,3 +324,111 @@ def test_hint_rejects_the_recovery_code(
         "  expected: 0 Argon2id derivations\n"
         f"  actual:   {len(derivations)}"
     )
+
+
+# --------------------------------------------------------------------------- #
+# INV-11's trial-unwrap is bounded, de-duplicated, and never silently fails open
+# (FIBR-0310 P12)
+# --------------------------------------------------------------------------- #
+def test_the_trial_unwrap_is_deduplicated(
+    paths: tuple[Path, Path], service: AuthService, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A repeated candidate bought a second ~46 MiB Argon2id derivation of the
+    first one's answer (FIBR-0310 P12).
+
+    No cap sits on top of the dedup, deliberately: measured, the crafted worst
+    case a 100-character hint can reach is 24 distinct candidates (~0.6 s), and
+    a random one peaks at 10 -- so no cap value both bounds the work and never
+    refuses an honest hint. ``_code_candidates``' docstring carries the numbers.
+    """
+    _vault_path, sidecar_path = paths
+    from finbreak.ui import _password_hint as hint_io
+
+    check = require_seam(
+        hint_io,
+        "validate_hint_with_recovery",
+        "INV-11's trial-unwrap lives in ui/_password_hint.py (§ 11).",
+    )
+    monkeypatch.setattr("finbreak.paths.sidecar_path", lambda: sidecar_path)
+    code = create_vault(service)
+    keep_recovery_key(service, code)
+
+    derivations: list[int] = []
+    real_hash = crypto.hash_secret_raw
+
+    def counting_hash(**kwargs: Any) -> bytes:
+        derivations.append(1)
+        return real_hash(**kwargs)
+
+    monkeypatch.setattr("finbreak.crypto.hash_secret_raw", counting_hash)
+
+    # Leg 1 -- the same wrong-but-well-formed candidate twice is ONE derivation.
+    # Two identical windows unwrap identically, so the second can only reach the
+    # answer the first already gave.
+    # Separated by "." rather than by prose: `normalise` strips SPACES, so
+    # "or maybe" between the two copies would merge into one run and produce
+    # straddling windows -- three candidates, not the repeat this leg is about.
+    forged = forge_wrong_code_with_a_valid_check_symbol(code)
+    assert len(_distinct(hint_io, f"{forged}.{forged}")) == 1, (
+        "precondition: the two copies must be ONE distinct candidate"
+    )
+    check(f"{forged}.{forged}", MASTER_PASSWORD.decode())
+    assert derivations == [1], (
+        "a repeated candidate must not be derived twice\n"
+        "  expected: 1 Argon2id derivation\n"
+        f"  actual:   {len(derivations)}"
+    )
+
+
+def _distinct(hint_io: Any, text: str) -> list[str]:
+    return hint_io._code_candidates(normalise(text))
+
+
+def test_an_unreadable_sidecar_fails_open_but_says_so(
+    paths: tuple[Path, Path],
+    service: AuthService,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The hint is accepted when the slot cannot be read -- a v1 vault has no
+    recovery code to protect. But it left no trace, so a genuinely unreadable
+    sidecar looked exactly like a hint that had passed the check (FIBR-0310 P12).
+    """
+    _vault_path, sidecar_path = paths
+    from finbreak.ui import _password_hint as hint_io
+
+    check = require_seam(
+        hint_io,
+        "validate_hint_with_recovery",
+        "INV-11's trial-unwrap lives in ui/_password_hint.py (§ 11).",
+    )
+    monkeypatch.setattr("finbreak.paths.sidecar_path", lambda: sidecar_path)
+    code = create_vault(service)
+    keep_recovery_key(service, code)
+
+    monkeypatch.setattr(
+        "finbreak.ui._password_hint.read_sidecar_v2",
+        lambda _path: (_ for _ in ()).throw(OSError("no such file")),
+    )
+    hint = f"same as the one on the card: {code}"
+    with caplog.at_level("WARNING", logger="finbreak.ui._password_hint"):
+        check(hint, MASTER_PASSWORD.decode())  # accepted: nothing to test against
+    assert caplog.records, (
+        "a fail-OPEN on a hint that already looked like it carried a code must "
+        "leave a log line"
+    )
+    logged = "\n".join(r.getMessage() for r in caplog.records)
+    assert normalise(code) not in normalise(logged), "the hint must never be logged"
+
+
+def test_check_symbol_refuses_a_payload_of_the_wrong_length() -> None:
+    """The docstring said "27-symbol" and the body checked nothing, so passing a
+    whole 28-symbol code -- the easiest mistake against this signature -- got a
+    plausible symbol computed over the wrong number, silently (FIBR-0310 P12).
+    """
+    payload = normalise(generate_code())[:PAYLOAD_SYMBOLS]
+    assert len(check_symbol(payload)) == 1  # the contract still holds
+    with pytest.raises(ValueError):
+        check_symbol(payload + check_symbol(payload))  # a whole code
+    with pytest.raises(ValueError):
+        check_symbol(payload[:-1])

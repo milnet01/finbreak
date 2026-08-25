@@ -1876,6 +1876,13 @@ class MainWindow(QMainWindow):
             self._live = None
 
     def _open_dialog(self, dialog: QDialog, *, defer: bool = True) -> None:
+        # One app-modal per slot, enforced HERE rather than trusted to fifteen
+        # callers remembering to tear down first -- forgetting is FP02 finding
+        # 10, and it leaves a live modal with nothing holding it (FIBR-0310
+        # P12). A no-op for the callers that already do it: the slot is None by
+        # the time they arrive.
+        if self._dialog is not None and self._dialog is not dialog:
+            self._teardown_dialog()
         self._dialog = dialog
         dialog.setModal(True)
         if defer:
