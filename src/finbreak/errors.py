@@ -28,6 +28,21 @@ class VaultStateError(FinbreakError):
     present without the other (FIBR-0004 INV-5)."""
 
 
+class RollbackAvailableError(VaultStateError):
+    """§ 13.3's terminal branch, with D8's pre-upgrade copy verified beside it.
+
+    Every route was exhausted **and** the password was right — and a ``.pre-v2``
+    pair is on disk that opens with the very key the user just typed. § 13.3
+    calls making that offer "the whole return on D8": the branch stops being
+    terminal.
+
+    A SUBCLASS of :class:`VaultStateError` on purpose. Every existing handler
+    already fails closed on it with § 6's broken-pairing message, which is the
+    correct fallback; a caller that can actually make the offer catches this one
+    FIRST (FIBR-0019 § 13.3, FIBR-0307 finding 7).
+    """
+
+
 class VaultLockedError(FinbreakError):
     """An operation needing the vault was attempted while it is locked
     (FIBR-0004 INV-3)."""

@@ -22,9 +22,11 @@ import pytest
 from _recovery_helpers import (
     MASTER_PASSWORD,
     code_secret,
+    create_v1_vault,
     create_vault,
     keep_recovery_key,
     kek_for,
+    read_sidecar,
     read_v2_sidecar,
     require_seam,
 )
@@ -32,6 +34,11 @@ from _recovery_helpers import (
 from finbreak.errors import VaultStateError
 from finbreak.keywrap import SLOT_RECOVERY
 from finbreak.services.auth import AuthService
+from finbreak.services.vault_migration import (
+    MIGRATING_SUFFIX,
+    migrate_to_v2,
+    rollback_copy_paths,
+)
 
 pytestmark = pytest.mark.features
 
@@ -130,4 +137,120 @@ def test_the_unlock_dialog_names_the_broken_pairing(
         "data intact but mispaired -- which § 6 forbids in as many words.\n"
         f"  expected: {_PAIRING_BROKEN!r}\n"
         f"  actual:   {error.text()!r}"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# FP02 finding 7 — § 13.3's rollback offer has to reach a screen
+# --------------------------------------------------------------------------- #
+def _stall_with_every_route_exhausted(paths: tuple[Path, Path]) -> None:
+    """Leave the pair in § 13.3's last bullet, with D8's copy intact beside it.
+
+    A v1 vault is migrated with a crash injected before S5, so the sidecar is
+    the migration-pending v2 one and S0's ``.pre-v2`` pair is on disk. The
+    ``.migrating`` database is then removed and the live one overwritten, so
+    neither the DEK nor KEK-master opens anything: every branch of the ladder
+    is exhausted with the password already proven right.
+    """
+    vault_path, sidecar_path = paths
+    vault, _params, key = create_v1_vault(vault_path, sidecar_path)
+    vault.close()
+
+    def abort_before_s5(step: str) -> None:
+        if step == "S5":
+            raise _Abort("injected crash before S5")
+
+    with pytest.raises(_Abort):
+        migrate_to_v2(vault_path, sidecar_path, bytearray(key), on_step=abort_before_s5)
+
+    vault_path.with_name(vault_path.name + MIGRATING_SUFFIX).unlink()
+    vault_path.write_bytes(b"not a database, not any more" * 512)
+    vault_path.with_name(vault_path.name + "-wal").unlink(missing_ok=True)
+
+
+class _Abort(RuntimeError):
+    """The injected crash -- a distinct type, so a genuine migration failure is
+    never mistaken for the one this test asked for."""
+
+
+@pytest.mark.parametrize("answer", ["yes", "no"])
+def test_the_unlock_dialog_offers_the_pre_upgrade_copy(
+    qtbot: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    paths: tuple[Path, Path],
+    answer: str,
+) -> None:
+    """§ 13.3: "the app says a pre-upgrade copy exists and offers to restore it".
+
+    The service could raise this state all it liked and no UI path named the
+    ``.pre-v2`` pair, so the user got the bare broken-pairing refusal with their
+    own pre-upgrade vault sitting in the same directory -- § 13.3 calls making
+    the offer "the whole return on D8" (FIBR-0307 finding 7).
+
+    Declining is a real answer: the user keeps the stalled pair and the copy is
+    left where it is, so the offer can be taken at the next unlock.
+    """
+    from PySide6.QtWidgets import QMessageBox
+
+    from finbreak.ui.unlock import UnlockDialog
+
+    vault_path, sidecar_path = paths
+    _stall_with_every_route_exhausted(paths)
+    copy_vault, copy_sidecar = rollback_copy_paths(vault_path, sidecar_path)
+
+    asked: list[str] = []
+    chosen = (
+        QMessageBox.StandardButton.Yes
+        if answer == "yes"
+        else QMessageBox.StandardButton.No
+    )
+
+    def press(
+        _parent: Any, _title: str, text: str, *_a: Any, **_k: Any
+    ) -> QMessageBox.StandardButton:
+        asked.append(text)
+        return chosen
+
+    monkeypatch.setattr(QMessageBox, "question", staticmethod(press))
+
+    service = AuthService(vault_path, sidecar_path)
+    dialog = UnlockDialog(service)
+    qtbot.addWidget(dialog)
+    field = require_seam(dialog, "_password", "§ 4.6: the password route's input.")
+    submit = require_seam(
+        dialog, "_on_unlock", "§ 4.6: the password route's submit handler."
+    )
+
+    failed: list[int] = []
+    dialog.unlock_failed.connect(lambda: failed.append(1))
+    field.setText(MASTER_PASSWORD.decode())
+    submit()
+    qtbot.waitUntil(lambda: bool(failed), timeout=30_000)
+
+    assert len(asked) == 1, (
+        "§ 13.3: with a verified pre-upgrade copy beside the vault the app "
+        "must OFFER it rather than refuse. One question, once -- not none "
+        "(the finding) and not one per branch.\n"
+        f"  expected: 1 question asked\n  actual:   {len(asked)}"
+    )
+    assert ".pre-v2" in asked[0] or "before" in asked[0].lower(), (
+        "the offer has to name what is being restored, or the user cannot "
+        "tell it from the destructive reset § 6 forbids here.\n"
+        "  expected: the copy described as pre-upgrade\n"
+        f"  actual:   {asked[0]!r}"
+    )
+
+    restored_v1 = "sidecar_version" not in read_sidecar(sidecar_path)
+    assert restored_v1 == (answer == "yes"), (
+        "Yes restores the pre-upgrade pair, so the sidecar is v1 again; No "
+        "changes nothing, so the stalled migration-pending pair is still "
+        "there and the offer can be taken next time.\n"
+        f"  expected: restored == {answer == 'yes'} after {answer}\n"
+        f"  actual:   {restored_v1}"
+    )
+    assert copy_vault.exists() == (answer == "no"), (
+        "Yes MOVES the copy onto the live pair -- a second copy of the vault "
+        "left behind is what S6 exists to prevent. No leaves it untouched.\n"
+        f"  expected: the copy present == {answer == 'no'}\n"
+        f"  actual:   {copy_vault.exists()}, sidecar {copy_sidecar.exists()}"
     )

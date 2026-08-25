@@ -463,6 +463,23 @@ class AuthService:
             _wipe(kek)
         return self._open_with(dek, sidecar.cipher_compatibility)
 
+    def restore_pre_upgrade_copy(self) -> None:
+        """Put D8's pre-upgrade pair back, after the user accepted the offer.
+
+        The answer to a :class:`RollbackAvailableError` — § 13.3's terminal
+        branch with a verified ``.pre-v2`` pair beside the vault. Afterwards the
+        pair on disk is v1 again, so the next unlock takes the ordinary v1 route
+        and converts it afresh (D2).
+
+        Deliberately does NOT unlock: the vault is opened by the user typing
+        their password at the dialog, which is the same step as every other
+        unlock and keeps the key material out of this recovery path
+        (FIBR-0019 § 13.3, FIBR-0307 finding 7).
+        """
+        vault_migration.restore_rollback_copy(
+            self._vault.vault_path, self._sidecar_path
+        )
+
     def _unlock_v1(self, key: bytearray) -> bool:
         """Open a pre-envelope vault, then convert it (D2).
 

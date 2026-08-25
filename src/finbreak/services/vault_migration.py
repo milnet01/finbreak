@@ -33,7 +33,7 @@ from finbreak.crypto import (
     read_sidecar_v2,
     write_sidecar_v2,
 )
-from finbreak.errors import KdfPolicyError, VaultStateError
+from finbreak.errors import KdfPolicyError, RollbackAvailableError, VaultStateError
 from finbreak.keywrap import SLOT_MASTER, wrap_dek
 from finbreak.models import KdfParams
 from finbreak.vault import SQLCIPHER_COMPAT, Vault
@@ -350,6 +350,57 @@ def rollback_copy_paths(vault_path: Path, sidecar_path: Path) -> tuple[Path, Pat
     )
 
 
+def rollback_copy_is_usable(
+    vault_path: Path, sidecar_path: Path, key: bytearray
+) -> bool:
+    """``True`` iff D8's pre-upgrade pair is there AND opens with ``key``.
+
+    The question :func:`verify_rollback_copy` answers, asked where the answer
+    is a decision rather than a gate. INV-13's point is that a copy which
+    merely EXISTS is worse than none — it is the artefact the user would be
+    told to fall back on — so anything short of a full read is a ``False``
+    here, and the offer is not made.
+    """
+    copy_vault, copy_sidecar = rollback_copy_paths(vault_path, sidecar_path)
+    try:
+        verify_rollback_copy(copy_vault, copy_sidecar, key)
+    except (VaultStateError, KdfPolicyError, DatabaseError, OSError) as exc:
+        log.info("no usable pre-upgrade copy beside the vault: %s", exc)
+        return False
+    return True
+
+
+def restore_rollback_copy(vault_path: Path, sidecar_path: Path) -> None:
+    """Put D8's pre-upgrade pair back over the live one — § 13.3's way out.
+
+    The copy is MOVED, not duplicated: it is the live pair afterwards, and
+    leaving a second plaintext-adjacent copy of the vault behind is the thing
+    S6 exists to prevent.
+
+    **The database goes first and the sidecar second**, and the order is what
+    makes an interruption survivable. Crashing between the two leaves the v1
+    database under the still-migration-pending v2 sidecar, which is § 13.3
+    branch 3 — KEK-master opens it, the ladder restarts from S1, and
+    :func:`_ensure_rollback_copy` retakes the copy this call consumed. The
+    other order leaves a v1 sidecar over a database no v1 key opens, which
+    reads to the user as a wrong password (§ 6).
+
+    The live pair's WAL siblings are dropped and the copy's own carried with it
+    — the mirror of :func:`write_rollback_copy`. A ``-wal`` written under the
+    OLD key beside the restored database would have SQLite recover that
+    database from it, which is § 6's hazard and the one S5 handles.
+    """
+    copy_vault, copy_sidecar = rollback_copy_paths(vault_path, sidecar_path)
+    _drop_wal_siblings(vault_path)
+    os.replace(copy_vault, vault_path)
+    for suffix in _WAL_SIBLINGS:
+        sibling = _suffixed(copy_vault, suffix)
+        if sibling.exists():
+            os.replace(sibling, _suffixed(vault_path, suffix))
+    os.replace(copy_sidecar, sidecar_path)
+    log.info("the pre-upgrade copy was restored over the live pair")
+
+
 def _finish_quietly(
     sidecar_path: Path, sidecar: VaultSidecar, vault_path: Path
 ) -> None:
@@ -394,14 +445,9 @@ def _ensure_rollback_copy(vault_path: Path, sidecar_path: Path, key: bytearray) 
     failure to get one aborts before ``_convert`` — § 6's "never proceed
     without it", which is most needed exactly when the disk is tight.
     """
-    copy_vault, copy_sidecar = rollback_copy_paths(vault_path, sidecar_path)
-    try:
-        verify_rollback_copy(copy_vault, copy_sidecar, key)
+    if rollback_copy_is_usable(vault_path, sidecar_path, key):
         return
-    except (VaultStateError, KdfPolicyError, DatabaseError, OSError) as exc:
-        log.warning(
-            "migration resume: the rollback copy is unusable (%s); retaking it", exc
-        )
+    log.warning("migration resume: the rollback copy is unusable; retaking it")
     copy_vault, copy_sidecar = write_rollback_copy(vault_path, sidecar_path)
     verify_rollback_copy(copy_vault, copy_sidecar, key)
 
@@ -453,8 +499,19 @@ def resume(
         return
 
     # Every route is exhausted AND the password was right, which is what makes
-    # this branch meaningful. Change nothing; the caller offers D8's rollback
-    # copy if one is there, and the destructive reset is never offered from here.
+    # this branch meaningful. Change nothing; the destructive reset is never
+    # offered from here.
+    #
+    # Where D8's pre-upgrade pair is on disk and opens with the key just proven,
+    # the caller is told so with its own error type — § 13.3 calls making that
+    # offer "the whole return on D8", and the distinction has to be drawn HERE
+    # because this is the only frame holding both the key and the paths
+    # (FIBR-0307 finding 7).
+    if rollback_copy_is_usable(vault_path, sidecar_path, kek_master):
+        raise RollbackAvailableError(
+            "the vault and its key record disagree, and a copy taken before "
+            "the upgrade is beside them"
+        )
     raise VaultStateError(
         "the vault and its key record disagree: no database this sidecar names "
         "can be opened with the key it holds"

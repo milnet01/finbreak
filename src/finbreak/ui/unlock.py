@@ -16,6 +16,7 @@ deleted mid-run (INV-2f).
 
 from __future__ import annotations
 
+import logging
 import math
 from datetime import UTC, datetime
 
@@ -26,17 +27,25 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPushButton,
     QVBoxLayout,
     QWidget,
 )
 
-from finbreak.errors import KdfPolicyError, SchemaVersionError, VaultStateError
+from finbreak.errors import (
+    KdfPolicyError,
+    RollbackAvailableError,
+    SchemaVersionError,
+    VaultStateError,
+)
 from finbreak.services.auth import AuthService
 from finbreak.services.recovery_code import decode, normalise, verify_check_symbol
 from finbreak.ui._password_hint import read_hint
 from finbreak.ui._unlock_throttle import UnlockThrottle
 from finbreak.ui._worker import DeriveWorker
+
+log = logging.getLogger(__name__)
 
 # Shown when a credential unwrapped its slot and the resulting key still did not
 # open the database (§ 6). Single-homed: both routes render the same words.
@@ -44,6 +53,23 @@ _PAIRING_BROKEN = (
     "finbreak unlocked this vault's key record, but the vault file itself "
     "could not be opened — the two do not belong together, or the vault file "
     "is damaged. If you have a backup, restore it."
+)
+
+# § 13.3's terminal branch, where a verified pre-upgrade copy is beside the
+# vault. Offering it is "the whole return on D8" — the alternative is the
+# refusal above, with the user's own vault sitting in the same folder.
+_ROLLBACK_TITLE = "Restore the copy from before the update?"
+_ROLLBACK_OFFER = (
+    "finbreak could not open this vault, but it kept a copy of it from "
+    "before the last update finished — and your password opens that copy.\n\n"
+    "Restore it? Your accounts and transactions come back as they were "
+    "before the update, and finbreak will ask for your password again to "
+    "open them.\n\n"
+    "Nothing is deleted if you say No — you can do this next time instead."
+)
+_ROLLBACK_RESTORED = (
+    "The copy from before the update has been restored. Enter your password "
+    "again to open it."
 )
 
 
@@ -324,6 +350,12 @@ class UnlockDialog(QDialog):
         self._set_busy(False)
         try:
             unlocked = self._service.complete_unlock(raw)
+        except RollbackAvailableError:
+            # BEFORE the VaultStateError arm below, which is its base class:
+            # this is the same broken pairing plus a pre-upgrade copy that
+            # opens, and § 13.3 says the app offers it rather than hiding it.
+            self._offer_rollback()
+            return
         except VaultStateError:
             # The slot unwrapped but SQLCipher refused the DEK: the sidecar and
             # the database are from different vaults, or the database is damaged.
@@ -349,6 +381,49 @@ class UnlockDialog(QDialog):
             self.unlocked.emit()
         else:
             self._show_failure()
+
+    def _offer_rollback(self) -> None:
+        """§ 13.3's terminal branch, made offerable (FIBR-0307 finding 7).
+
+        Reachable from the PASSWORD route only, and not by omission: a
+        migration-pending sidecar carries ``slots.master`` alone, so the
+        recovery route never enters the ladder and its ``VaultStateError`` arm
+        is the correct outcome there.
+
+        The question blocks, which is safe for the same reason
+        ``main_window``'s one surviving ``exec()`` is: this runs only from the
+        unlock dialog, so the vault is LOCKED and FIBR-0065's auto-lock-under-
+        a-nested-loop class cannot fire behind it.
+
+        Declining changes nothing on disk. Only S6 removes the copy, so the
+        offer is still there at the next unlock.
+        """
+        answer = QMessageBox.question(
+            self,
+            self.tr(_ROLLBACK_TITLE),
+            self.tr(_ROLLBACK_OFFER),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            self._error.setText(self.tr(_PAIRING_BROKEN))
+            self.unlock_failed.emit()
+            return
+        try:
+            self._service.restore_pre_upgrade_copy()
+        except OSError:
+            # The copy could not be moved into place — a full or read-only
+            # disk. Nothing partial is left that the ladder cannot pick up
+            # (restore_rollback_copy's order is what guarantees that), so the
+            # honest report is the refusal, not a claim that it worked.
+            log.exception("restoring the pre-upgrade copy failed")
+            self._error.setText(self.tr(_PAIRING_BROKEN))
+            self.unlock_failed.emit()
+            return
+        self._error.setText(self.tr(_ROLLBACK_RESTORED))
+        # Not `unlocked`: the vault is v1 again and still shut. The user types
+        # their password once more and takes the ordinary v1 route (D2).
+        self.unlock_failed.emit()
 
     @Slot(object)
     def _on_failure(self, _exc: object) -> None:

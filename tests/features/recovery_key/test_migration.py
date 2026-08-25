@@ -10,6 +10,7 @@ is exactly one acceptable failure mode -- the vault still opens.
 from __future__ import annotations
 
 import errno
+import os
 from pathlib import Path
 from typing import Any
 
@@ -21,11 +22,14 @@ from _recovery_helpers import (
     open_after_restart,
     opens_with,
     read_sidecar,
+    read_v2_sidecar,
     row_digests,
+    unwrap_slot,
 )
 from sqlcipher3.dbapi2 import DatabaseError
 
-from finbreak.errors import VaultStateError
+from finbreak.errors import RollbackAvailableError, VaultStateError
+from finbreak.keywrap import SLOT_MASTER
 from finbreak.services import auth as auth_module
 from finbreak.services import vault_migration
 from finbreak.services.auth import AuthService
@@ -629,3 +633,176 @@ def test_a_damaged_rollback_copy_does_not_verify(tmp_path: Path) -> None:
 
     with pytest.raises(VaultStateError):
         verify_rollback_copy(copy_vault, copy_sidecar, bytearray(key))
+
+
+# --------------------------------------------------------------------------- #
+# FP02 finding 7 — D8's rollback offer, which nothing ever made
+# --------------------------------------------------------------------------- #
+def _every_route_exhausted(root: Path, name: str) -> tuple[Path, Path, bytearray, dict]:
+    """§ 13.3's LAST bullet: the password is right and no database will open.
+
+    Built from the stalled-before-S5 state — a v2 migration-pending sidecar
+    beside the v1 database, with S0's ``.pre-v2`` pair intact — by making the
+    LIVE database unopenable. Neither the DEK (branch 1) nor KEK-master
+    (branch 3) answers to it, and there is no ``.migrating`` (branch 2), so the
+    ladder runs out of routes with the credential already proven.
+
+    Bytes are written over the live database only. The ``.pre-v2`` pair is
+    untouched, which is the whole point: the user's pre-upgrade vault is sitting
+    right there, and until finding 7 nothing offered it to them.
+    """
+    vault_path, sidecar_path, key, digests = _stalled_before_s5(root, name)
+    vault_path.write_bytes(b"not a database, not any more" * 512)
+    _drop = vault_path.with_name(vault_path.name + "-wal")
+    _drop.unlink(missing_ok=True)
+    return vault_path, sidecar_path, key, digests
+
+
+def _credential_for(sidecar_path: Path) -> tuple[bytearray, bytearray]:
+    """KEK-master and the DEK it unwraps — § 13.3 step 0, already done."""
+    data = read_v2_sidecar(sidecar_path)
+    return (
+        kek_for(MASTER_PASSWORD, data, SLOT_MASTER),
+        unwrap_slot(MASTER_PASSWORD, data, SLOT_MASTER),
+    )
+
+
+@pytest.mark.parametrize("copy_state", ["intact", "absent", "unusable"])
+def test_the_terminal_branch_offers_the_pre_upgrade_copy(
+    tmp_path: Path, copy_state: str
+) -> None:
+    """§ 13.3: "the app says a pre-upgrade copy exists and offers to restore it".
+
+    The distinction has to be MADE by the ladder, because the ladder is the only
+    frame holding both the key and the paths. A caller cannot tell § 6's broken
+    pairing — where nothing is recoverable and the message is all there is —
+    from this state, where the user's pre-upgrade vault is on disk and opens.
+
+    ``absent`` and ``unusable`` are what stop the offer being made on a copy
+    that is not there or would not open: INV-13 says a copy that merely exists
+    is worse than none, and offering one is exactly how that goes wrong.
+    """
+    vault_path, sidecar_path, _key, _digests = _every_route_exhausted(
+        tmp_path, f"terminal-{copy_state}"
+    )
+    copy_vault, copy_sidecar = rollback_copy_paths(vault_path, sidecar_path)
+    assert copy_vault.exists() and copy_sidecar.exists(), (
+        "precondition: S0 took the copy and S6 never ran, so the pair is on "
+        "disk — the only state § 13.3 says it exists in.\n"
+        f"  expected: both of {copy_vault.name}, {copy_sidecar.name}\n"
+        f"  actual:   {copy_vault.exists()}, {copy_sidecar.exists()}"
+    )
+    if copy_state == "absent":
+        copy_vault.unlink()
+        copy_sidecar.unlink()
+    elif copy_state == "unusable":
+        copy_sidecar.write_text("not a sidecar", encoding="utf-8")
+
+    kek, dek = _credential_for(sidecar_path)
+    with pytest.raises(VaultStateError) as raised:
+        vault_migration.resume(vault_path, sidecar_path, kek, dek)
+
+    offered = isinstance(raised.value, RollbackAvailableError)
+    assert offered == (copy_state == "intact"), (
+        "§ 13.3's terminal branch: the offer is made when — and only when — a "
+        "pre-upgrade pair is beside the vault AND opens with the key the user "
+        "just proved. Not making it leaves the user the bare 'vault and key "
+        "record disagree' refusal with their own vault sitting next to it; "
+        "making it on a copy that will not open points them at a rollback "
+        "route that is not one (INV-13).\n"
+        f"  expected: offered == {copy_state == 'intact'} for a {copy_state} copy\n"
+        f"  actual:   {type(raised.value).__name__}"
+    )
+
+
+def test_restoring_the_pre_upgrade_copy_gives_back_the_v1_vault(
+    tmp_path: Path,
+) -> None:
+    """The offer has to lead somewhere — restoring is what makes it an offer.
+
+    After it, the pair on disk is the v1 one the user had before the update:
+    the sidecar is v1 again, the database opens with their password's Argon2id
+    output directly (§ 13.1), and every row is back. The ``.pre-v2`` pair is
+    consumed, because it IS the live pair now.
+    """
+    vault_path, sidecar_path, key, digests = _every_route_exhausted(tmp_path, "restore")
+    copy_vault, copy_sidecar = rollback_copy_paths(vault_path, sidecar_path)
+
+    vault_migration.restore_rollback_copy(vault_path, sidecar_path)
+
+    restored = read_sidecar(sidecar_path)
+    assert "sidecar_version" not in restored, (
+        "D8: the copy is a PRE-UPGRADE pair, so restoring it must leave a v1 "
+        "sidecar. A v2 one here means the migration-pending sidecar survived "
+        "and the vault is still in the state the user is escaping.\n"
+        "  expected: the flat v1 sidecar\n"
+        f"  actual:   {sorted(restored)}"
+    )
+    assert opens_with(vault_path, sidecar_path, bytearray(key)), (
+        "§ 13.1: the v1 database key IS the Argon2id output, so the restored "
+        "pair must open with the key the user already had.\n"
+        "  expected: it opens\n  actual:   it does not"
+    )
+    assert not copy_vault.exists() and not copy_sidecar.exists(), (
+        "the copy was moved onto the live pair, not duplicated onto it — "
+        "leaving a second plaintext-adjacent copy of the vault behind is what "
+        "S6 exists to prevent (D8).\n"
+        f"  expected: neither of {copy_vault.name}, {copy_sidecar.name}\n"
+        f"  actual:   {copy_vault.exists()}, {copy_sidecar.exists()}"
+    )
+
+    reopened = open_after_restart(vault_path, sidecar_path, MASTER_PASSWORD)
+    after = row_digests(reopened.connection)
+    reopened.close()
+    assert after == digests, (
+        "the restored vault must hold what it held before the update — that is "
+        "the only thing a rollback is for.\n"
+        f"  expected: {digests}\n  actual:   {after}"
+    )
+
+
+def test_an_interrupted_restore_leaves_a_resumable_pair(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """INV-7's shape, applied to the way back out.
+
+    ``restore_rollback_copy`` replaces two files, and a crash between them is
+    the state that decides whether the order was right. Database first leaves
+    the v1 database under the still-migration-pending v2 sidecar — § 13.3
+    branch 3, where KEK-master opens it and the ladder simply restarts. The
+    other order leaves a v1 sidecar over a database no v1 key opens, which
+    reads to the user as a wrong password (§ 6).
+    """
+    vault_path, sidecar_path, key, digests = _every_route_exhausted(
+        tmp_path, "interrupted-restore"
+    )
+
+    real_replace = os.replace
+    calls: list[int] = []
+
+    def fail_on_the_second(src: Any, dst: Any) -> None:
+        calls.append(1)
+        if len(calls) > 1:
+            raise OSError(errno.ENOSPC, "no space left on device")
+        real_replace(src, dst)
+
+    monkeypatch.setattr(vault_migration.os, "replace", fail_on_the_second)
+    with pytest.raises(OSError):
+        vault_migration.restore_rollback_copy(vault_path, sidecar_path)
+    monkeypatch.undo()
+
+    assert read_sidecar(sidecar_path).get("sidecar_version") is not None, (
+        "precondition: the crash landed BEFORE the sidecar was replaced — "
+        "otherwise this leg proves nothing about the order.\n"
+        "  expected: the migration-pending v2 sidecar still in place\n"
+        f"  actual:   {sorted(read_sidecar(sidecar_path))}"
+    )
+
+    reopened = open_after_restart(vault_path, sidecar_path, MASTER_PASSWORD)
+    after = row_digests(reopened.connection)
+    reopened.close()
+    assert after == digests, (
+        "a half-finished restore must still leave a pair that opens and holds "
+        "what it held — § 13.3 branch 3 is what picks it up.\n"
+        f"  expected: {digests}\n  actual:   {after}"
+    )
