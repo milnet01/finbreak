@@ -74,6 +74,34 @@ def _fsync(path: Path) -> None:
         os.close(fd)
 
 
+def _copy_owner_only(source: Path, dest: Path) -> None:
+    """Copy ``source`` over ``dest``, owner-only from the first byte written.
+
+    ``shutil.copyfile`` creates at the process umask and a ``chmod`` afterwards
+    closes the mode only once the bytes are already there — so the copy of an
+    entire vault sat world-readable for the length of the copy, which on a large
+    vault is the length of the exposure. ``vault.py`` mounts the answer twice
+    (``create`` and ``export_to``): pre-create the target ``0o600`` before
+    anything writes into it (FIBR-0310 P3).
+
+    ``O_EXCL`` and ``O_NOFOLLOW`` close the other half. The old sequence was
+    unlink-then-copy, and a symlink planted at ``dest`` in between was followed,
+    writing the vault wherever it pointed. ``O_EXCL`` refuses a path that exists
+    at all by the time we get there, which includes a symlink;
+    ``O_NOFOLLOW`` says so explicitly and is absent on Windows, where
+    ``getattr`` makes it a no-op — the same idiom ``crypto.write_sidecar_json``
+    uses.
+    """
+    dest.unlink(missing_ok=True)
+    fd = os.open(
+        dest,
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
+        0o600,
+    )
+    with os.fdopen(fd, "wb") as out, open(source, "rb") as handle:
+        shutil.copyfileobj(handle, out)
+
+
 def _drop_wal_siblings(db_path: Path) -> None:
     for suffix in _WAL_SIBLINGS:
         _suffixed(db_path, suffix).unlink(missing_ok=True)
@@ -145,12 +173,11 @@ def write_rollback_copy(
     copies: list[Path] = []
     for source in (vault_path, sidecar_path):
         dest = _suffixed(source, ROLLBACK_SUFFIX)
-        dest.unlink(missing_ok=True)
         if source is sidecar_path and sidecar_payload is not None:
+            dest.unlink(missing_ok=True)
             write_sidecar_json(dest, sidecar_payload)  # already fsynced + 0o600
         else:
-            shutil.copyfile(source, dest)
-            os.chmod(dest, 0o600)
+            _copy_owner_only(source, dest)
             _fsync(dest)
         copies.append(dest)
     # Clear the copy's OWN stale siblings before copying the live ones, in that
@@ -162,7 +189,10 @@ def write_rollback_copy(
     for suffix in _WAL_SIBLINGS:
         sibling = _suffixed(vault_path, suffix)
         if sibling.exists():
-            shutil.copyfile(sibling, _suffixed(copies[0], suffix))
+            # Owner-only too: a `-wal` holds the same rows as the database it
+            # belongs to, so copying it at the umask leaks exactly what copying
+            # the database at the umask would (FIBR-0310 P3).
+            _copy_owner_only(sibling, _suffixed(copies[0], suffix))
     return copies[0], copies[1]
 
 

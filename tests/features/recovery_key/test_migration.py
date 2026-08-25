@@ -975,3 +975,89 @@ def test_verifying_the_copy_leaves_it_with_no_wal(tmp_path: Path) -> None:
         "  expected: the row committed to the WAL, folded into the copy\n"
         f"  actual:   accounts = {names}"
     )
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0310 P3 — the rollback copy is owner-only, and cannot be redirected
+# --------------------------------------------------------------------------- #
+@pytest.mark.skipif(os.name != "posix", reason="file modes are a POSIX question")
+def test_the_rollback_copy_is_never_world_readable(tmp_path: Path) -> None:
+    """A byte-for-byte copy of the whole vault, at the process umask.
+
+    ``shutil.copyfile`` creates at the umask and the ``chmod`` came AFTER, so
+    the copy sat world-readable for as long as the copy took -- which on a real
+    vault is the whole exposure, not an instant. ``vault.py`` pre-creates
+    ``0o600`` in two places for exactly this reason (FIBR-0310 P3).
+
+    The WAL sibling is checked too, and it is the leg that actually bites.
+    P3 described a window -- world-readable for the length of the copy, closed
+    by the chmod afterwards -- and that is true of the database and the sidecar.
+    The WAL copy had no chmod at ALL, so it was world-readable permanently,
+    holding the same rows as the database beside it. Measured 2026-08-25 by
+    running this leg against the pre-P3 code.
+    """
+    vault_path, sidecar_path, key, _digests = _fresh_v1_vault(tmp_path, "copy-mode")
+
+    live = Vault(vault_path, sidecar_path)
+    live.open(bytearray(key))
+    live.connection.execute(
+        "INSERT INTO accounts(name, type, created_at) VALUES (?, ?, ?)",
+        ("wal row", "current", "2026-02-01T00:00:00+00:00"),
+    )
+    live.connection.commit()
+    copy_vault, copy_sidecar = write_rollback_copy(vault_path, sidecar_path)
+    live.close()
+
+    copied_wal = _suffixed(copy_vault, "-wal")
+    assert copied_wal.exists(), (
+        "precondition: the live WAL must have been carried to the copy, or "
+        "this leg checks the mode of a file that is not there."
+    )
+    for path in (copy_vault, copy_sidecar, copied_wal):
+        mode = path.stat().st_mode & 0o777
+        assert mode == 0o600, (
+            f"{path.name} is readable by other accounts on this machine. It is "
+            "a copy of the user's whole vault, sitting beside the original.\n"
+            "  expected: 0o600\n"
+            f"  actual:   {mode:#o}"
+        )
+
+
+@pytest.mark.skipif(os.name != "posix", reason="symlinks are a POSIX question here")
+def test_a_symlink_at_the_copy_path_does_not_redirect_the_vault(
+    tmp_path: Path,
+) -> None:
+    """The copy path is unlinked and then written, and a symlink planted in
+    between was FOLLOWED -- writing a copy of the vault wherever it pointed.
+
+    ``O_EXCL`` refuses a path that exists at all by the time the open happens,
+    which includes a symlink, and ``O_NOFOLLOW`` says so outright. The old
+    ``shutil.copyfile`` had neither (FIBR-0310 P3).
+    """
+    vault_path, sidecar_path, key, _digests = _fresh_v1_vault(tmp_path, "symlink")
+    elsewhere = tmp_path / "elsewhere.bin"
+    elsewhere.write_bytes(b"not the vault")
+
+    # The race, made deterministic: the symlink is already in place when the
+    # copy runs, which is the state the unlink/copy window can produce.
+    copy_vault, _copy_sidecar = rollback_copy_paths(vault_path, sidecar_path)
+
+    real_unlink = Path.unlink
+
+    def relink(self: Path, *args: Any, **kwargs: Any) -> None:
+        real_unlink(self, *args, **kwargs)
+        if self == copy_vault:
+            self.symlink_to(elsewhere)  # planted in the window
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(Path, "unlink", relink)
+        with pytest.raises(OSError):
+            write_rollback_copy(vault_path, sidecar_path)
+
+    assert elsewhere.read_bytes() == b"not the vault", (
+        "the vault was copied THROUGH a symlink planted at the rollback path, "
+        "so a copy of the user's whole vault was written to a location an "
+        "attacker chose.\n"
+        "  expected: the target untouched\n"
+        f"  actual:   {len(elsewhere.read_bytes())} bytes"
+    )
