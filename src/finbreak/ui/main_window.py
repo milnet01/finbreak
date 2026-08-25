@@ -1178,7 +1178,7 @@ class MainWindow(QMainWindow):
         dialog = build_add_or_replace_offer(self._service, self)
         if dialog is None:
             return
-        dialog.accepted.connect(lambda: self._status(self.tr("Recovery code saved")))
+        dialog.saved.connect(lambda: self._status(self.tr("Recovery code saved")))
         dialog.finished.connect(self._teardown_dialog)
         self._open_dialog(dialog, defer=False)
 

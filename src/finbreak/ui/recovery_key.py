@@ -14,8 +14,8 @@ is what INV-5 is about.
 
 from __future__ import annotations
 
-from PySide6.QtCore import QCoreApplication
-from PySide6.QtGui import QCloseEvent
+from PySide6.QtCore import QCoreApplication, Signal
+from PySide6.QtGui import QCloseEvent, QGuiApplication
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
@@ -30,8 +30,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from finbreak.services.auth import AuthService
+from finbreak.errors import VaultLockedError
+from finbreak.services.auth import DEFAULT_CLIPBOARD_CLEAR_SECONDS, AuthService
 from finbreak.services.recovery_code import generate_code
+from finbreak.ui._clipboard import ClipboardAutoClear
 
 _TR_CONTEXT = "RecoveryKey"
 
@@ -59,9 +61,31 @@ class RecoveryCodeDialog(QDialog):
     Shown by the caller, never with ``exec()``: see :func:`build_recovery_offer`.
     """
 
-    def __init__(self, code: str, parent: QWidget | None = None):
+    # Emitted once the recovery slot has actually been WRITTEN — deliberately
+    # not `accepted`, which fires on the button. :func:`build_recovery_offer`
+    # is what emits it, because it is what performs the write
+    # (FIBR-0307 finding 13).
+    saved = Signal()
+
+    def __init__(
+        self,
+        code: str,
+        parent: QWidget | None = None,
+        *,
+        clipboard: ClipboardAutoClear | None = None,
+    ):
         super().__init__(parent)
         self._code = code
+        # Copy goes through the auto-clear guard, as a transaction description
+        # already does (FIBR-0032) — and this is the most sensitive thing the
+        # app copies, since it opens the vault on its own. Standalone
+        # construction takes the default timeout; `build_recovery_offer`
+        # injects one wired to the user's setting.
+        self._clipboard = clipboard or ClipboardAutoClear(
+            QGuiApplication.clipboard(),
+            seconds_provider=lambda: DEFAULT_CLIPBOARD_CLEAR_SECONDS,
+        )
+        self._clipboard.setParent(self)
         self.setWindowTitle(self.tr("Your recovery code"))
 
         explanation = QLabel(
@@ -111,8 +135,8 @@ class RecoveryCodeDialog(QDialog):
         save_button.clicked.connect(self._save)
 
     def _copy(self) -> None:
-        self._display.selectAll()
-        self._display.copy()
+        self._display.selectAll()  # visible feedback that the field was taken
+        self._clipboard.copy(self._code)
 
     def _save(self) -> None:
         path, _filter = QFileDialog.getSaveFileName(
@@ -256,8 +280,33 @@ def build_recovery_offer(
     post-migration offer (D7), and Settings' Add / Replace (§ 4.7). The same
     display, the same two ways out, and the same one write.
     """
-    dialog = RecoveryCodeDialog(code, parent)
-    dialog.accepted.connect(lambda: keep_recovery_code(service, code, parent))
+
+    def clear_seconds() -> int:
+        try:
+            return service.clipboard_clear_seconds()
+        except VaultLockedError:
+            # An idle auto-lock between opening this dialog and pressing Copy.
+            # The guard still has to arm, so fall back to the default rather
+            # than raise out of the copy handler.
+            return DEFAULT_CLIPBOARD_CLEAR_SECONDS
+
+    dialog = RecoveryCodeDialog(
+        code,
+        parent,
+        clipboard=ClipboardAutoClear(
+            QGuiApplication.clipboard(), seconds_provider=clear_seconds
+        ),
+    )
+
+    def keep() -> None:
+        # `saved` only where the write actually happened: `keep_recovery_code`
+        # warns on a failed re-wrap and returns False, and a caller hanging a
+        # "saved" message off `accepted` reported success over that warning
+        # (FIBR-0307 finding 13).
+        if keep_recovery_code(service, code, parent):
+            dialog.saved.emit()
+
+    dialog.accepted.connect(keep)
     return dialog
 
 
@@ -281,6 +330,14 @@ def _confirm_master_password(service: AuthService, parent: QWidget | None) -> bo
     try:
         if service.verify_password(buffer):
             return True
+    except VaultLockedError:
+        # `QInputDialog.getText` spins a nested event loop, so the auto-lock
+        # timer fires INSIDE it and `verify_password` then reads a locked
+        # vault. Fail closed and silently, as settings.py does: nothing was
+        # authorised, and the shell is already tearing this dialog down for
+        # the unlock screen, so a warning would land on a dying widget
+        # (FIBR-0307 finding 12).
+        return False
     finally:
         buffer[:] = bytes(len(buffer))
     QMessageBox.warning(
@@ -332,5 +389,11 @@ def remove_recovery_key(service: AuthService, parent: QWidget | None = None) -> 
         return False
     if not _confirm_master_password(service, parent):
         return False
-    service.remove_recovery_key()
+    try:
+        service.remove_recovery_key()
+    except VaultLockedError:
+        # The confirmation above blocks, so an idle auto-lock can land between
+        # it and this call. Nothing was removed; report that rather than raise
+        # out of the slot (FIBR-0307 finding 12).
+        return False
     return True
