@@ -73,8 +73,10 @@ MAX_BACKUP_DB_BYTES = 512 * 1024 * 1024
 MAX_COMPRESSION_RATIO = 100
 
 # The single test seam: invoked with (role, buffer) for each derived key — role in
-# {"backup", "master", "post_move_aside"} — so a test captures the buffer to assert
-# it is zeroed after the call, and may raise to inject a failure at that point.
+# {"backup", "master", "dek", "post_move_aside"} — so a test captures the buffer
+# to assert it is zeroed after the call, and may raise to inject a failure at that
+# point. "dek" is FIBR-0019's: a restore mints a random DEK and wraps it under the
+# new master password, so the restored vault has a key of its own (FIBR-0310 P11).
 OnKey = Callable[[str, bytearray], None]
 
 _MANIFEST_ENTRY = "manifest.json"
