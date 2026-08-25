@@ -5273,6 +5273,32 @@ because retrofitting them is a data migration.
   Full gate green.
 
   Remaining: 9-13, plus the decided D5 note for keywrap.py.
+  Progress (2026-08-25): finding 9 is closed (44a965f).
+
+  read_sidecar_v2 refuses a slot whose nonce or wrapped DEK is the wrong
+  length, per slot, as KdfPolicyError. Measured before the fix: a 2-byte
+  and a 64-byte nonce, and an 8-byte and a 200-byte wrapped DEK, all
+  parsed — and unlock() returned False for each, so a damaged key record
+  read as a wrong password and charged the § 6 throttle. That is finding
+  2's confusion by a second route. § 4.4 already fixes both sizes, so the
+  contract was written and only the enforcement was missing;
+  WRAPPED_DEK_LEN is no longer dead.
+
+  Not the oracle unwrap_dek refuses to be: a length is public in the
+  plaintext sidecar and this gate runs before any password is derived.
+  unwrap_dek keeps its one undifferentiated error, because the causes it
+  can tell apart are secret-dependent. The route already existed —
+  load_params runs first, and ui/unlock.py renders KdfPolicyError as the
+  security-settings file being damaged.
+
+  Refusing the whole record when a non-master slot is damaged is existing
+  behaviour, not new strictness: validate_params already runs over every
+  slot, so a damaged recovery salt blocks a master unlock today.
+
+  Five new legs, each proved red first and each mutation-checked alone.
+  Full gate green.
+
+  Remaining: 10-13, plus the decided D5 note for keywrap.py.
   **Layman:** The recovery-key feature works, but a careful review found thirteen problems in it — two of which could cost a user their data.
   Kind: review-fix.
   Source: close-phase-2026-08-21 (check-code + 3 review-code lanes over f704605..HEAD).

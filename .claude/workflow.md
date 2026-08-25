@@ -47,7 +47,7 @@ this**, so treat a stale date as "recent work was out-of-band", not as
 |---|---|
 | **Active item ID** | FP02 / FIBR-0307 (fix-pass after FIBR-0019 — thirteen review findings) |
 | **Blocked on** | Nothing. FIBR-0019's close was ATTEMPTED and blocked: `check-code` plus three `review-code` lanes found thirteen actionable defects, batched into FP02. FIBR-0019 is back to 🚧 and returns to ✅ only when FP02 closes clean. FIBR-0159 stays 🚧 in the DB but is not the active item and is not a 1.0 blocker. |
-| **Last update** | 2026-08-25 (finding 7 fixed, pushed at dd6a95e) |
+| **Last update** | 2026-08-25 (findings 7 and 9 fixed, pushed at 44a965f) |
 
 ### Step progress
 
@@ -97,6 +97,7 @@ no count is restated here:
 | 6 | § 13.3 branch 3 re-entered `_convert` — whose S4 replaces the live sidecar — with no rollback copy taken or verified | `ff25718` |
 | 7 | D8's rollback offer was never made — `rollback_copy_paths` had no caller, so § 13.3's terminal branch stayed terminal with the user's pre-upgrade vault beside it | `dd6a95e` |
 | 8 | `verify_rollback_copy` read `sqlite_master` and stopped, so page damage past the schema was invisible | `ff25718` |
+| 9 | `read_sidecar_v2` accepted any length for a slot's nonce and wrapped DEK, so a damaged key record was reported as a wrong password and charged the throttle | `44a965f` |
 
 **Finding 8's stated repro does NOT hold, and this is worth not
 re-deriving.** A *truncated* copy is refused by SQLite at `open` (measured
@@ -105,10 +106,11 @@ of the RIGHT LENGTH whose pages did not all survive — SQLCipher checks each
 page's HMAC only as that page is read. `verify_rollback_copy`'s docstring
 carries the measurement.
 
-**Next is finding 9** — `read_sidecar_v2` accepts a slot whose wrapped DEK
-or nonce is any length, so `WRAPPED_DEK_LEN` is dead. It fails closed, but
-as `KeyUnwrapError`, so a corrupt key record reads to the user as a wrong
-password — finding 2's confusion by a second route. Then 10, 11, 12, 13.
+**Next is finding 10** — `_on_change_recovery_key` and
+`_on_remove_recovery_key` do not tear the Settings dialog down first, unlike
+every sibling handler: two app-modals, a dialog auto-lock cannot close,
+settings writes dropped on the next Save, and a stale "No recovery code is
+set" left on screen. Then 11, 12, 13.
 
 **The open question on un-wipeable DEK copies is DECIDED** (user,
 2026-08-21): it sits inside FIBR-0004 D5's accepted best-effort gap,
