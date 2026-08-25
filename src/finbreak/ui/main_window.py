@@ -1166,7 +1166,15 @@ class MainWindow(QMainWindow):
         master-password gate and the re-wrap are AuthService work, and Settings
         holding a reference to either would put key material in a preferences
         dialog.
+
+        Tear Settings down FIRST, mirroring the backup and hint flows: the
+        single ``_dialog`` slot holds one app-modal at a time, and
+        ``_open_dialog`` below overwrites it. Leaving Settings shown left it
+        UNTRACKED — an idle auto-lock could no longer close it, a Save from it
+        was dropped by ``_on_settings_saved``'s isinstance guard, and it went
+        on showing the recovery state it was built with (FIBR-0307 finding 10).
         """
+        self._teardown_dialog()
         dialog = build_add_or_replace_offer(self._service, self)
         if dialog is None:
             return
@@ -1175,6 +1183,10 @@ class MainWindow(QMainWindow):
         self._open_dialog(dialog, defer=False)
 
     def _on_remove_recovery_key(self) -> None:
+        # Same teardown, for a second reason: the confirmation below is
+        # blocking, and afterwards Settings would still be offering to remove a
+        # code that is gone (FIBR-0307 finding 10).
+        self._teardown_dialog()
         if remove_recovery_key(self._service, self):
             self._status(self.tr("Recovery code removed"))
 
