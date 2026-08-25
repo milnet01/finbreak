@@ -271,3 +271,92 @@ def test_a_copied_recovery_code_is_cleared_from_the_clipboard(
         qtbot.waitUntil(lambda: board.text() == "", timeout=5000)
     finally:
         board.clear()
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0310 R2 — a teardown with no return path
+# --------------------------------------------------------------------------- #
+def _assert_settings_back(window: MainWindow, action: str) -> None:
+    _pump_deferred_delete()
+    back = window._dialog
+    assert isinstance(back, SettingsDialog), (
+        f"§ 4.7 {action} tore Settings down and then opened nothing, so "
+        "Settings simply vanished: the user asked for a preferences change and "
+        "was dropped on the main window. Every sibling flow that tears Settings "
+        "down REPLACES it (FIBR-0310 R2).\n"
+        "  expected: a SettingsDialog back in the _dialog slot\n"
+        f"  actual:   {type(back).__name__}"
+    )
+    assert not back.isHidden(), (
+        f"§ 4.7 {action} put Settings back in the slot but left it hidden, "
+        "which is the same vanishing act with the tracking repaired.\n"
+        "  expected: shown\n  actual:   hidden"
+    )
+
+
+def test_cancelling_the_password_gate_puts_settings_back(
+    qtbot: Any, monkeypatch: pytest.MonkeyPatch, service: AuthService
+) -> None:
+    """Replace refused at the gate has changed nothing, so the user belongs
+    back where they pressed the button."""
+    monkeypatch.setattr(
+        recovery_module, "_confirm_master_password", lambda *a, **k: False
+    )
+    window, settings = _shell_with_settings_open(qtbot, service)
+
+    window._on_change_recovery_key()
+
+    _assert_settings_gone(settings, "Replace")  # the old one is still torn down
+    _assert_settings_back(window, "Replace, cancelled at the gate")
+
+
+@pytest.mark.parametrize("confirmed", [False, True], ids=["cancelled", "removed"])
+def test_answering_the_remove_confirmation_puts_settings_back(
+    qtbot: Any, monkeypatch: pytest.MonkeyPatch, service: AuthService, confirmed: bool
+) -> None:
+    """Remove opens nothing of its own on EITHER branch. Cancelled, nothing
+    happened at all; confirmed, Settings comes back rebuilt -- showing the state
+    the teardown exists to stop it showing stale."""
+    monkeypatch.setattr(shell_module, "remove_recovery_key", lambda *a, **k: confirmed)
+    window, settings = _shell_with_settings_open(qtbot, service)
+
+    window._on_remove_recovery_key()
+
+    _assert_settings_gone(settings, "Remove")
+    _assert_settings_back(window, f"Remove (confirmed={confirmed})")
+
+
+def test_an_auto_lock_during_the_gate_does_not_reopen_settings(
+    qtbot: Any, monkeypatch: pytest.MonkeyPatch, service: AuthService
+) -> None:
+    """The return path is guarded, and this is what it is guarded against.
+
+    ``_open_settings`` reads the vault for the base currency, and ``_lock``
+    has already put the UnlockDialog in the single ``_dialog`` slot. Re-opening
+    Settings over a locked vault would raise out of a Qt slot AND bury the
+    unlock screen the user now needs (FIBR-0310 R2).
+    """
+
+    def lock_then_refuse(*_a: Any, **_k: Any) -> bool:
+        # The production entry, inside the blocking gate: lock() and then the
+        # shell's own `_lock`, which is what clears `_unlocked` and puts the
+        # unlock screen in the slot. `service.lock()` alone reaches neither, and
+        # a leg that used it would be asserting against a state the app cannot
+        # be in.
+        service._on_idle_timeout()
+        return False
+
+    monkeypatch.setattr(recovery_module, "_confirm_master_password", lock_then_refuse)
+    window, settings = _shell_with_settings_open(qtbot, service)
+
+    window._on_change_recovery_key()  # must not raise
+
+    _assert_settings_gone(settings, "Replace")
+    _pump_deferred_delete()
+    assert not isinstance(window._dialog, SettingsDialog), (
+        "Settings was re-opened over a vault that locked mid-gate. "
+        "`_open_settings` reads the vault, and the slot already holds the "
+        "unlock screen the user needs next.\n"
+        "  expected: not a SettingsDialog\n"
+        f"  actual:   {type(window._dialog).__name__}"
+    )

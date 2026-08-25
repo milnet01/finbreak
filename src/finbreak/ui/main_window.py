@@ -965,6 +965,29 @@ class MainWindow(QMainWindow):
         dialog.rejected.connect(self._teardown_dialog)  # cancel: no change
         self._open_dialog(dialog, defer=False)
 
+    def _reopen_settings_if_idle(self) -> None:
+        """Put Settings back after a § 4.7 flow that tore it down and opened nothing.
+
+        Both recovery handlers tear Settings down first, because the single
+        ``_dialog`` slot holds one app-modal at a time (FIBR-0307 finding 10).
+        Every sibling flow then REPLACES it — but these two can resolve without
+        opening anything: Cancel at the master-password gate, or either way out
+        of the remove confirmation. Settings just vanished, leaving the user on
+        the main window having asked for a preferences change (FIBR-0310 R2).
+
+        Not the Add / Replace success path, which is deliberate rather than
+        missed: there the slot is full — the user is being shown a recovery code
+        they get once — and putting Settings behind it would be a second modal
+        this convention exists to forbid.
+
+        Guarded twice because both guards fire. An idle auto-lock during the
+        blocking gate clears ``_unlocked`` AND puts the UnlockDialog in the
+        slot, and ``_open_settings`` reads the vault, so re-opening would both
+        overwrite that dialog and raise.
+        """
+        if self._unlocked and self._dialog is None:
+            self._open_settings()
+
     def _open_export(self) -> None:
         # Vault-dependent (File menu disabled while locked, INV-11). The dialog
         # holds no vault ref — it is handed the account list + Home's pre-fill.
@@ -1177,6 +1200,7 @@ class MainWindow(QMainWindow):
         self._teardown_dialog()
         dialog = build_add_or_replace_offer(self._service, self)
         if dialog is None:
+            self._reopen_settings_if_idle()  # Cancel at the password gate
             return
         dialog.saved.connect(lambda: self._status(self.tr("Recovery code saved")))
         dialog.finished.connect(self._teardown_dialog)
@@ -1189,6 +1213,10 @@ class MainWindow(QMainWindow):
         self._teardown_dialog()
         if remove_recovery_key(self._service, self):
             self._status(self.tr("Recovery code removed"))
+        # Nothing takes the slot on either branch, so Settings has to come back
+        # itself — and on the removed branch it comes back rebuilt, showing the
+        # state the teardown comment above complains about it not showing.
+        self._reopen_settings_if_idle()
 
     def _on_set_hint_requested(self) -> None:
         # Verify the current password (authorizes the change), enforce the hint
