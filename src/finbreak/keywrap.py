@@ -65,7 +65,31 @@ def slot_aad(slot: str, params: KdfParams) -> bytes:
 
 
 def wrap_dek(kek: bytes, dek: bytes, slot: str, params: KdfParams) -> Slot:
-    """Wrap ``dek`` under ``kek`` into ``slot``, authenticated by ``slot_aad``."""
+    """Wrap ``dek`` under ``kek`` into ``slot``, authenticated by ``slot_aad``.
+
+    ``bytes(dek)`` makes an immutable copy AESGCM requires; it cannot be wiped
+    and lingers until GC. :func:`unwrap_dek` has the mirror of it — AESGCM
+    returns immutable ``bytes``, which is copied into the wipeable buffer it
+    hands back, leaving the original in the heap. One such copy per wrap and
+    per unwrap, surviving lock and auto-lock.
+
+    **This is FIBR-0004 D5's accepted best-effort gap, and it is recorded here
+    rather than fixed** (decided by the user 2026-08-21, FIBR-0307). D5's
+    wording describes this exact shape: a primitive returns immutable
+    ``bytes``, the value is copied into a ``bytearray`` and the original
+    reference dropped. ``crypto.derive_key`` carries the identical note on
+    ``bytes(password)``.
+
+    Two things make it worth having decided rather than inherited, so the next
+    reviewer does not re-raise it. The gap D5 accepted is the PASSWORD, and
+    this is the database key. And an in-place API does exist here — ``Cipher``
+    with ``GCM`` and ``update_into`` over a caller-owned buffer — so unlike
+    ``hash_secret_raw``'s ``secret=`` argument it is not API-forced. It was
+    weighed on those two points and accepted: swap is out of scope
+    (``security-model.md`` § 4), so the residual is a heap copy on a machine an
+    attacker already has, which is the same exposure D5 accepts for the
+    password that derives the KEK.
+    """
     nonce = secrets.token_bytes(NONCE_LEN)
     return Slot(
         nonce=nonce,
