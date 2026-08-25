@@ -30,6 +30,36 @@ jobs:
         with:
           python-version: "3.12"
 
+      # FIBR-0310 P1 — the durability idiom `vault_migration._fsync` uses, asked
+      # of Windows. It opens a file O_RDONLY and fsyncs it, which POSIX allows;
+      # Windows maps os.fsync to _commit -> FlushFileBuffers, which wants write
+      # access. If that raises, every v1 -> v2 migration aborts at S0 through
+      # _unlock_v1's broad except, and no Windows user is ever offered a
+      # recovery key. Nothing in the repo answered the question, and this is the
+      # only Windows job there is. Reports and never fails the build — a
+      # measurement, not a gate; the gate follows once the answer is known.
+      - name: Probe the fsync idiom the migration depends on
+        shell: python
+        run: |
+          import os, sys, tempfile
+          path = os.path.join(tempfile.mkdtemp(), "probe.bin")
+          with open(path, "wb") as handle:
+              handle.write(b"finbreak durability probe")
+          for name, flags in (("O_RDONLY", os.O_RDONLY), ("O_RDWR", os.O_RDWR)):
+              try:
+                  fd = os.open(path, flags)
+              except OSError as exc:
+                  print(f"FSYNC_PROBE {name}: open failed: {exc!r}")
+                  continue
+              try:
+                  os.fsync(fd)
+                  print(f"FSYNC_PROBE {name}: OK")
+              except OSError as exc:
+                  print(f"FSYNC_PROBE {name}: FAILED {exc!r}")
+              finally:
+                  os.close(fd)
+          print(f"FSYNC_PROBE platform={sys.platform} python={sys.version.split()[0]}")
+
       # build-windows-exe.py: manifest-driven dep install (INV-6), single-Qt guard
       # (INV-2), then the PyInstaller onefile freeze with the canonical collection
       # flags (INV-3) and an os.pathsep --add-data (INV-5). Produces dist/finbreak.exe.
