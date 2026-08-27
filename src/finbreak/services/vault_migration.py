@@ -374,6 +374,22 @@ def verify_rollback_copy(
     are compared against the live vault, which is what proves INV-8; at S0
     nothing exists to compare them to, so a second full read of the pages
     ``integrity_check`` has just walked would buy nothing.
+
+    **The probe passes ``migrate=False``, and this function of all of them.**
+    It omitted it while its two siblings carried it, so ``Vault.open``'s default
+    ran ``run_migrations`` and COMMITTED schema writes into the one artefact S0
+    exists to leave untouched — a certifier modifying what it certifies. P7 made
+    this same correction for the live pair; the rollback copy is the other half
+    of it (FIBR-0313 H2).
+
+    It also closes an exception escaping :func:`rollback_copy_is_usable`, which
+    is typed ``-> bool`` and asked on the last-resort branch:
+    ``run_migrations`` is the only place ``SchemaVersionError`` is raised, and
+    ``Vault.open`` returns before it when migrations are skipped. **What a
+    too-new copy then verifies AS is deliberate**: it reads end to end, so it
+    passes, and the offer is made. Refusing it would hide an intact vault from
+    the user over a number in a table, where restoring it leads to "update
+    finbreak" and their data back.
     """
     if not copy_vault_path.exists() or not copy_sidecar_path.exists():
         raise VaultStateError("the rollback copy was not written")
@@ -390,7 +406,7 @@ def verify_rollback_copy(
         )
     load_and_validate_params(copy_sidecar_path)
     probe = Vault(copy_vault_path, copy_sidecar_path)
-    probe.open(bytearray(key), in_memory_temp=True)
+    probe.open(bytearray(key), in_memory_temp=True, migrate=False)
     try:
         integrity = probe.connection.execute("PRAGMA integrity_check").fetchone()[0]
         if integrity == "ok":

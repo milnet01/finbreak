@@ -10,6 +10,7 @@ is exactly one acceptable failure mode -- the vault still opens.
 from __future__ import annotations
 
 import errno
+import hashlib
 import os
 import shutil
 from pathlib import Path
@@ -29,8 +30,9 @@ from _recovery_helpers import (
 )
 from sqlcipher3.dbapi2 import DatabaseError
 
-from finbreak.errors import RollbackAvailableError, VaultStateError
+from finbreak.errors import RollbackAvailableError, SchemaVersionError, VaultStateError
 from finbreak.keywrap import SLOT_MASTER
+from finbreak.migrations import LATEST_SCHEMA_VERSION
 from finbreak.services import auth as auth_module
 from finbreak.services import vault_migration
 from finbreak.services.auth import AuthService
@@ -1723,4 +1725,216 @@ def test_branch_2_secures_the_rollback_copy_before_it_swaps(
         "exists, and the pair beside this vault did not verify.\n"
         "  expected: [['ensure']] -- one swap, gated\n"
         f"  actual:   {at_swap}"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0313 H2 -- verify_rollback_copy commits schema writes into the copy it
+# exists to certify, and SchemaVersionError escapes a `-> bool` predicate
+# --------------------------------------------------------------------------- #
+def _sha256_file(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _schema_version_via_migrate_false_probe(
+    db_path: Path, sidecar_path: Path, key: bytearray
+) -> int:
+    """Read ``schema_version`` off ``db_path`` without running migrations --
+    the ``_opens``/``_row_counts_or_none`` idiom, used here only to make a
+    failure diagnosable. Never the pass/fail witness itself: two different
+    databases can share a schema_version, which is why the tests below assert
+    on file bytes / on ``SchemaVersionError`` and use this only for the
+    message.
+    """
+    probe = Vault(db_path, sidecar_path)
+    probe.open(bytearray(key), in_memory_temp=True, migrate=False)
+    try:
+        return int(
+            probe.connection.execute("SELECT version FROM schema_version").fetchone()[0]
+        )
+    finally:
+        probe.close()
+
+
+def test_verify_rollback_copy_does_not_modify_the_copy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """FIBR-0313 H2, first half: ``verify_rollback_copy``'s own
+    ``probe.open(bytearray(key), in_memory_temp=True)`` omits ``migrate=False``
+    -- unlike ``_opens``/``_reads_end_to_end`` in this same module, which both
+    pass it for exactly this reason ("this is a question, not a use", per
+    their own docstrings). ``Vault.open``'s default is ``migrate=True``, so
+    opening the copy to CERTIFY it runs ``run_migrations`` and COMMITS
+    whatever schema writes are outstanding into the very artefact S0 exists to
+    leave untouched -- the same class of defect ``Vault.open``'s own
+    docstring already records once for ``_opens`` ("that last one was the
+    sentence's claim and not its behaviour").
+
+    ``Vault.create()`` runs ``run_migrations`` unconditionally, and
+    ``_unlock_v1`` always opens the live vault with ``migrate=True`` before
+    ``migrate_to_v2`` ever calls S0 -- so every fixture built through the
+    public path, and every S0 copy taken on the ordinary unlock route, is
+    already at ``LATEST_SCHEMA_VERSION`` by the time this function ever sees
+    it, and the bug is a silent no-op there (confirmed by reading both call
+    sites). The contract under test is the FUNCTION's own, not only today's
+    callers' shielding of it, so this fixture constructs a copy genuinely
+    behind ``LATEST_SCHEMA_VERSION`` directly: ``run_migrations`` is
+    suppressed for exactly one ``Vault.create()`` call, producing a real
+    unmigrated v1-schema database no different in shape from the one
+    ``run_migrations`` is written to bring forward on every ordinary unlock.
+    """
+    directory = tmp_path / "verify-no-mutate"
+    directory.mkdir()
+    vault_path = directory / "vault.db"
+    sidecar_path = directory / "vault.kdf.json"
+
+    with pytest.MonkeyPatch.context() as create_mp:
+        create_mp.setattr("finbreak.vault.run_migrations", lambda _conn: None)
+        vault, _params, key = create_v1_vault(vault_path, sidecar_path)
+    vault.close()
+
+    # No WAL sibling may survive the create, or the checkpoint
+    # verify_rollback_copy performs ON SUCCESS -- deliberate, unconditional,
+    # and unrelated to the migrate=False omission -- would legitimately move
+    # the copy's bytes even under a fix, and a hash comparison could not tell
+    # the two apart.
+    vault_migration._drop_wal_siblings(vault_path)
+
+    copy_vault, copy_sidecar = write_rollback_copy(vault_path, sidecar_path)
+    vault_migration._drop_wal_siblings(copy_vault)
+
+    # Preconditions: the copy is genuinely behind LATEST_SCHEMA_VERSION and
+    # carries no WAL sibling of its own. Without both, a later hash mismatch
+    # could be the intentional checkpoint, or this leg could pass on a copy
+    # run_migrations has nothing to do to.
+    before_schema = _schema_version_via_migrate_false_probe(
+        copy_vault, copy_sidecar, key
+    )
+    assert before_schema < LATEST_SCHEMA_VERSION, (
+        "precondition: the .pre-v2 copy must be genuinely behind "
+        "LATEST_SCHEMA_VERSION, or run_migrations has nothing to commit and "
+        "this leg cannot tell a real migration run from a no-op.\n"
+        f"  expected: schema_version < {LATEST_SCHEMA_VERSION}\n"
+        f"  actual:   {before_schema}"
+    )
+    copy_wal = copy_vault.with_name(copy_vault.name + "-wal")
+    assert not copy_wal.exists(), (
+        "precondition: the copy must carry no -wal sibling of its own before "
+        "verification, or the checkpoint verify_rollback_copy performs ON "
+        "SUCCESS -- deliberate, and unrelated to this defect -- would move "
+        "the copy's bytes even under a correct implementation.\n"
+        f"  expected: {copy_wal} absent\n  actual:   present"
+    )
+    before_hash = _sha256_file(copy_vault)
+
+    try:
+        verify_rollback_copy(copy_vault, copy_sidecar, key)
+    except Exception as exc:
+        pytest.fail(
+            "precondition: verify_rollback_copy must SUCCEED on a copy that "
+            "genuinely opens and reads end to end, or this leg proves nothing "
+            "about whether it mutated the file on its way to failing.\n"
+            "  expected: no exception\n"
+            f"  actual:   {type(exc).__name__}: {exc}"
+        )
+
+    after_hash = _sha256_file(copy_vault)
+    after_schema = _schema_version_via_migrate_false_probe(
+        copy_vault, copy_sidecar, key
+    )
+    assert after_hash == before_hash, (
+        "FIBR-0313 H2: verify_rollback_copy modified the .pre-v2 copy it "
+        "exists to CERTIFY. Its probe.open(..., in_memory_temp=True) omits "
+        "migrate=False, so Vault.open's default migrate=True ran "
+        "run_migrations and COMMITTED schema writes into the artefact this "
+        "function is meant only to read.\n"
+        f"  expected: sha256 unchanged ({before_hash}), "
+        f"schema_version unchanged ({before_schema})\n"
+        f"  actual:   sha256 {after_hash}, "
+        f"schema_version {after_schema} (read back via a migrate=False probe)"
+    )
+
+
+def test_rollback_copy_is_usable_does_not_raise_on_a_too_new_copy(
+    tmp_path: Path,
+) -> None:
+    """FIBR-0313 H2, second half: ``rollback_copy_is_usable`` is typed
+    ``-> bool`` and is asked on ``resume()``'s LAST-RESORT terminal branch --
+    the frame where every route is exhausted and the user is offered their
+    pre-upgrade copy. ``SchemaVersionError``'s MRO is
+    ``SchemaVersionError -> FinbreakError``, so it is not among the caught
+    ``(VaultStateError, KdfPolicyError, DatabaseError, OSError)`` and
+    propagates straight out of the predicate instead of yielding ``False``
+    ("not a usable rollback route").
+
+    Reachable in production as a genuine DOWNGRADE, not invented: the
+    ``.pre-v2`` pair persists on disk only while ``migration_pending`` is set,
+    and ``_ensure_rollback_copy``'s retake copies ``vault_path``
+    byte-for-byte via ``write_rollback_copy`` with no migration run first
+    (its own check of the live database, ``_opens``, passes
+    ``migrate=False``). If a build with a HIGHER ``LATEST_SCHEMA_VERSION``
+    takes or retakes the copy, and a build with a LOWER one later resumes
+    against the same data directory -- an app downgrade mid-migration, e.g. a
+    broken auto-update falling back to a cached older AppImage -- the copy's
+    recorded schema_version is newer than the resuming build supports, and
+    that is exactly the shape ``SchemaVersionError`` exists for
+    (``migrations.py::run_migrations``: "a vault newer than this build
+    supports is refused, not silently downgraded").
+    """
+    directory = tmp_path / "too-new-copy"
+    directory.mkdir()
+    vault_path = directory / "vault.db"
+    sidecar_path = directory / "vault.kdf.json"
+    vault, _params, key = create_v1_vault(vault_path, sidecar_path)
+
+    too_new = LATEST_SCHEMA_VERSION + 1
+    vault.connection.execute("UPDATE schema_version SET version = ?", (too_new,))
+    vault.connection.commit()
+    vault.close()
+    vault_migration._drop_wal_siblings(vault_path)
+
+    write_rollback_copy(vault_path, sidecar_path)
+
+    # Precondition: the copy really carries a schema_version newer than this
+    # build supports -- without this the leg could pass without ever reaching
+    # the branch run_migrations raises SchemaVersionError from.
+    copy_vault, copy_sidecar = rollback_copy_paths(vault_path, sidecar_path)
+    copy_schema = _schema_version_via_migrate_false_probe(copy_vault, copy_sidecar, key)
+    assert copy_schema == too_new and copy_schema > LATEST_SCHEMA_VERSION, (
+        "precondition: the .pre-v2 copy must carry a schema_version strictly "
+        "newer than LATEST_SCHEMA_VERSION, or this leg does not reach the "
+        "branch run_migrations raises SchemaVersionError from.\n"
+        f"  expected: {too_new} (> {LATEST_SCHEMA_VERSION})\n"
+        f"  actual:   {copy_schema}"
+    )
+
+    try:
+        usable = vault_migration.rollback_copy_is_usable(
+            vault_path, sidecar_path, bytearray(key)
+        )
+    except SchemaVersionError as exc:
+        pytest.fail(
+            "FIBR-0313 H2: rollback_copy_is_usable is typed -> bool and is "
+            "asked on resume()'s last-resort terminal branch, where the user "
+            "is offered their pre-upgrade copy -- a predicate must never "
+            "raise there. SchemaVersionError's MRO is "
+            "SchemaVersionError -> FinbreakError, so it is not among "
+            "(VaultStateError, KdfPolicyError, DatabaseError, OSError) and "
+            "propagated out of the predicate. run_migrations is the only "
+            "place it is raised, so the probe passing migrate=False is what "
+            "closes it.\n"
+            "  expected: a verdict, not an exception\n"
+            f"  actual:   raised {type(exc).__name__}: {exc}"
+        )
+
+    assert usable is True, (
+        "FIBR-0313 H2: the copy READS -- integrity_check passes and every row "
+        "is there -- so it is a usable rollback route and the offer is made. "
+        "schema_version is a number in a table, not damage, and "
+        "verify_rollback_copy exists to refuse a copy that cannot be read. "
+        "Refusing this one would leave the user the bare 'vault and key record "
+        "disagree' with their intact vault beside them and nothing saying so, "
+        "where offering it restores the pair and the next unlock says 'update "
+        "finbreak' -- which is the answer that gets their data back.\n"
+        f"  expected: True\n  actual:   {usable}"
     )

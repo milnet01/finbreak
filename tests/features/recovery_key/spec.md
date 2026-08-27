@@ -192,6 +192,55 @@ every credential, account and transaction here is synthetic
   holds every row.
   Source: FIBR-0313 H1.
 
+- **INV-16** — `verify_rollback_copy` must not MODIFY the `.pre-v2` copy it
+  exists to certify. Its own `probe.open(..., in_memory_temp=True)` omits
+  `migrate=False` — unlike `_opens`/`_reads_end_to_end` in the same module,
+  which both pass it for exactly this reason ("this is a question, not a
+  use") — so `Vault.open`'s default `migrate=True` runs `run_migrations` and
+  commits schema writes into the artefact S0 exists to leave untouched.
+  *Test:* `test_migration.py::test_verify_rollback_copy_does_not_modify_the_copy`
+  — builds a copy genuinely behind `LATEST_SCHEMA_VERSION` (suppressing
+  `run_migrations` for one `Vault.create()` call, since every fixture built
+  the ordinary way is already fully migrated by the time this function ever
+  sees it — confirmed by reading `Vault.create()` and `_unlock_v1`), asserts
+  as preconditions that it is behind and carries no `-wal` sibling of its own
+  (so the checkpoint this function performs ON SUCCESS, which is deliberate
+  and unrelated, cannot be mistaken for the defect), asserts verification
+  itself succeeds, then asserts the copy's sha256 and schema_version are
+  unchanged across the call.
+  Source: FIBR-0313 H2.
+
+- **INV-17** — `rollback_copy_is_usable` is typed `-> bool` and is asked on
+  `resume()`'s last-resort terminal branch, where the user is offered their
+  pre-upgrade copy. **Nothing may propagate out of it.** Today it catches
+  `(VaultStateError, KdfPolicyError, DatabaseError, OSError)`, and
+  `SchemaVersionError`'s MRO is `SchemaVersionError -> FinbreakError`, so a
+  copy whose recorded schema is newer than this build supports throws straight
+  out of the predicate. INV-16's `migrate=False` is what closes it:
+  `run_migrations` is the only place that error is raised, and `Vault.open`
+  returns before it when migrations are skipped.
+  **The verdict on such a copy is `True`, and that is a decision rather than a
+  side effect.** It READS — `integrity_check` passes and every row is there —
+  and `verify_rollback_copy` exists to refuse a copy that cannot be read; a
+  recorded schema number is not damage. Refusing it would leave the user the
+  bare "vault and key record disagree" with their intact vault beside them and
+  nothing saying so, where offering it restores the pair and the next unlock
+  says "update finbreak" — the answer that gets their data back. So adding
+  `SchemaVersionError` to the caught tuple, which is the remedy the finding
+  implies, is the one thing this invariant rules out.
+  *Test:*
+  `test_migration.py::test_rollback_copy_is_usable_does_not_raise_on_a_too_new_copy`
+  — writes a `.pre-v2` copy whose `schema_version` is one past
+  `LATEST_SCHEMA_VERSION`, asserts that as a precondition via a
+  `migrate=False` probe, then calls `rollback_copy_is_usable` and asserts it
+  neither raises nor withholds the offer. Reachable in production as a genuine
+  app downgrade mid-migration: `_ensure_rollback_copy`'s retake copies the
+  live database byte-for-byte with no migration run first (its own check,
+  `_opens`, passes `migrate=False`), so a copy taken or retaken by a build
+  with a higher `LATEST_SCHEMA_VERSION` and later read by a build with a
+  lower one carries exactly this shape.
+  Source: FIBR-0313 H2.
+
 ## Rationale
 
 `AuthService.reset_vault` — "start over" — is the live answer to *I forgot my
