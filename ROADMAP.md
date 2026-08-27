@@ -5887,6 +5887,34 @@ because retrofitting them is a data migration.
   were platform-neutral (SQLCipher page HMACs, a probe flag, file-level moves
   already covered by the Linux gate), so no Windows run was spent on them and
   none is owed retrospectively.
+  Progress (2026-08-27, cont.): M1 fixed and pushed (641dacb); gate
+  green at 2053 passed / 2 skipped. export_backup measures the intermediate
+  vault.db and refuses it over MAX_BACKUP_DB_BYTES on the same `>` edge
+  _read_capped uses -- vault.db is ZIP_STORED, so that file's size IS the
+  file_size restore will measure, and the two ends cannot disagree.
+
+  M1 had a second half nothing had named, found by measuring rather than
+  assumed: BackupError is a sibling FinbreakError, and the export handler
+  caught (VaultLockedError, OSError, ValueError, DatabaseError), so the new
+  refusal would have escaped a Qt slot uncaught -- the M7/M8 class. It has its
+  own arm now, naming the condition, deliberately NOT the generic "choose
+  another location" copy, which for this failure sends the user round a loop
+  that cannot succeed.
+
+  mutation_probe on every part rather than the feature: `>` to `>=` killed,
+  guard disabled killed, UI arm removed killed, message swapped for the
+  generic copy killed. The refusal string itself SURVIVED, which is correct --
+  nothing asserts it and nothing should.
+
+  Where else the rule binds, measured rather than assumed: the cap has one
+  read-side enforcement point (_read_capped, shared by restore and verify) and
+  now one write-side point, so the surface is closed. MAX_MANIFEST_BYTES
+  carries the same read-only asymmetry but is unreachable -- the manifest is
+  four scalars and params.json a fixed sidecar dict, both far under 64 KiB.
+  Named, not fixed.
+
+  FIBR-0014 INV-12 amended to record that the cap binds export too;
+  tests/features/backup/spec.md gained INV-14.
   **Layman:** The recovery-key work was reviewed again with fresh eyes; one serious problem can strand a half-upgraded vault with no way back, and several smaller fixes from last time only reached some of the places they needed to.
   Kind: review-fix.
   Source: close-phase-2026-08-25 (check-code + review-code x4 lanes, FP03 close, fresh context).
