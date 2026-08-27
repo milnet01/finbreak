@@ -58,6 +58,10 @@ MANIFEST_FORMAT_VERSION = 1
 # INV-12 decompression-bomb caps, checked against ZipInfo.file_size BEFORE
 # inflating. Tight on the JSON entries (the real bomb vector); generous on the DB
 # (a large multi-year vault, well above the 16 MiB statement-import cap).
+#
+# MAX_BACKUP_DB_BYTES binds BOTH directions (INV-14, FIBR-0313 M1): export refuses
+# a vault.db over it as well. Enforced on restore alone, it let an oversized vault
+# export, report "Backup saved", and then be unrestorable on every machine.
 MAX_MANIFEST_BYTES = 64 * 1024
 MAX_BACKUP_DB_BYTES = 512 * 1024 * 1024
 
@@ -149,7 +153,9 @@ class BackupService:
         manifest + params into an atomically-written zip. Enforces
         ``MIN_BACKUP_PASSWORD_LEN`` (defence in depth, not only the UI). The backup
         key + password buffer are wiped on every path; a mid-export failure leaves
-        no partial ``.fbk`` and no temp (INV-7)."""
+        no partial ``.fbk`` and no temp (INV-7). Refuses a ``vault.db`` over
+        ``MAX_BACKUP_DB_BYTES`` rather than writing a backup restore could never
+        take back (INV-14)."""
         on_key = on_key or _noop_on_key
         if len(backup_password) < MIN_BACKUP_PASSWORD_LEN:
             raise ValueError(
@@ -179,6 +185,19 @@ class BackupService:
             with tempfile.TemporaryDirectory() as td:
                 tmp_db = Path(td) / _DB_ENTRY
                 self._vault.export_to(tmp_db, backup_key)
+                # Refuse what restore could never take back (INV-14, FIBR-0313 M1).
+                # `_read_capped` rejects on `file_size > MAX_BACKUP_DB_BYTES`, and
+                # `vault.db` is stored ZIP_STORED, so this file's size IS the
+                # `file_size` restore will measure — `>`, never `>=`, keeps the two
+                # ends symmetric. Here is the only point where the user still HAS
+                # the vault: past it, an over-cap `.fbk` reports success and is
+                # unrestorable everywhere.
+                db_bytes = tmp_db.stat().st_size
+                if db_bytes > MAX_BACKUP_DB_BYTES:
+                    raise BackupError(
+                        f"vault is too large to back up: {db_bytes} bytes exceeds "
+                        f"the {MAX_BACKUP_DB_BYTES}-byte restore cap"
+                    )
                 self._write_fbk(tmp_zip, manifest, params.to_sidecar_dict(), tmp_db)
             os.replace(tmp_zip, dest)
             _fsync_dir(dest.parent)

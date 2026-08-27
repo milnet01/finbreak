@@ -1088,6 +1088,22 @@ class MainWindow(QMainWindow):
             BackupService(self._service.vault, self._service).export_backup(
                 Path(path), dialog.password()
             )
+        except BackupError:
+            # Export raises BackupError from exactly one place — the INV-14 size
+            # refusal; every other raise in backup.py is on the restore/verify
+            # side — so this message can name the condition. It deliberately is
+            # NOT the generic copy below: no other location makes an over-cap
+            # vault fit, so "choose another location" would send the user round a
+            # loop that cannot succeed.
+            QMessageBox.warning(
+                self,
+                self.tr("Backup failed"),
+                self.tr(
+                    "Sorry, this vault is too large to back up. finbreak won't "
+                    "write a backup it wouldn't be able to restore."
+                ),
+            )
+            return
         except (VaultLockedError, OSError, ValueError, DatabaseError):
             # A vault auto-lock mid-export (VaultLockedError), an unwritable path /
             # disk-full (OSError), or a SQLCipher engine error while sqlcipher_export

@@ -270,6 +270,64 @@ def test_export_recovers_cursor_on_engine_error(qtbot, paths, monkeypatch):
     auth.lock()
 
 
+def test_INV14_export_dialog_handles_oversized_db_without_crashing(
+    qtbot, paths, monkeypatch
+):
+    """FIBR-0313 M1(c) — once export_backup refuses an over-cap intermediate DB it
+    raises BackupError, and _on_backup_export_requested's except tuple
+    (VaultLockedError, OSError, ValueError, DatabaseError) does not name it:
+    BackupError is a sibling FinbreakError, not a subclass of any of those, so it
+    would escape the Qt slot uncaught rather than being shown with its own
+    message. The generic "choose another location and try again" copy is also
+    wrong for this refusal — no other location makes an over-cap vault fit."""
+    from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox
+
+    from finbreak.errors import BackupError
+    from finbreak.ui.main_window import MainWindow
+
+    auth = _seeded(paths)
+    window = MainWindow(auth)
+    qtbot.addWidget(window)
+    window._enter_unlocked()
+    window._open_backup_export()
+    window._dialog._password.setText(_BACKUP_PW)
+    window._dialog._confirm.setText(_BACKUP_PW)
+
+    monkeypatch.setattr(
+        QFileDialog,
+        "getSaveFileName",
+        staticmethod(lambda *a, **k: (str(paths[0].parent / "x.fbk"), "")),
+    )
+    warned: list[tuple] = []
+    monkeypatch.setattr(
+        QMessageBox,
+        "warning",
+        staticmethod(lambda *a, **k: warned.append(a) or QMessageBox.StandardButton.Ok),
+    )
+
+    def boom(self, dest, pw, **k):
+        raise BackupError("intermediate vault.db exceeds MAX_BACKUP_DB_BYTES")
+
+    monkeypatch.setattr(BackupService, "export_backup", boom)
+
+    try:
+        window._on_backup_export_requested()
+    except BackupError:
+        pytest.fail(
+            "expected: BackupError caught inside _on_backup_export_requested and "
+            "shown via QMessageBox.warning with its own message. "
+            "actual: BackupError escaped the Qt slot uncaught."
+        )
+    assert warned, "expected: QMessageBox.warning called once. actual: not called."
+    message = warned[0][-1] if warned[0] else ""
+    assert "choose another location" not in str(message).lower(), (
+        "expected: an over-cap refusal gets its own message. "
+        f"actual: the generic 'choose another location' copy was shown: {message!r}"
+    )
+    assert QApplication.overrideCursor() is None, "the wait cursor is always restored"
+    auth.lock()
+
+
 def test_reconcile_pairs_old_files_by_stamp(qtbot, tmp_path):
     from finbreak.ui.main_window import MainWindow
 

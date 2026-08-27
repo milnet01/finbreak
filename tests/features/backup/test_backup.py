@@ -308,6 +308,60 @@ def test_INV8_export_requires_unlocked_vault(paths, tmp_path):
         service.export_backup(tmp_path / "my.fbk", _BACKUP_PW)
 
 
+def test_INV14_export_refuses_intermediate_db_over_cap(tmp_path, monkeypatch):
+    """FIBR-0313 M1 — export_backup applies no size cap at all on the intermediate
+    ``vault.db`` it re-keys and zips: restore's ``_read_capped`` refuses anything
+    over ``MAX_BACKUP_DB_BYTES``, but nothing on the export side stops a vault over
+    that same cap from being written, reported "Backup saved", and then being
+    unrestorable on any machine. Learns the real intermediate-DB size from an
+    unconstrained export first (no size assumption baked in), then lowers the cap
+    one byte below it so the SAME export must now be refused."""
+    import finbreak.services.backup as backup_mod
+    from finbreak.errors import BackupError
+
+    src = tmp_path / "src"
+    src.mkdir()
+    auth = _seeded_auth((src / "vault.db", src / "vault.kdf.json"))
+    try:
+        dest = tmp_path / "over.fbk"
+        BackupService(auth.vault, auth).export_backup(dest, _BACKUP_PW)
+        with zipfile.ZipFile(dest) as zf:
+            db_size = zf.getinfo("vault.db").file_size
+        dest.unlink()
+
+        monkeypatch.setattr(backup_mod, "MAX_BACKUP_DB_BYTES", db_size - 1)
+        with pytest.raises(BackupError):
+            BackupService(auth.vault, auth).export_backup(dest, _BACKUP_PW)
+        assert not dest.exists(), "a refused export writes no .fbk"
+        leftovers = list(tmp_path.glob("*.tmp"))
+        assert leftovers == [], f"no leftover <dest>.tmp on refusal: {leftovers}"
+    finally:
+        auth.lock()
+
+
+def test_INV14_export_allows_intermediate_db_exactly_at_cap(tmp_path, monkeypatch):
+    """FIBR-0313 M1 — the boundary is symmetric with restore's ``_read_capped``
+    (``file_size > cap`` is the refusal edge, never ``==``): an intermediate DB
+    exactly at ``MAX_BACKUP_DB_BYTES`` still exports."""
+    import finbreak.services.backup as backup_mod
+
+    src = tmp_path / "src"
+    src.mkdir()
+    auth = _seeded_auth((src / "vault.db", src / "vault.kdf.json"))
+    try:
+        dest = tmp_path / "atcap.fbk"
+        BackupService(auth.vault, auth).export_backup(dest, _BACKUP_PW)
+        with zipfile.ZipFile(dest) as zf:
+            db_size = zf.getinfo("vault.db").file_size
+        dest.unlink()
+
+        monkeypatch.setattr(backup_mod, "MAX_BACKUP_DB_BYTES", db_size)
+        BackupService(auth.vault, auth).export_backup(dest, _BACKUP_PW)
+        assert dest.exists(), "exactly-at-cap is allowed, symmetric with restore"
+    finally:
+        auth.lock()
+
+
 # --------------------------------------------------------------------------- #
 # Slice 3 — BackupService.restore_backup happy path (INV-2 / INV-3 / INV-5)
 # --------------------------------------------------------------------------- #
