@@ -5879,6 +5879,14 @@ because retrofitting them is a data migration.
 
   C1, H1 and H2 are closed. M1-M10 and L1-L16 remain, plus Q1-Q5 and M10's
   decision. Spec INV-14 to INV-17 added across the three.
+  Windows verification routing (2026-08-27, user raised the wintest
+  box mid-session): worth a run on M2, M3, H4 and Q5 and on nothing else in
+  this bullet. All four turn on os.replace over an open vault.db, which is the
+  operation that behaves differently on Windows -- Q5 says so outright, since
+  FIBR-0014 INV-8 makes restore pre-login only BECAUSE of it. C1, H1 and H2
+  were platform-neutral (SQLCipher page HMACs, a probe flag, file-level moves
+  already covered by the Linux gate), so no Windows run was spent on them and
+  none is owed retrospectively.
   **Layman:** The recovery-key work was reviewed again with fresh eyes; one serious problem can strand a half-upgraded vault with no way back, and several smaller fixes from last time only reached some of the places they needed to.
   Kind: review-fix.
   Source: close-phase-2026-08-25 (check-code + review-code x4 lanes, FP03 close, fresh context).
