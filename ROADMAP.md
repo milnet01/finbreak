@@ -5951,6 +5951,20 @@ because retrofitting them is a data migration.
   tests/features/recovery_key/spec.md gained INV-18. A stale docstring citation
   was corrected with them: vault_migration._fsync named backup.py's helper
   _fsync_directory, which is _fsync_dir.
+  Known limitation of the M2/M3 tests, recorded so it is not rediscovered or
+  "fixed" wrongly: INV-15's and INV-18's directory-fsync assertions resolve the
+  fsync'd fd via /proc/self/fd, which is Linux-only. macOS is a packaging target
+  and has no /proc, so those three tests would error there rather than fail
+  honestly.
+
+  Left as-is deliberately. CI is ubuntu-24.04 and windows-build.yml runs no
+  pytest, so nothing exercises it today; and the behaviour under test is itself
+  POSIX-only -- _fsync_dir degrades on Windows by design, so a portable test
+  could not pass there anyway. Swapping /proc for os.fstat (dev, ino) identity
+  WOULD be portable and is what the file-half assertions already do, but it
+  makes the failure messages markedly worse, and rewriting a working test's
+  recorder does not trace to M2 or M3. If the suite is ever run on macOS, that
+  swap is the fix -- not a skipif, which would read as coverage.
   **Layman:** The recovery-key work was reviewed again with fresh eyes; one serious problem can strand a half-upgraded vault with no way back, and several smaller fixes from last time only reached some of the places they needed to.
   Kind: review-fix.
   Source: close-phase-2026-08-25 (check-code + review-code x4 lanes, FP03 close, fresh context).
