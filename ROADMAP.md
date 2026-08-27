@@ -5915,6 +5915,42 @@ because retrofitting them is a data migration.
 
   FIBR-0014 INV-12 amended to record that the cap binds export too;
   tests/features/backup/spec.md gained INV-14.
+  Progress (2026-08-27, cont.): M2 and M3 fixed and pushed (0a17d2c);
+  gate green at 2056 passed / 2 skipped. One rule at two sites. M2 -- _install
+  fsynced neither the sources nor the directories; it now fsyncs the database
+  and each distinct parent, and the *.old move-aside pair is directory-fsynced
+  BEFORE the post_move_aside seam rather than at the end, because INV-5's
+  premise is that the old pair is already safely aside AT that seam and a fsync
+  landing after it leaves that false for exactly the crash the seam models.
+  M3 -- restore_rollback_copy's renames had no directory fsync; its sources were
+  already durable, since write_rollback_copy fsyncs each copy when S0 takes it,
+  so only that half was missing.
+
+  Vault takes vault_path and sidecar_path independently, so both fixes fsync
+  both parents, deduped. A fix assuming one shared directory leaves the other
+  undone; the M2 test pins that by installing into two different directories.
+
+  mutation_probe found a redundancy the suite could not see: _fsync_file on the
+  sidecar SURVIVED, because write_sidecar_json already flushes before its own
+  os.replace. Dropped rather than kept as decoration -- INV-15 still pins the
+  sidecar's durability as an OUTCOME, so if that writer ever stops flushing the
+  test reddens. Five probes killed. One SURVIVOR reported rather than chased:
+  collapsing M3's dedupe to the vault directory alone, which that test's fixture
+  cannot see because it puts both files in one directory. The code is right --
+  the renames land in both parents -- and pinning it needs fixture surgery for a
+  branch no real call site exercises.
+
+  Where else the rule binds, measured: S4/S5 and write_sidecar_json are
+  FIBR-0309's, as this bullet already records. A THIRD site was found and filed
+  as FIBR-0314 -- main_window._reconcile_interrupted_restore unlinks the live
+  pair, then os.replace()s the *.old pair back with no fsync of either kind, and
+  the unlink comes FIRST, so a crash there can leave no vault at all. Not folded
+  in: UI layer with no fsync helper, and H4 rewrites that same function.
+
+  tests/features/backup/spec.md gained INV-15 and
+  tests/features/recovery_key/spec.md gained INV-18. A stale docstring citation
+  was corrected with them: vault_migration._fsync named backup.py's helper
+  _fsync_directory, which is _fsync_dir.
   **Layman:** The recovery-key work was reviewed again with fresh eyes; one serious problem can strand a half-upgraded vault with no way back, and several smaller fixes from last time only reached some of the places they needed to.
   Kind: review-fix.
   Source: close-phase-2026-08-25 (check-code + review-code x4 lanes, FP03 close, fresh context).
