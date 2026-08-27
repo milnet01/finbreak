@@ -190,8 +190,14 @@ def _opens(db_path: Path, key: bytearray, cipher_compat: int | None) -> bool:
         return False
     probe = Vault(db_path, db_path)
     try:
+        # Pass the caller's own buffer, NOT a copy — the rule every other
+        # Vault.open/create/rekey site follows, stated at backup.py's
+        # _open_backup_vault: open() only reads key.hex() and never mutates, so
+        # a copy is a second, un-wiped reference to live key material outside
+        # the owning frame's finally-wipe (security-model INV-3). It binds
+        # every `.open` below too (FIBR-0313 M4).
         probe.open(
-            bytearray(key),
+            key,
             in_memory_temp=True,
             cipher_compat=cipher_compat,
             migrate=False,
@@ -222,7 +228,7 @@ def _reads_end_to_end(db_path: Path, key: bytearray, cipher_compat: int | None) 
     probe = Vault(db_path, db_path)
     try:
         probe.open(
-            bytearray(key),
+            key,
             in_memory_temp=True,
             cipher_compat=cipher_compat,
             migrate=False,
@@ -258,7 +264,7 @@ def _row_counts_or_none(
     probe = Vault(db_path, db_path)
     try:
         probe.open(
-            bytearray(key),
+            key,
             in_memory_temp=True,
             cipher_compat=cipher_compat,
             migrate=False,
@@ -429,7 +435,7 @@ def verify_rollback_copy(
         )
     load_and_validate_params(copy_sidecar_path)
     probe = Vault(copy_vault_path, copy_sidecar_path)
-    probe.open(bytearray(key), in_memory_temp=True, migrate=False)
+    probe.open(key, in_memory_temp=True, migrate=False)
     try:
         integrity = probe.connection.execute("PRAGMA integrity_check").fetchone()[0]
         if integrity == "ok":
@@ -521,7 +527,7 @@ def _convert(
     migrating_db.unlink(missing_ok=True)
     _drop_wal_siblings(migrating_db)
     live = Vault(vault_path, sidecar_path)
-    live.open(bytearray(kek_master))
+    live.open(kek_master)
     try:
         live.export_to(migrating_db, dek)
         _fsync(migrating_db)
@@ -532,7 +538,7 @@ def _convert(
     step("S2")
     replacement = Vault(migrating_db, migrating_sidecar)
     try:
-        replacement.open(bytearray(dek), cipher_compat=SQLCIPHER_COMPAT)
+        replacement.open(dek, cipher_compat=SQLCIPHER_COMPAT)
         integrity = replacement.connection.execute("PRAGMA integrity_check").fetchone()[
             0
         ]

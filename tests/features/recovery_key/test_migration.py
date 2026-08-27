@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import errno
 import hashlib
+import inspect
 import os
 import shutil
 import stat
@@ -1978,4 +1979,263 @@ def test_rollback_copy_is_usable_does_not_raise_on_a_too_new_copy(
         "where offering it restores the pair and the next unlock says 'update "
         "finbreak' -- which is the answer that gets their data back.\n"
         f"  expected: True\n  actual:   {usable}"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0313 M4 -- vault_migration mints a defensive `bytearray(key)` copy at
+# six call sites, breaking the project's settled rule that a Vault.open
+# caller passes the buffer it OWNS straight through and mints no copy
+# (backup.py:465-467, FIBR-0019 spec.md "an INV-3 breach at eight sites",
+# security-model INV-3). `Vault.open` only reads `key.hex()` and never
+# mutates its argument, so a copy is a second, un-wiped reference to live
+# key material sitting outside the owning frame's `finally`-wipe -- the
+# owning frame wipes the object it kept, and the copy answers to nobody
+# (spec.md INV-19, re-aimed from an earlier "wipe every copy" framing once
+# Phase 0 of the fix turned up the governing no-copy contract).
+# --------------------------------------------------------------------------- #
+class _OwnedKey:
+    """A buffer THIS TEST owns (``kek_master``, ``kek`` or ``dek``), wrapped
+    so its bytes are never reachable through a ``repr()``.
+
+    pytest 9's traceback prints every function ARGUMENT at each frame in the
+    chain leading to a failing assert -- not just the values the assert
+    expression itself names. A bare tuple of raw bytearrays passed as a
+    parameter is exactly as much a leak as :class:`_WatchedBuffer` not
+    existing would be, so every buffer this suite hands to a helper function
+    is wrapped, on both sides of the identity check, not only the recorded
+    side.
+    """
+
+    __slots__ = ("_buf",)
+
+    def __init__(self, buf: bytearray) -> None:
+        self._buf = buf
+
+    def is_(self, other: bytearray) -> bool:
+        return self._buf is other
+
+    def __repr__(self) -> str:  # never the bytes -- see class docstring
+        return f"_OwnedKey(len={len(self._buf)})"
+
+
+class _WatchedBuffer:
+    """One ``Vault.open()`` call's buffer, wrapped so its bytes are never
+    reachable through a ``repr()`` -- and therefore never through pytest's
+    own failure output, whatever a failing assertion's frame happens to hold.
+    Deliberately not a plain tuple: a tuple's default repr is exactly the
+    leak-shaped thing this test exists to avoid producing.
+    """
+
+    __slots__ = ("label", "_buf", "was_live_at_call")
+
+    def __init__(self, label: str, buf: bytearray) -> None:
+        self.label = label
+        self._buf = buf
+        self.was_live_at_call = buf != bytearray(len(buf))
+
+    def is_wiped_now(self) -> bool:
+        return self._buf == bytearray(len(self._buf))
+
+    def is_identical_to_any(self, owned: tuple[_OwnedKey, ...]) -> bool:
+        """``True`` iff this is literally one of the caller's OWN buffers --
+        the pass-through the settled rule requires -- rather than a copy
+        `bytearray(key)` minted at the call site."""
+        return any(candidate.is_(self._buf) for candidate in owned)
+
+    def __repr__(self) -> str:  # never the bytes -- see class docstring
+        return f"_WatchedBuffer(label={self.label!r}, len={len(self._buf)})"
+
+
+def _watch_vault_open_buffers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> list[_WatchedBuffer]:
+    """Monkeypatch ``vault_migration.Vault`` to record every buffer handed to
+    ``.open()`` -- the buffer OBJECT itself, never a copy, labelled by call
+    site (caller function and the database opened, so the two ``_convert``
+    opens are distinguishable), wrapped in :class:`_WatchedBuffer` so its bytes can
+    never surface in a failure message.
+
+    The object has to be the real one, not a copy: a copy could not answer
+    the identity check below, which is the whole point -- it is exactly the
+    mechanism a `bytearray(key)` call-site copy fails and a pass-through
+    passes.
+    """
+    watched: list[_WatchedBuffer] = []
+    real_run = vault_migration.Vault
+
+    class Watched(real_run):  # type: ignore[misc, valid-type]
+        def open(self, key: bytearray, *args: Any, **kwargs: Any) -> None:
+            frame = inspect.currentframe()
+            back = frame.f_back if frame is not None else None
+            caller = back.f_code.co_name if back is not None else "<unknown>"
+            # Labelled by caller function and by the database being opened --
+            # never by line number, which any edit above the call site shifts.
+            # The database name is also what tells _convert's two opens apart:
+            # the live vault, and the `.migrating` replacement given the DEK.
+            label = f"{caller}:{Path(self.vault_path).name}"
+            watched.append(_WatchedBuffer(label, key))
+            super().open(key, *args, **kwargs)
+
+    monkeypatch.setattr(vault_migration, "Vault", Watched)
+    return watched
+
+
+def _assert_no_copy_was_minted(
+    watched: list[_WatchedBuffer],
+    expected_callers: set[str],
+    owned_buffers: tuple[_OwnedKey, ...],
+    zero_check_suffixes: set[str],
+) -> None:
+    """The shared check for both M4 legs below.
+
+    The settled rule: a Vault.open caller passes the buffer it OWNS straight
+    through and mints no copy. Every site here is handed a buffer this test
+    itself owns and can hold by identity (``owned_buffers``) -- so a
+    conforming site records the EXACT object, and this checks identity
+    rather than value. ``zero_check_suffixes`` is the one exception:
+    ``migrate_to_v2`` mints its own DEK internally and wipes it in its own
+    ``finally``, so the test cannot hold THAT object by identity ahead of
+    time -- what it can assert is that the buffer actually handed to
+    ``Vault.open`` at that site is zeroed once ``migrate_to_v2`` has
+    returned, which it would be if that site passed the real DEK through
+    instead of copying it.
+
+    Two preconditions first -- without them the checks below could pass or
+    fail vacuously: the call sites this leg claims to reach must actually
+    have been reached, and each buffer must have held real key material at
+    the moment of the call. Neither check, nor the pass-through check
+    itself, ever touches a buffer's bytes directly -- only identity,
+    booleans and labels, via :class:`_WatchedBuffer`, so nothing here can
+    print key material even by accident of a failing assert.
+    """
+    reached = {w.label.split(":")[0] for w in watched}
+    assert reached == expected_callers, (
+        "precondition: this leg must reach exactly the Vault.open call sites "
+        "it claims to, or the checks below are not measuring what this leg "
+        "says they measure.\n"
+        f"  expected callers: {sorted(expected_callers)}\n"
+        f"  actual callers:   {sorted(reached)}"
+    )
+    for w in watched:
+        assert w.was_live_at_call, (
+            f"precondition: the buffer handed to Vault.open at {w.label} must "
+            "hold real key material at the moment of the call, or the checks "
+            "below prove nothing.\n"
+            "  expected: a non-zero buffer\n"
+            "  actual:   a zero buffer at call time"
+        )
+
+    copied = [
+        w.label
+        for w in watched
+        if (
+            not w.is_wiped_now()
+            if any(w.label.endswith(s) for s in zero_check_suffixes)
+            else not w.is_identical_to_any(owned_buffers)
+        )
+    ]
+    assert copied == [], (
+        "FIBR-0313 M4: the project's settled rule is that a Vault.open "
+        "caller passes the buffer it owns straight through and mints no "
+        "copy (backup.py:465-467, FIBR-0019 spec.md 'an INV-3 breach at "
+        "eight sites', security-model INV-3). vault_migration is the one "
+        "module that does not follow it -- each site named below did "
+        "`bytearray(key)` instead of passing `key` itself, so the buffer "
+        "handed to Vault.open is a second, un-wiped reference to live key "
+        "material sitting outside the owning frame's finally-wipe.\n"
+        "  expected: every site below passes its caller's own buffer "
+        "through (or, for the one internally-minted DEK, that copy is "
+        "zeroed once migrate_to_v2 has returned)\n"
+        f"  actual:   a copy was minted at {copied} ({len(copied)} of "
+        f"{len(watched)} sites)"
+    )
+
+
+def test_migrate_to_v2_passes_its_callers_key_through_without_copying(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A fresh, uninterrupted ``migrate_to_v2`` reaches three of the six M4
+    sites: S0's ``verify_rollback_copy`` and S1/S2's two ``_convert`` opens --
+    ``live.open`` on the live vault and ``replacement.open`` on the
+    ``.migrating`` replacement, the same caller function distinguished here by
+    the database each opens. The other three
+    (``_opens``, ``_reads_end_to_end``, ``_row_counts_or_none``) are
+    resume-only and are covered by the sibling leg below.
+
+    KEK-master is THIS TEST's own buffer, handed to ``migrate_to_v2`` and
+    never wiped by it (the caller wipes it, same as ``_unlock_v1`` does) --
+    so ``verify_rollback_copy`` and the S1 ``live.open`` are checked by
+    identity against it. The DEK is minted INSIDE ``migrate_to_v2`` and wiped
+    in its own ``finally``, so the S2 ``replacement.open`` site is checked
+    for being zeroed once ``migrate_to_v2`` returns instead.
+    """
+    vault_path, sidecar_path, key, _digests = _fresh_v1_vault(tmp_path, "m4-migrate")
+    kek_master = bytearray(key)
+    watched = _watch_vault_open_buffers(monkeypatch)
+
+    migrate_to_v2(vault_path, sidecar_path, kek_master)
+
+    _assert_no_copy_was_minted(
+        watched,
+        expected_callers={"verify_rollback_copy", "_convert"},
+        owned_buffers=(_OwnedKey(kek_master),),
+        zero_check_suffixes={".migrating"},
+    )
+
+
+def test_resume_branch_2_passes_its_callers_keys_through_without_copying(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``resume()`` through branch 2 (crash between S4 and S5, sound
+    replacement) reaches the four M4 sites the migrate leg above does not:
+    ``_opens`` (branch 1's own failed check against the still-v1 live
+    database, handed the DEK), ``_reads_end_to_end`` (called twice --
+    ``vault.db.migrating``'s soundness and the swapped-in live vault's, both
+    handed the DEK) and ``_row_counts_or_none`` (called twice -- the live v1
+    database with the KEK, the replacement with the DEK).
+    ``verify_rollback_copy`` is reached again too, via
+    ``_ensure_rollback_copy`` finding S0's copy still usable, handed the KEK.
+
+    Unlike ``migrate_to_v2``'s internally-minted DEK, ``resume()`` mints
+    nothing itself: both the KEK and the DEK here are THIS TEST's own
+    buffers, passed in and wiped by resume()'s OWN caller afterwards
+    (``test_a_failed_resume_does_not_leak_the_dek`` covers that half). So
+    every site below is checked by identity against one of the two --
+    whichever the module handed it a copy of instead of the real thing.
+    """
+    vault_path, sidecar_path, _key, digests = _stalled_before_s5_with_filler(
+        tmp_path, "m4-resume-branch2"
+    )
+    sidecar = read_v2_sidecar(sidecar_path)
+    kek = kek_for(MASTER_PASSWORD, sidecar, SLOT_MASTER)
+    dek = unwrap_slot(MASTER_PASSWORD, sidecar, SLOT_MASTER)
+
+    watched = _watch_vault_open_buffers(monkeypatch)
+
+    vault_migration.resume(vault_path, sidecar_path, kek, dek)
+
+    # Precondition: this must genuinely have gone through branch 2's sound
+    # path -- the live vault ends up holding every original row -- or the
+    # call-site set below proves nothing about branch 2 specifically.
+    restored = open_after_restart(vault_path, sidecar_path, MASTER_PASSWORD)
+    after = row_digests(restored.connection)
+    restored.close()
+    assert after == digests, (
+        "precondition: resume() must complete branch 2 with every row intact, "
+        "or this leg is not exercising the sound-replacement path this "
+        "check is measured against.\n"
+        f"  expected: {digests}\n  actual:   {after}"
+    )
+
+    _assert_no_copy_was_minted(
+        watched,
+        expected_callers={
+            "_opens",
+            "_reads_end_to_end",
+            "_row_counts_or_none",
+            "verify_rollback_copy",
+        },
+        owned_buffers=(_OwnedKey(kek), _OwnedKey(dek)),
+        zero_check_suffixes=set(),
     )

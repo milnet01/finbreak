@@ -258,6 +258,51 @@ every credential, account and transaction here is synthetic
   directory appears among them.
   Source: FIBR-0313 M3.
 
+- **INV-19** — `finbreak.services.vault_migration` hands `Vault.open` the
+  buffer its caller owns and mints no copy. This is the project's settled
+  rule, not a new one: `backup.py`'s `restore_backup` helper says so in as
+  many words — "Pass the derived key itself, NOT a copy: open() only reads
+  key.hex() (never mutates), so a copy would be an un-wiped second reference
+  to live key material outside the finally wipe" (backup.py:465-467, and the
+  matching `rekey(dek)  # not a copy` at backup.py:291) — and
+  `docs/specs/FIBR-0019-master-password-recovery-key.md` names the failure
+  mode by number: a `bytes(kek)` copy "lands in the *caller's* frame, out of
+  reach of the `finally` that wipes the bytearray — an INV-3 breach at eight
+  sites" (security-model INV-3 is the wipe-key-material-in-finally rule
+  itself). `vault_migration` is the one module that does not follow it:
+  each of its six call sites mints a fresh, unnamed `bytearray(key)` copy
+  instead of passing `key` through — `_opens`, `_reads_end_to_end`,
+  `_row_counts_or_none`, `verify_rollback_copy`, and `_convert`'s two opens
+  (`live.open(bytearray(kek_master))`, `replacement.open(bytearray(dek),
+  ...)`). Every copy is a second, un-wiped reference to live key material
+  sitting outside the owning frame's `finally`-wipe — orphaned the moment
+  `Vault.open` returns, since `Vault.open` only reads `key.hex()` inside
+  `_connect` and never mutates or wipes the argument it is given. One
+  `resume()` through branch 3 mints up to eight such copies.
+  *Test:*
+  `test_migration.py::test_migrate_to_v2_passes_its_callers_key_through_without_copying`
+  and
+  `test_migration.py::test_resume_branch_2_passes_its_callers_keys_through_without_copying`
+  — monkeypatch `vault_migration.Vault` with a subclass that records the exact
+  buffer OBJECT (never a copy) handed to every `.open()` call, labelled by
+  caller and line number. For every site handed a buffer the test itself
+  owns (both legs' KEK-master, and the resume leg's DEK — resume() mints
+  nothing and wipes nothing itself, unlike migrate_to_v2), assert the
+  recorded object IS that owned buffer by identity: a call-site copy fails
+  this, a pass-through passes it. The one exception is `_convert`'s
+  `replacement.open(bytearray(dek), ...)` site in the migrate leg — the DEK
+  there is minted INSIDE `migrate_to_v2` and wiped by its own `finally`, so
+  the test cannot hold it by identity ahead of time; that site is instead
+  checked for being zeroed once `migrate_to_v2` has returned, which it would
+  be if the site passed the real DEK through rather than copying it. The two
+  legs together reach all six call sites: the migrate leg covers
+  `verify_rollback_copy` and both `_convert` opens on a fresh, uninterrupted
+  `migrate_to_v2`; the resume leg covers `_opens`, `_reads_end_to_end` and
+  `_row_counts_or_none` (each of the latter two called twice) via
+  `resume()`'s branch 2. Neither leg prints a buffer's contents — only
+  identity and whether it is still live.
+  Source: FIBR-0313 M4.
+
 ## Rationale
 
 `AuthService.reset_vault` — "start over" — is the live answer to *I forgot my
