@@ -5920,6 +5920,29 @@ because retrofitting them is a data migration.
   Source: close-phase-2026-08-25 (check-code + review-code x4 lanes, FP03 close, fresh context).
   Lanes: crypto, security, migration, backup, ui.
 
+- 📋 [FIBR-0314] **The interrupted-restore recovery puts the old pair back without making it durable.**
+  main_window._reconcile_interrupted_restore unlinks the live vault and
+  sidecar, then os.replace()s the most recent complete `*.old` pair back over
+  them. Neither the sources nor the containing directory is fsynced, so none of
+  it is guaranteed to survive a power loss -- and the unlink comes FIRST, so a
+  crash inside that window can leave no vault at all, on the one path that
+  exists to recover from an interrupted restore.
+
+  Same rule as FIBR-0313 M2 (backup._install) and M3
+  (vault_migration.restore_rollback_copy). Found while measuring where else
+  that rule binds, and deliberately NOT folded into them: this site is in the
+  UI layer with no fsync helper of its own, and FIBR-0313 H4 rewrites this
+  same function for a different reason -- it restores two files and drops the
+  incumbent's committed -wal frames. Whoever takes H4 should take this with
+  it rather than touching the function twice.
+
+  Distinct from FIBR-0309, which covers write_sidecar_json's directory fsync
+  and the S4/S5 ones, and reaches neither this site nor M2/M3.
+  **Layman:** If the machine loses power while the app is putting your old data back after a failed restore, the recovery itself may not survive -- and could leave no data file at all.
+  Kind: fix.
+  Source: in-session-2026-08-27 (FP04 M2/M3 blast-radius measurement).
+  Lanes: backup, ui.
+
 ### 🎨 Features & accessibility
 
 - ✅ [FIBR-0021] **Multi-currency decision (ADR).**
