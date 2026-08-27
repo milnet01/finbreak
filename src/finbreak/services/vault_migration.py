@@ -219,6 +219,83 @@ def _reads_end_to_end(db_path: Path, key: bytearray, cipher_compat: int | None) 
         probe.close()
 
 
+def _row_counts_or_none(
+    db_path: Path, key: bytearray, cipher_compat: int | None
+) -> dict[str, int] | None:
+    """Per-table row counts, or ``None`` where the file will not give them up.
+
+    The counting half of S2, as a question rather than an assertion — S2 raises
+    because it is mid-migration and owns the abort, while § 13.3's ladder has a
+    next branch to fall through to. ``None`` folds "will not open", "is not
+    there" and "a page failed on the way through" into the one answer the
+    caller can act on, which is that this file cannot be compared.
+    """
+    if not db_path.exists():
+        return None
+    probe = Vault(db_path, db_path)
+    try:
+        probe.open(
+            bytearray(key),
+            in_memory_temp=True,
+            cipher_compat=cipher_compat,
+            migrate=False,
+        )
+    except DatabaseError:
+        return None
+    try:
+        return _row_counts(probe.connection)
+    except (DatabaseError, MemoryError):
+        return None
+    finally:
+        probe.close()
+
+
+def _replacement_is_sound(
+    vault_path: Path,
+    migrating_db: Path,
+    kek_master: bytearray,
+    dek: bytearray,
+    cipher_compat: int | None,
+) -> bool:
+    """S2's two checks, asked again before § 13.3 branch 2 swaps.
+
+    Branch 2 swapped on :func:`_opens` alone — the weak check this module
+    measured on 2026-08-24, which a file damaged in the middle passes — and
+    ``_swap_database`` then replaced the user's INTACT v1 database with it.
+    Discovering afterwards that the result does not read is too late: the thing
+    it was compared against is gone (FIBR-0313 H1).
+
+    Reaching branch 2 means S4 completed, so S2 passed on this file once
+    already. What it cannot have seen is damage AFTER that — a bad sector, a
+    partial write — which is why the question is worth asking a second time
+    rather than trusted from the first.
+
+    The row compare is available here for the same reason the swap is
+    dangerous: S5 has not run, so ``vault.db`` is still the v1 database the
+    counts came from, and § 13.1's inheritance means KEK-master opens it. A
+    live vault that will not give up its counts returns ``False`` too — there
+    is nothing to compare against, and swapping on no evidence is the defect.
+    """
+    if not _reads_end_to_end(migrating_db, dek, cipher_compat):
+        return False
+    live_counts = _row_counts_or_none(vault_path, kek_master, None)
+    if live_counts is None:
+        log.warning(
+            "migration resume: the live vault will not give up its row counts, "
+            "so the replacement cannot be compared against it"
+        )
+        return False
+    replacement_counts = _row_counts_or_none(migrating_db, dek, cipher_compat)
+    if replacement_counts != live_counts:
+        log.warning(
+            "migration resume: the replacement lost rows: expected %s, got %s",
+            live_counts,
+            replacement_counts,
+        )
+        return False
+    return True
+
+
 def write_rollback_copy(
     vault_path: Path,
     sidecar_path: Path,
@@ -737,15 +814,25 @@ def resume(
         _finish_if_readable(sidecar_path, sidecar, vault_path, dek, compat, kek_master)
         return
 
-    # 2 — it opens the replacement instead: the crash was between S4 and S5.
+    # 2 — a sound replacement is sitting there: the crash was between S4 and S5.
     if migrating_db.exists():
-        if _opens(migrating_db, dek, compat):
+        if _replacement_is_sound(vault_path, migrating_db, kek_master, dek, compat):
             log.info("migration resume: crash was between S4 and S5; swapping")
+            # _swap_database moves a byte of the live pair, so INV-13's gate
+            # applies here exactly as branch 3 applies it before _convert.
+            _ensure_rollback_copy(vault_path, sidecar_path, kek_master, sidecar)
             _swap_database(vault_path, migrating_db)
             _finish_if_readable(
                 sidecar_path, sidecar, vault_path, dek, compat, kek_master
             )
             return
+        # Not sound, so it is debris rather than a replacement. The live v1
+        # database is untouched and branch 3 restarts from S1 with it, which is
+        # what § 13.3 prescribes for a crash at or before S4 anyway.
+        log.warning(
+            "migration resume: the replacement database is not sound; "
+            "discarding it and falling through to restart the migration"
+        )
         migrating_db.unlink(missing_ok=True)
         _drop_wal_siblings(migrating_db)
 

@@ -1030,9 +1030,19 @@ On open, with a v2 sidecar carrying `migration_pending`:
      the vault there is nothing to offer and it opens as before
      (FIBR-0310 P6, FIBR-0313 C1).
    - **Does not open** → continue.
-2. If `vault.db.migrating` exists, try the DEK against it.
-   - **Opens** → the crash was between S4 and S5. Run S5, then S6.
-   - **Does not open** → delete it as unusable and continue.
+2. If `vault.db.migrating` exists, check it against the live vault.
+   - **Reads end to end, and carries the live vault's row counts** → the crash
+     was between S4 and S5. Secure the rollback copy, then run S5 and S6.
+     Opening is not enough here: S5 replaces the live v1 database, so the weak
+     check swaps in a damaged or a short replacement and destroys the intact
+     vault it would have been compared against. Both of S2's checks are asked
+     again rather than trusted from the first run, because S2 cannot have seen
+     damage that arrived after it — and the row compare is available because
+     S5 has not run, so `vault.db` is still the v1 database the counts came
+     from. Securing the copy first is INV-13: S5 moves a byte of the live pair
+     (FIBR-0313 H1).
+   - **Anything else** → delete it as debris and continue. The live v1 database
+     is untouched, so step 3 restarts the migration from it.
 3. Try KEK-master itself against `vault.db` — under §13.1 it is the v1
    database key, so no separate derivation is needed.
    - **Opens** → the crash was at or before S4. Restart from S1.

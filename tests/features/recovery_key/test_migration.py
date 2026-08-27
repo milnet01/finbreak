@@ -1447,3 +1447,280 @@ def test_branch_1_still_opens_when_there_is_no_copy_to_offer(
         "  expected: migration_pending still True\n"
         f"  actual:   {read_sidecar(sidecar_path)}"
     )
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0313 H1 / INV-15 -- branch 2 swaps the live vault on `_opens` alone
+# --------------------------------------------------------------------------- #
+def _stalled_before_s5_with_filler(
+    root: Path, name: str, filler_rows: int = 2000
+) -> tuple[Path, Path, bytearray, dict]:
+    """A vault migrated through S4 and stalled before S5, with enough filler
+    rows that a byte flip well past the schema lands in row data.
+
+    The state § 13.3 branch 2 resumes from: the live database is STILL the
+    v1 one (S5 has not swapped it), the sidecar is the migration-pending v2
+    one (S4 already replaced it), and ``vault.db.migrating`` is the fully
+    written, S2-verified replacement waiting for S5. Unlike
+    ``_stalled_before_s5``, the ``.migrating`` file is left in place here --
+    that is exactly what branch 2 needs to find.
+    """
+    directory = root / name
+    directory.mkdir()
+    vault_path = directory / "vault.db"
+    sidecar_path = directory / "vault.kdf.json"
+    vault, _params, key = create_v1_vault(vault_path, sidecar_path)
+    _seed(vault.connection)
+    account_id = vault.connection.execute(
+        "SELECT id FROM accounts ORDER BY id"
+    ).fetchall()[0][0]
+    vault.connection.executemany(
+        "INSERT INTO transactions(occurred_on, amount_minor, description, "
+        "created_at, account_id) VALUES (?, ?, ?, ?, ?)",
+        [
+            (
+                "2026-03-01",
+                -100 - n,
+                f"filler row {n}",
+                "2026-01-01T00:00:00+00:00",
+                account_id,
+            )
+            for n in range(filler_rows)
+        ],
+    )
+    vault.connection.commit()
+    digests = row_digests(vault.connection)
+    vault.close()
+
+    def abort_before_s5(step: str) -> None:
+        if step == "S5":
+            raise _Abort("injected crash before S5")
+
+    with pytest.raises(_Abort):
+        migrate_to_v2(vault_path, sidecar_path, bytearray(key), on_step=abort_before_s5)
+
+    return vault_path, sidecar_path, key, digests
+
+
+def test_branch_2_does_not_swap_the_live_vault_for_a_damaged_replacement(
+    tmp_path: Path,
+) -> None:
+    """FIBR-0313 H1 / INV-15: branch 2 replaces the live v1 database with
+    ``vault.db.migrating`` on ``_opens`` alone -- neither S2's
+    ``integrity_check`` + row compare nor ``_ensure_rollback_copy`` gates
+    this swap the way the rest of the ladder is gated. ``_opens`` is this
+    module's own weak check for exactly the class of damage that matters
+    here: SQLCipher HMACs each page independently, so a ``.migrating`` file
+    damaged past page 1 opens with its schema intact while its rows are
+    unreachable, and today that is enough for ``_swap_database`` to destroy
+    the user's still-intact v1 database in favour of it.
+    """
+    vault_path, sidecar_path, _key, digests = _stalled_before_s5_with_filler(
+        tmp_path, "branch2-swap"
+    )
+    migrating_db = _suffixed(vault_path, MIGRATING_SUFFIX)
+
+    # Precondition: S4 has run (the sidecar is the pending v2 one and
+    # vault.db.migrating is the S2-verified replacement) and S5 has not (the
+    # live database is still the intact v1 one).
+    assert migrating_db.exists(), (
+        "precondition: S4 must have run and left vault.db.migrating on disk "
+        "for branch 2 to find.\n"
+        f"  expected: {migrating_db} exists\n  actual:   {migrating_db.exists()}"
+    )
+
+    # Damage the REPLACEMENT well past its schema pages -- SQLCipher HMACs
+    # each page independently, so page 1 and the schema survive the flip
+    # while this page's rows do not.
+    pages = migrating_db.stat().st_size // _PAGE_SIZE
+    assert pages > 12, (
+        "precondition: the seeded vault must span enough pages that page 11 "
+        "holds rows rather than schema.\n"
+        f"  expected: > 12 pages\n  actual:   {pages}"
+    )
+    damaged = 10 * _PAGE_SIZE + 100
+    with migrating_db.open("r+b") as handle:
+        handle.seek(damaged)
+        byte = handle.read(1)
+        handle.seek(damaged)
+        handle.write(bytes([byte[0] ^ 0xFF]))
+
+    sidecar = read_v2_sidecar(sidecar_path)
+    kek = kek_for(MASTER_PASSWORD, sidecar, SLOT_MASTER)
+    dek = unwrap_slot(MASTER_PASSWORD, sidecar, SLOT_MASTER)
+    compat = vault_migration.read_sidecar_v2(sidecar_path).cipher_compatibility
+
+    # Preconditions: the damage really produced the opens-but-does-not-read
+    # state branch 2 is blind to, and the live v1 database is still the
+    # thing that must survive. Without these the leg could pass or fail
+    # vacuously against a fixture that never reached the case at all.
+    opens = vault_migration._opens(migrating_db, dek, compat)
+    assert opens is True, (
+        "precondition: the DEK must still OPEN the damaged replacement -- "
+        "page 1 and the schema are meant to survive the byte flip, which is "
+        "the whole reason this class of damage is invisible to _opens.\n"
+        "  expected: True\n"
+        f"  actual:   {opens}"
+    )
+    reads_end_to_end = vault_migration._reads_end_to_end(migrating_db, dek, compat)
+    assert reads_end_to_end is False, (
+        "precondition: the damaged replacement must NOT read end to end, or "
+        "this leg is exercising the ordinary branch-2 path rather than the "
+        "damaged one H1 is about.\n"
+        "  expected: False\n"
+        f"  actual:   {reads_end_to_end}"
+    )
+    live_reads = vault_migration._reads_end_to_end(vault_path, kek, None)
+    assert live_reads is True, (
+        "precondition: the live vault.db must still be the user's intact "
+        "v1 database before resume() runs.\n"
+        "  expected: True\n"
+        f"  actual:   {live_reads}"
+    )
+
+    # The damaged replacement is debris, so the ladder discards it and branch 3
+    # restarts from the intact live vault. Nothing here should refuse: being
+    # pushed onto the rollback route IS H1's harm, with the user's own vault
+    # sitting right there and nothing wrong with it.
+    try:
+        vault_migration.resume(vault_path, sidecar_path, kek, dek)
+    except Exception as exc:
+        pytest.fail(
+            "FIBR-0313 H1 / INV-15: resume() refused instead of discarding the "
+            "damaged vault.db.migrating and restarting from the live v1 "
+            "database, which was intact. Branch 2 swapped it in on `_opens` "
+            "alone -- the weak check a file damaged past page 1 passes -- and "
+            "only then found the result unreadable, by which point the vault "
+            "it was compared against was gone.\n"
+            "  expected: resume() completes, the replacement discarded\n"
+            f"  actual:   {type(exc).__name__}: {exc}"
+        )
+
+    # Asserted through the user's own route rather than by probing with a
+    # particular key: a sound recovery here is branch 3 COMPLETING the
+    # migration, so the vault is legitimately v2 by now and a KEK-master probe
+    # would be asserting which schedule recovered it rather than whether
+    # anything survived.
+    restored = open_after_restart(vault_path, sidecar_path, MASTER_PASSWORD)
+    after = row_digests(restored.connection)
+    restored.close()
+    assert after == digests, (
+        "FIBR-0313 H1 / INV-15: resume()'s branch 2 replaced the live v1 "
+        "database with the damaged vault.db.migrating on `_opens` alone, "
+        "destroying the user's intact vault in favour of one that opens "
+        "but does not read end to end.\n"
+        f"  expected: {digests}\n  actual:   {after}"
+    )
+
+
+def test_branch_2_does_not_swap_in_a_sound_but_short_replacement(
+    tmp_path: Path,
+) -> None:
+    """FIBR-0313 H1 / INV-15, the half integrity_check cannot see.
+
+    S2 runs a row compare BESIDE its ``integrity_check`` because the two catch
+    different things: a page damaged after the fact fails integrity, while an
+    export that simply did not carry every row is internally perfect and fails
+    nothing. Branch 2 swapping on the strong read alone would still hand the
+    user a vault short of their transactions, and the intact one it replaced
+    is gone.
+
+    Built by DELETING rows from a sound replacement rather than by damaging it,
+    so the leg cannot pass on the damage check doing the work.
+    """
+    vault_path, sidecar_path, key, digests = _stalled_before_s5_with_filler(
+        tmp_path, "branch2-short"
+    )
+    migrating_db = _suffixed(vault_path, MIGRATING_SUFFIX)
+    kek, dek = _credential_for(sidecar_path)
+    compat = vault_migration.read_sidecar_v2(sidecar_path).cipher_compatibility
+
+    short = Vault(migrating_db, migrating_db)
+    short.open(bytearray(dek), cipher_compat=compat, migrate=False)
+    short.connection.execute(
+        "DELETE FROM transactions WHERE id IN "
+        "(SELECT id FROM transactions ORDER BY id LIMIT 5)"
+    )
+    short.connection.commit()
+    short.close()
+
+    # Precondition: it is SOUND. Without this the leg passes on the integrity
+    # half and proves nothing about the row compare it exists for.
+    sound = vault_migration._reads_end_to_end(migrating_db, dek, compat)
+    assert sound is True, (
+        "precondition: deleting rows must leave the replacement internally "
+        "sound, or this leg is re-testing the damage check.\n"
+        "  expected: True\n"
+        f"  actual:   {sound}"
+    )
+
+    vault_migration.resume(vault_path, sidecar_path, kek, dek)
+
+    restored = open_after_restart(vault_path, sidecar_path, MASTER_PASSWORD)
+    after = row_digests(restored.connection)
+    restored.close()
+    assert after == digests, (
+        "FIBR-0313 H1 / INV-15: branch 2 swapped in a replacement that reads "
+        "end to end but is missing rows the live vault still had. "
+        "integrity_check cannot see a short export -- the row compare is what "
+        "does, which is why S2 runs both.\n"
+        f"  expected: {digests}\n  actual:   {after}"
+    )
+
+
+def test_branch_2_secures_the_rollback_copy_before_it_swaps(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """FIBR-0313 H1 / INV-15: INV-13's gate binds branch 2 as it binds branch 3.
+
+    ``_swap_database`` replaces ``vault.db`` -- a byte of the live pair -- so a
+    verified copy has to exist first. Branch 3 gates ``_convert`` that way
+    already; branch 2 swapped with no gate at all, and a resume arriving with
+    an unusable ``.pre-v2`` pair beside it had no route back for the duration.
+
+    Observed by ORDERING rather than by what is on disk afterwards, because S6
+    removes the copy on the way out either way -- so a disk check at the end
+    cannot tell a gate that ran from one that did not.
+    """
+    vault_path, sidecar_path, key, _digests = _stalled_before_s5_with_filler(
+        tmp_path, "branch2-gate"
+    )
+
+    # An unusable copy is the case that bites: `_ensure_rollback_copy` has to
+    # RETAKE one, so skipping the gate leaves the user with no route back.
+    copy_vault, copy_sidecar = rollback_copy_paths(vault_path, sidecar_path)
+    copy_sidecar.write_text("not a sidecar", encoding="utf-8")
+
+    ensured: list[str] = []
+    at_swap: list[list[str]] = []
+    real_ensure = vault_migration._ensure_rollback_copy
+    real_swap = vault_migration._swap_database
+
+    def watch_ensure(*args: Any, **kwargs: Any) -> None:
+        ensured.append("ensure")
+        real_ensure(*args, **kwargs)
+
+    def watch_swap(*args: Any, **kwargs: Any) -> None:
+        at_swap.append(list(ensured))
+        real_swap(*args, **kwargs)
+
+    def refuse_convert(*args: Any, **kwargs: Any) -> None:
+        pytest.fail(
+            "precondition: this leg must go through branch 2, and _convert "
+            "running means it fell through to branch 3 instead -- so the "
+            "ordering below would be branch 3's gate, not branch 2's."
+        )
+
+    monkeypatch.setattr(vault_migration, "_ensure_rollback_copy", watch_ensure)
+    monkeypatch.setattr(vault_migration, "_swap_database", watch_swap)
+    monkeypatch.setattr(vault_migration, "_convert", refuse_convert)
+
+    open_after_restart(vault_path, sidecar_path, MASTER_PASSWORD).close()
+
+    assert at_swap == [["ensure"]], (
+        "branch 2 replaced the live database without securing a rollback copy "
+        "first. INV-13: no byte of the live pair moves until a verified copy "
+        "exists, and the pair beside this vault did not verify.\n"
+        "  expected: [['ensure']] -- one swap, gated\n"
+        f"  actual:   {at_swap}"
+    )

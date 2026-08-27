@@ -172,6 +172,26 @@ every credential, account and transaction here is synthetic
   usable; then calls `resume()` directly and asserts `RollbackAvailableError`.
   Source: FIBR-0313 C1.
 
+- **INV-15** — `resume()`'s branch 2 (the DEK opens `vault.db.migrating`, so
+  the crash was between S4 and S5) must not replace the live database with
+  the `.migrating` one unless the `.migrating` file reads end to end.
+  Branch 2 today calls `_swap_database` on `_opens` alone — the same weak
+  check INV-14 names — with neither S2's `integrity_check` + row compare nor
+  `_ensure_rollback_copy` gating it. A `.migrating` file damaged past page 1
+  (SQLCipher HMACs pages independently, so the schema and page 1 survive
+  while a later page's rows do not) opens but does not read, and today that
+  is enough to destroy the still-intact live v1 database in its favour.
+  *Test:*
+  `test_migration.py::test_branch_2_does_not_swap_the_live_vault_for_a_damaged_replacement`
+  — stalls a migration between S4 and S5 (`.migrating` exists, the live
+  database is still v1), damages a page of `vault.db.migrating` well past
+  its schema, asserts as preconditions that the DEK opens the damaged
+  `.migrating` file, that it does not read end to end, and that the live
+  `vault.db` still reads end to end with KEK-master; then calls `resume()`
+  directly and asserts the live vault still opens with KEK-master and still
+  holds every row.
+  Source: FIBR-0313 H1.
+
 ## Rationale
 
 `AuthService.reset_vault` — "start over" — is the live answer to *I forgot my
