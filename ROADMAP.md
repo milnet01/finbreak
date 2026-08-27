@@ -5965,6 +5965,34 @@ because retrofitting them is a data migration.
   makes the failure messages markedly worse, and rewriting a working test's
   recorder does not trace to M2 or M3. If the suite is ever run on macOS, that
   swap is the fix -- not a skipif, which would read as coverage.
+  Progress (2026-08-27, cont.): M4 fixed and pushed (f39d6a9); gate
+  green at 2058 passed / 2 skipped. The remedy is the opposite of the one
+  the finding implies -- DELETE the six defensive copies rather than wipe
+  them -- and that is the project's own settled rule rather than a
+  judgement call. backup.py's _open_backup_vault carries it as a comment
+  ("Pass the derived key itself, NOT a copy"), backup.py repeats it on
+  rekey, auth.py passes its owned buffer through at create() and at both
+  open() sites, and FIBR-0019 names the failure mode by number: a copy
+  "lands in the caller's frame, out of reach of the finally that wipes the
+  bytearray -- an INV-3 breach at eight sites". vault_migration was the one
+  module that had not followed it.
+
+  The finding named five sites; there are six -- _opens,
+  _reads_end_to_end, _row_counts_or_none, verify_rollback_copy, and
+  _convert's two opens.
+
+  Where else the rule binds, measured rather than assumed: every other
+  Vault.open / create / rekey site in the tree already passes through, so
+  unlike M2/M3 there is no third site to file.
+
+  mutation_probe on every PART rather than the feature: re-introducing the
+  copy at each of the six sites independently was killed at all six, so a
+  fix that reached five of them would be caught. No mutant survived.
+
+  tests/features/recovery_key/spec.md gains INV-19. Its call-site labels
+  key on the database each open() targets, never on line numbers -- the
+  first draft used line numbers and this fix's own comment shifted them,
+  which is a test failing for the wrong reason.
   **Layman:** The recovery-key work was reviewed again with fresh eyes; one serious problem can strand a half-upgraded vault with no way back, and several smaller fixes from last time only reached some of the places they needed to.
   Kind: review-fix.
   Source: close-phase-2026-08-25 (check-code + review-code x4 lanes, FP03 close, fresh context).
