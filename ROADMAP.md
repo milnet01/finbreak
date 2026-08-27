@@ -5993,6 +5993,49 @@ because retrofitting them is a data migration.
   key on the database each open() targets, never on line numbers -- the
   first draft used line numbers and this fix's own comment shifted them,
   which is a test failing for the wrong reason.
+  Progress (2026-08-27, cont.): M5 fixed and pushed (451cfe1); gate green
+  at 2060 passed / 2 skipped. _show_failure now takes which credential was
+  tried, so a failed recovery attempt stops naming the password. The
+  countdown message is credential-neutral and is shared unchanged.
+
+  TWO routes reach it, not one, and the second needed its own slot. The
+  wrong-code route comes through _on_recovery_derived; a failed DERIVATION
+  comes through the worker's `failed` signal, which BOTH workers had
+  connected to the same _on_failure. _on_recovery_failure is that
+  counterpart -- a separate connection rather than a remembered flag,
+  since the worker knows which credential it derived.
+
+  Reachability, measured, and it changes what the finding is worth:
+  BASE_DELAY_SECONDS is 1.0, so record_failure always leaves a positive
+  delay owing and the countdown branch fires first. On a working install
+  the user sees the neutral "Try again in 1s" and the sentence M5 names is
+  never rendered. It is live only where the persisted throttle state does
+  not survive its write -- an unwritable window.ini. So M5's stated harm
+  does not occur on a healthy machine. The message was still wrong and the
+  fix is cheap; the invariant states the corner rather than implying the
+  common path.
+
+  mutation_probe on every PART, and part 3 is why a second test exists:
+  re-pointing the recovery worker's `failed` connection back at the shared
+  password slot SURVIVED against the first test alone. All four parts are
+  killed now.
+
+  Filed and then RETRACTED in the same session: FIBR-0315, which began as
+  "the recovery route swallows the rollback offer C1 made reachable". It
+  does not. _unlock_through_slot passes the KEK of whichever slot was used
+  into resume's kek_master parameter, so on the recovery route that is the
+  RECOVERY KEK; both routes to RollbackAvailableError gate on
+  rollback_copy_is_usable with that key, and the .pre-v2 pair is v1, which
+  only KEK-master opens. The error is never raised there.
+  _offer_rollback's docstring already said so by a second, independent
+  gate. FIBR-0315 is re-scoped to what the measurement DID find: on that
+  route _finish_if_readable asks the same question with the wrong key,
+  gets False, and returns -- so C1's fix degrades back to admitting the
+  user silently. Narrow, and its own bullet carries the reachability.
+
+  Two invariants authored for the retracted framing were removed rather
+  than re-aimed: they asserted a contract that should not exist and passed
+  only because the raise they needed was monkeypatched.
   **Layman:** The recovery-key work was reviewed again with fresh eyes; one serious problem can strand a half-upgraded vault with no way back, and several smaller fixes from last time only reached some of the places they needed to.
   Kind: review-fix.
   Source: close-phase-2026-08-25 (check-code + review-code x4 lanes, FP03 close, fresh context).
@@ -6020,6 +6063,115 @@ because retrofitting them is a data migration.
   Kind: fix.
   Source: in-session-2026-08-27 (FP04 M2/M3 blast-radius measurement).
   Lanes: backup, ui.
+
+- 📋 [FIBR-0315] **On the recovery route C1's rollback check is asked with the wrong key, so it silently degrades.**
+  C1's defect, one route over, and live today.
+
+  RollbackAvailableError subclasses VaultStateError (errors.py). The UI has
+  exactly ONE handler for it -- unlock.py's _on_derived, the PASSWORD route,
+  whose own comment says the arm must come "BEFORE the VaultStateError arm
+  below, which is its base class". _on_recovery_derived has no such arm: its
+  arms are KdfPolicyError, SchemaVersionError, VaultStateError. So the base
+  arm catches the subclass and renders _pairing_broken() -- "the two do not
+  belong together, or the vault file is damaged. If you have a backup,
+  restore it."
+
+  The route is real, not theoretical. complete_recovery_unlock and
+  complete_unlock share _unlock_through_slot, which calls
+  vault_migration.resume when the sidecar is migration_pending. resume's
+  terminal branch raises RollbackAvailableError from two sites in
+  _finish_if_readable. FIBR-0313 C1 is what made branch 1 raise rather than
+  return, so C1 WIDENED the set of unlocks that reach this and the recovery
+  handler was never updated -- the FP04 pattern its own bullet names, a fix
+  that reached some call sites and not all.
+
+  Consequence: a user holding a correct recovery code, on a vault with a
+  verified .pre-v2 pair beside it, is told their vault is unopenable and
+  pointed at a backup they may not have. The rollback offer -- "the whole
+  return on D8" -- is never made. That is the same dead end C1 closed for
+  the password route.
+
+  Fix: give _on_recovery_derived a RollbackAvailableError arm ahead of its
+  VaultStateError arm, routing to _offer_rollback, exactly as _on_derived
+  does. Check while there whether the follow-up copy still reads correctly
+  for a user who arrived by recovery code -- _rollback_restored() says
+  "Enter your password again to open it", which is right (the restored pair
+  is v1 and takes the password route) but was written for a password-route
+  arrival.
+  Measured 2026-08-27, and it SPLITS the fix in two. The bullet above says
+  to route the recovery arrival to _offer_rollback "exactly as _on_derived
+  does". Doing only that would introduce a new harm, so do not.
+
+  restore_rollback_copy ends with os.replace(copy_sidecar, sidecar_path).
+  The v2 sidecar is overwritten and NO .old is kept -- and the v2 sidecar is
+  the only thing holding the recovery slot, because a .pre-v2 sidecar is v1
+  and has no slots at all. So accepting the offer DESTROYS the recovery
+  code. For a user who arrived by recovery code -- who by definition has no
+  working password -- that turns "recovery code works, data unreachable"
+  into "nothing opens this vault".
+
+  And _rollback_offer() reads "...and your password opens that copy" and
+  "finbreak will ask for your password again to open them", which is a
+  promise that user cannot cash.
+
+  So the fix is two halves. (1) The routing: a RollbackAvailableError arm on
+  _on_recovery_derived ahead of its VaultStateError arm. (2) The copy: a
+  recovery-specific offer stating the two facts that differ for that user --
+  the restored copy is opened by the master password, and restoring replaces
+  the key record so the recovery code stops working. Declining is still free
+  and still leaves the copy in place, so an honest offer preserves the user's
+  choice rather than removing it.
+
+  Offering it remains right despite the one-way door: the alternative today
+  is _pairing_broken()'s "if you have a backup, restore it" while a verified
+  copy sits in the same folder, and only the user knows whether they can
+  still produce the password.
+  RETRACTION (2026-08-27, same session, before any fix was written). The
+  two notes above are WRONG in their framing and are kept rather than
+  deleted because the measurement that refutes them is the useful part.
+
+  The recovery route cannot swallow the offer, because the offer is never
+  made to it. _unlock_through_slot passes the KEK of WHICHEVER SLOT WAS
+  USED into resume's parameter named kek_master -- on the recovery route
+  that is the RECOVERY KEK. Both routes to RollbackAvailableError gate on
+  rollback_copy_is_usable(vault_path, sidecar_path, kek_master), and the
+  .pre-v2 pair is v1, so only KEK-master opens it. The recovery KEK does
+  not, the check is False, and the error is not raised. _offer_rollback's
+  docstring reaches the same conclusion by a different gate (a
+  migration-pending sidecar carries slots.master alone, so the recovery
+  route normally never enters the ladder). Both gates hold; the docstring
+  is right and naming only the first one is what made it look defeasible.
+
+  What IS real, and is what this item now carries: on that route
+  _finish_if_readable asks rollback_copy_is_usable with the recovery KEK,
+  gets False, and RETURNS. So a vault that opens but does not read end to
+  end admits the user silently -- exactly the pre-C1 behaviour C1 was
+  filed to remove, degraded back on one route by a key that cannot answer
+  the question being asked.
+
+  Reachability is narrow and should be stated rather than assumed. It needs
+  a sidecar that is BOTH migration_pending and carrying a recovery slot,
+  which S3 never writes (it writes slots.master alone). The route there:
+  _finish_quietly absorbs an OSError, leaving migration_pending set on a
+  vault the user is now unlocked into, and the user then adds a recovery
+  code in Settings. Narrow, but it is the disk-full class § 6 already
+  plans for.
+
+  Not fixable by offering the rollback: that user has no KEK-master, so
+  the copy is not openable by them either. The honest remedy is to tell
+  them their rows are unreachable and that a pre-upgrade copy exists which
+  only their master password opens -- rather than admitting them silently.
+
+  Tests: none. INV-20 and INV-21 were authored for the retracted framing
+  and were removed rather than re-aimed; they asserted a contract this
+  measurement says should not exist, and they passed only because the raise
+  they depended on was monkeypatched. Whoever takes this writes the test
+  for the contract in the paragraph above, and the precondition to assert
+  first is that the state is reachable at all.
+  **Layman:** If you unlock with your recovery code while an interrupted upgrade is half-done, finbreak tells you the vault is broken instead of offering to put back the copy it saved before the upgrade — which is sitting right beside it.
+  Kind: fix.
+  Source: in-session-2026-08-27 (found while scoping FIBR-0313 M5).
+  Lanes: ui, migration.
 
 ### 🎨 Features & accessibility
 
