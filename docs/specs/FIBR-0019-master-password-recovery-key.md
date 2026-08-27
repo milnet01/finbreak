@@ -1018,7 +1018,17 @@ On open, with a v2 sidecar carrying `migration_pending`:
      corrupt for mistyping.
    - **The unwrap succeeds** → continue with the DEK.
 1. Try the DEK against `vault.db`.
-   - **Opens** → the crash was after S5. Run S6. Done.
+   - **Opens, and reads end to end** → the crash was after S5. Run S6. Done.
+   - **Opens but does not read end to end** → S6 is withheld. It deletes the
+     `.pre-v2` pair, and opening is the weaker check: SQLCipher HMACs each page
+     independently, so damage in the middle leaves page 1 decryptable, the
+     schema intact and the rows unreachable. The copy and `migration_pending`
+     both stay, **and the pre-upgrade pair is offered on the same terms as the
+     terminal bullet below** — keeping a copy is not the same as offering it,
+     and this branch matches again at every later unlock, so returning quietly
+     puts the offer permanently out of reach. Where no usable copy is beside
+     the vault there is nothing to offer and it opens as before
+     (FIBR-0310 P6, FIBR-0313 C1).
    - **Does not open** → continue.
 2. If `vault.db.migrating` exists, try the DEK against it.
    - **Opens** → the crash was between S4 and S5. Run S5, then S6.
@@ -1040,6 +1050,12 @@ unwrapped `slots.master`, and no database it names will open — the app says a
 pre-upgrade copy exists and offers to restore it, instead of the bare "vault
 and key record disagree" refusal. **That is the whole return on D8: the
 terminal branch stops being terminal.**
+
+**Branch 1 makes the same offer on the same terms**, where the live database
+opens but does not read end to end. The condition this paragraph states is a
+vault the user cannot use with a verified pre-upgrade pair beside it, and that
+state meets it as squarely as an exhausted ladder does — the enumeration above
+simply predates it (FIBR-0313 C1).
 
 A v1 sidecar means the vault has not migrated — open as today, then run
 S0–S6. Two kinds of debris can sit beside a v1 sidecar and **neither is a

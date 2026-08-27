@@ -1213,8 +1213,9 @@ def test_s6_keeps_the_copy_when_the_vault_does_not_read_end_to_end(
     (FIBR-0310 P6).
 
     A vault that opens but does not read keeps BOTH the copy and the pending
-    flag, so the rollback is still offered and the next unlock arrives here
-    again.
+    flag. Keeping them is what makes the offer worth making; MAKING it is
+    FIBR-0313 C1's half, and this leg asserts both together — the ladder
+    refuses, and the two things the refusal points at are still on disk.
     """
     vault_path, sidecar_path, key, _digests = _fresh_v1_vault(tmp_path, "s6-unreadable")
 
@@ -1233,7 +1234,12 @@ def test_s6_keeps_the_copy_when_the_vault_does_not_read_end_to_end(
     # rather than about how a particular page happens to fail.
     monkeypatch.setattr(vault_migration, "_reads_end_to_end", lambda *a, **k: False)
 
-    open_after_restart(vault_path, sidecar_path, MASTER_PASSWORD).close()
+    # The unlock no longer succeeds: keeping the copy is not the same as
+    # OFFERING it, and branch 1 matches at every later unlock, so returning
+    # quietly left the offer permanently unreachable (FIBR-0313 C1). What this
+    # leg asserts below is unchanged -- both survive the refusal.
+    with pytest.raises(RollbackAvailableError):
+        open_after_restart(vault_path, sidecar_path, MASTER_PASSWORD)
 
     assert copy_vault.exists() and copy_sidecar.exists(), (
         "S6 deleted the pre-upgrade copy for a vault that opens but does not "
@@ -1245,6 +1251,199 @@ def test_s6_keeps_the_copy_when_the_vault_does_not_read_end_to_end(
     assert read_sidecar(sidecar_path).get("migration_pending") is True, (
         "the copy was kept but the flag was cleared, so nothing re-enters the "
         "ladder and the rollback is never offered again.\n"
+        "  expected: migration_pending still True\n"
+        f"  actual:   {read_sidecar(sidecar_path)}"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0313 C1 / INV-14 -- branch 1 never offers the rollback it is sitting on
+# --------------------------------------------------------------------------- #
+def _stalled_before_s6_with_filler(
+    root: Path, name: str, filler_rows: int = 2000
+) -> tuple[Path, Path, bytearray, dict]:
+    """A vault migrated through S5 and stalled before S6, with enough filler
+    rows that a byte flip well past the schema lands in row data.
+
+    The state § 13.3 branch 1 resumes from: the live database IS the
+    post-migration one (S5 already swapped it), the sidecar is the
+    migration-pending v2 one, and S0's ``.pre-v2`` pair has not yet been
+    removed because S6 never ran. The extra rows are what
+    ``test_a_damaged_rollback_copy_does_not_verify`` measured is needed for a
+    byte flip at page 11 to hit data rather than schema.
+    """
+    directory = root / name
+    directory.mkdir()
+    vault_path = directory / "vault.db"
+    sidecar_path = directory / "vault.kdf.json"
+    vault, _params, key = create_v1_vault(vault_path, sidecar_path)
+    _seed(vault.connection)
+    account_id = vault.connection.execute(
+        "SELECT id FROM accounts ORDER BY id"
+    ).fetchall()[0][0]
+    vault.connection.executemany(
+        "INSERT INTO transactions(occurred_on, amount_minor, description, "
+        "created_at, account_id) VALUES (?, ?, ?, ?, ?)",
+        [
+            (
+                "2026-03-01",
+                -100 - n,
+                f"filler row {n}",
+                "2026-01-01T00:00:00+00:00",
+                account_id,
+            )
+            for n in range(filler_rows)
+        ],
+    )
+    vault.connection.commit()
+    digests = row_digests(vault.connection)
+    vault.close()
+
+    def abort_before_s6(step: str) -> None:
+        if step == "S6":
+            raise _Abort("injected crash before S6")
+
+    with pytest.raises(_Abort):
+        migrate_to_v2(vault_path, sidecar_path, bytearray(key), on_step=abort_before_s6)
+
+    return vault_path, sidecar_path, key, digests
+
+
+def test_branch_1_offers_the_pre_upgrade_copy_when_unreadable(tmp_path: Path) -> None:
+    """FIBR-0313 C1 / INV-14: ``_finish_if_readable`` returns on the
+    not-readable path, so ``resume()``'s branch 1 -- the DEK opens the live
+    database -- never checks for a usable rollback copy the way the terminal
+    branch does. A vault damaged past page 1 (SQLCipher HMACs each page
+    independently, so mid-file damage leaves page 1 and the schema intact and
+    every later row unreachable) then leaves ``migration_pending`` set
+    forever: every later unlock re-enters branch 1, matches again, and the
+    verified ``.pre-v2`` pair sitting right there is never offered.
+    """
+    vault_path, sidecar_path, key, _digests = _stalled_before_s6_with_filler(
+        tmp_path, "branch1-unreadable"
+    )
+
+    # Precondition: S0's rollback copy is still on disk -- S6 has not run, so
+    # the offer this invariant is about has something to be made of.
+    copy_vault, copy_sidecar = rollback_copy_paths(vault_path, sidecar_path)
+    assert copy_vault.exists() and copy_sidecar.exists(), (
+        "precondition: S0's copy must still be on disk -- S6 has not run, so "
+        "the state branch 1 needs is not there.\n"
+        f"  expected: both of {copy_vault.name}, {copy_sidecar.name}\n"
+        f"  actual:   {copy_vault.exists()}, {copy_sidecar.exists()}"
+    )
+
+    # Damage the LIVE database in the middle -- past the schema pages -- so it
+    # opens (page 1's HMAC still checks out) but does not read end to end.
+    pages = vault_path.stat().st_size // _PAGE_SIZE
+    assert pages > 12, (
+        "precondition: the seeded vault must span enough pages that page 11 "
+        "holds rows rather than schema.\n"
+        f"  expected: > 12 pages\n  actual:   {pages}"
+    )
+    damaged = 10 * _PAGE_SIZE + 100
+    with vault_path.open("r+b") as handle:
+        handle.seek(damaged)
+        byte = handle.read(1)
+        handle.seek(damaged)
+        handle.write(bytes([byte[0] ^ 0xFF]))
+
+    sidecar = read_v2_sidecar(sidecar_path)
+    kek = kek_for(MASTER_PASSWORD, sidecar, SLOT_MASTER)
+    dek = unwrap_slot(MASTER_PASSWORD, sidecar, SLOT_MASTER)
+    compat = vault_migration.read_sidecar_v2(sidecar_path).cipher_compatibility
+
+    # Preconditions: the damage really produced the not-readable-but-opens
+    # state branch 1 needs. Without these the leg could pass or fail
+    # vacuously against a fixture that never reached the case at all.
+    opens = vault_migration._opens(vault_path, dek, compat)
+    assert opens is True, (
+        "precondition: the DEK must still OPEN the damaged database -- page 1 "
+        "and the schema are meant to survive the byte flip, which is the "
+        "whole reason this class of damage is invisible to _opens.\n"
+        "  expected: True\n"
+        f"  actual:   {opens}"
+    )
+    reads_end_to_end = vault_migration._reads_end_to_end(vault_path, dek, compat)
+    assert reads_end_to_end is False, (
+        "precondition: the damaged database must NOT read end to end, or this "
+        "leg is exercising branch 1's ordinary path rather than the "
+        "not-readable one C1 is about.\n"
+        "  expected: False\n"
+        f"  actual:   {reads_end_to_end}"
+    )
+    copy_usable = vault_migration.rollback_copy_is_usable(vault_path, sidecar_path, kek)
+    assert copy_usable is True, (
+        "precondition: S0's .pre-v2 pair must open with KEK-master -- the "
+        "offer INV-14 is about is conditional on a usable copy existing.\n"
+        "  expected: True\n"
+        f"  actual:   {copy_usable}"
+    )
+
+    try:
+        vault_migration.resume(vault_path, sidecar_path, kek, dek)
+    except RollbackAvailableError:
+        return
+    except Exception as exc:
+        pytest.fail(
+            "FIBR-0313 C1 / INV-14: resume()'s branch 1 must raise "
+            "RollbackAvailableError when the live database opens but does not "
+            "read end to end and a verified .pre-v2 pair is beside it, so the "
+            "user is offered the pre-upgrade copy instead of a wrong error.\n"
+            "  expected: RollbackAvailableError\n"
+            f"  actual:   {type(exc).__name__}: {exc}"
+        )
+    pytest.fail(
+        "FIBR-0313 C1 / INV-14: resume()'s branch 1 returned normally on a "
+        "database that opens but does not read end to end, with a verified "
+        ".pre-v2 pair sitting beside it. _finish_if_readable returns silently "
+        "on the not-readable path instead of offering the rollback, so "
+        "migration_pending stays set and every later unlock re-enters this "
+        "same branch, forever, with the rollback never mentioned.\n"
+        "  expected: RollbackAvailableError raised\n"
+        "  actual:   resume() returned normally, leaving migration_pending="
+        f"{read_sidecar(sidecar_path).get('migration_pending')!r}"
+    )
+
+
+def test_branch_1_still_opens_when_there_is_no_copy_to_offer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The other side of INV-14: no usable copy means nothing to offer.
+
+    FIBR-0313 C1 makes branch 1 raise so the pre-upgrade pair is offered rather
+    than kept in silence. That is conditional on the pair being there and
+    opening -- INV-13's rule that a copy which merely exists is worse than none
+    binds this offer exactly as it binds the terminal branch's. With no copy a
+    refusal would strand the user with no route back and nothing to show for
+    it, so the ladder goes on opening the vault as it did before, leaving
+    ``migration_pending`` set for a later run.
+    """
+    vault_path, sidecar_path, key, _digests = _fresh_v1_vault(tmp_path, "s6-nocopy")
+
+    def abort_before_s6(step: str) -> None:
+        if step == "S6":
+            raise _Abort("injected crash before S6")
+
+    with pytest.raises(_Abort):
+        migrate_to_v2(vault_path, sidecar_path, bytearray(key), on_step=abort_before_s6)
+
+    # unlink() without missing_ok is the precondition: S0's pair must have been
+    # there to remove, or this leg is testing a state it never reached.
+    copy_vault, copy_sidecar = rollback_copy_paths(vault_path, sidecar_path)
+    copy_vault.unlink()
+    copy_sidecar.unlink()
+
+    monkeypatch.setattr(vault_migration, "_reads_end_to_end", lambda *a, **k: False)
+
+    # No raise: there is nothing to offer, so this stays the pre-C1 behaviour,
+    # and the leg exists to keep it that way -- raising unconditionally would
+    # lock the user out of the only vault they have.
+    open_after_restart(vault_path, sidecar_path, MASTER_PASSWORD).close()
+
+    assert read_sidecar(sidecar_path).get("migration_pending") is True, (
+        "the flag was cleared for a vault that does not read end to end, so S6 "
+        "ran and nothing re-enters the ladder at the next unlock.\n"
         "  expected: migration_pending still True\n"
         f"  actual:   {read_sidecar(sidecar_path)}"
     )

@@ -627,6 +627,7 @@ def _finish_if_readable(
     vault_path: Path,
     dek: bytearray,
     cipher_compat: int | None,
+    kek_master: bytearray,
 ) -> None:
     """S6, but only once the vault it is about to burn the rollback for READS.
 
@@ -637,15 +638,36 @@ def _finish_if_readable(
     opens with its schema intact and every row unreachable (FIBR-0310 P6).
 
     A vault that opens but does not read keeps BOTH: the copy stays, and
-    ``migration_pending`` stays set, so the rollback is still offered and the
-    next unlock arrives here again. INV-7's contract is untouched — the caller
-    goes on to open the vault either way, which is what the user gets.
+    ``migration_pending`` stays set. **Keeping them is not the same as offering
+    them, and this returned here saying it was** — the sentence read "so the
+    rollback is still offered", and nothing raised. ``resume``'s branch 1
+    matches on the DEK opening the live database, which is still true at every
+    later unlock, so the terminal branch that makes the offer was unreachable:
+    the user was let into a vault with unreachable rows, at that unlock and
+    every one after it, with a verified pre-upgrade pair beside them and
+    nothing saying so (FIBR-0313 C1).
+
+    So the offer is made HERE, on the terminal branch's own terms — the pair is
+    on disk and opens with the key the user has just proved. INV-7 is what
+    settles it rather than a preference for raising: the contract is that the
+    pre- or the post-migration pair opens *with every row intact*, and the
+    database in front of us is not that one. The ``.pre-v2`` pair is, and
+    raising is how the user reaches it.
+
+    Where no usable copy is beside the vault there is nothing to offer, so the
+    caller goes on to open the vault as before. That state is INV-7 already
+    broken with no route back, which this cannot mend and does not pretend to.
     """
     if not _reads_end_to_end(vault_path, dek, cipher_compat):
         log.warning(
             "migration resume: the vault opens but does not read end to end; "
             "keeping the pre-upgrade copy and leaving the migration pending"
         )
+        if rollback_copy_is_usable(vault_path, sidecar_path, kek_master):
+            raise RollbackAvailableError(
+                "the vault opens but does not read end to end, and a copy "
+                "taken before the upgrade is beside it"
+            )
         return
     _finish_quietly(sidecar_path, sidecar, vault_path)
 
@@ -712,7 +734,7 @@ def resume(
     # 1 — the DEK opens the live database: the crash was after S5.
     if _opens(vault_path, dek, compat):
         log.info("migration resume: crash was after S5; finishing")
-        _finish_if_readable(sidecar_path, sidecar, vault_path, dek, compat)
+        _finish_if_readable(sidecar_path, sidecar, vault_path, dek, compat, kek_master)
         return
 
     # 2 — it opens the replacement instead: the crash was between S4 and S5.
@@ -720,7 +742,9 @@ def resume(
         if _opens(migrating_db, dek, compat):
             log.info("migration resume: crash was between S4 and S5; swapping")
             _swap_database(vault_path, migrating_db)
-            _finish_if_readable(sidecar_path, sidecar, vault_path, dek, compat)
+            _finish_if_readable(
+                sidecar_path, sidecar, vault_path, dek, compat, kek_master
+            )
             return
         migrating_db.unlink(missing_ok=True)
         _drop_wal_siblings(migrating_db)

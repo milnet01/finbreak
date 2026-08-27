@@ -154,6 +154,24 @@ every credential, account and transaction here is synthetic
   unchanged. **Not a hash of `vault.db`**, for the reason INV-12 gives.
   Source: FIBR-0019 INV-13.
 
+- **INV-14** — `resume()`'s branch 1 (the DEK opens the live database) offers
+  the pre-upgrade copy on the same terms as the terminal branch: where the
+  database opens but does not read end to end **and** a verified `.pre-v2`
+  pair is beside it, `resume()` raises `RollbackAvailableError` rather than
+  returning. INV-7's "the vault still opens" is not satisfied by a database
+  whose rows are unreachable, and a silent return leaves `migration_pending`
+  set forever — every later unlock re-enters branch 1 and the offer is never
+  made.
+  *Test:* `test_migration.py::test_branch_1_offers_the_pre_upgrade_copy_when_unreadable`
+  — migrates a vault to the point S5 has swapped the database and stalls
+  before S6, so a verified `.pre-v2` pair is still on disk; damages a page of
+  the LIVE database well past its schema (SQLCipher HMACs pages
+  independently, so page 1 and the schema stay intact while the row data does
+  not); asserts as preconditions that the DEK opens the damaged database, that
+  it does not read end to end, and that the `.pre-v2` pair is present and
+  usable; then calls `resume()` directly and asserts `RollbackAvailableError`.
+  Source: FIBR-0313 C1.
+
 ## Rationale
 
 `AuthService.reset_vault` — "start over" — is the live answer to *I forgot my
