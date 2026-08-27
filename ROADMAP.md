@@ -5857,6 +5857,28 @@ because retrofitting them is a data migration.
 
   FIBR-0019 § 13.3 branches 1 and 2 amended to match, recording what was
   built; tests/features/recovery_key/spec.md gained INV-14 and INV-15.
+  Progress (2026-08-27, cont.): H2 fixed and pushed (f492e9f); gate
+  green at 2050 passed / 2 skipped. verify_rollback_copy now passes
+  migrate=False, so it stops committing schema writes into the .pre-v2 copy it
+  certifies -- measured, sha256 changed and schema_version went 1 to 13 across
+  a call whose job is to read. That one argument closes H2's second half too:
+  run_migrations is the ONLY raiser of SchemaVersionError, and Vault.open
+  returns before it when migrations are skipped, so nothing propagates out of
+  rollback_copy_is_usable any more.
+
+  DECLINED on measurement, and recorded rather than dropped: adding
+  SchemaVersionError to that except tuple, which is the remedy H2 implies. It
+  would return False for a copy that READS -- integrity_check passes, every row
+  is there -- when verify_rollback_copy exists to refuse a copy that CANNOT be
+  read; a recorded schema number is not damage. Refusing it leaves the user the
+  bare "vault and key record disagree" with their intact vault beside them and
+  nothing saying so, where offering it restores the pair and the next unlock
+  says "update finbreak". tests/features/recovery_key/spec.md INV-17 now states
+  that verdict as a decision so the next reader does not re-derive it as a bug.
+  Reopen only with a case where a too-new copy is genuinely unrestorable.
+
+  C1, H1 and H2 are closed. M1-M10 and L1-L16 remain, plus Q1-Q5 and M10's
+  decision. Spec INV-14 to INV-17 added across the three.
   **Layman:** The recovery-key work was reviewed again with fresh eyes; one serious problem can strand a half-upgraded vault with no way back, and several smaller fixes from last time only reached some of the places they needed to.
   Kind: review-fix.
   Source: close-phase-2026-08-25 (check-code + review-code x4 lanes, FP03 close, fresh context).

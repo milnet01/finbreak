@@ -57,8 +57,8 @@ nine steps are defined in `~/.claude/skills/app-workflow/SKILL.md`.
 
 1. ⬜ Verify spec
 2. ⬜ Verify dependencies
-3. ⬜ Write tests first
-4. ⬜ Implement until tests pass
+3. 🚧 Write tests first
+4. 🚧 Implement until tests pass
 5. ⬜ Run `check-code` — in parallel with 6
 6. ⬜ Run `review-code` — in parallel with 5
 7. ⬜ Fold all actionable findings into one new fix-pass
