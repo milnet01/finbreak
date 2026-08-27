@@ -5840,6 +5840,23 @@ because retrofitting them is a data migration.
       depends on it (os.replace over an open vault.db fails on Windows). The
       single caller is on the pre-login route, so the invariant is
       caller-held rather than local. A presence check would make it local.
+  Progress (2026-08-27): C1 and H1 fixed and pushed; gate green at
+  2048 passed / 2 skipped. C1 -- _finish_if_readable takes kek_master and
+  raises RollbackAvailableError on the not-readable path where a verified
+  .pre-v2 pair is beside the vault; with no usable copy it opens as before,
+  that state being INV-7 already broken with no route back. H1 -- branch 2
+  gates the swap on S2's two checks asked again (integrity, and the row
+  compare against the still-v1 live vault) and on _ensure_rollback_copy per
+  INV-13, and discards an unsound replacement by falling through to branch 3
+  rather than raising. Commits 00a2e18, 604a6f5.
+
+  mutation_probe is why H1 has three legs rather than one: on the first draft
+  "row compare dropped" and "INV-13 gate dropped" both SURVIVED -- integrity
+  alone catches a damaged page, so nothing pinned the short-export case the
+  row compare exists for, and nothing pinned the gate at all. Both killed now.
+
+  FIBR-0019 § 13.3 branches 1 and 2 amended to match, recording what was
+  built; tests/features/recovery_key/spec.md gained INV-14 and INV-15.
   **Layman:** The recovery-key work was reviewed again with fresh eyes; one serious problem can strand a half-upgraded vault with no way back, and several smaller fixes from last time only reached some of the places they needed to.
   Kind: review-fix.
   Source: close-phase-2026-08-25 (check-code + review-code x4 lanes, FP03 close, fresh context).
