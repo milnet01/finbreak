@@ -303,6 +303,31 @@ every credential, account and transaction here is synthetic
   identity and whether it is still live.
   Source: FIBR-0313 M4.
 
+- **INV-20** — A failed RECOVERY-CODE attempt must not tell the user to check
+  their password. `_show_failure` is shared between both routes and its
+  no-countdown branch hardcodes "Check your password and try again" — reached
+  only when `UnlockThrottle.remaining()` reports 0 immediately after
+  `record_failure`. **Reachable only in that corner**: on a working install
+  `BASE_DELAY_SECONDS == 1.0` makes `remaining` > 0 right after any recorded
+  failure, so the countdown branch (a credential-neutral "Try again in Ns")
+  fires first every time; the generic message is live only if the persisted
+  throttle state fails to survive (e.g. an unwritable `window.ini`).
+  *Test:*
+  `test_recovery_unlock.py::test_recovery_failure_message_does_not_mention_password`
+  — drives a real failed recovery attempt (a forged code with a valid check
+  symbol) through the dialog's worker path, with `UnlockThrottle.remaining`
+  monkeypatched to always report 0 so the no-countdown branch is reached
+  without needing to break `window.ini` on disk, and asserts "password" does
+  not appear in the resulting message.
+  `test_recovery_unlock.py::test_recovery_derivation_failure_message_does_not_mention_password`
+  — the second route into the same message, where the KDF itself fails rather
+  than the code being wrong, so the worker's `failed` signal is what reaches
+  `_show_failure`. It is a separate test because a single shared failure slot
+  satisfies the first one and not this one: `mutation_probe` re-pointed that
+  connection back at the password slot and the suite stayed green until this
+  test existed.
+  Source: FIBR-0313 M5.
+
 ## Rationale
 
 `AuthService.reset_vault` — "start over" — is the live answer to *I forgot my

@@ -196,3 +196,128 @@ def test_recovery_attempts_share_the_password_backoff(
         "  expected: fail_count == 1 after one failed recovery attempt\n"
         f"  actual:   {UnlockThrottle().load().fail_count}"
     )
+
+
+# --------------------------------------------------------------------------- #
+# INV-20 -- FIBR-0313 M5: a failed recovery attempt must not tell the user to
+# check their password
+# --------------------------------------------------------------------------- #
+def test_recovery_failure_message_does_not_mention_password(
+    qtbot: Any,
+    paths: tuple[Path, Path],
+    service: AuthService,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """FIBR-0313 M5: ``_show_failure`` is shared between the password and
+    recovery routes, and its no-countdown branch hardcodes "Check your password
+    and try again" -- reachable when ``UnlockThrottle.remaining()`` reports 0
+    immediately after ``record_failure``. On a working install that corner is
+    NOT reachable: ``BASE_DELAY_SECONDS == 1.0`` makes ``remaining`` > 0 right
+    after any recorded failure, so the countdown branch always fires first. It
+    is reachable only if the persisted throttle state fails to survive (e.g. an
+    unwritable ``window.ini``), which this test forces directly by
+    monkeypatching ``remaining()`` rather than trying to break the file on
+    disk.
+    """
+    _vault_path, sidecar_path = paths
+
+    dialog = _dialog(qtbot, service)
+    field, submit, _pending = _recovery_seams(dialog)
+
+    code = create_vault(service)
+    keep_recovery_key(service, code)
+    service.lock()
+
+    monkeypatch.setattr(dialog._throttle, "remaining", lambda _now: 0.0)
+
+    forged = forge_wrong_code_with_a_valid_check_symbol(code)
+    data = read_v2_sidecar(sidecar_path)
+    with pytest.raises(KeyUnwrapError):
+        unwrap_slot(code_secret(forged), data, "recovery")
+
+    field.setText(forged)
+    submit()
+
+    qtbot.waitUntil(lambda: dialog._error.text().strip() != "", timeout=10_000)
+
+    message = dialog._error.text()
+    assert "password" not in message.lower(), (
+        "FIBR-0313 M5 (INV-20): _show_failure is shared between the password "
+        "and recovery routes and its no-countdown branch hardcodes 'Check your "
+        "password and try again'. A recovery-code user has, by construction, "
+        "no working password to check (D6) -- and is reading this on a screen "
+        "that also offers a destructive reset.\n"
+        "  expected: no mention of 'password' after a failed RECOVERY attempt\n"
+        f"  actual:   {message!r}"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# INV-20, second route -- the DERIVATION fails rather than the code being wrong
+# --------------------------------------------------------------------------- #
+def test_recovery_derivation_failure_message_does_not_mention_password(
+    qtbot: Any,
+    paths: tuple[Path, Path],
+    service: AuthService,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The other way into INV-20's message, and the one a shared slot hides.
+
+    ``_show_failure`` is reached twice on the recovery route: from
+    ``_on_recovery_derived`` when the code is simply wrong, and from the
+    worker's ``failed`` signal when the DERIVATION itself raises. The sibling
+    test above covers the first only -- measured with ``mutation_probe``, which
+    is how this gap was found: re-pointing the recovery worker's ``failed``
+    connection back at the shared password slot left the suite green.
+
+    The stub worker emits synchronously, so the message is set before
+    ``submit()`` returns and there is no state to wait for.
+    """
+    from PySide6.QtCore import QObject, Signal
+
+    from finbreak.ui import unlock as unlock_mod
+
+    class _FailingWorker(QObject):
+        done = Signal(bytes)
+        failed = Signal(object)
+        finished = Signal()
+
+        def __init__(self, secret: bytearray, _params: Any, parent: Any = None):
+            super().__init__(parent)
+            # The dialog hands over a live buffer and the real worker owns
+            # wiping it; do the same rather than leave key material behind.
+            secret[:] = bytes(len(secret))
+
+        def start(self) -> None:
+            self.failed.emit(RuntimeError("the KDF could not run"))
+            self.finished.emit()
+
+    dialog = _dialog(qtbot, service)
+    field, submit, _pending = _recovery_seams(dialog)
+
+    code = create_vault(service)
+    keep_recovery_key(service, code)
+    service.lock()
+
+    # Force the no-countdown corner (see the sibling test), then make the
+    # derivation itself fail rather than the code be wrong.
+    monkeypatch.setattr(dialog._throttle, "remaining", lambda _now: 0.0)
+    monkeypatch.setattr(unlock_mod, "DeriveWorker", _FailingWorker)
+
+    field.setText(code)
+    submit()
+
+    message = dialog._error.text()
+    assert message.strip(), (
+        "precondition: the failed derivation must have produced a message at "
+        "all, or the check below passes vacuously.\n"
+        "  expected: a non-empty error label\n"
+        f"  actual:   {message!r}"
+    )
+    assert "password" not in message.lower(), (
+        "FIBR-0313 M5 (INV-20): the recovery worker's `failed` signal reaches "
+        "_show_failure too, and routing it through the shared password slot "
+        "tells a recovery-code user to check a password they do not have.\n"
+        "  expected: no mention of 'password' when a recovery DERIVATION fails\n"
+        f"  actual:   {message!r}"
+    )

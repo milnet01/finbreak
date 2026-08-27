@@ -363,7 +363,7 @@ class UnlockDialog(QDialog):
 
         worker = DeriveWorker(secret, params, self)  # parented — Qt owns it
         worker.done.connect(self._on_recovery_derived)
-        worker.failed.connect(self._on_failure)
+        worker.failed.connect(self._on_recovery_failure)
         worker.finished.connect(worker.deleteLater)
         self._worker = worker
         worker.start()
@@ -401,7 +401,7 @@ class UnlockDialog(QDialog):
             # window is reachable, and the shell routes on this signal.
             self.recovery_unlocked.emit()
         else:
-            self._show_failure()
+            self._show_failure(recovery=True)
 
     @Slot(bytes)
     def _on_derived(self, raw: bytes) -> None:
@@ -490,15 +490,42 @@ class UnlockDialog(QDialog):
         self._set_busy(False)
         self._show_failure()
 
-    def _show_failure(self) -> None:
+    @Slot(object)
+    def _on_recovery_failure(self, _exc: object) -> None:
+        """:meth:`_on_failure`'s counterpart for the recovery route.
+
+        A separate slot rather than a remembered flag: the worker knows which
+        credential it derived, and the connection is made where that is still
+        in scope, so nothing has to survive between starting the worker and its
+        failure (FIBR-0313 M5).
+        """
+        self._worker = None
+        self._set_busy(False)
+        self._show_failure(recovery=True)
+
+    def _show_failure(self, *, recovery: bool = False) -> None:
         # Record the failure, then start the countdown to the freshly-owed delay
         # (FIBR-0095 D3). A recorded failure always owes a delay (>= 1 s), so the
-        # countdown message replaces the generic one.
+        # countdown message replaces the generic one — which is also why the
+        # credential-specific branch below is reached only when the persisted
+        # state did not survive its write (an unwritable window.ini), and never
+        # on a working install.
+        #
+        # `recovery` is which credential was being tried. The sentence below
+        # named the password unconditionally, and a recovery-code user has none
+        # to check by construction (§ 4.6 / D6) — so it sent them to a control
+        # that cannot help, on a screen that also offers a destructive reset
+        # (FIBR-0313 M5). The countdown message is credential-neutral and is
+        # shared unchanged.
         now = datetime.now(UTC)
         self._throttle.record_failure(now)
         remaining = self._throttle.remaining(now)
         if remaining > 0:
             self._start_countdown(remaining)
+        elif recovery:
+            self._error.setText(
+                self.tr("Could not unlock. Check your recovery code and try again.")
+            )
         else:
             self._error.setText(
                 self.tr("Could not unlock. Check your password and try again.")
