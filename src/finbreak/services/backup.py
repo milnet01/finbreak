@@ -120,6 +120,25 @@ def _fsync_dir(directory: Path) -> None:
         os.close(fd)
 
 
+def _fsync_file(path: Path) -> None:
+    """Flush ``path``'s CONTENTS to stable storage before it is renamed into place.
+
+    ``O_RDWR``, not ``O_RDONLY``: Windows maps ``os.fsync`` to ``_commit`` and
+    thence to ``FlushFileBuffers``, which wants write access. Mirrors
+    ``vault_migration._fsync``, whose docstring carries the measurement.
+
+    Unlike ``_fsync_dir`` this RAISES rather than degrading. A directory fsync is
+    genuinely unportable, so failing an otherwise complete write over it would be
+    worse than the gap; a file that cannot be flushed is a vault installed with no
+    guarantee it survives the next power loss, and there is no partial credit
+    version of that (FIBR-0313 M2)."""
+    fd = os.open(path, os.O_RDWR)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
 @dataclass(frozen=True)
 class VerifyResult:
     """The outcome of a read-only ``verify_backup`` probe (FIBR-0033).
@@ -493,6 +512,9 @@ class BackupService:
         """
         real_db = self._vault.vault_path
         real_sidecar = self._vault.sidecar_path
+        # `Vault` takes the two paths independently, so they need not share a
+        # parent; dedupe rather than assume either way (FIBR-0313 M2).
+        install_dirs = {real_db.parent, real_sidecar.parent}
         if real_db.exists() or real_sidecar.exists():
             # Microseconds, not seconds (FIBR-0216): two restores inside the same
             # second produced the same stamp, so the second one's os.replace
@@ -513,9 +535,31 @@ class BackupService:
                     real_sidecar,
                     real_sidecar.with_name(f"{real_sidecar.name}.{stamp}.old"),
                 )
+            # The *.old pair IS the recovery copy (INV-5), so its directory
+            # entries are made durable HERE, before the seam below -- whose whole
+            # premise is that the old pair is already safely aside. A fsync
+            # landing after the seam would leave that promise false for exactly
+            # the crash the seam models.
+            for directory in install_dirs:
+                _fsync_dir(directory)
         on_key("post_move_aside", bytearray())  # INV-5 failure-injection seam
+        # Contents, then the rename, then the directory ENTRY the rename created
+        # -- the order export_backup already uses, now applied to the install it
+        # was missing from entirely (FIBR-0313 M2). Without it a power loss right
+        # after a restore had no durability guarantee at all, on the one path
+        # whose purpose is recovering a vault.
+        #
+        # Only the database needs the file half: the sidecar arrives already
+        # fsynced by `write_sidecar_json`, which flushes before its own
+        # os.replace. Measured rather than assumed -- mutation_probe showed a
+        # second fsync of it changed nothing the suite could see. INV-15 still
+        # pins the sidecar's durability as an OUTCOME, so if that writer ever
+        # stops flushing the test goes red rather than the guarantee going quiet.
+        _fsync_file(new_db)
         os.replace(new_db, real_db)
         os.replace(new_sidecar, real_sidecar)
+        for directory in install_dirs:
+            _fsync_dir(directory)
 
     def _read_fbk(self, src: Path) -> tuple[dict[str, object], bytes, bytes]:
         """Read exactly the three fixed entries of the `.fbk` safely (INV-12): only

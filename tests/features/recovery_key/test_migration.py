@@ -13,6 +13,7 @@ import errno
 import hashlib
 import os
 import shutil
+import stat
 from pathlib import Path
 from typing import Any
 
@@ -776,6 +777,46 @@ def test_restoring_the_pre_upgrade_copy_gives_back_the_v1_vault(
         "the restored vault must hold what it held before the update — that is "
         "the only thing a rollback is for.\n"
         f"  expected: {digests}\n  actual:   {after}"
+    )
+
+
+def test_restore_rollback_copy_fsyncs_the_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """FIBR-0313 M3 — ``restore_rollback_copy``'s three ``os.replace`` calls (the
+    database, an optional WAL sibling, the sidecar) never fsync the directory
+    holding the result. ``write_rollback_copy`` already fsyncs each COPY as a
+    file when S0 takes it (INV-13's ``_fsync``), so the source halves are
+    already durable by the time this function runs — what is missing is the
+    directory ENTRY a rename creates, which POSIX does not guarantee survives a
+    crash. This is § 13.3's last-resort route: the user has just been told
+    their pre-upgrade vault is restored, and a power loss immediately after can
+    still leave the directory listing pointing nowhere durable, on the one path
+    that exists to get their data back."""
+    vault_path, sidecar_path, _key, _digests = _every_route_exhausted(
+        tmp_path, "restore-durability"
+    )
+
+    synced_dirs: list[Path] = []
+    real_fsync = os.fsync
+
+    def recording_fsync(fd):
+        st = os.fstat(fd)
+        if stat.S_ISDIR(st.st_mode):
+            synced_dirs.append(Path(os.readlink(f"/proc/self/fd/{fd}")).resolve())
+        return real_fsync(fd)
+
+    monkeypatch.setattr(vault_migration.os, "fsync", recording_fsync)
+
+    vault_migration.restore_rollback_copy(vault_path, sidecar_path)
+
+    assert vault_path.parent.resolve() in synced_dirs, (
+        "restore_rollback_copy must fsync the directory holding the restored "
+        "pair, so the os.replace calls' directory entries are durable across "
+        "a crash right after the restore completes.\n"
+        f"  expected: {vault_path.parent.resolve()} among the fsync'd "
+        "directories\n"
+        f"  actual:   {synced_dirs}"
     )
 
 

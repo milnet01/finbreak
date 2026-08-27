@@ -84,13 +84,36 @@ def _fsync(path: Path) -> None:
     the v2 envelope, and no Windows user would ever have been offered a
     recovery key** (FIBR-0310 P1).
 
-    ``backup.py``'s ``_fsync_directory`` keeps ``O_RDONLY``, and that is not an
+    ``backup.py``'s ``_fsync_dir`` keeps ``O_RDONLY``, and that is not an
     inconsistency: a directory cannot be opened for writing, which is why that
     one degrades instead of raising.
     """
     fd = os.open(path, os.O_RDWR)
     try:
         os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+def _fsync_dir(directory: Path) -> None:
+    """Flush ``directory``'s own entries, so a rename into it is durable.
+
+    ``os.replace`` commits the rename, but POSIX does not guarantee the directory
+    ENTRY it creates reaches stable storage. Mirrors ``backup.py``'s
+    ``_fsync_dir``, including its posture: best-effort, because a directory fsync
+    is not portable (Windows refuses it outright), and failing an otherwise
+    complete restore over it would be worse than the gap it closes.
+
+    ``O_RDONLY``, unlike ``_fsync`` above -- a directory cannot be opened for
+    writing, which is exactly why this one degrades where that one raises."""
+    try:
+        fd = os.open(directory, os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.fsync(fd)
+    except OSError:
+        log.debug("directory fsync unsupported here; the rename is not flushed")
     finally:
         os.close(fd)
 
@@ -682,6 +705,12 @@ def restore_rollback_copy(vault_path: Path, sidecar_path: Path) -> None:
             )
             os.replace(sibling, _suffixed(vault_path, suffix))
     os.replace(copy_sidecar, sidecar_path)
+    # The copies' own bytes are already durable -- write_rollback_copy fsyncs each
+    # as a file when S0 takes it. What the renames above leave undone is the
+    # directory ENTRY each one creates, on the last-resort route: the user has
+    # just been told their pre-upgrade vault is back (FIBR-0313 M3).
+    for directory in {vault_path.parent, sidecar_path.parent}:
+        _fsync_dir(directory)
     log.info("the pre-upgrade copy was restored over the live pair")
 
 

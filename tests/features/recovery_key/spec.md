@@ -241,6 +241,23 @@ every credential, account and transaction here is synthetic
   lower one carries exactly this shape.
   Source: FIBR-0313 H2.
 
+- **INV-18** — `restore_rollback_copy` must leave the directory holding the
+  restored pair fsynced, not only the pair's own bytes. `write_rollback_copy`
+  already fsyncs each copy as a file when S0 takes it (INV-13's `_fsync`), so
+  the source halves are already durable by the time this function runs; what
+  its three `os.replace` calls (the database, an optional WAL sibling, the
+  sidecar) leave undone is the directory ENTRY a rename creates, which POSIX
+  does not guarantee survives a crash. This is § 13.3's last-resort route: the
+  user has just been told their pre-upgrade vault is restored, and a power
+  loss immediately after can still leave the directory listing pointing
+  nowhere durable, on the one path that exists to get their data back.
+  *Test:* `test_migration.py::test_restore_rollback_copy_fsyncs_the_directory`
+  — builds a `.pre-v2` pair via the terminal-branch fixture, monkeypatches
+  `vault_migration.os.fsync` to record every directory-mode fsync's resolved
+  path, calls `restore_rollback_copy` directly, and asserts the pair's parent
+  directory appears among them.
+  Source: FIBR-0313 M3.
+
 ## Rationale
 
 `AuthService.reset_vault` — "start over" — is the live answer to *I forgot my

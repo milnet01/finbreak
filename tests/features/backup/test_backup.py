@@ -476,6 +476,136 @@ def test_INV5_failure_after_move_aside_leaves_recoverable_old_pair(tmp_path):
     )
 
 
+def test_INV15_install_fsyncs_files_and_each_distinct_parent_dir(tmp_path, monkeypatch):
+    """FIBR-0313 M2 — ``_install``'s final ``os.replace(new_db, real_db)`` /
+    ``os.replace(new_sidecar, real_sidecar)`` fsync NEITHER the source files nor
+    their containing directories, though ``export_backup`` does both
+    (``_fsync_dir(dest.parent)`` after its own ``os.replace``) and
+    ``vault_migration._fsync`` exists for the file half. ``vault_path`` and
+    ``sidecar_path`` are injected independently on ``Vault``, so this dest
+    deliberately does NOT share a parent between them — a fix that fsyncs only
+    "the" directory once would leave one of the two undone. Identifies the
+    installed files by INODE (stable across the os.replace rename, whichever
+    side of it the fsync lands on) and the directories by their resolved path."""
+    import finbreak.services.backup as backup_mod
+
+    fbk, _snapshot = _export_from_seed(tmp_path)
+
+    db_dir = tmp_path / "dest_db"
+    sidecar_dir = tmp_path / "dest_sidecar"
+    db_dir.mkdir()
+    sidecar_dir.mkdir()
+    dest = AuthService(db_dir / "vault.db", sidecar_dir / "vault.kdf.json")
+
+    dir_fsyncs: list[Path] = []
+    file_fsync_ids: list[tuple[int, int]] = []
+    real_fsync = os.fsync
+
+    def recording_fsync(fd):
+        st = os.fstat(fd)
+        if stat.S_ISDIR(st.st_mode):
+            dir_fsyncs.append(Path(os.readlink(f"/proc/self/fd/{fd}")).resolve())
+        else:
+            file_fsync_ids.append((st.st_dev, st.st_ino))
+        return real_fsync(fd)
+
+    monkeypatch.setattr(backup_mod.os, "fsync", recording_fsync)
+    BackupService(dest.vault, dest).restore_backup(fbk, _BACKUP_PW, _M2)
+    dest.lock()
+
+    installed_db = db_dir / "vault.db"
+    installed_sidecar = sidecar_dir / "vault.kdf.json"
+    installed_db_id = (installed_db.stat().st_dev, installed_db.stat().st_ino)
+    installed_sidecar_id = (
+        installed_sidecar.stat().st_dev,
+        installed_sidecar.stat().st_ino,
+    )
+
+    assert installed_db_id in file_fsync_ids, (
+        "the installed vault.db must be fsynced as a FILE at some point during "
+        "_install (before or after the rename — the inode is the same either "
+        "side of it).\n"
+        f"  expected: {installed_db_id} (the installed vault.db's (dev, ino)) "
+        "among the fsync'd files\n"
+        f"  actual:   {file_fsync_ids}"
+    )
+    assert installed_sidecar_id in file_fsync_ids, (
+        "the installed sidecar must be fsynced as a FILE too.\n"
+        f"  expected: {installed_sidecar_id} among the fsync'd files\n"
+        f"  actual:   {file_fsync_ids}"
+    )
+    assert db_dir.resolve() in dir_fsyncs, (
+        "the database's own parent directory must be fsynced after install.\n"
+        f"  expected: {db_dir.resolve()} among the fsync'd directories\n"
+        f"  actual:   {dir_fsyncs}"
+    )
+    assert sidecar_dir.resolve() in dir_fsyncs, (
+        "the sidecar's own parent directory must ALSO be fsynced — it is a "
+        "DIFFERENT directory from the database's here, and a fix that fsyncs "
+        "only one shared 'the' directory leaves this one durable-blind.\n"
+        f"  expected: {sidecar_dir.resolve()} among the fsync'd directories\n"
+        f"  actual:   {dir_fsyncs}"
+    )
+
+
+def test_INV15_move_aside_dir_fsynced_before_post_move_aside_seam(
+    tmp_path, monkeypatch
+):
+    """FIBR-0313 M2 — the ``*.old`` move-aside pair created just above the
+    ``on_key("post_move_aside", ...)`` seam is never directory-fsynced before
+    that seam fires. The seam's whole purpose (INV-5) is that the old pair is
+    "already safely aside" at that point, so a crash between the move-aside and
+    its own directory fsync can still lose the recoverable ``*.old`` pair even
+    though the seam already promised it survived. Asserts ORDER: a directory
+    fsync of the aside pair's parent must appear in the recorded event list
+    before the seam fires, not merely that both eventually happen."""
+    import finbreak.services.backup as backup_mod
+
+    fbk, _snapshot = _export_from_seed(tmp_path)
+    auth, d, _vb, _sb = _dest_with_vault(tmp_path)
+
+    events: list[str] = []
+    real_fsync = os.fsync
+    aside_dir = d.resolve()
+
+    def recording_fsync(fd):
+        st = os.fstat(fd)
+        if stat.S_ISDIR(st.st_mode):
+            path = Path(os.readlink(f"/proc/self/fd/{fd}")).resolve()
+            if path == aside_dir:
+                events.append("fsync_dir:aside_parent")
+        return real_fsync(fd)
+
+    def seam(role: str, buf: bytearray) -> None:
+        if role == "post_move_aside":
+            events.append("seam:post_move_aside")
+            raise RuntimeError("stop right at the seam")
+
+    monkeypatch.setattr(backup_mod.os, "fsync", recording_fsync)
+
+    with pytest.raises(RuntimeError):
+        BackupService(auth.vault, auth).restore_backup(
+            fbk, _BACKUP_PW, _M2, on_key=seam
+        )
+
+    dir_events = [e for e in events if e == "fsync_dir:aside_parent"]
+    assert dir_events, (
+        "expected the *.old pair's directory to be fsynced before the "
+        "post_move_aside seam fires; no such directory fsync was recorded "
+        "before the restore stopped at the seam.\n"
+        f"  expected: at least one 'fsync_dir:aside_parent' entry\n"
+        f"  actual:   {events}"
+    )
+    assert events.index(dir_events[0]) < events.index("seam:post_move_aside"), (
+        "the *.old pair's directory fsync must happen BEFORE the "
+        "post_move_aside seam fires — INV-5's premise is that the old pair is "
+        "already safely aside at that seam, which a fsync landing after it "
+        "would falsify.\n"
+        "  expected: 'fsync_dir:aside_parent' before 'seam:post_move_aside'\n"
+        f"  actual order: {events}"
+    )
+
+
 # --------------------------------------------------------------------------- #
 # Slice 4 — restore fail-closed + safe-zip + INV-11 / INV-13
 #
