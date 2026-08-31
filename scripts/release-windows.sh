@@ -43,11 +43,20 @@ gh release view "$TAG" >/dev/null 2>&1 || {
 # --- 1) dispatch the Windows build on the tag -----------------------------
 # Record the newest existing run id so we can detect the one we trigger (the tag
 # ref may not appear as headBranch, so match on "a newer run than before").
-PREV_RUN="$(gh run list --workflow="$WORKFLOW" --limit 1 --json databaseId -q '.[0].databaseId' 2>/dev/null || echo "")"
+#
+# NOT `|| echo ""`. That suppressed set -e, and an empty PREV_RUN makes the
+# `!=` below true against the newest PRE-EXISTING run -- i.e. the PREVIOUS
+# release's build, which is already complete and successful. Every downstream
+# step then does exactly what it is meant to do to the wrong artifact: watch it,
+# download it, rename it to THIS version, sign it with the real key and publish
+# it. A `gh` 503 here is routine during a release (four endpoints returned one
+# while cutting 0.1.21), so the failure this guards is not hypothetical.
+PREV_RUN="$(gh run list --workflow="$WORKFLOW" --limit 1 --json databaseId -q '.[0].databaseId')"
 echo "== release-windows: dispatching $WORKFLOW on $TAG =="
 gh workflow run "$WORKFLOW" --ref "$TAG"
 
 echo "== release-windows: waiting for the run to register =="
+TAG_SHA="$(git rev-parse "$TAG^{commit}")"
 RUN_ID=""
 for _ in $(seq 1 30); do
     RUN_ID="$(gh run list --workflow="$WORKFLOW" --limit 1 --json databaseId -q '.[0].databaseId' 2>/dev/null || echo "")"
@@ -56,6 +65,17 @@ for _ in $(seq 1 30); do
     sleep 5
 done
 [ -n "$RUN_ID" ] || { echo "release-windows: could not find the dispatched run — check 'gh run list --workflow=$WORKFLOW'" >&2; exit 1; }
+
+# Bind the run to the tag before trusting anything it produced. "Newer than
+# before" is an ordering heuristic; this is the identity check. Without it
+# NOTHING in this script ever compares the downloaded .exe to $TAG -- check 3
+# greps the FILENAME, which we ourselves chose. A validly-signed older binary
+# published as the new version is invisible to every guard and auto-installs.
+RUN_SHA="$(gh run view "$RUN_ID" --json headSha -q .headSha)"
+[ "$RUN_SHA" = "$TAG_SHA" ] || {
+    echo "release-windows: run $RUN_ID was built from $RUN_SHA, not $TAG ($TAG_SHA) —" >&2
+    echo "  refusing to publish its artifact. Re-run once the dispatched build registers." >&2
+    exit 1; }
 
 echo "== release-windows: watching run $RUN_ID (the Windows freeze + clean-room takes several minutes) =="
 gh run watch "$RUN_ID" --exit-status
