@@ -332,12 +332,25 @@ def build_recovery_offer(
 
     def clear_seconds() -> int:
         try:
-            return service.clipboard_clear_seconds()
+            chosen = service.clipboard_clear_seconds()
         except VaultLockedError:
             # An idle auto-lock between opening this dialog and pressing Copy.
             # The guard still has to arm, so fall back to the default rather
             # than raise out of the copy handler.
+            chosen = DEFAULT_CLIPBOARD_CLEAR_SECONDS
+        # "Never" (0) does not apply to THIS copy. A recovery code opens the
+        # vault exactly as the master password does (security-model asset A8),
+        # and never-clearing leaves it in a clipboard that KDE Klipper and GNOME
+        # persist TO DISK -- which leaves the memory-only carve-out INV-3c is
+        # written around. The setting was designed for an amount or a
+        # description (FIBR-0032), the least sensitive things the app copies.
+        #
+        # Only 0 is overridden: every non-zero choice the user made, including
+        # the 10s floor of the settings enum, is a real auto-clear and is
+        # honoured as chosen.
+        if chosen <= 0:
             return DEFAULT_CLIPBOARD_CLEAR_SECONDS
+        return chosen
 
     # The guard outlives the dialog on purpose. Both callers deleteLater() the
     # dialog as soon as the user answers, which is well inside the clear

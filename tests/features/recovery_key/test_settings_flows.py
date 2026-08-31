@@ -637,3 +637,45 @@ def test_open_dialog_enforces_the_one_modal_slot_itself(
     window._open_dialog(replacement, defer=False)
     _pump_deferred_delete()
     assert shiboken6.isValid(replacement) and window._dialog is replacement
+
+
+def test_never_clear_does_not_apply_to_the_recovery_code(service, monkeypatch, qtbot):
+    """ "Never clear" (0) is overridden for THIS copy, and only for 0.
+
+    The clipboard setting was designed for an amount or a description
+    (FIBR-0032) -- the least sensitive things the app copies. A recovery code
+    opens the vault exactly as the master password does (security-model asset
+    A8), and "Never" leaves it in a clipboard KDE Klipper and GNOME persist to
+    disk, which is outside the memory-only carve-out INV-3c is written around.
+
+    Every non-zero choice is a real auto-clear and stays exactly as chosen --
+    this must not quietly lengthen a 10s setting.
+    """
+    import finbreak.ui.recovery_key as rk_mod
+    from finbreak.services.auth import DEFAULT_CLIPBOARD_CLEAR_SECONDS
+    from finbreak.ui.recovery_key import build_recovery_offer
+
+    providers: list = []
+    real = rk_mod.ClipboardAutoClear
+
+    def _capture(clipboard, *, seconds_provider, parent=None):
+        providers.append(seconds_provider)
+        return real(clipboard, seconds_provider=seconds_provider, parent=parent)
+
+    monkeypatch.setattr(rk_mod, "ClipboardAutoClear", _capture)
+
+    window = MainWindow(service)
+    qtbot.addWidget(window)
+    window._enter_unlocked()
+
+    for chosen, expected in ((0, DEFAULT_CLIPBOARD_CLEAR_SECONDS), (10, 10), (60, 60)):
+        providers.clear()
+        monkeypatch.setattr(service, "clipboard_clear_seconds", lambda c=chosen: c)
+        dialog = build_recovery_offer(service, "ABCD-EFGH", window)
+        try:
+            assert providers, "the offer must build its own clipboard guard"
+            assert providers[0]() == expected, (
+                f"clipboard_clear_seconds()=={chosen} should arm for {expected}s"
+            )
+        finally:
+            dialog.deleteLater()
