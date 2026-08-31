@@ -1797,3 +1797,35 @@ def test_FIBR0204_close_drains_an_inflight_update_worker(qtbot, service):
     )
     worker.requestInterruption()
     worker.wait(3000)
+
+
+def test_FIBR0054_D6_is_update_supported_consults_can_self_update(monkeypatch):
+    """`can_self_update()` is actually asked.
+
+    FIBR-0054 D6 defines it on the Installer protocol and FIBR-0131 Deliverable
+    1 re-promises it, but it had no caller anywhere in src/: both
+    implementations return True unconditionally and every real gate used
+    `detect_installer() is not None`. A protocol method nothing calls is a
+    promise nothing keeps -- adding a real precondition to either installer
+    would have had no effect.
+
+    This pins the wiring, so it cannot quietly become a zombie again.
+    """
+    from finbreak.services import update_installer as ui_mod
+
+    class _Refuses:
+        def can_self_update(self) -> bool:
+            return False
+
+    class _Allows:
+        def can_self_update(self) -> bool:
+            return True
+
+    monkeypatch.setattr(ui_mod, "detect_installer", lambda: _Refuses())
+    assert ui_mod.is_update_supported() is False, "a refusing installer must gate"
+
+    monkeypatch.setattr(ui_mod, "detect_installer", lambda: _Allows())
+    assert ui_mod.is_update_supported() is True
+
+    monkeypatch.setattr(ui_mod, "detect_installer", lambda: None)
+    assert ui_mod.is_update_supported() is False, "no installer still gates"
