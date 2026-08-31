@@ -6167,6 +6167,30 @@ because retrofitting them is a data migration.
   guard, and MainWindow._clear_live deletes the workspace on lock -- the same
   rule at a third site, on a much less sensitive value. Not folded in;
   ui/transactions.py is outside the FP03 scope FP04 reviews.
+  Progress (2026-08-31, cont.): M7 fixed and pushed (5f51451); gate green at
+  2064 passed / 2 skipped. NewMasterPasswordDialog._on_submit now has the
+  VaultLockedError arm its three siblings gained in P12, failing closed and
+  silently. The vault is open while that D6 dialog is shown, so the idle timer is
+  live, and MainWindow._lock closes the dialog with deleteLater() before locking
+  -- so a queued submit still arrives with the service locked and the broad arm
+  rendered "the vault is locked" onto a dialog already being torn down. The
+  finally still covers the new arm, so the password buffer is wiped on this path
+  too.
+
+  The test carries a second leg asserting a plain RuntimeError still shows a
+  message, which is what stops the narrowed arm over-correcting into swallowing a
+  genuine re-wrap failure. mutation_probe on each part: arm removed, killed; arm
+  stops returning so a locked vault falls through to accept(), killed; arm
+  widened back to `except Exception`, killed by that second leg.
+
+  Where else the rule binds, measured rather than assumed: six broad
+  `except Exception` handlers under ui/, and only two sit where a vault is open
+  and the idle timer is live -- keep_recovery_code (P12 fixed it) and this one.
+  The other four run before any vault exists: key derivation, vault creation, and
+  the two update workers. Surface closed.
+
+  spec INV-22 added. C1, H1, H2 and M1-M7 are now closed; M8-M10, L1-L16, Q1-Q5
+  and M10's decision remain.
   **Layman:** The recovery-key work was reviewed again with fresh eyes; one serious problem can strand a half-upgraded vault with no way back, and several smaller fixes from last time only reached some of the places they needed to.
   Kind: review-fix.
   Source: close-phase-2026-08-25 (check-code + review-code x4 lanes, FP03 close, fresh context).
