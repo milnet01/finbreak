@@ -1,0 +1,13 @@
+# The vendored wheel closure reaches the deb build tree at vendor/, carried in
+# by finbreak.dsc's DEBTRANSFORM-FILES-TAR (deb builds have no RPM-style
+# Source1). It therefore sits OUTSIDE debian/ and is absent from the .orig
+# tarball, which is what dpkg-source calls an unexpected upstream change --
+# dpkg-buildpackage rebuilds the source package before building the binary, and
+# 3.0 (quilt) aborts there. The wheels cannot go in a patch either, since a
+# quilt patch cannot represent binary content.
+#
+# Ignoring the path is the fix that keeps the wheels in the BUILD tree while
+# leaving them out of the source-package diff. Measured 2026-08-31 against
+# dpkg-source in debian:13-slim: include-binaries alone still aborted with
+# "unexpected upstream changes"; this exits 0 (FIBR-0158).
+extend-diff-ignore = "^vendor/"

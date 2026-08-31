@@ -6,8 +6,10 @@ multi-file design doc is the cold-eyes-gated spec above. Every invariant
 maps to a test in `test_obs_packaging.py`.
 
 The packaging assets live in `packaging/obs/`: an RPM `finbreak.spec`
-(openSUSE + Fedora), a `debian/` recipe (Debian + Ubuntu), the reverse-DNS
-`io.github.milnet01.finbreak.desktop` + `.metainfo.xml`, the
+(openSUSE + Fedora), a `debian/` recipe (Debian + Ubuntu) plus its `finbreak.dsc`
+source-control file (FIBR-0158 — without a `.dsc`, OBS marks every
+Debian/Ubuntu repository "excluded" and no `.deb` is ever attempted), the
+reverse-DNS `io.github.milnet01.finbreak.desktop` + `.metainfo.xml`, the
 `/usr/bin/finbreak` shell wrapper (`finbreak.sh`), the OBS `_service`
 (source + vendored-wheel fetch + `set_version`), and a maintainer `README.md`.
 The payload is a PyInstaller `--onedir` frozen runtime under
@@ -26,12 +28,23 @@ App-ID (fixed at this packaging step, `naming.md`): **`io.github.milnet01.finbre
 | INV-6 | `test_INV6_version_single_source` | the `.spec` `Version:` is the service placeholder (no hard-coded semver); the metainfo's newest `<release version>` **and** the top `debian/changelog` stanza both equal `__version__` |
 | INV-7 | `test_INV7_offline_build` | the build installs deps with `pip install --no-index --find-links vendor/`; no build-phase `pip install` omits `--no-index`; the `_service` fetches the wheel closure + `set_version` |
 | INV-8 | `test_INV8_console_entry_point` | `pyproject.toml` `[project.scripts]` maps `finbreak` → `finbreak.__main__:main`, and that attribute imports + is callable (this spec's INV-8, distinct from `security-model.md`'s INV-8) |
+| INV-9 | `test_INV9_deb_source_recipe` | `finbreak.dsc`'s `Format:` matches `debian/source/format` (debtransform generates the latter from the former); its `Version:` is the service placeholder like the `.spec` (INV-6); its `DEBTRANSFORM-FILES-TAR:` names both `debian.tar.gz` and `vendor.tar.gz`; its `Build-Depends:` matches `debian/control`'s Build-Depends as a set of package names (OBS resolves deb build deps from the `.dsc` and cannot see inside `debian.tar.gz`); `obs-submit.sh` ships the recipe as a `debian.tar.gz` archive and never stages a bare `debian` directory; `debian/source/options` carries an `extend-diff-ignore` covering `vendor/`, without which `dpkg-source` aborts the deb build on wheels it cannot represent as a patch |
 
 **Bundled-stack blocklist (INV-1, enumerated here so the coverage boundary is
 explicit):** `sqlcipher`, `qpdf`, `pdfium`, `pypdfium`, `pyside`, `pikepdf`,
 `python3-pyside6`, `python3-pikepdf`, `python3-sqlcipher`, `python3-pdfplumber`.
 These travel inside the frozen payload; a distro `Requires:`/`Depends:` on any
 of them would contradict the § 3.2 bundling decision.
+
+**Why INV-9 locks the `.dsc` against its neighbours, not against fixed
+values:** the failure mode FIBR-0158 fixed was never one file being wrong in
+isolation — `Format:` and `Build-Depends:` are each duplicated (into
+`debian/source/format` and `debian/control` respectively) because OBS/
+debtransform reads the `.dsc` for one purpose and the `debian/` recipe for
+another, and the two copies drifting apart is exactly what makes the checked-in
+`.dsc` describe a build that does not happen. Comparing the `.dsc` against its
+sibling file, rather than against a hard-coded expectation, keeps the test
+failing if the defect returns via either file changing.
 
 **Coverage limits (from the spec § 4 / § 5, not gate-covered):** INV-4 is
 skip-if-absent; the exact per-distro RPM/deb package names + `%post` macros, the

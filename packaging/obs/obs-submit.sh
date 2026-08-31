@@ -41,18 +41,46 @@ fi
 
 # 3. Populate with the recipe files + the vendored closure.
 echo ">>> copying recipe files"
-cp "$HERE/_service" "$HERE/finbreak.spec" "$HERE/finbreak-rpmlintrc" "$CO/"
-rm -rf "$CO/debian"; cp -r "$HERE/debian" "$CO/"
+cp "$HERE/_service" "$HERE/finbreak.spec" "$HERE/finbreak-rpmlintrc" \
+   "$HERE/finbreak.dsc" "$CO/"
 cp "$VENDOR" "$CO/vendor.tar.gz"
 
+# The deb recipe travels as debian.tar.gz, NOT as a debian/ directory: OBS's
+# debtransform only reads a `debian.tar[.gz|.bz2|.xz]` or loose `debian.*`
+# files, and never a directory (nor the debian.obscpio an `osc add debian`
+# produces). finbreak.dsc names this archive AND vendor.tar.gz in its
+# DEBTRANSFORM-FILES-TAR, which is how the wheel closure reaches the deb build
+# tree at vendor/ -- deb builds have no RPM-style Source1. Verified 2026-08-31
+# by running debtransform and dpkg-source -x on the result (FIBR-0158).
+echo ">>> packing debian.tar.gz"
+tar -C "$HERE" -czf "$CO/debian.tar.gz" debian
+
+# Retire the directory form an earlier revision committed. `osc add debian`
+# stores a directory as debian.obscpio, which debtransform cannot read, so it
+# only ever looked like a deb recipe. Harmless to re-run once it is gone.
+rm -rf "$CO/debian"
+if [ -e "$CO/debian.obscpio" ]; then
+    ( cd "$CO" && osc -A "$API" rm --force debian.obscpio ) || true
+fi
+
 # 4. Run the source services (obs_scm pulls the tagged source; set_version
-#    stamps the .spec + debian/changelog), stage everything, and commit.
+#    stamps the Version of finbreak.spec and finbreak.dsc), stage everything,
+#    and commit. set_version no longer reaches debian/changelog -- that file is
+#    inside debian.tar.gz now -- and does not need to: debtransform reconciles
+#    the changelog to the .dsc Version, adding an entry when they disagree.
 cd "$CO"
+
+# Drop any previously-committed source tarball before the services mint the new
+# one. Two of them is fatal to the deb build and silent on the RPM side: the RPM
+# takes Source0 by exact name, while debtransform discovers its source archive
+# and refuses when more than one candidate is present (FIBR-0158).
+rm -f finbreak-*.tar.gz
+
 echo ">>> running source services (obs_scm + tar + set_version)"
 osc -A "$API" service manualrun
 
-osc -A "$API" add _service finbreak.spec finbreak-rpmlintrc finbreak-*.tar.gz vendor.tar.gz 2>/dev/null || true
-[ -d "$CO/debian" ] && printf 'y\n' | osc -A "$API" add debian 2>/dev/null || true
+osc -A "$API" add _service finbreak.spec finbreak.dsc finbreak-rpmlintrc \
+    finbreak-*.tar.gz vendor.tar.gz debian.tar.gz 2>/dev/null || true
 osc -A "$API" addremove 2>/dev/null || true
 
 VER="$(sed -n 's/^__version__ = "\(.*\)"/\1/p' "$ROOT/src/finbreak/__init__.py")"

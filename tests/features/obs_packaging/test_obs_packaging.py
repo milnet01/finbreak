@@ -35,6 +35,10 @@ _DEB = _OBS / "debian"
 _DEB_CONTROL = _DEB / "control"
 _DEB_RULES = _DEB / "rules"
 _DEB_CHANGELOG = _DEB / "changelog"
+_DEB_SOURCE_FORMAT = _DEB / "source" / "format"
+_DEB_SOURCE_OPTIONS = _DEB / "source" / "options"
+_DSC = _OBS / "finbreak.dsc"
+_OBS_SUBMIT = _OBS / "obs-submit.sh"
 _APP_PY = _REPO_ROOT / "src" / "finbreak" / "app.py"
 _PYPROJECT = _REPO_ROOT / "pyproject.toml"
 
@@ -112,6 +116,25 @@ def _version() -> str:
     m = re.search(r'__version__ = "([0-9]+\.[0-9]+\.[0-9]+)"', text)
     assert m, "could not read __version__"
     return m.group(1)
+
+
+def _pkg_names(field_value: str) -> set[str]:
+    """A Depends:/Build-Depends: field value -> the set of bare package names,
+    with version constraints ("(= 13)"), "|" alternates, and trailing "#"
+    comments stripped. Used to compare two copies of the same field (e.g.
+    finbreak.dsc vs debian/control) as SETS rather than as literal text, so
+    the comparison survives reformatting and only fails when the two actually
+    name different packages."""
+    names: set[str] = set()
+    for raw in field_value.split(","):
+        raw = raw.split("#", 1)[0].strip()
+        if not raw:
+            continue
+        for alt in raw.split("|"):
+            m = re.match(r"\s*([A-Za-z0-9][A-Za-z0-9+.-]*)", alt)
+            if m:
+                names.add(m.group(1))
+    return names
 
 
 def _requires_lines(spec_text: str) -> list[str]:
@@ -325,6 +348,157 @@ def test_INV8_console_entry_point() -> None:
     from finbreak.__main__ import main
 
     assert callable(main)
+
+
+# --------------------------------------------------------------------------- #
+# INV-9 — deb source recipe (.dsc): un-excludes the Debian/Ubuntu OBS targets
+# --------------------------------------------------------------------------- #
+def test_INV9_deb_source_recipe() -> None:
+    """FIBR-0158. Without a `.dsc` at the OBS package root, OBS marks every
+    Debian/Ubuntu repository "excluded" and no .deb is ever attempted — this is
+    the file whose mere presence turns the build on. Every assertion here
+    compares the .dsc against its sibling file (debian/source/format,
+    debian/control, obs-submit.sh) rather than against a hard-coded value, so a
+    defect that returns via either side of the pair is still caught."""
+    dsc = _read(_DSC)
+    fmt_file = _read(_DEB_SOURCE_FORMAT)
+    control = _read(_DEB_CONTROL)
+    submit = _read(_OBS_SUBMIT)
+
+    # (a) Format: lockstep. debtransform GENERATES debian/source/format from the
+    # .dsc's Format: at submit time — if the checked-in files disagree, the
+    # committed debian/source/format describes a source format the build does
+    # not actually produce.
+    m = re.search(r"^Format:\s*(.+)$", dsc, re.MULTILINE)
+    assert m, "finbreak.dsc must carry a Format: tag"
+    dsc_format = m.group(1).strip()
+    assert dsc_format == fmt_file.strip(), (
+        f"finbreak.dsc Format: {dsc_format!r} != debian/source/format "
+        f"{fmt_file.strip()!r} — debtransform derives the latter from the "
+        "former at submit time, so a mismatch means the file committed to git "
+        "lies about the source format the build will actually use"
+    )
+
+    # (b) Version: is the OBS set_version placeholder, exactly like finbreak.spec
+    # (INV-6) — set_version stamps the real version at submit time.
+    m = re.search(r"^Version:\s*(\S+)", dsc, re.MULTILINE)
+    assert m, "finbreak.dsc must carry a Version: tag"
+    dsc_version = m.group(1)
+    assert not re.fullmatch(r"\d+\.\d+\.\d+", dsc_version), (
+        f"finbreak.dsc Version: must be the OBS set_version placeholder, not a "
+        f"hard-coded semver like {dsc_version!r} — a hard-coded value is never "
+        "restamped, so every future deb release would carry today's version"
+    )
+
+    # (c) DEBTRANSFORM-FILES-TAR: must name BOTH debian.tar.gz and vendor.tar.gz.
+    # debtransform reads a debian/ recipe ONLY in the form debian.tar.gz — never
+    # a bare directory — so dropping that name leaves OBS with no deb recipe at
+    # all. vendor.tar.gz is the ONLY route the offline wheel closure reaches the
+    # deb build tree at vendor/, where debian/rules' --find-links vendor/ looks
+    # (deb builds have no RPM-style Source1); dropping that name silently
+    # removes the vendored wheels from the build.
+    m = re.search(r"^DEBTRANSFORM-FILES-TAR:\s*(.+)$", dsc, re.MULTILINE)
+    assert m, "finbreak.dsc must carry a DEBTRANSFORM-FILES-TAR: tag"
+    tar_names = m.group(1).split()
+    assert "debian.tar.gz" in tar_names, (
+        "finbreak.dsc DEBTRANSFORM-FILES-TAR: must name debian.tar.gz — "
+        "debtransform reads a debian/ recipe only in this archive form, never a "
+        f"bare directory; without it OBS builds with no deb recipe: {tar_names!r}"
+    )
+    assert "vendor.tar.gz" in tar_names, (
+        "finbreak.dsc DEBTRANSFORM-FILES-TAR: must name vendor.tar.gz — this is "
+        "the only route the offline wheel closure reaches vendor/ in the deb "
+        "build tree; without it debian/rules' --find-links vendor/ finds "
+        f"nothing and the build fails or reaches out to the network: {tar_names!r}"
+    )
+
+    # (d) Build-Depends: must agree with debian/control's, as SETS of package
+    # names — OBS resolves deb build dependencies from the .dsc alone (it cannot
+    # see inside debian.tar.gz), so a name present in one but not the other is a
+    # dependency the real build either lacks at resolve time or never needed.
+    dsc_deps = _pkg_names(_control_field(dsc, "Build-Depends"))
+    control_deps = _pkg_names(_control_field(control, "Build-Depends"))
+    assert dsc_deps, "finbreak.dsc Build-Depends: must be non-empty"
+    assert dsc_deps == control_deps, (
+        "finbreak.dsc Build-Depends: must match debian/control's Build-Depends: "
+        "as sets of package names — OBS resolves deb build dependencies from "
+        "the .dsc alone and cannot see inside debian.tar.gz, so a build "
+        f"resolved from the .dsc would differ from what debian/control asks "
+        f"for; only in .dsc: {sorted(dsc_deps - control_deps)}, only in "
+        f"debian/control: {sorted(control_deps - dsc_deps)}"
+    )
+
+    # (e) obs-submit.sh must ship the recipe as a debian.tar.gz ARCHIVE, never a
+    # bare debian/ directory — `osc add debian` stores a directory as
+    # debian.obscpio, a form debtransform cannot read at all, so a package
+    # carrying it silently has no working deb recipe (part (c) above depends on
+    # this actually happening, not just being declared).
+    tar_line = next(
+        (
+            ln
+            for ln in submit.splitlines()
+            if "debian.tar.gz" in ln and ln.strip().startswith("tar")
+        ),
+        None,
+    )
+    assert tar_line is not None, (
+        "obs-submit.sh must pack the debian/ recipe into debian.tar.gz via a "
+        "`tar ... debian.tar.gz ... debian` invocation — without it, the file "
+        "DEBTRANSFORM-FILES-TAR: names is never actually produced"
+    )
+    assert tar_line.rstrip().endswith("debian"), (
+        f"obs-submit.sh's debian.tar.gz tar invocation must target the debian "
+        f"directory as its last argument, so the archive's top-level entry is "
+        f"debian/ as debtransform expects: {tar_line!r}"
+    )
+
+    lines = submit.splitlines()
+    osc_add_line = None
+    for i, ln in enumerate(lines):
+        if ln.strip().startswith("osc") and " add " in ln:
+            # a shell line ending in "\" continues onto the next line(s) — the
+            # osc add invocation here wraps, so join them before tokenising.
+            joined = [ln]
+            j = i
+            while joined[-1].rstrip().endswith("\\"):
+                j += 1
+                joined.append(lines[j])
+            osc_add_line = " ".join(part.rstrip("\\").strip() for part in joined)
+            break
+    assert osc_add_line is not None, "obs-submit.sh must osc add the recipe files"
+    add_tokens = osc_add_line.split()
+    assert "debian.tar.gz" in add_tokens, (
+        f"obs-submit.sh's osc add line must stage debian.tar.gz: {osc_add_line!r}"
+    )
+    assert "debian" not in add_tokens, (
+        "obs-submit.sh's osc add line must never stage a bare 'debian' "
+        "directory — `osc add debian` stores it as debian.obscpio, a form "
+        "debtransform cannot read, silently leaving the package with no "
+        f"working deb recipe: {osc_add_line!r}"
+    )
+
+    # (f) debian/source/options must keep vendor/ out of the source-package
+    # diff. dpkg-buildpackage rebuilds the source package before building the
+    # binary, and 3.0 (quilt) aborts on vendor/ — present in the build tree via
+    # (c), absent from the .orig tarball, and unrepresentable as a patch because
+    # the wheels are binary. Measured 2026-08-31 against dpkg-source in
+    # debian:13-slim: include-binaries alone still aborted with "unexpected
+    # upstream changes"; extend-diff-ignore exits 0. Deleting this file turns
+    # every deb target red again while nothing else in the recipe looks wrong.
+    options = _read(_DEB_SOURCE_OPTIONS)
+    ignore = [
+        ln
+        for ln in options.splitlines()
+        if ln.strip() and not ln.lstrip().startswith("#")
+    ]
+    assert any("extend-diff-ignore" in ln and "vendor/" in ln for ln in ignore), (
+        "debian/source/options must carry an extend-diff-ignore covering "
+        "vendor/ — without it dpkg-source aborts the deb build with "
+        "'unexpected upstream changes', because the vendored wheels sit "
+        "outside debian/ and cannot be represented as a quilt patch.\n"
+        f"  expected: a line matching extend-diff-ignore ... vendor/\n"
+        f"  actual:   {ignore!r}"
+    )
 
 
 # --------------------------------------------------------------------------- #

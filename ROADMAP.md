@@ -2094,7 +2094,7 @@ scariest unknown (native-library bundling) up front.
   Lanes: ui, services, packaging.
   Source: user-request-2026-07-19.
 
-- 📋 [FIBR-0158] **Un-exclude the Debian 13 + Ubuntu 24.04 deb builds on OBS (home:milnet:finbreak).**
+- 🚧 [FIBR-0158] **Un-exclude the Debian 13 + Ubuntu 24.04 deb builds on OBS (home:milnet:finbreak).**
   Both RPM families (openSUSE Tumbleweed + Fedora 44) build, publish and install
   from OBS (FIBR-0155). The two deb targets (Debian 13, Ubuntu 24.04) are
   currently "excluded" — OBS finds no Debian source package to build. Two gaps to
@@ -2147,6 +2147,39 @@ scariest unknown (native-library bundling) up front.
   for apt users, but it is the narrower win and nothing is blocked on
   it: the AppImage already runs on any modern Linux, so no Debian or
   Ubuntu user is currently without a way to install finbreak.
+  Progress (2026-08-31): both deb targets are OFF "excluded" -- Debian_13 and
+  xUbuntu_24.04 are building at OBS revision 9. Recipe: packaging/obs/finbreak.dsc
+  plus a debian.tar.gz in place of the debian/ directory.
+
+  Gap 2's remedy on this bullet is SUPERSEDED, and measuring is what showed it.
+  A `3.0 (quilt)` component orig tarball (finbreak_<ver>.orig-vendor.tar.gz)
+  cannot work: debtransform emits exactly one .orig tarball and one .debian.tar
+  and REGENERATES the Files/Checksums fields, so a component tarball has no route
+  into the source package. What does work is naming vendor.tar.gz in
+  DEBTRANSFORM-FILES-TAR beside debian.tar.gz -- dotar_quilt concatenates each
+  archive verbatim into the debian tar, and the wheels keep their own vendor/
+  prefix. Verified before submitting, by running OBS's own debtransform on a
+  dummy tree and then dpkg-source -x on its output inside debian:13-slim:
+  exit 0, and vendor/ lands at the source root where debian/rules already looks.
+  So debian/rules needed no change at all, and the 321 MB closure is uploaded
+  once rather than twice.
+
+  Three things the source settles that recall would not have:
+  - debtransform reads a debian.tar[.gz|.bz2|.xz] or loose debian.* files, never
+    a directory -- so the debian.obscpio an `osc add debian` produced could never
+    have been read. Retired in this revision.
+  - DEBTRANSFORM-TAR can be omitted: the FILES-TAR entries are excluded from the
+    source-archive candidates, leaving exactly one. So the .dsc carries no
+    version-bearing filename.
+  - set_version does stamp a .dsc, so Version can be the same `0` placeholder
+    finbreak.spec uses. No bump.json entry is owed.
+
+  Also fixed while there: the stale finbreak-0.1.16.tar.gz. Two source tarballs
+  are fatal to the deb build (debtransform refuses to choose) and silent on the
+  RPM side, which takes Source0 by exact name.
+
+  Not done yet: the per-distro shakeout this bullet predicts is still ahead --
+  the builds have not finished.
 
 - 🚧 [FIBR-0159] **Publish finbreak to Flathub — the cross-distro app store (GNOME Software / KDE Discover).**
   Flathub is the de-facto cross-distro app store: one submission surfaces finbreak
@@ -2798,6 +2831,34 @@ scariest unknown (native-library bundling) up front.
   Kind: security.
   Source: in-session-2026-08-20 (found during the FIBR-0159 pre-submit checks).
   Lanes: packaging, security.
+
+- 📋 [FIBR-0317] **Nothing re-submits to OBS on release, so the published RPMs sat six versions behind.**
+  Measured 2026-08-31: the OBS package still held finbreak-0.1.16.tar.gz, from
+  2026-07-23, while __version__ was 0.1.22. The Tumbleweed and Fedora builds were
+  green the whole time -- green on the old source, which is why nothing looked
+  wrong.
+
+  Cause: no step in the release path runs packaging/obs/obs-submit.sh.
+  .claude/bump.json's todos cover the README, the AppStream metainfo, the Flatpak
+  commit re-pin and the deb changelog, and CLAUDE.md's release section names
+  cut-release plus the two release scripts. OBS appears in neither.
+
+  Second, sharper half: the vendored wheel closure goes stale with the source.
+  Advancing the tarball to 0.1.22 turned BOTH RPM targets red on
+  `cryptography==50.0.0` not being in a closure vendored for 0.1.16 -- so a
+  re-submit that forgets REVENDOR=1 fails, and one that never happens hides it.
+  Fixed in passing today by re-vendoring; the recurrence is what this bullet is
+  for.
+
+  Remedy is a decision, not a fix: either add an obs-submit step (with the
+  re-vendor) to the release path and gate it the way the other version-bearing
+  files are gated, or state that OBS is manually cut and give it a read-back like
+  the eight-asset one CLAUDE.md prescribes for a GitHub release. Same class as
+  FIBR-0275, where a release published with zero assets went unnoticed for ten
+  days.
+  **Layman:** The openSUSE/Fedora packages on the build service were still the version from late July, because publishing a new release never updates them. Anyone installing from there got old software.
+  Kind: package.
+  Source: in-session-2026-08-31 (found while working FIBR-0158).
 
 ## P02 — Vertical slice: the security spine (target: after P01)
 
