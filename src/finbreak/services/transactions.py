@@ -84,7 +84,22 @@ def parse_transaction(
     # "12.340" (== 12.34) is accepted while "12.345" is still rejected. is_finite()
     # above guarantees the exponent is an int (never 'n'/'N'/'F'); normalize() can
     # yield a positive exponent for whole numbers (1E+2), which the sign handles.
-    if -cast(int, amount.normalize().as_tuple().exponent) > exponent:
+    #
+    # normalize() APPLIES CONTEXT, so on an operand whose adjusted exponent
+    # exceeds Emax it signals Overflow — which is trapped by default and raised
+    # as decimal.Overflow, an ArithmeticError and NOT a ValueError. That walks
+    # straight through the `except ValueError` this function's docstring names as
+    # its contract, and which ManualEntryDialog, csv_importer and the import
+    # wizard each render with. Decimal("1e1000000") builds fine (string
+    # construction is context-free), so a single CSV cell reaches it and aborts a
+    # whole import instead of yielding one RowError (FIBR-0216/FIBR-0252).
+    # to_minor_storable guards the identical hazard on its own scaling call; this
+    # is the earlier context-applying operation, which did not.
+    try:
+        significant_exponent = cast(int, amount.normalize().as_tuple().exponent)
+    except Overflow as exc:
+        raise ValueError("amount is too large to store") from exc
+    if -significant_exponent > exponent:
         raise ValueError("amount has more fractional digits than the currency allows")
 
     amount_minor = to_minor_storable(amount, exponent)

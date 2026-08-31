@@ -463,3 +463,34 @@ def test_INV9_en_US_refuses_a_typed_unicode_minus_without_crashing():
     with pinned("en_US"):
         with pytest.raises(ValueError):
             parse_amount_input(f"{MINUS}1234.56")
+
+
+def test_FIBR0222_huge_exponent_is_a_ValueError_not_a_decimal_Overflow():
+    """`parse_transaction` raises ValueError for EVERY rejection — including one
+    reached through `normalize()`.
+
+    `Decimal.normalize()` applies context, so an operand whose adjusted exponent
+    exceeds Emax signals Overflow. That is an ArithmeticError, not a ValueError,
+    so it walked straight through the `except ValueError` that ManualEntryDialog,
+    csv_importer and the import wizard each render with — killing the Qt slot on
+    manual entry, and aborting a whole CSV import instead of yielding one
+    RowError.
+
+    `Decimal("1e1000000")` constructs fine because string construction is
+    context-free, so this is reachable from a single spreadsheet cell rather than
+    only from typing. `to_minor_storable` already guarded the identical hazard on
+    its own scaling call (FIBR-0222); this is the earlier context-applying
+    operation, which did not.
+    """
+    with pytest.raises(ValueError, match="too large to store"):
+        parse_transaction("2026-03-02", Decimal("1e1000000"), "Fake Row", 2)
+    # The negative-exponent twin: normalize() on 1e-1000000 signals Subnormal /
+    # Underflow rather than Overflow, and must also stay a ValueError.
+    with pytest.raises(ValueError):
+        parse_transaction("2026-03-02", Decimal("1e-1000000"), "Fake Row", 2)
+    # An ordinary amount is unaffected.
+    assert parse_transaction("2026-03-02", Decimal("12.34"), "Fake Row", 2) == (
+        "2026-03-02",
+        1234,
+        "Fake Row",
+    )
