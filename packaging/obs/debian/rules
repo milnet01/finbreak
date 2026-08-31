@@ -10,6 +10,12 @@ export DH_VERBOSE = 1
 	dh $@
 
 override_dh_auto_build:
+	# pyinstaller runs with -y so a REPEAT build overwrites dist/ instead of
+	# prompting. An OBS build root is always clean, so this is for the local
+	# reproduction -- running the deb build twice in one tree is how this
+	# bring-up was debugged, and without it the second run dies on an
+	# interactive confirmation nothing can answer.
+	#
 	# The --add-data sources below are ABSOLUTE on purpose. PyInstaller resolves
 	# a relative --add-data source against the --specpath directory rather than
 	# the working directory, so with `--specpath debian` the relative form looks
@@ -23,7 +29,7 @@ override_dh_auto_build:
 	. debian/_bvenv/bin/activate && \
 	python3 -c "import tomllib; print('\n'.join(tomllib.load(open('pyproject.toml','rb'))['project']['dependencies']))" > debian/_deps.txt && \
 	pip install --no-index --find-links vendor/ -r debian/_deps.txt pyinstaller==6.21.0 && \
-	pyinstaller --onedir --name finbreak \
+	pyinstaller -y --onedir --name finbreak \
 	    --paths src \
 	    --add-data "$(CURDIR)/src/finbreak/ui/icons:finbreak/ui/icons" \
 	    --add-data "$(CURDIR)/src/finbreak/data:finbreak/data" \
@@ -62,6 +68,16 @@ override_dh_auto_install:
 	# sentinel against the STAGED onedir freeze (not a bare finbreak on $$PATH — the
 	# package isn't installed yet), offscreen because the build root is headless.
 	QT_QPA_PLATFORM=offscreen debian/finbreak/usr/lib/finbreak/finbreak --self-test
+
+override_dh_dwz:
+	# Skipped, deliberately. dh_dwz compresses DWARF debug info across the
+	# package's ELF files, which assumes they were built by this distro's
+	# toolchain. Ours are a foreign PyInstaller closure: prebuilt manylinux
+	# wheels and a bootloader, carrying no .debug_info and (in Pillow's case)
+	# allocatable sections after non-allocatable ones, which dwz rejects
+	# outright. Same reasoning as finbreak-rpmlintrc on the RPM side -- the
+	# checks assume a native package and the payload is bundled by design
+	# (§ 3.2). There is no debug info to compress, so nothing is lost.
 
 override_dh_shlibdeps:
 	# The bundled tree is a foreign closure (dlopen'd); only libGL/libEGL are
