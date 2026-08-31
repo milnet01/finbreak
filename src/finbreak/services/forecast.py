@@ -59,7 +59,13 @@ class ForecastInput:
     ``-`` for OUT — the service applies the sign once). Not persisted."""
 
     amount_minor: int
-    next_expected: date
+    # The LAST OBSERVED occurrence, not the next expected one. Projection steps
+    # n cadences from here, so the anchor must be a date the bank actually
+    # produced; `next_expected` is `_add_cadence(last_seen, ...)`, i.e. already
+    # day-clamped, and anchoring on it degrades every later date (see
+    # `_occurrences`). The first due date is derived by the roll-forward there,
+    # so it does not need carrying separately.
+    anchor: date
     cadence: Cadence
     merchant: str
     direction: Direction
@@ -68,16 +74,28 @@ class ForecastInput:
 def _occurrences(item: ForecastInput, today: date, horizon: date) -> list[date]:
     """Every occurrence of ``item`` strictly after ``today`` and no later than
     ``horizon`` (the disjoint ``(today, horizon]`` window, D6). Starts at
-    ``next_expected``, rolls forward while ``<= today``, then emits while
-    ``<= horizon``.
+    ``anchor``, rolls forward while ``<= today``, then emits while ``<= horizon``.
 
     Every date is computed as the **n-th occurrence from the anchor**
     (``_add_cadence_n``) rather than by chaining single steps. Chaining re-feeds a
     day-clamped date back in, so a Jan-31 item degrades to the 28th (or 29th in a
     leap year) for the rest of the projection instead of returning to month-end.
     Termination is guaranteed — ``_add_cadence_n`` is strictly increasing in ``n``.
+
+    The anchor is ``last_seen``, not ``next_expected``. ``next_expected`` is
+    itself ``_add_cadence(last_seen, cadence)`` — one already-clamped step — so
+    anchoring on it re-introduced the exact degradation the paragraph above says
+    this function avoids: a Jan-31 item anchors on Feb 28 and then projects Mar
+    28, Apr 28, May 28, while the bank debits the 31st, 30th, 31st. Month-end
+    debit orders are the common case, and at a horizon boundary the wrong dates
+    move the projected end balance.
+
+    Anchoring on ``last_seen`` changes no first date: the roll-forward below
+    emits the same first occurrence, since for an unclamped item
+    ``_add_cadence_n(last_seen, cadence, 1) == next_expected``, and for a clamped
+    one it is the true month-end.
     """
-    anchor = item.next_expected
+    anchor = item.anchor
     step = 0
     when = anchor
     while when <= today:
@@ -228,7 +246,7 @@ class ForecastService:
         signed = -magnitude if item.direction is Direction.OUT else magnitude
         return ForecastInput(
             amount_minor=signed,
-            next_expected=item.next_expected,
+            anchor=item.last_seen,
             cadence=item.cadence,
             merchant=item.merchant,
             direction=item.direction,

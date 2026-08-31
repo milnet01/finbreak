@@ -18,7 +18,7 @@ pytestmark = pytest.mark.features
 
 def _item(
     amount_minor: int,
-    next_expected: str,
+    anchor: str,
     cadence: Cadence = Cadence.MONTHLY,
     merchant: str = "Acme",
     direction: Direction | None = None,
@@ -27,7 +27,7 @@ def _item(
         direction = Direction.IN if amount_minor >= 0 else Direction.OUT
     return ForecastInput(
         amount_minor=amount_minor,
-        next_expected=date.fromisoformat(next_expected),
+        anchor=date.fromisoformat(anchor),
         cadence=cadence,
         merchant=merchant,
         direction=direction,
@@ -245,3 +245,61 @@ def test_INV4a_weekly_and_fortnightly_stepping_unchanged() -> None:
         "2027-01-28",
         "2027-02-04",
     ]
+
+
+def test_FIBR0171_month_end_item_projects_to_month_end_not_the_28th():
+    """A month-end recurring item keeps landing on month-end.
+
+    `ForecastInput` carried `next_expected`, which is itself
+    `_add_cadence(last_seen, cadence)` -- one already-clamped step. Anchoring
+    projection on it meant a Jan-31 debit order anchored on Feb 28 and then
+    projected Mar 28, Apr 28, May 28, while the bank debits the 31st, 30th,
+    31st. That is the exact degradation `_occurrences`' own docstring says the
+    anchored form exists to avoid, and month-end debit orders (rent, salary,
+    subscriptions) are the common case; at a horizon boundary the wrong dates
+    also move the projected end balance.
+
+    The field is now the last OBSERVED occurrence. The first emitted date is
+    unchanged either way, which is what makes the swap safe.
+    """
+    from finbreak.services.forecast import _occurrences
+
+    item = _item(-10000, "2026-01-31")  # last seen 31 Jan
+    assert _occurrences(item, date(2026, 2, 1), date(2026, 6, 1)) == [
+        date(2026, 2, 28),  # February genuinely has no 31st
+        date(2026, 3, 31),
+        date(2026, 4, 30),
+        date(2026, 5, 31),
+    ]
+
+
+def test_FIBR0171_to_input_anchors_on_last_seen_not_next_expected():
+    """The service maps `RecurringItem.last_seen` onto the projection anchor.
+
+    The test above proves `_occurrences` steps correctly FROM its anchor; this
+    one proves the service hands it the right one. The defect lived here:
+    `_to_input` passed `next_expected`, which `recurring.py` computes as
+    `_add_cadence(last_seen, cadence)` -- already day-clamped -- so every
+    projected date after the first drifted off month-end. Without this leg the
+    sibling test passes with the defect reinstated, because it builds its input
+    directly.
+    """
+    from decimal import Decimal
+
+    from finbreak.models import RecurringItem
+    from finbreak.services.forecast import ForecastService
+
+    item = RecurringItem(
+        merchant="Rent",
+        merchant_key="rent",
+        direction=Direction.OUT,
+        cadence=Cadence.MONTHLY,
+        amount=Decimal("100.00"),
+        monthly_equivalent=Decimal("100.00"),
+        occurrences=3,
+        first_seen=date(2025, 11, 30),
+        last_seen=date(2026, 1, 31),
+        next_expected=date(2026, 2, 28),  # the clamped step -- must NOT be used
+        txn_ids=(1, 2, 3),
+    )
+    assert ForecastService._to_input(item, 2).anchor == date(2026, 1, 31)
