@@ -189,6 +189,9 @@ class AuthService:
         self._sidecar_path = sidecar_path
         self._key: bytearray | None = None
         self._timer: QTimer | None = None
+        # Set only while a modal the user must READ is on screen
+        # (suspend_idle_lock). Stops notify_activity re-arming it.
+        self._idle_suspended = False
         # Set when THIS unlock converted a v1 vault (D2), and read exactly once
         # by the shell so it can make D7's offer. Session state, deliberately
         # not persisted: a declined or closed offer costs nothing already done,
@@ -724,6 +727,8 @@ class AuthService:
         every input event. A no-op when locked (no key) or headless (no timer).
         The ``isActive()`` guard means "Never" (a stopped timer, FIBR-0135) stays
         off — activity must not silently re-arm an idle-lock the user disabled."""
+        if self._idle_suspended:
+            return  # a read-me modal is up (suspend_idle_lock); do not re-arm
         if self._key is not None and self._timer is not None and self._timer.isActive():
             self._timer.start()  # restart from now, reusing the armed interval
 
@@ -885,3 +890,28 @@ class AuthService:
     def _stop_timer(self) -> None:
         if self._timer is not None:
             self._timer.stop()
+
+    def suspend_idle_lock(self) -> None:
+        """Hold the idle countdown while a modal the user must READ is on screen.
+
+        The idle timer measures inactivity from the last INPUT EVENT, and
+        transcribing a 28-character recovery code onto paper generates none — so
+        the one-time display could be torn down mid-transcription by the very
+        timer that assumes an absent user. The code is consumed before it is
+        shown and is never re-offered, so that is unrecoverable: the user is left
+        believing they hold a working credential.
+
+        Narrow by construction: the vault is already unlocked, the caller is a
+        modal dialog, and the user is present by definition of what the dialog
+        asks them to do. Always pair with :meth:`resume_idle_lock` from a
+        ``finished`` handler, so an abnormal close still re-arms.
+        """
+        self._idle_suspended = True
+        self._stop_timer()
+
+    def resume_idle_lock(self) -> None:
+        """Re-arm after :meth:`suspend_idle_lock`. Idempotent; a no-op once
+        locked, so a lock that happened by another route is not undone."""
+        self._idle_suspended = False
+        if self._key is not None:
+            self._arm_timer()

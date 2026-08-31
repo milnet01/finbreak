@@ -679,3 +679,40 @@ def test_never_clear_does_not_apply_to_the_recovery_code(service, monkeypatch, q
             )
         finally:
             dialog.deleteLater()
+
+
+def test_the_one_time_display_holds_off_the_idle_auto_lock(service, qtbot):
+    """The idle auto-lock cannot destroy the one-time recovery display.
+
+    `_show_recovery_offer` CONSUMES its source before showing the dialog, and
+    the code is never re-offered -- so a teardown here is unrecoverable, and the
+    user is left believing they hold a working credential they never wrote down.
+
+    The idle timer measures inactivity from the last INPUT EVENT, and copying 28
+    characters onto paper generates none, so `notify_activity` never fires and
+    the default 10-minute countdown runs out while the user is plainly present.
+
+    The hold is released when the dialog finishes, so an ordinary close re-arms
+    the lock rather than leaving it off.
+    """
+    window = MainWindow(service)
+    qtbot.addWidget(window)
+    window._enter_unlocked()
+    window._pending_recovery_code = "ABCD-EFGH-JKMN-PQRS-TVWX-YZ01-2345"
+
+    assert service._timer is not None and service._timer.isActive(), (
+        "precondition: the idle timer must be running, or this leg proves nothing"
+    )
+
+    assert window._show_recovery_offer() is True
+    try:
+        assert not service._timer.isActive(), "the idle countdown must be held"
+        # And activity must not silently re-arm what was deliberately suspended.
+        service.notify_activity()
+        assert not service._timer.isActive(), "notify_activity must not re-arm it"
+    finally:
+        dialog = window._dialog
+        assert dialog is not None
+        dialog.reject()
+
+    assert service._timer.isActive(), "finishing the dialog re-arms the lock"

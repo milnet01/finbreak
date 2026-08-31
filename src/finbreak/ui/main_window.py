@@ -1208,6 +1208,15 @@ class MainWindow(QMainWindow):
         if code is None:
             return False
         dialog = build_recovery_offer(self._service, code, self)
+        # The code is consumed above and never re-offered, so an idle auto-lock
+        # tearing this dialog down mid-transcription destroys it: the user is
+        # left believing they hold a working credential. Copying 28 characters
+        # onto paper generates no input events, so notify_activity never fires
+        # and the default 10-minute timer runs out while the user is plainly
+        # present. Held for as long as the dialog is up, re-armed from finished
+        # so an abnormal close still restores it.
+        self._service.suspend_idle_lock()
+        dialog.finished.connect(lambda _r: self._service.resume_idle_lock())
         dialog.finished.connect(self._teardown_dialog)
         self._open_dialog(dialog, defer=False)
         return True
