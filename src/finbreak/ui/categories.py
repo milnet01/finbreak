@@ -272,7 +272,14 @@ class CategoriesWidget(QWidget):
         subject_id = item.data(0, _ID_ROLE)
 
         by_children: dict[int | None, list[Category]] = defaultdict(list)
-        for category in self._categories.list_all():
+        # Same FIBR-0211 shape as the guarded reads above: a queued tree click
+        # delivered after an idle auto-lock reaches this read.
+        try:
+            categories = self._categories.list_all()
+        except VaultLockedError:
+            self._move_under.setEnabled(False)
+            return
+        for category in categories:
             by_children[category.parent_id].append(category)
         excluded = self._subtree_ids(subject_id, by_children)
         subject_height = self._subtree_height(subject_id, by_children)

@@ -190,9 +190,14 @@ class StatementsWidget(QWidget):
         if index is None:
             return
         statement = self._rows[index]
-        dialog = AccountPickerDialog(
-            self._accounts.list_accounts(), statement.account_id, self
-        )
+        # The account read that builds the dialog is a vault read like any other,
+        # and sat outside every guard in this class (FIBR-0211). Reached from a
+        # queued click delivered after an idle auto-lock.
+        try:
+            accounts = self._accounts.list_accounts()
+        except VaultLockedError:
+            return
+        dialog = AccountPickerDialog(accounts, statement.account_id, self)
         # Non-blocking (FIBR-0065): a lock while the picker is open destroys it
         # before _apply_reassign runs, so no read hits a deleted C++ object.
         show_modal(dialog, lambda: self._apply_reassign(dialog, statement))
