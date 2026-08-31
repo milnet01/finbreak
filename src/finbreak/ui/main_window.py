@@ -63,7 +63,12 @@ from PySide6.QtWidgets import (
 from sqlcipher3.dbapi2 import DatabaseError
 
 from finbreak import __version__, paths
-from finbreak.errors import BackupError, VaultLockedError, VaultStateError
+from finbreak.errors import (
+    BackupError,
+    UpdateError,
+    VaultLockedError,
+    VaultStateError,
+)
 from finbreak.models import NegativeStyle
 from finbreak.services.accounts import AccountService
 from finbreak.services.alerts import AlertService
@@ -73,7 +78,11 @@ from finbreak.services.auth import (
     AuthService,
     DateTimePrefs,
 )
-from finbreak.services.backup import BackupService
+
+# _WAL_SIBLINGS rather than a third copy of ("-wal", "-shm"): the restore
+# reconciliation below is the move-BACK half of backup._install's move-aside,
+# so the two must not be able to drift.
+from finbreak.services.backup import _WAL_SIBLINGS, BackupService
 from finbreak.services.categorization import CategorizationService
 from finbreak.services.month_summary import MonthSummaryService
 from finbreak.services.password_hint import HintPolicyError
@@ -438,8 +447,13 @@ class MainWindow(QMainWindow):
         self._action_lock = self._make_action(
             "action_lock", self.tr("Lock"), "lock", self._lock
         )
+        # self.close(), NOT QApplication.quit(). quit() exits the event loop
+        # without delivering a QCloseEvent, so neither the FIBR-0204 worker drain
+        # nor the FIBR-0052 D7 geometry save in closeEvent ran — on the app's own
+        # Quit command and its only keyboard shortcut. close() is Qt's idiom for
+        # a File->Exit item; quitOnLastWindowClosed (default true) still exits.
         self._action_quit = self._make_action(
-            "action_quit", self.tr("Quit"), None, QApplication.quit
+            "action_quit", self.tr("Quit"), None, self.close
         )
         # The app's first keyboard shortcut (FIBR-0216): the platform's standard Quit
         # (Ctrl+Q on Linux/Windows, Cmd+Q on macOS), so exiting never depends on
@@ -1356,17 +1370,42 @@ class MainWindow(QMainWindow):
         common = sorted(set(db_olds) & set(sidecar_olds))
         if not common:
             return  # no complete *.old pair — leave routing to state()
+        # Three routes, and only the first is "leave it alone":
+        #   "unlock"          -> a clean live pair; the *.old are safety leftovers.
+        #   "first_run"       -> NEITHER live file present. Previously read as
+        #                        healthy (state() returns "first_run" here too),
+        #                        so a crash inside this function's own critical
+        #                        section routed the user to CREATE A NEW VAULT
+        #                        over a complete, recoverable *.old pair.
+        #   VaultStateError   -> a mixed live pair; the original interrupted-
+        #                        restore case.
+        # The last two both recover below.
         try:
-            self._service.state()
-            return  # a clean live pair — the *.old are just kept-for-safety leftovers
+            if self._service.vault.presence_state() == "unlock":
+                return
         except VaultStateError:
-            pass  # mixed live pair + a paired *.old present → an interrupted restore
+            pass
         # Put the most-recent complete original pair back, discarding the
         # half-installed orphan (the *.old kept their 0o600 through the rename).
+        #
+        # No unlink first: os.replace overwrites atomically on POSIX and Windows
+        # alike, and unlinking opened the very window described above.
+        #
+        # The WAL siblings travel too. backup.py moves them aside WITH the
+        # database (its _WAL_SIBLINGS loop) and says why: a restored database
+        # installed beside a WAL belonging to a DIFFERENT database under a
+        # DIFFERENT key, and a .old copy left without its journal. Only the
+        # move-aside half of that was fixed (FIBR-0310 P5); this is the move-back
+        # half. Without it the recovered original loses any committed-but-not-
+        # checkpointed tail, and the aborted restore's -wal is left beside it.
         stamp = common[-1]
-        vault_path.unlink(missing_ok=True)
-        sidecar_path.unlink(missing_ok=True)
-        os.replace(db_olds[stamp], vault_path)
+        for suffix in ("", *_WAL_SIBLINGS):
+            live_db = vault_path.with_name(vault_path.name + suffix)
+            old_db = db_olds[stamp].with_name(db_olds[stamp].name + suffix)
+            if old_db.exists():
+                os.replace(old_db, live_db)
+            else:
+                live_db.unlink(missing_ok=True)
         os.replace(sidecar_olds[stamp], sidecar_path)
 
     def _route_pre_login(self) -> None:
@@ -1494,6 +1533,14 @@ class MainWindow(QMainWindow):
                 ),
             )
             return
+        # A second click would overwrite the attribute that tracks the first,
+        # leaving a running QThread that _drain_update_workers can no longer see
+        # — destroyed by the window's destructor as "QThread: Destroyed while
+        # thread is still running", which is the abort FIBR-0204 added the drain
+        # to stop. Two clicks and a close reproduce it.
+        running = self._manual_check_worker
+        if running is not None and shiboken6.isValid(running) and running.isRunning():
+            return
         worker = UpdateCheckWorker(self._update_service, self, force=True)
         worker.found.connect(self._on_update_found)
         worker.none.connect(self._on_manual_check_up_to_date)
@@ -1599,7 +1646,23 @@ class MainWindow(QMainWindow):
             # replaced and before the relaunch (INV-6) — in-process after os.replace
             # on Linux, before the detached swap helper on Windows. apply() does not
             # return.
-            self._installer.apply(path, on_before_exec=self._release_for_relaunch)
+            # apply() raises UpdateError on an ENOSPC / read-only-dir swap, or a
+            # denied helper spawn on Windows. It runs on the GUI thread, so
+            # _on_download_failed (which handles the WORKER's signal) never sees
+            # it and the exception escaped a Qt slot. FIBR-0054 INV-11 and
+            # FIBR-0131 INV-4 both promise an error dialog here.
+            try:
+                self._installer.apply(path, on_before_exec=self._release_for_relaunch)
+            except UpdateError as exc:
+                Path(path).unlink(missing_ok=True)
+                QMessageBox.warning(
+                    self,
+                    self.tr("Update"),
+                    self.tr(
+                        "The update could not be installed, so finbreak is still "
+                        "on the current version. {reason}"
+                    ).format(reason=str(exc)),
+                )
         else:
             # The prompt was torn down (auto-lock) — drop the verified temp so it
             # doesn't orphan next to the running binary (INV-9).
