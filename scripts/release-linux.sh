@@ -227,11 +227,26 @@ else
 fi
 ASSET_COUNT=${#PUBLISHED[@]}
 
-# Check 1 — the count. This is what v0.1.20 needed and did not have.
-if [ "$ASSET_COUNT" -ne 5 ]; then
+# Check 1 — this phase's five assets are all present. This is what v0.1.20
+# needed and did not have.
+#
+# A SUBSET assertion, not `-ne 5`. FIBR-0096 § 3.3 makes the two phases
+# symmetric so that either script is safe to re-run in any order, and the
+# SHA256SUMS half honours that by merging rather than clobbering. An equality
+# check does not: after the Windows phase the release carries eight assets, so
+# a repair re-run of THIS script uploads correctly and then exits 1 with
+# "carries 8 asset(s), expected 5" — a successful run reported as a failure,
+# which is the hazard guarded against 60 lines below. Naming the five we are
+# responsible for still catches the zero-asset case v0.1.20 shipped.
+MISSING=()
+for want in "$APPIMAGE" "$APPIMAGE.sig" SHA256SUMS SHA256SUMS.sig "finbreak-$VERSION-linux.cdx.json"; do
+    printf '%s\n' "${PUBLISHED[@]}" | grep -qxF -- "$want" || MISSING+=("$want")
+done
+if [ ${#MISSING[@]} -ne 0 ]; then
     {
-        printf 'release-linux: PUBLISH INCOMPLETE — %s carries %d asset(s), expected 5.\n' \
-            "$TAG" "$ASSET_COUNT"
+        printf 'release-linux: PUBLISH INCOMPLETE — %s is missing %d of this phase'"'"'s 5 asset(s):\n' \
+            "$TAG" "${#MISSING[@]}"
+        printf '  %s\n' "${MISSING[@]}"
         printf 'Published now: %s\n' "${ASSET_NAMES:-<none>}"
     } >&2
     exit 1
