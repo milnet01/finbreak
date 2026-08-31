@@ -661,3 +661,30 @@ def test_investment_statement_refused_not_crashed(service):
     ).encode()
     with pytest.raises(ValueError):
         OfxImporter().parse(inv, _exp(service))
+
+
+def test_INV4_null_dtposted_is_a_row_error_not_a_crash(service):
+    """`<DTPOSTED>00000000` is a null date, not a malformed one.
+
+    ofxparse returns `None` for it (ofxparse.py:497-502) and stores it WITHOUT
+    aborting the statement, unlike the `notadate` case above. `tx.date.date()`
+    then raises `AttributeError` from OUTSIDE this module's boundary catch, and
+    outside the wizard's `(ValueError, OSError, FinbreakError)` net and the
+    batch's — so it escapes the Qt slot and, in a batch, destroys the whole run
+    rather than one file.
+
+    The row carries no usable date, so it is a RowError; the VALID sibling must
+    still import, which is what distinguishes this from the abort case.
+    """
+    data = _ofx(
+        _stmt(
+            [
+                _txn("20260105", "-10.00", name="Valid", fitid="n0"),
+                _txn("00000000", "-1.00", name="NullDate", fitid="n1"),
+            ]
+        )
+    )
+    ((_info, result),) = OfxImporter().parse(data, 2)
+    assert [d.description for d in result.drafts] == ["Valid"]
+    assert [e.row_number for e in result.errors] == [2]
+    assert "date" in result.errors[0].reason.lower()

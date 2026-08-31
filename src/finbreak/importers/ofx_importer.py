@@ -146,6 +146,17 @@ class OfxImporter:
             # Description is payee, falling back to memo (D5); both empty (both
             # tags absent) -> parse_transaction rejects the blank description.
             description = (tx.payee or "").strip() or (tx.memo or "").strip()
+            # `<DTPOSTED>00000000` is a NULL date, not a malformed one: ofxparse
+            # returns None for it and stores the transaction anyway, so unlike a
+            # `notadate` value it never aborts the statement (D15). A bare
+            # `tx.date.date()` therefore raises AttributeError from outside this
+            # module's boundary catch, outside the wizard's
+            # (ValueError, OSError, FinbreakError) net and outside the batch's —
+            # escaping the Qt slot, and in a batch destroying the whole run
+            # rather than one file. Same shape as `statement.balance` below.
+            if tx.date is None:
+                errors.append(RowError(row_number, "this row has no usable date"))
+                continue
             occurred_on = tx.date.date().isoformat()
             try:
                 occurred_on, amount_minor, description = parse_transaction(
