@@ -649,7 +649,29 @@ class AuthService:
         # unlink is Windows-safe, and wipes self._key if one is held.
         vault_path = self._vault.vault_path
         sidecar_path = self._vault.sidecar_path
+        # FIBR-0019's on-disk artefacts travel with the rest. The rollback pair
+        # is deleted only by a COMPLETED migration (_finish, S6), so the
+        # reachable sequence -- migration interrupted, user declines the § 13.3
+        # rollback offer and chooses Start over -- otherwise leaves a complete,
+        # intact, encrypted copy of the old vault beside the new one.
+        # security-model INV-12 promises the reset removes the vault's complete
+        # on-disk footprint, and distinguishes that from residual sectors; a
+        # whole surviving file is not the residual it accepts.
+        rollback_db, rollback_sidecar = vault_migration.rollback_copy_paths(
+            vault_path, sidecar_path
+        )
+        suffix = vault_migration.MIGRATING_SUFFIX
+        migrating_db = vault_path.with_name(vault_path.name + suffix)
+        migrating_sidecar = sidecar_path.with_name(sidecar_path.name + suffix)
+        extra: list[Path] = []
+        for base in (rollback_db, migrating_db):
+            extra.append(base)
+            extra.extend(
+                base.with_name(base.name + sfx) for sfx in vault_migration._WAL_SIBLINGS
+            )
+        extra.extend((rollback_sidecar, migrating_sidecar))
         for path in (
+            *extra,
             vault_path,
             sidecar_path,
             # SQLite runs in WAL mode (vault.py create/open), so it writes

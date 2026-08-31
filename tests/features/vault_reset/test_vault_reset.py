@@ -314,3 +314,40 @@ def test_INV10_failed_reset_is_contained(qtbot, paths, monkeypatch, window_ini):
     assert after.value("hint/text") is not None, "hint intact on failure"
     assert isinstance(window._dialog, UnlockDialog), "stays on unlock, no first-run"
     auth.lock()
+
+
+def test_INV1_footprint_includes_the_migration_artefacts(paths):
+    """FIBR-0019's on-disk artefacts are part of the footprint.
+
+    The rollback pair (`vault.db.pre-v2`, `vault.kdf.json.pre-v2`) is deleted
+    only by a COMPLETED migration, so the reachable sequence -- migration
+    interrupted, user declines the section 13.3 rollback offer and chooses
+    Start over -- otherwise left a complete, intact, encrypted copy of the old
+    vault sitting beside the newly created one. security-model INV-12 promises
+    the reset removes the vault's complete on-disk footprint and distinguishes
+    that from residual sectors; a whole surviving file is not that residual.
+
+    Names are hardcoded rather than derived from the code's own suffixes, for
+    the reason the sibling leg above gives.
+    """
+    vault_p, sidecar_p = paths
+    auth = _seeded(paths)
+    auth.lock()
+    d = vault_p.parent
+    artefacts = [
+        d / "vault.db.pre-v2",
+        d / "vault.db.pre-v2-wal",
+        d / "vault.db.pre-v2-shm",
+        d / "vault.kdf.json.pre-v2",
+        d / "vault.db.migrating",
+        d / "vault.db.migrating-wal",
+        d / "vault.db.migrating-shm",
+        d / "vault.kdf.json.migrating",
+    ]
+    for p in artefacts:
+        p.write_bytes(b"an encrypted copy of the user's old vault")
+
+    auth.reset_vault()
+
+    left = [p.name for p in artefacts if p.exists()]
+    assert not left, f"start over left the old vault behind: {left}"
