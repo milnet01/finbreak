@@ -9822,9 +9822,188 @@ is a future error tomorrow.
   The strongest cross-lane signal was the fixed-one-copy shape: a repair applied
   to one of two siblings and not the other. Five instances, found by five
   independent lanes.
+  Progress (2026-08-31): both CRITICALs and the bulk of the HIGH set are fixed,
+  tested and pushed — the release-artefact replay, the signed completeness gate,
+  the OFX null-date crash, the Decimal Overflow escape, the forecast month-end
+  anchor, the two chart defects, the four app-shell lifecycle defects, the reset
+  footprint, the recovery-display auto-lock, the clipboard Never case, the
+  Windows self-test silence, the zombie protocol method, the supply-chain
+  verification, and the batch password ladder. Gate green throughout.
+
+  Four HIGH are deliberately NOT fixed and carry their own items: FIBR-0319
+  (mapping ladder), FIBR-0320 (Linux relaunch PID — needs runtime evidence),
+  FIBR-0321 (Remember-password write — a design decision, an attempted fix was
+  reverted), FIBR-0322 (parallel row lists, calibrated to MEDIUM). The MEDIUM and
+  LOW tails are FIBR-0327 and FIBR-0328.
+
+  Two spec consequences carry items rather than being amended silently: FIBR-0323
+  (Family B's exemption from INV-11) and FIBR-0324 (the INV-4 amendment owes its
+  gate).
   **Layman:** A full sweep of the code found a batch of real bugs; this tracks fixing them.
   Kind: review-fix.
   Source: check-code --tree + review-code 2026-08-31.
+
+- 📋 [FIBR-0319] **The batch mapping ladder never fires for files 2..N, the twin of the password defect.**
+  Same ordering as the password half fixed under FIBR-0318: SCAN runs over the
+  whole list before the first question, so every file is already needs_mapping
+  when a profile is saved, and `answer` re-scans only the record it was handed.
+  `match_profile` is consulted once per file at scan time and never again.
+
+  Not fixed with its twin because the fix depends on WHEN the wizard saves the
+  profile relative to `answer` -- `_on_map_next` saves only if the name field is
+  filled. That ordering needs checking rather than assuming. The password half's
+  `_retry_blocked_on_password` is the shape to copy once it is settled.
+  **Layman:** Thirty spreadsheets sharing one unknown layout still ask you to describe it thirty times.
+  Kind: fix.
+  Source: review-code 2026-08-31 lane=import-orchestration.
+
+- 📋 [FIBR-0320] **The Linux relaunch waits on the PyInstaller child, where Windows was redesigned to wait on the image.**
+  FIBR-0131 D3 states that onefile is a two-process tree and that the bootloader
+  parent holds the write-lock and does the _MEI cleanup, then concludes waiting on
+  a single PID is fragile. Windows was redesigned to poll the exe image path; the
+  Linux waiter still polls os.getpid().
+
+  Deliberately NOT fixed blind. The finding rests on os.getpid() being the child
+  rather than the bootloader, which needs confirming inside a live AppImage
+  (ps -o pid,ppid,comm); if it is the bootloader the finding collapses to INFO.
+  And per the known trap, a relaunch change only proves out on the update AFTER
+  it ships, so guessing here is the worst option available.
+  **Layman:** After a self-update the app might fail to reopen -- and it cannot be tested until the next update ships.
+  Kind: investigate.
+  Source: review-code 2026-08-31 lane=update-installer.
+
+- 📋 [FIBR-0321] **A remembered PDF password is written to the provisional account before the destination is known.**
+  FIBR-0249 added a prior/restore pair, but the restore runs only after a
+  SUCCESSFUL commit -- so cancel, an idle auto-lock, a raising commit, or picking
+  another file (which drops the restore data) each leave the wrong account
+  holding the password with its own gone.
+
+  A deferred write was attempted and REVERTED: it makes Remember do nothing when
+  the user then cancels, which INV-7f pins deliberately and three contract tests
+  encode. The two properties conflict, so this needs a decision -- either accept
+  that Remember requires a completed import, or resolve the destination before
+  the write. BatchImportService._settle_password is the sibling design.
+  **Layman:** Ticking Remember, then cancelling, can leave the password filed against the wrong account and lose that account's own.
+  Kind: fix.
+  Source: review-code 2026-08-31 lane=ui-import-wizard.
+
+- 📋 [FIBR-0322] **The lock-time wipe clears table models but not the parallel row lists holding account numbers.**
+  _clear_decrypted_rows clears every QTableWidget, and its docstring says this
+  makes the wipe happen at lock time rather than at destruction time. The
+  _table_state tagging design obliges each tab to keep a parallel Python list;
+  AccountsWidget's holds Account objects including the raw account number, and
+  those survive until deleteLater actually runs.
+
+  Calibrated HIGH -> MEDIUM: security-model section 4 puts a memory-reading
+  attacker out of scope, so this is FIBR-0052 INV-3's absolute wording being
+  overstated as much as the code being short. Fix is a clear_rows() per tab,
+  called alongside the model clear.
+  **Layman:** After the vault locks, some decrypted details stay in memory longer than intended.
+  Kind: security.
+  Source: review-code 2026-08-31 lane=ui-views-admin.
+
+- 📋 [FIBR-0323] **FIBR-0050 INV-11 states a signed reconciliation Family B cannot satisfy.**
+  INV-11 gives the completeness gate as opening + sum(signed) == printed closing
+  for the balance families. FIBR-0318 made the code match that -- except Family B,
+  whose running-balance column prints unsigned magnitudes while its CLOSING
+  BALANCE row prints a sign, so the two endpoints cannot be compared signed. That
+  is the same asymmetry that makes _verify_row pass check_sign=False for B alone.
+
+  The exemption is now explicit in code and absent from the spec. Surfaced rather
+  than amended: it is a contract change and owes a review-contract gate.
+  **Layman:** A spec rule is right for most statement types and cannot be met by one of them.
+  Kind: doc-fix.
+  Source: review-code 2026-08-31 lane=importers.
+
+- 📋 [FIBR-0324] **FIBR-0171 INV-4 was amended under FIBR-0318 and owes its review-contract gate.**
+  INV-4 prescribed the chained stepping that produced the month-end forecast
+  defect, contradicting D6 and the implementation's own docstring, which both
+  argue for anchored stepping. It was amended to state the anchored form.
+
+  That changes what a conformer builds, so rule 14's gate applies:
+  review-contract docs/specs/FIBR-0171.md. The amendment says so in place rather
+  than relying on this bullet.
+  **Layman:** A spec rule was corrected and still needs its independent read.
+  Kind: doc.
+  Source: review-code 2026-08-31 lane=money-reporting.
+
+- 📋 [FIBR-0325] **The bundling suite aborts fatally when run on its own, and passes inside the full suite.**
+  `pytest tests/features/bundling/` dies with Fatal Python error: Aborted after a
+  few tests; the same tests pass as part of the whole run, so it is an ordering or
+  fixture interaction rather than a defect in what they assert.
+
+  Found while verifying an unrelated fix and reproduced on a CLEAN tree, so it
+  predates FIBR-0318. It matters because it makes the suite that guards the frozen
+  bundle unrunnable in isolation, which is exactly how someone would debug a
+  bundling failure. review-tests is the owner.
+  **Layman:** One group of tests crashes if you run just that group.
+  Kind: test.
+  Source: review-code 2026-08-31 out-of-scope finding.
+
+- 📋 [FIBR-0326] **The self-test has no check for cryptography, the stack guarding every vault unlock.**
+  CHECK_NAMES covers Qt, QtNetwork, QtCharts, icons, SQLCipher, pikepdf, PDF
+  encryption, Argon2, ofxparse and pdfplumber. cryptography is a promoted runtime
+  dependency used directly by keywrap (AES-GCM) and update_key (Ed25519), and it
+  loads today only because pdfminer imports it at module scope -- pulled in
+  transitively by the pdfplumber check.
+
+  If pdfminer ever defers that import, the OK sentinel goes green on a bundle that
+  cannot open any v2 vault. That is the FIBR-0259 shape the file's own comment
+  warns about. Fix is an AES-GCM round trip plus one Ed25519 verify.
+  **Layman:** The bundled-app health check does not test the library that opens your vault.
+  Kind: test.
+  Source: review-code 2026-08-31 lane=ui-app-shell.
+
+- 📋 [FIBR-0327] **Work the MEDIUM tail of the 2026-08-31 audit — 54 findings across 15 lanes.**
+  The lane reports are in this session's transcript; the classes worth naming:
+
+  - Untrusted `.fbk` numerics are unbounded on the pre-login surface (Argon2 cost
+    parameters, the embedded schema_version), each ending in an exception type no
+    caller catches.
+  - Missing parent-directory fsync before os.replace at several sites, where four
+    siblings already do it.
+  - `ATTACH DATABASE '{path}'` interpolates the path unescaped — an apostrophe in
+    the user's home breaks backup export and the v2 migration permanently. Found
+    independently by two lanes.
+  - Which clock defines "today" is undecided: services use the OS-local day while
+    a user-pinnable timezone exists. At a month boundary this moves a whole
+    month's totals.
+  - SQLCIPHER_COMPAT is both what is written and what is accepted, so bumping it
+    makes every existing backup unrestorable.
+  - Two O(N^2)-shaped costs on interactive paths: the transfer-candidate self-join
+    has no usable index, and the batch review's file labels are quadratic per
+    refresh.
+  - Several i18n and PlainText gaps where a sibling was already fixed.
+  **Layman:** A batch of smaller real defects the full sweep found, not yet fixed.
+  Kind: review-fix.
+  Source: review-code 2026-08-31.
+
+- 📋 [FIBR-0328] **Work the LOW/INFO tail of the 2026-08-31 audit — roughly 110 findings.**
+  Mostly stale comments and docstrings that assert something no longer true,
+  unreachable defensive branches, missing accessible names on password fields,
+  raw ISO dates on tabs the date preference does not reach, and error paths that
+  collapse two distinguishable causes into one message.
+
+  Also two check-code observations: tracked Python under docs/reviews is outside
+  the gate's `ruff check src tests` scope by design and nothing records that
+  decision; and there is no .yamllint config, so that tool runs on defaults the
+  project never adopted (80 columns against its own 88).
+  **Layman:** Minor issues and observations from the full sweep, recorded so they are not lost.
+  Kind: review-fix.
+  Source: review-code 2026-08-31.
+
+- 📋 [FIBR-0329] **check-code has no tool that reads shell for supply-chain fetches.**
+  FIBR-0318 fixed five unverified `curl | tar` fetches in ci-setup.sh and
+  _build-smoke-in-container.sh. No tool in check-code's set decides that class:
+  zizmor reads workflows only and covers `uses:` pins, actionlint checks workflow
+  correctness, and shellcheck reads syntax rather than provenance.
+
+  So the fix holds only while someone remembers. A semgrep rule matching a fetch
+  piped into an extractor, or one reaching `install`, would make it mechanical --
+  and check-code already runs semgrep.
+  **Layman:** Nothing automatically catches a build script downloading a tool without verifying it.
+  Kind: chore.
+  Source: check-code 2026-08-31 tool-gap.
 
 ## How to add an item
 
