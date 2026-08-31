@@ -17,12 +17,14 @@ and a "No recovery code is set" label still on screen after one had been set
 
 from __future__ import annotations
 
+import gc
 import os
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
+import pytestqt.exceptions
 import shiboken6
 from _recovery_helpers import MASTER_PASSWORD, create_vault
 from PySide6.QtWidgets import QMessageBox
@@ -272,6 +274,98 @@ def test_a_copied_recovery_code_is_cleared_from_the_clipboard(
         )
 
         qtbot.waitUntil(lambda: board.text() == "", timeout=5000)
+    finally:
+        board.clear()
+
+
+def _wait_for_clipboard_clear(
+    qtbot: Any, board: Any, *, timeout_ms: int = 5000
+) -> None:
+    """Poll the clipboard for up to ``timeout_ms``, then assert with expected
+    vs. actual -- a bare ``qtbot.waitUntil`` times out with only a line
+    number, and a live-defect run must name the case that failed."""
+    try:
+        qtbot.waitUntil(lambda: board.text() == "", timeout=timeout_ms)
+    except pytestqt.exceptions.TimeoutError:
+        pass
+    assert board.text() == "", (
+        "the constructor's default clipboard guard did not survive the "
+        "dialog: its clear timer went with it -- parented to the dialog "
+        "(`parent=self`), or owned by nothing that outlasts it -- so the "
+        "recovery code, the credential that opens the vault on its own, "
+        "is still on the clipboard "
+        f"{timeout_ms / 1000:.0f}s after the dialog was torn down "
+        "(FIBR-0310 R1 at the constructor's own default; INV-21).\n"
+        "  expected: '' (cleared)\n"
+        f"  actual:   {board.text()!r}"
+    )
+
+
+def test_the_constructor_default_clipboard_guard_survives_the_dialog(
+    qtbot: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """FP04 finding M6 — the sibling to the leg above, for the branch it
+    cannot reach.
+
+    ``build_recovery_offer`` always injects a guard, so the leg above only
+    ever drives the ``clipboard is not None`` arm of the constructor. The
+    default arm -- ``RecoveryCodeDialog(code)`` with no ``clipboard=``
+    argument -- built its own ``ClipboardAutoClear(..., parent=self)``, which
+    is FIBR-0310 R1 **verbatim**: the guard's single-shot clear timer was a Qt
+    child of the dialog, so the dialog's own teardown destroyed the timer with
+    it and a vault-opening code stayed on the clipboard for good. It now owns
+    that guard from the dialog's parent, or from the application object where
+    there is none (INV-21).
+    Nothing routes through the shell here on purpose -- no ``MainWindow``,
+    no ``build_recovery_offer`` -- because those are exactly what supplies
+    the injected guard the leg above tests; this leg exists to reach the
+    caller that supplies none.
+    """
+    from PySide6.QtGui import QGuiApplication
+
+    from finbreak.ui.recovery_key import RecoveryCodeDialog
+
+    # Read live inside the constructor's own lambda (`seconds_provider=lambda:
+    # DEFAULT_CLIPBOARD_CLEAR_SECONDS`), so patching the module attribute is
+    # what the shortest reachable timeout looks like for this branch -- there
+    # is no `AuthService` in the loop to hand a `clipboard_clear_seconds`
+    # override to, unlike the injected-guard leg above.
+    monkeypatch.setattr(recovery_module, "DEFAULT_CLIPBOARD_CLEAR_SECONDS", 1)
+
+    board = QGuiApplication.clipboard()
+    board.clear()
+
+    code = "ABCD-EFGH-JKMN-PQRS-TVWX-YZ01-2345"
+    dialog = RecoveryCodeDialog(code)  # no clipboard= — the branch under test
+    try:
+        dialog._copy()
+        assert board.text() == code, (
+            "precondition: Copy must put the code on the clipboard, or the "
+            "clearing this leg asserts has nothing to clear.\n"
+            f"  expected: {code!r}\n  actual:   {board.text()!r}"
+        )
+
+        dialog.deleteLater()  # the user answers / closes the dialog
+        _pump_deferred_delete()
+        assert not shiboken6.isValid(dialog), (
+            "precondition: the dialog must actually be destroyed before the "
+            "clear is due -- that destruction is what kills the timer when "
+            "the guard is parented to the dialog, so a leg that leaves the "
+            "dialog alive cannot see the defect.\n"
+            "  expected: a deleted dialog"
+        )
+
+        # Drop the last Python reference too, then collect. Qt destroyed the
+        # C++ dialog above, but the wrapper still holds ``_clipboard`` -- so a
+        # guard owned by NOTHING stays alive on that reference alone and this
+        # leg passes. Production drops the dialog. Measured with
+        # mutation_probe: without these two lines the mutant that leaves the
+        # guard unparented survives, so the leg would assert only that the
+        # owner is not the dialog, rather than that there is one.
+        del dialog
+        gc.collect()
+
+        _wait_for_clipboard_clear(qtbot, board)
     finally:
         board.clear()
 

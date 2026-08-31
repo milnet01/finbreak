@@ -328,6 +328,30 @@ every credential, account and transaction here is synthetic
   test existed.
   Source: FIBR-0313 M5.
 
+- **INV-21** — `RecoveryCodeDialog`'s clipboard-clear guard must outlive the
+  dialog even when the caller injects no guard of its own. The constructor's
+  `clipboard is None` branch owns the guard from the dialog's parent — from the
+  application object where there is none, as `build_recovery_offer` does it —
+  and never from the dialog. A guard the dialog owns has its single-shot clear
+  timer destroyed the moment the dialog is, so a copied recovery code, the one
+  credential that opens the vault on its own, stays on the clipboard for good.
+  That is FIBR-0310 R1 **verbatim**: R1 fixed the injected arm and left this
+  one (FP04 finding M6).
+  *Test:*
+  `test_settings_flows.py::test_the_constructor_default_clipboard_guard_survives_the_dialog`
+  — builds `RecoveryCodeDialog(code)` directly with no `clipboard=` argument,
+  so the constructor's own default is what is under test; copies the code and
+  asserts as a precondition that it reached the clipboard; destroys the
+  dialog and asserts as a precondition that it is actually gone
+  (`shiboken6.isValid`); drops the last Python reference and collects, without
+  which a guard owned by *nothing* survives on that reference alone and the leg
+  passes; then waits for the clipboard to clear on its own.
+  Asserts the OUTCOME the user sees — the clipboard ends up empty after the
+  dialog is gone — never the parent pointer, so the leg cannot pass against a
+  guard that is merely re-parented some other way but still tied to the
+  dialog's lifetime.
+  Source: FIBR-0310 R1 (FP04 finding M6).
+
 ## Rationale
 
 `AuthService.reset_vault` — "start over" — is the live answer to *I forgot my

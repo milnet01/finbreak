@@ -77,18 +77,22 @@ class RecoveryCodeDialog(QDialog):
         # already does (FIBR-0032) — and this is the most sensitive thing the
         # app copies, since it opens the vault on its own.
         #
-        # Ownership decides whether the clear ever happens. A guard the dialog
-        # builds itself is the dialog's, and takes the default timeout. An
-        # INJECTED guard keeps the owner its caller gave it: re-parenting it
-        # here made the clear timer a child of this dialog, and both callers
-        # deleteLater() the dialog the moment the user answers — so the timer
-        # died with it and a vault-opening code stayed on the clipboard
-        # (FIBR-0310 R1).
+        # Ownership decides whether the clear ever happens, and the rule is the
+        # same whoever builds the guard: it must outlive this dialog. An
+        # INJECTED guard keeps the owner its caller gave it. One built here is
+        # owned by our parent — the application object where there is none, as
+        # build_recovery_offer does it — never by the dialog. A guard parented
+        # to the dialog puts its clear timer under a widget every caller
+        # deleteLater()s the moment the user answers, so the timer dies with it
+        # and a vault-opening code stays on the clipboard (FIBR-0310 R1; INV-21
+        # for this branch, which kept the broken shape after R1 fixed the
+        # injected one).
         if clipboard is None:
+            owner: QObject | None = parent or QGuiApplication.instance()
             self._clipboard = ClipboardAutoClear(
                 QGuiApplication.clipboard(),
                 seconds_provider=lambda: DEFAULT_CLIPBOARD_CLEAR_SECONDS,
-                parent=self,
+                parent=owner,
             )
         else:
             self._clipboard = clipboard
