@@ -389,6 +389,8 @@ class PdfExportService:
         # (occurred_on, id) — id tiebreak keeps same-date rows reproducible (INV-6).
         selected.sort(key=lambda r: (r[0].occurred_on, r[0].id))
         show_account = len(self._accounts_in_scope(options)) > 1
+        # Read once, not per row — it is a vault read.
+        date_pref = self._date_pref()
         header = f"<tr><th>{_tr('Date')}</th>"
         if show_account:
             header += f"<th>{_tr('Account')}</th>"
@@ -401,7 +403,11 @@ class PdfExportService:
             # Marker keyed on the transfer-id SET, not a category name, so a real
             # category literally named "Transfer" is unaffected (INV-6).
             category_cell = _tr("⇄ Transfer") if txn.id in transfer_ids else escape(cat)
-            cells = [f"<td>{escape(txn.occurred_on)}</td>"]
+            # The user's date format, as the header and the period line above
+            # already use (FIBR-0013 D6). Rendering the raw stored ISO here put
+            # two date conventions in one document -- "Generated 11/07/2026" over
+            # a table of "2026-07-11".
+            cells = [f"<td>{escape(format_date(txn.occurred_on, date_pref))}</td>"]
             if show_account:
                 cells.append(f"<td>{escape(acct)}</td>")
             cells.append(f"<td>{escape(txn.description)}</td>")
