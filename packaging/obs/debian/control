@@ -2,6 +2,14 @@ Source: finbreak
 Section: utils
 Priority: optional
 Maintainer: Anthony Schemel <aant.schemel@gmail.com>
+# libgssapi-krb5-2 is NOT optional and NOT obvious: PyInstaller's own Qt hook
+# imports QtNetwork to check whether OpenSSL is enabled, and QtNetwork links
+# libgssapi_krb5.so.2 -- so the FREEZE dies without it, long before anything
+# runs. The .spec's openSUSE branch carries the same dependency as `krb5`.
+# Measured 2026-08-31 in a debian:13-slim build root: with it added the freeze
+# and the staged --self-test both pass; it is the only library the deb build
+# was missing (FIBR-0158).
+#
 # Build-time: the wider collect-set apt names PyInstaller bundles INTO the payload
 # (mirrors _build-smoke-in-container.sh:30-33) + the UNVERSIONED python3 toolchain,
 # which floats to each target's own default interpreter (Debian 13 → 3.13,
@@ -22,7 +30,8 @@ Build-Depends: debhelper-compat (= 13),
  libfreetype6,
  libfontconfig1,
  libbrotli1,
- libharfbuzz0b
+ libharfbuzz0b,
+ libgssapi-krb5-2
 Standards-Version: 4.7.0
 Homepage: https://antsprojectshub.co.za/p/fin-break.html
 Rules-Requires-Root: no
