@@ -6036,6 +6036,30 @@ because retrofitting them is a data migration.
   Two invariants authored for the retracted framing were removed rather
   than re-aimed: they asserted a contract that should not exist and passed
   only because the raise they needed was monkeypatched.
+  Progress (2026-08-31): M6 fixed and pushed (07a2f60); gate green at
+  2061 passed / 2 skipped. RecoveryCodeDialog's clipboard-is-None branch now
+  owns its guard from the dialog's parent, or from the application object where
+  there is none, as build_recovery_offer already did -- so the clear timer no
+  longer dies with the dialog it was parented to. The comment that certified the
+  broken shape as deliberate is corrected; spec INV-21 states the rule.
+
+  mutation_probe found the test's hole rather than the fix's. Reverting to
+  parent=self was killed at once, but dropping the fallback so the guard is left
+  UNPARENTED survived: the leg held the only Python reference keeping an
+  ownerless guard alive, which production does not. The leg now drops that
+  reference and collects, and the mutant is killed. Dropping the parent
+  preference survives and should -- the leg's dialog has no parent, so both
+  expressions name the same owner.
+
+  A trap worth naming: mutation_probe's expect_occurrences refused two mutations
+  because `owner: QObject | None = ...` is a SUBSTRING of `clipboard_owner:
+  QObject | None = ...` further down the file. Without that guard both would
+  have reported killed against a site the label did not name.
+
+  Filed FIBR-0316 while measuring: TransactionsView setParent(self)s its own
+  guard, and MainWindow._clear_live deletes the workspace on lock -- the same
+  rule at a third site, on a much less sensitive value. Not folded in;
+  ui/transactions.py is outside the FP03 scope FP04 reviews.
   **Layman:** The recovery-key work was reviewed again with fresh eyes; one serious problem can strand a half-upgraded vault with no way back, and several smaller fixes from last time only reached some of the places they needed to.
   Kind: review-fix.
   Source: close-phase-2026-08-25 (check-code + review-code x4 lanes, FP03 close, fresh context).
@@ -6172,6 +6196,31 @@ because retrofitting them is a data migration.
   Kind: fix.
   Source: in-session-2026-08-27 (found while scoping FIBR-0313 M5).
   Lanes: ui, migration.
+
+- 📋 [FIBR-0316] **A copied transaction stays on the clipboard when the vault locks before the clear is due.**
+  Third site of the FIBR-0310 R1 rule, found while fixing FIBR-0313 M6 (the
+  RecoveryCodeDialog site).
+
+  TransactionsView calls setParent(self) on its ClipboardAutoClear -- injected
+  or self-built -- so the guard's single-shot clear timer is a child of the
+  view. MainWindow._clear_live deleteLater()s the whole workspace on lock and on
+  rebuild, destroying the view and the pending timer with it. A copy made inside
+  the clear window before an idle auto-lock is therefore never cleared.
+
+  The comment above that setParent states the destruction as the intended
+  effect. It is the wrong way round: what the user copied is exactly what a lock
+  should clear.
+
+  Lower severity than the two sites before it -- a rendered cell amount or
+  description, which the recovery-code test calls the least sensitive thing the
+  app copies, against a code that opens the vault on its own. Deliberately NOT
+  folded into the M6 commit: ui/transactions.py was outside the FP03 scope FP04
+  reviews, and the remedy is a decision rather than a move -- own the guard from
+  the application object as build_recovery_offer does, or clear on lock
+  explicitly.
+  **Layman:** If you copy something from the transactions list and the app locks itself before the clipboard auto-clear runs, the copied text is left on the clipboard for good.
+  Kind: fix.
+  Source: in-session-2026-08-31 (found while fixing FIBR-0313 M6).
 
 ### 🎨 Features & accessibility
 
