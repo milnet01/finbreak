@@ -14,7 +14,7 @@ is disabled and ``reject()`` / ``closeEvent`` return early — so the parented
 
 from __future__ import annotations
 
-from PySide6.QtCore import Signal, Slot
+from PySide6.QtCore import Qt, Signal, Slot
 from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -38,6 +38,7 @@ from finbreak.services.auth import (
     AuthService,
     DateTimePrefs,
 )
+from finbreak.services.password_strength import assess
 from finbreak.ui._datetime_prefs import (
     populate_datetime_combos,
     read_datetime_prefs,
@@ -68,6 +69,14 @@ class FirstRunDialog(QDialog):
 
         self._password = QLineEdit()
         self._password.setEchoMode(QLineEdit.EchoMode.Password)
+        # ADVISORY only (security-model T2) -- it never blocks a password, and
+        # validate_first_run is unchanged. T2 credited the app with this and
+        # nothing implemented it.
+        self._strength = QLabel()
+        self._strength.setObjectName("passwordStrength")
+        self._strength.setWordWrap(True)
+        self._strength.setTextFormat(Qt.TextFormat.PlainText)
+        self._password.textChanged.connect(self._update_strength)
         self._confirm = QLineEdit()
         self._confirm.setEchoMode(QLineEdit.EchoMode.Password)
         self._currency = QComboBox()
@@ -116,6 +125,7 @@ class FirstRunDialog(QDialog):
 
         form = QFormLayout()
         form.addRow(self.tr("Master password"), self._password)
+        form.addRow("", self._strength)
         form.addRow(self.tr("Confirm password"), self._confirm)
         form.addRow(self.tr("Base currency"), self._currency)
         form.addRow(self.tr("Time zone"), self._timezone)
@@ -167,6 +177,12 @@ class FirstRunDialog(QDialog):
         super().closeEvent(event)
 
     @Slot()
+    def _update_strength(self, text: str) -> None:
+        """Show the advisory band. Never disables anything (security-model T2)."""
+        result = assess(text)
+        self._strength.setText(result.advice)
+        self._strength.setProperty("strength", result.strength.value)
+
     def _on_submit(self) -> None:
         if self._worker is not None:
             return  # a derivation is already in flight — ignore repeat submits

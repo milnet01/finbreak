@@ -114,6 +114,7 @@ _NO_PROSE = frozenset(
         "ofx_import",
         "password_hint",
         "pdf_export",
+        "password_strength",
         "pdf_import",
         "reconciliation",
         # FIBR-0019 recovery key -- reads no tracked document: its fixtures

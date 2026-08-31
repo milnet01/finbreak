@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import os
 
-from PySide6.QtCore import QCoreApplication, QObject, Signal
+from PySide6.QtCore import QCoreApplication, QObject, Qt, Signal
 from PySide6.QtGui import QCloseEvent, QGuiApplication
 from PySide6.QtWidgets import (
     QDialog,
@@ -34,6 +34,7 @@ from PySide6.QtWidgets import (
 
 from finbreak.errors import VaultLockedError
 from finbreak.services.auth import DEFAULT_CLIPBOARD_CLEAR_SECONDS, AuthService
+from finbreak.services.password_strength import assess
 from finbreak.services.recovery_code import generate_code
 from finbreak.ui._clipboard import ClipboardAutoClear
 
@@ -216,6 +217,14 @@ class NewMasterPasswordDialog(QDialog):
         self._password.setObjectName("new_master_password")
         self._password.setEchoMode(QLineEdit.EchoMode.Password)
         self._password.setPlaceholderText(self.tr("New master password"))
+        # ADVISORY only (security-model T2): it never blocks a password. The
+        # same nudge as first-run, on the other path where a master password is
+        # chosen -- a forced reset after a recovery-code unlock.
+        self._strength = QLabel()
+        self._strength.setObjectName("new_master_password_strength")
+        self._strength.setWordWrap(True)
+        self._strength.setTextFormat(Qt.TextFormat.PlainText)
+        self._password.textChanged.connect(self._update_strength)
         self._confirm = QLineEdit()
         self._confirm.setObjectName("new_master_password_confirm")
         self._confirm.setEchoMode(QLineEdit.EchoMode.Password)
@@ -227,6 +236,7 @@ class NewMasterPasswordDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.addWidget(explanation)
         layout.addWidget(self._password)
+        layout.addWidget(self._strength)
         layout.addWidget(self._confirm)
         layout.addWidget(self._submit)
         layout.addWidget(self._error)
@@ -244,6 +254,12 @@ class NewMasterPasswordDialog(QDialog):
         # which is already a no-op above — this is belt and braces, and it is
         # the same posture UnlockDialog takes while a derivation is in flight.
         event.ignore()
+
+    def _update_strength(self, text: str) -> None:
+        """Show the advisory band. Never disables anything (security-model T2)."""
+        result = assess(text)
+        self._strength.setText(result.advice)
+        self._strength.setProperty("strength", result.strength.value)
 
     def _on_submit(self) -> None:
         password = self._password.text()
