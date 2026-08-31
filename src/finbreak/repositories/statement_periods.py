@@ -80,12 +80,16 @@ class StatementPeriodRepository:
                 (balance_minor, period_id),
             )
         elif current != balance_minor:
+            # The period id ONLY. security-model INV-9 says the log never records
+            # decrypted data, and a closing balance is decrypted vault content.
+            # No handler is configured anywhere in the app, so this falls through
+            # to logging.lastResort -- which emits WARNING and above to stderr,
+            # i.e. the terminal or the desktop journal, outside the encryption
+            # boundary and outside any rotation INV-9 assumes.
             log.warning(
-                "closing balance disagreement for statement period %d: stored %d, "
-                "incoming %d — keeping the stored value (a span's balance is fixed)",
+                "closing balance disagreement for statement period %d — keeping "
+                "the stored value (a span's balance is fixed)",
                 period_id,
-                current,
-                balance_minor,
             )
 
     def latest_closing_balances(self) -> list[tuple[int, int, str]]:
