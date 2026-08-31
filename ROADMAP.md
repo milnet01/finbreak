@@ -9810,6 +9810,22 @@ is a future error tomorrow.
   Kind: doc-fix.
   Source: in-session-2026-08-25 (noticed during FIBR-0310).
 
+- 🚧 [FIBR-0318] **Close the 2026-08-31 whole-tree audit: check-code + a 15-lane review-code sweep.**
+  check-code --tree came back clean apart from two trivia. review-code ran 15
+  lanes over src/, scripts/ and the workflows, partitioned by cohesion after
+  indie_review_partition returned src/ and tests/ as single too_coarse lanes.
+
+  Findings: 2 CRITICAL, 26 HIGH, 54 MEDIUM, ~110 LOW/INFO. Every finding was
+  verified against current source before action; the confirmed false positives
+  are in .ants_review_falsepos.jsonl.
+
+  The strongest cross-lane signal was the fixed-one-copy shape: a repair applied
+  to one of two siblings and not the other. Five instances, found by five
+  independent lanes.
+  **Layman:** A full sweep of the code found a batch of real bugs; this tracks fixing them.
+  Kind: review-fix.
+  Source: check-code --tree + review-code 2026-08-31.
+
 ## How to add an item
 
 1. Allocate the next ID:

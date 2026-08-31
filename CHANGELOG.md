@@ -55,11 +55,59 @@ signaling per
 
 ### Fixed
 
+- **Recovering from an interrupted backup restore now puts back the whole database, and no longer offers to create a new vault over a recoverable one.** (FIBR-0318)
+  The recovery restored the database and its key file but not the database's
+  journal files, losing any recent tail; and a crash at the wrong moment left it
+  reading the vault as absent rather than recoverable.
+
+- **An update that cannot be installed now explains itself instead of failing silently.** (FIBR-0318)
+
+- **Choosing Check for updates twice in a row no longer risks a crash on exit.** (FIBR-0318)
+
+- **Quit and Ctrl+Q now save your window layout and shut background work down cleanly.** (FIBR-0318)
+  They bypassed the close handler that does both.
+
+- **The app no longer closes when the vault auto-locks while the Statements reassign picker or the Categories move-under list is opening.** (FIBR-0318)
+
+- **Dates in an exported PDF's transactions table now follow your chosen date format.** (FIBR-0318)
+  The table showed the stored ISO date while the same document's header used your
+  preference.
+
+- **The trend chart's month and value labels are now readable on the dark theme and in a dark PDF export.** (FIBR-0318)
+  Its axis text was left on Qt's light-theme default, which is dark on dark.
+
+- **The Forecast chart's value axis now reads in the same units as the figures beside it.** (FIBR-0318)
+  It plotted cents, so the axis read 860000 next to a projected balance of
+  R 8,600.00.
+
+- **An enormous amount in a spreadsheet cell is reported as one bad row instead of aborting the import.** (FIBR-0318)
+  It previously raised an error type the import and manual-entry screens do not
+  catch, so the action died silently.
+
+- **An OFX statement carrying a transaction with no date no longer closes the app.** (FIBR-0318)
+  The row is now reported alongside the valid ones instead of raising. In a batch
+  import it had aborted the whole run rather than one file.
+
+- **Standard Bank import: a truncated statement on an overdrawn account is now refused instead of silently importing short.** (FIBR-0318)
+  The completeness check compared balances by magnitude, so a statement whose
+  missing rows flipped the sign of the running total could pass it.
+
 - **Two of our own tests failed on a developer machine because of an unrelated git setting** (FIBR-0306)
   Nothing users see — a test-only fix. The miniature repository two
   tests build to check finbreak's own push checks was picking up a
   setting from the developer's machine, which made the tests fail on
   that desktop while passing everywhere else.
+
+### Security
+
+- **The release scripts now bind the published Windows build to the tag being released.** (FIBR-0318)
+  A transient GitHub API failure could make the script adopt the previous
+  release's build, sign it with the real key and publish it as the new version.
+  Nothing compared the downloaded file against the tag.
+
+- **Statement closing balances are no longer written to the log.** (FIBR-0318)
+  Nothing configures a log handler, so they reached the terminal or the desktop
+  journal -- outside the encrypted vault.
 
 ## [0.1.22] - 2026-08-19
 
