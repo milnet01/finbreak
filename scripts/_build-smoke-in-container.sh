@@ -143,11 +143,30 @@ pyinstaller --onefile --name "$ONEFILE" \
     /src/src/finbreak/__main__.py
 
 echo "-- fetching appimagetool --"
-TOOL=/cache/appimagetool-x86_64.AppImage
+# PINNED to a release tag with a checksum, not the mutable `continuous` tag.
+# ci.yml states this project's own rule for exactly this hazard -- "a tag is
+# mutable: whoever controls the action repo can repoint v7 and it lands in a
+# finbreak build" -- and this is the tool that BUILDS the AppImage users
+# download. It was worse than the `uses:` case it argues about: the cache test
+# below never re-checks, so a poisoned tool would persist across every future
+# release.
+#
+# Digest taken from a download on 2026-08-31; upstream publishes no checksums
+# file for this asset, so it attests that the bytes have not changed since,
+# which is the threat here.
+APPIMAGETOOL_VERSION=1.9.1
+APPIMAGETOOL_SHA256=ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0
+TOOL=/cache/appimagetool-${APPIMAGETOOL_VERSION}-x86_64.AppImage
 if [ ! -x "$TOOL" ]; then
     python -c 'import urllib.request,sys; urllib.request.urlretrieve(sys.argv[1], sys.argv[2])' \
-        "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage" \
-        "$TOOL"
+        "https://github.com/AppImage/appimagetool/releases/download/${APPIMAGETOOL_VERSION}/appimagetool-x86_64.AppImage" \
+        "$TOOL.part"
+    echo "$APPIMAGETOOL_SHA256  $TOOL.part" | sha256sum -c - >/dev/null || {
+        echo "build-smoke: appimagetool CHECKSUM MISMATCH" >&2
+        echo "  expected $APPIMAGETOOL_SHA256" >&2
+        echo "  actual   $(sha256sum "$TOOL.part" | cut -d" " -f1)" >&2
+        rm -f "$TOOL.part"; exit 1; }
+    mv "$TOOL.part" "$TOOL"
     chmod +x "$TOOL"
 fi
 

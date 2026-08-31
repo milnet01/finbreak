@@ -42,10 +42,40 @@ $SUDO apt-get install -y --no-install-recommends \
 # developer's own repo.
 git config --global --add safe.directory '*'
 
+
+# --- verified fetch -------------------------------------------------------
+# Every binary below is a release tarball piped straight into tar. A VERSION PIN
+# IS NOT AN INTEGRITY PIN: a GitHub release asset can be deleted and re-uploaded
+# at the same tag, which is the same mutable-reference hazard ci.yml already
+# argues for `uses:` pins. These run as root here and on a developer's machine,
+# and one of them is gitleaks -- the stage that decides whether a secret leaves
+# the tree.
+#
+# Download to a file, verify, THEN extract. Piping to tar extracts bytes you
+# have not checked.
+#
+# Where upstream publishes a checksums file, these digests were taken from IT
+# and independently confirmed against a download (gitleaks, actionlint). Where
+# upstream publishes none, the digest is what this project downloaded on
+# 2026-08-31 and pinned -- that still detects a later silent re-upload, which is
+# the threat, but it is not an upstream attestation (shellcheck, zizmor).
+fetch_verified() {
+    # fetch_verified <url> <sha256> <dest-file>
+    curl -sSfL --retry 3 -o "$3" "$1"
+    echo "$2  $3" | sha256sum -c - >/dev/null || {
+        echo "ci-setup: CHECKSUM MISMATCH for $1" >&2
+        echo "  expected $2" >&2
+        echo "  actual   $(sha256sum "$3" | cut -d" " -f1)" >&2
+        exit 1; }
+}
+
 echo "== gitleaks (a Go binary, not a pip package) =="
 GITLEAKS_VERSION=8.30.1
-curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
-    | tar -xz -C /tmp gitleaks
+GITLEAKS_SHA256=551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+fetch_verified \
+    "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+    "$GITLEAKS_SHA256" /tmp/gitleaks.tar.gz
+tar -xz -C /tmp -f /tmp/gitleaks.tar.gz gitleaks
 $SUDO install -m 0755 /tmp/gitleaks /usr/local/bin/gitleaks
 gitleaks version
 
@@ -55,15 +85,21 @@ gitleaks version
 # in CI. Pin here, the one place both ci.yml and ci-docker.sh read.
 echo "== shellcheck (the gate lints its own shell scripts) =="
 SHELLCHECK_VERSION=0.11.0
-curl -sSfL "https://github.com/koalaman/shellcheck/releases/download/v${SHELLCHECK_VERSION}/shellcheck-v${SHELLCHECK_VERSION}.linux.x86_64.tar.xz" \
-    | tar -xJ -C /tmp "shellcheck-v${SHELLCHECK_VERSION}/shellcheck"
+SHELLCHECK_SHA256=8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198
+fetch_verified \
+    "https://github.com/koalaman/shellcheck/releases/download/v${SHELLCHECK_VERSION}/shellcheck-v${SHELLCHECK_VERSION}.linux.x86_64.tar.xz" \
+    "$SHELLCHECK_SHA256" /tmp/shellcheck.tar.xz
+tar -xJ -C /tmp -f /tmp/shellcheck.tar.xz "shellcheck-v${SHELLCHECK_VERSION}/shellcheck"
 $SUDO install -m 0755 "/tmp/shellcheck-v${SHELLCHECK_VERSION}/shellcheck" /usr/local/bin/shellcheck
 shellcheck --version | grep version:
 
 echo "== actionlint (the gate lints its own workflows) =="
 ACTIONLINT_VERSION=1.7.12
-curl -sSfL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" \
-    | tar -xz -C /tmp actionlint
+ACTIONLINT_SHA256=8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+fetch_verified \
+    "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" \
+    "$ACTIONLINT_SHA256" /tmp/actionlint.tar.gz
+tar -xz -C /tmp -f /tmp/actionlint.tar.gz actionlint
 $SUDO install -m 0755 /tmp/actionlint /usr/local/bin/actionlint
 actionlint --version
 
@@ -78,8 +114,11 @@ actionlint --version
 # dependency to the gate and cannot flake on a registry timeout.
 echo "== zizmor (the gate audits its own workflows for supply-chain risk) =="
 ZIZMOR_VERSION=1.29.0
-curl -sSfL "https://github.com/zizmorcore/zizmor/releases/download/v${ZIZMOR_VERSION}/zizmor-x86_64-unknown-linux-gnu.tar.gz" \
-    | tar -xz -C /tmp zizmor
+ZIZMOR_SHA256=dd96df044a6e8538d5f423790f453bdd03d49e5b2bcc38214acc41a2f1297839
+fetch_verified \
+    "https://github.com/zizmorcore/zizmor/releases/download/v${ZIZMOR_VERSION}/zizmor-x86_64-unknown-linux-gnu.tar.gz" \
+    "$ZIZMOR_SHA256" /tmp/zizmor.tar.gz
+tar -xz -C /tmp -f /tmp/zizmor.tar.gz zizmor
 $SUDO install -m 0755 /tmp/zizmor /usr/local/bin/zizmor
 zizmor --version
 
