@@ -2094,7 +2094,7 @@ scariest unknown (native-library bundling) up front.
   Lanes: ui, services, packaging.
   Source: user-request-2026-07-19.
 
-- 🚧 [FIBR-0158] **Un-exclude the Debian 13 + Ubuntu 24.04 deb builds on OBS (home:milnet:finbreak).**
+- ✅ [FIBR-0158] **Un-exclude the Debian 13 + Ubuntu 24.04 deb builds on OBS (home:milnet:finbreak).**
   Both RPM families (openSUSE Tumbleweed + Fedora 44) build, publish and install
   from OBS (FIBR-0155). The two deb targets (Debian 13, Ubuntu 24.04) are
   currently "excluded" — OBS finds no Debian source package to build. Two gaps to
@@ -2180,6 +2180,52 @@ scariest unknown (native-library bundling) up front.
 
   Not done yet: the per-distro shakeout this bullet predicts is still ahead --
   the builds have not finished.
+  Resolved (2026-08-31): all four OBS targets build and publish at revision 15.
+  Debian_13 and xUbuntu_24.04 each carry finbreak_0.1.22-1_amd64.deb; Tumbleweed
+  and Fedora_44 carry finbreak-0.1.22-7.1.x86_64.rpm. Both deb targets had been
+  "excluded" since the project was created.
+
+  Six defects, each hidden behind the one before it. Two were mine from today;
+  four were latent from FIBR-0155 and unreachable while the deb targets never
+  built:
+
+  1. No .dsc -- the whole reason for "excluded".
+  2. vendor/ rejected by 3.0 (quilt): dpkg-buildpackage rebuilds the source
+     package first, and the wheels sit outside debian/ and cannot be a patch.
+     include-binaries is NOT enough (still "unexpected upstream changes");
+     debian/source/options extend-diff-ignore is.
+  3. --add-data resolves against --specpath, not the working directory, so
+     debian/rules looked under debian/src/. The .spec passes `--specpath .`,
+     which is why it never hit this.
+  4. dh_dwz rejects the foreign closure outright.
+  5. dh_strip on Ubuntu 24.04: its older binutils refuses Pillow's bundled
+     libfreetype and pypdfium2's libpdfium where Debian 13's accepts both, so
+     Debian went green a revision before Ubuntu.
+  6. Mine, twice: a comment placed after a line ending in `&& \` truncates the
+     command. The second time INV-10 caught it in 0.10s, where the first had cost
+     a 3.5-minute OBS round trip.
+
+  What made this tractable was reproducing the build root locally instead of
+  iterating on OBS: debtransform plus dpkg-source in debian:13-slim for the
+  source-package half, and a full dpkg-buildpackage in debian:13-slim and
+  ubuntu:24.04 for the rest. An ldd sweep over the frozen tree lists ~50 missing
+  libraries and is a poor guide -- almost all are optional Qt plugin dependencies
+  nothing imports. Running the real freeze named the one that mattered,
+  libgssapi-krb5-2, which the .spec's openSUSE branch had carried as `krb5` all
+  along.
+
+  Verified beyond "it builds": each .deb installed into a bare container of its
+  own distro pulls in only libgl1 and libegl1 -- the host-left pair INV-1
+  requires -- and the installed launcher prints FINBREAK_SELFTEST_OK.
+
+  Covered by obs_packaging INV-9 (the .dsc against its siblings, since Format and
+  Build-Depends are each stored twice because OBS reads one file and the build
+  reads the other) and INV-10 (every debian/rules command parses as make runs
+  it). Each leg was verified to go red by breaking its input.
+
+  Not fixed here, filed instead: FIBR-0317 -- nothing re-submits to OBS on
+  release, which is why the published packages were six versions behind and why
+  the stale wheel closure went unnoticed.
 
 - 🚧 [FIBR-0159] **Publish finbreak to Flathub — the cross-distro app store (GNOME Software / KDE Discover).**
   Flathub is the de-facto cross-distro app store: one submission surfaces finbreak

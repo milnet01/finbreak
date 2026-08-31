@@ -12,7 +12,8 @@ full design and rationale.
 | File | Role |
 |------|------|
 | `finbreak.spec` | RPM recipe (openSUSE + Fedora) |
-| `debian/` | deb recipe (Debian + Ubuntu) |
+| `debian/` | deb recipe (Debian + Ubuntu) — shipped to OBS as `debian.tar.gz`, never as a directory |
+| `finbreak.dsc` | deb source-control file. Without it OBS marks every Debian/Ubuntu target "excluded" and builds no `.deb` at all |
 | `obs-setup.sh` | create/update the OBS sub-project + package + build targets (one-time, idempotent) |
 | `obs-submit.sh` | vendor → populate the checkout → run services → commit a revision (per-release) |
 | `obs-status.sh` | poll the build results + tail any failing build log |
@@ -31,12 +32,12 @@ in `home:milnet`, with its own build targets), package `finbreak`. Public repo:
 
 ## Target matrix (all **x86_64-only** — the bundled wheels are 64-bit)
 
-| Family | Target | OBS path | Status (2026-07-23) |
+| Family | Target | OBS path | Status (2026-08-31) |
 |--------|--------|----------|---------------------|
 | openSUSE | Tumbleweed | `openSUSE:Factory / snapshot` | ✅ built + published |
 | Fedora | 44 | `Fedora:44 / standard` | ✅ built + published |
-| Debian | 13 (trixie) | `Debian:13 / standard` | ⚠️ excluded — needs a `.dsc` + the vendor bundle as a deb component tarball |
-| Ubuntu | 24.04 LTS | `Ubuntu:24.04 / universe` | ⚠️ excluded — same deb work as Debian 13 |
+| Debian | 13 (trixie) | `Debian:13 / standard` | ✅ built + published (FIBR-0158) |
+| Ubuntu | 24.04 LTS | `Ubuntu:24.04 / universe` | ✅ built + published (FIBR-0158) |
 | openSUSE | Leap 15.6 | `openSUSE:Leap:15.6 / standard` | ⏳ pending a `%if 0%{?sle_version}` python313 branch |
 
 The **glibc ≥ 2.34** floor gates buildability (the PySide6/cryptography wheels
@@ -100,12 +101,43 @@ on the real OBS builders:
    package (missing-hash-section on Qt `.so`s dominated); filtered via
    `finbreak-rpmlintrc`.
 
+The deb bring-up (FIBR-0158) surfaced five more, each hidden behind the one
+before it. All but the first were latent from the start and unreachable while
+the deb targets were excluded:
+
+9. **No `.dsc`** — the reason both targets read "excluded". OBS needs a Debian
+   source-control file before it attempts a `.deb` at all.
+10. **`vendor/` rejected by `3.0 (quilt)`** — `dpkg-buildpackage` rebuilds the
+    source package first, and the wheels sit outside `debian/` and cannot be a
+    patch. `include-binaries` is NOT enough (still "unexpected upstream
+    changes"); `debian/source/options` `extend-diff-ignore` is.
+11. **`--add-data` resolved against `--specpath`** — not the working directory,
+    so `debian/rules`' relative paths looked under `debian/`. Absolute now. The
+    `.spec` passes `--specpath .`, which is why it never hit this.
+12. **`dh_dwz`** — rejects the foreign closure outright (no `.debug_info`;
+    allocatable sections after non-allocatable ones in Pillow's libraries).
+    Overridden to nothing, on item 8's reasoning.
+13. **`dh_strip` on Ubuntu 24.04** — its older `binutils` refuses Pillow's
+    bundled libfreetype and pypdfium2's libpdfium where Debian 13's accepts
+    both, so Debian went green a revision before Ubuntu. Excluded from the
+    payload, like `dh_shlibdeps`.
+
+**One class IS catchable locally now, and was not before**: a shell syntax
+error in `debian/rules`. Nothing in the gate read that file — `shellcheck` does
+not take a Makefile — so the first reader was an OBS build root. `obs_packaging`
+INV-10 now parses every recipe command the way `make` runs them.
+
 ## Still open (§5 follow-ups)
 
-- [ ] **Debian + Ubuntu** — un-exclude the deb builds: author a `.dsc` (the
-      debtransform trigger) and deliver `vendor.tar.gz` into the deb build tree
-      (a `3.0 (quilt)` component orig tarball → unpacks to `vendor/`), since deb
-      builds have no RPM-style `Source1`.
+- [x] **Debian + Ubuntu** — done 2026-08-31 (FIBR-0158). `finbreak.dsc` is the
+      trigger; `vendor.tar.gz` reaches the build tree by being named in its
+      `DEBTRANSFORM-FILES-TAR` beside `debian.tar.gz`, which debtransform
+      concatenates verbatim so the wheels keep their `vendor/` prefix. A
+      component orig tarball, which this list used to propose, cannot work:
+      debtransform emits one `.orig` and one `.debian.tar` and regenerates the
+      `Files`/checksum fields. `debian/source/options` then keeps `vendor/` out
+      of the source-package diff, without which `dpkg-source` aborts on wheels
+      it cannot represent as a patch. See § Bugs bring-up surfaced.
 - [ ] **Leap 15.6** (FIBR-0160, deferred) — attempted; went *unresolvable*
       because Leap 15.6 ships **no python 3.12+** (`osc buildinfo`: "nothing
       provides python313"), and we vendor only cp312/cp313/cp314. Needs Leap's
@@ -118,8 +150,19 @@ on the real OBS builders:
 
 ## Ongoing releases
 
-Each new finbreak version is a new package revision in the OBS repo (pulled by
-`zypper up` / `apt upgrade`). The `.claude/bump.json` recipe (run by `cut-release`) keeps the metainfo `<release>`
-and `debian/changelog` in lockstep with `CHANGELOG.md`. Re-run
-`vendor-wheels.sh` **only** when the dependency closure or a target's default
-python changes; otherwise repeat `osc service manualrun` → `osc commit`.
+Each new finbreak version SHOULD become a new package revision in the OBS repo
+(pulled by `zypper up` / `apt upgrade`), but **nothing performs that
+automatically** — no step of the release path runs `obs-submit.sh`. Measured
+2026-08-31: the package still held the 0.1.16 tarball while `__version__` was
+0.1.22, with both RPM targets green the whole time, because they were green on
+the old source. Tracked as FIBR-0317. Until it is closed, run `obs-submit.sh`
+by hand after a release and read the target matrix back.
+
+The `.claude/bump.json` recipe (run by `cut-release`) keeps the metainfo
+`<release>` and `debian/changelog` in lockstep with `CHANGELOG.md`.
+
+**Re-vendor whenever a dependency PIN moves**, not only when a package is added
+or removed — `REVENDOR=1 ./obs-submit.sh`. A stale closure is invisible until
+the source advances past it: advancing the tarball to 0.1.22 turned both RPM
+targets red on `cryptography==50.0.0` missing from a closure vendored months
+earlier. A target's default python changing needs one too.
