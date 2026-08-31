@@ -256,6 +256,16 @@ class NewMasterPasswordDialog(QDialog):
         buffer = bytearray(password.encode("utf-8"))
         try:
             self._service.set_master_password(buffer)
+        except VaultLockedError:
+            # The vault is OPEN while this dialog is shown, so the idle timer is
+            # live. MainWindow._lock closes the dialog before it locks the vault
+            # and shows the unlock screen, and it closes it with deleteLater(),
+            # so a submit already queued still arrives here with the service
+            # locked. Fail closed and silently, as the three sibling routes do:
+            # nothing was set, and the broad arm below would render the
+            # exception's own wording onto a dialog already being torn down
+            # (FIBR-0310 P12).
+            return
         except Exception as exc:  # a failed re-wrap must not close this dialog
             self._error.setText(
                 self.tr("Could not set the password: {error}").format(error=exc)

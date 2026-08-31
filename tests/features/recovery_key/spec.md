@@ -352,6 +352,25 @@ every credential, account and transaction here is synthetic
   dialog's lifetime.
   Source: FIBR-0310 R1 (FP04 finding M6).
 
+- **INV-22** — `NewMasterPasswordDialog._on_submit` fails closed and silently on
+  a locked vault, matching its three § 4.7 siblings (`keep_recovery_code`,
+  `_confirm_master_password`, `remove_recovery_key`). The vault is open while
+  this D6 dialog is shown, so the idle auto-lock timer is live; `MainWindow._lock`
+  closes the dialog before it locks the vault and shows the unlock screen, so a
+  queued submit can still reach `_on_submit` after the service has locked. Its
+  broad `except Exception` arm rendered the resulting `VaultLockedError`'s own
+  wording onto a dialog already being torn down (FIBR-0310 P12, FP04 finding
+  M7).
+  *Test:*
+  `test_settings_flows.py::test_an_auto_lock_before_new_master_password_is_refused_silently`
+  — sets matching new passwords, locks the vault to force the route
+  `set_master_password` takes on an auto-lock, calls `_on_submit` directly, and
+  asserts the error label stays empty and the dialog does not report success by
+  closing. A second leg monkeypatches `set_master_password` to raise a generic
+  `RuntimeError` and asserts the label is **not** empty, so the fix's narrowed
+  arm cannot be a blanket silence that swallows a genuine re-wrap failure too.
+  Source: FIBR-0310 P12 (FP04 finding M7).
+
 ## Rationale
 
 `AuthService.reset_vault` — "start over" — is the live answer to *I forgot my

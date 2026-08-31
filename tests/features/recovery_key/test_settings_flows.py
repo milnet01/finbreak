@@ -26,8 +26,8 @@ from typing import Any
 import pytest
 import pytestqt.exceptions
 import shiboken6
-from _recovery_helpers import MASTER_PASSWORD, create_vault
-from PySide6.QtWidgets import QMessageBox
+from _recovery_helpers import MASTER_PASSWORD, NEW_MASTER_PASSWORD, create_vault
+from PySide6.QtWidgets import QDialog, QMessageBox
 
 from conftest import _pump_deferred_delete
 from finbreak.errors import VaultLockedError
@@ -556,6 +556,63 @@ def test_an_auto_lock_before_keep_is_refused_silently(
     assert len(warnings) == 1, (
         "a failed re-wrap must still warn -- the new arm must not swallow it\n"
         f"  actual: {len(warnings)} warning(s)"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# FP04 finding M7 -- the fourth D6/§ 4.7 route with no VaultLockedError arm
+# --------------------------------------------------------------------------- #
+def test_an_auto_lock_before_new_master_password_is_refused_silently(
+    qtbot: Any, monkeypatch: pytest.MonkeyPatch, service: AuthService
+) -> None:
+    """``NewMasterPasswordDialog._on_submit`` was the one D6 route with no
+    ``VaultLockedError`` arm: its broad ``except Exception`` caught the
+    auto-lock and rendered the exception's own wording into the dialog's error
+    label -- on a dialog ``MainWindow._lock`` is already tearing down for the
+    unlock screen. Its three § 4.7 siblings (``keep_recovery_code``,
+    ``_confirm_master_password``, ``remove_recovery_key``) all fail closed and
+    silently here (FIBR-0310 P12, FP04 finding M7).
+    """
+    dialog = recovery_module.NewMasterPasswordDialog(service)
+    qtbot.addWidget(dialog)
+    dialog._password.setText(NEW_MASTER_PASSWORD.decode())
+    dialog._confirm.setText(NEW_MASTER_PASSWORD.decode())
+
+    service.lock()  # the idle auto-lock, between the dialog opening and submit
+
+    dialog._on_submit()
+
+    assert dialog._error.text() == "", (
+        "a submit against a locked vault set nothing, so the dialog must stay "
+        "silent -- the sibling contract this route is missing. Rendering the "
+        "internal exception's own wording onto a dialog already being torn "
+        "down is exactly what FP04 finding M7 flags.\n"
+        "  expected: ''\n"
+        f"  actual:   {dialog._error.text()!r}"
+    )
+    assert dialog.result() != QDialog.DialogCode.Accepted, (
+        "nothing was set on a locked vault, so the dialog must not report "
+        "success by closing.\n"
+        f"  actual result: {dialog.result()}"
+    )
+
+    # And the arm is NARROW: a genuine re-wrap failure must still be visible --
+    # the siblings' own "must still warn" leg, for this dialog's inline label.
+    def refuse(_password: bytearray) -> None:
+        raise RuntimeError("the re-wrap failed")
+
+    monkeypatch.setattr(service, "set_master_password", refuse)
+    dialog2 = recovery_module.NewMasterPasswordDialog(service)
+    qtbot.addWidget(dialog2)
+    dialog2._password.setText(NEW_MASTER_PASSWORD.decode())
+    dialog2._confirm.setText(NEW_MASTER_PASSWORD.decode())
+
+    dialog2._on_submit()
+
+    assert dialog2._error.text() != "", (
+        "a genuine re-wrap failure must still reach the user -- the new "
+        "VaultLockedError arm must not swallow it.\n"
+        f"  actual: {dialog2._error.text()!r}"
     )
 
 
