@@ -1246,3 +1246,40 @@ def test_parse_period_bad_month_returns_none_not_keyerror():
     )
     assert _parse_period("Statement from 1 Januarie 2026 to 31 Januarie 2026") is None
     assert _parse_period("Statement from 1 Bogus 2026 to 2 Bogus 2026") is None
+
+
+def test_FIBR0050_INV11_gate_is_signed_for_families_that_print_a_sign():
+    """The completeness gate compares SIGNED endpoints, not magnitudes.
+
+    INV-11 states the reconciliation as `opening + Σ(signed) == printed closing`.
+    A magnitude comparison accepts a truncation whose loss flips the reconciled
+    sign, which is reachable on any account that goes overdrawn:
+
+        opening  R100.00
+        rows     -50.00, -100.00   -> printed closing -50.00
+
+    Drop the trailing -100.00 row (the multi-page truncation this gate exists to
+    catch) and `reconciled` is +50.00 against a printed -50.00. Under `abs()`
+    those are equal, the gate passes, and R100.00 of spending is silently absent
+    from the import.
+
+    Family B is exempt and stays on magnitudes: its running-balance column prints
+    unsigned magnitudes while its CLOSING BALANCE row prints a sign, which is the
+    same reason `_verify_row` passes `check_sign=False` for B alone.
+    """
+    truncated = [TransactionDraft(1, "2025-03-02", -5000, "Fake Debit")]
+    for family in (Family.A, Family.D, Family.E):
+        with pytest.raises(ValueError, match="didn't add up"):
+            _verify_checksum(family, Decimal("100.00"), truncated, Decimal("-50.00"), 2)
+
+    # The same statement, complete, still reconciles — the gate is not merely
+    # refusing everything.
+    whole = [
+        TransactionDraft(1, "2025-03-02", -5000, "Fake Debit"),
+        TransactionDraft(2, "2025-03-03", -10000, "Fake Debit Two"),
+    ]
+    _verify_checksum(Family.A, Decimal("100.00"), whole, Decimal("-50.00"), 2)
+
+    # Family B keeps the magnitude endpoint match, so the truncated set passes
+    # there. That is the documented exemption, not an oversight.
+    _verify_checksum(Family.B, Decimal("100.00"), truncated, Decimal("-50.00"), 2)

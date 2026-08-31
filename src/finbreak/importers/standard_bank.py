@@ -584,11 +584,24 @@ def _verify_checksum(
         reconciled = opening_m - total
     else:
         reconciled = opening_m + total
-    # Compare magnitudes: the per-row gate (A/B/D) / section flip (C) already
-    # validates each transaction's sign, and the Home-Loan running-balance column
-    # prints unsigned magnitudes while its "CLOSING BALANCE" row prints a sign — so
-    # the completeness gate's job (truncation detection) is a magnitude endpoint match.
-    if abs(reconciled) != abs(closing_m):
+    # SIGNED, which is what INV-11 states: `opening + Σ(signed) == printed closing`.
+    #
+    # Family B alone compares magnitudes, and only because its running-balance
+    # column prints unsigned magnitudes while its "CLOSING BALANCE" row prints a
+    # sign — the same asymmetry that makes `_verify_row` pass `check_sign=False`
+    # for B and no other family.
+    #
+    # Applying `abs()` to every family let a truncation through whenever the lost
+    # rows flip the reconciled sign, which any overdrawn account reaches: opening
+    # R100, rows -50 and -100, printed closing -50; drop the trailing row and
+    # +50 == abs(-50) passes the gate with R100 of spending silently missing.
+    # Trailing-row truncation on a multi-page statement is the exact case INV-11
+    # names as this gate's reason for existing.
+    if family is Family.B:
+        mismatch = abs(reconciled) != abs(closing_m)
+    else:
+        mismatch = reconciled != closing_m
+    if mismatch:
         raise ValueError(
             "this statement didn't add up — its running balance and transactions "
             "disagree; try your bank's CSV or OFX export"
