@@ -10,6 +10,12 @@ export DH_VERBOSE = 1
 	dh $@
 
 override_dh_auto_build:
+	# The --add-data sources below are ABSOLUTE on purpose. PyInstaller resolves
+	# a relative --add-data source against the --specpath directory rather than
+	# the working directory, so with `--specpath debian` the relative form looks
+	# for debian/src/finbreak/... and fails. finbreak.spec passes `--specpath .`,
+	# which is why the same relative paths work there (FIBR-0158).
+	#
 	# Build venv on the target's OWN default python3 (§ 3.6). Install the pinned
 	# runtime deps + freezer OFFLINE from the vendored wheels (obs_packaging INV-7 —
 	# every build-phase pip install carries --no-index). Deps read from pyproject.
@@ -19,8 +25,8 @@ override_dh_auto_build:
 	pip install --no-index --find-links vendor/ -r debian/_deps.txt pyinstaller==6.21.0 && \
 	pyinstaller --onedir --name finbreak \
 	    --paths src \
-	    --add-data "src/finbreak/ui/icons:finbreak/ui/icons" \
-	    --add-data "src/finbreak/data:finbreak/data" \
+	    --add-data "$(CURDIR)/src/finbreak/ui/icons:finbreak/ui/icons" \
+	    --add-data "$(CURDIR)/src/finbreak/data:finbreak/data" \
 	    --hidden-import sqlcipher3 \
 	    --hidden-import pikepdf \
 	    --hidden-import PySide6.QtWidgets \

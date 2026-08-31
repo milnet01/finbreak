@@ -549,3 +549,82 @@ def test_rpmlintrc_filters_bundled_tree_noise() -> None:
         "unstripped-binary-or-object",
     ):
         assert check in rc, f"rpmlintrc must filter {check} for the bundled payload"
+
+
+def _rules_recipes(text: str) -> dict[str, list[str]]:
+    """Split a Makefile into {target: [recipe lines]}, tabs stripped."""
+    bodies: dict[str, list[str]] = {}
+    cur: list[str] = []
+    name: str | None = None
+    for line in text.splitlines():
+        if line.startswith("\t"):
+            if name:
+                cur.append(line[1:])
+        else:
+            if name and cur:
+                bodies[name] = cur
+            cur = []
+            m = re.match(r"^([A-Za-z0-9_%.-]+):", line)
+            name = m.group(1) if m else None
+    if name and cur:
+        bodies[name] = cur
+    return bodies
+
+
+def _logical_commands(lines: list[str]) -> list[str]:
+    """Join backslash continuations — make hands ONE shell invocation per
+    non-continued recipe line, and that split is the whole point of this
+    helper: checking a recipe body as a single script hides the defect."""
+    out: list[str] = []
+    buf: list[str] = []
+    for ln in lines:
+        buf.append(ln)
+        if not ln.rstrip().endswith("\\"):
+            out.append("\n".join(buf))
+            buf = []
+    if buf:
+        out.append("\n".join(buf))
+    return out
+
+
+def test_INV10_deb_rules_commands_are_valid_shell() -> None:
+    """FIBR-0158. Every command in debian/rules must parse as shell, checked the
+    way make actually runs it: one invocation per non-continued line.
+
+    The defect this locks: a comment placed after a line ending in `&& \\` is
+    spliced onto that line, leaving the `&&` with nothing but a comment after
+    it, and dash aborts with "end of file unexpected". Nothing in the local gate
+    reads debian/rules — shellcheck does not take a Makefile — so the first
+    reader was an OBS build root, three minutes per attempt.
+
+    Checking the recipe as ONE script does NOT catch it: `&&` followed by a
+    comment and then a further line is valid in a single script, and only
+    make's per-line split makes it a truncated command. Measured 2026-08-31 —
+    the first version of this check passed against the live defect.
+    """
+    bodies = _rules_recipes(_read(_DEB_RULES))
+    assert bodies, "debian/rules must define at least one recipe"
+
+    failures = []
+    for target, lines in bodies.items():
+        for cmd in _logical_commands(lines):
+            probe = (
+                cmd.replace("$(CURDIR)", "/tmp/curdir")
+                .replace("$@", "target")
+                .replace("$$", "$")
+            )
+            proc = subprocess.run(
+                ["sh", "-n"], input=probe, text=True, capture_output=True
+            )
+            if proc.returncode != 0:
+                failures.append(
+                    f"{target}: {proc.stderr.strip()}\n"
+                    f"      first line: {cmd.splitlines()[0][:80]}"
+                )
+
+    assert not failures, (
+        "debian/rules contains a command that is not valid shell, so the deb "
+        "build dies in the OBS build root with no local warning at all.\n"
+        "  expected: every logical command parses under `sh -n`\n"
+        "  actual:\n    " + "\n    ".join(failures)
+    )
