@@ -320,7 +320,11 @@ def run_self_test(out: TextIO | None = None) -> int:
     and returns 1. The check functions are looked up by name at call time, so a
     test can monkeypatch any of them.
     """
-    stream = sys.stdout if out is None else out
+    # sys.stdout is None on a --windowed Windows build, and print(file=None) is
+    # a silent no-op -- so fall back to stderr rather than emitting nothing.
+    # __main__ routes to a file before reaching here; this is the backstop for
+    # any other caller.
+    stream = out if out is not None else (sys.stdout or sys.stderr)
     # Resolved from CHECK_NAMES through module globals on every call, which is
     # what lets a test monkeypatch any single check — binding the functions at
     # import time instead would freeze the originals into a module constant.

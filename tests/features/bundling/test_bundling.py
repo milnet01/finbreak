@@ -420,3 +420,47 @@ def test_FIBR0188_appimage_wm_class_matches_the_application_name():
     assert f"StartupWMClass={wm_class}" in obs, (
         "the AppImage and the RPM/deb launchers must claim the same WM_CLASS"
     )
+
+
+def test_FIBR0132_windowed_build_still_emits_a_sentinel(monkeypatch, tmp_path):
+    """`--self-test` has an observable result even with no console.
+
+    PyInstaller's `--windowed` sets `sys.stdout` to None on Windows, and
+    `print(..., file=None)` is a SILENT NO-OP -- so the shipped .exe emitted
+    neither `FINBREAK_SELFTEST_OK` nor `FINBREAK_SELFTEST_FAIL: <stack>`,
+    including the failing-stack token that is the whole reason FAIL carries a
+    prefix. A user running the documented diagnostic on a broken install got an
+    exit code and nothing else.
+
+    The clean-room was fixed by giving the BUILD an env var (FIBR-0132); this
+    covers the user, who has none.
+    """
+    import finbreak.__main__ as main_mod
+
+    out_dir = tmp_path / "fallback"
+    out_dir.mkdir()
+    monkeypatch.setattr(main_mod.tempfile, "gettempdir", lambda: str(out_dir))
+    monkeypatch.delenv("FINBREAK_SELFTEST_OUT", raising=False)
+    monkeypatch.setattr(main_mod.sys, "argv", ["finbreak", "--self-test"])
+    monkeypatch.setattr(main_mod.sys, "stdout", None)
+
+    rc = main_mod.main()
+
+    sentinel = out_dir / "finbreak-selftest.txt"
+    assert sentinel.exists(), "a windowed build must still record its sentinel"
+    assert sentinel.read_text(encoding="utf-8").strip() == "FINBREAK_SELFTEST_OK"
+    assert rc == 0
+
+
+def test_FIBR0132_run_self_test_falls_back_to_stderr_when_stdout_is_none(monkeypatch):
+    """The backstop for any caller that reaches `run_self_test` directly."""
+    import io
+
+    from finbreak import _selftest
+
+    err = io.StringIO()
+    monkeypatch.setattr(_selftest.sys, "stdout", None)
+    monkeypatch.setattr(_selftest.sys, "stderr", err)
+
+    assert _selftest.run_self_test() == 0
+    assert err.getvalue().strip() == "FINBREAK_SELFTEST_OK"
