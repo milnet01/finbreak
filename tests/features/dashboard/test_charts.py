@@ -107,3 +107,45 @@ def test_build_trend_chart_two_barsets_coloured_by_theme(qapp):
     (axis_x,) = chart.axes(Qt.Orientation.Horizontal)
     assert isinstance(axis_x, QBarCategoryAxis)
     assert list(axis_x.categories()) == ["2026-01", "2026-02"]
+
+
+def test_forecast_chart_plots_major_units_not_minor(qapp):
+    """The forecast line is plotted in MAJOR units, like every other figure the
+    Forecast tab shows.
+
+    `ForecastPoint.balance_minor` is an int of minor units. Plotting it raw put
+    the y-axis 100x above the headline and the "Balance after" column on the same
+    screen — R 8,600.00 beside an axis reading 860000 — while `build_trend_chart`
+    plots `MonthlyTotal` display magnitudes, so the two builders disagreed about
+    the unit. The axis labels are visible by default and explicitly themed, so
+    these are numbers shown to the user.
+    """
+    from datetime import date
+
+    from finbreak.models import ForecastPoint
+    from finbreak.ui.charts import build_forecast_chart
+
+    points = [
+        ForecastPoint(on=date(2026, 3, 1), balance_minor=860000),
+        ForecastPoint(on=date(2026, 4, 1), balance_minor=915050),
+    ]
+    chart = build_forecast_chart(points, _THEME, 2)
+    (series,) = chart.series()
+    ys = [series.at(i).y() for i in range(series.count())]
+    assert ys == [8600.00, 9150.50], "y values are major units, not cents"
+
+
+def test_build_trend_chart_themes_both_axis_labels(qapp):
+    """FIBR-0012 D9 names axis text; FIBR-0013 INV-9 requires the builder to take
+    explicit colours so an offscreen render does not depend on a live palette.
+
+    `build_trend_chart` themed neither axis, so the labels fell back to QChart's
+    default light-theme brush — dark-on-dark on the shipped dark default, and
+    invisible in the Dark PDF export, which feeds this same builder.
+    """
+    trend = [
+        MonthlyTotal(label="2026-03", income=Decimal("10"), expenditure=Decimal("5"))
+    ]
+    chart = build_trend_chart(trend, "Income", "Spending", _THEME)
+    for axis in chart.axes():
+        assert axis.labelsColor() == _THEME.text, f"{type(axis).__name__} unthemed"

@@ -157,7 +157,9 @@ class ForecastWidget(QWidget):
 
         self._headline.setText(headline)
         self._provenance.setText(provenance)
-        self._chart_view.setChart(build_forecast_chart(fc.points, self._chart_theme()))
+        self._chart_view.setChart(
+            build_forecast_chart(fc.points, self._chart_theme(), exponent)
+        )
         self._fill_events(fc, exponent, symbol)
         if not fc.events:
             self._status.setText(

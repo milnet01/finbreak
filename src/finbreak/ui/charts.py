@@ -37,6 +37,7 @@ from PySide6.QtCore import QDate, Qt
 from PySide6.QtGui import QColor
 
 from finbreak.models import CategorySpend, ForecastPoint, MonthlyTotal
+from finbreak.services.transactions import to_display_decimal
 
 # The ordered categorical palette for the coloured (categorised) donut wedges
 # (FIBR-0012 D9) — accessible on the dark default, the app-icon family extended.
@@ -159,7 +160,9 @@ def build_breakdown_donut(
     return _themed_chart(series, theme)
 
 
-def build_forecast_chart(points: list[ForecastPoint], theme: ChartTheme) -> QChart:
+def build_forecast_chart(
+    points: list[ForecastPoint], theme: ChartTheme, exponent: int
+) -> QChart:
     """The projected-balance **line** chart for the Forecast tab (FIBR-0171 D6/D9).
 
     Draws a single themed ``QLineSeries`` over the step-line ``points`` (each a
@@ -173,7 +176,17 @@ def build_forecast_chart(points: list[ForecastPoint], theme: ChartTheme) -> QCha
     for point in points:
         qdate = QDate(point.on.year, point.on.month, point.on.day)
         stamp = qdate.startOfDay().toMSecsSinceEpoch()
-        series.append(float(stamp), float(point.balance_minor))
+        # MAJOR units, via the shared converter. `balance_minor` is an int of
+        # minor units, and plotting it raw put the y-axis 100x above every other
+        # figure on the same screen: the headline reads "~R 8,600.00", the events
+        # table's "Balance after" column reads "R 8,600.00", and the axis beside
+        # them read "860000". `build_trend_chart` plots MonthlyTotal display
+        # magnitudes, so the two builders disagreed about the unit. The axis
+        # labels are visible by default and are explicitly themed below, so these
+        # numbers are shown to the user rather than being mere geometry.
+        series.append(
+            float(stamp), float(to_display_decimal(point.balance_minor, exponent))
+        )
     pen = series.pen()
     pen.setColor(theme.positive)
     pen.setWidth(2)
@@ -220,11 +233,19 @@ def build_trend_chart(
     series.append(income_set)
     series.append(expenditure_set)
     chart = _themed_chart(series, theme)
+    # Both axes take theme.text, exactly as build_forecast_chart does. Omitting
+    # it left the month and value labels on QChart's default light-theme label
+    # brush, i.e. dark-on-dark against the shipped dark default (ADR-0010), and
+    # invisible in the Dark PDF export -- which is what FIBR-0013 INV-9 means by
+    # the builders taking explicit colours so an offscreen render does not depend
+    # on a live widget palette. FIBR-0012 D9 names axis text by name.
     axis_x = QBarCategoryAxis()
     axis_x.append([month.label for month in trend])
+    axis_x.setLabelsColor(theme.text)
     chart.addAxis(axis_x, Qt.AlignmentFlag.AlignBottom)
     series.attachAxis(axis_x)
     axis_y = QValueAxis()
+    axis_y.setLabelsColor(theme.text)
     chart.addAxis(axis_y, Qt.AlignmentFlag.AlignLeft)
     series.attachAxis(axis_y)
     return chart
