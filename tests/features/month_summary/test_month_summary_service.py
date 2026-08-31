@@ -405,7 +405,7 @@ def test_a_family_spread_over_several_rows_sums_before_the_gate(service) -> None
     assert summary.cause.excess_minor == minor(2400)
 
 
-def test_the_cause_name_comes_from_the_familys_EARLIEST_row_in_M(service) -> None:
+def test_the_cause_name_comes_from_the_family_EARLIEST_row_in_M(service) -> None:
     """§ 4.6 pins the label to the family's earliest row "so the label cannot
     change between two refreshes of the same data".
 

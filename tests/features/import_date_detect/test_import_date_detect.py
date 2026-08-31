@@ -511,7 +511,7 @@ def test_ambiguity_nudge_shows_then_clears_on_manual_pick(qtbot, service, tmp_pa
 def test_two_preview_fallbacks_blank_and_junk(qtbot, service, tmp_path):
     acct = _acct(service)
     # All-blank date column -> "No dates found".
-    blank = _write(tmp_path / "" if False else tmp_path, HEADER, [["", "A", "-1.00"]])
+    blank = _write(tmp_path, HEADER, [["", "A", "-1.00"]])
     widget = _wizard(qtbot, service, acct)
     widget._select_file(blank)
     assert "No dates found" in widget._date_preview.text()
