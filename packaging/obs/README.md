@@ -127,6 +127,35 @@ error in `debian/rules`. Nothing in the gate read that file — `shellcheck` doe
 not take a Makefile — so the first reader was an OBS build root. `obs_packaging`
 INV-10 now parses every recipe command the way `make` runs them.
 
+## Debugging a failing target: reproduce the build root, don't iterate on OBS
+
+An OBS round trip is minutes per attempt and gives one failure at a time. Every
+target's build root is reproducible locally with `podman`, and that is how the
+FIBR-0158 bring-up was actually done. Use the target's own base image —
+`debian:13-slim`, `ubuntu:24.04` — not this desktop, whose libraries mask the
+failures.
+
+- **The deb SOURCE package** ("unrepresentable changes", debtransform refusing a
+  source archive): fetch `debtransform` from `openSUSE/obs-build`, run it over a
+  directory holding the `.dsc` and the tarballs, then `dpkg-source -x` **and**
+  `dpkg-source -b` the result in the target image. `-b` is the half that matters:
+  `dpkg-buildpackage` rebuilds the source package before building the binary, and
+  that is where `3.0 (quilt)` rejects things. A dummy `vendor.tar.gz` is enough.
+- **The BUILD itself**: copy the tree plus `debian/` and `vendor/` into a scratch
+  directory, mount it, install `debian/control`'s `Build-Depends` verbatim, and
+  run `dpkg-buildpackage -b -us -uc`. This surfaces the debhelper steps that
+  reject the bundled payload (`dh_dwz`, `dh_strip`) in one pass.
+- **Then install the result** into a bare container of the same distro and run
+  `finbreak --self-test`. Building is not evidence the package works; this also
+  checks the dependency set stayed the host-left `libgl1`/`libegl1` pair.
+- **Do NOT diagnose a missing library from `ldd`.** A sweep over the frozen tree
+  reports ~50 not-found libraries, and almost all are optional Qt plugin
+  dependencies (SQL drivers, the GTK platform theme, speech-dispatcher) plus
+  intra-Qt references resolved by RPATH. Run the real freeze and read what it
+  actually fails on.
+- Mount scratch copies, not the repo: an SELinux relabel (`:z`) on a working
+  tree under `/mnt/Games` is not something to do casually.
+
 ## Still open (§5 follow-ups)
 
 - [x] **Debian + Ubuntu** — done 2026-08-31 (FIBR-0158). `finbreak.dsc` is the
