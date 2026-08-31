@@ -811,3 +811,72 @@ def test_FIBR0252_error_count_is_set_for_a_standard_bank_file(service, batch):
         f"error_count = {files[0].error_count} — the statement's waived-fee row "
         "was dropped without being counted"
     )
+
+
+def test_FIBR0085_4_4_an_answered_password_unlocks_the_rest_of_the_batch(
+    batch, tmp_path, monkeypatch
+) -> None:
+    """Section 4.4's headline promise: a password typed during this run joins the
+    list for every later file BEFORE any further prompting.
+
+    Its stated reason is that a first batch of thirty same-bank PDFs is
+    otherwise thirty prompts -- an unattended feature asking thirty questions.
+
+    The ordering defeated it. The UI runs SCAN over the WHOLE list before the
+    first prompt, so every locked file is already `needs_password` by the time
+    anything joins `_run_passwords`; the list is empty for the entire scan pass.
+    `answer` then re-scanned only the ONE record it was handed, and
+    `next_question` hands out the next blocked record without re-running its
+    ladder -- so the only entry the list ever contributed was the password just
+    typed for the record being re-scanned, which `pending_password` already
+    held.
+
+    Three same-password files: answering the first must settle all three.
+    """
+    prompts: list[str] = []
+
+    def fake_decrypt(data: bytes, password: str | None) -> bytes:
+        prompts.append(password or "")
+        if password != "sesame":
+            raise PasswordError("wrong password")
+        return b"%PDF-1.7 plain"
+
+    class _StubSb:
+        @staticmethod
+        def parse(data, exponent, password=None):
+            return ParseResult(
+                drafts=[TransactionDraft(1, "2026-01-05", -1000, "Fake Row")],
+                errors=[],
+                period_start="2026-01-01",
+                period_end="2026-01-31",
+            )
+
+    monkeypatch.setattr(
+        "finbreak.services.batch_import.PdfImporter.decrypt_to_plaintext",
+        staticmethod(fake_decrypt),
+    )
+    monkeypatch.setattr("finbreak.services.batch_import.StandardBankImporter", _StubSb)
+
+    paths = []
+    for n in range(3):
+        p = tmp_path / f"locked{n}.pdf"
+        p.write_bytes(b"%PDF-1.7 encrypted")
+        paths.append(str(p))
+
+    files = batch.build(paths)
+    _scan_all(batch, files)
+    assert [f.outcome for f in files] == ["needs_password"] * 3, (
+        "precondition: SCAN must block all three before the first prompt -- that "
+        "ordering is what the defect turned on"
+    )
+
+    # The user answers the FIRST question only.
+    asked = next_question(files)
+    assert asked is not None
+    batch.answer(files, asked, "sesame")
+
+    assert next_question(files) is None, (
+        "one answered password must settle the whole same-password batch; a "
+        "second question here is the thirty-prompts failure 4.4 forbids"
+    )
+    assert not [f for f in files if f.outcome == "needs_password"]

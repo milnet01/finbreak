@@ -508,12 +508,47 @@ class BatchImportService:
             return
         if isinstance(value, ColumnMapping):
             record.mapping = value
-        else:
-            record.pending_password = value
-            if value not in self._run_passwords:
-                self._run_passwords.append(value)
+            record.outcome = "waiting"
+            self.scan(record)
+            return
+        record.pending_password = value
+        if value not in self._run_passwords:
+            self._run_passwords.append(value)
         record.outcome = "waiting"
         self.scan(record)
+        self._retry_blocked_on_password(files, answered=record)
+
+    def _retry_blocked_on_password(
+        self, files: Sequence[BatchFile], *, answered: BatchFile
+    ) -> None:
+        """Re-run the ladder for every OTHER record still blocked on a password.
+
+        Section 4.4 promises a password typed during this run joins the list for
+        every later file "before any further prompting", and gives the reason: a
+        first batch of thirty same-bank PDFs is otherwise thirty prompts, which
+        is an unattended feature asking thirty questions.
+
+        The ordering defeated it. The UI runs SCAN over the WHOLE list before
+        showing the first prompt, so every locked file is already
+        ``needs_password`` by the time anything joins ``_run_passwords`` -- the
+        list is empty for the entire scan pass. ``answer`` then re-scanned only
+        the ONE record it was given, and ``next_question`` hands out the next
+        record still sitting blocked without re-running its ladder. So the only
+        ladder entry the list ever contributed was the password just typed for
+        the record being re-scanned, which ``pending_password`` already held.
+
+        Re-scanning here is what makes the list do its job: those records'
+        ladders now include the new password, so a same-password file resolves
+        without a question. A record that still cannot be unlocked simply
+        returns to ``needs_password`` and is asked about as before.
+
+        ``scan`` re-checks the draft cap per record, so this cannot walk past it.
+        """
+        for other in files:
+            if other is answered or other.outcome != "needs_password":
+                continue
+            other.outcome = "waiting"
+            self.scan(other)
 
     # -- REVIEW ---------------------------------------------------------------
     def set_account(self, record: BatchFile, account_id: int) -> None:
