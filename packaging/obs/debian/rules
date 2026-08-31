@@ -79,6 +79,16 @@ override_dh_dwz:
 	# checks assume a native package and the payload is bundled by design
 	# (§ 3.2). There is no debug info to compress, so nothing is lost.
 
+override_dh_strip:
+	# Same exclusion, same reason as dh_shlibdeps below: the payload is a foreign
+	# closure of prebuilt manylinux wheels, not ELF this distro's toolchain
+	# produced. dh_strip tries to split debug symbols out of each one, and on
+	# Ubuntu 24.04 objcopy refuses Pillow's bundled libfreetype outright --
+	# "corrupt string table index" -- while Debian 13's newer binutils accepts
+	# it. Their debug symbols would be meaningless anyway, so no dbgsym package
+	# is produced (FIBR-0158).
+	dh_strip -Xusr/lib/finbreak
+
 override_dh_shlibdeps:
 	# The bundled tree is a foreign closure (dlopen'd); only libGL/libEGL are
 	# host-left and declared in debian/control — keep dpkg-shlibdeps off the payload.
