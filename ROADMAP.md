@@ -9955,7 +9955,8 @@ is a future error tomorrow.
   Source: review-code 2026-08-31 lane=ui-app-shell.
 
 - 📋 [FIBR-0327] **Work the MEDIUM tail of the 2026-08-31 audit — 54 findings across 15 lanes.**
-  The lane reports are in this session's transcript; the classes worth naming:
+  The findings are recorded in docs/reviews/2026-08-31-audit-findings.md; the
+  classes worth naming:
 
   - Untrusted `.fbk` numerics are unbounded on the pre-login surface (Argon2 cost
     parameters, the embedded schema_version), each ending in an exception type no
@@ -9979,6 +9980,8 @@ is a future error tomorrow.
   Source: review-code 2026-08-31.
 
 - 📋 [FIBR-0328] **Work the LOW/INFO tail of the 2026-08-31 audit — roughly 110 findings.**
+  Recorded in docs/reviews/2026-08-31-audit-findings.md.
+
   Mostly stale comments and docstrings that assert something no longer true,
   unreachable defensive branches, missing accessible names on password fields,
   raw ISO dates on tabs the date preference does not reach, and error paths that
