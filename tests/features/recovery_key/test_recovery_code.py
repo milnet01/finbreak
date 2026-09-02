@@ -13,6 +13,7 @@ into a plaintext file next to the vault it opens.
 from __future__ import annotations
 
 import inspect
+import json
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -419,6 +420,126 @@ def test_an_unreadable_sidecar_fails_open_but_says_so(
     )
     logged = "\n".join(r.getMessage() for r in caplog.records)
     assert normalise(code) not in normalise(logged), "the hint must never be logged"
+
+
+# --------------------------------------------------------------------------- #
+# INV-23 -- a DAMAGED (not merely unreadable) recovery slot must fail open too
+# (FIBR-0313 M8)
+# --------------------------------------------------------------------------- #
+def _damage_recovery_salt(data: dict[str, Any]) -> dict[str, Any]:
+    """A salt short enough that ``crypto.validate_slot`` -- specifically
+    ``validate_params`` -- would refuse this slot outright. Nothing on the
+    ``ui/_password_hint.py`` route calls it, so the short salt reaches
+    ``derive_key`` unchecked.
+    """
+    data["slots"]["recovery"]["salt_hex"] = "aabb"
+    return data
+
+
+def _damage_recovery_time_cost(data: dict[str, Any]) -> dict[str, Any]:
+    """``time_cost`` is a shared ``kdf``-group field, and ``validate_params``
+    checks neither slot's copy of it -- so ``validate_slot`` would NOT catch
+    this one either. It is still argon2's to refuse, inside ``derive_key``.
+    """
+    data["kdf"]["time_cost"] = 0
+    return data
+
+
+def _damage_recovery_nonce(data: dict[str, Any]) -> dict[str, Any]:
+    """A nonce too short for ``_validate_slot_lengths``, and the shape that
+    makes the ``validate_slot`` call load-bearing rather than belt-and-braces.
+
+    It never reaches ``derive_key``, so argon2 never sees it: it reaches
+    ``unwrap_dek``, which answers every failure with the one undifferentiated
+    ``KeyUnwrapError`` (FIBR-0307 finding 9). The loop ``continue``s past that
+    and the function returns normally -- so without ``validate_slot`` this slot
+    fails open SILENTLY, which reads exactly like a hint that passed the check.
+    """
+    data["slots"]["recovery"]["nonce_hex"] = "aabb"
+    return data
+
+
+@pytest.mark.parametrize(
+    "damage",
+    [_damage_recovery_salt, _damage_recovery_time_cost, _damage_recovery_nonce],
+    ids=[
+        "validate_slot-would-catch-this",
+        "validate_slot-would-NOT-catch-this",
+        "only-validate_slot-catches-this",
+    ],
+)
+def test_a_damaged_recovery_slot_fails_open_with_a_warning(
+    paths: tuple[Path, Path],
+    service: AuthService,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    damage: Any,
+) -> None:
+    """FIBR-0313 M8 -- ``validate_hint_with_recovery`` goes straight from a
+    successful ``read_sidecar_v2`` to ``sidecar.params_for(SLOT_RECOVERY)`` and
+    ``derive_key(...)``, never calling ``crypto.validate_slot`` -- the check
+    that module's own docstring says the slot's CONSUMER must run, because
+    ``read_sidecar_v2`` hard-fails on ``master`` only and loads a damaged
+    ``recovery`` slot without complaint (FIBR-0310 R5).
+
+    Two damage shapes, deliberately: one ``validate_slot`` would catch (a
+    salt too short for ``validate_params``), one it would NOT (``time_cost``,
+    which nothing here checks) -- both must land in the SAME place. A hint
+    that merely looks like it might carry a code must never crash the
+    "save hint" action over a slot the user may never even use.
+    """
+    _vault_path, sidecar_path = paths
+    from finbreak.ui import _password_hint as hint_io
+
+    check = require_seam(
+        hint_io,
+        "validate_hint_with_recovery",
+        "INV-23's fail-open guard lives beside INV-11's trial-unwrap, in "
+        "ui/_password_hint.py (§ 11).",
+    )
+    monkeypatch.setattr("finbreak.paths.sidecar_path", lambda: sidecar_path)
+
+    code = create_vault(service)
+    keep_recovery_key(service, code)
+    service.lock()
+
+    data = json.loads(sidecar_path.read_text())
+    sidecar_path.write_text(json.dumps(damage(data)))
+
+    # No relation to the damaged slot's real payload -- the check must never
+    # get far enough to care what the candidate decodes to.
+    hint = f"same as the one on the card: {generate_code()}"
+
+    caught: Exception | None = None
+    with caplog.at_level("WARNING", logger="finbreak.ui._password_hint"):
+        try:
+            check(hint, MASTER_PASSWORD.decode())
+        except Exception as exc:  # the outcome under test, not a probe
+            caught = exc
+
+    assert caught is None, (
+        "INV-23: a damaged recovery slot must fail OPEN, never raise -- "
+        "crypto.validate_slot exists precisely so the route that USES an "
+        "optional slot can refuse a damaged one before it ever reaches "
+        "derive_key/unwrap_dek; this route skips it.\n"
+        "  expected: validate_hint_with_recovery(hint, password) returns "
+        "without raising\n"
+        f"  actual:   raised {caught!r}"
+    )
+    # Filtered by logger on purpose: ``crypto.read_sidecar_v2`` logs its own
+    # warning when it keeps a damaged optional slot (FIBR-0310 R5), so a bare
+    # ``caplog.records`` is satisfied by THAT line and passes even when this
+    # route stayed silent -- measured with mutation_probe, which could not kill
+    # a dropped ``validate_slot`` until this assertion named its own logger.
+    ours = [r for r in caplog.records if r.name == "finbreak.ui._password_hint"]
+    assert ours, (
+        "INV-23: a fail-open on a DAMAGED recovery slot must leave a log "
+        "line OF ITS OWN, matching the already-covered unreadable-sidecar "
+        "case -- a silent fail-open here looks exactly like a hint that "
+        "passed the check.\n"
+        "  expected: >=1 WARNING record on finbreak.ui._password_hint\n"
+        f"  actual:   none (other loggers: {sorted({r.name for r in caplog.records})})"
+    )
 
 
 def test_check_symbol_refuses_a_payload_of_the_wrong_length() -> None:

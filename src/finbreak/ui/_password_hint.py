@@ -18,10 +18,11 @@ from __future__ import annotations
 
 import logging
 
+from argon2.exceptions import HashingError
 from PySide6.QtCore import QSettings
 
 from finbreak import paths
-from finbreak.crypto import derive_key, read_sidecar_v2
+from finbreak.crypto import derive_key, read_sidecar_v2, validate_slot
 from finbreak.errors import KdfPolicyError, KeyUnwrapError
 from finbreak.keywrap import SLOT_RECOVERY, unwrap_dek
 from finbreak.services.password_hint import HintPolicyError, validate_hint
@@ -137,13 +138,30 @@ def validate_hint_with_recovery(hint: str, password: str) -> None:
         return
     params = sidecar.params_for(SLOT_RECOVERY)
     record = sidecar.slots[SLOT_RECOVERY]
-    for candidate in candidates:
-        kek = derive_key(bytearray(decode(candidate)), params.salt, params)
-        try:
-            dek = unwrap_dek(kek, record.wrapped, SLOT_RECOVERY, params)
-        except KeyUnwrapError:
-            continue
-        finally:
-            kek[:] = bytes(len(kek))
-        dek[:] = bytes(len(dek))
-        raise HintPolicyError("The hint may not contain your recovery code.")
+    try:
+        # ``validate_slot`` is public precisely so the route that USES an
+        # optional slot is the one that refuses a damaged one: ``read_sidecar_v2``
+        # hard-fails on ``master`` alone, so a damaged ``recovery`` slot loads
+        # without complaint (FIBR-0310 R5). ``HashingError`` is the remainder of
+        # that refusal — ``validate_params`` bounds only the low side, leaving
+        # ``time_cost`` and ``parallelism`` for argon2 itself to reject
+        # (FIBR-0327). It turns on the params rather than the candidate, so it
+        # cannot single one out and the guard covers the whole loop.
+        validate_slot(sidecar, SLOT_RECOVERY)
+        for candidate in candidates:
+            kek = derive_key(bytearray(decode(candidate)), params.salt, params)
+            try:
+                dek = unwrap_dek(kek, record.wrapped, SLOT_RECOVERY, params)
+            except KeyUnwrapError:
+                continue
+            finally:
+                kek[:] = bytes(len(kek))
+            dek[:] = bytes(len(dek))
+            raise HintPolicyError("The hint may not contain your recovery code.")
+    except (KdfPolicyError, HashingError) as exc:
+        # Fails OPEN, like the unreadable-sidecar arm above: a slot that cannot
+        # be tested is no evidence the hint carries the code, and barring the
+        # user from setting one over a slot they may never use is the worse
+        # failure. Logged for the same reason that arm is. ``HintPolicyError``
+        # is not a ``FinbreakError`` and so is never caught here.
+        log.warning("hint holds a code-like sequence but its slot is damaged: %s", exc)

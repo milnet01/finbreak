@@ -371,6 +371,41 @@ every credential, account and transaction here is synthetic
   arm cannot be a blanket silence that swallows a genuine re-wrap failure too.
   Source: FIBR-0310 P12 (FP04 finding M7).
 
+- **INV-23** — A damaged (not merely unreadable) `recovery` slot makes the
+  password-hint check fail OPEN with a warning, never raise.
+  `validate_hint_with_recovery` goes straight from a successful
+  `read_sidecar_v2` to `sidecar.params_for(SLOT_RECOVERY)` and `derive_key`,
+  never calling `crypto.validate_slot` — the check that function's own
+  docstring says the slot's CONSUMER must run, because `read_sidecar_v2`
+  hard-fails on `master` only and loads a damaged `recovery` slot without
+  complaint (FIBR-0310 R5). Three damage shapes must land in the same place,
+  and they are chosen so that neither half of the guard can be dropped. A salt
+  too short for `validate_params`, and a `time_cost` of zero that
+  `validate_params` never checks, both reach Argon2id inside `derive_key` and
+  raise `argon2.exceptions.HashingError` — which propagates straight out of
+  `MainWindow._on_set_hint_requested`, whose `except HintPolicyError` does not
+  catch it. A nonce too short for `_validate_slot_lengths` never reaches
+  Argon2id at all: it reaches `unwrap_dek`, which answers every failure with
+  the one undifferentiated `KeyUnwrapError` (FIBR-0307 finding 9), so the loop
+  continues past it and the route returns SILENTLY — a fail-open that reads
+  exactly like a hint that passed the check. That third shape is the one only
+  `validate_slot` can catch.
+  *Test:*
+  `test_recovery_code.py::test_a_damaged_recovery_slot_fails_open_with_a_warning`
+  — parametrized over the three damage shapes. Builds a real vault with both
+  slots, damages ONLY the `recovery` slot on disk, feeds a hint holding a
+  well-formed but unrelated candidate code, and asserts `validate_hint_with_recovery`
+  returns without raising and that a WARNING was logged **by
+  `finbreak.ui._password_hint` itself** — never that `validate_slot` was
+  called, since a fix that reaches the same outcome by another route must still
+  pass. The logger filter is load-bearing rather than tidiness:
+  `crypto.read_sidecar_v2` logs its own warning when it keeps a damaged
+  optional slot, so an unfiltered `caplog.records` is satisfied by that line
+  and passes against a route that stayed silent. Measured with
+  `mutation_probe`, which could not kill a dropped `validate_slot` call until
+  the assertion named its own logger.
+  Source: FIBR-0313 M8.
+
 ## Rationale
 
 `AuthService.reset_vault` — "start over" — is the live answer to *I forgot my
