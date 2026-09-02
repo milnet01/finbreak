@@ -6272,6 +6272,55 @@ because retrofitting them is a data migration.
   M10 is next and is a DECISION rather than a fix: FIBR-0019 D5 promises a
   regeneration offer after a recovery unlock and none exists, so either the code
   or the promise has to move.
+  Progress (2026-09-02, cont.): the open questions are worked. M10, Q1, Q2,
+  Q3, Q5 and H3 are closed, with Q4's policy decided.
+
+  Q1 and Q2 closed as NO DEFECT, each verified rather than assumed. A spurious
+  migration_pending on a healthy v2 vault is a self-healing no-op: it takes
+  branch 1, finds nothing to unlink and clears the flag, and _finish's own
+  docstring anticipates the re-entry. And ui/categories.py's _on_update cannot
+  reach update_category with a root selected -- and could do no harm if it did,
+  since that call refuses a root subject before it reads the name. The _on_add
+  asymmetry is the depth cap, a UI-only rule, not root protection.
+
+  Q5 was a real defect and worse on POSIX than on Windows: restore_backup
+  asserted nothing about the vault being locked, so os.replace succeeded over an
+  open connection and the app went on writing the moved-aside inode. Silent, no
+  error. Vault gained is_open; the guard false-positives on nothing.
+
+  M10: the user chose to implement D5's offer rather than amend the spec -- it
+  needed no spec change, so it avoided re-arming a gate already at its cap.
+
+  Q4 + H3: user chose keep-newest-and-prune, plus fixing the reset. H3 was NOT
+  previously fixed -- FIBR-0318 removed the migration artefacts, a different
+  item -- so "start over" was leaving a complete vault openable under a
+  superseded password.
+
+  BOOKKEEPING, worth stating: H3 and H4 had dropped out of this bullet's own
+  remaining-work list. Every progress note read "C1, H1 and H2 are closed;
+  M1-M10 and L1-L16 remain" and named neither. H3 is now closed. H4 IS STILL
+  OPEN and is the next HIGH: _install carries the incumbent's -wal aside while
+  _reconcile_interrupted_restore restores only the pair, so the crash-recovery
+  path drops committed frames -- silent loss of the user's most recent
+  transactions.
+
+  Q3 needed no code change and could not have one: the AAD is an AEAD input, so
+  adding salt_len would stop every existing slot unwrapping. It is also safe --
+  validate_params pins salt_len exactly, unlike memory_kib. Documented in
+  security-model INV-3d, which tripped rule 14's gate.
+
+  That gate ran three loops to its cap and was worth far more than the edit that
+  armed it. It found T11 still routing a forgotten password to the destructive
+  reset without mentioning the recovery code -- FIBR-0019's whole purpose; INV-2
+  documenting one number for the creation pin and the validation floor, under a
+  promise that following it would not lock anyone out; INV-2 contradicting its
+  own FIBR-0019 amendment about what reaches SQLCipher's raw key; and INV-6
+  crediting gitleaks with catching account numbers, which it does not. Loop 2
+  caught my own edit stating a per-route obligation as structural -- the M8 bug,
+  which FIBR-0020's slot would have inherited. Log: docs/reviews/
+  security-model-review-log.md.
+
+  Remaining on this item: H4, L1-L16.
   **Layman:** The recovery-key work was reviewed again with fresh eyes; one serious problem can strand a half-upgraded vault with no way back, and several smaller fixes from last time only reached some of the places they needed to.
   Kind: review-fix.
   Source: close-phase-2026-08-25 (check-code + review-code x4 lanes, FP03 close, fresh context).
