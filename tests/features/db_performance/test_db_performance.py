@@ -17,20 +17,27 @@ from conftest import (
 from finbreak.crypto import SALT_LEN, derive_key
 from finbreak.migrations import LATEST_SCHEMA_VERSION, run_migrations
 from finbreak.repositories.transactions import TransactionRepository
+from finbreak.repositories.transfers import (
+    CANDIDATE_PAIRS_SQL,
+    TRANSFER_WINDOW_DAYS,
+)
 from finbreak.services.accounts import AccountService
 from finbreak.services.auth import AuthService
 from finbreak.vault import Vault
 
 pytestmark = pytest.mark.features
 
-# The five perf indexes the v9->v10 migration creates (FIBR-0098/0071/0026).
-_EXPECTED_INDEXES = {
+# The perf indexes a vault carries once it has walked to LATEST: the five the
+# v9->v10 migration creates (FIBR-0098/0071/0026), plus the transfer-candidate
+# index added at v13->v14 (FIBR-0327).
+_V10_INDEXES = {
     "idx_transactions_account_date_amount",
     "idx_transactions_occurred_on",
     "idx_transactions_category_id",
     "idx_transactions_statement_period_id",
     "idx_categorization_rules_category_id",
 }
+_EXPECTED_INDEXES = _V10_INDEXES | {"idx_transactions_amount_date"}
 
 
 def _index_names(conn) -> set[str]:
@@ -53,8 +60,8 @@ def service(paths):
 # --------------------------------------------------------------------------- #
 # INV-1 — schema v10 + the v9->v10 migration
 # --------------------------------------------------------------------------- #
-def test_INV1_latest_schema_version_is_13() -> None:
-    assert LATEST_SCHEMA_VERSION == 13
+def test_INV1_latest_schema_version_is_14() -> None:
+    assert LATEST_SCHEMA_VERSION == 14
 
 
 def test_INV1_v9_upgrades_to_v10_adding_indexes(paths) -> None:
@@ -65,7 +72,7 @@ def test_INV1_v9_upgrades_to_v10_adding_indexes(paths) -> None:
     conn = keyed_connection(vault_path, salt)
     assert _index_names(conn) == set(), "v9 ships no indexes"
     run_migrations(conn)  # v9 -> v10 (walks to LATEST)
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 13
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 14
     assert _index_names(conn) == _EXPECTED_INDEXES
     # Pure-DDL step: the row survives untouched (no backfill).
     assert conn.execute("SELECT count(*) FROM transactions").fetchone()[0] == 1
@@ -101,7 +108,7 @@ def test_INV1_idempotent_at_latest(paths) -> None:
     conn = keyed_connection(vault_path, salt)
     run_migrations(conn)  # v9 -> v10
     run_migrations(conn)  # no-op at latest — no duplicate indexes
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 13
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 14
     assert _index_names(conn) == _EXPECTED_INDEXES
     conn.close()
 
@@ -171,3 +178,49 @@ def test_INV4_wal_vault_data_survives_close_reopen(paths) -> None:
     rows = TransactionRepository(svc.vault.connection).list_all()
     assert [r.amount_minor for r in rows] == [-12345]
     svc.lock()
+
+
+# --------------------------------------------------------------------------- #
+# INV-5 — the transfer-candidate self-join seeks an index (FIBR-0327)
+# --------------------------------------------------------------------------- #
+def _plan(conn, sql: str, params) -> list[str]:
+    return [row[-1] for row in conn.execute("EXPLAIN QUERY PLAN " + sql, params)]
+
+
+def test_INV5_candidate_pairs_seeks_the_amount_date_index(service) -> None:
+    """FIBR-0327 — the candidate self-join matches equal-magnitude opposite-sign
+    rows across accounts inside a day window, on a tab the user opens routinely.
+
+    No index served it: the v10 composite leads with ``account_id``, so an
+    equality on ``amount_minor`` alone cannot seek it. SQLite's fallback is to
+    build an AUTOMATIC index over the whole table on every call -- which is why
+    the assertion is on the PLAN and not on a wall-clock time, and why the
+    absence of "AUTOMATIC" is asserted as well as the presence of the index. A
+    plan can name the right index for one arm and still build a transient one for
+    the other.
+    """
+    plan = _plan(
+        service.vault.connection,
+        CANDIDATE_PAIRS_SQL,
+        {"window": TRANSFER_WINDOW_DAYS},
+    )
+    joined = "\n".join(plan)
+
+    assert "idx_transactions_amount_date" in joined, (
+        "the candidate self-join must seek the v14 amount/date index.\n"
+        f"  actual plan:\n{joined}"
+    )
+    assert "AUTOMATIC" not in joined, (
+        "SQLite is still building a transient index for this join, which is the "
+        "whole-table cost FIBR-0327 removed. Either the index is missing or a "
+        "predicate has been wrapped in a function again.\n"
+        f"  actual plan:\n{joined}"
+    )
+    assert "amount_minor=? AND occurred_on>?" in joined, (
+        "the day window must narrow the seek, not just filter after it. "
+        "Wrapping occurred_on in julianday() hides the column from the index: "
+        "the plan still names the index and still says amount_minor=?, so the "
+        "two assertions above BOTH pass while every same-amount row in the vault "
+        "is read. Only the range terms tell the two apart.\n"
+        f"  actual plan:\n{joined}"
+    )

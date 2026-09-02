@@ -21,7 +21,7 @@ from finbreak.errors import SchemaVersionError
 
 log = logging.getLogger(__name__)
 
-LATEST_SCHEMA_VERSION = 13
+LATEST_SCHEMA_VERSION = 14
 
 # Seed data written by the v1->v2 migration (D8) — NOT a UI string, so never
 # run through tr(); the user renames it in the Accounts manager.
@@ -440,6 +440,34 @@ def _migrate_to_v13(conn: dbapi2.Connection) -> None:
         conn.execute("UPDATE schema_version SET version = 13")
 
 
+def _migrate_to_v14(conn: dbapi2.Connection) -> None:
+    """v13 -> v14: index ``transactions(amount_minor, occurred_on)`` for the
+    transfer-candidate self-join.
+
+    That join matches equal-magnitude opposite-sign rows across accounts within a
+    day window, and no existing index serves it: the v10 composite leads with
+    ``account_id``, so an equality on ``amount_minor`` alone cannot seek it.
+    Measured with ``EXPLAIN QUERY PLAN`` -- SQLite fell back to building an
+    AUTOMATIC PARTIAL COVERING INDEX, i.e. a transient index over the whole table
+    on every call, on a tab the user opens routinely (FIBR-0327).
+
+    ``occurred_on`` second, so the seek on the amount continues straight into the
+    window range once ``candidate_pairs`` stopped hiding that column inside
+    ``julianday()``.
+
+    A pure-DDL step like ``_migrate_to_v10``: indexes touch no row data, so there
+    is no backfill. Still one atomic unit (INV-1) -- with the vault's
+    ``isolation_level=""`` the driver opens no implicit transaction around DDL,
+    so the explicit ``BEGIN`` is the step's first statement and
+    ``UPDATE schema_version`` its last."""
+    with owned_transaction(conn):
+        conn.execute(
+            "CREATE INDEX idx_transactions_amount_date "
+            "ON transactions(amount_minor, occurred_on)"
+        )
+        conn.execute("UPDATE schema_version SET version = 14")
+
+
 _MIGRATIONS = {
     2: _migrate_to_v2,
     3: _migrate_to_v3,
@@ -453,4 +481,5 @@ _MIGRATIONS = {
     11: _migrate_to_v11,
     12: _migrate_to_v12,
     13: _migrate_to_v13,
+    14: _migrate_to_v14,
 }

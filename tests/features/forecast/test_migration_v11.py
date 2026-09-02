@@ -42,8 +42,10 @@ def service(paths):
 # --------------------------------------------------------------------------- #
 # INV-9 — the v10 -> v11 migration (additive, version-gated, atomic)
 # --------------------------------------------------------------------------- #
-def test_INV9_latest_schema_version_is_13() -> None:
-    assert LATEST_SCHEMA_VERSION == 13
+def test_INV9_v11_is_reachable_from_the_latest_schema() -> None:
+    """INV-9 is about this feature's own v10 -> v11 step, so it pins that the
+    walk reaches v11 rather than what the latest happens to be (FIBR-0327)."""
+    assert LATEST_SCHEMA_VERSION >= 11
 
 
 def test_INV9_v10_upgrades_to_v11_adding_closing_balance_column(paths) -> None:
@@ -63,7 +65,10 @@ def test_INV9_v10_upgrades_to_v11_adding_closing_balance_column(paths) -> None:
     conn.commit()
 
     run_migrations(conn)  # v10 -> latest (v13); the v11 step adds the column
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 13
+    assert (
+        conn.execute("SELECT version FROM schema_version").fetchone()[0]
+        == LATEST_SCHEMA_VERSION
+    )
     assert "closing_balance_minor" in _cols(conn, "statement_periods")
     # The old row is backfilled NULL (no historical balance to recover).
     assert (
@@ -82,7 +87,10 @@ def test_INV9_migration_is_idempotent_at_latest(paths) -> None:
     conn = keyed_connection(vault_path, salt)
     run_migrations(conn)  # v9 -> latest (v13)
     run_migrations(conn)  # no-op at latest — never replays the ADD COLUMN
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 13
+    assert (
+        conn.execute("SELECT version FROM schema_version").fetchone()[0]
+        == LATEST_SCHEMA_VERSION
+    )
     conn.close()
 
 

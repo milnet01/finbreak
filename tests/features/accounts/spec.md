@@ -104,9 +104,10 @@ only — nothing displays or edits either field until FIBR-0113.
   atomic (a wedged second `ALTER` leaves a re-openable v12 with neither column)
   and idempotent at latest. Enforced by `test_migration_v13.py`. Source:
   FIBR-0193 INV-1.
-- **INV-2** — `LATEST_SCHEMA_VERSION == 13` and `13 in _MIGRATIONS` — the
-  constant and the dispatch table agree. Enforced by `test_migration_v13.py`.
-  Source: FIBR-0193 INV-2.
+- **INV-2** — `13 in _MIGRATIONS` and `LATEST_SCHEMA_VERSION >= 13` — this
+  feature's step is registered, and the walk reaches it. Stated as `>=`
+  because a later feature adding a step is not a breach of this INV.
+  Enforced by `test_migration_v13.py`. Source: FIBR-0193 INV-2.
 - **INV-3** — `Account`'s field order and the SELECT column order in both
   `AccountRepository.list_all()` and `.get()` agree, so positional
   `Account(*row)` construction assigns each column to the field of that name: a

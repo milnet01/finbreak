@@ -90,8 +90,11 @@ def _pair(service: AuthService) -> tuple[int, int]:
 # --------------------------------------------------------------------------- #
 # INV-9 — schema v7 -> v8
 # --------------------------------------------------------------------------- #
-def test_INV9_latest_schema_version_is_10():
-    assert LATEST_SCHEMA_VERSION == 13
+def test_INV9_v8_is_reachable_from_the_latest_schema() -> None:
+    """INV-9 is about this feature's own v7 -> v8 step, so it pins that the walk
+    reaches v8. The equality this replaces named 10 in its own test name while
+    asserting 13 (FIBR-0327)."""
+    assert LATEST_SCHEMA_VERSION >= 8
 
 
 def test_INV9_v7_upgrades_to_v9(paths):
@@ -101,7 +104,10 @@ def test_INV9_v7_upgrades_to_v9(paths):
 
     conn = keyed_connection(vault_path, salt)
     run_migrations(conn)  # v7 -> v9 (walks to LATEST)
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 13
+    assert (
+        conn.execute("SELECT version FROM schema_version").fetchone()[0]
+        == LATEST_SCHEMA_VERSION
+    )
 
     assert _has_transfer_pairs(conn)
     # A fresh table — no rows.

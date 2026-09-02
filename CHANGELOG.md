@@ -55,6 +55,11 @@ signaling per
 
 ### Changed
 
+- **Schema v14 indexes transfer-candidate detection** (FIBR-0327)
+  Finding transfer candidates had no index to work from, so the database built
+  a throwaway one over every transaction each time the tab opened. Existing
+  vaults upgrade in place on next unlock.
+
 - **The time zone you pick in Settings now decides what "today" means, not just how dates look.** (FIBR-0327)
   Pinning a time zone used to change only how timestamps were displayed.
   What counted as "today" — for this month's spending, the alerts and the
@@ -64,6 +69,20 @@ signaling per
   leave it on "System default", nothing changes.
 
 ### Fixed
+
+- **The Transfers tab and the dashboard stop reading every transaction** (FIBR-0327)
+  Both resolved a handful of ids by loading the whole table, on every Home
+  refresh. They now fetch only the rows they name.
+
+- **A failed first run no longer leaves the vault open** (FIBR-0327)
+  If the sidecar write failed, the app reported locked while still holding an
+  unlocked connection nothing would close.
+
+- **Directory flush at every rename that commits a vault** (FIBR-0327)
+  A crash straight after a sidecar write could silently revert a new master
+  password or a freshly issued recovery key, and an interrupted v1 to v2
+  migration could leave a v1 sidecar over a converted database -- which every
+  later unlock reports as a wrong password over an intact vault.
 
 - **A damaged settings file is now reported as a damaged settings file, not as a wrong password.** (FIBR-0327)
   A single corrupted byte in a small unencrypted file beside the vault

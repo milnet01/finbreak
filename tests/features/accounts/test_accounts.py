@@ -187,7 +187,10 @@ def test_INV4_v1_vault_upgrades_and_backfills(paths):
     svc = AuthService(vault_path, sidecar_path)
     assert svc.unlock(bytearray(_PW)) is True  # unlock runs the migration
     conn = svc.vault.connection
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 13
+    assert (
+        conn.execute("SELECT version FROM schema_version").fetchone()[0]
+        == LATEST_SCHEMA_VERSION
+    )
 
     accounts = AccountRepository(conn).list_all()
     assert [a.name for a in accounts] == [DEFAULT_ACCOUNT_NAME]
@@ -202,7 +205,10 @@ def test_INV4_v1_vault_upgrades_and_backfills(paths):
 
 def test_INV4_first_run_vault_is_v9_with_one_default(service):
     conn = service.vault.connection
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 13
+    assert (
+        conn.execute("SELECT version FROM schema_version").fetchone()[0]
+        == LATEST_SCHEMA_VERSION
+    )
     accounts = AccountRepository(conn).list_all()
     assert [a.name for a in accounts] == [DEFAULT_ACCOUNT_NAME]
     assert accounts[0].type == "current"
@@ -212,7 +218,10 @@ def test_INV4_idempotent_at_latest(service):
     # Re-running migrations on an already-latest vault changes nothing.
     conn = service.vault.connection
     run_migrations(conn)
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 13
+    assert (
+        conn.execute("SELECT version FROM schema_version").fetchone()[0]
+        == LATEST_SCHEMA_VERSION
+    )
     assert len(AccountRepository(conn).list_all()) == 1, "Default not duplicated"
 
 

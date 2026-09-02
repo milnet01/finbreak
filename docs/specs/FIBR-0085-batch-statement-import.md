@@ -189,7 +189,7 @@ gather every outstanding question, ask them all, then commit.
    the upgrade is FIBR-0088: a corrected re-issue covering the same dates
    reads as already-imported, and two different files covering the same dates
    are indistinguishable. Rejected for this build: folding FIBR-0088 in, which
-   adds a v13 → v14 migration and a backfill decision to a UI feature.
+   adds a schema migration and a backfill decision to a UI feature.
 
 4. **The batch does not ask for per-file coverage periods.** The single-file
    preview step exposes two `QDateEdit`s defaulted from the parsed

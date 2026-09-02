@@ -3,7 +3,7 @@
 
 Enforces docs/specs/FIBR-0193.md INV-1 (a v12 vault upgrades in place, gaining
 exactly those two nullable columns, every pre-existing row intact) and INV-2
-(``LATEST_SCHEMA_VERSION == 13`` and ``13 in _MIGRATIONS``), plus the § 6
+(``13 in _MIGRATIONS``, and the walk reaches it), plus the § 6
 atomicity and § 4.1 idempotency claims. Mirrors
 ``tests/features/forecast/test_migration_v11.py`` — the nearest precedent, same
 nullable-``ADD COLUMN`` shape. Every on-disk vault uses tmp_path; no test
@@ -89,7 +89,10 @@ def test_INV1_first_run_vault_carries_both_columns_nullable(service) -> None:
     range and the columns never appear; stamped anywhere in 2-12 the skipped
     ``_migrate_to_v2`` leaves no ``accounts`` table at all."""
     conn = service.vault.connection
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 13
+    assert (
+        conn.execute("SELECT version FROM schema_version").fetchone()[0]
+        == LATEST_SCHEMA_VERSION
+    )
     assert {"account_number", "note"} <= _cols(conn, "accounts")
     notnull = _notnull(conn, "accounts")
     assert notnull["account_number"] == 0
@@ -138,7 +141,10 @@ def test_INV1_v12_vault_upgrades_to_v13_in_place(paths) -> None:
     run_migrations(conn)  # v12 -> latest (v13)
 
     # (i) the version stamp advanced
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 13
+    assert (
+        conn.execute("SELECT version FROM schema_version").fetchone()[0]
+        == LATEST_SCHEMA_VERSION
+    )
     # (ii) gaining EXACTLY those two columns, both nullable
     assert _cols(conn, "accounts") == before_cols | {"account_number", "note"}
     notnull = _notnull(conn, "accounts")
@@ -197,15 +203,23 @@ def test_INV1_migration_is_idempotent_at_latest(paths) -> None:
     conn = keyed_connection(vault_path, salt)
     run_migrations(conn)  # v9 -> latest (v13)
     run_migrations(conn)  # no-op at latest — never replays the two ADD COLUMNs
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 13
+    assert (
+        conn.execute("SELECT version FROM schema_version").fetchone()[0]
+        == LATEST_SCHEMA_VERSION
+    )
     conn.close()
 
 
 # --------------------------------------------------------------------------- #
 # INV-2 — the constant and the dispatch table agree
 # --------------------------------------------------------------------------- #
-def test_INV2_latest_schema_version_is_13() -> None:
+def test_INV2_v13_is_registered_and_reachable() -> None:
     """Leg 3. The membership half is not in the v11 precedent, which asserts the
-    constant only; it is taken from ``spending_alerts/test_migration_v12.py``."""
-    assert LATEST_SCHEMA_VERSION == 13
+    constant only; it is taken from ``spending_alerts/test_migration_v12.py``.
+
+    Pinned as ``>=`` rather than ``==``: this INV is about FIBR-0193's own step
+    being registered and walked through, and a later feature adding a step is
+    not a breach of it. The equality read as one only while v13 happened to be
+    latest, and went red on the v14 index (FIBR-0327)."""
     assert 13 in _MIGRATIONS
+    assert LATEST_SCHEMA_VERSION >= 13

@@ -145,8 +145,11 @@ class TransactionRepository:
         for offset in range(0, len(ids), _IN_CHUNK):
             chunk = ids[offset : offset + _IN_CHUNK]
             placeholders = ",".join("?" * len(chunk))
+            # nosec B608: the only interpolated text is a run of "?" marks whose
+            # length comes from the chunk. No caller value reaches the SQL --
+            # every id is bound. Same shape as reporting.py's account scope.
             rows = self._conn.execute(
-                "SELECT id, account_id, occurred_on, amount_minor, description, "
+                "SELECT id, account_id, occurred_on, amount_minor, description, "  # nosec B608
                 "created_at, category_id, category_source "
                 f"FROM transactions WHERE id IN ({placeholders})",
                 tuple(chunk),

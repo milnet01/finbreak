@@ -32,6 +32,39 @@ TRANSFER_WINDOW_DAYS = 3
 # as statement_periods.py / import_profiles.py.
 
 
+# ``candidate_pairs``' statement, at module level so a test can EXPLAIN it without
+# re-spelling it. The plan is part of the contract here: with ``amount_minor``
+# reachable through an index the join seeks, and without one SQLite builds a
+# transient automatic index over the whole table on every call (FIBR-0327).
+CANDIDATE_PAIRS_SQL = (
+    "SELECT d.id, c.id "
+    "FROM transactions d "
+    "JOIN transactions c "
+    "  ON c.amount_minor = -d.amount_minor "
+    " AND c.account_id <> d.account_id "
+    # A plain string range on the stored ISO date, NOT
+    # abs(julianday(c) - julianday(d)): wrapping the indexed column in a function
+    # makes the predicate opaque to the index, so the window could not narrow the
+    # seek. Identical semantics -- occurred_on is date-only, so the two spellings
+    # agree at the inclusive boundary, which INV-2's window tests pin.
+    " AND c.occurred_on BETWEEN date(d.occurred_on, '-' || :window || ' days') "
+    "                       AND date(d.occurred_on, '+' || :window || ' days') "
+    "WHERE d.amount_minor < 0 AND c.amount_minor > 0 "
+    # neither side already consumed by a confirmed pair (INV-4)
+    "  AND NOT EXISTS (SELECT 1 FROM transfer_pairs p "
+    "                  WHERE p.status = 'confirmed' "
+    "                    AND (p.txn_a_id = d.id OR p.txn_b_id = d.id)) "
+    "  AND NOT EXISTS (SELECT 1 FROM transfer_pairs p "
+    "                  WHERE p.status = 'confirmed' "
+    "                    AND (p.txn_a_id = c.id OR p.txn_b_id = c.id)) "
+    # this specific pair not already confirmed OR rejected (INV-3)
+    "  AND NOT EXISTS (SELECT 1 FROM transfer_pairs p "
+    "                  WHERE p.txn_a_id = min(d.id, c.id) "
+    "                    AND p.txn_b_id = max(d.id, c.id)) "
+    "ORDER BY d.occurred_on, d.id, c.id"
+)
+
+
 class TransferRepository:
     def __init__(self, connection: dbapi2.Connection):
         self._conn = connection
@@ -44,26 +77,7 @@ class TransferRepository:
         so each unordered pair appears once. Excludes any txn already in a confirmed
         pair (INV-4) and any pair already confirmed *or* rejected (INV-3)."""
         rows = self._conn.execute(
-            "SELECT d.id, c.id "
-            "FROM transactions d "
-            "JOIN transactions c "
-            "  ON c.amount_minor = -d.amount_minor "
-            " AND c.account_id <> d.account_id "
-            " AND abs(julianday(c.occurred_on) - julianday(d.occurred_on)) <= :window "
-            "WHERE d.amount_minor < 0 AND c.amount_minor > 0 "
-            # neither side already consumed by a confirmed pair (INV-4)
-            "  AND NOT EXISTS (SELECT 1 FROM transfer_pairs p "
-            "                  WHERE p.status = 'confirmed' "
-            "                    AND (p.txn_a_id = d.id OR p.txn_b_id = d.id)) "
-            "  AND NOT EXISTS (SELECT 1 FROM transfer_pairs p "
-            "                  WHERE p.status = 'confirmed' "
-            "                    AND (p.txn_a_id = c.id OR p.txn_b_id = c.id)) "
-            # this specific pair not already confirmed OR rejected (INV-3)
-            "  AND NOT EXISTS (SELECT 1 FROM transfer_pairs p "
-            "                  WHERE p.txn_a_id = min(d.id, c.id) "
-            "                    AND p.txn_b_id = max(d.id, c.id)) "
-            "ORDER BY d.occurred_on, d.id, c.id",
-            {"window": TRANSFER_WINDOW_DAYS},
+            CANDIDATE_PAIRS_SQL, {"window": TRANSFER_WINDOW_DAYS}
         ).fetchall()
         return [(row[0], row[1]) for row in rows]
 

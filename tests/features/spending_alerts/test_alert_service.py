@@ -1,6 +1,6 @@
 """FIBR-0172 — AlertService.alerts(today) over a real in-memory SQLCipher vault.
 
-Enforces spec INV-1/2/4/5/9/11/13/15/16/19. A real (tmp_path) v13 vault; the
+Enforces spec INV-1/2/4/5/9/11/13/15/16/19. A real (tmp_path) v14 vault; the
 service prepares each detector's inputs (incl. the single Decimal->minor conversion
 + transfer/None-bucket exclusion), calls the detectors, orders per D1, and filters
 dismissed keys. No network, no real financial data (testing.md § 6).
@@ -33,7 +33,7 @@ _TODAY = date(2026, 7, 15)
 @pytest.fixture
 def service(paths) -> Iterator[AuthService]:
     svc = AuthService(*paths)
-    svc.first_run(bytearray(_PW), "ZAR")  # v13
+    svc.first_run(bytearray(_PW), "ZAR")  # v14
     yield svc
     svc.lock()
 
