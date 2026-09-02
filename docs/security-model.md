@@ -105,8 +105,8 @@ attacked. Each row: the threat → how finbreak stops it.
 | T2 | **Weak master password brute-forced** | **Argon2id** memory-hard key derivation with pinned parameters (§ 5 INV-2) makes offline guessing slow and GPU-resistant; the interactive unlock dialog additionally throttles repeated wrong attempts on a capped backoff (§ 5 INV-10). Password strength is also surfaced when a master password is CHOSEN — at first-run and at the forced reset after a recovery-code unlock — as an advisory nudge that never blocks (`services/password_strength.py`). It bands on length rather than character classes, which is what Argon2id leaves as the variable. Deliberately not an enforced INV: a minimum would lock out a vault created before it. |
 | T3 | **Key or password recovered from memory / swap / a crash dump** | Key held only while unlocked; **wiped on lock and on exit**; auto-lock drops it after idle (INV-3). The plaintext password reference is cleared before the unlock routine returns. (Defending against the OS paging memory to swap is out of scope — see § 4.) The idle timeout is **user-configurable** (FIBR-0055) and may be set to **"Never"** (FIBR-0135), which disables *only* the idle drop — the key is still wiped on manual lock and on exit, and the password is still required on open. An unattended, unlocked session then stays unlocked: an accepted user choice, not a silent default. |
 | T4 | **Decrypted bank statement leaks to disk** | Locked input PDFs are decrypted **in memory only**; no decrypted content is *deliberately* written to disk or temp files (A5, INV-4). (Defending against the OS paging memory to swap is out of scope — § 4.) |
-| T5 | **Malicious import file** (crafted CSV/OFX/PDF — parser crash, path traversal, zip-bomb-style resource exhaustion, formula injection) **or a crafted restore `.fbk`** (a zip parsed **pre-login**) | Parsers run defensively: bounded resource use (file/page/row caps), no `eval`, no shell-out; CSV cells are treated as data, never spreadsheet formulas; per-row errors are reported, not fatal (INV-5a/5b/5c). The restore `.fbk` — parsed before any authentication — reads only the three fixed entry names with per-entry caps checked **before** inflating (never `extractall`), rejects traversal/extra/duplicate entries, and re-validates the embedded KDF params against the pinned floor before deriving any key (FIBR-0014 INV-11/INV-12). **Two documented residuals.** The PDF **decompressed-page-size** vector is assessed + accepted, not bounded — see INV-5b / FIBR-0075. And the KDF floor is **one-sided**: `validate_params` refuses a `memory_kib` below the floor and imposes no ceiling, so a crafted `.fbk` can record an arbitrarily large one and force that Argon2 allocation **pre-login**. Re-validating against the floor does not make pre-login resource use bounded, and a builder reading this row must not assume it does. Tracked as FIBR-0327. A backup `.fbk` can now also be *verified* read-only (FIBR-0033) through the **same** FIBR-0014 guards, but **post-login** (from Settings, D5) — a lower-risk surface than restore's pre-login parse, adding **no new pre-login attack surface**. |
-| T6 | **Secret accidentally committed to the public repo** | `gitleaks` in CI **and** the local pre-push script; `.gitignore` excludes `*.db`/vault/build output; no real financial data in tests — only synthetic fixtures (INV-6, A7). |
+| T5 | **Malicious import file** (crafted CSV/OFX/PDF — parser crash, path traversal, zip-bomb-style resource exhaustion, formula injection) **or a crafted restore `.fbk`** (a zip parsed **pre-login**) | Parsers run defensively: bounded resource use (file/page/row caps), no `eval`, no shell-out; CSV cells are treated as data, never spreadsheet formulas; per-row errors are reported, not fatal (INV-5a/5b/5c). The restore `.fbk` — parsed before any authentication — reads only the three fixed entry names with per-entry caps checked **before** inflating (never `extractall`), rejects traversal/extra/duplicate entries, and re-validates the embedded KDF params against the pinned floor before deriving any key (FIBR-0014 INV-11/INV-12). **Two documented residuals.** The PDF **decompressed-page-size** vector is assessed + accepted, not bounded — see INV-5b / FIBR-0075. And **no KDF cost axis is bounded above** before login. `validate_params` refuses a `memory_kib` below the floor and imposes no ceiling; `time_cost` and `parallelism` it does not check in either direction. So a crafted `.fbk` can force an arbitrarily large allocation *or*, through `time_cost`, an arbitrarily long derivation — both pre-login, and the second needs no memory at all. Re-validating against the floor does not make pre-login resource use bounded, and a builder reading this row must not assume it does. Tracked as FIBR-0327, whose scope is every axis: bounding `memory_kib` alone leaves the same residual open. A backup `.fbk` can now also be *verified* read-only (FIBR-0033) through the **same** FIBR-0014 guards, but **post-login** (from Settings, D5) — a lower-risk surface than restore's pre-login parse, adding **no new pre-login attack surface**. |
+| T6 | **Secret accidentally committed to the public repo** | `gitleaks` in CI **and** the local pre-push script; `.gitignore` excludes `*.db`/vault/build output; no real financial data in tests — only synthetic fixtures (INV-6, A7). **A real account number is a separate case**: `gitleaks` does not match one, and the guard that does (`tests/features/account_detect/` INV-8) runs only where the local corpus is supplied, so it is absent from CI by design — see INV-6. |
 | T7 | **Vulnerable third-party dependency (known CVE), or a hijacked / typosquatted release that has no CVE at all** | `pip-audit` in CI + local script fails the build on a known-vulnerable dependency; Dependabot raises bumps; latest-stable policy (global rule § 5). The gate runs it **twice, against two different databases** — the default PyPI Advisory DB and OSV.dev (`-s osv`, `FIBR-0227`) — because neither is a superset and only OSV.dev imports the OpenSSF **Malicious Packages** feed, which is what covers the no-CVE half of this row. |
 | T8 | **Insecure code pattern introduced** (hardcoded secret, weak hash, `subprocess(shell=True)`, etc.) | `bandit` security linter in CI + local script. |
 | T9 | **Tampered vault / downgrade of crypto settings** | SQLCipher authenticates **each page with a per-page HMAC** (HMAC-SHA512 by default) — tamper-evident. AES gives confidentiality, **not** integrity, so the HMAC must stay enabled; a tampered page fails to open (INV-1). The recorded KDF parameters can't be downgraded **below the pinned floor** on open (INV-2). Both are asserted by the FIBR-0004 (P02) spec's tests. |
@@ -127,6 +127,10 @@ attacked. Each row: the threat → how finbreak stops it.
   rolling our own.
 - Multi-user *server* access control — separation is per-OS-user,
   not a login system (ADR-0003).
+- The OS paging process memory to swap. T3, T4 and INV-4 each call
+  this out of scope and point here, so it is listed here: short of
+  buffer pinning a local app cannot prevent it, and the app does not
+  claim to.
 
 These are listed so a reviewer knows they were considered and
 consciously excluded, not missed.
@@ -202,14 +206,17 @@ be checkable. Enforcement arrives in step with the code:
   with it**, or every vault recorded at the old value stops opening.
   Moving one number because the document showed one number is exactly
   the lockout this separation exists to prevent. The floor is
-  **one-sided** — there is no ceiling, which T5 records as a pre-login
-  residual on the restore path. The exact-format match:
+  **one-sided** — no ceiling — which T5 records as a pre-login residual
+  on the restore path, across every cost axis rather than memory alone.
+  The exact-format match:
   recorded **output length = 32 bytes** and **salt length = 16
   bytes** — the raw key's required size; a *longer* output or salt
   is rejected, not accepted. Iterations and parallelism get no
   on-open check — Argon2id's own minimum of 1 already pins them, so
   no recorded value can fall below the pin and there is no app-level
-  downgrade test for those two axes. So a tampered or downgraded
+  downgrade test for those two axes. That covers **downgrade only**: an
+  *inflated* recorded cost is unchecked, which is T5's pre-login
+  residual. So a tampered or downgraded
   vault cannot force a weaker KDF. The
   FIBR-0004 (P02) spec implements and *tests* these values. Since
   FIBR-0019 what reaches SQLCipher's **raw**-key pragma is the **DEK**,
@@ -276,14 +283,24 @@ be checkable. Enforcement arrives in step with the code:
   the `master` slot alone — a damaged optional slot loads, so that the
   routes still working are not barred (FIBR-0310 R5). **Every route
   that unwraps any other slot must therefore call `validate_slot`
-  itself before deriving a key.** `slots` is an open map by design
-  (ADR-0011), so each slot added — biometric unlock (FIBR-0020) is the
-  next — owes that call, and a route that skips it unwraps against
-  parameters nothing checked. Nothing here may be added
+  itself before deriving a key.** The routes that exist today keep it:
+  the recovery unlock, and INV-11's hint scan, whose trial unwrap
+  against `slots.recovery` validates first and accepts the hint with a
+  warning when that slot is damaged — a slot it cannot test is no
+  evidence about the hint. `slots` is an open map by design (ADR-0011),
+  so every slot added owes the same call, and a route that skips it
+  unwraps against parameters nothing checked. Nothing here may be added
   later either: the AAD is an input to the AEAD, so changing the field
   list would stop every slot written under the old one from
   unwrapping.
-  The unwrap failure never distinguishes "wrong credential" from
+  **`validate_slot`'s refusal is the deliberate exception, and a route
+  must not collapse it into the generic failure below.** A wrong length
+  or an out-of-policy cost record is readable from the plaintext
+  sidecar by anyone holding the file and is decided before any key is
+  derived, so reporting it distinctly is not an oracle — it is what
+  stops a damaged record being reported as a wrong password and
+  charging the § 6 throttle for it (FIBR-0307 finding 9). Below that,
+  the unwrap failure never distinguishes "wrong credential" from
   "tampered slot": the caller cannot act differently on the two, and
   an error that told them apart would be an oracle.
 - **INV-4 — No plaintext spill.** Decrypted input PDFs and any
@@ -325,7 +342,16 @@ be checkable. Enforcement arrives in step with the code:
   specs (FIBR-0007 / FIBR-0008 / FIBR-0009), **not** by P01.
 - **INV-6 — No secret in the repo.** No key, password, vault, or
   real financial record is ever committed; tests use synthetic
-  data only; `gitleaks` enforces it.
+  data only. **Each leg has its own enforcer, and one of them cannot
+  run in CI.** `gitleaks` matches credential-shaped strings, covering
+  the key / password / vault leg. **A bank account number is not
+  credential-shaped and `gitleaks` does not match one.** That leg is
+  `tests/features/account_detect/` INV-8, which walks `git ls-files`
+  and reads every tracked text file — so it binds prose, a spec or the
+  ROADMAP included, not only fixtures. It compares against real numbers
+  supplied locally and **skips when none are**, so it is absent from CI
+  by design: CI must not hold them. A green pipeline is not evidence on
+  this leg.
 - **INV-7 — Exports are user-locked *when the user sets a password*,
   and never staged in plaintext on disk regardless.**
   (**`FIBR-0013 amends INV-7`**; corrected 2026-08-03.) As originally
@@ -457,7 +483,8 @@ be checkable. Enforcement arrives in step with the code:
 |------|---------|---------|
 | **bandit** | insecure Python patterns (T8) | CI + `scripts/ci-local.sh` |
 | **pip-audit** | dependencies with known CVEs, **and** — via the second `-s osv` run (`FIBR-0227`) — hijacked or typosquatted releases carrying no CVE (T7) | CI + `scripts/ci-local.sh` |
-| **gitleaks** | secrets in the **working tree** (T6) — the gate runs `gitleaks dir .`, which reads neither the index nor git history, so a secret already deleted from the worktree but present in a commit being pushed is **not** caught | CI + `scripts/ci-local.sh` |
+| **gitleaks** | secrets in the **working tree** (T6) — the gate runs `gitleaks dir .`, which reads neither the index nor git history, so a secret already deleted from the worktree but present in a commit being pushed is **not** caught. It does **not** match account numbers | CI + `scripts/ci-local.sh` |
+| **`tests/features/account_detect/` INV-8** | real account numbers anywhere in the tracked tree, prose included (INV-6's second leg) — **skips silently** unless the local corpus is supplied, so it never runs in CI | local only |
 | **ruff** | general correctness/lint (defence in depth) | CI + `scripts/ci-local.sh` |
 | **mypy** | type errors (defence in depth; `FIBR-0061`) | CI + `scripts/ci-local.sh` |
 | **shellcheck** | bugs in the release/build shell scripts (`FIBR-0225`) | CI + `scripts/ci-local.sh` |
