@@ -8,13 +8,19 @@ service layer owns the Decimal ↔ minor-units scaling.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from datetime import UTC, datetime
 
 from sqlcipher3 import dbapi2
 
 from finbreak.models import Transaction
 from finbreak.repositories import last_insert_id
+
+# How many ids one ``IN (...)`` binding may carry. SQLite's host-parameter cap is
+# 999 on builds older than 3.32, so this stays well under the lowest of them --
+# the query is issued per chunk, and the cost of an extra round trip is nothing
+# beside the full-table read this replaces.
+_IN_CHUNK = 500
 
 
 def _coverage_where_sql(ids: Sequence[int]) -> tuple[str, dict[str, int]]:
@@ -119,6 +125,35 @@ class TransactionRepository:
             "FROM transactions ORDER BY occurred_on, id"
         ).fetchall()
         return [Transaction(*row) for row in rows]
+
+    def by_ids(self, txn_ids: Collection[int]) -> list[Transaction]:
+        """The rows for a KNOWN set of ids, in ``list_all``'s order.
+
+        For a caller resolving a handful of ids rather than surveying the table.
+        The transfer service resolves both legs of each decided pair, and had no
+        route but ``list_all`` -- so every Home refresh read every transaction in
+        the vault to answer a question about a few of them (FIBR-0327).
+
+        Bound in chunks: an ``IN`` list is one host parameter per id, and SQLite
+        caps those, so a vault with enough decided pairs would raise rather than
+        run. Placeholders are ``?`` marks and never values, the same posture as
+        ``reporting.py``'s account scope; an empty set short-circuits rather than
+        emitting the ``IN ()`` SQLite rejects.
+        """
+        ids = list(txn_ids)
+        found: list[Transaction] = []
+        for offset in range(0, len(ids), _IN_CHUNK):
+            chunk = ids[offset : offset + _IN_CHUNK]
+            placeholders = ",".join("?" * len(chunk))
+            rows = self._conn.execute(
+                "SELECT id, account_id, occurred_on, amount_minor, description, "
+                "created_at, category_id, category_source "
+                f"FROM transactions WHERE id IN ({placeholders})",
+                tuple(chunk),
+            ).fetchall()
+            found.extend(Transaction(*row) for row in rows)
+        found.sort(key=lambda t: (t.occurred_on, t.id))
+        return found
 
     def auto_rows(self, *, min_txn_id: int = 0) -> list[tuple[int, str]]:
         """The ``(id, description)`` of every **auto** row above ``min_txn_id`` — one

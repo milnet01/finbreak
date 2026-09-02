@@ -13,7 +13,7 @@ call), and records the user's confirm/reject/unlink decisions — never touching
 from __future__ import annotations
 
 import logging
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 
 from sqlcipher3 import dbapi2
 
@@ -47,11 +47,13 @@ class TransferDetectionService:
     def candidates(self) -> list[TransferCandidate]:
         """The live list of suggested (undecided) pairs (INV-1/INV-7). Resolves each
         ``(debit_id, credit_id)`` against a ``{txn.id: Transaction}`` map + an
-        id->account-name map, both built once per call (there is no get-by-id)."""
+        id->account-name map, both built once per call."""
         pairs = self._transfers().candidate_pairs()
         if not pairs:
             return []
-        txns, names, exponent = self._resolve_context()
+        txns, names, exponent = self._resolve_context(
+            {txn_id for pair in pairs for txn_id in pair}
+        )
         return [
             self._make_candidate(txns[debit_id], txns[credit_id], names, exponent)
             for debit_id, credit_id in pairs
@@ -63,7 +65,9 @@ class TransferDetectionService:
         confirmed = self._transfers().list_confirmed()
         if not confirmed:
             return []
-        txns, names, exponent = self._resolve_context()
+        txns, names, exponent = self._resolve_context(
+            {txn_id for pair in confirmed for txn_id in (pair.txn_a_id, pair.txn_b_id)}
+        )
         result: list[ConfirmedTransfer] = []
         for pair in confirmed:
             a, b = txns[pair.txn_a_id], txns[pair.txn_b_id]
@@ -176,13 +180,19 @@ class TransferDetectionService:
         repo.add_decision(debit_id, credit_id, status.value)
 
     def _resolve_context(
-        self,
+        self, txn_ids: Collection[int]
     ) -> tuple[dict[int, Transaction], dict[int, str], int]:
         """The three per-call lookups shared by ``candidates`` +
         ``confirmed_transfers``: id->Transaction, account id->name, and the single
-        base-currency minor-unit exponent."""
+        base-currency minor-unit exponent.
+
+        ``txn_ids`` is the exact set the caller will subscript. Both callers know
+        it up front, and reading the whole table instead put a full scan on every
+        Home refresh, since the dashboard's Transfers branch comes through
+        ``confirmed_transfers`` (FIBR-0327).
+        """
         conn = self._conn
-        txns = {t.id: t for t in TransactionRepository(conn).list_all()}
+        txns = {t.id: t for t in TransactionRepository(conn).by_ids(txn_ids)}
         names = {a.id: a.name for a in AccountRepository(conn).list_all()}
         return txns, names, read_minor_unit_exponent(conn)
 
