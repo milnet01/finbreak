@@ -10,7 +10,7 @@ forecast runs in **NET_FLOW** mode — a line from 0 framed as a projected *chan
 
 The projection core `project_forecast(anchor_minor, items, today, horizon,
 anchor_sources)` is **pure** (clock-free, no I/O, **no Decimal** — integer minor
-units only), reusing FIBR-0142's `_add_cadence` stepper. `ForecastService`
+units only), reusing FIBR-0142's `_add_cadence_n` stepper. `ForecastService`
 composes the anchor + `AnchorSource`s and prepares the `ForecastInput`s.
 
 Every on-disk vault uses `tmp_path`; no test touches the network or real financial
@@ -21,9 +21,9 @@ uses the pytest-qt `qtbot` fixture.
 | INV | Assertion | Test |
 |-----|-----------|------|
 | INV-1 | **Sum consistency.** `end_minor == start_minor + Σ event.amount_minor` (signed, exact integer), both modes. | `test_forecast.py` |
-| INV-2 | **Mode switch.** `mode == NET_FLOW` ⟺ `anchor_minor is None`; in NET_FLOW `start_minor == 0` and `anchor_sources == []`. A vault with no recorded balance → NET_FLOW. | `test_forecast.py`, `test_forecast_service.py` |
+| INV-2 | **Mode switch.** `mode == NET_FLOW` ⟺ `anchor_minor is None`; in NET_FLOW `start_minor == 0` and `anchor_sources == []`. A vault with no *cash* (`current` / `savings`) account balance → NET_FLOW (INV-14). | `test_forecast.py`, `test_forecast_service.py` |
 | INV-3 | **Confirmed-only.** Only `RecurringService.confirmed(today)` items are projected; a suggested/dismissed item never produces an event. | `test_forecast_service.py` |
-| INV-4 | **Projection window `(today, horizon]`.** Each item's first occurrence is `next_expected` rolled forward with `_add_cadence` while `<= today`; every event date is strictly `> today` and `<= horizon`; a monthly item clamps Jan 31 → Feb 28. | `test_forecast.py` |
+| INV-4 | **Projection window `(today, horizon]`.** Each item's occurrences are the *n*-th step from its `anchor` (`last_seen`), rolled forward while `<= today`; every event date is strictly `> today` and `<= horizon`. The month-end clamp is INV-4a's — a Jan-31 item projects Feb 28 → Mar 31 → Apr 30, and asserting only Feb 28 passes under the chained form too. | `test_forecast.py` |
 | INV-4a | **The month-end clamp does not ratchet.** Occurrences are the *n*-th step from the anchor (`_add_cadence_n`), not a chain of single steps — chaining re-feeds the clamped day back in, so a Jan-31 item stayed on the 28th (29th in a leap year) for the rest of the projection instead of returning to month-end. A Jan-31 monthly item projects 01-31 → 02-28 → 03-31 → 04-30, and differs between a common and a leap year *only* in the February date. Weekly/fortnightly never clamp and are unchanged. | `test_forecast.py` |
 | INV-5 | **Signs.** An IN item raises the running balance, an OUT item lowers it; each `ForecastEvent.amount_minor` sign matches its `direction`. | `test_forecast.py` |
 | INV-6 | **Latest balance per account.** `latest_closing_balances` picks the greatest `period_end` (tie: greatest id) non-NULL row per account; NULL-only accounts contribute nothing. | `test_migration_v11.py` |
