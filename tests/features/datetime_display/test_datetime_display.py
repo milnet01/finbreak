@@ -271,3 +271,35 @@ def test_FIBR0327_main_window_pushes_the_stored_pin_into_the_app_clock(qtbot, tm
     finally:
         dtf.set_app_timezone(DATETIME_SYSTEM)
         auth.lock()
+
+
+def test_FIBR0327_no_ui_module_reads_the_os_clock_directly():
+    """FIBR-0327 replaced `date.today()` with the pinned-zone app clock at every
+    UI site. Nothing stops the next one.
+
+    A guard rather than a CLAUDE.md paragraph, because the failure is silent:
+    one `date.today()` in a refresh path puts that widget on the machine's day
+    while every sibling is on the user's, and at a month boundary the two
+    disagree about which month's totals to show. There is no lint rule for it.
+
+    Services are deliberately OUT of scope. `reporting.py` and `pdf_export.py`
+    keep `today or date.today()` fallbacks: every date-bearing UI call passes
+    `today` explicitly, so production never takes them, and importing
+    `datetime_format` there would pull QtCore into the Qt-free service layer.
+    """
+    import re
+    from pathlib import Path
+
+    ui_dir = Path(__file__).resolve().parents[3] / "src" / "finbreak" / "ui"
+    pattern = re.compile(r"\bdate\.today\(\)")
+    offenders = [
+        f"{path.name}:{n}"
+        for path in sorted(ui_dir.glob("*.py"))
+        for n, line in enumerate(path.read_text().splitlines(), 1)
+        if pattern.search(line)
+    ]
+    assert offenders == [], (
+        "these UI sites read the OS clock instead of the pinned-zone app clock; "
+        "use `from finbreak.datetime_format import today as app_today`:\n  "
+        + "\n  ".join(offenders)
+    )

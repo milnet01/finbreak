@@ -53,7 +53,35 @@ signaling per
   you to set, exactly as before, and every guess stays visible and
   changeable before you import.
 
+### Changed
+
+- **The time zone you pick in Settings now decides what "today" means, not just how dates look.** (FIBR-0327)
+  Pinning a time zone used to change only how timestamps were displayed.
+  What counted as "today" — for this month's spending, the alerts and the
+  forecast — came from your computer's own clock. If you pinned
+  Johannesburg and travelled, on the first of the month the two disagreed
+  and a whole month of totals moved with you. The pin now wins. If you
+  leave it on "System default", nothing changes.
+
 ### Fixed
+
+- **A damaged settings file is now reported as a damaged settings file, not as a wrong password.** (FIBR-0327)
+  A single corrupted byte in a small unencrypted file beside the vault
+  made unlocking fail as though you had typed the wrong password — which
+  counts against the lock-out limit and offers to erase and start over, on
+  a vault whose data was completely intact.
+
+- **Backups written by one version stay restorable by later ones.** (FIBR-0327)
+  One internal setting recorded both what a new backup is written with and
+  what an old backup is accepted with. Changing it — which a routine
+  library update could have forced — would have made every backup already
+  on your machine unrestorable, at the moment you needed it. The two are
+  now separate, and a restore reads each backup at its own setting.
+
+- **Backup export no longer fails for anyone whose home folder contains an apostrophe.** (FIBR-0327)
+  An apostrophe anywhere in the path — an `O'Brien` home folder — broke
+  both backup export and the vault upgrade outright, every time, with no
+  way around it. Nothing you could do about your own name.
 
 - **Recovering from an interrupted backup restore now puts back the whole database, and no longer offers to create a new vault over a recoverable one.** (FIBR-0318)
   The recovery restored the database and its key file but not the database's
@@ -99,6 +127,12 @@ signaling per
   that desktop while passing everywhere else.
 
 ### Security
+
+- **A backup file crafted to attack finbreak can no longer exhaust your machine before you have typed a password.** (FIBR-0327)
+  Restoring a backup reads settings out of the file and acts on them
+  before any password is checked. Three of those numbers had no upper
+  limit, so a file built to be hostile could make finbreak claim unlimited
+  memory, or grind indefinitely. They are now checked as the file is read.
 
 - **The release scripts now bind the published Windows build to the tag being released.** (FIBR-0318)
   A transient GitHub API failure could make the script adopt the previous
