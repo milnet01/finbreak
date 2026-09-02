@@ -295,6 +295,13 @@ class AuthService:
             )
         except Exception:
             _wipe(dek)  # don't leave the key in memory on any failure
+            # create() leaves the connection OPEN -- "the caller is now
+            # unlocked". If the sidecar write then fails (a full disk), the
+            # service never sets self._key and reports locked, while
+            # Vault.connection still hands out a live unlocked handle. Closing
+            # here is what makes the two agree. Safe on the presence-state
+            # guard too, where nothing was opened (FIBR-0327).
+            self._vault.close()
             raise
         finally:
             _wipe(kek_master)

@@ -1143,3 +1143,35 @@ def test_FIBR0327_damaged_cipher_level_is_reported_as_a_pairing_problem(paths, b
 
     with pytest.raises(VaultStateError):
         service.unlock(bytearray(_PW))
+
+
+def test_complete_first_run_closes_the_vault_when_the_sidecar_write_fails(paths):
+    """FIBR-0327 — ``create()`` leaves the connection open ("the caller is now
+    unlocked") and the sidecar write is a separate later step. A failure there —
+    a full disk is the realistic one — used to leave the service reporting
+    locked, because ``self._key`` is never assigned, while ``Vault.connection``
+    still handed out a live unlocked handle to anything holding the vault.
+
+    Asserted through ``is_open``, which is the question the vault exposes, and
+    with the failure injected at the sidecar write so the vault has genuinely
+    been created and opened by the time it fires."""
+    import finbreak.services.auth as auth_mod
+
+    svc = AuthService(*paths)
+
+    def boom(*_args, **_kwargs):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch_target = auth_mod.write_sidecar_v2
+    auth_mod.write_sidecar_v2 = boom
+    try:
+        with pytest.raises(OSError):
+            svc.complete_first_run(b"\x02" * KEY_LEN, svc.new_params(), "ZAR")
+    finally:
+        auth_mod.write_sidecar_v2 = monkeypatch_target
+
+    assert not svc.vault.is_open, (
+        "FIBR-0327: a failed first-run must not leave the vault open. The "
+        "service reports locked (self._key was never set), so an open "
+        "connection here is a live unlocked handle nothing will ever close."
+    )
