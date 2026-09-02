@@ -1965,6 +1965,33 @@ scariest unknown (native-library bundling) up front.
   Kind: doc.
   Source: fleet-survey-2026-08-20 (other projects' versioning standards, after FIBR-0299).
 
+- 📋 [FIBR-0330] **CLAUDE.md runs the two roadmap_query survey calls together, so a session skips a call it owes.**
+  Where state lives item 2 names `mode:"headline_only"` as the cheap survey, then
+  says a filtered call withholds bodies "but still returns `kind` as a field --
+  so the survey answers Resumption flow step 2 on its own; no second call is
+  owed."
+
+  Both halves are true of a DIFFERENT call. A status-filtered query in the
+  default bullets mode does return `kind`. `mode:"headline_only"` does not, and
+  cannot: ANTS-4699 fixed its contract to exactly {id, status,
+  headline_oneline, section_slug}, so `kind` is unobtainable there by any
+  argument. Because the preceding sentence calls headline_only "a cheap survey",
+  "the survey" reads as that mode, and a session then believes step 2 is already
+  answered when it has no `kind` at all.
+
+  Confirmed live 2026-09-02: a `headline_only` call at session start returned no
+  `kind`, and step 2 needed a second query. The Ants schema note for ANTS-4699
+  says the wider claim was recorded by "a project doc" -- this is that doc.
+
+  The fix is one or two sentences: say which call returns `kind`, and drop the
+  "no second call is owed" clause or attach it to the bullets-mode call. It
+  changes what a conformer does, so it trips global rule 14's gate on a file
+  FIBR-0296 already says no longer converges under review -- which is why this
+  is filed rather than fixed in passing.
+  **Layman:** A note in our own instructions is ambiguous enough that Claude can skip a lookup it actually needs at the start of a session.
+  Kind: doc-fix.
+  Source: in-session-2026-09-02.
+
 ### 📦 Packaging
 
 - ✅ [FIBR-0003] **P01: bundling smoke-test (de-risk native libs early).**
