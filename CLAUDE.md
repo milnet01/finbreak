@@ -623,15 +623,15 @@ have happened: run `release-linux.sh` against an unbumped tree and it
 reads the *old* `__version__`, finds that release already exists, and
 `--clobber`s assets onto the **previous** release.
 
-Four things worth knowing before you run them:
+Worth knowing before you run them:
 
-- **The bump must be PUSHED, not merely committed.** `release-linux.sh`
-  refuses with "working tree is dirty — **commit + push** the bump
-  first", but it only tests `git status --porcelain` — so a
-  committed-but-unpushed bump *passes* and the script then creates the
-  tag on the **remote**, off the remote's HEAD, i.e. the pre-bump
-  commit. Nothing catches that. (`dist/` is gitignored, so a dirty tree
-  here is your own ROADMAP or CHANGELOG edit.) Do not pipe either script
+- **The bump must be PUSHED, not merely committed — and since FIBR-0327
+  `release-linux.sh` enforces it.** It fetches `origin` and refuses on an
+  unpushed HEAD. Until then it tested only `git status --porcelain`, so a
+  committed-but-unpushed bump passed and the script tagged the **remote's**
+  HEAD — the pre-bump commit — publishing assets built from a version the
+  tag does not point at. (`dist/` is gitignored, so a dirty tree here is
+  your own ROADMAP or CHANGELOG edit.) Do not pipe either script
   through `grep`/`tail` while debugging — that masks its exit status and
   a refusal reads as success.
 - **`release-linux.sh` is safe against a release that already exists** —
@@ -657,6 +657,14 @@ Four things worth knowing before you run them:
   the two point at the same object — one of the two gaps left in the
   release path, the other being that nothing checks `release-linux.sh`
   was run at all (FIBR-0275).
+- **A failed upload no longer skips the read-back gate (FIBR-0327).** Both
+  scripts capture the publish command's exit status instead of letting
+  `set -e` end the run there. `--clobber` deletes each asset before
+  replacing it, so a 503 part-way down the list leaves the release SHORT —
+  the state the gate reports — and the script used to die before reaching
+  it. That is what happened on 0.1.21. The gate now runs either way, and a
+  complete asset list after an errored upload still exits non-zero: the
+  names being right does not prove the bytes are.
 
 Finish by reading the result back yourself — **not** because the scripts skip
 it. Since 2026-08-19 each one re-reads its own upload and refuses to report

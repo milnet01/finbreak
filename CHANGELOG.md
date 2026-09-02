@@ -74,6 +74,15 @@ signaling per
 
 ### Fixed
 
+- **Cutting a release refuses an unpushed version bump** (FIBR-0327)
+  The tag is created on GitHub, so an unpushed bump tagged the previous
+  commit and attached downloads built from a version the tag did not name.
+
+- **A part-published release now reports itself instead of going quiet** (FIBR-0327)
+  When an upload failed midway the release scripts stopped before the check
+  that would have said which downloads were missing -- which is how v0.1.21
+  went out with a signature file whose subject was gone.
+
 - **A dropped download says so instead of raising the tamper alarm** (FIBR-0327)
   A download cut short by the network was reported as a failed signature
   check, which is the warning reserved for a file that has been altered.

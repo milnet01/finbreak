@@ -203,9 +203,18 @@ PY
 # The merged SHA256SUMS + its re-signed sig + the version-stamped windows SBOM
 # ride the SAME --clobber upload as the exe (§ 3.5).
 echo "== release-windows: attaching $EXE + .exe.sig + SHA256SUMS + windows SBOM to $TAG =="
+# Captured, not left to `set -e`. --clobber deletes each existing asset before
+# replacing it, so a failure part-way down the list leaves the release SHORT —
+# the state the read-back gate below exists to report, and the one this very
+# upload produced on 0.1.21 (a 503 left SHA256SUMS.sig without SHA256SUMS).
+# Dying here skipped the gate on its own motivating failure (FIBR-0327).
+UPLOAD_RC=0
 gh release upload "$TAG" "$DIST/$EXE" "$DIST/$EXE.sig" \
     "$DIST/SHA256SUMS" "$DIST/SHA256SUMS.sig" \
-    "$DIST/finbreak-$VERSION-windows.cdx.json" --clobber
+    "$DIST/finbreak-$VERSION-windows.cdx.json" --clobber || UPLOAD_RC=$?
+if [ "$UPLOAD_RC" -ne 0 ]; then
+    echo "release-windows: the upload exited $UPLOAD_RC — running the read-back gate anyway to report what is actually on the release" >&2
+fi
 
 # --- 8) HARD GATE: read the published asset list back (FIBR-0275, INV-8) ---
 # This is the phase that COMPLETES the release, so the expected total is EIGHT:
@@ -289,5 +298,12 @@ if ! printf '%s\n' "${PUBLISHED[@]}" | grep -q -- '-x86_64.exe$'; then
 fi
 
 echo "== release-windows: asset read-back OK — $ASSET_COUNT/8 assets, every .sig has its subject =="
+
+# The gate passing means the NAMES are all there; it cannot tell whether a failed
+# upload left stale bytes behind an existing name.
+if [ "$UPLOAD_RC" -ne 0 ]; then
+    echo "release-windows: PUBLISH SUSPECT — every expected asset name is present, but the upload exited $UPLOAD_RC. Verify the asset bytes before announcing $TAG." >&2
+    exit 1
+fi
 
 echo "== release-windows: DONE — $TAG now carries the signed Windows .exe (+ .exe.sig that activates the updater) =="

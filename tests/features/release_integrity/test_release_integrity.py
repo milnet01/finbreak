@@ -584,3 +584,77 @@ def test_INV8_readback_failure_actually_aborts_not_swallowed(
         "— under `set -euo pipefail` a failed check must still actually abort "
         "the script for 'fail loudly' to mean anything"
     )
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0327 — the read-back gate is REACHABLE, and the bump is pushed
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize(
+    "script", [_RELEASE_LINUX, _RELEASE_WINDOWS], ids=lambda p: p.name
+)
+def test_FIBR0327_a_failed_publish_still_reaches_the_readback_gate(script):
+    """FIBR-0327 — the gate was present, positioned and able to abort, and it
+    still never ran on the failure it was written for.
+
+    Under ``set -euo pipefail`` the publish command's own non-zero status ends
+    the script on the spot. ``--clobber`` deletes each existing asset before
+    replacing it, so a 503 part-way down the list leaves the release SHORT --
+    measured on 0.1.21, which ended up carrying SHA256SUMS.sig without
+    SHA256SUMS. That is precisely the state the gate reports, and the script
+    died before reaching it.
+
+    Structural, like its INV-8 siblings above: executing these scripts needs a
+    GitHub release, a signing key and a built AppImage. What it pins is the one
+    property the bug violated -- EVERY publish command captures its exit status
+    rather than being allowed to end the script.
+    """
+    text = script.read_text()
+    # Fold the two continuation forms so each publish command is one logical line.
+    joined = re.sub(r"\\\s*\n\s*", " ", text)
+    joined = re.sub(r"\|\|\s*\n\s*", "|| ", joined)
+
+    commands = re.findall(
+        r"^\s*gh release (?:create|upload) [^\n]*", joined, re.MULTILINE
+    )
+    assert commands, f"{script.name}: no publish command found"
+    for command in commands:
+        assert "UPLOAD_RC=$?" in command, (
+            f"{script.name}: a publish command leaves its exit status to "
+            "`set -e`, so a failure there skips the read-back gate:\n"
+            f"  {command.strip()}"
+        )
+    assert re.search(r'if \[ "\$UPLOAD_RC" -ne 0 \]', text), (
+        f"{script.name}: capturing the status buys nothing unless a failed "
+        "publish is reported"
+    )
+
+
+def test_FIBR0327_release_linux_requires_the_bump_to_be_pushed():
+    """FIBR-0327 — the dirty-tree check's own message says "commit + push", and
+    it tested only ``git status --porcelain``.
+
+    The tag is created on the REMOTE, off the remote's HEAD, so a committed but
+    unpushed bump passed the gate and then tagged the PRE-bump commit --
+    publishing assets built from a version the tag does not point at. Nothing
+    caught it, and .claude/bump.json's own notes recorded the gap.
+
+    The fetch is part of the contract: without it ``@{u}`` is whatever this clone
+    last saw, so the comparison answers a stale question.
+    """
+    text = _RELEASE_LINUX.read_text()
+    assert "git fetch --quiet origin" in text, (
+        "release-linux.sh must refresh the upstream ref before comparing "
+        "against it, or the unpushed check reads a stale @{u}"
+    )
+    assert "git rev-list --count '@{u}..HEAD'" in text, (
+        "release-linux.sh must refuse an unpushed HEAD: the tag is created on "
+        "the remote, so an unpushed bump tags the pre-bump commit"
+    )
+    fetch_at = text.index("git fetch --quiet origin")
+    # The INVOCATION, not the header comment that also names the script.
+    build_at = re.search(
+        r"^scripts/build-release-appimage\.sh", text, re.MULTILINE
+    ).start()
+    assert fetch_at < build_at, (
+        "the check must come before the multi-minute build, not after it"
+    )

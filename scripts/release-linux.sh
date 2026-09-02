@@ -57,6 +57,19 @@ fi
 
 [ -z "$(git status --porcelain)" ] || { echo "release-linux: working tree is dirty — commit + push the bump first" >&2; exit 1; }
 
+# The message above says PUSH, and the check above only tested COMMITTED. Step 7
+# creates the tag on the REMOTE, off the remote's HEAD — so a committed but
+# unpushed bump passed this gate and then tagged the PRE-bump commit, publishing
+# assets built from a version the tag does not point at. Nothing caught it
+# (FIBR-0327).
+#
+# Fetch first: without it @{u} is whatever this clone last saw, so the comparison
+# answers a stale question. A fetch failure is fatal here rather than skipped —
+# the script cannot reach GitHub for the release either.
+git fetch --quiet origin || { echo "release-linux: could not fetch origin — cannot tell whether the bump is pushed" >&2; exit 1; }
+UNPUSHED="$(git rev-list --count '@{u}..HEAD')"
+[ "$UNPUSHED" -eq 0 ] || { echo "release-linux: $UNPUSHED commit(s) not pushed — the tag is created on the REMOTE, so it would point at the pre-bump commit. Push first." >&2; exit 1; }
+
 # --- 1) build + clean-room + sign the AppImage ----------------------------
 echo "== release-linux: building + clean-rooming + signing the AppImage (a few minutes) =="
 scripts/build-release-appimage.sh
@@ -179,15 +192,27 @@ PY
 # --- 7) publish (non-prerelease so /releases/latest resolves) -------------
 # Step 7 — the manifest, its sig, and the linux SBOM ride the SAME asset list as
 # the AppImage; --clobber replaces any prior manifest with this merged, re-signed one.
+# The upload's exit status is CAPTURED rather than left to `set -e`. --clobber
+# deletes each existing asset before replacing it, so a failure part-way down the
+# list leaves the release SHORT, not unchanged — which is exactly the state the
+# read-back gate below exists to report. Dying here skipped that gate on the one
+# failure it was written for: measured on 0.1.21, a 503 mid-list left the release
+# carrying SHA256SUMS.sig without SHA256SUMS (FIBR-0327).
+UPLOAD_RC=0
 if gh release view "$TAG" >/dev/null 2>&1; then
     echo "== release-linux: release $TAG already exists — uploading AppImage assets (clobber) =="
     gh release upload "$TAG" "$DIST/$APPIMAGE" "$DIST/$APPIMAGE.sig" \
-        "$DIST/SHA256SUMS" "$DIST/SHA256SUMS.sig" "$DIST/finbreak-$VERSION-linux.cdx.json" --clobber
+        "$DIST/SHA256SUMS" "$DIST/SHA256SUMS.sig" "$DIST/finbreak-$VERSION-linux.cdx.json" --clobber ||
+        UPLOAD_RC=$?
 else
     echo "== release-linux: creating release $TAG =="
     gh release create "$TAG" "$DIST/$APPIMAGE" "$DIST/$APPIMAGE.sig" \
         "$DIST/SHA256SUMS" "$DIST/SHA256SUMS.sig" "$DIST/finbreak-$VERSION-linux.cdx.json" \
-        --title "finbreak $TAG" --notes-file "$NOTES" --latest
+        --title "finbreak $TAG" --notes-file "$NOTES" --latest ||
+        UPLOAD_RC=$?
+fi
+if [ "$UPLOAD_RC" -ne 0 ]; then
+    echo "release-linux: the publish step exited $UPLOAD_RC — running the read-back gate anyway to report what is actually on the release" >&2
 fi
 
 # Step 7a — HARD GATE: read the published asset list back (FIBR-0275, INV-8).
@@ -284,6 +309,14 @@ if ! printf '%s\n' "${PUBLISHED[@]}" | grep -q -- '-x86_64.AppImage$'; then
 fi
 
 echo "== release-linux: asset read-back OK — $ASSET_COUNT/5 assets, every .sig has its subject =="
+
+# The gate passing means the NAMES are all there; it cannot tell whether a failed
+# upload left stale bytes behind an existing name. So an errored upload still
+# exits non-zero, and says which of the two questions it is answering.
+if [ "$UPLOAD_RC" -ne 0 ]; then
+    echo "release-linux: PUBLISH SUSPECT — every expected asset name is present, but the publish step exited $UPLOAD_RC. Verify the asset bytes before announcing $TAG." >&2
+    exit 1
+fi
 
 # Step 8 — bring the tag home. The publish step above creates the ref on the
 # REMOTE only (nothing in this script tags locally), so without this the local
