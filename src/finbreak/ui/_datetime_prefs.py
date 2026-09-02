@@ -100,14 +100,28 @@ def _read_token(combo: QComboBox) -> str:
 
 
 def _read_timezone(combo: QComboBox) -> str:
-    """The timezone combo's stored token. If the user free-typed an entry (Qt
-    leaves ``currentData()`` non-``str`` at ``currentIndex == -1``), first try to
-    honour a validly-typed id (D4 "override to pin"); only if that also fails
-    degrade to ``"system"`` — so the field never persists a non-``str``."""
-    data = combo.currentData()
-    if isinstance(data, str):
-        return data
-    typed = combo.currentText()
+    """The timezone the FIELD is showing — which is not always the selected item.
+
+    On an editable combo, typing text that matches no item leaves ``currentIndex``
+    (and so ``currentData()``) on the PREVIOUS one while the field displays what
+    was typed. Measured: select Africa/Johannesburg, type ``Europe/Kyiv``, and
+    ``currentData()`` still reads ``Africa/Johannesburg``.
+
+    So the old guard, which keyed on ``currentData()`` not being a ``str``, could
+    never fire: a free-typed zone this host does not enumerate silently persisted
+    the zone the user had just replaced, with the field showing the new one. Since
+    the pinned zone decides what "today" is, that is a wrong-day render from a
+    preference the user believes they changed (FIBR-0327).
+
+    The text decides whenever it disagrees with the selected item, honouring any
+    valid id (D4 "override to pin"); only text that names no zone at all degrades
+    to ``"system"``, so the field never persists a non-``str``.
+    """
+    index = combo.currentIndex()
+    typed = combo.currentText().strip()
+    if index >= 0 and typed == combo.itemText(index):
+        data = combo.itemData(index)
+        return data if isinstance(data, str) else DATETIME_SYSTEM
     if QTimeZone(typed.encode()).isValid():
         return typed
     return DATETIME_SYSTEM

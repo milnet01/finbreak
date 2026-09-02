@@ -10,6 +10,7 @@ import pytest
 from PySide6.QtCore import QTimer
 
 from conftest import _PW
+from finbreak.errors import VaultStateError
 from finbreak.services.auth import AuthService
 from finbreak.services.backup import (
     MIN_BACKUP_PASSWORD_LEN,
@@ -555,3 +556,55 @@ def test_verify_wiring_runs_service_and_renders(qtbot, paths, monkeypatch):
     assert "10" in dialog._result.text(), "the VerifyResult is rendered in the dialog"
     assert QApplication.overrideCursor() is None, "the wait cursor is always restored"
     auth.lock()
+
+
+def test_FIBR0327_a_failed_recovery_routes_rather_than_crashing_startup(
+    qtbot, tmp_path, monkeypatch
+):
+    """FIBR-0327 — the recovery runs inside ``MainWindow.__init__``, on a vault
+    that is mid-surgery, and its ``os.replace`` calls were unguarded.
+
+    A read-only or full data directory therefore made an OSError the app's whole
+    startup: unlaunchable, with a traceback, at the moment the user most needs it
+    to say something useful. Leaving the mixed pair alone instead routes to
+    ``run()``'s ``VaultStateError`` branch, which names the situation.
+
+    ``os.replace`` either renames or does nothing, so the ``*.old`` copies survive
+    a failed run and a retry once the directory is writable recovers then. That is
+    asserted, because a recovery that half-happens is worse than one that does
+    not.
+    """
+    import finbreak.ui.main_window as mw
+
+    dest = tmp_path / "dest"
+    dest.mkdir()
+    vault_p, sidecar_p = dest / "vault.db", dest / "vault.kdf.json"
+    original_auth = AuthService(vault_p, sidecar_p)
+    original_auth.first_run(bytearray(b"the original master"), "USD")
+    original_auth.lock()
+    original_vault_bytes = vault_p.read_bytes()
+    old_db = dest / "vault.db.20260101T000000.old"
+    old_sidecar = dest / "vault.kdf.json.20260101T000000.old"
+    vault_p.rename(old_db)
+    sidecar_p.rename(old_sidecar)
+    vault_p.write_bytes(b"a half-installed new vault with no sidecar yet")
+
+    def refuse(*_args, **_kwargs):
+        raise OSError(30, "Read-only file system")
+
+    monkeypatch.setattr(mw.os, "replace", refuse)
+
+    service = AuthService(vault_p, sidecar_p)
+    with pytest.raises(VaultStateError):
+        mw.MainWindow(service)  # the mixed pair is reported, not a traceback
+
+    monkeypatch.undo()
+    assert old_db.exists() and old_sidecar.exists(), (
+        "FIBR-0327: a failed recovery must leave the *.old copies intact, or the "
+        "retry has nothing to recover from"
+    )
+
+    # The retry, once the directory is writable again, still recovers.
+    window = mw.MainWindow(AuthService(vault_p, sidecar_p))
+    qtbot.addWidget(window)
+    assert vault_p.read_bytes() == original_vault_bytes

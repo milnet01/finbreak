@@ -303,3 +303,115 @@ def test_FIBR0327_no_ui_module_reads_the_os_clock_directly():
         "use `from finbreak.datetime_format import today as app_today`:\n  "
         + "\n  ".join(offenders)
     )
+
+
+def test_FIBR0327_a_free_typed_zone_is_what_gets_saved(qtbot, monkeypatch):
+    """FIBR-0327 — the timezone combo is editable so a zone this host does not
+    enumerate can still be pinned, and the guard for that could never fire.
+
+    Typing text that matches no item leaves ``currentIndex`` — and so
+    ``currentData()`` — on the PREVIOUS item, while the field shows what was
+    typed. Measured: select Africa/Johannesburg, type Europe/Kyiv, and
+    ``currentData()`` still reads Africa/Johannesburg. The old guard keyed on
+    ``currentData()`` not being a ``str``, so it was dead code, and Save quietly
+    wrote back the zone the user had just replaced.
+
+    Since FIBR-0327 the pinned zone also decides what "today" is, so this is a
+    wrong-day render from a preference the user believes they changed.
+    """
+    from finbreak.ui import _datetime_prefs
+
+    typed = "Europe/Kyiv"
+    assert QTimeZone(typed.encode()).isValid(), "fixture must use a real zone"
+
+    # A host whose list offers neither the starting zone nor the typed one.
+    monkeypatch.setattr(
+        _datetime_prefs,
+        "_available_zone_ids",
+        lambda: ["Africa/Johannesburg", "Europe/London"],
+    )
+    tz, date, time = QComboBox(), QComboBox(), QComboBox()
+    for combo in (tz, date, time):
+        qtbot.addWidget(combo)
+    _datetime_prefs.populate_datetime_combos(
+        tz,
+        date,
+        time,
+        system_tz_label="System",
+        system_date_label="System",
+        system_time_label="System",
+        current=DateTimePrefs(
+            timezone="Africa/Johannesburg",
+            date_format=DATETIME_SYSTEM,
+            time_format=DATETIME_SYSTEM,
+        ),
+    )
+
+    tz.setCurrentText(typed)  # what free-typing into the field does
+
+    assert tz.currentData() == "Africa/Johannesburg", (
+        "precondition: the selected ITEM is still the old zone — that is the "
+        "whole trap, and without it this test proves nothing"
+    )
+    read_back = _datetime_prefs.read_datetime_prefs(tz, date, time)
+    assert read_back.timezone == typed, (
+        "FIBR-0327: Save must write the zone the field is showing.\n"
+        f"  expected: {typed}\n  actual:   {read_back.timezone}"
+    )
+
+
+def test_FIBR0327_free_typed_nonsense_still_degrades_to_system(qtbot):
+    """Text that names no zone at all is not a pin — it degrades, so the field
+    never persists something no clock can read."""
+    from finbreak.ui import _datetime_prefs
+
+    tz, date, time = QComboBox(), QComboBox(), QComboBox()
+    for combo in (tz, date, time):
+        qtbot.addWidget(combo)
+    _datetime_prefs.populate_datetime_combos(
+        tz,
+        date,
+        time,
+        system_tz_label="System",
+        system_date_label="System",
+        system_time_label="System",
+        current=DateTimePrefs(
+            timezone=DATETIME_SYSTEM,
+            date_format=DATETIME_SYSTEM,
+            time_format=DATETIME_SYSTEM,
+        ),
+    )
+
+    tz.setCurrentText("Narnia/Cair_Paravel")
+
+    assert _datetime_prefs.read_datetime_prefs(tz, date, time).timezone == (
+        DATETIME_SYSTEM
+    )
+
+
+def test_FIBR0327_selecting_the_system_item_still_reads_as_system(qtbot):
+    """The System item's LABEL is translated prose and its data is the sentinel,
+    so the text-decides rule must not mistake a plain selection for free text."""
+    from finbreak.ui import _datetime_prefs
+
+    tz, date, time = QComboBox(), QComboBox(), QComboBox()
+    for combo in (tz, date, time):
+        qtbot.addWidget(combo)
+    _datetime_prefs.populate_datetime_combos(
+        tz,
+        date,
+        time,
+        system_tz_label="Use this computer's time zone",
+        system_date_label="System",
+        system_time_label="System",
+        current=DateTimePrefs(
+            timezone="Africa/Johannesburg",
+            date_format=DATETIME_SYSTEM,
+            time_format=DATETIME_SYSTEM,
+        ),
+    )
+    tz.setCurrentIndex(0)
+
+    assert _datetime_prefs.read_datetime_prefs(tz, date, time).timezone == (
+        DATETIME_SYSTEM
+    )

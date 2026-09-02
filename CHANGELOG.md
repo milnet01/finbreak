@@ -74,6 +74,16 @@ signaling per
 
 ### Fixed
 
+- **A blocked recovery from an interrupted restore explains itself** (FIBR-0327)
+  If the folder could not be written to, the app failed to start with a
+  traceback. It now reports the vault state and leaves the saved copies intact
+  so a later attempt still recovers.
+
+- **A typed-in time zone is the one that gets saved** (FIBR-0327)
+  Typing a zone the list does not offer showed the new zone in the field and
+  quietly kept the old one -- and the pinned zone decides what counts as
+  today, so dates near midnight could render on the wrong day.
+
 - **Closing during an update check is safer** (FIBR-0327)
   A check or download still running at close could be cut off mid-flight, or
   finish afterwards and act on a window that had already gone.

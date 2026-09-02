@@ -21,6 +21,7 @@ menu (Center / Reset) needs no vault and stays enabled while locked.
 
 from __future__ import annotations
 
+import logging
 import os
 import tempfile
 from collections.abc import Callable
@@ -150,6 +151,8 @@ DONATE_PAYBRU = "https://paybru.co.za/tip/ants-projects-hub"
 # (FIBR-0156). Like Donate, this is a user-initiated egress via _open_url, not an
 # app network call (security-model INV-8) — no vault data leaves the machine.
 REPORT_ISSUE_URL = "https://github.com/milnet01/finbreak/issues/new"
+
+log = logging.getLogger(__name__)
 
 _STATUS_TIMEOUT_MS = 4000
 # How long a quit waits for an in-flight update worker before detaching it. Short
@@ -1439,14 +1442,25 @@ class MainWindow(QMainWindow):
         # half. Without it the recovered original loses any committed-but-not-
         # checkpointed tail, and the aborted restore's -wal is left beside it.
         stamp = common[-1]
-        for suffix in ("", *_WAL_SIBLINGS):
-            live_db = vault_path.with_name(vault_path.name + suffix)
-            old_db = db_olds[stamp].with_name(db_olds[stamp].name + suffix)
-            if old_db.exists():
-                os.replace(old_db, live_db)
-            else:
-                live_db.unlink(missing_ok=True)
-        os.replace(sidecar_olds[stamp], sidecar_path)
+        # Guarded: this runs inside MainWindow.__init__, on a vault that is
+        # mid-surgery, and a read-only or full data directory made an OSError here
+        # the app's whole startup -- unlaunchable, with a traceback (FIBR-0327).
+        # Leaving the mixed pair in place instead routes to run()'s VaultStateError
+        # branch, which names the situation and says what to do.
+        try:
+            for suffix in ("", *_WAL_SIBLINGS):
+                live_db = vault_path.with_name(vault_path.name + suffix)
+                old_db = db_olds[stamp].with_name(db_olds[stamp].name + suffix)
+                if old_db.exists():
+                    os.replace(old_db, live_db)
+                else:
+                    live_db.unlink(missing_ok=True)
+            os.replace(sidecar_olds[stamp], sidecar_path)
+        except OSError:
+            # The *.old copies are untouched by a partial run -- os.replace either
+            # renames or does nothing -- so a retry once the directory is writable
+            # finds the same signature and recovers then.
+            log.exception("could not recover the interrupted restore from %s", stamp)
 
     def _route_pre_login(self) -> None:
         """Return to the correct pre-login surface (first-run when no vault, unlock
@@ -1601,7 +1615,12 @@ class MainWindow(QMainWindow):
             ),
         )
 
-    def _on_manual_check_error(self, _exc: object) -> None:
+    def _on_manual_check_error(self, exc: object) -> None:
+        # Recorded, not discarded. This signal fires only on a genuine fault, and
+        # the exception was dropped on the floor in a module that had no logger at
+        # all -- so the one artefact that could explain a failing update check did
+        # not exist (FIBR-0327).
+        log.warning("manual update check failed: %s", exc)
         # Both manual-check results are gated on still being unlocked. The check runs
         # on a worker thread, so an idle auto-lock can fire between the click and the
         # reply — and these two were the only update handlers with no guard, popping
