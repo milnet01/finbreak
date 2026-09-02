@@ -74,6 +74,10 @@ signaling per
 
 ### Fixed
 
+- **The import preview shows amounts the way the rest of the app does** (FIBR-0327)
+  It had no currency symbol, no thousands separators and ignored the
+  negative-amount style -- on the last screen before an import you cannot undo.
+
 - **A blocked recovery from an interrupted restore explains itself** (FIBR-0327)
   If the folder could not be written to, the app failed to start with a
   traceback. It now reports the vault state and leaves the saved copies intact

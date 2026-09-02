@@ -12,6 +12,7 @@ in-repo strings — no real financial data, no network (testing.md § 6).
 
 import logging
 from collections.abc import Iterator
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -28,7 +29,7 @@ from conftest import (
 from finbreak.crypto import SALT_LEN, derive_key
 from finbreak.importers.csv_importer import CsvImporter, read_header
 from finbreak.migrations import LATEST_SCHEMA_VERSION, run_migrations
-from finbreak.models import ColumnMapping
+from finbreak.models import ColumnMapping, NegativeStyle
 from finbreak.repositories.import_profiles import ImportProfileRepository
 from finbreak.repositories.statement_periods import StatementPeriodRepository
 from finbreak.repositories.transactions import TransactionRepository
@@ -36,6 +37,7 @@ from finbreak.services.accounts import AccountService
 from finbreak.services.auth import AuthService
 from finbreak.services.import_ import ImportService, signature_for
 from finbreak.services.transactions import TransactionService
+from finbreak.ui._amount import _format_amount
 
 pytestmark = pytest.mark.features
 
@@ -697,8 +699,16 @@ def test_INV10c_preview_shows_rows_summary_and_period(qtbot, service, tmp_path):
     assert widget._summary_label.text() != ""
     # The Amount column shows the decimal amount, not raw minor units: rows
     # interleave by row_number, so row 0 is Coffee (-10.00) and row 2 is Salary.
-    assert widget._preview_table.item(0, 2).text() == "-10.00"
-    assert widget._preview_table.item(2, 2).text() == "1000.00"
+    # Rendered through the SHARED money formatter since FIBR-0327 -- this is
+    # the last screen before an irreversible commit, so it must read the way
+    # every other money surface does. The first leg keeps the original
+    # decimal-not-minor-units intent independently of that formatter.
+    coffee = widget._preview_table.item(0, 2).text()
+    assert "10" in coffee and "1000" not in coffee, coffee
+    assert coffee == _format_amount(Decimal("-10.00"), "ZAR", NegativeStyle.MINUS)
+    assert widget._preview_table.item(2, 2).text() == _format_amount(
+        Decimal("1000.00"), "ZAR", NegativeStyle.MINUS
+    )
     assert widget._period_start.date().toString(Qt.DateFormat.ISODate) == "2026-01-05"
     assert widget._period_end.date().toString(Qt.DateFormat.ISODate) == "2026-01-20"
 
@@ -1037,3 +1047,38 @@ def test_INV5a_preview_marks_the_rows_dedup_will_drop(service, tmp_path):
     assert third.new_count == 1 and third.duplicate_count == 1
     dropped = [d for d in third.drafts if d.row_number in third.duplicate_row_numbers]
     assert [d.description for d in dropped] == ["Coffee"]
+
+
+def test_FIBR0327_preview_honours_the_negative_style_preference(
+    qtbot, service, tmp_path
+):
+    """FIBR-0327 — the preview's Amount column bypassed the shared money
+    formatter, so it ignored the user's negative-amount style along with the
+    grouping and the currency symbol. That is the last screen before an
+    irreversible commit, and it showed money differently from every other screen.
+
+    Asserted on the style the user actually chose, so the pref reaching the
+    widget is what is being pinned — not merely that some formatter ran.
+    """
+    from finbreak.services.auth import AmountPrefs
+    from finbreak.ui.import_wizard import ImportWizardWidget
+
+    acct = _acct(service)
+    ImportService(service.vault).save_profile("MyBank", HEADER, SINGLE)
+    path = _write_csv(
+        tmp_path, "stmt.csv", HEADER, [["2026-01-05", "Coffee", "-10.00"]]
+    )
+
+    widget = ImportWizardWidget(
+        service, amount_prefs=AmountPrefs(NegativeStyle.BRACKETS, True)
+    )
+    qtbot.addWidget(widget)
+    widget._account_combo.setCurrentIndex(widget._account_combo.findData(acct))
+    widget._select_file(str(path))
+
+    cell = widget._preview_table.item(0, 2).text()
+    assert cell.startswith("(") and cell.endswith(")"), (
+        "FIBR-0327: a user who chose bracketed negatives must see them here too.\n"
+        f"  actual: {cell!r}"
+    )
+    assert cell == _format_amount(Decimal("-10.00"), "ZAR", NegativeStyle.BRACKETS)

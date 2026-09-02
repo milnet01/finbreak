@@ -57,10 +57,10 @@ from finbreak.importers.pdf_importer import (
 )
 from finbreak.importers.sniff import looks_like_ofx, looks_like_pdf
 from finbreak.importers.standard_bank import StandardBankImporter
-from finbreak.models import ColumnMapping, ImportProfile, OfxAccountInfo
+from finbreak.models import ColumnMapping, ImportProfile, NegativeStyle, OfxAccountInfo
 from finbreak.services.account_match import match_account
 from finbreak.services.accounts import AccountService
-from finbreak.services.auth import AuthService
+from finbreak.services.auth import AmountPrefs, AuthService
 from finbreak.services.batch_import import (
     CANCELLED,
     BatchFile,
@@ -68,7 +68,12 @@ from finbreak.services.batch_import import (
     next_question,
 )
 from finbreak.services.import_ import ImportPreview, ImportService
-from finbreak.services.transactions import read_minor_unit_exponent, to_display_decimal
+from finbreak.services.transactions import (
+    TransactionService,
+    read_minor_unit_exponent,
+    to_display_decimal,
+)
+from finbreak.ui._amount import _format_amount
 from finbreak.ui._table_state import remember_columns
 from finbreak.ui.account_create import CreateAccountDialog
 from finbreak.ui.import_batch import BatchReviewWidget
@@ -105,13 +110,27 @@ _NEED_PASSWORD = _NeedPassword()
 class ImportWizardWidget(QWidget):
     done = Signal()
 
-    def __init__(self, service: AuthService, parent: QWidget | None = None):
+    def __init__(
+        self,
+        service: AuthService,
+        parent: QWidget | None = None,
+        *,
+        amount_prefs: AmountPrefs | None = None,
+    ):
         super().__init__(parent)
         self._imports = ImportService(service.vault)
         self._accounts = AccountService(service.vault)
         # The currency scale, for rendering preview amounts as decimals (not raw
         # minor units) — the same value the importer/service use (reuse, § 1.3).
         self._exponent = read_minor_unit_exponent(service.vault.connection)
+        # The preview is the LAST screen before an irreversible commit, and its
+        # Amount column bypassed the shared money formatter -- no grouping, no
+        # currency symbol, no negative-style preference, so the numbers a user
+        # checked did not match the ones every other screen shows them
+        # (FIBR-0327). Same default as TransactionsView for a caller that passes
+        # none.
+        self._symbol = TransactionService(service.vault).base_currency()
+        self._amount_prefs = amount_prefs or AmountPrefs(NegativeStyle.MINUS, True)
 
         self.setWindowTitle(self.tr("Import transactions"))
 
@@ -1389,10 +1408,16 @@ class ImportWizardWidget(QWidget):
                     [
                         str(draft.row_number),
                         draft.occurred_on,
-                        # Render the decimal amount (e.g. -10.00), not the raw
-                        # minor units (-1000) — this preview is read by a person
-                        # checking a statement before import. No float (D1).
-                        str(to_display_decimal(draft.amount_minor, self._exponent)),
+                        # Through the shared formatter, like every other money
+                        # surface: this preview is read by a person checking a
+                        # statement before an irreversible commit, so it must show
+                        # the amount the way the rest of the app does. No float
+                        # (D1) — _format_amount is exact.
+                        _format_amount(
+                            to_display_decimal(draft.amount_minor, self._exponent),
+                            self._symbol,
+                            self._amount_prefs.negative_style,
+                        ),
                         draft.description,
                         # A row the dedup delta will drop is NOT "OK" — it is not
                         # going to be imported at all. Labelling every draft OK

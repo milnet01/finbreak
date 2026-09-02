@@ -12,6 +12,7 @@ first-run vault is already at v4, D9).
 
 import logging
 from collections.abc import Iterator
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -23,12 +24,13 @@ from finbreak.importers.ofx_importer import (
     _MAX_OFX_TRANSACTIONS,
     OfxImporter,
 )
-from finbreak.models import OfxAccountInfo
+from finbreak.models import NegativeStyle, OfxAccountInfo
 from finbreak.repositories.statement_periods import StatementPeriodRepository
 from finbreak.repositories.transactions import TransactionRepository
 from finbreak.services.auth import AuthService
 from finbreak.services.import_ import ImportService
 from finbreak.services.transactions import read_minor_unit_exponent
+from finbreak.ui._amount import _format_amount
 
 pytestmark = pytest.mark.features
 
@@ -389,7 +391,11 @@ def test_INV7b_preview_renders_decimal_amount_and_period(qtbot, service, tmp_pat
     )
     widget = _wizard(qtbot, service, acct)
     widget._select_file(str(path))
-    assert widget._preview_table.item(0, 2).text() == "-10.00", "decimal, not -1000"
+    # Decimal, not raw minor units -- and through the shared money formatter
+    # since FIBR-0327, like every other money surface.
+    cell = widget._preview_table.item(0, 2).text()
+    assert "10" in cell and "1000" not in cell, cell
+    assert cell == _format_amount(Decimal("-10.00"), "ZAR", NegativeStyle.MINUS)
     assert widget._summary_label.text() != ""
     assert widget._period_start.date().toString(Qt.DateFormat.ISODate) == "2026-01-01"
     assert widget._period_end.date().toString(Qt.DateFormat.ISODate) == "2026-01-31"
