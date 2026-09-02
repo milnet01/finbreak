@@ -64,9 +64,15 @@ class StatementPeriodRepository:
         is currently ``NULL``** — filling a gap left by a prior CSV-only import. For
         one span the closing balance is fixed, so a non-``NULL`` stored balance is
         **never** overwritten; an incoming *different* value signals a parse /
-        wrong-file error, so keep the stored value but **log a warning** naming the
-        span and both values rather than swallowing the disagreement. Commit-free —
-        the caller's import transaction owns the commit."""
+        wrong-file error, so keep the stored value but **log a warning naming the
+        span (the period id) only** rather than swallowing the disagreement — the
+        balances are decrypted vault content and security-model INV-9 forbids
+        logging them, which the body says again at the call. Commit-free — the
+        caller's import transaction owns the commit.
+
+        The incoming-``None`` test is the CALLER's: this takes an ``int``, and a
+        caller that passes on every span reuse logs a spurious disagreement on
+        each CSV re-import over a span that already has a balance."""
         stored = self._conn.execute(
             "SELECT closing_balance_minor FROM statement_periods WHERE id = ?",
             (period_id,),

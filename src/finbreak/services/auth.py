@@ -55,7 +55,7 @@ from finbreak.services.reporting import (
     MODE_YEAR_TO_DATE,
     ReportPrefs,
 )
-from finbreak.vault import Vault, old_copy_sets
+from finbreak.vault import SQLCIPHER_COMPAT_ACCEPTED, Vault, old_copy_sets
 
 log = logging.getLogger(__name__)
 
@@ -577,7 +577,24 @@ class AuthService:
         § 6 forbids that by name, and ``ui/unlock.py``'s ``_PAIRING_BROKEN`` is
         written for this state and keys on ``VaultStateError`` (FIBR-0307
         finding 2).
+
+        ``cipher_compat`` arrives from the PLAINTEXT sidecar, so it is validated
+        here. ``Vault.open``'s comment said the caller allowlist-validates it,
+        which was true of ``services/backup.py`` and false of this module's two
+        sites. A one-byte edit to that file produced an unsupported PRAGMA level,
+        and the open then failed as a wrong password over an intact vault — the
+        exact misreport § 6 forbids. The check is not in ``Vault.open`` because
+        that is a primitive an explicit caller may legitimately point at another
+        level; what needs guarding is the value read from a file.
         """
+        if cipher_compat is not None and cipher_compat not in (
+            SQLCIPHER_COMPAT_ACCEPTED
+        ):
+            _wipe(key)
+            raise VaultStateError(
+                f"the sidecar records an unsupported cipher-compatibility level "
+                f"({cipher_compat!r}); the vault itself may be intact"
+            )
         try:
             self._vault.open(key, cipher_compat=cipher_compat)
         except DatabaseError as exc:

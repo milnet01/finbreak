@@ -1547,7 +1547,14 @@ def test_FIBR0327_widening_the_accepted_set_lets_an_older_fbk_restore(
     # Now restore as a build that WRITES 4 and ACCEPTS both.
     monkeypatch.setattr(vault_mod, "SQLCIPHER_COMPAT", 4)
     monkeypatch.setattr(backup_mod, "SQLCIPHER_COMPAT", 4)
+    # The set is imported into each module's own namespace, and BOTH read it:
+    # backup guards the manifest, auth._open_with guards the sidecar value on
+    # every later unlock. Patching one would leave the restore green and the
+    # unlock red.
+    import finbreak.services.auth as auth_mod
+
     monkeypatch.setattr(backup_mod, "SQLCIPHER_COMPAT_ACCEPTED", frozenset({4, 3}))
+    monkeypatch.setattr(auth_mod, "SQLCIPHER_COMPAT_ACCEPTED", frozenset({4, 3}))
 
     auth = _dest_auth(tmp_path, "widened")
     BackupService(auth.vault, auth).restore_backup(fbk, _BACKUP_PW, _M2)

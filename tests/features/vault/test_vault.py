@@ -1114,3 +1114,32 @@ def test_FIBR0327_embedded_schema_version_must_be_a_real_version(paths, bad):
     with pytest.raises(SchemaVersionError):
         run_migrations(conn)
     service.lock()
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0327 — `cipher_compatibility` comes from the PLAINTEXT sidecar, so it is
+# attacker- or corruption-reachable without the vault key. `Vault.open`'s comment
+# claimed the caller allowlist-validates it; true of services/backup.py, false of
+# auth.py's two sites, which passed it straight through.
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize("bad", [99, -1, 0], ids=["too-high", "negative", "zero"])
+def test_FIBR0327_damaged_cipher_level_is_reported_as_a_pairing_problem(paths, bad):
+    """The vault is intact — only one byte of a plaintext JSON file changed. It
+    must not be reported as a wrong password, which charges the unlock throttle
+    for a correct one and puts the destructive reset in front of a user whose
+    data is fine (§ 6 forbids that by name)."""
+    import json
+
+    from finbreak.errors import VaultStateError
+
+    service = AuthService(*paths)
+    service.first_run(bytearray(_PW), "ZAR")
+    service.lock()
+
+    sidecar_path = paths[1]
+    payload = json.loads(sidecar_path.read_text())
+    payload["cipher_compatibility"] = bad
+    sidecar_path.write_text(json.dumps(payload))
+
+    with pytest.raises(VaultStateError):
+        service.unlock(bytearray(_PW))
