@@ -233,10 +233,20 @@ be checkable. Enforcement arrives in step with the code:
 - **INV-3d — Slot wrapping is authenticated and fails closed**
   (FIBR-0019 INV-3). Any modification to a slot — a flipped
   ciphertext or nonce bit, a renamed slot, a weakened cost parameter
-  — refuses to unwrap. The slot name and the Argon2id cost parameters
-  are bound as AES-GCM additional authenticated data, so a `recovery`
-  slot cannot be renamed to `master`; both are cheap edits to a
-  plaintext file and neither is detectable from the ciphertext alone.
+  — refuses to unwrap. The AES-GCM additional authenticated data is
+  exactly `finbreak-kdf-v2`, the slot name, `memory_kib`, `time_cost`,
+  `parallelism` and `key_len`, so a `recovery` slot cannot be renamed
+  to `master`; both are cheap edits to a plaintext file and neither is
+  detectable from the ciphertext alone.
+  `salt_len` is deliberately not among them, and the omission is safe
+  rather than an oversight: `validate_params` pins it to `SALT_LEN`
+  exactly and runs before every unwrap, so it carries none of the
+  freedom `memory_kib` has — a migrated vault legitimately keeps its
+  own cost schedule, which is what the AAD exists to bind. The salt
+  itself is bound through the derivation. Nothing here may be added
+  later either: the AAD is an input to the AEAD, so changing the field
+  list would stop every slot written under the old one from
+  unwrapping.
   The unwrap failure never distinguishes "wrong credential" from
   "tampered slot": the caller cannot act differently on the two, and
   an error that told them apart would be an oracle.
