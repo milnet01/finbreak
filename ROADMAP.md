@@ -6321,6 +6321,28 @@ because retrofitting them is a data migration.
   security-model-review-log.md.
 
   Remaining on this item: H4, L1-L16.
+  Progress (2026-09-02, cont.): H4 closed. Only L1-L16 remain.
+
+  H4 was not the job it was filed as. Its FIX already existed -- it landed in
+  0a83b0a under FIBR-0318, a different item, and was never recorded as closed
+  here, which is the same tally gap that lost H3 and H4 from the remaining-work
+  list. What was missing was a test, and mutation_probe proved it: removing the
+  _WAL_SIBLINGS half of the reconcile loop left the whole backup suite green. A
+  HIGH about silent loss of the user's most recent transactions was one refactor
+  from regressing invisibly.
+
+  Locked as backup INV-18, both branches. The second exists only because the
+  probe found it: the first leg plants an original journal AND an aborted one, so
+  it never exercises the case where the original was already checkpointed and the
+  aborted restore's orphan must be REMOVED -- that journal belongs to a different
+  database under a different key, and SQLite would replay it against the
+  recovered vault. Both mutants now die. Gate green, 2094 passed / 2 skipped,
+  pushed as 6e33a3c.
+
+  So FP04's CRITICAL, HIGH and MEDIUM work is done. L1-L16 is what stands between
+  here and closing the FP02 -> FP03 -> FP04 chain, which is what returns
+  FIBR-0019 to shipped and clears the largest of v1.0.0's three blockers
+  (FIBR-0304).
   **Layman:** The recovery-key work was reviewed again with fresh eyes; one serious problem can strand a half-upgraded vault with no way back, and several smaller fixes from last time only reached some of the places they needed to.
   Kind: review-fix.
   Source: close-phase-2026-08-25 (check-code + review-code x4 lanes, FP03 close, fresh context).
@@ -10105,6 +10127,30 @@ is a future error tomorrow.
     has no usable index, and the batch review's file labels are quadratic per
     refresh.
   - Several i18n and PlainText gaps where a sibling was already fixed.
+  Scope note (2026-09-02), from the security-model review-contract gate: the
+  first MEDIUM bullet covers EVERY Argon2 cost axis, not memory alone. Two cold
+  lanes reached this independently.
+
+  validate_params refuses a memory_kib below the floor and imposes no ceiling,
+  and it does not check time_cost or parallelism in EITHER direction. So a
+  crafted .fbk can force an arbitrarily large allocation, or -- through
+  time_cost -- an arbitrarily long derivation needing no memory at all. Both
+  pre-login, on the restore path, before any authentication.
+
+  Bounding memory_kib alone therefore closes none of it, and would ship as "the
+  pre-login residual is bounded" while the identical time_cost vector stays open.
+  docs/security-model.md T5 and INV-2 now state this, including that INV-2's
+  "iterations and parallelism need no on-open check" covers DOWNGRADE only and is
+  silent on an inflated recorded cost.
+
+  One decision this needs when it is worked: whether the ceiling belongs in
+  validate_params, where it binds every caller including an existing vault whose
+  sidecar was edited locally, or only on the pre-login restore path. The two
+  behave differently for that vault and no document gives direction.
+
+  Separately, the UI leg of this bullet is already closed: FIBR-0313 M8 put
+  HashingError into the except tuple in ui/_password_hint.py. restore_backup and
+  verify_backup remain.
   **Layman:** A batch of smaller real defects the full sweep found, not yet fixed.
   Kind: review-fix.
   Source: review-code 2026-08-31.
