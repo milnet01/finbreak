@@ -480,7 +480,7 @@ def test_INV15_install_fsyncs_files_and_each_distinct_parent_dir(tmp_path, monke
     """FIBR-0313 M2 — ``_install``'s final ``os.replace(new_db, real_db)`` /
     ``os.replace(new_sidecar, real_sidecar)`` fsync NEITHER the source files nor
     their containing directories, though ``export_backup`` does both
-    (``_fsync_dir(dest.parent)`` after its own ``os.replace``) and
+    (``fsync_dir(dest.parent)`` after its own ``os.replace``) and
     ``vault_migration._fsync`` exists for the file half. ``vault_path`` and
     ``sidecar_path`` are injected independently on ``Vault``, so this dest
     deliberately does NOT share a parent between them — a fix that fsyncs only

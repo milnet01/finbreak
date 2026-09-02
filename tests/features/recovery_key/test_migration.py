@@ -2239,3 +2239,96 @@ def test_resume_branch_2_passes_its_callers_keys_through_without_copying(
         owned_buffers=(_OwnedKey(kek), _OwnedKey(dek)),
         zero_check_suffixes=set(),
     )
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0327 — the commit points are durable, and S4 lands before S5
+# --------------------------------------------------------------------------- #
+def test_commit_points_fsync_each_directory_with_s4_before_s5(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """FIBR-0327 — S4 and S5 are two separate ``os.replace`` calls, and each
+    directory entry must reach stable storage as its own step.
+
+    ``os.replace`` commits a rename atomically, but POSIX does not promise the
+    directory ENTRY is durable. If S5's survives a power loss and S4's does not,
+    the vault is left with a v1 sidecar over a DEK-keyed database -- and every
+    later unlock reports that as a wrong password over a vault that is intact.
+
+    So the assertion is about ORDER: the sidecar's directory has to be flushed
+    BETWEEN the two renames, and the database's after the second. Presence alone
+    would pass with both flushes bunched at the end, which is the interleaving
+    the failure needs.
+
+    ``vault_path`` and ``sidecar_path`` are injected independently on ``Vault``,
+    so this vault deliberately splits them across two directories -- in one
+    directory S6's own sidecar rewrite flushes it again, and that later flush
+    would satisfy an assertion about S5 that the S5 code never earned.
+
+    Directories are identified by (st_dev, st_ino) off the open descriptor rather
+    than through ``/proc``, so the test says what it means wherever the flush is
+    permitted at all.
+    """
+    db_dir = tmp_path / "db"
+    sidecar_dir = tmp_path / "sidecar"
+    db_dir.mkdir()
+    sidecar_dir.mkdir()
+    vault_path = db_dir / "vault.db"
+    sidecar_path = sidecar_dir / "vault.kdf.json"
+    vault, _params, key = create_v1_vault(vault_path, sidecar_path)
+    _seed(vault.connection)
+    vault.close()
+
+    def dir_id(directory: Path) -> tuple[int, int]:
+        st = os.stat(directory)
+        return (st.st_dev, st.st_ino)
+
+    ids = {dir_id(db_dir): "db dir", dir_id(sidecar_dir): "sidecar dir"}
+    events: list[tuple[str, str]] = []
+    real_replace = os.replace
+    real_fsync = os.fsync
+
+    def recording_replace(src, dst, **kwargs):  # type: ignore[no-untyped-def]
+        events.append(("replace", Path(dst).name))
+        return real_replace(src, dst, **kwargs)
+
+    def recording_fsync(fd):  # type: ignore[no-untyped-def]
+        st = os.fstat(fd)
+        if stat.S_ISDIR(st.st_mode) and (st.st_dev, st.st_ino) in ids:
+            events.append(("fsync_dir", ids[(st.st_dev, st.st_ino)]))
+        return real_fsync(fd)
+
+    monkeypatch.setattr(os, "replace", recording_replace)
+    monkeypatch.setattr(os, "fsync", recording_fsync)
+    try:
+        migrate_to_v2(vault_path, sidecar_path, bytearray(key))
+    finally:
+        monkeypatch.undo()
+
+    s4 = events.index(("replace", sidecar_path.name))
+    s5 = events.index(("replace", vault_path.name))
+
+    assert s4 < s5, (
+        "the migration is expected to replace the sidecar (S4) before the "
+        f"database (S5).\n  actual event order: {events}"
+    )
+    assert any(
+        s4 < i < s5
+        for i, event in enumerate(events)
+        if event == ("fsync_dir", "sidecar dir")
+    ), (
+        "FIBR-0327: S4's rename must be flushed to its directory BEFORE S5 "
+        "renames the database over it. Without that a crash can leave a v1 "
+        "sidecar over a DEK-keyed database, which reads as a wrong password.\n"
+        f"  expected: a sidecar-directory fsync at an index between {s4} and {s5}\n"
+        f"  actual event order: {events}"
+    )
+    assert any(
+        i > s5 for i, event in enumerate(events) if event == ("fsync_dir", "db dir")
+    ), (
+        "FIBR-0327: S5's rename must be flushed to ITS directory too, or a crash "
+        "reverts the migrated database while the v2 sidecar stands. Nothing later "
+        "in the migration touches this directory, so only S5 can satisfy it.\n"
+        f"  expected: a db-directory fsync after index {s5}\n"
+        f"  actual event order: {events}"
+    )

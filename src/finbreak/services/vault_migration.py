@@ -29,6 +29,7 @@ from finbreak.crypto import (
     SIDECAR_VERSION,
     SlotRecord,
     VaultSidecar,
+    fsync_dir,
     load_and_validate_params,
     new_sidecar,
     read_sidecar_v2,
@@ -84,36 +85,13 @@ def _fsync(path: Path) -> None:
     the v2 envelope, and no Windows user would ever have been offered a
     recovery key** (FIBR-0310 P1).
 
-    ``backup.py``'s ``_fsync_dir`` keeps ``O_RDONLY``, and that is not an
-    inconsistency: a directory cannot be opened for writing, which is why that
-    one degrades instead of raising.
+    ``crypto.fsync_dir`` keeps ``O_RDONLY``, and that is not an inconsistency: a
+    directory cannot be opened for writing, which is why that one degrades
+    instead of raising.
     """
     fd = os.open(path, os.O_RDWR)
     try:
         os.fsync(fd)
-    finally:
-        os.close(fd)
-
-
-def _fsync_dir(directory: Path) -> None:
-    """Flush ``directory``'s own entries, so a rename into it is durable.
-
-    ``os.replace`` commits the rename, but POSIX does not guarantee the directory
-    ENTRY it creates reaches stable storage. Mirrors ``backup.py``'s
-    ``_fsync_dir``, including its posture: best-effort, because a directory fsync
-    is not portable (Windows refuses it outright), and failing an otherwise
-    complete restore over it would be worse than the gap it closes.
-
-    ``O_RDONLY``, unlike ``_fsync`` above -- a directory cannot be opened for
-    writing, which is exactly why this one degrades where that one raises."""
-    try:
-        fd = os.open(directory, os.O_RDONLY)
-    except OSError:
-        return
-    try:
-        os.fsync(fd)
-    except OSError:
-        log.debug("directory fsync unsupported here; the rename is not flushed")
     finally:
         os.close(fd)
 
@@ -577,6 +555,12 @@ def _convert(
 
     step("S4")
     os.replace(migrating_sidecar, sidecar_path)
+    # S4 must be DURABLE before S5 begins. Both renames are atomic, but neither
+    # directory entry is on the platter until the parent is flushed -- and if S5's
+    # reaches it while S4's does not, the user is left with a v1 sidecar over a
+    # DEK-keyed database, which every later unlock reports as a wrong password
+    # over an intact vault (FIBR-0327).
+    fsync_dir(sidecar_path.parent)
 
     step("S5")
     _swap_database(vault_path, migrating_db)
@@ -596,6 +580,7 @@ def _swap_database(vault_path: Path, migrating_db: Path) -> None:
     _drop_wal_siblings(vault_path)
     _drop_wal_siblings(migrating_db)
     os.replace(migrating_db, vault_path)
+    fsync_dir(vault_path.parent)
 
 
 def _finish(sidecar_path: Path, sidecar: VaultSidecar, vault_path: Path) -> None:
@@ -716,7 +701,7 @@ def restore_rollback_copy(vault_path: Path, sidecar_path: Path) -> None:
     # directory ENTRY each one creates, on the last-resort route: the user has
     # just been told their pre-upgrade vault is back (FIBR-0313 M3).
     for directory in {vault_path.parent, sidecar_path.parent}:
-        _fsync_dir(directory)
+        fsync_dir(directory)
     log.info("the pre-upgrade copy was restored over the live pair")
 
 

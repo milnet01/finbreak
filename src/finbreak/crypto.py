@@ -390,6 +390,36 @@ def new_sidecar(params: KdfParams, slots: dict[str, SlotRecord]) -> VaultSidecar
     )
 
 
+def fsync_dir(directory: Path) -> None:
+    """Flush ``directory``'s own entries, so a rename into it is durable.
+
+    ``os.replace`` commits the rename, but POSIX does not guarantee the directory
+    ENTRY it creates reaches stable storage. A power loss just after an atomic
+    write can therefore revert it, on files whose whole point is surviving one.
+
+    Best-effort, deliberately: a directory fsync is not portable (Windows refuses
+    it outright, and some filesystems do too), and failing an otherwise complete
+    write over it would be worse than the gap it closes.
+
+    ``O_RDONLY``, unlike the file-level fsyncs in ``backup.py`` and
+    ``vault_migration.py`` -- a directory cannot be opened for writing, which is
+    exactly why this one degrades where those raise.
+
+    Lives here rather than in either service because both of them, plus
+    ``write_sidecar_json`` below, need it (coding.md § 1.3).
+    """
+    try:
+        fd = os.open(directory, os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.fsync(fd)
+    except OSError:
+        log.debug("directory fsync unsupported here; the rename is not flushed")
+    finally:
+        os.close(fd)
+
+
 def write_sidecar_json(sidecar_path: Path, payload: Mapping[str, object]) -> None:
     """Atomically write the plaintext sidecar as owner-only (coding.md § 7).
 
@@ -412,6 +442,10 @@ def write_sidecar_json(sidecar_path: Path, payload: Mapping[str, object]) -> Non
         handle.flush()
         os.fsync(handle.fileno())
     os.replace(tmp_path, sidecar_path)
+    # The rename itself is atomic, but its directory entry is not durable until
+    # the parent is flushed -- without this a crash can silently revert a new
+    # master password or recovery key back to the old sidecar (FIBR-0327).
+    fsync_dir(sidecar_path.parent)
 
 
 def write_sidecar_v2(sidecar_path: Path, sidecar: VaultSidecar) -> None:

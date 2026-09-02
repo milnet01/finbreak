@@ -542,3 +542,48 @@ def test_a_malformed_sidecar_always_raises_kdf_policy_error(
 
     with pytest.raises(KdfPolicyError):
         getattr(crypto, reader)(sidecar_path)
+
+
+def test_write_sidecar_json_flushes_the_parent_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """FIBR-0327 — the sidecar is written to a temp file and renamed into place.
+
+    The temp file's CONTENTS are fsynced before the rename, but the rename's own
+    directory entry is not durable until the parent is flushed as well. Skip that
+    and a crash silently reverts the sidecar -- which is where a new master
+    password and a freshly issued recovery key both live, so the user is left
+    holding credentials the vault no longer knows about.
+
+    Identifies the directory by (st_dev, st_ino) off the open descriptor, so the
+    assertion holds wherever the flush is permitted at all.
+    """
+    import os
+    import stat
+
+    from finbreak.crypto import write_sidecar_json
+
+    sidecar_path = tmp_path / "vault.kdf.json"
+    parent_id = (os.stat(tmp_path).st_dev, os.stat(tmp_path).st_ino)
+
+    flushed: list[tuple[int, int]] = []
+    real_fsync = os.fsync
+
+    def recording_fsync(fd):  # type: ignore[no-untyped-def]
+        st = os.fstat(fd)
+        if stat.S_ISDIR(st.st_mode):
+            flushed.append((st.st_dev, st.st_ino))
+        return real_fsync(fd)
+
+    monkeypatch.setattr(os, "fsync", recording_fsync)
+    try:
+        write_sidecar_json(sidecar_path, {"sidecar_version": 2})
+    finally:
+        monkeypatch.undo()
+
+    assert parent_id in flushed, (
+        "FIBR-0327: write_sidecar_json must fsync the sidecar's parent directory "
+        "after the rename, not only the temp file it renamed.\n"
+        f"  expected: {parent_id} among the flushed directories\n"
+        f"  actual:   {flushed}"
+    )

@@ -34,6 +34,7 @@ from finbreak.crypto import (
     KEY_LEN,
     SlotRecord,
     derive_key,
+    fsync_dir,
     load_and_validate_params,
     new_sidecar,
     validate_untrusted_params,
@@ -103,27 +104,6 @@ _WAL_SIBLINGS = ("-wal", "-shm")
 
 def _noop_on_key(role: str, buffer: bytearray) -> None:
     return None
-
-
-def _fsync_dir(directory: Path) -> None:
-    """Flush ``directory``'s own entries to stable storage (FIBR-0212).
-
-    ``_write_fbk`` fsyncs the FILE, but POSIX does not guarantee that the directory
-    ENTRY created by the following ``os.replace`` is durable — a power loss right
-    after "Backup saved" could leave no dest at all, on the one artifact whose whole
-    purpose is surviving a disaster. Best-effort: a directory fsync is not portable
-    (it raises on Windows, and some filesystems refuse it), and failing an otherwise
-    complete export over it would be worse than the durability gap it closes."""
-    try:
-        fd = os.open(directory, os.O_RDONLY)
-    except OSError:
-        return
-    try:
-        os.fsync(fd)
-    except OSError:
-        log.debug("directory fsync unsupported here; backup is written but unflushed")
-    finally:
-        os.close(fd)
 
 
 def _fsync_file(path: Path) -> None:
@@ -225,7 +205,7 @@ class BackupService:
                     )
                 self._write_fbk(tmp_zip, manifest, params.to_sidecar_dict(), tmp_db)
             os.replace(tmp_zip, dest)
-            _fsync_dir(dest.parent)
+            fsync_dir(dest.parent)
             log.info("backup exported")
         except BaseException:
             tmp_zip.unlink(missing_ok=True)
@@ -592,7 +572,7 @@ class BackupService:
             # landing after the seam would leave that promise false for exactly
             # the crash the seam models.
             for directory in install_dirs:
-                _fsync_dir(directory)
+                fsync_dir(directory)
         on_key("post_move_aside", bytearray())  # INV-5 failure-injection seam
         # Contents, then the rename, then the directory ENTRY the rename created
         # -- the order export_backup already uses, now applied to the install it
@@ -610,7 +590,7 @@ class BackupService:
         os.replace(new_db, real_db)
         os.replace(new_sidecar, real_sidecar)
         for directory in install_dirs:
-            _fsync_dir(directory)
+            fsync_dir(directory)
 
     def _read_fbk(self, src: Path) -> tuple[dict[str, object], bytes, bytes]:
         """Read exactly the three fixed entries of the `.fbk` safely (INV-12): only
