@@ -33,6 +33,35 @@ SCHEMA_VERSION = 1
 # backup.py imports it from here (spec placed it in backup.py, refined).
 SQLCIPHER_COMPAT = 4
 
+# What a restore's move-aside leaves behind. `BackupService._install` renames
+# the incumbent to `<name>.<stamp>.old`, carrying the SQLite `-wal`/`-shm`
+# siblings and the sidecar's own copy under the same stamp, so one stamp names
+# one coherent set.
+OLD_COPY_SUFFIXES = (".old", ".old-wal", ".old-shm")
+
+
+def old_copy_sets(vault_path: Path, sidecar_path: Path) -> dict[str, list[Path]]:
+    """Every `*.old` set beside the vault, keyed by its stamp.
+
+    Two callers need this and neither can own it: `services/backup.py` prunes
+    the superseded sets after a restore, and `services/auth.py` deletes all of
+    them on "start over" — and backup imports auth, so the shared helper sits
+    below both, for the same reason `SQLCIPHER_COMPAT` does.
+
+    Stamps are fixed-width UTC (`%Y%m%dT%H%M%S%f`), so sorting the keys as
+    strings is chronological and the last one is the most recent.
+    """
+    parent = vault_path.parent
+    sets: dict[str, list[Path]] = {}
+    for base in (vault_path.name, sidecar_path.name):
+        for path in parent.glob(f"{base}.*.old*"):
+            stamp, _, suffix = path.name[len(base) + 1 :].partition(".")
+            # A stamp with no suffix, or one this version does not know, is not
+            # ours: better to leave a stranger's file than to delete it.
+            if f".{suffix}" in OLD_COPY_SUFFIXES:
+                sets.setdefault(stamp, []).append(path)
+    return sets
+
 
 class Vault:
     def __init__(self, vault_path: Path, sidecar_path: Path):

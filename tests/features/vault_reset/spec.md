@@ -22,6 +22,7 @@ typing the literal word `DELETE`. Only after both pass does the shell call the n
 | INV-8 | `reset_vault` wipes the in-memory key via `lock()`: unlock so `self._key` holds real bytes, capture the `bytearray`, reset, then the captured buffer is zeroed and `self._key is None`. | `test_INV8_key_wiped` |
 | INV-9 | The affordance is unlock-screen-only and derivation-aware: `UnlockDialog` exposes the button, clicking it fires `start_over_requested`, and `setEnabled(not busy)` toggles it. | `test_INV9_affordance_unlock_only_and_busy_aware` |
 | INV-10 | A failed reset is contained: an `OSError` from `reset_vault` is caught, `QMessageBox.critical` fires, the coupled `window.ini` keys survive, and the app stays on `UnlockDialog` (no route to first-run). | `test_INV10_failed_reset_is_contained` |
+| INV-11 | A prior backup **restore**'s `*.old` triple (`vault.db.<stamp>.old` + its `-wal`/`-shm` siblings, and `vault.kdf.json.<stamp>.old` — `BackupService._install`, services/backup.py) is part of the footprint `reset_vault` removes, not just the migration artefacts INV-1 covers. It opens under the password the user had *before* the restore, so security-model.md INV-12's "useless without the (now-gone) key" residual does not cover it (FIBR-0318 H3). The sweep matches by glob and deletes, so it must also LEAVE a neighbour whose suffix it does not recognise — the test plants one, because `mutation_probe` showed removing that guard left the suite green. | `test_INV11_old_backup_copies_removed` |
 
 ## Notes on the shell-flow tests
 

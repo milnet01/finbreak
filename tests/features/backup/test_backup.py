@@ -655,6 +655,100 @@ def test_INV16_restore_refuses_while_live_vault_is_open(tmp_path):
     auth.lock()
 
 
+def test_INV17_second_restore_prunes_older_old_set_keeps_newest(tmp_path):
+    """FIBR-0318 Q4 -- nothing in ``src/`` ever unlinks a ``*.old`` set
+    (``BackupService._install`` only ever MOVES one into place), so repeated
+    restores accumulate full encrypted vault copies indefinitely. FIBR-0014
+    INV-5 requires the set to exist; no document says for how long. The
+    decision this locks: a SUCCESSFUL restore prunes OLDER ``*.old`` sets,
+    keeping only the most recent one -- and does NOT prune the set it just
+    created, which is the user's own "I restored the wrong backup" undo
+    window (the same crash window INV-5's prose already protects, stretched
+    to human timescale).
+
+    Two restores into the same dest, back to back. The first leaves the
+    ORIGINAL vault's ``*.old`` set (set A) on disk -- confirmed as a
+    precondition, not assumed. The second restore must remove set A and
+    leave only the set it just created (set B, the just-superseded M1
+    vault) -- identified by a straight before/after directory diff, so the
+    check does not depend on the stamp format or any glob a fix might
+    choose (`*.old*` is the pre-existing naming from `_install`, unchanged
+    by this decision; only which sets SURVIVE is what Q4 decides).
+
+    Asserting "exactly one set remains" is not enough -- a fix that deletes
+    the WRONG set (drops what it just created and keeps the stale one, or
+    prunes both) would still pass a bare count. So the surviving set is
+    also proven to be the right one: intact and still openable under M1,
+    the password that was in force immediately before the second restore
+    -- not M2 (the brand new master the second restore just installed), and
+    not the ORIGINAL dest master (set A's password, which must be gone).
+    """
+    fbk1, _snap1 = _export_from_seed(tmp_path)
+    # _dest_with_vault's master password is "the original dest master".
+    auth, d, _vb0, _sb0 = _dest_with_vault(tmp_path)
+
+    M1 = "restore-one-new-master"
+    BackupService(auth.vault, auth).restore_backup(fbk1, _BACKUP_PW, M1)
+    old_after_r1 = {p.name for p in d.glob("*.old*")}
+    assert old_after_r1, "precondition: restore #1 must leave an *.old set behind"
+
+    # A second, independent backup -- _export_from_seed hardcodes tmp_path/"src"
+    # for the source vault, already used above, so build this one by hand under
+    # its own directory rather than colliding with it.
+    src2 = tmp_path / "src2"
+    src2.mkdir()
+    src2_auth = _seeded_auth((src2 / "vault.db", src2 / "vault.kdf.json"))
+    fbk2 = tmp_path / "backup2.fbk"
+    BackupService(src2_auth.vault, src2_auth).export_backup(fbk2, _BACKUP_PW)
+    src2_auth.lock()
+    M2 = "restore-two-new-master"
+    BackupService(auth.vault, auth).restore_backup(fbk2, _BACKUP_PW, M2)
+    old_after_r2 = {p.name for p in d.glob("*.old*")}
+
+    stale_from_set_a = old_after_r1 & old_after_r2
+    assert not stale_from_set_a, (
+        "a second successful restore must prune the OLDER *.old set (from "
+        "the original vault M1's restore just superseded), not just add to "
+        "it -- repeated restores must not accumulate indefinitely\n"
+        f"  still present from the first restore's *.old set: "
+        f"{sorted(stale_from_set_a)}"
+    )
+    set_b = old_after_r2 - old_after_r1
+    assert set_b, (
+        "the *.old set THIS restore just created must survive -- it is the "
+        "user's own undo window for 'I restored the wrong backup', not "
+        "something a restore prunes about itself"
+    )
+
+    # set_b is proven to be the RIGHT survivor, not merely A survivor: it must
+    # be the moved-aside M1 vault, still openable under M1.
+    db_names = [n for n in set_b if n.startswith("vault.db.") and n.endswith(".old")]
+    sidecar_names = [
+        n for n in set_b if n.startswith("vault.kdf.json.") and n.endswith(".old")
+    ]
+    assert len(db_names) == 1 and len(sidecar_names) == 1, (
+        "expected exactly one surviving *.old vault.db + one sidecar in the "
+        f"newly-created set, got db={db_names} sidecar={sidecar_names}"
+    )
+    recovery = tmp_path / "recovered_from_old"
+    recovery.mkdir()
+    recovered_db = recovery / "vault.db"
+    recovered_sidecar = recovery / "vault.kdf.json"
+    recovered_db.write_bytes((d / db_names[0]).read_bytes())
+    recovered_sidecar.write_bytes((d / sidecar_names[0]).read_bytes())
+
+    recovered_auth = AuthService(recovered_db, recovered_sidecar)
+    assert recovered_auth.unlock(bytearray(M1, "utf-8")) is True, (
+        "the surviving *.old set must be the M1 vault the second restore "
+        "just moved aside -- it did not open under M1, the password in "
+        "force immediately before that restore"
+    )
+    assert _snapshot_tables(recovered_auth.vault.connection) == _snap1, (
+        "the surviving *.old set's rows must be exactly M1's vault's rows"
+    )
+    recovered_auth.lock()
+
+
 # --------------------------------------------------------------------------- #
 # Slice 4 — restore fail-closed + safe-zip + INV-11 / INV-13
 #

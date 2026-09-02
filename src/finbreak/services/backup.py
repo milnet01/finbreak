@@ -42,7 +42,7 @@ from finbreak.errors import BackupError, KdfPolicyError, SchemaVersionError
 from finbreak.keywrap import SLOT_MASTER, wrap_dek
 from finbreak.migrations import LATEST_SCHEMA_VERSION
 from finbreak.services.auth import AuthService, _wipe
-from finbreak.vault import SQLCIPHER_COMPAT, Vault
+from finbreak.vault import SQLCIPHER_COMPAT, Vault, old_copy_sets
 
 log = logging.getLogger(__name__)
 
@@ -330,6 +330,7 @@ class BackupService:
                 self._install(
                     backup_vault.vault_path, backup_vault.sidecar_path, on_key
                 )  # INV-5
+            self._prune_superseded_old_copies()  # INV-17
             log.info("backup restored")
         except (
             KdfPolicyError,
@@ -498,6 +499,32 @@ class BackupService:
             or schema_version > LATEST_SCHEMA_VERSION
         ):
             raise BackupError("backup was made by a newer version of finbreak")
+
+    def _prune_superseded_old_copies(self) -> None:
+        """Keep the newest ``*.old`` set and drop the rest (INV-17).
+
+        INV-5's crash window is the interval between the move-aside and the
+        second install ``os.replace``; it shuts the moment the restore returns
+        without raising, after which no path in the app can reach an older set
+        again. Left alone they accumulate a full encrypted vault per restore,
+        each still openable under the password in force when it was made.
+
+        The NEWEST is deliberately kept. It is the user's "I restored the wrong
+        backup" copy, and whether that has happened is a judgement only they can
+        make — FIBR-0014's own prose calls the old vault "the one the user may
+        be locked out of".
+
+        Best-effort by design: the restore has already succeeded, so failing to
+        tidy must not turn that into a reported failure. The caller normalises
+        ``OSError`` to ``BackupError``, which would do exactly that.
+        """
+        sets = old_copy_sets(self._vault.vault_path, self._vault.sidecar_path)
+        for stamp in sorted(sets)[:-1]:
+            for path in sets[stamp]:
+                try:
+                    path.unlink(missing_ok=True)
+                except OSError:
+                    log.warning("could not remove superseded copy %s", path.name)
 
     def _install(self, new_db: Path, new_sidecar: Path, on_key: OnKey) -> None:
         """Move any existing vault + sidecar aside to timestamped ``*.old`` copies,

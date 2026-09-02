@@ -351,3 +351,65 @@ def test_INV1_footprint_includes_the_migration_artefacts(paths):
 
     left = [p.name for p in artefacts if p.exists()]
     assert not left, f"start over left the old vault behind: {left}"
+
+
+# --------------------------------------------------------------------------- #
+# INV-11 — a restore's *.old triple is part of the footprint too (FIBR-0318 H3)
+# --------------------------------------------------------------------------- #
+def test_INV11_old_backup_copies_removed(paths):
+    """``BackupService._install`` (services/backup.py) moves any existing vault
+    aside to a timestamped ``*.old`` triple on every restore
+    (``vault.db.<stamp>.old`` + its ``-wal``/``-shm`` siblings, and
+    ``vault.kdf.json.<stamp>.old``), and nothing in ``src/`` ever unlinks one.
+    ``reset_vault`` builds its own ``extra`` list of migration artefacts
+    (the leg above) but the ``.old`` set is absent from it.
+
+    security-model.md INV-12 promises reset removes the vault's *complete*
+    on-disk footprint, and rests its accepted residual sectors on being
+    "useless without the (now-gone) key" -- a ``.old`` pair is not that
+    residual: it opens under the password the user had *before* the restore
+    that created it, key and all. Either the code or INV-12 moves; this locks
+    the code moving (FIBR-0318 H3).
+
+    Planted rather than produced by a real ``BackupService.restore_backup()``
+    call, matching the sibling artefact-injection leg immediately above
+    (and INV-1's orphaned-WAL leg) rather than pulling the backup suite's
+    fixtures into this one. The names are hardcoded from
+    ``services/backup.py``'s ``_install`` (a literal stamp stands in for the
+    real microsecond one -- the exact stamp format is that method's business,
+    not this test's), not derived from the code, for the reason the sibling
+    legs give.
+    """
+    vault_p, sidecar_p = paths
+    auth = _seeded(paths)
+    auth.lock()
+    d = vault_p.parent
+    stamp = "20260101T000000000000"
+    artefacts = [
+        d / f"vault.db.{stamp}.old",
+        d / f"vault.db.{stamp}.old-wal",
+        d / f"vault.db.{stamp}.old-shm",
+        d / f"vault.kdf.json.{stamp}.old",
+    ]
+    for p in artefacts:
+        p.write_bytes(b"an encrypted copy of the user's pre-restore vault")
+
+    # A neighbour whose suffix is NOT one of ours. Both callers of the shared
+    # enumeration DELETE, and the glob that finds a `.old` set would match this
+    # too, so the suffix guard is what stops an irreversible over-broad delete.
+    # mutation_probe found it unmeasured: removing the guard left the suite
+    # green until this file existed.
+    stranger = d / f"vault.db.{stamp}.oldish"
+    stranger.write_bytes(b"not written by finbreak")
+
+    auth.reset_vault()
+
+    left = [p.name for p in artefacts if p.exists()]
+    assert not left, f"start over left a restore's *.old copy behind: {left}"
+    assert stranger.exists(), (
+        "start over deleted a file finbreak did not write. The `.old` sweep "
+        "matches by glob, so it must refuse a suffix it does not recognise -- "
+        "deleting the user's own file is worse than leaving a stale copy.\n"
+        f"  expected: {stranger.name} still present\n"
+        "  actual:   removed"
+    )

@@ -55,7 +55,7 @@ from finbreak.services.reporting import (
     MODE_YEAR_TO_DATE,
     ReportPrefs,
 )
-from finbreak.vault import Vault
+from finbreak.vault import Vault, old_copy_sets
 
 log = logging.getLogger(__name__)
 
@@ -673,6 +673,14 @@ class AuthService:
                 base.with_name(base.name + sfx) for sfx in vault_migration._WAL_SIBLINGS
             )
         extra.extend((rollback_sidecar, migrating_sidecar))
+        # And every `*.old` set a past restore left behind. Each is a complete,
+        # still-openable copy of the vault as it stood before that restore,
+        # under the password in force then — so "start over" left the user's
+        # data readable by anyone holding a password they had since changed.
+        # INV-12 promises the reset removes the vault's on-disk footprint and
+        # accepts only residual sectors; a whole surviving file is not that.
+        for old_set in old_copy_sets(vault_path, sidecar_path).values():
+            extra.extend(old_set)
         for path in (
             *extra,
             vault_path,
