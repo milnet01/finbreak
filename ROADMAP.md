@@ -10222,6 +10222,37 @@ is a future error tomorrow.
   unguarded interrupted-restore os.replace, and app.py having no sys.excepthook).
   .githooks/pre-push gating the working tree rather than the pushed commits is
   also still open.
+  Progress (2026-09-02, third batch) — this supersedes the "still open" list in
+  the note above, which the work below has cut down. Landed and pushed, each with
+  a regression test proven by mutation_probe:
+
+  - The drain's detached update worker survives GC (setParent(None) handed
+    ownership back to Python and the next line dropped the only reference) and is
+    silenced first, so a download finishing after the window is gone no longer
+    reaches the slot that swaps the binary and hard-exits.
+  - app.py installs a chained sys.excepthook. Only VaultStateError was caught, and
+    a windowed build has no console, so any other startup failure produced an app
+    that does nothing when double-clicked. Its two user-facing strings are now
+    translated, with the literal at each call site rather than through a _tr()
+    wrapper lupdate cannot read through.
+  - _datetime_prefs._read_timezone reads the field rather than the selected item.
+    Typing a zone the host does not enumerate leaves currentData() on the previous
+    one, so the old guard was dead code and Save wrote back the zone the user had
+    just replaced -- a wrong-day render now that the pinned zone decides "today".
+  - The interrupted-restore recovery is guarded: an OSError inside MainWindow's
+    constructor made the app unlaunchable, and it now routes to run()'s
+    VaultStateError branch with the *.old copies intact for a retry. The module
+    gained a logger, so _on_manual_check_error no longer drops its exception.
+  - The import preview's Amount column goes through the shared money formatter.
+
+  Still open, and all lower severity than the above: categories._refresh not
+  re-running its gating slot; the batch review's keyboard-inaccessible Account
+  cell and its inert picker sentinel; two unguarded vault reads in import_wizard
+  (the lane named no site, so this one needs re-deriving against current source);
+  single_instance's narrowed-but-open stale-socket race; .githooks/pre-push gating
+  the working tree rather than the pushed commits; and FIBR-0096's claim that the
+  per-artifact .sig is the primary integrity gate, which is false for a
+  rename-replay.
   **Layman:** A batch of smaller real defects the full sweep found, not yet fixed.
   Kind: review-fix.
   Source: review-code 2026-08-31.
