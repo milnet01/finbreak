@@ -606,6 +606,55 @@ def test_INV15_move_aside_dir_fsynced_before_post_move_aside_seam(
     )
 
 
+def test_INV16_restore_refuses_while_live_vault_is_open(tmp_path):
+    """FIBR-0014 INV-8 says restore is pre-login only, and ``_install``'s final
+    ``os.replace(new_db, real_db)`` assumes ``self._vault``'s files are not the
+    backing store of an open connection: on Windows that assumption failing
+    raises loudly (``PermissionError``), but on POSIX the rename SUCCEEDS while
+    the still-open connection goes on reading/writing the now-detached inode —
+    silent divergence, no error at all. ``restore_backup`` today has no
+    precondition that catches this itself; it currently relies entirely on its
+    one caller (the pre-login screen) never calling it with a vault open.
+
+    Locks the OUTCOME, not the mechanism: called against an OPEN live vault,
+    ``restore_backup`` must refuse with ``BackupError`` *before* touching disk.
+    A fix that raises only *after* already moving the live vault aside (or
+    after installing the restored one) must still fail this test — the
+    move-aside / byte-identity assertions below exist so that a "raises, but
+    too late" fix does not pass it."""
+    from finbreak.errors import BackupError
+
+    fbk, _snap = _export_from_seed(tmp_path)
+    auth, d, vb, sb = _dest_with_vault(tmp_path)
+    # _dest_with_vault leaves the vault LOCKED; re-open it so the live vault is
+    # OPEN at the moment restore is attempted -- the one state no existing test
+    # in this suite covers (measured: every restore_backup call elsewhere in
+    # this file, and the sole production caller, enters with the vault closed).
+    assert auth.unlock(bytearray(b"the original dest master")) is True
+    own_snapshot = _snapshot_tables(auth.vault.connection)
+
+    with pytest.raises(BackupError):
+        BackupService(auth.vault, auth).restore_backup(fbk, _BACKUP_PW, _M2)
+
+    # Nothing on disk moved or changed -- not the *.old move-aside, not the
+    # live vault.db/sidecar bytes themselves.
+    _assert_unchanged(d, vb, sb)
+
+    # And the live vault is still functionally what it was: whatever state the
+    # refusal leaves the connection in, it must still open under its ORIGINAL
+    # password and hold its ORIGINAL rows -- never any part of the restore.
+    if auth._key is not None:
+        auth.lock()
+    assert auth.unlock(bytearray(b"the original dest master")) is True, (
+        "the live vault must still open under its original password"
+    )
+    assert _snapshot_tables(auth.vault.connection) == own_snapshot, (
+        "the live vault's rows must be exactly what they were before the "
+        "refused restore attempt"
+    )
+    auth.lock()
+
+
 # --------------------------------------------------------------------------- #
 # Slice 4 — restore fail-closed + safe-zip + INV-11 / INV-13
 #

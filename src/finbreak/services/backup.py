@@ -251,6 +251,16 @@ class BackupService:
         wiped on all paths; any underlying failure changes nothing on disk and is
         normalised to ``BackupError`` (INV-4)."""
         on_key = on_key or _noop_on_key
+        if self._vault.is_open:
+            # INV-8 makes restore pre-login only, and `_install` depends on it:
+            # it moves the LIVE vault.db aside with os.replace. On Windows that
+            # raises over an open handle, loudly and before anything changes; on
+            # POSIX the rename SUCCEEDS and the still-open connection goes on
+            # reading and writing the detached inode, so the user's later edits
+            # land in a file nothing will open again. Held by the single
+            # pre-login caller until now, which is a guarantee no code states
+            # (INV-16).
+            raise BackupError("restore requires a locked vault")
         if len(new_master_password) == 0:
             raise ValueError("new master password must not be empty")
         master_pw = bytearray(new_master_password, "utf-8")

@@ -47,6 +47,16 @@ class Vault:
         return self._conn
 
     @property
+    def is_open(self) -> bool:
+        """Whether a connection is held — the open/locked state as a question.
+
+        ``_conn`` was the only marker, so a collaborator needing to ASK had to
+        reach into it or provoke ``connection``'s exception. Restore is the
+        caller that needs it (FIBR-0014 INV-8, INV-16).
+        """
+        return self._conn is not None
+
+    @property
     def vault_path(self) -> Path:
         """The on-disk vault DB path — the install target a restore writes to
         (readable while locked, so restore works pre-login; FIBR-0014)."""
