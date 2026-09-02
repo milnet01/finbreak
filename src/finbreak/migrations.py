@@ -54,6 +54,16 @@ DEFAULT_CATEGORIES = {
 def run_migrations(conn: dbapi2.Connection) -> None:
     """Bring ``conn`` up to ``LATEST_SCHEMA_VERSION``; a no-op when current."""
     current = conn.execute("SELECT version FROM schema_version").fetchone()[0]
+    # The recorded version is untrusted on the restore path — it arrives inside a
+    # `.fbk` a stranger may have crafted, and is read pre-login. A value that is
+    # not a real version reaches `_MIGRATIONS[...]` as a `KeyError`, or the
+    # comparison below as a `TypeError`, and no caller catches either. Refusing
+    # here turns both into the `SchemaVersionError` callers already map.
+    if not isinstance(current, int) or current < 1:
+        raise SchemaVersionError(
+            f"vault schema version record is not a usable version ({current!r}); "
+            "the vault is damaged"
+        )
     if current > LATEST_SCHEMA_VERSION:
         raise SchemaVersionError(
             f"vault schema version {current} is newer than this build supports "

@@ -1090,3 +1090,27 @@ def test_INV5_first_run_shows_message_on_create_failure(qtbot, service, monkeypa
 
     assert "could not create the vault" in dialog._error.text().lower()
     assert completed == [], "completed is not emitted when creation fails"
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0327 — the embedded schema version is untrusted on the restore path.
+# It arrives inside a `.fbk` and is read pre-login. A value below 1 walked
+# straight into `_MIGRATIONS[...]`; a non-integer into the `>` comparison.
+# --------------------------------------------------------------------------- #
+# No TEXT case: the column is `version INTEGER`, so SQLite's affinity coerces
+# `"13"` to `13` and a string never reaches the guard. `2.5` does — INTEGER
+# affinity only converts when it is lossless — so the non-integer branch is
+# still exercised.
+@pytest.mark.parametrize("bad", [0, -5, 2.5], ids=["zero", "negative", "float"])
+def test_FIBR0327_embedded_schema_version_must_be_a_real_version(paths, bad):
+    from finbreak.errors import SchemaVersionError
+    from finbreak.migrations import run_migrations
+
+    service = AuthService(*paths)
+    service.first_run(bytearray(_PW), "ZAR")
+    conn = service.vault.connection
+    conn.execute("UPDATE schema_version SET version = ?", (bad,))
+
+    with pytest.raises(SchemaVersionError):
+        run_migrations(conn)
+    service.lock()

@@ -1406,3 +1406,93 @@ def test_the_incumbent_wal_moves_aside_with_its_database(tmp_path):
         "what stops it."
     )
     dest.lock()
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0327 — the untrusted numerics on the pre-login `.fbk` surface.
+# `params.json` and `manifest.json` are read and acted on BEFORE any
+# authentication, so a stranger's file decides how much memory is allocated and
+# for how long. `validate_params` is one-sided by design (security-model INV-2),
+# so the bound lives at the trust boundary instead.
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize(
+    "bad_params",
+    [
+        {"memory_kib": 64 * 1024 * 1024},  # 64 GiB — an allocation, not a KDF
+        {"time_cost": 0},  # argon2-cffi raises HashingError, uncaught
+        {"time_cost": 10_000_000},  # no memory needed, still never returns
+        {"parallelism": 0},
+    ],
+    ids=["memory-ceiling", "time-cost-zero", "time-cost-ceiling", "parallelism-zero"],
+)
+def test_FIBR0327_hostile_kdf_cost_refused_before_any_derivation(
+    tmp_path, monkeypatch, bad_params
+):
+    """A crafted cost record fails closed, and fails BEFORE `derive_key` runs —
+    which is the whole point: reporting the error after a 64 GiB allocation is
+    not a guard."""
+    from finbreak.errors import BackupError
+
+    fbk, _snap = _export_from_seed(tmp_path)
+    hostile = tmp_path / "hostile.fbk"
+    _rebuild_fbk(fbk, hostile, params=bad_params)
+
+    def _never(*args, **kwargs):
+        raise AssertionError("derive_key ran on an unbounded cost record")
+
+    monkeypatch.setattr("finbreak.services.backup.derive_key", _never)
+
+    auth, d, vb, sb = _dest_with_vault(tmp_path)
+    with pytest.raises(BackupError):
+        BackupService(auth.vault, auth).restore_backup(hostile, _BACKUP_PW, _M2)
+    _assert_unchanged(d, vb, sb)
+
+
+def test_FIBR0327_legitimate_cost_record_still_restores(tmp_path):
+    """The bound must not refuse a real backup — including one a future build
+    wrote under a raised pin, which is why the ceilings sit well above it."""
+    from finbreak.crypto import (
+        ARGON2_MEMORY_KIB,
+        ARGON2_PARALLELISM_CEILING,
+        ARGON2_TIME_COST_CEILING,
+        validate_untrusted_params,
+    )
+
+    fbk, snap = _export_from_seed(tmp_path)
+    auth = _dest_auth(tmp_path)
+    BackupService(auth.vault, auth).restore_backup(fbk, _BACKUP_PW, _M2)
+    assert auth.unlock(bytearray(_M2, "utf-8")) is True
+    assert _snapshot_tables(auth.vault.connection) == snap
+    auth.lock()
+
+    # A cost schedule several pin-raises beyond today's is still accepted.
+    validate_untrusted_params(
+        KdfParams(
+            format_version=FORMAT_VERSION,
+            memory_kib=ARGON2_MEMORY_KIB * 4,
+            time_cost=ARGON2_TIME_COST_CEILING,
+            parallelism=ARGON2_PARALLELISM_CEILING,
+            key_len=32,
+            salt_len=16,
+            salt=secrets.token_bytes(16),
+        )
+    )
+
+
+@pytest.mark.parametrize("bad", [0, -1, "13"], ids=["zero", "negative", "text"])
+def test_FIBR0327_manifest_schema_version_below_one_refused(tmp_path, bad):
+    """The manifest's schema version was bounded above but not below. Measured:
+    with the guard removed a `0` restores silently rather than crashing — the
+    manifest is a claim, and the database carries its own version. So this is
+    defence in depth; the crash vector is the EMBEDDED version, guarded in
+    `migrations.run_migrations`."""
+    from finbreak.errors import BackupError
+
+    fbk, _snap = _export_from_seed(tmp_path)
+    hostile = tmp_path / "bad-schema.fbk"
+    _rebuild_fbk(fbk, hostile, manifest={"schema_version": bad})
+
+    auth, d, vb, sb = _dest_with_vault(tmp_path)
+    with pytest.raises(BackupError):
+        BackupService(auth.vault, auth).restore_backup(hostile, _BACKUP_PW, _M2)
+    _assert_unchanged(d, vb, sb)

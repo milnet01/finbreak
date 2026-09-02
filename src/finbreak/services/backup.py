@@ -36,6 +36,7 @@ from finbreak.crypto import (
     derive_key,
     load_and_validate_params,
     new_sidecar,
+    validate_untrusted_params,
     write_sidecar_v2,
 )
 from finbreak.errors import BackupError, KdfPolicyError, SchemaVersionError
@@ -468,6 +469,9 @@ class BackupService:
             # BEFORE any key is derived (INV-11).
             self._write_owner_only(tmp_params, params_bytes)
             backup_params = load_and_validate_params(tmp_params)
+            # These numbers came from the file under inspection, so the one-sided
+            # floor `validate_params` applies is not enough here (INV-2, T5).
+            validate_untrusted_params(backup_params)
             self._write_owner_only(tmp_db, db_bytes)
             backup_key = derive_key(password_buf, backup_params.salt, backup_params)
             on_key("backup", backup_key)
@@ -494,10 +498,9 @@ class BackupService:
         if manifest.get("sqlcipher_compat") != SQLCIPHER_COMPAT:
             raise BackupError("unsupported backup cipher-compatibility level")
         schema_version = manifest.get("schema_version")
-        if (
-            not isinstance(schema_version, int)
-            or schema_version > LATEST_SCHEMA_VERSION
-        ):
+        if not isinstance(schema_version, int) or schema_version < 1:
+            raise BackupError("backup manifest has no usable schema version")
+        if schema_version > LATEST_SCHEMA_VERSION:
             raise BackupError("backup was made by a newer version of finbreak")
 
     def _prune_superseded_old_copies(self) -> None:

@@ -40,6 +40,13 @@ ARGON2_MEMORY_KIB = 47104
 ARGON2_MEMORY_FLOOR_KIB = 47104
 ARGON2_TIME_COST = 1
 ARGON2_PARALLELISM = 1
+# Acceptance CEILINGS for a sidecar that arrived from outside — see
+# `validate_untrusted_params`. Each sits far above any cost schedule finbreak
+# would plausibly pin, so a backup written by a future build still restores,
+# and far below what would exhaust the machine or hang the process.
+ARGON2_MEMORY_CEILING_KIB = 1048576  # 1 GiB
+ARGON2_TIME_COST_CEILING = 16
+ARGON2_PARALLELISM_CEILING = 16
 KEY_LEN = 32
 SALT_LEN = 16
 
@@ -133,6 +140,42 @@ def validate_params(params: KdfParams) -> None:
         raise KdfPolicyError(
             f"memory_kib {params.memory_kib} is below the floor "
             f"{ARGON2_MEMORY_FLOOR_KIB}"
+        )
+
+
+def validate_untrusted_params(params: KdfParams) -> None:
+    """Bound the Argon2 cost record of a sidecar that came from OUTSIDE.
+
+    `validate_params` is deliberately one-sided — a floor and no ceiling
+    (security-model.md INV-2) — because a ceiling there would bind every
+    existing vault and could lock one out. That leaves an inflated recorded
+    cost unchecked, which is the pre-login residual T5 records on the restore
+    path: a `.fbk` a stranger crafted is parsed and derived from before any
+    authentication, so its numbers must be bounded where they enter rather
+    than where every vault is read.
+
+    Two vectors, and neither needs the other: `memory_kib` forces an arbitrarily
+    large allocation, and `time_cost` an arbitrarily long derivation needing no
+    memory at all. Below Argon2id's own minimum of 1, `argon2-cffi` raises
+    `HashingError`, which is in no caller's except tuple — so the low side is
+    refused here too, as `KdfPolicyError`, which is.
+
+    Call this IN ADDITION to `validate_params`, at the trust boundary only.
+    """
+    if params.memory_kib > ARGON2_MEMORY_CEILING_KIB:
+        raise KdfPolicyError(
+            f"memory_kib {params.memory_kib} is above the accepted ceiling "
+            f"{ARGON2_MEMORY_CEILING_KIB}"
+        )
+    if not 1 <= params.time_cost <= ARGON2_TIME_COST_CEILING:
+        raise KdfPolicyError(
+            f"time_cost {params.time_cost} is outside the accepted range "
+            f"1..{ARGON2_TIME_COST_CEILING}"
+        )
+    if not 1 <= params.parallelism <= ARGON2_PARALLELISM_CEILING:
+        raise KdfPolicyError(
+            f"parallelism {params.parallelism} is outside the accepted range "
+            f"1..{ARGON2_PARALLELISM_CEILING}"
         )
 
 
