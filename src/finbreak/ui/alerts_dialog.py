@@ -14,8 +14,6 @@ open dialogs down, FIBR-0051 INV-4b) — never ``exec()``. Every service call is
 
 from __future__ import annotations
 
-from datetime import date
-
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QDialog,
@@ -27,6 +25,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from finbreak.datetime_format import today as app_today
 from finbreak.errors import VaultLockedError
 from finbreak.models import AlertKind, SpendingAlert
 from finbreak.services.alerts import AlertService
@@ -89,7 +88,7 @@ class AlertsDialog(QDialog):
             if widget is not None:
                 widget.setParent(None)  # detach now so findChild can't see a stale row
         try:
-            alerts = self._alerts.alerts(date.today())
+            alerts = self._alerts.alerts(app_today())
         except VaultLockedError:
             alerts = []  # auto-lock mid-render; the dialog is being torn down
         for alert in alerts:

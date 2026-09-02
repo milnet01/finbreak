@@ -63,6 +63,8 @@ from PySide6.QtWidgets import (
 from sqlcipher3.dbapi2 import DatabaseError
 
 from finbreak import __version__, paths
+from finbreak.datetime_format import set_app_timezone
+from finbreak.datetime_format import today as app_today
 from finbreak.errors import (
     BackupError,
     UpdateError,
@@ -342,6 +344,10 @@ class MainWindow(QMainWindow):
         # The display prefs, read once post-unlock (the vault is locked here) and
         # passed to the display tabs (FIBR-0083 D7). All-"system" until then.
         self._prefs = DateTimePrefs(DATETIME_SYSTEM, DATETIME_SYSTEM, DATETIME_SYSTEM)
+        # The app clock follows the pinned zone (FIBR-0327). Set wherever
+        # `self._prefs` is assigned — here (no vault open yet, so the system
+        # zone), on unlock, and again when Settings saves.
+        set_app_timezone(self._prefs.timezone)
         # The amount-display prefs, likewise read once post-unlock (FIBR-0105).
         # The friendly default (minus + colour on) applies until then.
         self._amount_prefs = AmountPrefs(NegativeStyle.MINUS, True)
@@ -760,6 +766,7 @@ class MainWindow(QMainWindow):
         # "system" sentinels are kept verbatim (expanded only at display time).
         self._prefs = self._service.datetime_prefs()
         self._amount_prefs = self._service.amount_prefs()
+        set_app_timezone(self._prefs.timezone)
 
         # Home is now the dashboard (FIBR-0012 D6): reporting aggregates, the account
         # list, and the AuthService (for the persisted report-period prefs).
@@ -1030,14 +1037,13 @@ class MainWindow(QMainWindow):
         # Ask where to save, then render+write under a wait cursor. The export
         # dialog stays open throughout (it never accept()s), so a cancelled save or
         # a failed write leaves the user on the dialog to retry (D9/INV-12).
-        from datetime import date
 
         dialog = self._dialog
         if not isinstance(dialog, ExportDialog):
             return
         options = dialog.options()
         default_name = (
-            f"finbreak-report-{period_filename_slug(options.prefs, date.today())}.pdf"
+            f"finbreak-report-{period_filename_slug(options.prefs, app_today())}.pdf"
         )
         path, _ = QFileDialog.getSaveFileName(
             self,
@@ -1091,12 +1097,11 @@ class MainWindow(QMainWindow):
         # Ask where to save, then export SYNCHRONOUSLY on the main thread under a
         # wait cursor (INV-9): the blocked event loop means the auto-lock timer
         # cannot fire mid-export. The dialog stays open on cancel/failure to retry.
-        from datetime import date
 
         dialog = self._dialog
         if not isinstance(dialog, BackupExportDialog):
             return
-        default_name = f"finbreak-backup-{date.today().isoformat()}.fbk"
+        default_name = f"finbreak-backup-{app_today().isoformat()}.fbk"
         path, _ = QFileDialog.getSaveFileName(
             self,
             self.tr("Save encrypted backup"),
@@ -1497,6 +1502,7 @@ class MainWindow(QMainWindow):
         # format/zone change takes effect live without a relaunch (FIBR-0083 D7).
         self._prefs = self._service.datetime_prefs()
         self._amount_prefs = self._service.amount_prefs()
+        set_app_timezone(self._prefs.timezone)
         # Home is the dashboard now — it shows amounts (tiles) but no dates, so only
         # the amount prefs apply; the Transactions table shows both (FIBR-0012 D6/D7).
         if self._home_tab is not None:

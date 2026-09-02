@@ -292,18 +292,22 @@ def test_INV13_a_lock_on_the_PREFS_WRITE_leaves_no_stale_sentence(
 # behaves; neither can see whether `HomeView` hands it the right arguments.
 # These two legs are what make those coverage claims true.
 # --------------------------------------------------------------------------- #
-class _TickingDate:
-    """A ``date`` stand-in whose ``today()`` advances a day per call.
+class _TickingClock:
+    """An ``app_today`` stand-in that advances a day per call.
 
-    An equality assertion over two real ``date.today()`` reads is vacuous — both
-    return the same day except across a midnight boundary. Making every read
-    differ is what turns "reads the clock once" into an observable property."""
+    An equality assertion over two real clock reads is vacuous — both return the
+    same day except across a midnight boundary. Making every read differ is what
+    turns "reads the clock once" into an observable property.
+
+    Patches ``finbreak.ui.home.app_today`` since FIBR-0327, which replaced
+    ``date.today()`` with the pinned-zone app clock; the property under test is
+    unchanged."""
 
     def __init__(self, start: date) -> None:
         self._start = start
         self.reads = 0
 
-    def today(self) -> date:
+    def __call__(self) -> date:
         self.reads += 1
         return self._start + timedelta(days=self.reads - 1)
 
@@ -319,14 +323,14 @@ def _record(home: HomeView) -> tuple[_RecordingSummary, _RecordingReporting]:
 def test_INV10_the_strip_and_the_net_tile_share_ONE_clock_reading(
     qtbot, service, monkeypatch
 ) -> None:
-    """INV-10's second *Breaks when*: "`refresh()` computes `date.today()` twice
-    across a midnight boundary". Under a ticking clock a second read is a
+    """INV-10's second *Breaks when*: "`refresh()` reads the clock twice across a
+    midnight boundary". Under a ticking clock a second read is a
     different day, so the two services receive different values and this goes
     red — which a pair of real reads on the same day never would."""
     home = _home_showing(qtbot, service)
     month, reporting = _record(home)
-    ticking = _TickingDate(date.today())
-    monkeypatch.setattr("finbreak.ui.home.date", ticking)
+    ticking = _TickingClock(date.today())
+    monkeypatch.setattr("finbreak.ui.home.app_today", ticking)
 
     home.refresh()
 

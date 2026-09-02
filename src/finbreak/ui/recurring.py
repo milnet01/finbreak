@@ -3,7 +3,7 @@ money (FIBR-0142 D11).
 
 A ``RecurringWidget`` mirroring the Transfers tab: two ``QTableWidget``s — Suggested
 items (Confirm / Dismiss) above Confirmed items (Un-confirm) — over one
-``RecurringService``. Detection is clock-driven off ``date.today()`` at refresh
+``RecurringService``. Detection is clock-driven off ``app_today()`` at refresh
 (INV-2: the service stays clock-injected; the widget supplies the clock). Each action
 applies directly (each is reversible via the opposite decision) and every slot catches
 ``VaultLockedError`` and returns, exactly like ``TransfersWidget``. The stored/compared
@@ -15,8 +15,6 @@ shipped) consumes ``RecurringService.summary()`` (built + tested here).
 """
 
 from __future__ import annotations
-
-from datetime import date
 
 from PySide6.QtCore import Slot
 from PySide6.QtWidgets import (
@@ -30,6 +28,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from finbreak.datetime_format import today as app_today
 from finbreak.errors import VaultLockedError
 from finbreak.models import Cadence, Direction, RecurringItem
 from finbreak.services.auth import AuthService
@@ -126,7 +125,7 @@ class RecurringWidget(QWidget):
         """Re-read the vault on view (INV-2/D9). One ``snapshot`` pass partitions the
         detected items into Suggested / Confirmed; the summary is the FIBR-0143 card's,
         not shown here."""
-        suggested, confirmed, _summary = self._recurring.snapshot(date.today())
+        suggested, confirmed, _summary = self._recurring.snapshot(app_today())
         self._suggested_items = suggested
         self._confirmed_items = confirmed
         # The base-currency code, read fresh like the Transactions/Home tabs, so the

@@ -36,6 +36,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from finbreak.datetime_format import today as app_today
 from finbreak.models import Account
 from finbreak.services.pdf_export import ExportOptions
 from finbreak.services.reporting import (
@@ -108,9 +109,8 @@ class ExportDialog(QDialog):
         self._year_picker = QSpinBox()
         self._year_picker.setRange(1970, 9999)
         # Pre-fill from Home's current selection (INV-7).
-        from datetime import date
 
-        today = date.today()
+        today = app_today()
         self._period_selector.setCurrentIndex(
             max(0, self._period_selector.findData(prefs.mode))
         )

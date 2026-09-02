@@ -6,7 +6,7 @@ figure (projected balance, or an honest net change when no balance is known), an
 anchor-provenance line naming each contributing statement (D10), a horizon picker
 (End of this month / 30 / 60 / 90 days), a themed projected-balance line chart, and
 an upcoming-events table (date · merchant · signed amount · running balance).
-Detection is clock-driven off ``date.today()`` at refresh; the ``ForecastService``
+Detection is clock-driven off ``app_today()`` at refresh; the ``ForecastService``
 stays clock-injected (the widget supplies the clock). Every slot catches
 ``VaultLockedError`` and returns, like the sibling tabs. All strings go through
 ``tr()`` and every widget sits in a layout manager (coding.md § 5.2).
@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from finbreak.datetime_format import today as app_today
 from finbreak.errors import VaultLockedError
 from finbreak.models import Forecast, ForecastMode
 from finbreak.services.accounts import AccountService
@@ -141,7 +142,7 @@ class ForecastWidget(QWidget):
         """Re-read the vault + re-project on view / horizon change (D9). Catches a
         mid-teardown ``VaultLockedError`` like the sibling tabs."""
         try:
-            today = date.today()
+            today = app_today()
             fc = self._forecast_service.forecast(today, self._horizon_date(today))
             exponent = read_minor_unit_exponent(self._service.vault.connection)
             symbol = TransactionService(self._service.vault).base_currency()

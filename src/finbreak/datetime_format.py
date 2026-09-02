@@ -17,6 +17,8 @@ and an unparseable input string is returned raw — never an exception to the UI
 FIBR-0047 date pickers use, so input and display stay consistent (D1).
 """
 
+from datetime import date
+
 from PySide6.QtCore import QDate, QDateTime, QLocale, Qt, QTime, QTimeZone
 
 _SHORT = QLocale.FormatType.ShortFormat
@@ -58,6 +60,40 @@ def _resolve_zone(tz_pref: str) -> QTimeZone:
         if zone.isValid():
             return zone
     return QTimeZone(QTimeZone.systemTimeZoneId())
+
+
+# The app clock (FIBR-0327). "Today" — for this month's totals, the alert
+# grace window and the forecast horizon — is a calendar day, and which day it
+# is depends on a zone. The user can pin one in Settings, and until this
+# existed that pin moved only how timestamps were DISPLAYED while `date.today()`
+# read the machine's zone. At a month boundary the two disagree and a whole
+# month of totals moves, so the pin now decides.
+#
+# Module state because the pinned zone is a property of the running app, not of
+# any one widget: one vault, one pref. The alternative was threading the pref
+# through four widget constructors that hold no prefs today.
+_app_timezone = "system"
+
+
+def set_app_timezone(tz_pref: str) -> None:
+    """Point the app clock at ``tz_pref``. Called wherever the stored prefs are
+    read — on unlock, and again when Settings saves. An empty value resets to
+    the system zone, which is also the value before any vault is open."""
+    global _app_timezone
+    _app_timezone = tz_pref or "system"
+
+
+def today() -> date:
+    """The current calendar day in the user's pinned zone. The app-wide
+    replacement for ``date.today()`` on any path that decides what "now" is."""
+    return today_in(_app_timezone)
+
+
+def today_in(tz_pref: str) -> date:
+    """``today()`` against an explicit zone — the testable form, and what a
+    caller holding its own prefs should use."""
+    local = QDateTime.currentDateTimeUtc().toTimeZone(_resolve_zone(tz_pref)).date()
+    return date(local.year(), local.month(), local.day())
 
 
 def _fmt_date_part(qdate: QDate, date_pref: str) -> str:

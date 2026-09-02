@@ -211,3 +211,63 @@ def test_FIBR0204_unofferable_timezone_is_preserved_not_downgraded(qtbot, monkey
         "an unrelated Save must not downgrade a pinned timezone to 'system' just "
         "because this host's tzdata does not enumerate it"
     )
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0327 — the pinned zone decides what "today" is, not just how a timestamp
+# is displayed. Reporting, alerts and the forecast ran off `date.today()` (the
+# machine's zone) while the Settings pin was display-only, so at a month
+# boundary a whole month of totals moved with the traveller rather than with
+# the vault.
+# --------------------------------------------------------------------------- #
+def test_FIBR0327_app_clock_follows_the_pinned_zone():
+    """Two zones 25 hours apart disagree about the calendar day for one hour in
+    every 24 — and always at a month boundary, which is where the totals move."""
+    from finbreak.datetime_format import set_app_timezone, today, today_in
+
+    east = today_in("Pacific/Kiritimati")  # UTC+14
+    west = today_in("Pacific/Niue")  # UTC-11
+    assert (east - west).days in (0, 1), "the two zones are at most a day apart"
+
+    try:
+        set_app_timezone("Pacific/Kiritimati")
+        assert today() == east
+        set_app_timezone("Pacific/Niue")
+        assert today() == west
+    finally:
+        set_app_timezone(DATETIME_SYSTEM)
+
+
+def test_FIBR0327_unknown_or_empty_zone_falls_back_to_the_system_day():
+    """A stored pref can be a zone this build does not know (an OS update, a
+    vault from another machine). It must not crash or return a wrong day."""
+    from finbreak.datetime_format import set_app_timezone, today, today_in
+
+    system_day = today_in(DATETIME_SYSTEM)
+    assert today_in("Not/AZone") == system_day
+    try:
+        set_app_timezone("")
+        assert today() == system_day
+    finally:
+        set_app_timezone(DATETIME_SYSTEM)
+
+
+def test_FIBR0327_main_window_pushes_the_stored_pin_into_the_app_clock(qtbot, tmp_path):
+    """The outcome, not the mechanism: after a Settings save the app clock is on
+    the stored zone, so the next Home refresh computes its month there."""
+    import finbreak.datetime_format as dtf
+    from finbreak.datetime_format import today_in
+
+    auth = AuthService(tmp_path / "vault.db", tmp_path / "vault.kdf.json")
+    auth.first_run(bytearray(_PW), "ZAR")
+    try:
+        window = MainWindow(auth)
+        qtbot.addWidget(window)
+        auth.set_datetime_prefs(
+            DateTimePrefs("Pacific/Kiritimati", DATETIME_SYSTEM, DATETIME_SYSTEM)
+        )
+        window._on_settings_saved()
+        assert dtf.today() == today_in("Pacific/Kiritimati")
+    finally:
+        dtf.set_app_timezone(DATETIME_SYSTEM)
+        auth.lock()

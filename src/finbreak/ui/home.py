@@ -21,7 +21,6 @@ the selectors. The raw transaction table moved to the Transactions tab.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
 
 from PySide6.QtCharts import QChart, QChartView
 from PySide6.QtCore import Qt, Signal
@@ -41,6 +40,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from finbreak.datetime_format import today as app_today
 from finbreak.errors import VaultLockedError
 from finbreak.models import (
     DrillLabels,
@@ -295,13 +295,12 @@ class HomeView(QWidget):
         """Set the period + secondary pickers from a stored ``ReportPrefs`` without
         re-triggering a persist. Specific pickers default to the stored value, else
         the current calendar month / year."""
-        from datetime import date
 
         self._loading = True
         try:
             index = self._period_selector.findData(prefs.mode)
             self._period_selector.setCurrentIndex(max(0, index))
-            today = date.today()
+            today = app_today()
             self._year_picker.setValue(prefs.year or today.year)
             month_index = self._month_picker.findData(prefs.month or today.month)
             self._month_picker.setCurrentIndex(max(0, month_index))
@@ -395,10 +394,10 @@ class HomeView(QWidget):
         # ONE clock reading for every figure the strip is compared against
         # (FIBR-0231 § 4.9): the strip and the tiles must not straddle midnight,
         # which is what INV-10 asserts. Deliberately not "every read in this
-        # method" — refresh_alerts() keeps its own date.today() (FIBR-0172
+        # method" — refresh_alerts() keeps its own app_today() (FIBR-0172
         # D8/INV-16), and the alert count is unscoped, so it is not a figure the
         # sentence is measured against.
-        today = date.today()
+        today = app_today()
         # Getting-started iff the vault holds zero transactions (INV-7).
         if self._reporting.transaction_count() == 0:
             self._stack.setCurrentIndex(0)
@@ -575,11 +574,11 @@ class HomeView(QWidget):
         with the alert count — which is what used to shove everything below it. The
         list itself (and each alert's dismiss control) lives in ``AlertsDialog``,
         opened by the shell on ``alerts_requested``. Clock-injected via
-        ``date.today()`` like the recurring card (FIBR-0172 D8/INV-16), and
+        ``app_today()`` like the recurring card (FIBR-0172 D8/INV-16), and
         ``VaultLockedError``-silent: an auto-lock mid-render leaves the button inert
         rather than crashing the dashboard."""
         try:
-            count = len(self._alerts.alerts(date.today()))
+            count = len(self._alerts.alerts(app_today()))
         except VaultLockedError:
             count = 0
         self.set_alert_count(count)
