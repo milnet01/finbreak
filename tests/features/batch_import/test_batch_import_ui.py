@@ -866,3 +866,41 @@ def test_FIBR0254_report_line_owns_its_unreadable_rows(qtbot, service):
     assert "couldn't be read" not in review.report_line(clean), (
         "a file with no unreadable rows says nothing about unreadable rows"
     )
+
+
+def test_file_labels_costs_a_fixed_number_of_passes_over_the_set() -> None:
+    """FIBR-0327 — each File label is a question about the whole set: does this
+    basename repeat, does the parent disambiguate it, is this one of several
+    statements fanned out of the same file.
+
+    Answering it a row at a time re-tallied the set per row, so a batch cost
+    O(N^2) on every refresh — and the chain this renders "can be hundreds of
+    files long", by ``refresh``'s own account.
+
+    Measured as PASSES OVER THE SET rather than as elapsed time, so the test
+    says the same thing on a loaded machine: whatever the labelling costs, it
+    must not read the set more times just because the set got longer.
+    """
+
+    class _CountingList(list):
+        passes = 0
+
+        def __iter__(self):
+            type(self).passes += 1
+            return super().__iter__()
+
+    def passes_for(count: int) -> int:
+        _CountingList.passes = 0
+        files = _CountingList(
+            BatchFile(path=f"/statements/{i}/statement.pdf") for i in range(count)
+        )
+        labels = import_batch_mod.file_labels(files)
+        assert len(labels) == count, "one label per row, whatever the tally costs"
+        return _CountingList.passes
+
+    small, large = passes_for(2), passes_for(60)
+    assert small == large, (
+        "FIBR-0327: labelling must read the file set a fixed number of times, "
+        "not once per row.\n"
+        f"  2 files: {small} passes\n  60 files: {large} passes"
+    )

@@ -53,8 +53,13 @@ from finbreak.ui.modal import show_modal
 COL_FILE, COL_ACCOUNT, COL_NEW, COL_DUPLICATE, COL_ERRORS, COL_STATUS = range(6)
 
 
-def file_label(record: BatchFile, files: Sequence[BatchFile]) -> str:
-    """What the File cell reads (§ 4.6).
+def _with_parent(path: str) -> str:
+    """``path``'s basename prefixed with its own parent directory's name."""
+    return str(Path(Path(path).parent.name) / Path(path).name)
+
+
+def file_labels(files: Sequence[BatchFile]) -> list[str]:
+    """What each row's File cell reads, in order (§ 4.6).
 
     Rows can share a basename two ways: ``statement.pdf`` from two folders (§ 8
     rejects filename-based duplicate detection for exactly this reason), and the
@@ -63,22 +68,29 @@ def file_label(record: BatchFile, files: Sequence[BatchFile]) -> str:
     parent directory when that disambiguates, else the full path — and a
     fanned-out OFX statement always appends its index, since no path prefix can
     separate siblings from the same file.
-    """
-    path = Path(record.path)
-    siblings = [other for other in files if other.path == record.path]
-    if len(siblings) > 1 and record.statement_index is not None:
-        return self_index_label(path.name, record.statement_index, len(siblings))
 
+    Every row is labelled in ONE call because each label is a question about the
+    whole set. Answering it per row re-tallied all three counters per row, so a
+    batch cost O(N^2) on every refresh — and the chain this renders "can be
+    hundreds of files long", by ``refresh``'s own account (FIBR-0327).
+    """
+    same_path = Counter(other.path for other in files)
     basenames = Counter(Path(other.path).name for other in files)
-    if basenames[path.name] == 1:
-        return path.name
-    with_parent = str(Path(path.parent.name) / path.name)
-    parented = Counter(
-        str(Path(Path(o.path).parent.name) / Path(o.path).name) for o in files
-    )
-    if parented[with_parent] == 1:
-        return with_parent
-    return record.path
+    parented = Counter(_with_parent(other.path) for other in files)
+
+    labels: list[str] = []
+    for record in files:
+        path = Path(record.path)
+        siblings = same_path[record.path]
+        if siblings > 1 and record.statement_index is not None:
+            labels.append(self_index_label(path.name, record.statement_index, siblings))
+        elif basenames[path.name] == 1:
+            labels.append(path.name)
+        elif parented[_with_parent(record.path)] == 1:
+            labels.append(_with_parent(record.path))
+        else:
+            labels.append(record.path)
+    return labels
 
 
 def self_index_label(name: str, index: int, total: int) -> str:
@@ -191,9 +203,10 @@ class BatchReviewWidget(QWidget):
             self._account_names = {a.id: a.name for a in self._accounts.list_accounts()}
         except VaultLockedError:
             pass  # keep the previous snapshot; the shell is tearing this down
+        labels = file_labels(self._files)
         self._table.setRowCount(len(self._files))
         for row, record in enumerate(self._files):
-            self._set(row, COL_FILE, file_label(record, self._files), record.path)
+            self._set(row, COL_FILE, labels[row], record.path)
             self._set(row, COL_ACCOUNT, self._account_name(record), record.path)
             self._set(row, COL_NEW, self._number(record.new_count), record.path)
             self._set(
