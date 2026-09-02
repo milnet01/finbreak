@@ -10170,6 +10170,58 @@ is a future error tomorrow.
   Which clock defines "today" is also settled (user, 2026-09-02): the pinned time zone wins. datetime_format gained the app clock and thirteen UI sites now read it. The four service-level date.today() defaults are left, because every date-bearing UI call passes today explicitly and importing datetime_format there would pull QtCore into the Qt-free service layer.
 
   Still open in this bullet: the missing parent-directory fsync at the migration commit points and in write_sidecar_json; auth.complete_first_run not closing the vault on failure; the two O(N^2) interactive costs (the transfer-candidate self-join, the batch review's file labels); and the i18n / PlainText gaps.
+  Progress (2026-09-02, second batch): the durability, O(N^2), i18n and
+  release-path classes are worked. Landed and pushed, each with a regression
+  test proven by mutation_probe. Durability: every rename that commits a vault
+  now flushes its directory (crypto.write_sidecar_json, and the migration's S4
+  and S5, where S4 landing after S5 left a v1 sidecar over a converted database
+  and read as a wrong password); the byte-equivalent private _fsync_dir helpers
+  in backup.py and vault_migration.py consolidated into crypto.fsync_dir rather
+  than becoming a third copy. auth.complete_first_run closes the vault when the
+  sidecar write fails, so the service and Vault.connection no longer disagree
+  about being locked.
+
+  O(N^2): TransferDetectionService resolves transfer legs through a new
+  TransactionRepository.by_ids instead of loading the whole table on every Home
+  refresh; schema v14 indexes transactions(amount_minor, occurred_on) and the
+  candidate self-join drops julianday(), which had hidden the date column from
+  any index -- measured, SQLite was building a transient automatic index over
+  the whole table per call. Batch import labels every row's file in one pass.
+
+  The bump went red in nine test files, and the pins are recast: where the
+  assertion meant "the walk reached latest" it now says so, and three
+  cross-feature pins on the constant became "this feature's own step is
+  registered and reachable". Two of them named 10 in their own test name while
+  asserting 13.
+
+  i18n / display: forecast.py's headline and provenance labels set PlainText
+  (both interpolate account names the user typed); pdf_export names the month
+  through QLocale rather than calendar.month_name; _amount renders money exactly
+  instead of through float, which lost four digits and the cents at the app's
+  own maximum. The Rules table refills through fill_guard -- it was the last one
+  refilling in place, so a delete left the next rule selected with Edit and
+  Delete live against it. The Transactions date range seeds from the rows on
+  screen instead of Qt's 2000-01-01, which emptied the table on first tick.
+
+  Update and release: the AppImage relaunch waiter takes the image path as an
+  argv positional -- shlex-quoted and spliced into a double-quoted echo, an
+  apostrophe in the path swallowed the exec, so the app closed and never
+  reopened; a download ending short of its Content-Length now says so instead of
+  failing the signature check and raising the tamper alarm; both release scripts
+  capture the publish exit status so a mid-list 503 reaches the read-back gate
+  rather than killing the script before it (the 0.1.21 failure); and
+  release-linux.sh refuses an unpushed bump, which used to tag the pre-bump
+  commit on the remote.
+
+  Still open in this bullet: categories._refresh not re-running its gating slot;
+  _datetime_prefs._read_timezone's unreachable recovery branch; the batch
+  review's keyboard-inaccessible Account cell and its inert picker sentinel; the
+  import preview's Amount column bypassing the shared money formatter; two
+  unguarded vault reads in import_wizard; and the app-shell set (detached worker
+  GC, the drain's missing disconnect, the discarded update-check exception, the
+  unguarded interrupted-restore os.replace, and app.py having no sys.excepthook).
+  .githooks/pre-push gating the working tree rather than the pushed commits is
+  also still open.
   **Layman:** A batch of smaller real defects the full sweep found, not yet fixed.
   Kind: review-fix.
   Source: review-code 2026-08-31.
