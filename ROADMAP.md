@@ -6243,6 +6243,35 @@ because retrofitting them is a data migration.
   FIBR-0327's.
 
   Gate green, 2086 passed / 2 skipped. Pushed as c39561d.
+  Progress (2026-09-02): M9 done.
+
+  Unknown v2 sidecar fields now survive a read-modify-write, at the three levels
+  one can carry them: top-level, inside the shared kdf group, and inside a slot
+  record. read_sidecar_v2 already tolerated them -- both gates are subset checks
+  -- but to_dict re-emitted only the fields the dataclasses name, and every
+  writer round-trips through it, so an older build deleted them on the next
+  ordinary user action. An unknown SLOT NAME already survived, slots being a dict
+  copied wholesale, so that was never part of it.
+
+  No call site changed. replace() carries every field through, and with_slot,
+  without_slot and _finish all build on it, so the preservation reaches every
+  existing writer for free. new_sidecar builds from params alone, so a fresh
+  vault carries no extras and INV-4's exact field-set pin -- scoped to a freshly
+  created vault -- is untouched. Locked by recovery_key INV-24, which drives a
+  REAL read-modify-write through add_recovery_key rather than a direct round trip.
+
+  mutation_probe on every part: the three reader captures and the three to_dict
+  emissions all killed. One survivor, reported rather than papered over -- the
+  extras-first ordering that stops a stray key shadowing a real one is
+  unmeasured, and unreachable rather than merely untested, since the reader
+  filters the known names out of both bags by construction. INV-24 records that
+  gap and its reason instead of implying coverage.
+
+  Gate green, 2087 passed / 2 skipped. Pushed as 85ac9f1.
+
+  M10 is next and is a DECISION rather than a fix: FIBR-0019 D5 promises a
+  regeneration offer after a recovery unlock and none exists, so either the code
+  or the promise has to move.
   **Layman:** The recovery-key work was reviewed again with fresh eyes; one serious problem can strand a half-upgraded vault with no way back, and several smaller fixes from last time only reached some of the places they needed to.
   Kind: review-fix.
   Source: close-phase-2026-08-25 (check-code + review-code x4 lanes, FP03 close, fresh context).
