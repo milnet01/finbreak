@@ -494,3 +494,57 @@ def test_FIBR0222_huge_exponent_is_a_ValueError_not_a_decimal_Overflow():
         1234,
         "Fake Row",
     )
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0327 — the display is exact, not routed through float
+# --------------------------------------------------------------------------- #
+
+# The largest amount the app will store: services/transactions.py caps the MINOR
+# units at 2**63-1, which at a two-decimal currency is this. It is far past
+# float64's exact-integer range (2**53), so a float round trip loses the low
+# digits AND the cents.
+_MAX_STORABLE = Decimal("92233720368547758.07")
+
+
+@pytest.mark.parametrize("name", LOCALES)
+def test_FIBR0327_a_large_amount_displays_the_digits_that_are_stored(name):
+    """FIBR-0327 — ``_format_amount`` built its magnitude with
+    ``QLocale().toString(float(...), "f", d)``.
+
+    Asserted on the DIGITS rather than on a whole formatted string, so the test
+    is independent of each locale's grouping and decimal characters: strip the
+    separators back out and what remains must be exactly what was passed in.
+    Under the float route the same check produced ...760.00 for a stored
+    ...758.07 -- four wrong digits, on the screen a user checks their money
+    against.
+    """
+    with pinned(name):
+        rendered = _format_amount(_MAX_STORABLE, "ZAR")
+    digits = re.sub(r"\D", "", rendered)
+    assert digits == "9223372036854775807", (
+        f"{name}: the rendered amount must carry the stored digits.\n"
+        f"  expected digits: 9223372036854775807\n"
+        f"  rendered:        {rendered!r} -> {digits}"
+    )
+
+
+@pytest.mark.parametrize("name", LOCALES)
+def test_FIBR0327_a_large_amount_still_round_trips(name):
+    """The INV-2 round trip, at the size where float lost it."""
+    with pinned(name):
+        magnitude = _magnitude(_format_amount(_MAX_STORABLE, "ZAR"))
+        assert parse_amount_input(magnitude) == _MAX_STORABLE, (
+            f"{name}: {magnitude!r} must parse back to the amount displayed"
+        )
+
+
+def test_FIBR0327_grouping_follows_the_locale_not_a_fixed_three_digits():
+    """Not every locale groups in threes: hi_IN writes 1,23,45,678. Grouping is
+    left to QLocale's integer overload rather than hand-rolled, so the exact
+    render did not cost the locale its own rule."""
+    with pinned("hi_IN"):
+        rendered = _format_amount(Decimal("12345678.00"), "ZAR")
+    assert "1,23,45,678" in rendered, (
+        "hi_IN groups by lakh, not by thousands.\n  actual: " + repr(rendered)
+    )

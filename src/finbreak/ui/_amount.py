@@ -50,6 +50,39 @@ _AMBIGUOUS_SHAPE = re.compile(r"^[+-]?\d+(?:[.,]\d+)*[.,]\d{3}$")
 _SPACES = (" ", " ", " ")
 
 
+# Above this an int stops fitting QLocale.toString's integer overload. Amounts are
+# capped well inside it (services/transactions.py caps the MINOR units at 2**63-1),
+# but a typed value reaching _render is not yet capped.
+_TOSTRING_MAX = 2**63 - 1
+
+
+def _grouped(value: Decimal, decimals: int) -> str:
+    """``value`` rendered to ``decimals`` places, grouped under the current locale,
+    EXACTLY.
+
+    Never through ``float``. Amounts run to ``_MAX_AMOUNT_MINOR`` (2**63-1), far
+    past float64's exact-integer range, so a stored ``92233720368547758.07``
+    rendered as ``92 233 720 368 547 760,00`` -- wrong digits and wrong cents, on
+    the screen a user checks their money against (FIBR-0327).
+
+    The integer overload of ``QLocale.toString`` is exact and still applies the
+    locale's own grouping rule, including the non-uniform ones (hi_IN groups
+    ``1,23,45,678``), which hand-rolled three-digit chunking would lose. The
+    fraction is separator-joined rather than re-formatted: it is already the
+    exact digits ``Decimal.__format__`` produced.
+
+    Past the integer overload's range the digits are emitted ungrouped rather
+    than wrong.
+    """
+    locale = QLocale()
+    text = f"{value:.{decimals}f}"
+    negative = text.startswith("-")
+    whole, _, frac = text.lstrip("-").partition(".")
+    grouped = locale.toString(int(whole)) if int(whole) <= _TOSTRING_MAX else whole
+    body = grouped + locale.decimalPoint() + frac if decimals else grouped
+    return locale.negativeSign() + body if negative else body
+
+
 def _format_amount(
     display: Decimal, symbol: str, negative_style: str = NegativeStyle.MINUS
 ) -> str:
@@ -64,10 +97,11 @@ def _format_amount(
     # symbol — Qt substitutes the ISO currency code under every non-C locale (e.g.
     # "USD1,234.50" under en_US), leaking a second currency indicator (FIBR-0153 INV-3).
     #
-    # A stored amount reconstructs to a finite Decimal, so its exponent is an int;
-    # toString has no Decimal overload, so the float() is a DISPLAY-ONLY, bounded
-    # conversion — storage/computation stay exact Decimal (D1). Decimal places follow
-    # the display Decimal's own exponent, not the currency's minor unit.
+    # A stored amount reconstructs to a finite Decimal, so its exponent is an int.
+    # The magnitude goes through `_grouped`, which never touches float — amounts
+    # reach 2**63-1 minor units, past float64's exact-integer range (FIBR-0327).
+    # Decimal places follow the display Decimal's own exponent, not the currency's
+    # minor unit.
     #
     # The symbol is ALWAYS a one-space prefix (overriding QLocale's per-locale symbol
     # placement) to honour the user's "R 1,234.49" request; only grouping/decimals stay
@@ -75,7 +109,7 @@ def _format_amount(
     # negative (FIBR-0105 D2) — NOT delegated to QLocale's negative-currency pattern.
     sym = CURRENCY_SYMBOLS.get(symbol, symbol)
     decimals = max(0, -cast(int, display.as_tuple().exponent))
-    magnitude = QLocale().toString(float(abs(display)), "f", decimals)
+    magnitude = _grouped(abs(display), decimals)
     body = f"{sym} {magnitude}"
     if display < 0:
         return f"({body})" if negative_style == NegativeStyle.BRACKETS else f"-{body}"
@@ -213,7 +247,8 @@ def _render(value: Decimal) -> str:
     """One reading, in the user's convention. The digit count is the SIGNIFICANT
     one (normalize()), matching parse_transaction — on the raw exponent, en_ZA's
     decimal reading of "1,500" renders as "1,500", indistinguishable from the
-    input. Pinned to the "f" overload: the bare toString(double) is 'g' with six
-    significant digits and would put "1,2345e+06" in a money message."""
+    input. Exact via ``_grouped``: the float route was both lossy past 2**53 and,
+    on the bare toString(double), 'g' with six significant digits — which would
+    put "1,2345e+06" in a money message."""
     digits = max(0, -cast(int, value.normalize().as_tuple().exponent))
-    return QLocale().toString(float(value), "f", digits)
+    return _grouped(value, digits)
