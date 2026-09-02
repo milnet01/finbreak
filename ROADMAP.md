@@ -10067,7 +10067,7 @@ is a future error tomorrow.
   Kind: doc-fix.
   Source: review-code 2026-08-31 lane=importers.
 
-- 📋 [FIBR-0324] **FIBR-0171 INV-4 was amended under FIBR-0318 and owes its review-contract gate.**
+- ✅ [FIBR-0324] **FIBR-0171 INV-4 was amended under FIBR-0318 and owes its review-contract gate.**
   INV-4 prescribed the chained stepping that produced the month-end forecast
   defect, contradicting D6 and the implementation's own docstring, which both
   argue for anchored stepping. It was amended to state the anchored form.
@@ -10075,7 +10075,19 @@ is a future error tomorrow.
   That changes what a conformer builds, so rule 14's gate applies:
   review-contract docs/specs/FIBR-0171.md. The amendment says so in place rather
   than relying on this bullet.
-  **Layman:** A spec rule was corrected and still needs its independent read.
+  Resolved (2026-09-02): gate run, three loops, three cold lanes each.
+  Eighteen verified findings, all fixed. Loop 1 found that D6 still
+  prescribed the chained form the INV-4 amendment forbids, so the spec's
+  two normative sections gave an implementer two different stepping
+  algorithms — the amendment note itself claimed D6 agreed with it. Loop
+  2 found FIBR-0179's cash-only narrowing had been applied to D1 and
+  never carried to D2, D10, INV-6, INV-13 or D9. Loop 3 hit the cap, and
+  it was a VIOLENT cap: three of its five findings landed on text loop 2
+  wrote. The document routes to implementation rather than a fourth cold
+  read. Collateral corrected in tests/features/forecast/spec.md and in
+  update_closing_balance's docstring, which contradicted its own body
+  about logging decrypted balances.
+  **Layman:** A corrected spec rule got its independent read; it found eighteen more problems, all fixed.
   Kind: doc.
   Source: review-code 2026-08-31 lane=money-reporting.
 
@@ -10151,6 +10163,13 @@ is a future error tomorrow.
   Separately, the UI leg of this bullet is already closed: FIBR-0313 M8 put
   HashingError into the except tuple in ui/_password_hint.py. restore_backup and
   verify_backup remain.
+  Progress (2026-09-02): the crypto/vault/migration class is worked, plus the clock decision. Landed and pushed: the pre-login .fbk numerics are bounded (a new crypto.validate_untrusted_params at the trust boundary, and migrations.run_migrations refuses a schema version below 1); the ATTACH DATABASE path is bound rather than interpolated, so an apostrophe in the user's home no longer breaks backup export and the v2 migration; SQLCIPHER_COMPAT is split into what an export WRITES and what a restore ACCEPTS, with the restore now opening at the level the manifest records; and cipher_compatibility is validated in auth._open_with, where the plaintext sidecar value enters. Every fix carries a regression test proven red by reverting it.
+
+  The open decision this bullet named is settled: the ceiling belongs at the restore path, NOT in validate_params. security-model INV-2 states the floor is deliberately one-sided and T5 already puts the residual on the restore path, so bounding there closes the attack, binds no existing vault, and needs no spec amendment.
+
+  Which clock defines "today" is also settled (user, 2026-09-02): the pinned time zone wins. datetime_format gained the app clock and thirteen UI sites now read it. The four service-level date.today() defaults are left, because every date-bearing UI call passes today explicitly and importing datetime_format there would pull QtCore into the Qt-free service layer.
+
+  Still open in this bullet: the missing parent-directory fsync at the migration commit points and in write_sidecar_json; auth.complete_first_run not closing the vault on failure; the two O(N^2) interactive costs (the transfer-candidate self-join, the batch review's file labels); and the i18n / PlainText gaps.
   **Layman:** A batch of smaller real defects the full sweep found, not yet fixed.
   Kind: review-fix.
   Source: review-code 2026-08-31.
