@@ -338,8 +338,16 @@ class Vault:
         attached = False
         try:
             conn.execute("PRAGMA temp_store = MEMORY")
+            # The path is BOUND, never interpolated: an apostrophe anywhere in
+            # it (an `O'Brien` home directory) is a syntax error that breaks
+            # backup export and the § 13 migration's S1 permanently, for a user
+            # who can do nothing about their own name. `bandit` B608 does not
+            # match ATTACH, so nothing else was going to catch this.
+            # The KEY stays interpolated — it is `x'<hex>'` blob syntax, which a
+            # bound string parameter is not, and the hex comes from us.
             conn.execute(
-                f"ATTACH DATABASE '{dest_db}' AS backup KEY \"x'{backup_key.hex()}'\""
+                f"ATTACH DATABASE ? AS backup KEY \"x'{backup_key.hex()}'\"",
+                (str(dest_db),),
             )
             attached = True
             # cipher_compatibility BEFORE cipher_use_hmac (INV-13) so HMAC-on can't

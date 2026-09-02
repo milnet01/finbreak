@@ -1496,3 +1496,20 @@ def test_FIBR0327_manifest_schema_version_below_one_refused(tmp_path, bad):
     with pytest.raises(BackupError):
         BackupService(auth.vault, auth).restore_backup(hostile, _BACKUP_PW, _M2)
     _assert_unchanged(d, vb, sb)
+
+
+def test_FIBR0327_export_works_from_a_path_containing_an_apostrophe(tmp_path):
+    """`ATTACH DATABASE '{path}'` interpolated the path, so an `O'Brien` home
+    directory was a SQL syntax error — breaking backup export and the § 13
+    migration's S1 permanently, for a user who can do nothing about their name.
+    Found independently by two review lanes; `bandit` B608 does not match
+    ATTACH."""
+    home = tmp_path / "O'Brien"
+    home.mkdir()
+    auth = AuthService(home / "vault.db", home / "vault.kdf.json")
+    auth.first_run(bytearray(_M2, "utf-8"), "ZAR")
+    dest = home / "backup.db"
+    key = bytearray(secrets.token_bytes(32))
+    auth.vault.export_to(dest, key)
+    assert dest.exists() and dest.stat().st_size > 0
+    auth.lock()
