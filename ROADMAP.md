@@ -6191,6 +6191,31 @@ because retrofitting them is a data migration.
 
   spec INV-22 added. C1, H1, H2 and M1-M7 are now closed; M8-M10, L1-L16, Q1-Q5
   and M10's decision remain.
+  Progress (2026-09-02): M8 done, and probing it found two more.
+
+  crypto.validate_slot's third consumer (ui/_password_hint.py) now runs it, and
+  a slot it cannot test -- KdfPolicyError or argon2 HashingError -- takes the
+  fail-open-with-a-warning path the unreadable-sidecar arm above it already
+  established. Locked by recovery_key INV-23 over three damage shapes, chosen so
+  neither half of the guard can be dropped: a short salt and a zero time_cost
+  both reach argon2, while a short nonce reaches unwrap_dek instead, whose single
+  undifferentiated KeyUnwrapError makes the loop continue and the route return
+  SILENTLY. Only validate_slot catches that third one.
+
+  mutation_probe on every part rather than the feature exposed two defects the
+  suite could not see. An explicit return at the end of the new arm that nothing
+  measured, since the function ends there -- removed. And an unfiltered
+  caplog.records assertion that crypto.read_sidecar_v2's own warning satisfied,
+  so a dropped validate_slot survived even after the nonce leg was added; the
+  assertion now names its own logger. All four mutants killed after that.
+
+  Scope held deliberately: validate_params still bounds only the low side, so
+  time_cost and parallelism stay argon2's to refuse. That general gap is
+  FIBR-0327's first MEDIUM bullet, which names the UI's except tuple as one of
+  three escapes. This closes that one; restore_backup and verify_backup remain
+  FIBR-0327's.
+
+  Gate green, 2086 passed / 2 skipped. Pushed as c39561d.
   **Layman:** The recovery-key work was reviewed again with fresh eyes; one serious problem can strand a half-upgraded vault with no way back, and several smaller fixes from last time only reached some of the places they needed to.
   Kind: review-fix.
   Source: close-phase-2026-08-25 (check-code + review-code x4 lanes, FP03 close, fresh context).
