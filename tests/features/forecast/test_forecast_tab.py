@@ -10,6 +10,7 @@ from collections.abc import Iterator
 from datetime import date, timedelta
 
 import pytest
+from PySide6.QtCore import Qt
 
 from conftest import _PW
 from finbreak.repositories.statement_periods import StatementPeriodRepository
@@ -232,4 +233,47 @@ def test_INV14_debt_only_vault_still_names_the_reason_in_net_flow(
     assert "spendable cash): visa" in provenance, (
         "the card holds a balance and is excluded for NOT BEING CASH — the "
         f"reason must survive into NET_FLOW mode. Got: {w._provenance.text()!r}"
+    )
+
+
+def test_FIBR0327_both_labels_render_account_names_as_plain_text(
+    qtbot, vault_service
+) -> None:
+    """FIBR-0327 — the headline's "(X only)" suffix and the provenance line both
+    interpolate names the user typed into the account editor, and both labels
+    were left at the default AutoText.
+
+    Qt's AutoText guesses: a name containing ``<b>`` or ``<img src=...>`` renders
+    as rich text, so the label shows something other than the account's real name
+    and attempts a local resource load. ``ui/month_summary.py`` had already been
+    fixed for exactly this, with the reasoning written down.
+
+    Both halves are asserted -- the format, and that the raw string survives into
+    the text. The format alone would pass on a label that never received the name.
+    """
+    _seed_anchored(vault_service)
+    accounts = AccountService(vault_service.vault)
+    anchored = accounts.list_accounts()[0]
+    accounts.update_account(
+        anchored.id, "<b>Cheque</b>", anchored.type, account_number=None, note=None
+    )
+    # A second cash account with no balance makes the total partial, which is what
+    # puts the contributing account's name in the headline's suffix.
+    accounts.add_account("Second current", "current")
+    # A debt account can never contribute, so provenance names it as excluded.
+    accounts.add_account("<img src=x>Visa", "credit_card")
+
+    w = ForecastWidget(vault_service)
+    qtbot.addWidget(w)
+    w.refresh()
+
+    assert w._headline.textFormat() is Qt.TextFormat.PlainText
+    assert w._provenance.textFormat() is Qt.TextFormat.PlainText
+    assert "<b>Cheque</b>" in w._headline.text(), (
+        "the headline must carry the account name as typed.\n"
+        f"  actual: {w._headline.text()}"
+    )
+    assert "<img src=x>Visa" in w._provenance.text(), (
+        "the provenance line must carry the account name as typed.\n"
+        f"  actual: {w._provenance.text()}"
     )

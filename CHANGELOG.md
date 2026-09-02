@@ -55,6 +55,10 @@ signaling per
 
 ### Changed
 
+- **Batch import review no longer slows down as files are added** (FIBR-0327)
+  Working out each row's File label re-examined the whole batch, so a long
+  batch redrew slowly.
+
 - **Schema v14 indexes transfer-candidate detection** (FIBR-0327)
   Finding transfer candidates had no index to work from, so the database built
   a throwaway one over every transaction each time the tab opened. Existing
@@ -69,6 +73,13 @@ signaling per
   leave it on "System default", nothing changes.
 
 ### Fixed
+
+- **Exported PDFs name the month in the app's language** (FIBR-0327)
+  The period line was always English, whatever the rest of the report.
+
+- **Account names render as text on the Forecast tab** (FIBR-0327)
+  An account named with something that looks like markup was drawn as markup
+  rather than shown as typed.
 
 - **The Transfers tab and the dashboard stop reading every transaction** (FIBR-0327)
   Both resolved a handful of ids by loading the whole table, on every Home

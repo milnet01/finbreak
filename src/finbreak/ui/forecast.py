@@ -18,7 +18,7 @@ import calendar
 from datetime import date, timedelta
 
 from PySide6.QtCharts import QChartView
-from PySide6.QtCore import Slot
+from PySide6.QtCore import Qt, Slot
 from PySide6.QtGui import QPainter
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -62,11 +62,18 @@ class ForecastWidget(QWidget):
 
         self.setWindowTitle(self.tr("Forecast"))
 
+        # PlainText on both, never the default AutoText: each interpolates
+        # account names the user typed, and one containing <b> or <img src=...>
+        # would otherwise render as rich text -- showing something other than the
+        # account's name, and attempting a local resource load. Same reasoning as
+        # ui/month_summary.py, which was already fixed (FIBR-0327).
         self._headline = QLabel()
         self._headline.setObjectName("forecast_headline")
+        self._headline.setTextFormat(Qt.TextFormat.PlainText)
         self._provenance = QLabel()
         self._provenance.setObjectName("forecast_provenance")
         self._provenance.setWordWrap(True)
+        self._provenance.setTextFormat(Qt.TextFormat.PlainText)
 
         self._horizon = QComboBox()
         self._horizon.setObjectName("forecast_horizon")

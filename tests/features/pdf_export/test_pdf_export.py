@@ -477,3 +477,32 @@ def test_export_temp_refuses_to_follow_a_symlink(qapp, service, tmp_path):
     )
     assert out.exists() and out.read_bytes().startswith(b"%PDF")
     assert out.stat().st_mode & 0o777 == 0o600
+
+
+def test_FIBR0327_period_month_name_follows_the_locale(qapp, service, monkeypatch):
+    """FIBR-0327 — the month in the period line came from
+    ``calendar.month_name``, which is C-locale English whatever the app's
+    language, in a module where every other string goes through ``_tr()``.
+
+    Asserted through ``QLocale``'s own data rather than through a translation
+    catalogue, so the test needs no ``.qm`` file loaded: switching the default
+    locale to French must move the month name. ``ui/month_summary.py`` already
+    spelled it this way.
+    """
+    from PySide6.QtCore import QLocale
+
+    a = _accounts(service)[0].id
+    _add(service, a, 100_00)
+
+    previous = QLocale()
+    QLocale.setDefault(QLocale(QLocale.Language.French, QLocale.Country.France))
+    try:
+        html, _ = _svc(service)._build_html(_options(), _TODAY)
+    finally:
+        QLocale.setDefault(previous)
+
+    assert "janvier 2026" in html, (
+        "the period line must name the month through QLocale, not through "
+        "calendar.month_name."
+    )
+    assert "January 2026" not in html

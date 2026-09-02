@@ -14,7 +14,6 @@ QWidget), so a `QApplication` must exist when rendering (always true in the app)
 
 from __future__ import annotations
 
-import calendar
 import os
 from dataclasses import dataclass
 from datetime import date
@@ -24,7 +23,7 @@ from pathlib import Path
 
 import pikepdf
 from PySide6.QtCharts import QChart, QChartView
-from PySide6.QtCore import QBuffer, QCoreApplication, QIODevice, QUrl
+from PySide6.QtCore import QBuffer, QCoreApplication, QIODevice, QLocale, QUrl
 from PySide6.QtGui import QColor, QImage, QPageSize, QPdfWriter, QTextDocument
 
 from finbreak.datetime_format import format_date
@@ -264,7 +263,14 @@ class PdfExportService:
                 start=format_date(start.isoformat(), pref),
                 end=format_date(end.isoformat(), pref),
             )
-        month = f"{calendar.month_name[end.month]} {end.year}"
+        # QLocale, not calendar.month_name: that one is C-locale English whatever
+        # the app's language, in a module where every other string goes through
+        # _tr(). Composed through a template rather than an f-string, because
+        # month/year order is what some locales reorder (coding.md 5.2). Same
+        # spelling as ui/month_summary.py (FIBR-0327).
+        month = _tr("{month_name} {year}").format(
+            month_name=QLocale().standaloneMonthName(end.month), year=end.year
+        )
         if prefs.mode == MODE_CURRENT_MONTH:
             return _tr("This month ({label})").format(label=month)
         if prefs.mode == MODE_PREVIOUS_MONTH:
