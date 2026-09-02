@@ -11,9 +11,10 @@ silent re-first-run — so the window is never shown. The key is wiped on quit v
 from __future__ import annotations
 
 import sys
+from contextlib import suppress
 from typing import cast
 
-from PySide6.QtCore import QLocale, Qt
+from PySide6.QtCore import QCoreApplication, QLocale, Qt
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtNetwork import QLocalServer
 from PySide6.QtWidgets import QApplication, QMessageBox, QWidget
@@ -24,6 +25,43 @@ from finbreak.services.auth import AuthService
 from finbreak.ui.icons import app_icon
 from finbreak.ui.main_window import MainWindow
 from finbreak.ui.theme import ThemeController, load_theme_pref
+
+# Translation outside a QObject (this module is not one) calls
+# QCoreApplication.translate with the LITERAL at each site, never through a
+# _tr(text) wrapper: lupdate reads the argument statically, so a wrapper extracts
+# an empty catalogue entry while reading at the call site as though it were
+# handled. tests/features/i18n enforces that, with pdf_export.py the one named
+# exception (FIBR-0311).
+
+
+def _install_excepthook() -> None:
+    """Show an unhandled exception instead of vanishing.
+
+    Only ``VaultStateError`` was ever caught, and a windowed build has no console
+    -- PyInstaller's ``--noconsole`` on Windows, and the AppImage launched from a
+    menu. So the default hook wrote a traceback to a stderr nobody sees, and any
+    other startup failure produced an app that does nothing when double-clicked,
+    with nothing the user could report (FIBR-0327).
+
+    Chains the previous hook rather than replacing it, so a run WITH a console
+    still gets the traceback; the dialog is the addition. Its own failure is
+    swallowed, because a broken dialog must not replace the fault it is reporting.
+    """
+    previous = sys.excepthook
+
+    def hook(exc_type: type[BaseException], exc: BaseException, tb: object) -> None:
+        previous(exc_type, exc, tb)  # type: ignore[arg-type]
+        with suppress(Exception):
+            QMessageBox.critical(
+                None,
+                "finbreak",
+                QCoreApplication.translate(
+                    "App",
+                    "finbreak hit an unexpected error and cannot continue:\n{error}",
+                ).format(error=f"{exc_type.__name__}: {exc}"),
+            )
+
+    sys.excepthook = hook
 
 
 def run(argv: list[str] | None = None) -> int:
@@ -52,6 +90,10 @@ def run(argv: list[str] | None = None) -> int:
     app.setWindowIcon(app_icon())  # branded icon on every window + the taskbar
     app.setLayoutDirection(QLocale().textDirection())
 
+    # After the QApplication, because the hook shows a dialog; before anything
+    # that can fail, because that is what it is for.
+    _install_excepthook()
+
     # Apply the stored theme BEFORE the main window, so the very first, still-locked
     # window is themed (FIBR-0127 INV-1). The controller parents to the app and
     # follows the OS scheme live while in "system" mode.
@@ -74,8 +116,11 @@ def run(argv: list[str] | None = None) -> int:
         QMessageBox.critical(
             None,
             "finbreak",
-            f"The vault install is incomplete or corrupt:\n{exc}\n\n"
-            "Remove the partial data files to start over.",
+            QCoreApplication.translate(
+                "App",
+                "The vault install is incomplete or corrupt:\n{error}\n\n"
+                "Remove the partial data files to start over.",
+            ).format(error=exc),
         )
         return 1
 

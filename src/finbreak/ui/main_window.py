@@ -35,6 +35,7 @@ from PySide6.QtCore import (
     QSettings,
     QSize,
     Qt,
+    QThread,
     QTimer,
     QUrl,
 )
@@ -155,6 +156,13 @@ _STATUS_TIMEOUT_MS = 4000
 # enough that closing the window still feels immediate; a worker that outlasts it
 # is unparented rather than destroyed, so it cannot abort the process (FIBR-0204).
 _WORKER_DRAIN_MS = 1500
+
+# Update workers detached at shutdown because they outlasted the drain. The list
+# is the PYTHON reference that keeps them alive: setParent(None) hands ownership
+# back to Python, so without it the running QThread is garbage-collectable --
+# the same destruction the detach exists to avoid (FIBR-0327). Entries are pruned
+# on the next drain, so the list holds only threads still running.
+_DETACHED_WORKERS: list[QThread] = []
 
 # The workspace tab order (FIBR-0052 INV-1; Transactions inserted 2nd by FIBR-0012).
 # Fixed; the navigation actions and the import-done landing key on these indices.
@@ -1857,7 +1865,20 @@ class MainWindow(QMainWindow):
         actually prevents the abort: an unparented thread is not destroyed by the
         window's destructor, so the worst case degrades to a Qt warning at process
         exit instead of a crash the user sees.
+
+        **Detaching needs two things the C++ reasoning does not cover** (both
+        FIBR-0327). ``setParent(None)`` hands ownership back to *Python*, and the
+        next statement clears the only tracked reference — so the thread became
+        garbage-collectable while still running, which is the same destruction the
+        detach was avoiding. ``_DETACHED_WORKERS`` is the reference that outlives
+        the window. And the worker's signals must be CUT: a download finishing
+        after this point would otherwise still reach the window's slot, and that
+        slot swaps the binary and hard-exits the process during shutdown.
         """
+        # A detached worker that has since finished is free to go.
+        _DETACHED_WORKERS[:] = [
+            w for w in _DETACHED_WORKERS if shiboken6.isValid(w) and w.isRunning()
+        ]
         for attr in (
             "_update_check_worker",
             "_manual_check_worker",
@@ -1871,7 +1892,14 @@ class MainWindow(QMainWindow):
                 worker.requestInterruption()
                 worker.quit()
                 if not worker.wait(_WORKER_DRAIN_MS):
+                    # Silence it BEFORE detaching: past this point the window is
+                    # being destroyed and no result may reach one of its slots.
+                    # blockSignals rather than disconnect() -- PySide6 has no
+                    # no-argument disconnect, and blocking covers every signal
+                    # including ones connected elsewhere.
+                    worker.blockSignals(True)
                     worker.setParent(None)  # outlive the window rather than abort
+                    _DETACHED_WORKERS.append(worker)  # ... and outlive Python's GC
             setattr(self, attr, None)
 
     def _center_window(self) -> None:

@@ -74,6 +74,14 @@ signaling per
 
 ### Fixed
 
+- **Closing during an update check is safer** (FIBR-0327)
+  A check or download still running at close could be cut off mid-flight, or
+  finish afterwards and act on a window that had already gone.
+
+- **A startup failure now says what went wrong instead of nothing at all** (FIBR-0327)
+  Only one kind of problem was reported. Any other left the app doing nothing
+  when you opened it, with no message and nothing to report.
+
 - **Cutting a release refuses an unpushed version bump** (FIBR-0327)
   The tag is created on GitHub, so an unpushed bump tagged the previous
   commit and attached downloads built from a version the tag did not name.

@@ -8,6 +8,7 @@ to hold. Every vault lives under `tmp_path`; no network, no real data.
 """
 
 import re
+import sys
 from decimal import Decimal
 from pathlib import Path
 
@@ -988,3 +989,98 @@ def test_about_text_shows_version(qtbot, service):
     text = window._about_text()
     assert __version__ in text, f"About text {text!r} omits version {__version__}"
     assert "finbreak" in text
+
+
+def test_FIBR0327_an_unhandled_startup_error_is_shown_not_swallowed(qapp, monkeypatch):
+    """FIBR-0327 — ``run()`` caught only ``VaultStateError``.
+
+    A windowed build has no console — PyInstaller's ``--noconsole`` on Windows,
+    and the AppImage launched from a menu — so the default hook wrote a traceback
+    to a stderr nobody sees. Any other startup failure produced an app that does
+    nothing at all when double-clicked, with nothing the user could report.
+
+    Asserted on both halves: the dialog appears, carrying enough to report; and
+    the previous hook still runs, so a console launch keeps its traceback.
+    """
+    from PySide6.QtWidgets import QMessageBox
+
+    from finbreak.app import _install_excepthook
+
+    shown: list[tuple[str, str]] = []
+    chained: list[str] = []
+    monkeypatch.setattr(
+        QMessageBox,
+        "critical",
+        staticmethod(lambda _parent, title, text, *a, **k: shown.append((title, text))),
+    )
+
+    previous = sys.excepthook
+    sys.excepthook = lambda *args: chained.append("previous ran")
+    try:
+        _install_excepthook()
+        sys.excepthook(RuntimeError, RuntimeError("the vault dir is read-only"), None)
+    finally:
+        sys.excepthook = previous
+
+    assert chained == ["previous ran"], (
+        "the installed hook must chain, so a run WITH a console keeps its traceback"
+    )
+    assert len(shown) == 1, (
+        "FIBR-0327: an unhandled error must reach the user. Without this the "
+        f"windowed build exits silently.\n  dialogs shown: {shown}"
+    )
+    title, text = shown[0]
+    assert title == "finbreak"
+    assert "RuntimeError" in text and "the vault dir is read-only" in text, (
+        "the dialog must name the fault, or the user has nothing to report.\n"
+        f"  actual: {text!r}"
+    )
+
+
+def test_FIBR0327_a_broken_dialog_does_not_replace_the_fault_it_reports(
+    qapp, monkeypatch
+):
+    """The hook's own failure is swallowed deliberately: raising out of an
+    exception handler would hide the original fault behind a second one."""
+    from PySide6.QtWidgets import QMessageBox
+
+    from finbreak.app import _install_excepthook
+
+    def explode(*_args, **_kwargs):
+        raise RuntimeError("no display")
+
+    monkeypatch.setattr(QMessageBox, "critical", staticmethod(explode))
+
+    previous = sys.excepthook
+    seen: list[str] = []
+    sys.excepthook = lambda *args: seen.append("previous ran")
+    try:
+        _install_excepthook()
+        sys.excepthook(ValueError, ValueError("boom"), None)  # must not raise
+    finally:
+        sys.excepthook = previous
+
+    assert seen == ["previous ran"]
+
+
+def test_FIBR0327_run_installs_the_hook_before_anything_can_fail(qapp, monkeypatch):
+    """The hook is worth nothing if ``run()`` stops calling it, and a fix that
+    goes inert looks exactly like a fix that works.
+
+    Driven through the real ``run()``, short-circuited at the single-instance
+    guard — which sits after the install, so returning there proves the install
+    already happened.
+    """
+    from finbreak import app as app_mod
+    from finbreak import single_instance
+
+    monkeypatch.setattr(single_instance, "another_instance_is_running", lambda _n: True)
+    previous = sys.excepthook
+    try:
+        assert app_mod.run([]) == 0, "a second launch stands down"
+        assert sys.excepthook is not previous, (
+            "FIBR-0327: run() must install the excepthook before anything that "
+            "can fail, or a windowed build still exits silently"
+        )
+    finally:
+        sys.excepthook = previous
