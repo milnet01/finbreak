@@ -406,6 +406,43 @@ every credential, account and transaction here is synthetic
   the assertion named its own logger.
   Source: FIBR-0313 M8.
 
+- **INV-24** — A read-modify-write through the v2 sidecar preserves every field
+  it does not itself define, at all three levels a v2 sidecar carries them: an
+  unrecognised top-level key, an unrecognised key inside the shared `kdf`
+  group, and an unrecognised key inside a slot record. `VaultSidecar.to_dict()`
+  re-emits only the fields the dataclass names, and every writer round-trips
+  through it (`read_sidecar_v2` → mutate → `write_sidecar_v2`), so a field a
+  newer build wrote and an older one does not know about is silently deleted
+  on the very next write reachable from an ordinary user action
+  (`AuthService.add_recovery_key`, `remove_recovery_key`, `set_master_password`;
+  `vault_migration._finish`). `read_sidecar_v2`'s own subset checks already
+  tolerate such a field **on read** — the comment above
+  `MIGRATION_PENDING_FIELD` reasons about exactly this case for the resume
+  sidecar — but tolerating it on read and then deleting it on the next write is
+  the same loss one step later. § 4.1 of the design spec anticipates FIBR-0020
+  (biometric unlock) arriving as a new slot; a build that has not yet learned
+  about it must not destroy what a build that has already written. **An
+  unrecognised SLOT NAME is not this defect** — `slots` is a plain dict keyed by
+  name and every writer copies it wholesale, so an unknown slot already
+  survives a re-wrap untouched.
+  *Test:* `test_sidecar_v2.py::test_read_modify_write_preserves_unknown_v2_fields`
+  — plants a distinct, recognisable string at all three levels directly on
+  disk, then drives a REAL read-modify-write through
+  `AuthService.add_recovery_key` (§ 4.7's Keep/Add route) rather than only
+  `read_sidecar_v2`/`write_sidecar_v2` directly, and asserts all three survive
+  with their original values, alongside the untouched master slot's own known
+  fields.
+  Deliberately NOT covered, and recorded so the gap is not mistaken for
+  coverage: `to_dict()` emits unrecognised keys BEFORE the ones it owns, so a
+  stray key sharing a name loses to the real value rather than overwriting it.
+  No test reaches that, and none can from this route — `read_sidecar_v2`
+  filters the known names out of both unrecognised bags by construction, so the
+  collision exists only for a hand-built `VaultSidecar`. `mutation_probe`
+  confirms it is unmeasured: reversing the order leaves the suite green. The
+  ordering is kept as insurance against a future construction path, not because
+  anything today can produce the collision.
+  Source: FIBR-0313 M9.
+
 ## Rationale
 
 `AuthService.reset_vault` — "start over" — is the live answer to *I forgot my

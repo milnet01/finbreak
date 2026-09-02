@@ -11,7 +11,7 @@ import json
 import logging
 import os
 from collections.abc import Mapping
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -202,6 +202,22 @@ _V2_SLOT_FIELDS = frozenset({"salt_hex", "nonce_hex", "wrapped_dek_hex"})
 MIGRATION_PENDING_FIELD = "migration_pending"
 CIPHER_COMPATIBILITY_FIELD = "cipher_compatibility"
 
+# The top-level keys this version RECOGNISES — never the ones it allows. An
+# unrecognised key, at this level or inside `kdf` or a slot, is carried back out
+# verbatim on the next write. Tolerating one on read was never enough on its
+# own: every writer is read-modify-write, so a field this build does not know
+# about was being deleted the first time an older build touched the sidecar
+# (FIBR-0313 M9). § 4.1 expects the format to grow.
+_V2_TOP_FIELDS = frozenset(
+    {
+        "sidecar_version",
+        "kdf",
+        "slots",
+        MIGRATION_PENDING_FIELD,
+        CIPHER_COMPATIBILITY_FIELD,
+    }
+)
+
 
 @dataclass(frozen=True)
 class SlotRecord:
@@ -210,6 +226,9 @@ class SlotRecord:
     salt: bytes
     nonce: bytes
     wrapped_dek: bytes
+    #: Fields of this slot that this build does not recognise, kept verbatim so
+    #: a write does not delete them. Empty for every slot this build creates.
+    extra: dict[str, object] = field(default_factory=dict)
 
     @property
     def wrapped(self) -> Slot:
@@ -220,8 +239,11 @@ class SlotRecord:
     def from_wrap(cls, salt: bytes, slot: Slot) -> SlotRecord:
         return cls(salt=salt, nonce=slot.nonce, wrapped_dek=slot.wrapped_dek)
 
-    def to_dict(self) -> dict[str, str]:
+    def to_dict(self) -> dict[str, object]:
+        # Unrecognised fields first, so a stray key colliding with one this
+        # build owns loses to the real value rather than overwriting it.
         return {
+            **self.extra,
             "salt_hex": self.salt.hex(),
             "nonce_hex": self.nonce.hex(),
             "wrapped_dek_hex": self.wrapped_dek.hex(),
@@ -248,6 +270,11 @@ class VaultSidecar:
     slots: dict[str, SlotRecord]
     migration_pending: bool = False
     cipher_compatibility: int | None = None
+    #: Top-level and `kdf`-group keys this build does not recognise, kept
+    #: verbatim across a read-modify-write. Both are empty for a vault this
+    #: build creates, which is what keeps INV-4's exact field-set pin true.
+    extra: dict[str, object] = field(default_factory=dict)
+    kdf_extra: dict[str, object] = field(default_factory=dict)
 
     def params_for(self, slot: str) -> KdfParams:
         """The per-slot ``KdfParams`` — the shared costs plus THAT slot's salt.
@@ -281,17 +308,23 @@ class VaultSidecar:
         return replace(self, slots={k: v for k, v in self.slots.items() if k != name})
 
     def to_dict(self) -> dict[str, object]:
-        payload: dict[str, object] = {
-            "sidecar_version": SIDECAR_VERSION,
-            "kdf": {
-                "memory_kib": self.memory_kib,
-                "time_cost": self.time_cost,
-                "parallelism": self.parallelism,
-                "key_len": self.key_len,
-                "salt_len": self.salt_len,
-            },
-            "slots": {name: rec.to_dict() for name, rec in self.slots.items()},
-        }
+        # Unrecognised keys first at both levels, so one colliding with a name
+        # this build owns loses to the real value rather than overwriting it.
+        payload: dict[str, object] = dict(self.extra)
+        payload.update(
+            {
+                "sidecar_version": SIDECAR_VERSION,
+                "kdf": {
+                    **self.kdf_extra,
+                    "memory_kib": self.memory_kib,
+                    "time_cost": self.time_cost,
+                    "parallelism": self.parallelism,
+                    "key_len": self.key_len,
+                    "salt_len": self.salt_len,
+                },
+                "slots": {name: rec.to_dict() for name, rec in self.slots.items()},
+            }
+        )
         # Written only when true / set, so a freshly created vault carries
         # exactly the three top-level keys INV-4 pins.
         if self.migration_pending:
@@ -447,6 +480,7 @@ def read_sidecar_v2(sidecar_path: Path) -> VaultSidecar:
                 salt=bytes.fromhex(record["salt_hex"]),
                 nonce=bytes.fromhex(record["nonce_hex"]),
                 wrapped_dek=bytes.fromhex(record["wrapped_dek_hex"]),
+                extra={k: v for k, v in record.items() if k not in _V2_SLOT_FIELDS},
             )
         compat_raw = data.get(CIPHER_COMPATIBILITY_FIELD)
         sidecar = VaultSidecar(
@@ -458,6 +492,8 @@ def read_sidecar_v2(sidecar_path: Path) -> VaultSidecar:
             slots=slots,
             migration_pending=bool(data.get(MIGRATION_PENDING_FIELD, False)),
             cipher_compatibility=None if compat_raw is None else int(compat_raw),
+            extra={k: v for k, v in data.items() if k not in _V2_TOP_FIELDS},
+            kdf_extra={k: v for k, v in kdf.items() if k not in _V2_KDF_FIELDS},
         )
     except (TypeError, ValueError) as exc:
         raise KdfPolicyError(f"sidecar field has a bad value: {exc}") from exc

@@ -23,6 +23,7 @@ from _recovery_helpers import (
     create_vault,
     keep_recovery_key,
     kek_for,
+    read_sidecar,
     read_v2_sidecar,
     unwrap_slot,
 )
@@ -210,6 +211,104 @@ def test_declining_still_writes_the_envelope(
         "re-encrypted rather than the key re-wrapped.\n"
         f"  expected: the DEK is byte-identical across the add\n"
         f"  actual:   before={dek_before.hex()} after={dek_after.hex()}"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# INV-24 — a read-modify-write must not drop a field it does not recognise
+# --------------------------------------------------------------------------- #
+def test_read_modify_write_preserves_unknown_v2_fields(
+    paths: tuple[Path, Path], service: AuthService
+) -> None:
+    """§ 4.1 anticipates FIBR-0020 arriving as a new slot -- a build that has
+    not yet learned about a field must not DESTROY it just by touching the
+    sidecar for an unrelated reason.
+
+    `VaultSidecar.to_dict()` (crypto.py) re-emits only the fields the frozen
+    dataclass names, and every writer round-trips through it, so a field an
+    older build has never heard of is silently deleted on the very next
+    read-modify-write -- reachable by an ordinary user action, not only by a
+    unit round trip. This plants a recognisable, unrelated field at all three
+    places a v2 sidecar can carry one (top level, the shared `kdf` group, one
+    slot's own record) and drives the write through a REAL service call
+    (`AuthService.add_recovery_key`, § 4.7's Keep/Add route) rather than only
+    `read_sidecar_v2`/`write_sidecar_v2` directly.
+    """
+    _vault_path, sidecar_path = paths
+    code = create_vault(service)
+
+    pristine = read_v2_sidecar(sidecar_path)
+    pristine_kdf = dict(pristine["kdf"])
+    pristine_master = dict(pristine[SLOTS][SLOT_MASTER])
+
+    # A field this build does not define, at each of the three places one can
+    # sit -- distinct sentinel values so a mix-up between them is visible.
+    TOP_LEVEL_FIELD, TOP_LEVEL_VALUE = "future_field", "sentinel-top-2f9c1a"
+    KDF_FIELD, KDF_VALUE = "future_kdf_field", "sentinel-kdf-7b3e05"
+    SLOT_FIELD, SLOT_VALUE = "future_slot_field", "sentinel-slot-e14d92"
+
+    planted = read_sidecar(sidecar_path)
+    planted[TOP_LEVEL_FIELD] = TOP_LEVEL_VALUE
+    planted["kdf"][KDF_FIELD] = KDF_VALUE
+    planted[SLOTS][SLOT_MASTER][SLOT_FIELD] = SLOT_VALUE
+    sidecar_path.write_text(json.dumps(planted), encoding="utf-8")
+
+    # The real read-modify-write: reads the sidecar (tolerating the three
+    # unrecognised fields on the way in, per read_sidecar_v2's subset checks),
+    # adds the recovery slot, and rewrites the file via VaultSidecar.to_dict().
+    keep_recovery_key(service, code)
+
+    after = read_sidecar(sidecar_path)
+
+    assert after.get(TOP_LEVEL_FIELD) == TOP_LEVEL_VALUE, (
+        "INV-24: an unrecognised TOP-LEVEL field did not survive a "
+        "read-modify-write through AuthService.add_recovery_key. "
+        "VaultSidecar.to_dict() re-emits only the fields it names, so a "
+        "field a newer build wrote is silently deleted by an older one.\n"
+        f"  expected: {TOP_LEVEL_FIELD!r} == {TOP_LEVEL_VALUE!r}\n"
+        f"  actual:   {TOP_LEVEL_FIELD!r} = {after.get(TOP_LEVEL_FIELD)!r} "
+        f"(top-level keys now: {sorted(after)})"
+    )
+    assert after.get("kdf", {}).get(KDF_FIELD) == KDF_VALUE, (
+        "INV-24: an unrecognised field inside the shared `kdf` group did not "
+        "survive a read-modify-write through AuthService.add_recovery_key.\n"
+        f"  expected: kdf.{KDF_FIELD!r} == {KDF_VALUE!r}\n"
+        f"  actual:   kdf.{KDF_FIELD!r} = {after.get('kdf', {}).get(KDF_FIELD)!r} "
+        f"(kdf keys now: {sorted(after.get('kdf', {}))})"
+    )
+    assert after.get(SLOTS, {}).get(SLOT_MASTER, {}).get(SLOT_FIELD) == SLOT_VALUE, (
+        "INV-24: an unrecognised field inside a slot record did not survive a "
+        "read-modify-write through AuthService.add_recovery_key.\n"
+        f"  expected: slots.{SLOT_MASTER}.{SLOT_FIELD!r} == {SLOT_VALUE!r}\n"
+        f"  actual:   slots.{SLOT_MASTER}.{SLOT_FIELD!r} = "
+        f"{after.get(SLOTS, {}).get(SLOT_MASTER, {}).get(SLOT_FIELD)!r} "
+        f"(slot {SLOT_MASTER!r} keys now: "
+        f"{sorted(after.get(SLOTS, {}).get(SLOT_MASTER, {}))})"
+    )
+
+    # The master slot's own KNOWN fields must be untouched -- add_recovery_key
+    # only ever writes slots.recovery, so any drift here is the round trip
+    # rewriting a slot it had no reason to touch, not the defect under test.
+    after_master_known = {
+        k: v for k, v in after[SLOTS][SLOT_MASTER].items() if k in SLOT_FIELDS
+    }
+    assert after_master_known == pristine_master, (
+        "precondition drift: add_recovery_key must not modify slots.master's "
+        "own known fields; it only ever writes slots.recovery.\n"
+        f"  expected: {pristine_master}\n  actual:   {after_master_known}"
+    )
+    after_kdf_known = {k: v for k, v in after["kdf"].items() if k in KDF_FIELDS}
+    assert after_kdf_known == pristine_kdf, (
+        "precondition drift: add_recovery_key must not change the shared "
+        "`kdf` group's own known cost fields.\n"
+        f"  expected: {pristine_kdf}\n  actual:   {after_kdf_known}"
+    )
+    assert SLOT_RECOVERY in after[SLOTS], (
+        "precondition: add_recovery_key must actually have written "
+        "slots.recovery, or this leg proves nothing about a real "
+        "read-modify-write.\n"
+        f"  expected: {SLOT_RECOVERY!r} present\n"
+        f"  actual:   slots={sorted(after[SLOTS])}"
     )
 
 
