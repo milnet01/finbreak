@@ -8,6 +8,7 @@ no real signing key (a throwaway test key is monkeypatched in).
 from __future__ import annotations
 
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -391,7 +392,9 @@ def test_relaunch_is_detached_new_session_with_pyinstaller_reset(monkeypatch, tm
     # execs the swapped image (asserted in detail by the pure _relaunch_command test).
     argv = record["argv"]
     assert argv[:2] == ["/bin/sh", "-c"]
-    assert str(appimage) in argv[2] and f"kill -0 {os.getpid()}" in argv[2]
+    # The image path is an ARGV positional, not text in the script (FIBR-0327).
+    assert f"kill -0 {os.getpid()}" in argv[2]
+    assert argv[3:] == ["sh", str(appimage)]
     kwargs = record["kwargs"]
     assert kwargs["start_new_session"] is True  # survives this process's exit
     env = kwargs["env"]
@@ -427,17 +430,17 @@ def test_relaunch_env_drops_leaked_loader_path_when_no_original(monkeypatch):
     assert "LD_PRELOAD" not in env
 
 
-def test_relaunch_command_waits_for_old_pid_then_execs_quoted_image():
+def test_relaunch_command_waits_for_old_pid_then_execs_the_image():
     # The waiter: poll `kill -0 <pid>` until the old process is gone (its FUSE
     # mount unmounted + PyInstaller _MEI dir cleaned), THEN exec the image. The
-    # path is shell-quoted so a space in the AppImage path can't break the script.
+    # path rides in as an ARGV positional, so no quoting of it reaches the script.
     cmd = _relaunch_command("/opt/My Apps/finbreak.AppImage", 4242)
     assert cmd[:2] == ["/bin/sh", "-c"]
     script = cmd[2]
     assert "kill -0 4242" in script  # blocks on the OLD pid
     assert script.rstrip().count("exec ") == 1  # replaces sh with the image
-    # exec target is quoted (space-bearing path survives) and comes AFTER the loop.
-    assert "'/opt/My Apps/finbreak.AppImage'" in script
+    assert script.rstrip().endswith('exec "$1"')  # the exec target is $1
+    assert cmd[3:] == ["sh", "/opt/My Apps/finbreak.AppImage"]
     assert script.index("kill -0 4242") < script.index("exec ")
 
 
@@ -1493,7 +1496,6 @@ def test_settings_save_persists_update_flag(qtbot, service, tmp_path):
 # --------------------------------------------------------------------------- #
 import base64  # noqa: E402
 import importlib.util  # noqa: E402
-import subprocess  # noqa: E402
 from pathlib import Path  # noqa: E402
 
 from cryptography.exceptions import InvalidSignature  # noqa: E402
@@ -1829,3 +1831,95 @@ def test_FIBR0054_D6_is_update_supported_consults_can_self_update(monkeypatch):
 
     monkeypatch.setattr(ui_mod, "detect_installer", lambda: None)
     assert ui_mod.is_update_supported() is False, "no installer still gates"
+
+
+def test_FIBR0327_relaunch_actually_execs_an_apostrophe_bearing_path(tmp_path):
+    """FIBR-0327 — the image path was ``shlex.quote``-d and spliced into the
+    script twice, and the second site put that single-quoted form inside a
+    double-quoted ``echo``. Any ``$APPIMAGE`` under a directory like ``o'brien``
+    closed the echo early and swallowed the ``exec`` on the same line: the app
+    closed, the derived key was wiped, and it never reopened.
+
+    Every assertion guarding this was on the SCRIPT TEXT, and the only path tried
+    carried a space. So this one RUNS the argv through a real ``/bin/sh`` and
+    checks the target was reached -- the shell's own parse is the thing under
+    test, and no string comparison can stand in for it.
+    """
+    home = tmp_path / "o'brien"
+    home.mkdir()
+    target = home / "finbreak.AppImage"
+    target.write_text("#!/bin/sh\necho REACHED-THE-IMAGE\n")
+    target.chmod(0o755)
+
+    # A pid that is already gone, so the waiter's loop falls through at once.
+    dead = 4_000_000
+    while True:
+        try:
+            os.kill(dead, 0)
+        except ProcessLookupError:
+            break
+        except PermissionError:
+            pass
+        dead -= 1
+
+    done = subprocess.run(  # nosec B603 - fixed /bin/sh, our own argv
+        _relaunch_command(str(target), dead),
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+
+    assert "REACHED-THE-IMAGE" in done.stdout, (
+        "FIBR-0327: the waiter must exec the image whatever the path contains.\n"
+        f"  path:   {target}\n"
+        f"  rc:     {done.returncode}\n"
+        f"  stdout: {done.stdout!r}\n"
+        f"  stderr: {done.stderr!r}"
+    )
+    assert str(target) in done.stdout, "the log line names the real path"
+
+
+def test_FIBR0327_a_truncated_download_is_not_reported_as_a_bad_signature(
+    monkeypatch, tmp_path
+):
+    """FIBR-0327 — a body that stops short of its advertised Content-Length is a
+    dropped connection, and nothing said so.
+
+    The short bytes ran straight on into the Ed25519 check, failed it, and the
+    user was told the update's signature did not verify. That misdiagnoses a
+    flaky network as tampering, and teaches them to dismiss the one alarm that
+    matters. Asserted on BOTH halves: the download refuses, and the refusal is
+    the download class rather than the verification class.
+    """
+    payload = b"HALF-AN-APPIMAGE"
+    monkeypatch.setattr(
+        update_fetch.urllib.request,
+        "urlopen",
+        # The server promises twice what it sends.
+        _fake_urlopen(payload, {"Content-Length": str(len(payload) * 2)}),
+    )
+    dest = tmp_path / "out.AppImage"
+
+    with pytest.raises(ValueError) as caught:
+        update_fetch.download(
+            "https://dl/finbreak.AppImage", dest, max_bytes=1024, timeout=5
+        )
+
+    assert "ended early" in str(caught.value), (
+        f"the refusal must name truncation, not something else: {caught.value}"
+    )
+    assert not dest.exists(), "a partial download leaves no bytes behind"
+
+
+def test_FIBR0327_a_complete_body_with_no_content_length_still_downloads(
+    monkeypatch, tmp_path
+):
+    """The truncation check compares against what the server advertised, and a
+    server that advertises nothing must not be treated as advertising zero."""
+    monkeypatch.setattr(
+        update_fetch.urllib.request, "urlopen", _fake_urlopen(b"WHOLE-APPIMAGE")
+    )
+    dest = tmp_path / "out.AppImage"
+    update_fetch.download("https://dl/app", dest, max_bytes=1024, timeout=5)
+    assert dest.read_bytes() == b"WHOLE-APPIMAGE"

@@ -184,6 +184,15 @@ def download(
                 handle.write(chunk)
                 if on_progress is not None:
                     on_progress(received, total)
+            # A body that ended short of what the server advertised is a DROPPED
+            # connection, and saying so here is the whole point: left to run on,
+            # the truncated bytes reached the signature check and failed it, so a
+            # flaky network raised the tampering alarm. That misdiagnoses the
+            # fault and, worse, teaches the user to dismiss the one alarm that
+            # matters (FIBR-0327). `total` is 0 when the server said nothing, and
+            # then there is nothing to compare against.
+            if total and received != total:
+                raise ValueError(f"download ended early: {received} of {total} bytes")
     except BaseException:
         Path(dest).unlink(missing_ok=True)
         raise

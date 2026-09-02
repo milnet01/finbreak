@@ -74,6 +74,15 @@ signaling per
 
 ### Fixed
 
+- **A dropped download says so instead of raising the tamper alarm** (FIBR-0327)
+  A download cut short by the network was reported as a failed signature
+  check, which is the warning reserved for a file that has been altered.
+
+- **Self-update works from a folder whose name contains an apostrophe** (FIBR-0327)
+  On Linux the app closed and never reopened. Nothing about the running
+  version could reveal it -- the fault was in the script that starts the new
+  one.
+
 - **Ticking "Date range" on Transactions no longer empties the table** (FIBR-0327)
   The two date boxes started at the year 2000, so the first tick filtered
   everything away with no explanation. They now span the transactions on

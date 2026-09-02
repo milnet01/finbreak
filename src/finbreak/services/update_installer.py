@@ -16,7 +16,6 @@ stays inert off a supported package (INV-7).
 from __future__ import annotations
 
 import os
-import shlex
 import shutil
 
 # B404: fixed-argv waiter, our own paths, no user input. (Rationale sits above
@@ -86,20 +85,28 @@ def _relaunch_command(appimage: str, pid: int) -> list[str]:
     AppImages (RPCS3, PCSX2) all wait for the old process first — this is that
     wait. A hard ~60s cap (600 × 0.1s) means a wedged old process can never hang
     the relaunch forever. ``/bin/sh`` is universal on Linux (the only AppImage
-    platform); the image path is ``shlex.quote``-d so a space can't break the
-    script, and the argv is our own verified ``$APPIMAGE`` path — never user input.
+    platform).
+
+    **The path is passed as an ARGUMENT, never interpolated into the script.** It
+    was ``shlex.quote``-d and spliced in twice, and the second site put that
+    single-quoted form inside a double-quoted ``echo`` — so any ``$APPIMAGE``
+    containing an apostrophe closed the echo early and swallowed the ``exec`` on
+    the same line. The app closed, the key was wiped, and it never reopened. As
+    ``"$1"`` the path never reaches the shell's parser at all, so there is no
+    quoting to get right (FIBR-0327).
     """
-    quoted = shlex.quote(appimage)
     script = (
         f'echo "[finbreak] waiting for pid {pid} to exit before relaunch"; '
-        f"i=0; "
+        "i=0; "
         f"while kill -0 {pid} 2>/dev/null; do "
-        f'i=$((i+1)); [ "$i" -ge 600 ] && break; sleep 0.1; '
-        f"done; "
-        f'echo "[finbreak] launching {quoted}"; '
-        f"exec {quoted}"
+        'i=$((i+1)); [ "$i" -ge 600 ] && break; sleep 0.1; '
+        "done; "
+        'echo "[finbreak] launching $1"; '
+        'exec "$1"'
     )
-    return ["/bin/sh", "-c", script]
+    # argv after the script is $0, $1, ...: "sh" names the shell for its own error
+    # messages, and the image path arrives as $1.
+    return ["/bin/sh", "-c", script, "sh", appimage]
 
 
 def _relaunch_log_path() -> Path | None:
