@@ -510,3 +510,59 @@ def test_FIBR0105_amount_colour_off_sets_no_foreground(qtbot, service, monkeypat
     view.set_amount_prefs(AmountPrefs("minus", False))
     assert table.item(0, _COL_AMOUNT).data(Qt.ItemDataRole.ForegroundRole) is None
     assert table.item(1, _COL_AMOUNT).data(Qt.ItemDataRole.ForegroundRole) is None
+
+
+def test_FIBR0327_ticking_date_range_does_not_empty_the_table(qtbot, service):
+    """FIBR-0327 — a bare ``QDateEdit`` starts at Qt's own minimum, 2000-01-01.
+
+    Both pickers were left there, so ticking "Date range" filtered to a single
+    day nobody banks on: the table emptied, with no message saying why. The
+    user's first act with the control made their transactions disappear.
+
+    The range is seeded to span the loaded rows, so ticking the box narrows
+    nothing until the user moves a picker. Asserted as the row count the user
+    sees, before and after the tick.
+    """
+    _add_txn(service, "RENT", occurred_on="2026-01-05")
+    _add_txn(service, "FUEL", occurred_on="2026-03-20")
+    view = _view(service)
+    qtbot.addWidget(view)
+    view.refresh()
+    before = view._table.rowCount()
+    assert before == 2
+
+    view._date_enable.setChecked(True)
+
+    assert view._table.rowCount() == before, (
+        "FIBR-0327: ticking the date range must not hide rows until the user "
+        "narrows it.\n"
+        f"  before: {before} rows\n"
+        f"  after:  {view._table.rowCount()} rows\n"
+        f"  range:  {view._date_from.date().toString('yyyy-MM-dd')} .. "
+        f"{view._date_to.date().toString('yyyy-MM-dd')}"
+    )
+    # And the seeded range is the data's own span, not an arbitrary default.
+    assert view._date_from.date() == QDate(2026, 1, 5)
+    assert view._date_to.date() == QDate(2026, 3, 20)
+
+
+def test_FIBR0327_a_range_the_user_set_survives_a_refresh(qtbot, service):
+    """The seeding runs only while the box is unchecked, so a refresh — which a
+    non-modal Settings save triggers on every tab — cannot overwrite a range the
+    user chose."""
+    _add_txn(service, "RENT", occurred_on="2026-01-05")
+    _add_txn(service, "FUEL", occurred_on="2026-03-20")
+    view = _view(service)
+    qtbot.addWidget(view)
+    view.refresh()
+
+    view._date_enable.setChecked(True)
+    view._date_from.setDate(QDate(2026, 3, 1))
+    view._date_to.setDate(QDate(2026, 3, 31))
+    assert view._table.rowCount() == 1  # FUEL only
+
+    view.refresh()
+
+    assert view._date_from.date() == QDate(2026, 3, 1), "the user's range stands"
+    assert view._date_to.date() == QDate(2026, 3, 31)
+    assert view._table.rowCount() == 1

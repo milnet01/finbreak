@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from PySide6.QtCore import QPoint, Qt
+from PySide6.QtCore import QDate, QPoint, Qt
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -198,7 +198,36 @@ class TransactionsView(QWidget):
         self._master = self._transactions.list_transactions()
         self._transfer_labels = self._build_transfer_labels()
         self._rebuild_filter_combos()
+        self._seed_date_range()
         self._apply_filters()
+
+    def _seed_date_range(self) -> None:
+        """Span the loaded rows, so ticking "Date range" narrows nothing yet.
+
+        A bare ``QDateEdit`` starts at Qt's own minimum, 2000-01-01. Ticking the
+        box therefore filtered to a single day nobody banks on and emptied the
+        table with no message -- the user's first act with the control made their
+        transactions disappear (FIBR-0327).
+
+        Only while the box is UNCHECKED, so a range the user set is never
+        overwritten by a later refresh; and under ``_loading``, because assigning
+        a date emits ``dateChanged``.
+        """
+        if self._date_enable.isChecked():
+            return
+        dates = [row[0].occurred_on for row in self._master]
+        first = QDate.fromString(min(dates), "yyyy-MM-dd") if dates else QDate()
+        last = QDate.fromString(max(dates), "yyyy-MM-dd") if dates else QDate()
+        if not first.isValid() or not last.isValid():
+            # No rows, or a stored date this widget cannot read: today spans
+            # nothing, which is honest, and the user picks from there.
+            first = last = QDate.currentDate()
+        self._loading = True
+        try:
+            self._date_from.setDate(first)
+            self._date_to.setDate(last)
+        finally:
+            self._loading = False
 
     def _build_transfer_labels(self) -> dict[int, str]:
         """Each confirmed-transfer leg's Category-cell label, naming the

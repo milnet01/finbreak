@@ -74,6 +74,19 @@ signaling per
 
 ### Fixed
 
+- **Ticking "Date range" on Transactions no longer empties the table** (FIBR-0327)
+  The two date boxes started at the year 2000, so the first tick filtered
+  everything away with no explanation. They now span the transactions on
+  screen, and a range you set survives a refresh.
+
+- **Very large amounts display the digits that are stored** (FIBR-0327)
+  Amounts near the app's maximum were rounded on screen, showing different
+  digits and cents from the ones held in the vault.
+
+- **Deleting a rule no longer leaves the next one selected** (FIBR-0327)
+  The highlighted row survived the delete and now held a different rule, with
+  Edit and Delete live against it.
+
 - **Exported PDFs name the month in the app's language** (FIBR-0327)
   The period line was always English, whatever the rest of the report.
 

@@ -884,9 +884,8 @@ def test_FIBR0327_deleting_a_rule_does_not_leave_its_row_selected(qtbot, service
     from finbreak.ui.rules import RulesWidget
 
     categorization = CategorizationService(service.vault)
-    leaf = [
-        c for c in CategoryRepository(service.vault.connection).list_all() if c.parent_id
-    ][0]
+    categories = CategoryRepository(service.vault.connection).list_all()
+    leaf = [c for c in categories if c.parent_id][0]
     for pattern in ("RENT", "FUEL", "COFFEE"):
         categorization.add_rule(pattern, leaf.id)
 
