@@ -36,7 +36,7 @@ from finbreak.models import CategorizationRule, Category
 from finbreak.services.auth import AuthService
 from finbreak.services.categories import CategoryService
 from finbreak.services.categorization import CategorizationService
-from finbreak.ui._table_state import remember_columns
+from finbreak.ui._table_state import fill_guard, remember_columns
 from finbreak.ui._widgets import add_grouped_categories, select_combo_data
 from finbreak.ui.modal import show_modal
 
@@ -172,12 +172,22 @@ class RulesWidget(QWidget):
             names = {c.id: c.name for c in self._categories.list_all()}
         except VaultLockedError:
             return
-        self._table.setRowCount(len(self._rows))
-        for row, rule in enumerate(self._rows):
-            self._table.setItem(row, _COL_PATTERN, QTableWidgetItem(rule.pattern))
-            self._table.setItem(
-                row, _COL_CATEGORY, QTableWidgetItem(names.get(rule.category_id, ""))
-            )
+        # fill_guard, not an in-place setRowCount: the refill is a full rebuild,
+        # and refilling in place leaves the old VISUAL row selected over whatever
+        # now occupies it. Delete the first of three rules and row 0 stayed
+        # selected, showing a different rule, with Edit and Delete live against
+        # it. This was the last table in the app still refilling in place
+        # (FIBR-0204 moved the other four; FIBR-0327 finishes it). _on_move
+        # re-selects by rule id afterwards, which is the supported route back.
+        with fill_guard(self._table):
+            self._table.setRowCount(len(self._rows))
+            for row, rule in enumerate(self._rows):
+                self._table.setItem(row, _COL_PATTERN, QTableWidgetItem(rule.pattern))
+                self._table.setItem(
+                    row,
+                    _COL_CATEGORY,
+                    QTableWidgetItem(names.get(rule.category_id, "")),
+                )
         self._on_selection_changed()
 
     @Slot()

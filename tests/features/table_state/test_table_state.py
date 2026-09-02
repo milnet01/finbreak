@@ -866,3 +866,49 @@ def test_FIBR0204_refill_under_a_sort_does_not_retarget_the_selection(qtbot):
         f"the refill retargeted the action from {rows[chosen][0]} to "
         f"{rows[after][0]} — a wrong row-to-action map in a money app"
     )
+
+
+def test_FIBR0327_deleting_a_rule_does_not_leave_its_row_selected(qtbot, service):
+    """FIBR-0327 — the Rules table was the last one still refilling IN PLACE.
+
+    ``setRowCount(len(rows))`` over the existing rows leaves the old VISUAL row
+    selected, and after a delete that row holds a different rule. So the user
+    deleted the first of three, saw row 0 still highlighted, and had Edit and
+    Delete live against a rule they had not chosen.
+
+    Asserted as what the user sees -- nothing selected, and the row-dependent
+    buttons off -- rather than as which container was used.
+    """
+    from finbreak.repositories.categories import CategoryRepository
+    from finbreak.services.categorization import CategorizationService
+    from finbreak.ui.rules import RulesWidget
+
+    categorization = CategorizationService(service.vault)
+    leaf = [
+        c for c in CategoryRepository(service.vault.connection).list_all() if c.parent_id
+    ][0]
+    for pattern in ("RENT", "FUEL", "COFFEE"):
+        categorization.add_rule(pattern, leaf.id)
+
+    widget = RulesWidget(service)
+    qtbot.addWidget(widget)
+    assert widget.rule_count() == 3
+
+    widget._table.selectRow(0)
+    assert widget._selected_row() == 0
+    first = widget._rows[0].pattern
+    widget._on_delete()
+
+    assert widget.rule_count() == 2
+    assert first not in [rule.pattern for rule in widget._rows], (
+        "the delete must remove the rule the user picked"
+    )
+    assert widget._selected_row() is None, (
+        "FIBR-0327: after a refill nothing is selected. A surviving row 0 now "
+        "holds a different rule, and the action buttons target it.\n"
+        f"  still selected: row {widget._selected_row()}"
+    )
+    assert not widget._delete_button.isEnabled(), (
+        "with no selection the row-dependent buttons must be off"
+    )
+    assert not widget._edit_button.isEnabled()
