@@ -214,6 +214,114 @@ def test_interrupted_restore_recovers_old_pair_at_launch(qtbot, tmp_path):
     service.lock()
 
 
+def test_interrupted_restore_recovers_the_wal_siblings_too(qtbot, tmp_path):
+    """INV-18 — the recovery path carries the original's WAL siblings back.
+
+    ``_install`` moves them ASIDE with the database and says why: a restored
+    database installed beside a WAL belonging to a DIFFERENT database under a
+    DIFFERENT key. Only that half was fixed under FIBR-0310 P5. Without the
+    move-BACK the recovered original loses any committed-but-not-checkpointed
+    tail -- the user's most recent transactions, gone silently, which is why
+    this was raised to HIGH on the threat model (FIBR-0313 H4).
+
+    Asserts the bytes arrive and the stale orphan is gone, never that a
+    particular loop runs. ``mutation_probe`` is what proves it bites: with the
+    ``_WAL_SIBLINGS`` half of the reconcile loop removed, the whole backup
+    suite stayed green until this test existed.
+    """
+    from finbreak.ui.main_window import MainWindow
+
+    dest = tmp_path / "dest"
+    dest.mkdir()
+    vault_p, sidecar_p = dest / "vault.db", dest / "vault.kdf.json"
+    original_auth = AuthService(vault_p, sidecar_p)
+    original_auth.first_run(bytearray(b"the original master"), "USD")
+    original_auth.lock()
+
+    stamp = "20260101T000000"
+    # The committed-but-uncheckpointed tail. Distinct per sibling so a fix that
+    # moved the wrong one back cannot pass.
+    wal_bytes = b"the original's committed WAL frames"
+    shm_bytes = b"the original's shared-memory index"
+    (dest / f"vault.db.{stamp}.old-wal").write_bytes(wal_bytes)
+    (dest / f"vault.db.{stamp}.old-shm").write_bytes(shm_bytes)
+    vault_p.rename(dest / f"vault.db.{stamp}.old")
+    sidecar_p.rename(dest / f"vault.kdf.json.{stamp}.old")
+    # The aborted restore's own orphans, which must NOT survive: they belong to
+    # a different database under a different key.
+    vault_p.write_bytes(b"a half-installed new vault with no sidecar yet")
+    (dest / "vault.db-wal").write_bytes(b"the aborted restore's WAL")
+
+    service = AuthService(vault_p, sidecar_p)
+    window = MainWindow(service)
+    qtbot.addWidget(window)
+
+    live_wal = dest / "vault.db-wal"
+    live_shm = dest / "vault.db-shm"
+    got_wal = live_wal.read_bytes() if live_wal.exists() else "absent"
+    got_shm = live_shm.read_bytes() if live_shm.exists() else "absent"
+    assert got_wal == wal_bytes, (
+        "INV-18: the original's WAL must travel back with its database. Left "
+        "behind, the recovered vault silently loses every transaction still in "
+        "the journal, and the aborted restore's own WAL is left beside it.\n"
+        f"  expected: vault.db-wal holding {wal_bytes!r}\n"
+        f"  actual:   {got_wal!r}"
+    )
+    assert got_shm == shm_bytes, (
+        "INV-18: the -shm sibling travels back on the same terms as the -wal.\n"
+        f"  expected: vault.db-shm holding {shm_bytes!r}\n"
+        f"  actual:   {got_shm!r}"
+    )
+    assert service.unlock(bytearray(b"the original master")) is True, (
+        "precondition: the recovered pair must still open, or the assertions "
+        "above proved nothing about a usable vault"
+    )
+    service.lock()
+
+
+def test_interrupted_restore_clears_an_orphan_wal_the_original_lacked(qtbot, tmp_path):
+    """INV-18, the other side: where the original had NO journal, the aborted
+    restore's must not be left behind.
+
+    A checkpointed original has no ``-wal`` to carry back, so the move-back
+    loop takes its other branch and must REMOVE the live one instead. What is
+    sitting there belongs to a different database under a different key, and
+    SQLite would try to replay it against the recovered vault. `mutation_probe`
+    found this branch uncovered by the leg above, which plants both.
+    """
+    from finbreak.ui.main_window import MainWindow
+
+    dest = tmp_path / "dest"
+    dest.mkdir()
+    vault_p, sidecar_p = dest / "vault.db", dest / "vault.kdf.json"
+    original_auth = AuthService(vault_p, sidecar_p)
+    original_auth.first_run(bytearray(b"the original master"), "USD")
+    original_auth.lock()
+
+    stamp = "20260101T000000"
+    vault_p.rename(dest / f"vault.db.{stamp}.old")  # no .old-wal beside it
+    sidecar_p.rename(dest / f"vault.kdf.json.{stamp}.old")
+    vault_p.write_bytes(b"a half-installed new vault with no sidecar yet")
+    (dest / "vault.db-wal").write_bytes(b"the aborted restore's WAL, wrong key")
+
+    service = AuthService(vault_p, sidecar_p)
+    window = MainWindow(service)
+    qtbot.addWidget(window)
+
+    live_wal = dest / "vault.db-wal"
+    assert not live_wal.exists(), (
+        "INV-18: an orphan journal from the aborted restore must be removed "
+        "when the recovered original has none of its own -- it belongs to a "
+        "different database under a different key.\n"
+        "  expected: no vault.db-wal beside the recovered vault\n"
+        f"  actual:   present, holding {live_wal.read_bytes()!r}"
+    )
+    assert service.unlock(bytearray(b"the original master")) is True, (
+        "precondition: the recovered pair must still open"
+    )
+    service.lock()
+
+
 # --------------------------------------------------------------------------- #
 # Review fixes — UI robustness
 # --------------------------------------------------------------------------- #
