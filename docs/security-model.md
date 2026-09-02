@@ -1,19 +1,19 @@
 # finbreak — Security model & threat model
 
 > **Status:** Live — the project's authoritative security & threat
-> model; amended through FIBR-0096 (2026-07-21 — INV-13: each release
-> now publishes a **signed `SHA256SUMS`** manifest and a per-platform
-> CycloneDX SBOM as manual-verification integrity + supply-chain
-> transparency signals). This line names the **most-recent** material
-> amendment, not a full history.
-> Re-run through `/cold-eyes` on each material edit.
+> model. Every clause names the item that amended it, so this header
+> keeps no amendment history of its own: one stated here goes stale
+> the moment the body moves past it, and it did.
+> Re-run `review-contract docs/security-model.md --genre standard` on
+> each material edit; the review history is in
+> [`docs/reviews/security-model-review-log.md`](reviews/security-model-review-log.md).
 > **Why this exists:** finbreak holds **personal financial
 > data**. Security is the load-bearing concern, so it gets its
 > own document — a single place that names what we protect, what
 > could go wrong, and exactly how each risk is stopped.
 > **How it's used:** every `implement`-Kind spec must state how
-> it upholds the **security invariants** in § 5; every `/audit`,
-> `/indie-review`, and `/cold-eyes` pass checks against them.
+> it upholds the **security invariants** in § 5; every `check-code`,
+> `review-code` and `review-contract` pass checks against them.
 > See [ADR-0003](decisions/0003-sqlcipher-local-only-storage.md)
 > (storage/crypto) and
 > [ADR-0007](decisions/0007-self-contained-bundled-releases.md) (bundling).
@@ -108,7 +108,7 @@ attacked. Each row: the threat → how finbreak stops it.
 | T8 | **Insecure code pattern introduced** (hardcoded secret, weak hash, `subprocess(shell=True)`, etc.) | `bandit` security linter in CI + local script. |
 | T9 | **Tampered vault / downgrade of crypto settings** | SQLCipher authenticates **each page with a per-page HMAC** (HMAC-SHA512 by default) — tamper-evident. AES gives confidentiality, **not** integrity, so the HMAC must stay enabled; a tampered page fails to open (INV-1). The recorded KDF parameters can't be downgraded **below the pinned floor** on open (INV-2). Both are asserted by the FIBR-0004 (P02) spec's tests. |
 | T10 | **Exported report shared, then read by the wrong person** | Export **can be** password-locked with AES-256 (`pikepdf`) using a password the user sets at export time (A6, INV-7), and the user is reminded the password is theirs to share safely. **The password is optional** (`FIBR-0013 amends T10`): a blank field exports a plain PDF, which is the *default* path since the field starts empty. So this row's mitigation is **user-elected, not automatic** — an exported report carries dates, descriptions, counterparties, per-transaction amounts and per-account totals, and if the user leaves the password blank none of it is protected by the file. Two things narrow the residual: the file is written mode `0600` so it is not readable by other local users (FIBR-0204), and it carries **no account numbers or balances** (`_accounts_in_scope` reads only id/name). Sharing an unlocked export remains a deliberate user choice with a real disclosure cost. |
-| T11 | **Forgotten master password** | By design there is **no backdoor** (a backdoor is a vulnerability). The mitigation is the **encrypted backup** (FIBR-0014), keyed by a **separate backup password** the user keeps safe: restoring needs the backup password + a **new** master password, **never** the forgotten one, so the backup **does** recover a forgotten master password. It is "only as recoverable as its own secret" — if **both** the master **and** the backup password are lost, the data is unrecoverable (the deliberate confidentiality-over-availability trade). The backup's own KDF params are re-validated against the pinned floor on restore (INV-2), so a tampered `.fbk` can't force a weak KDF. *The recovery path is testable (FIBR-0014 INV-3); the no-backdoor stance is not.* A user who has genuinely lost both secrets and has no usable backup can, as a last resort, **start over** — a double-confirmed destructive reset (FIBR-0030, INV-12) that deletes the vault's complete on-disk footprint and returns to first-run. It introduces **no new attacker capability** (local-access destruction is already out of scope, § 4) and destroys only data that was already unrecoverable; the friction (a warning **and** a typed-`DELETE` confirm) guards against *accidental* triggering, not an adversary. |
+| T11 | **Forgotten master password** | By design there is **no backdoor** (a backdoor is a vulnerability). **The first mitigation is the recovery code** (FIBR-0019, A8): a full-strength second credential the user was given at vault creation, which opens the vault exactly as the master password does and then forces a new one (D6). Try it before anything below — this row predated the key envelope, and a reader who reached "start over" from here would destroy a vault the recovery code still opens. The second mitigation is the **encrypted backup** (FIBR-0014), keyed by a **separate backup password** the user keeps safe: restoring needs the backup password + a **new** master password, **never** the forgotten one, so the backup **does** recover a forgotten master password. It is "only as recoverable as its own secret" — if the recovery code, the master password **and** the backup password are all lost, the data is unrecoverable (the deliberate confidentiality-over-availability trade). The backup's own KDF params are re-validated against the pinned floor on restore (INV-2), so a tampered `.fbk` can't force a weak KDF. *The recovery path is testable (FIBR-0014 INV-3); the no-backdoor stance is not.* A user who has genuinely lost all three secrets and has no usable backup can, as a last resort, **start over** — a double-confirmed destructive reset (FIBR-0030, INV-12) that deletes the vault's complete on-disk footprint and returns to first-run. It introduces **no new attacker capability** (local-access destruction is already out of scope, § 4) and destroys only data that was already unrecoverable; the friction (a warning **and** a typed-`DELETE` confirm) guards against *accidental* triggering, not an adversary. |
 | T12 | **Sensitive data leaked via the log file** | The local rotating log never records transaction contents, passwords, keys, or decrypted data (INV-9). |
 | T13 | **A copied sensitive value lingers on the shared clipboard** | Copy is **user-initiated**, and covers a transaction's **amount / description** (FIBR-0032) and the **one-time recovery code** (FIBR-0019 § 4.5). The code is copyable by design — the user has to get it onto paper or into a password manager — and IS auto-cleared, by a guard the window owns rather than the dialog, so the clear outlives the dialog's teardown (FIBR-0310 R1). The statement PDF password is **not** copyable (no new secret crosses into the UI; FIBR-0128 INV-1 preserved). **An account number becomes copyable from the Accounts form field while reveal is on** (`FIBR-0198 amends T13`): FIBR-0113 masks both surfaces and leaves this row true, but FIBR-0198's toggle puts the raw value into a `QLineEdit` in `Normal` echo mode, which Ctrl+C reads (`Password` echo suppresses it). **That copy is NOT auto-cleared** — the auto-clear below is `ClipboardAutoClear`, which the transactions list and the recovery-code display each build (`ui/transactions.py`, `ui/main_window.py`, `ui/recovery_key.py`); a Ctrl+C out of a `Normal`-echo field goes to the system clipboard through Qt's built-in copy without passing through any of them, so an account number copied during a 30-second reveal outlives the reveal indefinitely. This is a deliberate gap, not an oversight: the user copies the number in order to paste it into a payment, and clearing it mid-payment would defeat the reason the reveal exists. A copied value is **auto-cleared** after a configurable timeout (default 30s), but **only if the clipboard still holds our value** — a value the user copied since is never clobbered. **Three residuals, stated honestly:** (a) a clipboard-history manager that snapshots on copy is outside auto-clear's reach; (b) on a **mid-timeout app exit or vault lock** the pending clear-timer dies unfired, so the value can outlive its timeout on platforms where the clipboard survives the app — auto-clear is best-effort, not guaranteed on process exit (lifecycle-clear is a deferred follow-up); and (c) **`0` ("Never")** is an accepted user choice that forgoes auto-clear (the parallel to T3's honestly-stated "Never"). |
 | T14 | **A displayed account number is read off the screen** (shoulder-surfing, a screenshot, a shared screen) | The account number is **masked by default** on both surfaces that show it — the table cell renders `"•••• 7890"` and the form field is a `Password`-echo `QLineEdit` (FIBR-0113 D2). Revealing it is an explicit, deliberate user action (FIBR-0198's "Show account numbers" checkbox), and the reveal is **session-scoped** — written to no store, gone after a lock or a restart (FIBR-0198 INV-1) — and **bounded**: it re-masks itself after 30 seconds without the user doing anything (INV-2), so a reveal left on when someone walks away does not give the masking back. The value itself is already encrypted at rest inside the vault (A1), so this row is about *display* exposure only. **Two residuals:** the timer is a convenience bound on what is on screen, not a security boundary — a revealed number is visible for up to 30 seconds regardless, and anything that can read the process's memory can read the value whether it is masked or not; and a value copied during a reveal is T13's, where the un-auto-cleared clipboard gap is stated. |
@@ -138,9 +138,12 @@ be checkable. Enforcement arrives in step with the code:
   no-content-derived-path legs are unit-tested with the import
   specs (FIBR-0007+).
 - **With the phase that builds the code each governs:** INV-1,
-  INV-2, INV-3, INV-4, INV-5b, INV-5c, INV-7, INV-9, INV-10, INV-12 — asserted by
-  tests that land alongside the vault, crypto, import, export, and
-  logging paths (none of which exist yet at P01).
+  INV-2, INV-3, INV-3b, INV-3c, INV-3d, INV-4, INV-5b, INV-5c, INV-7,
+  INV-9, INV-10, INV-11, INV-12, INV-13 — asserted by tests that land
+  alongside the vault, crypto, import, export, and logging paths (none
+  of which exist yet at P01). **This is the only enumeration**; § 6
+  points here rather than repeating it, because two lists schedule two
+  different test sets and the shorter one silently drops an invariant.
 - **INV-8 (single opt-in egress)** is enforced two ways: no networking
   dependency is declared in `pyproject.toml` (verifiable from P01),
   and a forbidden-import check (no `socket` / `http` / `requests` /
@@ -184,11 +187,18 @@ be checkable. Enforcement arrives in step with the code:
   so neither credential is cheaper to attack than the other. The parameters and salt are recorded with
   the vault. On open the app derives the key from the parameters
   **recorded with the vault** and **must refuse to proceed** unless
-  the record passes two checks — a directional **strength floor**
-  on memory and an **exact-format** match on the lengths. The
-  strength floor: recorded **memory ≥ 47104 KiB** (a vault with
-  *stronger* memory still opens, so the pin can be raised later
-  without locking out existing vaults). The exact-format match:
+  the record passes every check below — a known **`format_version`**, a
+  directional **strength floor** on memory, and an **exact-format**
+  match on the lengths. An unknown `format_version` is refused first,
+  so a future or foreign layout is never reinterpreted against this
+  version's field meanings. The strength floor is a **second constant**
+  (`ARGON2_MEMORY_FLOOR_KIB`), deliberately separate from the creation
+  pin (`ARGON2_MEMORY_KIB`) even though the two hold the same value
+  today: a vault with *stronger* memory still opens, so the pin can be
+  raised to strengthen new vaults — and the floor **must not be raised
+  with it**, or every vault recorded at the old value stops opening.
+  Moving one number because the document showed one number is exactly
+  the lockout this separation exists to prevent. The exact-format match:
   recorded **output length = 32 bytes** and **salt length = 16
   bytes** — the raw key's required size; a *longer* output or salt
   is rejected, not accepted. Iterations and parallelism get no
@@ -196,10 +206,13 @@ be checkable. Enforcement arrives in step with the code:
   no recorded value can fall below the pin and there is no app-level
   downgrade test for those two axes. So a tampered or downgraded
   vault cannot force a weaker KDF. The
-  FIBR-0004 (P02) spec implements and *tests* these values, and
-  asserts the Argon2id output is passed as SQLCipher's **raw** key
-  (raw-key pragma), so the "Argon2id is the KDF" claim (A3) is
-  testable, not merely stated.
+  FIBR-0004 (P02) spec implements and *tests* these values. Since
+  FIBR-0019 what reaches SQLCipher's **raw**-key pragma is the **DEK**,
+  and the Argon2id output is the **KEK** that wraps it — so the
+  "Argon2id is the KDF" claim (A3) is testable through the wrap, not by
+  handing the derived key to the database. Do not read this sentence as
+  licence to key SQLCipher from a credential: ADR-0011 exists to leave
+  exactly one way a vault is keyed.
 - **INV-3 — Key lifetime.** The **DEK**, **every KEK** and the
   plaintext password exist in memory only while unlocked, are wiped
   on lock/exit, and are dropped by auto-lock after the configured
@@ -210,6 +223,15 @@ be checkable. Enforcement arrives in step with the code:
   shorter-lived than the DEK — it is wiped as soon as it has
   unwrapped or re-wrapped a slot — and the DEK is what the session
   holds for its whole unlocked life.
+  **Residuals, stated honestly** (ADR-0011 D5), because a test written
+  to an unqualified "wiped" asserts something the code deliberately
+  does not do: `derive_key` must hand the C binding an
+  immutable `bytes(password)` copy, which cannot be zeroed and lingers
+  until GC; `vault._connect` builds the raw key as a hex `str` with the
+  same property; and an `AESGCM` object keeps OpenSSL's own copy of the
+  key, so it still decrypts after the `bytearray` it was built from is
+  zeroed. What is wiped is every buffer the app owns. These are
+  in-process copies, distinct from the swap residual T3 and INV-4 name.
 
 - **INV-3b — The sidecar holds no UNWRAPPED key material** (FIBR-0019
   INV-4). The plaintext sidecar carries a wrapped DEK per slot, which
@@ -379,9 +401,19 @@ be checkable. Enforcement arrives in step with the code:
   own contract is to be pure).
 - **INV-12 — The destructive reset leaves no vault fragment behind.** The
   double-confirmed "start over" reset (FIBR-0030) removes the vault's
-  complete on-disk data footprint — the DB, the KDF sidecar, and **both**
-  SQLite WAL sidecars (`vault.db-wal` / `vault.db-shm`) — so no file of a
-  deleted vault remains to interfere with a subsequently created one. This
+  complete on-disk data footprint — the DB, the KDF sidecar, **both**
+  SQLite WAL sidecars (`vault.db-wal` / `vault.db-shm`), the migration
+  artefacts (`.pre-v2` and `.migrating`, with their own WAL siblings),
+  and every `*.old` set a past restore left behind — so no file of a
+  deleted vault remains to interfere with a subsequently created one.
+  The last two are here because each is a **complete, still-openable
+  copy**: a `.pre-v2` pair opens under the password of the moment the
+  migration began, and a `.old` set under the password in force before
+  that restore, so leaving either behind hands the old vault to anyone
+  holding a password the user has since changed. The vault-coupled
+  `window.ini` keys — the hint and the throttle's lockout state — are
+  cleared on success too, by the shell rather than by `reset_vault`,
+  since that file is shared with the app's own settings. This
   is **logical deletion** (`unlink` removes the directory entry), not a
   secure media wipe: residual sectors may hold old-key-encrypted ciphertext
   until overwritten. That is acceptable — the fragments are useless without
@@ -428,8 +460,8 @@ be checkable. Enforcement arrives in step with the code:
 The four original scanners (bandit, pip-audit, gitleaks, ruff) and the
 test harness are wired in P01 (FIBR-0001) — `mypy`, `shellcheck`,
 `actionlint` and `zizmor` joined later, per the table; the per-INV assertions
-(INV-1/2/3/4/5b/5c/7/9/10/11/12) arrive with the later phases that build
-the vault, crypto, import, export, and logging paths. The CI workflow
+arrive with the later phases that build the vault, crypto, import, export, and
+logging paths — § 5's third bullet enumerates which, and is the only list. The CI workflow
 and the local script run the **same** gate list (one source of
 truth) so a security regression fails *before* a push, not after.
 
