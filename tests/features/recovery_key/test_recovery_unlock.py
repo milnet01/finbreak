@@ -321,3 +321,216 @@ def test_recovery_derivation_failure_message_does_not_mention_password(
         "  expected: no mention of 'password' when a recovery DERIVATION fails\n"
         f"  actual:   {message!r}"
     )
+
+
+# --------------------------------------------------------------------------- #
+# INV-25 -- FIBR-0313 M10: D5's regeneration offer after a recovery unlock
+# --------------------------------------------------------------------------- #
+def _wait_or_timeout(qtbot: Any, predicate: Any, *, timeout_ms: int) -> None:
+    """Poll ``predicate``, swallowing the raw pytest-qt timeout so the
+    caller's own assertion -- with expected and actual -- is what a run
+    against the live defect reports, rather than a bare TimeoutError with
+    only a line number (``test_settings_flows.py``'s
+    ``_wait_for_clipboard_clear`` does the same)."""
+    import pytestqt.exceptions
+
+    try:
+        qtbot.waitUntil(predicate, timeout=timeout_ms)
+    except pytestqt.exceptions.TimeoutError:
+        pass
+
+
+def test_recovery_unlock_offers_recovery_code_regeneration(
+    qtbot: Any, paths: tuple[Path, Path], service: AuthService
+) -> None:
+    """FIBR-0313 M10 -- D5 (spec.md line 139): "The UI offers regeneration
+    after a recovery unlock for the user who thinks their copy was exposed;
+    it does not impose it." No such prompt exists today:
+    ``MainWindow._show_recovery_offer`` (called from the end of
+    ``_enter_unlocked``) fires in exactly two cases -- a held
+    ``_pending_recovery_code`` (first run) or
+    ``_service.consume_migration_notice()`` (D7, a just-converted vault). A
+    recovery unlock is neither, so ``_on_recovery_unlocked``'s chain into
+    ``_enter_unlocked`` reaches the end of ``_show_recovery_offer`` and
+    returns ``False`` every time.
+
+    Drives a REAL ``MainWindow`` rather than a standalone ``UnlockDialog``,
+    because D5's offer is wired (or, today, not wired) at the shell level --
+    the same class the shell uses to launch it against Settings' Add/Replace
+    already exists (``build_add_or_replace_offer``), so the missing piece is
+    only the connection from a recovery unlock into it.
+    """
+    from finbreak.ui.main_window import MainWindow
+    from finbreak.ui.recovery_key import NewMasterPasswordDialog, RecoveryCodeDialog
+
+    _vault_path, sidecar_path = paths
+
+    code = create_vault(service)
+    keep_recovery_key(service, code)
+    service.lock()
+
+    # A locked vault at construction routes MainWindow through _show_unlock()
+    # itself (see the `else: self._show_unlock()` branch in __init__) -- no
+    # need to call it by hand.
+    window = MainWindow(service)
+    qtbot.addWidget(window)
+
+    dialog = window._dialog
+    field, submit, _pending = _recovery_seams(dialog)
+
+    field.setText(code)
+    submit()
+
+    _wait_or_timeout(
+        qtbot,
+        lambda: isinstance(window._dialog, NewMasterPasswordDialog),
+        timeout_ms=10_000,
+    )
+    new_password_dialog = window._dialog
+    assert isinstance(new_password_dialog, NewMasterPasswordDialog), (
+        "precondition: D6's forced new-master-password step must be up "
+        "before this test can drive past it -- if this fails, INV-9 is "
+        "broken too and that is a different defect.\n"
+        "  expected: NewMasterPasswordDialog in the shell's _dialog slot\n"
+        f"  actual:   {dialog!r} unchanged "
+        f"({type(window._dialog).__name__})"
+    )
+
+    # D6's forced reset -- the DEK does not change, only the master slot's wrap.
+    new_password_dialog._password.setText(NEW_MASTER_PASSWORD.decode())
+    new_password_dialog._confirm.setText(NEW_MASTER_PASSWORD.decode())
+    new_password_dialog._on_submit()
+
+    _wait_or_timeout(
+        qtbot,
+        lambda: (
+            isinstance(window._dialog, RecoveryCodeDialog)
+            and not window._dialog.isHidden()
+        ),
+        timeout_ms=5_000,
+    )
+    offer = window._dialog
+    assert isinstance(offer, RecoveryCodeDialog) and not offer.isHidden(), (
+        "FIBR-0313 M10 (D5, spec.md line 139): the UI must offer to replace "
+        "the recovery code once a recovery unlock's forced new master "
+        "password is set -- 'for the user who thinks their copy was "
+        "exposed'. _show_recovery_offer only fires for a held first-run "
+        "code or a just-converted vault, never for a recovery unlock, so no "
+        "such offer appears and the workspace is reached directly.\n"
+        "  expected: a visible RecoveryCodeDialog in the shell's _dialog "
+        "slot, offering a new recovery code\n"
+        f"  actual:   {type(offer).__name__ if offer is not None else None}"
+        + (
+            f" (isHidden={offer.isHidden()})"
+            if isinstance(offer, RecoveryCodeDialog)
+            else ""
+        )
+    )
+
+    # Leg 3 -- D5's "it does not impose it": declining must leave the
+    # EXISTING recovery code working, not merely stop a new one being written.
+    offer.reject()
+
+    data = read_v2_sidecar(sidecar_path)
+    new_master_dek = bytes(unwrap_slot(NEW_MASTER_PASSWORD, data, SLOT_MASTER))
+    original_code_dek = bytes(unwrap_slot(code_secret(code), data, "recovery"))
+    outcome = "matches" if original_code_dek == new_master_dek else "does NOT match"
+    assert original_code_dek == new_master_dek, (
+        "FIBR-0313 M10 (D5): declining the regeneration offer must not "
+        "disturb the recovery code the user already has -- the offer is "
+        "declinable, and 'does not impose it' means the original code must "
+        "still work afterwards.\n"
+        "  expected: the ORIGINAL recovery code still unwraps slots.recovery "
+        "to the same DEK the new master password unwraps slots.master to\n"
+        f"  actual:   original-code DEK {outcome} the vault's real DEK"
+    )
+
+    # Leg 4 -- the offer is owed ONCE. The control test cannot reach this: it
+    # builds a fresh window that never had a recovery unlock, so an offer left
+    # permanently owed would go on firing on every ordinary unlock of THIS
+    # window and no other test would notice. mutation_probe found exactly that
+    # -- removing the consume-on-read left the suite green until this leg.
+    service.lock()
+    window._show_unlock()
+    from finbreak.ui.unlock import UnlockDialog
+
+    window._unlocked = False
+    ordinary = window._dialog
+    assert isinstance(ordinary, UnlockDialog), (
+        "precondition: locking must put the shell back on the unlock screen "
+        "before this leg can drive an ordinary unlock.\n"
+        "  expected: UnlockDialog in the shell's _dialog slot\n"
+        f"  actual:   {type(ordinary).__name__}"
+    )
+    ordinary._password.setText(NEW_MASTER_PASSWORD.decode())
+    ordinary._on_unlock()
+    _wait_or_timeout(qtbot, lambda: window._unlocked, timeout_ms=10_000)
+    assert window._unlocked, (
+        "precondition for the leg below: the ordinary unlock must actually "
+        "have happened. Without this the next assertion passes vacuously -- a "
+        "failed unlock leaves the UnlockDialog in the slot, which is also 'not "
+        "a RecoveryCodeDialog'.\n"
+        "  expected: window._unlocked is True\n"
+        f"  actual:   {window._unlocked} ({type(window._dialog).__name__} in the slot)"
+    )
+
+    again = window._dialog
+    assert not isinstance(again, RecoveryCodeDialog), (
+        "FIBR-0313 M10 (D5): the regeneration offer is owed ONCE, by the "
+        "recovery unlock that earned it. An ordinary unlock afterwards must "
+        "not re-offer -- D5 offers regeneration to the user who thinks their "
+        "copy was exposed, not at every login.\n"
+        "  expected: no RecoveryCodeDialog after an ordinary password unlock\n"
+        f"  actual:   {type(again).__name__}"
+    )
+
+
+def test_ordinary_unlock_does_not_offer_recovery_code_regeneration(
+    qtbot: Any, paths: tuple[Path, Path], service: AuthService
+) -> None:
+    """The control leg for the test above. D5 ties the regeneration offer to
+    a RECOVERY unlock specifically -- "for the user who thinks their copy
+    was exposed" -- not to unlocking in general. An implementation that
+    shows the offer after every unlock, recovery or not, would pass the
+    recovery-route test and still be wrong, which is exactly the kind of
+    defect a single-leg test cannot catch.
+    """
+    from finbreak.ui.main_window import MainWindow
+    from finbreak.ui.recovery_key import RecoveryCodeDialog
+    from finbreak.ui.unlock import UnlockDialog
+
+    code = create_vault(service)
+    keep_recovery_key(service, code)
+    service.lock()
+
+    window = MainWindow(service)
+    qtbot.addWidget(window)
+
+    dialog = window._dialog
+    assert isinstance(dialog, UnlockDialog), (
+        "precondition: a locked vault must route MainWindow through the "
+        "real UnlockDialog.\n"
+        f"  expected: UnlockDialog\n  actual:   {type(dialog).__name__}"
+    )
+    dialog._password.setText(MASTER_PASSWORD.decode())
+    dialog._on_unlock()
+
+    _wait_or_timeout(qtbot, lambda: window._unlocked, timeout_ms=10_000)
+    assert window._unlocked, (
+        "precondition: the ordinary password route must actually unlock, "
+        "or the leg below passes vacuously.\n"
+        "  expected: window._unlocked is True after an ordinary unlock\n"
+        f"  actual:   {window._unlocked}"
+    )
+
+    offer = window._dialog
+    assert not isinstance(offer, RecoveryCodeDialog), (
+        "FIBR-0313 M10 (D5): an ORDINARY password unlock must not be "
+        "offered recovery-code regeneration -- D5 ties that offer to a "
+        "RECOVERY unlock, for a user who just proved their password may be "
+        "compromised (D6's forced reset), not to unlocking in general. An "
+        "implementation that fires the offer on every unlock passes the "
+        "recovery-route test and must fail this one.\n"
+        "  expected: no RecoveryCodeDialog after an ordinary password unlock\n"
+        f"  actual:   {type(offer).__name__ if offer is not None else None}"
+    )

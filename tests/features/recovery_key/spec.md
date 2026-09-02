@@ -443,6 +443,43 @@ every credential, account and transaction here is synthetic
   anything today can produce the collision.
   Source: FIBR-0313 M9.
 
+- **INV-25** — After a RECOVERY unlock, once D6's forced new master password
+  is set and the workspace is reachable, the UI offers the user the chance to
+  replace their recovery code — the D5 offer (spec line 139): "The UI offers
+  regeneration after a recovery unlock for the user who thinks their copy was
+  exposed; it does not impose it." `MainWindow._show_recovery_offer` (called
+  from the end of `_enter_unlocked`) fires in exactly two cases today: a held
+  `_pending_recovery_code` (first run) or `_service.consume_migration_notice()`
+  (D7, a just-converted vault). A recovery unlock is neither, so
+  `_on_recovery_unlocked`'s chain into `_enter_unlocked` reaches the end of
+  `_show_recovery_offer`, which returns `False`, and no offer ever appears —
+  the workspace comes up directly.
+  *Test:*
+  `test_recovery_unlock.py::test_recovery_unlock_offers_recovery_code_regeneration`
+  — drives a REAL recovery unlock through `MainWindow` (not a standalone
+  `UnlockDialog`, since the offer is wired — or, today, not wired — at the
+  shell level): submits the recovery code, waits for D6's forced
+  `NewMasterPasswordDialog`, sets a new password, and asserts a
+  `RecoveryCodeDialog` is up and VISIBLE in the shell's single `_dialog` slot
+  once that completes — the on-screen outcome, never that
+  `_show_recovery_offer` was called or a private flag was set. A third leg
+  declines the offer and asserts the ORIGINAL recovery code still unwraps the
+  vault's real DEK afterwards, locking D5's "it does not impose it." A fourth
+  leg locks and unlocks ORDINARILY on the same window, asserting the offer does
+  not come back: it is owed once, by the recovery unlock that earned it. The
+  control test below cannot reach that case — it builds a fresh window that
+  never had a recovery unlock — so an offer left permanently owed would fire on
+  every login of a window that had one, and nothing would notice.
+  `mutation_probe` found exactly that: removing the consume-on-read left the
+  suite green until this leg existed. Its `window._unlocked` precondition is
+  load-bearing, because a failed unlock also leaves something that is "not a
+  `RecoveryCodeDialog`" in the slot.
+  `test_recovery_unlock.py::test_ordinary_unlock_does_not_offer_recovery_code_regeneration`
+  — the control: an ORDINARY password unlock must show no such offer.
+  Without it, an implementation that offers regeneration after every unlock
+  — not just a recovery one — would pass the first test and still be wrong.
+  Source: FIBR-0313 M10.
+
 ## Rationale
 
 `AuthService.reset_vault` — "start over" — is the live answer to *I forgot my

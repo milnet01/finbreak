@@ -319,6 +319,9 @@ class MainWindow(QMainWindow):
         # First-run's freshly generated recovery code, held for the § 4.5 step 8
         # display in _enter_unlocked. Session state only, cleared on show.
         self._pending_recovery_code: str | None = None
+        # D5's offer, owed once after a recovery unlock. Consumed on read like
+        # the pending code above, so it cannot fire on a later ordinary unlock.
+        self._regeneration_offer_owed: bool = False
         self._offered_update: UpdateInfo | None = None  # the one currently prompted
         self._unlocked = False  # gates the pending offer (D15)
         self._update_check_worker: UpdateCheckWorker | None = None
@@ -691,6 +694,11 @@ class MainWindow(QMainWindow):
         credential — which is the whole point: a user arriving by this route has,
         by construction, no password that works.
         """
+        # D5 — the code that just opened this vault may be the one the user
+        # thinks is exposed, and this is the moment they know it. The offer is
+        # made after D6's forced password, not before: it is declinable, and a
+        # decline must not leave them without a working credential.
+        self._regeneration_offer_owed = True
         self._teardown_dialog()
         dialog = NewMasterPasswordDialog(self._service, self)
         dialog.accepted.connect(self._enter_unlocked)
@@ -1195,15 +1203,25 @@ class MainWindow(QMainWindow):
     def _show_recovery_offer(self) -> bool:
         """§ 4.5 step 8 — show the one-time display if one is owed.
 
-        Owed in two cases, and they get the same dialog: first-run has just
-        handed over a code, or this unlock converted a vault to the envelope
-        (D2), which is offered one on the same terms (D7). After the migration
-        rather than before, so a declined offer or a closed window costs nothing
+        Owed in three cases, and they get the same dialog: first-run has just
+        handed over a code; this unlock converted a vault to the envelope (D2),
+        which is offered one on the same terms (D7); or a recovery unlock has
+        just completed and D5 offers a replacement. After the migration rather
+        than before, so a declined offer or a closed window costs nothing
         already done.
+
+        All three are consumed on read, so none can fire twice. The third is
+        the only one over an EXISTING slot: ``add_recovery_key`` is Replace as
+        well as Add, and declining writes nothing, which is what makes D5's
+        "does not impose it" true rather than merely intended.
         """
         code = self._pending_recovery_code
         self._pending_recovery_code = None
+        regeneration_owed = self._regeneration_offer_owed
+        self._regeneration_offer_owed = False
         if code is None and self._service.consume_migration_notice():
+            code = generate_code()
+        if code is None and regeneration_owed:
             code = generate_code()
         if code is None:
             return False
