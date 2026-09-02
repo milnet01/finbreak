@@ -43,7 +43,12 @@ from finbreak.errors import BackupError, KdfPolicyError, SchemaVersionError
 from finbreak.keywrap import SLOT_MASTER, wrap_dek
 from finbreak.migrations import LATEST_SCHEMA_VERSION
 from finbreak.services.auth import AuthService, _wipe
-from finbreak.vault import SQLCIPHER_COMPAT, Vault, old_copy_sets
+from finbreak.vault import (
+    SQLCIPHER_COMPAT,
+    SQLCIPHER_COMPAT_ACCEPTED,
+    Vault,
+    old_copy_sets,
+)
 
 log = logging.getLogger(__name__)
 
@@ -276,7 +281,7 @@ class BackupService:
                 # (D1); the helper owns + wipes the backup key/password buffers and
                 # returns the opened backup Vault (whose vault.db lives in this temp
                 # dir, so it outlives the call for the install rename below).
-                backup_vault = self._open_backup_vault(
+                backup_vault, backup_compat = self._open_backup_vault(
                     src, backup_password, Path(td), on_key=on_key
                 )
                 try:
@@ -323,7 +328,7 @@ class BackupService:
                                     )
                                 },
                             ),
-                            cipher_compatibility=SQLCIPHER_COMPAT,
+                            cipher_compatibility=backup_compat,
                         ),
                     )
                 finally:
@@ -374,7 +379,7 @@ class BackupService:
         on_key = on_key or _noop_on_key
         try:
             with tempfile.TemporaryDirectory() as td:
-                backup_vault = self._open_backup_vault(
+                backup_vault, _compat = self._open_backup_vault(
                     src, backup_password, Path(td), on_key=on_key
                 )
                 try:
@@ -442,7 +447,7 @@ class BackupService:
 
     def _open_backup_vault(
         self, src: Path, backup_password: str, work_dir: Path, *, on_key: OnKey
-    ) -> Vault:
+    ) -> tuple[Vault, int]:
         """Shared read -> guard -> materialise-params -> derive -> open sequence
         for restore and verify (D1).
 
@@ -458,7 +463,11 @@ class BackupService:
         can map a class to its own outcome (the ``BackupError`` normalisation stays
         in ``restore_backup``, D1)."""
         manifest, params_bytes, db_bytes = self._read_fbk(src)  # INV-12
-        self._guard_manifest(manifest)  # INV-4 format, INV-13 compat, INV-6a
+        # INV-4 format, INV-13 compat, INV-6a. Returns the level THIS backup
+        # was written at: opening at the module constant instead works only
+        # while the accepted set has one member and fails silently the day it
+        # does not; the restore caller also records it on the new sidecar.
+        compat = self._guard_manifest(manifest)
         password_buf = bytearray(backup_password, "utf-8")
         backup_key: bytearray | None = None
         tmp_db = work_dir / "vault.db"
@@ -481,27 +490,29 @@ class BackupService:
             # only reads key.hex() (never mutates), so a copy would be an un-wiped
             # second reference to live key material outside the finally wipe (INV-7).
             backup_vault = Vault(tmp_db, tmp_sidecar)
-            backup_vault.open(
-                backup_key, in_memory_temp=True, cipher_compat=SQLCIPHER_COMPAT
-            )
-            return backup_vault
+            backup_vault.open(backup_key, in_memory_temp=True, cipher_compat=compat)
+            return backup_vault, compat
         finally:
             _wipe(backup_key)
             _wipe(password_buf)
 
-    def _guard_manifest(self, manifest: dict[str, object]) -> None:
+    def _guard_manifest(self, manifest: dict[str, object]) -> int:
         """The pre-disk manifest guards: container ``format_version`` (INV-4),
-        ``sqlcipher_compat`` one-element allowlist (INV-13), and the early schema
-        version gate (INV-6a). Each raises ``BackupError`` before any disk change."""
+        ``sqlcipher_compat`` against the accepted set (INV-13), and the early
+        schema version gate (INV-6a). Each raises ``BackupError`` before any disk
+        change. Returns the accepted ``sqlcipher_compat``, so the one place that
+        validates it is also the one place that narrows it to an ``int``."""
         if manifest.get("format_version") != MANIFEST_FORMAT_VERSION:
             raise BackupError("unrecognised backup format_version")
-        if manifest.get("sqlcipher_compat") != SQLCIPHER_COMPAT:
+        compat = manifest.get("sqlcipher_compat")
+        if compat not in SQLCIPHER_COMPAT_ACCEPTED or not isinstance(compat, int):
             raise BackupError("unsupported backup cipher-compatibility level")
         schema_version = manifest.get("schema_version")
         if not isinstance(schema_version, int) or schema_version < 1:
             raise BackupError("backup manifest has no usable schema version")
         if schema_version > LATEST_SCHEMA_VERSION:
             raise BackupError("backup was made by a newer version of finbreak")
+        return compat
 
     def _prune_superseded_old_copies(self) -> None:
         """Keep the newest ``*.old`` set and drop the rest (INV-17).

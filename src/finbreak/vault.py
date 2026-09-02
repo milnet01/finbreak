@@ -33,6 +33,14 @@ SCHEMA_VERSION = 1
 # backup.py imports it from here (spec placed it in backup.py, refined).
 SQLCIPHER_COMPAT = 4
 
+# What a restore will ACCEPT, which is not the same question as what an export
+# WRITES. One constant answered both, so bumping it to write a new level would
+# have made every `.fbk` already in the field unrestorable — at the moment the
+# user needs it most. Widening this set is the safe half of such a bump; the
+# restore path opens each backup at the level its own manifest records, so an
+# older level stays readable. Never narrow it below a level ever shipped.
+SQLCIPHER_COMPAT_ACCEPTED = frozenset({SQLCIPHER_COMPAT})
+
 # What a restore's move-aside leaves behind. `BackupService._install` renames
 # the incumbent to `<name>.<stamp>.old`, carrying the SQLite `-wal`/`-shm`
 # siblings and the sidecar's own copy under the same stamp, so one stamp names

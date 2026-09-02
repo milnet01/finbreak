@@ -1513,3 +1513,62 @@ def test_FIBR0327_export_works_from_a_path_containing_an_apostrophe(tmp_path):
     auth.vault.export_to(dest, key)
     assert dest.exists() and dest.stat().st_size > 0
     auth.lock()
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0327 — `SQLCIPHER_COMPAT` was both what an export WRITES and what a
+# restore ACCEPTS. Bumping it to write a new level would have made every `.fbk`
+# already in the field unrestorable, at the moment the user needs it most.
+# --------------------------------------------------------------------------- #
+def test_FIBR0327_widening_the_accepted_set_lets_an_older_fbk_restore(
+    tmp_path, monkeypatch
+):
+    """The property the split exists for: a build whose WRITE level has moved on
+    still restores a backup written at the older one.
+
+    The backup here is a REAL level-3 database, not a level-4 one with a relabelled
+    manifest. That distinction is the test: with a relabelled manifest, opening at
+    the recorded level and opening at the module constant do the same thing, so
+    the assertion passes either way. Measured — that first version of this test
+    survived reverting the fix. A genuine level-3 database fails page-1 if the
+    restore opens at 4.
+    """
+    import finbreak.services.backup as backup_mod
+    import finbreak.vault as vault_mod
+
+    # Export at level 3: both the PRAGMA (vault.py) and the manifest (backup.py)
+    # read the constant from their own module namespace.
+    monkeypatch.setattr(vault_mod, "SQLCIPHER_COMPAT", 3)
+    monkeypatch.setattr(backup_mod, "SQLCIPHER_COMPAT", 3)
+    fbk, snap = _export_from_seed(tmp_path)
+    with zipfile.ZipFile(fbk) as zf:
+        assert json.loads(zf.read("manifest.json"))["sqlcipher_compat"] == 3
+
+    # Now restore as a build that WRITES 4 and ACCEPTS both.
+    monkeypatch.setattr(vault_mod, "SQLCIPHER_COMPAT", 4)
+    monkeypatch.setattr(backup_mod, "SQLCIPHER_COMPAT", 4)
+    monkeypatch.setattr(backup_mod, "SQLCIPHER_COMPAT_ACCEPTED", frozenset({4, 3}))
+
+    auth = _dest_auth(tmp_path, "widened")
+    BackupService(auth.vault, auth).restore_backup(fbk, _BACKUP_PW, _M2)
+    assert auth.unlock(bytearray(_M2, "utf-8")) is True
+    assert _snapshot_tables(auth.vault.connection) == snap
+    auth.lock()
+
+
+def test_FIBR0327_restored_sidecar_records_the_backups_level_not_the_constant(
+    tmp_path,
+):
+    """The installed database came from the backup, so its sidecar must record
+    the level that database was written at. Recording the module constant is
+    correct only while the accepted set has one member."""
+    from finbreak.crypto import read_sidecar_v2
+    from finbreak.vault import SQLCIPHER_COMPAT
+
+    fbk, _snap = _export_from_seed(tmp_path)
+    auth = _dest_auth(tmp_path, "recorded")
+    BackupService(auth.vault, auth).restore_backup(fbk, _BACKUP_PW, _M2)
+    sidecar = read_sidecar_v2(auth.vault.sidecar_path)
+    with zipfile.ZipFile(fbk) as zf:
+        recorded = json.loads(zf.read("manifest.json"))["sqlcipher_compat"]
+    assert sidecar.cipher_compatibility == recorded == SQLCIPHER_COMPAT
