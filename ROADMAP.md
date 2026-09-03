@@ -10544,6 +10544,37 @@ is a future error tomorrow.
   Caught by the gate during that hour while working an unrelated item, not
   by re-reading the test. Now `in (1, 2)`, with the arithmetic written down
   beside it.
+  Progress (2026-09-03): the pre-push hook item is closed (b0e929f); gate
+  green at 2180 passed / 2 skipped.
+
+  ci-local.sh reads the files on DISK, so the hook's verdict was about the
+  working tree and not about the commits being pushed. Same thing after a
+  commit-then-push, different the moment anything is uncommitted -- and the
+  dangerous direction is real: a fix present in the tree but not in the
+  commit makes the gate green about code that never leaves the machine.
+
+  It refuses on uncommitted changes to TRACKED files and names --no-verify
+  as the way past. Gating the pushed commit itself would mean building it
+  in a throwaway worktree with its own venv, which costs more than the case
+  is worth; stopping and saying the run would not be about your push does
+  not pretend otherwise. Untracked files are ignored -- they are in no
+  commit and cannot make one look different.
+
+  Driven against a real throwaway repo like the INV-5 legs beside it, both
+  halves: the refusal must not spend the gate first, and a clean tree must
+  still take it. Three mutants, all killed, including one that warns
+  without stopping. The hook then gated its own change on the way out.
+
+  CLAUDE.md § Push policy records it. Rule 14: no gate, recorded in the
+  commit body -- the hook enforces this whether or not the prose says so.
+
+  Still open in this bullet: categories._refresh not re-running its gating
+  slot; the batch review's keyboard-inaccessible Account cell and its inert
+  picker sentinel; two unguarded vault reads in import_wizard (the lane
+  named no site, so this needs re-deriving against current source);
+  single_instance's narrowed-but-open stale-socket race; and FIBR-0096's
+  claim that the per-artifact .sig is the primary integrity gate, which is
+  false for a rename-replay.
   **Layman:** A batch of smaller real defects the full sweep found; most are now fixed, with a lower-severity tail left.
   Kind: review-fix.
   Source: review-code 2026-08-31.
