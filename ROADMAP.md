@@ -6490,6 +6490,38 @@ because retrofitting them is a data migration.
   that decides whether the gate means anything stays unread.
 
   Remaining on this bullet: L15 and L16.
+  Progress (2026-09-03, cont.): L15 and L16 closed (722d404); gate green
+  at 2165 passed / 2 skipped. L1-L16 are now all closed, so every finding
+  on this bullet -- C1, H1-H4, M1-M10, Q1-Q5 and L1-L16 -- is disposed of.
+
+  L16 -- read_sidecar_v2 parsed the file, then asked sidecar_version for
+  its version, which re-read and re-parsed the same path: every v2 sidecar
+  read twice, three times through auth.read_sidecar. The version now comes
+  from the dict in hand, via a _version_of helper both entry points share.
+  mutation_probe surfaced a SECOND thing, pre-existing and not introduced
+  here: dropping the version gate survived, because a v1 sidecar has no
+  kdf group and the next check refuses it anyway -- the refusal rested on
+  that accident. It has its own leg now.
+
+  L15 -- § 13.3 enumerated two kinds of debris and there are three: a run
+  aborting between S3's write and S4's rename leaves
+  vault.kdf.json.migrating. Measured rather than assumed -- the sidecar
+  writer renames a fresh .tmp over its destination, so the next S3
+  overwrites a stray one rather than refusing it, which is why this never
+  wedged a retry the way the S1 debris once did. The count is dropped
+  rather than corrected, since the count is what went stale. FIBR-0154's
+  translate(_LABEL_CONTEXT, ...) references went with it, the constant
+  having been deleted with L7.
+
+  Rule 14: no gate on either spec, recorded in the commit body. Both
+  amendments record what was already built, which is the rule's named
+  instance for an amendment that does not re-arm.
+
+  NOT flipped to shipped here. This bullet is FP04, and its close is
+  /close-phase's -- check-code plus review-code lanes from a fresh
+  context, which is what FP03's close did and what produced this bullet.
+  The findings being disposed of is the precondition for that run, not a
+  substitute for it.
   **Layman:** The recovery-key work was reviewed again with fresh eyes; one serious problem can strand a half-upgraded vault with no way back, and several smaller fixes from last time only reached some of the places they needed to.
   Kind: review-fix.
   Source: close-phase-2026-08-25 (check-code + review-code x4 lanes, FP03 close, fresh context).
