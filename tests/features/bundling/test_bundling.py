@@ -140,8 +140,20 @@ def test_INV1_noargs_routes_to_gui(monkeypatch) -> None:
     assert called.get("ran") is True, "no-args must route to the GUI launcher"
 
 
+# FIBR-0325 — every leg below that drives `run_self_test` takes `qapp`.
+#
+# They stub `_check_qt` to a no-op, and `run_self_test` then reaches
+# `_check_icons`, which renders a QPixmap. With no QApplication in the process
+# Qt does not raise, it ABORTS — `Fatal Python error: Aborted`, taking the whole
+# pytest run with it. Inside the full suite an earlier test has already made
+# one, so the suite passed there and died when run on its own: exactly the
+# situation someone debugging a bundling failure would be in.
+#
+# `qapp` (pytest-qt) guarantees the application regardless of what ran before,
+# which is what makes this file runnable in isolation. The stub stays: it is
+# what proves `run_self_test` resolves its checks at call time.
 @pytest.mark.features
-def test_FIBR0259_selftest_fail_names_qtnetwork(monkeypatch):
+def test_FIBR0259_selftest_fail_names_qtnetwork(qapp, monkeypatch):
     """A missing Qt6Network must FAIL the self-test, naming `qtnetwork`.
 
     This is the leg whose ABSENCE shipped a Flatpak that could not start.
@@ -181,7 +193,7 @@ def test_FIBR0259_selftest_fail_names_qtnetwork(monkeypatch):
 
 
 @pytest.mark.features
-def test_INV1_selftest_fail_names_the_broken_stack(monkeypatch):
+def test_INV1_selftest_fail_names_the_broken_stack(qapp, monkeypatch):
     """A failing stack → 'FINBREAK_SELFTEST_FAIL: <stack>' + non-zero.
 
     Unit-tests the FAIL contract independent of installed native deps:
@@ -207,7 +219,7 @@ def test_INV1_selftest_fail_names_the_broken_stack(monkeypatch):
 
 
 @pytest.mark.features
-def test_INV1_selftest_fail_names_argon2(monkeypatch):
+def test_INV1_selftest_fail_names_argon2(qapp, monkeypatch):
     """The FIBR-0004 argon2 leg names itself on failure (all earlier stacks pass)."""
     from finbreak import _selftest
 
@@ -231,7 +243,7 @@ def test_INV1_selftest_fail_names_argon2(monkeypatch):
 
 
 @pytest.mark.features
-def test_INV1_selftest_fail_names_pdf_encrypt(monkeypatch):
+def test_INV1_selftest_fail_names_pdf_encrypt(qapp, monkeypatch):
     """The FIBR-0013 encrypt-export leg (QPdfWriter + pikepdf.Encryption) names
     itself on failure (all earlier stacks pass)."""
     from finbreak import _selftest
@@ -255,7 +267,7 @@ def test_INV1_selftest_fail_names_pdf_encrypt(monkeypatch):
 
 
 @pytest.mark.features
-def test_INV1_selftest_fail_names_ofxparse(monkeypatch):
+def test_INV1_selftest_fail_names_ofxparse(qapp, monkeypatch):
     """The FIBR-0008 ofxparse leg names itself on failure (all earlier stacks pass)."""
     from finbreak import _selftest
 
@@ -452,7 +464,9 @@ def test_FIBR0132_windowed_build_still_emits_a_sentinel(monkeypatch, tmp_path):
     assert rc == 0
 
 
-def test_FIBR0132_run_self_test_falls_back_to_stderr_when_stdout_is_none(monkeypatch):
+def test_FIBR0132_run_self_test_falls_back_to_stderr_when_stdout_is_none(
+    qapp, monkeypatch
+):
     """The backstop for any caller that reaches `run_self_test` directly."""
     import io
 
@@ -464,3 +478,105 @@ def test_FIBR0132_run_self_test_falls_back_to_stderr_when_stdout_is_none(monkeyp
 
     assert _selftest.run_self_test() == 0
     assert err.getvalue().strip() == "FINBREAK_SELFTEST_OK"
+
+
+@pytest.mark.features
+def test_FIBR0326_selftest_covers_cryptography(qapp, monkeypatch):
+    """`cryptography` guards every vault unlock and had no check of its own.
+
+    It is a promoted runtime dependency used directly by `keywrap` (AES-GCM,
+    the key envelope) and `update_key` (Ed25519, the release signature). It
+    loads in the bundle today only because `pdfminer` imports it at module
+    scope, pulled in transitively by the pdfplumber check. If pdfminer ever
+    defers that import, the OK sentinel goes green on a bundle that cannot
+    open any v2 vault — the FIBR-0259 shape exactly: a check list that covers
+    the neighbours and misses the one thing the app cannot start without.
+
+    Guards both halves, like the qtnetwork leg above: that `cryptography` is
+    IN the ordered list at all, and that its failure is reported under that
+    name.
+    """
+    from finbreak import _selftest
+
+    assert "cryptography" in _selftest.CHECK_NAMES, (
+        "cryptography must be in the self-test's check list — it is what "
+        "unwraps the vault's data key, and a bundle without it opens nothing"
+    )
+
+    monkeypatch.setattr(_selftest, "_check_qt", lambda: None)
+
+    def _boom() -> None:
+        raise ImportError("no module named cryptography.hazmat.bindings._rust")
+
+    monkeypatch.setattr(_selftest, "_check_cryptography", _boom)
+
+    out = io.StringIO()
+    rc = _selftest.run_self_test(out)
+
+    assert rc != 0, "a missing cryptography must exit non-zero"
+    assert out.getvalue().splitlines() == ["FINBREAK_SELFTEST_FAIL: cryptography"], (
+        f"expected the cryptography FAIL line only; got:\n{out.getvalue()}"
+    )
+
+
+@pytest.mark.features
+def test_FIBR0326_the_cryptography_check_passes_on_a_working_stack():
+    """The baseline: on a healthy install the check must be silent. Without
+    this, the two falsification legs below could pass against a check that
+    always raises."""
+    from finbreak import _selftest
+
+    _selftest._check_cryptography()
+
+
+@pytest.mark.features
+def test_FIBR0326_the_cryptography_check_fails_on_a_broken_aes_gcm(monkeypatch):
+    """The check must EXERCISE the primitive, not merely import the package —
+    a check that cannot fail is the thing this item is about. `keywrap` unwraps
+    the vault's data key with AES-GCM, so a round trip that does not round-trip
+    must be reported rather than passed over."""
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+    from finbreak import _selftest
+
+    monkeypatch.setattr(AESGCM, "decrypt", lambda *a, **k: b"not the plaintext")
+
+    with pytest.raises(RuntimeError, match="round-trip"):
+        _selftest._check_cryptography()
+
+
+@pytest.mark.features
+def test_FIBR0326_the_cryptography_check_fails_on_a_broken_ed25519(monkeypatch):
+    """The other half: `update_key` verifies the release signature with
+    Ed25519, so a verify that accepts a bad signature — or a sign that produces
+    one — must reach the sentinel."""
+    from cryptography.exceptions import InvalidSignature
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    from finbreak import _selftest
+
+    # Substituted where the check RESOLVES the name — it imports lazily inside
+    # the function. Patching an attribute on Ed25519PrivateKey itself does
+    # nothing: it is Rust-backed, and `generate()` hands back a concrete type
+    # whose `sign` is not the one that would have been replaced (measured — the
+    # first draft of this leg passed a bad signature straight through).
+    real = Ed25519PrivateKey.generate()
+
+    class _BadSigner:
+        @staticmethod
+        def generate():
+            return _BadSigner()
+
+        def public_key(self):
+            return real.public_key()
+
+        def sign(self, data):
+            return b"\x00" * 64
+
+    monkeypatch.setattr(
+        "cryptography.hazmat.primitives.asymmetric.ed25519.Ed25519PrivateKey",
+        _BadSigner,
+    )
+
+    with pytest.raises(InvalidSignature):
+        _selftest._check_cryptography()

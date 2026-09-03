@@ -202,6 +202,42 @@ def _check_argon2() -> None:
         raise RuntimeError("argon2 did not return the expected key length")
 
 
+def _check_cryptography() -> None:
+    """Round-trip AES-GCM and verify an Ed25519 signature (FIBR-0326).
+
+    ``cryptography`` is a promoted runtime dependency the app cannot start
+    usefully without: ``keywrap`` unwraps the vault's data key with AES-GCM, so
+    a bundle missing it opens no v2 vault at all, and ``update_key`` verifies
+    the release signature with Ed25519.
+
+    It had no check, and loaded only because ``pdfminer`` imports it at module
+    scope — pulled in transitively by the pdfplumber check below. If pdfminer
+    ever defers that import, the OK sentinel would go green on a bundle that
+    unlocks nothing. That is FIBR-0259's shape: a list covering the neighbours
+    and missing the one thing the app cannot start without.
+
+    Both primitives are EXERCISED rather than imported, for the reason
+    ``_check_qtnetwork`` constructs its object — each reaches a different part
+    of the Rust extension, and an import alone faults in neither.
+
+    Every value here is generated on the spot and guards nothing.
+    """
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+    key = AESGCM.generate_key(bit_length=256)
+    nonce = os.urandom(12)
+    plaintext = b"finbreak-selftest-not-a-real-secret"
+    sealed = AESGCM(key).encrypt(nonce, plaintext, None)
+    if AESGCM(key).decrypt(nonce, sealed, None) != plaintext:
+        raise RuntimeError("AES-GCM did not round-trip")
+
+    signing_key = Ed25519PrivateKey.generate()
+    message = b"finbreak-selftest-signature"
+    # Raises InvalidSignature if the verify path is broken.
+    signing_key.public_key().verify(signing_key.sign(message), message)
+
+
 def _check_ofxparse() -> None:
     """Parse a tiny OFX document, proving ofxparse + its transitive tree
     (beautifulsoup4, native lxml) travel with the bundle (FIBR-0008).
@@ -307,6 +343,10 @@ CHECK_NAMES = (
     "pikepdf",
     "pdf_encrypt",
     "argon2",
+    # Ahead of pdfplumber deliberately: pdfplumber's tree is what pulls
+    # cryptography in today, so a check placed after it could pass on that
+    # import alone and say nothing about a bundle that ships neither.
+    "cryptography",
     "ofxparse",
     "pdfplumber",
 )
