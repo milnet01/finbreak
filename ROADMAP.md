@@ -6343,6 +6343,28 @@ because retrofitting them is a data migration.
   here and closing the FP02 -> FP03 -> FP04 chain, which is what returns
   FIBR-0019 to shipped and clears the largest of v1.0.0's three blockers
   (FIBR-0304).
+  Progress (2026-09-03): L1 and L2 fixed and pushed (e1006df); gate green
+  at 2153 passed / 2 skipped. One rule at two sites -- derive_key copies
+  its argument in and never writes to it, so the caller owns wiping it.
+  Its docstring now says so, both defects being a caller reading the old
+  silence as "handled".
+
+  L1 -- the hint's trial-unwrap built its argument inline, so the decoded
+  recovery code had no name to wipe it by, on a path that runs while the
+  vault is open. The wipe sits on the way OUT of the call: an
+  out-of-range time_cost reaches argon2 and returns HashingError, which
+  INV-23 catches and fails open, and that is the likeliest early exit.
+  mutation_probe found it -- moving the wipe off the finally survived the
+  first draft, so a second leg pins the raising path.
+
+  L2 -- _unlock_v1's failure handler asks sidecar_version which side of
+  S4 the failure landed on; that call parses the sidecar, so it raises on
+  one the failed migration left unreadable and propagated with the key
+  still set. Every other exit from _unlock_v1 wipes first.
+
+  Five mutants, all killed: each wipe removed, the wipe moved off the
+  finally, the refactored branch inverted, and the probe guard reverted
+  to its pre-fix shape.
   **Layman:** The recovery-key work was reviewed again with fresh eyes; one serious problem can strand a half-upgraded vault with no way back, and several smaller fixes from last time only reached some of the places they needed to.
   Kind: review-fix.
   Source: close-phase-2026-08-25 (check-code + review-code x4 lanes, FP03 close, fresh context).
@@ -10118,7 +10140,7 @@ is a future error tomorrow.
   Kind: test.
   Source: review-code 2026-08-31 lane=ui-app-shell.
 
-- 📋 [FIBR-0327] **Work the MEDIUM tail of the 2026-08-31 audit — 54 findings across 15 lanes.**
+- 🚧 [FIBR-0327] **Work the MEDIUM tail of the 2026-08-31 audit — 54 findings across 15 lanes.**
   The findings are recorded in docs/reviews/2026-08-31-audit-findings.md; the
   classes worth naming:
 
@@ -10253,7 +10275,10 @@ is a future error tomorrow.
   the working tree rather than the pushed commits; and FIBR-0096's claim that the
   per-artifact .sig is the primary integrity gate, which is false for a
   rename-replay.
-  **Layman:** A batch of smaller real defects the full sweep found, not yet fixed.
+  Status corrected 2026-09-03: this sat at 📋 while three batches of its
+  work had already landed and been pushed. Its own body records them; only
+  the marker was stale.
+  **Layman:** A batch of smaller real defects the full sweep found; most are now fixed, with a lower-severity tail left.
   Kind: review-fix.
   Source: review-code 2026-08-31.
 
