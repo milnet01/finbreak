@@ -2433,3 +2433,97 @@ def test_the_rollback_copys_wal_sibling_is_fsynced_like_its_database_half(
         f"  expected: {copied_wal.name} fsynced\n"
         f"  actual:   fsynced {[p.name for p in fsynced]}"
     )
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0313 L12 — a row-count mismatch names tables, never counts
+# --------------------------------------------------------------------------- #
+def test_a_row_count_mismatch_keeps_the_counts_out_of_the_message(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """S2's refusal message reaches ``_unlock_v1``'s ``log.exception``, so the
+    per-table counts it carried were written to the plaintext log beside the
+    encrypted vault -- how many accounts and transactions this household has.
+    security-model INV-9 says the log records no decrypted data.
+
+    The message must still say WHICH check failed, so the table names stay.
+    """
+    vault_path, sidecar_path, key, _digests = _fresh_v1_vault(tmp_path, "counts-quiet")
+
+    real_counts = vault_migration._row_counts
+    reads: list[int] = []
+
+    def drifting(conn: Any) -> dict[str, int]:
+        counts = dict(real_counts(conn))
+        reads.append(1)
+        if len(reads) > 1:  # the replacement's read, after export_to
+            counts["transactions"] = counts.get("transactions", 0) + 4242
+        return counts
+
+    monkeypatch.setattr(vault_migration, "_row_counts", drifting)
+
+    with caplog.at_level("ERROR"), pytest.raises(VaultStateError) as excinfo:
+        migrate_to_v2(vault_path, sidecar_path, bytearray(key))
+
+    message = str(excinfo.value)
+    assert "transactions" in message, (
+        "the refusal must still name the table that disagreed, or it says "
+        "nothing anyone can act on.\n"
+        f"  actual:   {message!r}"
+    )
+    assert not any(ch.isdigit() for ch in message), (
+        "security-model INV-9: the row counts are in the refusal message, and "
+        "that message is logged by _unlock_v1's log.exception -- so they reach "
+        "the plaintext log beside the encrypted vault.\n"
+        "  expected: table names only, no counts\n"
+        f"  actual:   {message!r}"
+    )
+
+
+def test_the_resume_row_compare_logs_table_names_not_counts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """FIBR-0313 L12, the second site — § 13.3 branch 2's row compare wrote the
+    same per-table counts straight into the log, where S2's reached it through
+    an exception. Found by mutation_probe: reverting this one alone survived,
+    so the S2 leg above was not covering it.
+
+    The two collaborators are stubbed deliberately: what is under test is the
+    message this branch builds when the counts disagree, not the checks that
+    decide they do.
+    """
+    vault_path, sidecar_path, key, _digests = _fresh_v1_vault(tmp_path, "resume-counts")
+    migrating = _suffixed(vault_path, MIGRATING_SUFFIX)
+
+    monkeypatch.setattr(vault_migration, "_reads_end_to_end", lambda *a, **k: True)
+    # accounts agrees, transactions does not -- so a message naming every table
+    # would pass an "is the table named" check while still saying too much.
+    answers = [
+        {"transactions": 1234, "accounts": 7},
+        {"transactions": 11, "accounts": 7},
+    ]
+    monkeypatch.setattr(
+        vault_migration, "_row_counts_or_none", lambda *a, **k: answers.pop(0)
+    )
+
+    with caplog.at_level("WARNING", logger="finbreak.services.vault_migration"):
+        sound = vault_migration._replacement_is_sound(
+            vault_path, migrating, bytearray(key), bytearray(key), None
+        )
+
+    assert sound is False, (
+        "precondition: the compare must have REFUSED, or the branch that logs "
+        "never ran."
+    )
+    ours = [r for r in caplog.records if r.name == "finbreak.services.vault_migration"]
+    assert ours, "precondition: the refusal must have logged something."
+    line = ours[-1].getMessage()
+    assert "transactions" in line and "accounts" not in line, (
+        "the warning must name the table that disagreed, and only that one.\n"
+        f"  actual:   {line!r}"
+    )
+    assert not any(ch.isdigit() for ch in line), (
+        "security-model INV-9: the row counts went into the plaintext log.\n"
+        "  expected: table names only\n"
+        f"  actual:   {line!r}"
+    )

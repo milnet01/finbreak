@@ -333,11 +333,12 @@ class BackupService:
             zipfile.BadZipFile,
             OSError,
             MemoryError,  # a bomb's allocation on a small machine (FIBR-0212)
-            # The two the sidecar reader can raise on a params record that came
-            # out of an imported .fbk — so, on bytes the user did not write.
-            # `_read_archive` above already catches UnicodeDecodeError for the
-            # MANIFEST and this tuple omitted it for the PARAMS, which is the
-            # same file read by a different reader (FIBR-0310 P2).
+            # A backstop, and no longer the sidecar reader's route: since
+            # `crypto._MALFORMED_SIDECAR` the params read normalises both of
+            # these to `KdfPolicyError`, which this tuple already catches above.
+            # They stay for any other reader on this path that does not
+            # normalise — the bytes came out of an imported .fbk, so they are
+            # not necessarily the user's own (FIBR-0310 P2).
             UnicodeDecodeError,
             RecursionError,
         ) as exc:

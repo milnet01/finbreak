@@ -534,3 +534,62 @@ def test_ordinary_unlock_does_not_offer_recovery_code_regeneration(
         "  expected: no RecoveryCodeDialog after an ordinary password unlock\n"
         f"  actual:   {type(offer).__name__ if offer is not None else None}"
     )
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0313 L8 — a check-symbol typo is not an unlock attempt
+# --------------------------------------------------------------------------- #
+def test_a_check_symbol_typo_does_not_emit_unlock_failed(
+    qtbot: Any, paths: tuple[Path, Path], service: AuthService
+) -> None:
+    """``unlock_failed``'s comment claimed it fires on every failure branch,
+    and the check-symbol branch returns without it. The COMMENT is what was
+    wrong: the signal is the dialog's "that attempt failed" event, and § 4.6
+    says a typo is not an attempt -- it is reported at once and deliberately
+    not counted, because the check symbol carries no security weight.
+
+    This leg is what stops the other repair being made later. Emitting here
+    would hand any future consumer -- the comment names an attempt counter as
+    the shape a slot would take -- a failure that never was one.
+    """
+    from finbreak.services.recovery_code import (
+        CHECK_ALPHABET,
+        PAYLOAD_SYMBOLS,
+        check_symbol,
+        format_code,
+        normalise,
+        verify_check_symbol,
+    )
+
+    code = create_vault(service)
+    keep_recovery_key(service, code)
+    service.lock()
+
+    payload = normalise(code)[:PAYLOAD_SYMBOLS]
+    wrong = next(s for s in CHECK_ALPHABET if s != check_symbol(payload))
+    mistyped = format_code(payload + wrong)
+    assert not verify_check_symbol(normalise(mistyped)), (
+        "precondition: the code must FAIL the local check, or this leg drives "
+        "the unwrap instead of the branch it is about."
+    )
+
+    dialog = _dialog(qtbot, service)
+    field, submit, _pending = _recovery_seams(dialog)
+
+    fired: list[int] = []
+    dialog.unlock_failed.connect(lambda: fired.append(1))
+
+    field.setText(mistyped)
+    submit()
+
+    assert dialog._error.text().strip() != "", (
+        "precondition: the typo branch must have reported something, or the "
+        "silence below is the silence of a branch that never ran."
+    )
+    assert fired == [], (
+        "§ 4.6: a check-symbol typo was reported as a failed unlock attempt. "
+        "The check symbol proves a transcription slip, not a guess, and is "
+        "not counted -- a consumer of unlock_failed must not see it.\n"
+        "  expected: unlock_failed not emitted\n"
+        f"  actual:   emitted {len(fired)} time(s)"
+    )

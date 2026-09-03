@@ -226,6 +226,22 @@ def _reads_end_to_end(db_path: Path, key: bytearray, cipher_compat: int | None) 
         probe.close()
 
 
+def _tables_disagreeing(expected: dict[str, int], actual: dict[str, int]) -> list[str]:
+    """The table names whose counts differ — the counts themselves stay here.
+
+    security-model INV-9 keeps the log clean of the user's data, and a per-table
+    row count is exactly that: how many accounts and transactions this household
+    has, written in the clear beside the encrypted vault that holds them. The
+    table names are fixed schema, so they say WHICH check failed and nothing
+    about whose vault it was.
+    """
+    return sorted(
+        name
+        for name in set(expected) | set(actual)
+        if expected.get(name) != actual.get(name)
+    )
+
+
 def _row_counts_or_none(
     db_path: Path, key: bytearray, cipher_compat: int | None
 ) -> dict[str, int] | None:
@@ -293,11 +309,19 @@ def _replacement_is_sound(
         )
         return False
     replacement_counts = _row_counts_or_none(migrating_db, dek, cipher_compat)
+    if replacement_counts is None:
+        # Its own arm, mirroring the live side above: "will not give up its
+        # counts" is a different thing to say than "lost rows", and the old
+        # single message rendered it as `got None`.
+        log.warning(
+            "migration resume: the replacement will not give up its row counts, "
+            "so it cannot be compared against the live vault"
+        )
+        return False
     if replacement_counts != live_counts:
         log.warning(
-            "migration resume: the replacement lost rows: expected %s, got %s",
-            live_counts,
-            replacement_counts,
+            "migration resume: the replacement lost rows; tables disagreeing: %s",
+            _tables_disagreeing(live_counts, replacement_counts),
         )
         return False
     return True
@@ -532,9 +556,12 @@ def _convert(
             )
         actual_counts = _row_counts(replacement.connection)
         if actual_counts != expected_counts:
+            # Named, never counted: this message reaches `_unlock_v1`'s
+            # `log.exception`, so the counts would land in the plaintext log
+            # (INV-9).
             raise VaultStateError(
-                f"the migrated vault lost rows: expected {expected_counts}, "
-                f"got {actual_counts}"
+                "the migrated vault lost rows; tables disagreeing: "
+                f"{_tables_disagreeing(expected_counts, actual_counts)}"
             )
     except Exception:
         replacement.close()
