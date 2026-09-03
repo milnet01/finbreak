@@ -45,6 +45,21 @@ class ClipboardAutoClear(QObject):
         else:
             self._pending = None
 
+    def retire(self) -> None:
+        """Delete this guard once it has no pending clear left to perform.
+
+        For the callers that build a guard PER DIALOG. Such a guard must outlive
+        its dialog — one owned by the dialog is destroyed with its timer still
+        pending and never clears (FIBR-0310 R1) — but it must not outlive its
+        own last job either, or every Add / Replace leaves a ``QObject`` and a
+        ``QTimer`` behind for the session (FIBR-0313 L9). A long-lived owner
+        (the transactions list) simply never calls this.
+        """
+        if self._timer.isActive():
+            self._timer.timeout.connect(self.deleteLater)
+        else:
+            self.deleteLater()
+
     def clear_if_ours(self) -> None:
         """Clear the clipboard **iff** it still holds the exact value we last copied —
         so a value the user copied since (even from another app) is left untouched."""

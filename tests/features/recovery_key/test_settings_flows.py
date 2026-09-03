@@ -770,3 +770,99 @@ def test_saving_the_code_chmods_the_file_it_opened_not_whatever_the_path_holds(
         "  expected: 0o644 -- the swapped-in file untouched\n"
         f"  actual:   {landed:#o}"
     )
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0313 L9 — the per-dialog clipboard guard is retired, not accumulated
+# --------------------------------------------------------------------------- #
+def test_repeated_recovery_offers_do_not_accumulate_clipboard_guards(
+    qtbot: Any, monkeypatch: pytest.MonkeyPatch, service: AuthService
+) -> None:
+    """The guard must outlive its dialog -- one owned by the dialog is
+    destroyed with its clear still pending and never fires (FIBR-0310 R1) --
+    so it is parented to the window instead. Nothing then retired it, and
+    Settings' Add / Replace can be used any number of times in a session, each
+    leaving a QObject and a QTimer behind.
+    """
+    from PySide6.QtWidgets import QWidget
+
+    from finbreak.ui._clipboard import ClipboardAutoClear
+    from finbreak.ui.recovery_key import build_recovery_offer
+
+    window = QWidget()
+    qtbot.addWidget(window)
+
+    for _ in range(3):
+        dialog = build_recovery_offer(service, generate_code(), window)
+        dialog.deleteLater()
+    # Twice: the guard's own deleteLater is scheduled BY the dialog's
+    # destroyed signal, so it is one hop behind and the first pump only
+    # reaches the dialogs.
+    _pump_deferred_delete()
+    _pump_deferred_delete()
+
+    alive = [g for g in window.findChildren(ClipboardAutoClear) if shiboken6.isValid(g)]
+    assert alive == [], (
+        "each recovery offer left its clipboard guard parented to the window "
+        "for the rest of the session.\n"
+        "  expected: no guard outliving its dialog when no clear is pending\n"
+        f"  actual:   {len(alive)} still alive"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0313 L10 — the forced-password dialog can still quit the app
+# --------------------------------------------------------------------------- #
+def test_the_forced_password_dialog_can_quit_when_the_password_cannot_be_set(
+    qtbot: Any, monkeypatch: pytest.MonkeyPatch, service: AuthService
+) -> None:
+    """D6 refuses Escape and the window [X] on purpose: a user arriving by the
+    recovery route has no working password, so there is nothing to dismiss TO.
+    But ``set_master_password`` can fail persistently -- a disk that will not
+    take the re-wrap -- and then the dialog refuses every way out while being
+    application-modal, so File > Quit cannot be reached either. An app that
+    cannot be closed, and a window whose geometry is never saved.
+
+    Quitting must not enter the workspace: nothing is connected to
+    ``rejected``, and this leg holds that.
+    """
+    from PySide6.QtWidgets import QWidget
+
+    window = QWidget()
+    qtbot.addWidget(window)
+    window.show()
+
+    dialog = recovery_module.NewMasterPasswordDialog(service, window)
+    qtbot.addWidget(dialog)
+    dialog.show()
+
+    def always_fails(_buffer: Any) -> None:
+        raise OSError("the disk will not take the re-wrap")
+
+    monkeypatch.setattr(service, "set_master_password", always_fails)
+
+    entered: list[int] = []
+    dialog.accepted.connect(lambda: entered.append(1))
+
+    dialog._password.setText("a-new-master-password")
+    dialog._confirm.setText("a-new-master-password")
+    dialog._on_submit()
+    assert dialog.isVisible(), (
+        "precondition: a failed set must leave the dialog up, or this leg is "
+        "not about the state it is named for."
+    )
+
+    dialog._quit_application()
+
+    assert not dialog.isVisible(), (
+        "the dialog held its modal grab, so the window below it cannot close "
+        "and quitOnLastWindowClosed can never fire."
+    )
+    assert not window.isVisible(), (
+        "quitting from the forced-password dialog left the window open, so "
+        "the app did not quit and its geometry was never saved."
+    )
+    assert entered == [], (
+        "D6: quitting must not be a way PAST the forced password -- accepted "
+        "is what admits the workspace and it must not have fired."
+    )

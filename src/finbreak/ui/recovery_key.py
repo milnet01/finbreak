@@ -17,8 +17,9 @@ from __future__ import annotations
 import os
 
 from PySide6.QtCore import QCoreApplication, QObject, Qt, Signal
-from PySide6.QtGui import QCloseEvent, QGuiApplication
+from PySide6.QtGui import QCloseEvent, QGuiApplication, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
+    QApplication,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
@@ -249,6 +250,37 @@ class NewMasterPasswordDialog(QDialog):
         self._submit.clicked.connect(self._on_submit)
         self._confirm.returnPressed.connect(self._on_submit)
 
+        # D6 refuses Escape and the window [X], which leaves no way out at all
+        # when `set_master_password` fails persistently — a disk that will not
+        # take the re-wrap, say. The app must still be quittable, and an
+        # application-modal dialog blocks the window's own Quit shortcut, so
+        # this one carries its own (FIBR-0313 L10).
+        quit_shortcut = QShortcut(QKeySequence.StandardKey.Quit, self)
+        quit_shortcut.activated.connect(self._quit_application)
+
+    def _quit_application(self) -> None:
+        """Leave by quitting the APP — which is not dismissing this dialog.
+
+        ``done()`` rather than ``reject()``: the override below makes reject a
+        no-op, and the modal grab has to go before the window can close, since
+        this dialog is not the last window and ``quitOnLastWindowClosed``
+        cannot fire while it is up. Nothing is connected to ``rejected``, so
+        the workspace stays withheld and D6 holds — the user comes back to the
+        same recovery route, with the vault exactly as they left it.
+
+        Through the window's ``close()``, never ``QApplication.quit()``: quit
+        exits the loop with no ``QCloseEvent``, so neither the geometry save
+        nor the update-worker drain would run (the reason File > Quit is wired
+        to ``close()``).
+        """
+        parent = self.parentWidget()
+        window = parent.window() if parent is not None else None
+        self.done(QDialog.DialogCode.Rejected)
+        if window is not None:
+            window.close()
+        else:
+            QApplication.quit()
+
     def reject(self) -> None:
         # Escape and Cancel are no-ops: there is no working password to fall
         # back to, so there is nothing to dismiss TO (D6).
@@ -380,15 +412,16 @@ def build_recovery_offer(
     # instead — the application object where there is no window, so the guard
     # always has an owner that outlasts the copy.
     clipboard_owner: QObject | None = parent or QGuiApplication.instance()
-    dialog = RecoveryCodeDialog(
-        code,
-        parent,
-        clipboard=ClipboardAutoClear(
-            QGuiApplication.clipboard(),
-            seconds_provider=clear_seconds,
-            parent=clipboard_owner,
-        ),
+    guard = ClipboardAutoClear(
+        QGuiApplication.clipboard(),
+        seconds_provider=clear_seconds,
+        parent=clipboard_owner,
     )
+    dialog = RecoveryCodeDialog(code, parent, clipboard=guard)
+    # Outlive the dialog, but not the guard's own last job: Settings' Add /
+    # Replace builds one of these per invocation, and an owner that lasts the
+    # session then accumulates a QObject + QTimer each time (FIBR-0313 L9).
+    dialog.destroyed.connect(guard.retire)
 
     def keep() -> None:
         # `saved` only where the write actually happened: `keep_recovery_code`
