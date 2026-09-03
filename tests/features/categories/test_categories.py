@@ -796,3 +796,53 @@ def test_add_category_unknown_parent_raises(service):
     svc = CategoryService(service.vault)
     with pytest.raises(ValueError, match="no category with id"):
         svc.add_category(999999, "Orphan")
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0327 — a refresh re-runs the gating slot
+# --------------------------------------------------------------------------- #
+def test_a_refresh_leaves_no_button_live_against_a_gone_selection(qtbot, service):
+    """`_refresh` clears the tree and rebuilds it, so nothing is selected
+    afterwards -- but Update and Delete stayed ENABLED, because
+    `currentItemChanged` does not fire on the empty-to-populated rebuild. The
+    constructor knew that and called the gating slot by hand; every later
+    refresh did not, so after an add, a rename or a delete the two destructive
+    buttons were live with no selection behind them.
+
+    The same class as the Rules table refilling in place, which FIBR-0327
+    already fixed on its own screen.
+    """
+    from finbreak.ui.categories import CategoriesWidget
+
+    categories = CategoryService(service.vault)
+    root = next(r for r in categories.children_of(None) if r.kind is not None)
+    made = categories.add_category(root.id, "Refresh probe")
+
+    widget = CategoriesWidget(service)
+    qtbot.addWidget(widget)
+    widget._select_category(made.id)
+    assert widget._update_button.isEnabled() and widget._delete_button.isEnabled(), (
+        "precondition: a selected category enables Update and Delete, or this "
+        "leg cannot tell a stale enable from a correct one"
+    )
+
+    widget._refresh()
+
+    assert widget._tree.currentItem() is None, (
+        "precondition: the rebuild must leave nothing selected -- that is the "
+        "state the buttons are being checked against"
+    )
+    live = [
+        name
+        for name, button in (
+            ("Update", widget._update_button),
+            ("Delete", widget._delete_button),
+            ("Add", widget._add_button),
+        )
+        if button.isEnabled()
+    ]
+    assert live == [], (
+        "a refresh left buttons enabled with nothing selected. Delete and "
+        "Update act on the current item, and there is not one.\n"
+        f"  actual:   still enabled: {live}"
+    )

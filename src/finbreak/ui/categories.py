@@ -123,10 +123,11 @@ class CategoriesWidget(QWidget):
         # "Move under…" targets, and shows the current name as a placeholder.
         self._tree.currentItemChanged.connect(self._on_selection_changed)
 
+        # `_refresh` ends by syncing the button/combo state, which is what the
+        # first-run case needs too: `currentItemChanged` does not fire on an
+        # empty→populated tree with nothing selected. It used to be called here
+        # by hand, and only here — so every LATER refresh skipped it.
         self._refresh()
-        # No selection yet: sync the initial button/combo state (currentItemChanged
-        # does not fire on an empty→populated tree with nothing selected).
-        self._on_selection_changed()
 
     def _kind_of_item(self, item: QTreeWidgetItem) -> str | None:
         """The kind token of a Type root item (``None`` for a category)."""
@@ -359,6 +360,13 @@ class CategoriesWidget(QWidget):
             self._tree.addTopLevelItem(root_item)
             self._add_children(root_item, root.id)
         self._tree.expandAll()
+        # Re-gate. `currentItemChanged` does not fire on the empty-to-populated
+        # rebuild above, so without this the buttons keep the enablement they
+        # had for a selection that no longer exists — Update and Delete live
+        # with nothing behind them, after every add, rename and delete
+        # (FIBR-0327). A caller that re-selects afterwards fires the slot again
+        # and simply wins.
+        self._on_selection_changed()
 
     def _add_children(self, parent_item: QTreeWidgetItem, parent_id: int) -> None:
         """Recursively attach every descendant of ``parent_id`` — unbounded, so a
