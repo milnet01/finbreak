@@ -96,6 +96,10 @@ def derive_key(password: bytearray, salt: bytes, params: KdfParams) -> bytearray
     ``bytes(password)`` makes an immutable copy the C binding requires; it can't
     be wiped and lingers until GC — an accepted best-effort gap (D5), the same
     one flagged on the raw-key hex ``str`` in ``vault._connect``.
+
+    ``password`` stays the CALLER's: this function copies it and never writes to
+    it, so wiping it is the caller's job. Build it under a name rather than
+    inline in the call, or there is nothing left to wipe it by.
     """
     raw = hash_secret_raw(
         secret=bytes(password),

@@ -32,6 +32,7 @@ from _recovery_helpers import (
     require_seam,
     unwrap_slot,
 )
+from argon2.exceptions import HashingError
 
 from finbreak import crypto
 from finbreak.errors import KeyUnwrapError
@@ -553,3 +554,80 @@ def test_check_symbol_refuses_a_payload_of_the_wrong_length() -> None:
         check_symbol(payload + check_symbol(payload))  # a whole code
     with pytest.raises(ValueError):
         check_symbol(payload[:-1])
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0313 L1 — the buffer handed to derive_key is the caller's to wipe
+# --------------------------------------------------------------------------- #
+def test_the_trial_unwrap_wipes_the_decoded_candidate(
+    paths: tuple[Path, Path], service: AuthService, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``derive_key`` copies its argument in and returns a new buffer; it never
+    touches the one it was given, so the caller owns wiping it. Every other
+    caller does. This route built its argument inline, so the decoded recovery
+    code had no name to wipe it by -- left in memory on a path that runs while
+    the vault is open, holding the credential that opens it.
+    """
+    _vault_path, sidecar_path = paths
+    from finbreak.ui import _password_hint as hint_io
+
+    check = require_seam(
+        hint_io,
+        "validate_hint_with_recovery",
+        "INV-11's trial-unwrap lives in ui/_password_hint.py (§ 11).",
+    )
+    monkeypatch.setattr("finbreak.paths.sidecar_path", lambda: sidecar_path)
+    code = create_vault(service)
+    keep_recovery_key(service, code)
+
+    handed: list[bytearray] = []
+    real_derive = hint_io.derive_key
+
+    def recording_derive(password: bytearray, salt: bytes, params: Any) -> bytearray:
+        handed.append(password)
+        return real_derive(password, salt, params)
+
+    monkeypatch.setattr(hint_io, "derive_key", recording_derive)
+
+    with pytest.raises(HintPolicyError):
+        check(f"same as the one on the card: {code}", MASTER_PASSWORD.decode())
+
+    assert handed, (
+        "precondition: the live code must have reached derive_key, or this leg "
+        "asserts nothing about the buffer it was handed."
+    )
+    live = [b for b in handed if bytes(b) != bytes(len(b))]
+    assert not live, (
+        "security-model INV-3: the decoded recovery code was left in memory "
+        "after the trial-unwrap. derive_key does not wipe its argument -- the "
+        "caller owns that buffer.\n"
+        "  expected: every buffer handed to derive_key zeroed on return\n"
+        f"  actual:   {len(live)} of {len(handed)} still hold their bytes"
+    )
+
+    # Leg 2 -- and when the derivation RAISES. ``validate_params`` bounds only
+    # the low side, so a slot recording an out-of-range ``time_cost`` reaches
+    # argon2 and comes back as HashingError; INV-23 catches it and fails open.
+    # That is the likeliest way this route ever leaves derive_key early, so the
+    # wipe belongs on the way out rather than after the call.
+    raised: list[bytearray] = []
+
+    def refusing_derive(password: bytearray, salt: bytes, params: Any) -> bytearray:
+        raised.append(password)
+        raise HashingError("argon2 refused these parameters")
+
+    monkeypatch.setattr(hint_io, "derive_key", refusing_derive)
+    check(f"same as the one on the card: {code}", MASTER_PASSWORD.decode())
+
+    assert raised, (
+        "precondition: the refusing derive_key must have been reached, or this "
+        "leg asserts nothing."
+    )
+    still_set = [b for b in raised if bytes(b) != bytes(len(b))]
+    assert not still_set, (
+        "security-model INV-3: the decoded recovery code survived a derivation "
+        "that raised. The wipe must be on the way out of the call, not after "
+        "it.\n"
+        "  expected: the buffer zeroed even when derive_key raises\n"
+        f"  actual:   {len(still_set)} of {len(raised)} still hold their bytes"
+    )

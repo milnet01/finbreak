@@ -149,7 +149,13 @@ def validate_hint_with_recovery(hint: str, password: str) -> None:
         # cannot single one out and the guard covers the whole loop.
         validate_slot(sidecar, SLOT_RECOVERY)
         for candidate in candidates:
-            kek = derive_key(bytearray(decode(candidate)), params.salt, params)
+            # ``derive_key`` copies its argument in and never touches it, so the
+            # decoded code needs a name of its own to be wiped by.
+            secret = bytearray(decode(candidate))
+            try:
+                kek = derive_key(secret, params.salt, params)
+            finally:
+                secret[:] = bytes(len(secret))
             try:
                 dek = unwrap_dek(kek, record.wrapped, SLOT_RECOVERY, params)
             except KeyUnwrapError:

@@ -32,7 +32,12 @@ from _recovery_helpers import (
 )
 from sqlcipher3.dbapi2 import DatabaseError
 
-from finbreak.errors import RollbackAvailableError, SchemaVersionError, VaultStateError
+from finbreak.errors import (
+    KdfPolicyError,
+    RollbackAvailableError,
+    SchemaVersionError,
+    VaultStateError,
+)
 from finbreak.keywrap import SLOT_MASTER
 from finbreak.migrations import LATEST_SCHEMA_VERSION
 from finbreak.services import auth as auth_module
@@ -2331,4 +2336,54 @@ def test_commit_points_fsync_each_directory_with_s4_before_s5(
         "in the migration touches this directory, so only S5 can satisfy it.\n"
         f"  expected: a db-directory fsync after index {s5}\n"
         f"  actual event order: {events}"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0313 L2 — the failure handler's own probe can raise
+# --------------------------------------------------------------------------- #
+def test_the_derived_key_is_wiped_when_the_post_failure_probe_itself_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``_unlock_v1``'s handler asks ``sidecar_version`` which side of § 13.2's
+    S4 the failure landed on. That call reads and parses the sidecar, so it
+    raises on one that has become unreadable -- one of the states a failed
+    migration can leave, and the same read the handler is there to make sense
+    of. Every other exit from ``_unlock_v1`` wipes the derived key first; this
+    one propagated with the key still set.
+    """
+    vault_path, sidecar_path, _key, _digests = _fresh_v1_vault(tmp_path, "probe-raises")
+
+    at_handover: list[bytearray] = []
+
+    def unreadable(_path: Path) -> int:
+        raise KdfPolicyError("sidecar unreadable or not JSON")
+
+    def capture_then_fail(
+        _vault: Path, _sidecar: Path, key_buf: bytearray, **_kw: Any
+    ) -> None:
+        at_handover.append(key_buf)
+        # The sidecar goes unreadable at the instant the migration fails, so the
+        # handler's probe raises rather than answering. Installed here rather
+        # than up front because ``complete_unlock`` reads the version first, and
+        # a probe that fails THERE never reaches the branch under test.
+        monkeypatch.setattr(auth_module, "sidecar_version", unreadable)
+        raise OSError(errno.EIO, "the migration failed")
+
+    monkeypatch.setattr(vault_migration, "migrate_to_v2", capture_then_fail)
+
+    service = AuthService(vault_path, sidecar_path)
+    with pytest.raises(KdfPolicyError):
+        service.unlock(bytearray(MASTER_PASSWORD))
+
+    assert at_handover, (
+        "precondition: the migration must have been reached and handed the "
+        "derived key, or this leg asserts nothing."
+    )
+    held = at_handover[0]
+    assert bytes(held) == bytes(len(held)), (
+        "security-model INV-3: _unlock_v1 propagated out of its own failure "
+        "handler with the derived key still in memory.\n"
+        "  expected: the key buffer zeroed before the exception escapes\n"
+        f"  actual:   {len(held)} bytes still set"
     )

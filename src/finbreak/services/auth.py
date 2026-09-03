@@ -536,7 +536,15 @@ class AuthService:
             )
         except Exception:
             log.exception("key-envelope migration failed")
-            if sidecar_version(self._sidecar_path) != SIDECAR_VERSION:
+            try:
+                swapped = sidecar_version(self._sidecar_path) == SIDECAR_VERSION
+            except Exception:
+                # The probe reads and parses the sidecar, so it raises on one
+                # the failed migration left unreadable. Every other exit from
+                # here wipes first; this one must too (INV-3).
+                _wipe(key)
+                raise
+            if not swapped:
                 # Nothing was swapped, so the vault is exactly as it was.
                 return self._open_with(key, None)
             # The sidecar was already replaced when the failure landed, which is
