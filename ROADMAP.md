@@ -10174,7 +10174,7 @@ is a future error tomorrow.
   Kind: review-fix.
   Source: check-code --tree + review-code 2026-08-31.
 
-- 📋 [FIBR-0319] **The batch mapping ladder never fires for files 2..N, the twin of the password defect.**
+- ✅ [FIBR-0319] **The batch mapping ladder never fires for files 2..N, the twin of the password defect.**
   Same ordering as the password half fixed under FIBR-0318: SCAN runs over the
   whole list before the first question, so every file is already needs_mapping
   when a profile is saved, and `answer` re-scans only the record it was handed.
@@ -10184,6 +10184,37 @@ is a future error tomorrow.
   profile relative to `answer` -- `_on_map_next` saves only if the name field is
   filled. That ordering needs checking rather than assuming. The password half's
   `_retry_blocked_on_password` is the shape to copy once it is settled.
+  Resolved (2026-09-03): fixed and pushed (92ed2e8); gate green at 2170
+  passed / 2 skipped.
+
+  The ordering this bullet said to check rather than assume: _on_map_next
+  saves the profile BEFORE calling answer, so match_profile does resolve
+  for the other same-header files by the time the retry runs.
+  _retry_blocked_on_mapping mirrors its password sibling exactly.
+
+  The answered mapping is NOT applied to the others -- each re-scanned
+  record consults match_profile with its OWN header, so a different layout
+  returns to needs_mapping and is asked about as before, and a mapping
+  answered with no profile NAME saved nothing and changes nothing.
+
+  mutation_probe earned two extra legs, and the second is not about this
+  change. Dropping the "still blocked on a mapping" guard survived, because
+  the headline leg uses three files in the SAME state -- and the hazard is
+  real: _settle_parse re-runs match_account, which knows nothing of an
+  account the user chose on the review screen, so a re-scan drops that
+  record back to needs_account. The identical guard in the PASSWORD twin
+  (FIBR-0318) then turned out to be unmeasured for the same reason. Both
+  have a leg now.
+
+  Five mutants, four killed. The fifth -- dropping `other is answered` --
+  survives and is NOT a defect: after the re-scan the answered record can
+  no longer be needs_mapping, so the outcome test already excludes it. Kept
+  for symmetry with the password sibling.
+
+  Left deliberately: a batch answered with the profile-name field BLANK
+  still asks per file, because the saved profile is the spec's own
+  mechanism for remembering an answer (§ 4.3). Filed separately rather than
+  widened into here.
   **Layman:** Thirty spreadsheets sharing one unknown layout still ask you to describe it thirty times.
   Kind: fix.
   Source: review-code 2026-08-31 lane=import-orchestration.
@@ -10486,6 +10517,29 @@ is a future error tomorrow.
   **Layman:** Nothing automatically catches a build script downloading a tool without verifying it.
   Kind: chore.
   Source: check-code 2026-08-31 tool-gap.
+
+- 📋 [FIBR-0332] **A batch mapping answered with the profile-name field blank is still asked once per file.**
+  Surfaced while fixing FIBR-0319 and deliberately NOT widened into it.
+
+  FIBR-0319 makes an answered mapping settle every other file sharing that
+  header -- but only through the SAVED PROFILE, because that is the
+  mechanism § 4.3 gives for remembering an answer. _on_map_next saves only
+  when the profile-name field is non-empty, so a user who leaves it blank
+  still answers the same question per file.
+
+  The password half has no such condition: a typed password joins
+  _run_passwords for the run whether or not anything is persisted. The
+  mapping analogue would be a per-run map from header signature to
+  ColumnMapping, consulted by the ladder ahead of match_profile.
+
+  Whether that is a defect or the design is the question to settle first.
+  Declining to name a profile is arguably declining to remember it -- but
+  § 4.3 decision 1 says re-asking an answered question is babysitting, and
+  thirty identical questions is what that decision exists to prevent. The
+  spec should say which, and the code follow.
+  **Layman:** Import thirty spreadsheets of the same layout without naming a saved layout, and it still asks you thirty times.
+  Kind: ux.
+  Source: in-session-2026-09-03 (observed while fixing FIBR-0319).
 
 ## How to add an item
 
