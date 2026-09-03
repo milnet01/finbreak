@@ -173,3 +173,14 @@ module = [
     "ofxparse.*",
 ]
 ignore_missing_imports = true
+
+# Check the bodies of unannotated functions in the application package.
+# Without it mypy skips them entirely, so a whole class of error is invisible to
+# the gate — found by pyright seeing what mypy structurally could not
+# (FIBR-0313 L14). `src` is already clean under it, so this only stops the gap
+# reopening. It is NOT yet on for `tests`, where most functions are unannotated:
+# measured 2026-09-03, 345 errors across 25 files. That is tracked separately —
+# turning it on here and silencing it there would close the gate gap on paper.
+[[tool.mypy.overrides]]
+module = ["finbreak.*"]
+check_untyped_defs = true

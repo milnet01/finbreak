@@ -1992,6 +1992,30 @@ scariest unknown (native-library bundling) up front.
   Kind: doc-fix.
   Source: in-session-2026-09-02.
 
+- 📋 [FIBR-0331] **Turn check_untyped_defs on for the test suite, where mypy still skips most bodies.**
+  Split out of FIBR-0313 L14 rather than done with it. The app package half
+  is DONE and pinned: pyproject now sets check_untyped_defs for finbreak.*,
+  src was already clean under it, and a deliberate error in an unannotated
+  src function was confirmed caught where it was previously invisible.
+
+  The tests half is the work. mypy skips the bodies of unannotated
+  functions, and most of this suite is unannotated -- so the gate does not
+  read the code that decides whether the gate means anything. Measured
+  2026-09-03: 345 errors across 25 files, the heaviest being categories,
+  theme, categorisation, table_state and app_shell.
+
+  Mechanical but not free: most are Optional narrowing on Qt accessors
+  (widget() / item() returning None), which is the same class the annotated
+  Qt tests already carry asserts for. The risk to watch is a fix that
+  weakens what a test asserts to satisfy the checker.
+
+  Deliberately NOT closed by silencing: an override that turns it on for
+  finbreak.* and off for tests would close the gate gap on paper while the
+  suite stays unread.
+  **Layman:** The type checker currently reads the app's code closely but skims the tests, so a broken test can look fine.
+  Kind: test.
+  Source: in-session-2026-09-03 (FIBR-0313 L14, split).
+
 ### 📦 Packaging
 
 - ✅ [FIBR-0003] **P01: bundling smoke-test (de-risk native libs early).**
@@ -6419,6 +6443,53 @@ because retrofitting them is a data migration.
   stay as a backstop; only the claim changed.
 
   Five mutants, all killed. Remaining: L6, L7, L9, L10, L13-L16.
+  Progress (2026-09-03, cont.): L6, L7, L9, L10, L13 and L14 closed.
+
+  L6 and L7 pushed as 7ac60de. L6 -- the hint refusal the user reads was a
+  bare literal in ui/, covered by neither coding.md § 5.2 nor
+  allowlist-004, which is scoped to ui/_amount.py. It goes through
+  QCoreApplication.translate with an explicit context, the module having
+  no QObject for self.tr. Its three siblings live in the Qt-free
+  services/password_hint.py and cannot translate their own; that stays
+  FIBR-0017's and the comment says so, so this does not read as the family
+  being done. The test drives a real QTranslator, so the marker returns
+  only if the context AND the source literal are what a catalog will carry.
+  L7 -- _LABEL_CONTEXT was read by nothing; every call site passes the
+  literal, because lupdate extracts only literal arguments and a named
+  context yields an empty entry, which is the R3 shape. Constant deleted,
+  the three docstrings corrected. No test: it removes a dead name and
+  corrects prose, so there is nothing to mutate.
+
+  L9 and L10 pushed as 9cf103c. L9 -- the recovery-offer clipboard guard
+  must outlive its dialog (R1) so it is parented to the window, and nothing
+  retired it: every Settings Add / Replace left a QObject + QTimer for the
+  session. ClipboardAutoClear gains retire(), delete-now-if-idle and
+  after-the-pending-clear otherwise; the long-lived transactions-list owner
+  never calls it. mutation_probe confirms R1 still holds -- making retire()
+  eager is killed by an existing leg. L10 -- D6 refuses Escape and [X] on
+  purpose, but set_master_password can fail persistently, and the dialog is
+  application-modal, so File > Quit is unreachable too: an app that cannot
+  be closed. It carries its own Quit shortcut now, releasing the modal grab
+  and closing through the window's close() so the geometry save and the
+  worker drain still run. Not a way PAST the forced password: done(Rejected),
+  nothing is connected to rejected, and a mutant that accepts is killed.
+
+  L13 -- CLOSED BY LATER WORK, no change owed here, verified rather than
+  assumed. Both halves are gone: FIBR-0318 (0a83b0a) added the first_run
+  reconciliation branch this finding says does not exist, and FIBR-0327
+  (c79dc75) guarded the recovery so a blocked one routes to run()'s named
+  VaultStateError branch instead of hard-erroring during __init__.
+
+  L14 -- SPLIT, and the half that is closed is the half that mattered.
+  pyproject now sets check_untyped_defs for finbreak.*; src was already
+  clean under it (109 files, zero errors), and a deliberate error inside an
+  unannotated src function was confirmed caught where it had been
+  invisible. The tests half is NOT done and is FIBR-0331: measured
+  2026-09-03, 345 errors across 25 files. Turning it on for the app and
+  silencing it for tests would close the gate gap on paper while the suite
+  that decides whether the gate means anything stays unread.
+
+  Remaining on this bullet: L15 and L16.
   **Layman:** The recovery-key work was reviewed again with fresh eyes; one serious problem can strand a half-upgraded vault with no way back, and several smaller fixes from last time only reached some of the places they needed to.
   Kind: review-fix.
   Source: close-phase-2026-08-25 (check-code + review-code x4 lanes, FP03 close, fresh context).
