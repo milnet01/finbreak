@@ -631,3 +631,64 @@ def test_the_trial_unwrap_wipes_the_decoded_candidate(
         "  expected: the buffer zeroed even when derive_key raises\n"
         f"  actual:   {len(still_set)} of {len(raised)} still hold their bytes"
     )
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0313 L6 — the hint refusal is a translatable UI string
+# --------------------------------------------------------------------------- #
+def test_the_recovery_code_hint_refusal_is_translatable(
+    qapp: Any,
+    paths: tuple[Path, Path],
+    service: AuthService,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """coding.md § 5.2 -- every user-facing string in ui/ goes through
+    ``tr`` / ``translate``, and this one was a bare literal covered by neither
+    the rule nor allowlist-004, which is scoped to ``ui/_amount.py``. It is
+    what the user reads when Settings refuses their hint.
+
+    Driven through a real translator rather than compared against a
+    ``translate`` call, which would assert nothing: the marker comes back only
+    if the context AND the source literal are the ones the catalog will carry.
+    """
+    from PySide6.QtCore import QTranslator
+
+    _vault_path, sidecar_path = paths
+    from finbreak.ui import _password_hint as hint_io
+
+    marker = "TRANSLATED: do not put the code in the hint"
+
+    class _Catalog(QTranslator):
+        def translate(
+            self,
+            context: bytes | str,
+            source: bytes | str,
+            disambiguation: bytes | str | None = None,
+            n: int = -1,
+        ) -> str:
+            wanted = "The hint may not contain your recovery code."
+            if context == "PasswordHint" and source == wanted:
+                return marker
+            return ""
+
+    catalog = _Catalog()
+    qapp.installTranslator(catalog)
+    try:
+        monkeypatch.setattr("finbreak.paths.sidecar_path", lambda: sidecar_path)
+        code = create_vault(service)
+        keep_recovery_key(service, code)
+
+        with pytest.raises(HintPolicyError) as excinfo:
+            hint_io.validate_hint_with_recovery(
+                f"same as the one on the card: {code}", MASTER_PASSWORD.decode()
+            )
+    finally:
+        qapp.removeTranslator(catalog)
+
+    assert str(excinfo.value) == marker, (
+        "coding.md § 5.2: the refusal the user reads is a bare literal, so it "
+        "reaches no catalog and ships in English whatever language the app is "
+        "running in.\n"
+        f"  expected: {marker!r}\n"
+        f"  actual:   {str(excinfo.value)!r}"
+    )

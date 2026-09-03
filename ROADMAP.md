@@ -6393,6 +6393,32 @@ because retrofitting them is a data migration.
   it entirely would have passed. That leg exists now.
 
   Remaining on this bullet: L6-L16.
+  Progress (2026-09-03, cont.): L8, L11 and L12 fixed and pushed
+  (669339f); gate green at 2160 passed / 2 skipped.
+
+  L12 is the one with teeth. A row-count mismatch put the PER-TABLE counts
+  into the message at both sites -- S2's refusal, which reaches
+  _unlock_v1's log.exception, and branch 2's warning, which logs directly.
+  That is how many accounts and transactions the household has, in the
+  clear beside the encrypted vault; INV-9 says the log records no
+  decrypted data. Both now name the disagreeing tables and nothing else.
+  mutation_probe is why the second site is covered at all: reverting it
+  alone survived, so the S2 leg was not reaching it. mypy then found
+  replacement_counts can be None, which the old message rendered as "got
+  None"; it has its own arm now, mirroring the live side above it.
+
+  L8 -- the COMMENT was wrong, not the code. unlock_failed said it fires
+  on every failure branch while the check-symbol branch returns without
+  it, and § 4.6 does not count a typo as an attempt. The comment names the
+  exclusion and a test locks the decision, so the opposite repair is not
+  made later by someone reading the code against the old sentence.
+
+  L11 -- the comment called UnicodeDecodeError / RecursionError the
+  sidecar reader's route. Since crypto._MALFORMED_SIDECAR the params read
+  normalises both to KdfPolicyError, already caught in that tuple. They
+  stay as a backstop; only the claim changed.
+
+  Five mutants, all killed. Remaining: L6, L7, L9, L10, L13-L16.
   **Layman:** The recovery-key work was reviewed again with fresh eyes; one serious problem can strand a half-upgraded vault with no way back, and several smaller fixes from last time only reached some of the places they needed to.
   Kind: review-fix.
   Source: close-phase-2026-08-25 (check-code + review-code x4 lanes, FP03 close, fresh context).

@@ -19,7 +19,7 @@ from __future__ import annotations
 import logging
 
 from argon2.exceptions import HashingError
-from PySide6.QtCore import QSettings
+from PySide6.QtCore import QCoreApplication, QSettings
 
 from finbreak import paths
 from finbreak.crypto import derive_key, read_sidecar_v2, validate_slot
@@ -163,7 +163,16 @@ def validate_hint_with_recovery(hint: str, password: str) -> None:
             finally:
                 kek[:] = bytes(len(kek))
             dek[:] = bytes(len(dek))
-            raise HintPolicyError("The hint may not contain your recovery code.")
+            # The message the user reads, so coding.md § 5.2 applies: this
+            # module is in ui/ and has no QObject to carry `self.tr`, hence the
+            # explicit context. The three sibling messages come from
+            # `services/password_hint.py`, which is Qt-free by contract and so
+            # cannot translate its own; that is FIBR-0017's to settle.
+            raise HintPolicyError(
+                QCoreApplication.translate(
+                    "PasswordHint", "The hint may not contain your recovery code."
+                )
+            )
     except (KdfPolicyError, HashingError) as exc:
         # Fails OPEN, like the unreadable-sidecar arm above: a slot that cannot
         # be tested is no evidence the hint carries the code, and barring the

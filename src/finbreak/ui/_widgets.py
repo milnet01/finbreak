@@ -19,10 +19,14 @@ from PySide6.QtWidgets import QComboBox
 
 from finbreak.models import Category, CategoryKind
 
-# One fixed translate context shared by the section headers, the ``Name (Type)``
-# row tag, AND the category manager (FIBR-0123 INV-4/INV-6) — so the Income /
-# Expenditure strings have a single translation home.
-_LABEL_CONTEXT = "CategoryTypeLabels"
+# One fixed translate context — ``"CategoryTypeLabels"`` — is shared by the
+# section headers, the ``Name (Type)`` row tag, AND the category manager
+# (FIBR-0123 INV-4/INV-6), so the Income / Expenditure strings have a single
+# translation home. It is spelled out as a LITERAL at every call site and is
+# deliberately not a constant: `lupdate` extracts only literal arguments
+# (coding.md § 5.2), so passing a name would yield an empty catalog entry —
+# which is the R3 shape. A `_LABEL_CONTEXT` constant did sit here, referenced
+# by nothing but prose (FIBR-0313 L7).
 
 
 def select_combo_data(combo: QComboBox, value: object) -> None:
@@ -36,7 +40,8 @@ def select_combo_data(combo: QComboBox, value: object) -> None:
 def category_type_labels() -> dict[str, str]:
     """The Income / Expenditure display labels keyed by the untranslated
     ``CategoryKind`` token (FIBR-0123 INV-4). The token is the structural key;
-    only the value is translated, under the one fixed ``_LABEL_CONTEXT``."""
+    only the value is translated, under the one fixed ``"CategoryTypeLabels"``
+    context."""
     return {
         CategoryKind.INCOME.value: QCoreApplication.translate(
             "CategoryTypeLabels", "Income"
@@ -61,7 +66,7 @@ def add_grouped_categories(
     ``parent_names`` (FIBR-0154 INV-4) breadcrumbs a Level-3 (grandchild) row so
     same-named sub-categories under different parents stay distinct: when a row's
     ``category.id`` is in the map, its name renders as ``"{parent} › {row}"``
-    (translatable via the same ``_LABEL_CONTEXT``), e.g.
+    (translatable under the same ``"CategoryTypeLabels"`` context), e.g.
     ``"Groceries › Spar (Expenditure)"``. Default ``None`` = today's behaviour.
 
     Selection: a combo auto-rests on index 0, which may be a disabled header, so

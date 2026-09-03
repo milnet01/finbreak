@@ -330,7 +330,8 @@ class CategoriesWidget(QWidget):
     @staticmethod
     def _reparent_label(type_label: str, name: str) -> str:
         """A ``"Type › Category"`` label for a Level-2 re-parent target, translatable
-        via the one shared ``_LABEL_CONTEXT`` (never a hardcoded separator)."""
+        via the one shared ``"CategoryTypeLabels"`` context (never a hardcoded
+        separator)."""
         return QCoreApplication.translate(
             "CategoryTypeLabels", "{parent} › {row}"
         ).format(parent=type_label, row=name)
