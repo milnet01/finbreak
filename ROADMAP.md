@@ -10234,7 +10234,7 @@ is a future error tomorrow.
   Kind: investigate.
   Source: review-code 2026-08-31 lane=update-installer.
 
-- 📋 [FIBR-0321] **A remembered PDF password is written to the provisional account before the destination is known.**
+- ✅ [FIBR-0321] **A remembered PDF password is written to the provisional account before the destination is known.**
   FIBR-0249 added a prior/restore pair, but the restore runs only after a
   SUCCESSFUL commit -- so cancel, an idle auto-lock, a raising commit, or picking
   another file (which drops the restore data) each leave the wrong account
@@ -10245,6 +10245,38 @@ is a future error tomorrow.
   encode. The two properties conflict, so this needs a decision -- either accept
   that Remember requires a completed import, or resolve the destination before
   the write. BatchImportService._settle_password is the sibling design.
+  Resolved (2026-09-03): fixed and pushed (1196f42); gate green at 2178
+  passed / 2 skipped.
+
+  USER DECISION (2026-09-03), which this bullet said it needed: repair
+  every exit path. Not the deferred write and not resolving the destination
+  first, so INV-7f and its three contract tests stand unchanged.
+
+  `done` is the one signal all four cancel routes reach (pick step, preview
+  step, map step, batch review), so one connection covers them. A completed
+  import has already settled and cleared the record, making it a no-op
+  there. A FAILED commit deliberately does not settle -- the wizard stays
+  open for a retry and the retry needs the record. The file-change path now
+  restores BEFORE dropping the record rather than dropping it outright,
+  which was the leak with no route back at all.
+
+  RESIDUAL, stated in the code rather than implied away: an idle auto-lock
+  cannot be repaired. The shell destroys the wizard without emitting
+  `done`, and the vault is already locked, so there is nothing to write
+  with. Closing that requires the write to stop being eager -- the branch
+  not taken.
+
+  mutation_probe earned a fifth leg and it is the important one. The three
+  exit legs all RE-TARGET, and on that path an uncleared record is harmless
+  because the release re-applies exactly what the carry wrote. The COMMON
+  case does not re-target: the carry returns early, and without clearing
+  the record the release restores the account to what it held before -- so
+  ticking Remember on an ordinary import would silently forget the
+  password. That case has its own leg now.
+
+  Six mutants, five killed. The sixth -- dropping the clear at the end of
+  the re-target branch -- survives and is NOT a defect: the release is
+  idempotent there. Kept so the recorded state is not a lie.
   **Layman:** Ticking Remember, then cancelling, can leave the password filed against the wrong account and lose that account's own.
   Kind: fix.
   Source: review-code 2026-08-31 lane=ui-import-wizard.
@@ -10499,6 +10531,19 @@ is a future error tomorrow.
   Status corrected 2026-09-03: this sat at 📋 while three batches of its
   work had already landed and been pushed. Its own body records them; only
   the marker was stale.
+  Defect in this bullet's own work, found and fixed 2026-09-03 (1196f42).
+
+  The app-clock test asserted that two zones 25 hours apart are "at most a
+  day apart" -- `in (0, 1)`. They differ by ONE day for 23 hours out of
+  every 24 and by TWO for the remaining hour (10:00-11:00 UTC, when
+  Kiritimati has reached tomorrow and Niue is still on yesterday), and
+  never by zero. So the bound admitted the case that cannot happen and
+  excluded the one that happens daily, and the suite went red for an hour
+  a day.
+
+  Caught by the gate during that hour while working an unrelated item, not
+  by re-reading the test. Now `in (1, 2)`, with the arithmetic written down
+  beside it.
   **Layman:** A batch of smaller real defects the full sweep found; most are now fixed, with a lower-severity tail left.
   Kind: review-fix.
   Source: review-code 2026-08-31.
