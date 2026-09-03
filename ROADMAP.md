@@ -6365,6 +6365,34 @@ because retrofitting them is a data migration.
   Five mutants, all killed: each wipe removed, the wipe moved off the
   finally, the refactored branch inverted, and the probe guard reverted
   to its pre-fix shape.
+  Progress (2026-09-03, cont.): L3, L4 and L5 fixed and pushed (ac411ce);
+  gate green at 2157 passed / 2 skipped. Three filesystem-safety items.
+
+  L3 -- S0 fsynced the .pre-v2 copy's database and sidecar halves and left
+  the -wal beside them unflushed, so a crash between S0 and S4 could leave
+  a rollback copy that opens and is missing the user's most recent rows.
+  Every copied sibling is flushed now; the test asserts the -wal only,
+  since SQLite rebuilds -shm and its durability buys nothing.
+
+  L4 -- the save-your-code overwrite leg chmod'd by PATH after the
+  descriptor was open, so the name could come to mean a different file and
+  that file's mode was the one changed. os.fchmod names the descriptor,
+  guarded by hasattr because it is POSIX-only and the comment beside it
+  already places the exposure there.
+
+  L5 -- the export's failure handler unlinked <dest>.tmp unconditionally,
+  including when it raised before _write_fbk had written a byte. That name
+  comes from the destination the user picked, so it can be someone else's
+  file. Only the cleanup is gated. _write_fbk's own unlink stays
+  unconditional and DELIBERATELY so: clearing the path is what lets O_EXCL
+  win against a planted symlink, and no ownership check ahead of it is not
+  itself a race. Recorded in the code so it is not re-filed.
+
+  Seven mutants, all killed. One was a survivor first: nothing pinned that
+  the cleanup still RUNS once the temp is ours, so a guard that disabled
+  it entirely would have passed. That leg exists now.
+
+  Remaining on this bullet: L6-L16.
   **Layman:** The recovery-key work was reviewed again with fresh eyes; one serious problem can strand a half-upgraded vault with no way back, and several smaller fixes from last time only reached some of the places they needed to.
   Kind: review-fix.
   Source: close-phase-2026-08-25 (check-code + review-code x4 lanes, FP03 close, fresh context).
