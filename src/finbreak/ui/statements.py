@@ -129,6 +129,11 @@ class StatementsWidget(QWidget):
 
         self.refresh()
 
+    def clear_rows(self) -> None:
+        """Drop the parallel row list at LOCK time (FIBR-0322) — the shell's
+        item-model clear does not reach a Python list."""
+        self._rows = []
+
     def refresh(self) -> None:
         """Re-list every recorded statement (all accounts) with its live count."""
         self._rows = self._statements.list_statements()

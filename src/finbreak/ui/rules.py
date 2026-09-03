@@ -162,6 +162,11 @@ class RulesWidget(QWidget):
 
         self._refresh()
 
+    def clear_rows(self) -> None:
+        """Drop the parallel row list at LOCK time (FIBR-0322) — the shell's
+        item-model clear does not reach a Python list."""
+        self._rows = []
+
     def _refresh(self) -> None:
         # Two vault reads, and every handler below calls this AFTER its own guarded
         # write returns — so a lock between the two is exactly the case the sibling

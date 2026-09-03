@@ -239,11 +239,23 @@ def _clear_decrypted_rows(widget: QWidget) -> None:
     auto-lock exists for.
 
     Clearing the models makes the wipe happen at lock time rather than at destruction
-    time, so the deferral no longer decides how long the data lives."""
+    time, so the deferral no longer decides how long the data lives.
+
+    The item models are only half of it. ``_table_state``'s tagging design obliges
+    each tab to keep a PARALLEL Python list beside its table, and
+    ``AccountsWidget``'s holds ``Account`` objects including the raw account number
+    — so clearing the models alone left those alive for exactly as long
+    (FIBR-0322). A tab that keeps one offers ``clear_rows``; asked for by duck
+    type, so this stays out of the tabs' imports and a tab added later is covered
+    by writing the method rather than by editing a list here."""
     for view in widget.findChildren(QTableWidget):
         view.setRowCount(0)
     for tree in widget.findChildren(QTreeWidget):
         tree.clear()
+    for child in (widget, *widget.findChildren(QWidget)):
+        clear_rows = getattr(child, "clear_rows", None)
+        if callable(clear_rows):
+            clear_rows()
 
 
 def _in_flatpak() -> bool:

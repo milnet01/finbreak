@@ -1084,3 +1084,79 @@ def test_FIBR0327_run_installs_the_hook_before_anything_can_fail(qapp, monkeypat
         )
     finally:
         sys.excepthook = previous
+
+
+def test_INV4c_autolock_empties_the_parallel_row_lists_too(qtbot, service):
+    """FIBR-0322 — the model clear above takes the deferred delete out of the
+    picture for the ITEM MODELS, and the `_table_state` tagging design obliges
+    each tab to keep a parallel Python list beside them. `AccountsWidget`'s
+    holds `Account` objects including the raw account number, and those lived
+    on until `deleteLater` actually ran — the deferral the sibling leg exists
+    to neutralise.
+
+    Asserted over whatever tabs keep such a list rather than a hand-written
+    four, so a tab added later cannot quietly reopen it. Same posture as the
+    tab-reference leg below.
+    """
+    window = _unlocked_home_shell(qtbot, service)
+    TransactionService(service.vault).add_transaction(
+        _default_id(service), "2026-07-01", "-12.34", "ZZSECRETMEMO"
+    )
+    workspace = window.centralWidget().currentWidget()
+    window._transactions_tab.refresh()
+    window._accounts_tab._refresh()
+
+    def parallel_lists(root):
+        # `_master` as well as `_rows`: TransactionsView derives the visible
+        # `_rows` from an unfiltered `_master`, so it holds every decrypted
+        # transaction whether or not a filter is showing it. The finding named
+        # only `_rows`; clearing that half alone leaves the larger one.
+        found = {}
+        for widget in [root, *root.findChildren(QWidget)]:
+            for attr in ("_rows", "_master"):
+                rows = getattr(widget, attr, None)
+                if isinstance(rows, list):
+                    name = widget.objectName() or type(widget).__name__
+                    found[f"{name}.{attr}"] = rows
+        return found
+
+    filled = {name: rows for name, rows in parallel_lists(workspace).items() if rows}
+    assert filled, (
+        "precondition: at least one tab must hold a parallel row list before "
+        "the lock, or this leg asserts nothing."
+    )
+
+    service._on_idle_timeout()  # no _pump_deferred_delete() — the whole point
+
+    assert shiboken6.isValid(workspace), (
+        "the widget is still alive — this is the deferred-delete window under test"
+    )
+    survived = {
+        name: len(rows) for name, rows in parallel_lists(workspace).items() if rows
+    }
+    assert not survived, (
+        "decrypted rows survived the lock in a tab's parallel Python list, "
+        "where the item-model clear does not reach them.\n"
+        f"  actual:   {survived}"
+    )
+
+
+def test_the_lock_time_wipe_reaches_the_widget_it_is_handed(qtbot, service):
+    """FIBR-0322 — the sweep must clear the ROOT it is given, not only that
+    root's children. Today `_live` is always the workspace container, which
+    keeps no rows itself, so nothing else measures this; before the FIBR-0052
+    reshape `_live` was a single HomeView, and a tab handed in directly is the
+    shape this breadth is for.
+    """
+    window = _unlocked_home_shell(qtbot, service)
+    tab = window._accounts_tab
+    tab._refresh()
+    assert tab._rows, "precondition: the tab must hold rows before the wipe"
+
+    main_window._clear_decrypted_rows(tab)
+
+    assert tab._rows == [], (
+        "the wipe skipped the widget it was handed and cleared only its "
+        "children.\n"
+        f"  actual:   {len(tab._rows)} rows still held"
+    )

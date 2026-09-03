@@ -192,6 +192,16 @@ class TransactionsView(QWidget):
         return self._table
 
     # --- data + filtering -------------------------------------------------- #
+    def clear_rows(self) -> None:
+        """Drop BOTH cached row lists at LOCK time (FIBR-0322).
+
+        ``_master`` is the unfiltered list ``_rows`` is derived from, so it holds
+        every decrypted transaction whether or not a filter is showing it —
+        clearing the visible half alone would leave the larger one behind.
+        """
+        self._master = []
+        self._rows = []
+
     def refresh(self) -> None:
         """Reload the master list from the vault and rebuild the account / category
         filter combos (preserving the current selection), then re-apply filters."""

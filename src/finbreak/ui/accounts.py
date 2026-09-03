@@ -465,6 +465,18 @@ class AccountsWidget(QWidget):
                 select_by_index(self._table, index)
                 return
 
+    def clear_rows(self) -> None:
+        """Drop the parallel row list at LOCK time (FIBR-0322).
+
+        ``_rows`` holds ``Account`` objects, account numbers included, and the
+        shell's item-model clear does not reach a Python list. ``_with_pw`` goes
+        with it because ``_refresh`` assigns the two together — leaving one
+        populated beside an empty other is the asymmetry that invites a later
+        bug, and it is ids only, so it is consistency rather than exposure.
+        """
+        self._rows = []
+        self._with_pw = set()
+
     def _refresh(self) -> None:
         # The guard wraps the WHOLE pre-fill read block, not a named subset. All
         # five reads reach ``Vault.connection``, which is where VaultLockedError
