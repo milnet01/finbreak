@@ -76,5 +76,25 @@ if [ "$saw_ref" = 1 ] && [ "$tags_only" = 1 ]; then
     exit 0
 fi
 
+# `ci-local.sh` reads the files on DISK, so this hook's verdict is about the
+# working tree and not about the commits being pushed. Those are the same thing
+# after a commit-then-push and different the moment anything is uncommitted --
+# and the dangerous direction is real: a fix present in the tree but not in the
+# commit makes the gate green about code that never leaves the machine
+# (FIBR-0327).
+#
+# Refusing is the honest answer. Gating the pushed commit itself means building
+# it in a throwaway worktree with its own venv, which costs more than the case
+# is worth; stopping and saying the run would not be about your push does not
+# pretend otherwise. Tracked files only -- an untracked scratch file is not in
+# any commit and cannot make one look different.
+if ! git diff --quiet HEAD -- 2>/dev/null; then
+    echo "== pre-push: the working tree has uncommitted changes to tracked files ==" >&2
+    echo "== the gate reads the files on disk, so it would report on those and ==" >&2
+    echo "== not on the commits you are pushing. Commit or stash them first.   ==" >&2
+    echo "== Deliberately pushing anyway: git push --no-verify                 ==" >&2
+    exit 1
+fi
+
 echo "== pre-push: running scripts/ci-local.sh (the CI gate) =="
 exec ./scripts/ci-local.sh

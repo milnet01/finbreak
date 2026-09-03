@@ -346,3 +346,77 @@ def test_INV5_the_sandbox_is_not_vacuous(tmp_path: Path) -> None:
         "the stub gate never fired at all, so every other INV-5 assertion "
         "about the sentinel proves nothing"
     )
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0327 — the hook gates the WORKING TREE, so it must refuse a dirty one   #
+# --------------------------------------------------------------------------- #
+def test_the_hook_refuses_a_dirty_tree_rather_than_gating_the_wrong_bytes(
+    tmp_path: Path,
+) -> None:
+    """`ci-local.sh` reads the files on disk, so the hook's verdict is about the
+    WORKING TREE and not about the commits being pushed. Those are the same
+    thing after a commit-then-push, and different the moment anything is
+    uncommitted — and the dangerous direction is real: a fix present in the
+    tree but not in the commit makes the gate green about code that is not
+    what reaches origin.
+
+    Refusing is the honest answer. Gating the pushed commit itself would mean
+    building it in a throwaway worktree with its own venv, which costs more
+    than the case is worth; saying "this run would not be about your push" and
+    stopping does not pretend otherwise.
+    """
+    import subprocess
+
+    work, sentinel, _pushed = _hook_sandbox(tmp_path)
+    (work / "a.txt").write_text("uncommitted\n", encoding="utf-8")
+
+    rc = subprocess.run(
+        [str(_copy_hook(work)), "origin", "file://origin"],
+        cwd=work,
+        input=f"refs/heads/main {'0' * 39}1 refs/heads/main {_ZERO}\n",
+        text=True,
+        capture_output=True,
+        env=_sandbox_env(),
+    )
+
+    assert rc.returncode != 0, (
+        "the hook gated a dirty tree and reported on it as though it were the "
+        "push. A change present on disk but not in the commit makes this run "
+        "green about bytes that never leave the machine."
+    )
+    assert not sentinel.exists(), "it must refuse BEFORE spending the gate"
+    assert "--no-verify" in (rc.stdout + rc.stderr), (
+        "a refusal with no way past it is a refusal someone works around by "
+        "guessing; the message must name the escape"
+    )
+
+
+def test_the_hook_still_runs_the_gate_on_a_clean_tree(tmp_path: Path) -> None:
+    """The other half — the ordinary commit-then-push must be untouched."""
+    import subprocess
+
+    work, sentinel, _pushed = _hook_sandbox(tmp_path)
+
+    subprocess.run(
+        [str(_copy_hook(work)), "origin", "file://origin"],
+        cwd=work,
+        input=f"refs/heads/main {'0' * 39}1 refs/heads/main {_ZERO}\n",
+        text=True,
+        capture_output=True,
+        env=_sandbox_env(),
+    )
+
+    assert sentinel.exists(), (
+        "a clean tree must still take the gate — refusing a dirty one must not "
+        "have become refusing every one"
+    )
+
+
+def _copy_hook(work: Path) -> Path:
+    import shutil
+
+    hook = work / "pre-push"
+    shutil.copy(_HOOK, hook)
+    hook.chmod(0o755)
+    return hook

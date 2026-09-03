@@ -272,7 +272,18 @@ hold them and never will, so this check is local-only by design.
 **Pre-push hook — the gate runs automatically before a `git push`, unless you
 pass `--no-verify` or the push is tag-only** (that second case is the hook's
 own doing, and reaching for the flag there is what it exists to stop — see
-below). CI (`ci.yml`) runs this exact script, so a green local gate means green in CI
+below).
+
+**It also refuses outright on a tree with uncommitted changes to tracked
+files**, rather than running. The gate reads the files on disk, so its verdict
+is about the working tree and not about the commits being pushed — the same
+thing after a commit-then-push, and different the moment anything is
+uncommitted. The dangerous direction is real: a fix present in the tree but not
+in the commit makes the gate green about code that never leaves the machine.
+Commit or stash first; `--no-verify` is the deliberate way past. Untracked
+files are ignored — they are in no commit and cannot make one look different.
+
+CI (`ci.yml`) runs this exact script, so a green local gate means green in CI
 **for everything the environment does not decide** — see the container caveat
 below for the part it cannot cover. The commonest way a red push slips through
 is simply *forgetting to run the gate*, and the version-controlled hook at
