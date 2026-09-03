@@ -10320,7 +10320,7 @@ is a future error tomorrow.
   Kind: doc.
   Source: review-code 2026-08-31 lane=money-reporting.
 
-- 📋 [FIBR-0325] **The bundling suite aborts fatally when run on its own, and passes inside the full suite.**
+- ✅ [FIBR-0325] **The bundling suite aborts fatally when run on its own, and passes inside the full suite.**
   `pytest tests/features/bundling/` dies with Fatal Python error: Aborted after a
   few tests; the same tests pass as part of the whole run, so it is an ordering or
   fixture interaction rather than a defect in what they assert.
@@ -10329,11 +10329,18 @@ is a future error tomorrow.
   predates FIBR-0318. It matters because it makes the suite that guards the frozen
   bundle unrunnable in isolation, which is exactly how someone would debug a
   bundling failure. review-tests is the owner.
+  Resolved (2026-09-03): fixed and pushed (327a06f); gate green at 2174 passed / 2 skipped, and the suite runs alone at 18 passed / 1 skipped with no abort.
+
+  Diagnosed by hitting it while writing FIBR-0326's leg, so the cause is measured rather than guessed. Every leg driving run_self_test stubs _check_qt to a no-op; run_self_test then reaches _check_icons, which renders a QPixmap, and with no QApplication in the process Qt does not raise -- it ABORTS, taking the pytest run with it. Inside the full suite an earlier test has already created one, which is why it passed there and died in isolation.
+
+  Those legs now take pytest-qt's qapp, so the application exists whatever ran before. The _check_qt stub stays: it is what proves run_self_test resolves its checks at call time.
+
+  Not an ordering or fixture interaction in the tests' own assertions, as the bullet supposed -- a missing precondition in the tests themselves.
   **Layman:** One group of tests crashes if you run just that group.
   Kind: test.
   Source: review-code 2026-08-31 out-of-scope finding.
 
-- 📋 [FIBR-0326] **The self-test has no check for cryptography, the stack guarding every vault unlock.**
+- ✅ [FIBR-0326] **The self-test has no check for cryptography, the stack guarding every vault unlock.**
   CHECK_NAMES covers Qt, QtNetwork, QtCharts, icons, SQLCipher, pikepdf, PDF
   encryption, Argon2, ofxparse and pdfplumber. cryptography is a promoted runtime
   dependency used directly by keywrap (AES-GCM) and update_key (Ed25519), and it
@@ -10343,6 +10350,13 @@ is a future error tomorrow.
   If pdfminer ever defers that import, the OK sentinel goes green on a bundle that
   cannot open any v2 vault. That is the FIBR-0259 shape the file's own comment
   warns about. Fix is an AES-GCM round trip plus one Ed25519 verify.
+  Resolved (2026-09-03): fixed and pushed (327a06f); gate green at 2174 passed / 2 skipped.
+
+  _check_cryptography does an AES-GCM round trip and an Ed25519 sign+verify, and sits AHEAD of pdfplumber deliberately -- pdfplumber's tree is what pulls cryptography in today, so a check placed after it could pass on that import alone.
+
+  Falsifiable rather than merely present: a broken round trip and a bad signature each have their own leg, plus a baseline so those two cannot pass against a check that always raises. Five mutants, all killed -- including the check reduced to a no-op.
+
+  One measured correction: patching an attribute on Ed25519PrivateKey does nothing, since it is Rust-backed and generate() returns a concrete type whose sign is not the one replaced. The first draft of that leg passed a bad signature straight through and reported success. It is substituted where the check RESOLVES the name instead.
   **Layman:** The bundled-app health check does not test the library that opens your vault.
   Kind: test.
   Source: review-code 2026-08-31 lane=ui-app-shell.
