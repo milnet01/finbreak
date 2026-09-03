@@ -74,6 +74,27 @@ signaling per
 
 ### Fixed
 
+- **Adding or deleting a category no longer leaves the buttons active with nothing selected** (FIBR-0327)
+  After adding, renaming or deleting a category the tree was rebuilt and nothing
+  was selected — but Add, Update and Delete stayed available, as though the
+  category you had been working on were still there. The same fix the Rules tab
+  already had.
+
+- **Cancelling a locked-PDF import no longer leaves the password on the wrong account** (FIBR-0321)
+  Ticking "Remember this password" stored it straight away, against whichever
+  account the file-picker happened to be showing — which is not necessarily the
+  one the statement belongs to. If you then cancelled, or picked a different
+  file, that password stayed there and the account's own remembered password was
+  lost. Both now put things back as they were. An import that finishes still
+  moves the password to the account the transactions landed on.
+
+- **Importing several statements with the same layout now asks about the columns once** (FIBR-0319)
+  If none of your saved layouts matched, finbreak asked you to describe the
+  columns for every file in the batch — thirty spreadsheets from the same bank
+  meant thirty identical questions. Now, once you have described the layout and
+  given it a name, the rest of the batch uses it. Files with a genuinely
+  different layout are still asked about.
+
 - **The import preview shows amounts the way the rest of the app does** (FIBR-0327)
   It had no currency symbol, no thousands separators and ignored the
   negative-amount style -- on the last screen before an import you cannot undo.
@@ -210,6 +231,12 @@ signaling per
   that desktop while passing everywhere else.
 
 ### Security
+
+- **Locking the vault now clears more of what was on screen** (FIBR-0322)
+  When the vault locks, finbreak empties the tables so decrypted rows do not sit
+  in memory waiting for the window to be torn down. Each tab also kept its own
+  copy of the rows alongside the table — including account numbers on the
+  Accounts tab — and those were not being cleared. They are now.
 
 - **A backup file crafted to attack finbreak can no longer exhaust your machine before you have typed a password.** (FIBR-0327)
   Restoring a backup reads settings out of the file and acts on them
