@@ -2387,3 +2387,49 @@ def test_the_derived_key_is_wiped_when_the_post_failure_probe_itself_fails(
         "  expected: the key buffer zeroed before the exception escapes\n"
         f"  actual:   {len(held)} bytes still set"
     )
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0313 L3 — the rollback copy's WAL half reaches disk too
+# --------------------------------------------------------------------------- #
+def test_the_rollback_copys_wal_sibling_is_fsynced_like_its_database_half(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """S0 fsyncs the database and sidecar halves of the ``.pre-v2`` copy and
+    left the ``-wal`` it copies beside them unflushed. A ``-wal`` holds the
+    frames no checkpoint has folded in yet -- which is exactly why the copy
+    takes one -- so a crash between S0 and S4 could leave a rollback copy that
+    opens and is missing the user's most recent rows. The same loss H4
+    describes, on the last-resort route.
+    """
+    vault_path, sidecar_path, _key, _digests = _fresh_v1_vault(tmp_path, "wal-fsync")
+
+    # A checkpoint-outstanding vault: the state the copy's WAL handling is for.
+    for suffix in ("-wal", "-shm"):
+        _suffixed(vault_path, suffix).write_bytes(b"frames the copy must not lose")
+
+    fsynced: list[Path] = []
+    real_fsync = vault_migration._fsync
+
+    def recording_fsync(path: Path) -> None:
+        fsynced.append(Path(path))
+        real_fsync(path)
+
+    monkeypatch.setattr(vault_migration, "_fsync", recording_fsync)
+
+    copy_db, _copy_sidecar = write_rollback_copy(vault_path, sidecar_path)
+
+    copied_wal = _suffixed(copy_db, "-wal")
+    assert copied_wal.exists(), (
+        "precondition: the -wal must have been copied at all, or this leg "
+        "asserts nothing about flushing it."
+    )
+    # -shm is deliberately not asserted: SQLite rebuilds it, so it carries no
+    # rows and its durability buys nothing.
+    assert copied_wal in fsynced, (
+        "INV-13: the rollback copy's -wal reached disk unflushed while its "
+        "database half was fsynced, so a copy that opens can still be missing "
+        "recent rows.\n"
+        f"  expected: {copied_wal.name} fsynced\n"
+        f"  actual:   fsynced {[p.name for p in fsynced]}"
+    )

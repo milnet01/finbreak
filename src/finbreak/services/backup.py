@@ -171,6 +171,12 @@ class BackupService:
         # The temp zip sits beside the destination so the os.replace is a
         # same-filesystem rename; unlinked on any failure (no partial .fbk).
         tmp_zip = dest.with_name(dest.name + ".tmp")
+        # The temp name is derived from the destination the user picked, so a
+        # file of that name may be someone's and not ours. Only the cleanup
+        # below is gated on this: `_write_fbk`'s own unlink stays unconditional,
+        # because clearing the path is what lets O_EXCL win the race against a
+        # planted symlink, and no ownership check ahead of it is not itself one.
+        tmp_is_ours = False
         try:
             params = self._auth.new_params()  # fresh per-backup salt (INV-3)
             backup_key = derive_key(password_buf, params.salt, params)
@@ -203,12 +209,14 @@ class BackupService:
                         f"vault is too large to back up: {db_bytes} bytes exceeds "
                         f"the {MAX_BACKUP_DB_BYTES}-byte restore cap"
                     )
+                tmp_is_ours = True
                 self._write_fbk(tmp_zip, manifest, params.to_sidecar_dict(), tmp_db)
             os.replace(tmp_zip, dest)
             fsync_dir(dest.parent)
             log.info("backup exported")
         except BaseException:
-            tmp_zip.unlink(missing_ok=True)
+            if tmp_is_ours:
+                tmp_zip.unlink(missing_ok=True)
             raise
         finally:
             _wipe(backup_key)

@@ -173,7 +173,12 @@ class RecoveryCodeDialog(QDialog):
             # exposure is.
             fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
             try:
-                os.chmod(path, 0o600)
+                # By DESCRIPTOR, never by path: a chmod on the path acts on
+                # whatever the name means by then, which need not be the file
+                # this fd was opened on (CWE-367). os.fchmod is POSIX-only, and
+                # the comment above already places the exposure on POSIX.
+                if hasattr(os, "fchmod"):
+                    os.fchmod(fd, 0o600)
             except OSError:
                 # Refusing to save over a mode the platform will not change
                 # would deny the user the copy they asked for, and the write

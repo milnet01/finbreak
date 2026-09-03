@@ -1579,3 +1579,82 @@ def test_FIBR0327_restored_sidecar_records_the_backups_level_not_the_constant(
     with zipfile.ZipFile(fbk) as zf:
         recorded = json.loads(zf.read("manifest.json"))["sqlcipher_compat"]
     assert sidecar.cipher_compatibility == recorded == SQLCIPHER_COMPAT
+
+
+def test_a_refused_export_leaves_a_pre_existing_dest_tmp_alone(tmp_path, monkeypatch):
+    """FIBR-0313 L5 — the export's failure handler unlinked ``<dest>.tmp``
+    unconditionally, including when it raised BEFORE ``_write_fbk`` had created
+    anything there. The temp name is derived from the destination the user
+    picked, so an unrelated file of that name is one the export destroys on its
+    way out of a refusal it never wrote a byte for.
+
+    ``_write_fbk``'s own unlink is a different thing and stays: it clears the
+    path so ``O_EXCL`` can win the race against a planted symlink, and there is
+    no way to check ownership first that is not itself a race.
+    """
+    import finbreak.services.backup as backup_mod
+    from finbreak.errors import BackupError
+
+    src = tmp_path / "src"
+    src.mkdir()
+    auth = _seeded_auth((src / "vault.db", src / "vault.kdf.json"))
+    try:
+        dest = tmp_path / "over.fbk"
+        bystander = dest.with_name(dest.name + ".tmp")
+        bystander.write_text("someone else's file\n", encoding="utf-8")
+
+        # Refuse before _write_fbk runs: the cap is measured on the
+        # intermediate db, which is checked ahead of the zip being assembled.
+        monkeypatch.setattr(backup_mod, "MAX_BACKUP_DB_BYTES", 1)
+        with pytest.raises(BackupError):
+            BackupService(auth.vault, auth).export_backup(dest, _BACKUP_PW)
+
+        assert bystander.exists(), (
+            "a refused export deleted a file at <dest>.tmp that it never "
+            "created -- the cleanup fired on a path it had not written to."
+        )
+        assert bystander.read_text(encoding="utf-8") == "someone else's file\n", (
+            "the bystander survived by name but not by content.\n"
+            f"  actual:   {bystander.read_text(encoding='utf-8')!r}"
+        )
+    finally:
+        auth.lock()
+
+
+def test_an_export_that_fails_after_writing_the_temp_still_removes_it(
+    tmp_path, monkeypatch
+):
+    """FIBR-0313 L5, the other side of the guard — once ``_write_fbk`` has
+    created ``<dest>.tmp`` the file IS the export's, and a failure past that
+    point must still take it back. Without this leg the guard added for the
+    bystander case could disable the cleanup entirely and nothing would say so
+    (measured with mutation_probe: dropping the flag survived).
+    """
+    import finbreak.services.backup as backup_mod
+
+    src = tmp_path / "src"
+    src.mkdir()
+    auth = _seeded_auth((src / "vault.db", src / "vault.kdf.json"))
+    try:
+        dest = tmp_path / "late-failure.fbk"
+        real_replace = backup_mod.os.replace
+
+        def fail_the_rename(a, b, *args, **kwargs):
+            if Path(b) == dest:
+                raise OSError("the rename into place failed")
+            return real_replace(a, b, *args, **kwargs)
+
+        monkeypatch.setattr(backup_mod.os, "replace", fail_the_rename)
+        with pytest.raises(OSError):
+            BackupService(auth.vault, auth).export_backup(dest, _BACKUP_PW)
+
+        leftovers = list(tmp_path.glob("*.tmp"))
+        assert leftovers == [], (
+            "the export created <dest>.tmp and then failed, leaving it behind. "
+            "A partial .fbk beside the destination is the state the cleanup "
+            "exists to prevent.\n"
+            f"  actual:   {[p.name for p in leftovers]}"
+        )
+        assert not dest.exists(), "a failed export writes no .fbk"
+    finally:
+        auth.lock()

@@ -716,3 +716,57 @@ def test_the_one_time_display_holds_off_the_idle_auto_lock(service, qtbot):
         dialog.reject()
 
     assert service._timer.isActive(), "finishing the dialog re-arms the lock"
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0313 L4 — the mode fix goes through the descriptor, not the path
+# --------------------------------------------------------------------------- #
+def test_saving_the_code_chmods_the_file_it_opened_not_whatever_the_path_holds(
+    qtbot: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The overwrite leg chmod'd by PATH after the descriptor was already open,
+    so between the two calls the name could come to mean a different file and
+    that file's mode was the one changed (CWE-367). ``os.fchmod`` names the
+    descriptor, which is the file the code is about to be written into -- the
+    thing the comment beside it says it is protecting.
+
+    The swap here stands in for that window: it is the attacker's move, made
+    deterministic.
+    """
+    from finbreak.ui.recovery_key import RecoveryCodeDialog
+
+    target = tmp_path / "finbreak-recovery-code.txt"
+    target.write_text("an older copy\n", encoding="utf-8")
+    target.chmod(0o644)
+
+    decoy = tmp_path / "someone-elses-file.txt"
+    decoy.write_text("not the user's to tighten\n", encoding="utf-8")
+    decoy.chmod(0o644)
+
+    real_open = os.open
+
+    def open_then_swap(path: Any, flags: int, mode: int = 0o777) -> int:
+        fd = real_open(path, flags, mode)
+        # The window: from here the name means the decoy, while fd still names
+        # the file that was opened.
+        os.replace(decoy, target)
+        return fd
+
+    monkeypatch.setattr(recovery_module.os, "open", open_then_swap)
+    monkeypatch.setattr(
+        recovery_module.QFileDialog,
+        "getSaveFileName",
+        staticmethod(lambda *a, **k: (str(target), "")),
+    )
+
+    dialog = RecoveryCodeDialog("ABCD-EFGH-JKMN-PQRS-TVWX-YZ01-2345")
+    qtbot.addWidget(dialog)
+    dialog._save()
+
+    landed = target.stat().st_mode & 0o777
+    assert landed == 0o644, (
+        "the mode change followed the PATH and landed on the file that came "
+        "to sit there, not on the descriptor that was opened.\n"
+        "  expected: 0o644 -- the swapped-in file untouched\n"
+        f"  actual:   {landed:#o}"
+    )

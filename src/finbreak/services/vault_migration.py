@@ -349,7 +349,13 @@ def write_rollback_copy(
             # Owner-only too: a `-wal` holds the same rows as the database it
             # belongs to, so copying it at the umask leaks exactly what copying
             # the database at the umask would (FIBR-0310 P3).
-            _copy_owner_only(sibling, _suffixed(copies[0], suffix))
+            copied_sibling = _suffixed(copies[0], suffix)
+            _copy_owner_only(sibling, copied_sibling)
+            # Flushed like the database half. A `-wal` holds the frames no
+            # checkpoint has folded in yet, which is why the copy takes one at
+            # all — leaving it unflushed makes a rollback copy that opens and
+            # is missing the user's most recent rows.
+            _fsync(copied_sibling)
     return copies[0], copies[1]
 
 
