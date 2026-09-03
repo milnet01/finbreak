@@ -880,3 +880,175 @@ def test_FIBR0085_4_4_an_answered_password_unlocks_the_rest_of_the_batch(
         "second question here is the thirty-prompts failure 4.4 forbids"
     )
     assert not [f for f in files if f.outcome == "needs_password"]
+
+
+def test_FIBR0319_an_answered_mapping_settles_the_rest_of_the_batch(
+    batch, service, tmp_path
+) -> None:
+    """The twin of § 4.4's password promise, and it fails the same way.
+
+    SCAN runs over the WHOLE list before the first question, so every CSV whose
+    header matched no profile is already `needs_mapping` by the time the user
+    answers one. The wizard saves the profile BEFORE calling `answer`
+    (`_on_map_next` saves, then answers), so `match_profile` would resolve for
+    every file sharing that header -- but `answer` re-scanned only the ONE
+    record it was handed, and `next_question` hands out the next blocked record
+    without re-running its ladder. `match_profile` was consulted once per file
+    at scan time and never again.
+
+    § 4.3's decision 1 is what this is measured against: re-asking a question
+    already answered is babysitting.
+    """
+    odd_header = "When,What,How much"
+    paths = []
+    for n in range(3):
+        p = tmp_path / f"odd{n}.csv"
+        p.write_text(
+            f"{odd_header}\n2026-01-0{n + 1},shop{n},-1{n}.00\n", encoding="utf-8"
+        )
+        paths.append(str(p))
+
+    files = batch.build(paths)
+    _scan_all(batch, files)
+    assert [f.outcome for f in files] == ["needs_mapping"] * 3, (
+        "precondition: SCAN must block all three before the first question -- "
+        "that ordering is what the defect turns on"
+    )
+
+    asked = next_question(files)
+    assert asked is not None
+
+    # What the wizard does, in its order: save the profile, THEN answer.
+    mapping = ColumnMapping("When", "What", "How much", None, None, "%Y-%m-%d", False)
+    ImportService(service.vault).save_profile(
+        "odd layout", odd_header.split(","), mapping
+    )
+    batch.answer(files, asked, mapping)
+
+    assert next_question(files) is None, (
+        "one answered mapping must settle the whole same-header batch; a second "
+        "question here is the thirty-prompts failure the password half already "
+        "fixed for its own question"
+    )
+    assert not [f for f in files if f.outcome == "needs_mapping"]
+
+
+def test_FIBR0319_the_mapping_retry_leaves_already_settled_records_alone(
+    batch, service, tmp_path
+) -> None:
+    """The retry re-scans only records still blocked on a MAPPING.
+
+    Without that guard it would reset every other record to `waiting` and scan
+    it again -- including one the user has already given an account on the
+    review screen, and one already resolved to `already_imported`, which the
+    service's own comment calls the silent data loss INV-10 exists to stop.
+    Found by mutation_probe: dropping the outcome test survived the leg above,
+    which has three files in the SAME state and so cannot see it.
+    """
+    settled = _write(tmp_path, "a-known.csv", _rows(2, day_from=1, tag="k"))
+    odd = tmp_path / "b-odd.csv"
+    odd.write_text("When,What,How much\n2026-02-01,shop,-10.00\n", encoding="utf-8")
+
+    files = batch.build([settled, str(odd)])
+    _scan_all(batch, files)
+
+    known, unmapped = files
+    assert unmapped.outcome == "needs_mapping", "precondition: the odd header blocks"
+
+    # The state that a re-scan actually destroys: an account the USER chose on
+    # the review screen. `_settle_parse` re-runs `match_account`, which does not
+    # know that choice, so a re-scan drops the record back to `needs_account`.
+    # A record that merely auto-matched re-scans to the same answer and would
+    # make this leg vacuous.
+    assert known.outcome == "needs_account", (
+        "precondition: the known file must be awaiting an account, or the "
+        "review-screen answer this leg protects does not exist here.\n"
+        f"  actual:   {known.outcome!r}"
+    )
+    batch.set_account(known, _acct(service))
+    before_outcome = known.outcome
+    before_account = known.account_id
+    assert before_outcome == "ready", (
+        "precondition: setting the account must settle the record, or there is "
+        "nothing settled for the retry to disturb.\n"
+        f"  actual:   {before_outcome!r}"
+    )
+
+    mapping = ColumnMapping("When", "What", "How much", None, None, "%Y-%m-%d", False)
+    ImportService(service.vault).save_profile(
+        "odd layout", ["When", "What", "How much"], mapping
+    )
+    batch.answer(files, unmapped, mapping)
+
+    assert known.outcome == before_outcome and known.account_id == before_account, (
+        "answering one file's mapping re-scanned a record that was already "
+        "settled, dropping it back to needs_account -- which is the account the "
+        "user chose on the review screen going missing.\n"
+        f"  expected: {before_outcome!r} pointing at account {before_account}\n"
+        f"  actual:   {known.outcome!r} pointing at {known.account_id}"
+    )
+
+
+def test_FIBR0319_the_password_retry_leaves_already_settled_records_alone(
+    batch, service, tmp_path, monkeypatch
+) -> None:
+    """The same guard on the password side, which nothing measured.
+
+    Found while pinning the mapping twin: dropping `other.outcome !=
+    "needs_password"` from `_retry_blocked_on_password` survived the whole
+    suite, because its own leg uses three files in the SAME state. The hazard
+    is identical -- `_settle_parse` re-runs `match_account`, which knows
+    nothing of a choice made on the review screen, so a re-scan drops that
+    record back to `needs_account`.
+    """
+
+    def fake_decrypt(data: bytes, password: str | None) -> bytes:
+        if password != "sesame":
+            raise PasswordError("wrong password")
+        return b"%PDF-1.7 plain"
+
+    class _StubSb:
+        @staticmethod
+        def parse(data, exponent, password=None):
+            return ParseResult(
+                drafts=[TransactionDraft(1, "2026-03-05", -1000, "Fake Row")],
+                errors=[],
+                period_start="2026-03-01",
+                period_end="2026-03-31",
+            )
+
+    monkeypatch.setattr(
+        "finbreak.services.batch_import.PdfImporter.decrypt_to_plaintext",
+        staticmethod(fake_decrypt),
+    )
+    monkeypatch.setattr("finbreak.services.batch_import.StandardBankImporter", _StubSb)
+
+    locked = tmp_path / "b-locked.pdf"
+    locked.write_bytes(b"%PDF-1.7 encrypted")
+    known = _write(tmp_path, "a-known.csv", _rows(2, day_from=1, tag="p"))
+
+    files = batch.build([known, str(locked)])
+    _scan_all(batch, files)
+    csv_record, pdf_record = files
+
+    assert pdf_record.outcome == "needs_password", "precondition: the PDF blocks"
+    assert csv_record.outcome == "needs_account", (
+        "precondition: the CSV must be awaiting an account.\n"
+        f"  actual:   {csv_record.outcome!r}"
+    )
+    batch.set_account(csv_record, _acct(service))
+    before_outcome = csv_record.outcome
+    before_account = csv_record.account_id
+    assert before_outcome == "ready", "precondition: setting the account settles it"
+
+    batch.answer(files, pdf_record, "sesame")
+
+    assert (
+        csv_record.outcome == before_outcome and csv_record.account_id == before_account
+    ), (
+        "answering one file's password re-scanned a settled record, dropping "
+        "it back to needs_account -- the account the user chose on the review "
+        "screen going missing.\n"
+        f"  expected: {before_outcome!r} pointing at account {before_account}\n"
+        f"  actual:   {csv_record.outcome!r} pointing at {csv_record.account_id}"
+    )

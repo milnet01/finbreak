@@ -510,6 +510,7 @@ class BatchImportService:
             record.mapping = value
             record.outcome = "waiting"
             self.scan(record)
+            self._retry_blocked_on_mapping(files, answered=record)
             return
         record.pending_password = value
         if value not in self._run_passwords:
@@ -546,6 +547,36 @@ class BatchImportService:
         """
         for other in files:
             if other is answered or other.outcome != "needs_password":
+                continue
+            other.outcome = "waiting"
+            self.scan(other)
+
+    def _retry_blocked_on_mapping(
+        self, files: Sequence[BatchFile], *, answered: BatchFile
+    ) -> None:
+        """Re-run the ladder for every OTHER record still blocked on a mapping.
+
+        The twin of :meth:`_retry_blocked_on_password`, defeated by the same
+        ordering: SCAN runs over the WHOLE list before the first question, so
+        every CSV whose header matched no profile is already ``needs_mapping``
+        by the time the user answers one. The wizard saves the profile BEFORE
+        calling ``answer`` (``_on_map_next`` saves, then answers), so
+        ``match_profile`` would resolve for every file sharing that header —
+        but ``answer`` re-scanned only the record it was handed, and
+        ``next_question`` hands out the next blocked record without re-running
+        its ladder. § 4.3 decision 1: re-asking an answered question is
+        babysitting.
+
+        The answered mapping is NOT applied to the others. Each re-scanned
+        record consults ``match_profile`` with its OWN header, so a different
+        layout returns to ``needs_mapping`` and is asked about as before — and
+        a mapping answered with no profile NAME saved nothing, so nothing
+        resolves and the batch behaves exactly as it did.
+
+        ``scan`` re-checks the draft cap per record, so this cannot walk past it.
+        """
+        for other in files:
+            if other is answered or other.outcome != "needs_mapping":
                 continue
             other.outcome = "waiting"
             self.scan(other)
