@@ -10218,7 +10218,7 @@ is a future error tomorrow.
   Kind: fix.
   Source: review-code 2026-08-31 lane=ui-import-wizard.
 
-- 📋 [FIBR-0322] **The lock-time wipe clears table models but not the parallel row lists holding account numbers.**
+- ✅ [FIBR-0322] **The lock-time wipe clears table models but not the parallel row lists holding account numbers.**
   _clear_decrypted_rows clears every QTableWidget, and its docstring says this
   makes the wipe happen at lock time rather than at destruction time. The
   _table_state tagging design obliges each tab to keep a parallel Python list;
@@ -10229,6 +10229,25 @@ is a future error tomorrow.
   attacker out of scope, so this is FIBR-0052 INV-3's absolute wording being
   overstated as much as the code being short. Fix is a clear_rows() per tab,
   called alongside the model clear.
+  Resolved (2026-09-03): fixed and pushed (16d9fa2); gate green at 2167
+  passed / 2 skipped.
+
+  Each tab keeping a parallel row list now offers clear_rows(), asked for
+  by duck type from _clear_decrypted_rows -- so main_window imports no tab,
+  and a tab added later is covered by writing the method rather than by
+  editing a list in the shell.
+
+  One thing this bullet did not name, found while fixing it:
+  TransactionsView derives its visible _rows from an unfiltered _master, so
+  _master holds every decrypted transaction whether or not a filter is
+  showing it. Clearing the visible half alone would have left the larger
+  one behind. Both are cleared and the test sweeps both attributes.
+
+  Four mutants, all killed. One survived first -- nothing measured that the
+  sweep clears the ROOT it is handed rather than only that root's children.
+  Today _live is always the workspace container so it changes nothing, but
+  the breadth is deliberate (_live was a single HomeView before FIBR-0052),
+  so it has its own leg rather than going unmeasured.
   **Layman:** After the vault locks, some decrypted details stay in memory longer than intended.
   Kind: security.
   Source: review-code 2026-08-31 lane=ui-views-admin.
