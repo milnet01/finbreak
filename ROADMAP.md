@@ -10575,6 +10575,32 @@ is a future error tomorrow.
   single_instance's narrowed-but-open stale-socket race; and FIBR-0096's
   claim that the per-artifact .sig is the primary integrity gate, which is
   false for a rename-replay.
+  Progress (2026-09-03, cont.): categories._refresh re-gates now (adb6152);
+  gate green at 2181 passed / 2 skipped.
+
+  Measured before fixing rather than reasoned about: with a category
+  selected and _refresh() then called, currentItem() is None and Add,
+  Update and Delete all report ENABLED. currentItemChanged does not fire on
+  the empty-to-populated rebuild, so the buttons kept the enablement they
+  had for a selection that no longer exists -- after every add, rename and
+  delete.
+
+  The constructor knew this and called the gating slot by hand, and only
+  there. The slot now runs at the end of _refresh, which is what the
+  first-run case needed too, so the hand call is gone rather than
+  duplicated. A caller that re-selects afterwards fires the slot again and
+  wins. All three call sites end at _refresh with nothing after it, so the
+  slot's _error.clear() cannot swallow a message just set.
+
+  Same class as the Rules table refilling in place, fixed in this bullet's
+  second batch.
+
+  Still open here: the batch review's keyboard-inaccessible Account cell
+  and its inert picker sentinel; two unguarded vault reads in
+  import_wizard (the lane named no site, so this needs re-deriving against
+  current source); single_instance's narrowed-but-open stale-socket race;
+  and FIBR-0096's claim that the per-artifact .sig is the primary integrity
+  gate, false for a rename-replay.
   **Layman:** A batch of smaller real defects the full sweep found; most are now fixed, with a lower-severity tail left.
   Kind: review-fix.
   Source: review-code 2026-08-31.
