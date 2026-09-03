@@ -171,6 +171,12 @@ class ImportWizardWidget(QWidget):
         # user then re-targets the import (preview step), the committed rows land
         # on a different account, so the password is carried there too on commit.
         self._stored_pw: tuple[int, str, str | None] | None = None
+        # Every exit that is NOT a completed import gives the provisional
+        # account its own password back (FIBR-0321). `done` is the one signal
+        # all four cancel routes reach, so this single connection covers them;
+        # a completed import has already settled and cleared the record, which
+        # makes it a no-op there.
+        self.done.connect(self._release_stored_pw)
         # FIBR-0086: the statement's own account details, held only while the
         # preview shows a `no_match` — the Create button reads it. None in every
         # other outcome, which is what keeps creation unreachable from `no_number`.
@@ -513,7 +519,10 @@ class ImportWizardWidget(QWidget):
         # map step is really reached, so an OFX pick after a CSV one cannot
         # inherit the previous file's mapping-step remedy (FIBR-0253).
         self._has_mapping_step = False
-        self._stored_pw = None  # a fresh file — drop any prior pick's remembered pw
+        # A fresh file — give the provisional account its own password back
+        # BEFORE dropping the record, or ours stays on it with its own gone
+        # (FIBR-0321). Dropping alone was the leak.
+        self._release_stored_pw()
         # Seed the preview step's destination picker from the pick-step choice
         # (FIBR-0057). The confirm combo is the single source of truth for the
         # committed account from here on — every preview + the PDF-password
@@ -1502,12 +1511,52 @@ class ImportWizardWidget(QWidget):
         stored_account, password, prior = self._stored_pw
         final_account = self._preview.account_id
         if stored_account == final_account:
-            return  # it was stored where the rows landed; nothing to move
+            self._stored_pw = None  # stored where the rows landed; settled
+            return
         if self._accounts.get_pdf_password(final_account) is None:
             self._accounts.set_pdf_password(final_account, password)
         # Restore the provisional account, whether or not the destination took
         # ours: the entry we wrote there was never that account's to keep.
         self._accounts.set_pdf_password(stored_account, prior)
+        self._stored_pw = None  # settled — `_release_stored_pw` must not re-run it
+
+    def _release_stored_pw(self) -> None:
+        """Give the provisional account its password back, on any exit that is
+        NOT a completed import (FIBR-0321).
+
+        The write in ``_after_decrypt`` is eager: it happens before the
+        destination is known, because the decrypt needs the password now and
+        the pick-step account is the only one there is. Only a successful
+        commit used to undo it, so cancelling, or picking a different file,
+        left ours on an account it was never that account's to hold — with
+        that account's own password discarded.
+
+        Reached from ``done``, which every cancel route emits, so one
+        connection covers the pick step, the preview step, the map step and
+        the batch review. After a completed import
+        ``_carry_stored_pw_to_committed_account`` has already settled and
+        cleared the record, so this is a no-op there. A FAILED commit
+        deliberately does not settle: the wizard stays open for a retry, and
+        the retry needs the record.
+
+        **An idle auto-lock is the one exit this cannot repair**, and that is
+        stated rather than hidden: the shell destroys the wizard without
+        emitting ``done``, and the vault is already locked, so there is nothing
+        to write with. The wrong account keeps the entry until the user next
+        edits it. Closing that needs the write to stop being eager, which is
+        FIBR-0321's other branch and a redesign of this step.
+        """
+        if self._stored_pw is None:
+            return
+        stored_account, _password, prior = self._stored_pw
+        self._stored_pw = None
+        try:
+            self._accounts.set_pdf_password(stored_account, prior)
+        except VaultLockedError:
+            # An auto-lock between the write and this call. Nothing can be
+            # written to a locked vault, and raising out of a Qt slot is the
+            # crash class FIBR-0212 exists to stop.
+            return
 
     # -- the batch (FIBR-0085) ------------------------------------------------
     #

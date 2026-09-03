@@ -807,3 +807,130 @@ def test_candidate_tables_maps_pdf_parse_error_to_value_error(monkeypatch):
     monkeypatch.setattr(pdfplumber, "open", boom)
     with pytest.raises(ValueError):
         PdfImporter().candidate_tables(b"whatever")
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0321 — every exit gives the provisional account its password back
+# --------------------------------------------------------------------------- #
+def test_FIBR0321_cancelling_restores_the_provisional_accounts_own_password(
+    qtbot, service, tmp_path, monkeypatch
+):
+    """The restore ran only after a SUCCESSFUL commit. Cancel, and ours stayed
+    on the provisional account with that account's own password discarded — a
+    credential filed against the wrong record, and a real one destroyed.
+
+    The write is eager because the decrypt needs the password before any
+    destination is known; what was missing is undoing it on the way out.
+    """
+    accounts = AccountService(service.vault)
+    current = accounts.add_account("Current acct", "current").id
+    accounts.set_pdf_password(current, "the accounts own password")
+    ImportService(service.vault).save_profile("bank", _PDF_HEADER, _PDF_MAPPING)
+    enc = _encrypt(_fixture("single_table.pdf"), user="secret")
+    path = _write(tmp_path, "locked.pdf", enc)
+    _patch_dialog(monkeypatch, [{"password": "secret", "remember": True}])
+
+    widget = _wizard(qtbot, service, current)
+    widget._select_file(str(path))
+    assert accounts.get_pdf_password(current) == "secret", (
+        "precondition: the eager write must have landed, or there is nothing "
+        "for the cancel to undo"
+    )
+
+    widget.done.emit()  # what every Cancel in this wizard reaches
+
+    assert accounts.get_pdf_password(current) == "the accounts own password", (
+        "cancelling left this statement's password on the provisional account "
+        "and threw away that account's own.\n"
+        f"  actual:   {accounts.get_pdf_password(current)!r}"
+    )
+
+
+def test_FIBR0321_picking_another_file_restores_before_dropping_the_record(
+    qtbot, service, tmp_path, monkeypatch
+):
+    """The path that dropped the restore data outright: `_select_file` set
+    `_stored_pw = None` for the new file, so the write against the previous
+    provisional account could never be undone by anything."""
+    accounts = AccountService(service.vault)
+    current = accounts.add_account("Current acct", "current").id
+    accounts.set_pdf_password(current, "the accounts own password")
+    ImportService(service.vault).save_profile("bank", _PDF_HEADER, _PDF_MAPPING)
+    enc = _encrypt(_fixture("single_table.pdf"), user="secret")
+    locked = _write(tmp_path, "locked.pdf", enc)
+    plain = _write(tmp_path, "plain.pdf", _fixture("single_table.pdf"))
+    _patch_dialog(monkeypatch, [{"password": "secret", "remember": True}])
+
+    widget = _wizard(qtbot, service, current)
+    widget._select_file(str(locked))
+    assert accounts.get_pdf_password(current) == "secret", "precondition: written"
+
+    widget._select_file(str(plain))  # the user changes their mind about the file
+
+    assert accounts.get_pdf_password(current) == "the accounts own password", (
+        "picking a different file dropped the record that knew how to undo the "
+        "write, stranding this statement's password on the account.\n"
+        f"  actual:   {accounts.get_pdf_password(current)!r}"
+    )
+
+
+def test_FIBR0321_a_completed_import_still_carries_and_does_not_double_settle(
+    qtbot, service, tmp_path, monkeypatch
+):
+    """The success path must be unchanged: the password still MOVES to the
+    account the rows landed on (FIBR-0249), and the release that now runs on
+    `done` must not then undo the carry — `done` is emitted right after a
+    successful commit too.
+    """
+    accounts = AccountService(service.vault)
+    current = accounts.add_account("Current acct", "current").id
+    credit = accounts.add_account("Credit Card acct", "credit_card").id
+    ImportService(service.vault).save_profile("bank", _PDF_HEADER, _PDF_MAPPING)
+    enc = _encrypt(_fixture("single_table.pdf"), user="secret")
+    path = _write(tmp_path, "locked.pdf", enc)
+    _patch_dialog(monkeypatch, [{"password": "secret", "remember": True}])
+
+    widget = _wizard(qtbot, service, current)
+    widget._select_file(str(path))
+    widget._confirm_account_combo.setCurrentIndex(
+        widget._confirm_account_combo.findData(credit)
+    )
+    widget._import_button.click()  # commits, carries, then emits done
+
+    assert accounts.get_pdf_password(credit) == "secret", (
+        "the carry to the committed account was undone by the release running "
+        "on the same `done` the commit emits"
+    )
+    assert accounts.get_pdf_password(current) is None, (
+        "and the provisional account, which had no password of its own, keeps none"
+    )
+
+
+def test_FIBR0321_remembering_without_retargeting_keeps_the_password(
+    qtbot, service, tmp_path, monkeypatch
+):
+    """The ordinary case, and the one the settle-and-clear protects.
+
+    With no re-target the carry has nothing to move and returns early. If it
+    returns WITHOUT clearing the record, the release that now runs on the same
+    `done` restores the account to what it held before the import -- nothing --
+    so ticking Remember on a straightforward import would silently forget the
+    password. Found by mutation_probe: the other legs all re-target, and on
+    that path the extra restore is idempotent and invisible.
+    """
+    accounts = AccountService(service.vault)
+    current = accounts.add_account("Current acct", "current").id
+    ImportService(service.vault).save_profile("bank", _PDF_HEADER, _PDF_MAPPING)
+    enc = _encrypt(_fixture("single_table.pdf"), user="secret")
+    path = _write(tmp_path, "locked.pdf", enc)
+    _patch_dialog(monkeypatch, [{"password": "secret", "remember": True}])
+
+    widget = _wizard(qtbot, service, current)
+    widget._select_file(str(path))
+    widget._import_button.click()  # same account throughout — no re-target
+
+    assert accounts.get_pdf_password(current) == "secret", (
+        "INV-7f: the user ticked Remember and imported to the account it was "
+        "stored against, and the password is gone.\n"
+        f"  actual:   {accounts.get_pdf_password(current)!r}"
+    )

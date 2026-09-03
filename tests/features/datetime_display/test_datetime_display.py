@@ -227,7 +227,19 @@ def test_FIBR0327_app_clock_follows_the_pinned_zone():
 
     east = today_in("Pacific/Kiritimati")  # UTC+14
     west = today_in("Pacific/Niue")  # UTC-11
-    assert (east - west).days in (0, 1), "the two zones are at most a day apart"
+    # The zones are 25 hours apart, so their calendar dates differ by ONE day
+    # for 23 hours out of every 24 and by TWO for the remaining hour — 10:00 to
+    # 11:00 UTC, when Kiritimati has reached tomorrow and Niue is still on
+    # yesterday. Never zero, which is the property the legs below need.
+    #
+    # The bound read `in (0, 1)`: it admitted the case that cannot happen and
+    # excluded the one that happens daily, so this suite went red for an hour a
+    # day. Caught by the gate on 2026-09-03 during that hour.
+    assert (east - west).days in (1, 2), (
+        "the two zones must disagree about the calendar day, or the legs below "
+        "prove nothing about which clock the app reads.\n"
+        f"  actual:   {east} vs {west}"
+    )
 
     try:
         set_app_timezone("Pacific/Kiritimati")
