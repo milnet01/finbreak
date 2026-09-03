@@ -1068,10 +1068,13 @@ state meets it as squarely as an exhausted ladder does — the enumeration above
 simply predates it (FIBR-0313 C1).
 
 A v1 sidecar means the vault has not migrated — open as today, then run
-S0–S6. Two kinds of debris can sit beside a v1 sidecar and **neither is a
-usable vault**: a stray `vault.db.migrating` from an interrupted S1, which S1
-unlinks; and a stray `.pre-v2` pair from a run that aborted before S4, which
-S0 overwrites. In both cases nothing was ever swapped, so the live pair is
+S0–S6. Debris can sit beside a v1 sidecar, and **none of it is a usable
+vault**: a stray `vault.db.migrating` from an interrupted S1, which S1 unlinks;
+a stray `vault.kdf.json.migrating` from a run that aborted between S3's write
+and S4's rename, which the next S3 overwrites — the sidecar writer renames a
+fresh `.tmp` over its destination, so a stray one is replaced rather than
+refused; and a stray `.pre-v2` pair from a run that aborted before S4, which S0
+overwrites. In every case nothing was ever swapped, so the live pair is
 untouched and the migration simply starts again.
 
 ### 13.4 Compatibility

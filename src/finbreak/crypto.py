@@ -474,7 +474,17 @@ def sidecar_version(sidecar_path: Path) -> int:
     migration source. A v2-only loader would reject all of them, and the
     migration could then never run — it needs the v1 vault *open* to copy it.
     """
-    data = _read_json(sidecar_path)
+    return _version_of(_read_json(sidecar_path))
+
+
+def _version_of(data: dict[str, Any]) -> int:
+    """:func:`sidecar_version`'s answer, from an ALREADY-parsed sidecar.
+
+    Split out so a caller holding the parsed dict does not re-read and re-parse
+    the file to ask its version — ``read_sidecar_v2`` did exactly that, so every
+    v2 sidecar was read twice, and three times through ``auth.read_sidecar``
+    (FIBR-0313 L16). One implementation, so the two entry points cannot drift.
+    """
     if "sidecar_version" not in data:
         return 1
     try:
@@ -542,7 +552,8 @@ def read_sidecar_v2(sidecar_path: Path) -> VaultSidecar:
     :func:`_validate_slot_lengths`'.
     """
     data = _read_json(sidecar_path)
-    if sidecar_version(sidecar_path) != SIDECAR_VERSION:
+    # From the dict just parsed, not by re-reading the path (FIBR-0313 L16).
+    if _version_of(data) != SIDECAR_VERSION:
         raise KdfPolicyError("not a version-2 sidecar")
 
     kdf = data.get("kdf")

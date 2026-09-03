@@ -587,3 +587,80 @@ def test_write_sidecar_json_flushes_the_parent_directory(
         f"  expected: {parent_id} among the flushed directories\n"
         f"  actual:   {flushed}"
     )
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0313 L16 — the sidecar is read once per read_sidecar_v2
+# --------------------------------------------------------------------------- #
+def test_read_sidecar_v2_reads_the_file_once(
+    paths: tuple[Path, Path], service: AuthService, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``read_sidecar_v2`` parsed the file, then asked ``sidecar_version`` for
+    its version -- and that re-read and re-parsed the same path. So every v2
+    sidecar was read twice, and three times through ``auth.read_sidecar``.
+
+    Filed INFO because it fails closed: the cost is duplicated work, never a
+    wrong answer. The version now comes from the dict already in hand.
+    """
+    from finbreak import crypto
+
+    _vault_path, sidecar_path = paths
+    create_vault(service)
+    service.lock()
+
+    reads: list[Path] = []
+    real_read_text = Path.read_text
+
+    def counting_read_text(self: Path, *args: Any, **kwargs: Any) -> str:
+        if self == sidecar_path:
+            reads.append(self)
+        return real_read_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", counting_read_text)
+
+    crypto.read_sidecar_v2(sidecar_path)
+
+    assert len(reads) == 1, (
+        "the sidecar was read more than once for one parse. The version came "
+        "from a second read of the same path rather than from the dict already "
+        "parsed.\n"
+        "  expected: 1 read\n"
+        f"  actual:   {len(reads)}"
+    )
+
+
+def test_read_sidecar_v2_refuses_a_v1_sidecar_by_its_version(
+    paths: tuple[Path, Path],
+) -> None:
+    """The version gate is what makes ``read_sidecar_v2`` refuse a v1 sidecar
+    FOR THE RIGHT REASON. Dropping it still refuses -- the flat v1 shape has no
+    ``kdf`` group, so the next check fails anyway -- which is why nothing caught
+    its removal (measured with mutation_probe while splitting out
+    ``_version_of``). Resting the contract on that accident is what this pins.
+    """
+    from finbreak import crypto
+
+    _vault_path, sidecar_path = paths
+    v1 = sidecar_path.parent / "v1.kdf.json"
+    v1.write_text(
+        json.dumps(
+            {
+                "format_version": 1,
+                "memory_kib": 65536,
+                "time_cost": 3,
+                "parallelism": 1,
+                "key_len": 32,
+                "salt_len": 16,
+                "salt_hex": "00" * 16,
+            }
+        )
+    )
+
+    with pytest.raises(KdfPolicyError) as excinfo:
+        crypto.read_sidecar_v2(v1)
+
+    assert "version-2" in str(excinfo.value), (
+        "a v1 sidecar was refused, but not for being v1 -- the message came "
+        "from whichever field check happened to fail next.\n"
+        f"  actual:   {str(excinfo.value)!r}"
+    )
