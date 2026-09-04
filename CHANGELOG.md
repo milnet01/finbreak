@@ -74,6 +74,12 @@ signaling per
 
 ### Fixed
 
+- **The import wizard no longer crashes if the vault locks itself while you are partway through.** (FIBR-0327)
+  finbreak locks the vault after a spell of inactivity. Several steps of
+  the import wizard read the vault without expecting that, so leaving one
+  open long enough and then carrying on could close the app instead of
+  returning you to the unlock screen.
+
 - **Two copies of finbreak can no longer open the same vault after a crash.** (FIBR-0327)
   If finbreak was killed rather than closed, it leaves a file behind that
   the next launch has to clear away. Two launches started together both

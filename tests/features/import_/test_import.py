@@ -14,9 +14,10 @@ import logging
 from collections.abc import Iterator
 from decimal import Decimal
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSignalBlocker, Qt
 
 from conftest import (
     _PW,
@@ -27,6 +28,7 @@ from conftest import (
     raising_conn,
 )
 from finbreak.crypto import SALT_LEN, derive_key
+from finbreak.errors import VaultLockedError
 from finbreak.importers.csv_importer import CsvImporter, read_header
 from finbreak.migrations import LATEST_SCHEMA_VERSION, run_migrations
 from finbreak.models import ColumnMapping, NegativeStyle
@@ -1082,3 +1084,161 @@ def test_FIBR0327_preview_honours_the_negative_style_preference(
         f"  actual: {cell!r}"
     )
     assert cell == _format_amount(Decimal("-10.00"), "ZAR", NegativeStyle.BRACKETS)
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0327 — an idle auto-lock must not escape a wizard slot
+# --------------------------------------------------------------------------- #
+_OFX_HEADER = (
+    "OFXHEADER:100\r\nDATA:OFXSGML\r\nVERSION:102\r\nSECURITY:NONE\r\n"
+    "ENCODING:USASCII\r\nCHARSET:1252\r\nCOMPRESSION:NONE\r\nOLDFILEUID:NONE\r\n"
+    "NEWFILEUID:NONE\r\n\r\n"
+)
+
+
+def _write_ofx(tmp_path: Path, name: str) -> str:
+    """A one-transaction OFX. Only the account-match path matters here, so the
+    body is the smallest thing ``OfxImporter`` accepts."""
+    body = (
+        _OFX_HEADER + "<OFX>\n"
+        "<BANKMSGSRSV1><STMTTRNRS><TRNUID>1<STATUS><CODE>0<SEVERITY>INFO</STATUS>\n"
+        "<STMTRS><CURDEF>ZAR<BANKACCTFROM><BANKID>250655<ACCTID>1234567890"
+        "<ACCTTYPE>CHECKING</BANKACCTFROM>\n"
+        "<BANKTRANLIST><DTSTART>20260101\n<DTEND>20260131\n"
+        "<STMTTRN>\n<TRNTYPE>DEBIT\n<DTPOSTED>20260105\n<TRNAMT>-10.00\n"
+        "<NAME>shop\n<FITID>F1\n</STMTTRN>\n</BANKTRANLIST>\n"
+        "<LEDGERBAL><BALAMT>0.00<DTASOF>20260131</LEDGERBAL>\n"
+        "</STMTRS></STMTTRNRS></BANKMSGSRSV1>\n</OFX>\n"
+    )
+    (tmp_path / name).write_bytes(body.encode())
+    return str(tmp_path / name)
+
+
+def _seed_csv_preview(widget, service, tmp_path, accounts):
+    """Drive the wizard to the preview step, pointed at the first account."""
+    current, _other = accounts
+    ImportService(service.vault).save_profile("MyBank", HEADER, SINGLE)
+    path = _write_csv(
+        tmp_path, "stmt.csv", HEADER, [["2026-01-05", "Coffee", "-10.00"]]
+    )
+    widget._account_combo.setCurrentIndex(widget._account_combo.findData(current))
+    widget._select_file(str(path))
+    assert widget._preview is not None, "the fixture did not reach the preview step"
+
+
+def _case_refill_account_combos(widget, service, tmp_path, monkeypatch, accounts):
+    return widget._refill_account_combos
+
+
+def _case_pick_file(widget, service, tmp_path, monkeypatch, accounts):
+    # An OFX file, deliberately not a CSV. The CSV branch routes its vault reads
+    # through a `FinbreakError` handler already, so that leg would pass whether
+    # or not this slot is guarded. OFX reaches `_apply_account_match`, which sits
+    # outside every try on this path — measured: with a CSV here, removing the
+    # guard did not turn the test red.
+    path = _write_ofx(tmp_path, "stmt.ofx")
+    monkeypatch.setattr(
+        "finbreak.ui.import_wizard.QFileDialog.getOpenFileNames",
+        staticmethod(lambda *a, **k: ([path], "")),
+    )
+    return widget._on_pick_file
+
+
+def _case_ofx_statement_changed(widget, service, tmp_path, monkeypatch, accounts):
+    widget._select_file(_write_ofx(tmp_path, "stmt.ofx"))
+    assert widget._ofx_statements, "the fixture parsed no OFX statement"
+    return lambda: widget._on_ofx_statement_changed(0)
+
+
+def _case_pdf_password(widget, service, tmp_path, monkeypatch, accounts):
+    # The decrypt itself is not under test — the vault read that follows it is.
+    # Hand the slot plaintext and a dialog that says "remember".
+    monkeypatch.setattr(widget, "_try_decrypt", lambda data, password: b"%PDF-1.4\n")
+    dialog = SimpleNamespace(password=lambda: "hunter2", remember=lambda: True)
+    return lambda: widget._on_pdf_password(dialog, b"encrypted")
+
+
+def _case_pdf_table_changed(widget, service, tmp_path, monkeypatch, accounts):
+    widget._pdf_candidates = [[HEADER, ["2026-01-05", "Coffee", "-10.00"]]]
+    return lambda: widget._on_pdf_table_changed(0)
+
+
+def _case_confirm_account_changed(widget, service, tmp_path, monkeypatch, accounts):
+    _seed_csv_preview(widget, service, tmp_path, accounts)
+    _current, other = accounts
+    combo = widget._confirm_account_combo
+    index = combo.findData(other)
+    assert index >= 0, "the destination combo never listed the other account"
+    # Point it at the OTHER account without firing the slot, so the re-target
+    # happens after the lock rather than during setup.
+    with QSignalBlocker(combo):
+        combo.setCurrentIndex(index)
+    return lambda: widget._on_confirm_account_changed(index)
+
+
+def _case_import_carries_stored_password(
+    widget, service, tmp_path, monkeypatch, accounts
+):
+    _seed_csv_preview(widget, service, tmp_path, accounts)
+    _current, other = accounts
+    # The rows commit, and the vault locks before the password is carried across
+    # — the one leg whose guard sits AFTER the work has already succeeded.
+    monkeypatch.setattr(widget._imports, "commit_import", lambda *a, **k: None)
+    widget._stored_pw = (other, "hunter2", None)
+    return widget._on_import
+
+
+@pytest.mark.parametrize(
+    "setup",
+    [
+        pytest.param(_case_refill_account_combos, id="refill_account_combos"),
+        pytest.param(_case_pick_file, id="on_pick_file"),
+        pytest.param(_case_ofx_statement_changed, id="on_ofx_statement_changed"),
+        pytest.param(_case_pdf_password, id="on_pdf_password"),
+        pytest.param(_case_pdf_table_changed, id="on_pdf_table_changed"),
+        pytest.param(_case_confirm_account_changed, id="on_confirm_account_changed"),
+        pytest.param(_case_import_carries_stored_password, id="on_import"),
+    ],
+)
+def test_FIBR0327_an_auto_lock_never_escapes_a_wizard_slot(
+    qtbot, service, tmp_path, monkeypatch, setup
+):
+    """Every wizard entry point that reads the vault must survive an idle
+    auto-lock (2026-08-31 audit).
+
+    The vault locks on an idle timer, so any service call can raise
+    ``VaultLockedError`` at any moment. Raising one out of a Qt slot is the
+    crash class FIBR-0212 exists to stop, and these slots reach the vault
+    through helpers sitting OUTSIDE the ``try`` their caller does have —
+    several through no ``try`` at all.
+
+    The lock is a real ``service.lock()`` rather than a patched method, so each
+    leg meets the state an actual auto-lock leaves behind: setup runs against a
+    live vault, the vault locks, and only then does the slot run.
+
+    The accounts are created BEFORE the widget on purpose — the combos are
+    filled in ``__init__``, and seeding afterwards leaves the destination combo
+    empty, which makes the re-target leg return early and pass whether or not
+    the guard is there.
+
+    The review named two sites; re-derived against current source there are
+    seven, reached from these entry points.
+    """
+    from finbreak.ui.import_wizard import ImportWizardWidget
+
+    accounts = _two_accounts(service)
+    widget = ImportWizardWidget(service)
+    qtbot.addWidget(widget)
+    invoke = setup(widget, service, tmp_path, monkeypatch, accounts)
+
+    service.lock()
+    assert not service.vault.is_open, "the fixture did not actually lock the vault"
+
+    try:
+        invoke()
+    except VaultLockedError as exc:  # pragma: no cover - the defect under test
+        pytest.fail(
+            "FIBR-0327: an idle auto-lock escaped this wizard slot into Qt, "
+            "which is the crash class FIBR-0212 exists to stop.\n"
+            f"  raised: {exc!r}"
+        )

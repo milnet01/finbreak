@@ -475,13 +475,16 @@ class ImportWizardWidget(QWidget):
         Both are filled once in ``__init__``; a pre-RUN Cancel returns the user
         to the pick step (§ 4.6), which would otherwise still be showing the
         account set as it was before they created one."""
-        for combo in (self._account_combo, self._confirm_account_combo):
-            with QSignalBlocker(combo):
-                previous = combo.currentData()
-                combo.clear()
-                self._fill_account_combo(combo)
-                if previous is not None:
-                    combo.setCurrentIndex(combo.findData(previous))
+        try:
+            for combo in (self._account_combo, self._confirm_account_combo):
+                with QSignalBlocker(combo):
+                    previous = combo.currentData()
+                    combo.clear()
+                    self._fill_account_combo(combo)
+                    if previous is not None:
+                        combo.setCurrentIndex(combo.findData(previous))
+        except VaultLockedError:
+            return  # auto-lock fired — silent, like the other handlers
 
     # -- navigation / actions -------------------------------------------------
     def _goto_step(self, index: int) -> None:
@@ -497,13 +500,16 @@ class ImportWizardWidget(QWidget):
         )
         if not paths:
             return  # cancelled — stay on the pick step, as today
-        if len(paths) == 1:
-            # One file routes to the existing single-file flow, ENTIRELY
-            # unchanged (§ 4.1). It is also the better screen: a one-row review
-            # table is worse than the preview it would replace.
-            self._select_file(paths[0])
-            return
-        self._select_files(paths)
+        try:
+            if len(paths) == 1:
+                # One file routes to the existing single-file flow, ENTIRELY
+                # unchanged (§ 4.1). It is also the better screen: a one-row
+                # review table is worse than the preview it would replace.
+                self._select_file(paths[0])
+                return
+            self._select_files(paths)
+        except VaultLockedError:
+            return  # auto-lock fired — silent, like the other handlers
 
     def _select_file(self, path: str) -> None:
         """Load the picked file and route by format. **OFX** (FIBR-0008 D10):
@@ -774,7 +780,10 @@ class ImportWizardWidget(QWidget):
         # Re-preview the chosen statement (no separate "Next" button, INV-7e).
         if 0 <= index < len(self._ofx_statements):
             self._error.clear()
-            self._preview_ofx_statement(index)
+            try:
+                self._preview_ofx_statement(index)
+            except VaultLockedError:
+                return  # auto-lock fired — silent, like the other handlers
 
     def _select_pdf(self, path: str) -> None:
         """Read (size-capped, D10) + kick off the decrypt state machine (FIBR-0065
@@ -852,10 +861,13 @@ class ImportWizardWidget(QWidget):
     def _on_pdf_password(self, dialog: PasswordDialog, data: bytes) -> None:
         password, remember = dialog.password(), dialog.remember()
         result = self._try_decrypt(data, password)
-        if isinstance(result, bytes):
-            self._after_decrypt(result, password, remember)
-        elif result is _NEED_PASSWORD:
-            self._prompt_pdf_password(data)  # wrong password → re-prompt (INV-3)
+        try:
+            if isinstance(result, bytes):
+                self._after_decrypt(result, password, remember)
+            elif result is _NEED_PASSWORD:
+                self._prompt_pdf_password(data)  # wrong password → re-prompt (INV-3)
+        except VaultLockedError:
+            return  # auto-lock fired — silent, like the other handlers
         # result is None → a friendly message was already shown; stop
 
     def _after_decrypt(
@@ -971,7 +983,10 @@ class ImportWizardWidget(QWidget):
     def _on_pdf_table_changed(self, index: int) -> None:
         if 0 <= index < len(self._pdf_candidates):
             self._error.clear()
-            matched = self._apply_pdf_table(index)
+            try:
+                matched = self._apply_pdf_table(index)
+            except VaultLockedError:
+                return  # auto-lock fired — silent, like the other handlers
             if matched is not None:
                 self._apply_profile_to_combos(matched)
                 self._refresh_date_ui(detect=False)
@@ -1402,7 +1417,10 @@ class ImportWizardWidget(QWidget):
         self._pending_hint = None
         self._create_account_button.hide()
         self._error.clear()
-        self._preview = self._imports.retarget(self._preview, account_id)
+        try:
+            self._preview = self._imports.retarget(self._preview, account_id)
+        except VaultLockedError:
+            return  # auto-lock fired — silent, like the other handlers
         self._apply_preview_counts(self._preview)
 
     def _fill_preview_table(self, preview: ImportPreview) -> None:
@@ -1483,7 +1501,14 @@ class ImportWizardWidget(QWidget):
         except (ValueError, FinbreakError) as exc:
             self._error.setText(str(exc))
             return
-        self._carry_stored_pw_to_committed_account()
+        try:
+            self._carry_stored_pw_to_committed_account()
+        except VaultLockedError:
+            # The rows are already committed, so this still finishes. An
+            # auto-lock here only leaves the remembered password on the
+            # provisional account; `_release_stored_pw`, wired to `done`, is
+            # itself guarded and settles what it can.
+            pass
         self.done.emit()
 
     def _carry_stored_pw_to_committed_account(self) -> None:
