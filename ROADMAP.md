@@ -10393,7 +10393,7 @@ is a future error tomorrow.
   Kind: test.
   Source: review-code 2026-08-31 lane=ui-app-shell.
 
-- 🚧 [FIBR-0327] **Work the MEDIUM tail of the 2026-08-31 audit — 54 findings across 15 lanes.**
+- ✅ [FIBR-0327] **Work the MEDIUM tail of the 2026-08-31 audit — 54 findings across 15 lanes.**
   The findings are recorded in docs/reviews/2026-08-31-audit-findings.md; the
   classes worth naming:
 
@@ -10635,7 +10635,54 @@ is a future error tomorrow.
   single_instance's narrowed-but-open stale-socket race; and FIBR-0096's
   claim that the per-artifact .sig is the primary integrity gate, false for
   a rename-replay.
-  **Layman:** A batch of smaller real defects the full sweep found; most are now fixed, with a lower-severity tail left.
+  Resolved (2026-09-04): the tail is empty. Gate green at 2191 passed / 2
+  skipped.
+
+  single_instance's stale-socket race (d765184). The review read it as a
+  probe timing out against a live owner, which would need load or
+  scheduler jitter. It needs neither, and that correction is why it could
+  be driven deterministically: with a genuine crash leftover at the path,
+  BOTH launches get AddressInUseError, BOTH probe the same silence, and
+  BOTH clear it -- so the second unlinks the first's freshly-bound socket.
+  The loser keeps a server reporting isListening() while bound to an
+  unlinked inode, so app.py's fail-open check finds a guard and both
+  processes proceed. The recovery now runs under an exclusive flock and a
+  launch that cannot take it stands down; the kernel drops the lock
+  however the holder exits, so the claim cannot become the stale thing it
+  clears up. Proved by interposing the second launch at the moment the
+  first decides the path is stale.
+
+  import_wizard's unguarded vault reads (dce5a70). The review said two and
+  named no line; re-derived against current source there are seven, and
+  two of the enclosing functions had no try at all. The guards went to the
+  seven Qt entry points rather than the helpers, because that is where an
+  exception escapes into Qt. _on_import takes `pass` rather than `return`:
+  the rows are already committed, so it must still finish. The test locks
+  the vault for real rather than patching a service method.
+
+  Worth keeping: TWO legs of that test were vacuous on the first attempt
+  and only mutation testing said so -- both passed with their guard
+  removed. The wizard fills its account combos in __init__, so seeding
+  accounts afterwards left the destination combo empty and the re-target
+  slot returned early; and the pick-file leg used a CSV, whose branch
+  already routes vault reads through a FinbreakError handler, so it never
+  reached an unguarded call.
+
+  FIBR-0096's integrity claim. The per-artifact .sig binds bytes to the
+  signing key and nothing else -- not a version, a basename or a platform
+  -- so it does not catch a rename-replay, where a genuinely signed older
+  artifact is re-uploaded under this release's names. SHA256SUMS is the
+  only published thing binding a basename to its bytes, and it is what the
+  same attacker can delete: the two cover different attacks rather than
+  being a gate and its backup. Rule 14: the correction changes no
+  requirement (the manifest is already mandatory with a hard gate) and no
+  conformer writes a different line, so no review-contract gate.
+
+  Filed rather than fixed in passing: the updater sits behind the same
+  limit -- it compares the release tag against __version__ and verifies
+  the .sig, and nothing ties the downloaded bytes to that tag, so a replay
+  installs as an upgrade. FIBR-0333.
+  **Layman:** A batch of smaller real defects the full sweep found, now all fixed.
   Kind: review-fix.
   Source: review-code 2026-08-31.
 
@@ -10690,6 +10737,40 @@ is a future error tomorrow.
   **Layman:** Import thirty spreadsheets of the same layout without naming a saved layout, and it still asks you thirty times.
   Kind: ux.
   Source: in-session-2026-09-03 (observed while fixing FIBR-0319).
+
+- 📋 [FIBR-0333] **Nothing ties a downloaded update to the version it claims to be.**
+  Found while correcting FIBR-0096's claim that the per-artifact `.sig` is
+  the primary integrity gate (2026-08-31 audit). The signature binds bytes
+  to the signing key and nothing else -- not a version, a basename or a
+  platform.
+
+  update.py compares the release TAG against __version__ and then verifies
+  the asset's `.sig`. Neither step ties the downloaded bytes to that tag.
+  So a release-write attacker with no signing key can re-upload a
+  previously published, genuinely signed AppImage or .exe under the new
+  release's asset names: the version compare passes because the tag is
+  newer, the signature passes because the bytes really were signed, and
+  the user is silently downgraded to a build whose fixed defects are back.
+  It then repeats on every check, because the installed version stays
+  below the tag.
+
+  SHA256SUMS is the only published thing binding a basename to its bytes,
+  and the updater never reads it -- confirmed, the update services do not
+  mention it. That manifest is also what the same attacker can delete,
+  which FIBR-0096 already records as a residual.
+
+  Not yet decided, and worth deciding before building: whether the updater
+  should verify the artifact against a signed SHA256SUMS, or whether the
+  signed payload should carry the version so the bytes themselves assert
+  what they are. The second needs a release-format change; the first
+  inherits the "attacker deletes the manifest" residual and needs a
+  policy for a missing one.
+
+  Requires release-write compromise, which is already a strong position --
+  so this is defence in depth rather than an open door.
+  **Layman:** Someone who could publish to our releases page could hand the updater an older, genuine finbreak and it would install as if it were newer.
+  Kind: security.
+  Source: FIBR-0327 tail, 2026-09-04.
 
 ## How to add an item
 
