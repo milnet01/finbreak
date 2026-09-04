@@ -26,8 +26,16 @@ from __future__ import annotations
 
 import logging
 import os
+import tempfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 
 from PySide6.QtNetwork import QAbstractSocket, QLocalServer, QLocalSocket
+
+try:
+    import fcntl
+except ImportError:  # Windows — see `_claim`
+    fcntl = None  # type: ignore[assignment]
 
 log = logging.getLogger(__name__)
 
@@ -88,6 +96,55 @@ def socket_name(base: str = "finbreak") -> str:
     return base if uid is None else f"{base}-{uid}"
 
 
+def _claim_path(name: str) -> str:
+    """Where the recovery claim for socket *name* lives.
+
+    Deliberately NOT ``<name>.lock``: Qt already creates that file beside its
+    own socket, which is why `socket_name` keeps a byte of headroom for it.
+    Taking it would be fighting the library for its own bookkeeping.
+    """
+    if os.path.isabs(name):
+        return f"{name}.claim"
+    # A bare name is resolved by Qt into a shared temp dir, so the claim goes
+    # to the same place, under the same name.
+    return os.path.join(tempfile.gettempdir(), f"{name}.claim")
+
+
+@contextmanager
+def _claim(name: str) -> Iterator[bool]:
+    """Hold the exclusive right to RECOVER *name*; yields False if someone else
+    holds it.
+
+    `removeServer` then `listen` is two syscalls with nothing between them, so
+    two launches clearing ONE crash leftover both unlink and both bind — and
+    the second unlinks the first's freshly-bound, live socket. That needs no
+    timing fluke: both got AddressInUseError from the same stale file and both
+    probed the same silence, so both reach the same wrong conclusion (INV-3b).
+
+    An `flock` makes the recovery one-at-a-time. The kernel drops it when the
+    holder exits however it exits, so the lock cannot itself become the stale
+    thing it exists to clear up.
+
+    Fails OPEN, like everything else here: with nowhere to put the lock we
+    recover unserialised, which is what this module did before it existed.
+    """
+    fd: int | None = None
+    held = True
+    try:
+        if fcntl is not None:
+            try:
+                fd = os.open(_claim_path(name), os.O_CREAT | os.O_RDWR, 0o600)
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                held = False
+            except OSError:
+                log.debug("single-instance: no recovery claim for %r", name)
+        yield held
+    finally:
+        if fd is not None:
+            os.close(fd)  # releases the flock
+
+
 def another_instance_is_running(name: str) -> bool:
     """True when a live instance answers on *name* (and has been nudged to raise
     its window). False means this process should carry on and become the owner."""
@@ -119,6 +176,13 @@ def listen(name: str) -> QLocalServer | None:
     So: try to listen; on ``AddressInUseError`` re-probe, and clear the path only
     when nobody answers. A live owner keeps its socket and this launch returns
     ``None`` — the caller's fail-open path.
+
+    The re-probe alone was not enough. Two launches meeting ONE crash leftover
+    both get ``AddressInUseError``, both probe the same silence and both clear
+    it — so the second unlinks the FIRST's freshly-bound socket, which is
+    INV-3a again through the other door and needs no timing fluke to happen.
+    The whole recovery therefore runs under an exclusive claim, and a launch
+    that cannot take it stands down (INV-3b) — see :func:`_claim`.
     """
     server = QLocalServer()
     if server.listen(name):
@@ -126,14 +190,26 @@ def listen(name: str) -> QLocalServer | None:
     if server.serverError() != QAbstractSocket.SocketError.AddressInUseError:
         log.debug("single-instance: could not listen on %r; running unguarded", name)
         return None
-    if another_instance_is_running(name):
-        # A live owner holds the name (and has just been nudged to the front).
-        log.debug("single-instance: %r is owned by a live instance", name)
-        return None
-    # Bound but unanswered: a crash leftover. Safe to clear (INV-3).
-    QLocalServer.removeServer(name)
-    server = QLocalServer()
-    if not server.listen(name):
-        log.debug("single-instance: could not listen on %r; running unguarded", name)
-        return None
-    return server
+    with _claim(name) as claimed:
+        if not claimed:
+            # Another launch is recovering this very socket. It is about to
+            # become the owner or to fail open; joining in is how both of us
+            # end up unlinking the other's socket (INV-3b).
+            log.debug("single-instance: %r is being recovered elsewhere", name)
+            return None
+        # No need to re-try `listen` first: whoever held the claim before us
+        # either bound their own socket, which the probe below finds, or left
+        # the path clear, which makes the removeServer a no-op.
+        if another_instance_is_running(name):
+            # A live owner holds the name (and has just been nudged to the front).
+            log.debug("single-instance: %r is owned by a live instance", name)
+            return None
+        # Bound but unanswered: a crash leftover. Safe to clear (INV-3).
+        QLocalServer.removeServer(name)
+        server = QLocalServer()
+        if not server.listen(name):
+            log.debug(
+                "single-instance: could not listen on %r; running unguarded", name
+            )
+            return None
+        return server

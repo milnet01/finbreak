@@ -124,6 +124,73 @@ def test_INV3a_a_live_owner_is_never_evicted(qapp, name):
     owner.close()
 
 
+def test_INV3b_two_launches_recovering_one_stale_socket_do_not_both_win(
+    qapp, name, monkeypatch
+):
+    """Two launches clearing ONE stale socket must not both become the owner.
+
+    INV-3a shut the door where a speculative clear evicts a LIVE owner. This is
+    the door it left open, and it needs no timing fluke at all: with a genuine
+    crash leftover at the path, BOTH launches get ``AddressInUseError``, BOTH
+    probe a socket nobody is behind, BOTH conclude "stale, safe to clear" — and
+    the second one's ``removeServer`` unlinks the FIRST one's freshly-bound,
+    live socket. Two writers on one SQLCipher file, reached from the other side.
+
+    Driven by INTERPOSING the second launch at the moment the first decides the
+    path is stale, rather than by starting two processes and hoping they
+    collide. A race proved by repetition is a race that passes on a fast
+    machine.
+    """
+    probe_server = QLocalServer()
+    assert probe_server.listen(name)
+    stale_path = probe_server.fullServerName()
+    probe_server.close()  # tidy removal, so the bind below owns the path
+
+    orphan = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    orphan.bind(stale_path)  # the file exists...
+    orphan.close()  # ...but nothing is listening on it
+    assert os.path.exists(stale_path), "the fixture did not leave a stale socket"
+
+    real_probe = single_instance.another_instance_is_running
+    interposed: list[bool] = []
+    racer: list[QLocalServer | None] = []
+
+    def _probe_then_race(server_name: str) -> bool:
+        answer = real_probe(server_name)
+        # The first launch has just been told nobody is home. A second launch
+        # reaching the same point reaches the same conclusion on the same
+        # evidence — so let it run, right here, before the first one acts on it.
+        if not interposed and answer is False:
+            interposed.append(True)  # set BEFORE recursing
+            racer.append(single_instance.listen(server_name))
+        return answer
+
+    monkeypatch.setattr(
+        single_instance, "another_instance_is_running", _probe_then_race
+    )
+    first = single_instance.listen(name)
+    monkeypatch.undo()
+
+    assert interposed, (
+        "the second launch was never interposed, so this test proves nothing "
+        "about the race it is named for"
+    )
+    owners = [server for server in [first, *racer] if server is not None]
+    try:
+        assert len(owners) == 1, (
+            "two launches recovering one stale socket both became the owner, so "
+            "one of them is bound to an unlinked inode and unreachable forever "
+            "— two processes on one vault"
+        )
+        assert single_instance.another_instance_is_running(name) is True, (
+            "the surviving owner must still be REACHABLE: an unlinked socket "
+            "still reports isListening() while no probe can ever connect to it"
+        )
+    finally:
+        for server in owners:
+            server.close()
+
+
 # --------------------------------------------------------------------------- #
 # INV-4 — the socket is per-user
 # --------------------------------------------------------------------------- #

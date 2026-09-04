@@ -74,6 +74,12 @@ signaling per
 
 ### Fixed
 
+- **Two copies of finbreak can no longer open the same vault after a crash.** (FIBR-0327)
+  If finbreak was killed rather than closed, it leaves a file behind that
+  the next launch has to clear away. Two launches started together both
+  cleared it and both carried on, so two windows ended up writing one
+  encrypted vault. Only one of them now claims it; the other stands down.
+
 - **The account picker no longer arrives with an account already chosen for a statement that has none.** (FIBR-0327)
   A row reading "— pick one —" now opens a picker saying the same, with
   OK held back until you choose. It used to open on whichever account
