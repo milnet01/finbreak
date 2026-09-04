@@ -10745,6 +10745,47 @@ is a future error tomorrow.
   paths collapsing two distinguishable causes into one message; unreachable
   defensive branches; and the largest class, stale comments and docstrings
   that assert something no longer true.
+  Progress (2026-09-04, cont.): two more classes closed. Gate green at
+  2201 passed / 2 skipped.
+
+  Unicode input surfaces (0f739a2) -- and two thirds of that class are
+  deliberately NOT actioned, which is the useful part of the answer.
+
+  The casefold-without-NFC half is real and fixed: the category and account
+  uniqueness checks compared folded names without normalising, so "Cafe"
+  with a precomposed accent and the same word spelled with a combining one
+  render identically, casefold to DIFFERENT strings, and both were
+  accepted. text.py already knew this -- normalise_text goes to NFC first
+  and its docstring gives this exact example -- and so did
+  password_hint._fold. Only the two name checks did not. The new
+  text.fold_name deliberately does not reuse normalise_text, which also
+  collapses internal whitespace and would quietly make "My  Budget" a
+  duplicate of "My Budget".
+
+  The Unicode-wide digit filter in normalise_account_number is already
+  FIBR-0250, open, carrying its own analysis that it can only fail to match
+  and never mis-match. Nothing here touches that function, so it stays
+  where it is rather than being fixed twice.
+
+  Decimal accepting Unicode digits on the manual amount path is a STATED
+  decision in FIBR-0219 § 9 with a re-open trigger of Arabic shipping.
+  Changing it would contradict a spec, so it was left. What that analysis
+  does not cover is the CSV import path, which reaches Decimal with only a
+  .strip() in front and no documented rationale -- that part of the claim
+  is still open.
+
+  The has_recovery_key collapse (this commit). It answered False for two
+  different reasons: a v1 vault has no envelope and so no recovery slot,
+  which is ordinary; a KdfPolicyError means the sidecar IS v2 and its KDF
+  record is unacceptable, so the vault may well HAVE a recovery key nobody
+  can read. False stays the answer either way -- the route derives under
+  those very params -- but the second case now says so in the log. Both
+  legs tested: the anomaly must be reported AND the ordinary case must stay
+  quiet, or the log says nothing by saying everything.
+
+  Still open: display strings assembled with + or f-strings against
+  coding.md 5.2; unreachable defensive branches; the largest class, stale
+  comments and docstrings; and the CSV Decimal path noted above.
   **Layman:** Minor issues and observations from the full sweep, recorded so they are not lost.
   Kind: review-fix.
   Source: review-code 2026-08-31.
