@@ -74,6 +74,12 @@ signaling per
 
 ### Fixed
 
+- **A screen reader can now name every password and recovery-code box.** (FIBR-0328)
+  The master password, the recovery code, the new password and its
+  confirmation, and the import wizard's custom date-format box were
+  announced as unnamed. Each had only placeholder text, which disappears
+  as soon as you type.
+
 - **The import wizard no longer crashes if the vault locks itself while you are partway through.** (FIBR-0327)
   finbreak locks the vault after a spell of inactivity. Several steps of
   the import wizard read the vault without expecting that, so leaving one

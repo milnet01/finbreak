@@ -153,6 +153,12 @@ class UnlockDialog(QDialog):
         self._password = QLineEdit()
         self._password.setEchoMode(QLineEdit.EchoMode.Password)
         self._password.setPlaceholderText(self.tr("Master password"))
+        # A placeholder vanishes as soon as the user types and is not a reliable
+        # accessible-name source, so a screen reader announces an unnamed box on
+        # the one screen nobody gets past without it (WCAG 1.3.1/3.3.2). Neither
+        # field here sits in a QFormLayout, so nothing else names them
+        # (FIBR-0328).
+        self._password.setAccessibleName(self.tr("Master password"))
         self._unlock_button = QPushButton(self.tr("Unlock"))
         self._error = QLabel()
         self._restore_button = QPushButton(
@@ -173,6 +179,7 @@ class UnlockDialog(QDialog):
         # a recovery route outside FIBR-0095's backoff would be a way around it.
         self._recovery_code = QLineEdit()
         self._recovery_code.setPlaceholderText(self.tr("Recovery code"))
+        self._recovery_code.setAccessibleName(self.tr("Recovery code"))
         self._recovery_button = QPushButton(
             self.tr("Forgot password? Use your recovery code")
         )

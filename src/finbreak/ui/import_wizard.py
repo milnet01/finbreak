@@ -283,6 +283,10 @@ class ImportWizardWidget(QWidget):
         self._date_format_custom = QLineEdit()
         self._date_format_custom.setObjectName("import_date_format_custom")
         self._date_format_custom.setPlaceholderText(self.tr("e.g. %Y.%m.%d"))
+        # Its form row is `addRow("", ...)` — deliberately unlabelled, since it
+        # belongs to the Date format combo above it. An empty label is not a
+        # buddy, so without this the field is announced unnamed (FIBR-0328).
+        self._date_format_custom.setAccessibleName(self.tr("Custom date format"))
         self._date_format_custom.hide()
         # Live "how the dates read" preview (D6) — the confirm affordance.
         self._date_preview = QLabel()

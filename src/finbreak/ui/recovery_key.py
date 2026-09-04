@@ -115,6 +115,11 @@ class RecoveryCodeDialog(QDialog):
         self._display.setObjectName("recovery_code_display")
         self._display.setReadOnly(True)
         self._display.setCursorPosition(0)
+        # Shown once and never again, so a reader that cannot announce it costs
+        # the user the code itself. Read-only and not in a QFormLayout, so it
+        # has neither a placeholder nor a buddy label to fall back on
+        # (FIBR-0328).
+        self._display.setAccessibleName(self.tr("Your recovery code"))
 
         copy_button = QPushButton(self.tr("Copy"))
         copy_button.setObjectName("recovery_code_copy")
@@ -223,6 +228,9 @@ class NewMasterPasswordDialog(QDialog):
         self._password.setObjectName("new_master_password")
         self._password.setEchoMode(QLineEdit.EchoMode.Password)
         self._password.setPlaceholderText(self.tr("New master password"))
+        # As in unlock.py: a placeholder is not an accessible name, and these two
+        # are laid out directly rather than through a QFormLayout (FIBR-0328).
+        self._password.setAccessibleName(self.tr("New master password"))
         # ADVISORY only (security-model T2): it never blocks a password. The
         # same nudge as first-run, on the other path where a master password is
         # chosen -- a forced reset after a recovery-code unlock.
@@ -234,6 +242,7 @@ class NewMasterPasswordDialog(QDialog):
         self._confirm = QLineEdit()
         self._confirm.setObjectName("new_master_password_confirm")
         self._confirm.setEchoMode(QLineEdit.EchoMode.Password)
+        self._confirm.setAccessibleName(self.tr("Confirm new master password"))
         self._confirm.setPlaceholderText(self.tr("Confirm new master password"))
         self._error = QLabel()
         self._submit = QPushButton(self.tr("Set password"))

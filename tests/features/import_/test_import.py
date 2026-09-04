@@ -1242,3 +1242,18 @@ def test_FIBR0327_an_auto_lock_never_escapes_a_wizard_slot(
             "which is the crash class FIBR-0212 exists to stop.\n"
             f"  raised: {exc!r}"
         )
+
+
+def test_FIBR0328_custom_date_format_field_has_an_accessible_name(qtbot, service):
+    """The custom date-format field carries an accessible name (2026-08-31
+    audit, LOW/INFO).
+
+    Its form row is ``addRow("", ...)`` — deliberately unlabelled, because it
+    belongs to the Date format combo above it. But an empty label is not a
+    buddy, so it is the one field on that step a screen reader could not name.
+    """
+    from finbreak.ui.import_wizard import ImportWizardWidget
+
+    widget = ImportWizardWidget(service)
+    qtbot.addWidget(widget)
+    assert widget._date_format_custom.accessibleName() != ""

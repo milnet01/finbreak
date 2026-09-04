@@ -593,3 +593,35 @@ def test_a_check_symbol_typo_does_not_emit_unlock_failed(
         "  expected: unlock_failed not emitted\n"
         f"  actual:   emitted {len(fired)} time(s)"
     )
+
+
+def test_FIBR0328_password_and_recovery_fields_have_accessible_names(qtbot, service):
+    """Every password-like field on the unlock and recovery path carries an
+    accessible name (2026-08-31 audit, LOW/INFO).
+
+    These five are the ones that had none. The rest of the app's password fields
+    sit in a ``QFormLayout``, whose label Qt makes their buddy and therefore
+    their accessible name; these are laid out directly, so a placeholder was all
+    they had — and a placeholder disappears the moment the user types. A screen
+    reader announced an unnamed box on the screens nobody gets past, and on the
+    one that shows a recovery code exactly once (WCAG 1.3.1/3.3.2).
+    """
+    from finbreak.ui.recovery_key import NewMasterPasswordDialog, RecoveryCodeDialog
+
+    create_vault(service)
+
+    unlock = _dialog(qtbot, service)
+    assert unlock._password.accessibleName() != "", "the master password field"
+    assert unlock._recovery_code.accessibleName() != "", "the recovery-code field"
+
+    shown = RecoveryCodeDialog("ABCD-EFGH-JKMN-PQRS")
+    qtbot.addWidget(shown)
+    assert shown._display.accessibleName() != "", (
+        "the recovery code is displayed once and never again — a reader that "
+        "cannot name it costs the user the code itself"
+    )
+
+    reset = NewMasterPasswordDialog(service)
+    qtbot.addWidget(reset)
+    assert reset._password.accessibleName() != "", "the new master password field"
+    assert reset._confirm.accessibleName() != "", "the confirm field"

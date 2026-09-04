@@ -10772,6 +10772,34 @@ is a future error tomorrow.
   Kind: security.
   Source: FIBR-0327 tail, 2026-09-04.
 
+- 📋 [FIBR-0334] **A batch-import UI test failed once in a gate run and has not been reproduced.**
+  test_INV5_displayed_account_is_the_targeted_account failed in a full
+  ./scripts/ci-local.sh run (1 failed, 2192 passed). It then passed alone,
+  passed on an immediate full re-run (2193 passed), and passed six further
+  times with the whole batch_import suite driven under four spinning CPU
+  hogs.
+
+  What is recorded rather than concluded: the failing run took 211s against
+  140s for the clean re-run, so that machine was loaded at the time, and
+  this test waits on background scan work through several
+  qtbot.waitUntil(..., timeout=3000) calls. That makes a load-sensitive
+  timeout the obvious suspect -- but six deliberate attempts under load did
+  not reproduce it, so the cause is NOT established and no fix should be
+  written against this guess.
+
+  The failure output was not captured: the gate prints only its summary
+  line, and the re-run was already green by the time it was wanted. First
+  thing to do next time is capture the assertion.
+
+  Worth taking seriously rather than closing as noise. A prior session's
+  note on this suite records the same shape -- a waitUntil on a proxy
+  condition returning a turn early, green locally and red about once in
+  forty CI runs. If it recurs, the fix is to wait on the state actually
+  asserted rather than to raise the timeout.
+  **Layman:** One automated check failed once and then passed every time since; recorded so it is not forgotten if it happens again.
+  Kind: test.
+  Source: observed in-session 2026-09-04.
+
 ## How to add an item
 
 1. Allocate the next ID:
