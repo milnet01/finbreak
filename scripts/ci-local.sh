@@ -31,6 +31,11 @@ if [ "${1:-}" = "--build" ]; then
     export FINBREAK_BUILD_SMOKE=1
 fi
 
+# `src tests`, not the whole tree, and that is a decision rather than an
+# oversight. The one tracked .py outside it is a captured reproduction script
+# under docs/reviews/ — evidence of a defect, kept exactly as it was run. It is
+# imported by nothing and shipped in nothing, and linting it would invite
+# tidying edits that destroy the thing it is kept for (FIBR-0328).
 echo "== ruff check =="
 ruff check src tests
 

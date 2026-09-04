@@ -1,0 +1,32 @@
+# yamllint configuration for finbreak (FIBR-0328).
+#
+# It exists so a run says something about THIS repo rather than about
+# yamllint's defaults, which flag every workflow's `on:` key as a stray
+# boolean and hold YAML to a width nothing here was written to.
+#
+# scripts/ci-local.sh has no YAML stage, so none of this runs in the gate.
+# `check-code` is what picks it up.
+
+extends: default
+
+rules:
+  # Disabled rather than set to a number. The reviewer's "88" is ruff's, for
+  # Python; YAML here is mostly embedded shell, PowerShell and URLs, which
+  # cannot be wrapped without changing what they mean — real lines reach 164
+  # in FUNDING.yml and 152 in a windows-build.yml `run:` block. A limit every
+  # file has to be excused from measures nothing.
+  line-length: disable
+  # No file here opens with `---`. Requiring it would be churn for its own sake.
+  document-start: disable
+  # GitHub Actions spells the trigger block `on:`, which YAML 1.1 reads as a
+  # boolean. The workflows are right; the rule is measuring the wrong thing.
+  truthy:
+    check-keys: false
+  # This repo writes an inline comment one space after the content.
+  comments:
+    min-spaces-from-content: 1
+  # A block comment that documents a deliberately ABSENT section is trailing,
+  # so it has no following content to align to and the rule falls back to the
+  # line above it — see dependabot.yml's note on there being no `pip` entry.
+  # Indenting it to satisfy that would read as a note about the wrong key.
+  comments-indentation: disable
