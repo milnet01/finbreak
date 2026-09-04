@@ -6,6 +6,7 @@ upcoming-events table. Enforces tests/features/forecast/spec.md INV-10 (+ headli
 / provenance reflect the mode). Uses the pytest-qt `qtbot` fixture; tmp_path only.
 """
 
+import re
 from collections.abc import Iterator
 from datetime import date, timedelta
 
@@ -277,3 +278,46 @@ def test_FIBR0327_both_labels_render_account_names_as_plain_text(
         "the provenance line must carry the account name as typed.\n"
         f"  actual: {w._provenance.text()}"
     )
+
+
+_ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
+_DAY_FIRST = re.compile(r"\d{2}/\d{2}/\d{4}")
+
+
+def test_FIBR0328_dates_read_in_the_users_format(qtbot, vault_service) -> None:
+    """The headline horizon, the provenance clause and the events table all
+    honour the date preference (2026-08-31 audit, LOW/INFO).
+
+    This tab rendered every date as a raw ISO string, so a user who had chosen
+    a format saw it obeyed on Statements and Transactions and ignored here. The
+    tab did not take a ``DateTimePrefs`` at all, so there was nothing to obey.
+
+    Asserted by SHAPE rather than against a computed date: the horizon moves
+    with the run date, and pinning it would test the arithmetic rather than the
+    formatting.
+    """
+    from finbreak.services.auth import DateTimePrefs
+    from finbreak.ui.forecast import _COL_DATE
+
+    _seed_anchored(vault_service)
+    w = ForecastWidget(vault_service, DateTimePrefs("system", "dd/MM/yyyy", "system"))
+    qtbot.addWidget(w)
+    w._horizon.setCurrentIndex(3)  # 90 days — far enough to project an event
+    w.refresh()
+
+    assert w._events_table.rowCount() >= 1, "the fixture projected no events"
+    date_item = w._events_table.item(0, _COL_DATE)
+    assert date_item is not None, "the events table has no Date cell"
+    cell = date_item.text()
+    assert _DAY_FIRST.fullmatch(cell), (
+        f"the events Date column ignored the date preference: {cell!r}"
+    )
+
+    for label, text in (
+        ("headline", w._headline.text()),
+        ("provenance", w._provenance.text()),
+        ("events cell", cell),
+    ):
+        assert not _ISO_DATE.search(text), (
+            f"the {label} still shows a raw ISO date under dd/MM/yyyy: {text!r}"
+        )

@@ -13,6 +13,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
+from PySide6.QtCore import Qt
 
 from conftest import _PW, build_v8_vault, keyed_connection, raising_conn
 from finbreak.crypto import SALT_LEN
@@ -765,3 +766,66 @@ def test_INV12_renders_direction_and_cadence_labels(qtbot, vault_service) -> Non
     assert direction_cell is not None and cadence_cell is not None
     assert direction_cell.text() == "Out"
     assert cadence_cell.text() == "Monthly"
+
+
+def test_FIBR0328_next_due_reads_in_the_user_format_and_still_sorts(
+    qtbot, vault_service
+) -> None:
+    """The Next due column honours the date preference, and sorting stays
+    chronological (2026-08-31 audit, LOW/INFO).
+
+    Same shape as the Transfers Date column: the cell used to be the raw ISO
+    string, doing double duty as display and as its own chronological sort key.
+    Formatting it fixes the display and breaks the sort — under ``dd/MM/yyyy`` a
+    text sort orders by day-of-month, so 03 February sorts before 05 January.
+    The ISO form stays as the SortableItem's key.
+
+    Drives ``_fill`` with two constructed items rather than seeding the
+    detector, because the point is which two dates land in which order and the
+    detector does not let a test choose them.
+    """
+    from finbreak.models import Cadence, Direction, RecurringItem
+    from finbreak.services.auth import DateTimePrefs
+    from finbreak.ui.recurring import _COL_NEXT_DUE, RecurringWidget
+
+    def _item(merchant: str, due: date) -> RecurringItem:
+        return RecurringItem(
+            merchant=merchant,
+            merchant_key=merchant.lower(),
+            direction=Direction.OUT,
+            cadence=Cadence.MONTHLY,
+            amount=Decimal("199.00"),
+            monthly_equivalent=Decimal("199.00"),
+            occurrences=3,
+            first_seen=date(2025, 11, 5),
+            last_seen=date(2025, 12, 5),
+            next_expected=due,
+            txn_ids=(),
+        )
+
+    widget = RecurringWidget(
+        vault_service, DateTimePrefs("system", "dd/MM/yyyy", "system")
+    )
+    qtbot.addWidget(widget)
+    table = widget._suggested
+    widget._fill(
+        table,
+        [_item("Januaryish", date(2026, 1, 5)), _item("Februaryish", date(2026, 2, 3))],
+        "R",
+    )
+
+    def _due(row: int) -> str:
+        cell = table.item(row, _COL_NEXT_DUE)
+        assert cell is not None, f"row {row} has no Next due cell"
+        return cell.text()
+
+    shown = {_due(row) for row in range(table.rowCount())}
+    assert shown == {"05/01/2026", "03/02/2026"}, (
+        f"Next due ignored the date preference: {sorted(shown)}"
+    )
+
+    table.sortItems(_COL_NEXT_DUE, Qt.SortOrder.AscendingOrder)
+    assert _due(0) == "05/01/2026", (
+        "ascending by Next due must put January before February. Sorting on the "
+        "DISPLAY string orders by day-of-month under dd/MM/yyyy."
+    )

@@ -272,3 +272,41 @@ def test_dialog_dismiss_is_vault_locked_silent(qtbot, service, monkeypatch) -> N
     buttons[0].click()  # must NOT raise — the handler swallows VaultLockedError
     # The dismiss failed, so the row is still present.
     assert len(_dismiss_buttons(dialog)) == 1
+
+
+def test_FIBR0328_missed_payment_due_date_reads_in_the_users_format(qtbot, service):
+    """A missed-payment alert names its due date in the user's date format
+    (2026-08-31 audit, LOW/INFO).
+
+    It is the only date this dialog shows, and it was a raw ISO string — so a
+    user who had chosen a format saw it obeyed on the tabs and ignored on the
+    one screen telling them they had missed a payment.
+
+    ``_summary`` is pure, so the alert is constructed rather than detected: the
+    detector cannot be asked for a specific due date, and the due date is the
+    whole point.
+    """
+    from datetime import date
+
+    from finbreak.models import AlertKind, SpendingAlert
+    from finbreak.services.auth import DateTimePrefs
+
+    alert = SpendingAlert(
+        kind=AlertKind.MISSED_DEBIT,
+        key="missed:gym",
+        label="Gym",
+        amount_minor=19_900,
+        baseline_minor=0,
+        on=date(2026, 1, 5),
+    )
+    dialog = AlertsDialog(
+        AlertService(service.vault),
+        ReportingService(service.vault).base_currency(),
+        read_minor_unit_exponent(service.vault.connection),
+        prefs=DateTimePrefs("system", "dd/MM/yyyy", "system"),
+    )
+    qtbot.addWidget(dialog)
+
+    summary = dialog._summary(alert)
+    assert "05/01/2026" in summary, f"the due date ignored the preference: {summary!r}"
+    assert "2026-01-05" not in summary, f"still showing a raw ISO date: {summary!r}"

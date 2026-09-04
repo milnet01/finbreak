@@ -26,9 +26,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from finbreak.datetime_format import format_date
 from finbreak.errors import VaultLockedError
 from finbreak.models import ConfirmedTransfer, TransferCandidate
-from finbreak.services.auth import AuthService
+from finbreak.services.auth import DATETIME_SYSTEM, AuthService, DateTimePrefs
 from finbreak.services.transactions import TransactionService
 from finbreak.services.transfer_detection import TransferDetectionService
 from finbreak.ui._amount import _format_amount
@@ -51,11 +52,21 @@ _ARROW = "→"  # → : the From/To separator (D9)
 
 
 class TransfersWidget(QWidget):
-    def __init__(self, service: AuthService, parent: QWidget | None = None):
+    def __init__(
+        self,
+        service: AuthService,
+        prefs: DateTimePrefs | None = None,
+        parent: QWidget | None = None,
+    ):
         super().__init__(parent)
         self.setObjectName("tab_transfers")
         self._service = service
         self._detection = TransferDetectionService(service.vault)
+        # Display-only formatting input, as StatementsWidget takes it (FIBR-0083).
+        # Absent -> the zero-config all-"system" default.
+        self._prefs = prefs or DateTimePrefs(
+            DATETIME_SYSTEM, DATETIME_SYSTEM, DATETIME_SYSTEM
+        )
         self._candidates: list[TransferCandidate] = []  # parallel to _suggested rows
         self._confirmed: list[
             ConfirmedTransfer
@@ -133,6 +144,12 @@ class TransfersWidget(QWidget):
         remember_columns(table)  # persist column widths across sessions (FIBR-0117)
         return table
 
+    def set_datetime_prefs(self, prefs: DateTimePrefs) -> None:
+        """Adopt new display prefs and re-render, so a Settings change takes
+        effect without a relaunch (FIBR-0083 D7)."""
+        self._prefs = prefs
+        self._refresh()
+
     def _refresh(self) -> None:
         self._candidates = self._detection.candidates()
         self._confirmed = self._detection.confirmed_transfers()
@@ -154,8 +171,17 @@ class TransfersWidget(QWidget):
             for row, item in enumerate(rows):
                 from_to = f"{item.from_account} {_ARROW} {item.to_account}"
                 table.setItem(
-                    row, _COL_DATE, QTableWidgetItem(item.debit.occurred_on)
-                )  # occurred_on is ISO (YYYY-MM-DD) — sorts chronologically as text
+                    row,
+                    _COL_DATE,
+                    # The cell now READS in the user's date format, so it can no
+                    # longer double as its own sort key: this table sorts, and
+                    # DD/MM/YYYY sorts by day-of-month. The stored ISO string
+                    # stays as the key, which is what kept it chronological.
+                    SortableItem(
+                        format_date(item.debit.occurred_on, self._prefs.date_format),
+                        item.debit.occurred_on,
+                    ),
+                )
                 table.setItem(
                     row,
                     _COL_AMOUNT,

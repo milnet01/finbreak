@@ -28,10 +28,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from finbreak.datetime_format import format_date
 from finbreak.datetime_format import today as app_today
 from finbreak.errors import VaultLockedError
 from finbreak.models import Cadence, Direction, RecurringItem
-from finbreak.services.auth import AuthService
+from finbreak.services.auth import DATETIME_SYSTEM, AuthService, DateTimePrefs
 from finbreak.services.recurring import RecurringService
 from finbreak.services.transactions import TransactionService
 from finbreak.ui._amount import _format_amount
@@ -54,11 +55,21 @@ _COL_SEEN = 5
 
 
 class RecurringWidget(QWidget):
-    def __init__(self, service: AuthService, parent: QWidget | None = None):
+    def __init__(
+        self,
+        service: AuthService,
+        prefs: DateTimePrefs | None = None,
+        parent: QWidget | None = None,
+    ):
         super().__init__(parent)
         self.setObjectName("tab_recurring")
         self._service = service
         self._recurring = RecurringService(service.vault)
+        # Display-only formatting input, as StatementsWidget takes it (FIBR-0083).
+        # Absent -> the zero-config all-"system" default.
+        self._prefs = prefs or DateTimePrefs(
+            DATETIME_SYSTEM, DATETIME_SYSTEM, DATETIME_SYSTEM
+        )
         self._suggested_items: list[RecurringItem] = []  # parallel to _suggested rows
         self._confirmed_items: list[RecurringItem] = []  # parallel to _confirmed rows
 
@@ -121,6 +132,12 @@ class RecurringWidget(QWidget):
         remember_columns(table)  # persist column widths across sessions (FIBR-0117)
         return table
 
+    def set_datetime_prefs(self, prefs: DateTimePrefs) -> None:
+        """Adopt new display prefs and re-render, so a Settings change takes
+        effect without a relaunch (FIBR-0083 D7)."""
+        self._prefs = prefs
+        self.refresh()
+
     def refresh(self) -> None:
         """Re-read the vault on view (INV-2/D9). One ``snapshot`` pass partitions the
         detected items into Suggested / Confirmed; the summary is the FIBR-0143 card's,
@@ -165,10 +182,18 @@ class RecurringWidget(QWidget):
                     SortableItem(_format_amount(item.amount, symbol), item.amount),
                 )
                 table.setItem(
-                    # next_expected is ISO (YYYY-MM-DD) — sorts chronologically as text
                     row,
                     _COL_NEXT_DUE,
-                    QTableWidgetItem(item.next_expected.isoformat()),
+                    # The cell now READS in the user's date format, so it can no
+                    # longer double as its own sort key: this table sorts, and
+                    # DD/MM/YYYY sorts by day-of-month. The ISO form stays as the
+                    # key, which is what kept it chronological.
+                    SortableItem(
+                        format_date(
+                            item.next_expected.isoformat(), self._prefs.date_format
+                        ),
+                        item.next_expected.isoformat(),
+                    ),
                 )
                 table.setItem(
                     row,

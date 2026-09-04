@@ -31,11 +31,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from finbreak.datetime_format import format_date
 from finbreak.datetime_format import today as app_today
 from finbreak.errors import VaultLockedError
 from finbreak.models import Forecast, ForecastMode
 from finbreak.services.accounts import AccountService
-from finbreak.services.auth import AuthService
+from finbreak.services.auth import DATETIME_SYSTEM, AuthService, DateTimePrefs
 from finbreak.services.forecast import CASH_TYPES, ForecastService
 from finbreak.services.transactions import (
     TransactionService,
@@ -54,11 +55,21 @@ _COL_BALANCE = 3
 
 
 class ForecastWidget(QWidget):
-    def __init__(self, service: AuthService, parent: QWidget | None = None):
+    def __init__(
+        self,
+        service: AuthService,
+        prefs: DateTimePrefs | None = None,
+        parent: QWidget | None = None,
+    ):
         super().__init__(parent)
         self.setObjectName("tab_forecast")
         self._service = service
         self._forecast_service = ForecastService(service.vault)
+        # Display-only formatting input, as StatementsWidget takes it (FIBR-0083).
+        # Absent -> the zero-config all-"system" default.
+        self._prefs = prefs or DateTimePrefs(
+            DATETIME_SYSTEM, DATETIME_SYSTEM, DATETIME_SYSTEM
+        )
 
         self.setWindowTitle(self.tr("Forecast"))
 
@@ -129,6 +140,12 @@ class ForecastWidget(QWidget):
         remember_columns(table)
         return table
 
+    def set_datetime_prefs(self, prefs: DateTimePrefs) -> None:
+        """Adopt new display prefs and re-render, so a Settings change takes
+        effect without a relaunch (FIBR-0083 D7)."""
+        self._prefs = prefs
+        self.refresh()
+
     # -- horizon --------------------------------------------------------------
     def _horizon_date(self, today: date) -> date:
         """The concrete horizon date from the picked preset (D8); ``today <=``
@@ -181,7 +198,7 @@ class ForecastWidget(QWidget):
 
     # -- text builders --------------------------------------------------------
     def _headline_text(self, fc: Forecast, exponent: int, symbol: str) -> str:
-        horizon = fc.horizon.isoformat()
+        horizon = format_date(fc.horizon.isoformat(), self._prefs.date_format)
         end_display = to_display_decimal(fc.end_minor, exponent)
         if fc.mode is ForecastMode.ANCHORED:
             amount = _format_amount(end_display, symbol)
@@ -252,7 +269,8 @@ class ForecastWidget(QWidget):
 
     def _source_clause(self, src) -> str:
         clause = self.tr("{name}'s statement of {as_of}").format(
-            name=src.account_name, as_of=src.as_of.isoformat()
+            name=src.account_name,
+            as_of=format_date(src.as_of.isoformat(), self._prefs.date_format),
         )
         if src.since_txn_count > 0:
             # Correctly pluralised; omitted entirely when the count is 0 (D10).
@@ -288,7 +306,16 @@ class ForecastWidget(QWidget):
             balance = _format_amount(
                 to_display_decimal(event.running_after_minor, exponent), symbol
             )
-            table.setItem(row, _COL_DATE, QTableWidgetItem(event.on.isoformat()))
+            # Plain item, not SortableItem: this table deliberately has no
+            # enable_sorting (see `_build_events_table`), so there is no sort key
+            # to keep.
+            table.setItem(
+                row,
+                _COL_DATE,
+                QTableWidgetItem(
+                    format_date(event.on.isoformat(), self._prefs.date_format)
+                ),
+            )
             table.setItem(row, _COL_MERCHANT, QTableWidgetItem(event.merchant))
             table.setItem(row, _COL_AMOUNT, QTableWidgetItem(amount))
             table.setItem(row, _COL_BALANCE, QTableWidgetItem(balance))

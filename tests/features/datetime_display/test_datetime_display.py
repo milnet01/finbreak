@@ -427,3 +427,59 @@ def test_FIBR0327_selecting_the_system_item_still_reads_as_system(qtbot):
     assert _datetime_prefs.read_datetime_prefs(tz, date, time).timezone == (
         DATETIME_SYSTEM
     )
+
+
+def test_FIBR0328_settings_save_reaches_the_transfers_recurring_forecast_tabs(
+    qtbot, service
+):
+    """The three tabs that showed raw ISO dates are wired into the shell's prefs
+    — at construction and on a Settings Save (2026-08-31 audit, LOW/INFO).
+
+    They rendered raw ISO, so there was nothing for a preference to change, and
+    they were in neither the construction site nor the live-refresh block. Fixing
+    the rendering without this leaves a preference that reaches four tabs and not
+    the other three, which is worse than one that reaches none.
+
+    This locks the WIRING. What each tab does with the prefs once it has them is
+    locked by its own suite — the Date column in tests/features/transfers/, Next
+    due in tests/features/recurring/, and the headline, provenance and events
+    table in tests/features/forecast/.
+    """
+    window = MainWindow(service)
+    qtbot.addWidget(window)
+    window._enter_unlocked()
+
+    tabs = {
+        "transfers": window._transfers_tab,
+        "recurring": window._recurring_tab,
+        "forecast": window._forecast_tab,
+    }
+    for name, tab in tabs.items():
+        assert tab is not None, f"the {name} tab was not built"
+        assert tab._prefs is window._prefs, (
+            f"the {name} tab was constructed without the shell's prefs, so it "
+            "renders in the system format until the first Settings Save"
+        )
+
+    window._action_settings.trigger()
+    dialog = window._dialog
+    date_combo = dialog.findChild(QComboBox, "settings_date_format")
+    date_combo.setCurrentIndex(date_combo.findData("yyyy/MM/dd"))
+    dialog._on_save()
+
+    assert window._prefs.date_format == "yyyy/MM/dd"
+    for name, tab in tabs.items():
+        assert tab._prefs.date_format == "yyyy/MM/dd", (
+            f"a Settings Save did not reach the {name} tab, so its dates stay "
+            "in the old format until the app is relaunched"
+        )
+
+    # The alerts dialog is rebuilt on every open, so it needs no setter — but it
+    # does need the prefs handed to it at that point. Checked here rather than in
+    # the alerts suite, which constructs the dialog itself and so cannot see
+    # whether the shell passes them.
+    window._open_alerts()
+    assert window._dialog._prefs.date_format == "yyyy/MM/dd", (
+        "the shell opened the alerts dialog without its date prefs, so a missed "
+        "payment's due date reads in the system format"
+    )

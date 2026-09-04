@@ -14,6 +14,7 @@ from collections.abc import Iterator
 from decimal import Decimal
 
 import pytest
+from PySide6.QtCore import Qt
 
 from conftest import _PW, build_v7_vault, keyed_connection, raising_conn
 from finbreak.crypto import SALT_LEN
@@ -897,3 +898,43 @@ def test_FIBR0201_no_skip_message_when_nothing_was_skipped(qtbot, service):
     widget._suggested.selectRow(1)
     widget._confirm_button.click()
     assert "skipped" not in widget._status.text().lower()
+
+
+def test_FIBR0328_date_column_reads_in_the_user_format_and_still_sorts(qtbot, service):
+    """The Date column honours the date preference, and sorting stays
+    chronological (2026-08-31 audit, LOW/INFO).
+
+    The cell used to be the stored ISO string, which the code leaned on twice:
+    it read as a date and it sorted chronologically as text. Formatting it fixes
+    the first and breaks the second — under `dd/MM/yyyy` a plain text sort orders
+    by day-of-month, so 03 February would come before 05 January. The ISO form
+    stays as the SortableItem's key, which is what keeps the two apart.
+
+    Both legs matter: assert the display alone and a plain QTableWidgetItem
+    passes; assert the order alone and never formatting at all passes.
+    """
+    from finbreak.services.auth import DateTimePrefs
+    from finbreak.ui.transfers import _COL_DATE, TransfersWidget
+
+    a, b = _two_accounts(service)
+    _add(service, a, -1000, "2026-01-05")
+    _add(service, b, 1000, "2026-01-05")
+    _add(service, a, -2000, "2026-02-03")
+    _add(service, b, 2000, "2026-02-03")
+
+    widget = TransfersWidget(service, DateTimePrefs("system", "dd/MM/yyyy", "system"))
+    qtbot.addWidget(widget)
+    table = widget._suggested
+    assert table.rowCount() == 2, "the fixture did not produce two candidates"
+
+    shown = {table.item(row, _COL_DATE).text() for row in range(table.rowCount())}
+    assert shown == {"05/01/2026", "03/02/2026"}, (
+        f"the Date column ignored the date preference: {sorted(shown)}"
+    )
+
+    table.sortItems(_COL_DATE, Qt.SortOrder.AscendingOrder)
+    assert table.item(0, _COL_DATE).text() == "05/01/2026", (
+        "ascending by date must put January before February. Sorting on the "
+        "DISPLAY string orders by day-of-month under dd/MM/yyyy, which is why "
+        "the ISO form has to stay as the sort key."
+    )

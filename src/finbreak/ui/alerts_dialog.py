@@ -25,10 +25,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from finbreak.datetime_format import format_date
 from finbreak.datetime_format import today as app_today
 from finbreak.errors import VaultLockedError
 from finbreak.models import AlertKind, SpendingAlert
 from finbreak.services.alerts import AlertService
+from finbreak.services.auth import DATETIME_SYSTEM, DateTimePrefs
 from finbreak.services.transactions import to_display_decimal
 from finbreak.ui._amount import _format_amount
 
@@ -52,12 +54,18 @@ class AlertsDialog(QDialog):
         symbol: str,
         exponent: int,
         parent: QWidget | None = None,
+        prefs: DateTimePrefs | None = None,
     ):
         super().__init__(parent)
         self.setWindowTitle(self.tr("Alerts"))
         self._alerts = alerts
         self._symbol = symbol
         self._exponent = exponent
+        # Display-only formatting input (FIBR-0083). This dialog is rebuilt on
+        # every open, so it needs no live-refresh setter the way a tab does.
+        self._prefs = prefs or DateTimePrefs(
+            DATETIME_SYSTEM, DATETIME_SYSTEM, DATETIME_SYSTEM
+        )
 
         self._rows = QVBoxLayout()
         # Shown in place of the rows once the last alert is dismissed — the dialog
@@ -134,7 +142,11 @@ class AlertsDialog(QDialog):
                 "{name} spending is up: {amount} vs usual {baseline}"
             ).format(name=alert.label, amount=amount, baseline=baseline)
         # AlertKind.MISSED_DEBIT — ``on`` is the due date that was missed.
-        due = alert.on.isoformat() if alert.on is not None else ""
+        due = (
+            format_date(alert.on.isoformat(), self._prefs.date_format)
+            if alert.on is not None
+            else ""
+        )
         return self.tr("Missed payment: {name} ({amount}) due {due}").format(
             name=alert.label, amount=amount, due=due
         )

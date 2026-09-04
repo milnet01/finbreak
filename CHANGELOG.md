@@ -74,6 +74,12 @@ signaling per
 
 ### Fixed
 
+- **Your date format now reaches the Transfers, Recurring, Forecast and Alerts screens.** (FIBR-0328)
+  They showed dates as 2026-01-05 whatever you had chosen in Settings,
+  while the other screens obeyed you. They now match, they update as soon
+  as you save the setting, and the Transfers and Recurring tables still
+  sort by real date order rather than by the digits on the left.
+
 - **A screen reader can now name every password and recovery-code box.** (FIBR-0328)
   The master password, the recovery code, the new password and its
   confirmation, and the import wizard's custom date-format box were

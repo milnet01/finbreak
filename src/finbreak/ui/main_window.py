@@ -839,11 +839,14 @@ class MainWindow(QMainWindow):
 
         self._rules_tab = RulesWidget(self._service)  # sets tab_rules
 
-        self._transfers_tab = TransfersWidget(self._service)  # sets tab_transfers
+        # sets tab_transfers
+        self._transfers_tab = TransfersWidget(self._service, self._prefs)
 
-        self._recurring_tab = RecurringWidget(self._service)  # sets tab_recurring
+        # sets tab_recurring
+        self._recurring_tab = RecurringWidget(self._service, self._prefs)
 
-        self._forecast_tab = ForecastWidget(self._service)  # sets tab_forecast
+        # sets tab_forecast
+        self._forecast_tab = ForecastWidget(self._service, self._prefs)
 
         workspace.addTab(self._home_tab, self.tr("Home"))
         workspace.addTab(self._transactions_tab, self.tr("Transactions"))
@@ -981,6 +984,7 @@ class MainWindow(QMainWindow):
             TransactionService(vault).base_currency(),
             read_minor_unit_exponent(vault.connection),
             self,
+            prefs=self._prefs,
         )
         dialog.changed.connect(self._on_alerts_changed)
         dialog.rejected.connect(self._teardown_dialog)  # Close: nothing to apply
@@ -1546,6 +1550,15 @@ class MainWindow(QMainWindow):
             self._transactions_tab.set_amount_prefs(self._amount_prefs)
         if self._statements_tab is not None:
             self._statements_tab.set_datetime_prefs(self._prefs)
+        # These three showed raw ISO dates until FIBR-0328, so they were not in
+        # this block either — a date preference that reaches four tabs and not
+        # the other three is worse than one that reaches none.
+        if self._transfers_tab is not None:
+            self._transfers_tab.set_datetime_prefs(self._prefs)
+        if self._recurring_tab is not None:
+            self._recurring_tab.set_datetime_prefs(self._prefs)
+        if self._forecast_tab is not None:
+            self._forecast_tab.set_datetime_prefs(self._prefs)
         self._teardown_dialog()
         self._status(self.tr("Settings saved"))
 
