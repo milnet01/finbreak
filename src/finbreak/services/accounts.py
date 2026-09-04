@@ -15,6 +15,7 @@ from finbreak.models import Account, AccountType
 from finbreak.repositories.accounts import AccountRepository
 from finbreak.repositories.statement_periods import StatementPeriodRepository
 from finbreak.repositories.transactions import TransactionRepository
+from finbreak.text import fold_name
 from finbreak.vault import Vault
 
 log = logging.getLogger(__name__)
@@ -143,10 +144,10 @@ class AccountService:
         name = name.strip()
         if not name:
             raise ValueError("account name must not be empty")
-        lowered = name.casefold()
+        lowered = fold_name(name)
         for existing in self._accounts().list_all():
             if existing.id == exclude_id:
                 continue
-            if existing.name.casefold() == lowered:
+            if fold_name(existing.name) == lowered:
                 raise ValueError(f"an account named {name!r} already exists")
         return name

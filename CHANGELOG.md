@@ -74,6 +74,12 @@ signaling per
 
 ### Fixed
 
+- **You can no longer end up with two categories or accounts whose names look identical.** (FIBR-0328)
+  Some accented characters can be typed two different ways that look
+  exactly the same on screen. The duplicate-name check compared the
+  underlying letters rather than what you see, so both were accepted and
+  nothing on screen told them apart.
+
 - **Your date format now reaches the Transfers, Recurring, Forecast and Alerts screens.** (FIBR-0328)
   They showed dates as 2026-01-05 whatever you had chosen in Settings,
   while the other screens obeyed you. They now match, they update as soon

@@ -846,3 +846,35 @@ def test_a_refresh_leaves_no_button_live_against_a_gone_selection(qtbot, service
         "Update act on the current item, and there is not one.\n"
         f"  actual:   still enabled: {live}"
     )
+
+
+def test_FIBR0328_visually_identical_sibling_names_are_refused(service):
+    """Two spellings of one name that a user cannot tell apart must not both be
+    accepted (2026-08-31 audit, LOW/INFO).
+
+    The uniqueness check casefolded without normalising first. "Café" with a
+    precomposed U+00E9 and "Café" spelled "e" + U+0301 render identically and
+    casefold to DIFFERENT strings, so both were accepted as separate siblings —
+    and then nothing on screen tells them apart.
+
+    ``text.py`` already knew this: ``normalise_text`` normalises to NFC first
+    and its docstring gives this exact example, for the import dedup key. The
+    name checks did not.
+    """
+    import unicodedata
+
+    svc = CategoryService(service.vault)
+    expenditure = _roots(service.vault.connection)["expenditure"]
+
+    precomposed = "Café"  # ...é as one code point
+    decomposed = unicodedata.normalize("NFD", precomposed)  # ...e + U+0301
+    assert precomposed != decomposed, "the fixture is not testing two spellings"
+
+    svc.add_category(expenditure.id, precomposed)
+    with pytest.raises(ValueError):
+        svc.add_category(expenditure.id, decomposed)
+    # And the other way round, so the fix cannot be one-directional.
+    other = svc.add_category(expenditure.id, unicodedata.normalize("NFD", "Rosé"))
+    assert other.id is not None
+    with pytest.raises(ValueError):
+        svc.add_category(expenditure.id, "Rosé")

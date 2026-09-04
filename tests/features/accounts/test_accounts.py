@@ -1680,3 +1680,20 @@ def test_FIBR0204_update_and_delete_disable_without_a_selection(qtbot, service):
     assert not widget._delete_button.isEnabled(), (
         "Delete must grey out with nothing selected"
     )
+
+
+def test_FIBR0328_visually_identical_account_names_are_refused(service):
+    """The account name check has the same NFC gap as the category one
+    (2026-08-31 audit, LOW/INFO) — two spellings of one name that render
+    identically must not both be accepted.
+    """
+    import unicodedata
+
+    svc = AccountService(service.vault)
+    precomposed = "Café float"
+    decomposed = unicodedata.normalize("NFD", precomposed)
+    assert precomposed != decomposed, "the fixture is not testing two spellings"
+
+    svc.add_account(precomposed, "current")
+    with pytest.raises(ValueError):
+        svc.add_account(decomposed, "current")

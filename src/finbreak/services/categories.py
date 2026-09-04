@@ -20,6 +20,7 @@ from finbreak.repositories.categories import CategoryRepository
 from finbreak.repositories.categorization_rules import CategorizationRuleRepository
 from finbreak.repositories.transactions import TransactionRepository
 from finbreak.services.categorization import recategorize_auto_rows
+from finbreak.text import fold_name
 from finbreak.vault import Vault
 
 log = logging.getLogger(__name__)
@@ -150,10 +151,10 @@ class CategoryService:
         name = name.strip()
         if not name:
             raise ValueError("category name must not be empty")
-        lowered = name.casefold()
+        lowered = fold_name(name)
         for sibling in repo.children_of(parent_id):
             if sibling.id == exclude_id:
                 continue
-            if sibling.name.casefold() == lowered:
+            if fold_name(sibling.name) == lowered:
                 raise ValueError(f"a category named {name!r} already exists here")
         return name
