@@ -302,3 +302,48 @@ def test_a_damaged_recovery_slot_is_not_reported_as_an_absent_one(
         f"  expected: {_recovery_slot_damaged()!r}\n"
         f"  actual:   {error.text()!r}"
     )
+
+
+def test_FIBR0328_an_unreadable_sidecar_is_not_silently_no_recovery_key(
+    service: AuthService, monkeypatch: Any, caplog: Any
+) -> None:
+    """``has_recovery_key`` answers False for two different reasons, and only
+    one of them is ordinary (2026-08-31 audit, LOW/INFO).
+
+    A v1 vault has no envelope, so it has no recovery slot — expected, and
+    nothing to report. A ``KdfPolicyError`` means the sidecar IS v2 and its KDF
+    record is unacceptable, so the vault may well HAVE a recovery key nobody can
+    read. Both collapsed to a bare False.
+
+    False stays the answer either way — the § 4.6 route derives under those very
+    params, so offering it would only fail later. What was missing is any trace
+    of WHY the route vanished, on the one screen a locked-out user is looking at.
+
+    Both legs are asserted: the anomaly must be reported, and the ordinary case
+    must stay quiet, or the log says nothing by saying everything.
+    """
+    import logging
+
+    from finbreak.errors import KdfPolicyError
+
+    def _damaged() -> Any:
+        raise KdfPolicyError("memory_kib is below the floor")
+
+    monkeypatch.setattr(service, "read_sidecar", _damaged)
+    with caplog.at_level(logging.WARNING, logger="finbreak.services.auth"):
+        assert service.has_recovery_key() is False
+    assert any("recovery slot" in record.message for record in caplog.records), (
+        "a sidecar we cannot read must leave a trace, not just hide the route"
+    )
+
+    def _still_v1() -> Any:
+        raise VaultStateError("this vault has not been migrated to the envelope")
+
+    caplog.clear()
+    monkeypatch.setattr(service, "read_sidecar", _still_v1)
+    with caplog.at_level(logging.WARNING, logger="finbreak.services.auth"):
+        assert service.has_recovery_key() is False
+    assert not caplog.records, (
+        "a v1 vault is the ordinary pre-migration state; warning about it would "
+        "bury the case that matters"
+    )

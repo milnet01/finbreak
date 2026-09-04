@@ -327,7 +327,19 @@ class AuthService:
         the § 4.7 Add / Replace / Remove affordances."""
         try:
             return SLOT_RECOVERY in self.read_sidecar().slots
-        except (VaultStateError, KdfPolicyError):
+        except VaultStateError:
+            # A v1 vault has no envelope, so it has no recovery slot. Ordinary
+            # and expected before the migration — nothing to report.
+            return False
+        except KdfPolicyError as exc:
+            # NOT the same answer, though the caller can only act on one. The
+            # sidecar IS v2 and its KDF record is unacceptable, so this vault may
+            # well have a recovery key we cannot read. Returning False is honest
+            # — the § 4.6 route derives under those very params, so offering it
+            # would only fail later — but it used to leave no trace of WHY the
+            # route vanished, on the one screen a locked-out user is looking at
+            # (FIBR-0328).
+            log.warning("cannot read the recovery slot: %s", exc)
             return False
 
     def recovery_params(self) -> KdfParams:
