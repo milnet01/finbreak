@@ -10601,6 +10601,40 @@ is a future error tomorrow.
   current source); single_instance's narrowed-but-open stale-socket race;
   and FIBR-0096's claim that the per-artifact .sig is the primary integrity
   gate, false for a rename-replay.
+  Progress (2026-09-04): the batch review's two findings are closed
+  (2f2093b); gate green at 2183 passed / 2 skipped.
+
+  The Account cell was mouse-only. `cellClicked` was the only route in and
+  the table sets NoEditTriggers, which removes the edit-key route too, so a
+  keyboard user could reach the cell with the arrow keys and had nothing to
+  press. Return and Enter open it now.
+
+  Measured before choosing the mechanism, and it corrected the obvious
+  guess: `activated` is NOT the portable route. Space does not raise it in
+  this Qt build, and Qt's macOS branch drops Return on a NoEditTriggers
+  view -- so connecting `cellActivated` would have fixed Linux and Windows
+  and left macOS exactly as the finding describes it. An event filter on
+  Return/Enter, the idiom main_window already uses, works everywhere.
+
+  The "-- pick one --" sentinel was a lie. An unplaced row passes -1 as the
+  current account and select_combo_data leaves the selection ALONE when
+  findData misses, so the picker opened on whichever account sorted first
+  with OK live: confirming it without touching anything filed the statement
+  against an account nobody chose. The dialog inserts its own placeholder
+  carrying no id and holds OK back until a real account is picked. That
+  makes selected_account_id's None branch reachable for the first time --
+  it was dead code in both callers -- so statements.py gained the matching
+  guard.
+
+  Every other test in the batch suite calls _choose_account directly, which
+  is why neither defect was visible to it. The new tests press a key on the
+  table and drive the REAL dialog instead. Seven mutants, all killed.
+
+  Still open here: two unguarded vault reads in import_wizard (the lane
+  named no site, so this needs re-deriving against current source);
+  single_instance's narrowed-but-open stale-socket race; and FIBR-0096's
+  claim that the per-artifact .sig is the primary integrity gate, false for
+  a rename-replay.
   **Layman:** A batch of smaller real defects the full sweep found; most are now fixed, with a lower-severity tail left.
   Kind: review-fix.
   Source: review-code 2026-08-31.
