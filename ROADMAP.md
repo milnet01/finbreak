@@ -10686,7 +10686,7 @@ is a future error tomorrow.
   Kind: review-fix.
   Source: review-code 2026-08-31.
 
-- 📋 [FIBR-0328] **Work the LOW/INFO tail of the 2026-08-31 audit — roughly 110 findings.**
+- 🚧 [FIBR-0328] **Work the LOW/INFO tail of the 2026-08-31 audit — roughly 110 findings.**
   Recorded in docs/reviews/2026-08-31-audit-findings.md.
 
   Mostly stale comments and docstrings that assert something no longer true,
@@ -10698,6 +10698,53 @@ is a future error tomorrow.
   the gate's `ruff check src tests` scope by design and nothing records that
   decision; and there is no .yamllint config, so that tool runs on defaults the
   project never adopted (80 columns against its own 88).
+  Progress (2026-09-04): three of the recorded classes are closed. Gate
+  green at 2198 passed / 2 skipped.
+
+  The two check-code observations (bc3c2db). yamllint now has a config, so a
+  run says something about this repo rather than about yamllint's defaults.
+  line-length is DISABLED rather than set to 88, and that departs from the
+  finding on purpose: the 88 it cites is ruff's, for Python, while the YAML
+  here is mostly embedded shell, PowerShell and URLs that cannot be wrapped
+  without changing meaning -- measured, real lines reach 164 in FUNDING.yml
+  and 152 in a windows-build.yml run block. A limit every file must be
+  excused from measures nothing. comments-indentation is off for a narrower
+  reason: a block comment documenting a deliberately ABSENT section is
+  trailing, so the rule falls back to the line above it. Clean on the tree,
+  exit 0. The ruff scope now records why it is `src tests`.
+
+  Accessible names (abb1a63). Six fields a screen reader announced as
+  unnamed: the master password and recovery code on unlock, the recovery
+  code on the screen that shows it once, the new password and its
+  confirmation after a recovery unlock, and the wizard's custom date-format
+  box. Every OTHER password field in the app was already named and nobody
+  had written one -- they sit in a QFormLayout, whose label Qt makes their
+  buddy. These six are laid out directly, or sit in an addRow("") row whose
+  empty label is not a buddy.
+
+  The date preference (dd8b84f). Six raw ISO renders across Transfers,
+  Recurring, Forecast and Alerts -- none of which took a DateTimePrefs at
+  all, so there was nothing to obey. The Transfers and Recurring cells were
+  doing double duty, reading as a date AND sorting chronologically as text,
+  which is only true of ISO: formatting them fixes the display and silently
+  breaks the sort, since dd/MM/yyyy sorts by day-of-month. Both now carry
+  the ISO form as a SortableItem key, and each test asserts the display AND
+  the order -- a mutant that formats without keeping the key is killed only
+  by the second.
+
+  Worth keeping: a mutant caught a hole in this batch's own tests. Nothing
+  checked that the SHELL hands the alerts dialog its prefs, because the
+  alerts test constructs the dialog itself and cannot see the caller.
+
+  Still open, and these are the classes the record itself lists rather than
+  individual findings -- each needs re-deriving against current source:
+  display strings assembled with + or f-strings against coding.md 5.2;
+  Unicode input surfaces (Decimal accepting any Unicode Nd digit and PEP 515
+  underscores, a Unicode-wide \d in the account-number matcher, casefold()
+  without NFC letting two visually identical category names coexist); error
+  paths collapsing two distinguishable causes into one message; unreachable
+  defensive branches; and the largest class, stale comments and docstrings
+  that assert something no longer true.
   **Layman:** Minor issues and observations from the full sweep, recorded so they are not lost.
   Kind: review-fix.
   Source: review-code 2026-08-31.
