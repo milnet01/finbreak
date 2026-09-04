@@ -25,7 +25,8 @@ from collections import Counter
 from collections.abc import Sequence
 from pathlib import Path
 
-from PySide6.QtCore import Signal, Slot
+from PySide6.QtCore import QEvent, QObject, Qt, Signal, Slot
+from PySide6.QtGui import QKeyEvent
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
@@ -149,6 +150,15 @@ class BatchReviewWidget(QWidget):
         )
         remember_columns(self._table)
         self._table.cellClicked.connect(self._on_cell_clicked)
+        # `NoEditTriggers` above removes the edit-key route, so `cellClicked`
+        # alone made the Account cell mouse-only: a keyboard user could land on
+        # it with the arrow keys and had nothing to press, which left them
+        # unable to give any statement a destination at all (FIBR-0327).
+        # The filter rather than the view's own `activated` signal, because that
+        # signal is not portable here: measured, Space does not raise it, and
+        # Qt's macOS branch drops Return on a NoEditTriggers view — so it would
+        # have fixed Linux and Windows and left macOS exactly as it was.
+        self._table.installEventFilter(self)
 
         self._import_button = QPushButton(self.tr("Import all"))
         self._import_button.setEnabled(False)
@@ -395,6 +405,24 @@ class BatchReviewWidget(QWidget):
         if account_id is None:
             return
         self._settle(record, account_id)
+
+    def eventFilter(self, obj: QObject, event: QEvent) -> bool:
+        """Return/Enter on the Account cell opens the picker — the keyboard's
+        equivalent of clicking it (FIBR-0327).
+
+        Consumes the key only when it acts on it, so Return elsewhere in the
+        table, and every other key, reach the view unchanged.
+        """
+        if (
+            obj is self._table
+            and event.type() == QEvent.Type.KeyPress
+            and isinstance(event, QKeyEvent)
+            and event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter)
+            and self._table.currentColumn() == COL_ACCOUNT
+        ):
+            self._choose_account(self._table.currentRow())
+            return True
+        return super().eventFilter(obj, event)
 
     def _create_account(self, record: BatchFile) -> None:
         """The Create affordance, prefilled from the statement (§ 3 decision 6).

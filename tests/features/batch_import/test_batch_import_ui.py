@@ -22,8 +22,8 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import QTimer, Signal
-from PySide6.QtWidgets import QDialog, QPushButton
+from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtWidgets import QDialog, QDialogButtonBox, QPushButton
 
 from conftest import _PW, _acct
 from finbreak.importers.pdf_importer import PasswordError
@@ -34,6 +34,7 @@ from finbreak.services.batch_import import BatchFile, BatchImportService
 from finbreak.services.import_ import ImportResult, ImportService
 from finbreak.ui import import_batch as import_batch_mod
 from finbreak.ui import import_wizard as wizard_mod
+from finbreak.ui.account_picker import AccountPickerDialog
 from finbreak.ui.import_wizard import _STEP_BATCH, _STEP_MAP, ImportWizardWidget
 
 pytestmark = pytest.mark.features
@@ -904,3 +905,82 @@ def test_file_labels_costs_a_fixed_number_of_passes_over_the_set() -> None:
         "not once per row.\n"
         f"  2 files: {small} passes\n  60 files: {large} passes"
     )
+
+
+def test_account_cell_is_reachable_without_a_mouse(
+    qtbot, service, profile, tmp_path, monkeypatch
+):
+    """FIBR-0327 — a keyboard-only user must be able to place a statement.
+
+    ``cellClicked`` was the only route into ``_choose_account``, and the table
+    sets ``NoEditTriggers``, which removes the edit-key route as well. So the
+    Account cell could be reached with the arrow keys and there was nothing to
+    press once you were on it: a keyboard-only user could not finish a batch at
+    all.
+
+    Every other test in this file calls ``_choose_account`` directly, which is
+    exactly why the suite never saw this. This one presses a key on the TABLE
+    and touches nothing private.
+    """
+    path = _csv(tmp_path, "a.csv", _rows(2))
+    widget = _wizard(qtbot, service)
+    widget._select_files([path])
+    qtbot.waitUntil(
+        lambda: widget._batch_files[0].outcome == "needs_account", timeout=3000
+    )
+    review = widget._batch_review
+    assert review._table.item(0, import_batch_mod.COL_ACCOUNT).text() == "— pick one —"
+
+    _stub_picker(monkeypatch, _acct(service))
+    review._table.setCurrentCell(0, import_batch_mod.COL_ACCOUNT)
+    qtbot.keyClick(review._table, Qt.Key.Key_Return)
+
+    assert review._table.item(0, import_batch_mod.COL_ACCOUNT).text() == "Default", (
+        "FIBR-0327: the Account cell must have a keyboard route — with "
+        "NoEditTriggers set, cellClicked alone leaves a keyboard-only user "
+        "unable to give any statement a destination"
+    )
+
+
+def test_unplaced_row_opens_a_picker_that_has_chosen_nothing(
+    qtbot, service, profile, tmp_path
+):
+    """FIBR-0327 — the "— pick one —" sentinel must not be a lie.
+
+    An unplaced row passes ``-1`` as the current account, and
+    ``select_combo_data`` leaves the selection alone when ``findData`` misses —
+    so the picker opened with the FIRST account already chosen and OK live. A
+    user who believed the row's own wording and pressed OK filed the statement
+    against whichever account happened to come first, silently and
+    irreversibly.
+
+    Drives the REAL dialog rather than the stand-in the rest of this file
+    patches in: the defect is in the dialog, so a stub cannot carry it.
+    """
+    path = _csv(tmp_path, "a.csv", _rows(2))
+    widget = _wizard(qtbot, service)
+    widget._select_files([path])
+    qtbot.waitUntil(
+        lambda: widget._batch_files[0].outcome == "needs_account", timeout=3000
+    )
+    review = widget._batch_review
+    review._choose_account(0)
+
+    dialog = review.findChild(AccountPickerDialog)
+    assert dialog is not None, "the picker must open for an unplaced row"
+    assert dialog.selected_account_id() is None, (
+        "FIBR-0327: a row with no destination must open a picker with no "
+        "account chosen — anything else preselects one the user never picked"
+    )
+    ok = next(
+        button
+        for box in dialog.findChildren(QDialogButtonBox)
+        if (button := box.button(QDialogButtonBox.StandardButton.Ok)) is not None
+    )
+    assert not ok.isEnabled(), "OK must not be live while nothing is chosen"
+
+    # The outcome, not the mechanism: confirming an untouched picker must leave
+    # the row exactly as unplaced as its own cell says it is.
+    dialog.accept()
+    assert widget._batch_files[0].account_id is None
+    assert review._table.item(0, import_batch_mod.COL_ACCOUNT).text() == "— pick one —"

@@ -211,6 +211,11 @@ class StatementsWidget(QWidget):
         self, dialog: AccountPickerDialog, statement: StatementRow
     ) -> None:
         new_account_id = dialog.selected_account_id()
+        if new_account_id is None:
+            # Nothing chosen. This caller always preselects the statement's own
+            # account, so the picker never shows its placeholder here — but its
+            # contract allows None and this is the only account we could move to.
+            return
         if new_account_id == statement.account_id:
             return  # same account — nothing to move (INV-5)
         try:

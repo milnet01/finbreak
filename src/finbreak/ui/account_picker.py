@@ -2,9 +2,12 @@
 
 A small ``QDialog`` (one dialog per file, like ``ui/{settings,password_dialog}``):
 a labelled account ``QComboBox`` preselected to the statement's current account +
-OK/Cancel. The Statements tab's *Change account* action opens it and reads
-``selected_account_id()``. The dialog is "dumb" — it takes the already-fetched
-account list, not a service. All strings go through ``tr()`` and every widget
+OK/Cancel — or, where the caller has no current account to preselect, a
+"— pick one —" placeholder with OK held disabled until something is chosen. The
+Statements tab's *Change account* action opens it and reads
+``selected_account_id()``, which is ``None`` while nothing has been picked.
+The dialog is "dumb" — it takes the already-fetched account list, not a
+service. All strings go through ``tr()`` and every widget
 sits in a layout manager (coding.md § 5.2).
 """
 
@@ -46,14 +49,30 @@ class AccountPickerDialog(QDialog):
         self._combo = QComboBox()
         for account in accounts:
             self._combo.addItem(account.name, account.id)
-        # preselect the current account (a safe default)
-        select_combo_data(self._combo, current_account_id)
+        if self._combo.findData(current_account_id) < 0:
+            # No destination yet. The batch review's Account cell says
+            # "— pick one —" for such a row and the picker has to agree:
+            # `select_combo_data` leaves the selection ALONE when `findData`
+            # misses, so this dialog used to open on whichever account came
+            # first with OK already live, and a user who believed the row's own
+            # wording filed the statement against an account they never picked
+            # (FIBR-0327). The placeholder carries no id, so
+            # `selected_account_id` reports None and the callers' "nothing
+            # chosen" branch — which until now could not run — does.
+            self._combo.insertItem(0, self.tr("— pick one —"), None)
+            self._combo.setCurrentIndex(0)
+        else:
+            # preselect the current account (a safe default)
+            select_combo_data(self._combo, current_account_id)
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
+        self._ok = buttons.button(QDialogButtonBox.StandardButton.Ok)
+        self._combo.currentIndexChanged.connect(self._gate_ok)
+        self._gate_ok()
 
         form = QFormLayout()
         form.addRow(self.tr("Move this statement to"), self._combo)
@@ -74,5 +93,11 @@ class AccountPickerDialog(QDialog):
             layout.addWidget(self._create_button)
         layout.addWidget(buttons)
 
-    def selected_account_id(self) -> int:
+    def _gate_ok(self) -> None:
+        """OK goes live only once a real account is chosen — the placeholder and
+        an empty account list both carry no id."""
+        self._ok.setEnabled(self._combo.currentData() is not None)
+
+    def selected_account_id(self) -> int | None:
+        """The chosen account, or ``None`` while nothing has been picked."""
         return self._combo.currentData()

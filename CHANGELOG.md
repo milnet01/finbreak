@@ -74,6 +74,18 @@ signaling per
 
 ### Fixed
 
+- **The account picker no longer arrives with an account already chosen for a statement that has none.** (FIBR-0327)
+  A row reading "— pick one —" now opens a picker saying the same, with
+  OK held back until you choose. It used to open on whichever account
+  came first, so confirming without touching it filed the statement
+  against an account nobody picked.
+
+- **The batch import review's Account column can be used without a mouse.** (FIBR-0327)
+  Press Return on a statement's Account cell to open the destination
+  picker. It answered only to a click before, so a keyboard-only user
+  could not give any statement a destination and could not finish a
+  batch import at all.
+
 - **Adding or deleting a category no longer leaves the buttons active with nothing selected** (FIBR-0327)
   After adding, renaming or deleting a category the tree was rebuilt and nothing
   was selected — but Add, Update and Delete stayed available, as though the
