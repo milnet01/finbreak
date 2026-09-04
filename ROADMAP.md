@@ -10888,6 +10888,47 @@ is a future error tomorrow.
   Kind: test.
   Source: observed in-session 2026-09-04.
 
+- 📋 [FIBR-0335] **Family B's completeness gate is weakened on a premise nothing in the repo supports.**
+  _verify_checksum compares MAGNITUDES for Family B and signed totals for
+  every other family. The reason its comment gives is that B's
+  running-balance column prints unsigned magnitudes while its CLOSING
+  BALANCE row prints a sign.
+
+  Two independent cold lanes questioned that premise and it does not hold
+  up against the code:
+
+  - _parse_family_b's balance group is `([\d.,]+-?)` -- it accepts a
+    trailing `-` -- and the token goes through _signed_balance, so a
+    negative B balance is parsed signed.
+  - D9 and INV-8 both list "a leading `-` for Family B's negative
+    balances" among the signs to strip.
+  - Both endpoints are parsed by the same helper: _capture_closing also
+    calls _signed_balance, and _money_tokens deliberately re-attaches an
+    adjacent sign "so _is_negative can see it". So there is no parsing
+    asymmetry between the two ends.
+
+  What IS verified is narrower: B prints no per-amount sign, which is why
+  _verify_row takes check_sign=False there and nowhere else.
+
+  Why it matters rather than being a wording quibble: the magnitude form
+  cannot catch a truncation that flips the reconciled total's sign, which
+  the same comment says is what the signed form exists to catch on an
+  overdrawn account. If the premise is wrong, B is carrying a weaker gate
+  for no reason.
+
+  Not settleable from this repo, which holds no real statements by design.
+  It needs one real Home Loan statement whose ledger goes negative --
+  then either the exemption is justified and the comment should say which
+  convention differs, or the abs() comes out and B joins the signed
+  comparison.
+
+  Surfaced rather than fixed: a docs gate does not edit code. FIBR-0050
+  now states the magnitude form as what the reader does, and no longer
+  asserts the printing convention.
+  **Layman:** A Home Loan statement gets a weaker arithmetic check than the others, and the reason given for that may not be true.
+  Kind: investigate.
+  Source: review-contract on FIBR-0050, 2026-09-04.
+
 ## How to add an item
 
 1. Allocate the next ID:
