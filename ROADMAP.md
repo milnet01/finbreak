@@ -10315,7 +10315,7 @@ is a future error tomorrow.
   Kind: security.
   Source: review-code 2026-08-31 lane=ui-views-admin.
 
-- 📋 [FIBR-0323] **FIBR-0050 INV-11 states a signed reconciliation Family B cannot satisfy.**
+- ✅ [FIBR-0323] **FIBR-0050 INV-11 states a signed reconciliation Family B cannot satisfy.**
   INV-11 gives the completeness gate as opening + sum(signed) == printed closing
   for the balance families. FIBR-0318 made the code match that -- except Family B,
   whose running-balance column prints unsigned magnitudes while its CLOSING
@@ -10324,6 +10324,50 @@ is a future error tomorrow.
 
   The exemption is now explicit in code and absent from the spec. Surfaced rather
   than amended: it is a contract change and owes a review-contract gate.
+  Resolved (2026-09-04): INV-11 states Family B's exemption, and the gate
+  rule 14 owes ran to its cap. Three loops, three cold lanes each; 23
+  verified, 23 fixed, 1 dismissed, 1 surfaced.
+
+  The amendment itself was small: B prints no per-amount sign, so the
+  signed completeness gate INV-11 stated is one it cannot satisfy, and the
+  reader has compared magnitudes for B alone since FIBR-0318.
+
+  What the gate was actually worth is the rest. One of the 23 findings
+  landed on the change that armed it -- this was an audit wearing a gate's
+  clothes, and it paid for itself several times over.
+
+  Loop 1: all three lanes found that the completeness gate is stated in
+  THREE places and only INV-11 had been amended, so Deliverables and D10
+  each still put B in the signed group. Fixing one copy of a rule is the
+  failure this project's own audit has now named repeatedly. The sharpest
+  find came out of an open question rather than a findings list: the
+  None-closing arm enumerated "skip for A, raise for B/D/C" and omitted E,
+  and E never prints a closing -- building that refuses every Family E
+  statement.
+
+  Loop 2: two of eight were loop 1's own text, the largest of them mine. I
+  had replaced a stale quotation of the friendly ValueError with a claim
+  that every refusal opens "this statement didn't add up"; several do not.
+  Pre-existing: D13 listed rejection REASONS where _draft branches on the
+  AMOUNT -- the trap CLAUDE.md already documents -- and INV-8, D9 and
+  _detect_number_format disagreed on whether format detection is
+  statement-wide or region-scoped.
+
+  Loop 3: a calm cap, none of the five on this run's text, and all three
+  lanes again on one defect -- D4 and INV-2 describe a located header
+  block where _signature_present slides a window over the whole document.
+  The stated bound fails a header printing only on a continuation page.
+
+  Surfaced rather than fixed, and now FIBR-0335: the premise I wrote into
+  INV-11 in loop 1 -- that B's running-balance column prints unsigned
+  magnitudes -- does not survive the code, so INV-11 now states the
+  magnitude form as what the reader does rather than as a claim about the
+  paper. Whether the abs() is justified at all needs a real Home Loan
+  statement and a code change a docs gate must not make.
+
+  Size is the honest caveat: this spec is far past the range a cold read
+  covers comfortably. For a spec the cap is a normal exit and the build is
+  the next reviewer, so that is context rather than a defect.
   **Layman:** A spec rule is right for most statement types and cannot be met by one of them.
   Kind: doc-fix.
   Source: review-code 2026-08-31 lane=importers.
