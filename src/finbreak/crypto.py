@@ -52,6 +52,13 @@ SALT_LEN = 16
 
 # The seven flat fields a valid sidecar must carry (models.KdfParams, with
 # salt → salt_hex). A sidecar missing any of them is malformed (INV-2c).
+# What a sidecar number can raise on the way to an int. OverflowError is the one
+# that is NOT a ValueError subclass: json parses `1e400` as float inf, and
+# int(inf) raises it, so that one literal escaped every guard here and reached a
+# Qt slot from an IMPORTED .fbk. NaN is caught, which is why this was one hole
+# rather than the class (FIBR-0337 M2).
+_BAD_SIDECAR_NUMBER = (TypeError, ValueError, OverflowError)
+
 _REQUIRED_SIDECAR_FIELDS = frozenset(
     {
         "format_version",
@@ -220,7 +227,7 @@ def load_and_validate_params(sidecar_path: Path) -> KdfParams:
             salt_len=int(data["salt_len"]),
             salt=bytes.fromhex(data["salt_hex"]),
         )
-    except (TypeError, ValueError) as exc:
+    except _BAD_SIDECAR_NUMBER as exc:
         raise KdfPolicyError(f"sidecar field has a bad value: {exc}") from exc
 
     validate_params(params)
@@ -489,7 +496,7 @@ def _version_of(data: dict[str, Any]) -> int:
         return 1
     try:
         version = int(data["sidecar_version"])
-    except (TypeError, ValueError) as exc:
+    except _BAD_SIDECAR_NUMBER as exc:
         raise KdfPolicyError(f"sidecar_version is not an integer: {exc}") from exc
     if version != SIDECAR_VERSION:
         raise KdfPolicyError(
@@ -587,7 +594,7 @@ def read_sidecar_v2(sidecar_path: Path) -> VaultSidecar:
             extra={k: v for k, v in data.items() if k not in _V2_TOP_FIELDS},
             kdf_extra={k: v for k, v in kdf.items() if k not in _V2_KDF_FIELDS},
         )
-    except (TypeError, ValueError) as exc:
+    except _BAD_SIDECAR_NUMBER as exc:
         raise KdfPolicyError(f"sidecar field has a bad value: {exc}") from exc
 
     if SLOT_MASTER not in sidecar.slots:

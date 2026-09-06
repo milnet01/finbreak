@@ -664,3 +664,72 @@ def test_read_sidecar_v2_refuses_a_v1_sidecar_by_its_version(
         "from whichever field check happened to fail next.\n"
         f"  actual:   {str(excinfo.value)!r}"
     )
+
+
+@pytest.mark.parametrize(
+    ("label", "reader", "build"),
+    [
+        (
+            "the v1 params guard",
+            "load_and_validate_params",
+            lambda kdf, _slots: {
+                "format_version": 1,
+                "memory_kib": float("inf"),
+                "time_cost": kdf["time_cost"],
+                "parallelism": kdf["parallelism"],
+                "key_len": kdf["key_len"],
+                "salt_len": kdf["salt_len"],
+                "salt_hex": "00" * 16,
+            },
+        ),
+        (
+            "the version guard",
+            "sidecar_version",
+            lambda kdf, slots: {
+                "sidecar_version": float("inf"),
+                "kdf": kdf,
+                SLOTS: slots,
+            },
+        ),
+        (
+            "the v2 params guard",
+            "read_sidecar_v2",
+            lambda kdf, slots: {
+                "sidecar_version": SIDECAR_VERSION,
+                "kdf": {**kdf, "memory_kib": float("inf")},
+                SLOTS: slots,
+            },
+        ),
+    ],
+    ids=["v1_params", "version_field", "v2_params"],
+)
+def test_an_infinite_sidecar_number_raises_kdf_policy_error(
+    paths: tuple[Path, Path], label: str, reader: str, build: Any
+) -> None:
+    """FIBR-0337 M2 -- ``json`` parses ``1e400`` as a float, and ``int(inf)``
+    raises ``OverflowError``, which is not a ``ValueError`` subclass.
+
+    The three sidecar guards caught ``(TypeError, ValueError)``, so this one
+    number escaped all of them. ``NaN`` does not, which is why this is one hole
+    rather than the whole class -- and why a leg built on ``NaN`` would pass
+    against the unfixed code.
+
+    Reachable from an IMPORTED ``.fbk``, so the bytes need not be the user's
+    own: the escape crashes the pre-login restore instead of reporting a
+    damaged file.
+    """
+    from finbreak import crypto
+
+    _vault_path, sidecar_path = paths
+    service = AuthService(*paths)
+    create_vault(service)
+    service.lock()
+
+    intact = read_v2_sidecar(sidecar_path)
+    payload = build(intact["kdf"], intact[SLOTS])
+    # allow_nan is json's own spelling for the non-finite literals. This app
+    # never writes one; a file a third party hands us is not bound by that.
+    sidecar_path.write_text(json.dumps(payload, allow_nan=True), encoding="utf-8")
+
+    with pytest.raises(KdfPolicyError):
+        getattr(crypto, reader)(sidecar_path)
