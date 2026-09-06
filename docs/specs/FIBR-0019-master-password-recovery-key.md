@@ -247,9 +247,21 @@ testable headless:
 SLOT_MASTER = "master"
 SLOT_RECOVERY = "recovery"
 
+@dataclass(frozen=True)
+class Slot:
+    nonce: bytes         # the 12 random bytes of §4.4's `nonce_hex`
+    wrapped_dek: bytes   # §4.4's `wrapped_dek_hex` — ciphertext + GCM tag
+
 def wrap_dek(kek: bytes | bytearray, dek: bytes, slot: str, params: KdfParams) -> Slot: ...
 def unwrap_dek(kek: bytes | bytearray, slot_data: Slot, slot: str, params: KdfParams) -> bytearray: ...
 ```
+
+`Slot` is the **ciphertext half only**. The slot's salt is NOT carried here: it
+travels in the per-slot `KdfParams` (§4.4 — costs from the sidecar's `kdf`
+group, salt from that slot's own record), which is what `derive_key` consumes
+to produce the KEK. Spelled out because the v2 sidecar's record assembles from
+this type, so leaving its shape to the implementer leaves that reader/writer
+bound to the invention.
 
 `kek` admits a `bytearray` so a caller passes the wipeable buffer `derive_key`
 returns straight through. A `bytes` annotation would force `bytes(kek)` at each
@@ -542,12 +554,17 @@ delete one slot, rewrite the sidecar atomically. The database is untouched.
   `slots.master.salt_hex`, attempt `PRAGMA key` with those bytes, assert the
   vault does **not** open. Second, and this is the one that bites: create two
   vaults with the **same** master password and assert their unwrapped DEKs
-  **differ**. Without the second leg the test passes under §8.1's rejected
-  design — where the legacy Argon2id output *is* the DEK, wrapped under a
-  freshly salted KEK — because KEK-master ≠ DEK there too. The first leg
-  alone can only fail in the degenerate case where the KEK is itself the
-  database key, so the implementation this spec most wants to exclude would
-  ship green against the invariant meant to exclude it.
+  **differ**, which excludes any design deriving the DEK from the credential
+  alone. Third, on a **migrated** vault, assert the **pre-migration v1 key no
+  longer opens it**. The third leg is what reaches §8.1, and neither of the
+  first two does: §8.1 is scoped to migrated vaults, and under it two vaults
+  still hold different DEKs because their v1 salts differ — so leg 2 passes and
+  the design this spec most wants to exclude ships green. §13.5 records the
+  same thing from the other side. The first leg alone can only fail in the
+  degenerate case where the KEK is itself the database key, and asking a
+  migrated vault the same question is that leg again rather than a new one:
+  what §8.1 makes permanent is the OLD key schedule, so the old key is what
+  the leg must try.
   *Breaks when:* a code path passes a `derive_key` result to `Vault.create`,
   `Vault.open` or `Vault.rekey` as the database key — which is exactly what
   every such call site does today, so this invariant fails against pre-change
@@ -641,8 +658,11 @@ delete one slot, rewrite the sidecar atomically. The database is untouched.
   a locally well-formed code look accepted.
 
 - **INV-7** — Migration is atomic: at every instant, either the pre-migration
-  pair or the post-migration pair opens with the user's password. There is no
-  window where neither does.
+  pair or the post-migration pair opens with the user's password **and reads
+  end to end, with every row intact**. There is no window where neither does.
+  Opening alone is the weaker check and does not satisfy this: SQLCipher HMACs
+  each page independently, so a file damaged past page 1 opens with its schema
+  intact and its rows unreachable.
   *Test:* `tests/features/recovery_key/test_migration.py::test_every_crash_point_still_opens`
   — runs the §13 sequence against a real vault, aborting after each of steps
   S1 to S6, and asserts that a fresh app start opens the vault with the
@@ -734,8 +754,13 @@ delete one slot, rewrite the sidecar atomically. The database is untouched.
   exists, is complete, and opens with the user's current key.
   *Test:* `tests/features/recovery_key/test_migration.py::test_no_swap_without_a_verified_rollback_copy`
   — injects a failure into the copy step, then into its verification, and
-  asserts in both cases that the vault still opens with the original password
-  and that every table's row digest is unchanged. **Not a hash of
+  asserts in both cases that **the live sidecar is still the flat v1 record**,
+  as well as that the vault still opens with the original password and that
+  every table's row digest is unchanged. The sidecar leg is the one that can
+  fail: under §13.1's inheritance the other two stay true across an S4 that ran
+  with no verified copy, because the resume ladder opens the vault with the
+  same password and changes no row — so a test built from those two alone is
+  green over the exact breach this invariant names. **Not a hash of
   `vault.db`**, for the reason INV-12 gives: under WAL the main file's bytes
   move on open and close with no logical write, so a byte comparison is flaky
   in one direction and vacuous in the other.
@@ -933,6 +958,7 @@ currently asserts the opposite.
 | 2 | 2026-08-20 | 3, cold — identical brief, packet rebuilt from disk | 1 | 4 | 4 | 2 | **Eleven verified, eleven fixed; none dismissed. Five of the eleven landed on text loop 1 wrote** — the collateral pattern, at 45%. **All three lanes found the same defect again**: INV-11's trial-unwrap was placed inside `services/password_hint.py`, whose own contract is to be pure — no Qt, no I/O — while the only sidecar locator sits in a module importing PySide6. The seam moved to `ui/_password_hint.py`, which is the I/O half of that pair. **The two best findings were test clauses that could not fail.** INV-1's test derived KEK-master and asserted the vault does not open — which is equally true under §8.1's *rejected* design, so the implementation this spec most wants to exclude would have shipped green against the invariant meant to exclude it; a second leg now creates two vaults under the same password and asserts their DEKs differ. And INV-3's tamper leg lowered `kdf.memory_kib` to test the AAD binding, but `ARGON2_MEMORY_FLOOR_KIB` equals the pinned `ARGON2_MEMORY_KIB` (both 47104), so any lowering is refused by `validate_params` before `unwrap_dek` is reached — the leg could never pass, and the plausible fix is to loosen the floor, weakening the guard the leg was testing. **One Q1, verified by running it**: §4.4 and §13.4 claimed an older build meets a v2 sidecar on the version check. It does not — the required-fields gate fires first, so the user is told the file is *missing or damaged* and pointed at a restore over an intact vault, which is the premise §15.3 was deciding on. Fed a v2-shaped sidecar to the real loader to confirm. **The largest gap was a whole population**: §13 migrated a vault and never said whether it gets a recovery slot, so the feature would have shipped to nobody who already had data (now D7). Also fixed: `secrets.token_bytes` is immutable where every key parameter is annotated `bytearray` and security-model INV-3 requires a wipeable buffer; `models.FORMAT_VERSION` is shared with the `.fbk` params record, so bumping it to 2 would break every backup restore (a separate `SIDECAR_FORMAT_VERSION` now carries the sidecar); INV-4's *exactly* contradicted S3's two migration-only fields; §13.4 settled a limb §15.1 calls open; INV-11 scanned for a 28-symbol run in a code displayed with hyphens every four; and `DeriveWorker` emits one key per run, so two KEKs are two sequential runs. Four mechanical corrections rode along, including a sidecar-growth estimate of "under 300 bytes" replaced by a measured 480. Four collateral items swept; two more were introduced by this loop's own fixes and caught by 4c before the commit. |
 | 3 | 2026-08-20 | 3, cold — identical brief, packet rebuilt from disk | 0 | 4 | 4 | 1 | **Nine verified, nine fixed; none dismissed. CAP REACHED** (3, this project's override for every genre). **A CALM cap: 3 of the 9 landed on text this run wrote (33%)**, measured by `git log -S` on each finding's anchor — down from 45% at loop 2, so the document held more defects than the cap held loops and shipping is the right exit. Not one Q1: every defect this loop was a contradiction, an unspecified decision, or a test that could not fail. **All three lanes found the same defect**: `validate_params`' FIRST check is `format_version != FORMAT_VERSION`, and §4.4's v2 file also carried a `format_version`, so a per-slot `KdfParams` built from the file would refuse every v2 vault — shown to the user as a damaged file over an intact vault. The field is renamed `sidecar_version` rather than documented around, which removes the collision instead of warning about it. **The deepest finding took two lanes and a settled disagreement.** INV-3's tamper test claimed to lock the AAD binding; it could not. Renaming a slot and unwrapping with KEK-master fails because the slot keeps the recovery salt, so the key is simply wrong — green against an implementation whose AAD is `b""`. And the cost parameters are bound by the derivation, not the AAD, since they are inputs to `derive_key`. One lane read the memory floor as blocking the leg and another read it as reaching `unwrap_dek`; both were right about the mechanism and only the second finding was the defect. The rename leg now unwraps with KEK-**recovery**, leaving the slot name as the only difference, and the spec says outright that the cost binding is defence in depth a test cannot demonstrate. **Two lanes each found the two migration defects.** §13 never said where the migration gets the plaintext master password — and it cannot: `_on_derived` hands `complete_unlock` the derived key only. And S3 preserved the v1 salt but not the v1 COST parameters, which `crypto.py`'s own comment says an existing vault records below a later-raised pin; after any pin raise the resume path would derive the wrong key and refuse an intact vault, the exact loss INV-7 forbids. Both are answered by one decision, now §13.1: `slots.master` inherits the v1 salt AND costs, so the key already derived at unlock IS KEK-master — no re-derivation, no password plumbing, no pin hazard, and `legacy_salt_hex` deleted as the same fact written twice. Also fixed: a mistyped password on a migration-pending vault fell through the whole resume ladder and told the user their vault was corrupt (§13.3 gains a step 0); §11 omitted `docs/specs/FIBR-0014.md`, whose D4 is the canonical restore contract this change falsifies, and security-model INV-11, which this spec widens; the decline point was contradictory between D3, D7 and §4.5 (now one write at step 9, on Keep); and `export_to` pins `cipher_compatibility` where `create` does not, so a migrated vault would become unopenable the moment a wheel bump moves the default. §13 renumbered to four subsections; four collateral items swept, two more caught by 4c before the commit. |
 | 4-amendment | 2026-08-20 | 3, cold — identical brief; re-arm loop for the D8 amendment, per CLAUDE.md rule 14 | 0 | 5 | 1 | 0 | **Six verified, six fixed; none dismissed. A VIOLENT ratio: five of the six landed on text written earlier in this same session** — three on loop 3's repairs, two on the D8 amendment itself, measured by `git log -S` on each anchor. **The run stops here and the document goes to implementation**; a fifth cold loop would mostly repair this loop's repairs, and there is nothing in the evidence to suggest it would stop. **All three lanes found the same two defects.** Loop 3 renamed the sidecar's version field to `sidecar_version` to break a collision with `validate_params`' first check, and INV-12 was left asserting `format_version == 2` — a key the file no longer carries, whose cheapest green is to stamp the very value the rename exists to prevent. And loop 3's `cipher_compatibility` field was given no position in §4.4's schema while INV-4 asserts the v2 shape *exactly*, so that test would have gone red on every migrated vault — i.e. on every vault in the field — with "stop recording the cipher level" as the plausible repair, which is the protection loop 3 added it for. **The amendment contradicted itself twice within the hour.** §13.4 promised a downgrading user "finds an intact `.pre-v2` pair waiting" while S6 deletes it on success, so the rollback covers the conversion window and nothing after it — now stated in D8's scope, §13.3's branch and §13.4 alike, rather than implied three different ways. And INV-13 asserted `vault.db` is byte-identical across the copy step, which is the exact witness INV-12 had ruled out two loops earlier under WAL. **The best non-collateral finding was two lanes on the same gap**: §4.1 wrote `derive_key(recovery_code, ...)` and the document never said whether the KDF eats the decoded value or the normalised text. Crockford decodes `I`/`L` to `1` and `O` to `0`, so text-derivation gives a correctly-transcribed code a different key and refuses it — discarding the entire reason §4.3 chose that alphabet, and silently falsifying D4's promise that the display form can change freely. Pinned to the 17-byte decoded payload, check symbol excluded, with a transcription leg added to INV-2. Also fixed: the "that constant is shared" antecedent pointed at the new constant rather than `FORMAT_VERSION`, and after the rename a v2 file lacks all seven v1 fields rather than six. |
+| 5 | 2026-09-06 | 3, cold — genre pinned `spec`, packet 72 KB / 14 windows, `spec_lint` + `doc_integrity` clean and every check actually run | 2 | 3 | 4 | 1 | **Ten verified, ten fixed; none dismissed. First loop of a NEW run**, gating FP05's amendment to § 13.3 branch 2. **All three lanes independently found the same defect, and it was that amendment's own**: branch 2 was rewritten as three CASES, and a replacement that reads end to end and then declines its own counts matched none of them — so a builder folds it into the delete branch and destroys the one complete copy, which is the exact FIBR-0337 H1 class the third bullet was added to stop. Restated as a RULE: delete only on positive evidence about the replacement, and treat every unavailable count set as cannot-compare. **Two lanes each found the two branch-3 defects, and the code names both gaps in its own docstring**: § 13.3 said only "Restart from S1" while `_ensure_rollback_copy` reads "INV-13 carries no carve-out for the resume path", and the retake REBUILDS the sidecar half because past S4 the live sidecar is the migration-pending one — a byte copy makes "rollback" restore the stalled state. Two lanes also found S1's "Generate the DEK" reads as minting a second DEK on the restart, which would leave the pending sidecar wrapping one no file answers to. **The best single finding was a test clause that cannot fail**: INV-1 claimed leg 2 excludes § 8.1, and it cannot — § 8.1 is scoped to migrated vaults, and under it two vaults still hold different DEKs because their v1 salts differ. A third leg was added and `mutation_probe` confirms it kills that design. **My own first draft of that leg was wrong** and 4a step 3 caught it: it asserted DEK ≠ KEK-master, which is leg 1 again; the leg that bites tries the PRE-migration key against the migrated database. Also fixed: INV-7's headline said "opens" where its own test says "with every row intact", so a builder would have used the weak check branch 1 rejects; INV-13's test clause omitted the sidecar leg that is the only one able to fail (the test has it, the spec did not describe it); § 13.3's implementation note said "the slot" where FP05's M1 fix requires the MASTER slot; `Slot` was a return type named nowhere else, leaving the v2 sidecar's record bound to an invention; S0 copied two files where a vault is four, which is what INV-13 means by *complete*; and § 15.2 listed two routes to a v1 vault while `Vault.create`'s `write_sidecar` keyword is a third and defaults on. Three lane open questions settled as non-findings: `validate_params`' first check IS `format_version`, the two Argon2 constants ARE equal today, and the restore DOES record `cipher_compatibility`. |
 
 ## 13. Migration / compatibility
 
@@ -975,7 +1001,7 @@ Given a v1 sidecar and a password that opens the vault:
 
 | Step | Action |
 |---|---|
-| **S0** | Copy `vault.db` and `vault.kdf.json` to `vault.db.pre-v2` and `vault.kdf.json.pre-v2` (D8). `fsync` both, then **open the copy with the key already in hand and read from it**; abort the whole migration if it does not open. Nothing below runs until this succeeds. |
+| **S0** | Copy `vault.db` and `vault.kdf.json` to `vault.db.pre-v2` and `vault.kdf.json.pre-v2` (D8), **and any `-wal` / `-shm` sibling with them, after clearing the copy's own stale siblings first** — that ordering is what stops an earlier run's `-wal` being recovered into this fresh copy. `fsync` each copy and both parent directories, then **open the copy with the key already in hand and read from it**; abort the whole migration if it does not open. Nothing below runs until this succeeds. This is what INV-13 means by *complete*: a vault is four files (§6), so a two-file copy can open and still be missing the user's most recent rows. |
 | **S1** | Unlink any existing `vault.db.migrating` — `export_to` pre-creates `O_EXCL`, so a stale one from an interrupted run wedges every retry. Generate the DEK. Write `vault.db.migrating` via `Vault.export_to(dek)`. `fsync`. |
 | **S2** | Open `vault.db.migrating` with the DEK. Run `PRAGMA integrity_check` and compare per-table row counts against the live vault. Abort on any mismatch, deleting the temporary file. |
 | **S3** | Build the v2 sidecar. `slots.master` takes the v1 salt and the v1 cost parameters (§13.1), and `kdf` records those same costs. One field is present **only** while migrating: `migration_pending: true`. Write to `vault.kdf.json.migrating`. `fsync`. |
@@ -1009,7 +1035,10 @@ fully recorded: KEK-master *is* the v1 database key.
 
 On open, with a v2 sidecar carrying `migration_pending`:
 
-0. Derive KEK-master and unwrap `slots.master`.
+0. Derive KEK-master and unwrap `slots.master`. **The ladder is entered
+   from that slot alone**: every branch below the first needs KEK-master,
+   so another slot's KEK answers no to all of them and the rollback offer
+   is withheld with nothing said (FIBR-0337 M1).
    - **The unwrap fails** → this is an ordinary wrong password, not a broken
      migration. Report it as a failed attempt, advance the shared throttle
      (§6, INV-10), and **do not enter the ladder at all**. Without this
@@ -1041,19 +1070,33 @@ On open, with a v2 sidecar carrying `migration_pending`:
      S5 has not run, so `vault.db` is still the v1 database the counts came
      from. Securing the copy first is INV-13: S5 moves a byte of the live pair
      (FIBR-0313 H1).
-   - **Does not read end to end, or its counts disagree with the live
-     vault's** → evidence about the file itself. Delete it as debris and
-     continue; the live database answered, so step 3 restarts from it.
-   - **The live vault will not give up its counts** → nothing has been
-     established about the replacement, so it is kept: an answer about a
-     different file is not grounds for deleting the one complete copy.
-     Refuse here rather than continuing, because continuing cannot help —
-     step 3 re-enters S1, which unlinks `vault.db.migrating`, and the restart
-     re-reads the same live pages that have just refused. Offer the
-     pre-upgrade pair on the terminal bullet's terms (FIBR-0337 H1).
+   - **Positive evidence about the replacement** — it does not read end to
+     end, or both count sets were read and they differ → delete it as debris
+     and continue; the live database answered, so step 3 restarts from it.
+   - **Either file will not give up its counts** → nothing has been
+     established about the replacement, so it is kept. Stated as a rule rather
+     than as cases, because the case list left the replacement's own refusal
+     in neither branch: a file that reads end to end and then declines its
+     counts is a refusal to answer, not a short export. Delete only on
+     positive evidence, and treat every unavailable count set as
+     cannot-compare. Refuse here rather than continuing, because continuing
+     cannot help — step 3 re-enters S1, which unlinks `vault.db.migrating`,
+     and a restart re-reads the same live pages that have just refused. Offer
+     the pre-upgrade pair on the terminal bullet's terms (FIBR-0337 H1).
 3. Try KEK-master itself against `vault.db` — under §13.1 it is the v1
    database key, so no separate derivation is needed.
-   - **Opens** → the crash was at or before S4. Restart from S1.
+   - **Opens** → the crash was at or before S4. Secure the rollback copy
+     first — the restart runs S4, which replaces the live sidecar, so INV-13
+     binds here exactly as it does at S0 and carries no carve-out for the
+     resume path. Reuse the S0 copy where it still verifies; otherwise retake
+     it, **rebuilding the sidecar half from `slots.master`'s params rather
+     than copying the live one**, because past S4 the live sidecar is the
+     migration-pending v2 one and a byte copy would make "rollback" restore
+     the stalled state. §13.1's inheritance is what makes the rebuild possible
+     with nothing kept aside. Then restart from S1 **with the DEK unwrapped at
+     step 0** — S1's "generate the DEK" is the first run through only, and a
+     second DEK would leave the pending sidecar wrapping one no file answers
+     to.
    - **Does not open** → every route is exhausted, **and the password was
      right**, which is what makes this branch meaningful. Refuse, change
      nothing, and tell the user the vault and its key record disagree. Do not
@@ -1145,8 +1188,8 @@ next reader does not have to re-derive them:
   new-password dialog (step 4 / D6) and Settings' Add / Replace / Remove
   (§ 4.7). Two callers each, which is why it is not in `first_run.py`.
 - **§ 13.3's ladder is `vault_migration.resume`**, called from
-  `AuthService._unlock_through_slot` *after* the slot has unwrapped — which is
-  § 13.3's step 0, and what keeps a mistyped password a failed attempt rather
+  `AuthService._unlock_through_slot` *after* the **master** slot has
+  unwrapped — which is § 13.3's step 0, and what keeps a mistyped password a failed attempt rather
   than a user told their vault is corrupt.
 
 **One test-harness gap, found by the build and repaired.**
@@ -1204,8 +1247,12 @@ non-fresh one, which is what § 8.1 actually is.
 2. **Should 1.0 refuse to ship while any supported path can still produce a v1
    vault?** §10 records that nothing can tell us a given user's vault migrated.
    If a v1 vault can still be *created* by any route after this ships — an old
-   build, a restore path missed in §11 — then "one key schedule" is an
-   intention rather than a fact.
+   build, a restore path missed in §11, or `Vault.create`'s `write_sidecar`
+   keyword, which §13.5 records as shipping with a default of `True` and only
+   first-run passing `False` — then "one key schedule" is an intention rather
+   than a fact. The third is the one a reader will miss: it is live production
+   code and it defaults on, so a new `create` call site writes a v1 sidecar
+   unless its author knows to opt out.
 
 3. **Should the recovery code be shown again on demand?** D5 makes it
    permanently valid, but INV-5 forbids storing it, so the app cannot show it

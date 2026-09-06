@@ -21,6 +21,7 @@ import pytest
 from _recovery_helpers import (
     MASTER_PASSWORD,
     code_secret,
+    create_v1_vault,
     create_vault,
     keep_recovery_key,
     kek_for,
@@ -36,6 +37,7 @@ from finbreak.errors import KdfPolicyError, KeyUnwrapError, VaultLockedError
 from finbreak.keywrap import SLOT_MASTER, SLOT_RECOVERY, unwrap_dek, wrap_dek
 from finbreak.services.auth import AuthService
 from finbreak.services.recovery_code import decode, normalise
+from finbreak.services.vault_migration import migrate_to_v2
 
 pytestmark = pytest.mark.features
 
@@ -112,6 +114,32 @@ def test_dek_is_not_derived_from_any_credential(
         "field permanently.\n"
         "  expected: the two unwrapped DEKs differ\n"
         f"  actual:   both are {dek_one.hex()}"
+    )
+
+    # Leg 3 -- and this is the leg that reaches § 8.1, which neither of the two
+    # above does. § 8.1 is scoped to MIGRATED vaults: it declares the existing
+    # Argon2id output to BE the DEK. Leg 1 passes there (KEK-master is not the
+    # raw key, since the KEK is freshly salted), and so does leg 2 (two vaults
+    # hold different DEKs, because their v1 salts differ). Only asking a
+    # migrated vault whether its DEK is derive_key(password, slots.master.salt)
+    # excludes the design this spec most wants to exclude (FIBR-0337, gate on
+    # § 5 INV-1).
+    migrated_dir = tmp_path / "migrated-vault"
+    migrated_dir.mkdir()
+    migrated_vault = migrated_dir / "vault.db"
+    migrated_sidecar = migrated_dir / "vault.kdf.json"
+    v1, _params, v1_key = create_v1_vault(migrated_vault, migrated_sidecar)
+    v1.close()
+    migrate_to_v2(migrated_vault, migrated_sidecar, bytearray(v1_key))
+
+    assert not opens_with(migrated_vault, migrated_sidecar, bytearray(v1_key)), (
+        "INV-1 leg 3: the PRE-migration v1 key still opens the migrated "
+        "database -- so the migration declared the existing Argon2id output to "
+        "BE the DEK, which is § 8.1's rejected design. That is what makes the "
+        "old key schedule permanent, which is the whole reason § 13 "
+        "re-encrypts rather than re-wraps.\n"
+        "  expected: the v1 key no longer opens the vault\n"
+        "  actual:   it opened"
     )
 
 
