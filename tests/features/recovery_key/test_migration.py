@@ -1717,6 +1717,73 @@ def test_branch_2_does_not_swap_in_a_sound_but_short_replacement(
     )
 
 
+def test_branch_2_keeps_the_replacement_when_the_live_vault_cannot_be_compared(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """FIBR-0337 H1 -- "cannot compare" is not evidence about the replacement.
+
+    ``_replacement_is_sound`` proved the ``.migrating`` copy reads end to end,
+    then asked the LIVE vault for row counts and returned False because that
+    file would not answer. Branch 2 read the False as "debris" and unlinked the
+    proven-good copy -- under a comment asserting the live v1 database is
+    untouched, which is exactly what the check had just failed to establish.
+
+    Reachable when the power loss that interrupted the migration also damaged
+    the live database. Falling through then trades the one complete copy for a
+    restart that cannot succeed: ``_convert``'s ``export_to`` reads the same
+    damaged pages.
+
+    The live side is interposed rather than damaged so the leg is about the
+    DECISION -- what a refusal to answer licenses -- rather than about which
+    page happens to fail. The assertion is on the whole ``resume`` call, not on
+    branch 2: ``_convert`` opens S1 with ``migrating_db.unlink(missing_ok=True)``,
+    so a fix that only skips branch 2's unlink still loses the file.
+    """
+    vault_path, sidecar_path, _key, _digests = _stalled_before_s5_with_filler(
+        tmp_path, "branch2-nocompare"
+    )
+    migrating_db = _suffixed(vault_path, MIGRATING_SUFFIX)
+    assert migrating_db.exists(), (
+        "precondition: S4 has run and the complete replacement is on disk -- "
+        "that is the state branch 2 resumes from."
+    )
+
+    sidecar = read_v2_sidecar(sidecar_path)
+    kek = kek_for(MASTER_PASSWORD, sidecar, SLOT_MASTER)
+    dek = unwrap_slot(MASTER_PASSWORD, sidecar, SLOT_MASTER)
+    compat = vault_migration.read_sidecar_v2(sidecar_path).cipher_compatibility
+
+    reads = vault_migration._reads_end_to_end(migrating_db, dek, compat)
+    assert reads is True, (
+        "precondition: the replacement must be SOUND, or the leg is exercising "
+        "the debris path rather than the cannot-compare one.\n"
+        f"  expected: True\n  actual:   {reads}"
+    )
+
+    real_counts = vault_migration._row_counts_or_none
+
+    def live_will_not_answer(
+        db_path: Path, key: bytearray, cipher_compat: int | None
+    ) -> dict[str, int] | None:
+        if db_path == vault_path:
+            return None
+        return real_counts(db_path, key, cipher_compat)
+
+    monkeypatch.setattr(vault_migration, "_row_counts_or_none", live_will_not_answer)
+
+    with pytest.raises(RollbackAvailableError):
+        vault_migration.resume(vault_path, sidecar_path, kek, dek)
+
+    assert migrating_db.exists(), (
+        "FIBR-0337 H1: resume() destroyed the one complete copy of the vault "
+        "because the LIVE database would not give up its row counts -- an "
+        "answer about a different file. The copy had already been proven to "
+        "read end to end.\n"
+        "  expected: vault.db.migrating still on disk after resume()\n"
+        f"  actual:   {migrating_db.exists()}"
+    )
+
+
 def test_branch_2_secures_the_rollback_copy_before_it_swaps(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -2507,13 +2574,13 @@ def test_the_resume_row_compare_logs_table_names_not_counts(
     )
 
     with caplog.at_level("WARNING", logger="finbreak.services.vault_migration"):
-        sound = vault_migration._replacement_is_sound(
+        verdict = vault_migration._replacement_verdict(
             vault_path, migrating, bytearray(key), bytearray(key), None
         )
 
-    assert sound is False, (
-        "precondition: the compare must have REFUSED, or the branch that logs "
-        "never ran."
+    assert verdict is vault_migration._Replacement.UNSOUND, (
+        "precondition: the compare must have found positive evidence of lost "
+        "rows, or the branch that logs never ran."
     )
     ours = [r for r in caplog.records if r.name == "finbreak.services.vault_migration"]
     assert ours, "precondition: the refusal must have logged something."

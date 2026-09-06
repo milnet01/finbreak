@@ -480,6 +480,28 @@ every credential, account and transaction here is synthetic
   — not just a recovery one — would pass the first test and still be wrong.
   Source: FIBR-0313 M10.
 
+- **INV-26** — `resume()`'s branch 2 must not delete `vault.db.migrating` when
+  what failed is the LIVE vault. The check proved the copy reads end to end,
+  then returned `False` because the live database would not give up its row
+  counts — an answer about a different file — and branch 2 read that as debris.
+  The remedy is `_replacement_verdict`'s three answers: delete only on evidence
+  about the copy itself (a failed read, or counts that disagree); on
+  `UNCOMPARABLE`, keep it and refuse, offering the pre-upgrade pair on the
+  terminal branch's terms.
+  Refusing rather than continuing is load-bearing twice over — step 3 re-enters
+  `_convert`, whose S1 unlinks `vault.db.migrating`, and its `export_to` reads
+  the same live pages that just refused.
+  *Test:*
+  `test_migration.py::test_branch_2_keeps_the_replacement_when_the_live_vault_cannot_be_compared`
+  — stalls a migration between S4 and S5, asserts as a precondition that the
+  `.migrating` copy reads end to end, interposes on `_row_counts_or_none` so
+  the LIVE path alone returns `None`, then calls `resume()` and asserts
+  `RollbackAvailableError` **and** that `vault.db.migrating` survives the whole
+  call. The survival assertion is on `resume()` rather than on branch 2: a fix
+  that only skips branch 2's unlink passes a branch-scoped test while
+  `_convert` deletes the file moments later.
+  Source: FIBR-0337 H1.
+
 ## Rationale
 
 `AuthService.reset_vault` — "start over" — is the live answer to *I forgot my

@@ -20,6 +20,7 @@ import secrets
 import shutil
 from collections.abc import Callable, Mapping
 from dataclasses import replace
+from enum import Enum
 from pathlib import Path
 
 from sqlcipher3.dbapi2 import Connection, DatabaseError
@@ -273,13 +274,26 @@ def _row_counts_or_none(
         probe.close()
 
 
-def _replacement_is_sound(
+class _Replacement(Enum):
+    """§ 13.3 branch 2's three answers, kept apart.
+
+    ``UNSOUND`` is positive evidence the copy is bad. ``UNCOMPARABLE`` is the
+    absence of evidence either way, and folding the two into one ``False`` is
+    what let branch 2 delete a proven-good copy (FIBR-0337 H1).
+    """
+
+    SOUND = "sound"
+    UNSOUND = "unsound"
+    UNCOMPARABLE = "uncomparable"
+
+
+def _replacement_verdict(
     vault_path: Path,
     migrating_db: Path,
     kek_master: bytearray,
     dek: bytearray,
     cipher_compat: int | None,
-) -> bool:
+) -> _Replacement:
     """S2's two checks, asked again before § 13.3 branch 2 swaps.
 
     Branch 2 swapped on :func:`_opens` alone — the weak check this module
@@ -296,36 +310,38 @@ def _replacement_is_sound(
 
     The row compare is available here for the same reason the swap is
     dangerous: S5 has not run, so ``vault.db`` is still the v1 database the
-    counts came from, and § 13.1's inheritance means KEK-master opens it. A
-    live vault that will not give up its counts returns ``False`` too — there
-    is nothing to compare against, and swapping on no evidence is the defect.
+    counts came from, and § 13.1's inheritance means KEK-master opens it.
+
+    Only a failed read or a disagreeing count is evidence ABOUT the replacement.
+    A live vault that will not give up its counts is an answer about a different
+    file, and this returns ``UNCOMPARABLE`` for it rather than the ``False``
+    branch 2 acted on destructively (FIBR-0337 H1).
     """
     if not _reads_end_to_end(migrating_db, dek, cipher_compat):
-        return False
+        return _Replacement.UNSOUND
     live_counts = _row_counts_or_none(vault_path, kek_master, None)
     if live_counts is None:
         log.warning(
             "migration resume: the live vault will not give up its row counts, "
             "so the replacement cannot be compared against it"
         )
-        return False
+        return _Replacement.UNCOMPARABLE
     replacement_counts = _row_counts_or_none(migrating_db, dek, cipher_compat)
     if replacement_counts is None:
-        # Its own arm, mirroring the live side above: "will not give up its
-        # counts" is a different thing to say than "lost rows", and the old
-        # single message rendered it as `got None`.
+        # The read above already carried every page, so this is a refusal to
+        # answer rather than a short export: UNCOMPARABLE, not UNSOUND.
         log.warning(
             "migration resume: the replacement will not give up its row counts, "
             "so it cannot be compared against the live vault"
         )
-        return False
+        return _Replacement.UNCOMPARABLE
     if replacement_counts != live_counts:
         log.warning(
             "migration resume: the replacement lost rows; tables disagreeing: %s",
             _tables_disagreeing(live_counts, replacement_counts),
         )
-        return False
-    return True
+        return _Replacement.UNSOUND
+    return _Replacement.SOUND
 
 
 def write_rollback_copy(
@@ -886,7 +902,10 @@ def resume(
 
     # 2 — a sound replacement is sitting there: the crash was between S4 and S5.
     if migrating_db.exists():
-        if _replacement_is_sound(vault_path, migrating_db, kek_master, dek, compat):
+        verdict = _replacement_verdict(
+            vault_path, migrating_db, kek_master, dek, compat
+        )
+        if verdict is _Replacement.SOUND:
             log.info("migration resume: crash was between S4 and S5; swapping")
             # _swap_database moves a byte of the live pair, so INV-13's gate
             # applies here exactly as branch 3 applies it before _convert.
@@ -896,9 +915,34 @@ def resume(
                 sidecar_path, sidecar, vault_path, dek, compat, kek_master
             )
             return
-        # Not sound, so it is debris rather than a replacement. The live v1
-        # database is untouched and branch 3 restarts from S1 with it, which is
-        # what § 13.3 prescribes for a crash at or before S4 anyway.
+        if verdict is _Replacement.UNCOMPARABLE:
+            # The replacement read end to end, so the migration reached S4 with
+            # a complete copy; what would not answer is the LIVE database. So
+            # this stops rather than falling through, for two reasons. Branch 3
+            # re-enters _convert, whose S1 opens with
+            # `migrating_db.unlink(missing_ok=True)` — the copy kept here would
+            # be gone a few frames later. And that restart cannot succeed
+            # anyway: export_to reads the same live pages that just refused.
+            # Falling through therefore trades the one complete copy for a
+            # failure, so the user is told, on the terminal branch's own terms.
+            log.warning(
+                "migration resume: the replacement is complete but cannot be "
+                "compared against the live vault; keeping it and refusing"
+            )
+            if rollback_copy_is_usable(vault_path, sidecar_path, kek_master):
+                raise RollbackAvailableError(
+                    "the migrated vault is complete but the vault it would "
+                    "replace cannot be read, and a copy taken before the "
+                    "upgrade is beside them"
+                )
+            raise VaultStateError(
+                "the migrated vault is complete but the vault it would replace "
+                "cannot be read, so the two cannot be compared"
+            )
+        # UNSOUND — positive evidence about the file itself, so it is debris
+        # rather than a replacement. The live v1 database answered, and branch 3
+        # restarts from S1 with it, which is what § 13.3 prescribes for a crash
+        # at or before S4 anyway.
         log.warning(
             "migration resume: the replacement database is not sound; "
             "discarding it and falling through to restart the migration"
