@@ -2663,3 +2663,57 @@ def test_only_the_master_slot_enters_the_resume_ladder(
         "fixture, or the leg above passed because nothing was pending.\n"
         f"  actual:   entered {len(entered)} time(s)"
     )
+
+
+def test_s0_flushes_the_directories_its_copy_landed_in(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """FIBR-0337 L1 — S0 fsynced each copy as a FILE and never its directory.
+
+    A new file's bytes being durable does not make its directory entry durable.
+    S1 is the first write to the live database, and INV-13 says no byte of the
+    live pair moves until a verified copy exists — a copy whose entry a crash
+    can still lose is not one. The same reasoning FIBR-0327 applied to S4's
+    rename, one step earlier in the same sequence.
+
+    The pair is split across two directories, because a single-directory vault
+    lets one flush satisfy an assertion about the other.
+    """
+    db_dir = tmp_path / "db"
+    sidecar_dir = tmp_path / "sidecar"
+    db_dir.mkdir()
+    sidecar_dir.mkdir()
+    vault_path = db_dir / "vault.db"
+    sidecar_path = sidecar_dir / "vault.kdf.json"
+    vault, _params, _key = create_v1_vault(vault_path, sidecar_path)
+    _seed(vault.connection)
+    vault.close()
+
+    def dir_id(directory: Path) -> tuple[int, int]:
+        st = os.stat(directory)
+        return (st.st_dev, st.st_ino)
+
+    ids = {dir_id(db_dir): "db dir", dir_id(sidecar_dir): "sidecar dir"}
+    flushed: list[str] = []
+    real_fsync = os.fsync
+
+    def recording_fsync(fd):  # type: ignore[no-untyped-def]
+        st = os.fstat(fd)
+        if stat.S_ISDIR(st.st_mode) and (st.st_dev, st.st_ino) in ids:
+            flushed.append(ids[(st.st_dev, st.st_ino)])
+        return real_fsync(fd)
+
+    monkeypatch.setattr(os, "fsync", recording_fsync)
+    try:
+        write_rollback_copy(vault_path, sidecar_path)
+    finally:
+        monkeypatch.undo()
+
+    assert set(flushed) == {"db dir", "sidecar dir"}, (
+        "FIBR-0337 L1 / INV-13: S0's copy is the migration's only route back, "
+        "and its directory entries were never flushed — so a crash during S1's "
+        "first write to the live database can leave the copy the migration "
+        "believes it took.\n"
+        "  expected: both directories flushed\n"
+        f"  actual:   {sorted(set(flushed))}"
+    )

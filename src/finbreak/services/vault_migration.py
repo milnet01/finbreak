@@ -397,6 +397,15 @@ def write_rollback_copy(
             # all — leaving it unflushed makes a rollback copy that opens and
             # is missing the user's most recent rows.
             _fsync(copied_sibling)
+    # The BYTES being durable does not make the directory ENTRIES durable, and
+    # S1 is the first write to the live database. INV-13 says no byte of the
+    # live pair moves until a verified copy exists; a copy whose entry a crash
+    # can still lose is not one. The same reasoning FIBR-0327 applied to S4's
+    # rename, one step later in this sequence (FIBR-0337 L1). Deduplicated
+    # because the pair usually shares a parent and need not — `_install` refuses
+    # to assume it does.
+    for parent in dict.fromkeys((vault_path.parent, sidecar_path.parent)):
+        fsync_dir(parent)
     return copies[0], copies[1]
 
 

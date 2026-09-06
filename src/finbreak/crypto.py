@@ -448,6 +448,15 @@ def write_sidecar_json(sidecar_path: Path, payload: Mapping[str, object]) -> Non
         os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0),
         0o600,
     )
+    # The mode argument above applies only when os.open CREATES the file. A
+    # .tmp left by an earlier crash is reused and keeps its own mode, which
+    # `os.replace` below then carries onto the sidecar (FIBR-0337 L3). fchmod
+    # rather than this module's siblings' unlink-then-O_EXCL: that form deletes
+    # a symlink planted here instead of refusing it, and O_NOFOLLOW refusing is
+    # what INV-7 locks. The data directory is 0o700, so the reachable case is
+    # our own leftover, and setting the mode on the descriptor settles it.
+    if hasattr(os, "fchmod"):  # Unix-only, like O_NOFOLLOW above
+        os.fchmod(fd, 0o600)
     with os.fdopen(fd, "w") as handle:
         handle.write(text)
         handle.flush()

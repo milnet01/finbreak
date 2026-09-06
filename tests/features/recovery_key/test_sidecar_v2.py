@@ -9,6 +9,7 @@ starts holding a WRAPPED DEK -- which falsifies FIBR-0004 INV-7's "only the salt
 from __future__ import annotations
 
 import json
+import stat
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -733,3 +734,42 @@ def test_an_infinite_sidecar_number_raises_kdf_policy_error(
 
     with pytest.raises(KdfPolicyError):
         getattr(crypto, reader)(sidecar_path)
+
+
+def test_a_planted_temp_file_does_not_set_the_sidecars_mode(
+    paths: tuple[Path, Path],
+) -> None:
+    """FIBR-0337 L3 — ``write_sidecar_json`` opened its ``.tmp`` without
+    ``O_EXCL``, so a pre-existing one was reused with ITS mode, and
+    ``os.replace`` carried that onto the sidecar.
+
+    Its two siblings — ``vault_migration._copy_owner_only`` and
+    ``BackupService._write_owner_only`` — both unlink first and pass
+    ``O_EXCL``, and the first says why: ``O_EXCL`` refuses a path that exists at
+    all by the time we get there, a planted symlink included.
+
+    The sidecar carries no unwrapped key material, so this is the salt and the
+    cost parameters rather than a secret; the mode is still the one coding.md
+    § 7 asks for, and a writer that a leftover file can widen is a writer that a
+    plant can widen.
+    """
+    from finbreak.crypto import write_sidecar_json
+
+    _vault_path, sidecar_path = paths
+    service = AuthService(*paths)
+    create_vault(service)
+    service.lock()
+    payload = read_v2_sidecar(sidecar_path)
+
+    planted = sidecar_path.with_name(sidecar_path.name + ".tmp")
+    planted.write_text("{}", encoding="utf-8")
+    planted.chmod(0o644)
+
+    write_sidecar_json(sidecar_path, payload)
+
+    mode = stat.S_IMODE(sidecar_path.stat().st_mode)
+    assert mode == 0o600, (
+        "a leftover .tmp file's mode reached the sidecar, so anything that can "
+        "create that path decides the sidecar's permissions.\n"
+        f"  expected: 0o600\n  actual:   {oct(mode)}"
+    )
