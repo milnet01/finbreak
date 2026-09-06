@@ -102,6 +102,19 @@ def _rollback_offer() -> str:
     )
 
 
+def _migration_write_failed() -> str:
+    """§ 13.3's ladder WRITES, so a full or read-only disk reaches the unlock
+    slot as an OSError. FIBR-0019 § 6's crash table asks for that state to be
+    reported so the user can free space and retry, which is why this says what
+    failed rather than pointing at a restore (FIBR-0337 M7)."""
+    return QCoreApplication.translate(
+        "UnlockDialog",
+        "finbreak could not finish updating this vault, because a file could "
+        "not be written — the disk may be full or read-only. Free some space "
+        "and try again.",
+    )
+
+
 def _rollback_restored() -> str:
     return QCoreApplication.translate(
         "UnlockDialog",
@@ -443,6 +456,16 @@ class UnlockDialog(QDialog):
                     "Please update finbreak to open it."
                 )
             )
+            self.unlock_failed.emit()
+            return
+        except OSError:
+            # § 13.3's ladder writes — the rollback copy, the replacement
+            # database, the sidecar — so a full or read-only disk arrives here.
+            # Not a failed attempt, so the throttle is left alone, for the
+            # reason the VaultStateError arm above does not call
+            # `_show_failure` (FIBR-0337 M7).
+            log.exception("the resumed migration could not write")
+            self._error.setText(_migration_write_failed())
             self.unlock_failed.emit()
             return
         if unlocked:

@@ -1175,3 +1175,46 @@ def test_complete_first_run_closes_the_vault_when_the_sidecar_write_fails(paths)
         "service reports locked (self._key was never set), so an open "
         "connection here is a live unlocked handle nothing will ever close."
     )
+
+
+def test_unlock_reports_a_disk_failure_from_the_resumed_migration(
+    qtbot, service, monkeypatch
+):
+    """FIBR-0337 M7 — an OSError out of § 13.3's ladder escaped the Qt slot.
+
+    ``complete_unlock`` runs the resumed migration, which writes: a full or
+    read-only disk raises ``OSError``, and ``_on_derived`` had no arm for it.
+    FIBR-0019 § 6's crash table requires that state be reported so the user can
+    free space and retry, and ``_offer_rollback`` a few lines below catches
+    ``OSError`` for the same cause.
+
+    Not a failed attempt, so the throttle must not advance — the same reason the
+    ``VaultStateError`` arm beside it does not call ``_show_failure``.
+    """
+    from finbreak.ui.unlock import UnlockDialog
+
+    service.first_run(bytearray(_PW), "ZAR")
+    service.lock()
+    dialog = UnlockDialog(service)
+    qtbot.addWidget(dialog)
+
+    def _disk_full(_raw):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(service, "complete_unlock", _disk_full)
+    failed: list[int] = []
+    dialog.unlock_failed.connect(lambda: failed.append(1))
+    before = dialog._throttle.load().fail_count
+
+    dialog._on_derived(b"\x00" * 32)
+
+    assert "disk" in dialog._error.text().lower(), (
+        "a disk failure inside the resumed migration escaped the slot, or was "
+        "reported as something the user cannot act on.\n"
+        f"  actual:   {dialog._error.text()!r}"
+    )
+    assert failed == [1], "unlock_failed emitted, not unlocked"
+    assert dialog._throttle.load().fail_count == before, (
+        "a full disk is not a wrong password, so it must not advance the "
+        "shared throttle."
+    )
