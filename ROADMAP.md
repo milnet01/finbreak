@@ -10163,7 +10163,7 @@ is a future error tomorrow.
   Kind: doc-fix.
   Source: in-session-2026-08-25 (noticed during FIBR-0310).
 
-- 🚧 [FIBR-0318] **Close the 2026-08-31 whole-tree audit: check-code + a 15-lane review-code sweep.**
+- ✅ [FIBR-0318] **Close the 2026-08-31 whole-tree audit: check-code + a 15-lane review-code sweep.**
   check-code --tree came back clean apart from two trivia. review-code ran 15
   lanes over src/, scripts/ and the workflows, partitioned by cohesion after
   indie_review_partition returned src/ and tests/ as single too_coarse lanes.
@@ -10192,6 +10192,19 @@ is a future error tomorrow.
   Two spec consequences carry items rather than being amended silently: FIBR-0323
   (Family B's exemption from INV-11) and FIBR-0324 (the INV-4 amendment owes its
   gate).
+  Resolved (2026-09-06): everything this bullet owns is disposed of.
+
+  Checked against its own list rather than by impression. The two CRITICALs
+  and the bulk of the HIGH set were fixed and pushed on 2026-08-31. The four
+  HIGH deliberately not fixed here carry their own items: FIBR-0319, FIBR-0321
+  and FIBR-0322 are shipped, and FIBR-0320 stays open by design -- it needs
+  runtime evidence, which is why it was split out rather than held here. The
+  MEDIUM and LOW tails, FIBR-0327 and FIBR-0328, are both shipped. The two
+  spec consequences, FIBR-0323 and FIBR-0324, are both shipped.
+
+  So the only thing still open that this bullet named is the one item it
+  split out on purpose. Closing it does not close that, and FIBR-0320 stands
+  on its own.
   **Layman:** A full sweep of the code found a batch of real bugs; this tracks fixing them.
   Kind: review-fix.
   Source: check-code --tree + review-code 2026-08-31.
