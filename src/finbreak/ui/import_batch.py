@@ -25,7 +25,7 @@ from collections import Counter
 from collections.abc import Sequence
 from pathlib import Path
 
-from PySide6.QtCore import QEvent, QObject, Qt, Signal, Slot
+from PySide6.QtCore import QCoreApplication, QEvent, QObject, Qt, Signal, Slot
 from PySide6.QtGui import QKeyEvent
 from PySide6.QtWidgets import (
     QHBoxLayout,
@@ -95,7 +95,12 @@ def file_labels(files: Sequence[BatchFile]) -> list[str]:
 
 
 def self_index_label(name: str, index: int, total: int) -> str:
-    return f"{name} [{index + 1} of {total}]"
+    # Module level, so QCoreApplication.translate with an explicit context rather
+    # than self.tr. One message rather than an f-string, so "of" is translatable
+    # at all and the parts can be reordered (coding.md § 5.2).
+    return QCoreApplication.translate(
+        "BatchImport", "{name} [{index} of {total}]"
+    ).format(name=name, index=index + 1, total=total)
 
 
 class BatchReviewWidget(QWidget):

@@ -472,8 +472,13 @@ class HomeView(QWidget):
         """The slim Net strip (D4/INV-6): Summary.net, sign-coloured when the pref is
         on — the identical logic the old Net tile used, moved not rewritten."""
         style = self._amount_prefs.negative_style
+        # One message, not "Net" joined to the amount by an f-string: a translator
+        # given the label alone cannot put it after the number, which some
+        # languages need (coding.md § 5.2).
         self._net_value.setText(
-            f"{self.tr('Net')} {_format_amount(summary.net, symbol, style)}"
+            self.tr("Net {amount}").format(
+                amount=_format_amount(summary.net, symbol, style)
+            )
         )
         if self._amount_prefs.colour:
             colour = _POSITIVE_TEXT if summary.net >= 0 else _NEGATIVE_TEXT

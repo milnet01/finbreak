@@ -266,9 +266,13 @@ Do not delete revoked entries — the history is the value.
   variants and each exclusion sentence is independently present or absent, so a
   merged message would need a variant per combination.
 
-  Scoped to sentence-level joins of complete `tr()` messages. A **fragment**
-  appended to a sentence is still a real § 5.2 defect — `import_batch.py`
-  `_with_unreadable_rows` had one and it was fixed, not allowlisted.
+  Scoped to sentence-level joins of complete `tr()` messages, and to nothing else.
+  Two other shapes are real § 5.2 defects and were fixed rather than allowlisted:
+  a **fragment** appended to a sentence (`import_batch.py`
+  `_with_unreadable_rows`), and a `tr()` **word interpolated into an f-string**
+  beside a value, which leaves the translator unable to move the label
+  (`home.py` `_render_net`, `import_batch.py` `self_index_label`). Searching for
+  `tr(...) +` alone does not find the second shape.
 - **Suppression applied:** none — no rule id to suppress; this entry is the
   record.
 - **Logged:** 2026-09-06
