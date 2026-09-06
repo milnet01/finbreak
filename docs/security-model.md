@@ -242,8 +242,13 @@ be checkable. Enforcement arrives in step with the code:
   until GC; `vault._connect` builds the raw key as a hex `str` with the
   same property; and an `AESGCM` object keeps OpenSSL's own copy of the
   key, so it still decrypts after the `bytearray` it was built from is
-  zeroed. What is wiped is every buffer the app owns. These are
-  in-process copies, distinct from the swap residual T3 and INV-4 name.
+  zeroed. These three are about what the app HANDS those APIs; what they
+  RETURN is the same residual and is key material itself.
+  `hash_secret_raw` returns a KEK as immutable `bytes` and `AESGCM.decrypt`
+  returns the DEK the same way, and each is copied into a `bytearray` the
+  app then owns and wipes — the original stays until GC. What is wiped is
+  every buffer the app owns. These are in-process copies, distinct from
+  the swap residual T3 and INV-4 name.
 
 - **INV-3b — The sidecar holds no UNWRAPPED key material** (FIBR-0019
   INV-4). The plaintext sidecar carries a wrapped DEK per slot, which
