@@ -4,7 +4,8 @@ A ``RulesWidget`` (mirroring ``CategoriesWidget``): a ``QTableWidget`` of rules 
 priority order (Pattern · Category) + Add / Edit / Delete / Move up / Move down
 (gated on a selection) + an **Apply rules now** button that re-files the auto rows
 and reports the count. ``RuleEditDialog`` (same file) is the one dialog for both
-the manager's Add/Edit and the Home learning offer; its OK is disabled while the
+the manager's Add/Edit and the Transactions tab's learning offer
+(``TransactionsView._maybe_offer_rule``); its OK is disabled while the
 pattern is empty, so no empty pattern ever reaches ``add_rule`` through the dialog.
 All strings go through ``tr()`` and every widget sits in a layout manager
 (coding.md § 5.2).

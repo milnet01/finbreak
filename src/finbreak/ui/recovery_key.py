@@ -1,9 +1,9 @@
 """The two dialogs the recovery key needs (FIBR-0019 § 4.5 step 8, § 4.6 step 4).
 
-Both are here rather than in ``first_run.py`` because both have two callers:
-the code display is shown at vault creation, after a migration (D7) and by
-Settings' **Add** / **Replace** (§ 4.7); the new-password step is reached from a
-recovery unlock (D6) and nowhere else yet.
+Both are here rather than in ``first_run.py`` because neither belongs to first
+run alone: the code display is shown at vault creation, after a migration (D7)
+and by Settings' **Add** / **Replace** (§ 4.7), and the new-password step is
+reached only from a recovery unlock (D6) — which is not first run either.
 
 ``RecoveryCodeDialog`` shows the code **once**. Nothing retains it — INV-5
 forbids the app persisting it of its own accord, and the single exception is the
