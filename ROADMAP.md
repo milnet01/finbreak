@@ -11242,6 +11242,29 @@ is a future error tomorrow.
   Kind: investigate.
   Source: review-contract on FIBR-0050, 2026-09-04.
 
+- 📋 [FIBR-0338] **Two files still cite the retired global rule 5 for the latest-stable policy.**
+  Found by the FIBR-0337 security-model gate's blast-radius sweep, and
+  left out of that run deliberately: neither file was its subject.
+
+  `~/.claude/CLAUDE.md` retired rules 1-5 on 2026-08-12 (CFG-0043); the
+  standards own them now. Two places here still cite the old numbering:
+
+    docs/standards/dependencies.md:164  "global rule § 5b"
+    pyproject.toml:79                   "global rule § 5c"
+
+  security-model.md T7 carried the same citation and was corrected in
+  that gate. The owners are `standards/dependencies.md` itself and
+  `coding.md` § 1.5 for libraries.
+
+  Filed rather than fixed in passing because `docs/standards/dependencies.md`
+  is a contract document: editing it is CLAUDE.md rule 14's own question,
+  and a one-line correction inside someone else's gate is how a document
+  gets edited with no review at all. The pyproject comment is trivial and
+  can ride along with it.
+  **Layman:** Two files point at a rule that no longer exists, so anyone following the pointer finds nothing.
+  Kind: doc-fix.
+  Source: review-contract-2026-09-06 (FIBR-0019 gate, 4b sweep, out of scope).
+
 ## How to add an item
 
 1. Allocate the next ID:

@@ -24,12 +24,15 @@ every credential, account and transaction here is synthetic
   application data directory** — it does not fire on the `vault.db` *inside* a
   `.fbk`, which keeps its `derive_key(backup_password, …)` schedule.
   *Test:* `test_envelope.py::test_dek_is_not_derived_from_any_credential` —
-  two legs. First, derive KEK-master and assert the vault does **not** open with
-  it. Second, and this is the one that bites: two vaults created with the
-  **same** master password must hold **different** DEKs. Without the second leg
-  the test passes under § 8.1's rejected design, where the legacy Argon2id
-  output *is* the DEK wrapped under a freshly salted KEK — so the implementation
-  the design most wants to exclude would ship green.
+  three legs. First, derive KEK-master and assert the vault does **not** open
+  with it. Second, two vaults created with the **same** master password must
+  hold **different** DEKs, which excludes any design deriving the DEK from the
+  credential alone. Third, on a **migrated** vault, the pre-migration v1 key
+  must no longer open it — and that leg is the only one reaching § 8.1's
+  rejected design, where the legacy Argon2id output *is* the DEK. Legs 1 and 2
+  both pass there: § 8.1 keeps each vault's own v1 salt, so two vaults still
+  hold different DEKs. `mutation_probe` confirms leg 3 kills that design
+  (FIBR-0337).
   Source: FIBR-0019 INV-1.
 
 - **INV-2** — Both slots unwrap to the same DEK, and either alone opens the
@@ -146,7 +149,9 @@ every credential, account and transaction here is synthetic
   Source: FIBR-0019 INV-12.
 
 - **INV-13** — No byte of the live pair is modified until a rollback copy
-  exists, is complete, and opens with the user's current key.
+  exists, is complete, and **opens AND reads end to end** with the user's
+  current key — an open-probe alone passes a copy damaged past page 1, whose
+  schema is intact and whose rows are unreachable.
   *Test:* `test_migration.py::test_no_swap_without_a_verified_rollback_copy` —
   injects a failure into the copy step, then into its verification, and asserts
   in both cases that the live sidecar is still the v1 one, that the vault still

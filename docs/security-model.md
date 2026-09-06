@@ -108,7 +108,7 @@ attacked. Each row: the threat → how finbreak stops it.
 | T4 | **Decrypted bank statement leaks to disk** | Locked input PDFs are decrypted **in memory only**; no decrypted content is *deliberately* written to disk or temp files (A5, INV-4). (Defending against the OS paging memory to swap is out of scope — § 4.) |
 | T5 | **Malicious import file** (crafted CSV/OFX/PDF — parser crash, path traversal, zip-bomb-style resource exhaustion, formula injection) **or a crafted restore `.fbk`** (a zip parsed **pre-login**) | Parsers run defensively: bounded resource use (file/page/row caps), no `eval`, no shell-out; CSV cells are treated as data, never spreadsheet formulas; per-row errors are reported, not fatal (INV-5a/5b/5c). The restore `.fbk` — parsed before any authentication — reads only the three fixed entry names with per-entry caps checked **before** inflating (never `extractall`), rejects traversal/extra/duplicate entries, and re-validates the embedded KDF params against the pinned floor before deriving any key (FIBR-0014 INV-11/INV-12). **One documented residual.** The PDF **decompressed-page-size** vector is assessed + accepted, not bounded — see INV-5b / FIBR-0075. **The KDF cost axes were a second residual and FIBR-0327 closed it.** `validate_params` is still one-sided by design (a floor, no ceiling), because a ceiling there would bind every existing vault; the bound lives at the trust boundary instead. `validate_untrusted_params` caps `memory_kib` and bounds `time_cost` and `parallelism` on both sides, and the restore path calls it on every `.fbk` before deriving anything, so an arbitrarily large allocation and an arbitrarily long derivation are both refused pre-login. A backup `.fbk` can now also be *verified* read-only (FIBR-0033) through the **same** FIBR-0014 guards, but **post-login** (from Settings, D5) — a lower-risk surface than restore's pre-login parse, adding **no new pre-login attack surface**. |
 | T6 | **Secret accidentally committed to the public repo** | `gitleaks` in CI **and** the local pre-push script; `.gitignore` excludes `*.db`/vault/build output; no real financial data in tests — only synthetic fixtures (INV-6, A7). **A real account number is a separate case**: `gitleaks` does not match one, and the guard that does (`tests/features/account_detect/` INV-8) runs only where the local corpus is supplied, so it is absent from CI by design — see INV-6. |
-| T7 | **Vulnerable third-party dependency (known CVE), or a hijacked / typosquatted release that has no CVE at all** | `pip-audit` in CI + local script fails the build on a known-vulnerable dependency; Dependabot raises bumps; latest-stable policy (global rule § 5). The gate runs it **twice, against two different databases** — the default PyPI Advisory DB and OSV.dev (`-s osv`, `FIBR-0227`) — because neither is a superset and only OSV.dev imports the OpenSSF **Malicious Packages** feed, which is what covers the no-CVE half of this row. |
+| T7 | **Vulnerable third-party dependency (known CVE), or a hijacked / typosquatted release that has no CVE at all** | `pip-audit` in CI + local script fails the build on a known-vulnerable dependency; Dependabot raises bumps; latest-stable policy (`standards/dependencies.md`; `coding.md` § 1.5 for libraries). The gate runs it **twice, against two different databases** — the default PyPI Advisory DB and OSV.dev (`-s osv`, `FIBR-0227`) — because neither is a superset and only OSV.dev imports the OpenSSF **Malicious Packages** feed, which is what covers the no-CVE half of this row. |
 | T8 | **Insecure code pattern introduced** (hardcoded secret, weak hash, `subprocess(shell=True)`, etc.) | `bandit` security linter in CI + local script. |
 | T9 | **Tampered vault / downgrade of crypto settings** | SQLCipher authenticates **each page with a per-page HMAC** (HMAC-SHA512 by default) — tamper-evident. AES gives confidentiality, **not** integrity, so the HMAC must stay enabled; a tampered page fails to open (INV-1). The recorded KDF parameters can't be downgraded **below the pinned floor** on open (INV-2). Both are asserted by the FIBR-0004 (P02) spec's tests. |
 | T10 | **Exported report shared, then read by the wrong person** | Export **can be** password-locked with AES-256 (`pikepdf`) using a password the user sets at export time (A6, INV-7), and the user is reminded the password is theirs to share safely. **The password is optional** (`FIBR-0013 amends T10`): a blank field exports a plain PDF, which is the *default* path since the field starts empty. So this row's mitigation is **user-elected, not automatic** — an exported report carries dates, descriptions, counterparties, per-transaction amounts and per-account totals, and if the user leaves the password blank none of it is protected by the file. Two things narrow the residual: the file is written mode `0600` so it is not readable by other local users (FIBR-0204), and it carries **no account numbers or balances** (`_accounts_in_scope` reads only id/name). Sharing an unlocked export remains a deliberate user choice with a real disclosure cost. |
@@ -138,7 +138,7 @@ consciously excluded, not missed.
 
 ## 5. Security invariants (the enforceable checklist)
 
-Every spec and every review pass checks these. Each is phrased to
+Every `implement`-Kind spec states how it upholds the ones its own code path touches (the header owns the extent), and every review pass checks these. Each is phrased to
 be checkable. Enforcement arrives in step with the code:
 
 - **From P01 on:** INV-6's key / password / vault leg and the
@@ -217,11 +217,14 @@ be checkable. Enforcement arrives in step with the code:
   recorded **output length = 32 bytes** and **salt length = 16
   bytes** — the raw key's required size; a *longer* output or salt
   is rejected, not accepted. Iterations and parallelism get no
-  on-open check — Argon2id's own minimum of 1 already pins them, so
-  no recorded value can fall below the pin and there is no app-level
-  downgrade test for those two axes. That covers **downgrade only**: an
-  *inflated* recorded cost is unchecked, which is T5's pre-login
-  residual. So a tampered or downgraded
+  on-open check, and Argon2id's own minimum of 1 does **not** pin them:
+  a sidecar can record 0, and on the local open path that surfaces as
+  `argon2-cffi`'s `HashingError` at derivation rather than as a clean
+  refusal. That covers **downgrade only**; an *inflated* recorded cost
+  is unchecked **here**. Both the low and the high side are bounded at
+  the trust boundary instead, by `validate_untrusted_params` (T5,
+  FIBR-0327) — so anything parsing a sidecar that arrived from outside
+  owes that second call. So a tampered or downgraded
   vault cannot force a weaker KDF. The
   FIBR-0004 (P02) spec implements and *tests* these values. Since
   FIBR-0019 what reaches SQLCipher's **raw**-key pragma is the **DEK**,
@@ -241,7 +244,7 @@ be checkable. Enforcement arrives in step with the code:
   shorter-lived than the DEK — it is wiped as soon as it has
   unwrapped or re-wrapped a slot — and the DEK is what the session
   holds for its whole unlocked life.
-  **Residuals, stated honestly** (ADR-0011 D5), because a test written
+  **Residuals, stated honestly** (FIBR-0004 D5), because a test written
   to an unqualified "wiped" asserts something the code deliberately
   does not do: `derive_key` must hand the C binding an
   immutable `bytes(password)` copy, which cannot be zeroed and lingers
