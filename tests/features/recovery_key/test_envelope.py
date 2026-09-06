@@ -15,7 +15,7 @@ import ast
 import json
 from collections.abc import Iterator
 from pathlib import Path
-from typing import get_args, get_type_hints
+from typing import Any, get_args, get_type_hints
 
 import pytest
 from _recovery_helpers import (
@@ -32,7 +32,7 @@ from _recovery_helpers import (
 )
 
 from finbreak.crypto import KEY_LEN, load_and_validate_params
-from finbreak.errors import KdfPolicyError, KeyUnwrapError
+from finbreak.errors import KdfPolicyError, KeyUnwrapError, VaultLockedError
 from finbreak.keywrap import SLOT_MASTER, SLOT_RECOVERY, unwrap_dek, wrap_dek
 from finbreak.services.auth import AuthService
 from finbreak.services.recovery_code import decode, normalise
@@ -330,3 +330,54 @@ def test_no_call_site_copies_the_kek_into_bytes(service: AuthService) -> None:
     slot = wrap_dek(kek, bytes(dek), SLOT_MASTER, params)
     kek[:] = bytes(KEY_LEN)  # the wipe the annotation used to defeat
     assert unwrap_dek(bytearray(range(KEY_LEN)), slot, SLOT_MASTER, params) == dek
+
+
+@pytest.mark.parametrize(
+    ("label", "arrange", "expected"),
+    [
+        ("the vault is locked", lambda svc, mp: svc.lock(), VaultLockedError),
+        (
+            "the sidecar will not read",
+            lambda svc, mp: mp.setattr(
+                type(svc),
+                "read_sidecar",
+                lambda self: (_ for _ in ()).throw(KdfPolicyError("damaged")),
+            ),
+            KdfPolicyError,
+        ),
+    ],
+    ids=["locked", "sidecar_unreadable"],
+)
+def test_a_refused_slot_write_still_wipes_the_secret(
+    service: AuthService,
+    monkeypatch: pytest.MonkeyPatch,
+    label: str,
+    arrange: Any,
+    expected: type[Exception],
+) -> None:
+    """FIBR-0337 M3 — ``_write_slot``'s only wipe was ``derive_raw``'s, and two
+    exits come before it: the locked-vault refusal and the sidecar read.
+
+    ``crypto.derive_key``'s docstring states the rule this breaks — build the
+    secret under a name rather than inline, or there is nothing left to wipe it
+    by — and ``add_recovery_key`` builds its decoded payload inline, so on
+    either exit the recovery payload was left in a buffer no frame could reach.
+    security-model INV-3.
+
+    Asserted on the CALLER's buffer, which is the thing that outlives the call.
+    """
+    create_vault(service)
+    arrange(service, monkeypatch)
+
+    secret = bytearray(b"\x11" * 17)
+    with pytest.raises(expected):
+        service._write_slot(SLOT_RECOVERY, secret)
+
+    assert bytes(secret) == bytes(len(secret)), (
+        "_write_slot refused and left the secret it was handed intact, so the "
+        "recovery payload stays in memory with no frame owning it "
+        "(security-model INV-3).\n"
+        f"  refusal:  {label}\n"
+        f"  expected: {len(secret)} zero bytes\n"
+        f"  actual:   a non-zero buffer"
+    )

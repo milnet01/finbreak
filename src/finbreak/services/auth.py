@@ -396,23 +396,36 @@ class AuthService:
         DEK into ``slot``, and rewrite the sidecar atomically.
 
         The one implementation behind every credential change (§ 4.7: "all three
-        are re-wraps"). ``secret`` is wiped here — ``derive_raw`` owns it.
+        are re-wraps").
+
+        ``secret`` is wiped on EVERY exit, not only through ``derive_raw``: the
+        locked-vault refusal and the sidecar read both come before that call,
+        and a caller building its payload inline — ``add_recovery_key`` decodes
+        the recovery code straight into the argument — then holds no name to
+        wipe it by, which is the rule ``crypto.derive_key``'s own docstring
+        states (security-model INV-3, FIBR-0337 M3). ``derive_raw`` still owns
+        the wipe on the success path; this is a second, idempotent pass over an
+        already-zeroed buffer.
         """
-        if self._key is None:
-            raise VaultLockedError("the vault is locked")
-        sidecar = self.read_sidecar()
-        # The new slot inherits this vault's recorded costs, not today's pin: a
-        # migrated vault's slots must stay derivable under one schedule (§ 13.1).
-        params = sidecar.params_with_salt(secrets.token_bytes(SALT_LEN))
-        kek = bytearray(derive_raw(secret, params))
         try:
-            wrapped = wrap_dek(kek, bytes(self._key), slot, params)
+            if self._key is None:
+                raise VaultLockedError("the vault is locked")
+            sidecar = self.read_sidecar()
+            # The new slot inherits this vault's recorded costs, not today's
+            # pin: a migrated vault's slots must stay derivable under one
+            # schedule (§ 13.1).
+            params = sidecar.params_with_salt(secrets.token_bytes(SALT_LEN))
+            kek = bytearray(derive_raw(secret, params))
+            try:
+                wrapped = wrap_dek(kek, bytes(self._key), slot, params)
+            finally:
+                _wipe(kek)
+            write_sidecar_v2(
+                self._sidecar_path,
+                sidecar.with_slot(slot, SlotRecord.from_wrap(params.salt, wrapped)),
+            )
         finally:
-            _wipe(kek)
-        write_sidecar_v2(
-            self._sidecar_path,
-            sidecar.with_slot(slot, SlotRecord.from_wrap(params.salt, wrapped)),
-        )
+            _wipe(secret)
         log.info("re-wrapped the %s slot", slot)
 
     # --- unlock ------------------------------------------------------------ #
