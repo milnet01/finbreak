@@ -487,11 +487,16 @@ class MainWindow(QMainWindow):
         self._action_quit = self._make_action(
             "action_quit", self.tr("Quit"), None, self.close
         )
-        # The app's first keyboard shortcut (FIBR-0216): the platform's standard Quit
-        # (Ctrl+Q on Linux/Windows, Cmd+Q on macOS), so exiting never depends on
-        # finding a menu. `ApplicationShortcut` so it works from the locked screen,
-        # where the window holds no focused workspace.
-        self._action_quit.setShortcut(QKeySequence.StandardKey.Quit)
+        # The app's first keyboard shortcut (FIBR-0216): Ctrl+Q, so exiting never
+        # depends on finding a menu. `ApplicationShortcut` so it works from the
+        # locked screen, where the window holds no focused workspace.
+        #
+        # Spelled out rather than taken from StandardKey.Quit, which resolves
+        # through the platform's binding scheme and only gives Ctrl+Q under the
+        # KDE and Gnome schemes — the fallback scheme gives the `Exit` hardware
+        # key (FIBR-0337 H2/L8). The portable spelling maps Ctrl to Command on
+        # macOS, which is that platform's standard.
+        self._action_quit.setShortcut(QKeySequence("Ctrl+Q"))
         self._action_quit.setShortcutContext(Qt.ShortcutContext.ApplicationShortcut)
         self._action_center_window = self._make_action(
             "action_center_window", self.tr("Center window"), None, self._center_window

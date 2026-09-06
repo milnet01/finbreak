@@ -866,3 +866,65 @@ def test_the_forced_password_dialog_can_quit_when_the_password_cannot_be_set(
         "D6: quitting must not be a way PAST the forced password -- accepted "
         "is what admits the workspace and it must not have fired."
     )
+
+
+def test_the_forced_password_dialog_quits_on_ctrl_q_off_the_platform_scheme(
+    service: AuthService, qtbot: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """FIBR-0337 H2 -- D6's dialog had no exit on a non-KDE/Gnome platform.
+
+    Escape and the window [X] are no-ops on purpose, so the only way out is the
+    dialog's own quit shortcut, and that shortcut was bound to
+    ``QKeySequence.StandardKey.Quit``. Qt resolves a standard key through the
+    PLATFORM's binding scheme: KDE and Gnome give Ctrl+Q, and the fallback
+    scheme -- what everything else gets, Windows included -- gives ``Exit``, a
+    hardware key no ordinary keyboard carries. The main window's own Ctrl+Q is
+    blocked by the modal grab, and with auto-lock set to Never there was then
+    no way out of the app at all.
+
+    The scheme cannot be swapped at runtime and this machine is KDE, where the
+    defect is invisible, so a stand-in supplies a Quit that is not Ctrl+Q. The
+    binding must be literal for this leg to pass.
+    """
+    from types import SimpleNamespace
+
+    from PySide6.QtGui import QKeySequence, QShortcut
+    from PySide6.QtWidgets import QWidget
+
+    unreachable = QKeySequence("Ctrl+Shift+F12")
+
+    class _FallbackScheme:
+        """Stands in for a platform whose ``StandardKey.Quit`` is not Ctrl+Q."""
+
+        StandardKey = SimpleNamespace(Quit=unreachable)
+
+        def __call__(self, *args: Any) -> QKeySequence:
+            return QKeySequence(*args)
+
+    monkeypatch.setattr(recovery_module, "QKeySequence", _FallbackScheme())
+
+    window = QWidget()
+    qtbot.addWidget(window)
+    window.show()
+    dialog = recovery_module.NewMasterPasswordDialog(service, window)
+    qtbot.addWidget(dialog)
+    dialog.show()
+
+    shortcuts = dialog.findChildren(QShortcut)
+    assert shortcuts, (
+        "precondition: the dialog must carry its own quit shortcut -- D6 leaves "
+        "no other way out, and without one this leg asserts nothing."
+    )
+    bound = [key for shortcut in shortcuts for key in shortcut.keys()]
+    assert QKeySequence("Ctrl+Q") in bound, (
+        "the forced-password dialog's only exit resolves through the platform "
+        "binding scheme, so on a platform whose Quit is not Ctrl+Q there is no "
+        "way out of the app but the task manager.\n"
+        f"  expected: Ctrl+Q among the bound sequences\n"
+        f"  actual:   {[key.toString() for key in bound]}"
+    )
+    assert unreachable not in bound, (
+        "the binding still comes from the platform's standard key, so it is "
+        "whatever that scheme says -- which is the defect, not the fix.\n"
+        f"  actual:   {[key.toString() for key in bound]}"
+    )

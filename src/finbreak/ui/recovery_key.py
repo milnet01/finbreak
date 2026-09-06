@@ -264,7 +264,15 @@ class NewMasterPasswordDialog(QDialog):
         # take the re-wrap, say. The app must still be quittable, and an
         # application-modal dialog blocks the window's own Quit shortcut, so
         # this one carries its own (FIBR-0313 L10).
-        quit_shortcut = QShortcut(QKeySequence.StandardKey.Quit, self)
+        #
+        # Ctrl+Q literally, NOT StandardKey.Quit: Qt resolves a standard key
+        # through the platform's binding scheme, and only the KDE and Gnome
+        # schemes give Ctrl+Q. The fallback scheme — everything else, Windows
+        # included — gives `Exit`, a hardware key no ordinary keyboard carries,
+        # so the dialog's only exit did not exist there (FIBR-0337 H2). The
+        # portable spelling maps Ctrl to Command on macOS, which is that
+        # platform's standard anyway.
+        quit_shortcut = QShortcut(QKeySequence("Ctrl+Q"), self)
         quit_shortcut.activated.connect(self._quit_application)
 
     def _quit_application(self) -> None:
