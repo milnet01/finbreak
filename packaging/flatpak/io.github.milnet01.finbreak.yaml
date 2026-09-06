@@ -103,4 +103,4 @@ modules:
       - type: git
         url: https://github.com/milnet01/finbreak.git
         tag: v0.1.23
-        commit: 624722d73a2d8dfb7af77864873d077e79ef1c61
+        commit: c86d9c71c7f1f8865e9bb21f42bdb9b122b49595
