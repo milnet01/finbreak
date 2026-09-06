@@ -48,7 +48,7 @@ from finbreak.services.vault_migration import (
     MIGRATING_SUFFIX,
     rollback_copy_paths,
 )
-from finbreak.vault import SQLCIPHER_COMPAT, Vault
+from finbreak.vault import SQLCIPHER_COMPAT, Vault, old_copy_sets
 
 pytestmark = pytest.mark.features
 
@@ -1789,4 +1789,70 @@ def test_start_over_removes_a_crashed_restores_assembly_directory(
         "no file of the deleted vault remains is false (security-model "
         "INV-12).\n"
         f"  survived: {assembly.name}"
+    )
+
+
+def test_a_restore_moves_an_orphan_wal_aside_with_no_live_vault(tmp_path) -> None:
+    """FIBR-0337 L4 — the incumbent's WAL siblings moved aside only when a live
+    file existed.
+
+    An orphan ``vault.db-wal`` beside no database is exactly what a reset that
+    aborted part-way leaves. The restore then installed its database next to a
+    journal written under a DIFFERENT key, which SQLite would try to recover
+    into it — the hazard this method's own docstring names and the reason it
+    handles the siblings at all.
+    """
+    fbk, _snap = _export_from_seed(tmp_path)
+    d = tmp_path / "orphan-dest"
+    d.mkdir()
+    auth = AuthService(d / "vault.db", d / "vault.kdf.json")
+    orphan = d / "vault.db-wal"
+    orphan.write_bytes(b"a journal from a vault that is gone")
+
+    BackupService(auth.vault, auth).restore_backup(fbk, _BACKUP_PW, _M2)
+
+    assert not orphan.exists() or orphan.read_bytes() != (
+        b"a journal from a vault that is gone"
+    ), (
+        "the restore installed its database beside an orphan write-ahead log "
+        "from a differently keyed vault, which SQLite will try to recover into "
+        "it.\n"
+        f"  still present: {orphan.name}"
+    )
+    assert auth.unlock(bytearray(_M2, "utf-8")), (
+        "the restored vault must open under the new master password."
+    )
+    auth.lock()
+
+
+def test_old_copy_sets_looks_for_each_name_in_its_own_directory(tmp_path) -> None:
+    """FIBR-0337 L5 — the glob ran over the VAULT's parent for both names.
+
+    ``Vault`` takes the two paths independently, and ``_install`` says so in
+    the comment that dedupes its own ``install_dirs``: it refuses to assume the
+    pair shares a parent. This helper assumed it, so a sidecar kept elsewhere
+    left its ``*.old`` copies invisible to both callers — the restore's prune
+    and "start over" — and each is a plaintext record of a vault the user has
+    moved on from.
+    """
+    db_dir = tmp_path / "db"
+    sidecar_dir = tmp_path / "sidecar"
+    db_dir.mkdir()
+    sidecar_dir.mkdir()
+    vault_path = db_dir / "vault.db"
+    sidecar_path = sidecar_dir / "vault.kdf.json"
+    stamp = "20260906T120000000000"
+    db_copy = db_dir / f"vault.db.{stamp}.old"
+    sidecar_copy = sidecar_dir / f"vault.kdf.json.{stamp}.old"
+    db_copy.write_bytes(b"an old database")
+    sidecar_copy.write_text("{}", encoding="utf-8")
+
+    found = old_copy_sets(vault_path, sidecar_path)
+
+    assert sorted(p.name for p in found.get(stamp, [])) == sorted(
+        (db_copy.name, sidecar_copy.name)
+    ), (
+        "the sidecar's own directory was never searched, so its *.old copies "
+        "are invisible to the restore prune and to start over.\n"
+        f"  actual:   { {k: [p.name for p in v] for k, v in found.items()} }"
     )

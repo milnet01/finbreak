@@ -754,8 +754,6 @@ class AuthService:
             shutil.rmtree(directory)
         for path in (
             *extra,
-            vault_path,
-            sidecar_path,
             # SQLite runs in WAL mode (vault.py create/open), so it writes
             # `<db>-wal` and `<db>-shm` sidecars beside the DB. They hold the
             # vault's most recent (encrypted) transactions — part of the user's
@@ -763,8 +761,16 @@ class AuthService:
             # "Start over" removes them too: so no fragment of the old vault
             # survives, and so an orphaned -wal can't interact with the next,
             # differently keyed vault created at first-run.
+            #
+            # BEFORE the database, not after (FIBR-0337 L4). An abort between
+            # the two used to leave a `-wal` beside a deleted database, which is
+            # precisely the orphan the paragraph above is about. This order can
+            # only ever strand the database instead — a state the user can see
+            # and retry.
             vault_path.with_name(vault_path.name + "-wal"),
             vault_path.with_name(vault_path.name + "-shm"),
+            vault_path,
+            sidecar_path,
         ):
             path.unlink(missing_ok=True)
         log.info("vault reset")

@@ -413,3 +413,44 @@ def test_INV11_old_backup_copies_removed(paths):
         f"  expected: {stranger.name} still present\n"
         "  actual:   removed"
     )
+
+
+def test_INV1_a_failed_database_unlink_leaves_no_orphan_wal(paths, monkeypatch):
+    """FIBR-0337 L4 — the reset removed the database BEFORE its WAL siblings.
+
+    An abort between the two — a read-only mount, a permission change, a
+    Windows handle — leaves `vault.db-wal` beside a deleted database. The next
+    first-run creates a differently keyed vault at that path and SQLite tries to
+    recover the orphan into it, which is the § 6 hazard `vault_migration` names
+    and handles twice, and half of what INV-1 exists to prevent.
+
+    The siblings go first, so the only order that can strand one is the order
+    that leaves the database instead — and a surviving database is the state the
+    user can see and retry, not a silent hazard for the next vault.
+    """
+    from pathlib import Path
+
+    auth = _seeded(paths)
+    vault_path, _sidecar_path = paths
+    wal = vault_path.with_name(vault_path.name + "-wal")
+    wal.write_bytes(b"an outstanding write-ahead log")
+    auth.lock()
+
+    real_unlink = Path.unlink
+
+    def refuse_the_database(self, missing_ok=False):
+        if self == vault_path:
+            raise PermissionError(13, "Permission denied")
+        return real_unlink(self, missing_ok=missing_ok)
+
+    monkeypatch.setattr(Path, "unlink", refuse_the_database)
+
+    with pytest.raises(PermissionError):
+        auth.reset_vault()
+
+    assert not wal.exists(), (
+        "the reset gave up on the database and left its write-ahead log, so "
+        "the next vault created at that path is offered a journal written "
+        "under a different key.\n"
+        f"  survived: {wal.name}"
+    )

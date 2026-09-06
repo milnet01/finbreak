@@ -591,7 +591,19 @@ class BackupService:
         # `Vault` takes the two paths independently, so they need not share a
         # parent; dedupe rather than assume either way (FIBR-0313 M2).
         install_dirs = {real_db.parent, real_sidecar.parent}
-        if real_db.exists() or real_sidecar.exists():
+        # An orphan `-wal` beside NO database is what a reset that aborted
+        # part-way leaves, and gating the sibling move on a live pair left it
+        # there for the restored database to be installed next to — a journal
+        # written under a different key, which is the hazard this method exists
+        # to handle (FIBR-0337 L4).
+        wal_siblings = [
+            real_db.with_name(real_db.name + suffix) for suffix in _WAL_SIBLINGS
+        ]
+        if (
+            real_db.exists()
+            or real_sidecar.exists()
+            or any(sibling.exists() for sibling in wal_siblings)
+        ):
             # Microseconds, not seconds (FIBR-0216): two restores inside the same
             # second produced the same stamp, so the second one's os.replace
             # silently overwrote the first recoverable copy — on the files that
@@ -599,8 +611,7 @@ class BackupService:
             stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%f")
             if real_db.exists():
                 os.replace(real_db, real_db.with_name(f"{real_db.name}.{stamp}.old"))
-            for suffix in _WAL_SIBLINGS:
-                sibling = real_db.with_name(real_db.name + suffix)
+            for suffix, sibling in zip(_WAL_SIBLINGS, wal_siblings, strict=True):
                 if sibling.exists():
                     os.replace(
                         sibling,

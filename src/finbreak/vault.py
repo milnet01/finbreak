@@ -82,10 +82,14 @@ def old_copy_sets(vault_path: Path, sidecar_path: Path) -> dict[str, list[Path]]
     Stamps are fixed-width UTC (`%Y%m%dT%H%M%S%f`), so sorting the keys as
     strings is chronological and the last one is the most recent.
     """
-    parent = vault_path.parent
     sets: dict[str, list[Path]] = {}
-    for base in (vault_path.name, sidecar_path.name):
-        for path in parent.glob(f"{base}.*.old*"):
+    # Each name in ITS OWN directory. `Vault` takes the two paths
+    # independently, and `_install` refuses to assume they share a parent —
+    # this globbed both under the vault's, so a sidecar kept elsewhere left its
+    # `*.old` copies invisible to the prune and to "start over" (FIBR-0337 L5).
+    for base_path in (vault_path, sidecar_path):
+        base = base_path.name
+        for path in base_path.parent.glob(f"{base}.*.old*"):
             stamp, _, suffix = path.name[len(base) + 1 :].partition(".")
             # A stamp with no suffix, or one this version does not know, is not
             # ours: better to leave a stranger's file than to delete it.
