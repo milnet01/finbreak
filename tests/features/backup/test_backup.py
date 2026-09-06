@@ -28,7 +28,7 @@ from finbreak.crypto import (
     load_and_validate_params,
     read_sidecar_v2,
 )
-from finbreak.errors import VaultLockedError
+from finbreak.errors import BackupError, VaultLockedError
 from finbreak.keywrap import SLOT_MASTER, unwrap_dek
 from finbreak.migrations import LATEST_SCHEMA_VERSION
 from finbreak.models import FORMAT_VERSION, KdfParams
@@ -1715,4 +1715,78 @@ def test_a_restore_removes_the_migration_artefacts_it_supersedes(tmp_path) -> No
         "vault. Each is a complete encrypted copy, and the pre-upgrade pair "
         "opens under the master password the user has just replaced.\n"
         f"  expected: none of them\n  actual:   {survivors}"
+    )
+
+
+def test_start_over_removes_a_crashed_restores_assembly_directory(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """FIBR-0337 M4 — "start over" left a complete vault in the data directory.
+
+    A restore assembles the new vault in a temp directory inside
+    AppDataLocation, so the install rename cannot cross a filesystem. The
+    context manager removes it on every ORDINARY exit, a failure included. A
+    crash gets no ordinary exit, and what survives is a complete vault that
+    opens under the NEW master password — the one the user has just chosen.
+
+    ``reset_vault`` deletes an enumerated list of paths and no directory sweep
+    existed, so "start over" told the user everything was erased while that
+    copy stayed. security-model INV-12 accepts residual sectors and nothing
+    whole.
+
+    The crash is modelled by a stand-in that skips cleanup, with ``_install``
+    refusing so the assembly is complete and still in place — the state the
+    real crash window leaves.
+    """
+    fbk, _snap = _export_from_seed(tmp_path)
+    auth, _d, _vb, _sb = _dest_with_vault(tmp_path)
+    made: list[Path] = []
+
+    class _NoCleanupTempDir:
+        """``TemporaryDirectory`` minus the cleanup — what a crash leaves."""
+
+        def __init__(self, *, dir: Path, prefix: str | None = None) -> None:
+            self._path = tempfile.mkdtemp(dir=dir, prefix=prefix)
+
+        def __enter__(self) -> str:
+            made.append(Path(self._path))
+            return self._path
+
+        def __exit__(self, *_exc: object) -> None:
+            return None
+
+    monkeypatch.setattr(
+        "finbreak.services.backup.tempfile.TemporaryDirectory", _NoCleanupTempDir
+    )
+
+    def refuse(*_args: object, **_kwargs: object) -> None:
+        raise OSError("injected crash before the install")
+
+    monkeypatch.setattr(BackupService, "_install", refuse)
+
+    with pytest.raises(BackupError):
+        BackupService(auth.vault, auth).restore_backup(fbk, _BACKUP_PW, _M2)
+
+    assert len(made) == 1, (
+        "precondition: the restore must have made exactly one assembly "
+        f"directory.\n  actual:   {made}"
+    )
+    assembly = made[0]
+    assert AuthService(assembly / "vault.db", assembly / "vault.kdf.json").unlock(
+        bytearray(_M2, "utf-8")
+    ), (
+        "precondition: the surviving directory must hold a WORKING vault under "
+        "the new master password, or the leg is about tidiness rather than the "
+        "copy INV-12 promises is gone."
+    )
+
+    auth.reset_vault()
+
+    assert not assembly.exists(), (
+        "start over left a crashed restore's assembly directory in the data "
+        "location. It holds a complete vault that opens under the master "
+        "password the user chose for that restore, so the reset's promise that "
+        "no file of the deleted vault remains is false (security-model "
+        "INV-12).\n"
+        f"  survived: {assembly.name}"
     )

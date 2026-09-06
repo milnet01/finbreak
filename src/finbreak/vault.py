@@ -48,6 +48,29 @@ SQLCIPHER_COMPAT_ACCEPTED = frozenset({SQLCIPHER_COMPAT})
 OLD_COPY_SUFFIXES = (".old", ".old-wal", ".old-shm")
 
 
+RESTORE_ASSEMBLY_PREFIX = "restore-assembly-"
+
+
+def restore_assembly_dirs(vault_path: Path) -> list[Path]:
+    """Every leftover restore-assembly directory beside the vault.
+
+    `services/backup.py` assembles a restored vault in a temp directory inside
+    the data location, so the install rename cannot cross a filesystem. The
+    context manager removes it on every ORDINARY exit, a failure included — a
+    crash gets no ordinary exit, and what survives is a complete vault that
+    opens under the master password chosen for that restore. `reset_vault`
+    must remove it, and backup imports auth, so this sits below both for the
+    same reason `old_copy_sets` does (FIBR-0337 M4).
+
+    The prefix is what makes the sweep safe: it names this app's own
+    directories rather than every `tmp*` in the data location.
+    """
+    parent = vault_path.parent
+    return sorted(
+        path for path in parent.glob(f"{RESTORE_ASSEMBLY_PREFIX}*") if path.is_dir()
+    )
+
+
 def old_copy_sets(vault_path: Path, sidecar_path: Path) -> dict[str, list[Path]]:
     """Every `*.old` set beside the vault, keyed by its stamp.
 

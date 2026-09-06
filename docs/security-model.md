@@ -444,13 +444,16 @@ be checkable. Enforcement arrives in step with the code:
   complete on-disk data footprint — the DB, the KDF sidecar, **both**
   SQLite WAL sidecars (`vault.db-wal` / `vault.db-shm`), the migration
   artefacts (`.pre-v2` and `.migrating`, with their own WAL siblings),
-  and every `*.old` set a past restore left behind — so no file of a
-  deleted vault remains to interfere with a subsequently created one.
-  The last two are here because each is a **complete, still-openable
-  copy**: a `.pre-v2` pair opens under the password of the moment the
-  migration began, and a `.old` set under the password in force before
-  that restore, so leaving either behind hands the old vault to anyone
-  holding a password the user has since changed. The vault-coupled
+  every `*.old` set a past restore left behind, and any
+  `restore-assembly-*` directory a crashed restore left in the data
+  location — so no file of a deleted vault remains to interfere with a
+  subsequently created one. The last three are here because each is a
+  **complete, still-openable copy**: a `.pre-v2` pair opens under the
+  password of the moment the migration began, a `.old` set under the
+  password in force before that restore, and an assembly directory under
+  the master password chosen for the restore that crashed. Leaving any of
+  them hands a working vault to anyone holding a password the user has
+  since moved on from. The vault-coupled
   `window.ini` keys — the hint and the throttle's lockout state — are
   cleared on success too, by the shell rather than by `reset_vault`,
   since that file is shared with the app's own settings. This

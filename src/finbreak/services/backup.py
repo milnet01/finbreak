@@ -50,6 +50,7 @@ from finbreak.migrations import LATEST_SCHEMA_VERSION
 from finbreak.services.auth import AuthService, _wipe
 from finbreak.services.vault_migration import migration_artefacts
 from finbreak.vault import (
+    RESTORE_ASSEMBLY_PREFIX,
     SQLCIPHER_COMPAT,
     SQLCIPHER_COMPAT_ACCEPTED,
     Vault,
@@ -269,7 +270,14 @@ class BackupService:
         try:
             # The whole assembly lives in a temp dir INSIDE AppDataLocation, so the
             # final install os.replace is a same-filesystem rename (D4).
-            with tempfile.TemporaryDirectory(dir=install_dir) as td:
+            # Prefixed, not left as `tmp*`: a crash skips the cleanup this
+            # context manager does on every ordinary exit, and what survives is
+            # a complete vault under the new master password. The prefix is
+            # what lets `reset_vault` sweep it without guessing which
+            # directories in the data location are ours (FIBR-0337 M4).
+            with tempfile.TemporaryDirectory(
+                dir=install_dir, prefix=RESTORE_ASSEMBLY_PREFIX
+            ) as td:
                 # Shared read -> guard -> materialise -> derive -> open sequence
                 # (D1); the helper owns + wipes the backup key/password buffers and
                 # returns the opened backup Vault (whose vault.db lives in this temp

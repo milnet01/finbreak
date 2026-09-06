@@ -13,6 +13,7 @@ from __future__ import annotations
 import hmac
 import logging
 import secrets
+import shutil
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -55,7 +56,12 @@ from finbreak.services.reporting import (
     MODE_YEAR_TO_DATE,
     ReportPrefs,
 )
-from finbreak.vault import SQLCIPHER_COMPAT_ACCEPTED, Vault, old_copy_sets
+from finbreak.vault import (
+    SQLCIPHER_COMPAT_ACCEPTED,
+    Vault,
+    old_copy_sets,
+    restore_assembly_dirs,
+)
 
 log = logging.getLogger(__name__)
 
@@ -740,6 +746,12 @@ class AuthService:
         # accepts only residual sectors; a whole surviving file is not that.
         for old_set in old_copy_sets(vault_path, sidecar_path).values():
             extra.extend(old_set)
+        # A crashed restore's assembly directory holds a complete vault that
+        # opens under the master password chosen for that restore. Nothing else
+        # removes it: the context manager that made it cleans up on every
+        # ordinary exit and a crash is not one (FIBR-0337 M4).
+        for directory in restore_assembly_dirs(vault_path):
+            shutil.rmtree(directory)
         for path in (
             *extra,
             vault_path,
