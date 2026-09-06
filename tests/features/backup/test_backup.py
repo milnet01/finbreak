@@ -1856,3 +1856,30 @@ def test_old_copy_sets_looks_for_each_name_in_its_own_directory(tmp_path) -> Non
         "are invisible to the restore prune and to start over.\n"
         f"  actual:   { {k: [p.name for p in v] for k, v in found.items()} }"
     )
+
+
+@pytest.mark.parametrize("target", ["vault.db", "vault.kdf.json"])
+def test_export_refuses_a_destination_that_is_the_live_vault(tmp_path, target) -> None:
+    """FIBR-0337 L6 — export wrote its ``.fbk`` wherever it was pointed.
+
+    The final step is ``os.replace(tmp_zip, dest)``, so a destination resolving
+    to the live ``vault.db`` or its sidecar destroys the vault the export is a
+    backup OF — and on POSIX the rename succeeds under the open connection, so
+    the app goes on writing to a detached inode and the user notices at the next
+    start.
+
+    Restore carries the mirror guard for the same hazard from the other side:
+    it refuses to run against an open vault because ``_install`` moves the live
+    database with ``os.replace``.
+    """
+    auth = _seeded_auth((tmp_path / "vault.db", tmp_path / "vault.kdf.json"))
+    dest = tmp_path / target
+    before = dest.read_bytes()
+
+    with pytest.raises(BackupError):
+        BackupService(auth.vault, auth).export_backup(dest, _BACKUP_PW)
+
+    assert dest.read_bytes() == before, (
+        f"the export overwrote the live vault it was backing up.\n  target:   {target}"
+    )
+    auth.lock()

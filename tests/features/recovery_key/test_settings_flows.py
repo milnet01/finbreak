@@ -26,8 +26,13 @@ from typing import Any
 import pytest
 import pytestqt.exceptions
 import shiboken6
-from _recovery_helpers import MASTER_PASSWORD, NEW_MASTER_PASSWORD, create_vault
-from PySide6.QtWidgets import QDialog, QMessageBox
+from _recovery_helpers import (
+    MASTER_PASSWORD,
+    NEW_MASTER_PASSWORD,
+    create_vault,
+    keep_recovery_key,
+)
+from PySide6.QtWidgets import QDialog, QMessageBox, QPushButton
 
 from conftest import _pump_deferred_delete
 from finbreak.errors import VaultLockedError
@@ -974,3 +979,47 @@ def test_the_settings_add_or_replace_display_holds_off_the_idle_auto_lock(
         dialog.reject()
 
     assert service._timer.isActive(), "finishing the dialog re-arms the lock"
+
+
+def test_the_decline_button_says_what_declining_does_on_each_branch(
+    service: AuthService, qtbot: Any
+) -> None:
+    """FIBR-0337 L7 — "Don't set up a recovery code" was shown on every branch.
+
+    On Replace and on the post-recovery regeneration offer a code already
+    exists, and declining keeps the OLD one live rather than leaving the user
+    without one. The INV-20 shape: one string that is true of the first-run
+    branch and false of the others, on the button whose whole job is telling the
+    user what pressing it does.
+
+    ``build_recovery_offer`` holds the service, so it decides from the sidecar
+    rather than from a flag a caller could pass wrongly.
+    """
+
+    def decline_label(dialog: QDialog) -> str:
+        button = dialog.findChild(QPushButton, "recovery_code_decline")
+        assert button is not None, (
+            "precondition: the decline button must exist, or this leg reads nothing."
+        )
+        return str(button.text())
+
+    code = generate_code()
+    first_run = recovery_module.build_recovery_offer(service, code)
+    qtbot.addWidget(first_run)
+    first_run_label = decline_label(first_run)
+
+    keep_recovery_key(service, code)
+    replacing = recovery_module.build_recovery_offer(service, code)
+    qtbot.addWidget(replacing)
+    replacing_label = decline_label(replacing)
+
+    assert "set up" in first_run_label, (
+        "the first-run branch has no code yet, so declining does leave the user "
+        f"without one.\n  actual:   {first_run_label!r}"
+    )
+    assert replacing_label != first_run_label, (
+        "Replace shows the same decline label as first run, and it is false "
+        "there: a code already exists and declining keeps it live.\n"
+        f"  actual:   {replacing_label!r}"
+    )
+    service.lock()

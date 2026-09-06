@@ -168,6 +168,17 @@ class BackupService:
         ``MAX_BACKUP_DB_BYTES`` rather than writing a backup restore could never
         take back (INV-14)."""
         on_key = on_key or _noop_on_key
+        # The last step is `os.replace(tmp_zip, dest)`, so a destination that
+        # resolves to the live pair destroys the vault this is a backup OF —
+        # and on POSIX the rename succeeds under the open connection, so the app
+        # writes on to a detached inode and the user finds out at the next
+        # start. Restore carries the mirror guard from the other side, refusing
+        # to run against an open vault for the same reason (FIBR-0337 L6).
+        # `resolve` because dest comes from a file picker: a symlink or a `..`
+        # reaches the same file by another name.
+        live = (self._vault.vault_path, self._vault.sidecar_path)
+        if any(dest.resolve() == path.resolve() for path in live):
+            raise BackupError("a backup cannot be written over the vault itself")
         if len(backup_password) < MIN_BACKUP_PASSWORD_LEN:
             raise ValueError(
                 f"backup password must be at least {MIN_BACKUP_PASSWORD_LEN} chars"

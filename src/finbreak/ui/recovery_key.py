@@ -72,6 +72,7 @@ class RecoveryCodeDialog(QDialog):
         parent: QWidget | None = None,
         *,
         clipboard: ClipboardAutoClear | None = None,
+        replacing: bool = False,
     ):
         super().__init__(parent)
         self._code = code
@@ -134,8 +135,16 @@ class RecoveryCodeDialog(QDialog):
             self.tr("I've saved it — Keep"), QDialogButtonBox.ButtonRole.AcceptRole
         )
         keep.setObjectName("recovery_code_keep")
+        # Two branches, because declining does two different things. With no
+        # code on disk it leaves the user without one; over an existing slot —
+        # § 4.7's Replace, and the post-recovery regeneration offer — it keeps
+        # the old code live. One string for both was true of the first and false
+        # of the rest, on the button whose job is saying what pressing it does
+        # (FIBR-0337 L7).
         decline = buttons.addButton(
-            self.tr("Don't set up a recovery code"),
+            self.tr("Keep my existing recovery code")
+            if replacing
+            else self.tr("Don't set up a recovery code"),
             QDialogButtonBox.ButtonRole.RejectRole,
         )
         decline.setObjectName("recovery_code_decline")
@@ -398,6 +407,11 @@ def build_recovery_offer(
     One implementation for all three callers: vault creation, the
     post-migration offer (D7), and Settings' Add / Replace (§ 4.7). The same
     display, the same two ways out, and the same one write.
+
+    Whether a slot already exists is read HERE rather than taken as an argument:
+    this function holds the service, and a flag would be one more thing a caller
+    could pass wrongly. It decides only the decline button's wording, which
+    differs because declining does (FIBR-0337 L7).
     """
 
     def clear_seconds() -> int:
@@ -434,7 +448,9 @@ def build_recovery_offer(
         seconds_provider=clear_seconds,
         parent=clipboard_owner,
     )
-    dialog = RecoveryCodeDialog(code, parent, clipboard=guard)
+    dialog = RecoveryCodeDialog(
+        code, parent, clipboard=guard, replacing=service.has_recovery_key()
+    )
     # Outlive the dialog, but not the guard's own last job: Settings' Add /
     # Replace builds one of these per invocation, and an owner that lasts the
     # session then accumulates a QObject + QTimer each time (FIBR-0313 L9).
