@@ -2526,6 +2526,15 @@ scariest unknown (native-library bundling) up front.
   If the silence continues, the escalation is Flathub's Matrix room or
   Discourse rather than a second PR. Give the bump a reasonable window first;
   the previous wait was 13 days with no response.
+  Progress (2026-09-07): the manifest is re-pinned to v0.1.23 —
+  tag: v0.1.23, commit: c86d9c71c7f1f8865e9bb21f42bdb9b122b49595 — as the
+  bump recipe's post-tag todo, pushed in 9c75d33. The pin recorded above
+  (278759c) is superseded.
+
+  flathub/flathub#9662 is still CLOSED and nothing about that changed
+  today. The rule above stands: do not open a new PR while 9662 stands.
+  Any bump comment posted from here should cite the v0.1.23 pin rather
+  than the old one.
 
 - 📋 [FIBR-0160] **Add openSUSE Leap 15.6 as an OBS target (deferred — Leap ships no python 3.12+).**
   Attempted 2026-07-23: added the Leap 15.6 target + a %if 0%{?sle_version}
@@ -11360,6 +11369,41 @@ is a future error tomorrow.
   **Layman:** Two files point at a rule that no longer exists, so anyone following the pointer finds nothing.
   Kind: doc-fix.
   Source: review-contract-2026-09-06 (FIBR-0019 gate, 4b sweep, out of scope).
+
+- 📋 [FIBR-0340] **versioning.md still calls FIBR-0019 planned, and names it as the live blocker of the 1.0 gate.**
+  FIBR-0019 shipped in 0.1.23. Two passages in
+  `docs/standards/versioning.md` were written while it was still ahead of
+  us and now read false:
+
+  § 4.1 gives it as the reason the compatibility surface is not frozen —
+  "FIBR-0019 (master-password recovery) is a PLANNED change to the vault's
+  key envelope". Correcting that changes nothing a conformer writes.
+
+  § 5 condition 1 is the load-bearing one: "FIBR-0019 is the live case,
+  and it blocks this condition." That condition is the first of the five
+  1.0 gates, so the standard currently names a blocker that no longer
+  exists. A session reading § 5 to decide whether 1.0 can be cut gets the
+  wrong answer.
+
+  WHAT IS NOT CLAIMED HERE: that the 1.0 gate is now met. Only that its
+  named blocker is discharged. Conditions 2, 3 and 5 have not been
+  assessed, and condition 4 (SECURITY.md + CODE_OF_CONDUCT.md) is
+  satisfied by FIBR-0237, also in 0.1.23.
+
+  Also worth settling in the same pass: § 4.2 observes that "every release
+  since 0.1.0 has been a PATCH bump because nothing said when to do
+  otherwise". That is still true and is now a deliberate choice rather
+  than an omission — under § 3.1 a 0.2.0 needs a § 2 compatibility break
+  or a change requiring user action, and nothing has shipped that is
+  either. § 5's `0.9.z` interim is the route if the 0.1.x number ever
+  understates the project.
+
+  `versioning.md` is a contract document, so the § 5 edit is a change of
+  direction and owes CLAUDE.md rule 14's gate. That is why this is filed
+  rather than corrected in passing.
+  **Layman:** The rules for choosing a version number still describe the recovery-code work as upcoming, when it shipped.
+  Kind: doc-fix.
+  Source: in-session 2026-09-07, cutting 0.1.23.
 
 ## How to add an item
 
