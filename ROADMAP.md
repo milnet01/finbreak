@@ -4610,6 +4610,28 @@ lands on top.
   Closes condition 4 of the FIBR-0304 v1.0 gate. Three blockers
   remain: FIBR-0019, FIBR-0208, FIBR-0217.
 
+- 📋 [FIBR-0336] **The month pickers render their numbers with an f-string, so a locale with its own digits gets Western ones.**
+  Found while closing FIBR-0328's display-string class and set aside there
+  rather than fixed, because the fix belongs with the i18n pass.
+
+  ui/home.py's _build_selectors and ui/export_dialog.py both build the month
+  label as an f-string with a zero-padded integer. coding.md 5.2 says render
+  numbers through QLocale, never a hand-rolled format. The two are identical
+  in every locale that uses Western digits, which is why nothing has noticed;
+  they differ in one that does not, where QLocale would produce that locale's
+  own digits.
+
+  LATENT until FIBR-0017 ships a locale that needs it, so this is not a bug a
+  user can see today. Filed rather than folded into FIBR-0017 because it is a
+  specific, already-located site, and FIBR-0017 is a whole pass.
+
+  Not allowlist-006's case: that entry covers joining whole translated
+  sentences, and this is a number rendered without its locale.
+  **Layman:** In a language that writes numbers with different digit shapes, the month dropdown would still show Western digits.
+  Kind: fix.
+  Source: review-code 2026-08-31 tail (FIBR-0328 display-string class), surfaced 2026-09-06.
+  Lanes: ui, i18n.
+
 ## P13 — Packaging & release
 
 ### 📦 Packaging
@@ -10830,6 +10852,43 @@ is a future error tomorrow.
   Still open: display strings assembled with + or f-strings against
   coding.md 5.2; unreachable defensive branches; the largest class, stale
   comments and docstrings; and the CSV Decimal path noted above.
+  Progress (2026-09-06): the display-string class is closed and the
+  stale-docstring class advanced. Gate green at 2201 passed / 2 skipped
+  (ed33066).
+
+  Display strings. Six sites join a translated fragment to another string;
+  five cannot be merged and are allowlist-006, with the argument rather
+  than a dismissal. Qt's numerus takes ONE count per message, so
+  _confirmed_status, _on_delete and _source_clause each pair a %n string
+  with a second count or clause and merging would cost the plural forms;
+  _provenance_text composes conditionally, so one message would need a
+  variant per combination. The sixth was real and is fixed:
+  import_batch's unreadable-rows clause was a bare comma-fragment
+  appended to an outcome, so a translator got something that has to
+  follow. It is now one whole message with the outcome as a placeholder.
+
+  Stale docstrings, the four named examples, each verified against source
+  rather than taken on trust -- and one does not survive. backup.py's
+  INV-14 / INV-15 DO resolve, to the backup feature contract; what
+  actually dangles is FIBR-0014's own "see INV-14". The module docstring
+  now says which table a bare INV-n resolves against, the file citing
+  both. transfers.py's "no multi-statement unit to wrap" ended with
+  FIBR-0201's confirm_many / reject_many, and FIBR-0011 D6 is amended with
+  it rather than left as the fixed-one-copy shape this sweep kept finding.
+  _replacement_is_sound framed itself as a re-check on the premise that
+  reaching branch 2 means S4 completed; the guard is that .migrating
+  EXISTS, so it is the FIRST check -- which branch 2's own fall-through
+  already said. FIBR-0113's "today's code" prose names a widget its own
+  change replaced, and its header now dates it.
+
+  The CSV Decimal path needed no behaviour change, only the missing
+  rationale. Measured: Decimal accepts PEP 515 underscores and any Unicode
+  Nd digit, so "1_000" and Arabic-Indic digits store as the number their
+  digits spell. Both kept, and the comment says why no locale is decided
+  there -- the caller that knows settles it first.
+
+  Still open: unreachable defensive branches, and the remainder of the
+  stale comment/docstring class beyond its four named examples.
   **Layman:** Minor issues and observations from the full sweep, recorded so they are not lost.
   Kind: review-fix.
   Source: review-code 2026-08-31.
