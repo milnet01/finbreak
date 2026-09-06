@@ -288,10 +288,11 @@ def _replacement_is_sound(
     Discovering afterwards that the result does not read is too late: the thing
     it was compared against is gone (FIBR-0313 H1).
 
-    Reaching branch 2 means S4 completed, so S2 passed on this file once
-    already. What it cannot have seen is damage AFTER that — a bad sector, a
-    partial write — which is why the question is worth asking a second time
-    rather than trusted from the first.
+    Branch 2's guard is that ``.migrating`` EXISTS, which does not mean S4
+    completed: a crash while ``_convert`` was still writing leaves the same file
+    with S2 never having run on it. So this is the first check for that case
+    rather than a re-check — which is why branch 2 treats a failure here as
+    debris and falls through to restart, instead of trusting the file.
 
     The row compare is available here for the same reason the swap is
     dangerous: S5 has not run, so ``vault.db`` is still the v1 database the

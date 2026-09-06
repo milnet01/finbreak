@@ -245,6 +245,36 @@ Do not delete revoked entries — the history is the value.
 - **Confirmed by phase:** FIBR-0231 (close)
 
 
+## allowlist-006 — coding.md § 5.2: joining two whole `tr()` sentences, where merging them is impossible or worse
+
+- **Status:** active
+- **Tool / rule:** `coding.md § 5.2` ("Don't build display strings with `+` or
+  bare f-strings") — fires for `review-code`, no tool rule id. Raised by the
+  2026-08-31 sweep as "display strings assembled with `+` — several sites".
+- **Location:** `ui/transfers.py` `_confirmed_status`; `ui/categories.py`
+  `_on_delete`; `ui/forecast.py` `_source_clause` and `_provenance_text`.
+- **Why this is a false positive:** § 5.2's hazard is a translator unable to
+  **reorder** the parts of one message. These sites join whole sentences, for two
+  reasons that make merging impossible or worse.
+
+  **Qt's numerus takes one count per message.** `tr(source, disambiguation, n)`
+  has a single `n`, so a sentence carrying two counts cannot be one call.
+  `_confirmed_status`, `_on_delete` and `_source_clause` each pair a `%n` string
+  with another count or clause; merging would cost the plural forms.
+
+  **`_provenance_text` composes conditionally.** Its opening sentence has two
+  variants and each exclusion sentence is independently present or absent, so a
+  merged message would need a variant per combination.
+
+  Scoped to sentence-level joins of complete `tr()` messages. A **fragment**
+  appended to a sentence is still a real § 5.2 defect — `import_batch.py`
+  `_with_unreadable_rows` had one and it was fixed, not allowlisted.
+- **Suppression applied:** none — no rule id to suppress; this entry is the
+  record.
+- **Logged:** 2026-09-06
+- **Confirmed by phase:** FIBR-0328 (audit tail)
+
+
 ## What does NOT belong here
 
 - **Findings that are real but blocked by a missing feature.**

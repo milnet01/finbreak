@@ -3,7 +3,10 @@
 
 Detection is a single SQL self-join (``candidate_pairs``, the sole home of the
 INV-2 match rule); each decision (confirm/reject) is one per-write commit like
-``TransactionRepository.add`` (there is no multi-statement unit to wrap, D6).
+``TransactionRepository.add`` (D6). D6 also said nothing groups several
+decisions; ``TransferDetectionService.confirm_many`` / ``reject_many`` now do,
+each decision still committing on its own — so a pass that stops part-way keeps
+what it recorded.
 ``add_decision`` stores the pair in canonical order (``min`` as ``txn_a_id``,
 ``max`` as ``txn_b_id``, D4) so ``UNIQUE(txn_a_id, txn_b_id)`` holds regardless of
 which side the caller passes.

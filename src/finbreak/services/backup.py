@@ -11,6 +11,10 @@ security-model.md T11).
 Export is synchronous on the main thread (no worker), so a blocked event loop
 means the auto-lock timer cannot fire mid-export (INV-9). Every derived key and
 the password buffer are wiped in a ``finally`` on all paths (INV-7).
+
+A bare ``INV-n`` here resolves against FIBR-0014's invariant table first and the
+backup feature contract (``tests/features/backup/spec.md``) otherwise — later
+invariants were added to the second. Both are cited below.
 """
 
 from __future__ import annotations

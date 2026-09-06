@@ -71,6 +71,13 @@ def parse_transaction(
         raise ValueError("occurred_on must be a valid ISO-8601 date") from exc
 
     try:
+        # `Decimal(...)` with nothing in front, deliberately (FIBR-0328). Measured:
+        # it accepts PEP 515 underscores and any Unicode Nd digit, so "1_000" and
+        # "١٢٣" store as 1000 and 123 — kept, since neither reads as a different
+        # NUMBER from its own digits, and the Nd form is how a localised statement
+        # spells one. It does NOT decide a LOCALE: whether "1.234" is grouped or
+        # decimal is settled by the caller that knows — `ui/_amount.py` for typed
+        # input, the per-bank profile for an imported cell.
         amount = (
             raw_amount
             if isinstance(raw_amount, Decimal)

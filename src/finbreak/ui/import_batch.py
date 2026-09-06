@@ -280,13 +280,19 @@ class BatchReviewWidget(QWidget):
         translation is loaded yet (FIBR-0017 is unshipped), and an untranslated
         ``%n`` string renders its source text verbatim, so the user would read
         *"1 row(s)"*. A translator still gets both forms.
+
+        The outcome arrives as a ``{outcome}`` placeholder rather than something
+        this clause is appended to, so each form is one whole message a translator
+        can reorder (``coding.md`` § 5.2). Appended, the clause reached the catalog
+        as a bare comma-fragment that has to follow — which is not true of every
+        language.
         """
         if not record.error_count:
             return line
         if record.error_count == 1:
-            return line + self.tr(", 1 row couldn't be read")
-        return line + self.tr(", {n} rows couldn't be read").format(
-            n=record.error_count
+            return self.tr("{outcome}, 1 row couldn't be read").format(outcome=line)
+        return self.tr("{outcome}, {n} rows couldn't be read").format(
+            outcome=line, n=record.error_count
         )
 
     def report_line(self, record: BatchFile) -> str:
