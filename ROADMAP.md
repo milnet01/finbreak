@@ -6832,6 +6832,46 @@ because retrofitting them is a data migration.
   Whichever is taken, the test must assert the file SURVIVES the whole resume
   call, not merely that branch 2 skipped its unlink -- a test written against
   branch 2 alone passes while _convert deletes the file.
+  Progress (2026-09-06): all 17 findings fixed, in 11 commits, gate green
+  at 2221 passed / 2 skipped.
+
+  H1 took route (a) as the design note prescribed. `_replacement_verdict`
+  replaces the boolean with three answers, and UNCOMPARABLE keeps the copy
+  and refuses rather than falling through. mutation_probe confirms both the
+  original defect AND the branch-scoped near-miss the note warned about go
+  red against the test, which asserts survival across the whole resume call.
+
+  H2 was scheme-independent as predicted: both call sites now spell Ctrl+Q
+  literally rather than resolving StandardKey.Quit through the platform's
+  binding scheme. L8 was the same wrong premise upstream.
+
+  Four findings shared H1's shape — H1, M1, M5 and L4 are all "a state that
+  is complete-but-unverifiable or orphaned gets treated as known-bad and
+  destroyed". That is the pattern this bullet already records, and it is
+  worth reading as evidence about the resume ladder's design rather than as
+  four coincidences.
+
+  TWO CONTRACT DOCUMENTS WERE AMENDED, so CLAUDE.md rule 14's gate was owed
+  and both ran to this project's cap of 3 loops, 18 cold lanes in total:
+
+    docs/specs/FIBR-0019-...md   loops 5-7:  29 verified, 29 fixed
+    docs/security-model.md       loops 4-6:  22 verified, 22 fixed, 1 dismissed
+
+  Both capped CALM (22% and 29% of the final loop landing on text the run
+  wrote). The gates found real defects the fix pass did not: § 13.2's S6
+  states its two steps in the order `_finish` documents as the unsafe one
+  (all three lanes); INV-1's test could not exclude § 8.1 and now has a
+  third leg; INV-2 claimed Argon2id's minimum of 1 pins iterations and
+  parallelism, which it does not.
+
+  Roughly 2 of 33 spec findings landed inside the change that armed the
+  gate — the run was overwhelmingly an audit of a document nobody had
+  re-read since 2026-08-20, and it paid.
+
+  NOT CLOSED. Steps 5-9 are /close-phase's, and running it would generate
+  FP06 — the fifth consecutive fix-pass, which trips the convergence
+  checkpoint. That decision is the user's, and is the open question this
+  bullet already carries.
   **Layman:** A fresh review of the recovery-key work found a way to lose the good copy of a half-upgraded vault, and a screen Windows users could not close.
   Kind: review-fix.
   Source: close-phase-2026-09-06 (check-code + review-code x4 lanes, FP04 close, fresh context).
