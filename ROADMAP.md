@@ -6799,6 +6799,39 @@ because retrofitting them is a data migration.
 
   CONVERGENCE: this is the FOURTH consecutive fix-pass (FP02 -> FP03 -> FP04 ->
   FP05) and the checkpoint is 5. The next one hits it.
+  Design constraint on H1, found while starting the fix and recorded before
+  it is lost: THE OBVIOUS REMEDY DOES NOT WORK ON ITS OWN.
+
+  The lane's remedy -- and the one this bullet states -- is to give "cannot
+  compare the live vault" its own arm in resume branch 2 that KEEPS the
+  .migrating file instead of unlinking it. Necessary, but not sufficient.
+  _convert opens S1 with migrating_db.unlink(missing_ok=True) (its comment
+  explains why: export_to pre-creates O_EXCL, so leftover debris would wedge
+  every retry with FileExistsError). Branch 2 falls through to branch 3, and
+  branch 3 calls _convert. So the file kept in branch 2 is deleted a few
+  frames later, and the fix reads as correct while changing nothing.
+
+  So the fix has to decide what happens INSTEAD of falling through. Two
+  routes, and the first looks right:
+
+  (a) Do not fall through. A replacement that passed _reads_end_to_end is
+      evidence the migration got as far as S4 with a complete copy; a live
+      vault that will not give up its row counts is evidence the ORIGINAL is
+      damaged. Restarting the migration from S1 cannot succeed -- _convert's
+      export_to reads the same damaged pages -- so falling through trades a
+      good copy for a failure. Raise instead, and offer the rollback copy the
+      way the terminal branch already does, so the user is told rather than
+      silently restarted.
+  (b) Preserve the copy under a name _convert does not clear, then fall
+      through. Keeps the restart, but invents a fourth on-disk artefact and a
+      lifecycle for it, against § 13.3's enumerated debris.
+
+  Prefer (a): it removes a state rather than adding one, and it matches what
+  branch 2 already knows at that point.
+
+  Whichever is taken, the test must assert the file SURVIVES the whole resume
+  call, not merely that branch 2 skipped its unlink -- a test written against
+  branch 2 alone passes while _convert deletes the file.
   **Layman:** A fresh review of the recovery-key work found a way to lose the good copy of a half-upgraded vault, and a screen Windows users could not close.
   Kind: review-fix.
   Source: close-phase-2026-09-06 (check-code + review-code x4 lanes, FP04 close, fresh context).
