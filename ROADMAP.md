@@ -10752,7 +10752,7 @@ is a future error tomorrow.
   Kind: review-fix.
   Source: review-code 2026-08-31.
 
-- 🚧 [FIBR-0328] **Work the LOW/INFO tail of the 2026-08-31 audit — roughly 110 findings.**
+- ✅ [FIBR-0328] **Work the LOW/INFO tail of the 2026-08-31 audit — roughly 110 findings.**
   Recorded in docs/reviews/2026-08-31-audit-findings.md.
 
   Mostly stale comments and docstrings that assert something no longer true,
@@ -10889,6 +10889,72 @@ is a future error tomorrow.
 
   Still open: unreachable defensive branches, and the remainder of the
   stale comment/docstring class beyond its four named examples.
+  Progress (2026-09-06, cont.): both remaining classes are closed, one by
+  fixing and one as not-a-defect. Gate green at 2201 passed / 2 skipped
+  (33bd7d0). Four cold lanes; every finding re-verified here before acting.
+
+  Unreachable defensive branches -- CLOSED, no change owed, and the useful
+  part is why. The candidate that looks like the textbook case is not one:
+  AccountService validates a stored type against the AccountType enum, and
+  accounts.type is declared TEXT NOT NULL with NO CHECK constraint, so
+  nothing in the schema stops a bad string reaching it. Verified directly
+  against the CREATE TABLE, and foreign_keys is confirmed ON, which is what
+  would make an FK-guarded branch dead if one existed. Every other branch of
+  this shape already carries a comment saying it is deliberately defensive
+  and why -- last_insert_id after an INSERT, the manual-entry account guard,
+  _record's two guards, the standard_bank month lookup. A branch that
+  explains its own reason is answered, not a defect, so the class is empty
+  rather than outstanding.
+
+  Stale comments and docstrings -- CLOSED. Two more found and fixed, both in
+  ui/ and both the exhaustive-claim shape that has produced most of this
+  class. rules.py credited the Home tab with the rule-learning offer; it is
+  TransactionsView._maybe_offer_rule, and home.py references neither. The
+  docstring now names the function so the claim can be checked.
+  recovery_key.py opened "because both have two callers" and then said the
+  new-password step is reached from a recovery unlock "and nowhere else yet"
+  -- the sentence contradicted itself, and the code agrees with the second
+  half. Reworded to the reason that holds for both dialogs.
+
+  Coverage, stated rather than implied. The first services lane was
+  depth-checked and named the files it did not reach; a second lane read
+  those twelve in full and found nothing. So services, repositories,
+  importers, crypto, vault and models are swept, ui/ is swept, and the
+  findings are the two above. Spot-checked two of the second lane's
+  verified-true claims (one forward money conversion; one urllib importer
+  under src) and both hold.
+
+  Nothing further open on this bullet.
+  Resolved (2026-09-06): every recorded class is closed. Gate green at
+  2201 passed / 2 skipped (af5144d).
+
+  The last correction was to my own claim. I reported the display-string
+  class closed after searching for a translated string CONCATENATED
+  (`tr(...) +`); re-sweeping with a second pattern found two more where a
+  translated word is INTERPOLATED into an f-string instead -- home.py's Net
+  strip, and import_batch's "[n of m]" label, whose "of" was not in the
+  catalog at all and would have stayed English in every locale. Same
+  defect, invisible to the first search. Both fixed, both verified to
+  render byte-identically today. allowlist-006 now names that shape as NOT
+  covered and says the first search does not find it, since the entry
+  existing was part of what made the gap look closed.
+
+  Unreachable defensive branches closed as not-a-defect rather than by
+  changing code. The candidate that looks like the textbook case is
+  reachable: accounts.type is TEXT NOT NULL with no CHECK, so the enum
+  validation is the gate, not a redundant one. Verified against the CREATE
+  TABLE, with foreign_keys confirmed ON. Every other branch of the shape
+  already explains inline why it is deliberately defensive.
+
+  Coverage is stated rather than implied: four cold lanes over ui/,
+  services/, repositories/, importers/, crypto, vault and models, with a
+  fourth lane sent specifically at the twelve files an earlier lane
+  declared it had not reached. Two of that lane's verified-true claims were
+  spot-checked here and hold.
+
+  One site was filed rather than fixed: FIBR-0336, the month pickers
+  formatting a number without their locale, latent until FIBR-0017 ships a
+  locale that needs it.
   **Layman:** Minor issues and observations from the full sweep, recorded so they are not lost.
   Kind: review-fix.
   Source: review-code 2026-08-31.
