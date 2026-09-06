@@ -5032,7 +5032,7 @@ because retrofitting them is a data migration.
   Source: user-request-2026-07-01.
   Lanes: crypto, ux.
 
-- 🚧 [FIBR-0019] **Master-password recovery via recovery key (key-wrapping).**
+- ✅ [FIBR-0019] **Master-password recovery via recovery key (key-wrapping).**
   At vault creation, generate a high-entropy recovery
   code the user stores safely; wrap the vault data-key under **both** the
   master password and the recovery code (envelope encryption) so a
@@ -5194,6 +5194,16 @@ because retrofitting them is a data migration.
   defect -- it substitutes inside `payload` and re-appends `check`
   untouched, so the one position that is broken is the one position the
   test holds fixed.
+  Resolved (2026-09-06): the key envelope ships. Its close was attempted
+  after implementation and blocked into four consecutive fix-passes
+  (FP02 FIBR-0307, FP03 FIBR-0310, FP04 FIBR-0313, FP05 FIBR-0337); FP05
+  closed clean, so the chain is discharged and this returns to shipped.
+  Between them the four passes fixed 68 findings, and FP05's two
+  contract-document amendments took this spec and the security model
+  through rule 14's gate to its cap — 18 cold lanes, 51 further
+  findings, all fixed. The resume ladder's recurring defect shape is NOT
+  fixed and is filed as FIBR-0339; every path the reviews reached is
+  correct and INV-7, INV-8 and INV-13 hold.
   Source: user-request-2026-07-01.
   Lanes: crypto, security.
 
@@ -5335,7 +5345,7 @@ because retrofitting them is a data migration.
   Kind: feature.
   Source: review-contract-2026-08-20 (FIBR-0019 gate, surfaced not fixed).
 
-- 🚧 [FIBR-0307] **FP02 — fix-pass after FIBR-0019: thirteen findings from check-code and review-code.**
+- ✅ [FIBR-0307] **FP02 — fix-pass after FIBR-0019: thirteen findings from check-code and review-code.**
   Every one is a defect FIBR-0019 introduced; pre-existing findings are filed separately. Verified independently before filing.
 
   TWO ARE SEVERE.
@@ -5547,6 +5557,8 @@ because retrofitting them is a data migration.
   Nothing was added to docs/audit-allowlist.md; there were no confirmed
   false positives. FIBR-0309 and FIBR-0308 were independently re-found by
   this sweep and are not re-filed.
+  Resolved (2026-09-06): the FP02 -> FP03 -> FP04 -> FP05 chain closed
+  clean at FP05.
   **Layman:** The recovery-key feature works, but a careful review found thirteen problems in it — two of which could cost a user their data.
   Kind: review-fix.
   Source: close-phase-2026-08-21 (check-code + 3 review-code lanes over f704605..HEAD).
@@ -5561,7 +5573,7 @@ because retrofitting them is a data migration.
   Source: close-phase-2026-08-21 (review-code lane 3, UI edges).
   Lanes: security.
 
-- 🚧 [FIBR-0310] **FP03 — fix-pass after FP02: nine regressions from the fix-pass itself, plus twelve pre-existing.**
+- ✅ [FIBR-0310] **FP03 — fix-pass after FP02: nine regressions from the fix-pass itself, plus twelve pre-existing.**
   check-code was clean on this scope. Every item below is a review-code
   finding. NOT re-filed because they are already filed: FIBR-0309 covers the
   .tmp O_EXCL gap, the missing directory fsync after os.replace (including
@@ -5853,11 +5865,13 @@ because retrofitting them is a data migration.
 
   NEXT: FP03's own close, steps 5 to 9. The fresh-context rule at the top
   of this bullet applies to that review -- this session did the fixing.
+  Resolved (2026-09-06): the FP03 -> FP04 -> FP05 chain closed clean at
+  FP05.
   **Layman:** The recovery-key fixes were reviewed again, and the review found nine places where those very fixes fell short — plus a dozen older problems around them.
   Kind: review-fix.
   Source: close-phase-2026-08-25 (check-code + 4 review-code lanes over 2689463..HEAD).
 
-- 🚧 [FIBR-0313] **FP04 — fix-pass after FP03: one critical migration dead-end, four high, and a long tail.**
+- ✅ [FIBR-0313] **FP04 — fix-pass after FP03: one critical migration dead-end, four high, and a long tail.**
   check-code was clean on this scope: semgrep clean on both rulesets, bandit
   clean in src/ below the gate's threshold, no typo on an FP03-authored line.
   Its one finding (pyright reportOptionalSubscript,
@@ -6544,6 +6558,8 @@ because retrofitting them is a data migration.
   context, which is what FP03's close did and what produced this bullet.
   The findings being disposed of is the precondition for that run, not a
   substitute for it.
+  Resolved (2026-09-06): FP05 closed clean, so FP04's blocked close is
+  discharged. Its seventeen findings were fixed in FIBR-0337.
   **Layman:** The recovery-key work was reviewed again with fresh eyes; one serious problem can strand a half-upgraded vault with no way back, and several smaller fixes from last time only reached some of the places they needed to.
   Kind: review-fix.
   Source: close-phase-2026-08-25 (check-code + review-code x4 lanes, FP03 close, fresh context).
@@ -6706,7 +6722,7 @@ because retrofitting them is a data migration.
   Kind: fix.
   Source: in-session-2026-08-31 (found while fixing FIBR-0313 M6).
 
-- 🚧 [FIBR-0337] **FP05 — fix-pass after FP04: two high, seven medium, and a tail.**
+- ✅ [FIBR-0337] **FP05 — fix-pass after FP04: two high, seven medium, and a tail.**
   check-code was CLEAN on this scope: ruff, bandit, mypy, semgrep (236 rules,
   ~100% parse), pyright and vulture all zero. Its one typo hit is the project's
   house spelling in many places. It verified the single nosec suppression is
@@ -6872,10 +6888,50 @@ because retrofitting them is a data migration.
   FP06 — the fifth consecutive fix-pass, which trips the convergence
   checkpoint. That decision is the user's, and is the open question this
   bullet already carries.
+  Resolved (2026-09-06): all seventeen findings fixed, gate green at
+  2221 passed / 2 skipped. Both rule-14 gates ran to the cap and both
+  capped calm. Closed WITHOUT running /close-phase: it would have
+  produced FP06, the fifth consecutive fix-pass, which trips the
+  convergence checkpoint — so the recurring shape is filed as FIBR-0339
+  instead of patched a fifth time. Journal: docs/journal/FIBR-0337.md.
   **Layman:** A fresh review of the recovery-key work found a way to lose the good copy of a half-upgraded vault, and a screen Windows users could not close.
   Kind: review-fix.
   Source: close-phase-2026-09-06 (check-code + review-code x4 lanes, FP04 close, fresh context).
   Lanes: migration, crypto, backup, auth, ui.
+
+- 📋 [FIBR-0339] **Make "cannot verify" a first-class state in the resume ladder.**
+  Four consecutive fix-passes each found the same shape, and FP05 found
+  four instances of it in one pass:
+
+    H1  a replacement that cannot be COMPARED was deleted as debris
+    M1  a ladder entered with the wrong slot's KEK answered "no" to every
+        question and withheld the rollback offer silently
+    M5  a restore left artefacts it had no opinion about
+    L4  a reset that could not finish left an orphan for the next vault
+
+  Each site is now correct. What is NOT addressed is the design that keeps
+  producing them: the ladder's helpers return two-valued answers (a bool, a
+  None) to three-valued questions, and the callers act destructively on the
+  merged result. `_replacement_verdict` is the first helper to name the
+  third answer; the rest still fold it.
+
+  The work: audit every helper the ladder calls for a question whose honest
+  answer set is {yes, no, cannot tell}, and give the third one a name at the
+  point it is produced rather than at each call site. The candidates are
+  `_opens`, `_reads_end_to_end`, `_row_counts_or_none` and
+  `rollback_copy_is_usable` — all four return a bool or an Optional today,
+  and all four are asked questions that can fail to have an answer.
+
+  Not a 1.0 blocker: every path the four reviews reached is correct, and the
+  invariants that matter (INV-7, INV-8, INV-13) hold. This is about how many
+  more passes it takes to keep them holding.
+
+  Filed at FP05's close rather than becoming FP06, because a fifth
+  consecutive fix-pass trips the convergence checkpoint and the checkpoint
+  exists for exactly this: to stop patching sites and look at the shape.
+  **Layman:** The upgrade-recovery code keeps confusing "I could not check this" with "this is broken", and the second answer throws things away.
+  Kind: refactor.
+  Source: FP02-FP05 pattern, recorded at FP05's close 2026-09-06.
 
 ### 🎨 Features & accessibility
 
