@@ -487,7 +487,19 @@ class AuthService:
                 # § 13.3 step 0 is the branch above: the ladder is entered only
                 # once the slot has unwrapped, so a mistyped password is a
                 # failed attempt rather than a user told their vault is corrupt.
-                if sidecar.migration_pending:
+                #
+                # And only from the MASTER slot. `resume`'s `kek_master` is
+                # named for what its every branch below the first needs: branch
+                # 3 opens the live v1 database with it, and both routes to the
+                # D8 rollback offer gate on `rollback_copy_is_usable`, which
+                # does the same. Given another slot's KEK all of those answer
+                # no, and the offer is withheld with nothing said. The
+                # guarantee `ui/unlock._offer_rollback` documents — that a
+                # migration-pending sidecar carries `slots.master` alone — was
+                # true only by construction: `_write_slot` preserves
+                # `migration_pending`, so nothing refused the other state.
+                # This is what refuses it (FIBR-0337 M1).
+                if sidecar.migration_pending and slot == SLOT_MASTER:
                     vault_migration.resume(
                         self._vault.vault_path, self._sidecar_path, kek, dek
                     )

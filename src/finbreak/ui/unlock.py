@@ -454,10 +454,13 @@ class UnlockDialog(QDialog):
     def _offer_rollback(self) -> None:
         """§ 13.3's terminal branch, made offerable (FIBR-0307 finding 7).
 
-        Reachable from the PASSWORD route only, and not by omission: a
-        migration-pending sidecar carries ``slots.master`` alone, so the
-        recovery route never enters the ladder and its ``VaultStateError`` arm
-        is the correct outcome there.
+        Reachable from the PASSWORD route only, and not by omission:
+        ``_unlock_through_slot`` enters § 13.3's ladder from the master slot
+        alone, because every branch below the first needs KEK-master. So the
+        recovery route never reaches the terminal branch and its
+        ``VaultStateError`` arm is the correct outcome there. That used to rest
+        on a migration-pending sidecar carrying ``slots.master`` alone, which
+        nothing enforced (FIBR-0337 M1).
 
         The question blocks, which is safe for the same reason
         ``main_window``'s one surviving ``exec()`` is: this runs only from the

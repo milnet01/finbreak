@@ -15,12 +15,14 @@ import inspect
 import os
 import shutil
 import stat
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 import pytest
 from _recovery_helpers import (
     MASTER_PASSWORD,
+    code_secret,
     create_v1_vault,
     kek_for,
     open_after_restart,
@@ -32,17 +34,19 @@ from _recovery_helpers import (
 )
 from sqlcipher3.dbapi2 import DatabaseError
 
+from finbreak.crypto import read_sidecar_v2, write_sidecar_v2
 from finbreak.errors import (
     KdfPolicyError,
     RollbackAvailableError,
     SchemaVersionError,
     VaultStateError,
 )
-from finbreak.keywrap import SLOT_MASTER
+from finbreak.keywrap import SLOT_MASTER, SLOT_RECOVERY
 from finbreak.migrations import LATEST_SCHEMA_VERSION
 from finbreak.services import auth as auth_module
 from finbreak.services import vault_migration
 from finbreak.services.auth import AuthService
+from finbreak.services.recovery_code import generate_code
 from finbreak.services.vault_migration import (
     MIGRATING_SUFFIX,
     STEPS,
@@ -2593,4 +2597,69 @@ def test_the_resume_row_compare_logs_table_names_not_counts(
         "security-model INV-9: the row counts went into the plaintext log.\n"
         "  expected: table names only\n"
         f"  actual:   {line!r}"
+    )
+
+
+def test_only_the_master_slot_enters_the_resume_ladder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """FIBR-0337 M1 -- ``resume``'s ``kek_master`` took whichever slot's KEK.
+
+    ``_unlock_through_slot`` runs the ladder whenever the sidecar says
+    ``migration_pending``, and hands it the KEK of the slot it just unwrapped.
+    Every branch below the first needs KEK-MASTER: branch 3 opens the live v1
+    database with it, and both routes to the rollback offer gate on
+    ``rollback_copy_is_usable``, which does the same. Given KEK-recovery all of
+    those answer no, so the offer § 13.3 calls "the whole return on D8" is
+    withheld with nothing said -- the FIBR-0313 C1 shape again.
+
+    ``ui/unlock._offer_rollback`` already documents the guarantee that keeps
+    this safe: "a migration-pending sidecar carries ``slots.master`` alone, so
+    the recovery route never enters the ladder". Nothing enforced it --
+    ``_write_slot`` preserves ``migration_pending`` -- so the guarantee is the
+    subject here, and asserting the ladder is not entered is asserting it
+    directly rather than through a proxy.
+
+    The master leg is the control: without it a fixture that never reached the
+    ladder at all would pass the recovery leg vacuously.
+    """
+    vault_path, sidecar_path, key, _digests = _fresh_v1_vault(tmp_path, "m1-slots")
+    service = AuthService(vault_path, sidecar_path)
+    service.complete_unlock(bytes(key))
+    code = generate_code()
+    service.add_recovery_key(code)
+    service.lock()
+
+    # migration_pending back on, with BOTH slots present -- the state the
+    # guarantee says cannot exist and no code refuses.
+    pending = replace(read_sidecar_v2(sidecar_path), migration_pending=True)
+    write_sidecar_v2(sidecar_path, pending)
+
+    entered: list[str] = []
+    real_resume = vault_migration.resume
+
+    def watched(vault: Path, sidecar: Path, kek: bytearray, dek: bytearray) -> None:
+        entered.append("called")
+        real_resume(vault, sidecar, kek, dek)
+
+    monkeypatch.setattr(vault_migration, "resume", watched)
+
+    recovery_kek = kek_for(
+        code_secret(code), read_v2_sidecar(sidecar_path), SLOT_RECOVERY
+    )
+    service.complete_recovery_unlock(bytes(recovery_kek))
+    service.lock()
+    assert entered == [], (
+        "the recovery route entered § 13.3's ladder, whose every branch below "
+        "the first needs KEK-master -- so the pre-upgrade copy is never found "
+        "and the D8 offer is withheld with nothing said.\n"
+        "  expected: the ladder is entered from the master slot only\n"
+        f"  actual:   entered {len(entered)} time(s)"
+    )
+
+    service.unlock(bytearray(MASTER_PASSWORD))
+    assert entered == ["called"], (
+        "precondition: the master route MUST reach the ladder on this "
+        "fixture, or the leg above passed because nothing was pending.\n"
+        f"  actual:   entered {len(entered)} time(s)"
     )
