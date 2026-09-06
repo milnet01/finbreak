@@ -729,19 +729,9 @@ class AuthService:
         # security-model INV-12 promises the reset removes the vault's complete
         # on-disk footprint, and distinguishes that from residual sectors; a
         # whole surviving file is not the residual it accepts.
-        rollback_db, rollback_sidecar = vault_migration.rollback_copy_paths(
-            vault_path, sidecar_path
+        extra: list[Path] = list(
+            vault_migration.migration_artefacts(vault_path, sidecar_path)
         )
-        suffix = vault_migration.MIGRATING_SUFFIX
-        migrating_db = vault_path.with_name(vault_path.name + suffix)
-        migrating_sidecar = sidecar_path.with_name(sidecar_path.name + suffix)
-        extra: list[Path] = []
-        for base in (rollback_db, migrating_db):
-            extra.append(base)
-            extra.extend(
-                base.with_name(base.name + sfx) for sfx in vault_migration._WAL_SIBLINGS
-            )
-        extra.extend((rollback_sidecar, migrating_sidecar))
         # And every `*.old` set a past restore left behind. Each is a complete,
         # still-openable copy of the vault as it stood before that restore,
         # under the password in force then — so "start over" left the user's

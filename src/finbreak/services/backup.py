@@ -48,6 +48,7 @@ from finbreak.errors import BackupError, KdfPolicyError, SchemaVersionError
 from finbreak.keywrap import SLOT_MASTER, wrap_dek
 from finbreak.migrations import LATEST_SCHEMA_VERSION
 from finbreak.services.auth import AuthService, _wipe
+from finbreak.services.vault_migration import migration_artefacts
 from finbreak.vault import (
     SQLCIPHER_COMPAT,
     SQLCIPHER_COMPAT_ACCEPTED,
@@ -329,6 +330,7 @@ class BackupService:
                     backup_vault.vault_path, backup_vault.sidecar_path, on_key
                 )  # INV-5
             self._prune_superseded_old_copies()  # INV-17
+            self._prune_migration_artefacts()  # FIBR-0337 M5
             log.info("backup restored")
         except (
             KdfPolicyError,
@@ -532,6 +534,28 @@ class BackupService:
                     path.unlink(missing_ok=True)
                 except OSError:
                     log.warning("could not remove superseded copy %s", path.name)
+
+    def _prune_migration_artefacts(self) -> None:
+        """Drop FIBR-0019's on-disk artefacts, which this restore supersedes.
+
+        The ``.pre-v2`` pair and the ``.migrating`` pair are each a complete
+        encrypted vault, and the first opens under the master password the
+        restore has just replaced — so leaving them keeps the user's data
+        readable by anyone holding a credential they have moved on from. The
+        same reason the ``*.old`` prune above exists (INV-17), and the same
+        reason ``reset_vault`` names them (security-model INV-12).
+
+        Best-effort by design, for the reason the sibling above is: the restore
+        has already succeeded, and failing to tidy must not report it as a
+        failure.
+        """
+        for path in migration_artefacts(
+            self._vault.vault_path, self._vault.sidecar_path
+        ):
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                log.warning("could not remove migration artefact %s", path.name)
 
     def _install(self, new_db: Path, new_sidecar: Path, on_key: OnKey) -> None:
         """Move any existing vault + sidecar aside to timestamped ``*.old`` copies,

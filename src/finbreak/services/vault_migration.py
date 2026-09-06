@@ -661,6 +661,28 @@ def _finish(sidecar_path: Path, sidecar: VaultSidecar, vault_path: Path) -> None
     write_sidecar_v2(sidecar_path, replace(sidecar, migration_pending=False))
 
 
+def migration_artefacts(vault_path: Path, sidecar_path: Path) -> list[Path]:
+    """Every § 13.2 artefact a migration can leave on disk, WAL siblings and all.
+
+    Two callers need the list and neither can own it: ``services/auth.py``
+    deletes it on "start over" (security-model INV-12) and ``services/backup.py``
+    prunes it after a restore has superseded the whole vault (FIBR-0337 M5).
+    auth enumerated it by hand, reaching into this module's private
+    ``_WAL_SIBLINGS`` to do so, and backup named none of it.
+
+    Naming a path says nothing about it existing; every caller unlinks with
+    ``missing_ok``.
+    """
+    rollback_db, rollback_sidecar = rollback_copy_paths(vault_path, sidecar_path)
+    migrating_db = _suffixed(vault_path, MIGRATING_SUFFIX)
+    paths: list[Path] = []
+    for base in (rollback_db, migrating_db):
+        paths.append(base)
+        paths.extend(_suffixed(base, sfx) for sfx in _WAL_SIBLINGS)
+    paths.extend((rollback_sidecar, _suffixed(sidecar_path, MIGRATING_SUFFIX)))
+    return paths
+
+
 def rollback_copy_paths(vault_path: Path, sidecar_path: Path) -> tuple[Path, Path]:
     """Where D8's pre-upgrade pair sits, as a PAIR.
 

@@ -10,6 +10,7 @@ slices add ``BackupService`` export/restore and the UI. Every vault lives under
 import json
 import os
 import secrets
+import shutil
 import stat
 import tempfile
 import zipfile
@@ -42,6 +43,10 @@ from finbreak.services.backup import (
     MIN_BACKUP_PASSWORD_LEN,
     BackupService,
     VerifyResult,
+)
+from finbreak.services.vault_migration import (
+    MIGRATING_SUFFIX,
+    rollback_copy_paths,
 )
 from finbreak.vault import SQLCIPHER_COMPAT, Vault
 
@@ -1658,3 +1663,56 @@ def test_an_export_that_fails_after_writing_the_temp_still_removes_it(
         assert not dest.exists(), "a failed export writes no .fbk"
     finally:
         auth.lock()
+
+
+def test_a_restore_removes_the_migration_artefacts_it_supersedes(tmp_path) -> None:
+    """FIBR-0337 M5 — a restore superseded the whole vault and left FIBR-0019's
+    on-disk copies of it beside the new one.
+
+    ``_prune_superseded_old_copies`` handles ``*.old`` and nothing else, and
+    ``backup.py`` names neither the ``.pre-v2`` pair nor the ``.migrating`` one.
+    Both are complete encrypted vaults, and the ``.pre-v2`` pair opens under the
+    master password the restore has just replaced — so the data the user
+    believes they have moved on from stays readable by anyone holding the old
+    one. Same class as the ``*.old`` accumulation INV-17 closed, and as the
+    ``reset_vault`` hole security-model INV-12 covers.
+
+    The artefacts here are real byte copies of the live pair, which is what S0
+    writes, so the precondition below is the harm rather than a stand-in for it.
+    """
+    fbk, _snap = _export_from_seed(tmp_path)
+    auth, d, _vb, _sb = _dest_with_vault(tmp_path)
+    vault_path, sidecar_path = auth.vault.vault_path, auth.vault.sidecar_path
+
+    rollback_db, rollback_sidecar = rollback_copy_paths(vault_path, sidecar_path)
+    migrating_db = vault_path.with_name(vault_path.name + MIGRATING_SUFFIX)
+    migrating_sidecar = sidecar_path.with_name(sidecar_path.name + MIGRATING_SUFFIX)
+    for source, artefact in (
+        (vault_path, rollback_db),
+        (sidecar_path, rollback_sidecar),
+        (vault_path, migrating_db),
+        (sidecar_path, migrating_sidecar),
+    ):
+        shutil.copy2(source, artefact)
+
+    assert AuthService(rollback_db, rollback_sidecar).unlock(
+        bytearray(b"the original dest master")
+    ), (
+        "precondition: the pre-upgrade copy must be a WORKING vault under the "
+        "password this restore is about to replace, or the leg is asserting "
+        "tidiness rather than the exposure."
+    )
+
+    BackupService(auth.vault, auth).restore_backup(fbk, _BACKUP_PW, _M2)
+
+    survivors = [
+        p.name
+        for p in (rollback_db, rollback_sidecar, migrating_db, migrating_sidecar)
+        if p.exists()
+    ]
+    assert survivors == [], (
+        "the restore left FIBR-0019's migration artefacts beside the new "
+        "vault. Each is a complete encrypted copy, and the pre-upgrade pair "
+        "opens under the master password the user has just replaced.\n"
+        f"  expected: none of them\n  actual:   {survivors}"
+    )
