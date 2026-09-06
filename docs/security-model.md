@@ -216,7 +216,12 @@ be checkable. Enforcement arrives in step with the code:
   The exact-format match:
   recorded **output length = 32 bytes** and **salt length = 16
   bytes** — the raw key's required size; a *longer* output or salt
-  is rejected, not accepted. Iterations and parallelism get no
+  is rejected, not accepted. **The salt is checked twice and the key
+  once**: the salt exists on disk, so its ACTUAL byte length and its
+  recorded `salt_len` must each equal 16; the key never reaches disk, so
+  only its recorded `key_len` is checkable. A validator comparing
+  `salt_len` alone accepts a record declaring 16 over a 4-byte salt, and
+  Argon2id then derives from that salt. Iterations and parallelism get no
   on-open check, and Argon2id's own minimum of 1 does **not** pin them:
   a sidecar can record 0, and on the local open path that surfaces as
   `argon2-cffi`'s `HashingError` at derivation rather than as a clean
@@ -261,8 +266,13 @@ be checkable. Enforcement arrives in step with the code:
   FIBR-0004 D5's accepted best-effort gap, weighed and declined rather than
   overlooked (FIBR-0307), and it is recorded here because this is the
   document that owns accepted residuals. What is wiped is every buffer the
-  app owns. These are in-process copies, distinct from
-  the swap residual T3 and INV-4 name.
+  app owns, and the four above are the only accepted exceptions.
+  **Creating a new one is a breach, not a fifth residual**: a KEK or DEK is
+  passed through as the wipeable `bytearray` it was derived into, so
+  `wrap_dek(bytes(kek), …)` at a call site mints an unwipeable copy in that
+  frame, surviving lock and auto-lock. Eight sites did exactly that before
+  the signatures were widened to accept a `bytearray` (FIBR-0310 P8). These
+  are in-process copies, distinct from the swap residual T3 and INV-4 name.
 
 - **INV-3b — The sidecar holds no UNWRAPPED key material** (FIBR-0019
   INV-4). The plaintext sidecar carries a wrapped DEK per slot, which
@@ -434,7 +444,8 @@ be checkable. Enforcement arrives in step with the code:
   always clears the counter, so the legitimate owner is never
   permanently locked out.
 - **INV-11 — A stored password hint never contains the master password
-  **nor the recovery code** verbatim.** The optional plaintext hint (FIBR-0029, in `window.ini`) is
+  **nor the recovery code** verbatim**, the recovery leg holding only
+  against a live, validatable `slots.recovery`.** The optional plaintext hint (FIBR-0029, in `window.ini`) is
   enforced at set-time never to be, nor contain, the master password —
   compared NFC-normalized + casefolded, with **no** password-length
   exemption (a short password embedded verbatim is still caught). The
@@ -455,7 +466,12 @@ be checkable. Enforcement arrives in step with the code:
   symbol verifies locally, and any candidate is trial-unwrapped against
   `slots.recovery`. A successful unwrap proves the hint carries the live
   code. A hint with no candidate — the common case — costs no key
-  derivation at all. Falsifiable by test
+  derivation at all. **Where the slot cannot be tested the leg fails
+  OPEN**: a v1 vault, an unreadable sidecar, an absent slot, or one
+  `validate_slot` refuses all accept the hint, logging that a code-like
+  sequence went untested (never the hint itself). A slot that cannot be
+  tested is no evidence about the hint, and failing closed would refuse a
+  legitimate hint over an unrelated defect (INV-3d). Falsifiable by test
   (`services/password_hint.validate_hint` for the password leg;
   `ui/_password_hint.validate_hint_with_recovery` for the recovery leg,
   which lives in the hint pair's I/O half because the policy module's
