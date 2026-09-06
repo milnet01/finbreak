@@ -90,6 +90,37 @@
   </screenshots>
 
   <releases>
+    <release version="0.1.23" date="2026-09-07">
+      <description>
+        <p>Added:</p>
+        <ul>
+          <li>A recovery code — a second way into your vault if you forget your master password. finbreak shows it once when the vault is created and keeps no copy; existing vaults are upgraded on the next unlock, with a copy of the old vault taken first.</li>
+          <li>SECURITY.md and CODE_OF_CONDUCT.md, and a private channel for reporting a vulnerability.</li>
+          <li>CSV import now guesses the column mapping from the file's own headers, so a first import no longer starts with every dropdown on the first column.</li>
+        </ul>
+        <p>Changed:</p>
+        <ul>
+          <li>Batch import review no longer slows down as files are added.</li>
+          <li>Transfer-candidate detection is now indexed, so the Transfers tab no longer builds a throwaway index over every transaction each time it opens.</li>
+          <li>The time zone you pick in Settings now decides what "today" means for this month's totals, the alerts and the forecast — not just how dates look.</li>
+        </ul>
+        <p>Fixed:</p>
+        <ul>
+          <li>You can no longer end up with two categories or accounts whose names only look identical.</li>
+          <li>Your chosen date format now reaches the Transfers, Recurring, Forecast and Alerts screens, and those tables still sort by real date order.</li>
+          <li>A screen reader can now name every password and recovery-code box.</li>
+          <li>The import wizard no longer crashes if the vault locks itself while you are partway through, and two copies of finbreak can no longer open the same vault after a crash.</li>
+          <li>Importing several statements with the same layout now asks about the columns once, and cancelling a locked-PDF import no longer leaves the password on the wrong account.</li>
+          <li>Many smaller fixes across import, backup, self-update, the charts and the Transactions, Forecast and Rules screens.</li>
+        </ul>
+        <p>Security:</p>
+        <ul>
+          <li>Locking the vault now clears more of what was on screen, including account numbers individual tabs were holding.</li>
+          <li>A backup file crafted to attack finbreak can no longer exhaust your machine before you have typed a password.</li>
+          <li>The release scripts now bind the published Windows build to the tag being released, and statement closing balances are no longer written to the log.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.1.22" date="2026-08-19">
       <description>
         <p>Fixed:</p>

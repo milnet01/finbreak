@@ -21,6 +21,8 @@ signaling per
 
 ## [Unreleased]
 
+## [0.1.23] - 2026-09-07
+
 ### Added
 
 - **A recovery code — a second way into your vault if you forget your master password** (FIBR-0019)

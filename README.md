@@ -13,7 +13,7 @@
 [![Status](https://img.shields.io/badge/status-pre--alpha-orange)]()
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-Current version: **0.1.22** (early preview). **[⬇ Download the latest
+Current version: **0.1.23** (early preview). **[⬇ Download the latest
 release](https://github.com/milnet01/finbreak/releases/latest)**, or see
 [CHANGELOG](CHANGELOG.md) for what's shipped and [ROADMAP](ROADMAP.md) for
 what's coming.
@@ -34,11 +34,18 @@ lot, with more polish and features to come. What works today:
 
 - a private, password-protected place to keep your finances (an encrypted
   vault),
+- **a recovery code, so forgetting your master password no longer means losing
+  everything** — finbreak shows you one once when your vault is created; keep
+  it somewhere safe and it opens your vault and lets you pick a new password.
+  You can decline it, or replace or remove it later. finbreak keeps no copy, so
+  losing both it and your password is still unrecoverable. Vaults made before
+  this are upgraded the next time you unlock them, with a copy taken first,
 - importing statements from **CSV, OFX, and PDF** files (including
   password-protected PDFs) — **several at once** if you like, so a year of
   monthly statements or a mixed pile of CSV, OFX and PDF goes in one pass;
-  finbreak asks up front for anything it genuinely can't get past (a locked
-  PDF's password, the column layout of a spreadsheet it hasn't seen), then
+  finbreak works out a spreadsheet's column layout from its own headers where
+  it can, asks up front for anything it genuinely can't get past (a locked
+  PDF's password, headers it doesn't recognise), then
   works through the rest on its own and shows you one screen listing every
   file — where each is going, how many transactions are new, how many are
   duplicates you already have, and how many lines it couldn't read — with
