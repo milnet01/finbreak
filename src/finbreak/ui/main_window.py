@@ -1297,6 +1297,16 @@ class MainWindow(QMainWindow):
             self._reopen_settings_if_idle()  # Cancel at the password gate
             return
         dialog.saved.connect(lambda: self._status(self.tr("Recovery code saved")))
+        # The same one-time display `_show_recovery_offer` protects — this route
+        # ends in the same `build_recovery_offer` — so it needs the same hold:
+        # transcribing the code generates no input events, and the countdown
+        # runs out while the user is plainly present. Worse here, because the
+        # user came to REPLACE a code they believe is exposed: a teardown
+        # mid-copy leaves the queued Keep failing closed and silent, so they
+        # hold a code that was never written while the old one stays live
+        # (FIBR-0337 M6).
+        self._service.suspend_idle_lock()
+        dialog.finished.connect(lambda _r: self._service.resume_idle_lock())
         dialog.finished.connect(self._teardown_dialog)
         self._open_dialog(dialog, defer=False)
 

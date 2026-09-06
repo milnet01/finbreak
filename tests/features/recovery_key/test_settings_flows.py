@@ -928,3 +928,49 @@ def test_the_forced_password_dialog_quits_on_ctrl_q_off_the_platform_scheme(
         "whatever that scheme says -- which is the defect, not the fix.\n"
         f"  actual:   {[key.toString() for key in bound]}"
     )
+
+
+def test_the_settings_add_or_replace_display_holds_off_the_idle_auto_lock(
+    service: AuthService, qtbot: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """FIBR-0337 M6 — § 4.7's Add / Replace shows the SAME one-time display and
+    did not hold the idle lock.
+
+    ``build_add_or_replace_offer`` ends in ``build_recovery_offer``, so the
+    dialog is the one the sibling leg above protects, and every word of that
+    leg's reasoning applies: transcribing the code onto paper generates no input
+    events, so the countdown runs out while the user is plainly present.
+
+    Worse on this route than on that one. The user came here to REPLACE a code
+    they believe is exposed; a teardown mid-copy leaves the queued Keep failing
+    closed and silent, so they hold a code that was never written while the old
+    one stays live.
+    """
+    monkeypatch.setattr(
+        recovery_module, "_confirm_master_password", lambda *_a, **_k: True
+    )
+    window = MainWindow(service)
+    qtbot.addWidget(window)
+    window._enter_unlocked()
+
+    assert service._timer is not None and service._timer.isActive(), (
+        "precondition: the idle timer must be running, or this leg proves nothing"
+    )
+
+    window._on_change_recovery_key()
+    dialog = window._dialog
+    assert isinstance(dialog, recovery_module.RecoveryCodeDialog), (
+        "precondition: the one-time display must be up, or the hold has nothing "
+        f"to protect.\n  actual:   {type(dialog).__name__}"
+    )
+    try:
+        assert not service._timer.isActive(), (
+            "the idle countdown ran while the Settings Add / Replace display "
+            "was up, so an auto-lock can destroy a code the user is copying."
+        )
+        service.notify_activity()
+        assert not service._timer.isActive(), "notify_activity must not re-arm it"
+    finally:
+        dialog.reject()
+
+    assert service._timer.isActive(), "finishing the dialog re-arms the lock"
