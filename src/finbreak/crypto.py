@@ -160,10 +160,11 @@ def validate_untrusted_params(params: KdfParams) -> None:
     `validate_params` is deliberately one-sided — a floor and no ceiling
     (security-model.md INV-2) — because a ceiling there would bind every
     existing vault and could lock one out. That leaves an inflated recorded
-    cost unchecked, which is the pre-login residual T5 records on the restore
-    path: a `.fbk` a stranger crafted is parsed and derived from before any
-    authentication, so its numbers must be bounded where they enter rather
-    than where every vault is read.
+    cost unchecked, and THIS is what bounds it: a `.fbk` a stranger crafted is
+    parsed and derived from before any authentication, so its numbers are
+    bounded where they enter rather than where every vault is read.
+    security-model T5 named that gap as an open residual until this shipped
+    and now points here (FIBR-0327).
 
     Two vectors, and neither needs the other: `memory_kib` forces an arbitrarily
     large allocation, and `time_cost` an arbitrarily long derivation needing no

@@ -12,9 +12,10 @@
 > own document — a single place that names what we protect, what
 > could go wrong, and exactly how each risk is stopped.
 > **How it's used:** every `implement`-Kind spec must state how
-> it upholds each § 5 invariant **its own code path touches**, naming
-> any it deliberately does not reach — an all-invariant table of "N/A"
-> is not what this asks for. That statement is **self-assessed**: no
+> it upholds each § 5 invariant **its own code path touches** — name only
+> the invariants whose subject matter that path plausibly engages, and for
+> each say how it is upheld or why it is not reached. Silence on the rest
+> is compliant; an all-invariant table of "N/A" is not what this asks for. That statement is **self-assessed**: no
 > pass checks it. What is enforced is § 6's per-invariant tests, plus
 > `check-code` and `review-code` over the code itself.
 > See [ADR-0003](decisions/0003-sqlcipher-local-only-storage.md)
@@ -28,14 +29,14 @@ unavoidable it is glossed on first use.
 
 | # | Asset | Why it matters |
 |---|-------|----------------|
-| A1 | **The vault** — the SQLCipher database file holding every transaction, account, rule, and financial setting (base currency, minor-unit exponent, stored PDF passwords). *Non-sensitive UI state — window geometry / toolbar state / last-active tab, plus the opt-in update-check flag and any skipped-update version (FIBR-0054), and the optional user-authored password hint (FIBR-0029) — deliberately lives in a plaintext `window.ini` sibling, not the vault (FIBR-0052 INV-5, FIBR-0054 D4); it holds no financial data, so it is not an A1 asset. The hint is readable by anyone with device access (it must be, to help before unlock), so it is enforced at set-time never to be, nor contain, the master password (INV-11).* | The whole financial picture. Its disclosure is the worst case. |
+| A1 | **The vault** — the SQLCipher database file holding every transaction, account, rule, and financial setting (base currency, minor-unit exponent, stored PDF passwords). *Non-sensitive UI state — window geometry / toolbar state / last-active tab, plus the opt-in update-check flag and any skipped-update version (FIBR-0054), and the optional user-authored password hint (FIBR-0029) — deliberately lives in a plaintext `window.ini` sibling, not the vault (FIBR-0052 INV-5, FIBR-0054 D4); it holds no financial data, so it is not an A1 asset. The hint is readable by anyone with device access (it must be, to help before unlock), so it is enforced at set-time never to be, nor contain, the master password **or the recovery code** (INV-11, widened by FIBR-0019).* | The whole financial picture. Its disclosure is the worst case. |
 | A2 | **The master password** | Unlocks everything, by unwrapping a key slot — never by being the key. Never stored anywhere. *(Restated by FIBR-0019: it still unlocks everything, but no longer directly.)* |
 | A3 | **The key-encryption key (KEK)** — what Argon2id produces from a credential (the master password, or the recovery code) and that credential's own salt. *(Was "the derived key", passed to SQLCipher as its raw key; FIBR-0019 made it a KEK.)* | Decrypts one **slot**, not the vault; lives only in memory while unlocked. |
 | A3b | **The data key (DEK)** — 32 random bytes minted at vault creation, passed to SQLCipher as its **raw** key (so Argon2id, not SQLCipher's built-in PBKDF2, is still the KDF behind every credential) | Decrypts the vault. Never on disk unwrapped; lives only in memory while unlocked. |
 | A8 | **The recovery code** (FIBR-0019) — 135 bits, shown once and never retained by the app: at vault creation, or, for a vault that predates the key envelope, when it is converted (D7) | A full-strength second credential: it opens the vault exactly as the master password does. The user stores it; the app cannot help them if they lose it. |
 | A4 | **Stored statement-PDF passwords** (optional, opt-in) | Bank-document passwords; only ever live *inside* the encrypted vault. |
 | A5 | **Decrypted statement data in memory during import** | A locked PDF is decrypted in RAM only; must never touch disk. |
-| A6 | **Exported report PDFs** | Leave the app deliberately, password-locked by the user. |
+| A6 | **Exported report PDFs** | Leave the app deliberately; AES-256 password-locked **only when the user sets an export password**, which is optional and blank by default (T10, INV-7). |
 | A7 | **The source repository (public)** | Must contain code + docs only — never a vault, a key, or real statement data. |
 
 ## 2. Trust boundaries
@@ -105,7 +106,7 @@ attacked. Each row: the threat → how finbreak stops it.
 | T2 | **Weak master password brute-forced** | **Argon2id** memory-hard key derivation with pinned parameters (§ 5 INV-2) makes offline guessing slow and GPU-resistant; the interactive unlock dialog additionally throttles repeated wrong attempts on a capped backoff (§ 5 INV-10). Password strength is also surfaced when a master password is CHOSEN — at first-run and at the forced reset after a recovery-code unlock — as an advisory nudge that never blocks (`services/password_strength.py`). It bands on length rather than character classes, which is what Argon2id leaves as the variable. Deliberately not an enforced INV: a minimum would lock out a vault created before it. |
 | T3 | **Key or password recovered from memory / swap / a crash dump** | Key held only while unlocked; **wiped on lock and on exit**; auto-lock drops it after idle (INV-3). The plaintext password reference is cleared before the unlock routine returns. (Defending against the OS paging memory to swap is out of scope — see § 4.) The idle timeout is **user-configurable** (FIBR-0055) and may be set to **"Never"** (FIBR-0135), which disables *only* the idle drop — the key is still wiped on manual lock and on exit, and the password is still required on open. An unattended, unlocked session then stays unlocked: an accepted user choice, not a silent default. |
 | T4 | **Decrypted bank statement leaks to disk** | Locked input PDFs are decrypted **in memory only**; no decrypted content is *deliberately* written to disk or temp files (A5, INV-4). (Defending against the OS paging memory to swap is out of scope — § 4.) |
-| T5 | **Malicious import file** (crafted CSV/OFX/PDF — parser crash, path traversal, zip-bomb-style resource exhaustion, formula injection) **or a crafted restore `.fbk`** (a zip parsed **pre-login**) | Parsers run defensively: bounded resource use (file/page/row caps), no `eval`, no shell-out; CSV cells are treated as data, never spreadsheet formulas; per-row errors are reported, not fatal (INV-5a/5b/5c). The restore `.fbk` — parsed before any authentication — reads only the three fixed entry names with per-entry caps checked **before** inflating (never `extractall`), rejects traversal/extra/duplicate entries, and re-validates the embedded KDF params against the pinned floor before deriving any key (FIBR-0014 INV-11/INV-12). **Two documented residuals.** The PDF **decompressed-page-size** vector is assessed + accepted, not bounded — see INV-5b / FIBR-0075. And **no KDF cost axis is bounded above** before login. `validate_params` refuses a `memory_kib` below the floor and imposes no ceiling; `time_cost` and `parallelism` it does not check in either direction. So a crafted `.fbk` can force an arbitrarily large allocation *or*, through `time_cost`, an arbitrarily long derivation — both pre-login, and the second needs no memory at all. Re-validating against the floor does not make pre-login resource use bounded, and a builder reading this row must not assume it does. Tracked as FIBR-0327, whose scope is every axis: bounding `memory_kib` alone leaves the same residual open. A backup `.fbk` can now also be *verified* read-only (FIBR-0033) through the **same** FIBR-0014 guards, but **post-login** (from Settings, D5) — a lower-risk surface than restore's pre-login parse, adding **no new pre-login attack surface**. |
+| T5 | **Malicious import file** (crafted CSV/OFX/PDF — parser crash, path traversal, zip-bomb-style resource exhaustion, formula injection) **or a crafted restore `.fbk`** (a zip parsed **pre-login**) | Parsers run defensively: bounded resource use (file/page/row caps), no `eval`, no shell-out; CSV cells are treated as data, never spreadsheet formulas; per-row errors are reported, not fatal (INV-5a/5b/5c). The restore `.fbk` — parsed before any authentication — reads only the three fixed entry names with per-entry caps checked **before** inflating (never `extractall`), rejects traversal/extra/duplicate entries, and re-validates the embedded KDF params against the pinned floor before deriving any key (FIBR-0014 INV-11/INV-12). **One documented residual.** The PDF **decompressed-page-size** vector is assessed + accepted, not bounded — see INV-5b / FIBR-0075. **The KDF cost axes were a second residual and FIBR-0327 closed it.** `validate_params` is still one-sided by design (a floor, no ceiling), because a ceiling there would bind every existing vault; the bound lives at the trust boundary instead. `validate_untrusted_params` caps `memory_kib` and bounds `time_cost` and `parallelism` on both sides, and the restore path calls it on every `.fbk` before deriving anything, so an arbitrarily large allocation and an arbitrarily long derivation are both refused pre-login. A backup `.fbk` can now also be *verified* read-only (FIBR-0033) through the **same** FIBR-0014 guards, but **post-login** (from Settings, D5) — a lower-risk surface than restore's pre-login parse, adding **no new pre-login attack surface**. |
 | T6 | **Secret accidentally committed to the public repo** | `gitleaks` in CI **and** the local pre-push script; `.gitignore` excludes `*.db`/vault/build output; no real financial data in tests — only synthetic fixtures (INV-6, A7). **A real account number is a separate case**: `gitleaks` does not match one, and the guard that does (`tests/features/account_detect/` INV-8) runs only where the local corpus is supplied, so it is absent from CI by design — see INV-6. |
 | T7 | **Vulnerable third-party dependency (known CVE), or a hijacked / typosquatted release that has no CVE at all** | `pip-audit` in CI + local script fails the build on a known-vulnerable dependency; Dependabot raises bumps; latest-stable policy (global rule § 5). The gate runs it **twice, against two different databases** — the default PyPI Advisory DB and OSV.dev (`-s osv`, `FIBR-0227`) — because neither is a superset and only OSV.dev imports the OpenSSF **Malicious Packages** feed, which is what covers the no-CVE half of this row. |
 | T8 | **Insecure code pattern introduced** (hardcoded secret, weak hash, `subprocess(shell=True)`, etc.) | `bandit` security linter in CI + local script. |
@@ -140,8 +141,11 @@ consciously excluded, not missed.
 Every spec and every review pass checks these. Each is phrased to
 be checkable. Enforcement arrives in step with the code:
 
-- **From P01 on:** INV-6 and the no-`eval` / no-shell legs of
-  INV-5a, via the static gate (§ 6). INV-5a's CSV-as-data and
+- **From P01 on:** INV-6's key / password / vault leg and the
+  no-`eval` / no-shell legs of INV-5a, via the static gate (§ 6).
+  INV-6's **account-number leg is local-only** and lands with
+  `tests/features/account_detect/` — CI must not hold the numbers it
+  searches for, so a green pipeline is not evidence on that leg. INV-5a's CSV-as-data and
   no-content-derived-path legs are unit-tested with the import
   specs (FIBR-0007+).
 - **With the phase that builds the code each governs:** INV-1,
@@ -206,8 +210,9 @@ be checkable. Enforcement arrives in step with the code:
   with it**, or every vault recorded at the old value stops opening.
   Moving one number because the document showed one number is exactly
   the lockout this separation exists to prevent. The floor is
-  **one-sided** — no ceiling — which T5 records as a pre-login residual
-  on the restore path, across every cost axis rather than memory alone.
+  **one-sided** — no ceiling — deliberately, because a ceiling here would
+  bind every existing vault. What arrives from outside is bounded at the
+  trust boundary instead, by `validate_untrusted_params` (T5, FIBR-0327).
   The exact-format match:
   recorded **output length = 32 bytes** and **salt length = 16
   bytes** — the raw key's required size; a *longer* output or salt
@@ -228,7 +233,8 @@ be checkable. Enforcement arrives in step with the code:
 - **INV-3 — Key lifetime.** The **DEK**, **every KEK** and the
   plaintext password exist in memory only while unlocked, are wiped
   on lock/exit, and are dropped by auto-lock after the configured
-  idle period. (A true wipe needs a *mutable* buffer — `bytearray`,
+  idle period — **unless the user has set that period to "Never"**, which
+  disables the idle drop alone and nothing else (T3, FIBR-0135). (A true wipe needs a *mutable* buffer — `bytearray`,
   not an immutable `str` — so the FIBR-0004 spec holds the password
   in a zeroable buffer; this is what makes "wiped" testable.)
   Widened by FIBR-0019 from "the derived key" to all three: a KEK is
@@ -246,8 +252,13 @@ be checkable. Enforcement arrives in step with the code:
   RETURN is the same residual and is key material itself.
   `hash_secret_raw` returns a KEK as immutable `bytes` and `AESGCM.decrypt`
   returns the DEK the same way, and each is copied into a `bytearray` the
-  app then owns and wipes — the original stays until GC. What is wiped is
-  every buffer the app owns. These are in-process copies, distinct from
+  app then owns and wipes — the original stays until GC. A fourth is the
+  DEK a `wrap_dek` caller hands in: the parameter is `bytes`, so the copy is
+  made in the caller's frame and the app cannot zero it. That one is
+  FIBR-0004 D5's accepted best-effort gap, weighed and declined rather than
+  overlooked (FIBR-0307), and it is recorded here because this is the
+  document that owns accepted residuals. What is wiped is every buffer the
+  app owns. These are in-process copies, distinct from
   the swap residual T3 and INV-4 name.
 
 - **INV-3b — The sidecar holds no UNWRAPPED key material** (FIBR-0019
@@ -262,10 +273,12 @@ be checkable. Enforcement arrives in step with the code:
 
 - **INV-3c — The recovery code is never persisted by the app of its
   own accord** (FIBR-0019 INV-5), in any form, to any plaintext
-  surface. The single exception is a file the **user** explicitly
-  names at the moment of display — that is the user storing their own
-  credential, not the app retaining it, and the difference between
-  the two is what this invariant is about. In particular it never
+  surface. The exceptions are **user-initiated hand-offs at the moment
+  of display**: a file the user explicitly names, and the clipboard copy
+  T13 governs. That is the user storing their own credential, not the app
+  retaining it, and the difference between the two is what this invariant
+  is about. Stated as the principle rather than as a list, because a
+  closed list of one refuses the copy button the app already ships. In particular it never
   reaches `window.ini`, which is plaintext by design and is where the
   password hint already lives.
 
@@ -452,7 +465,12 @@ be checkable. Enforcement arrives in step with the code:
   every `*.old` set a past restore left behind, and any
   `restore-assembly-*` directory a crashed restore left in the data
   location — so no file of a deleted vault remains to interfere with a
-  subsequently created one. The last three are here because each is a
+  subsequently created one. **The two WAL sidecars are unlinked BEFORE the
+  database**, so a reset interrupted part-way can only strand the database,
+  which the user can see and retry; the other order orphans a `-wal` beside a
+  deleted database for the next, differently-keyed vault to recover from
+  (FIBR-0337 L4). The named test asserts the post-success state, so nothing
+  else catches that ordering. The last three are here because each is a
   **complete, still-openable copy**: a `.pre-v2` pair opens under the
   password of the moment the migration began, a `.old` set under the
   password in force before that restore, and an assembly directory under
@@ -463,10 +481,14 @@ be checkable. Enforcement arrives in step with the code:
   cleared on success too, by the shell rather than by `reset_vault`,
   since that file is shared with the app's own settings. This
   is **logical deletion** (`unlink` removes the directory entry), not a
-  secure media wipe: residual sectors may hold old-key-encrypted ciphertext
-  until overwritten. That is acceptable — the fragments are useless without
-  the (now-gone) key, so this is deletion-completeness *hygiene*, not a
-  confidentiality or anti-forensic guarantee. Falsifiable by test
+  secure media wipe: **residual sectors** may hold old-key-encrypted
+  ciphertext until overwritten. That is acceptable — those fragments are
+  useless without the (now-gone) key, so *for them* this is
+  deletion-completeness hygiene rather than an anti-forensic guarantee.
+  **The disclaimer reaches no further.** Removing each complete, still-openable
+  copy above is a confidentiality obligation: those files open under a
+  password the user has moved on from, so a reset that fails to remove one
+  must not report success. Falsifiable by test
   (`AuthService.reset_vault`; FIBR-0030 INV-1).
 - **INV-13 — The published `SHA256SUMS` manifest is Ed25519-signed over its
   final bytes.** Each release publishes a `SHA256SUMS` checksum manifest
