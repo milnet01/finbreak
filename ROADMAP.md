@@ -6706,6 +6706,104 @@ because retrofitting them is a data migration.
   Kind: fix.
   Source: in-session-2026-08-31 (found while fixing FIBR-0313 M6).
 
+- 🚧 [FIBR-0337] **FP05 — fix-pass after FP04: two high, seven medium, and a tail.**
+  check-code was CLEAN on this scope: ruff, bandit, mypy, semgrep (236 rules,
+  ~100% parse), pyright and vulture all zero. Its one typo hit is the project's
+  house spelling in many places. It verified the single nosec suppression is
+  load-bearing by stripping it and re-running rather than trusting the comment.
+
+  THE PATTERN, and it is the same one FP03 and FP04 each recorded: a check that
+  folds several distinct answers into one, and a caller that acts destructively
+  on the merged result. H1 is that shape at its worst. Second pattern, three
+  instances: a guarantee stated in a docstring or a sibling's comment that no
+  code enforces (M1, M3, and main_window's Ctrl+Q claim).
+
+  H1. vault_migration._replacement_is_sound + resume branch 2 -- DATA LOSS.
+      The function proves the .migrating copy reads end to end (open plus a full
+      integrity_check), then asks the LIVE vault for row counts and returns False
+      if that file will not answer. That is an answer about a different file.
+      Branch 2 reads the False as "debris" and unlinks the proven-good copy,
+      under a comment asserting "the live v1 database is untouched" -- exactly
+      what the check just failed to establish. Reachable when the same power loss
+      that interrupted the migration also damaged the live database; mid-file
+      damage still passes _opens, so branch 3 then restarts and fails on it.
+      Fix: give "cannot compare the live vault" its own arm that KEEPS the file.
+  H2. ui/recovery_key.NewMasterPasswordDialog -- NO EXIT on Windows. D6 makes
+      Escape and [X] no-ops on purpose, so the dialog's only escape is a QShortcut
+      on QKeySequence.StandardKey.Quit. Measured 2026-09-06: under KDE that is
+      Ctrl+Q, but under the fallback binding scheme -- what a non-KDE/Gnome
+      platform uses -- it resolves to Exit, a hardware key no ordinary keyboard
+      carries. The main window's own Ctrl+Q is blocked by the modal grab. With
+      auto-lock set to Never there is no exit but Task Manager. The Windows box
+      was unreachable to confirm its exact value; the fix is scheme-independent.
+
+  M1. auth._unlock_through_slot passes whichever slot's KEK it holds into
+      vault_migration.resume, whose parameter is named kek_master and whose
+      ladder is written against KEK-master. The recovery route reaches it, and
+      ui/unlock._offer_rollback documents a guarantee ("a migration-pending
+      sidecar carries slots.master alone") that no code enforces -- _write_slot
+      preserves migration_pending. Observable today: the rollback offer is
+      silently withheld on that route, the FIBR-0313 C1 shape again.
+  M2. crypto's three sidecar guards catch (TypeError, ValueError). Verified by
+      running it: json accepts 1e400 / -1e400 / Infinity as float inf, and
+      int(inf) raises OverflowError, which is NOT a ValueError subclass. NaN is
+      caught, which is why this is one hole rather than the class. Reachable from
+      an imported .fbk, so it crashes the pre-login restore instead of reporting.
+  M3. auth.add_recovery_key builds the decoded recovery payload inline, and
+      _write_slot has two exits before derive_raw -- its only wipe. Found
+      INDEPENDENTLY by two lanes. crypto.derive_key's docstring states the rule
+      being broken ("build it under a name rather than inline, or there is
+      nothing left to wipe it by"), and ui/_password_hint does it correctly.
+  M4. A crashed restore leaves its assembly directory, holding a complete vault
+      that opens under the new master password, in the data directory. reset_vault
+      deletes an enumerated list and no sweep exists, so "start over" tells the
+      user everything is erased while that copy remains. security-model INV-12.
+  M5. The restore path removes no migration artefacts -- backup.py names neither
+      the pre-upgrade pair nor the in-migration one, and the prune handles *.old
+      only. So a restore leaves a complete vault openable under the password the
+      user just replaced. Verified: no such reference exists in that module.
+  M6. ui/main_window._on_change_recovery_key does not suspend the idle lock, where
+      the other two routes onto the same dialog do and say why. Transcribing a
+      code onto paper generates no input events, so the lock can destroy the
+      display mid-copy; a queued Keep then fails closed and SILENT, leaving a user
+      who came to Replace an exposed code holding one that was never written while
+      the old one stays live.
+  M7. ui/unlock._on_derived has no OSError arm, so a full or read-only disk inside
+      the resumed migration escapes a Qt slot. FIBR-0019 section 6 requires it be
+      reported; _offer_rollback eleven lines below catches OSError for that cause.
+
+  L1. write_rollback_copy fsyncs each copy as a file and never its directory, so
+      S0's copy is not durable when S1 first writes to the live database.
+  L2. security-model INV-3's residual list omits the immutable bytes Argon2 and
+      AESGCM RETURN -- a KEK and the DEK. Nothing new is exposed; the list is what
+      a test or a reviewer builds to, and it is short.
+  L3. crypto.write_sidecar_json opens its temp without O_EXCL and without fchmod,
+      so a pre-existing .tmp keeps its own mode and os.replace carries it onto the
+      sidecar. Both siblings close that gap and one says why.
+  L4. backup._install moves the incumbent's WAL siblings aside only when a live
+      file exists, and reset_vault deletes the database before those siblings --
+      so an abort between them leaves an orphan -wal for the next vault.
+  L5. old_copy_sets globs both names under the VAULT's parent, while _install
+      explicitly refuses to assume the two paths share one.
+  L6. export_backup does not refuse a destination that resolves to the live vault
+      or its sidecar; restore carries the mirror guard for the same hazard.
+  L7. The decline button reads "Don't set up a recovery code" on the Replace and
+      regeneration branches, where one already exists and declining keeps the old
+      one live -- the INV-20 shape, a shared string false of one branch.
+  L8. main_window's comment calls StandardKey.Quit "Ctrl+Q on Linux/Windows",
+      which H2 measured false. It is how the wrong premise reached recovery_key.
+
+  RECORDED, not filed as findings: the regeneration-offer flag set before the
+  forced-password step (a lane could not reach it from its slice), and
+  remaining_lockout_seconds under clock skew, which is a cross-document question.
+
+  CONVERGENCE: this is the FOURTH consecutive fix-pass (FP02 -> FP03 -> FP04 ->
+  FP05) and the checkpoint is 5. The next one hits it.
+  **Layman:** A fresh review of the recovery-key work found a way to lose the good copy of a half-upgraded vault, and a screen Windows users could not close.
+  Kind: review-fix.
+  Source: close-phase-2026-09-06 (check-code + review-code x4 lanes, FP04 close, fresh context).
+  Lanes: migration, crypto, backup, auth, ui.
+
 ### 🎨 Features & accessibility
 
 - ✅ [FIBR-0021] **Multi-currency decision (ADR).**
