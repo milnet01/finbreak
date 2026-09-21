@@ -12247,6 +12247,46 @@ is a future error tomorrow.
   Kind: test.
   Source: in-session-2026-09-21 (peer session reported the same defect class from its own tree).
 
+- 📋 [FIBR-0349] **Two specs still prescribe the unbounded balance conversion FIBR-0224 replaced.**
+  Found by the blast-radius sweep of FIBR-0050's loop-15 review, which added
+  the storable bound to that spec's own Deliverable 1. The sweep then found
+  the same rule stated in two SIBLING specs, in the pre-FIBR-0224 form.
+
+  WHERE. FIBR-0190 § 4.5 prescribes it twice — once in prose as the exact
+  anchor and once inside a fenced python block:
+  `closing_minor = None if closing is None else to_minor(closing, exponent)`.
+  FIBR-0171 D4 prescribes `closing_balance_minor = _minor(closing, exponent)`.
+  Neither names a magnitude bound.
+
+  WHY IT MATTERS. FIBR-0224 added `_storable` because the opening and closing
+  are the only figures on a statement that never pass through
+  `parse_transaction`, so they inherit none of its money contract. An
+  out-of-range digit run parses, scales, and even reconciles — the
+  completeness gate compares the two unbounded figures against each other —
+  then dies at the INSERT as OverflowError. Measured while reviewing
+  FIBR-0050: `_on_import` catches ValueError, FinbreakError and
+  VaultLockedError, and OverflowError is caught nowhere on the import path.
+  So the outcome is a dead slot at commit time rather than a message.
+
+  NOT A LIVE DEFECT. The shipped code already routes both figures through
+  `_storable`; only the documents are stale. The risk is a builder working
+  from either spec — FIBR-0190 § 4.5 is the stated contract for Family E's
+  closing wiring — reproducing the unbounded form.
+
+  WHY FILED RATHER THAN FIXED IN THAT REVIEW. Both are other documents'
+  rules, and review-contract forbids carrying a correction into the subject.
+  Both changes alter what a conformer writes, so each trips rule 14's gate on
+  its own document; FIBR-0190 carries its own cold-eyes log. Correcting them
+  in passing would land a direction change in two gated specs with no gate.
+
+  THE FIX. In each, state the conversion through the storable bound, applied
+  to BOTH the opening and the closing and BEFORE the completeness gate
+  compares them, and add the too-large refusal to that spec's raise list.
+  Gate each with `review-contract <path> --genre spec --max-loops 3`.
+  **Layman:** Two design documents still tell a builder to convert a statement balance the old way, which can crash when saving an absurdly large figure.
+  Kind: doc-fix.
+  Source: in-session-2026-09-21 (FIBR-0050 review-contract loop 15, 4b blast-radius sweep).
+
 ## How to add an item
 
 1. Allocate the next ID:
