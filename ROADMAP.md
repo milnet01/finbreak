@@ -10343,7 +10343,7 @@ is a future error tomorrow.
   Source: in-session-2026-08-21.
   Lanes: tests, ci.
 
-- 📋 [FIBR-0309] **The sidecar write and its parameter validation have three pre-existing gaps.**
+- ✅ [FIBR-0309] **The sidecar write and its parameter validation have three pre-existing gaps.**
   Surfaced rather than fixed in passing (coding.md 1.7). All three predate
   FIBR-0019 -- confirmed against f704605: the atomic-write code came verbatim
   from vault.py:292-302 when it moved to crypto.write_sidecar_json, and
@@ -10373,6 +10373,44 @@ is a future error tomorrow.
      normalised to one failure type. memory_kib 2147483647 passes the directional
      floor and is attempted before any authentication can reject it, because the
      AAD binds the value only after the derivation it sizes.
+  Resolved (2026-09-21) — all three gaps accounted for, each checked in the
+  tree rather than inferred, and NO new code was written for this bullet. The
+  substance shipped under other ids while this one sat open; that is what made
+  it worth reading carefully rather than implementing from its own text.
+
+  Gap 1 (O_CREAT without O_EXCL, so the 0o600 mode is not applied to a
+  pre-existing .tmp) is CLOSED in crypto.write_sidecar_json by an
+  os.fchmod(fd, 0o600) after the open, credited there to FIBR-0337 L3. The
+  comment also records why fchmod rather than this bullet's suggested
+  unlink-then-O_EXCL: that form deletes a planted symlink instead of refusing
+  it, and O_NOFOLLOW refusing is what INV-7 locks.
+
+  Gap 2 (no directory fsync after os.replace, in write_sidecar_json or the
+  migration's S4/S5 renames) is CLOSED in all four places, each citing
+  FIBR-0327: write_sidecar_json ends in fsync_dir(sidecar_path.parent); S4
+  fsyncs before S5 begins, with the reasoning that an S5 entry reaching the
+  platter without S4's leaves a v1 sidecar over a DEK-keyed database;
+  _swap_database fsyncs after its rename; and restore_rollback_copy fsyncs each
+  touched directory.
+
+  Gap 3 (validate_params bounds neither time_cost nor parallelism nor the upper
+  end of memory_kib) is SUPERSEDED rather than fixed, by a decision this bullet
+  predates. FIBR-0327 added crypto.validate_untrusted_params, which bounds all
+  three — both sides of time_cost and parallelism, and the memory ceiling — and
+  services/backup.py:497 calls it on the .fbk restore path, the pre-login
+  surface the gap was really about. A ceiling in validate_params itself is
+  ruled OUT on purpose: security-model INV-2 makes that floor one-sided because
+  a ceiling there would bind every existing vault and could lock one out, and
+  T9 states the invariant as a floor. So implementing this bullet as written
+  would have contradicted a documented decision that five review loops refined.
+
+  What genuinely survives is narrower than any of the three and is filed as
+  FIBR-0341: validate_params accepts time_cost=0 / parallelism=0, argon2 raises
+  HashingError, and ui/unlock.py catches KdfPolicyError only — so that one is
+  uncaught on the LOCAL unlock path. Measured today. It is separated because
+  its fix is a low-side floor plus an except arm, and because the
+  security-model sentence describing the current behaviour would have to be
+  amended under rule 14's gate.
   **Layman:** Three long-standing weaknesses in how the vault's security-settings file is written and checked — none introduced by the recovery key, but it made two of them matter more.
   Kind: security.
   Source: close-phase-2026-08-21 (review-code lane 1 + lane 2, FIBR-0019 close).
@@ -11432,6 +11470,50 @@ is a future error tomorrow.
   **Layman:** The rules for choosing a version number still describe the recovery-code work as upcoming, when it shipped.
   Kind: doc-fix.
   Source: in-session 2026-09-07, cutting 0.1.23.
+
+- 📋 [FIBR-0341] **A hand-edited zero cost parameter reaches argon2 uncaught on the local unlock path.**
+  The surviving third of FIBR-0309, isolated rather than inherited. That
+  bullet's other two gaps are closed and its gap 3 is superseded at the trust
+  boundary; this is the one thing left, and it is about the LOCAL open path.
+
+  Measured 2026-09-21. validate_params accepts time_cost=0 and parallelism=0 --
+  it checks format_version, key_len, the salt twice and the memory FLOOR, and
+  nothing else. derive_key then raises argon2.exceptions.HashingError: "Time
+  cost is too small" / "Too few lanes". ui/unlock.py's three except arms catch
+  KdfPolicyError only (lines 284, 363, 400), and auth.py:340 likewise, so that
+  HashingError is UNCAUGHT on the unlock path. FIBR-0310 R5 added it to
+  ui/_password_hint.py's tuple; unlock was not given the same treatment.
+
+  This contradicts load_and_validate_params' own stated posture, which
+  security-model INV-2c states as a contract: every malformed input is
+  normalised to KdfPolicyError so callers assert one failure type.
+
+  The fix is a LOW-side bound in validate_params -- time_cost >= 1 and
+  parallelism >= 1 -- and not a ceiling. That distinction is the whole reason
+  this is separable: security-model INV-2 makes the floor deliberately
+  one-sided because a ceiling there would bind every existing vault, and an
+  INFLATED cost is bounded at the trust boundary by validate_untrusted_params
+  (T5, FIBR-0327). A floor at Argon2id's own minimum of 1 binds no real vault:
+  creation pins ARGON2_TIME_COST = ARGON2_PARALLELISM = 1, so no vault this app
+  ever wrote records 0. Catching HashingError in unlock as well is the cheaper
+  half and fixes the crash without fixing the contract.
+
+  Owes CLAUDE.md rule 14's gate, and that is why it is filed rather than done
+  in passing: docs/security-model.md INV-2 currently DESCRIBES this behaviour
+  on purpose -- "a sidecar can record 0, and on the local open path that
+  surfaces as argon2-cffi's HashingError at derivation rather than as a clean
+  refusal". Making it a clean refusal falsifies that sentence, and a conformer
+  reading it today writes a caller that catches HashingError. So the amendment
+  is a change of direction on a document that has already had five review
+  loops, at this project's cap of 3.
+
+  Precondition is write access to the data directory, where an attacker could
+  delete the vault instead -- so this is robustness and contract-honesty, not a
+  confidentiality hole. Ranked accordingly.
+  **Layman:** If the vault's settings file is hand-edited to an impossible value, unlocking raises an error the app does not catch, instead of the clean refusal it already knows how to show.
+  Kind: fix.
+  Source: in-session-2026-09-21 (isolated while closing FIBR-0309).
+  Lanes: crypto, ui.
 
 ## How to add an item
 
