@@ -54,7 +54,7 @@ def _add(service, account_id, amount_minor, occurred_on="2026-01-05", desc="x"):
     )
 
 
-def _options(prefs=_JAN, account_ids=None, password=None, theme="light", **on):
+def _options(prefs=_JAN, account_ids=None, password=None, **on):
     flags = {
         "include_summary": True,
         "include_charts": True,
@@ -62,7 +62,7 @@ def _options(prefs=_JAN, account_ids=None, password=None, theme="light", **on):
     }
     flags.update(on)
     return ExportOptions(
-        prefs=prefs, account_ids=account_ids, theme=theme, password=password, **flags
+        prefs=prefs, account_ids=account_ids, password=password, **flags
     )
 
 
@@ -291,18 +291,30 @@ def test_empty_account_set_is_empty_report_not_all(qapp, service):
     assert _format_amount(Decimal("100.00"), _symbol(service)) not in html  # empty
 
 
-def test_light_theme_colours_in_html(qapp, service):
+def test_report_is_always_rendered_on_a_light_page(qapp, service):
+    """FIBR-0217. The report has ONE palette and it is the print-friendly one.
+
+    A caller cannot ask for anything else: `ExportOptions` carries no theme
+    field, so there is no dark page for Qt to draw its black page number on.
+    """
     a = _accounts(service)[0].id
     _add(service, a, 100_00)
-    html, _ = _svc(service)._build_html(_options(theme="light"), _TODAY)
+    html, _ = _svc(service)._build_html(_options(), _TODAY)
     assert "#ffffff" in html and "#1a1a1a" in html
+    # The withdrawn dark palette, so a reintroduction has to delete this line.
+    assert "#242830" not in html and "#e6e6e6" not in html
 
 
-def test_dark_theme_colours_in_html(qapp, service):
-    a = _accounts(service)[0].id
-    _add(service, a, 100_00)
-    html, _ = _svc(service)._build_html(_options(theme="dark"), _TODAY)
-    assert "#242830" in html and "#e6e6e6" in html
+def test_FIBR0217_export_options_offers_no_theme_choice(qapp, service):
+    """The other half: the option is gone from the API, not merely unused.
+
+    Left as a field with one accepted value it would read as a working choice
+    and invite the dark branch back -- which is what put an unreadable page
+    number on a money report.
+    """
+    assert "theme" not in ExportOptions.__dataclass_fields__
+    with pytest.raises(TypeError):
+        _options(theme="dark")
 
 
 def test_known_total_appears_in_summary(qapp, service):

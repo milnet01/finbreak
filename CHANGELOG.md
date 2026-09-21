@@ -21,6 +21,16 @@ signaling per
 
 ## [Unreleased]
 
+### Changed
+
+- **PDF reports are always exported on a light page** (FIBR-0217)
+  The Light/Dark choice in the export dialog is gone and every report
+  now prints on a light page. Dark reports had an unreadable page number
+  — black on a nearly-black background — and the only ways to fix it
+  were to rebuild how pages are laid out, which broke the report twice
+  when tried, or to drop page numbers entirely. Light was already the
+  default, so most exports look exactly as they did.
+
 ### Fixed
 
 - **The Linux AppImage no longer crashes on the first keystroke** (FIBR-0208)

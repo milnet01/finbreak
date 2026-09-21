@@ -4017,7 +4017,7 @@ lands on top.
   turns a typed -12.34 into -1234), strictly worse than today's rejection — a
   hazard the original finding did not name.
 
-- 📋 [FIBR-0217] **Dark-theme PDF page numbers render black on the dark page.**
+- ✅ [FIBR-0217] **Dark-theme PDF page numbers render black on the dark page.**
   Split out of FIBR-0216 after an implementation attempt showed it is not a
   batched-polish-sized fix. MEASURED with pdfplumber: the footer page number
   comes out `non_stroking_color == (0, 0, 0)` while the body text is `0.902`,
@@ -4046,6 +4046,53 @@ lands on top.
   body glyph's (text, x0, top) via pdfplumber. Identical body glyphs + a
   theme-coloured footer is the acceptance gate, and it makes the regression risk
   measurable rather than hoped-at.
+  RESOLVED BY WITHDRAWING THE DARK EXPORT (2026-09-21, user decision). The
+  report is always printed on a light page, so there is no dark page for Qt to
+  draw a black page number on.
+
+  THE MECHANISM WAS MIS-DESCRIBED TO THE USER FIRST, and correcting it changed
+  the decision, so it is recorded. I put this to them as "the app's dark theme
+  leaking into the PDF". It was not a leak: Dark was a deliberate feature with
+  its own radio pair in the export dialog, specified at FIBR-0013 INV-9 and
+  asked for by the user on 2026-07-13, with Light already the default. So
+  "always light" meant deleting a feature rather than plugging a hole, which is
+  a different decision. Re-asked with the real facts and the four real options
+  -- remove it, keep it without page numbers, do the pagination rewrite, or
+  ship 1.0 without the fix -- the user chose removal.
+
+  WHY REMOVAL RATHER THAN THE DOCUMENTED FIX. This bullet's own fix shape is to
+  paginate and paint the footer ourselves. That was attempted and reverted twice
+  (2026-08-03), regressing page counts and glyph positions both times, on a money
+  report. The only other route that keeps Dark is to pre-set the document page
+  size so Qt stops numbering at all, which costs page numbers on a multi-page
+  financial report. Neither is worth a second palette on a document whose job is
+  to be printed, emailed and filed -- and Light was already the default, so
+  almost no export changes.
+
+  WHAT CHANGED:
+  - services/pdf_export.py: the theme field is gone from ExportOptions and
+    _pdf_theme is now a single _PDF_THEME constant. The field was removed rather
+    than left with one accepted value, which would read as a working choice and
+    invite the dark branch back.
+  - ui/export_dialog.py: the Theme group box and its Light/Dark radios are gone.
+  - docs/specs/FIBR-0013.md: INV-9, D10, the scope line, the dialog sketch, the
+    layman section, the ExportOptions signature, the ChartTheme line and exit
+    criterion 4 all amended. INV-9 keeps its live half -- the one palette is a
+    constant, never a read of the app theme -- and the charts helper's
+    light-and-dark ChartTheme test is deliberately NOT changed, because HomeView
+    still passes a dark one on screen.
+
+  GUARDS, one per side, because a removal can be done in the service and
+  forgotten in the dialog: the rendered HTML carries the light colours and not
+  the withdrawn dark ones and ExportOptions has no theme field; the dialog
+  builds no QRadioButton and no "Theme" group box. The dialog guard reads the
+  WIDGETS rather than the options object -- a dialog that still built the radios
+  and stopped reading them would pass an options-only check while showing a
+  control that does nothing. Both proved by mutation in both directions.
+
+  Blocker list for FIBR-0304 is now empty of defects: FIBR-0208 and FIBR-0217
+  are both closed. What remains before 1.0 is FIBR-0300's badge wording and the
+  user's own code review, which they run themselves in a fresh session.
   **Layman:** On a dark-themed PDF report the little page number at the bottom is black on a nearly-black background, so you cannot read it.
   Kind: fix.
   Source: in-session-2026-08-03 (split out of FIBR-0216).

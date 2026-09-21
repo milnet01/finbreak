@@ -71,53 +71,47 @@ def period_filename_slug(prefs: ReportPrefs, today: date) -> str:
 class ExportOptions:
     """The user's export selection (from the dialog, D7). ``account_ids`` is
     ``None`` ⇒ all accounts, else the chosen subset (D4). ``password`` is ``None``
-    or empty ⇒ unencrypted (INV-1). ``theme`` is ``"light"`` (default) or
-    ``"dark"`` (INV-9)."""
+    or empty ⇒ unencrypted (INV-1)."""
 
     prefs: ReportPrefs
     account_ids: frozenset[int] | None
     include_summary: bool
     include_charts: bool
     include_transactions: bool
-    theme: str = "light"
     password: str | None = None
 
 
 @dataclass(frozen=True)
 class _PdfTheme:
-    """Explicit colours for one export theme (INV-9): the HTML page/text colours
-    plus the `ChartTheme` the shared builders paint with. No live-palette read."""
+    """Explicit colours for the export (INV-9): the HTML page/text colours plus
+    the `ChartTheme` the shared builders paint with. No live-palette read — an
+    offscreen render must not depend on whatever theme the app happens to be
+    wearing."""
 
     page: str
     text: str
     chart: ChartTheme
 
 
-def _pdf_theme(name: str) -> _PdfTheme:
-    """Map the ``"light"``/``"dark"`` token to its explicit colour set. Light is
-    print-friendly (white page, dark text); Dark mirrors the app panel (ADR-0010).
-    The positive/negative money tints are the fixed FIBR-0105 colours in both."""
-    if name == "dark":
-        return _PdfTheme(
-            page="#242830",
-            text="#e6e6e6",
-            chart=ChartTheme(
-                text=QColor("#e6e6e6"),
-                positive=_POSITIVE_TEXT,
-                negative=_NEGATIVE_TEXT,
-                background=QColor("#242830"),
-            ),
-        )
-    return _PdfTheme(
-        page="#ffffff",
-        text="#1a1a1a",
-        chart=ChartTheme(
-            text=QColor("#1a1a1a"),
-            positive=_POSITIVE_TEXT,
-            negative=_NEGATIVE_TEXT,
-            background=QColor("#ffffff"),
-        ),
-    )
+# The report is always printed on a light page (FIBR-0217). A dark export theme
+# shipped from FIBR-0013 until 2026-09-21 and was withdrawn: Qt draws the page
+# number itself, inside `QTextDocument.print_`, using the painter's default black
+# pen, and that painter is unreachable from here. On the dark page that put black
+# on #242830 -- about 1.3:1, unreadable. The only fixes were to take pagination
+# over from Qt, which was attempted twice and reverted both times after it
+# regressed page counts and glyph positions on a money report, or to drop page
+# numbers from multi-page reports. Neither is worth carrying for a second palette
+# on a document whose job is to be printed, emailed and filed.
+_PDF_THEME = _PdfTheme(
+    page="#ffffff",
+    text="#1a1a1a",
+    chart=ChartTheme(
+        text=QColor("#1a1a1a"),
+        positive=_POSITIVE_TEXT,
+        negative=_NEGATIVE_TEXT,
+        background=QColor("#ffffff"),
+    ),
+)
 
 
 class PdfExportService:
@@ -202,7 +196,7 @@ class PdfExportService:
     def _build_html(
         self, options: ExportOptions, today: date
     ) -> tuple[str, list[tuple[str, QImage]]]:
-        theme = _pdf_theme(options.theme)
+        theme = _PDF_THEME
         reporting = ReportingService(self._vault)
         symbol = reporting.base_currency()
         images: list[tuple[str, QImage]] = []

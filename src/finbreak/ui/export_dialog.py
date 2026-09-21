@@ -3,7 +3,7 @@
 FIBR-0013 D7. A vault-free ``QDialog`` (handed the account list + the Home
 pre-fill, like ``SettingsDialog``): a period selector (Home's five modes), an
 **Accounts** checkbox list under an **All accounts** master toggle, three
-**section** checkboxes, a **Theme** Light/Dark pair, and a **password** + confirm
+**section** checkboxes, and a **password** + confirm
 pair with a single Show toggle. ``options()`` returns the chosen ``ExportOptions``
 and is read from the ``accepted`` slot — the dialog is shown non-blocking,
 never ``exec()``-ed (FIBR-0065 INV-1).
@@ -20,7 +20,6 @@ from __future__ import annotations
 
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
-    QButtonGroup,
     QCheckBox,
     QComboBox,
     QDialog,
@@ -30,7 +29,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
-    QRadioButton,
     QSpinBox,
     QVBoxLayout,
     QWidget,
@@ -73,7 +71,6 @@ class ExportDialog(QDialog):
         layout.addWidget(self._build_period(prefs))
         layout.addWidget(self._build_accounts())
         layout.addWidget(self._build_sections())
-        layout.addWidget(self._build_theme())
         layout.addWidget(self._build_password())
 
         self._buttons = QDialogButtonBox(
@@ -159,19 +156,6 @@ class ExportDialog(QDialog):
             chk.setChecked(True)
             chk.toggled.connect(self._update_export_enabled)
             col.addWidget(chk)
-        return box
-
-    def _build_theme(self) -> QWidget:
-        box = QGroupBox(self.tr("Theme"))
-        col = QVBoxLayout(box)
-        self._light_radio = QRadioButton(self.tr("Light"))
-        self._dark_radio = QRadioButton(self.tr("Dark"))
-        self._light_radio.setChecked(True)  # Light default (D10)
-        group = QButtonGroup(self)
-        group.addButton(self._light_radio)
-        group.addButton(self._dark_radio)
-        col.addWidget(self._light_radio)
-        col.addWidget(self._dark_radio)
         return box
 
     def _build_password(self) -> QWidget:
@@ -294,6 +278,5 @@ class ExportDialog(QDialog):
             include_summary=self._summary_check.isChecked(),
             include_charts=self._charts_check.isChecked(),
             include_transactions=self._transactions_check.isChecked(),
-            theme="dark" if self._dark_radio.isChecked() else "light",
             password=pw or None,
         )

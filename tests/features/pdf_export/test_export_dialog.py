@@ -6,7 +6,7 @@ is handed the account list + the pre-fill prefs), so no vault fixture is needed.
 """
 
 import pytest
-from PySide6.QtWidgets import QLineEdit
+from PySide6.QtWidgets import QGroupBox, QLineEdit, QRadioButton
 
 from finbreak.models import Account
 from finbreak.services.pdf_export import ExportOptions
@@ -47,8 +47,17 @@ def test_prefill_specific_id_ticks_only_that_row(qtbot):
     assert d.options().account_ids == frozenset({2})
 
 
-def test_theme_defaults_to_light(qtbot):
-    assert _dialog(qtbot).options().theme == "light"
+def test_FIBR0217_dialog_offers_no_theme_choice(qtbot):
+    """The Light/Dark radio pair is gone with the dark export (FIBR-0217).
+
+    Asserted on the WIDGETS rather than on the options object: a dialog that
+    still built the radios but stopped reading them would pass an options-only
+    check while showing the user a control that does nothing.
+    """
+    d = _dialog(qtbot)
+    assert not d.findChildren(QRadioButton)
+    labels = [b.title() for b in d.findChildren(QGroupBox)]
+    assert "Theme" not in labels
 
 
 def test_sections_default_all_on(qtbot):

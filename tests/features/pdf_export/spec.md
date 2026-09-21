@@ -24,8 +24,16 @@ is set, locks it with AES-256 — the money-clarity report a user can share.
   Transactions list is complete, **marks** transfer rows `⇄ Transfer`, and is
   ordered by `(occurred_on, id)` (stable), with an Account column only when > 1
   account is in scope.
-- **Theme (INV-9).** Explicit Light (default) / Dark colours, independent of any
-  live widget palette.
+- **One palette, always light (INV-9, FIBR-0217).** The report's colours are an
+  explicit constant, independent of any live widget palette, so a dark-themed app
+  still exports a light report. Two guards, one per side, because removing a
+  feature can be done in the service and forgotten in the dialog: the rendered
+  HTML carries the light colours and **not** the withdrawn dark ones, and
+  `ExportOptions` has no `theme` field; separately the dialog builds **no**
+  `QRadioButton` and no "Theme" group box. The dialog guard reads the widgets
+  rather than the options object on purpose — a dialog that still built the radios
+  but stopped reading them would pass an options-only check while showing the user
+  a control that does nothing. Both proved by mutation.
 - **Empty period (INV-13).** A no-rows selection still produces a valid PDF.
 - **Atomic + safe (INV-2/INV-12).** `export(options, out_path)` is the sole writer:
   temp file → `os.replace`; on any failure the temp is unlinked and no partial or
