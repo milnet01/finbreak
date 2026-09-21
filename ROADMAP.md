@@ -1963,6 +1963,42 @@ scariest unknown (native-library bundling) up front.
   complete document on the machine; only DOOM_Ants states any 1.0 exit
   condition, only Rolodex states a security-fix rule, and nothing anywhere
   handles deprecation.
+  CONSTRAINT FOUND (2026-09-21), and it narrows what this amendment may do.
+  This bullet says to "hold this until the global versioning standard lands,
+  then make ONE amendment and gate it once". That standard HAS landed --
+  ~/.claude/standards/versioning.md, dated 2026-09-04 -- so the hold is
+  discharged and this is now actionable. But read its § 9 before drafting.
+
+  § 9 ("A project that already has its own versioning document") sorts every
+  rule by one test: would this be true of any project on this machine? It then
+  lists what it has already sorted, and "minor versus patch" is named as THE
+  GLOBAL FILE'S. So is the pre-release suffix spelling -- which is item 1 of
+  this bullet, and § 5 of the global standard now covers it. Item 2
+  (schema-version independence) is § 7 there.
+
+  So BOTH gaps this bullet was filed for may already be answered globally, and
+  the amendment may be smaller than planned -- possibly a pointer rather than
+  new text. § 9's rule is to fold the project's copy into the global one and
+  leave a pointer, keeping only what is genuinely finbreak's: its own breaking
+  surfaces (§ 2 here), its 1.0 exit condition (§ 5 here), its release cadence
+  and its version-bearing file list.
+
+  THE ONE FINBREAK-SPECIFIC THING TO KEEP from item 1 stands unchanged and is
+  not in the global file: _parse_version (services/update.py) returns None for
+  any non-decimal segment, so a 0.2.0-rc.1 tag is UNUSABLE to the updater and
+  silently skipped. That is load-bearing safety rather than a limitation, and
+  nothing outside this project states it.
+
+  AND THE RULE A USER ASKED ABOUT IS NOT OURS TO CHANGE. Global § 4 ("Zero-dot-x")
+  says, of every project here: "Inside 0.x the levels shift down one ... A
+  breaking change bumps the MINOR and resets the PATCH. Everything else -- a new
+  capability included -- bumps the PATCH." finbreak's § 4.2 is a faithful copy.
+  So making features bump the minor inside 0.x is an edit to a machine-global
+  standard, not a project override, and § 9 sets the bar for adding to that file.
+  It also cannot be done from a project session: the global-config-lock hook
+  blocks writes to ~/.claude unless the cwd is there or
+  CLAUDE_GLOBAL_CONFIG_UNLOCK=1 is set. Raised with the user 2026-09-21; they
+  chose to go for 1.0.0 instead (FIBR-0304), which makes the question moot.
   **Layman:** Two gaps the new versioning rules do not cover yet: what a release-candidate version looks like, and that the vault's internal format number is separate from the app's version number.
   Kind: doc.
   Source: fleet-survey-2026-08-20 (other projects' versioning standards, after FIBR-0299).
@@ -2014,9 +2050,20 @@ scariest unknown (native-library bundling) up front.
   Deliberately NOT closed by silencing: an override that turns it on for
   finbreak.* and off for tests would close the gate gap on paper while the
   suite stays unread.
+  RE-MEASURED (2026-09-21): 370 errors across 25 files, against the 345 across
+  25 recorded above on 2026-09-03. The FILE COUNT is flat and the error count is
+  not, so the gap is widening inside the same files rather than spreading -- the
+  cost of closing it rises while it waits, which is the number worth acting on
+  rather than either total on its own.
+
+  Breakdown unchanged in shape: 189 union-attr, 95 attr-defined, 68 arg-type, 18
+  other. union-attr at 51% is the Qt widget() / item() returning Optional class
+  this bullet already names, and the same one the run-mypy-before-push memory
+  warns about.
+
+  Source: a check-code sweep with --check-untyped-defs, run 2026-09-21.
   **Layman:** The type checker currently reads the app's code closely but skims the tests, so a broken test can look fine.
   Kind: test.
-  Source: in-session-2026-09-03 (FIBR-0313 L14, split).
 
 - 📋 [FIBR-0344] **Add ruff's DTZ family to the gate, so the clock class cannot come back unseen.**
   FIBR-0342 was a wrong-month defect on a money report, and NOTHING in the tree
@@ -5085,6 +5132,41 @@ lands on top.
   review-code found nine defects FP02 itself introduced, now FP03
   (FIBR-0310). FIBR-0019 returns to ✅ only when that chain closes clean.
   The other two blockers are small self-contained defects.
+  BLOCKER STATUS (2026-09-21): TWO remain, not three. The 2026-08-25 note above
+  is stale on its first line and is left as written, because it records the
+  status as it was then.
+
+  - FIBR-0019 (recovery key) is ✅ -- it shipped in 0.1.23, and its whole
+    fix-pass chain (FP02 FIBR-0307, FP03 FIBR-0310, FP04 FIBR-0313, FP05
+    FIBR-0337) closed with it. That was the long pole and it is gone.
+  - FIBR-0237 (SECURITY.md + CODE_OF_CONDUCT.md) is ✅, as the 2026-08-25 note
+    already said.
+
+  STILL BLOCKING: FIBR-0208 (condition 3) and FIBR-0217 (condition 5), plus
+  FIBR-0300's badge wording. Both remaining ones were re-read against the tree
+  today and neither is the small job its bullet implies -- see the notes on each.
+  FIBR-0208 additionally may not still BE a condition-3 crash: its startup
+  segfault did not reproduce on 0.1.23, and the keystroke path is untested.
+
+  USER DECISION (2026-09-21): GO FOR 1.0.0, and the route is the five conditions
+  above rather than intermediate 0.x minors. The question put was "what roadmap
+  items get us to 0.2.0, 0.3.0, 0.4.0?", on the reasoning that jumping 0.1.x ->
+  1.0.0 looks suspicious to a user. That reasoning is accepted; the answer is
+  that this project does not need those numbers, because the 1.0 gate is two
+  small defects away and after 1.0 a feature release is genuinely 1.1.0, 1.2.0 --
+  the meaningful ladder, with no standard overridden. See FIBR-0303's note for
+  why the 0.x minor rule is not this project's to change.
+
+  So the post-1.0 milestone shape is the one this bullet already states: the
+  features backlog, i18n, macOS, Snap/AUR/winget and the performance items are
+  1.1 and 1.2. Breaking those into named milestones is still to be done and is
+  not a blocker.
+
+  USER DIRECTIVE (2026-09-21): a CODE REVIEW runs before 1.0.0 is cut, and the
+  user initiates it themselves in a FRESH session -- /code-review ultra is
+  billed and user-triggered, so no session can launch it. Do not cut 1.0.0
+  without it. The advice given was to fix FIBR-0208 and FIBR-0217 first, so the
+  review reads the tree that would actually ship.
   **Layman:** The plan for calling the app finished: what has to be true first, and which four jobs are standing in the way.
   Kind: release.
   Source: user-decision-2026-08-20 ("what gets us to v1.0?").
@@ -10137,9 +10219,27 @@ is a future error tomorrow.
 
 - 📋 [FIBR-0102] **Tighten mypy toward strict.**
   Verified 2026-07-11: [tool.mypy] sets only python_version + per-module stub-ignores — NOT strict. Enable strict (or stage it: disallow_untyped_defs, warn_return_any, disallow_any_generics, no_implicit_optional) to catch a class of bugs at the type layer — valuable for a money app. Incremental: turn flags on one at a time, fix the fallout, keep the gate green each step. Deps: none (gate/CI config).
+  MEASURED (2026-09-21), and it SPLITS the item into one tractable half and one
+  much larger one. mypy --strict over src+tests reports 3800 errors across 107
+  files, which reads as impossible; the split is what makes it actionable.
+
+  - src ALONE: 46 errors across 26 files -- 19 no-any-return, 15
+    no-untyped-def, 9 type-arg, plus three singletons worth fixing on their own
+    merits: a redundant cast at ui/_widgets.py:103, SIDECAR_VERSION not
+    explicitly re-exported from crypto (services/vault_migration.py:28), and the
+    expected consequence of subclassing the untyped OfxParser
+    (importers/ofx_importer.py:47). That is a bounded one-sitting job.
+  - tests: the other 3754, dominated by 2091 no-untyped-def + 1188
+    no-untyped-call. That is annotating the test suite, not fixing defects, and
+    it overlaps FIBR-0331.
+
+  So strict-on-src is worth doing as its own change; strict-on-tests is a
+  different and much larger project and should be decided separately rather than
+  inherited by whoever picks this up.
+
+  Source: a check-code sweep with --strict, run 2026-09-21.
   **Layman:** Turn on stricter automatic type-checking to catch more bugs before they ship.
   Kind: refactor.
-  Source: claude-suggestion-2026-07-11.
 
 - 📋 [FIBR-0103] **Consolidate presentation formatting into one module.**
   FIBR-0083 introduces src/finbreak/datetime_format.py (date/time display). Fold the existing amount/currency QLocale formatting (ui/_amount.py::_format_amount -> QLocale.toCurrencyString; already lifted out of ui/home.py and now imported by 8 modules, so the remaining work is the fold into a shared formatting package) into a shared formatting package alongside it, so all presentation logic is centralised + unit-tested in one place (Rule of Three: date + currency + future). Deps: FIBR-0083 (lands the first formatter). Small refactor; do AFTER FIBR-0083 ships.
@@ -11815,6 +11915,13 @@ is a future error tomorrow.
   Kind: doc-fix.
   Source: in-session-2026-09-21 (noticed while fixing {{id:0}}).
   Lanes: docs.
+
+- 📋 [FIBR-0345] **ci.yml pins every action to a SHA but names its container by a mutable tag.**
+  FIBR-0226 adopted commit-SHA pinning for GitHub Actions as deliberate\nsupply-chain policy, CLAUDE.md records it, and the gate's own zizmor stage\nenforces it -- every uses: across all three workflows complies. But the\nCONTAINER, which executes the entire gate and is strictly more privileged than\nany action running inside it, is a floating tag: ci.yml line 29,\n`container: python:3.12-slim-bookworm`. So the stated policy has a hole at its\nmost privileged point.\n\nWhy the project's own tooling cannot see it: the gate runs zizmor's default\n`regular` persona, and `unpinned-images` is an `auditor`-persona check. So\n`zizmor .github/workflows/` exits 0 and the hole is invisible to the gate that\nwas added to catch exactly this class.\n\nNOT a one-liner, which is why it is filed rather than fixed in passing. ci.yml\nlines 22-28 hold the image at bookworm ON PURPOSE -- its glibc is the effective\nfloor for every frozen artifact, tracked as FIBR-0180 -- and the comment there\nsays a bump must move build-smoke.sh and ci-docker.sh together. So a digest pin\nmeans pinning in three places plus a documented refresh cadence, and a stale\ndigest is its own smaller hazard. Real trade-off.\n\nThe fix shape: `python:3.12-slim-bookworm@sha256:<digest>` in all three places,\nwith the refresh trigger recorded beside the existing FIBR-0180 note. Consider\nwhether to raise the gate's zizmor to `--persona auditor` at the same time, and\nif so decide the three `concurrency-limits` advisories it also reports.\n\nDismissed from the same run, recorded so it is not re-raised: zizmor's\n`template-injection` on ${{ github.workspace }} at windows-build.yml line 136 --\nthat path is not attacker-controllable.
+  **Layman:** The build recipe carefully locks down the tools it uses, but not the base system image those tools run inside.
+  Kind: security.
+  Source: check-code-2026-09-21 (zizmor --persona auditor).
+  Lanes: ci, security.
 
 ## How to add an item
 
