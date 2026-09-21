@@ -12247,7 +12247,7 @@ is a future error tomorrow.
   Kind: test.
   Source: in-session-2026-09-21 (peer session reported the same defect class from its own tree).
 
-- 📋 [FIBR-0349] **Two specs still prescribe the unbounded balance conversion FIBR-0224 replaced.**
+- ✅ [FIBR-0349] **Two specs still prescribe the unbounded balance conversion FIBR-0224 replaced.**
   Found by the blast-radius sweep of FIBR-0050's loop-15 review, which added
   the storable bound to that spec's own Deliverable 1. The sweep then found
   the same rule stated in two SIBLING specs, in the pre-FIBR-0224 form.
@@ -12332,6 +12332,26 @@ is a future error tomorrow.
   editing it would shift what its lanes' citations point at. Fold these
   into that loop's fix pass when it returns, which also saves a second
   gate on one document.
+  Resolved (2026-09-21): both halves done. FIBR-0171 in 7be0b20,
+  FIBR-0190 in db05e2e.
+
+  FIBR-0190 had THREE sites, not the two first filed: § 4.5's
+  Return-value bullet converts the opening, and the prose anchor and the
+  fenced snippet each convert the closing. All three now name `_storable`,
+  verified at both shipped call sites.
+
+  The opening site is the only conversion that executes on Family E --
+  `_CLOSING_MARKERS[Family.E]` is empty, so E prints no closing and the
+  closing path is never reached. That is now stated where the conversions
+  are.
+
+  Neither half owed a rule-14 gate, by the records-what-was-built
+  exception: each edit's only effect is to make the document name the
+  function the shipped code already calls.
+
+  The reasoning was pointed at rather than restated in both documents.
+  FIBR-0050's Deliverable 1 owns it, and writing a further copy is the
+  failure a review caught in FIBR-0190 § 12 the same day.
   **Layman:** Two design documents still tell a builder to convert a statement balance the old way, which can crash when saving an absurdly large figure.
   Kind: doc-fix.
   Source: in-session-2026-09-21 (FIBR-0050 review-contract loop 15, 4b blast-radius sweep).
