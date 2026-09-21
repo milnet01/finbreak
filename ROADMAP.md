@@ -2018,6 +2018,47 @@ scariest unknown (native-library bundling) up front.
   Kind: test.
   Source: in-session-2026-09-03 (FIBR-0313 L14, split).
 
+- 📋 [FIBR-0344] **Add ruff's DTZ family to the gate, so the clock class cannot come back unseen.**
+  FIBR-0342 was a wrong-month defect on a money report, and NOTHING in the tree
+  could see it: pyproject's [tool.ruff.lint] select is E,W,F,I,UP,B,RUF100, so
+  the DTZ family is off and the gate never reads a naive-clock call. Every test
+  injects the date explicitly, so the suite passed over it too. It took a
+  check-code sweep run with a broader select to surface it.
+
+  Adding DTZ is the durable guard, and it is not a one-liner -- which is why this
+  is filed rather than folded into FIBR-0342. Measured by that sweep: DTZ011
+  fires at five sites and DTZ007 at three, and on inspection every one of the
+  eight is currently LEGITIMATE.
+
+  - DTZ011, the five date.today() service defaults: pdf_export.render_pdf_bytes
+    plus four in reporting.py. These are the fallback for a headless or test
+    caller; the convention is that the UI passes the date, which is what
+    FIBR-0342 restored. services/reporting.py is deliberately Qt-free and the app
+    clock is Qt-based, so these cannot simply be routed through it.
+  - DTZ007, three strptime calls without %z: csv_importer, date_detect and
+    import_wizard. Those parse dates off bank statements, which are genuinely
+    zone-less.
+
+  So the work is: decide each of the eight, write a justification beside every
+  suppression rather than a bare noqa, and add DTZ to select. The value is not
+  today's eight -- it is the ninth, written by somebody who does not know about
+  this class.
+
+  Worth pairing with the sweep's other finding about scope: ruff and mypy are
+  scoped to src+tests, so scripts/*.py -- including sign-release.py and
+  gen-signing-key.py, both on the release-signing path -- are in no gate stage at
+  all. That is the same gap the shellcheck stage was added to close for *.sh, in
+  a different language. Both are one edit to the same two config blocks.
+
+  NOT worth taking from the same sweep, and the reason is recorded so it is not
+  re-proposed: adding ruff's S family. It would flag five sites that already
+  carry a written # nosec justification, because ruff does not honour nosec -- so
+  it buys five new noqa comments and no new information.
+  **Layman:** Turn on the lint rule that would have caught the wrong-month report bug, so that kind of mistake cannot slip through again.
+  Kind: chore.
+  Source: check-code-2026-09-21 (the sweep's one durable recommendation).
+  Lanes: ci, tests.
+
 ### 📦 Packaging
 
 - ✅ [FIBR-0003] **P01: bundling smoke-test (de-risk native libs early).**
@@ -11563,6 +11604,98 @@ is a future error tomorrow.
   Kind: fix.
   Source: in-session-2026-09-21 (isolated while closing FIBR-0309).
   Lanes: crypto, ui.
+
+- ✅ [FIBR-0342] **The PDF report and its own filename resolve their period on different clocks.**
+  A wrong-month defect on a money document, and an outright violation of
+  FIBR-0013 INV-7 -- "the report's period and 12-month trend span resolve exactly
+  as FIBR-0012 INV-3 / INV-6", i.e. exactly as Home's.
+
+  main_window._on_export_requested built the default FILENAME from app_today()
+  -- the app clock, which follows the zone the user pinned in Settings -- and
+  then called PdfExportService.export(options, path) with NO today, so the
+  CONTENTS fell back to pdf_export's date.today(), the machine's zone. Twelve
+  lines apart, two clocks, one artefact.
+
+  resolve_period consumes today for MODE_CURRENT_MONTH, MODE_YEAR_TO_DATE and
+  the MODE_PREVIOUS_MONTH fallthrough -- three of five modes -- and
+  period_filename_slug calls that same function off the OTHER date. Home
+  (ui/home.py) and the export dialog (ui/export_dialog.py) both read the app
+  clock, so the render was the one surface that did not.
+
+  DEMONSTRATED end to end rather than argued: with the pinned zone on 2026-03-01
+  and the machine on 2026-02-28, the shell offered
+  finbreak-report-2026-02.pdf and the PDF inside read "Period: Previous month
+  (January 2026)" and listed the January transaction.
+
+  Why nothing caught it: ruff's DTZ family is not in pyproject's select, so the
+  gate cannot see date.today() at all; and every existing test injects today
+  explicitly, which is exactly why 2223 tests passed over it. Found by a
+  check-code sweep run with a broader select, then verified by reading the call
+  chain.
+
+  Bites when the pinned zone and the machine zone are on different calendar
+  days, in one of the three relative modes. Narrow conditions, but this is the
+  wrong-day class CLAUDE.md names as the error users will not forgive.
+  Resolved (2026-09-21) in 2a1bb54. _on_export_requested reads the app clock
+  ONCE and passes it to both the filename and the render. Once rather than
+  twice deliberately: two reads would close the zone split and leave a midnight
+  straddle, the same defect in miniature.
+
+  The five date.today() service defaults are LEFT ALONE, and that is a decision
+  rather than an omission. services/reporting.py is Qt-free on purpose and the
+  app clock is Qt-based, so routing those defaults through it would couple a
+  headless service to Qt. The project's convention is that the UI passes the
+  date; this call site was the one that did not.
+
+  No contract document changed. FIBR-0013 INV-7 already required this, so the
+  fix makes the code conform rather than moving the contract. Locked by
+  pdf_export INV-7, which drives the real shell and asserts the PDF's own period
+  line against the offered filename — the artefacts disagreeing IS the defect,
+  so only the pair shows it.
+
+  Two things surfaced and filed rather than fixed in passing: FIBR-0343
+  (FIBR-0013 D1 describes an ExportOptions.today field that does not exist,
+  which is why this defect was first looked for on the options object) and
+  FIBR-0344 (add ruff's DTZ family to the gate, which needs a written
+  justification at each of eight currently-legitimate sites).
+
+  One repair worth recording for the next person: the first draft of the
+  explanatory comment named the OS clock call literally, and the FIBR-0327 guard
+  in tests/features/datetime_display/ greps these modules line by line and went
+  red on the COMMENT. The guard is right and the prose was wrong, so the comment
+  was reworded rather than the assertion relaxed.
+  **Layman:** A saved report could be named for one month and contain another month's figures.
+  Kind: fix.
+  Source: check-code-2026-09-21 (ruff DTZ011, verified by hand).
+  Lanes: ui, services.
+
+- 📋 [FIBR-0343] **FIBR-0013 D1 gives ExportOptions a today field it does not have.**
+  Noticed while fixing FIBR-0342 and deliberately NOT fixed in passing
+  (coding.md 1.7): it is pre-existing drift rather than anything that fix
+  caused.
+
+  docs/specs/FIBR-0013.md D1 lists ExportOptions' fields as "prefs, account_ids,
+  sections, theme, password, today: date | None", and describes the lower-level
+  entry point as "render_pdf_bytes(options) -> bytes".
+
+  The dataclass in services/pdf_export.py carries prefs, account_ids,
+  include_summary, include_charts, include_transactions, theme and password --
+  no today. The date is a SEPARATE parameter on both render_pdf_bytes(options,
+  today=None) and export(options, out_path, today=None). D1's own "sections:
+  frozenset[str]" is likewise three booleans in the code.
+
+  Why it matters beyond tidiness: a session reading D1 to answer "where does the
+  export get its date from?" is told the answer is on the options object, and
+  would look for the defect FIBR-0342 fixed in the wrong place. That is what
+  happened here -- the field was checked before the call site.
+
+  Amending D1 changes what a conformer writes, so it owes CLAUDE.md rule 14's
+  gate at this project's cap of 3. Worth batching with any other FIBR-0013
+  amendment rather than gating that document for this alone.
+  **Layman:** The export design document describes a field the code does not carry.
+  Kind: doc-fix.
+  Source: in-session-2026-09-21 (noticed while fixing {{id:0}}).
+  Lanes: docs.
 
 ## How to add an item
 
