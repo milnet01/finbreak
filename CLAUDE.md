@@ -812,12 +812,14 @@ what finds the symbol-only citations.
   - **The Standard Bank import contract is stated in
     [`docs/specs/FIBR-0050.md`](docs/specs/FIBR-0050.md) INV-11 — amend it in the
     same commit that changes the behaviour.** It is the canonical "all-or-nothing,
-    and here is every way a statement can be refused" clause, and it had been
-    silently falsified twice before FIBR-0255 found it: FIBR-0216 added the
-    zero-amount degrade and FIBR-0252 made `parse` return per-row errors, neither
-    updating INV-11, which still read "any `parse_transaction` rejection raises …
-    no partial import". A session reading it as canonical builds to a contract
-    that has drifted. The matching trap in the code: `_draft` decides
+    and here is every way a statement can be refused" clause. It was silently
+    falsified twice — FIBR-0216 added the zero-amount degrade and FIBR-0252 made
+    `parse` return per-row errors, neither updating INV-11 — which is why the
+    same-commit rule is stated here at all. **That drift is now repaired and this
+    note is no longer a live warning:** checked 2026-09-21 by three independent
+    cold lanes, INV-11, D10 and D13 all state the discriminator as the amount and
+    agree with `_draft`. Do not go looking for a divergence that was fixed.
+    The trap in the code is the part still worth carrying: `_draft` decides
     degrade-vs-refuse on the **amount**, never on the rejection reason —
     `parse_transaction` checks description and date first, so a printed `0.00`
     line can be rejected for its *date* and must still degrade (FIBR-0255 §4.1).

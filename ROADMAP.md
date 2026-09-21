@@ -2026,6 +2026,28 @@ scariest unknown (native-library bundling) up front.
   changes what a conformer does, so it trips global rule 14's gate on a file
   FIBR-0296 already says no longer converges under review -- which is why this
   is filed rather than fixed in passing.
+  CONFIRMED LIVE A SECOND TIME (2026-09-21), by a session that had read this
+  file and believed it. I ran roadmap_query status:"active"
+  mode:"headline_only" to survey the open items, expecting `kind` because item
+  2 says the survey answers step 2 on its own. The rows came back as exactly
+  {id, status, headline_oneline, section_slug} -- no `kind`, and no
+  `bodies_omitted` key either. I then owed and made a second call.
+
+  So this now has two independent live reproductions, three weeks apart, both
+  by sessions following the file rather than testing it. That is the failure
+  mode the bullet predicts, observed twice.
+
+  One correction to the bullet's own framing, in its favour: it says `kind` is
+  unobtainable in headline_only "by any argument" per ANTS-4699. Today's run is
+  consistent with that, and the Ants MCP maintainer has been told the claim
+  lives in this file so the verb side is not re-litigated.
+
+  Still filed rather than fixed, for the reason already stated -- the fix
+  changes what a conformer does, so it trips rule 14's gate on a file
+  FIBR-0296 says no longer converges. Noting only that the cost of leaving it
+  is now measured rather than predicted: two sessions, two wasted survey
+  calls, and in today's case the survey it invalidated was the largest single
+  reply of the session (114 items, spilled to a handle).
   **Layman:** A note in our own instructions is ambiguous enough that Claude can skip a lookup it actually needs at the start of a session.
   Kind: doc-fix.
   Source: in-session-2026-09-02.
@@ -11837,6 +11859,33 @@ is a future error tomorrow.
   Surfaced rather than fixed: a docs gate does not edit code. FIBR-0050
   now states the magnitude form as what the reader does, and no longer
   asserts the printing convention.
+  THIS MAY BE CLOSEABLE FROM DATA THE SPEC ALREADY HOLDS (2026-09-21), raised
+  by a cold lane during FIBR-0050 loop 13 and passed through with its hedge
+  intact rather than as a verdict.
+
+  INV-11 says settling Family B's sign convention "needs a real Home Loan
+  statement whose ledger goes negative". FIBR-0050 § Verified basis transcribes,
+  from a real statement, a Home Loan "CLOSING BALANCE -915.60" on a ledger row,
+  while the Family B worked run in the same document shows the ledger running
+  strongly positive. So the document may already contain the thing it says it is
+  waiting for.
+
+  WHAT IS NOT SETTLED, and it is the whole question: whether that real ledger
+  actually CROSSES zero, or whether its closing row simply prints the negated
+  running balance. Those two look identical in a single transcribed line, and
+  neither the lane nor I will guess about the underlying statement. Deciding it
+  needs the statement itself, which is why this stays open rather than closing.
+
+  WHY IT IS WORTH THE LOOK RATHER THAN WAITING. By the strict materiality test no
+  line of code changes today and the finding would normally be dismissed -- the
+  spec is internally consistent about its own uncertainty. What earns it a place
+  is what INV-11 concedes two sentences before: B's magnitude gate "misses a
+  truncation that flips the reconciled total's sign". That is a silently short
+  money import, not a wording defect. If the convention can be settled from a
+  statement already in hand, that gate can be tightened now instead of someday.
+
+  Next step is a person reading the Home Loan statement, not a session reading
+  the spec.
   **Layman:** A Home Loan statement gets a weaker arithmetic check than the others, and the reason given for that may not be true.
   Kind: investigate.
   Source: review-contract on FIBR-0050, 2026-09-04.
