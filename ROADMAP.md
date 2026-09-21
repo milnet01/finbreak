@@ -2851,7 +2851,7 @@ scariest unknown (native-library bundling) up front.
   true — the hosted names carry a `finbreak-` prefix) corrected in the same
   commit: scripts/capture_screenshots.py and assets/screenshots/README.md.
 
-- 📋 [FIBR-0208] **The AppImage's bundled libxkbcommon segfaults on X11 keymap data it can't parse.**
+- ✅ [FIBR-0208] **The AppImage's bundled libxkbcommon segfaults on X11 keymap data it can't parse.**
   Found 2026-08-02 while probing FIBR-0200 in a throwaway environment; it
   is the app-side finding of that probe, not the probe's own fault.
 
@@ -2964,7 +2964,85 @@ scariest unknown (native-library bundling) up front.
   it. If it holds up, this stops being a condition-3 crash and becomes a quality
   defect (a noisy log and a stale keymap parser), which is a different
   conversation about whether it gates 1.0.
-  **Layman:** The app carries its own copy of a keyboard-layout library that is older than the system's keyboard data — it crashed in testing.
+  REPRODUCED ON 0.1.23 (2026-09-21). The keystroke path was this bullet's
+  one untested half. It is now tested and it fails, so the item stays a
+  versioning.md § 5 condition 3 crash and stays a 1.0 blocker.
+
+  THE EARLIER NON-REPRODUCTION IS WITHDRAWN, and the cause was a method
+  error worth stating because it is silent. This desktop session is
+  Wayland (XDG_SESSION_TYPE=wayland, WAYLAND_DISPLAY=wayland-0). An
+  AppImage launched with DISPLAY pointed at an Xvfb server still picks the
+  wayland platform plugin and maps its window on the REAL desktop, so the
+  probe was never talking to the X server it had just started. That also
+  explains the symptom that run reported: a live process and no window
+  findable on the Xvfb display.
+
+  Forcing X11 fixes the probe: env -u WAYLAND_DISPLAY with
+  QT_QPA_PLATFORM=xcb and DISPLAY set to a free display number. The
+  AppImage then maps "finbreak" and "Create your vault" on Xvfb within
+  seconds, and xdotool typing into that window kills it on the first
+  round.
+
+  Evidence, read from coredumpctl rather than inferred: SIGSEGV,
+  si_code SEGV_MAPERR, frame #0 at libxkbcommon.so.0 + 0x1d9b8 -- the same
+  offset this bullet recorded against 0.1.19. A second core shows the
+  PyInstaller bootloader re-raising the signal, which is why the process
+  dies rather than limping on.
+
+  Method note for whoever verifies the fix: unset WAYLAND_DISPLAY and pin
+  QT_QPA_PLATFORM=xcb, or the test runs against the desktop compositor and
+  passes while proving nothing.
+  FIXED AND VERIFIED (2026-09-21). The freeze no longer bundles the library;
+  the host supplies both halves of the pair.
+
+  THE CAUSE WAS SHARPER THAN THIS BULLET HAD IT, and the sharper version is
+  what made the fix obvious. It is not only that the bundled parser is older
+  than the host's keymap data. Qt's xcb platform plugin links libxkbcommon.so.0
+  AND libxkbcommon-x11.so.0 -- one upstream project, released together, only
+  guaranteed to work as a matched pair. The build container's package list
+  carried the base half and never the -x11 half, so the bundle shipped ONE half
+  of a pair. PyInstaller's own build log says so: it reports
+  libxkbcommon-x11.so.0 unresolved while collecting libxkbcommon.so.0. Every
+  X11 launch therefore linked the host's current -x11 against Debian 12's
+  libxkbcommon. That is the segfault.
+
+  THE FIX, both halves in one change:
+  - scripts/_build-smoke-in-container.sh no longer installs libxkbcommon0, so
+    PyInstaller cannot see it and does not collect it. Nothing in that container
+    loads Qt, so nothing there needs it. ci-setup.sh is a DIFFERENT list, is the
+    gate's own environment where the self-test really does load Qt, and keeps it.
+  - scripts/build-smoke.sh's clean-room baseline installs it, beside libGL and
+    libEGL, because the INV-3 self-test loads QtGui even under offscreen.
+
+  This bullet predicted the fix would need a PyInstaller .spec file, since there
+  is no --exclude-binary flag. It does not: PyInstaller collects what it can
+  SEE, so removing the package from the container is the whole control. The
+  freeze keeps its flag list and the Linux/Windows parity guard is untouched.
+
+  VERIFIED BY A/B, same keystrokes, each case on its own fresh Xvfb:
+  - shipped 0.1.23, which ships the library: DIED, SIGSEGV, coredump frame #0 at
+    libxkbcommon.so.0 + 0x1d9b8 -- the same offset recorded against 0.1.19.
+  - today's build, which does not: SURVIVED every keystroke round, no coredump,
+    and no "unrecognized keysym" output at all.
+  The build+clean-room proof passes, so the bundle still runs with no Python.
+
+  TWO METHOD NOTES, because both cost time and neither is obvious.
+  - This desktop is Wayland. An AppImage launched with DISPLAY pointed at Xvfb
+    still picks the wayland plugin and maps on the REAL desktop. Unset
+    WAYLAND_DISPLAY and pin QT_QPA_PLATFORM=xcb or the test proves nothing.
+  - A crashed Qt client leaves a selection-owner window behind, and the NEXT
+    launch on that display exits 0 with no window. That looks exactly like a
+    second defect and is not one. Give each case its own display.
+
+  Regression guards: tests/features/bundling/ gained one per side -- the freeze
+  must not install it, the clean-room must. Both read the apt-get command rather
+  than the file, because the freeze NAMES the package in a comment to say it is
+  excluded, and both assert a precondition so a mis-parse cannot pass vacuously.
+  Proved by mutation in both directions.
+
+  The RPM and deb still ship the same split pair; that is FIBR-0346, and it
+  lands with the next OBS submit where it can be verified.
+  **Layman:** The downloadable Linux app crashed the moment you typed, because it carried its own half-matched copy of a keyboard library; it now uses your system's.
   Kind: fix.
   Source: in-session-2026-08-02 FIBR-0200 pre-check.
 
@@ -3140,6 +3218,47 @@ scariest unknown (native-library bundling) up front.
   **Layman:** The openSUSE/Fedora packages on the build service were still the version from late July, because publishing a new release never updates them. Anyone installing from there got old software.
   Kind: package.
   Source: in-session-2026-08-31 (found while working FIBR-0158).
+
+- 📋 [FIBR-0346] **The RPM and deb still bundle the split libxkbcommon pair the AppImage stopped bundling.**
+  FIBR-0208 is fixed for the AppImage only. The OBS recipes freeze with
+  PyInstaller too and have the same shape of defect, found while reading
+  them to check whether the fix rippled.
+
+  The evidence is in the recipes themselves. packaging/obs/finbreak.spec
+  BuildRequires libxkbcommon0 (openSUSE) / libxkbcommon (Fedora) so
+  PyInstaller can collect it, and its Requires list is "ONLY the host-left
+  libGL/libEGL pair" by its own comment. packaging/obs/debian/control says
+  the same in Build-Depends and Depends. So the payload carries
+  libxkbcommon and the host supplies libxkbcommon-x11 -- the split pair
+  FIBR-0208 measured segfaulting.
+
+  Why it is less acute than the AppImage case, and why it is still wrong.
+  A distro package is built and installed on the same distro, so the two
+  halves start in step. They drift as soon as the host updates
+  libxkbcommon and the installed payload does not, which is the normal
+  state of a package a few weeks after release. The AppImage was the acute
+  case because it crosses distros by design.
+
+  THE FIX IS THE SAME TWO MOVES, per recipe: drop the library from
+  BuildRequires / Build-Depends so nothing collects it, and add it to
+  Requires / Depends so the host supplies both halves. Also amend
+  FIBR-0155 § 3.5, which states the Requires set as libGL/libEGL only and
+  is the reasoning those lists were built from.
+
+  NOT DONE IN THIS SESSION, deliberately. A packaging change cannot be
+  verified from this desktop -- it needs an OBS submit round, and the four
+  targets are green today. The user's decision of 2026-09-21 is to
+  re-submit OBS once, at 1.0.0, so this lands with that submit where it
+  can actually be proved. Sequencing it earlier buys an unverified change
+  to a working build.
+
+  Verification when it is taken: install the built package in a bare
+  container of that distro and run finbreak --self-test, which is what
+  packaging/obs/README.md already prescribes, then check no libxkbcommon
+  travels under /usr/lib/finbreak/.
+  **Layman:** The Linux app-store packages carry the same keyboard-library bug the downloadable version just had fixed.
+  Kind: fix.
+  Source: in-session-2026-09-21 (found while fixing FIBR-0208).
 
 ## P02 — Vertical slice: the security spine (target: after P01)
 

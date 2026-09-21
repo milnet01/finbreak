@@ -23,6 +23,15 @@ signaling per
 
 ### Fixed
 
+- **The Linux AppImage no longer crashes on the first keystroke** (FIBR-0208)
+  It carried its own copy of a keyboard library while relying on your
+  system for that library's other half, and the mismatched pair could
+  segfault as soon as you typed. It now uses your system's copy of both,
+  which is what every AppImage is meant to do for this library. The
+  crash is reproducible on 0.1.23 and gone on this build. The RPM and
+  deb packages still carry the same arrangement and are fixed
+  separately.
+
 - **A saved PDF report now always covers the month its filename names.** (FIBR-0342)
   If you had pinned a timezone in Settings that differed from your computer's,
   an exported report could be named for one month and contain another month's

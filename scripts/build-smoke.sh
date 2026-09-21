@@ -96,14 +96,22 @@ echo "== build-smoke: freezing in $BUILD_IMAGE (this takes a few minutes) =="
 [ -f "$DIST/$APPIMAGE" ] || { echo "build-smoke: AppImage not produced" >&2; exit 1; }
 
 # --- prepare the clean-room image -------------------------------------------
-# A minimal, Python-free target with the UNIVERSAL desktop graphics baseline
-# (libGL/libEGL). Everything app-specific — CPython, Qt's glib/freetype/
-# fontconfig/harfbuzz, SQLCipher, qpdf — travels INSIDE the bundle; libGL is the
-# one lib PyInstaller (and every AppImage) leaves to the host, because it is
-# driver-tied and present on every real desktop. Adding it here represents a
-# real GUI-capable machine, not a bare container (FIBR-0003 INV-3).
-echo "== build-smoke: preparing clean-room image ($TEST_IMAGE + graphics baseline) =="
-printf 'FROM %s\nRUN apt-get update && apt-get install -y --no-install-recommends libgl1 libegl1 && rm -rf /var/lib/apt/lists/*\n' \
+# A minimal, Python-free target with the UNIVERSAL desktop baseline
+# (libGL/libEGL + libxkbcommon). Everything app-specific — CPython, Qt's
+# glib/freetype/fontconfig/harfbuzz, SQLCipher, qpdf — travels INSIDE the
+# bundle; these are the libs PyInstaller (and every AppImage) leaves to the
+# host, so having them here represents a real GUI-capable machine rather than a
+# bare container (FIBR-0003 INV-3).
+#
+# libGL/libEGL are here because they are driver-tied. libxkbcommon is here for a
+# different reason and joined on 2026-09-21 with FIBR-0208's fix: it must agree
+# with the HOST's keyboard data and with the host's libxkbcommon-x11, which is
+# its other half and which nothing bundles. The freeze therefore stops bundling
+# it (_build-smoke-in-container.sh carries the full reasoning) and the host
+# supplies both halves as a matched pair. Without it here the clean-room's
+# --self-test cannot load QtGui, so this line is what keeps that proof honest.
+echo "== build-smoke: preparing clean-room image ($TEST_IMAGE + desktop baseline) =="
+printf 'FROM %s\nRUN apt-get update && apt-get install -y --no-install-recommends libgl1 libegl1 libxkbcommon0 && rm -rf /var/lib/apt/lists/*\n' \
     "$TEST_IMAGE" | "$RUNNER" build -t "$CLEANROOM_IMAGE" -f - "$DIST" >/dev/null
 
 # --- 2) clean-room: run each artifact in a Python-free, offline container ----

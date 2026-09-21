@@ -27,9 +27,27 @@ apt-get update -qq
 #    analysis collects them INTO the bundle (ADR-0007 "collect native libs");
 #    otherwise the artifact fails on a bare target. apt pulls their transitive
 #    deps (libpng, libbrotlicommon, …) too, which PyInstaller then also bundles.
+#
+# libxkbcommon0 is DELIBERATELY ABSENT from that list, and re-adding it puts
+# FIBR-0208 back. Qt's xcb platform plugin NEEDS libxkbcommon.so.0 AND
+# libxkbcommon-x11.so.0; the two are one upstream project, released together,
+# and are only guaranteed to work as a matched pair. This list never carried the
+# -x11 half, so installing the base half bundled ONE of the pair and left the
+# other to the host — every X11 launch then linked the host's current
+# libxkbcommon-x11 against Debian 12's libxkbcommon. That pair segfaults inside
+# libxkbcommon (coredump frame #0 at +0x1d9b8, measured on 0.1.19 and again on
+# 0.1.23), and when it does not crash it logs "unrecognized keysym" down the
+# host's Compose file. Leaving BOTH halves to the host keeps them matched, and
+# is what AppImage's own guidance says for this library: it must agree with the
+# host's xkeyboard-config data. build-smoke.sh's clean-room installs it, exactly
+# as it already does for libGL/libEGL.
+#
+# Nothing in THIS container loads Qt — it only freezes — so nothing here needs
+# the library present. ci-setup.sh installs it for the GATE, where the self-test
+# really does load QtGui; that list is a different set and must keep it.
 apt-get install -y -qq --no-install-recommends \
     binutils file ca-certificates \
-    libglib2.0-0 libgl1 libegl1 libdbus-1-3 libx11-6 libxkbcommon0 \
+    libglib2.0-0 libgl1 libegl1 libdbus-1-3 libx11-6 \
     libfreetype6 libfontconfig1 libbrotli1 libharfbuzz0b >/dev/null
 
 echo "-- provisioning the build venv from pyproject --"

@@ -56,3 +56,35 @@ flagged). The test scans `git ls-files`, so a **new** call-site is covered
 automatically; a per-tool `min_sites` floor stops the scan passing vacuously if
 a build path drops or moves its pin. Adding a third tool is one row in
 `_LOCKSTEP_PINS`.
+
+## The libxkbcommon pair stays on the host (dev venv — `features` marker)
+
+**FIBR-0208** — two guards, one per side of the same fix. They are cheap static
+reads of the build scripts, because the defect they lock is a *package list*,
+not behaviour the suite can exercise: the real proof is the clean-room launch
+above, which is opt-in and does not run in the everyday gate.
+
+Qt's xcb platform plugin links **both** `libxkbcommon.so.0` and
+`libxkbcommon-x11.so.0`. They are one upstream project, released together, and
+only guaranteed to work as a matched pair. Nothing collects the `-x11` half —
+PyInstaller's own build log reports it unresolved — so collecting the base half
+shipped one half of a pair, and every X11 launch linked the host's current
+`-x11` against the build container's older `libxkbcommon`. That combination
+segfaults inside `libxkbcommon`, measured on 0.1.19 and again on 0.1.23.
+
+| Guard | Reads | Asserts |
+|-------|-------|---------|
+| `test_FIBR0208_the_freeze_container_does_not_provide_libxkbcommon` | `scripts/_build-smoke-in-container.sh` | the library is not in the `apt-get install` list — PyInstaller collects what it can see, so absence from the container is the control |
+| `test_FIBR0208_the_clean_room_supplies_libxkbcommon_from_the_host` | `scripts/build-smoke.sh` | the clean-room baseline installs it — without it the INV-3 self-test cannot load QtGui, and the proof would fail for a reason unrelated to the bundle |
+
+Both read the `apt-get install` command and its continuations rather than the
+whole file, because the freeze script **names** the package in a comment in
+order to say it must not be installed — a whole-file `in` test would read that
+comment as an install and pass while the fix was reverted. Each guard asserts a
+precondition first (that it is looking at the right command) so a mis-parse
+cannot make it vacuous. Both were proved by mutation: re-adding the package to
+the freeze list reds the first, removing it from the baseline reds the second.
+
+`scripts/ci-setup.sh` is a **different** list and must keep the library — that
+is the gate's own environment, where `--self-test` genuinely loads Qt from a
+venv. Neither guard reads it.

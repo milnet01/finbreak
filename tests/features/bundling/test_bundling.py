@@ -580,3 +580,79 @@ def test_FIBR0326_the_cryptography_check_fails_on_a_broken_ed25519(monkeypatch):
 
     with pytest.raises(InvalidSignature):
         _selftest._check_cryptography()
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0208 — the bundle must not carry half of the libxkbcommon pair
+# --------------------------------------------------------------------------- #
+def _apt_install_command(script: str) -> str:
+    """The text of every `apt-get install` command in *script*, comments excluded.
+
+    The scan starts at the command itself and follows its backslash
+    continuations, so a package merely NAMED in a nearby comment is not read as
+    an installed package. Both guards below turn on that distinction: the freeze
+    script names `libxkbcommon0` in a comment precisely to say it must not be
+    installed.
+    """
+    lines = script.splitlines()
+    starts = [
+        i
+        for i, line in enumerate(lines)
+        if "apt-get install" in line and not line.lstrip().startswith("#")
+    ]
+    assert starts, "no apt-get install command in this script"
+    collected: list[str] = []
+    for start in starts:
+        for line in lines[start:]:
+            collected.append(line)
+            if not line.rstrip().endswith("\\"):
+                break
+    return " ".join(collected)
+
+
+def test_FIBR0208_the_freeze_container_does_not_provide_libxkbcommon():
+    """Qt's xcb platform plugin needs libxkbcommon.so.0 AND libxkbcommon-x11.so.0.
+    They are one upstream project, released together, and are only guaranteed to
+    work as a matched pair. Nothing bundles the -x11 half, so letting PyInstaller
+    collect the base half links the host's current -x11 against the build
+    container's older libxkbcommon — which segfaults inside libxkbcommon on the
+    first keystroke (measured on 0.1.19 and again on 0.1.23).
+
+    PyInstaller collects what it can SEE, so the control is the container's
+    package list: the library must not be installed there at all.
+    """
+    script = (_PROJECT_ROOT / "scripts" / "_build-smoke-in-container.sh").read_text()
+    installed = _apt_install_command(script)
+    # Precondition: this really is the freeze container's install command. Without
+    # it an empty or mis-parsed string would satisfy the assertion below while
+    # proving nothing.
+    assert "libgl1" in installed and "libharfbuzz0b" in installed, (
+        "this guard is no longer reading the freeze container's apt-get install "
+        "command, so its assertion proves nothing"
+    )
+    assert "libxkbcommon" not in installed, (
+        "the freeze container installs libxkbcommon again, so PyInstaller will "
+        "bundle it and FIBR-0208's segfault returns. The host must supply both "
+        "halves of the pair — see the comment above that install command."
+    )
+
+
+def test_FIBR0208_the_clean_room_supplies_libxkbcommon_from_the_host():
+    """The other half of the same fix. Once the freeze stops bundling it, QtGui
+    cannot load without the host providing it — even under QT_QPA_PLATFORM=
+    offscreen, which is how the clean-room runs --self-test. So the clean-room
+    baseline has to install it, exactly as it already does for libGL/libEGL, or
+    the INV-3 proof fails for a reason that has nothing to do with the bundle.
+    """
+    script = (_PROJECT_ROOT / "scripts" / "build-smoke.sh").read_text()
+    baseline = _apt_install_command(script)
+    # Precondition: the baseline is the libGL/libEGL line, not something else.
+    assert "libgl1" in baseline and "libegl1" in baseline, (
+        "this guard is no longer reading the clean-room baseline, so its "
+        "assertion proves nothing"
+    )
+    assert "libxkbcommon0" in baseline, (
+        "the clean-room no longer installs libxkbcommon, so the INV-3 self-test "
+        "will fail to load QtGui now that the freeze does not bundle it "
+        "(FIBR-0208)"
+    )
