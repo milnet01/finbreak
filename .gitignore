@@ -124,3 +124,8 @@ screenshot*.png
 # committing it would plant in a PUBLIC repo exactly what the test exists to
 # catch. `FINBREAK_CORPUS_NUMBERS` overrides it for a one-off run.
 /.corpus-numbers
+
+# Per-lane subagent cost log, written by a machine-local hook on every run.
+# Grows in any project that dispatches agents; the figures that mattered are
+# quoted in docs/reviews/<gate-id>.md.
+docs/reviews/agent-costs.jsonl
