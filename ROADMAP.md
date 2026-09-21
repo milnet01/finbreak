@@ -5355,6 +5355,40 @@ lands on top.
   billed and user-triggered, so no session can launch it. Do not cut 1.0.0
   without it. The advice given was to fix FIBR-0208 and FIBR-0217 first, so the
   review reads the tree that would actually ship.
+  BOTH REMAINING BLOCKERS ARE CLOSED (2026-09-21). The defect list this bullet
+  owns is now empty.
+
+  - FIBR-0208 (condition 3, the AppImage crash) is ✅. It DID still reproduce on
+    0.1.23 -- the earlier non-reproduction was a method error, since this desktop
+    is Wayland and the AppImage was mapping on the real compositor rather than the
+    test display. Fixed by not bundling half of the libxkbcommon pair, and
+    verified by an A/B on fresh X servers: 0.1.23 segfaults, the new build
+    survives.
+  - FIBR-0217 (condition 5, the unreadable dark-theme page number) is ✅, resolved
+    by withdrawing the dark export on the user's decision. Light was already the
+    default, so almost no export changes.
+
+  WHAT REMAINS BEFORE THE CUT, and neither is a defect:
+  1. FIBR-0300's badge wording. The user decided (2026-09-21) to change it ONCE,
+     in the 1.0.0 release itself, alongside the version bump and the README
+     refresh every release already gets -- one edit rather than two, and it never
+     states something the release does not back up.
+  2. The user's own code review, run by them in a fresh session. /code-review
+     ultra is billed and user-triggered, so no session can launch it. The standing
+     directive is that 1.0.0 is not cut without it, and the advice given was to
+     fix both blockers first so the review reads the tree that would actually
+     ship. That is now true.
+
+  ONE THING SEQUENCED INTO THE RELEASE, so it is not lost: FIBR-0346. The RPM and
+  deb recipes still bundle the same split libxkbcommon pair FIBR-0208 fixed for
+  the AppImage. It is not a defect in anything shipped today -- the OBS packages
+  are built and installed on the same distro, so the halves start in step -- but
+  it must land with the 1.0 OBS submit, which is the user's chosen moment to
+  re-submit. docs/specs/FIBR-0155.md § 3.5 carries the pending qualifier so a
+  packager reading it is not walked back into the crash.
+
+  The OBS builds themselves are green on all four targets (Debian 13, Fedora 44,
+  Tumbleweed, xUbuntu 24.04), last built before 0.1.23 was tagged.
   **Layman:** The plan for calling the app finished: what has to be true first, and which four jobs are standing in the way.
   Kind: release.
   Source: user-decision-2026-08-20 ("what gets us to v1.0?").
