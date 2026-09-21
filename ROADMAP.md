@@ -2832,6 +2832,54 @@ scariest unknown (native-library bundling) up front.
   12 is older than most target desktops). Establishing which comes first —
   the fix is then to exclude it from the freeze so the host copy is used,
   or to build against newer keyboard data.
+  PROVENANCE PINNED (2026-09-21), which was this bullet's own stated next step.
+  It is the BUILD CONTAINER's system library, not PySide6's wheel. No code
+  changed; this is the establishing step, and the fix shape is now unambiguous.
+
+  Evidence, all read rather than inferred:
+  - The bundled copy exists and is a DIFFERENT build from the host's.
+    pyi-archive_viewer over dist/finbreak-0.1.23-x86_64.AppImage's inner onefile
+    binary lists libxkbcommon.so.0 at 281,256 bytes uncompressed. The host's
+    /usr/lib64/libxkbcommon.so.0.13.2 is 403,792 bytes (libxkbcommon0-1.13.2,
+    xkeyboard-config-2.48). Different size, so a different build.
+  - PySide6's wheel does NOT ship it: no libxkbcommon* anywhere under
+    site-packages/PySide6, and no top-level Qt/lib/*.so carries a NEEDED entry
+    for it. So the wheel cannot be the source.
+  - The build container installs it explicitly.
+    scripts/_build-smoke-in-container.sh line 32 apt-installs libxkbcommon0 into
+    python:3.12-slim-bookworm, and PyInstaller's dependency walk collects it from
+    there. Debian 12's is older than any current desktop's xkeyboard-config data,
+    which is exactly the version skew this bullet reports.
+
+  So the fix is the first of the two this bullet offered -- exclude it from the
+  freeze so the host's copy is used. That is also what AppImage's own guidance
+  says for this library: it must match the host's xkeyboard-config data, so it is
+  on the do-not-bundle list.
+
+  THE CLEAN-ROOM PRECEDENT MAKES THIS COHERENT, and it is the thing that was not
+  obvious. scripts/build-smoke.sh line 106 already builds the clean-room image as
+  debian:13-slim PLUS `apt-get install libgl1 libegl1`, called a "graphics
+  baseline". So the bundle already depends on host system libraries, and
+  FIBR-0003's claim is Python-free rather than system-library-free. Adding
+  libxkbcommon0 to that same baseline is consistent with what is there rather
+  than a weakening of INV-15.
+
+  WHAT THE FIX COSTS, so it is not picked up expecting a one-liner:
+  - PyInstaller has no --exclude-binary flag, and the build drives it entirely
+    from CLI flags (_build-smoke-in-container.sh line 121). Excluding a BINARY
+    needs a .spec file filtering a.binaries, so the freeze has to move from flags
+    to a spec.
+  - Removing libxkbcommon0 from the build container instead does NOT work:
+    ci-setup.sh's own comment records that QtGui needs it even under
+    QT_QPA_PLATFORM=offscreen, so the in-container --self-test would stop
+    loading Qt.
+  - Verification needs a real AppImage build plus the clean-room, and the repro
+    needs Xvfb -- the milder symptom (the Compose-file keysym errors against
+    newer xkeyboard-config) is visible on any current desktop, but the segfault
+    needs the plain X server.
+
+  Ranked as a 1.0 blocker under versioning.md § 5 condition 3 (FIBR-0304), and
+  it stays one -- this note establishes the cause, not the cure.
   **Layman:** The app carries its own copy of a keyboard-layout library that is older than the system's keyboard data — it crashed in testing.
   Kind: fix.
   Source: in-session-2026-08-02 FIBR-0200 pre-check.
