@@ -203,7 +203,13 @@ def _is_negative(token: str) -> bool:
 
 def _signed_balance(token: str, fmt: Fmt) -> Decimal:
     """A balance token as a signed ``Decimal``: negative when the token carries the
-    trailing ``-`` Standard Bank prints for a negative balance, positive otherwise.
+    ``-`` Standard Bank prints for a negative balance, positive otherwise.
+
+    The sign's POSITION varies by family — leading for B/C/D, trailing for A/RCP
+    (D9) — so the check is ``_is_negative``, which is position-agnostic. This
+    docstring said "the trailing ``-``" until 2026-09-21; the code was always
+    right, but a trailing-only reimplementation reads a credit-opening card's
+    ``-2,704.14`` as positive and refuses every such statement (FIBR-0050 INV-11).
     The single home of the ``-parse if negative else parse`` idiom (FIBR-0069) —
     every family's opening/row balance goes through it."""
     magnitude = _parse_amount(token, fmt)
