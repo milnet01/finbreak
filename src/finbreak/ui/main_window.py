@@ -65,6 +65,7 @@ from PySide6.QtWidgets import (
 from sqlcipher3.dbapi2 import DatabaseError
 
 from finbreak import __version__, paths
+from finbreak.crypto import fsync_dir
 from finbreak.datetime_format import set_app_timezone
 from finbreak.datetime_format import today as app_today
 from finbreak.errors import (
@@ -1496,6 +1497,17 @@ class MainWindow(QMainWindow):
                 else:
                     live_db.unlink(missing_ok=True)
             os.replace(sidecar_olds[stamp], sidecar_path)
+            # The renames are atomic; their directory ENTRIES are not durable
+            # until the parent is flushed. Without this a power loss just after
+            # the only recovery path that exists could revert it (FIBR-0314) --
+            # the same rule `backup._install` and
+            # `vault_migration.restore_rollback_copy` already follow, and this
+            # was the last site in that family. `fsync_dir` is best-effort and
+            # cannot raise, so it adds no failure mode to the guard below. A set,
+            # because everything else here treats the two parents as possibly
+            # different while they are normally one directory.
+            for directory in {vault_path.parent, sidecar_path.parent}:
+                fsync_dir(directory)
         except OSError:
             # The *.old copies are untouched by a partial run -- os.replace either
             # renames or does nothing -- so a retry once the directory is writable

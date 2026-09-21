@@ -23,6 +23,11 @@ signaling per
 
 ### Fixed
 
+- **Recovering from an interrupted restore now survives a power cut.** (FIBR-0314)
+  If a restore was interrupted, finbreak puts your original data back the next
+  time it starts. That recovery is now flushed to disk, so losing power right
+  after it cannot undo it.
+
 - **A copied transaction is now cleared from the clipboard even if the vault locks first.** (FIBR-0316)
   Copy something from the transactions list, then let finbreak lock before
   the clipboard auto-clear was due, and the copied text used to stay on the

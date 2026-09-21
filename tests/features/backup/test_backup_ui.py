@@ -608,3 +608,88 @@ def test_FIBR0327_a_failed_recovery_routes_rather_than_crashing_startup(
     window = mw.MainWindow(AuthService(vault_p, sidecar_p))
     qtbot.addWidget(window)
     assert vault_p.read_bytes() == original_vault_bytes
+
+
+def test_the_recovered_original_pair_is_made_durable(qtbot, tmp_path, monkeypatch):
+    """FIBR-0314 — the interrupted-restore recovery must fsync its directory.
+
+    ``_reconcile_interrupted_restore`` is the ONLY path that exists to recover
+    from a crashed restore, and it ended in bare ``os.replace`` calls. The rename
+    is atomic, but POSIX does not guarantee the directory ENTRY it creates reaches
+    stable storage — so a power loss just after the recovery could revert it, on
+    the one path whose whole job is surviving one.
+
+    Same rule as ``backup._install`` (M2) and
+    ``vault_migration.restore_rollback_copy`` (M3), which already call
+    ``crypto.fsync_dir``. This was the last site in that family; the bullet had
+    expected FIBR-0313 H4 to carry it, and H4 landed as FIBR-0318 without it.
+
+    Records the real ``os.fsync`` and filters to THIS vault's directory by
+    ``(st_dev, st_ino)``, so an unrelated flush elsewhere in startup cannot
+    satisfy it. Asserts ordering — the flush must come after the last rename,
+    since flushing before it commits nothing.
+    """
+    import os
+    import stat
+    from pathlib import Path
+
+    from finbreak.ui.main_window import MainWindow
+
+    dest = tmp_path / "dest"
+    dest.mkdir()
+    vault_p, sidecar_p = dest / "vault.db", dest / "vault.kdf.json"
+    original_auth = AuthService(vault_p, sidecar_p)
+    original_auth.first_run(bytearray(b"the original master"), "USD")
+    original_auth.lock()
+    # The interrupted-restore signature: a mixed live pair over complete *.old.
+    vault_p.rename(dest / "vault.db.20260101T000000.old")
+    sidecar_p.rename(dest / "vault.kdf.json.20260101T000000.old")
+    vault_p.write_bytes(b"a half-installed new vault with no sidecar yet")
+
+    st = os.stat(dest)
+    dest_id = (st.st_dev, st.st_ino)
+    events: list[tuple[str, str]] = []
+    real_replace, real_fsync = os.replace, os.fsync
+
+    def recording_replace(src, dst, **kwargs):  # type: ignore[no-untyped-def]
+        if Path(dst).parent == dest:
+            events.append(("replace", Path(dst).name))
+        return real_replace(src, dst, **kwargs)
+
+    def recording_fsync(fd):  # type: ignore[no-untyped-def]
+        info = os.fstat(fd)
+        if stat.S_ISDIR(info.st_mode) and (info.st_dev, info.st_ino) == dest_id:
+            events.append(("fsync_dir", "data dir"))
+        return real_fsync(fd)
+
+    monkeypatch.setattr(os, "replace", recording_replace)
+    monkeypatch.setattr(os, "fsync", recording_fsync)
+    try:
+        window = MainWindow(AuthService(vault_p, sidecar_p))
+        qtbot.addWidget(window)
+    finally:
+        monkeypatch.undo()
+
+    replaces = [i for i, event in enumerate(events) if event[0] == "replace"]
+    assert replaces, (
+        "precondition: the reconcile must actually have renamed something into "
+        "this directory, or there is no durability to assert.\n"
+        f"  actual event order: {events}"
+    )
+    assert vault_p.read_bytes() != b"a half-installed new vault with no sidecar yet", (
+        "precondition: the orphan must have been replaced by the recovered "
+        "original, or the reconcile did not do its job and this leg is vacuous."
+    )
+    last_replace = replaces[-1]
+    assert any(
+        i > last_replace
+        for i, event in enumerate(events)
+        if event == ("fsync_dir", "data dir")
+    ), (
+        "FIBR-0314: the recovered pair's renames must be flushed to their "
+        "directory, or a power loss just after the one recovery path that "
+        "exists can revert it. A flush BEFORE the last rename commits nothing, "
+        "so the order is part of the assertion.\n"
+        f"  expected: a data-directory fsync after index {last_replace}\n"
+        f"  actual event order: {events}"
+    )
