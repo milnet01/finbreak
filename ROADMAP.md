@@ -6708,7 +6708,7 @@ because retrofitting them is a data migration.
   Source: in-session-2026-08-27 (found while scoping FIBR-0313 M5).
   Lanes: ui, migration.
 
-- 📋 [FIBR-0316] **A copied transaction stays on the clipboard when the vault locks before the clear is due.**
+- ✅ [FIBR-0316] **A copied transaction stays on the clipboard when the vault locks before the clear is due.**
   Third site of the FIBR-0310 R1 rule, found while fixing FIBR-0313 M6 (the
   RecoveryCodeDialog site).
 
@@ -6729,6 +6729,22 @@ because retrofitting them is a data migration.
   reviews, and the remedy is a decision rather than a move -- own the guard from
   the application object as build_recovery_offer does, or clear on lock
   explicitly.
+  Resolved (2026-09-21) in 82031c8. Fixed as the third site of the FIBR-0310
+  R1 rule, in two halves, because one alone is not enough. transactions.py no
+  longer re-parents: an injected guard keeps its caller's owner, and a
+  self-built one is owned by its parent or the application object, as
+  recovery_key.py already does. main_window.py owns the guard it injects,
+  built once in __init__ and parented to the window — without that the guard
+  has NO owner and survives the lock only while the dead view's Python
+  wrapper still references it, which is GC timing and not ownership. Building
+  it once also stops a guard and a timer accruing per unlock (FIBR-0313 L9).
+  The decision the bullet left open is settled the narrow way: own the guard
+  from something long-lived, NOT clear-on-lock. Clearing early is
+  lifecycle-clear, which tests/features/clipboard/spec.md still defers as
+  security-model T13; the armed clear now merely survives to fire when it was
+  always due. Locked by clipboard INV-9, which drives the real shell and real
+  lock and asserts the clipboard rather than the guard's parent. Both halves
+  were mutation-checked: reverting either turns INV-9 red. Full gate green.
   **Layman:** If you copy something from the transactions list and the app locks itself before the clipboard auto-clear runs, the copied text is left on the clipboard for good.
   Kind: fix.
   Source: in-session-2026-08-31 (found while fixing FIBR-0313 M6).
