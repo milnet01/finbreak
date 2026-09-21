@@ -10398,7 +10398,7 @@ is a future error tomorrow.
   Kind: refactor.
   Source: in-session-2026-08-25 (FIBR-0310 R3).
 
-- 📋 [FIBR-0312] **tests/features/recovery_key/spec.md still says the suite is expected to fail.**
+- ✅ [FIBR-0312] **tests/features/recovery_key/spec.md still says the suite is expected to fail.**
   The spec carries a "## Status -- this suite is expected to FAIL" section
   stating that FIBR-0019 is not implemented and that keywrap.py,
   services/recovery_code.py, services/vault_migration.py and the two AuthService
@@ -10413,6 +10413,16 @@ is a future error tomorrow.
   Also stale in the same file: "Only Add is exercised, by INV-12; the other two
   carry no invariant in section 5 and adding tests for them would be scope
   creep". FP02 and FP03 both added Replace / Remove tests.
+  Resolved (2026-09-21) in 06c8e42. Both false claims rewritten, each checked
+  first rather than taken from this bullet. The Status section now says the
+  suite passes and names v0.1.23 as where FIBR-0019 shipped; measured before
+  rewriting, the suite is green. The advice the section carried is kept
+  verbatim — the stubs were only its occasion, not its reason. The Out of
+  scope bullet about Replace / Remove is NARROWED rather than deleted,
+  because half of it is still true: § 5 carries a numbered invariant for Add
+  alone, so what is out of scope is giving the other two an INV, not covering
+  them — test_settings_flows.py drives each one's Settings teardown, Remove's
+  confirmation and an idle auto-lock inside each.
   **Layman:** A test document still says the recovery-key feature is not built yet. It is.
   Kind: doc-fix.
   Source: in-session-2026-08-25 (noticed during FIBR-0310).
