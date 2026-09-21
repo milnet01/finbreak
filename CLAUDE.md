@@ -103,14 +103,9 @@ genre. The skill's own default is 2 for a spec or plan and 3 for a standard or
 an ADR, so this raises the spec/plan cap by one and leaves a standard's where
 it already was.
 
-**The cap was 7 for specs and plans until 2026-08-19** (user directive
-2026-07-11, carried over unchanged when `review-contract` replaced
-`/cold-eyes`). It came down because the extra loops stopped paying once the
-skills and the app-workflow were redesigned. The measurement is this file's own
-2026-08-18 gate: three loops, 19 verified findings, and by loop 3 half of them
-were the review's own collateral — so a fourth loop mostly repairs the third's
-repairs. A spec reaching its cap is a normal exit; the build is the next
-reviewer.
+A spec reaching its cap is a **normal exit**, not a failure — the build is the
+next reviewer. The cap was higher until 2026-08-19 and came down on measurement:
+[`docs/history/claude-md.md`](docs/history/claude-md.md).
 
 **Convergence is the skill's, not a local definition**: a loop whose verified
 findings answer none of its four questions. Do not hold a spec to the older
@@ -237,10 +232,10 @@ printed on the statement. Spacing and dashes do not matter: the guard runs
 run of separators between digits, so a number split by a line-wrap is still
 found.
 
-A `printf … > .corpus-numbers` recipe stood here until 2026-08-18 and was the
-defect **FIBR-0276** filed: a shell command line lands in `~/.bash_history` —
-and in an agent's transcript — which the never-list below did not name. An
-editor writes to no history.
+**Never a command line.** That lands in `~/.bash_history` and in an agent's
+transcript — the defect **FIBR-0276** filed against the recipe that used to stand
+here ([`docs/history/claude-md.md`](docs/history/claude-md.md)). An editor writes
+to no history.
 
 **This is a step the user performs and an agent cannot.** The values are the
 user's real account numbers, and an agent must not invent them. It must never
@@ -252,11 +247,10 @@ hands the values to `pytest` without them appearing on a command line, in
 not.
 
 Without it `tests/features/account_detect/test_no_real_data.py` **skips**, and
-a skipping test reads as coverage while providing none — which is exactly what
-it did on every run until the file existed on **2026-08-18**. FIBR-0248 wired
-the file route on 2026-08-14; it did not create the file, so the guard went on
-skipping for four more days. **Wiring a source is not the same as supplying
-one**, and only the second date is when the tree was first actually scanned. `FINBREAK_CORPUS_NUMBERS`
+a skipping test reads as coverage while providing none. **Wiring a source is not
+the same as supplying one** — the route landed days before the file did, and only
+the later date is when the tree was first actually scanned
+([`docs/history/claude-md.md`](docs/history/claude-md.md)). `FINBREAK_CORPUS_NUMBERS`
 (comma-separated) overrides **where the numbers come from** — for a machine
 that keeps them elsewhere, or a run against a different set. **Its value comes
 from a gitignored file written in an editor and substituted in, never typed**:
@@ -303,10 +297,10 @@ pushes below). Read this line alone and you run the full gate on every ROADMAP
 annotation.
 
 **A tag-only push needs no `--no-verify` and never did: the hook skips it by
-itself.** Pushing a branch and then its tag used to run the same ~3-minute gate
-twice on one already-gated commit, which is where the habit of reaching for
-`--no-verify` on the tag came from — a bypass no project document sanctioned
-(FIBR-0290). The hook now reads the ref list git gives it and exits early when
+itself.** The habit of reaching for the flag there came from a double gate that
+no longer runs — a bypass no project document sanctioned (FIBR-0290;
+[`docs/history/claude-md.md`](docs/history/claude-md.md)). The hook reads the ref
+list git gives it and exits early when
 **every** ref is a tag **and** every tagged commit is already reachable from a
 remote-tracking branch. Anything else still takes the gate: a branch ref
 anywhere in the push, a tag whose commit is not yet on the remote (skipping
@@ -410,25 +404,21 @@ visibility once per session via
 the result is recorded in `.claude/workflow.md` § 1 status
 header. This repo is **public**, so commits push freely.
 
-**Tags too — `--follow-tags` is fine here** (user decision 2026-08-18). This
-repo used to carry a rule that `<ID>-complete` phase tags stay local until you
-authorise a push. **That rule is retired, and the reason is worth keeping**: it
-was never enforceable. `cut-release` Phase 5 on a public repo is
-`git push --follow-tags origin <branch>`
-(`~/.claude/skills/cut-release/SKILL.md` § Phase 5), and `/close-phase` Step 6
-offers the same command in a prompt that names the `<ID>-complete` tag it is
-about to publish (`~/.claude/commands/close-phase.md`). Both take the push path
-every time on a public repo, so the tags went up automatically — measured
-2026-08-18, `git tag -l '*-complete'` returns 54 and the remote carries the same
-54. A rule that the project's own two prescribed procedures break on every run
-is a rule that was describing an intention rather than the repository.
+**Tags too — `--follow-tags` is fine here** (user decision 2026-08-18). **A
+phase tag is a build marker and carries nothing private**, so publishing it costs
+nothing on a public repo.
 
-**A phase tag is a build marker and carries nothing private**, so publishing it
-costs nothing on a public repo. Three earlier drafts of this paragraph tried to
-hold the line and each contradicted itself — one banned the flag outright while
-`cut-release` ran it, one carved out *unless you are cutting a release* (the
-exact command the sentence beside it forbade), and one claimed nothing here ever
-needed the flag. **Do not reinstate the ban without changing the tooling first.**
+This repo used to hold that `<ID>-complete` tags stay local until you authorise a
+push. **That rule is retired because it was never enforceable**: `cut-release`
+Phase 5 on a public repo is `git push --follow-tags origin <branch>`
+(`~/.claude/skills/cut-release/SKILL.md` § Phase 5), and `/close-phase` Step 6
+offers the same command in a prompt naming the tag it is about to publish
+(`~/.claude/commands/close-phase.md`). Both take the push path every time here,
+so the tags went up regardless.
+
+**Do not reinstate the ban without changing the tooling first.** Three earlier
+drafts tried, and each contradicted itself —
+[`docs/history/claude-md.md`](docs/history/claude-md.md).
 
 **Still `--follow-tags`, never `--tags`.** Global `~/.claude/CLAUDE.md` § 6
 forbids the latter by name: it publishes *every* local tag, including ones never
@@ -445,8 +435,7 @@ that standard treats a skipped hook as an anti-pattern unless something
 explicitly authorises it, and points back here for the one case where
 something does. The full gate takes ~1m45s and most of it is aimed
 at code, so paying it for a ROADMAP annotation is mostly waiting — but the
-prose checks cost about **two seconds** (measured 2026-08-18: pytest 1.47s,
-`gitleaks` 0.3s warm and 1.8s cold), which is not a saving worth reasoning
+prose checks cost about **two seconds**, which is not a saving worth reasoning
 about.
 
 ```bash
@@ -472,11 +461,11 @@ clear, and § Build and test three screens up says never to print those values.
 A check whose failure mode is "leak it to the terminal" is worse than the leak
 it found.
 
-**Five suites read tracked prose. This list is ENUMERATED, so it can go stale —
-and it did.** Do not repeat the old justification for the skip — "no Python
-stage reads prose" — which was simply false. Nor the version that replaced it,
-"those two commands are all three of them", which was **also** false and is why
-the list below is now five:
+**These suites read tracked prose, and the list is ENUMERATED, so it can go
+stale.** It has, twice. **Do not justify the skip by claiming no Python stage
+reads prose** — that is the false claim both earlier versions rested on, and it
+is why the list is now bound to the tree by a guard rather than kept by hand
+([`docs/history/claude-md.md`](docs/history/claude-md.md)):
 
 - **`tests/features/harness/`** (FIBR-0001 INV-1) reads
   **`docs/specs/FIBR-0001.md`** and compares its stage table against
@@ -494,9 +483,7 @@ the list below is now five:
   **`docs/security-model.md`** and asserts the signed-`SHA256SUMS` note, an
   `INV-13` definition, and that the 800 characters after it name `SHA256SUMS`
   and match `sign|Ed25519`. **Reflowing that section is enough to turn it
-  red** — the paragraph does not have to be wrong, only rearranged. This suite
-  was missing from the list until 2026-08-18 and all three review lanes found
-  it independently.
+  red** — the paragraph does not have to be wrong, only rearranged.
 - **`tests/features/flatpak_packaging/`** asserts `packaging/flatpak/README.md`
   **exists**, so moving or deleting that doc is a red doc-only push. Existence
   only — it never reads the contents.
@@ -519,23 +506,15 @@ turns nothing red.
 **No grep re-derives this list, so do not try to.** `account_detect` walks
 `git ls-files` and reads every tracked text file without naming one, so no path
 literal betrays it — any search-based audit misses the broadest member.
-A recipe here claimed otherwise for one review loop and was deleted for being
-unreproducible: the plausible readings of it return 64 files and 4, and the
-list was four (now five). **This list used to be maintained by hand with
-nothing binding it to the tree** — which is the failure that produced two
-wrong lists in one day. `tests/features/prose_checks/` (**FIBR-0278**) is
-that guard: it fails if this fenced command and its `_READS_PROSE` ledger
-disagree, and it fails if any suite directory is sorted into neither ledger.
-Add a suite to **both** places — this fenced command and the ledger it
-checks against — whenever you write one that reads a doc; the guard is what
-catches you if you only do one.
+`tests/features/prose_checks/` (**FIBR-0278**) is the guard instead: it fails if
+this fenced command and its `_READS_PROSE` ledger disagree, and it fails if any
+suite directory is sorted into neither ledger. Add a suite to **both** places —
+this fenced command and the ledger it checks against — whenever you write one
+that reads a doc; the guard is what catches you if you only do one. Why it is a
+guard rather than a hand-kept list: [`docs/history/claude-md.md`](docs/history/claude-md.md).
 
-**The three extra suites cost about a third of a second** — measured
-2026-08-18 back to back and both warm, 1.01s (63 tests) for the old two-suite
-list against 1.36s (93 tests) for these five. (An earlier draft of this line
-claimed the wider list was *faster*, having compared a warm run against a cold
-one. It is not; it is 0.35s slower, which is still nothing. Take the warm
-number: the same recipe cold measured 3.09s immediately before it.)
+**The wider list costs a fraction of a second** against the old two — not a
+saving worth reasoning about.
 
 **What counts as "only documentation": every path in
 `git diff --name-only @{u}..HEAD` ends in `.md`.** That is the whole test, and
@@ -547,39 +526,29 @@ code commit already queued behind it rides through the gate on a ROADMAP line's
 coat-tails, which breaches "a code change never skips the full gate" with
 nothing to notice it.
 
-**And the test is POSITIVE.** The deny-list version
-of this rule — *no file under `src/`, `tests/`, `scripts/`, `.github/` or
-`packaging/`* — lasted one review loop: `.githooks/pre-push` is under none of
-those, so a commit touching only that file passed the test word for word. It is
-shell, and `ci-local.sh`'s shellcheck stage names it explicitly
-(`shellcheck "${SH_FILES[@]}" .githooks/pre-push`), so the "doc-only" route
-would have skipped the one stage that reads what you just changed.
-`.gitleaks.toml`, `.gitignore` and any stray `.sh`, `.toml` or `.yml` fail a
-deny-list the same way. **A closed list of directories cannot express "not
-code"; a suffix can.**
+**And the test is POSITIVE — a suffix, never a list of directories.** A closed
+list of directories cannot express "not code": `.githooks/pre-push`,
+`.gitleaks.toml`, `.gitignore` and any stray `.sh`, `.toml` or `.yml` all escape
+one. `.githooks/pre-push` is the case that proved it, and it is shell that
+`ci-local.sh`'s shellcheck stage names explicitly
+(`shellcheck "${SH_FILES[@]}" .githooks/pre-push`) — so a deny-list would have
+skipped the one stage reading what had just changed. Do not reinstate one
+([`docs/history/claude-md.md`](docs/history/claude-md.md)).
 
 **A `.md` anywhere counts** — `tests/features/<name>/spec.md` and
-`packaging/flatpak/README.md` included. The five suites and the `gitleaks`
+`packaging/flatpak/README.md` included. The suites and the `gitleaks`
 scan above are what cover those. Anything else takes the full gate.
 
-**Why this replaced the digit test.** Until 2026-08-18 the rule asked
-whether the commit added "digits or key-shaped strings", and demanded the
-checks only then. Two things retired it. The judgement falls to the person
-least able to make it — you have just written the prose and know what you
-meant by it, which is exactly when a pasted number does not read as one.
-And the judgement was buying **under two seconds**. A branch that trades a
-silent, unrecoverable failure against two seconds should not be a branch.
+**The checks are unconditional — there is no "only if it looks like a number"
+branch.** An earlier version of this rule had one, and it asked the person least
+able to answer it: you have just written the prose and know what you meant by it,
+which is exactly when a pasted number does not read as one. Pedigree in
+[`docs/history/claude-md.md`](docs/history/claude-md.md).
 
-**The leak guard went live on 2026-08-18**, when `.corpus-numbers` was
-created on this machine: `test_no_real_data.py` now runs instead of
-skipping (56 passed, 0 skipped, where it was 55 passed and 1 skipped). It
-passed on first run, so no real number is in the tracked tree today.
-Before that date the guard was inert and the skip was safer than it
-looked; it is not inert now, which is the change that makes this rule earn
-its keep. **A machine without `.corpus-numbers` runs the same two
-commands** — the guard skips there and `gitleaks` does not match an
-account number, so that machine has no cover for this class at all and
-should not push prose it has not read.
+**`.corpus-numbers` is what makes the guard real, and it is per-machine.** Where
+it exists `test_no_real_data.py` runs; where it does not that test skips, and
+`gitleaks` does not match an account number — so such a machine has no cover for
+this class at all and should not push prose it has not read.
 
 **A code change never skips the full gate, however small.**
 
@@ -599,17 +568,15 @@ and `scripts/release-windows.sh`, and **nothing invokes those for you**.
 and a hand-run `gh release create`; the two wrappers are what to run
 today.)
 
-**v0.1.20 published with ZERO assets and it went unnoticed for ten
-days.** Both the README's "download the latest release" link and the
-in-app updater resolve to that page, so both were dead the whole time.
-Found 2026-08-17 while cutting 0.1.21. **The guard LANDED on 2026-08-19**
-(FIBR-0275, INV-8): both release scripts now read the published asset
-list back and refuse to report success on an incomplete set. What it
-still cannot catch is nobody running `release-linux.sh` at all — which
-is exactly how v0.1.20 shipped empty — so the eight-asset read-back at
-the end of this section is still yours to run by hand. (Same class as FIBR-0203,
-which was closed as a one-off rather than guarded — that is why it
-recurred.)
+**A release can publish with ZERO assets, and both the README's "download the
+latest release" link and the in-app updater resolve to that page.** It has
+happened twice — FIBR-0203, then again on v0.1.20. **The guard LANDED on
+2026-08-19** (FIBR-0275, INV-8): both release scripts read the published asset
+list back and refuse to report success on an incomplete set. What it still cannot
+catch is nobody running `release-linux.sh` at all — which is exactly how a
+release ships empty — so the eight-asset read-back at the end of this section is
+still yours to run by hand. Pedigree in
+[`docs/history/claude-md.md`](docs/history/claude-md.md).
 
 So the release path is, in order — the bump comes first, and the
 **push** is a step rather than a tidy-up:
@@ -638,10 +605,11 @@ Worth knowing before you run them:
 
 - **The bump must be PUSHED, not merely committed — and since FIBR-0327
   `release-linux.sh` enforces it.** It fetches `origin` and refuses on an
-  unpushed HEAD. Until then it tested only `git status --porcelain`, so a
-  committed-but-unpushed bump passed and the script tagged the **remote's**
-  HEAD — the pre-bump commit — publishing assets built from a version the
-  tag does not point at. (`dist/` is gitignored, so a dirty tree here is
+  unpushed HEAD. Before that guard, a committed-but-unpushed bump passed and the
+  script tagged the **remote's** HEAD — the pre-bump commit — publishing assets
+  built from a version the tag does not point at
+  ([`docs/history/claude-md.md`](docs/history/claude-md.md)).
+  (`dist/` is gitignored, so a dirty tree here is
   your own ROADMAP or CHANGELOG edit.) Do not pipe either script
   through `grep`/`tail` while debugging — that masks its exit status and
   a refusal reads as success.
@@ -671,9 +639,9 @@ Worth knowing before you run them:
 - **A failed upload no longer skips the read-back gate (FIBR-0327).** Both
   scripts capture the publish command's exit status instead of letting
   `set -e` end the run there. `--clobber` deletes each asset before
-  replacing it, so a 503 part-way down the list leaves the release SHORT —
+  replacing it, so a failure part-way down the list leaves the release SHORT —
   the state the gate reports — and the script used to die before reaching
-  it. That is what happened on 0.1.21. The gate now runs either way, and a
+  it. The gate now runs either way, and a
   complete asset list after an errored upload still exits non-zero: the
   names being right does not prove the bytes are.
 
@@ -697,20 +665,17 @@ still building, or failed — and `release-windows.sh` exits non-zero
 leaves a `--latest` release the README and the updater both resolve to
 with no Windows download. Re-run it; do not walk away from a short list.
 
-**Expect transient GitHub API failures, and retry before diagnosing.**
-Cutting 0.1.21 hit them on four different endpoints — `gh repo view`
-(503), `git push origin <tag>` (401), the `windows-build.yml` dispatch
-(503, three times from inside the script while `gh release view` and
-`gh workflow list` both worked and githubstatus reported Actions
-operational), and the asset upload. Every one cleared on a retry.
+**Expect transient GitHub API failures, and retry before diagnosing.** One
+release hit them on four different endpoints — `gh repo view`, the tag push, the
+`windows-build.yml` dispatch and the asset upload — and every one cleared on a
+retry ([`docs/history/claude-md.md`](docs/history/claude-md.md)).
 
-**The upload failure is the dangerous one, because it half-succeeded.**
-`release-windows.sh`'s final `gh release upload --clobber` deletes each
-existing asset before replacing it, so a 503 mid-list left v0.1.21
-carrying `SHA256SUMS.sig` but **not** `SHA256SUMS`, and `.exe.sig` but
-**not** the `.exe` — a signed release whose signed manifest was gone.
-Nothing reported an error loudly; the script had already printed its
-signing successes.
+**The upload failure is the dangerous one, because it half-succeeds.**
+`release-windows.sh`'s final `gh release upload --clobber` deletes each existing
+asset before replacing it, so a failure mid-list can leave a release carrying
+`SHA256SUMS.sig` but **not** `SHA256SUMS`, and `.exe.sig` but **not** the `.exe`
+— a signed release whose signed manifest is gone. Nothing reports this loudly:
+the script has already printed its signing successes.
 
 If you land there, the artifacts in `dist/` are already built, signed
 and verified, so re-upload them rather than rebuilding — **one file per
@@ -726,14 +691,14 @@ done
 Then read the assets back again. A batched upload wrapped in a pipe is
 how the half-state goes unnoticed twice.
 
-If the *dispatch* is what is failing, **just re-run
-`release-windows.sh` until it gets through** — the 503 is intermittent,
-not deterministic, and it took six attempts on 0.1.21. Do **not**
-dispatch by hand as a workaround: the script's line 48 is an unguarded
-`gh workflow run` under `set -euo pipefail`, so it dispatches its *own*
-run and waits for a run newer than the one it recorded on entry. Your
-hand-dispatched build is discarded, and you have burned a Windows
-freeze for nothing (that happened twice on 0.1.21).
+If the *dispatch* is what is failing, **just re-run `release-windows.sh` until
+it gets through** — the failure is intermittent rather than deterministic, and
+has needed several attempts. Do **not** dispatch by hand as a workaround: the
+script's `gh workflow run` is unguarded under `set -euo pipefail`, so it
+dispatches its *own* run and waits for a run newer than the one it recorded on
+entry. Your hand-dispatched build is discarded and a Windows freeze is burned for
+nothing — which has happened
+([`docs/history/claude-md.md`](docs/history/claude-md.md)).
 
 Finish the Windows half through the script, never by hand: the steps
 you would be skipping are the Ed25519 signing and its verification
@@ -775,18 +740,18 @@ run.
 1. **`actions/checkout` running at all** — a bad SHA, a network failure, a
    revoked action. Its *static* properties are still checked here: `zizmor`
    is a `ci-local.sh` stage, so this run does read `ci.yml`'s pin and
-   `persist-credentials: false`. Measured 2026-08-19 — `zizmor
-   .github/workflows/` exits **0** on the real tree and **14** with the pin
-   reverted to `actions/checkout@v7`. So do not list the pin as uncovered;
-   what is uncovered is the step executing.
+   `persist-credentials: false` — measured by reverting the pin to a mutable tag
+   and watching `zizmor` fail
+   ([`docs/history/claude-md.md`](docs/history/claude-md.md)). So do not list the
+   pin as uncovered; what is uncovered is the step executing.
 2. **The `apt-get install git ca-certificates` step** before checkout. Its
    *effect* is covered — `ci-setup.sh` installs `git` as well — but the step
    itself never executes.
 3. **The tree under test, which is the one worth knowing.** `ci-docker.sh`
    does `cp -a` of your working directory into the container, so gitignored
    and untracked files travel with it; `actions/checkout` hands CI a clean
-   clone of **tracked files only**. Verified 2026-08-19 by running that `cp`
-   and listing the result: `.corpus-numbers` reaches the container. So a gate
+   clone of **tracked files only**. Verified by running that `cp` and listing
+   the result: `.corpus-numbers` reaches the container. So a gate
    stage that reads an untracked file passes here without having been tested
    the way CI will run it.
 
@@ -794,8 +759,8 @@ run.
 *Configured* means `~/.config/act/actrc` exists **and**
 `act push -W .github/workflows/ci.yml -n </dev/null` exits 0. Check both at
 Phase 2b — `act --version` succeeds on an unconfigured install and settles
-nothing. Measured 2026-08-19: `actrc` is absent and that dry run exits **1** on
-`level=fatal msg=EOF`, so the override stands. When it lapses, Phase 2b goes
+nothing. Both were measured false on 2026-08-19, so the override stands
+([`docs/history/claude-md.md`](docs/history/claude-md.md)). When it lapses, Phase 2b goes
 back to executing the workflows themselves and this section is deleted rather
 than left standing as a second answer.
 
@@ -933,9 +898,9 @@ the first file under the new rule is
 
 `naming.md` is not amended yet on purpose. Amending *this* rule changes
 what a conformer writes — the spec filename — so it trips rule 14's gate
-(`review-contract <path> --genre standard`); and back-migrating the 54
-existing `FIBR-NNNN.md` specs means repointing 374 inbound citations —
-so both halves are tracked as **FIBR-0196** rather than done in passing.
+(`review-contract <path> --genre standard`); and back-migrating the existing
+`FIBR-NNNN.md` specs means repointing every inbound citation — so both halves
+are tracked as **FIBR-0196** rather than done in passing.
 
 **Not every `docs/standards/` edit owes that gate.** Rule 14's trigger is
 a *change of direction*, not an edit: "would someone conforming to this
@@ -944,3 +909,17 @@ fixed count, a dead link or a reworded example changes nothing anyone
 writes — record the check in one line of the commit body and move on. In
 the grey zone, do **not** gate. This note exists so a session that reads
 `naming.md` and not that bullet does not name the next spec wrongly.
+
+## Rule history
+
+Pedigree moved out of a rule above — what it replaced, what went wrong to make
+it necessary, and the measurement behind it — is in
+[`docs/history/claude-md.md`](docs/history/claude-md.md).
+
+**It is not loaded at session start, and that is the point.** This file is read
+on every prompt, so a rule's reasoning is paid for on every turn while being
+needed almost never: when you are about to change that rule. Read it then.
+
+**Do not move a RULE there.** Only the story behind one. A rule that leaves this
+file is a rule some session will not read (FIBR-0296, and the user's 2026-09-21
+directive to move the history out).
