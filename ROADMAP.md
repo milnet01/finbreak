@@ -6576,7 +6576,7 @@ because retrofitting them is a data migration.
   Source: close-phase-2026-08-25 (check-code + review-code x4 lanes, FP03 close, fresh context).
   Lanes: crypto, security, migration, backup, ui.
 
-- 📋 [FIBR-0314] **The interrupted-restore recovery puts the old pair back without making it durable.**
+- ✅ [FIBR-0314] **The interrupted-restore recovery puts the old pair back without making it durable.**
   main_window._reconcile_interrupted_restore unlinks the live vault and
   sidecar, then os.replace()s the most recent complete `*.old` pair back over
   them. Neither the sources nor the containing directory is fsynced, so none of
@@ -6594,12 +6594,33 @@ because retrofitting them is a data migration.
 
   Distinct from FIBR-0309, which covers write_sidecar_json's directory fsync
   and the S4/S5 ones, and reaches neither this site nor M2/M3.
+  Resolved (2026-09-21) in e95c8a8. The fsync half is fixed: both parents go
+  through crypto.fsync_dir after the replaces, which is the rule
+  backup._install (M2) and vault_migration.restore_rollback_copy (M3) already
+  follow — this was the last site in that family. fsync_dir is best-effort and
+  cannot raise, so it adds no failure mode to the OSError guard FIBR-0327 put
+  around the block.
+
+  The OTHER half was already fixed and was not re-fixed. This bullet called the
+  unlink-before-replace window the dangerous part; FIBR-0318 removed those
+  unlinks with the reasoning in place, and the one surviving unlink fires only
+  for a -wal/-shm sibling with no .old counterpart, which is clearing a stale
+  journal. So the hand-off this bullet planned never happened: it expected
+  FIBR-0313 H4 to carry the fsync along, H4 landed as FIBR-0318 without it, and
+  the fsync was left an orphan residual. Worth knowing for the next bullet that
+  defers to a sibling item — the deferral is only as good as the sibling
+  remembering.
+
+  Locked by backup INV-19, which records the real os.fsync, filters to this
+  vault's directory by (st_dev, st_ino) so an unrelated startup flush cannot
+  satisfy it, and asserts the flush lands AFTER the last rename. Proven red
+  first: two renames, zero directory flushes. Full gate green.
   **Layman:** If the machine loses power while the app is putting your old data back after a failed restore, the recovery itself may not survive -- and could leave no data file at all.
   Kind: fix.
   Source: in-session-2026-08-27 (FP04 M2/M3 blast-radius measurement).
   Lanes: backup, ui.
 
-- 📋 [FIBR-0315] **On the recovery route C1's rollback check is asked with the wrong key, so it silently degrades.**
+- ✅ [FIBR-0315] **On the recovery route C1's rollback check is asked with the wrong key, so it silently degrades.**
   C1's defect, one route over, and live today.
 
   RollbackAvailableError subclasses VaultStateError (errors.py). The UI has
@@ -6703,6 +6724,34 @@ because retrofitting them is a data migration.
   they depended on was monkeypatched. Whoever takes this writes the test
   for the contract in the paragraph above, and the precondition to assert
   first is that the state is reachable at all.
+  Closed (2026-09-21) as SUPERSEDED — no code was written, and none is called
+  for. Read against the tree rather than implemented from this bullet's own
+  text, which was the right call twice over: its first two notes propose a fix
+  its own RETRACTION withdraws, and the residual the retraction left has since
+  been fixed elsewhere.
+
+  The mechanism is gone. auth._unlock_through_slot now reads
+  `if sidecar.migration_pending and slot == SLOT_MASTER`, so the recovery route
+  never enters the resume ladder at all — _finish_if_readable is never reached
+  holding a recovery KEK, and rollback_copy_is_usable is never asked with the
+  wrong key. The comment names the fix: FIBR-0337 M1, whose own bullet
+  describes exactly this subject. Locked by
+  test_only_the_master_slot_enters_the_resume_ladder, which asserts the ladder
+  is not entered rather than a proxy, and carries a master-slot control leg so
+  the recovery leg cannot pass vacuously.
+
+  ui/unlock._on_recovery_derived still has no RollbackAvailableError arm, and
+  after M1 that is CORRECT rather than the gap this bullet reported.
+
+  What is left is not a defect but a specified silence: FIBR-0019 section 13.3
+  step 0 now states that the ladder is entered from the master slot alone and
+  that the rollback offer is withheld with nothing said. Telling that user
+  anything would falsify that sentence and owes rule 14's gate, so it is a
+  deliberate decision to revisit rather than a bug to fix. Same shape as
+  FIBR-0309's third gap.
+
+  The retracted notes are kept rather than deleted, as the bullet intended: the
+  measurement that refuted them is the useful part.
   **Layman:** If you unlock with your recovery code while an interrupted upgrade is half-done, finbreak tells you the vault is broken instead of offering to put back the copy it saved before the upgrade — which is sitting right beside it.
   Kind: fix.
   Source: in-session-2026-08-27 (found while scoping FIBR-0313 M5).
