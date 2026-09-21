@@ -9,6 +9,7 @@ vault lives under ``tmp_path``; no network, no real data.
 """
 
 import pytest
+import pytestqt.exceptions
 from PySide6.QtCore import QObject, QPoint
 from PySide6.QtGui import QClipboard, QGuiApplication
 from PySide6.QtWidgets import QComboBox, QMenu
@@ -59,8 +60,8 @@ class RecordingClipboard(ClipboardAutoClear):
     """A ``ClipboardAutoClear`` subclass that only records what ``copy`` receives —
     so the annotated UI legs stay mypy-clean (the injection param is typed
     ``ClipboardAutoClear | None``) without touching the real clipboard. Skips the
-    base ``__init__`` (no QClipboard/timer needed) but stays a real ``QObject`` so
-    the view can ``setParent`` it."""
+    base ``__init__`` (no QClipboard/timer needed) but stays a real ``QObject``, so
+    an injected instance is a valid owner-keeping guard (INV-9)."""
 
     def __init__(self) -> None:
         QObject.__init__(self)
@@ -354,3 +355,93 @@ def test_INV5_settings_save_persists(qtbot, service):
     combo.setCurrentIndex(combo.findData(10))
     dialog._on_save()
     assert service.clipboard_clear_seconds() == 10
+
+
+# --------------------------------------------------------------------------- #
+# INV-9 — the armed clear survives the lock that destroys the view
+# --------------------------------------------------------------------------- #
+def test_INV9_an_armed_clear_survives_the_lock_that_destroys_the_view(
+    qtbot, service, clip, monkeypatch
+):
+    """FIBR-0316 — the third site of the FIBR-0310 R1 rule.
+
+    ``TransactionsView`` re-parented its guard to itself, so the guard's
+    single-shot clear timer was a Qt child of the view. ``MainWindow._lock``
+    step 3 ``deleteLater()``s the whole workspace, which destroyed the view and
+    the pending timer with it -- so a copy made inside the clear window and
+    then followed by a lock stayed on the clipboard for good. What the user
+    copied is exactly what a lock should not strand.
+
+    This drives the real shell -- the real guard the shell injects, the real
+    lock, and a real wait -- because the defect lives in who OWNS the guard,
+    which a directly-built view cannot show. It asserts the clipboard, not the
+    guard's parent: re-parenting is the current cause, not the contract.
+
+    Not lifecycle-clear, which the spec's Out of scope still defers: the
+    armed timer is left to fire on its own schedule, it is simply no longer
+    destroyed first.
+    """
+    import gc
+
+    import shiboken6
+
+    from conftest import _pump_deferred_delete
+    from finbreak.ui.main_window import MainWindow
+
+    # The shortest timeout the guard can arm; the settings enum's floor is 10s,
+    # which is not a wait a suite can take. Patched before the shell builds the
+    # guard, so the guard's provider is this lambda.
+    monkeypatch.setattr(service, "clipboard_clear_seconds", lambda: 1)
+
+    _add_txn(service, "Groceries")
+    window = MainWindow(service)
+    qtbot.addWidget(window)
+    window._enter_unlocked()
+
+    view = window._transactions_tab
+    assert view is not None, (
+        "precondition: the shell must have built the transactions tab, or "
+        "there is no view to copy from and none to destroy."
+    )
+    view._table.selectRow(_row_of(view, "Groceries"))
+    view._on_copy_description()
+    assert clip.text() == "Groceries", (
+        "precondition: Copy must put the description on the clipboard, or "
+        "the clearing this leg asserts has nothing to clear.\n"
+        "  expected: 'Groceries'\n"
+        f"  actual:   {clip.text()!r}"
+    )
+
+    window._lock()
+    _pump_deferred_delete()
+    assert not shiboken6.isValid(view), (
+        "precondition: the lock must actually destroy the view before the "
+        "clear is due -- that destruction is what kills the timer when the "
+        "guard is parented to the view, so a leg that leaves the view alive "
+        "cannot see the defect.\n"
+        "  expected: a deleted view"
+    )
+
+    # Drop the last Python reference to the dead view and collect. Without this
+    # the leg cannot tell a guard OWNED by something long-lived from one owned
+    # by nothing at all: an unparented guard outlives the lock only while the
+    # destroyed view's wrapper still holds it, which is GC timing rather than
+    # ownership. A real session collects eventually, so the guard must have an
+    # owner that outlives the workspace -- measured: unparented, the clear is
+    # lost here.
+    del view
+    gc.collect()
+    _pump_deferred_delete()
+
+    try:
+        qtbot.waitUntil(lambda: clip.text() == "", timeout=5000)
+    except pytestqt.exceptions.TimeoutError:
+        pass
+    assert clip.text() == "", (
+        "the armed clear did not survive the lock: its timer went with the "
+        "view -- parented to it, or owned by nothing that outlasts it -- so "
+        "the copied transaction description is still on the clipboard after "
+        "the lock (FIBR-0316; FIBR-0310 R1 at the transactions site).\n"
+        "  expected: '' (cleared)\n"
+        f"  actual:   {clip.text()!r}"
+    )

@@ -21,6 +21,13 @@ signaling per
 
 ## [Unreleased]
 
+### Fixed
+
+- **A copied transaction is now cleared from the clipboard even if the vault locks first.** (FIBR-0316)
+  Copy something from the transactions list, then let finbreak lock before
+  the clipboard auto-clear was due, and the copied text used to stay on the
+  clipboard for good. The clear now survives the lock and still happens.
+
 ## [0.1.23] - 2026-09-07
 
 ### Added

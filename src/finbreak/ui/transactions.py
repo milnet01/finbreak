@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from PySide6.QtCore import QDate, QPoint, Qt
+from PySide6.QtCore import QDate, QObject, QPoint, Qt
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -88,15 +88,23 @@ class TransactionsView(QWidget):
         self.setObjectName("tab_transactions")
         self._transactions = transactions
         self._categorization = categorization
-        # The copy-with-auto-clear helper (FIBR-0032). Default to a fallback over the
-        # system clipboard with a constant provider for standalone / test construction;
-        # the shell injects a service-wired instance. Either way the view takes
-        # ownership (setParent), so lock/rebuild teardown destroys its pending timer.
-        self._clipboard = clipboard or ClipboardAutoClear(
-            QGuiApplication.clipboard(),
-            seconds_provider=lambda: DEFAULT_CLIPBOARD_CLEAR_SECONDS,
-        )
-        self._clipboard.setParent(self)
+        # The copy-with-auto-clear helper (FIBR-0032). An INJECTED guard keeps the
+        # owner its caller gave it — the shell owns the one it wires. One built
+        # here, for standalone / test construction, is owned by our parent, or by
+        # the application object where there is none, as recovery_key.py does it.
+        # Never by the view: `MainWindow._clear_live` destroys the whole workspace
+        # on every lock and rebuild, so a guard parented here dies with its clear
+        # timer still pending and the copied value stays on the clipboard for good
+        # (FIBR-0316; the FIBR-0310 R1 rule at its third site).
+        if clipboard is None:
+            owner: QObject | None = parent or QGuiApplication.instance()
+            self._clipboard = ClipboardAutoClear(
+                QGuiApplication.clipboard(),
+                seconds_provider=lambda: DEFAULT_CLIPBOARD_CLEAR_SECONDS,
+                parent=owner,
+            )
+        else:
+            self._clipboard = clipboard
         # A confirmed transfer is surfaced at READ time from transfer_pairs — the
         # transactions rows stay untouched (FIBR-0011 INV-12 / FIBR-0151). Default to
         # a service over the same vault so existing two-arg call sites gain the label

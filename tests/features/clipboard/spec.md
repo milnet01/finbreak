@@ -25,12 +25,15 @@ on-disk vault uses `tmp_path`; no test touches the network or real financial dat
 | INV-6 | **No new secret exposure.** No "Copy password" / "Copy account number" action is offered anywhere (covered by INV-1's exact action-text assertion). |
 | INV-7 | **Clipboard mode + no network.** Copy / clear target `QClipboard`'s default `Clipboard` mode only — a sentinel pre-seeded into the X11 *Selection* buffer survives a copy + clear (guarded by a `supportsSelection()` skip, since the offscreen CI platform drops Selection writes). A **CI-gated source backstop** asserts `_clipboard.py` never references `QClipboard.Selection`, so the guarantee holds even when the runtime leg skips. No-network is carried by the vault-suite static scan over the new modules. `tr()` coverage is a convention, not asserted here. |
 | INV-8 | **Copy is lock-safe.** Neither copy handler performs a `Vault.connection` read, so triggering either **after the vault has locked** copies the value without raising `VaultLockedError`. A **positive control** asserts a genuine vault read (`TransactionService.base_currency()`) *does* raise in the same locked fixture, so "copy did not raise" proves lock-safety, not an unlocked fixture. |
+| INV-9 | **An armed clear survives the lock that destroys the view (FIBR-0316).** A guard is owned by something that outlives the workspace — the shell owns the one it injects; a guard the view builds for itself is owned by its parent, or by the application object where there is none. Never by the view: `MainWindow._clear_live` destroys the whole workspace on every lock and rebuild. Driven through the real shell — real injected guard, real `_lock()`, real wait — and asserted on the **clipboard**, since re-parenting is the current cause and not the contract. The leg drops the dead view's last Python reference and collects first, or it cannot tell a guard owned by something long-lived from one owned by nothing at all. |
 
 ## Out of scope
 
-- Lifecycle-clear (wipe a still-pending clipboard value on lock or app-exit) —
-  a deferred roadmap follow-up; the accepted residual is documented as
-  security-model T13.
+- Lifecycle-clear (wipe a still-pending clipboard value **early**, at lock or
+  app-exit, rather than on its own schedule) — a deferred roadmap follow-up; the
+  accepted residual is documented as security-model T13. **INV-9 is not this**:
+  it keeps the armed clear alive across a lock so it fires when it was always
+  due, and moves the moment of clearing not at all.
 - Copying account numbers or the statement PDF password (a deliberate non-goal —
   FIBR-0128 INV-1 preserved).
 - Copying arbitrary cells / whole rows, or writing the X11 *Selection* buffer.

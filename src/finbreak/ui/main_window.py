@@ -364,6 +364,18 @@ class MainWindow(QMainWindow):
         self._transfers_tab: TransfersWidget | None = None
         self._recurring_tab: RecurringWidget | None = None
         self._forecast_tab: ForecastWidget | None = None
+        # The transactions list's copy guard, owned by the SHELL rather than by the
+        # tab it serves (FIBR-0316; the FIBR-0310 R1 rule at its third site). Its
+        # clear timer must outlive the workspace, because `_clear_live` destroys
+        # the whole workspace on every lock and rebuild — and a copy made inside
+        # the clear window is exactly what a lock must not strand on the
+        # clipboard. Built once, here, so a rebuild reuses it instead of leaving
+        # a guard and a timer behind per unlock (FIBR-0313 L9).
+        self._txn_clipboard = ClipboardAutoClear(
+            QGuiApplication.clipboard(),
+            seconds_provider=self._service.clipboard_clear_seconds,
+            parent=self,
+        )
         # The display prefs, read once post-unlock (the vault is locked here) and
         # passed to the display tabs (FIBR-0083 D7). All-"system" until then.
         self._prefs = DateTimePrefs(DATETIME_SYSTEM, DATETIME_SYSTEM, DATETIME_SYSTEM)
@@ -824,10 +836,7 @@ class MainWindow(QMainWindow):
             CategorizationService(self._service.vault),
             self._prefs,
             self._amount_prefs,
-            clipboard=ClipboardAutoClear(
-                QGuiApplication.clipboard(),
-                seconds_provider=self._service.clipboard_clear_seconds,
-            ),
+            clipboard=self._txn_clipboard,
         )
 
         self._statements_tab = StatementsWidget(
