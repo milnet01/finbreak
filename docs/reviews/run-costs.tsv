@@ -1,0 +1,3 @@
+date	arm	subject	kind	loop	agents	parent_tokens	verified	dismissed	executed	outcome
+2026-09-21	draft	docs/specs/FIBR-0155.md	spec	1	6	24377134	8	3	yes	open
+2026-09-21	draft	docs/specs/FIBR-0155.md	spec	2	4	9874806	2	0	no	complete
