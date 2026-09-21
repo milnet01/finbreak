@@ -1,4 +1,5 @@
 <!-- ants-roadmap-format: 1 -->
+<!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
 # finbreak — Roadmap
 
 > See [CHANGELOG.md](CHANGELOG.md) for what's shipped and the current
@@ -34,6 +35,7 @@
 - 🚧 In progress (being tackled now)
 - ✅ Done (shipped)
 - 💭 Considered (research phase; scope or feasibility uncertain)
+- 🚫 Dropped (closed, not done)
 
 **Themes** (per `docs/standards/roadmap-format.md § 3.4`)
 
@@ -101,8 +103,8 @@ scariest unknown (native-library bundling) up front.
   case).
   **Layman:** Automatically checks your work before it leaves your machine, so a broken commit can't reach GitHub and trigger a failure email.
   Kind: chore.
-  Lanes: ci, build.
   Source: user-request-2026-07-09 (CI failure email on a0cc895).
+  Lanes: ci, build.
 
 - ✅ [FIBR-0055] **Settings screen — a Settings menu item whose first control is a user-configurable auto-lock timeout, plus core preferences.**
   User request 2026-07-09: add a Settings menu item; the first thing to
@@ -2071,8 +2073,8 @@ scariest unknown (native-library bundling) up front.
   not blocking FIBR-0052/P08/P09.
   **Layman:** The app checks for a newer version and, if you choose, downloads and installs it for you and reopens — you're always in control (Later, Skip this version, or Update now).
   Kind: feature.
-  Lanes: packaging, ui, services.
   Source: user-request-2026-07-09.
+  Lanes: packaging, ui, services.
 
 - ✅ [FIBR-0132] **Windows `.exe` launches with a console window — build `--windowed` to suppress it.**
   FIBR-0015 froze the .exe with `--onefile` but not `--windowed`, so PyInstaller attaches a console (the black cmd window the user saw before the GUI). Fix: add `--windowed` in build-windows-exe.py. Wrinkle: `--windowed` sets sys.stdout/stderr to None on Windows (PyInstaller docs), so the windows-build.yml `--self-test` sentinel read (FINBREAK_SELFTEST_OK) goes blind — reroute the sentinel to a file via a FINBREAK_SELFTEST_OUT env var (run_self_test already takes an `out` stream) and have the workflow read the file + Start-Process -Wait for the now-GUI process. Regression-lock with a windows_build feature test asserting the driver builds --windowed.
@@ -2142,8 +2144,8 @@ scariest unknown (native-library bundling) up front.
   (release notes stay non-tr() verbatim data).
   **Layman:** If you skip a couple of updates, the "What's new" box only tells you about the newest one — it should show everything that changed since your version.
   Kind: enhancement.
-  Lanes: ui, services, packaging.
   Source: user-request-2026-07-19.
+  Lanes: ui, services, packaging.
 
 - ✅ [FIBR-0158] **Un-exclude the Debian 13 + Ubuntu 24.04 deb builds on OBS (home:milnet:finbreak).**
   Both RPM families (openSUSE Tumbleweed + Fedora 44) build, publish and install
@@ -3193,8 +3195,8 @@ lands on top.
   Dependencies: FIBR-0051 (shell). Independent of P08/P09; runs before them.
   **Layman:** Turn the single content area into tabs (Home · Statements · Accounts · Categories), add a Home button to the toolbar, and make the window remember its size and position (plus a Center-window action). The Statements tab shows what you've imported with an exact transaction count and lets you delete a statement and all its transactions — which needs a small database change to tag each transaction with the statement it came from.
   Kind: implement.
-  Lanes: ui, app, tests.
   Source: user-request-2026-07-09.
+  Lanes: ui, app, tests.
 
 ## P08 — Auto-categorisation rules
 
@@ -3396,8 +3398,8 @@ lands on top.
   both, or fold into FIBR-0017 if that is specced first.
   **Layman:** finbreak should open in whatever language your computer is set to, without you having to pick it. If it does not know your language, or does not have a translation for it yet, it opens in English.
   Kind: feature.
-  Lanes: ui, i18n.
   Source: user-request-2026-08-03.
+  Lanes: ui, i18n.
 
 - ✅ [FIBR-0210] **Startup is bricked by a corrupt window.ini (int('') on last_tab).**
   From the FIBR-0204 sweep (MEDIUM, verified). `MainWindow._restore_geometry`
@@ -4772,8 +4774,8 @@ lands on top.
   Not blocked: the current shell (Home/Statements/Accounts/Categories/Rules tabs, import wizard) can already be captured now; re-run after the dashboard (FIBR-0012) ships to add the headline dashboard shot. Pairs naturally with a P13 release.
   **Layman:** Create polished screenshots of the app filled with realistic fake sample data — for the GitHub page and the portfolio site — so people can see what it looks like without installing it.
   Kind: marketing.
-  Lanes: docs, ui, marketing.
   Source: user-request-2026-07-10.
+  Lanes: docs, ui, marketing.
 
 - ✅ [FIBR-0155] **Publish finbreak via the openSUSE Build Service (OBS) — native RPM/deb + the openSUSE software portal.**
   User has an OBS account (build.opensuse.org) and wants finbreak on the openSUSE store + other Linux distro channels. OBS builds native packages for many distros from one recipe and publishes to software.opensuse.org + downloadable repos — complementary to the existing AppImage (FIBR-0054) and the deferred Flatpak/Flathub (FIBR-0130).
@@ -4783,8 +4785,8 @@ lands on top.
   Scope to decide in the spec: (1) native-from-source packaging (an RPM `.spec` + a `debian/` recipe that pip-installs the PySide6 app + its native deps — SQLCipher, pikepdf/qpdf — into a distro package, .desktop + icon + AppStream metainfo) vs. wrapping the frozen AppImage; native is the "app store" experience OBS is built for. (2) Which targets to enable (openSUSE Tumbleweed/Leap, Fedora, Debian, Ubuntu). (3) How versioning/signing/release automation ties to the existing bump + release pipeline. (4) The AppStream metainfo `<release>` notes must mirror CHANGELOG (see changelog-writer). Needs: spec → /cold-eyes → implement (OBS project config + recipes + a submit/tag step) → verify a real OBS build. Dependencies: the app is feature-complete + already ships an AppImage, so no code blockers.
   **Layman:** Get finbreak into Linux "app stores": one OBS setup builds native openSUSE/Fedora (RPM) and Debian/Ubuntu (deb) packages and lists it on software.opensuse.org, so users install + auto-update it the normal way for their distro.
   Kind: package.
-  Lanes: packaging, release.
   Source: user-request-2026-07-21.
+  Lanes: packaging, release.
 
 - 📋 [FIBR-0163] **Add a populated Statements-tab screenshot via a synthetic statement import.**
   FIBR-0082's capture omits the Statements tab: the demo seeder inserts
@@ -6995,9 +6997,9 @@ because retrofitting them is a data migration.
   active theme's chart-series role, so whichever theme is chosen keeps the
   chart series distinguishable. Target phase: P12. Dependencies:
   FIBR-0012, FIBR-0014. Lanes: ui, accessibility. Kind: ux.
-  Source: user-request-2026-07-01.
   **Layman:** Pick from a set of colour schemes, including a family designed to stay readable if you are colourblind.
   Kind: ux.
+  Source: user-request-2026-07-01.
   Lanes: ui, accessibility.
 
 - 📋 [FIBR-0024] **Accessibility: keyboard navigation + screen-reader support.**
@@ -7006,9 +7008,9 @@ because retrofitting them is a data migration.
   (`QAccessible`) on widgets and charts. Pairs with the i18n/RTL
   (FIBR-0017) and theming (FIBR-0023) work. Target phase: P12.
   Dependencies: FIBR-0014. Lanes: ui, accessibility. Kind: accessibility.
-  Source: user-request-2026-07-01.
   **Layman:** Use the whole app with the keyboard alone, and have a screen reader announce what is on screen.
   Kind: accessibility.
+  Source: user-request-2026-07-01.
   Lanes: ui, accessibility.
 
 - 📋 [FIBR-0034] **Import preview + undo (rollback a whole import batch).**
@@ -7019,9 +7021,9 @@ because retrofitting them is a data migration.
   Preserves manual category overrides on re-import per FIBR-0010's rule.
   Target phase: P06 (lands with the first import UI). Dependencies:
   FIBR-0007. Lanes: services, ui, repo, tests. Kind: feature.
-  Source: user-request-2026-07-01.
   **Layman:** See exactly what an import is about to add before it lands, and undo a whole import in one action if it turns out to be the wrong file.
   Kind: feature.
+  Source: user-request-2026-07-01.
   Lanes: services, ui, repo, tests.
 
 - ✅ [FIBR-0035] **Auto-categorisation that learns from corrections.**
@@ -7069,8 +7071,8 @@ because retrofitting them is a data migration.
   gaps are per-account), FIBR-0007 (import captures the periods).
   **Layman:** Warns you when you've skipped a statement — e.g. you loaded January–March and then May onwards, and it spots that April is missing for that account.
   Kind: feature.
-  Lanes: services, repo, ui, tests.
   Source: user-request-2026-07-02.
+  Lanes: services, repo, ui, tests.
 
 - 📋 [FIBR-0039] **In-app liability disclaimer + issue reporting.**
   A plain-language liability disclaimer — the app is provided as-is and is not responsible for incorrect information it may display (mis-parsed amounts, wrong totals); it is local-only and not financial advice. Shown at first run (acknowledged once, persisted) and always available from an About/Help dialog. Alongside it, a "Report an issue" link opening the GitHub Issues page (https://github.com/milnet01/finbreak/issues) so users can log problems for resolution. Complements the MIT LICENSE's warranty disclaimer with a user-facing, plain-English one. Shares the About/Help screen with the donate-links item — whichever ships first builds the screen.
@@ -7169,15 +7171,15 @@ because retrofitting them is a data migration.
 
 - 📋 [FIBR-0072] **Warn (or disable chrome) when navigating away from an in-progress import.**
   main_window._open_import() never disables the toolbar/menu, so clicking Home/Statements/Accounts/Categories/Rules mid-import silently rebuilds the workspace and destroys the in-progress wizard (chosen file, column mapping, unsaved preview) with no confirmation. Either confirm before discarding, or disable navigation chrome during an import (as locked states do).
+  **Layman:** Clicking away mid-import warns you first, instead of silently throwing away the file and column choices you just made.
   Kind: ux.
   Source: indie-review-2026-07-10 (M-shell1).
-  **Layman:** Clicking away mid-import warns you first, instead of silently throwing away the file and column choices you just made.
 
 - 📋 [FIBR-0073] **Add keyboard mnemonics to menus + dialog labels (a11y sweep).**
   Menu titles (File/View/Window/Help/Donate) have no '&' Alt-accelerators; no dialog uses label mnemonics. Weakens keyboard-only navigation vs a typical desktop app (WCAG-adjacent). One focused sweep across main_window + the dialogs.
+  **Layman:** Menus and dialog fields get Alt-key shortcuts, so the app can be driven from the keyboard like any other desktop program.
   Kind: accessibility.
   Source: indie-review-2026-07-10 (shell L1 + dialog INFO).
-  **Layman:** Menus and dialog fields get Alt-key shortcuts, so the app can be driven from the keyboard like any other desktop program.
 
 - 📋 [FIBR-0074] **Dedicated per-bank PDF readers for ABSA / Nedbank / FNB (needs real anonymised sample statements).**
   Today ABSA/Nedbank/FNB statements CAN already be imported two ways: (1) their CSV/OFX exports (most reliable), and (2) the generic PDF table-extractor (pdf_importer.py) for any PDF with ruled transaction tables, via the column-mapping step. A DEDICATED zero-config text-layer reader like standard_bank.py (auto-detect + no mapping) needs REAL anonymised sample statements per bank to build and validate — the SB reader (FIBR-0050) required 6 real statements to catch layout edge cases; synthetic dummy PDFs exercise code paths but don't validate real-world layouts. Blocked on the user providing (or the project sourcing) a few real anonymised statements per bank. Until then, the generic extractor + CSV/OFX cover these banks.
@@ -7528,15 +7530,15 @@ because retrofitting them is a data migration.
   User request 2026-07-12. Cross-cutting UX: wherever a date is entered — the manual-entry dialog, the future Transactions filters (above), any settings/import date field — offer both a typed field (ISO-validated, the existing parse_transaction date check) and a QDateEdit-style calendar picker, so neither typists nor mouse users are forced. A shared date-input widget/helper so the two modes stay consistent (Rule-of-Three: extract on the third site).
   **Layman:** Anywhere you enter a date in the app, you can either type it (with a check that it's a real date) or pick it from a small calendar.
   Kind: ux.
-  Lanes: ui.
   Source: user-request-2026-07-12.
+  Lanes: ui.
 
 - 📋 [FIBR-0111] **Show the currency in its own column, separate from the amount value.**
   User request 2026-07-12 (screenshot): the Home Amount column renders "ZAR69.00" / "-ZAR25,000.00" with the currency crammed against the number, hard to read. Give the currency its own column (or right-align the bare number and show the currency code separately), so the value column holds just the formatted number + sign. Touches HomeView._format_amount / the Amount column layout (FIBR-0105 amount-display work) and should carry through to the future dedicated Transactions tab (FIBR-0109). Keep the negative-style (minus/brackets) + red/green colour prefs (FIBR-0105) working on the value column.
   **Layman:** Put the currency code (e.g. ZAR) in its own column so the number is easy to read, instead of "ZAR69.00" crammed together.
   Kind: ux.
-  Lanes: ui.
   Source: user-request-2026-07-12.
+  Lanes: ui.
 
 - ✅ [FIBR-0112] **Credit-card (Family C) import: continuation page without a column header drops its transactions.**
   Root-caused against a real SBSA CC statement (2025-10-20; real file/password never committed, synthetic fixture/tests to follow). A 3-page statement: page 1 = summary, page 2 = transaction table WITH the "Date Description Amount" column header, page 3 = continuation transactions with NO column header (opens straight into a "Debit Debit" section). _table_region (standard_bank.py:229) locates the Family-C region only by that column header, so page 3's region is empty and its 3 transactions (Checkers 514.21 + Cash Finance Charge 23.05 + Tips 10.00 = 547.26) are silently dropped. The completeness checksum then fails (opening 1348.95 - Σ = 1421.51 vs closing 1968.77; the 547.26 gap is exactly the dropped rows) and the whole statement is refused. Fix: when a Family-C page has no column header, fall back to starting the region at the first real transaction row (a CC segment ending in a 2-decimal amount) — which excludes summary-page date spans like "Statement Period 20 Sep 25 to 20 Oct 25" that carry no 2-decimal tail. TDD: pure _table_region unit tests (header-less continuation page captured; header-less summary page stays empty) + reconciliation; validated end-to-end against the real statement in a throwaway scratchpad.
@@ -7842,8 +7844,8 @@ because retrofitting them is a data migration.
   Details: biggest-amount-first sort at every level (matches the donut); the period + account selectors drive the tree; magnitudes shown like the tiles. Needs a new ReportingService drill API + a merchant-normalisation helper. Spec -> /cold-eyes (--max-loops 7) -> TDD when scheduled; after the v0.1.10 release per the current plan.
   **Layman:** Click a total on the Home dashboard to open it up — Spending breaks into categories, each category into shops (with a count like "McDonald's ×3"), and each shop into the actual purchases; Transfers break down by which accounts the money moved between.
   Kind: enhancement.
-  Lanes: reporting, ui.
   Source: user-request-2026-07-14.
+  Lanes: reporting, ui.
 
 - ✅ [FIBR-0139] **Built-in category library — smarter auto-categorise out of the box.**
   Fixes the cold-start: today auto-categorise only matches USER-written rules (FIBR-0010), so a fresh vault imports everything Uncategorised. Design (brainstorm-approved 2026-07-14):
@@ -8039,8 +8041,8 @@ because retrofitting them is a data migration.
   Scope for this item: (1) CategoriesWidget — allow picking an existing Category as parent and render a 3-deep tree; (2) the category pickers that flatten the tree (Set-category dialog ui/category_picker.py, Rules editor ui/rules.py, Transactions category filter) must render/resolve the deeper level — note the existing flat-combo ambiguity already roadmapped separately; (3) spec -> cold-eyes -> TDD. Decide a max depth (2 vs 3 vs arbitrary) — the model allows arbitrary, but a UI/UX cap keeps the tree legible.
   **Layman:** Let you add a third level under a category (e.g. Expenditure › Groceries › Spar) and pick it when tagging transactions. Note: renaming a category (e.g. correcting "Spar" to "Pick 'n Pay") already works today — this item is only about adding the deeper third level.
   Kind: feature.
-  Lanes: ui, services.
   Source: user-request-2026-07-19.
+  Lanes: ui, services.
 
 - ✅ [FIBR-0156] **Menu bar: add a "Report an Issue" item to the right of Donate that lets users log an app issue.**
   User wants a menu-bar entry to the RIGHT of Donate for logging an issue with the app. Anchor: the menu bar is File · View · Window · Help · Donate (main_window.py:4); Donate's actions open URLs via self._open_url(...) + QDesktopServices (main_window.py:32, :360-376), mirroring the .github/FUNDING.yml donate-URL pattern.
@@ -8049,8 +8051,8 @@ because retrofitting them is a data migration.
   Design (for the spec): a new top-level "Report an Issue" menu-bar item positioned after Donate, opening the public repo's issue page (https://github.com/milnet01/finbreak/issues/new) in the user's browser via self._open_url — privacy-preserving and consistent with the local-only model + security-model INV-8 (opening a URL in the browser is NOT app network access, exactly like Donate). Decide: single top-level action vs a small menu ("Report a bug" / "Request a feature" → issues/new?template=...); optionally pre-fill the issue body with __version__ + OS via URL query (?title=&body=&labels=) — no sensitive data. Keep the URL as a module constant near the DONATE_* constants. Needs: spec (tiny) → cold-eyes (self-read; a one-menu-item feature test, not a multi-file design doc) → reproduce-first TDD (mirror the Donate action tests) → close.
   **Layman:** Add a "Report an Issue" button next to "Donate" in the top menu so users can quickly report a bug or request a feature — it opens the project's issue page in their browser (no data leaves the app).
   Kind: feature.
-  Lanes: ui.
   Source: user-request-2026-07-21.
+  Lanes: ui.
 
 - ✅ [FIBR-0171] **Cash-flow forecast — project account balances forward from detected recurring income and expenses.**
   Turns finbreak from backward-looking (what did I spend?) into forward-looking (can I afford this?). Reuses the shipped recurring-money detection (FIBR-0142): take the confirmed recurring income + expenses, roll them forward from today's balance, and draw a projected-balance line to a chosen horizon (month-end / N days). Highest value-per-line-of-code of this batch because the detection engine already exists.
@@ -8468,8 +8470,8 @@ because retrofitting them is a data migration.
   filter plumbing; no new repository. Dependencies: FIBR-0012 (✅).
   **Layman:** Let people narrow the transaction list to amounts between two figures — e.g. "show me everything over R1 000" — alongside the search, date, account and category filters already there.
   Kind: feature.
-  Lanes: ui.
   Source: user-request-2026-07-28.
+  Lanes: ui.
 
 - ✅ [FIBR-0192] **Finish FIBR-0084: the shared column scheme on the last unwired headers, and make Reset layout actually reset columns.**
   Split out of FIBR-0113 on 2026-07-28 after a /cold-eyes loop-2 pass found
@@ -9256,8 +9258,8 @@ because retrofitting them is a data migration.
   stub — it makes the test's stated independence true.
   **Layman:** One test file crashes hard unless other tests run first, so you can't run it by itself.
   Kind: test.
-  Lanes: tests.
   Source: in-session-2026-08-02 v0.1.19 release.
+  Lanes: tests.
 
 - ✅ [FIBR-0207] **The theme INV-1 test failed whenever a real finbreak was open on the same machine.**
   Caught by the pre-push gate while pushing the v0.1.19 release record:
@@ -9303,8 +9305,8 @@ because retrofitting them is a data migration.
   than an autouse fixture; a second such test should factor it out.
   **Layman:** A test broke just because the app happened to be running — fixed, so it no longer depends on that.
   Kind: test.
-  Lanes: tests.
   Source: in-session-2026-08-02 v0.1.19 release.
+  Lanes: tests.
 
 - ✅ [FIBR-0231] **Plain-English monthly summary — the app says what happened, in a sentence.**
   Tiles, a donut, a trend line, a drill-down, a forecast and alerts all
@@ -9708,9 +9710,9 @@ because retrofitting them is a data migration.
   a full recompute; add supporting indexes (`date`, `category_id`). Keeps
   the dashboard fast at tens of thousands of transactions. Target phase:
   P10. Dependencies: FIBR-0012. Lanes: reporting, perf. Kind: perf.
-  Source: user-request-2026-07-01.
   **Layman:** The dashboard stays fast once you have tens of thousands of transactions, and editing one row no longer recalculates everything.
   Kind: perf.
+  Source: user-request-2026-07-01.
   Lanes: reporting, perf.
 
 - 📋 [FIBR-0028] **Virtual table model for the transaction list.**
@@ -10092,8 +10094,8 @@ is a future error tomorrow.
   major. Full gate re-run green: 1610 passed / 2 skipped, pip-audit clean.
   **Layman:** A security library finbreak uses had a published flaw; it is now on the fixed version.
   Kind: security.
-  Lanes: dependencies, security.
   Source: in-session-2026-08-04.
+  Lanes: dependencies, security.
 
 - 📋 [FIBR-0239] **design.md's service list and architecture diagram are two services behind.**
   Noticed while adding MonthSummaryService to `docs/design.md`'s
