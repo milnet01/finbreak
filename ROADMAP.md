@@ -12208,6 +12208,45 @@ is a future error tomorrow.
   Kind: test.
   Source: in-session-2026-09-21 (observed during a pre-push gate run).
 
+- 📋 [FIBR-0348] **The i18n guard is blind to a keyword-argument tr() call, so the class it closes can reopen silently.**
+  tests/features/i18n/test_translatable_strings.py closes FIBR-0310 R3: a
+  tr() or translate() argument that pyside6-lupdate reads must be a string
+  literal, or the string extracts to an empty catalog entry and ships
+  untranslatable while reading at the call site as though it were handled.
+
+  THE HOLE. _offences walks positional arguments only. For each index it
+  needs it does `if index >= len(node.args): continue` — so a call that
+  passes those arguments by KEYWORD presents an empty args list and every
+  index is skipped. The call is not flagged; it is not examined at all.
+  node.keywords is never read.
+
+  MEASURED 2026-09-21 by replicating the guard's own logic against four
+  probe calls. The positional non-literal form is FLAGGED, as it should be.
+  All three keyword forms are INVISIBLE: translate("Ctx", sourceText=var),
+  translate(context=CTX, sourceText=var), and tr(text=var).
+
+  NOT A LIVE DEFECT — and that is why this is filed rather than fixed in
+  passing. The same walk over src/finbreak/ finds no tr() or translate()
+  call using keyword arguments at all, and none passing fewer positional
+  arguments than the guard needs. So nothing ships untranslatable today.
+  The hole is that the guard cannot object if such a call is added, and a
+  guard that reports clean on a defect it cannot see is the failure mode
+  FIBR-0310 R3 filed in the first place.
+
+  THE FIX SHAPE, credited to the peer session that prompted this: make
+  ARITY its own offender rather than a skip. Assert that every matched call
+  supplies the arguments lupdate reads POSITIONALLY, so a keyword call
+  fails with "too few positional arguments" instead of passing quietly.
+  That closes the class rather than the instance, which is the same
+  reasoning the planted-offence leg beside it already rests on.
+
+  Do NOT close this by adding the keyword form to the walk and reading
+  node.keywords for a literal. A keyword call with a literal is still
+  invisible to lupdate, so accepting it would encode a false allowance.
+  **Layman:** A safety net that catches untranslatable text has a gap — write the same mistake one particular way and it slips past unnoticed.
+  Kind: test.
+  Source: in-session-2026-09-21 (peer session reported the same defect class from its own tree).
+
 ## How to add an item
 
 1. Allocate the next ID:
