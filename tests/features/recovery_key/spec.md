@@ -567,22 +567,27 @@ collision waiting to happen.
 - **Changing the master password as an ordinary settings action**, the `.fbk`
   container's shape, biometric unlock (FIBR-0020), and cross-version `.fbk`
   restore (FIBR-0302) — all § 9 of the design spec.
-- **Replace / Remove from Settings** (§ 4.7). Only *Add* is exercised, by
-  INV-12; the other two carry no invariant in § 5 and adding tests for them
-  would be scope creep.
+- **A numbered invariant for Replace / Remove from Settings** (§ 4.7). § 5
+  carries one for *Add* only, by INV-12. Both other actions *are* exercised —
+  `test_settings_flows.py` drives each one's Settings teardown, its confirmation
+  and an idle auto-lock inside it — so what is out of scope is giving them an
+  INV, not covering them. This bullet read "adding tests for them would be scope
+  creep" until FIBR-0312, which the FP02 and FP03 legs had already falsified.
 
-## Status — this suite is expected to FAIL
+## Status — implemented, and this suite passes
 
-FIBR-0019 is **not implemented**. `keywrap.py`, `services/recovery_code.py`,
-`services/vault_migration.py` and the two `AuthService` methods above exist only
-as stubs raising `NotImplementedError("FIBR-0019")`, so these tests *execute*
-rather than dying at collection (`testing.md` § 1 — the test is seen to fail
-before the code exists). Five of the thirteen fail against today's code for
-reasons already established rather than assumed: INV-1 because every current
-call site passes a derived key as the database key; INV-4 because the current
-sidecar has seven flat fields; INV-11 because nothing today can reach
-`slots.recovery`; INV-12 because no `sidecar_version` field exists at all; and
-INV-13 because no migration exists to take a rollback copy before.
+FIBR-0019 shipped in v0.1.23 — see that release's section in `CHANGELOG.md`.
+`keywrap.py`, `services/recovery_code.py`, `services/vault_migration.py` and the
+two `AuthService` methods above are implemented, not stubs, and the suite is
+green.
+
+This section claimed the opposite until FIBR-0312. It was written while those
+modules were stubs raising `NotImplementedError("FIBR-0019")`, so the tests
+executed and were seen to fail before the code existed (`testing.md` § 1). That
+is the suite's history, not its state — and a reader asking whether the feature
+exists was getting the wrong answer from the document written to tell them.
+
+What outlives the stubs is the rule:
 
 **Do not adjust an assertion to make one pass.** Under a live defect that is
 how a test ends up asserting the bug.
