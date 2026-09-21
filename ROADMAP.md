@@ -12403,6 +12403,54 @@ is a future error tomorrow.
   Kind: doc-fix.
   Source: in-session-2026-09-21 (FIBR-0050 review-contract loop 15; all three lanes disclosed it).
 
+- 📋 [FIBR-0351] **Family E's signature can be loosened with no test catching it, and no fixture can catch it.**
+  Filed out of FIBR-0190's loop-7 cap tail, where it was recorded as owed.
+  A loop-log row is not a tracked item, so it goes here.
+
+  THE GAP. `_signature_present` requires EVERY token, so removing one from
+  Family E's five-token signature LOOSENS the detector rather than breaking
+  it. FIBR-0190 INV-1 and INV-2 both name that removal as their breaker,
+  and neither's test can catch it: `family_e_current.pdf` still matches, so
+  the detection leg stays green by construction.
+
+  MEASURED 2026-09-21, by extracting every pre-E fixture's text with the
+  same helper FIBR-0190 § 7.10's leg uses and re-running all five
+  single-token drops against that text:
+
+  - no pre-E fixture satisfies the full five-token E signature;
+  - exactly one drop, `payments`, is satisfied by exactly one fixture,
+    `family_d_moneymarket.pdf`, whose header does print `date` and
+    `description` as FIBR-0050's § Family D records;
+  - that fixture resolves as `Family.D` before E is reached, so it cannot
+    be stolen however loose E becomes.
+
+  SO NO FIXTURE CAN CLOSE THIS. Only a fixture resolved after E under the
+  C→D→E→B→A order could be stolen -- B and A -- and none satisfies any
+  drop. A fixture-driven assertion is therefore not the fix, which is what
+  an earlier loop wrongly prescribed.
+
+  THE FIX. Export E's token tuple from `importers/standard_bank.py` and
+  have the detector and the test consume the same object. A test carrying
+  its own copy of the five tokens asserts its copy: the source can be
+  loosened away from it while the test stays green, which is the drift the
+  assertion exists to catch. Then state it in FIBR-0190 § 7.2, which
+  currently records the gap as open.
+
+  DO NOT close it by asserting `detect_standard_bank(...) is not
+  Family.E` -- that is entailed by the detect-as-today list already in the
+  same leg, so it catches nothing new. And do NOT close it by moving E
+  above D in the dispatch order: that is a live behaviour change on the
+  Money-Market case FIBR-0190 D2 exists for.
+
+  SECOND, SMALLER HALF, same leg. `test_FIBR0190_INV2_covers_every_pre_e_fixture`
+  asserts `len(_PRE_E_FIXTURES) == 15` -- a literal. It agrees with the
+  hand-written pair list by maintenance rather than construction, and that
+  same literal was wrong in ten places until loop 5 of that spec's review.
+  Assert it against the pair list's own length instead.
+  **Layman:** A safety check on how the app recognises one statement layout can be weakened without any test noticing.
+  Kind: test.
+  Source: in-session-2026-09-21 (FIBR-0190 review-contract loop 7, the cap tail).
+
 ## How to add an item
 
 1. Allocate the next ID:
