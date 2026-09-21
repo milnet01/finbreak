@@ -12287,6 +12287,53 @@ is a future error tomorrow.
   Kind: doc-fix.
   Source: in-session-2026-09-21 (FIBR-0050 review-contract loop 15, 4b blast-radius sweep).
 
+- 📋 [FIBR-0350] **CLAUDE.md steers every cold reviewer of FIBR-0050 away from a named area, and three lanes said so unprompted.**
+  MEASURED, not inferred. Loop 15 of FIBR-0050's review required each lane
+  to open with what it already knew. All three, independently, named the
+  same thing: CLAUDE.md § Module map carries a paragraph about that spec
+  which says the INV-11 / D10 / D13 drift "is now repaired and this note is
+  no longer a live warning: checked 2026-09-21 by three independent cold
+  lanes ... Do not go looking for a divergence that was fixed."
+
+  WHY THAT IS A PROBLEM. review-contract's whole method is that loop 2 and
+  after run COLD — a fixed defect not raised again is the proof the fix
+  held. The paragraph pre-announces a prior loop's finding AND its verdict,
+  in language a lane is not free to question, about the single most
+  contested area of this spec. One lane recorded being "steered away" from
+  it. Every lane read the area anyway and found it sound, so this run was
+  not damaged; the channel is what matters, because it is permanent and
+  applies to every future review of that spec.
+
+  It is not closed by scrubbing. review-contract withholds the spec's own
+  loop log by handing lanes a scrubbed copy, but CLAUDE.md is loaded as
+  project instructions by the harness, before any brief. A lane cannot
+  decline it.
+
+  SECOND CHANNEL, same run, same disclosure: the harness git snapshot names
+  recent commit subjects, so "FIBR-0050: fix four loop-2 findings" tells a
+  lane a prior loop ran and roughly what it found. That one is the global
+  skill's to solve and is already described in
+  skills/_shared/cold-reader-contamination.md; this item is only about the
+  paragraph we control.
+
+  THE FIX, and it is small. Move the settled history to
+  docs/history/claude-md.md, which exists for exactly this and is not
+  loaded at session start. Keep in CLAUDE.md only the part that is still a
+  live instruction for a writer: that INV-11 is the canonical
+  all-or-nothing clause, that it must be amended in the same commit as a
+  behaviour change, and the _draft trap that decides degrade-vs-refuse on
+  the amount rather than the rejection reason. Drop the verdict sentence,
+  the loop count and the "do not go looking" instruction.
+
+  WHY FILED RATHER THAN DONE HERE. Editing CLAUDE.md changes what a
+  conformer writes, so it trips rule 14's gate on that document, and this
+  session was mid-gate on a different one. Adjacent to FIBR-0296, which
+  proposes splitting CLAUDE.md for size; this is a distinct cause and the
+  two fixes do not depend on each other.
+  **Layman:** Our own project notes tell a fresh reviewer where not to look, which quietly weakens every independent review of the import parser.
+  Kind: doc-fix.
+  Source: in-session-2026-09-21 (FIBR-0050 review-contract loop 15; all three lanes disclosed it).
+
 ## How to add an item
 
 1. Allocate the next ID:
