@@ -12283,6 +12283,27 @@ is a future error tomorrow.
   to BOTH the opening and the closing and BEFORE the completeness gate
   compares them, and add the too-large refusal to that spec's raise list.
   Gate each with `review-contract <path> --genre spec --max-loops 3`.
+  Correction (2026-09-21): this item enumerated TWO sites and there are
+  THREE. Found by a peer session's cold review of FIBR-0190, where two
+  lanes independently stopped at the third and one of them noted that a
+  fixer working from this bullet would miss it.
+
+  The third is FIBR-0190 § 4.5's **Return value** bullet, which
+  prescribes `to_minor(opening, exponent) + sum(d.amount_minor ...)`. It
+  converts the OPENING, not the closing, so an editor repairing the two
+  `closing` occurrences this bullet named leaves it untouched.
+
+  It is the one that matters most. On Family E it is the ONLY conversion
+  that executes, because E prints no closing at all. The shipped
+  `_verify_e_totals` already uses `_storable(opening, exponent)` and its
+  comment says why: E is the one family that reaches a stored balance
+  with an opening `_verify_checksum` never converted, since that gate
+  takes its `closing is None` early return before either bound.
+
+  So the generic instruction above -- "applied to BOTH the opening and
+  the closing" -- was right and was not enough: it stated the rule and
+  enumerated only two of the three places to apply it. Verified in the
+  tree before recording this.
   **Layman:** Two design documents still tell a builder to convert a statement balance the old way, which can crash when saving an absurdly large figure.
   Kind: doc-fix.
   Source: in-session-2026-09-21 (FIBR-0050 review-contract loop 15, 4b blast-radius sweep).
