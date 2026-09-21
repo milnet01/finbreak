@@ -335,6 +335,24 @@ so Flathub review and code signing do not block this release.
 
   Flathub and code signing remain NON-blockers, per § 5's own rule that a
   third party's inbox is not a gate.
+  GATE SECTION VERSUS THIS LIST (2026-09-21, later the same day). The note
+  above concludes FIBR-0346 "is the only one left". The v1.0.0 section of the
+  roadmap carries three open items: FIBR-0346, this item, and FIBR-0335 --
+  which this bullet never names, in any of its amendments.
+
+  FIBR-0335 is "Family B's completeness gate is weakened on a premise nothing
+  in the repo supports". Either it is a gate condition and this list is short
+  by one, or it is filed in the gate section and should not be. Settle which
+  before sequencing off either the list or the section; they currently
+  disagree.
+
+  Not asserting it is a blocker. Recording that the two places that answer
+  "what is left before 1.0" give different answers, which is the same failure
+  mode this bullet's own amendment history keeps hitting -- four corrections
+  in about a month, each found by a person re-reading the tree rather than by
+  the list noticing itself. Re-derive the five conditions from
+  versioning.md § 5 against the tree, then make the list and the section agree
+  with the result.
   **Layman:** The plan for calling the app finished: what has to be true first, and which four jobs are standing in the way.
   Kind: release.
   Source: user-decision-2026-08-20 ("what gets us to v1.0?").
