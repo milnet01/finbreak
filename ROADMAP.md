@@ -12172,6 +12172,42 @@ is a future error tomorrow.
   Source: check-code-2026-09-21 (zizmor --persona auditor).
   Lanes: ci, security.
 
+- 📋 [FIBR-0347] **A batch-import UI test fails in the full suite and passes alone, so the gate is not reliably repeatable.**
+  Observed 2026-09-21 on a pre-push gate run:
+  tests/features/batch_import/test_batch_import_ui.py::
+  test_INV5_displayed_account_is_the_targeted_account failed, with 2225 passed.
+  Re-run alone it passed immediately. The same commit's next full gate run went
+  green (2226 passed) and the push landed, so it is intermittent rather than a
+  real regression -- the change under test was a docstring and a spec edit and
+  touches nothing this test reads.
+
+  WHY IT IS WORTH FILING RATHER THAN SHRUGGING AT. The gate is what stands
+  between this project and a bad release, and a gate that fails once in N runs
+  for no reason trains a session to re-run until green. That is exactly how a
+  REAL failure gets pushed through. The cost is not the minute lost; it is the
+  habit.
+
+  LIKELY CLASS, not yet confirmed. This project has a recorded qtbot pattern: a
+  waitUntil on a PROXY condition returns a turn early when the code under test
+  chains singleShot(0) callbacks, which is green alone and red occasionally
+  under load. A full-suite run is exactly when load is highest. That is a
+  hypothesis from the shape, not a diagnosis -- nobody has read this test yet.
+
+  HOW TO ACTUALLY PIN IT, because a re-run proves nothing either way:
+  - Reproduce under load rather than by repeating: run the full suite, or at
+    least the ui-heavy suites together, rather than the file alone.
+  - pytest -p no:randomly (or the project's ordering plugin if one is active) to
+    establish whether it is ORDER-dependent rather than timing-dependent -- those
+    need different fixes and a re-run cannot tell them apart.
+  - If it is the qtbot class, the fix is to waitUntil on the state the test
+    ASSERTS, not on a proxy for it.
+
+  Do not "fix" it by adding a sleep or by widening a timeout. That converts a
+  visible flake into a slow one and leaves the race in place.
+  **Layman:** One test occasionally fails when the whole suite runs but passes on its own, which makes a green build less trustworthy.
+  Kind: test.
+  Source: in-session-2026-09-21 (observed during a pre-push gate run).
+
 ## How to add an item
 
 1. Allocate the next ID:
