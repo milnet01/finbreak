@@ -23,6 +23,12 @@ signaling per
 
 ### Fixed
 
+- **A saved PDF report now always covers the month its filename names.** (FIBR-0342)
+  If you had pinned a timezone in Settings that differed from your computer's,
+  an exported report could be named for one month and contain another month's
+  figures. The filename and the report now resolve their period from the same
+  clock — the one you pinned.
+
 - **Recovering from an interrupted restore now survives a power cut.** (FIBR-0314)
   If a restore was interrupted, finbreak puts your original data back the next
   time it starts. That recovery is now flushed to disk, so losing power right

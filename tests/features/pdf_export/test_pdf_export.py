@@ -506,3 +506,97 @@ def test_FIBR0327_period_month_name_follows_the_locale(qapp, service, monkeypatc
         "calendar.month_name."
     )
     assert "January 2026" not in html
+
+
+def test_the_report_and_its_filename_agree_on_the_period(
+    qtbot, service, monkeypatch, tmp_path
+):
+    """FIBR-0013 INV-7 — the report's period resolves exactly as Home's.
+
+    Home (`ui/home.py`) and the export dialog (`ui/export_dialog.py`) both read
+    the APP clock, ``datetime_format.today()``, which follows the zone the user
+    pinned in Settings. ``_on_export_requested`` built the default FILENAME from
+    that clock and then called ``export()`` with no ``today``, so the CONTENTS
+    fell back to ``date.today()`` — the machine's zone. Where the two are on
+    different calendar days, the filename names one month and the report covers
+    another, on a money document.
+
+    Two clocks are patched on purpose, because that IS the condition: a pinned
+    zone and a machine zone on different calendar days. After the fix the second
+    patch is inert, which is the property being asserted — the output must not
+    follow the machine clock.
+
+    Asserts on the PDF's own period line and on the offered filename, never on
+    what the service was handed. The defect is that the two artefacts disagree,
+    and only the pair shows it.
+    """
+    import pdfplumber
+
+    from finbreak.services import pdf_export as pdf_export_module
+    from finbreak.ui import main_window as shell_module
+    from finbreak.ui.main_window import MainWindow
+
+    # The pinned zone says it is already March, so previous-month is February.
+    app_clock = date(2026, 3, 1)
+    # The machine says it is still February, so previous-month is January.
+    system_clock = date(2026, 2, 28)
+
+    monkeypatch.setattr(shell_module, "app_today", lambda: app_clock)
+
+    class _SystemClock(date):
+        @classmethod
+        def today(cls):
+            return system_clock
+
+    monkeypatch.setattr(pdf_export_module, "date", _SystemClock)
+
+    a = _accounts(service)[0].id
+    _add(service, a, -50_00, occurred_on="2026-01-10", desc="january row")
+    _add(service, a, -70_00, occurred_on="2026-02-10", desc="february row")
+
+    out = tmp_path / "report.pdf"
+    offered: list[str] = []
+
+    class _SaveDialog:
+        @staticmethod
+        def getSaveFileName(parent, caption, default_name, filter_):
+            offered.append(default_name)
+            return str(out), filter_
+
+    monkeypatch.setattr(shell_module, "QFileDialog", _SaveDialog)
+
+    window = MainWindow(service)
+    qtbot.addWidget(window)
+    window._enter_unlocked()
+    window._open_export()
+    window._on_export_requested()
+
+    assert offered, (
+        "precondition: the save dialog must have been reached, or nothing was "
+        "exported and this leg is vacuous."
+    )
+    assert "2026-02" in offered[0], (
+        "precondition: the offered filename must name February — the app "
+        "clock's previous month — or the two clocks were not made to disagree "
+        "and the defect is unreachable.\n"
+        f"  offered: {offered[0]!r}"
+    )
+    assert out.exists(), "precondition: the export must have written a file."
+
+    with pdfplumber.open(out) as pdf:
+        text = "\n".join(page.extract_text() or "" for page in pdf.pages)
+
+    assert "February 2026" in text, (
+        "the report's period must resolve on the SAME clock as the filename "
+        "(FIBR-0013 INV-7: the period resolves exactly as Home's). The "
+        "filename offered February; the report was rendered from "
+        "`date.today()` instead of the pinned zone, so it covers a different "
+        "month.\n"
+        f"  expected: 'February 2026' in the period line\n"
+        f"  offered filename: {offered[0]!r}"
+    )
+    assert "January 2026" not in text, (
+        "the report covered January — the MACHINE clock's previous month — "
+        "while its filename named February. That is the wrong-month split.\n"
+        f"  offered filename: {offered[0]!r}"
+    )

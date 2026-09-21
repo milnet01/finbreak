@@ -30,3 +30,10 @@ is set, locks it with AES-256 — the money-clarity report a user can share.
 - **Atomic + safe (INV-2/INV-12).** `export(options, out_path)` is the sole writer:
   temp file → `os.replace`; on any failure the temp is unlinked and no partial or
   unencrypted file is left.
+- **One clock (INV-7, FIBR-0342).** The report's period and its offered filename
+  resolve from the **same** date, and it is the **app** clock — the zone the user
+  pinned in Settings, which is what Home reads. The shell reads it **once** and
+  passes it to both, so neither can straddle midnight. Driven through the real
+  shell and asserted on the PDF's own period line against the offered filename:
+  the defect was that the two artefacts disagreed, and only the pair shows it.
+  A machine clock on a different calendar day must not move the output.

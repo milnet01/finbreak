@@ -1084,8 +1084,18 @@ class MainWindow(QMainWindow):
         if not isinstance(dialog, ExportDialog):
             return
         options = dialog.options()
+        # ONE read of the app clock, shared by the filename and the render. The
+        # filename read it and the render did not, so the contents fell back to
+        # the OS clock in the service's own default — the MACHINE's zone — and a
+        # pinned zone on a different calendar day put a January report in a file
+        # named February (FIBR-0013 INV-7: the period resolves exactly as
+        # Home's, and Home reads this clock). Read once rather than twice: two
+        # reads can straddle midnight, which is the same split in miniature.
+        # Spelled without naming the OS call, because the FIBR-0327 guard in
+        # tests/features/datetime_display/ greps these modules by line.
+        today = app_today()
         default_name = (
-            f"finbreak-report-{period_filename_slug(options.prefs, app_today())}.pdf"
+            f"finbreak-report-{period_filename_slug(options.prefs, today)}.pdf"
         )
         path, _ = QFileDialog.getSaveFileName(
             self,
@@ -1097,7 +1107,7 @@ class MainWindow(QMainWindow):
             return  # Cancelled the save dialog — a clean no-op (dialog stays open).
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
-            PdfExportService(self._service.vault).export(options, path)
+            PdfExportService(self._service.vault).export(options, path, today)
         except (VaultLockedError, OSError, pikepdf.PdfError):
             # The INV-12 failure set: a vault auto-lock mid-export, an unwritable
             # path / disk-full (OSError), or a pikepdf encryption error. export()
