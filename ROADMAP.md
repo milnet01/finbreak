@@ -52,6 +52,3050 @@
 
 ---
 
+## v1.0.0 — the 1.0 gate
+
+Everything that must be true before 1.0.0 cuts. The gate is versioning.md § 5's
+five conditions, not a feature list: 1.0.0 says the § 2 compatibility surface is
+frozen and will not break without a MAJOR. Conditions 1 and 4 are met —
+FIBR-0019 shipped, and SECURITY.md and CODE_OF_CONDUCT.md both exist. Note what
+is deliberately NOT here: § 5 rules that a third party's inbox is never a gate,
+so Flathub review and code signing do not block this release.
+
+- 📋 [FIBR-0346] **The RPM and deb still bundle the split libxkbcommon pair the AppImage stopped bundling.**
+  FIBR-0208 is fixed for the AppImage only. The OBS recipes freeze with
+  PyInstaller too and have the same shape of defect, found while reading
+  them to check whether the fix rippled.
+
+  The evidence is in the recipes themselves. packaging/obs/finbreak.spec
+  BuildRequires libxkbcommon0 (openSUSE) / libxkbcommon (Fedora) so
+  PyInstaller can collect it, and its Requires list is "ONLY the host-left
+  libGL/libEGL pair" by its own comment. packaging/obs/debian/control says
+  the same in Build-Depends and Depends. So the payload carries
+  libxkbcommon and the host supplies libxkbcommon-x11 -- the split pair
+  FIBR-0208 measured segfaulting.
+
+  Why it is less acute than the AppImage case, and why it is still wrong.
+  A distro package is built and installed on the same distro, so the two
+  halves start in step. They drift as soon as the host updates
+  libxkbcommon and the installed payload does not, which is the normal
+  state of a package a few weeks after release. The AppImage was the acute
+  case because it crosses distros by design.
+
+  THE FIX IS THE SAME TWO MOVES, per recipe: drop the library from
+  BuildRequires / Build-Depends so nothing collects it, and add it to
+  Requires / Depends so the host supplies both halves. Also amend
+  FIBR-0155 § 3.5, which states the Requires set as libGL/libEGL only and
+  is the reasoning those lists were built from.
+
+  NOT DONE IN THIS SESSION, deliberately. A packaging change cannot be
+  verified from this desktop -- it needs an OBS submit round, and the four
+  targets are green today. The user's decision of 2026-09-21 is to
+  re-submit OBS once, at 1.0.0, so this lands with that submit where it
+  can actually be proved. Sequencing it earlier buys an unverified change
+  to a working build.
+
+  Verification when it is taken: install the built package in a bare
+  container of that distro and run finbreak --self-test, which is what
+  packaging/obs/README.md already prescribes, then check no libxkbcommon
+  travels under /usr/lib/finbreak/.
+  **Layman:** The Linux app-store packages carry the same keyboard-library bug the downloadable version just had fixed.
+  Kind: fix.
+  Source: in-session-2026-09-21 (found while fixing FIBR-0208).
+
+- 📋 [FIBR-0335] **Family B's completeness gate is weakened on a premise nothing in the repo supports.**
+  _verify_checksum compares MAGNITUDES for Family B and signed totals for
+  every other family. The reason its comment gives is that B's
+  running-balance column prints unsigned magnitudes while its CLOSING
+  BALANCE row prints a sign.
+
+  Two independent cold lanes questioned that premise and it does not hold
+  up against the code:
+
+  - _parse_family_b's balance group is `([\d.,]+-?)` -- it accepts a
+    trailing `-` -- and the token goes through _signed_balance, so a
+    negative B balance is parsed signed.
+  - D9 and INV-8 both list "a leading `-` for Family B's negative
+    balances" among the signs to strip.
+  - Both endpoints are parsed by the same helper: _capture_closing also
+    calls _signed_balance, and _money_tokens deliberately re-attaches an
+    adjacent sign "so _is_negative can see it". So there is no parsing
+    asymmetry between the two ends.
+
+  What IS verified is narrower: B prints no per-amount sign, which is why
+  _verify_row takes check_sign=False there and nowhere else.
+
+  Why it matters rather than being a wording quibble: the magnitude form
+  cannot catch a truncation that flips the reconciled total's sign, which
+  the same comment says is what the signed form exists to catch on an
+  overdrawn account. If the premise is wrong, B is carrying a weaker gate
+  for no reason.
+
+  Not settleable from this repo, which holds no real statements by design.
+  It needs one real Home Loan statement whose ledger goes negative --
+  then either the exemption is justified and the comment should say which
+  convention differs, or the abs() comes out and B joins the signed
+  comparison.
+
+  Surfaced rather than fixed: a docs gate does not edit code. FIBR-0050
+  now states the magnitude form as what the reader does, and no longer
+  asserts the printing convention.
+  THIS MAY BE CLOSEABLE FROM DATA THE SPEC ALREADY HOLDS (2026-09-21), raised
+  by a cold lane during FIBR-0050 loop 13 and passed through with its hedge
+  intact rather than as a verdict.
+
+  INV-11 says settling Family B's sign convention "needs a real Home Loan
+  statement whose ledger goes negative". FIBR-0050 § Verified basis transcribes,
+  from a real statement, a Home Loan "CLOSING BALANCE -915.60" on a ledger row,
+  while the Family B worked run in the same document shows the ledger running
+  strongly positive. So the document may already contain the thing it says it is
+  waiting for.
+
+  WHAT IS NOT SETTLED, and it is the whole question: whether that real ledger
+  actually CROSSES zero, or whether its closing row simply prints the negated
+  running balance. Those two look identical in a single transcribed line, and
+  neither the lane nor I will guess about the underlying statement. Deciding it
+  needs the statement itself, which is why this stays open rather than closing.
+
+  WHY IT IS WORTH THE LOOK RATHER THAN WAITING. By the strict materiality test no
+  line of code changes today and the finding would normally be dismissed -- the
+  spec is internally consistent about its own uncertainty. What earns it a place
+  is what INV-11 concedes two sentences before: B's magnitude gate "misses a
+  truncation that flips the reconciled total's sign". That is a silently short
+  money import, not a wording defect. If the convention can be settled from a
+  statement already in hand, that gate can be tightened now instead of someday.
+
+  Next step is a person reading the Home Loan statement, not a session reading
+  the spec.
+  **Layman:** A Home Loan statement gets a weaker arithmetic check than the others, and the reason given for that may not be true.
+  Kind: investigate.
+  Source: review-contract on FIBR-0050, 2026-09-04.
+
+- 📋 [FIBR-0304] **Cut v1.0.0 — the gate is five conditions and four named blockers.**
+  User-approved 2026-08-20 on the question "what gets us to v1.0?".
+  docs/standards/versioning.md 5 owns the CRITERIA; this item owns the
+  current blocker list, because a standard naming today's roadmap ids
+  goes stale and a roadmap bullet does not.
+
+  Why now: 196 shipped items across all thirteen planned phases, P02-P11
+  with zero open items, 23 published releases -- all still numbered
+  0.1.22 because nothing said when to stop.
+
+  BLOCKERS, and only these four:
+  - FIBR-0019 (recovery key) -- 5 condition 1. Its own body says the key
+    envelope must exist at vault creation and retrofitting needs a full
+    re-encrypt migration, so doing it before 1.0 is cheap and after is a
+    migration over real financial data.
+  - FIBR-0208 (AppImage libxkbcommon segfault) -- 5 condition 3, a crash
+    on a mainstream Linux configuration.
+  - FIBR-0237 (no SECURITY.md / CODE_OF_CONDUCT.md) -- 5 condition 4.
+  - FIBR-0217 (dark-theme PDF page numbers black on dark) -- a visible
+    defect in a headline feature; 5 condition 5.
+  Plus FIBR-0300, the stale pre-alpha badge, whose wording should be
+  picked against this standard rather than in isolation.
+
+  EXPLICITLY NOT BLOCKERS, decided rather than overlooked:
+  - FIBR-0159 (Flathub) and FIBR-0133 (SignPath code signing). Both are
+    stuck on a third party, and versioning.md 5 rules out any third
+    party's queue as a gate by name -- a version number that waits on
+    somebody else's inbox never arrives.
+  - The 48-item features backlog, i18n, macOS, Snap/AUR/winget and the
+    performance items. Those are 1.1 and 1.2.
+
+  OPEN QUESTION FOR THE USER, not yet answered: does FIBR-0019 ship IN
+  1.0, or do we freeze the vault format without it? Freezing without it
+  means either living with "forget your password, lose everything"
+  permanently, or paying a full re-encrypt migration later. If it is too
+  big to take now, versioning.md 5's named interim applies: cut 0.9.0
+  ("we believe this is it; the format is not frozen yet"), which is the
+  one judgement-based exception to 4.2 and 6.2.
+  Answered (2026-08-20, user): FIBR-0019 SHIPS IN 1.0. The open
+  question above is closed -- we do not freeze the vault format
+  without a recovery key, and we do not cut 0.9.0 as an interim.
+  The reasoning the user accepted: the key envelope has to exist at
+  vault-creation time, so building it now is cheap, while
+  retrofitting it later is a full re-encrypt migration over real
+  financial data. So the blocker list stands at four, unchanged,
+  with FIBR-0019 as the long pole and the only one needing a spec.
+  Blocker status (2026-08-25): THREE remain, not four. FIBR-0237
+  (SECURITY.md + CODE_OF_CONDUCT.md) is ✅ — both files are in the tree —
+  so the list above is stale on that one line and is not re-edited here,
+  because the bullet records the decision as it was taken.
+
+  Still blocking: FIBR-0019 (recovery key), FIBR-0208 (AppImage
+  libxkbcommon segfault), FIBR-0217 (dark-theme PDF page numbers). Plus
+  FIBR-0300's badge wording, to be picked against versioning.md § 5.
+
+  FIBR-0019 is further from done than its 🚧 suggests. FP02 closed all
+  thirteen of its review findings, then its own close attempt was BLOCKED:
+  review-code found nine defects FP02 itself introduced, now FP03
+  (FIBR-0310). FIBR-0019 returns to ✅ only when that chain closes clean.
+  The other two blockers are small self-contained defects.
+  BLOCKER STATUS (2026-09-21): TWO remain, not three. The 2026-08-25 note above
+  is stale on its first line and is left as written, because it records the
+  status as it was then.
+
+  - FIBR-0019 (recovery key) is ✅ -- it shipped in 0.1.23, and its whole
+    fix-pass chain (FP02 FIBR-0307, FP03 FIBR-0310, FP04 FIBR-0313, FP05
+    FIBR-0337) closed with it. That was the long pole and it is gone.
+  - FIBR-0237 (SECURITY.md + CODE_OF_CONDUCT.md) is ✅, as the 2026-08-25 note
+    already said.
+
+  STILL BLOCKING: FIBR-0208 (condition 3) and FIBR-0217 (condition 5), plus
+  FIBR-0300's badge wording. Both remaining ones were re-read against the tree
+  today and neither is the small job its bullet implies -- see the notes on each.
+  FIBR-0208 additionally may not still BE a condition-3 crash: its startup
+  segfault did not reproduce on 0.1.23, and the keystroke path is untested.
+
+  USER DECISION (2026-09-21): GO FOR 1.0.0, and the route is the five conditions
+  above rather than intermediate 0.x minors. The question put was "what roadmap
+  items get us to 0.2.0, 0.3.0, 0.4.0?", on the reasoning that jumping 0.1.x ->
+  1.0.0 looks suspicious to a user. That reasoning is accepted; the answer is
+  that this project does not need those numbers, because the 1.0 gate is two
+  small defects away and after 1.0 a feature release is genuinely 1.1.0, 1.2.0 --
+  the meaningful ladder, with no standard overridden. See FIBR-0303's note for
+  why the 0.x minor rule is not this project's to change.
+
+  So the post-1.0 milestone shape is the one this bullet already states: the
+  features backlog, i18n, macOS, Snap/AUR/winget and the performance items are
+  1.1 and 1.2. Breaking those into named milestones is still to be done and is
+  not a blocker.
+
+  USER DIRECTIVE (2026-09-21): a CODE REVIEW runs before 1.0.0 is cut, and the
+  user initiates it themselves in a FRESH session -- /code-review ultra is
+  billed and user-triggered, so no session can launch it. Do not cut 1.0.0
+  without it. The advice given was to fix FIBR-0208 and FIBR-0217 first, so the
+  review reads the tree that would actually ship.
+  BOTH REMAINING BLOCKERS ARE CLOSED (2026-09-21). The defect list this bullet
+  owns is now empty.
+
+  - FIBR-0208 (condition 3, the AppImage crash) is ✅. It DID still reproduce on
+    0.1.23 -- the earlier non-reproduction was a method error, since this desktop
+    is Wayland and the AppImage was mapping on the real compositor rather than the
+    test display. Fixed by not bundling half of the libxkbcommon pair, and
+    verified by an A/B on fresh X servers: 0.1.23 segfaults, the new build
+    survives.
+  - FIBR-0217 (condition 5, the unreadable dark-theme page number) is ✅, resolved
+    by withdrawing the dark export on the user's decision. Light was already the
+    default, so almost no export changes.
+
+  WHAT REMAINS BEFORE THE CUT, and neither is a defect:
+  1. FIBR-0300's badge wording. The user decided (2026-09-21) to change it ONCE,
+     in the 1.0.0 release itself, alongside the version bump and the README
+     refresh every release already gets -- one edit rather than two, and it never
+     states something the release does not back up.
+  2. The user's own code review, run by them in a fresh session. /code-review
+     ultra is billed and user-triggered, so no session can launch it. The standing
+     directive is that 1.0.0 is not cut without it, and the advice given was to
+     fix both blockers first so the review reads the tree that would actually
+     ship. That is now true.
+
+  ONE THING SEQUENCED INTO THE RELEASE, so it is not lost: FIBR-0346. The RPM and
+  deb recipes still bundle the same split libxkbcommon pair FIBR-0208 fixed for
+  the AppImage. It is not a defect in anything shipped today -- the OBS packages
+  are built and installed on the same distro, so the halves start in step -- but
+  it must land with the 1.0 OBS submit, which is the user's chosen moment to
+  re-submit. docs/specs/FIBR-0155.md § 3.5 carries the pending qualifier so a
+  packager reading it is not walked back into the crash.
+
+  The OBS builds themselves are green on all four targets (Debian 13, Fedora 44,
+  Tumbleweed, xUbuntu 24.04), last built before 0.1.23 was tagged.
+  Blocker list amended (2026-09-21): FIBR-0346 IS a gate blocker and this
+  item's list does not name it. Both of the three named blockers that
+  remained are now closed -- FIBR-0208 and FIBR-0217 -- so FIBR-0346 is
+  the only one left.
+
+  WHY IT FIRES THE GATE, on two of versioning.md § 5's five conditions.
+  README.md offers the openSUSE/Fedora RPM as a live download, with
+  `zypper addrepo` and `dnf config-manager` commands against the
+  openSUSE Build Service repo. FIBR-0346 records that those recipes still
+  bundle the split libxkbcommon pair FIBR-0208 measured segfaulting, and
+  that the halves drift apart "as soon as the host updates libxkbcommon
+  and the installed payload does not, which is the normal state of a
+  package a few weeks after release".
+
+  - Condition 3, no open defect crashes the app on a supported platform's
+    default configuration: the RPM does, on the ordinary upgrade path.
+  - Condition 5, every feature the README advertises works on every
+    platform the README offers a download for: if it will not launch, no
+    advertised feature works there at all.
+
+  NOT A CHANGE OF PLAN. The user's decision of 2026-09-21 already
+  sequences FIBR-0346 into the 1.0 OBS submit, which is where it can be
+  verified -- installing the built package in a bare container of that
+  distro and running the self-test, as packaging/obs/README.md
+  prescribes. What changes is its STATUS: it is a gate condition rather
+  than work sequenced alongside the release, so 1.0.0 does not cut
+  without it.
+
+  Conditions 1, 2 and 4 assessed the same day. Condition 4 is MET --
+  SECURITY.md and CODE_OF_CONDUCT.md are both in the tree. Conditions 1
+  and 2 were assessed by classifying every open item against § 2's
+  surfaces; nothing else fires them, and FIBR-0019's closure removed the
+  one case § 5 named by name.
+
+  Flathub and code signing remain NON-blockers, per § 5's own rule that a
+  third party's inbox is not a gate.
+  **Layman:** The plan for calling the app finished: what has to be true first, and which four jobs are standing in the way.
+  Kind: release.
+  Source: user-decision-2026-08-20 ("what gets us to v1.0?").
+
+## v1.0.x — patch stream
+
+Bug fixes, security fixes, performance work, refactors, dependency bumps and
+packaging changes (versioning.md § 3.3). These need no release planning: each
+rides the next patch release whenever it is done, and none adds capability or
+touches the § 2 surface. A security fix takes the number its change takes — §
+3.4 forbids inflating the version to signal severity.
+
+- 📋 [FIBR-0250] **normalise_account_number's zero-strip is ASCII-only while its digit filter is not.**
+  `re.sub(r"\D", "", raw)` is Unicode-aware and keeps Arabic-Indic or
+  fullwidth digits; `.lstrip("0")` then does nothing to them, so the key
+  never equals its ASCII counterpart.
+  Verified: a fullwidth spelling returns unchanged rather than normalising.
+  Bounded — it can only fail to match, never mis-match, so the outcome is
+  `no_match` (offer to create a duplicate), not a wrong filing. No
+  collision could be constructed.
+  Not worth fixing on its own; fix it when something else touches this
+  function. `unicodedata.digit()` per character, or restricting the filter
+  to `[0-9]`, would close it — the latter also makes the function's
+  contract match its docstring.
+  **Layman:** An account number written in non-Western digits would not be recognised as the same number, so the app would offer to create a duplicate account.
+  Kind: fix.
+  Source: in-session-2026-08-06 (FIBR-0086 review lane 1).
+  Considered and deliberately left open (2026-08-12), on this bullet's own instruction: "fix it when something else touches this function". It was picked up alongside FIBR-0253/0254, then put back — nothing in that run touches `normalise_account_number`, and fixing it standalone is not the cheap change it looks like. `docs/specs/FIBR-0086` §4.4 quotes the implementation verbatim (line ~397), so the fix is a spec amendment plus its rule-14 cold-read gate; and `tests/features/account_detect/spec.md` INV-8's leak scanner normalises the haystack "the way `normalise_account_number` does", so its helper has to move in step or the scanner starts missing the spelling it guards against. That is three surfaces for a bug that, as recorded above, can only fail to match — never mis-match. The precondition for fixing it is unchanged: the next change that opens this function.
+
+- 📋 [FIBR-0274] **The stored-password auto-try consults only the pick-step account, so a re-targeted statement re-prompts next month.**
+  `_begin_decrypt` looks the remembered password up with
+  `get_pdf_password(self._target_account_id())` — necessarily the PICK-STEP
+  account, because the destination is not known until the PDF has been
+  decrypted and parsed. FIBR-0249 moved the stored password onto the
+  account the rows actually land on, which is where it belongs. So when
+  those two differ, next month's auto-try looks in the wrong place and the
+  user is prompted again.
+
+  This gap is not new, but FIBR-0249 made it VISIBLE. Before it, the carry
+  COPIED, so the pick-step account also held a copy and the auto-try
+  happened to succeed — the convenience was a side-effect of the
+  wrong-account credential FIBR-0249 removed. Removing the defect removed
+  the accident; the lookup was always the real problem.
+
+  Not fixed with FIBR-0249 deliberately: the obvious remedy — fall back to
+  trying every stored PDF password when the pick-step account has none —
+  weakens the guarantee FIBR-0009 INV-4 states structurally in
+  `_begin_decrypt`'s docstring ("the stored password is attempted at most
+  once", which holds today because there is exactly one candidate and one
+  call site). Every password involved is the same user's, so this is a
+  usability and invariant question, not a privilege one — but it wants a
+  decision and a test, not a quiet widening.
+
+  Options, cheapest first: (a) try each distinct stored password once, in a
+  fixed order, and restate INV-4 as "each stored password at most once per
+  import"; (b) key remembered statement passwords by something stable about
+  the FILE (issuing bank, or the detected account number) rather than by
+  account; (c) accept the re-prompt and say so in the UI. (b) is the most
+  correct and the most work.
+  **Layman:** After the app learns that a locked statement belongs to a different account than the one first selected, it still looks for the remembered password under the first one next month — so you get asked for the password again.
+  Kind: enhancement.
+  Source: in-session-2026-08-14 (found while fixing FIBR-0249).
+
+- 📋 [FIBR-0102] **Tighten mypy toward strict.**
+  Verified 2026-07-11: [tool.mypy] sets only python_version + per-module stub-ignores — NOT strict. Enable strict (or stage it: disallow_untyped_defs, warn_return_any, disallow_any_generics, no_implicit_optional) to catch a class of bugs at the type layer — valuable for a money app. Incremental: turn flags on one at a time, fix the fallout, keep the gate green each step. Deps: none (gate/CI config).
+  MEASURED (2026-09-21), and it SPLITS the item into one tractable half and one
+  much larger one. mypy --strict over src+tests reports 3800 errors across 107
+  files, which reads as impossible; the split is what makes it actionable.
+
+  - src ALONE: 46 errors across 26 files -- 19 no-any-return, 15
+    no-untyped-def, 9 type-arg, plus three singletons worth fixing on their own
+    merits: a redundant cast at ui/_widgets.py:103, SIDECAR_VERSION not
+    explicitly re-exported from crypto (services/vault_migration.py:28), and the
+    expected consequence of subclassing the untyped OfxParser
+    (importers/ofx_importer.py:47). That is a bounded one-sitting job.
+  - tests: the other 3754, dominated by 2091 no-untyped-def + 1188
+    no-untyped-call. That is annotating the test suite, not fixing defects, and
+    it overlaps FIBR-0331.
+
+  So strict-on-src is worth doing as its own change; strict-on-tests is a
+  different and much larger project and should be decided separately rather than
+  inherited by whoever picks this up.
+
+  Source: a check-code sweep with --strict, run 2026-09-21.
+  **Layman:** Turn on stricter automatic type-checking to catch more bugs before they ship.
+  Kind: refactor.
+
+- 📋 [FIBR-0103] **Consolidate presentation formatting into one module.**
+  FIBR-0083 introduces src/finbreak/datetime_format.py (date/time display). Fold the existing amount/currency QLocale formatting (ui/_amount.py::_format_amount -> QLocale.toCurrencyString; already lifted out of ui/home.py and now imported by 8 modules, so the remaining work is the fold into a shared formatting package) into a shared formatting package alongside it, so all presentation logic is centralised + unit-tested in one place (Rule of Three: date + currency + future). Deps: FIBR-0083 (lands the first formatter). Small refactor; do AFTER FIBR-0083 ships.
+  **Layman:** Keep all the 'how numbers and dates look' code in one tidy, tested place.
+  Kind: refactor.
+  Source: claude-suggestion-2026-07-11.
+
+- 📋 [FIBR-0169] **Auto-update anti-rollback: bind the offered version into the signed artifact to prevent a signed-but-older downgrade.**
+  indie-review (update/signature lane), LOW — deferred (design + release-pipeline change, needs a spec). The Ed25519 signature binds only the artifact BYTES, not the version; the offered version comes verbatim from the untrusted GitHub tag_name. A GitHub-release-WRITE attacker (no signing key — the residual security-model §2 already acknowledges) could re-publish an old, still-validly-signed AppImage under a higher tag; check_for_update sees it as newer, download_and_verify passes (authentic bytes), and the user is silently downgraded to a version with known bugs. Fix options: sign a manifest naming version+hash, or refuse to install a payload whose embedded __version__ <= current. At minimum document the downgrade case alongside the existing 'no rollback' accepted-risk in FIBR-0054 Out-of-scope.
+  **Layman:** Stop a would-be attacker (who can write GitHub releases but holds no signing key) from tricking the app into installing an older, still-signed version.
+  Kind: security.
+  Source: indie-review-2026-07-23.
+
+- 📋 [FIBR-0180] **Decide deliberately whether to move the CI/build base image off Debian 12 (bookworm, now oldstable).**
+  ci.yml, ci-docker.sh and build-smoke.sh all pin python:3.12-slim-bookworm. Debian 13 (trixie) has been stable since Aug 2025, so bookworm is oldstable and a python:3.12-slim-trixie image exists. This is NOT a routine bump: the build image's glibc (~2.36) is the EFFECTIVE floor of every frozen artifact (libpython links it - see the pyproject.toml dependencies comment), so moving to trixie raises the minimum glibc an AppImage/.exe user needs. The debt sweep added that rationale as a comment on ci.yml's container line rather than bumping. Decide: (a) hold on bookworm until the AppImage's target-distro floor justifies moving, or (b) bump all three call-sites together and re-run build-smoke to confirm the clean-room launch still passes on the oldest distro we claim to support. Either way, record the decision so the next sweep does not re-raise it.
+  **Layman:** Our build machine runs an older Debian. Moving to the newer one is a trade-off: it may stop finbreak running on older Linux systems, so it needs a decision rather than a routine update.
+  Kind: chore.
+  Source: debt-sweep-2026-07-26.
+
+- 📋 [FIBR-0311] **services/pdf_export.py's translated strings extract to an empty catalog.**
+  The module routes 30 user-facing strings through a one-argument `_tr(text)`
+  wrapper, and pyside6-lupdate extracts nothing through a wrapper -- measured
+  2026-08-25 on a probe file. Its own docstring claims the opposite: "keeps every
+  user-facing string translatable".
+
+  Not fixed with the rest of FIBR-0310 R3 because the mechanical inline makes the
+  file worse: a third of the sites sit inside f-strings, where
+  `QCoreApplication.translate("PdfExport", "Income")` blows the 88-column limit
+  and the HTML becomes unreadable. The fix is to hoist the labels to locals
+  before each f-string, which is a readability refactor of the PDF renderer
+  rather than the plumbing change R3 was.
+
+  tests/features/i18n/ excludes this file BY NAME and carries a leg that goes RED
+  once it conforms, so the exclusion cannot outlive the work. Closing this item
+  means deleting `_KNOWN_OFFENDER`, its use, and that leg.
+  **Layman:** The PDF report's labels look translated in the code but would come out in English in every language.
+  Kind: refactor.
+  Source: in-session-2026-08-25 (FIBR-0310 R3).
+
+- 📋 [FIBR-0320] **The Linux relaunch waits on the PyInstaller child, where Windows was redesigned to wait on the image.**
+  FIBR-0131 D3 states that onefile is a two-process tree and that the bootloader
+  parent holds the write-lock and does the _MEI cleanup, then concludes waiting on
+  a single PID is fragile. Windows was redesigned to poll the exe image path; the
+  Linux waiter still polls os.getpid().
+
+  Deliberately NOT fixed blind. The finding rests on os.getpid() being the child
+  rather than the bootloader, which needs confirming inside a live AppImage
+  (ps -o pid,ppid,comm); if it is the bootloader the finding collapses to INFO.
+  And per the known trap, a relaunch change only proves out on the update AFTER
+  it ships, so guessing here is the worst option available.
+  MEASURED (2026-09-21), and the finding STANDS. This bullet said not to fix it
+  blind and named the measurement that would settle it; that measurement is now
+  done, so the next session is not guessing.
+
+  PyInstaller onefile on LINUX is a two-process tree, exactly as FIBR-0131 D3
+  asserts for Windows. Read off a live 0.1.23 AppImage:
+
+    PID     PPID    what
+    332680  332675  the BOOTLOADER -- /proc/332680/maps carries NO libpython and
+                    NO _MEI mapping
+    332704  332680  the APP -- 512 _MEI maps, 5 libpython maps, 4 threads
+
+  So the Python process is the CHILD, and os.getpid() inside the app returns the
+  child's pid. update_installer.AppImageInstaller.apply reads os.getpid() and the
+  waiter polls `kill -0` on it, so it waits on the process that exits FIRST and
+  returns while the bootloader parent is still doing its _MEI cleanup. That is
+  the fragility D3 describes, and it does NOT collapse to INFO.
+
+  Note for whoever fixes it: the child's PPID is the bootloader, so os.getppid()
+  names the process actually worth waiting for -- but only when frozen. Run from
+  source the parent is a shell, and waiting on that would hang until the shell
+  exits, so the fix has to be conditional on being frozen. Windows solved the
+  same problem by polling the exe IMAGE path instead, which is the other
+  available shape.
+
+  Still deliberately NOT fixed here, and the reason is unchanged: the RUNNING
+  (old) version performs each relaunch, so a relaunch change only proves out on
+  the update AFTER the one that ships it. That makes it unverifiable in-session
+  by construction, and an unverifiable change to the updater immediately before
+  a 1.0 is the wrong risk. Not a 1.0 blocker (FIBR-0304 does not list it).
+
+  Also corrected: this bullet inferred the two-process tree from FIBR-0131 D3,
+  whose claim is written Windows-scoped. The inference happened to be right, and
+  it is now measured on Linux rather than carried over.
+  **Layman:** After a self-update the app might fail to reopen -- and it cannot be tested until the next update ships.
+  Kind: investigate.
+  Source: review-code 2026-08-31 lane=update-installer.
+
+- 📋 [FIBR-0332] **A batch mapping answered with the profile-name field blank is still asked once per file.**
+  Surfaced while fixing FIBR-0319 and deliberately NOT widened into it.
+
+  FIBR-0319 makes an answered mapping settle every other file sharing that
+  header -- but only through the SAVED PROFILE, because that is the
+  mechanism § 4.3 gives for remembering an answer. _on_map_next saves only
+  when the profile-name field is non-empty, so a user who leaves it blank
+  still answers the same question per file.
+
+  The password half has no such condition: a typed password joins
+  _run_passwords for the run whether or not anything is persisted. The
+  mapping analogue would be a per-run map from header signature to
+  ColumnMapping, consulted by the ladder ahead of match_profile.
+
+  Whether that is a defect or the design is the question to settle first.
+  Declining to name a profile is arguably declining to remember it -- but
+  § 4.3 decision 1 says re-asking an answered question is babysitting, and
+  thirty identical questions is what that decision exists to prevent. The
+  spec should say which, and the code follow.
+  **Layman:** Import thirty spreadsheets of the same layout without naming a saved layout, and it still asks you thirty times.
+  Kind: ux.
+  Source: in-session-2026-09-03 (observed while fixing FIBR-0319).
+
+- 📋 [FIBR-0333] **Nothing ties a downloaded update to the version it claims to be.**
+  Found while correcting FIBR-0096's claim that the per-artifact `.sig` is
+  the primary integrity gate (2026-08-31 audit). The signature binds bytes
+  to the signing key and nothing else -- not a version, a basename or a
+  platform.
+
+  update.py compares the release TAG against __version__ and then verifies
+  the asset's `.sig`. Neither step ties the downloaded bytes to that tag.
+  So a release-write attacker with no signing key can re-upload a
+  previously published, genuinely signed AppImage or .exe under the new
+  release's asset names: the version compare passes because the tag is
+  newer, the signature passes because the bytes really were signed, and
+  the user is silently downgraded to a build whose fixed defects are back.
+  It then repeats on every check, because the installed version stays
+  below the tag.
+
+  SHA256SUMS is the only published thing binding a basename to its bytes,
+  and the updater never reads it -- confirmed, the update services do not
+  mention it. That manifest is also what the same attacker can delete,
+  which FIBR-0096 already records as a residual.
+
+  Not yet decided, and worth deciding before building: whether the updater
+  should verify the artifact against a signed SHA256SUMS, or whether the
+  signed payload should carry the version so the bytes themselves assert
+  what they are. The second needs a release-format change; the first
+  inherits the "attacker deletes the manifest" residual and needs a
+  policy for a missing one.
+
+  Requires release-write compromise, which is already a strong position --
+  so this is defence in depth rather than an open door.
+  **Layman:** Someone who could publish to our releases page could hand the updater an older, genuine finbreak and it would install as if it were newer.
+  Kind: security.
+  Source: FIBR-0327 tail, 2026-09-04.
+
+- 📋 [FIBR-0341] **A hand-edited zero cost parameter reaches argon2 uncaught on the local unlock path.**
+  The surviving third of FIBR-0309, isolated rather than inherited. That
+  bullet's other two gaps are closed and its gap 3 is superseded at the trust
+  boundary; this is the one thing left, and it is about the LOCAL open path.
+
+  Measured 2026-09-21. validate_params accepts time_cost=0 and parallelism=0 --
+  it checks format_version, key_len, the salt twice and the memory FLOOR, and
+  nothing else. derive_key then raises argon2.exceptions.HashingError: "Time
+  cost is too small" / "Too few lanes". ui/unlock.py's three except arms catch
+  KdfPolicyError only (lines 284, 363, 400), and auth.py:340 likewise, so that
+  HashingError is UNCAUGHT on the unlock path. FIBR-0310 R5 added it to
+  ui/_password_hint.py's tuple; unlock was not given the same treatment.
+
+  This contradicts load_and_validate_params' own stated posture, which
+  security-model INV-2c states as a contract: every malformed input is
+  normalised to KdfPolicyError so callers assert one failure type.
+
+  The fix is a LOW-side bound in validate_params -- time_cost >= 1 and
+  parallelism >= 1 -- and not a ceiling. That distinction is the whole reason
+  this is separable: security-model INV-2 makes the floor deliberately
+  one-sided because a ceiling there would bind every existing vault, and an
+  INFLATED cost is bounded at the trust boundary by validate_untrusted_params
+  (T5, FIBR-0327). A floor at Argon2id's own minimum of 1 binds no real vault:
+  creation pins ARGON2_TIME_COST = ARGON2_PARALLELISM = 1, so no vault this app
+  ever wrote records 0. Catching HashingError in unlock as well is the cheaper
+  half and fixes the crash without fixing the contract.
+
+  Owes CLAUDE.md rule 14's gate, and that is why it is filed rather than done
+  in passing: docs/security-model.md INV-2 currently DESCRIBES this behaviour
+  on purpose -- "a sidecar can record 0, and on the local open path that
+  surfaces as argon2-cffi's HashingError at derivation rather than as a clean
+  refusal". Making it a clean refusal falsifies that sentence, and a conformer
+  reading it today writes a caller that catches HashingError. So the amendment
+  is a change of direction on a document that has already had five review
+  loops, at this project's cap of 3.
+
+  Precondition is write access to the data directory, where an attacker could
+  delete the vault instead -- so this is robustness and contract-honesty, not a
+  confidentiality hole. Ranked accordingly.
+  **Layman:** If the vault's settings file is hand-edited to an impossible value, unlocking raises an error the app does not catch, instead of the clean refusal it already knows how to show.
+  Kind: fix.
+  Source: in-session-2026-09-21 (isolated while closing FIBR-0309).
+  Lanes: crypto, ui.
+
+- 📋 [FIBR-0027] **SQL-side dashboard aggregation + incremental refresh.**
+  Compute dashboard summaries / charts with SQL `GROUP BY` rather than
+  Python loops, and refresh incrementally on a single-row edit instead of
+  a full recompute; add supporting indexes (`date`, `category_id`). Keeps
+  the dashboard fast at tens of thousands of transactions. Target phase:
+  P10. Dependencies: FIBR-0012. Lanes: reporting, perf. Kind: perf.
+  **Layman:** The dashboard stays fast once you have tens of thousands of transactions, and editing one row no longer recalculates everything.
+  Kind: perf.
+  Source: user-request-2026-07-01.
+  Lanes: reporting, perf.
+
+- 📋 [FIBR-0028] **Virtual table model for the transaction list.**
+  Back
+  the transaction table with a `QAbstractTableModel` (lazy / virtual
+  rows) rather than per-row widgets, so a large history scrolls smoothly.
+  Target phase: P10. Dependencies: FIBR-0012. Lanes: ui, perf.
+  Kind: perf. Source: user-request-2026-07-01.
+  **Layman:** A long transaction history scrolls smoothly instead of slowing down as it grows.
+  Source: user-request-2026-07-01.
+  Lanes: ui, perf.
+
+- 📋 [FIBR-0097] **Virtualize the transaction tables — QTableWidget → QTableView + QAbstractTableModel.**
+  Verified 2026-07-11: Home, Statements, and Rules use QTableWidget (ui/home.py, ui/statements.py, ui/rules.py), which builds a widget for EVERY cell — fine at 50 rows, sluggish at thousands. Migrate to QTableView + a QAbstractTableModel so rendering is virtualized (only visible rows built). Also a cleaner data/view separation that FIBR-0012 (sort/filter) and FIBR-0084 (movable/resizable columns) build on naturally. Sizeable refactor; own spec. Deps: FIBR-0051/0052 (the current widgets).
+  **Layman:** Keep the transaction lists fast even with thousands of rows by only drawing the rows you can actually see.
+  Kind: perf.
+  Source: claude-suggestion-2026-07-11.
+
+- 📋 [FIBR-0099] **Faster cold start — PyInstaller --onedir inside the AppImage (skip per-launch extraction).**
+  Verified 2026-07-11: the release build uses PyInstaller --onefile (scripts/_build-smoke-in-container.sh:85), which re-extracts the whole bundle to /tmp on EVERY launch (adds seconds of cold-start latency). Since the AppImage is ITSELF a self-contained mounted container, freeze with --onedir and place the dir inside the AppDir — the app then runs directly, no per-launch extraction. Transparent to the user; measure before/after start time and confirm the FIBR-0003 clean-room bundling proof still passes. Deps: FIBR-0003/FIBR-0054 (build pipeline).
+  **Layman:** Make the app open faster by not unpacking itself every single time you launch it.
+  Kind: perf.
+  Source: claude-suggestion-2026-07-11.
+
+- 📋 [FIBR-0104] **Move slow statement import onto a worker thread (responsive UI + native overlap).**
+  User idea (multi-threading for performance). Honest framing: Python's GIL means threading helps RESPONSIVENESS + native-code overlap, NOT pure-Python CPU parallelism. The app already threads its two slow blocking ops correctly (Argon2 key derivation via DeriveWorker; network via UpdateCheck/DownloadWorker — both native/GIL-releasing). Best next win: move IMPORT (pdfplumber text extraction, in-memory pikepdf decrypt, CSV/OFX parse, dedup + commit) onto a QThread worker (reuse the ui/_worker.py DeriveWorker pattern) with a progress indicator — today it runs ON THE UI THREAD (security-model / FIBR-0075 note: pdfplumber extract runs on the UI thread), so a large statement freezes the window. These ops are native-heavy (pdfplumber/pikepdf C++, SQLCipher C) so they RELEASE the GIL → genuine overlap with the GUI. CAVEAT: SQLite/SQLCipher connections are NOT shareable across threads — the worker needs its OWN connection to the vault (or marshal results back via signals). Pure-Python CPU hotspots (rule matching) won't benefit (GIL) — indexes (FIBR-0098) + virtualized tables (FIBR-0097) are the levers there. Deps: FIBR-0007/0008/0009 (import), reuses the QThread worker pattern; pairs with FIBR-0065 (non-blocking dialog discipline)."
+  **Layman:** When importing a big statement, do the heavy reading on a background thread with a progress bar so the window stays responsive instead of freezing.
+  Kind: perf.
+  Source: user-suggestion-2026-07-11.
+
+- 📋 [FIBR-0147] **Index the transfer_pairs cascade-delete FK columns.**
+  Surfaced while shipping FIBR-0098. `transfer_pairs` (FIBR-0011) has two
+  `ON DELETE CASCADE` FKs — `txn_a_id` / `txn_b_id` REFERENCES transactions(id) —
+  but SQLite does NOT auto-index FK columns, so each transaction delete scans
+  `transfer_pairs` for a match. `delete_for_statement` deletes many transactions
+  at once (one statement), so a bulk statement delete is O(deleted × pairs). The
+  table is small today (only confirmed/rejected pairs), so it was left OUT of the
+  FIBR-0098 index set to stay in-lane. Add `CREATE INDEX` on
+  `transfer_pairs(txn_a_id)` and `transfer_pairs(txn_b_id)` (a v10->v11 forward
+  migration) if a large multi-year vault with many detected transfers measures a
+  slow statement delete. Kind: perf.
+  **Layman:** Make deleting a big statement fast even when transfers have been detected.
+  Kind: perf.
+  Source: claude-suggestion-2026-07-17 (deferred from FIBR-0098).
+
+- 📋 [FIBR-0049] **First-run onboarding / empty-state guidance on the home screen.**
+  The home screen opens on the manual add-transaction form with cryptic fields (Amount, Description) and no guidance, which confused a real non-technical tester. Add empty-state help + inline field hints (Amount = money in/out, negative = out; Description = what it was for).
+  **Layman:** A friendly welcome for a brand-new user — 'import a statement, or add a transaction by hand' — instead of a bare form.
+  Kind: ux.
+  Source: user-request-2026-07-04.
+  Empty-state half delivered by FIBR-0051 (P07.5): the HomeView getting-started page is this bullet's "friendly welcome — import a statement or add a transaction". Remaining scope: the inline Amount/Description field hints on the manual-entry form (not in FIBR-0051). Stays open for those hints.
+
+- 📋 [FIBR-0072] **Warn (or disable chrome) when navigating away from an in-progress import.**
+  main_window._open_import() never disables the toolbar/menu, so clicking Home/Statements/Accounts/Categories/Rules mid-import silently rebuilds the workspace and destroys the in-progress wizard (chosen file, column mapping, unsaved preview) with no confirmation. Either confirm before discarding, or disable navigation chrome during an import (as locked states do).
+  **Layman:** Clicking away mid-import warns you first, instead of silently throwing away the file and column choices you just made.
+  Kind: ux.
+  Source: indie-review-2026-07-10 (M-shell1).
+
+- 📋 [FIBR-0111] **Show the currency in its own column, separate from the amount value.**
+  User request 2026-07-12 (screenshot): the Home Amount column renders "ZAR69.00" / "-ZAR25,000.00" with the currency crammed against the number, hard to read. Give the currency its own column (or right-align the bare number and show the currency code separately), so the value column holds just the formatted number + sign. Touches HomeView._format_amount / the Amount column layout (FIBR-0105 amount-display work) and should carry through to the future dedicated Transactions tab (FIBR-0109). Keep the negative-style (minus/brackets) + red/green colour prefs (FIBR-0105) working on the value column.
+  **Layman:** Put the currency code (e.g. ZAR) in its own column so the number is easy to read, instead of "ZAR69.00" crammed together.
+  Kind: ux.
+  Source: user-request-2026-07-12.
+  Lanes: ui.
+
+- 📋 [FIBR-0121] **Loan-account sign display: show debt-reducing amounts as positive on loan-type accounts.**
+  Approach APPROVED by user (2026-07-13): DISPLAY-ONLY, display-time inversion for
+  loan-type accounts (AccountType.HOME_LOAN / PERSONAL_LOAN). Keep amount_minor
+  stored canonical (FIBR-0007: debit negative / credit positive) so the exact-money
+  math, transfer detection, and the FIBR-0012 dashboard totals are all undisturbed;
+  only the on-screen sign + direction colour flip for loan accounts. Scope is
+  display-only for now (NOT changing how loan flows count in dashboard totals) — a
+  deeper "interest-as-expense / repayment-as-transfer" semantic is a possible later
+  follow-up.
+  Needs its own spec + the project's 7-loop cold-eyes (correctness-critical money
+  display). OPEN QUESTION to verify during that spec (do NOT assume): how the
+  importer currently signs loan-statement debit/credit columns, and whether transfers
+  INTO a loan are being detected at all (the loan-payment leg and its current-account
+  leg may currently share a sign, which opposite-sign transfer matching would miss).
+  If a real detection gap exists, split it out as a bug-fix. Touches ui/_amount.py +
+  the Transactions table render; the account type is on models.Account.type.
+  **Layman:** On home-loan / personal-loan accounts, your payments (which reduce what you owe) will read as positive/green and interest &amp; fees (which increase what you owe) as negative/red — the natural way round, instead of the current back-to-front look.
+  Kind: feature.
+  Source: user-request-2026-07-12 (approved 2026-07-13).
+
+- 📋 [FIBR-0308] **INV-11's hint scan misses the 27-symbol payload, which is the whole credential.**
+  A SPEC question, not an implementation defect -- ui/_password_hint._code_candidates implements section 5 INV-11 faithfully. INV-11 says to scan for a 28-symbol Crockford candidate and verify its check symbol. But the check symbol is a pure function of the 27-symbol payload (CHECK_ALPHABET[_payload_int(payload) % 37]), so the payload ALONE is the entire credential, and Argon2id is fed exactly those 27 symbols decoded. A hint holding the payload without its check symbol -- or with a mistyped one -- therefore passes the guard and is written to plaintext window.ini.
+
+  FP02 finding 1 is the narrow instance of this and is fixed there. This is the general case and needs INV-11's own wording changed: scan 27-symbol windows too, COMPUTING the check symbol rather than reading it, then trial-unwrap. Filed rather than fixed because amending an invariant is a spec change, and section 5 is what a conformer builds from.
+  **Layman:** The check that stops you putting your recovery code in your password hint only looks for the full code, not the part of it that actually matters.
+  Kind: security.
+  Source: close-phase-2026-08-21 (review-code lane 3, UI edges).
+  Lanes: security.
+
+- 📋 [FIBR-0339] **Make "cannot verify" a first-class state in the resume ladder.**
+  Four consecutive fix-passes each found the same shape, and FP05 found
+  four instances of it in one pass:
+
+    H1  a replacement that cannot be COMPARED was deleted as debris
+    M1  a ladder entered with the wrong slot's KEK answered "no" to every
+        question and withheld the rollback offer silently
+    M5  a restore left artefacts it had no opinion about
+    L4  a reset that could not finish left an orphan for the next vault
+
+  Each site is now correct. What is NOT addressed is the design that keeps
+  producing them: the ladder's helpers return two-valued answers (a bool, a
+  None) to three-valued questions, and the callers act destructively on the
+  merged result. `_replacement_verdict` is the first helper to name the
+  third answer; the rest still fold it.
+
+  The work: audit every helper the ladder calls for a question whose honest
+  answer set is {yes, no, cannot tell}, and give the third one a name at the
+  point it is produced rather than at each call site. The candidates are
+  `_opens`, `_reads_end_to_end`, `_row_counts_or_none` and
+  `rollback_copy_is_usable` — all four return a bool or an Optional today,
+  and all four are asked questions that can fail to have an answer.
+
+  Not a 1.0 blocker: every path the four reviews reached is correct, and the
+  invariants that matter (INV-7, INV-8, INV-13) hold. This is about how many
+  more passes it takes to keep them holding.
+
+  Filed at FP05's close rather than becoming FP06, because a fifth
+  consecutive fix-pass trips the convergence checkpoint and the checkpoint
+  exists for exactly this: to stop patching sites and look at the shape.
+  **Layman:** The upgrade-recovery code keeps confusing "I could not check this" with "this is broken", and the second answer throws things away.
+  Kind: refactor.
+  Source: FP02-FP05 pattern, recorded at FP05's close 2026-09-06.
+
+- 📋 [FIBR-0336] **The month pickers render their numbers with an f-string, so a locale with its own digits gets Western ones.**
+  Found while closing FIBR-0328's display-string class and set aside there
+  rather than fixed, because the fix belongs with the i18n pass.
+
+  ui/home.py's _build_selectors and ui/export_dialog.py both build the month
+  label as an f-string with a zero-padded integer. coding.md 5.2 says render
+  numbers through QLocale, never a hand-rolled format. The two are identical
+  in every locale that uses Western digits, which is why nothing has noticed;
+  they differ in one that does not, where QLocale would produce that locale's
+  own digits.
+
+  LATENT until FIBR-0017 ships a locale that needs it, so this is not a bug a
+  user can see today. Filed rather than folded into FIBR-0017 because it is a
+  specific, already-located site, and FIBR-0017 is a whole pass.
+
+  Not allowlist-006's case: that entry covers joining whole translated
+  sentences, and this is a number rendered without its locale.
+  **Layman:** In a language that writes numbers with different digit shapes, the month dropdown would still show Western digits.
+  Kind: fix.
+  Source: review-code 2026-08-31 tail (FIBR-0328 display-string class), surfaced 2026-09-06.
+  Lanes: ui, i18n.
+
+- 🚧 [FIBR-0133] **Free Windows code signing via SignPath Foundation (OSS program).**
+  User applying to SignPath Foundation's free code-signing program for OSS. Prep done this session: PRIVACY.md added (finbreak collects no data; local-only); README gained the required SignPath attribution ("Free code signing provided by SignPath.io, certificate by SignPath Foundation") which the hub site renders onto the download page (antsprojectshub.co.za/p/fin-break.html) — NOTE (2026-07-26 debt sweep): that attribution string is no longer in README.md, having been removed after the decline; it must be restored before any reapplication; Google Search Console verification + indexing done so the app is discoverable (a SignPath requirement — see [[finbreak-public-site-and-signing]]). Also fixed the stale milnet01/Fin_Break->finbreak repo slug in the hub data. REMAINING once approved: wire the SignPath signing step into .github/workflows/windows-build.yml so release .exe artifacts are signed; promote the .exe to a signed release asset. Requirements met: MIT license, public repo, GitHub 2FA (user to confirm), discoverable (in progress). Windows-only (macOS = Apple $99/yr; Linux AppImage GPG-signed already).
+  **Layman:** Get finbreak's Windows app officially signed for free so Windows stops showing "unknown publisher" warnings.
+  Kind: package.
+  Source: user-request-2026-07-14.
+  Scope boundary (2026-07-14): "promote the .exe to a signed release asset" above means the AUTHENTICODE/publisher signature only. The Ed25519-signed .exe release asset (the sidecar the in-app updater verifies) is FIBR-0131's D5, not this item. FIBR-0133 adds the Authenticode signature to that already-attached .exe once SignPath approves.
+  Progress (2026-07-14): the SignPath "discoverable" requirement is now MET — the Fin Break page (antsprojectshub.co.za/p/fin-break.html) is live and INDEXED on Google (confirmed via a Google search result, ~3h after publish). Requirements now: MIT ✓, public repo ✓, PRIVACY.md + SignPath attribution ✓, discoverable ✓; REMAINING = SignPath's own approval ONLY (external, awaited); GitHub 2FA confirmed ON (2026-07-14, GitHub-mandated). All contributor-side SignPath requirements (MIT, public repo, PRIVACY + attribution, discoverable, 2FA) are now MET. No code work outstanding; FIBR-0131's Windows updater is already merged and waiting for the v0.1.10 release that will bundle both the Authenticode signature (this item) and the Ed25519 .exe.sig.
+  Update (2026-07-16): SignPath Foundation DECLINED the application. Plan per the user: build more of a public presence first, then reapply and hope for approval next time. Stays 🚧 (blocked on the reapplication + their approval, not on any contributor-side prep — MIT/public/2FA/discoverable are all still met). Windows .exe remains un-Authenticode-signed meanwhile → SmartScreen "unknown publisher" persists; the Ed25519 updater sidecar sig is unaffected.
+
+- 📋 [FIBR-0298] **Nothing owns refreshing the Flatpak pip closure, so its transitive wheels age silently between releases.**
+  packaging/flatpak/python3-deps.yaml is a sha256-pinned closure regenerated
+  only by a human running generate-pip-sources.sh. `pyproject.toml` pins the
+  DIRECT deps, and test_FIBR0258_closure_satisfies_the_pinned_commit checks the
+  closure against the pinned commit's pyproject -- so a direct-dep drift is
+  caught. Nothing watches the TRANSITIVE wheels, which the generator resolves to
+  whatever is latest at generation time and then freezes.
+
+  Measured 2026-08-20: regenerating moved lxml 6.1.1 -> 6.1.2,
+  charset_normalizer 3.4.9 -> 3.5.1 and pypdfium2 5.12.1 -> 5.13.0. The gate was
+  green before and after, because no check looks at this. The closure was last
+  generated 2026-08-07, so that is 13 days of drift on three packages, none of
+  them named in pyproject.toml.
+
+  Why it matters rather than being tidiness: FIBR-0256 is the same class one
+  level up -- a cryptography CVE bump landed in pyproject.toml and the closure
+  kept the old pin for two weeks. That one was caught only because someone
+  looked. lxml and pypdfium2 are both C-extension parsers fed untrusted input
+  (OFX and PDF statements), which is the worst place to carry a stale library.
+
+  NOT the same as check-dependencies' job, which reads manifests -- these
+  versions appear in no manifest. The closure is the only record.
+
+  Cheapest guard, and it needs no new tooling: a gate stage (or a scheduled CI
+  job, since it needs network and the gate's offline stages must stay offline)
+  that runs generate-pip-sources.sh into a temp file and fails on a non-empty
+  diff against the committed closure. The README already calls an empty diff
+  "the confirmation" -- this just makes something other than a human perform it.
+  A scheduled job is probably the better shape: a hard gate failure on upstream
+  publishing a wheel would block unrelated work.
+
+  Deliberately NOT done on 2026-08-20: the three bumps above were reverted
+  rather than taken, because they had never been built here and the tree was
+  minutes from a Flathub submission whose reviewers check that it builds from
+  pinned source. Taking them needs a LOCAL=0 rebuild to prove the offline build
+  still ends FINBREAK_SELFTEST_OK. Do that first; do not bump and push.
+  **Layman:** The Linux app-store build freezes an exact list of code libraries. Nothing checks whether newer, possibly security-fixed versions of them have come out, so the build can quietly ship old ones.
+  Kind: security.
+  Source: in-session-2026-08-20 (found during the FIBR-0159 pre-submit checks).
+  Lanes: packaging, security.
+
+- 📋 [FIBR-0317] **Nothing re-submits to OBS on release, so the published RPMs sat six versions behind.**
+  Measured 2026-08-31: the OBS package still held finbreak-0.1.16.tar.gz, from
+  2026-07-23, while __version__ was 0.1.22. The Tumbleweed and Fedora builds were
+  green the whole time -- green on the old source, which is why nothing looked
+  wrong.
+
+  Cause: no step in the release path runs packaging/obs/obs-submit.sh.
+  .claude/bump.json's todos cover the README, the AppStream metainfo, the Flatpak
+  commit re-pin and the deb changelog, and CLAUDE.md's release section names
+  cut-release plus the two release scripts. OBS appears in neither.
+
+  Second, sharper half: the vendored wheel closure goes stale with the source.
+  Advancing the tarball to 0.1.22 turned BOTH RPM targets red on
+  `cryptography==50.0.0` not being in a closure vendored for 0.1.16 -- so a
+  re-submit that forgets REVENDOR=1 fails, and one that never happens hides it.
+  Fixed in passing today by re-vendoring; the recurrence is what this bullet is
+  for.
+
+  Remedy is a decision, not a fix: either add an obs-submit step (with the
+  re-vendor) to the release path and gate it the way the other version-bearing
+  files are gated, or state that OBS is manually cut and give it a read-back like
+  the eight-asset one CLAUDE.md prescribes for a GitHub release. Same class as
+  FIBR-0275, where a release published with zero assets went unnoticed for ten
+  days.
+  **Layman:** The openSUSE/Fedora packages on the build service were still the version from late July, because publishing a new release never updates them. Anyone installing from there got old software.
+  Kind: package.
+  Source: in-session-2026-08-31 (found while working FIBR-0158).
+
+## v1.1.0 — Localisation
+
+The first feature minor after 1.0. Chosen to go first because it is
+self-contained, already scoped, and the strings are wrapped throughout: the
+translation pipeline, the bundled locales and the language switcher. Each item
+here is new user-visible capability under versioning.md § 3.2 and breaks nothing
+on the § 2 surface.
+
+- 📋 [FIBR-0017] **P12: multi-language UI (i18n) — 6 bundled locales incl. RTL + language switcher.**
+  Qt translation pipeline: every user-facing string is wrapped in `tr()` from the first UI onward (P02), `lupdate` extracts them to `.ts` catalogs, translations are compiled to `.qm` and loaded via `QTranslator` at startup and on live switch. Ships **6 locales**: English (base), Spanish, Simplified Chinese, Hindi, French, and **Arabic** (right-to-left). A language picker in the FIBR-0014 Settings screen switches locale. Numbers, currency, and dates render through `QLocale` (matters for a finance app — ties into the base-currency display), not hardcoded formats. The UI is built **RTL-ready** (layout mirroring) from P02 per design.md "Internationalization (i18n) & localisation", so Arabic is translate-and-ship; further RTL scripts (Hebrew, Urdu) are then a translation-only follow-up. NOTE: this stays cheap only if the string-externalization and RTL-safe-layout conventions are followed from P02 — retrofitting hardcoded English (and left-to-right-only layouts) across the whole feature stack is far more expensive. Dependencies: FIBR-0014 (settings screen hosts the switcher; transitively pulls the feature-complete UI so all strings exist to translate).
+  **Layman:** Lets people use finbreak in their own language — ships in 6 languages to start (including Arabic, which reads right-to-left), with more addable later.
+  Kind: implement.
+  Lanes: ui, i18n, services, tests.
+  Source: user-request-2026-07-01.
+  Deferred from FIBR-0004 (P02) per user decision 2026-07-02: the three P02 screens (first_run, unlock, main_window) build their strings once in __init__ and do NOT implement live language switching (changeEvent → retranslateUi). coding.md §5.2 asks for this "from P02"; the FIBR-0004 spec deliverable required only tr() strings + RTL layouts + QLocale amounts (all shipped), and there are no translations to switch yet. When this phase lands, add changeEvent/retranslateUi to those three screens (and every screen built between P02 and here) so the language switcher takes effect without a relaunch.
+  Scope note (2026-08-03, user request): loading the right catalog **at
+  startup from the system language** is FIBR-0209, not this bullet. This
+  item's "loaded via QTranslator at startup and on live switch" says the
+  mechanism exists but never says which locale is chosen on a first run
+  with no stored preference — FIBR-0209 pins that (system locale, full
+  `pt_BR` then bare `pt`, else English) and the silent-fallback rule.
+  Fold FIBR-0209 in if this is specced first; otherwise ship it after.
+
+- 📋 [FIBR-0129] **Host the language switcher in Settings (picker widget + language setting key).**
+  Split from FIBR-0014 (P12). Strings are tr()-wrapped throughout and RTL-ready (app.setLayoutDirection), but there is NO QTranslator, no .ts/.qm, no language setting key, no picker. This provides the language-picker widget in the FIBR-0055 Settings dialog + a `language` settings key. The translation pipeline itself (lupdate -> .ts -> .qm -> QTranslator at startup + live retranslateUi) is FIBR-0017; gate the picker's usefulness on that, or ship the widget writing the key now and wire it when FIBR-0017 lands.
+  **Layman:** A place in Settings to pick your language. The actual translations arrive with FIBR-0017; this just provides the chooser and remembers your pick.
+  Kind: implement.
+  Lanes: ui, i18n.
+  Source: split-from-FIBR-0014-2026-07-13.
+  Scope note (2026-08-03, user request): the `language` key this bullet
+  adds must default to a `"system"` sentinel, not to `"en"` — FIBR-0209
+  makes "follow the operating system's language" the out-of-the-box
+  behaviour, so the picker's first entry is "System default" and an
+  explicit pick is what overrides detection. Same shape as the timezone
+  / date / time combos (`DATETIME_SYSTEM`, `ui/_datetime_prefs.py`),
+  which this dialog already hosts.
+
+- 📋 [FIBR-0209] **Launch in the system language automatically, falling back to English.**
+  User request 2026-08-03. On startup, detect the operating system's
+  language and load that locale's translation automatically — the user
+  should not have to find a setting to be understood.
+
+  Resolution order (first hit wins):
+  1. An explicit language the user picked, if one is stored (FIBR-0129's
+  `language` key). An explicit choice always beats detection.
+  2. The system language, via `QLocale.system()` — match on the full
+  locale first (e.g. `pt_BR`), then fall back to the bare language
+  (`pt`), so a regional variant still finds its base translation.
+  3. English, if the system language is absent, unreadable, or has no
+  bundled `.qm` catalog.
+
+  Follow the project's existing sentinel shape: the stored `language`
+  key should default to a `"system"` token exactly like
+  `DATETIME_SYSTEM` in `ui/_datetime_prefs.py`, so "follow the system"
+  is a real stored state and not merely the absence of a value. That
+  also makes the Settings picker's first entry ("System default")
+  consistent with the timezone / date / time combos already there.
+
+  Two traps worth pinning in the spec:
+  - The fallback must be **silent and total** — an unsupported language
+  is the normal case for most of the world until more locales ship,
+  so it must never surface an error or an empty UI, just English.
+  - Detection runs BEFORE the first window is built, like the theme
+  pref (`app.py` applies the theme before `MainWindow`), so the
+  locked first window is already in the right language. The theme
+  system's `load_theme_pref` allowlist-against-known-ids is the
+  pattern to copy for validating a stored/detected language token.
+
+  Depends on FIBR-0017 (the QTranslator pipeline + the bundled `.qm`
+  catalogs must exist before there is anything to detect INTO) and
+  FIBR-0129 (owns the `language` settings key this reads). Ship after
+  both, or fold into FIBR-0017 if that is specced first.
+  **Layman:** finbreak should open in whatever language your computer is set to, without you having to pick it. If it does not know your language, or does not have a translation for it yet, it opens in English.
+  Kind: feature.
+  Source: user-request-2026-08-03.
+  Lanes: ui, i18n.
+
+## v1.2.0 — Import breadth
+
+More statements import with less work: further per-bank readers, credit-card and
+Family E account auto-detect, looser masked-number matching, the up-front
+duplicate warning, per-account currency, and the bank field with
+bank-as-matching-signal. Every schema change in this minor is additive with an
+automatic forward migration, which § 2's carve-out says is not a break.
+
+- 📋 [FIBR-0074] **Dedicated per-bank PDF readers for ABSA / Nedbank / FNB (needs real anonymised sample statements).**
+  Today ABSA/Nedbank/FNB statements CAN already be imported two ways: (1) their CSV/OFX exports (most reliable), and (2) the generic PDF table-extractor (pdf_importer.py) for any PDF with ruled transaction tables, via the column-mapping step. A DEDICATED zero-config text-layer reader like standard_bank.py (auto-detect + no mapping) needs REAL anonymised sample statements per bank to build and validate — the SB reader (FIBR-0050) required 6 real statements to catch layout edge cases; synthetic dummy PDFs exercise code paths but don't validate real-world layouts. Blocked on the user providing (or the project sourcing) a few real anonymised statements per bank. Until then, the generic extractor + CSV/OFX cover these banks.
+  **Layman:** Zero-config PDF import for the other big SA banks, the way Standard Bank statements already import without mapping columns.
+  Kind: feature.
+  Source: user-request-2026-07-10.
+
+- 📋 [FIBR-0240] **Credit-card statement account auto-detect — needs a stable card identifier.**
+  Deferred from FIBR-0086 (§9). Standard Bank credit-card statements (importer Family C) are EXCLUDED from import auto-detect because neither number on the page is usable as a matching key. The text after the statement's `account number` label is the DEBIT-ORDER account (the current account that pays the card) — measured 2026-08-06 across 13 real statements, where it normalises to exactly the user's current-account number, so matching on it would file every card statement under the current account. The card's own identifier is a masked PAN (printed as `Account NNNN **** **** NNNN`) which is NOT stable: the same corpus shows it changing mid-sequence on a card reissue — four statements carry one PAN, the following nine carry another. Revisit if SB starts printing a non-PAN account number on the statement, or if the user accepts re-entering the last four digits after each reissue. Until then credit-card imports keep the manual account pick.
+  **Layman:** Credit-card statements still need you to pick the account by hand — the number printed on them belongs to the account that pays the card, not to the card itself.
+  Kind: feature.
+  Source: spec-FIBR-0086-2026-08-06 (measured against 13 real SBSA credit-card statements).
+
+- 📋 [FIBR-0241] **Masked / trailing-digit account matching on import.**
+  Deferred from FIBR-0086 (§3 decision 3, §9). The FIBR-0086 bullet originally asked to match on TRAILING digits when a statement masks its account number (e.g. "xxxx1234"). Measured 2026-08-06 across 48 real Standard Bank statements: NO statement presents a masked number as its OWN identifier. The only masked self-identifier is the credit-card PAN, which FIBR-0232 excludes for separate reasons; every other masked string in the corpus (printed as `*****NNNNNNN`) is a COUNTERPARTY inside a transaction row, which must never be matched on. So the loosened matching path had nothing to exercise it and was left unbuilt rather than shipped untested. Revisit trigger: the first real statement or OFX file whose own identifier is masked.
+  **Layman:** If a bank ever prints only the last few digits of its own account number, finbreak will need a looser matching rule — no statement we have does that today.
+  Kind: feature.
+  Source: spec-FIBR-0086-2026-08-06 (48-statement corpus measurement).
+
+- 📋 [FIBR-0242] **Account auto-detect for statement Family E.**
+  Deferred from FIBR-0086 (§4.2, §9). FIBR-0086 enables header account-number extraction for importer families A, B and D. Family E (the Current-account "Payments / Deposits" layout added by FIBR-0190) is omitted because no Family E statement exists in the user's 48-file corpus — it would be expected to print a Family-A-style `Account Number` label, but including it would ship an untested claim about a layout nobody has seen. Add `Family.E` to `_ACCOUNT_NUMBER_FAMILIES` in `importers/standard_bank.py` and add a synthetic extraction test once a real Family E statement is available to measure against.
+  **Layman:** One statement layout is left out of automatic account-filing because we have no real example of it to check against.
+  Kind: feature.
+  Source: spec-FIBR-0086-2026-08-06.
+
+- 📋 [FIBR-0243] **OFX account-type prefill — map &lt;ACCTTYPE&gt; onto finbreak's account types.**
+  Deferred from FIBR-0086 (§4.1, §9). `models.OfxAccountInfo` already carries
+  `account_type` straight from ofxparse, and the FIBR-0086 roadmap bullet asks
+  for "type/currency where available" — but FIBR-0086 deliberately leaves the
+  create-account type prefill empty for OFX imports. Reason: the OFX
+  `&lt;ACCTTYPE&gt;` vocabulary (CHECKING, SAVINGS, MONEYMRKT, CREDITLINE, ...)
+  does not map onto this app's account types without a translation table nobody
+  has validated against real files, and a WRONG prefilled type is worse than an
+  empty one the user fills in — it looks authoritative. Build the mapping when
+  there are real OFX files to validate it against; the corpus that grounded
+  FIBR-0086 is 48 PDFs and contains none.
+  **Layman:** When importing an OFX file, finbreak could guess whether an account is a cheque or savings account — it doesn't yet, because guessing wrong is worse than leaving it blank.
+  Kind: feature.
+  Source: spec-FIBR-0086-2026-08-06 cold-eyes loop 2.
+
+- 📋 [FIBR-0088] **Detect an already-imported statement up front (content hash) — warn before re-importing.**
+  User wants an early 'already imported?' check that short-circuits BEFORE the per-transaction dedup (saving redundant work). Partly plumbed already: statements store source_filename and statement_periods has id_for_span (account+period existence check). Robust key = a CONTENT HASH (SHA-256 of the file bytes): detects a re-import of the IDENTICAL file regardless of filename — filename alone is unreliable (same file renamed; or two different files both named 'statement.pdf'). Add a file_hash column (schema migration, currently v7), compute it at import start, and if it matches a prior import WARN the user with an import-anyway option (a corrected re-issue is a legit re-import) rather than silently skipping. The existing account+period match (id_for_span) is a softer secondary signal. COMPLEMENTS, not replaces, transaction dedup (INV-6), which still catches overlapping-but-different files. Primarily a UX safeguard against accidental re-import; the CPU saving is a bonus. Also gives FIBR-0085 (batch import) its per-file 'already imported -> skipped' outcome. Deps: FIBR-0007/0008/0009 (importers), FIBR-0052 (statement provenance).
+  **Layman:** When you import a statement finbreak has already seen, it tells you up front ('looks like you already imported this') instead of silently re-processing it.
+  Kind: feature.
+  Source: user-request-2026-07-11 (dogfooding v0.1.0).
+
+- 📋 [FIBR-0087] **Per-account currency — support offshore/foreign-currency accounts in the portfolio (revisits FIBR-0021).**
+  The user wants to include an offshore account in their portfolio — the "real multi-currency need" FIBR-0021 deferred to (it chose single base_currency for v1, set at first-run, and said revisit when this arises). Per FIBR-0021's own "if revisited" note: add a currency column on accounts (default = the vault base currency), CHOOSE the currency when ADDING an account (the user's ask), QLocale-format each amount in its account's currency, and enforce that the dashboard NEVER sums across currencies without explicit conversion. Needs its OWN design/spec — the hard decisions: (a) consolidated totals across currencies — NO live FX rates (that would widen the network surface beyond the one FIBR-0054 update egress), so either per-currency subtotals or a user-entered/stored conversion rate; (b) how the dashboard presents mixed currencies (per-currency subtotals vs one converted total). Schema migration (currently v7 -> v8). Deps: FIBR-0005 (accounts), FIBR-0012 (dashboard totals). Kept SEPARATE from FIBR-0083 (date/time formatting).
+  **Layman:** Let each account have its own currency (e.g. a USD offshore account alongside your ZAR accounts), chosen when you create the account, so foreign accounts show and total correctly.
+  Kind: feature.
+  Source: user-request-2026-07-11 (dogfooding v0.1.0).
+  Consolidation design (proposed direction, user Q 2026-07-11 "how do mixed-currency statements consolidate into graphs/summaries?"): NO live FX rates (offline posture — only the FIBR-0054 updater egress). Default = per-currency subtotals: the dashboard shows each currency separately (ZAR panel, USD panel), NEVER summing across currencies (upholds FIBR-0021's rule). PLUS an optional USER-ENTERED exchange rate (stored in the vault) that converts everything to the base currency for a single consolidated total + unified graphs, always LABELLED "converted at your rate, entered <date>" so it's never mistaken for a live figure; user updates it at will. Warrants a small ADR ("how finbreak handles FX") when built. Rejected: live-rate fetch (breaks offline).
+
+- 📋 [FIBR-0283] **Accounts have no bank field, so a multi-bank vault distinguishes them only by account number.**
+  The Accounts screen carries Name, Type, Account number, Note and
+  Status, and nothing else. A vault holding accounts at two banks
+  therefore records the owning bank nowhere at all: the only signal is
+  the account number itself, which is masked in the table by default
+  and is not something a person recognises on sight. Reported by the
+  user 2026-08-19 against a real vault of six accounts at one bank
+  plus one at another.
+
+  Scope:
+  - A `bank` field on the account record: schema migration, repository
+    and domain model.
+  - An input on the Accounts screen's add / update row, and a Bank
+    column in the accounts table.
+  - Carried through everywhere an account is named to the user - the
+    account picker, the import wizard's pick step, and account
+    headings in reports and PDF export.
+
+  Two design calls to settle when this is picked up, deliberately NOT
+  decided here:
+  - Free text with a suggestion list, versus a closed enum. A closed
+    list refuses a bank whose statements we cannot yet parse, and the
+    importer families are Standard Bank only today (FIBR-0050), with
+    other banks tracked as FIBR-0074 - so free text with suggestions
+    is the likely answer.
+  - Whether the field is optional. Existing accounts must migrate to
+    an empty bank rather than a guessed one; inferring it from an
+    account number is exactly the fragile guess this item removes.
+
+  Adjacent and out of scope: FIBR-0086's import auto-detect and
+  FIBR-0241's masked / trailing-digit matching both compare account
+  numbers alone. Now filed as FIBR-0284: a bank on the account gives
+  FIBR-0086's create-prompt somewhere to store the bank name it
+  already extracts, and is the precondition that makes FIBR-0241's
+  looser trailing-digit key safe to build.
+  **Layman:** Add a "Bank" field to each account, so you can see at a glance which accounts are at which bank instead of having to match account numbers.
+  Kind: feature.
+  Source: user-request-2026-08-19.
+  Lanes: ui, repositories, services.
+
+- 📋 [FIBR-0284] **Import auto-detect should use the account's bank as a matching signal, not the account number alone.**
+  BLOCKED ON FIBR-0283 (the `bank` field itself). File this now so the
+  dependency is visible; there is nothing to build until that field
+  exists.
+
+  FIBR-0086 shipped auto-detect matching on the FULL normalised account
+  number, and falls back to a manual pick whenever the number matches
+  zero or multiple accounts. Four places a bank on the account earns
+  its keep, in descending order of how real they are today:
+
+  1. It makes FIBR-0086's own create-prompt promise storable. That
+     bullet already says the prompt to create an unrecognised account
+     is "pre-filled from statement metadata (number, BANK NAME IF
+     PRINTED, type/currency where available)" - and there has never
+     been a field to put the bank name in. This is the one part that
+     is live the moment FIBR-0283 lands.
+
+  2. It is the precondition that makes FIBR-0241 safe. That item
+     loosens matching to trailing digits, which is a genuinely weaker
+     key; bank + last-four is materially safer than last-four alone.
+     Worth having in place BEFORE FIBR-0241 is built, not after.
+
+  3. Multi-match disambiguation. FIBR-0086's "matches multiple
+     accounts" branch currently falls back to a manual pick; a
+     detected bank narrows it to one. Theoretical against today's
+     single-bank corpus, and live the moment a second bank's account
+     is added.
+
+  4. A wrong-bank refusal signal. A statement clearly from bank X
+     whose only number match is an account at bank Y is evidence of a
+     collision rather than a match, and should refuse rather than
+     auto-file - cf. FIBR-0059, never silently import to the wrong
+     account.
+
+  Design note: detecting the bank FROM the statement is the limiting
+  factor, not storing it. The only dedicated reader today is Standard
+  Bank (FIBR-0050); other banks are FIBR-0074. So scope this to a
+  best-effort bank hint with a manual fallback, in the same
+  smart-default-never-silent shape FIBR-0086 already uses. Where no
+  bank can be read off the statement, behaviour must be exactly what
+  it is today.
+
+  Do NOT infer a bank from an account number's shape or prefix. That
+  is the fragile guess FIBR-0283 exists to remove, reintroduced one
+  layer down.
+  **Layman:** Once accounts know which bank they belong to, statement auto-filing can use that too - so it picks the right account when two accounts look alike, and refuses rather than guessing when the statement is clearly from a different bank.
+  Kind: feature.
+  Source: user-request-2026-08-19 (adjacency raised while filing FIBR-0283).
+  Lanes: services, importers, ui.
+
+## v1.3.0 — Money insight
+
+What the app tells you that you could not see before: budgets and subscription
+detection, the trend chart, savings goals, the tax-year report, period
+comparison, the deferred forecast extras, safe-to-spend, committed-versus-free
+income, the yearly equivalent, the forecast band, and balance-coverage tracking.
+All § 3.2 capability; none of it changes how anything is stored.
+
+- 📋 [FIBR-0022] **Budgets + recurring / subscription detection.**
+  Per-category monthly spending limits with progress + over-budget
+  signalling on the dashboard, plus automatic detection of repeating
+  charges (same payee / amount cadence) so subscriptions surface. Target
+  phase: P10. Dependencies: FIBR-0006 (category tree), FIBR-0010 (rules).
+  Lanes: reporting, ux. Kind: feature. Source: user-request-2026-07-01.
+  Split 2026-07-15: the recurring/subscription-detection half is now FIBR-0142 (active, being built first per user pick). This bullet stays as the budgets tracking item (per-category monthly limits + over-budget dashboard signalling) — the follow-up after FIBR-0142 ships.
+  **Layman:** Set a monthly spending limit per category and see when you go over it, and have repeating charges like subscriptions spotted for you automatically.
+  Kind: feature.
+  Source: user-request-2026-07-01.
+
+- 📋 [FIBR-0036] **Net-worth-over-time trend.**
+  A dashboard line showing
+  the running total across all accounts month to month — is the overall
+  picture trending up or down — distinct from FIBR-0012's
+  income-vs-expenditure bars (this is the cumulative balance, not per-month
+  flow). Draws its series colour from the active theme (FIBR-0023) like the
+  other charts. Target phase: P10. Dependencies: FIBR-0012. Lanes:
+  reporting, ui, tests. Kind: feature. Source: user-request-2026-07-01.
+  **Layman:** A dashboard line showing whether your overall money position is trending up or down month by month.
+  Kind: feature.
+  Source: user-request-2026-07-01.
+  Lanes: reporting, ui, tests.
+
+- 📋 [FIBR-0038] **Statement coverage tracking + gap detection.**
+  Record each imported statement's coverage period (start/end date) per
+  account as first-class data, then a gap-detection pass reports
+  uncovered date ranges between covered ranges, per account (e.g.
+  Jan–Mar + May-onwards -> flags April missing). Range-based, so it is
+  reliable where a transaction-date heuristic is not: a quiet month with
+  zero transactions is still "covered" if its statement was imported, and
+  it handles non-monthly cycles (quarterly) and overlapping imports
+  (merge coverage). "Up to date" (latest statement -> today) is not a
+  gap; only holes between covered ranges are. Surfaces as a per-account
+  completeness report + a dashboard warning badge. Depends on the
+  coverage-period capture hook added at first import (FIBR-0007) — without
+  recorded periods, gaps can only be guessed from transaction dates
+  (false alarms on quiet months). Dependencies: FIBR-0005 (accounts —
+  gaps are per-account), FIBR-0007 (import captures the periods).
+  **Layman:** Warns you when you've skipped a statement — e.g. you loaded January–March and then May onwards, and it spots that April is missing for that account.
+  Kind: feature.
+  Source: user-request-2026-07-02.
+  Lanes: services, repo, ui, tests.
+
+- 📋 [FIBR-0173] **Savings goals — track progress toward a target amount, distinct from spending budgets.**
+  Budgets cap spending; goals build toward a target — a separate concept from the planned Budgets item (FIBR-0022). Per-goal: name, target amount, optional target date, current progress (linked account balance or manual contributions), and an on-track / behind indicator.
+  **Layman:** Set a target like "R10,000 holiday fund" and watch a progress bar fill as you save toward it.
+  Kind: feature.
+  Source: in-session-2026-07-23.
+
+- 📋 [FIBR-0174] **Tax-year summary — per-category totals for a chosen tax year with a tax-deductible flag, exportable to PDF/CSV.**
+  Adds a "tax-deductible" flag to categories and a tax-year report view (configurable year boundary for the SA Mar–Feb tax year). Reuses the existing PDF (services/pdf_export.py) and the planned plain-data CSV export (FIBR-0093). Locally useful given the SA bank focus.
+  **Layman:** A one-click annual report of what you earned and spent per category for a tax year, with deductible categories flagged — ready for filing.
+  Kind: feature.
+  Source: in-session-2026-07-23.
+
+- 📋 [FIBR-0175] **Compare periods on the dashboard — this month vs last, this year vs last year, side by side.**
+  The dashboard shows one period at a time (FIBR-0143). Add a compare toggle that renders a second period alongside the current one with per-category deltas (up/down arrows + amount/percent). Small addition to the existing reporting aggregation for a big 'aha'.
+  **Layman:** See two periods next to each other so you can spot what went up or down.
+  Kind: feature.
+  Source: in-session-2026-07-23.
+
+- 📋 [FIBR-0178] **Cash-flow forecast v2 follow-ups (FIBR-0171 D12, logged not dropped).**
+  Deferred out of the FIBR-0171 v1 cash-flow forecast (spec D12),
+  logged so they are not lost: (a) a user-typed manual balance
+  override for balance-less accounts (CSV-only), so those accounts can
+  contribute to the anchor without waiting for a balance-bearing
+  statement; (b) per-account (rather than vault-wide) forecasts;
+  (c) scenario / what-if one-off inputs (a known future cost the
+  recurring engine won't model); (d) a CSV balance-column mapping so a
+  CSV import can persist a closing balance too. Multi-currency forecasts
+  stay out of scope and are tracked by FIBR-0087.
+  **Layman:** Optional extras for the new Forecast tab, deferred from v1.
+  Kind: feature.
+  Source: FIBR-0171 spec D12 (in-session 2026-07-24).
+
+- 📋 [FIBR-0232] **"Safe to spend" — one number for what's left after everything still due this month.**
+  The cash-flow forecast (FIBR-0171) already projects a balance forward
+  through every known recurring payment to a horizon. This derives ONE
+  figure from it and puts it where a nervous user will actually look:
+
+  "After everything still due this month, you have R1,240 left."
+
+  That is the question a layman actually asks. Today the app answers it
+  with a line graph they have to interpret first.
+
+  Must degrade honestly, and this is the whole risk of the item: the
+  number is only meaningful in `ForecastMode.ANCHORED`. In `NET_FLOW`
+  (no account has a persisted closing balance) there IS no safe-to-spend
+  figure, and the card must say so — showing a projected CHANGE as
+  though it were money in hand is exactly the harm to avoid.
+
+  Pairs with the forecast-uncertainty item: a number the app cannot
+  stand behind should not be printed at all.
+  **Layman:** One number telling you what you can still spend this month, after the bills that haven't gone off yet.
+  Kind: feature.
+  Source: user-request-2026-08-05 (layman-comprehension suggestions).
+
+- 📋 [FIBR-0233] **Committed vs free income — show what share of income is spoken for before the month starts.**
+  Not a budget — no targets, no envelopes, no discipline required. That
+  is FIBR-0022, and this is deliberately the opposite: a mirror, not a
+  tool. One line and one bar:
+
+  "71% of your income is spoken for before the month starts — rent,
+  debit orders, subscriptions. R4,100 is yours to decide about."
+
+  The recurring detector (FIBR-0142) already identifies the committed
+  OUT streams and carries `monthly_equivalent` for each; income is
+  already separated from spending on the dashboard.
+
+  People systematically misjudge this ratio. Seeing it reframes "I am
+  hopeless with money" into "I have less room than I thought" — which
+  is true, actionable, and considerably kinder.
+
+  Open question for the spec: what counts as committed. Confirmed
+  recurring OUT items are the obvious core; whether suggested-but-
+  undecided streams are included changes the headline percentage, so
+  the rule must be stated on the card, not just in code.
+  **Layman:** Shows how much of your pay is already promised to bills before you spend anything.
+  Kind: feature.
+  Source: user-request-2026-08-05 (layman-comprehension suggestions).
+
+- 📋 [FIBR-0234] **Show the yearly equivalent beside every recurring amount.**
+  A presentation change rather than a feature: anywhere a recurring
+  amount is shown, show its yearly equivalent beside it.
+
+  "R85/week → R4,420/year"
+
+  `RecurringItem.monthly_equivalent` already exists (FIBR-0142 D8), so
+  the cadence normalisation is done and this is a formatting change on
+  top of it.
+
+  Small repeated amounts are the single thing laymen underestimate most
+  badly, and this is the cheapest correction to that error the app can
+  make — which is what earns it a place despite being cosmetic.
+
+  Two cares: rounding (a yearly figure derived from a weekly median
+  should not imply false precision), and phrasing that does not read as
+  a promise — it is an equivalent at today's rate, not a prediction.
+  **Layman:** Shows what a small regular payment adds up to over a year, which is usually far more than people expect.
+  Kind: enhancement.
+  Source: user-request-2026-08-05 (layman-comprehension suggestions).
+
+- 📋 [FIBR-0235] **Show the forecast's uncertainty — a band and a data-basis label, not a confident line.**
+  The app forecasts and detects patterns. A layman who trusts a
+  confident-looking WRONG forecast is a real harm — this is money, and
+  a crisp single line reads as certainty the data does not support.
+
+  Two changes:
+
+  - Draw the projection as a band rather than one line.
+  - Label the basis on its face ("based on 3 months of data").
+
+  `ForecastMode` already distinguishes ANCHORED from NET_FLOW, so the
+  weaker case is known to the code — it is just not visible enough at a
+  glance to change how the number is read.
+
+  Pairs with the "safe to spend" item, which must not print a figure it
+  cannot stand behind. Consider these together: the same honesty rule
+  drives both, and shipping the number without the caveat is worse than
+  shipping neither.
+  **Layman:** Makes it obvious how sure (or unsure) the app is about a prediction, so nobody leans on a guess.
+  Kind: ux.
+  Source: user-request-2026-08-05 (layman-comprehension suggestions).
+
+## v1.4.0 — Data model and editing
+
+Richer records and safer edits: split allocations, notes and tags, CSV export,
+opening and running balances, receipt attachments, undo of destructive deletes,
+import preview with batch undo, rule preview with bulk recategorise, learned
+auto-categorisation, transfer-detection learning, and the amount-range filter.
+Note CSV export joins § 2's export-file surface only when a roadmap item adds it
+to that table — shipping it does not join it silently.
+
+- 📋 [FIBR-0090] **Split a transaction across multiple categories.**
+  A personal-finance staple. One transaction carries N category allocations summing to its amount. Affects the categorization model (per-transaction allocations, not a single category_id) and the dashboard totals (aggregate by allocation, not whole-transaction). Schema change (an allocations/splits table). Deps: FIBR-0006 (categories), FIBR-0010 (categorization), FIBR-0012 (dashboard totals must respect splits). Own spec.
+  **Layman:** Split one purchase across categories — e.g. a R1,200 shop = R900 groceries + R300 household — so your breakdowns are accurate.
+  Kind: feature.
+  Source: claude-suggestion-2026-07-11.
+
+- 📋 [FIBR-0091] **Free-text notes + tags on transactions.**
+  A free-text note and/or tags (labels) per transaction, orthogonal to the category tree. Enables richer filtering/reporting in the dashboard's filterable table (FIBR-0012). Schema: a note column + a tags table (many-to-many). Deps: FIBR-0012 (filters), FIBR-0052 (transactions). Own spec.
+  **Layman:** Attach a note or tag ('reimbursable', 'holiday 2026') to a transaction for context the category tree can't hold, and to filter/report on.
+  Kind: feature.
+  Source: claude-suggestion-2026-07-11.
+
+- 📋 [FIBR-0093] **Plain data export — CSV / spreadsheet of your categorised transactions.**
+  A 'File -> Export data' that writes the (filtered) transactions — date, amount, description, account, category, notes/tags — to CSV (and optionally XLSX). Complements the report-style PDF export (FIBR-0013): this is RAW DATA for spreadsheets, not a formatted report. Local file write, no network (offline posture holds). Deps: FIBR-0007/0008/0009 (the data), FIBR-0012 (filters define the export scope). Own small spec.
+  **Layman:** Export your categorised transactions to a CSV/spreadsheet for your own analysis or your accountant.
+  Kind: feature.
+  Source: claude-suggestion-2026-07-11.
+
+- 📋 [FIBR-0094] **Account balances + net-worth over time (opening balance + running balance).**
+  Today finbreak tracks TRANSACTIONS, not balances. Add a per-account opening balance (+ as-of date); derive a running balance per transaction; surface an account-balance and consolidated net-worth trend on the dashboard. Interacts with FIBR-0011 (transfers — moving money between your own accounts must not change net worth) and FIBR-0087 (multi-currency net worth needs the FX decision). Schema: opening_balance on accounts. Deps: FIBR-0011, FIBR-0012, FIBR-0087. Bigger; own spec + likely an ADR on balance derivation.
+  **Layman:** Track each account's balance over time — set an opening balance and finbreak shows running balances and your overall net-worth trend, beyond just spending-by-category.
+  Kind: feature.
+  Source: claude-suggestion-2026-07-11.
+
+- 📋 [FIBR-0176] **Receipt attachments — attach a photo/PDF of a receipt to a transaction, stored inside the encrypted vault.**
+  Store attachment blobs inside the SQLCipher vault (not on disk) so they inherit the same at-rest encryption as transactions. Needs a size cap (reuse the INV-5b resource-size cap pattern) and a schema/migration for an attachments table. Fits the privacy-first, everything-encrypted design.
+  **Layman:** Keep a picture of a receipt with its transaction, encrypted like everything else.
+  Kind: feature.
+  Source: in-session-2026-07-23.
+
+- 📋 [FIBR-0100] **Undo for destructive actions (delete statement / delete category).**
+  Today destructive actions are confirm-only (Statements delete with its transactions, FIBR-0052; category delete-cascade, FIBR-0010). Add a short-lived undo — a status-bar 'Deleted — Undo' for a few seconds, or Edit -> Undo — that restores the deleted rows within the same session. Friendlier than confirm-only; reduces fear of the delete buttons. Design: soft-delete or an in-memory undo stack + a re-insert. Deps: FIBR-0052, FIBR-0010.
+  **Layman:** An 'undo' right after deleting a statement or category, so a misclick isn't permanent.
+  Kind: ux.
+  Source: claude-suggestion-2026-07-11.
+
+- 📋 [FIBR-0034] **Import preview + undo (rollback a whole import batch).**
+  Before an import lands, show a preview — "about to add 214 transactions
+  from 3 May–2 Jun across 1 account" — so a wrong file can be cancelled
+  before it touches the ledger. Each committed import is tagged as a batch
+  so it can be undone in one action if it was the wrong statement.
+  Preserves manual category overrides on re-import per FIBR-0010's rule.
+  Target phase: P06 (lands with the first import UI). Dependencies:
+  FIBR-0007. Lanes: services, ui, repo, tests. Kind: feature.
+  **Layman:** See exactly what an import is about to add before it lands, and undo a whole import in one action if it turns out to be the wrong file.
+  Kind: feature.
+  Source: user-request-2026-07-01.
+  Lanes: services, ui, repo, tests.
+
+- 📋 [FIBR-0092] **Rule preview (what will it match?) + bulk re-categorize selected transactions.**
+  Enhances FIBR-0010's rules engine + the categorization UX. (a) Rule preview: on rule create/edit, show the matching transactions (the would_categorize primitive already exists, FIBR-0010) before commit. (b) Bulk action: multi-select rows in the Home/transactions table -> set category (and optionally offer to make a rule). Pairs with FIBR-0084 (column/row UX) and FIBR-0012 (filterable table). Deps: FIBR-0010. Mostly UI + reuse of existing services.
+  **Layman:** When you write a categorisation rule, see which transactions it'll catch before saving; and select many rows to set their category at once.
+  Kind: enhancement.
+  Source: claude-suggestion-2026-07-11.
+
+- 📋 [FIBR-0140] **Auto-categorise learns from your own history (statistical, no hand-written rule).**
+  The 'later' half of the 2026-07-14 'both' decision (library now, learning later). Distinct from FIBR-0035 (offer-to-MAKE-a-rule, shipped) and FIBR-0092 (bulk re-categorize + rule preview): this auto-applies a category learned from the user's OWN past manual picks (merchant-keyed), ranked with/near the library, still overridable, manual always wins. Deps: the built-in category library item + FIBR-0010. Design TBD in its own brainstorm.
+  **Layman:** Once you've categorised a shop by hand a few times, finbreak remembers and auto-applies that to future transactions from the same shop — without you writing a rule.
+  Kind: enhancement.
+  Source: user-request-2026-07-14.
+
+- 📋 [FIBR-0145] **Transfer detection learns from confirmed/rejected transfer pairs.**
+  User feedback 2026-07-16 (general use of the shipped Transfers tab): confirming/rejecting a transfer should TEACH the detector, not just decide the one pair. Today FIBR-0011's `transfer_pairs` records a decision keyed on the two specific transaction ids, so an equivalent pair next month (same two accounts, same kind of description, same equal-magnitude/opposite-sign shape) is presented cold again. Enhancement: derive a reusable signal from each confirm/reject — keyed on something like (account_pair, direction, normalised description/merchant pattern) — so future candidate pairs that match a CONFIRMED pattern are auto-suggested or pre-confirmed, and pairs that match a REJECTED pattern are suppressed. Mirror the FIBR-0010 categorization-rules learning-from-manual-overrides design (a learned-rule table + a manual decision always winning + an overridable marker), applied to the transfer surface. Correctness guard: a learned auto-confirm must never merge money that isn't genuinely a transfer, so the learned pattern should stay conservative (exact account pair + tight amount/description match) and remain user-overridable. Deps: FIBR-0011 (transfer detection), pattern-reuse from FIBR-0010 (rules engine).
+  **Layman:** When you confirm or reject that two transactions are the same money moving between your own accounts, the app should remember the pattern and get better at spotting (or ignoring) similar transfers next time — instead of re-asking about the same kind of pair every import.
+  Kind: enhancement.
+  Source: user-feedback-2026-07-16 (general use).
+
+- 📋 [FIBR-0191] **Amount-range (min/max) filter on the Transactions tab.**
+  Split out of FIBR-0109 (2026-07-28) as the one piece its absorb target
+  did not build. FIBR-0012 shipped the Transactions tab
+  (src/finbreak/ui/transactions.py) with search + date-range + account +
+  category filters, all combinable; the amount-range (min/max) filter
+  FIBR-0109 originally named was deliberately NOT chosen in the FIBR-0012
+  brainstorm and is recorded under Out-of-scope in
+  docs/specs/FIBR-0012.md. The user confirmed on 2026-07-28 that it is
+  still wanted, so it is re-filed here rather than left implicit in a
+  closed bullet.
+
+  Scope: two optional amount inputs (min, max) in the existing Transactions
+  filter bar, combinable with every filter already present, pushed into the
+  same query/where layer the other filters use — not a post-filter in
+  Python. Decisions the spec must settle, none of them obvious:
+
+  - Whether the comparison is on the SIGNED amount or its magnitude. The
+  app stores money-out as negative, so "over 1000" most likely means
+  |amount| >= 1000 to a user, but a signed reading is defensible and the
+  two disagree on every debit. Getting this wrong is a wrong-total class
+  bug, so it needs an explicit invariant either way.
+  - Whether a blank input means unbounded on that side (expected) and how
+  min &gt; max is handled — refuse, swap, or return empty.
+  - Currency: FIBR-0087 (per-account currency) and FIBR-0111 (currency in
+  its own column) are both open, so a mixed-currency vault would compare
+  unlike amounts. Either scope this to the single-currency case with a
+  note, or gate it on those items.
+  - Whether the range participates in the saved per-tab filter state the
+  other Transactions filters use.
+
+  Reuses the existing list_transactions read path and the tab's current
+  filter plumbing; no new repository. Dependencies: FIBR-0012 (✅).
+  **Layman:** Let people narrow the transaction list to amounts between two figures — e.g. "show me everything over R1 000" — alongside the search, date, account and category filters already there.
+  Kind: feature.
+  Source: user-request-2026-07-28.
+  Lanes: ui.
+
+## v1.5.0 — Accessibility and keyboard
+
+Driving the whole app without a mouse, and seeing it clearly: full keyboard
+control with screen-reader support, Alt mnemonics, categorising shortcuts,
+typed-or-picker date entry, and the additional theme families. Grouped together
+because they share one surface — the widget layer — so doing them in one pass
+avoids touching every dialog twice.
+
+- 📋 [FIBR-0024] **Accessibility: keyboard navigation + screen-reader support.**
+  Full keyboard control (focus order, shortcuts, no mouse-only
+  actions) and screen-reader labels/roles via Qt accessibility
+  (`QAccessible`) on widgets and charts. Pairs with the i18n/RTL
+  (FIBR-0017) and theming (FIBR-0023) work. Target phase: P12.
+  Dependencies: FIBR-0014. Lanes: ui, accessibility. Kind: accessibility.
+  **Layman:** Use the whole app with the keyboard alone, and have a screen reader announce what is on screen.
+  Kind: accessibility.
+  Source: user-request-2026-07-01.
+  Lanes: ui, accessibility.
+
+- 📋 [FIBR-0073] **Add keyboard mnemonics to menus + dialog labels (a11y sweep).**
+  Menu titles (File/View/Window/Help/Donate) have no '&' Alt-accelerators; no dialog uses label mnemonics. Weakens keyboard-only navigation vs a typical desktop app (WCAG-adjacent). One focused sweep across main_window + the dialogs.
+  **Layman:** Menus and dialog fields get Alt-key shortcuts, so the app can be driven from the keyboard like any other desktop program.
+  Kind: accessibility.
+  Source: indie-review-2026-07-10 (shell L1 + dialog INFO).
+
+- 📋 [FIBR-0101] **Keyboard-first categorising — shortcuts for fast triage of a big import.**
+  Add keyboard shortcuts to the transaction table: set-category (opens the picker), jump-to-next-uncategorised, and quick-assign recent categories. Speeds triaging a large import. Pairs with FIBR-0092 (bulk re-categorize) and FIBR-0010 (rules); cleaner once FIBR-0097 (model/view) lands. Mostly UI. Deps: FIBR-0010.
+  **Layman:** Categorise a large import quickly with the keyboard — set a category and jump to the next one without reaching for the mouse.
+  Kind: ux.
+  Source: claude-suggestion-2026-07-11.
+
+- 📋 [FIBR-0110] **Every date input accepts typed entry (validated) or a date picker.**
+  User request 2026-07-12. Cross-cutting UX: wherever a date is entered — the manual-entry dialog, the future Transactions filters (above), any settings/import date field — offer both a typed field (ISO-validated, the existing parse_transaction date check) and a QDateEdit-style calendar picker, so neither typists nor mouse users are forced. A shared date-input widget/helper so the two modes stay consistent (Rule-of-Three: extract on the third site).
+  **Layman:** Anywhere you enter a date in the app, you can either type it (with a check that it's a real date) or pick it from a small calendar.
+  Kind: ux.
+  Source: user-request-2026-07-12.
+  Lanes: ui.
+
+- 📋 [FIBR-0023] **Theming: separate theme sets for normal and colourblind vision + picker.**
+  Ship **two families** of themes — a set
+  for normal colour vision **and** a set designed for colourblind users
+  (protanopia / deuteranopia / tritanopia-friendly palettes) — selectable
+  from the FIBR-0014 Settings screen (beside the FIBR-0017 language
+  picker). The normal-vision family goes beyond plain light/dark: ship a
+  small curated set of named themes — at minimum **Light**, **Dark**,
+  **Midnight** (near-black OLED-friendly), **Solarized Light**,
+  **Solarized Dark**, **Sepia** (warm, low-eyestrain), and a
+  **High-contrast** pairing — plus a **"follow the OS"** option that
+  tracks the system light/dark setting. Each theme is a named palette
+  (window / surface / text / accent / chart-series roles), defined in one
+  place so adding a theme is data, not code — no per-widget hardcoded
+  colours (coding.md § 8 bars magic constants without a named source; a
+  QSS stylesheet + palette tokens keeps colours in one table). Dashboard
+  charts (FIBR-0012) draw series colours from the
+  active theme's chart-series role, so whichever theme is chosen keeps the
+  chart series distinguishable. Target phase: P12. Dependencies:
+  FIBR-0012, FIBR-0014. Lanes: ui, accessibility. Kind: ux.
+  **Layman:** Pick from a set of colour schemes, including a family designed to stay readable if you are colourblind.
+  Kind: ux.
+  Source: user-request-2026-07-01.
+  Lanes: ui, accessibility.
+
+## v1.6.0 — Trust and onboarding
+
+What a new user meets, and what reassures them: biometric unlock, the first-run
+disclaimer with an issue-report link, the backup reminder, the onboarding
+wizard, the launcher-install offer, turning a confirmed guess into a rule, and
+the Settings recovery-key capability. Biometric unlock adds a key slot and
+always keeps the password slot, so no earlier vault becomes unopenable.
+
+- 📋 [FIBR-0020] **Biometric unlock (fingerprint / face) with capability detection.**
+  Store a key-wrapped copy of the vault key in the OS secure
+  keystore, released by the platform biometric (Windows Hello, macOS
+  Touch ID, Linux fprintd where present). **Detect** availability per-OS
+  and offer it only when present; always keep the password as fallback. A
+  convenience unlock, **not** a recovery method — Linux biometric support
+  is uneven, so degrade gracefully. Target phase: P12. Dependencies:
+  FIBR-0004, FIBR-0019 (shares the key-wrapping envelope). Lanes: crypto,
+  platform, ux. Kind: feature. Source: user-request-2026-07-01.
+  **Layman:** Unlock the vault with your fingerprint or face where your computer supports it, with the password always still available as a fallback.
+  Kind: feature.
+  Source: user-request-2026-07-01.
+  Lanes: crypto, platform, ux.
+
+- 📋 [FIBR-0039] **In-app liability disclaimer + issue reporting.**
+  A plain-language liability disclaimer — the app is provided as-is and is not responsible for incorrect information it may display (mis-parsed amounts, wrong totals); it is local-only and not financial advice. Shown at first run (acknowledged once, persisted) and always available from an About/Help dialog. Alongside it, a "Report an issue" link opening the GitHub Issues page (https://github.com/milnet01/finbreak/issues) so users can log problems for resolution. Complements the MIT LICENSE's warranty disclaimer with a user-facing, plain-English one. Shares the About/Help screen with the donate-links item — whichever ships first builds the screen.
+  **Layman:** A clear notice that the app isn't responsible for any incorrect figures it shows, with an easy button to report problems so they get fixed.
+  Note (FIBR-0054): when this disclaimer copy is written, phrase "local-only" as **data-locality** ("your financial data stays on your machine"), not "never connects" — the opt-in updater is a consented outbound exception, so a bare "local-only" shown on-screen would mislead.
+  Kind: feature.
+  Source: user-request-2026-07-03.
+  Coordination note update: FIBR-0051 (P07.5) ships only a minimal About (QMessageBox.about) and puts donate links in their own Donate menu — it does NOT build the shared About/Help screen. So this bullet still owns building that screen (disclaimer + "Report an issue" link); the old "whichever of FIBR-0039/0040 ships first builds the screen" pact no longer applies.
+
+- 📋 [FIBR-0089] **Backup safety nudge — first-run emphasis + a 'last backup was N days ago' reminder.**
+  The encrypted-backup MECHANISM is planned in FIBR-0014; this is the SAFETY UX around it. ADR-0003: no password recovery = permanent data loss, so a backup is the only mitigation. Add (a) first-run copy stressing 'back this up somewhere safe', and (b) a gentle, non-blocking reminder when the last backup (tracked via a vault-settings timestamp) is older than a threshold. Depends on / complements FIBR-0014 (the export itself). Highest-value safety improvement per the 2026-07-11 review.
+  **Layman:** Because a forgotten master password means your data is gone for good, finbreak reminds you to keep a backup — stressed at first run and gently nudged if it's been a while.
+  Kind: ux.
+  Source: claude-suggestion-2026-07-11.
+
+- 📋 [FIBR-0157] **Guided first-run wizard walks new users through the natural workflow: create accounts → import statements → categorise transactions → confirm/reject transfers.**
+  A sequenced onboarding wizard (and, ideally, smaller task-level wizards) that
+  guides a new user through finbreak's natural order of operations rather than
+  leaving them to discover it:
+
+  1. Create one or more accounts first (nothing else works without an account
+  to attach transactions to).
+  2. Import statements (CSV / OFX / PDF) into an account.
+  3. Categorise the imported transactions (Type → Category).
+  4. Confirm or reject the auto-detected transfers between accounts.
+
+  Design intent / open questions to settle at spec time:
+  - Trigger on first run (empty vault) automatically, and make it re-invokable
+  later from a Help/menu entry — never a forced modal a returning user can't
+  dismiss.
+  - Each step should deep-link into the real UI (open the Accounts dialog, the
+  Import flow, the Transactions tab filtered to Uncategorised, the Transfers
+  review) rather than reimplementing those screens — reuse over rebuild.
+  - Show progress ("step 2 of 4") and let the user skip ahead / come back; a
+  step is "done" when its underlying data condition is met (≥1 account
+  exists, ≥1 statement imported, no uncategorised rows, no pending transfers).
+  - Correctness guard: the wizard only navigates and prompts — it must never
+  itself write to the transactions table or bypass the transfer-confirmation
+  step (transfers stay a user decision, per the transfers invariant).
+  - Consider a lightweight "what next?" nudge on the dashboard once onboarding
+  is complete but a natural next action exists (e.g. a new statement import
+  left uncategorised).
+  **Layman:** A step-by-step helper for newcomers that walks them through setting up the app in the right order, so a first-time user is never staring at an empty screen wondering what to do.
+  Kind: feature.
+  Source: user-request-2026-07-23.
+
+- 📋 [FIBR-0218] **The AppImage installs no launcher, so a hand-made one shows a second panel icon.**
+  Reported by the user 2026-08-03 with screenshots: two finbreak icons in the
+  KDE panel while running 0.1.19 (the latest). DIAGNOSED on their machine, not
+  inferred.
+
+  Root cause is an app-ID mismatch, and finbreak's own side is correct. On
+  Wayland KDE associates a window with a pinned launcher by matching the window's
+  `app_id` to the launcher's desktop-file BASENAME. `app.py` sets
+  `QGuiApplication.setDesktopFileName("io.github.milnet01.finbreak")` and the
+  AppImage bundles `io.github.milnet01.finbreak.desktop` — consistent. But the
+  user's panel pinned `~/.local/share/applications/finbreak.desktop`, a
+  hand-rolled launcher whose basename id is `finbreak`, so KDE saw a pinned
+  launcher and an unrelated window. (`StartupWMClass=finbreak` in that file is
+  the X11 key and is ignored on Wayland — a trap, since it LOOKS like the
+  association key.)
+
+  Resolved for the reporter by renaming their launcher to
+  `io.github.milnet01.finbreak.desktop` and pointing `Icon=` at the installed
+  `io.github.milnet01.finbreak` hicolor PNGs.
+
+  The product gap: the AppImage installs no desktop entry of its own, so a user
+  who wants a menu/panel entry hand-writes one and will usually name it
+  `finbreak.desktop` — reproducing this. Options to weigh: (a) document the
+  required basename in the README's AppImage install section (cheapest, and the
+  README is refreshed every release anyway); (b) have the AppImage offer to
+  install a correct launcher on first run, the way many AppImages do; (c) rely on
+  AppImageLauncher, which does it correctly but is not installed by default on
+  openSUSE. (a) is the minimum and should ship regardless of the rest.
+
+  Also observed on the reporter's machine, and NOT part of this item: three
+  concurrent installs — the AppImage 0.1.19, an RPM/deb providing
+  `/usr/share/applications/io.github.milnet01.finbreak.desktop`, and a Flatpak
+  `io.github.milnet01.finbreak` still on 0.1.16. Worth asking whether the docs
+  should warn that the three can shadow each other's launchers.
+  **Layman:** If you make your own shortcut for the AppImage, finbreak shows up twice in the taskbar — once for the shortcut and once for the running window.
+  Kind: fix.
+  Source: user-report-2026-08-03.
+  Progress (2026-08-19): option (a) SHIPPED -- the README's AppImage install section now tells you to name a hand-made shortcut io.github.milnet01.finbreak.desktop rather than finbreak.desktop, points Icon= at the installed hicolor id, and says outright that a differently-named one gives you two panel icons. It also names the StartupWMClass trap: right on X11, ignored on Wayland, which is what makes the wrong file look correct. The bullet called (a) "the minimum and should ship regardless of the rest", so this is that. STAYS OPEN for (b) and (c): the AppImage still installs no launcher of its own, so this is guidance a user has to find rather than a product that does the right thing unaided. (b) offering to install a correct launcher on first run remains the real fix. Also still unanswered, and recorded here so it is not lost: whether the docs should warn that a concurrent AppImage, RPM/deb and Flatpak install can shadow each other's launchers -- observed on the reporter's machine with three versions live at once.
+
+- 📋 [FIBR-0220] **Agreeing with a "~ guess" cannot teach the app — the no-nag gate has no escape hatch.**
+  Reported by the user 2026-08-03. VERIFIED against source; the current
+  behaviour is deliberate and documented, and the gap is a missing action rather
+  than a defect.
+
+  What happens today. Right-click a `~ guess` row -> Set category -> the picker
+  opens with the guessed category ALREADY selected (`_on_set_category` passes
+  `txn.category_id`). Accepting it calls `set_manual_category`, which writes
+  `(same_id, 'manual')` — the source differs from `'library'`, so the row really
+  is written and the `~` marker clears (`transactions.py:354` renders the marker
+  only for `category_source == 'library'`). So the row IS confirmed and frozen.
+
+  But `_maybe_offer_rule` returns early when `chosen == would_categorize(desc)`
+  (`transactions.py:427`), and `would_categorize` includes the LIBRARY layer
+  (`categorization.py:293-301`, FIBR-0139 D4 — which explicitly supersedes
+  FIBR-0010 INV-5's rules-only phrasing: "confirming a library guess raises no
+  learning nag; overriding one still offers the rule"). Agreeing with a guess is
+  therefore, by construction, the one case that can never produce a rule.
+
+  Consequence: confirming a guess fixes exactly one row. The next import of the
+  same merchant is a `~ guess` again, and the user repeats the work per
+  statement. The only two routes to a persistent rule are to pick a DIFFERENT
+  category (tripping the "differs" check) or to hand-write one on the Rules tab —
+  neither discoverable from the row being looked at.
+
+  The no-nag rule itself is right and should stay: a modal offer on every
+  agreement would be intolerable. What is missing is an explicit, opt-in action.
+  Candidates, cheapest first: (a) a second context-menu item on a guessed row —
+  "Always file <merchant> here" — that skips the differs-check and opens the
+  existing `RuleEditDialog` pre-filled exactly as the learn offer does, reusing
+  `_maybe_offer_rule`'s dialog and `_apply_learned_rule` wholesale; (b) a
+  "remember this" checkbox in the CategoryPickerDialog; (c) a bulk "turn my
+  confirmed guesses into rules" pass. (a) is the smallest and is the one route
+  that starts where the user already is.
+
+  Whichever ships, the merchant-key question needs deciding: the learn offer
+  pre-fills the rule with the FULL description and tells the user to trim it to a
+  keyword. For a guess-derived rule the library's own matched pattern is the
+  better default, since it is already the generalised merchant token — but that
+  means surfacing which library pattern matched, which `match_library` currently
+  discards (it returns only the category id).
+  **Layman:** When the app guesses a category correctly, saying "yes, that's right" only fixes that one row — the next statement guesses again. There is no way to say "always file this shop here".
+  Kind: enhancement.
+  Source: user-report-2026-08-03.
+
+- 📋 [FIBR-0305] **Change the master password from Settings — nearly free once FIBR-0019 lands.**
+  Surfaced by the FIBR-0019 review gate and verified as untracked:
+  `roadmap_query query:"master password" status:all` returns seven
+  bullets and none of them is this.
+
+  Today there is no user-facing change-password flow at all. `Vault.rekey`
+  exists but is called only by `BackupService.restore_backup`, which
+  re-keys a restored COPY to a password chosen at restore time — never the
+  live vault's own password.
+
+  FIBR-0019 changes the economics completely. Under envelope encryption
+  the master password only ever wraps a 32-byte data key, so changing it
+  is: derive a KEK from the new password against a fresh salt, re-wrap the
+  same DEK, rewrite the sidecar. The database is not touched. Before
+  FIBR-0019 the same feature meant `PRAGMA rekey` over every page.
+
+  Blocked by FIBR-0019 — the envelope has to exist first. Small once it
+  does, and it shares the Settings surface and the current-password gate
+  that FIBR-0019 section 4.7 already specifies for managing the recovery
+  key.
+
+  Deliberately NOT added to the FIBR-0304 v1.0 gate: it is a new
+  user-visible capability, not a condition of freezing the format.
+  **Layman:** Once the recovery-key work is in, changing your master password becomes a quick, safe operation instead of re-encrypting the whole vault — but nothing yet tracks actually adding the button.
+  Kind: feature.
+  Source: review-contract-2026-08-20 (FIBR-0019 gate, surfaced not fixed).
+
+## Platform releases — gated on a third party
+
+New supported platforms, which are § 3.2 MINOR work, but deliberately NOT given
+a planned version. Each waits on somebody else's queue — Flathub review, a
+winget or Homebrew PR, an openSUSE Leap Python ABI, and macOS notarisation — and
+versioning.md § 5 says a third party's inbox is never a gate. So each lands in
+whichever minor is open when the third party moves, rather than holding a number
+that may never arrive.
+
+- 📋 [FIBR-0130] **P13: macOS `.dmg` packaging**
+  (Flatpak/Flathub → FIBR-0159).
+  The macOS `.app`-in-`.dmg` — the packaging remainder split out of FIBR-0015 when its Windows `.exe` slice closed (2026-07-13). The Flatpak/Flathub half moved to FIBR-0159 (see the scope update below). The SQLCipher crypto blocker is already cleared (the `sqlcipher3-wheels` fork ships macOS + Linux wheels of the same 4.12.0 engine, ADR-0009), so this is packaging-only: freeze the macOS app on a `macos-latest` runner (reusing the FIBR-0015 `windows_freeze_flags.py` collection list + `--self-test` clean-room); the artifact still meets ADR-0007's "no Python installed" launch bar. (The Flatpak manifest is FIBR-0159's, not this item's — see the scope update below.) Dependencies: FIBR-0015 (freeze tooling), FIBR-0037 (icon → `.icns`). Lanes: build, ci, packaging. Kind: chore. Source: split-from-FIBR-0015-2026-07-13.
+  Scope update (2026-07-23): the Flatpak/Flathub half is now owned end-to-end by FIBR-0159 (docs/specs/FIBR-0159.md — freedesktop 25.08 runtime + pinned-wheel closure, portal-only sandbox). FIBR-0130 is left to deliver the macOS `.app`/`.dmg` only; do NOT re-author a Flatpak manifest here.
+  **Layman:** A proper macOS download you open and drag to Applications, like any other Mac app.
+  Kind: chore.
+  Source: split-from-FIBR-0015-2026-07-13.
+  Lanes: build, ci, packaging.
+
+- 📋 [FIBR-0044] **Broaden Linux store reach: Snap Store + AUR + native distro packages.**
+  Flathub (FIBR-0015) already surfaces the app in GNOME Software + KDE Discover across most distros, so this item adds the remaining self-publishable Linux channels: (a) Snap Store — a snapcraft.yaml (Ubuntu App Centre's default backend); (b) AUR — a PKGBUILD pointing at the GitHub release/AppImage (community-maintained, low overhead); (c) native RPM + DEB packages for Fedora/openSUSE/Debian/Ubuntu built via the openSUSE Build Service (OBS) and/or Fedora COPR, published to a project repo. (Getting INTO official distro repos is maintainer-driven and slow — tracked separately if pursued.) All free, all self-publish. Depends on FIBR-0015 (the built artifacts) and FIBR-0016 (release automation extends to push each channel).
+  **Layman:** Beyond Flathub (which already puts us in most Linux app stores), also publish to Ubuntu's Snap Store and Arch's AUR, plus ready-to-install packages for Fedora/openSUSE/Debian — so almost any Linux user can install us in one click.
+  Kind: package.
+  Source: user-request-2026-07-04.
+  Clarified (2026-07-04): this is the item that delivers the user's "each distro's built-in app store / software centre" request. Those centres (GNOME Software, KDE Discover, Ubuntu App Center, Pop!_Shop, Mint Software Manager, elementary AppCenter) are front-ends that read Flathub / Snap / distro repos — there is no per-store submission. So FIBR-0015 (Flathub → GNOME Software + KDE Discover, the majority of distros) + this item (Snap → Ubuntu App Center; native RPM/DEB → repo-based centres) together cover essentially every distro software centre. No separate work per store.
+
+- 📋 [FIBR-0045] **Free Windows/macOS package managers: winget, Chocolatey, Homebrew Cask.**
+  Free, self-publishable manager listings that just reference the GitHub Release artifact: (a) winget — a manifest PR to microsoft/winget-pkgs (`winget install finbreak`); (b) Chocolatey — a community nuspec package; (c) Homebrew Cask — a Ruby cask pointing at the macOS .dmg (`brew install --cask finbreak`). No paid account and no signing rework beyond what FIBR-0015 already does. Reaches the more technical slice of Windows/Mac users and gives them auto-update. Depends on FIBR-0015/FIBR-0016.
+  **Layman:** Also list the app in the free 'app installers' many Windows and Mac users already use, so they can install and auto-update it with one command — no store account needed from us.
+  Kind: package.
+  Source: user-request-2026-07-04.
+
+- 🚧 [FIBR-0159] **Publish finbreak to Flathub — the cross-distro app store (GNOME Software / KDE Discover).**
+  Flathub is the de-facto cross-distro app store: one submission surfaces finbreak
+  in GNOME Software + KDE Discover on openSUSE, Fedora, Ubuntu, Debian, Mint, etc.
+  Unlike the official distro archives (which forbid bundling and need a maintainer
+  sponsor — impractical for finbreak's deliberately-bundled runtime), Flathub is
+  self-publish and embraces the self-contained/sandboxed model, so it fits.
+  Design (chosen, docs/specs/FIBR-0159.md — /cold-eyes CONVERGED loop 8, signed off
+  2026-07-23; a SEPARATE build pipeline from OBS — flatpak-builder + a manifest, not
+  rpm/deb):
+  - Build on the freedesktop 25.08 runtime + the pinned pip-wheel closure
+  (PySide6==6.11.1 carries its own Qt6) — NOT the PySide6 BaseApp (tops out at
+  6.10, forks the pinned stack) and NOT the KDE runtime (no 6.11 branch). The
+  manifest io.github.milnet01.finbreak.yaml pip-installs the sha256-pinned
+  closure (packaging/flatpak/python3-deps.yaml, generated by
+  generate-pip-sources.sh — --prefer-wheels DERIVED from the closure, never
+  hand-listed) into /app, then pip-installs finbreak from its git clone.
+  - Reuse the existing AppStream metainfo + .desktop + icons shipped under
+  packaging/obs/ (single source of truth — installed from the finbreak module's
+  own git clone so a standalone-submitted manifest still finds them, ADR-0007).
+  - Minimal, network-free, portal-only sandbox: NO --share=network (app networking
+  unreachable at the OS level), NO --filesystem=* (import/export go through the
+  xdg-desktop-portal chooser, granting only the file the user picks), NO
+  --talk-name=*. The updater is inert under Flatpak by construction (no $APPIMAGE
+  / not a frozen exe → detect_installer() is None) — no build-time gating needed.
+  One small src change: gate _kde_wayland() off under Flatpak so the unreachable
+  org.kde.KWin window-centering call is honestly disabled (INV-8).
+  - Submit to github.com/flathub/flathub (PR on the new-pr base branch), pass the
+  reviewer round, then Flathub builds + hosts it.
+  Progress (2026-07-23): spec CONVERGED (cold-eyes loop 8) + signed off; implementation landed — packaging/flatpak/ (manifest, generate-pip-sources.sh, python3-deps.yaml, flatpak-build.sh, README), the _kde_wayland() Flatpak gate (main_window.py, INV-8), security-model.md INV-8 note, and tests/features/flatpak_packaging/ (INV-1..8). Local flatpak-builder build + portal smoke next, then the Flathub new-pr submission.
+  Local build VALIDATED (2026-07-23): flatpak-builder builds green offline from the sha256-pinned closure (24 sources, ofxparse the one sdist); `flatpak run --command=finbreak … --self-test` → FINBREAK_SELFTEST_OK (Qt+SQLCipher+qpdf travelled); sandbox network-isolated (in-sandbox connect → OSError, proving no --share=network); full gate green (1258 passed). Two gate fixes folded in: types-PyYAML mypy stubs + a .gitleaks.toml allowlist for the flatpak-builder artifacts (.build/.repo/.flatpak-builder). REMAINING before Flathub submit: (1) manual live-host §5 smoke on KDE-Wayland — portal file open + PDF/.fbk export, Center-window disabled, real screenshot URLs; (2) re-pin the manifest to a release tag/commit (currently v0.1.16); (3) open the flathub/flathub new-pr PR — an outward-facing action, awaiting user go-ahead.
+  Decision (2026-07-28, user): KEEP the app id io.github.milnet01.finbreak for
+  the Flathub submission — do not switch to the user's own domain
+  (antsprojectshub.co.za). Flathub accepts a reverse-DNS id based on a
+  code-hosting account you control, 0.1.18 already shipped with this id, and a
+  rename would churn the desktop file, icon filenames, metainfo id, the Flatpak
+  manifest and the OBS spec while making existing RPM installs look like a
+  different app. The domain is still the right HOMEPAGE value in the manifest and
+  metainfo — that field is independent of the id. (User data is unaffected either
+  way: paths.py keys AppDataLocation on applicationName "finbreak", not the id.)
+
+  Follow-up (optional, lower priority): the Snap Store (Ubuntu-led, also
+  self-publish, also appears in the software centres) — a snapcraft.yaml. Do after
+  Flathub. Official distro archives are out of scope (bundling policy).
+  **Layman:** Get finbreak into the main Linux app store (Flathub), so users on any distro can find and install it from their graphical Software centre with one click — the single biggest reach-the-most-people step.
+  Kind: package.
+  Lanes: packaging, release.
+  Source: user-request-2026-07-23.
+  Pre-submit audit (2026-08-07), run against Flathub's CURRENT published
+  requirements rather than the spec's 2026-07-23 reading of them. Two
+  blockers, two quality nits, one spec gap:
+
+  BLOCKER (RESOLVED same day — see FIBR-0206) — all six metainfo
+  `<screenshot>` URLs 404. Flathub's own check fails:
+  `flatpak-builder-lint appstream` exits 3 with six
+  `screenshot-image-not-found`, and `appstreamcli validate` agrees.
+  Docs list invalid screenshots as a submission-blocking error.
+
+  CORRECTION to this note as first written: it blamed an unfinished
+  FIBR-0155 "upload real PNGs" TODO and said the images "were never
+  uploaded". That was wrong, and FIBR-0206 had already established
+  the real cause on 2026-08-02 — the images have been published the
+  whole time; the metainfo simply guessed the hosted path from the
+  in-repo basenames. The site serves `/assets/img/shots/` with a
+  `finbreak-` prefix, so both the directory and the name differ. A
+  six-line URL correction fixed it; nothing needed uploading. Filing
+  a finding without first checking whether the roadmap already
+  carried its diagnosis is what produced the wrong cause here.
+
+  BLOCKER (RESOLVED same day — see FIBR-0256) — the cryptography
+  closure drift.
+
+  NIT — screenshots are 1600x1000. The quality guidelines want
+  <=1000x700, or 2000x1400 for HiDPI; 1600x1000 is neither. Re-capture
+  at 2000x1400 while uploading.
+
+  NIT — `<summary>` is 55 chars ("Understand your personal finances,
+  privately and offline"). Guideline: <=35, ideally 10-25. `<name>`
+  "finbreak" is all-lowercase, which the guidelines also discourage,
+  but it is the brand and is defensible as-is.
+
+  SPEC GAP — neither § 5's checklist nor packaging/flatpak/README.md
+  mentions `flatpak-builder-lint`, which Flathub docs tell submitters
+  to run locally and whose failures block the PR. The manifest check
+  passes today (exit 0); the appstream check is what fails. § 5 also
+  says to build with the host `flatpak-builder` (flatpak-build.sh line
+  53), where Flathub asks for the `org.flatpak.Builder` flatpak —
+  already installed on this host. Fold both into the checklist.
+
+  VERIFIED GOOD — runtime branch `25.08` is still current and
+  installable (freedesktop-sdk-25.08.15); the manifest is correctly
+  re-pinned to v0.1.19 / f4de4c4 (the roadmap's older "currently
+  v0.1.16" remark is stale); the app id decision stands unchanged.
+
+  STILL OPEN, unchanged — the binary-wheel reviewer risk § 5 already
+  records. Research found no published Flathub policy blessing
+  pre-built manylinux wheels, and the one on-point Flathub Discourse
+  thread about a PySide6 app had a maintainer recommending a
+  from-source PySide6 build instead. That is a data point, not a
+  ruling, and the same thread's advice was "just create the submit PR,
+  it will be reviewed there".
+  Re-validated (2026-08-07) after the FIBR-0256 closure regenerate, on a
+  real KDE-Wayland host. This supersedes the 2026-07-23 "local build
+  VALIDATED" note, which predated the cryptography bump.
+
+  * `flatpak-builder` builds green OFFLINE from the regenerated
+  sha256-pinned closure, and `--self-test` prints FINBREAK_SELFTEST_OK
+  (Qt + SQLCipher + qpdf travelled).
+  * The CVE fix actually reaches the bundle, not just the manifest:
+  `python3 -c "import cryptography; print(cryptography.__version__)"`
+  INSIDE the built flatpak prints **50.0.0**.
+  * Sandbox is network-isolated — an in-sandbox `socket.create_connection`
+  to 1.1.1.1:443 raises `OSError: [Errno 101] Network is unreachable`,
+  proving no `--share=network`.
+  * Updater inert at runtime, not merely under a monkeypatched test:
+  `/.flatpak-info` exists, `FLATPAK_ID` is set, and
+  `detect_installer()` returns `None` (INV-6).
+  * INV-8 verified where it actually matters: `_kde_wayland()` returns
+  **False** inside the flatpak on a session that genuinely IS KDE
+  Wayland (`XDG_SESSION_TYPE=wayland`, `XDG_CURRENT_DESKTOP=KDE`), so
+  the unreachable org.kde.KWin call is honestly suppressed.
+  * `flatpak-builder-lint manifest` exits 0; `... appstream` exits 0
+  after the FIBR-0206 URL fix.
+
+  `flatpak-builder-lint repo` reports two errors —
+  `appstream-screenshots-not-mirrored-in-ostree` and
+  `appstream-external-screenshot-url`. Checked against Flathub's linter
+  docs rather than assumed: both are EXPECTED on a local build, because
+  mirroring happens when the builder is invoked with
+  `--mirror-screenshots-url=https://dl.flathub.org/media`, which
+  Flathub's own infrastructure supplies. They would only be the
+  submitter's problem for an externally-uploaded app, which this is not.
+
+  STILL NEEDS A HUMAN — the two portal checks in § 5, which are the
+  gate for § 3.5's two risks and cannot be driven headlessly: (i) import
+  a file through the chooser, and (ii) export a PDF report and an
+  encrypted .fbk to a chosen location. The app is installed
+  (`flatpak run io.github.milnet01.finbreak`) and ready for that pass.
+  Progress (2026-08-12): the launch blocker is CLEARED — FIBR-0259 is ✅. Between the 2026-08-07 re-validation above and today the app could not start at all under Flatpak (missing Kerberos library, ImportError before any window), which is what the user's § 5 portal attempt actually hit. The krb5 manifest module fixed it and the user confirmed a real launch today: window, full toolbar, "Ready", unlock dialog. So this bullet's closing line — "the app is installed and ready for that pass" — is true again, but it was NOT true for the five days in between; do not read that line as continuously verified. Two corrections to the notes above, both checked in the tree rather than recalled: the manifest is now pinned to tag v0.1.20 / commit 6c9cf8c (line 104-106), superseding both the "currently v0.1.16" and the "v0.1.19 / f4de4c4" remarks; and the FIBR-0259 fix also widened `--self-test` to import PySide6.QtNetwork and construct a QLocalServer, closing the gate hole that let a non-starting build pass every automated check. REMAINING, unchanged: (1) the two human portal checks in § 5 — import through the chooser, and export a PDF report + an encrypted .fbk to a chosen location; (2) re-pin to the newest release if one is cut before submission; (3) open the flathub/flathub new-pr PR, an outward-facing action still awaiting the user's explicit go-ahead.
+  Progress (2026-08-12): the manifest now builds green AS SUBMITTED. `LOCAL=0 packaging/flatpak/flatpak-build.sh` — no source substitution, so the finbreak module is built from the pinned v0.1.20 / 6c9cf8c clone, offline — installs the whole closure (cryptography-50.0.0) plus finbreak-0.1.20 and ends FINBREAK_SELFTEST_OK. That clears the last two automated blockers this bullet inherited: FIBR-0257 (the CVE fix had never shipped) and FIBR-0256 (the closure still offered cryptography 49.0.0) were both already fixed by the v0.1.20 release and are now flipped ✅ on evidence rather than on inference. FIBR-0258 is closed with them: `LOCAL=0` is documented as the pre-submit path in packaging/flatpak/README.md, and `test_FIBR0258_closure_satisfies_the_pinned_commit` now checks the closure against the pyproject of the commit the MANIFEST pins, not the working tree's. REMAINING is unchanged and is all human or outward-facing: (1) the two § 5 portal checks — import through the chooser, and export a PDF report + an encrypted .fbk to a chosen location; (2) re-pin if a newer release is cut first; (3) open the flathub/flathub new-pr PR, still awaiting explicit go-ahead.
+  Progress (2026-08-20): the manual § 5 live-host smoke is DONE and all five
+  checks pass, on KDE-Wayland, against a LOCAL=0 build -- the manifest as
+  submitted, from the pinned v0.1.22 commit (624722d, verified equal to the
+  tag), built offline. Self-test printed FINBREAK_SELFTEST_OK, so Qt +
+  SQLCipher + qpdf all travelled into the sandbox.
+
+  (1) Portal open: a CSV in $HOME -- which the sandbox has no filesystem
+  right to read -- was chosen through the xdg-desktop-portal chooser and
+  fully parsed: 10 rows, ISO dates read correctly, coverage period inferred
+  (2026/07/02..2026/07/28), dedup ran (0 duplicate). One row errored, and
+  correctly: a 0.00 opening-balance line the tester had put in the sample,
+  refused by transactions.py:92 "amount must be non-zero" and surfaced as a
+  per-row error while the other 9 imported (the FIBR-0252 model).
+
+  (2) Portal save, both output types, each to a chosen location. The PDF is
+  73,665 bytes, valid PDF 1.4, 2 pages, correct %PDF- header and %%EOF
+  trailer -- complete, not truncated. The .fbk is 90,698 bytes and grepping
+  it for the transaction descriptions returns ZERO hits, so the payload is
+  genuinely encrypted rather than a zip of readable data.
+
+  (3) Updater inert: Help -> Check for updates shows "Automatic updates
+  aren't available for this build of finbreak." That is the
+  _installer is None early return at main_window.py:1342, which returns
+  BEFORE any worker starts -- so no network attempt is made at all, rather
+  than one being made and failing. Screenshot-confirmed wording.
+
+  (4) INV-8 holds: Window -> Center window is greyed out (the unreachable
+  org.kde.KWin call honestly disabled, not a dead click) and Reset layout
+  works normally.
+
+  (5) Network isolation proven at the OS level, and proven properly: a
+  hostname connect fails with gaierror, which alone would only show there is
+  no resolver, so it was re-tested by raw IP -- 1.1.1.1:443 and
+  140.82.121.6:443 both return OSError [Errno 101] Network is unreachable.
+  No --share=network, confirmed empirically.
+
+  REMAINING is now exactly one thing, and it is outward-facing: open the
+  flathub/flathub new-pr PR. The re-pin blocker is closed (the manifest
+  already points at v0.1.22, the current release) and the § 5 blocker is
+  closed by this run. Awaiting explicit user go-ahead for the submission.
+  CORRECTION (2026-08-20): "open the flathub/flathub new-pr PR" has been
+  stale since 2026-08-07. The PR EXISTS -- flathub/flathub#9662, "Add
+  io.github.milnet01.finbreak", base new-pr -- and it is CLOSED, not merged.
+  Every REMAINING list on this bullet above still describes it as un-opened;
+  they are wrong from this date.
+
+  What happened: the submission-checker bot auto-closed it 27 SECONDS after
+  it opened (13:14:46Z -> 13:15:13Z), diagnostics "Checklist(s) not completed
+  or missing" -- the PR body had replaced the submission template instead of
+  filling it in. At 15:20:56Z the submitter posted a comment completing the
+  full checklist (description, showcase video, sandbox justification, the
+  manylinux-wheel rationale) and asked for a reopen, which is precisely what
+  the bot's own message instructs: "please post a comment below instead of
+  opening or reopening (new) PRs". Since then: 13 days, two comments total,
+  no labels, no maintainer response, still closed.
+
+  So the next action is NOT to open a PR. Doing so contradicts the bot's
+  stated process and reads as PR-spam to the reviewers. The sanctioned route
+  is a follow-up comment on 9662.
+
+  Also live: the fork branch milnet01/flathub add-io.github.milnet01.finbreak
+  (head 0b42569, 2 commits -- the add plus "Bundle MIT krb5 -- Qt6Network
+  needs libgssapi_krb5") still pins tag v0.1.20 / 6c9cf8c. Current release is
+  v0.1.22 / 624722d, so a reopened 9662 would build a two-release-old
+  finbreak. Re-pinning that branch is a prerequisite to any bump comment.
+
+  Pre-submit checks re-run today and all green against v0.1.22:
+  flatpak-builder-lint manifest exit 0 (also exit 0 standalone, i.e. with the
+  manifest at a repo root and no packaging/obs beside it), flatpak-builder-lint
+  appstream exit 0 (that one really does fetch the <screenshot> URLs),
+  org.freedesktop.Platform//25.08 current at freedesktop-sdk-25.08.16
+  (2026-08-16), tests/features/flatpak_packaging 17/17 including the
+  FIBR-0258 closure-vs-pinned-commit check.
+
+  One deliberate NON-change: regenerating python3-deps.yaml today pulls
+  lxml 6.1.1->6.1.2, charset_normalizer 3.4.9->3.5.1 and pypdfium2
+  5.12.1->5.13.0. That is upstream drift, NOT a pyproject mismatch -- the
+  committed closure still satisfies the pinned commit. It was reverted rather
+  than submitted, because those three wheels have never been built here and
+  "builds entirely from pinned source" is the first thing a Flathub reviewer
+  checks. The bump belongs in the ongoing-releases flow, not inside a
+  submission.
+  Progress (2026-08-20, user go-ahead): both sanctioned steps DONE. The
+  submission is now waiting on Flathub, not on us.
+
+  (1) Fork branch milnet01/flathub add-io.github.milnet01.finbreak re-pinned
+  to v0.1.22 / 624722d, pushed as a FAST-FORWARD on top of the existing head
+  (0b42569 -> 278759c) rather than a force-push -- so the branch's second
+  commit, "Bundle MIT krb5 -- Qt6Network needs libgssapi_krb5", is preserved.
+  Verified that fix is already present in this repo's own manifest, so the
+  re-pin is a 2-line diff (tag + commit) and regresses nothing. Remote head
+  confirmed 278759c after the push.
+
+  (2) Follow-up comment posted on flathub/flathub#9662
+  (issuecomment-5352889722) -- a comment, per the submission-checker bot's own
+  instruction not to open or reopen a PR. It notes the checklist was completed
+  in the 2026-08-07 comment, states the new pin, lists today's green checks
+  (both linters exit 0, runtime 25.08 current, offline build ending
+  FINBREAK_SELFTEST_OK), and repeats the standing offer to build any manylinux
+  wheel from source. Confirmed as the thread's third comment.
+
+  PR state is still CLOSED and only a Flathub maintainer can change that. So
+  the next action on this bullet is NOT ours: it is waiting for a reopen. Do
+  not open a new PR while 9662 stands -- that is what the bot forbids and it
+  reads as PR-spam to the reviewers.
+
+  If the silence continues, the escalation is Flathub's Matrix room or
+  Discourse rather than a second PR. Give the bump a reasonable window first;
+  the previous wait was 13 days with no response.
+  Progress (2026-09-07): the manifest is re-pinned to v0.1.23 —
+  tag: v0.1.23, commit: c86d9c71c7f1f8865e9bb21f42bdb9b122b49595 — as the
+  bump recipe's post-tag todo, pushed in 9c75d33. The pin recorded above
+  (278759c) is superseded.
+
+  flathub/flathub#9662 is still CLOSED and nothing about that changed
+  today. The rule above stands: do not open a new PR while 9662 stands.
+  Any bump comment posted from here should cite the v0.1.23 pin rather
+  than the old one.
+
+- 📋 [FIBR-0160] **Add openSUSE Leap 15.6 as an OBS target (deferred — Leap ships no python 3.12+).**
+  Attempted 2026-07-23: added the Leap 15.6 target + a %if 0%{?sle_version}
+  python313 build branch, but the build went "unresolvable" — osc buildinfo:
+  "nothing provides python313, python313-devel, python313-pip". Leap 15.6 (SLE 15
+  SP6) has no python313 (nor 3.12/3.14); we vendor only cp312/cp313/cp314. The Leap
+  target was removed to keep the project clean; the spec keeps the %{py3}/%{py3pkg}
+  abstraction (harmless — resolves to python3 on every active target).
+
+  To enable later:
+  1. Confirm Leap 15.6's newest python3XX module (`osc buildinfo` against
+  openSUSE:Leap:15.6, or the Leap package index) — likely python311 (3.11).
+  2. Vendor that ABI (add it to vendor-wheels.sh's PY loop) — all deps must
+  publish that cpXX wheel (PySide6/cryptography are abi3 so fine; check
+  sqlcipher3-wheels, lxml, pikepdf, Pillow, cffi, charset-normalizer).
+  3. Set the sle_version branch's %{py3pkg} to that module (e.g. python311) and
+  %{py3} to its interpreter (python3.11).
+  4. Re-add the openSUSE_Leap_15.6 repo (obs-setup.sh) + rebuild.
+
+  Lower priority than FIBR-0159 (Flathub), which serves Leap users through GNOME
+  Software / KDE Discover regardless.
+  **Layman:** Offer a native openSUSE Leap package too. Parked for now: Leap's software repos don't carry a new-enough Python to match our bundled parts, and Flathub will reach Leap users in the meantime.
+  Kind: package.
+  Source: user-request-2026-07-23.
+
+## Carries no version — ships in no artifact
+
+Documentation, tests, CI, standards and roadmap work. versioning.md § 3.5 says
+this gets no release at all and rides along with the next one, so none of it
+will ever carry a version number. It is a third of all open work, which is the
+honest reason the roadmap felt longer than the product is far from done. Real
+work, and none of it is a release decision.
+
+- 📋 [FIBR-0246] **A real-personal-data check the gate actually runs — gitleaks does not cover it.**
+  FIBR-0244 found four real values published across six sites, by grepping
+  for long digit-runs. That is a one-off, not a check: it would miss a real
+  merchant name, a real address, a real date of birth, or an account number
+  written with spaces or in a shorter grouping. gitleaks matches credential
+  and key patterns only, so every one of those passed CI since 2026-07-05.
+  Wanted: a gate stage that fails on real personal/financial data in
+  tracked files. Sketch — a deny-list file, gitignored and never committed,
+  holding the user's real values (account numbers in every grouping the
+  statements print, the card PAN and its mask, the ID number), plus a
+  committed rule set for the structural patterns (a bare 9-13 digit run
+  outside a fenced block known to be synthetic; a PAN-shaped group). Runs
+  over tracked files in ci-local.sh; absent deny-list degrades to the
+  structural rules alone so CI still works without the secret half.
+  Note the awkward part, which is why this is a spec and not a chore: the
+  deny-list is itself the most sensitive file in the project, and a check
+  that greps for real numbers must never print the match. Report path:line
+  and the rule that fired, never the value.
+  Scope also covers prose, not just fixtures — FIBR-0244's worst site was a
+  spec sentence forbidding the values by quoting them.
+  **Layman:** Add an automatic check that stops real bank details from ever being committed — the current security scanner only looks for passwords and keys, so it has never checked for these.
+  Kind: security.
+  Source: in-session-2026-08-06 (gap found while closing FIBR-0244).
+
+- 📋 [FIBR-0247] **The INV-8 leak scanner cannot see git history, so a redaction reads as a fix.**
+  tests/features/account_detect/test_no_real_data.py walks `git ls-files`,
+  which is the working tree only. A real number published in an earlier
+  commit is invisible to it.
+  This is live, not hypothetical: FIBR-0244 redacted 4 real values in
+  `0664d55` and, per the user's decision, left history intact. Those
+  values remain reachable in this PUBLIC repo via `git log -p` and the
+  GitHub commit view, while the guard reports green.
+  The hazard is the false assurance, not the leak itself (which the user
+  accepted knowingly): a future developer pastes a number, notices,
+  commits a redaction, sees the test pass, and concludes it is closed.
+  Wanted: either scan history too (`git rev-list --all` + `git grep` per
+  commit is O(history) but runs once pre-push), or — cheaper and probably
+  better — have the test SAY what it does not cover, and add the same
+  sentence to the spec's §11 table. A guard whose blind spot is documented
+  is honest; one that looks total is worse than none.
+  **Layman:** Our check for leaked bank numbers only looks at the current files, not at older versions — so a number we cleaned up still sits in the published history while the check says all clear.
+  Kind: test.
+  Source: in-session-2026-08-06 (FIBR-0086 review lane 3).
+
+- 📋 [FIBR-0265] **FIBR-0085 gives Cancel-during-SCAN two contradictory behaviours.**
+  §4.3 says "Cancel during SCAN behaves the same way as during RUN:
+  every record not yet reached becomes `not_attempted` with the cancelled
+  wording" -- which implies the table stays on screen to show them.
+  §4.6 says Cancel "before RUN ... drops the whole batch ... and returns
+  to the pick step". SCAN is before RUN, so the two prescribe opposite
+  responses to the same press: on §4.6's reading §4.3's `not_attempted`
+  marking is unobservable and its stated purpose (not stranding rows
+  reading "Waiting...") is moot.
+
+  Not fixed in the gate that found it: settling it needs a decision about
+  what the button should do in three distinct phases (during SCAN, after
+  SCAN but before RUN, during RUN), not a wording repair. Check the
+  shipped behaviour first -- the code may already have picked one, in
+  which case this is a doc-only correction.
+  **Layman:** Two parts of the batch-import design describe what the Cancel button does mid-scan in ways that cannot both be true.
+  Kind: doc-fix.
+  Source: in-session-2026-08-12 (review-contract gate on FIBR-0085, loop 1).
+
+- 📋 [FIBR-0266] **FIBR-0085 leaves the draft-cap outcome undefined when it trips during ASK.**
+  §4.3 has ASK's resume path run "the rest of the ladder, INCLUDING the
+  draft-cap check", but the only stated consequence of tripping that cap
+  is SCAN's: "this and every later record become `not_attempted`; stop".
+  That is written for SCAN's path-ordered loop and has no meaning over
+  ASK's question queue -- "every later record" is undefined there.
+
+  An implementer must invent one of two behaviours: mark only the resumed
+  record `not_attempted` and carry on asking, or mark every remaining
+  unscanned record and abort ASK. The two produce different batches from
+  the same input. Left open because it is a behaviour decision, not a
+  wording repair.
+  **Layman:** The batch-import design says what happens when a run hits its size limit while scanning files, but not when it hits the same limit after the user answers a question.
+  Kind: doc-fix.
+  Source: in-session-2026-08-12 (review-contract gate on FIBR-0085, loop 1).
+
+- 📋 [FIBR-0296] **CLAUDE.md is 899 lines and its review no longer converges — split it.**
+  Filed by `review-contract`'s own cap note, not by a reader's impression.
+
+  The 2026-08-19 run (rows 7-9 of docs/reviews/CLAUDE-md-review-log.md)
+  reached its cap with verified findings falling 6 -> 7 -> 5 while the
+  share landing on text THAT RUN had written did not: 0/6, then 4/7, then
+  3/5. Each loop was substantially repairing the one before. Per the
+  skill's § At the cap that is a violent cap rather than a calm one, and
+  the prescribed response is NOT to re-run the gate -- a fresh run starts
+  at loop 1 against a document whose last two loops were each repairing
+  its predecessor.
+
+  The size signal is what to act on. CLAUDE.md is **899 lines**, past the
+  ~800-line range in which two cold reads can be expected to reach all of
+  it. And the failure mode the run kept producing is exactly what that
+  size causes: a rule stated in two or three places and corrected in one.
+  Three separate instances in one run --
+  - "ci-docker.sh reproduces CI exactly" in three places against the new
+    Phase 2b section saying it does not (loop 7, all three lanes);
+  - the no-drift caveat added to the ci-docker.sh module-map bullet and
+    not to its ci.yml neighbour four lines away (loop 9);
+  - the FIBR-0275 guard recorded as landed in one paragraph and as not
+    landed 65 lines below (loop 9, both lanes).
+
+  The 2026-08-18 run hit the same shape (rows 1-3): an absolute headline
+  with its exception twenty lines down, three times over.
+
+  What a split would have to preserve, and why this is not a five-minute
+  job: the file is loaded in full every session, so a split trades one
+  long read for several reads plus a routing decision, and a rule that
+  moves out of the always-loaded file is a rule some session will not
+  read. The candidates are the self-contained procedural blocks -- §
+  Cutting a release (~110 lines), § Build and test (~200), § Doc-only
+  pushes (~110) -- each of which is a runbook consulted at a moment, not
+  a standing rule needed on every turn. § Where state lives, § Push
+  policy, § Commit conventions and § Resumption flow are the part that
+  genuinely must stay resident.
+
+  Decide the split before writing it: a document that grows back is worse
+  than one that was never split.
+  Second piece of evidence, recorded because it is a REVIEW COST rather
+  than a defect and would otherwise not be written anywhere. Across all
+  three loops of the 2026-08-19 gate, lanes spent an open question on the
+  same thing: this file cites `FIBR-0001 INV-1`, `tests/features/harness/
+  INV-5` and a bare `(INV-7)` without saying which are SPEC invariants and
+  which are SUITE invariants — and the two numberings genuinely diverge
+  (the harness suite's own INV-4 is what enforces the spec's INV-2). Every
+  citation checked out correct, so each one correctly failed the
+  materiality gate and none was fixed. But three lanes each had to stop
+  and say they could not settle it, in three consecutive loops, and any
+  future gate on this file pays the same toll. If the split happens, give
+  the moved sections a convention — spell suite invariants as
+  `<suite>/spec.md INV-n` and spec invariants as `<ID> INV-n` — rather
+  than leaving a bare `INV-7` to be resolved by whoever is reading.
+  **Layman:** Our main instructions file has grown big enough that a careful reader can no longer hold all of it, so fixing one rule keeps breaking another one somewhere else in the file.
+  Kind: doc.
+  Source: review-contract-2026-08-19 loop 3 cap note (FIBR-0295 gate).
+
+- 📋 [FIBR-0300] **README.md's status badge still reads pre-alpha after 196 shipped items and 22 releases.**
+  README.md line 13 carries
+  `[![Status](https://img.shields.io/badge/status-pre--alpha-orange)]()`.
+  It is the first thing a visitor to a public repo sees, and it has been
+  false for a long time: every planned phase P01-P13 has delivered its
+  headline work, P02 through P11 have zero open items, and the project
+  publishes signed releases with eight assets.
+
+  Fix is one line, but pick the wording against the versioning standard
+  (sibling item) rather than in isolation -- badge and version number
+  should tell the same story.
+  **Layman:** The front page of the project still calls it pre-alpha, which puts people off something far more finished than that.
+  Kind: doc-fix.
+  Source: in-session-2026-08-20 (found answering the v1.0 question).
+
+- 📋 [FIBR-0301] **Nothing catches a signing-key rotation that strands every installed copy's updater.**
+  docs/standards/versioning.md 2 names the update path as a
+  compatibility surface whose break includes "a signing-key rotation".
+  Neither existing catcher covers that:
+
+  - `scripts/release-linux.sh`'s hard gate verifies the signature against
+    the `RELEASE_PUBLIC_KEY_B64` committed in the SAME tree, so rotating
+    the key and the constant together passes green.
+  - Every test in `tests/features/auto_update/` is same-build; none
+    verifies a release against a PREVIOUSLY SHIPPED key.
+
+  So a rotation ships, the gate is green, and every installed copy is
+  permanently unable to verify an update -- the exact break the surface
+  row exists to name. CLAUDE.md already warns not to run
+  `gen-signing-key.py` to "fix" a missing key for this reason; nothing
+  enforces it.
+
+  Wanted: a test that verifies a release artifact against a pinned
+  historical public key, so changing the committed constant turns
+  something red.
+  **Layman:** If the release signing key is ever changed, every already-installed copy would silently stop being able to update, and no test would notice.
+  Kind: test.
+  Source: review-contract-2026-08-20 (FIBR-0299 loop 3, lane finding).
+
+- 📋 [FIBR-0302] **No test restores a .fbk backup written by an earlier release.**
+  `tests/features/backup/test_backup.py`'s round-trip is same-build: it
+  exports from a seed and verifies with one version, asserting
+  `res.schema_version == LATEST_SCHEMA_VERSION`. It never crosses a
+  version boundary.
+
+  `services/backup.py:376-381` guards the OTHER direction (refusing a
+  backup from a NEWER schema), and `:354` opens and migrates an older
+  backup forward -- so the product does support the older direction, and
+  nothing pins it.
+
+  docs/standards/versioning.md 2 makes "a backup taken on any earlier
+  release cannot be restored" a MAJOR break, so this is the surface's
+  primary failure mode with no catcher.
+
+  Wanted: a fixture .fbk written at an older schema version, restored by
+  the current build. The same shape would cover saved import profiles,
+  whose round-trip is same-build for the same reason.
+  Progress (2026-08-21): materially more urgent now that FIBR-0019 has
+  shipped, which its section 11 predicted. A restore no longer writes
+  the flat v1 sidecar -- BackupService.restore_backup mints a random DEK,
+  re-keys the restored copy to it and writes the v2 slots sidecar, so
+  what a restored vault LOOKS like has changed under this untested
+  surface. The .fbk container itself is unchanged (its inner vault.db
+  keeps its derive_key(backup_password, ...) schedule), so a backup taken
+  before the change still restores; nothing pins that, which is the whole
+  of this item.
+
+  The fixture wanted is now two, not one: a .fbk at an older SCHEMA
+  version, and a .fbk taken by a pre-envelope build. Both restore through
+  the same path and neither is covered.
+  **Layman:** Backups are only ever tested by writing and reading them with the same version, so a change that made old backups unrestorable would not be caught.
+  Kind: test.
+  Source: review-contract-2026-08-20 (FIBR-0299 loop 3, lane finding).
+
+- 📋 [FIBR-0303] **Amend versioning.md with the two rules the fleet survey found missing: pre-release suffixes and schema-vs-app independence.**
+  A survey of every other project on this machine found two rules worth
+  adopting and a list worth NOT adopting. Hold this until the global
+  versioning standard lands, then make ONE amendment and gate it once --
+  docs/standards/versioning.md hit a VIOLENT cap on 2026-08-20 (five of
+  loop 3's seven findings landed on text the run itself wrote), so it
+  must not be re-gated casually.
+
+  1. PRE-RELEASE / RC SUFFIX -- versioning.md says nothing, and the
+     tooling cannot express one: `.claude/bump.json`'s version_pattern is
+     suffix-free `([0-9]+\.[0-9]+\.[0-9]+)`, as is `cut-release`.
+     Ants_Terminal's rule is the one to take: the `-rcN` suffix lives
+     ONLY at the git tag, the GitHub-release title and the asset
+     filename, never in a version-bearing source file -- which is exactly
+     why a suffix-free bump pattern is correct rather than a limitation.
+     Three projects spell it three ways (`-rc1`, `-rc.1`, `-pre.1`); take
+     whatever the global standard settles on rather than inventing a
+     fourth.
+
+     The finbreak-specific half nobody else has: `_parse_version`
+     (services/update.py:64) returns None for any segment that is not a
+     plain ASCII decimal, so a `0.2.0-rc.1` tag is UNUSABLE to the
+     updater and is silently skipped. That is the right behaviour --
+     Ants_Terminal buys the same safety with a separate zsync channel --
+     but here it is incidental, undocumented, and one "fix" to accept
+     suffixes away from pushing an RC to every stable user. Write it down
+     as load-bearing.
+
+  2. SCHEMA VERSION IS INDEPENDENT OF THE APP VERSION -- perch states the
+     general rule ("Two version lines are independent of the app version
+     and never move with it"). finbreak has `LATEST_SCHEMA_VERSION = 13`
+     against `__version__ = "0.1.22"` and versioning.md never says they
+     are unrelated, though its 2 vault row leans on the schema.
+     DOOM_Ants carries the same warning for an internal engine constant.
+
+  DO NOT LIFT, and the reasons matter:
+  - Vestige's derived/computed version numbers (a weekly train, numbers
+    from git tags). A computed number makes "is this breaking?"
+    unanswerable by construction, which is the opposite of this
+    standard's whole premise.
+  - OneUp's "MAJOR because the engine is replaced" -- it grades an
+    internal rewrite with no user-visible change, contradicting 1.1.
+  - Any project's own list of breaking surfaces ( 2 is finbreak's).
+  - Any "where the version lives" list -- releases.md 1 owns lockstep.
+  - Rolodex's two "when unsure" decision questions. Useful, but they
+    restate 3's test in a second place, and a rule restated in several
+    places drifting apart is precisely what caused this document's
+    violent cap. If wanted, replace 3's prose rather than adding beside
+    it.
+
+  VALIDATION worth recording: the global roadmap's own survey (CFG-0173)
+  names the central unanswered question as "SemVer is written for things
+  other code imports; most projects here are not that". versioning.md
+  1.2 already answers it for finbreak. On three axes -- 1.0 criteria,
+  security-fix versioning, and deprecation -- finbreak's is now the most
+  complete document on the machine; only DOOM_Ants states any 1.0 exit
+  condition, only Rolodex states a security-fix rule, and nothing anywhere
+  handles deprecation.
+  CONSTRAINT FOUND (2026-09-21), and it narrows what this amendment may do.
+  This bullet says to "hold this until the global versioning standard lands,
+  then make ONE amendment and gate it once". That standard HAS landed --
+  ~/.claude/standards/versioning.md, dated 2026-09-04 -- so the hold is
+  discharged and this is now actionable. But read its § 9 before drafting.
+
+  § 9 ("A project that already has its own versioning document") sorts every
+  rule by one test: would this be true of any project on this machine? It then
+  lists what it has already sorted, and "minor versus patch" is named as THE
+  GLOBAL FILE'S. So is the pre-release suffix spelling -- which is item 1 of
+  this bullet, and § 5 of the global standard now covers it. Item 2
+  (schema-version independence) is § 7 there.
+
+  So BOTH gaps this bullet was filed for may already be answered globally, and
+  the amendment may be smaller than planned -- possibly a pointer rather than
+  new text. § 9's rule is to fold the project's copy into the global one and
+  leave a pointer, keeping only what is genuinely finbreak's: its own breaking
+  surfaces (§ 2 here), its 1.0 exit condition (§ 5 here), its release cadence
+  and its version-bearing file list.
+
+  THE ONE FINBREAK-SPECIFIC THING TO KEEP from item 1 stands unchanged and is
+  not in the global file: _parse_version (services/update.py) returns None for
+  any non-decimal segment, so a 0.2.0-rc.1 tag is UNUSABLE to the updater and
+  silently skipped. That is load-bearing safety rather than a limitation, and
+  nothing outside this project states it.
+
+  AND THE RULE A USER ASKED ABOUT IS NOT OURS TO CHANGE. Global § 4 ("Zero-dot-x")
+  says, of every project here: "Inside 0.x the levels shift down one ... A
+  breaking change bumps the MINOR and resets the PATCH. Everything else -- a new
+  capability included -- bumps the PATCH." finbreak's § 4.2 is a faithful copy.
+  So making features bump the minor inside 0.x is an edit to a machine-global
+  standard, not a project override, and § 9 sets the bar for adding to that file.
+  It also cannot be done from a project session: the global-config-lock hook
+  blocks writes to ~/.claude unless the cwd is there or
+  CLAUDE_GLOBAL_CONFIG_UNLOCK=1 is set. Raised with the user 2026-09-21; they
+  chose to go for 1.0.0 instead (FIBR-0304), which makes the question moot.
+  **Layman:** Two gaps the new versioning rules do not cover yet: what a release-candidate version looks like, and that the vault's internal format number is separate from the app's version number.
+  Kind: doc.
+  Source: fleet-survey-2026-08-20 (other projects' versioning standards, after FIBR-0299).
+
+- 📋 [FIBR-0330] **CLAUDE.md runs the two roadmap_query survey calls together, so a session skips a call it owes.**
+  Where state lives item 2 names `mode:"headline_only"` as the cheap survey, then
+  says a filtered call withholds bodies "but still returns `kind` as a field --
+  so the survey answers Resumption flow step 2 on its own; no second call is
+  owed."
+
+  Both halves are true of a DIFFERENT call. A status-filtered query in the
+  default bullets mode does return `kind`. `mode:"headline_only"` does not, and
+  cannot: ANTS-4699 fixed its contract to exactly {id, status,
+  headline_oneline, section_slug}, so `kind` is unobtainable there by any
+  argument. Because the preceding sentence calls headline_only "a cheap survey",
+  "the survey" reads as that mode, and a session then believes step 2 is already
+  answered when it has no `kind` at all.
+
+  Confirmed live 2026-09-02: a `headline_only` call at session start returned no
+  `kind`, and step 2 needed a second query. The Ants schema note for ANTS-4699
+  says the wider claim was recorded by "a project doc" -- this is that doc.
+
+  The fix is one or two sentences: say which call returns `kind`, and drop the
+  "no second call is owed" clause or attach it to the bullets-mode call. It
+  changes what a conformer does, so it trips global rule 14's gate on a file
+  FIBR-0296 already says no longer converges under review -- which is why this
+  is filed rather than fixed in passing.
+  CONFIRMED LIVE A SECOND TIME (2026-09-21), by a session that had read this
+  file and believed it. I ran roadmap_query status:"active"
+  mode:"headline_only" to survey the open items, expecting `kind` because item
+  2 says the survey answers step 2 on its own. The rows came back as exactly
+  {id, status, headline_oneline, section_slug} -- no `kind`, and no
+  `bodies_omitted` key either. I then owed and made a second call.
+
+  So this now has two independent live reproductions, three weeks apart, both
+  by sessions following the file rather than testing it. That is the failure
+  mode the bullet predicts, observed twice.
+
+  One correction to the bullet's own framing, in its favour: it says `kind` is
+  unobtainable in headline_only "by any argument" per ANTS-4699. Today's run is
+  consistent with that, and the Ants MCP maintainer has been told the claim
+  lives in this file so the verb side is not re-litigated.
+
+  Still filed rather than fixed, for the reason already stated -- the fix
+  changes what a conformer does, so it trips rule 14's gate on a file
+  FIBR-0296 says no longer converges. Noting only that the cost of leaving it
+  is now measured rather than predicted: two sessions, two wasted survey
+  calls, and in today's case the survey it invalidated was the largest single
+  reply of the session (114 items, spilled to a handle).
+  **Layman:** A note in our own instructions is ambiguous enough that Claude can skip a lookup it actually needs at the start of a session.
+  Kind: doc-fix.
+  Source: in-session-2026-09-02.
+
+- 📋 [FIBR-0331] **Turn check_untyped_defs on for the test suite, where mypy still skips most bodies.**
+  Split out of FIBR-0313 L14 rather than done with it. The app package half
+  is DONE and pinned: pyproject now sets check_untyped_defs for finbreak.*,
+  src was already clean under it, and a deliberate error in an unannotated
+  src function was confirmed caught where it was previously invisible.
+
+  The tests half is the work. mypy skips the bodies of unannotated
+  functions, and most of this suite is unannotated -- so the gate does not
+  read the code that decides whether the gate means anything. Measured
+  2026-09-03: 345 errors across 25 files, the heaviest being categories,
+  theme, categorisation, table_state and app_shell.
+
+  Mechanical but not free: most are Optional narrowing on Qt accessors
+  (widget() / item() returning None), which is the same class the annotated
+  Qt tests already carry asserts for. The risk to watch is a fix that
+  weakens what a test asserts to satisfy the checker.
+
+  Deliberately NOT closed by silencing: an override that turns it on for
+  finbreak.* and off for tests would close the gate gap on paper while the
+  suite stays unread.
+  RE-MEASURED (2026-09-21): 370 errors across 25 files, against the 345 across
+  25 recorded above on 2026-09-03. The FILE COUNT is flat and the error count is
+  not, so the gap is widening inside the same files rather than spreading -- the
+  cost of closing it rises while it waits, which is the number worth acting on
+  rather than either total on its own.
+
+  Breakdown unchanged in shape: 189 union-attr, 95 attr-defined, 68 arg-type, 18
+  other. union-attr at 51% is the Qt widget() / item() returning Optional class
+  this bullet already names, and the same one the run-mypy-before-push memory
+  warns about.
+
+  Source: a check-code sweep with --check-untyped-defs, run 2026-09-21.
+  **Layman:** The type checker currently reads the app's code closely but skims the tests, so a broken test can look fine.
+  Kind: test.
+
+- 📋 [FIBR-0344] **Add ruff's DTZ family to the gate, so the clock class cannot come back unseen.**
+  FIBR-0342 was a wrong-month defect on a money report, and NOTHING in the tree
+  could see it: pyproject's [tool.ruff.lint] select is E,W,F,I,UP,B,RUF100, so
+  the DTZ family is off and the gate never reads a naive-clock call. Every test
+  injects the date explicitly, so the suite passed over it too. It took a
+  check-code sweep run with a broader select to surface it.
+
+  Adding DTZ is the durable guard, and it is not a one-liner -- which is why this
+  is filed rather than folded into FIBR-0342. Measured by that sweep: DTZ011
+  fires at five sites and DTZ007 at three, and on inspection every one of the
+  eight is currently LEGITIMATE.
+
+  - DTZ011, the five date.today() service defaults: pdf_export.render_pdf_bytes
+    plus four in reporting.py. These are the fallback for a headless or test
+    caller; the convention is that the UI passes the date, which is what
+    FIBR-0342 restored. services/reporting.py is deliberately Qt-free and the app
+    clock is Qt-based, so these cannot simply be routed through it.
+  - DTZ007, three strptime calls without %z: csv_importer, date_detect and
+    import_wizard. Those parse dates off bank statements, which are genuinely
+    zone-less.
+
+  So the work is: decide each of the eight, write a justification beside every
+  suppression rather than a bare noqa, and add DTZ to select. The value is not
+  today's eight -- it is the ninth, written by somebody who does not know about
+  this class.
+
+  Worth pairing with the sweep's other finding about scope: ruff and mypy are
+  scoped to src+tests, so scripts/*.py -- including sign-release.py and
+  gen-signing-key.py, both on the release-signing path -- are in no gate stage at
+  all. That is the same gap the shellcheck stage was added to close for *.sh, in
+  a different language. Both are one edit to the same two config blocks.
+
+  NOT worth taking from the same sweep, and the reason is recorded so it is not
+  re-proposed: adding ruff's S family. It would flag five sites that already
+  carry a written # nosec justification, because ruff does not honour nosec -- so
+  it buys five new noqa comments and no new information.
+  **Layman:** Turn on the lint rule that would have caught the wrong-month report bug, so that kind of mistake cannot slip through again.
+  Kind: chore.
+  Source: check-code-2026-09-21 (the sweep's one durable recommendation).
+  Lanes: ci, tests.
+
+- 📋 [FIBR-0239] **design.md's service list and architecture diagram are two services behind.**
+  Noticed while adding MonthSummaryService to `docs/design.md`'s
+  "Service layer — one service per concern" list (FIBR-0231 § 12). The
+  list, and the mermaid `subgraph Svc` diagram above it, both name
+  Auth / Import / Categorization / TransferDetection / Reporting /
+  PdfExport / Update / Crypto — but NOT `RecurringService` (FIBR-0142)
+  or `AlertService` (FIBR-0172), both of which shipped and both of
+  which HomeView constructs today. So the list was already incomplete
+  before this item touched it.
+
+  Left as-is rather than fixed in passing: repairing pre-existing doc
+  debt inside a feature commit is out of that commit's lane, and the
+  mermaid diagram needs the same two nodes plus their edges, which is a
+  second decision (the diagram is deliberately not exhaustive — it omits
+  the repositories layer's members too, so "add every service" may be
+  the wrong answer for the picture even where it is right for the list).
+
+  Fix: add RecurringService and AlertService to the prose list; decide
+  separately whether the diagram tracks the list or stays a sketch, and
+  say which in the diagram's caption so the next session does not have
+  to re-derive the answer.
+  **Layman:** An internal architecture document lists most of the app's parts but has quietly fallen behind by two.
+  Kind: doc-fix.
+  Source: in-session-2026-08-06 (surfaced while landing FIBR-0231).
+
+- 📋 [FIBR-0251] **ci-docker.sh cannot run during a GitHub outage — ci-setup.sh downloads its pinned binaries from GitHub releases.**
+  Surfaced 2026-08-06 while proving the tree green during a GitHub
+  Actions major outage. `scripts/ci-setup.sh` fetches the four pinned
+  non-pip binaries (gitleaks, shellcheck, actionlint, zizmor) from
+  GitHub release URLs, so `scripts/ci-docker.sh` inherits a hard
+  dependency on GitHub being up. Observed: gitleaks 8.30.1 installed,
+  then shellcheck's download returned `curl: (22) ... error: 504` and
+  the run died in `tar`.
+
+  Consequence: during a GitHub incident BOTH the CI run and the
+  containerised local reproduction are unavailable at once, leaving only
+  `scripts/ci-local.sh` on a desktop that already has the binaries on
+  PATH. That is the pre-push hook's path, so the gate itself still
+  works — this is a loss of the *reproduction* tool, not of the gate.
+
+  Options, cheapest first: (a) cache the four binaries in a local
+  directory and have ci-setup.sh reuse a present, version-matching copy
+  before reaching for the network; (b) let ci-docker.sh mount the host's
+  already-downloaded binaries; (c) accept it and document the fallback.
+  Note (a) must still verify the pinned version, or the cache becomes a
+  way to silently run an older rule set — the exact drift the pins in
+  CLAUDE.md exist to prevent.
+
+  Not urgent: the pre-push gate is unaffected.
+  **Layman:** The "reproduce CI exactly on my own machine" check stops working when GitHub itself is down, which is exactly when you most want it.
+  Kind: chore.
+  Source: in-session-2026-08-06 (GitHub Actions major outage, 15:22 UTC).
+  Context for a later session reading red CI on main: the two failed
+  runs on `983559e` (2026-08-06, 15:53 and 16:23 UTC) were THIS outage,
+  not a code defect. Both died before any gate stage ran — the first
+  never acquired a runner, the second failed to download
+  `actions/checkout` ("Service Unavailable"). The tree was green
+  throughout: `./scripts/ci-local.sh` passed all 11 stages, 1840 passed /
+  3 skipped, mypy clean over 178 files. Do not re-investigate those two
+  runs; re-run them once Actions is healthy.
+
+- 📋 [FIBR-0262] **`pytest tests/features/bundling/` alone aborts the interpreter.**
+  Pre-existing (reproduced on baf48b8, before the FIBR-0261 fix), found
+  while running that directory on its own. The three `..._selftest_fail_...`
+  tests monkeypatch `_check_qt` to a no-op, so no `QApplication` is
+  constructed, and the unpatched `_check_icons` then renders a `QPixmap`
+  — which aborts the process (SIGABRT) when no QApplication exists. In a
+  full-suite run an earlier test has already built one, so the whole gate
+  stays green and only the directory-alone / `-k` invocation dies; both
+  are invocations CLAUDE.md § "Run tests / a single test" documents.
+  Fix: patch `_check_icons` alongside `_check_qt` in those tests, or give
+  them the shared `qapp` fixture, so they stop depending on global state
+  another test happens to leave behind.
+  **Layman:** One folder of tests crashes if you run just that folder; run the whole suite and it passes, which is why nobody noticed.
+  Kind: test.
+  Source: in-session-2026-08-11.
+
+- 📋 [FIBR-0329] **check-code has no tool that reads shell for supply-chain fetches.**
+  FIBR-0318 fixed five unverified `curl | tar` fetches in ci-setup.sh and
+  _build-smoke-in-container.sh. No tool in check-code's set decides that class:
+  zizmor reads workflows only and covers `uses:` pins, actionlint checks workflow
+  correctness, and shellcheck reads syntax rather than provenance.
+
+  So the fix holds only while someone remembers. A semgrep rule matching a fetch
+  piped into an extractor, or one reaching `install`, would make it mechanical --
+  and check-code already runs semgrep.
+  **Layman:** Nothing automatically catches a build script downloading a tool without verifying it.
+  Kind: chore.
+  Source: check-code 2026-08-31 tool-gap.
+
+- 📋 [FIBR-0334] **A batch-import UI test failed once in a gate run and has not been reproduced.**
+  test_INV5_displayed_account_is_the_targeted_account failed in a full
+  ./scripts/ci-local.sh run (1 failed, 2192 passed). It then passed alone,
+  passed on an immediate full re-run (2193 passed), and passed six further
+  times with the whole batch_import suite driven under four spinning CPU
+  hogs.
+
+  What is recorded rather than concluded: the failing run took 211s against
+  140s for the clean re-run, so that machine was loaded at the time, and
+  this test waits on background scan work through several
+  qtbot.waitUntil(..., timeout=3000) calls. That makes a load-sensitive
+  timeout the obvious suspect -- but six deliberate attempts under load did
+  not reproduce it, so the cause is NOT established and no fix should be
+  written against this guess.
+
+  The failure output was not captured: the gate prints only its summary
+  line, and the re-run was already green by the time it was wanted. First
+  thing to do next time is capture the assertion.
+
+  Worth taking seriously rather than closing as noise. A prior session's
+  note on this suite records the same shape -- a waitUntil on a proxy
+  condition returning a turn early, green locally and red about once in
+  forty CI runs. If it recurs, the fix is to wait on the state actually
+  asserted rather than to raise the timeout.
+  **Layman:** One automated check failed once and then passed every time since; recorded so it is not forgotten if it happens again.
+  Kind: test.
+  Source: observed in-session 2026-09-04.
+
+- 📋 [FIBR-0338] **Two files still cite the retired global rule 5 for the latest-stable policy.**
+  Found by the FIBR-0337 security-model gate's blast-radius sweep, and
+  left out of that run deliberately: neither file was its subject.
+
+  `~/.claude/CLAUDE.md` retired rules 1-5 on 2026-08-12 (CFG-0043); the
+  standards own them now. Two places here still cite the old numbering:
+
+    docs/standards/dependencies.md:164  "global rule § 5b"
+    pyproject.toml:79                   "global rule § 5c"
+
+  security-model.md T7 carried the same citation and was corrected in
+  that gate. The owners are `standards/dependencies.md` itself and
+  `coding.md` § 1.5 for libraries.
+
+  Filed rather than fixed in passing because `docs/standards/dependencies.md`
+  is a contract document: editing it is CLAUDE.md rule 14's own question,
+  and a one-line correction inside someone else's gate is how a document
+  gets edited with no review at all. The pyproject comment is trivial and
+  can ride along with it.
+  **Layman:** Two files point at a rule that no longer exists, so anyone following the pointer finds nothing.
+  Kind: doc-fix.
+  Source: review-contract-2026-09-06 (FIBR-0019 gate, 4b sweep, out of scope).
+
+- 📋 [FIBR-0340] **versioning.md still calls FIBR-0019 planned, and names it as the live blocker of the 1.0 gate.**
+  FIBR-0019 shipped in 0.1.23. Two passages in
+  `docs/standards/versioning.md` were written while it was still ahead of
+  us and now read false:
+
+  § 4.1 gives it as the reason the compatibility surface is not frozen —
+  "FIBR-0019 (master-password recovery) is a PLANNED change to the vault's
+  key envelope". Correcting that changes nothing a conformer writes.
+
+  § 5 condition 1 is the load-bearing one: "FIBR-0019 is the live case,
+  and it blocks this condition." That condition is the first of the five
+  1.0 gates, so the standard currently names a blocker that no longer
+  exists. A session reading § 5 to decide whether 1.0 can be cut gets the
+  wrong answer.
+
+  WHAT IS NOT CLAIMED HERE: that the 1.0 gate is now met. Only that its
+  named blocker is discharged. Conditions 2, 3 and 5 have not been
+  assessed, and condition 4 (SECURITY.md + CODE_OF_CONDUCT.md) is
+  satisfied by FIBR-0237, also in 0.1.23.
+
+  Also worth settling in the same pass: § 4.2 observes that "every release
+  since 0.1.0 has been a PATCH bump because nothing said when to do
+  otherwise". That is still true and is now a deliberate choice rather
+  than an omission — under § 3.1 a 0.2.0 needs a § 2 compatibility break
+  or a change requiring user action, and nothing has shipped that is
+  either. § 5's `0.9.z` interim is the route if the 0.1.x number ever
+  understates the project.
+
+  `versioning.md` is a contract document, so the § 5 edit is a change of
+  direction and owes CLAUDE.md rule 14's gate. That is why this is filed
+  rather than corrected in passing.
+  **Layman:** The rules for choosing a version number still describe the recovery-code work as upcoming, when it shipped.
+  Kind: doc-fix.
+  Source: in-session 2026-09-07, cutting 0.1.23.
+
+- 📋 [FIBR-0343] **FIBR-0013 D1 gives ExportOptions a today field it does not have.**
+  Noticed while fixing FIBR-0342 and deliberately NOT fixed in passing
+  (coding.md 1.7): it is pre-existing drift rather than anything that fix
+  caused.
+
+  docs/specs/FIBR-0013.md D1 lists ExportOptions' fields as "prefs, account_ids,
+  sections, theme, password, today: date | None", and describes the lower-level
+  entry point as "render_pdf_bytes(options) -> bytes".
+
+  The dataclass in services/pdf_export.py carries prefs, account_ids,
+  include_summary, include_charts, include_transactions, theme and password --
+  no today. The date is a SEPARATE parameter on both render_pdf_bytes(options,
+  today=None) and export(options, out_path, today=None). D1's own "sections:
+  frozenset[str]" is likewise three booleans in the code.
+
+  Why it matters beyond tidiness: a session reading D1 to answer "where does the
+  export get its date from?" is told the answer is on the options object, and
+  would look for the defect FIBR-0342 fixed in the wrong place. That is what
+  happened here -- the field was checked before the call site.
+
+  Amending D1 changes what a conformer writes, so it owes CLAUDE.md rule 14's
+  gate at this project's cap of 3. Worth batching with any other FIBR-0013
+  amendment rather than gating that document for this alone.
+  **Layman:** The export design document describes a field the code does not carry.
+  Kind: doc-fix.
+  Source: in-session-2026-09-21 (noticed while fixing {{id:0}}).
+  Lanes: docs.
+
+- 📋 [FIBR-0345] **ci.yml pins every action to a SHA but names its container by a mutable tag.**
+  FIBR-0226 adopted commit-SHA pinning for GitHub Actions as deliberate\nsupply-chain policy, CLAUDE.md records it, and the gate's own zizmor stage\nenforces it -- every uses: across all three workflows complies. But the\nCONTAINER, which executes the entire gate and is strictly more privileged than\nany action running inside it, is a floating tag: ci.yml line 29,\n`container: python:3.12-slim-bookworm`. So the stated policy has a hole at its\nmost privileged point.\n\nWhy the project's own tooling cannot see it: the gate runs zizmor's default\n`regular` persona, and `unpinned-images` is an `auditor`-persona check. So\n`zizmor .github/workflows/` exits 0 and the hole is invisible to the gate that\nwas added to catch exactly this class.\n\nNOT a one-liner, which is why it is filed rather than fixed in passing. ci.yml\nlines 22-28 hold the image at bookworm ON PURPOSE -- its glibc is the effective\nfloor for every frozen artifact, tracked as FIBR-0180 -- and the comment there\nsays a bump must move build-smoke.sh and ci-docker.sh together. So a digest pin\nmeans pinning in three places plus a documented refresh cadence, and a stale\ndigest is its own smaller hazard. Real trade-off.\n\nThe fix shape: `python:3.12-slim-bookworm@sha256:<digest>` in all three places,\nwith the refresh trigger recorded beside the existing FIBR-0180 note. Consider\nwhether to raise the gate's zizmor to `--persona auditor` at the same time, and\nif so decide the three `concurrency-limits` advisories it also reports.\n\nDismissed from the same run, recorded so it is not re-raised: zizmor's\n`template-injection` on ${{ github.workspace }} at windows-build.yml line 136 --\nthat path is not attacker-controllable.
+  **Layman:** The build recipe carefully locks down the tools it uses, but not the base system image those tools run inside.
+  Kind: security.
+  Source: check-code-2026-09-21 (zizmor --persona auditor).
+  Lanes: ci, security.
+
+- 📋 [FIBR-0347] **A batch-import UI test fails in the full suite and passes alone, so the gate is not reliably repeatable.**
+  Observed 2026-09-21 on a pre-push gate run:
+  tests/features/batch_import/test_batch_import_ui.py::
+  test_INV5_displayed_account_is_the_targeted_account failed, with 2225 passed.
+  Re-run alone it passed immediately. The same commit's next full gate run went
+  green (2226 passed) and the push landed, so it is intermittent rather than a
+  real regression -- the change under test was a docstring and a spec edit and
+  touches nothing this test reads.
+
+  WHY IT IS WORTH FILING RATHER THAN SHRUGGING AT. The gate is what stands
+  between this project and a bad release, and a gate that fails once in N runs
+  for no reason trains a session to re-run until green. That is exactly how a
+  REAL failure gets pushed through. The cost is not the minute lost; it is the
+  habit.
+
+  LIKELY CLASS, not yet confirmed. This project has a recorded qtbot pattern: a
+  waitUntil on a PROXY condition returns a turn early when the code under test
+  chains singleShot(0) callbacks, which is green alone and red occasionally
+  under load. A full-suite run is exactly when load is highest. That is a
+  hypothesis from the shape, not a diagnosis -- nobody has read this test yet.
+
+  HOW TO ACTUALLY PIN IT, because a re-run proves nothing either way:
+  - Reproduce under load rather than by repeating: run the full suite, or at
+    least the ui-heavy suites together, rather than the file alone.
+  - pytest -p no:randomly (or the project's ordering plugin if one is active) to
+    establish whether it is ORDER-dependent rather than timing-dependent -- those
+    need different fixes and a re-run cannot tell them apart.
+  - If it is the qtbot class, the fix is to waitUntil on the state the test
+    ASSERTS, not on a proxy for it.
+
+  Do not "fix" it by adding a sleep or by widening a timeout. That converts a
+  visible flake into a slow one and leaves the race in place.
+  **Layman:** One test occasionally fails when the whole suite runs but passes on its own, which makes a green build less trustworthy.
+  Kind: test.
+  Source: in-session-2026-09-21 (observed during a pre-push gate run).
+
+- 📋 [FIBR-0348] **The i18n guard is blind to a keyword-argument tr() call, so the class it closes can reopen silently.**
+  tests/features/i18n/test_translatable_strings.py closes FIBR-0310 R3: a
+  tr() or translate() argument that pyside6-lupdate reads must be a string
+  literal, or the string extracts to an empty catalog entry and ships
+  untranslatable while reading at the call site as though it were handled.
+
+  THE HOLE. _offences walks positional arguments only. For each index it
+  needs it does `if index >= len(node.args): continue` — so a call that
+  passes those arguments by KEYWORD presents an empty args list and every
+  index is skipped. The call is not flagged; it is not examined at all.
+  node.keywords is never read.
+
+  MEASURED 2026-09-21 by replicating the guard's own logic against four
+  probe calls. The positional non-literal form is FLAGGED, as it should be.
+  All three keyword forms are INVISIBLE: translate("Ctx", sourceText=var),
+  translate(context=CTX, sourceText=var), and tr(text=var).
+
+  NOT A LIVE DEFECT — and that is why this is filed rather than fixed in
+  passing. The same walk over src/finbreak/ finds no tr() or translate()
+  call using keyword arguments at all, and none passing fewer positional
+  arguments than the guard needs. So nothing ships untranslatable today.
+  The hole is that the guard cannot object if such a call is added, and a
+  guard that reports clean on a defect it cannot see is the failure mode
+  FIBR-0310 R3 filed in the first place.
+
+  THE FIX SHAPE, credited to the peer session that prompted this: make
+  ARITY its own offender rather than a skip. Assert that every matched call
+  supplies the arguments lupdate reads POSITIONALLY, so a keyword call
+  fails with "too few positional arguments" instead of passing quietly.
+  That closes the class rather than the instance, which is the same
+  reasoning the planted-offence leg beside it already rests on.
+
+  Do NOT close this by adding the keyword form to the walk and reading
+  node.keywords for a literal. A keyword call with a literal is still
+  invisible to lupdate, so accepting it would encode a false allowance.
+  **Layman:** A safety net that catches untranslatable text has a gap — write the same mistake one particular way and it slips past unnoticed.
+  Kind: test.
+  Source: in-session-2026-09-21 (peer session reported the same defect class from its own tree).
+
+- 📋 [FIBR-0350] **CLAUDE.md steers every cold reviewer of FIBR-0050 away from a named area, and three lanes said so unprompted.**
+  MEASURED, not inferred. Loop 15 of FIBR-0050's review required each lane
+  to open with what it already knew. All three, independently, named the
+  same thing: CLAUDE.md § Module map carries a paragraph about that spec
+  which says the INV-11 / D10 / D13 drift "is now repaired and this note is
+  no longer a live warning: checked 2026-09-21 by three independent cold
+  lanes ... Do not go looking for a divergence that was fixed."
+
+  WHY THAT IS A PROBLEM. review-contract's whole method is that loop 2 and
+  after run COLD — a fixed defect not raised again is the proof the fix
+  held. The paragraph pre-announces a prior loop's finding AND its verdict,
+  in language a lane is not free to question, about the single most
+  contested area of this spec. One lane recorded being "steered away" from
+  it. Every lane read the area anyway and found it sound, so this run was
+  not damaged; the channel is what matters, because it is permanent and
+  applies to every future review of that spec.
+
+  It is not closed by scrubbing. review-contract withholds the spec's own
+  loop log by handing lanes a scrubbed copy, but CLAUDE.md is loaded as
+  project instructions by the harness, before any brief. A lane cannot
+  decline it.
+
+  SECOND CHANNEL, same run, same disclosure: the harness git snapshot names
+  recent commit subjects, so "FIBR-0050: fix four loop-2 findings" tells a
+  lane a prior loop ran and roughly what it found. That one is the global
+  skill's to solve and is already described in
+  skills/_shared/cold-reader-contamination.md; this item is only about the
+  paragraph we control.
+
+  THE FIX, and it is small. Move the settled history to
+  docs/history/claude-md.md, which exists for exactly this and is not
+  loaded at session start. Keep in CLAUDE.md only the part that is still a
+  live instruction for a writer: that INV-11 is the canonical
+  all-or-nothing clause, that it must be amended in the same commit as a
+  behaviour change, and the _draft trap that decides degrade-vs-refuse on
+  the amount rather than the rejection reason. Drop the verdict sentence,
+  the loop count and the "do not go looking" instruction.
+
+  WHY FILED RATHER THAN DONE HERE. Editing CLAUDE.md changes what a
+  conformer writes, so it trips rule 14's gate on that document, and this
+  session was mid-gate on a different one. Adjacent to FIBR-0296, which
+  proposes splitting CLAUDE.md for size; this is a distinct cause and the
+  two fixes do not depend on each other.
+  **Layman:** Our own project notes tell a fresh reviewer where not to look, which quietly weakens every independent review of the import parser.
+  Kind: doc-fix.
+  Source: in-session-2026-09-21 (FIBR-0050 review-contract loop 15; all three lanes disclosed it).
+
+- 📋 [FIBR-0351] **Family E's signature can be loosened with no test catching it, and no fixture can catch it.**
+  Filed out of FIBR-0190's loop-7 cap tail, where it was recorded as owed.
+  A loop-log row is not a tracked item, so it goes here.
+
+  THE GAP. `_signature_present` requires EVERY token, so removing one from
+  Family E's five-token signature LOOSENS the detector rather than breaking
+  it. FIBR-0190 INV-1 and INV-2 both name that removal as their breaker,
+  and neither's test can catch it: `family_e_current.pdf` still matches, so
+  the detection leg stays green by construction.
+
+  MEASURED 2026-09-21, by extracting every pre-E fixture's text with the
+  same helper FIBR-0190 § 7.10's leg uses and re-running all five
+  single-token drops against that text:
+
+  - no pre-E fixture satisfies the full five-token E signature;
+  - exactly one drop, `payments`, is satisfied by exactly one fixture,
+    `family_d_moneymarket.pdf`, whose header does print `date` and
+    `description` as FIBR-0050's § Family D records;
+  - that fixture resolves as `Family.D` before E is reached, so it cannot
+    be stolen however loose E becomes.
+
+  SO NO FIXTURE CAN CLOSE THIS. Only a fixture resolved after E under the
+  C→D→E→B→A order could be stolen -- B and A -- and none satisfies any
+  drop. A fixture-driven assertion is therefore not the fix, which is what
+  an earlier loop wrongly prescribed.
+
+  THE FIX. Export E's token tuple from `importers/standard_bank.py` and
+  have the detector and the test consume the same object. A test carrying
+  its own copy of the five tokens asserts its copy: the source can be
+  loosened away from it while the test stays green, which is the drift the
+  assertion exists to catch. Then state it in FIBR-0190 § 7.2, which
+  currently records the gap as open.
+
+  DO NOT close it by asserting `detect_standard_bank(...) is not
+  Family.E` -- that is entailed by the detect-as-today list already in the
+  same leg, so it catches nothing new. And do NOT close it by moving E
+  above D in the dispatch order: that is a live behaviour change on the
+  Money-Market case FIBR-0190 D2 exists for.
+
+  SECOND, SMALLER HALF, same leg. `test_FIBR0190_INV2_covers_every_pre_e_fixture`
+  asserts `len(_PRE_E_FIXTURES) == 15` -- a literal. It agrees with the
+  hand-written pair list by maintenance rather than construction, and that
+  same literal was wrong in ten places until loop 5 of that spec's review.
+  Assert it against the pair list's own length instead.
+  **Layman:** A safety check on how the app recognises one statement layout can be weakened without any test noticing.
+  Kind: test.
+  Source: in-session-2026-09-21 (FIBR-0190 review-contract loop 7, the cap tail).
+
+- 📋 [FIBR-0144] **Centralise the schema-version drift guard to remove per-bump test churn.**
+  Surfaced during the FIBR-0142 close. Every feature that ever added a migration hard-asserts `LATEST_SCHEMA_VERSION == N` (and encodes the version in test function names + spec.md INV lines), so each schema bump forces ~24 assertion edits + ~15 renames across ~9 feature suites (v8→v9 did exactly this). Replace the scattered per-feature guards with ONE canonical "latest schema version" test (assert the constant + that a fresh vault reaches it) and have each feature's migration test assert only its OWN delta (the intermediate step it introduced), never the moving global latest. Removes the churn and the drift risk. Low priority, no user-facing effect.
+  **Layman:** A cleanup: right now every time the database format is upgraded, a bunch of unrelated tests have to be hand-edited. This would make that a one-line change instead.
+  Kind: refactor.
+  Source: in-session-2026-07-15 (FIBR-0142 review observation).
+
+- 📋 [FIBR-0195] **Resolve the docs/plans/ gap once, project-wide, instead of re-arguing it in every spec.**
+  spec-format §2 makes a plan mandatory "once the build order matters (a
+  migration, a change that must land in a specific sequence, or anything a
+  second person will execute)". Verified 2026-07-28: docs/plans/ does not
+  exist anywhere in this tree, and none of the 49 files in docs/specs/ has
+  one — including every spec that ships a schema migration.
+
+  The cost is not the missing files, it is that each affected spec now spends
+  a paragraph explaining why it has no plan, and a cold reviewer correctly
+  re-raises it every time. Prior non-compliance is not a waiver, so the
+  paragraph cannot just say "nobody else does it either".
+
+  Decide one of:
+  (a) adopt docs/plans/ for specs that carry a migration or an ordered build,
+  starting with the next one, and backfill nothing; or
+  (b) record the departure ONCE — in docs/standards/documentation.md or a
+  project spec-format override — and have every spec point at that single
+  statement instead of restating it.
+
+  (b) is the cheaper answer if the build order genuinely lives fine inside
+  the spec's design section, which is what the existing 49 specs suggest in
+  practice. Either way the per-spec paragraph goes away.
+
+  Surfaced by /cold-eyes rather than fixed inline: choosing between (a) and
+  (b) is a project-convention decision, not a docs defect.
+  **Layman:** Every spec that involves a database change is supposed to ship a short build-order file. None of them do, and each spec currently explains that omission again. Decide once: either start writing them, or record the exemption in one place.
+  Kind: doc.
+  Source: cold-eyes-2026-07-28 loop 1 on docs/specs/FIBR-0193.md.
+
+- 📋 [FIBR-0196] **Reconcile the spec-filename rule: naming.md says `<ID>.md`, the shared spec-format says `<ID>-<topic>.md`.**
+  Two standards claim authority over the same filename and give
+  different answers:
+
+  - docs/standards/naming.md: "**Spec doc** | `<ID>.md` (the stable
+  roadmap ID)", repeated under *ID-named docs* ("using the **stable ID
+  verbatim**"). Its §9 *Project overrides* says "(None yet.)"
+  - ~/.claude/skills/_shared/spec-format.md §2 (the governing format
+  standard, since this project has no docs/standards/spec-format.md):
+  `docs/specs/<ID>-<topic>.md`.
+
+  Measured 2026-07-28: 48 of the 49 files in docs/specs/ use the bare-ID
+  form. The single exception was FIBR-0193, written topic-suffixed during
+  the FIBR-0113 split; it has been renamed to docs/specs/FIBR-0193.md so
+  the tree is uniform again, and every reference repointed.
+
+  That fixes the instance, not the conflict. The next spec written from
+  the shared format standard will depart again, and a cold reviewer will
+  correctly flag it again.
+
+  Decide one of:
+  (a) keep the bare-ID form (matches all 49 specs and naming.md) and
+  record it as a project override in naming.md §9, so the departure from
+  the shared standard is stated once and deliberately; or
+  (b) adopt `<ID>-<topic>.md`, update naming.md's table and its ID-named
+  docs paragraph, and accept that the existing 49 are grandfathered.
+
+  (a) is the cheaper answer — it is what the tree already does, and the
+  topic suffix buys nothing that the spec's own title line does not.
+
+  Surfaced by /cold-eyes rather than decided inline: which standard wins
+  is a project-convention call, not a docs defect.
+  **Layman:** Two rulebooks disagree about what to call a spec file. Pick one so the next spec doesn't get named wrong.
+  Kind: doc.
+  Source: cold-eyes-2026-07-28 loop 2 on docs/specs/FIBR-0193.md.
+  DECIDED (2026-08-05, user): `<ID>-<topic>.md` wins — a filename a
+  human can read and parse without opening it. So `naming.md` line 85
+  (`<ID>.md`) and its line-207 counter-example are the side that changes,
+  not the shared spec-format.
+  Two pieces of work, deliberately separated: (a) amend `naming.md` —
+  a `docs/standards/` edit, so it trips the rule-14 /cold-eyes gate on
+  its own; (b) back-migrate the existing corpus. Measured 2026-08-05:
+  54 specs match `FIBR-NNNN.md` (`ls docs/specs/*.md | grep -cE
+  '/FIBR-[0-9]+\.md$'`) and 374 inbound citations name those filenames
+  (`grep -rnoE 'FIBR-[0-9]{4}\.md' --include=*.md --include=*.py
+  --include=*.sh . | wc -l`), so (b) is a scripted rename plus a
+  citation sweep, not a hand edit.
+  First file written under the new rule:
+  `docs/specs/FIBR-0231-plain-english-month-summary.md`.
+
+- 📋 [FIBR-0197] **Two feature spec.md files still pin LATEST_SCHEMA_VERSION == 5.**
+  `tests/features/pdf_import/spec.md` INV-8 pins `LATEST_SCHEMA_VERSION == 5`
+  and `tests/features/import_/spec.md` INV-8 says the version "is now 5".
+  Both are prose-only staleness in test-contract files: the *tests* those
+  specs describe are green, so nothing fails. Surfaced by a cold-eyes lane
+  while reviewing FIBR-0193 and deliberately NOT folded into that item —
+  these two files are outside its blast radius (they are not in the
+  `== 12` pin set FIBR-0193 §6/§12 own), and widening a review run into
+  unrelated documents is how a review silently becomes an edit run.
+  Fix: advance both to whatever `LATEST_SCHEMA_VERSION` is when this is
+  picked up, or reword them to cite the constant instead of a literal so
+  they stop churning on every migration.
+  **Layman:** Two old test-contract files still say the database format is at version 5, when it is really at 12 (and about to be 13) — harmless today, but confusing to read.
+  Kind: doc-fix.
+  Source: in-session-2026-07-30 (FIBR-0193 cold-eyes loop 4, deferred finding).
+
+- 📋 [FIBR-0205] **tests/features/bundling cannot be run on its own — it SIGABRTs with a coredump.**
+  Found while running a subset of the suite during the v0.1.19 bump.
+  `pytest tests/features/bundling` aborts the interpreter — SIGABRT,
+  `Fatal Python error: Aborted`, a 12 MB coredump per run. The whole suite
+  is green (1455 passed), so this is invisible to the gate and to CI.
+
+  Verified against source 2026-08-02, and reproduced with the release bump
+  stashed so it is not caused by the version edits:
+
+  1. `test_INV1_selftest_fail_names_the_broken_stack`
+  (`tests/features/bundling/test_bundling.py:86`) monkeypatches
+  `_selftest._check_qt` to `lambda: None` and `_check_sqlcipher` to raise,
+  then calls `run_self_test`.
+
+  2. `run_self_test` (`src/finbreak/_selftest.py:266`) runs its checks in
+  the order `qt → qtcharts → icons → sqlcipher → …`. So `_check_icons`
+  runs for real, BEFORE the stubbed-out sqlcipher failure it is testing
+  for — and `_check_icons` (`:63`) renders a pixmap
+  (`icon("lock").pixmap(QSize(16, 16))`).
+
+  3. `_check_qt` is what constructs the QApplication — its own docstring at
+  `:72` says `_check_icons` "Runs after `_check_qt` (needs the
+  QApplication)". Stubbing `_check_qt` removes it, so `QIcon::pixmap`
+  reaches Qt's `qFatal` in `libqsvgicon.so` and calls `abort()`.
+  `run_self_test`'s `except Exception` cannot catch it — `qFatal` is not a
+  Python exception.
+
+  4. It passes in the full suite only because an EARLIER test file leaks a
+  process-wide QApplication. Proven both ways:
+  `pytest tests/features/bundling` → SIGABRT;
+  `pytest tests/features/theme tests/features/bundling` → 42 passed.
+  So the test's docstring claim that it unit-tests the FAIL contract
+  "independent of installed native deps" is false — it depends on a
+  QApplication it does not create.
+
+  Consequence beyond the noise: `docs/specs/FIBR-0001.md` INV-6 and
+  CLAUDE.md both document running a single test / a single file as a
+  supported workflow, and for this file it is not — it dumps core.
+
+  Likely fix: stub `_check_qtcharts` and `_check_icons` alongside the other
+  two (the test only asserts the ordered-token contract, so the real
+  renderers are incidental), or take pytest-qt's `qapp` fixture so the
+  QApplication is created explicitly rather than inherited. Prefer the
+  stub — it makes the test's stated independence true.
+  **Layman:** One test file crashes hard unless other tests run first, so you can't run it by itself.
+  Kind: test.
+  Source: in-session-2026-08-02 v0.1.19 release.
+  Lanes: tests.
+
+- 📋 [FIBR-0238] **Add a deterministic "What checks this" tally check so the row count stops being hand-counted.**
+  Every spec carrying a §11-style "What checks this" table closes it with a
+  prose tally ("Eighteen rows, five with a bolded `nothing`"). That tally
+  was miscounted by hand THREE times in a single FIBR-0231 session — 19
+  for 18, 20 for 22, and 26/10 for 28/11 — twice in the same direction,
+  and each time it was a cold reviewer who caught it, at review prices.
+
+  The rule this trips is documentation.md § 8.2 / spec-format.md § 5.7:
+  the same class caught twice becomes a mechanical check. It is trivially
+  deterministic — count table rows under the heading, count rows matching
+  `**nothing**`, compare against the two numbers in the following
+  paragraph.
+
+  FIBR-0231 works around it locally by stating the awk command beside the
+  figure, which is the right shape but the wrong home: every spec with
+  such a table needs it, not one. The check belongs in `/doc-lint`
+  (a new finding kind, e.g. `tally_mismatch`), which already owns the
+  deterministic half and is already run at /write-spec write time, before
+  a /cold-eyes dispatch, and in /debt-sweep.
+
+  Note `/doc-lint` is a machine-local global skill
+  (`~/.claude/skills/doc-lint/`), not part of this repo — so this item is
+  a pointer to work that lands there, and the verify step is that a spec
+  with a deliberately wrong tally comes back with the new finding.
+  **Layman:** Specs end with a little "here is what tests each rule" table and a sentence counting its rows. I keep miscounting that sentence by hand; this makes the computer count it instead.
+  Kind: doc.
+  Source: in-session-2026-08-06 (FIBR-0231 cold-eyes run, 3 miscounts of one table).
+
+- 📋 [FIBR-0161] **Fold the Flathub `flathub.json` arch-restriction into the FIBR-0159 spec §5 checklist.**
+  During FIBR-0159 submission prep we found the pinned wheel closure is
+  x86_64-only, but Flathub's buildbot builds every arch by default — so the
+  submission needs a `flathub.json` with `only-arches: [x86_64]` or the aarch64
+  build fails. Implemented in packaging (packaging/flatpak/flathub.json + INV-9
+  test locking only-arches to the closure's wheel arches), but the signed-off
+  FIBR-0159 spec §3.4/§5 pre-submit checklist never mentions it. Fold in an arch
+  line — but the spec is a design doc, so the edit runs through /cold-eyes
+  (--max-loops 7, CLAUDE.md rule 14) rather than an inline patch.
+  **Layman:** The Flathub packaging now ships a small config that tells Flathub to build only for the PC (x86_64) chip we have the parts for; the design document should mention it.
+  Kind: doc-fix.
+  Source: in-session-2026-07-23.
+  Scope grew (2026-08-07): three more items to fold into § 5 in the same
+  edit, all verified against Flathub's live docs and by running the tools.
+  Batching them is deliberate — editing a spec trips the rule-14
+  `/cold-eyes` gate, so one amendment plus one review beats four.
+
+  1. `flatpak-builder-lint`. Flathub's docs tell submitters to run it
+  locally and its failures block the PR, yet neither § 5 nor
+  packaging/flatpak/README.md mentioned it. Two build-free checks:
+  `flatpak run --command=flatpak-builder-lint org.flatpak.Builder
+  manifest <manifest>` and `... appstream <metainfo>`; `... repo repo`
+  after a build. The manifest check already passes clean (exit 0).
+  Its `appstream` check is `appstreamcli` plus Flathub's own
+  overrides, so it outranks a bare `appstreamcli validate`.
+  2. Build via the `org.flatpak.Builder` flatpak, which is what Flathub's
+  infra runs; flatpak-build.sh line 53 uses a host `flatpak-builder`.
+  Fine for local iteration, worth naming as a difference.
+  3. The closure-vs-pyproject comparison is in § 5 as a MANUAL step and
+  that is exactly what failed (FIBR-0256). It now has a gate-runnable
+  test, so § 5 should cite the test rather than ask for the manual
+  diff.
+
+  Also for § 5: the exit criteria say `appstreamcli validate`, but the
+  gate's own INV-4/INV-5 invoke it with `--no-net`, which skips the
+  `<screenshot>` fetch entirely — the flag that let six dead URLs sit
+  under a green gate for months. § 5 should say plainly that the
+  pre-submit run is the networked one.
+
+  Already recorded on the FIBR-0159 bullet, no § 5 change needed: the
+  runtime branch 25.08 is current (freedesktop-sdk-25.08.15) and the
+  manifest is correctly pinned to v0.1.19.
+
+- 📋 [FIBR-0184] **bump.json's Flatpak re-pin todo names a tagging step the release path doesn't use, so `git rev-parse v<NEW>` fails locally.**
+  Hit during the v0.1.18 release. The `.claude/bump.json` todo for the
+  Flatpak `commit:` pin says to set it "AFTER `git tag -a v{NEW}`" — but
+  nothing in the release path runs `git tag -a`. `scripts/release-linux.sh`
+  creates the tag through `gh release create`, which creates it on the
+  REMOTE only. So the local clone has no such ref and the todo's own
+  follow-up command fails:
+
+  $ git rev-parse v0.1.18^{commit}
+  fatal: ambiguous argument 'v0.1.18^{commit}': unknown revision ...
+
+  The fix is a `git fetch --tags origin` before the rev-parse (that is what
+  unblocked it here). Two candidate homes, either is fine:
+  (a) reword the bump.json todo to name the real sequence — run
+  release-linux.sh, `git fetch --tags`, then rev-parse; or
+  (b) better, fold the whole step into release-linux.sh after the release is
+  created, since the sha is known there and the manual step exists only
+  because the tag does not exist at bump time. (b) removes the todo
+  entirely rather than correcting it.
+
+  Low severity — it costs one confusing failure per release, and the
+  flatpak_packaging tests (INV-4 40-hex sha, INV-10 tag == __version__)
+  still pass either way because they cannot tell whether the tag and the
+  commit point at the same object. That blind spot is the reason this is a
+  manual step at all, so a wrong instruction here is worth fixing.
+  **Layman:** A release checklist step tells you to look up something that isn't on your computer yet, so it fails until you fetch it first.
+  Kind: doc-fix.
+  Source: in-session-2026-07-28 (v0.1.18 release).
+
+- 📋 [FIBR-0016] **P13: `scripts/publish-release.sh` + release automation.**
+  One committed script builds every
+  artifact above, publishes the GitHub Release, and drives the
+  Flathub submission/update — consuming the Flathub manifest
+  produced by FIBR-0015. It is itself a specced item (its own
+  `docs/specs/`, cold-eyes-reviewed) — a publish script can't
+  predate the thing it publishes. Dependencies: FIBR-0015. Lanes:
+  build, ci, packaging. Kind: chore. Source: planned.
+  Note (2026-07-10): FIBR-0054 pulls a **Linux-only** slice of release automation forward — a thin `scripts/publish-release.sh` (or `gh release create`) that publishes the signed AppImage + `.sig` as GitHub Release `v0.1.0`, so the in-app updater has a real release to check/download. FIBR-0016 remains owner of the full multi-artifact publish + the Flathub submission/update flow; extend the Linux slice rather than replacing it.
+  Note (2026-07-12, user request — "automate the release as much as possible"): the version-bump half is now automated — `.claude/bump.json` (added 2026-07-12) drives /bump and /release: source of truth src/finbreak/__init__.py, mechanical edits to pyproject.toml + tests/test_smoke.py + a dated CHANGELOG cut from [Unreleased], a post_check version-lockstep gate, and tag template v{NEW}. What remains MANUAL (the Linux-slice glue this item should close): after the bump, a human still runs scripts/build-release-appimage.sh (freeze + clean-room + sign), verifies the .sig against the committed RELEASE_PUBLIC_KEY_B64, extracts the CHANGELOG [X.Y.Z] section for notes, and runs `gh release create v<NEW> <appimage> <sig> --notes-file … --latest` (non-prerelease). Deliverable: a single `scripts/publish-release.sh` that chains bump (via the recipe) → full gate (ci-local.sh) → build+clean-room+sign → **verify .sig vs RELEASE_PUBLIC_KEY_B64 (hard gate — never publish an unverifiable release the in-app updater would reject)** → gh release create with the AppImage + .sig attached, notes from the changelog, non-prerelease so /releases/latest resolves. Idempotency + preconditions (clean tree, tag not already present, signing key available) checked up front. Keep it the Linux slice under FIBR-0016; the multi-artifact + Flathub publish stays the full-item scope. Spec-first per the item's own note (docs/specs/, cold-eyes) before coding.
+  **Layman:** One command builds every download, publishes the release and updates the store listings, instead of a person running several scripts by hand and hoping none was skipped.
+  Kind: chore.
+  Source: planned.
+  Lanes: build, ci, packaging.
+
+- 📋 [FIBR-0163] **Add a populated Statements-tab screenshot via a synthetic statement import.**
+  FIBR-0082's capture omits the Statements tab: the demo seeder inserts
+  transactions straight through the repository, so no StatementPeriod rows
+  exist and the Statements list renders empty. To capture it, drive a
+  synthetic CSV/OFX through the real import path (ImportService / the import
+  wizard) in scripts/seed_demo_vault.py, then re-add "statements" to
+  scripts/capture_screenshots.py's _SCREENS. Low priority — the other 7 tabs
+  already cover the headline features.
+  **Layman:** One screenshot (the "Statements" list) is still blank because the demo data is added directly rather than by importing a bank file; this adds that missing shot.
+  Kind: marketing.
+  Source: in-session-2026-07-23.
+
+- 📋 [FIBR-0275] **A release can publish with no assets, and nothing notices — the README sends users to an empty page.**
+  `cut-release` / the bump recipe carry the version bump, the tag and
+  `gh release create`, but the AppImage and Windows `.exe` are built by a
+  SEPARATE manual step (`.claude/bump.json` `_comment` says so). Nothing
+  asserts the two ever meet. Cutting 0.1.21 published the release with
+  **0 assets**, and the only thing that caught it was reading
+  `gh release view --json assets` by hand.
+
+  That matters more than it looks, because three things point users at
+  those assets:
+  - `README.md` § Install step 1 — "Download the `finbreak-*-x86_64.AppImage`
+  from the latest release";
+  - the in-app updater, which resolves the newest release and looks for an
+  asset matching `AppImage`/`WindowsInstaller.asset_suffix()`;
+  - `FIBR-0203`, already ✅, which was the same class of failure once
+  removed — a release that existed but was invisible to the updater.
+
+  So the gap has bitten before and was closed as a one-off rather than
+  guarded.
+
+  Cheapest guard, and it needs no new machinery: a post-publish assertion
+  in the release path that `gh release view v<NEW> --json assets` returns at
+  least the AppImage plus its `.sig`, and fails loudly otherwise. A
+  stronger version also checks each asset name against the pattern the
+  updater actually greps for, which is the specific trap `.claude/bump.json`
+  already warns about in prose for the Windows `.exe` ("the name MUST match
+  `WindowsInstaller.asset_suffix()` '-x86_64.exe' or the updater won't find
+  it — no automated guard").
+
+  Note the ordering constraint: the assets cannot exist before the tag, so
+  this is a check that runs after `gh release create`, not a pre-flight.
+  **Layman:** If the person cutting a release forgets the separate build step, the download page is published empty and the app's own "download the latest release" link leads nowhere.
+  Kind: fix.
+  Source: in-session-2026-08-17 (found while cutting 0.1.21).
+  Progress (2026-08-17): still open — but the case is now stronger than
+  when this was filed, and the guard should check MORE than presence.
+
+  Cutting 0.1.21 hit the failure a second time, in a worse shape. The
+  final `gh release upload --clobber` in `release-windows.sh` took an
+  HTTP 503 part-way down its file list. `--clobber` deletes each existing
+  asset before replacing it, so the release was left carrying
+  `SHA256SUMS.sig` but NOT `SHA256SUMS`, and `.exe.sig` but NOT the
+  `.exe` — a signed release whose signed manifest had been deleted.
+  Nothing errored loudly: the script had already printed its signing and
+  verification successes, and the failure was the last line.
+
+  So presence-of-any-asset is too weak a guard. Three checks, cheapest
+  first:
+  1. the asset COUNT is 8;
+  2. every `.sig` has its subject present (a `.sig` without its artifact
+  is the partial-upload signature, and it is silent);
+  3. each name matches what the updater greps for — `AppImage` and
+  `WindowsInstaller.asset_suffix()`'s `-x86_64.exe`.
+
+  Also worth folding in: upload one file per call rather than batching,
+  so a partial failure is visible in the exit status.
+
+  Repaired by hand for 0.1.21; `/releases/latest` now resolves to
+  v0.1.21 with all 8 assets, and the published SHA256SUMS verifies
+  against the committed RELEASE_PUBLIC_KEY_B64.
+
+  v0.1.20 remains at ZERO assets and is NOT repaired — it is no longer
+  `latest`, so nothing resolves to it, but anyone holding that tag's URL
+  still gets an empty page. Decide separately whether to back-fill it
+  (FIBR-0203 is the precedent for doing so).
+  Progress (2026-08-19, commits d482545 + e49285e): the three-check guard is IMPLEMENTED and green, locked by a new INV-8 in tests/features/release_integrity/. Both release scripts now read their asset list back after publishing and refuse to report success on an incomplete set -- count (phase-correct: 5 after release-linux.sh, 8 after release-windows.sh), every .sig having its subject, and each name matching the updater's asset_suffix(). A fourth check reports a read-back that could not COMPLETE as its own failure and retries 3x, so the API's transient 503s do not cry wolf. Exercised against real data, not just source-scraped: the real v0.1.21 asset set passes, and zero assets / a dangling SHA256SUMS.sig at count 5 / a misnamed AppImage / a misnamed .exe each fail the check they should, with the dangling-sig case passing check 1 first -- which is the proof that check 2 is not redundant. STAYS OPEN, because the headline scenario is NOT fully closed. v0.1.20 published empty because cut-release created the release and release-linux.sh was never run at all; a guard living INSIDE release-linux.sh cannot fire when nobody runs release-linux.sh. What is covered now is "the asset step ran and the result is wrong". What is still uncovered is "the asset step never ran" -- which needs a check at the end of the whole release recipe, not inside one of its scripts. Also not done: the bullet's "upload one file per call". INV-4 asserts each upload block carries the whole asset list, so splitting it would redden that test, and the read-back already covers the partial state that change was meant to make visible. Recorded as a decision rather than an oversight.
+  Progress (2026-08-19): v0.1.20 is BACK-FILLED and the "remains at ZERO
+  assets and is NOT repaired" paragraph above is now historical. User
+  decision 2026-08-19, given the choice between leaving it, back-filling
+  and deleting the release. Built from a detached worktree at the v0.1.20
+  tag using THAT tag's own release scripts (not HEAD's), so the artifacts
+  are what 0.1.20 should have shipped. The tag's committed
+  RELEASE_PUBLIC_KEY_B64 is byte-identical to HEAD's, so the signatures
+  are the ones every installed copy's updater checks. v0.1.20 now carries
+  all EIGHT assets and the PUBLISHED SHA256SUMS verifies against that key
+  and names both platforms. /releases/latest still resolves to v0.1.22 --
+  release-linux.sh took its `gh release upload --clobber` branch, and
+  `--latest` appears only on the `gh release create` branch it did not
+  take. This closes the FIBR-0203-precedent half of this item and nothing
+  else: the item STAYS OPEN for the reason recorded above, that a guard
+  living inside release-linux.sh cannot fire when nobody runs
+  release-linux.sh.
+
 ## P01 — Bootstrap (target: next)
 
 **Theme:** wire up the build, lint, format, test, **security
@@ -206,50 +3250,6 @@ scariest unknown (native-library bundling) up front.
   long digit-runs, which would miss a real merchant, address or date-of-
   birth. Filed as FIBR-0246.
 
-- 📋 [FIBR-0246] **A real-personal-data check the gate actually runs — gitleaks does not cover it.**
-  FIBR-0244 found four real values published across six sites, by grepping
-  for long digit-runs. That is a one-off, not a check: it would miss a real
-  merchant name, a real address, a real date of birth, or an account number
-  written with spaces or in a shorter grouping. gitleaks matches credential
-  and key patterns only, so every one of those passed CI since 2026-07-05.
-  Wanted: a gate stage that fails on real personal/financial data in
-  tracked files. Sketch — a deny-list file, gitignored and never committed,
-  holding the user's real values (account numbers in every grouping the
-  statements print, the card PAN and its mask, the ID number), plus a
-  committed rule set for the structural patterns (a bare 9-13 digit run
-  outside a fenced block known to be synthetic; a PAN-shaped group). Runs
-  over tracked files in ci-local.sh; absent deny-list degrades to the
-  structural rules alone so CI still works without the secret half.
-  Note the awkward part, which is why this is a spec and not a chore: the
-  deny-list is itself the most sensitive file in the project, and a check
-  that greps for real numbers must never print the match. Report path:line
-  and the rule that fired, never the value.
-  Scope also covers prose, not just fixtures — FIBR-0244's worst site was a
-  spec sentence forbidding the values by quoting them.
-  **Layman:** Add an automatic check that stops real bank details from ever being committed — the current security scanner only looks for passwords and keys, so it has never checked for these.
-  Kind: security.
-  Source: in-session-2026-08-06 (gap found while closing FIBR-0244).
-
-- 📋 [FIBR-0247] **The INV-8 leak scanner cannot see git history, so a redaction reads as a fix.**
-  tests/features/account_detect/test_no_real_data.py walks `git ls-files`,
-  which is the working tree only. A real number published in an earlier
-  commit is invisible to it.
-  This is live, not hypothetical: FIBR-0244 redacted 4 real values in
-  `0664d55` and, per the user's decision, left history intact. Those
-  values remain reachable in this PUBLIC repo via `git log -p` and the
-  GitHub commit view, while the guard reports green.
-  The hazard is the false assurance, not the leak itself (which the user
-  accepted knowingly): a future developer pastes a number, notices,
-  commits a redaction, sees the test pass, and concludes it is closed.
-  Wanted: either scan history too (`git rev-list --all` + `git grep` per
-  commit is O(history) but runs once pre-push), or — cheaper and probably
-  better — have the test SAY what it does not cover, and add the same
-  sentence to the spec's §11 table. A guard whose blind spot is documented
-  is honest; one that looks total is worse than none.
-  **Layman:** Our check for leaked bank numbers only looks at the current files, not at older versions — so a number we cleaned up still sits in the published history while the check says all clear.
-  Kind: test.
-  Source: in-session-2026-08-06 (FIBR-0086 review lane 3).
-
 - ✅ [FIBR-0248] **FINBREAK_CORPUS_NUMBERS is wired nowhere, so INV-8 skips on every run.**
   The variable appears only in the test that reads it and in two spec
   documents. It is absent from `scripts/ci-local.sh`, `.githooks/pre-push`
@@ -342,23 +3342,6 @@ scariest unknown (native-library bundling) up front.
   account. Filed as FIBR-0274 rather than fixed here: the obvious remedy
   weakens FIBR-0009 INV-4's structural "attempted at most once", which
   wants a decision and a test rather than a quiet widening.
-
-- 📋 [FIBR-0250] **normalise_account_number's zero-strip is ASCII-only while its digit filter is not.**
-  `re.sub(r"\D", "", raw)` is Unicode-aware and keeps Arabic-Indic or
-  fullwidth digits; `.lstrip("0")` then does nothing to them, so the key
-  never equals its ASCII counterpart.
-  Verified: a fullwidth spelling returns unchanged rather than normalising.
-  Bounded — it can only fail to match, never mis-match, so the outcome is
-  `no_match` (offer to create a duplicate), not a wrong filing. No
-  collision could be constructed.
-  Not worth fixing on its own; fix it when something else touches this
-  function. `unicodedata.digit()` per character, or restricting the filter
-  to `[0-9]`, would close it — the latter also makes the function's
-  contract match its docstring.
-  **Layman:** An account number written in non-Western digits would not be recognised as the same number, so the app would offer to create a duplicate account.
-  Kind: fix.
-  Source: in-session-2026-08-06 (FIBR-0086 review lane 1).
-  Considered and deliberately left open (2026-08-12), on this bullet's own instruction: "fix it when something else touches this function". It was picked up alongside FIBR-0253/0254, then put back — nothing in that run touches `normalise_account_number`, and fixing it standalone is not the cheap change it looks like. `docs/specs/FIBR-0086` §4.4 quotes the implementation verbatim (line ~397), so the fix is a spec amendment plus its rule-14 cold-read gate; and `tests/features/account_detect/spec.md` INV-8's leak scanner normalises the haystack "the way `normalise_account_number` does", so its helper has to move in step or the scanner starts missing the spelling it guards against. That is three surfaces for a bug that, as recorded above, can only fail to match — never mis-match. The precondition for fixing it is unchanged: the next change that opens this function.
 
 - ✅ [FIBR-0252] **StandardBankImporter.parse discards its per-row errors, so a dropped row is invisible.**
   `standard_bank.py`'s `parse` returns `ParseResult(result.drafts, [],
@@ -586,41 +3569,6 @@ scariest unknown (native-library bundling) up front.
 
   No spec amendment needed: FIBR-0146 D2 already states the %b/%B tie axis,
   having been amended when this bullet was filed.
-
-- 📋 [FIBR-0265] **FIBR-0085 gives Cancel-during-SCAN two contradictory behaviours.**
-  §4.3 says "Cancel during SCAN behaves the same way as during RUN:
-  every record not yet reached becomes `not_attempted` with the cancelled
-  wording" -- which implies the table stays on screen to show them.
-  §4.6 says Cancel "before RUN ... drops the whole batch ... and returns
-  to the pick step". SCAN is before RUN, so the two prescribe opposite
-  responses to the same press: on §4.6's reading §4.3's `not_attempted`
-  marking is unobservable and its stated purpose (not stranding rows
-  reading "Waiting...") is moot.
-
-  Not fixed in the gate that found it: settling it needs a decision about
-  what the button should do in three distinct phases (during SCAN, after
-  SCAN but before RUN, during RUN), not a wording repair. Check the
-  shipped behaviour first -- the code may already have picked one, in
-  which case this is a doc-only correction.
-  **Layman:** Two parts of the batch-import design describe what the Cancel button does mid-scan in ways that cannot both be true.
-  Kind: doc-fix.
-  Source: in-session-2026-08-12 (review-contract gate on FIBR-0085, loop 1).
-
-- 📋 [FIBR-0266] **FIBR-0085 leaves the draft-cap outcome undefined when it trips during ASK.**
-  §4.3 has ASK's resume path run "the rest of the ladder, INCLUDING the
-  draft-cap check", but the only stated consequence of tripping that cap
-  is SCAN's: "this and every later record become `not_attempted`; stop".
-  That is written for SCAN's path-ordered loop and has no meaning over
-  ASK's question queue -- "every later record" is undefined there.
-
-  An implementer must invent one of two behaviours: mark only the resumed
-  record `not_attempted` and carry on asking, or mark every remaining
-  unscanned record and abort ASK. The two produce different batches from
-  the same input. Left open because it is a behaviour decision, not a
-  wording repair.
-  **Layman:** The batch-import design says what happens when a run hits its size limit while scanning files, but not when it hits the same limit after the user answers a question.
-  Kind: doc-fix.
-  Source: in-session-2026-08-12 (review-contract gate on FIBR-0085, loop 1).
 
 - ✅ [FIBR-0267] **FIBR-0085 has five more verified doc-vs-code defects, and at 1357 lines wants splitting rather than another loop.**
   Loop 2 confirmed loop 1's four fixes held and that the FIBR-0254
@@ -975,40 +3923,6 @@ scariest unknown (native-library bundling) up front.
   docs/specs/FIBR-0146-wizard-date-step.md D4 — the first amendment to land
   in the split halves, and it landed in a 400-line document instead of a
   746-line one (FIBR-0272).
-
-- 📋 [FIBR-0274] **The stored-password auto-try consults only the pick-step account, so a re-targeted statement re-prompts next month.**
-  `_begin_decrypt` looks the remembered password up with
-  `get_pdf_password(self._target_account_id())` — necessarily the PICK-STEP
-  account, because the destination is not known until the PDF has been
-  decrypted and parsed. FIBR-0249 moved the stored password onto the
-  account the rows actually land on, which is where it belongs. So when
-  those two differ, next month's auto-try looks in the wrong place and the
-  user is prompted again.
-
-  This gap is not new, but FIBR-0249 made it VISIBLE. Before it, the carry
-  COPIED, so the pick-step account also held a copy and the auto-try
-  happened to succeed — the convenience was a side-effect of the
-  wrong-account credential FIBR-0249 removed. Removing the defect removed
-  the accident; the lookup was always the real problem.
-
-  Not fixed with FIBR-0249 deliberately: the obvious remedy — fall back to
-  trying every stored PDF password when the pick-step account has none —
-  weakens the guarantee FIBR-0009 INV-4 states structurally in
-  `_begin_decrypt`'s docstring ("the stored password is attempted at most
-  once", which holds today because there is exactly one candidate and one
-  call site). Every password involved is the same user's, so this is a
-  usability and invariant question, not a privilege one — but it wants a
-  decision and a test, not a quiet widening.
-
-  Options, cheapest first: (a) try each distinct stored password once, in a
-  fixed order, and restate INV-4 as "each stored password at most once per
-  import"; (b) key remembered statement passwords by something stable about
-  the FILE (issuing bank, or the detected account number) rather than by
-  account; (c) accept the re-prompt and say so in the UI. (b) is the most
-  correct and the most work.
-  **Layman:** After the app learns that a locked statement belongs to a different account than the one first selected, it still looks for the remembered password under the first one next month — so you get asked for the password again.
-  Kind: enhancement.
-  Source: in-session-2026-08-14 (found while fixing FIBR-0249).
 
 - ✅ [FIBR-0276] **The documented .corpus-numbers setup types real account numbers onto a command line.**
   CLAUDE.md § Build and test prescribes:
@@ -1721,64 +4635,6 @@ scariest unknown (native-library bundling) up front.
   Kind: chore.
   Source: in-session-2026-08-19 (hit while cutting v0.1.22).
 
-- 📋 [FIBR-0296] **CLAUDE.md is 899 lines and its review no longer converges — split it.**
-  Filed by `review-contract`'s own cap note, not by a reader's impression.
-
-  The 2026-08-19 run (rows 7-9 of docs/reviews/CLAUDE-md-review-log.md)
-  reached its cap with verified findings falling 6 -> 7 -> 5 while the
-  share landing on text THAT RUN had written did not: 0/6, then 4/7, then
-  3/5. Each loop was substantially repairing the one before. Per the
-  skill's § At the cap that is a violent cap rather than a calm one, and
-  the prescribed response is NOT to re-run the gate -- a fresh run starts
-  at loop 1 against a document whose last two loops were each repairing
-  its predecessor.
-
-  The size signal is what to act on. CLAUDE.md is **899 lines**, past the
-  ~800-line range in which two cold reads can be expected to reach all of
-  it. And the failure mode the run kept producing is exactly what that
-  size causes: a rule stated in two or three places and corrected in one.
-  Three separate instances in one run --
-  - "ci-docker.sh reproduces CI exactly" in three places against the new
-    Phase 2b section saying it does not (loop 7, all three lanes);
-  - the no-drift caveat added to the ci-docker.sh module-map bullet and
-    not to its ci.yml neighbour four lines away (loop 9);
-  - the FIBR-0275 guard recorded as landed in one paragraph and as not
-    landed 65 lines below (loop 9, both lanes).
-
-  The 2026-08-18 run hit the same shape (rows 1-3): an absolute headline
-  with its exception twenty lines down, three times over.
-
-  What a split would have to preserve, and why this is not a five-minute
-  job: the file is loaded in full every session, so a split trades one
-  long read for several reads plus a routing decision, and a rule that
-  moves out of the always-loaded file is a rule some session will not
-  read. The candidates are the self-contained procedural blocks -- §
-  Cutting a release (~110 lines), § Build and test (~200), § Doc-only
-  pushes (~110) -- each of which is a runbook consulted at a moment, not
-  a standing rule needed on every turn. § Where state lives, § Push
-  policy, § Commit conventions and § Resumption flow are the part that
-  genuinely must stay resident.
-
-  Decide the split before writing it: a document that grows back is worse
-  than one that was never split.
-  Second piece of evidence, recorded because it is a REVIEW COST rather
-  than a defect and would otherwise not be written anywhere. Across all
-  three loops of the 2026-08-19 gate, lanes spent an open question on the
-  same thing: this file cites `FIBR-0001 INV-1`, `tests/features/harness/
-  INV-5` and a bare `(INV-7)` without saying which are SPEC invariants and
-  which are SUITE invariants — and the two numberings genuinely diverge
-  (the harness suite's own INV-4 is what enforces the spec's INV-2). Every
-  citation checked out correct, so each one correctly failed the
-  materiality gate and none was fixed. But three lanes each had to stop
-  and say they could not settle it, in three consecutive loops, and any
-  future gate on this file pays the same toll. If the split happens, give
-  the moved sections a convention — spell suite invariants as
-  `<suite>/spec.md INV-n` and spec invariants as `<ID> INV-n` — rather
-  than leaving a bare `INV-7` to be resolved by whoever is reading.
-  **Layman:** Our main instructions file has grown big enough that a careful reader can no longer hold all of it, so fixing one rule keeps breaking another one somewhere else in the file.
-  Kind: doc.
-  Source: review-contract-2026-08-19 loop 3 cap note (FIBR-0295 gate).
-
 - ✅ [FIBR-0299] **No versioning standard: we pledge semver in CHANGELOG.md but nowhere says what our numbers MEAN.**
   releases.md 1 governs version LOCKSTEP -- every version-bearing file
   moves together -- and says nothing about what the number means.
@@ -1830,303 +4686,6 @@ scariest unknown (native-library bundling) up front.
   **Layman:** Nothing written down says when the app stops being a 0.x preview and becomes version 1.0.
   Kind: doc.
   Source: in-session-2026-08-20 (user question: what gets us to v1.0?).
-
-- 📋 [FIBR-0300] **README.md's status badge still reads pre-alpha after 196 shipped items and 22 releases.**
-  README.md line 13 carries
-  `[![Status](https://img.shields.io/badge/status-pre--alpha-orange)]()`.
-  It is the first thing a visitor to a public repo sees, and it has been
-  false for a long time: every planned phase P01-P13 has delivered its
-  headline work, P02 through P11 have zero open items, and the project
-  publishes signed releases with eight assets.
-
-  Fix is one line, but pick the wording against the versioning standard
-  (sibling item) rather than in isolation -- badge and version number
-  should tell the same story.
-  **Layman:** The front page of the project still calls it pre-alpha, which puts people off something far more finished than that.
-  Kind: doc-fix.
-  Source: in-session-2026-08-20 (found answering the v1.0 question).
-
-- 📋 [FIBR-0301] **Nothing catches a signing-key rotation that strands every installed copy's updater.**
-  docs/standards/versioning.md 2 names the update path as a
-  compatibility surface whose break includes "a signing-key rotation".
-  Neither existing catcher covers that:
-
-  - `scripts/release-linux.sh`'s hard gate verifies the signature against
-    the `RELEASE_PUBLIC_KEY_B64` committed in the SAME tree, so rotating
-    the key and the constant together passes green.
-  - Every test in `tests/features/auto_update/` is same-build; none
-    verifies a release against a PREVIOUSLY SHIPPED key.
-
-  So a rotation ships, the gate is green, and every installed copy is
-  permanently unable to verify an update -- the exact break the surface
-  row exists to name. CLAUDE.md already warns not to run
-  `gen-signing-key.py` to "fix" a missing key for this reason; nothing
-  enforces it.
-
-  Wanted: a test that verifies a release artifact against a pinned
-  historical public key, so changing the committed constant turns
-  something red.
-  **Layman:** If the release signing key is ever changed, every already-installed copy would silently stop being able to update, and no test would notice.
-  Kind: test.
-  Source: review-contract-2026-08-20 (FIBR-0299 loop 3, lane finding).
-
-- 📋 [FIBR-0302] **No test restores a .fbk backup written by an earlier release.**
-  `tests/features/backup/test_backup.py`'s round-trip is same-build: it
-  exports from a seed and verifies with one version, asserting
-  `res.schema_version == LATEST_SCHEMA_VERSION`. It never crosses a
-  version boundary.
-
-  `services/backup.py:376-381` guards the OTHER direction (refusing a
-  backup from a NEWER schema), and `:354` opens and migrates an older
-  backup forward -- so the product does support the older direction, and
-  nothing pins it.
-
-  docs/standards/versioning.md 2 makes "a backup taken on any earlier
-  release cannot be restored" a MAJOR break, so this is the surface's
-  primary failure mode with no catcher.
-
-  Wanted: a fixture .fbk written at an older schema version, restored by
-  the current build. The same shape would cover saved import profiles,
-  whose round-trip is same-build for the same reason.
-  Progress (2026-08-21): materially more urgent now that FIBR-0019 has
-  shipped, which its section 11 predicted. A restore no longer writes
-  the flat v1 sidecar -- BackupService.restore_backup mints a random DEK,
-  re-keys the restored copy to it and writes the v2 slots sidecar, so
-  what a restored vault LOOKS like has changed under this untested
-  surface. The .fbk container itself is unchanged (its inner vault.db
-  keeps its derive_key(backup_password, ...) schedule), so a backup taken
-  before the change still restores; nothing pins that, which is the whole
-  of this item.
-
-  The fixture wanted is now two, not one: a .fbk at an older SCHEMA
-  version, and a .fbk taken by a pre-envelope build. Both restore through
-  the same path and neither is covered.
-  **Layman:** Backups are only ever tested by writing and reading them with the same version, so a change that made old backups unrestorable would not be caught.
-  Kind: test.
-  Source: review-contract-2026-08-20 (FIBR-0299 loop 3, lane finding).
-
-- 📋 [FIBR-0303] **Amend versioning.md with the two rules the fleet survey found missing: pre-release suffixes and schema-vs-app independence.**
-  A survey of every other project on this machine found two rules worth
-  adopting and a list worth NOT adopting. Hold this until the global
-  versioning standard lands, then make ONE amendment and gate it once --
-  docs/standards/versioning.md hit a VIOLENT cap on 2026-08-20 (five of
-  loop 3's seven findings landed on text the run itself wrote), so it
-  must not be re-gated casually.
-
-  1. PRE-RELEASE / RC SUFFIX -- versioning.md says nothing, and the
-     tooling cannot express one: `.claude/bump.json`'s version_pattern is
-     suffix-free `([0-9]+\.[0-9]+\.[0-9]+)`, as is `cut-release`.
-     Ants_Terminal's rule is the one to take: the `-rcN` suffix lives
-     ONLY at the git tag, the GitHub-release title and the asset
-     filename, never in a version-bearing source file -- which is exactly
-     why a suffix-free bump pattern is correct rather than a limitation.
-     Three projects spell it three ways (`-rc1`, `-rc.1`, `-pre.1`); take
-     whatever the global standard settles on rather than inventing a
-     fourth.
-
-     The finbreak-specific half nobody else has: `_parse_version`
-     (services/update.py:64) returns None for any segment that is not a
-     plain ASCII decimal, so a `0.2.0-rc.1` tag is UNUSABLE to the
-     updater and is silently skipped. That is the right behaviour --
-     Ants_Terminal buys the same safety with a separate zsync channel --
-     but here it is incidental, undocumented, and one "fix" to accept
-     suffixes away from pushing an RC to every stable user. Write it down
-     as load-bearing.
-
-  2. SCHEMA VERSION IS INDEPENDENT OF THE APP VERSION -- perch states the
-     general rule ("Two version lines are independent of the app version
-     and never move with it"). finbreak has `LATEST_SCHEMA_VERSION = 13`
-     against `__version__ = "0.1.22"` and versioning.md never says they
-     are unrelated, though its 2 vault row leans on the schema.
-     DOOM_Ants carries the same warning for an internal engine constant.
-
-  DO NOT LIFT, and the reasons matter:
-  - Vestige's derived/computed version numbers (a weekly train, numbers
-    from git tags). A computed number makes "is this breaking?"
-    unanswerable by construction, which is the opposite of this
-    standard's whole premise.
-  - OneUp's "MAJOR because the engine is replaced" -- it grades an
-    internal rewrite with no user-visible change, contradicting 1.1.
-  - Any project's own list of breaking surfaces ( 2 is finbreak's).
-  - Any "where the version lives" list -- releases.md 1 owns lockstep.
-  - Rolodex's two "when unsure" decision questions. Useful, but they
-    restate 3's test in a second place, and a rule restated in several
-    places drifting apart is precisely what caused this document's
-    violent cap. If wanted, replace 3's prose rather than adding beside
-    it.
-
-  VALIDATION worth recording: the global roadmap's own survey (CFG-0173)
-  names the central unanswered question as "SemVer is written for things
-  other code imports; most projects here are not that". versioning.md
-  1.2 already answers it for finbreak. On three axes -- 1.0 criteria,
-  security-fix versioning, and deprecation -- finbreak's is now the most
-  complete document on the machine; only DOOM_Ants states any 1.0 exit
-  condition, only Rolodex states a security-fix rule, and nothing anywhere
-  handles deprecation.
-  CONSTRAINT FOUND (2026-09-21), and it narrows what this amendment may do.
-  This bullet says to "hold this until the global versioning standard lands,
-  then make ONE amendment and gate it once". That standard HAS landed --
-  ~/.claude/standards/versioning.md, dated 2026-09-04 -- so the hold is
-  discharged and this is now actionable. But read its § 9 before drafting.
-
-  § 9 ("A project that already has its own versioning document") sorts every
-  rule by one test: would this be true of any project on this machine? It then
-  lists what it has already sorted, and "minor versus patch" is named as THE
-  GLOBAL FILE'S. So is the pre-release suffix spelling -- which is item 1 of
-  this bullet, and § 5 of the global standard now covers it. Item 2
-  (schema-version independence) is § 7 there.
-
-  So BOTH gaps this bullet was filed for may already be answered globally, and
-  the amendment may be smaller than planned -- possibly a pointer rather than
-  new text. § 9's rule is to fold the project's copy into the global one and
-  leave a pointer, keeping only what is genuinely finbreak's: its own breaking
-  surfaces (§ 2 here), its 1.0 exit condition (§ 5 here), its release cadence
-  and its version-bearing file list.
-
-  THE ONE FINBREAK-SPECIFIC THING TO KEEP from item 1 stands unchanged and is
-  not in the global file: _parse_version (services/update.py) returns None for
-  any non-decimal segment, so a 0.2.0-rc.1 tag is UNUSABLE to the updater and
-  silently skipped. That is load-bearing safety rather than a limitation, and
-  nothing outside this project states it.
-
-  AND THE RULE A USER ASKED ABOUT IS NOT OURS TO CHANGE. Global § 4 ("Zero-dot-x")
-  says, of every project here: "Inside 0.x the levels shift down one ... A
-  breaking change bumps the MINOR and resets the PATCH. Everything else -- a new
-  capability included -- bumps the PATCH." finbreak's § 4.2 is a faithful copy.
-  So making features bump the minor inside 0.x is an edit to a machine-global
-  standard, not a project override, and § 9 sets the bar for adding to that file.
-  It also cannot be done from a project session: the global-config-lock hook
-  blocks writes to ~/.claude unless the cwd is there or
-  CLAUDE_GLOBAL_CONFIG_UNLOCK=1 is set. Raised with the user 2026-09-21; they
-  chose to go for 1.0.0 instead (FIBR-0304), which makes the question moot.
-  **Layman:** Two gaps the new versioning rules do not cover yet: what a release-candidate version looks like, and that the vault's internal format number is separate from the app's version number.
-  Kind: doc.
-  Source: fleet-survey-2026-08-20 (other projects' versioning standards, after FIBR-0299).
-
-- 📋 [FIBR-0330] **CLAUDE.md runs the two roadmap_query survey calls together, so a session skips a call it owes.**
-  Where state lives item 2 names `mode:"headline_only"` as the cheap survey, then
-  says a filtered call withholds bodies "but still returns `kind` as a field --
-  so the survey answers Resumption flow step 2 on its own; no second call is
-  owed."
-
-  Both halves are true of a DIFFERENT call. A status-filtered query in the
-  default bullets mode does return `kind`. `mode:"headline_only"` does not, and
-  cannot: ANTS-4699 fixed its contract to exactly {id, status,
-  headline_oneline, section_slug}, so `kind` is unobtainable there by any
-  argument. Because the preceding sentence calls headline_only "a cheap survey",
-  "the survey" reads as that mode, and a session then believes step 2 is already
-  answered when it has no `kind` at all.
-
-  Confirmed live 2026-09-02: a `headline_only` call at session start returned no
-  `kind`, and step 2 needed a second query. The Ants schema note for ANTS-4699
-  says the wider claim was recorded by "a project doc" -- this is that doc.
-
-  The fix is one or two sentences: say which call returns `kind`, and drop the
-  "no second call is owed" clause or attach it to the bullets-mode call. It
-  changes what a conformer does, so it trips global rule 14's gate on a file
-  FIBR-0296 already says no longer converges under review -- which is why this
-  is filed rather than fixed in passing.
-  CONFIRMED LIVE A SECOND TIME (2026-09-21), by a session that had read this
-  file and believed it. I ran roadmap_query status:"active"
-  mode:"headline_only" to survey the open items, expecting `kind` because item
-  2 says the survey answers step 2 on its own. The rows came back as exactly
-  {id, status, headline_oneline, section_slug} -- no `kind`, and no
-  `bodies_omitted` key either. I then owed and made a second call.
-
-  So this now has two independent live reproductions, three weeks apart, both
-  by sessions following the file rather than testing it. That is the failure
-  mode the bullet predicts, observed twice.
-
-  One correction to the bullet's own framing, in its favour: it says `kind` is
-  unobtainable in headline_only "by any argument" per ANTS-4699. Today's run is
-  consistent with that, and the Ants MCP maintainer has been told the claim
-  lives in this file so the verb side is not re-litigated.
-
-  Still filed rather than fixed, for the reason already stated -- the fix
-  changes what a conformer does, so it trips rule 14's gate on a file
-  FIBR-0296 says no longer converges. Noting only that the cost of leaving it
-  is now measured rather than predicted: two sessions, two wasted survey
-  calls, and in today's case the survey it invalidated was the largest single
-  reply of the session (114 items, spilled to a handle).
-  **Layman:** A note in our own instructions is ambiguous enough that Claude can skip a lookup it actually needs at the start of a session.
-  Kind: doc-fix.
-  Source: in-session-2026-09-02.
-
-- 📋 [FIBR-0331] **Turn check_untyped_defs on for the test suite, where mypy still skips most bodies.**
-  Split out of FIBR-0313 L14 rather than done with it. The app package half
-  is DONE and pinned: pyproject now sets check_untyped_defs for finbreak.*,
-  src was already clean under it, and a deliberate error in an unannotated
-  src function was confirmed caught where it was previously invisible.
-
-  The tests half is the work. mypy skips the bodies of unannotated
-  functions, and most of this suite is unannotated -- so the gate does not
-  read the code that decides whether the gate means anything. Measured
-  2026-09-03: 345 errors across 25 files, the heaviest being categories,
-  theme, categorisation, table_state and app_shell.
-
-  Mechanical but not free: most are Optional narrowing on Qt accessors
-  (widget() / item() returning None), which is the same class the annotated
-  Qt tests already carry asserts for. The risk to watch is a fix that
-  weakens what a test asserts to satisfy the checker.
-
-  Deliberately NOT closed by silencing: an override that turns it on for
-  finbreak.* and off for tests would close the gate gap on paper while the
-  suite stays unread.
-  RE-MEASURED (2026-09-21): 370 errors across 25 files, against the 345 across
-  25 recorded above on 2026-09-03. The FILE COUNT is flat and the error count is
-  not, so the gap is widening inside the same files rather than spreading -- the
-  cost of closing it rises while it waits, which is the number worth acting on
-  rather than either total on its own.
-
-  Breakdown unchanged in shape: 189 union-attr, 95 attr-defined, 68 arg-type, 18
-  other. union-attr at 51% is the Qt widget() / item() returning Optional class
-  this bullet already names, and the same one the run-mypy-before-push memory
-  warns about.
-
-  Source: a check-code sweep with --check-untyped-defs, run 2026-09-21.
-  **Layman:** The type checker currently reads the app's code closely but skims the tests, so a broken test can look fine.
-  Kind: test.
-
-- 📋 [FIBR-0344] **Add ruff's DTZ family to the gate, so the clock class cannot come back unseen.**
-  FIBR-0342 was a wrong-month defect on a money report, and NOTHING in the tree
-  could see it: pyproject's [tool.ruff.lint] select is E,W,F,I,UP,B,RUF100, so
-  the DTZ family is off and the gate never reads a naive-clock call. Every test
-  injects the date explicitly, so the suite passed over it too. It took a
-  check-code sweep run with a broader select to surface it.
-
-  Adding DTZ is the durable guard, and it is not a one-liner -- which is why this
-  is filed rather than folded into FIBR-0342. Measured by that sweep: DTZ011
-  fires at five sites and DTZ007 at three, and on inspection every one of the
-  eight is currently LEGITIMATE.
-
-  - DTZ011, the five date.today() service defaults: pdf_export.render_pdf_bytes
-    plus four in reporting.py. These are the fallback for a headless or test
-    caller; the convention is that the UI passes the date, which is what
-    FIBR-0342 restored. services/reporting.py is deliberately Qt-free and the app
-    clock is Qt-based, so these cannot simply be routed through it.
-  - DTZ007, three strptime calls without %z: csv_importer, date_detect and
-    import_wizard. Those parse dates off bank statements, which are genuinely
-    zone-less.
-
-  So the work is: decide each of the eight, write a justification beside every
-  suppression rather than a bare noqa, and add DTZ to select. The value is not
-  today's eight -- it is the ninth, written by somebody who does not know about
-  this class.
-
-  Worth pairing with the sweep's other finding about scope: ruff and mypy are
-  scoped to src+tests, so scripts/*.py -- including sign-release.py and
-  gen-signing-key.py, both on the release-signing path -- are in no gate stage at
-  all. That is the same gap the shellcheck stage was added to close for *.sh, in
-  a different language. Both are one edit to the same two config blocks.
-
-  NOT worth taking from the same sweep, and the reason is recorded so it is not
-  re-proposed: adding ruff's S family. It would flag five sites that already
-  carry a written # nosec justification, because ruff does not honour nosec -- so
-  it buys five new noqa comments and no new information.
-  **Layman:** Turn on the lint rule that would have caught the wrong-month report bug, so that kind of mistake cannot slip through again.
-  Kind: chore.
-  Source: check-code-2026-09-21 (the sweep's one durable recommendation).
-  Lanes: ci, tests.
 
 ### 📦 Packaging
 
@@ -2192,15 +4751,6 @@ scariest unknown (native-library bundling) up front.
   Kind: fix.
   Source: user-report-2026-07-14.
   Resolved 2026-07-14: `build-windows-exe.py` now freezes `--windowed`; self-test sentinel rerouted to FINBREAK_SELFTEST_OUT file so the clean-room read survives the None stdout; windows-build.yml reads the file via Start-Process -Wait. Regression-locked (test_driver_freezes_windowed_gui_exe + test_selftest_can_redirect_sentinel_to_a_file). Gate green 853/1. Ships in the next Windows release build.
-
-- 🚧 [FIBR-0133] **Free Windows code signing via SignPath Foundation (OSS program).**
-  User applying to SignPath Foundation's free code-signing program for OSS. Prep done this session: PRIVACY.md added (finbreak collects no data; local-only); README gained the required SignPath attribution ("Free code signing provided by SignPath.io, certificate by SignPath Foundation") which the hub site renders onto the download page (antsprojectshub.co.za/p/fin-break.html) — NOTE (2026-07-26 debt sweep): that attribution string is no longer in README.md, having been removed after the decline; it must be restored before any reapplication; Google Search Console verification + indexing done so the app is discoverable (a SignPath requirement — see [[finbreak-public-site-and-signing]]). Also fixed the stale milnet01/Fin_Break->finbreak repo slug in the hub data. REMAINING once approved: wire the SignPath signing step into .github/workflows/windows-build.yml so release .exe artifacts are signed; promote the .exe to a signed release asset. Requirements met: MIT license, public repo, GitHub 2FA (user to confirm), discoverable (in progress). Windows-only (macOS = Apple $99/yr; Linux AppImage GPG-signed already).
-  **Layman:** Get finbreak's Windows app officially signed for free so Windows stops showing "unknown publisher" warnings.
-  Kind: package.
-  Source: user-request-2026-07-14.
-  Scope boundary (2026-07-14): "promote the .exe to a signed release asset" above means the AUTHENTICODE/publisher signature only. The Ed25519-signed .exe release asset (the sidecar the in-app updater verifies) is FIBR-0131's D5, not this item. FIBR-0133 adds the Authenticode signature to that already-attached .exe once SignPath approves.
-  Progress (2026-07-14): the SignPath "discoverable" requirement is now MET — the Fin Break page (antsprojectshub.co.za/p/fin-break.html) is live and INDEXED on Google (confirmed via a Google search result, ~3h after publish). Requirements now: MIT ✓, public repo ✓, PRIVACY.md + SignPath attribution ✓, discoverable ✓; REMAINING = SignPath's own approval ONLY (external, awaited); GitHub 2FA confirmed ON (2026-07-14, GitHub-mandated). All contributor-side SignPath requirements (MIT, public repo, PRIVACY + attribution, discoverable, 2FA) are now MET. No code work outstanding; FIBR-0131's Windows updater is already merged and waiting for the v0.1.10 release that will bundle both the Authenticode signature (this item) and the Ed25519 .exe.sig.
-  Update (2026-07-16): SignPath Foundation DECLINED the application. Plan per the user: build more of a public presence first, then reapply and hope for approval next time. Stays 🚧 (blocked on the reapplication + their approval, not on any contributor-side prep — MIT/public/2FA/discoverable are all still met). Windows .exe remains un-Authenticode-signed meanwhile → SmartScreen "unknown publisher" persists; the Ed25519 updater sidecar sig is unaffected.
 
 - ✅ [FIBR-0134] **Embed the finbreak icon in the Windows .exe (was PyInstaller's default console-stub icon).**
   The published v0.1.9 finbreak-0.1.9-x86_64.exe showed PyInstaller's default console-stub icon in Explorer/taskbar because scripts/build-windows-exe.py never passed --icon to the freeze. Fixed by adding `--icon assets/icon/finbreak.ico` (the committed multi-size 16..256 Windows icon from FIBR-0037) to the PyInstaller command, plus a fail-loud guard that the .ico exists and a windows_build regression test asserting the driver passes --icon and the .ico is a real MS icon. Driver flag only (like --windowed/FIBR-0132), so the Linux parity guard is untouched; the Linux AppImage icon travels separately via appimagetool. The icon-bearing .exe appears on the NEXT Windows build/release — the already-published v0.1.9 asset is not rewritten.
@@ -2389,360 +4939,6 @@ scariest unknown (native-library bundling) up front.
   Not fixed here, filed instead: FIBR-0317 -- nothing re-submits to OBS on
   release, which is why the published packages were six versions behind and why
   the stale wheel closure went unnoticed.
-
-- 🚧 [FIBR-0159] **Publish finbreak to Flathub — the cross-distro app store (GNOME Software / KDE Discover).**
-  Flathub is the de-facto cross-distro app store: one submission surfaces finbreak
-  in GNOME Software + KDE Discover on openSUSE, Fedora, Ubuntu, Debian, Mint, etc.
-  Unlike the official distro archives (which forbid bundling and need a maintainer
-  sponsor — impractical for finbreak's deliberately-bundled runtime), Flathub is
-  self-publish and embraces the self-contained/sandboxed model, so it fits.
-  Design (chosen, docs/specs/FIBR-0159.md — /cold-eyes CONVERGED loop 8, signed off
-  2026-07-23; a SEPARATE build pipeline from OBS — flatpak-builder + a manifest, not
-  rpm/deb):
-  - Build on the freedesktop 25.08 runtime + the pinned pip-wheel closure
-  (PySide6==6.11.1 carries its own Qt6) — NOT the PySide6 BaseApp (tops out at
-  6.10, forks the pinned stack) and NOT the KDE runtime (no 6.11 branch). The
-  manifest io.github.milnet01.finbreak.yaml pip-installs the sha256-pinned
-  closure (packaging/flatpak/python3-deps.yaml, generated by
-  generate-pip-sources.sh — --prefer-wheels DERIVED from the closure, never
-  hand-listed) into /app, then pip-installs finbreak from its git clone.
-  - Reuse the existing AppStream metainfo + .desktop + icons shipped under
-  packaging/obs/ (single source of truth — installed from the finbreak module's
-  own git clone so a standalone-submitted manifest still finds them, ADR-0007).
-  - Minimal, network-free, portal-only sandbox: NO --share=network (app networking
-  unreachable at the OS level), NO --filesystem=* (import/export go through the
-  xdg-desktop-portal chooser, granting only the file the user picks), NO
-  --talk-name=*. The updater is inert under Flatpak by construction (no $APPIMAGE
-  / not a frozen exe → detect_installer() is None) — no build-time gating needed.
-  One small src change: gate _kde_wayland() off under Flatpak so the unreachable
-  org.kde.KWin window-centering call is honestly disabled (INV-8).
-  - Submit to github.com/flathub/flathub (PR on the new-pr base branch), pass the
-  reviewer round, then Flathub builds + hosts it.
-  Progress (2026-07-23): spec CONVERGED (cold-eyes loop 8) + signed off; implementation landed — packaging/flatpak/ (manifest, generate-pip-sources.sh, python3-deps.yaml, flatpak-build.sh, README), the _kde_wayland() Flatpak gate (main_window.py, INV-8), security-model.md INV-8 note, and tests/features/flatpak_packaging/ (INV-1..8). Local flatpak-builder build + portal smoke next, then the Flathub new-pr submission.
-  Local build VALIDATED (2026-07-23): flatpak-builder builds green offline from the sha256-pinned closure (24 sources, ofxparse the one sdist); `flatpak run --command=finbreak … --self-test` → FINBREAK_SELFTEST_OK (Qt+SQLCipher+qpdf travelled); sandbox network-isolated (in-sandbox connect → OSError, proving no --share=network); full gate green (1258 passed). Two gate fixes folded in: types-PyYAML mypy stubs + a .gitleaks.toml allowlist for the flatpak-builder artifacts (.build/.repo/.flatpak-builder). REMAINING before Flathub submit: (1) manual live-host §5 smoke on KDE-Wayland — portal file open + PDF/.fbk export, Center-window disabled, real screenshot URLs; (2) re-pin the manifest to a release tag/commit (currently v0.1.16); (3) open the flathub/flathub new-pr PR — an outward-facing action, awaiting user go-ahead.
-  Decision (2026-07-28, user): KEEP the app id io.github.milnet01.finbreak for
-  the Flathub submission — do not switch to the user's own domain
-  (antsprojectshub.co.za). Flathub accepts a reverse-DNS id based on a
-  code-hosting account you control, 0.1.18 already shipped with this id, and a
-  rename would churn the desktop file, icon filenames, metainfo id, the Flatpak
-  manifest and the OBS spec while making existing RPM installs look like a
-  different app. The domain is still the right HOMEPAGE value in the manifest and
-  metainfo — that field is independent of the id. (User data is unaffected either
-  way: paths.py keys AppDataLocation on applicationName "finbreak", not the id.)
-
-  Follow-up (optional, lower priority): the Snap Store (Ubuntu-led, also
-  self-publish, also appears in the software centres) — a snapcraft.yaml. Do after
-  Flathub. Official distro archives are out of scope (bundling policy).
-  **Layman:** Get finbreak into the main Linux app store (Flathub), so users on any distro can find and install it from their graphical Software centre with one click — the single biggest reach-the-most-people step.
-  Kind: package.
-  Lanes: packaging, release.
-  Source: user-request-2026-07-23.
-  Pre-submit audit (2026-08-07), run against Flathub's CURRENT published
-  requirements rather than the spec's 2026-07-23 reading of them. Two
-  blockers, two quality nits, one spec gap:
-
-  BLOCKER (RESOLVED same day — see FIBR-0206) — all six metainfo
-  `<screenshot>` URLs 404. Flathub's own check fails:
-  `flatpak-builder-lint appstream` exits 3 with six
-  `screenshot-image-not-found`, and `appstreamcli validate` agrees.
-  Docs list invalid screenshots as a submission-blocking error.
-
-  CORRECTION to this note as first written: it blamed an unfinished
-  FIBR-0155 "upload real PNGs" TODO and said the images "were never
-  uploaded". That was wrong, and FIBR-0206 had already established
-  the real cause on 2026-08-02 — the images have been published the
-  whole time; the metainfo simply guessed the hosted path from the
-  in-repo basenames. The site serves `/assets/img/shots/` with a
-  `finbreak-` prefix, so both the directory and the name differ. A
-  six-line URL correction fixed it; nothing needed uploading. Filing
-  a finding without first checking whether the roadmap already
-  carried its diagnosis is what produced the wrong cause here.
-
-  BLOCKER (RESOLVED same day — see FIBR-0256) — the cryptography
-  closure drift.
-
-  NIT — screenshots are 1600x1000. The quality guidelines want
-  <=1000x700, or 2000x1400 for HiDPI; 1600x1000 is neither. Re-capture
-  at 2000x1400 while uploading.
-
-  NIT — `<summary>` is 55 chars ("Understand your personal finances,
-  privately and offline"). Guideline: <=35, ideally 10-25. `<name>`
-  "finbreak" is all-lowercase, which the guidelines also discourage,
-  but it is the brand and is defensible as-is.
-
-  SPEC GAP — neither § 5's checklist nor packaging/flatpak/README.md
-  mentions `flatpak-builder-lint`, which Flathub docs tell submitters
-  to run locally and whose failures block the PR. The manifest check
-  passes today (exit 0); the appstream check is what fails. § 5 also
-  says to build with the host `flatpak-builder` (flatpak-build.sh line
-  53), where Flathub asks for the `org.flatpak.Builder` flatpak —
-  already installed on this host. Fold both into the checklist.
-
-  VERIFIED GOOD — runtime branch `25.08` is still current and
-  installable (freedesktop-sdk-25.08.15); the manifest is correctly
-  re-pinned to v0.1.19 / f4de4c4 (the roadmap's older "currently
-  v0.1.16" remark is stale); the app id decision stands unchanged.
-
-  STILL OPEN, unchanged — the binary-wheel reviewer risk § 5 already
-  records. Research found no published Flathub policy blessing
-  pre-built manylinux wheels, and the one on-point Flathub Discourse
-  thread about a PySide6 app had a maintainer recommending a
-  from-source PySide6 build instead. That is a data point, not a
-  ruling, and the same thread's advice was "just create the submit PR,
-  it will be reviewed there".
-  Re-validated (2026-08-07) after the FIBR-0256 closure regenerate, on a
-  real KDE-Wayland host. This supersedes the 2026-07-23 "local build
-  VALIDATED" note, which predated the cryptography bump.
-
-  * `flatpak-builder` builds green OFFLINE from the regenerated
-  sha256-pinned closure, and `--self-test` prints FINBREAK_SELFTEST_OK
-  (Qt + SQLCipher + qpdf travelled).
-  * The CVE fix actually reaches the bundle, not just the manifest:
-  `python3 -c "import cryptography; print(cryptography.__version__)"`
-  INSIDE the built flatpak prints **50.0.0**.
-  * Sandbox is network-isolated — an in-sandbox `socket.create_connection`
-  to 1.1.1.1:443 raises `OSError: [Errno 101] Network is unreachable`,
-  proving no `--share=network`.
-  * Updater inert at runtime, not merely under a monkeypatched test:
-  `/.flatpak-info` exists, `FLATPAK_ID` is set, and
-  `detect_installer()` returns `None` (INV-6).
-  * INV-8 verified where it actually matters: `_kde_wayland()` returns
-  **False** inside the flatpak on a session that genuinely IS KDE
-  Wayland (`XDG_SESSION_TYPE=wayland`, `XDG_CURRENT_DESKTOP=KDE`), so
-  the unreachable org.kde.KWin call is honestly suppressed.
-  * `flatpak-builder-lint manifest` exits 0; `... appstream` exits 0
-  after the FIBR-0206 URL fix.
-
-  `flatpak-builder-lint repo` reports two errors —
-  `appstream-screenshots-not-mirrored-in-ostree` and
-  `appstream-external-screenshot-url`. Checked against Flathub's linter
-  docs rather than assumed: both are EXPECTED on a local build, because
-  mirroring happens when the builder is invoked with
-  `--mirror-screenshots-url=https://dl.flathub.org/media`, which
-  Flathub's own infrastructure supplies. They would only be the
-  submitter's problem for an externally-uploaded app, which this is not.
-
-  STILL NEEDS A HUMAN — the two portal checks in § 5, which are the
-  gate for § 3.5's two risks and cannot be driven headlessly: (i) import
-  a file through the chooser, and (ii) export a PDF report and an
-  encrypted .fbk to a chosen location. The app is installed
-  (`flatpak run io.github.milnet01.finbreak`) and ready for that pass.
-  Progress (2026-08-12): the launch blocker is CLEARED — FIBR-0259 is ✅. Between the 2026-08-07 re-validation above and today the app could not start at all under Flatpak (missing Kerberos library, ImportError before any window), which is what the user's § 5 portal attempt actually hit. The krb5 manifest module fixed it and the user confirmed a real launch today: window, full toolbar, "Ready", unlock dialog. So this bullet's closing line — "the app is installed and ready for that pass" — is true again, but it was NOT true for the five days in between; do not read that line as continuously verified. Two corrections to the notes above, both checked in the tree rather than recalled: the manifest is now pinned to tag v0.1.20 / commit 6c9cf8c (line 104-106), superseding both the "currently v0.1.16" and the "v0.1.19 / f4de4c4" remarks; and the FIBR-0259 fix also widened `--self-test` to import PySide6.QtNetwork and construct a QLocalServer, closing the gate hole that let a non-starting build pass every automated check. REMAINING, unchanged: (1) the two human portal checks in § 5 — import through the chooser, and export a PDF report + an encrypted .fbk to a chosen location; (2) re-pin to the newest release if one is cut before submission; (3) open the flathub/flathub new-pr PR, an outward-facing action still awaiting the user's explicit go-ahead.
-  Progress (2026-08-12): the manifest now builds green AS SUBMITTED. `LOCAL=0 packaging/flatpak/flatpak-build.sh` — no source substitution, so the finbreak module is built from the pinned v0.1.20 / 6c9cf8c clone, offline — installs the whole closure (cryptography-50.0.0) plus finbreak-0.1.20 and ends FINBREAK_SELFTEST_OK. That clears the last two automated blockers this bullet inherited: FIBR-0257 (the CVE fix had never shipped) and FIBR-0256 (the closure still offered cryptography 49.0.0) were both already fixed by the v0.1.20 release and are now flipped ✅ on evidence rather than on inference. FIBR-0258 is closed with them: `LOCAL=0` is documented as the pre-submit path in packaging/flatpak/README.md, and `test_FIBR0258_closure_satisfies_the_pinned_commit` now checks the closure against the pyproject of the commit the MANIFEST pins, not the working tree's. REMAINING is unchanged and is all human or outward-facing: (1) the two § 5 portal checks — import through the chooser, and export a PDF report + an encrypted .fbk to a chosen location; (2) re-pin if a newer release is cut first; (3) open the flathub/flathub new-pr PR, still awaiting explicit go-ahead.
-  Progress (2026-08-20): the manual § 5 live-host smoke is DONE and all five
-  checks pass, on KDE-Wayland, against a LOCAL=0 build -- the manifest as
-  submitted, from the pinned v0.1.22 commit (624722d, verified equal to the
-  tag), built offline. Self-test printed FINBREAK_SELFTEST_OK, so Qt +
-  SQLCipher + qpdf all travelled into the sandbox.
-
-  (1) Portal open: a CSV in $HOME -- which the sandbox has no filesystem
-  right to read -- was chosen through the xdg-desktop-portal chooser and
-  fully parsed: 10 rows, ISO dates read correctly, coverage period inferred
-  (2026/07/02..2026/07/28), dedup ran (0 duplicate). One row errored, and
-  correctly: a 0.00 opening-balance line the tester had put in the sample,
-  refused by transactions.py:92 "amount must be non-zero" and surfaced as a
-  per-row error while the other 9 imported (the FIBR-0252 model).
-
-  (2) Portal save, both output types, each to a chosen location. The PDF is
-  73,665 bytes, valid PDF 1.4, 2 pages, correct %PDF- header and %%EOF
-  trailer -- complete, not truncated. The .fbk is 90,698 bytes and grepping
-  it for the transaction descriptions returns ZERO hits, so the payload is
-  genuinely encrypted rather than a zip of readable data.
-
-  (3) Updater inert: Help -> Check for updates shows "Automatic updates
-  aren't available for this build of finbreak." That is the
-  _installer is None early return at main_window.py:1342, which returns
-  BEFORE any worker starts -- so no network attempt is made at all, rather
-  than one being made and failing. Screenshot-confirmed wording.
-
-  (4) INV-8 holds: Window -> Center window is greyed out (the unreachable
-  org.kde.KWin call honestly disabled, not a dead click) and Reset layout
-  works normally.
-
-  (5) Network isolation proven at the OS level, and proven properly: a
-  hostname connect fails with gaierror, which alone would only show there is
-  no resolver, so it was re-tested by raw IP -- 1.1.1.1:443 and
-  140.82.121.6:443 both return OSError [Errno 101] Network is unreachable.
-  No --share=network, confirmed empirically.
-
-  REMAINING is now exactly one thing, and it is outward-facing: open the
-  flathub/flathub new-pr PR. The re-pin blocker is closed (the manifest
-  already points at v0.1.22, the current release) and the § 5 blocker is
-  closed by this run. Awaiting explicit user go-ahead for the submission.
-  CORRECTION (2026-08-20): "open the flathub/flathub new-pr PR" has been
-  stale since 2026-08-07. The PR EXISTS -- flathub/flathub#9662, "Add
-  io.github.milnet01.finbreak", base new-pr -- and it is CLOSED, not merged.
-  Every REMAINING list on this bullet above still describes it as un-opened;
-  they are wrong from this date.
-
-  What happened: the submission-checker bot auto-closed it 27 SECONDS after
-  it opened (13:14:46Z -> 13:15:13Z), diagnostics "Checklist(s) not completed
-  or missing" -- the PR body had replaced the submission template instead of
-  filling it in. At 15:20:56Z the submitter posted a comment completing the
-  full checklist (description, showcase video, sandbox justification, the
-  manylinux-wheel rationale) and asked for a reopen, which is precisely what
-  the bot's own message instructs: "please post a comment below instead of
-  opening or reopening (new) PRs". Since then: 13 days, two comments total,
-  no labels, no maintainer response, still closed.
-
-  So the next action is NOT to open a PR. Doing so contradicts the bot's
-  stated process and reads as PR-spam to the reviewers. The sanctioned route
-  is a follow-up comment on 9662.
-
-  Also live: the fork branch milnet01/flathub add-io.github.milnet01.finbreak
-  (head 0b42569, 2 commits -- the add plus "Bundle MIT krb5 -- Qt6Network
-  needs libgssapi_krb5") still pins tag v0.1.20 / 6c9cf8c. Current release is
-  v0.1.22 / 624722d, so a reopened 9662 would build a two-release-old
-  finbreak. Re-pinning that branch is a prerequisite to any bump comment.
-
-  Pre-submit checks re-run today and all green against v0.1.22:
-  flatpak-builder-lint manifest exit 0 (also exit 0 standalone, i.e. with the
-  manifest at a repo root and no packaging/obs beside it), flatpak-builder-lint
-  appstream exit 0 (that one really does fetch the <screenshot> URLs),
-  org.freedesktop.Platform//25.08 current at freedesktop-sdk-25.08.16
-  (2026-08-16), tests/features/flatpak_packaging 17/17 including the
-  FIBR-0258 closure-vs-pinned-commit check.
-
-  One deliberate NON-change: regenerating python3-deps.yaml today pulls
-  lxml 6.1.1->6.1.2, charset_normalizer 3.4.9->3.5.1 and pypdfium2
-  5.12.1->5.13.0. That is upstream drift, NOT a pyproject mismatch -- the
-  committed closure still satisfies the pinned commit. It was reverted rather
-  than submitted, because those three wheels have never been built here and
-  "builds entirely from pinned source" is the first thing a Flathub reviewer
-  checks. The bump belongs in the ongoing-releases flow, not inside a
-  submission.
-  Progress (2026-08-20, user go-ahead): both sanctioned steps DONE. The
-  submission is now waiting on Flathub, not on us.
-
-  (1) Fork branch milnet01/flathub add-io.github.milnet01.finbreak re-pinned
-  to v0.1.22 / 624722d, pushed as a FAST-FORWARD on top of the existing head
-  (0b42569 -> 278759c) rather than a force-push -- so the branch's second
-  commit, "Bundle MIT krb5 -- Qt6Network needs libgssapi_krb5", is preserved.
-  Verified that fix is already present in this repo's own manifest, so the
-  re-pin is a 2-line diff (tag + commit) and regresses nothing. Remote head
-  confirmed 278759c after the push.
-
-  (2) Follow-up comment posted on flathub/flathub#9662
-  (issuecomment-5352889722) -- a comment, per the submission-checker bot's own
-  instruction not to open or reopen a PR. It notes the checklist was completed
-  in the 2026-08-07 comment, states the new pin, lists today's green checks
-  (both linters exit 0, runtime 25.08 current, offline build ending
-  FINBREAK_SELFTEST_OK), and repeats the standing offer to build any manylinux
-  wheel from source. Confirmed as the thread's third comment.
-
-  PR state is still CLOSED and only a Flathub maintainer can change that. So
-  the next action on this bullet is NOT ours: it is waiting for a reopen. Do
-  not open a new PR while 9662 stands -- that is what the bot forbids and it
-  reads as PR-spam to the reviewers.
-
-  If the silence continues, the escalation is Flathub's Matrix room or
-  Discourse rather than a second PR. Give the bump a reasonable window first;
-  the previous wait was 13 days with no response.
-  Progress (2026-09-07): the manifest is re-pinned to v0.1.23 —
-  tag: v0.1.23, commit: c86d9c71c7f1f8865e9bb21f42bdb9b122b49595 — as the
-  bump recipe's post-tag todo, pushed in 9c75d33. The pin recorded above
-  (278759c) is superseded.
-
-  flathub/flathub#9662 is still CLOSED and nothing about that changed
-  today. The rule above stands: do not open a new PR while 9662 stands.
-  Any bump comment posted from here should cite the v0.1.23 pin rather
-  than the old one.
-
-- 📋 [FIBR-0160] **Add openSUSE Leap 15.6 as an OBS target (deferred — Leap ships no python 3.12+).**
-  Attempted 2026-07-23: added the Leap 15.6 target + a %if 0%{?sle_version}
-  python313 build branch, but the build went "unresolvable" — osc buildinfo:
-  "nothing provides python313, python313-devel, python313-pip". Leap 15.6 (SLE 15
-  SP6) has no python313 (nor 3.12/3.14); we vendor only cp312/cp313/cp314. The Leap
-  target was removed to keep the project clean; the spec keeps the %{py3}/%{py3pkg}
-  abstraction (harmless — resolves to python3 on every active target).
-
-  To enable later:
-  1. Confirm Leap 15.6's newest python3XX module (`osc buildinfo` against
-  openSUSE:Leap:15.6, or the Leap package index) — likely python311 (3.11).
-  2. Vendor that ABI (add it to vendor-wheels.sh's PY loop) — all deps must
-  publish that cpXX wheel (PySide6/cryptography are abi3 so fine; check
-  sqlcipher3-wheels, lxml, pikepdf, Pillow, cffi, charset-normalizer).
-  3. Set the sle_version branch's %{py3pkg} to that module (e.g. python311) and
-  %{py3} to its interpreter (python3.11).
-  4. Re-add the openSUSE_Leap_15.6 repo (obs-setup.sh) + rebuild.
-
-  Lower priority than FIBR-0159 (Flathub), which serves Leap users through GNOME
-  Software / KDE Discover regardless.
-  **Layman:** Offer a native openSUSE Leap package too. Parked for now: Leap's software repos don't carry a new-enough Python to match our bundled parts, and Flathub will reach Leap users in the meantime.
-  Kind: package.
-  Source: user-request-2026-07-23.
-
-- 📋 [FIBR-0161] **Fold the Flathub `flathub.json` arch-restriction into the FIBR-0159 spec §5 checklist.**
-  During FIBR-0159 submission prep we found the pinned wheel closure is
-  x86_64-only, but Flathub's buildbot builds every arch by default — so the
-  submission needs a `flathub.json` with `only-arches: [x86_64]` or the aarch64
-  build fails. Implemented in packaging (packaging/flatpak/flathub.json + INV-9
-  test locking only-arches to the closure's wheel arches), but the signed-off
-  FIBR-0159 spec §3.4/§5 pre-submit checklist never mentions it. Fold in an arch
-  line — but the spec is a design doc, so the edit runs through /cold-eyes
-  (--max-loops 7, CLAUDE.md rule 14) rather than an inline patch.
-  **Layman:** The Flathub packaging now ships a small config that tells Flathub to build only for the PC (x86_64) chip we have the parts for; the design document should mention it.
-  Kind: doc-fix.
-  Source: in-session-2026-07-23.
-  Scope grew (2026-08-07): three more items to fold into § 5 in the same
-  edit, all verified against Flathub's live docs and by running the tools.
-  Batching them is deliberate — editing a spec trips the rule-14
-  `/cold-eyes` gate, so one amendment plus one review beats four.
-
-  1. `flatpak-builder-lint`. Flathub's docs tell submitters to run it
-  locally and its failures block the PR, yet neither § 5 nor
-  packaging/flatpak/README.md mentioned it. Two build-free checks:
-  `flatpak run --command=flatpak-builder-lint org.flatpak.Builder
-  manifest <manifest>` and `... appstream <metainfo>`; `... repo repo`
-  after a build. The manifest check already passes clean (exit 0).
-  Its `appstream` check is `appstreamcli` plus Flathub's own
-  overrides, so it outranks a bare `appstreamcli validate`.
-  2. Build via the `org.flatpak.Builder` flatpak, which is what Flathub's
-  infra runs; flatpak-build.sh line 53 uses a host `flatpak-builder`.
-  Fine for local iteration, worth naming as a difference.
-  3. The closure-vs-pyproject comparison is in § 5 as a MANUAL step and
-  that is exactly what failed (FIBR-0256). It now has a gate-runnable
-  test, so § 5 should cite the test rather than ask for the manual
-  diff.
-
-  Also for § 5: the exit criteria say `appstreamcli validate`, but the
-  gate's own INV-4/INV-5 invoke it with `--no-net`, which skips the
-  `<screenshot>` fetch entirely — the flag that let six dead URLs sit
-  under a green gate for months. § 5 should say plainly that the
-  pre-submit run is the networked one.
-
-  Already recorded on the FIBR-0159 bullet, no § 5 change needed: the
-  runtime branch 25.08 is current (freedesktop-sdk-25.08.15) and the
-  manifest is correctly pinned to v0.1.19.
-
-- 📋 [FIBR-0184] **bump.json's Flatpak re-pin todo names a tagging step the release path doesn't use, so `git rev-parse v<NEW>` fails locally.**
-  Hit during the v0.1.18 release. The `.claude/bump.json` todo for the
-  Flatpak `commit:` pin says to set it "AFTER `git tag -a v{NEW}`" — but
-  nothing in the release path runs `git tag -a`. `scripts/release-linux.sh`
-  creates the tag through `gh release create`, which creates it on the
-  REMOTE only. So the local clone has no such ref and the todo's own
-  follow-up command fails:
-
-  $ git rev-parse v0.1.18^{commit}
-  fatal: ambiguous argument 'v0.1.18^{commit}': unknown revision ...
-
-  The fix is a `git fetch --tags origin` before the rev-parse (that is what
-  unblocked it here). Two candidate homes, either is fine:
-  (a) reword the bump.json todo to name the real sequence — run
-  release-linux.sh, `git fetch --tags`, then rev-parse; or
-  (b) better, fold the whole step into release-linux.sh after the release is
-  created, since the sha is known there and the manual step exists only
-  because the tag does not exist at bump time. (b) removes the todo
-  entirely rather than correcting it.
-
-  Low severity — it costs one confusing failure per release, and the
-  flatpak_packaging tests (INV-4 40-hex sha, INV-10 tag == __version__)
-  still pass either way because they cannot tell whether the tag and the
-  commit point at the same object. That blind spot is the reason this is a
-  manual step at all, so a wrong instruction here is worth fixing.
-  **Layman:** A release checklist step tells you to look up something that isn't on your computer yet, so it fails until you fetch it first.
-  Kind: doc-fix.
-  Source: in-session-2026-07-28 (v0.1.18 release).
 
 - ✅ [FIBR-0188] **The AppImage's embedded .desktop name doesn't match the app id, so the panel shows a second icon.**
   Verified 2026-07-28 by source read (user screenshot shows the duplicate).
@@ -3172,116 +5368,6 @@ scariest unknown (native-library bundling) up front.
   Progress (2026-08-12): the fix is BUILT and gated; what remains is a human launching it. Verified in the tree, not recalled: packaging/flatpak/io.github.milnet01.finbreak.yaml carries a `krb5` module (line 59, krb5-1.22.2 from kerberos.org), and src/finbreak/_selftest.py now imports PySide6.QtNetwork and constructs a QLocalServer — so the gate hole that let this ship (the self-test loaded QtWidgets/QtCharts/QtCore/QtGui/sqlcipher3/pikepdf but never QtNetwork) is closed and would now fail on a build that cannot start. Landed in 51fd6a8 + baf48b8; FIBR-0261 then made that self-test run headless instead of aborting. Deliberately left 🚧 rather than ✅: every automated check agreed the build was good LAST time too, and only a human running `flatpak run io.github.milnet01.finbreak` found it. The single remaining step is that command producing a window. Still blocks FIBR-0159 — do not submit until it does.
   Resolved (2026-08-12): the user ran `flatpak run io.github.milnet01.finbreak` and the app launched — window titled "finbreak" with the full toolbar (Home … Lock), status bar reading "Ready", and the "Unlock finbreak" master-password dialog. Screenshot supplied in-session. That is the exact exit condition this bullet held itself to, and it is the one check no automated gate could stand in for: the old failure was an ImportError raised before any window existed, so a window at all disproves it. The krb5 manifest module (packaging/flatpak/io.github.milnet01.finbreak.yaml) and the widened `--self-test` (now importing PySide6.QtNetwork and constructing a QLocalServer) are both confirmed good by a real launch rather than by the checks that agreed last time. No longer blocks FIBR-0159 — Flathub submission is clear to proceed.
 
-- 📋 [FIBR-0298] **Nothing owns refreshing the Flatpak pip closure, so its transitive wheels age silently between releases.**
-  packaging/flatpak/python3-deps.yaml is a sha256-pinned closure regenerated
-  only by a human running generate-pip-sources.sh. `pyproject.toml` pins the
-  DIRECT deps, and test_FIBR0258_closure_satisfies_the_pinned_commit checks the
-  closure against the pinned commit's pyproject -- so a direct-dep drift is
-  caught. Nothing watches the TRANSITIVE wheels, which the generator resolves to
-  whatever is latest at generation time and then freezes.
-
-  Measured 2026-08-20: regenerating moved lxml 6.1.1 -> 6.1.2,
-  charset_normalizer 3.4.9 -> 3.5.1 and pypdfium2 5.12.1 -> 5.13.0. The gate was
-  green before and after, because no check looks at this. The closure was last
-  generated 2026-08-07, so that is 13 days of drift on three packages, none of
-  them named in pyproject.toml.
-
-  Why it matters rather than being tidiness: FIBR-0256 is the same class one
-  level up -- a cryptography CVE bump landed in pyproject.toml and the closure
-  kept the old pin for two weeks. That one was caught only because someone
-  looked. lxml and pypdfium2 are both C-extension parsers fed untrusted input
-  (OFX and PDF statements), which is the worst place to carry a stale library.
-
-  NOT the same as check-dependencies' job, which reads manifests -- these
-  versions appear in no manifest. The closure is the only record.
-
-  Cheapest guard, and it needs no new tooling: a gate stage (or a scheduled CI
-  job, since it needs network and the gate's offline stages must stay offline)
-  that runs generate-pip-sources.sh into a temp file and fails on a non-empty
-  diff against the committed closure. The README already calls an empty diff
-  "the confirmation" -- this just makes something other than a human perform it.
-  A scheduled job is probably the better shape: a hard gate failure on upstream
-  publishing a wheel would block unrelated work.
-
-  Deliberately NOT done on 2026-08-20: the three bumps above were reverted
-  rather than taken, because they had never been built here and the tree was
-  minutes from a Flathub submission whose reviewers check that it builds from
-  pinned source. Taking them needs a LOCAL=0 rebuild to prove the offline build
-  still ends FINBREAK_SELFTEST_OK. Do that first; do not bump and push.
-  **Layman:** The Linux app-store build freezes an exact list of code libraries. Nothing checks whether newer, possibly security-fixed versions of them have come out, so the build can quietly ship old ones.
-  Kind: security.
-  Source: in-session-2026-08-20 (found during the FIBR-0159 pre-submit checks).
-  Lanes: packaging, security.
-
-- 📋 [FIBR-0317] **Nothing re-submits to OBS on release, so the published RPMs sat six versions behind.**
-  Measured 2026-08-31: the OBS package still held finbreak-0.1.16.tar.gz, from
-  2026-07-23, while __version__ was 0.1.22. The Tumbleweed and Fedora builds were
-  green the whole time -- green on the old source, which is why nothing looked
-  wrong.
-
-  Cause: no step in the release path runs packaging/obs/obs-submit.sh.
-  .claude/bump.json's todos cover the README, the AppStream metainfo, the Flatpak
-  commit re-pin and the deb changelog, and CLAUDE.md's release section names
-  cut-release plus the two release scripts. OBS appears in neither.
-
-  Second, sharper half: the vendored wheel closure goes stale with the source.
-  Advancing the tarball to 0.1.22 turned BOTH RPM targets red on
-  `cryptography==50.0.0` not being in a closure vendored for 0.1.16 -- so a
-  re-submit that forgets REVENDOR=1 fails, and one that never happens hides it.
-  Fixed in passing today by re-vendoring; the recurrence is what this bullet is
-  for.
-
-  Remedy is a decision, not a fix: either add an obs-submit step (with the
-  re-vendor) to the release path and gate it the way the other version-bearing
-  files are gated, or state that OBS is manually cut and give it a read-back like
-  the eight-asset one CLAUDE.md prescribes for a GitHub release. Same class as
-  FIBR-0275, where a release published with zero assets went unnoticed for ten
-  days.
-  **Layman:** The openSUSE/Fedora packages on the build service were still the version from late July, because publishing a new release never updates them. Anyone installing from there got old software.
-  Kind: package.
-  Source: in-session-2026-08-31 (found while working FIBR-0158).
-
-- 📋 [FIBR-0346] **The RPM and deb still bundle the split libxkbcommon pair the AppImage stopped bundling.**
-  FIBR-0208 is fixed for the AppImage only. The OBS recipes freeze with
-  PyInstaller too and have the same shape of defect, found while reading
-  them to check whether the fix rippled.
-
-  The evidence is in the recipes themselves. packaging/obs/finbreak.spec
-  BuildRequires libxkbcommon0 (openSUSE) / libxkbcommon (Fedora) so
-  PyInstaller can collect it, and its Requires list is "ONLY the host-left
-  libGL/libEGL pair" by its own comment. packaging/obs/debian/control says
-  the same in Build-Depends and Depends. So the payload carries
-  libxkbcommon and the host supplies libxkbcommon-x11 -- the split pair
-  FIBR-0208 measured segfaulting.
-
-  Why it is less acute than the AppImage case, and why it is still wrong.
-  A distro package is built and installed on the same distro, so the two
-  halves start in step. They drift as soon as the host updates
-  libxkbcommon and the installed payload does not, which is the normal
-  state of a package a few weeks after release. The AppImage was the acute
-  case because it crosses distros by design.
-
-  THE FIX IS THE SAME TWO MOVES, per recipe: drop the library from
-  BuildRequires / Build-Depends so nothing collects it, and add it to
-  Requires / Depends so the host supplies both halves. Also amend
-  FIBR-0155 § 3.5, which states the Requires set as libGL/libEGL only and
-  is the reasoning those lists were built from.
-
-  NOT DONE IN THIS SESSION, deliberately. A packaging change cannot be
-  verified from this desktop -- it needs an OBS submit round, and the four
-  targets are green today. The user's decision of 2026-09-21 is to
-  re-submit OBS once, at 1.0.0, so this lands with that submit where it
-  can actually be proved. Sequencing it earlier buys an unverified change
-  to a working build.
-
-  Verification when it is taken: install the built package in a bare
-  container of that distro and run finbreak --self-test, which is what
-  packaging/obs/README.md already prescribes, then check no libxkbcommon
-  travels under /usr/lib/finbreak/.
-  **Layman:** The Linux app-store packages carry the same keyboard-library bug the downloadable version just had fixed.
-  Kind: fix.
-  Source: in-session-2026-09-21 (found while fixing FIBR-0208).
-
 ## P02 — Vertical slice: the security spine (target: after P01)
 
 **Theme:** the smallest end-to-end feature that touches every
@@ -3331,37 +5417,6 @@ lands on top.
   Lanes: ui, services, repo, tests.
 
 ---
-
-- 📋 [FIBR-0157] **Guided first-run wizard walks new users through the natural workflow: create accounts → import statements → categorise transactions → confirm/reject transfers.**
-  A sequenced onboarding wizard (and, ideally, smaller task-level wizards) that
-  guides a new user through finbreak's natural order of operations rather than
-  leaving them to discover it:
-
-  1. Create one or more accounts first (nothing else works without an account
-  to attach transactions to).
-  2. Import statements (CSV / OFX / PDF) into an account.
-  3. Categorise the imported transactions (Type → Category).
-  4. Confirm or reject the auto-detected transfers between accounts.
-
-  Design intent / open questions to settle at spec time:
-  - Trigger on first run (empty vault) automatically, and make it re-invokable
-  later from a Help/menu entry — never a forced modal a returning user can't
-  dismiss.
-  - Each step should deep-link into the real UI (open the Accounts dialog, the
-  Import flow, the Transactions tab filtered to Uncategorised, the Transfers
-  review) rather than reimplementing those screens — reuse over rebuild.
-  - Show progress ("step 2 of 4") and let the user skip ahead / come back; a
-  step is "done" when its underlying data condition is met (≥1 account
-  exists, ≥1 statement imported, no uncategorised rows, no pending transfers).
-  - Correctness guard: the wizard only navigates and prompts — it must never
-  itself write to the transactions table or bypass the transfer-confirmation
-  step (transfers stay a user decision, per the transfers invariant).
-  - Consider a lightweight "what next?" nudge on the dashboard once onboarding
-  is complete but a natural next action exists (e.g. a new statement import
-  left uncategorised).
-  **Layman:** A step-by-step helper for newcomers that walks them through setting up the app in the right order, so a first-time user is never staring at an empty screen wondering what to do.
-  Kind: feature.
-  Source: user-request-2026-07-23.
 
 ## P04 — Category tree
 
@@ -3621,21 +5676,6 @@ lands on top.
 
 ---
 
-- 📋 [FIBR-0017] **P12: multi-language UI (i18n) — 6 bundled locales incl. RTL + language switcher.**
-  Qt translation pipeline: every user-facing string is wrapped in `tr()` from the first UI onward (P02), `lupdate` extracts them to `.ts` catalogs, translations are compiled to `.qm` and loaded via `QTranslator` at startup and on live switch. Ships **6 locales**: English (base), Spanish, Simplified Chinese, Hindi, French, and **Arabic** (right-to-left). A language picker in the FIBR-0014 Settings screen switches locale. Numbers, currency, and dates render through `QLocale` (matters for a finance app — ties into the base-currency display), not hardcoded formats. The UI is built **RTL-ready** (layout mirroring) from P02 per design.md "Internationalization (i18n) & localisation", so Arabic is translate-and-ship; further RTL scripts (Hebrew, Urdu) are then a translation-only follow-up. NOTE: this stays cheap only if the string-externalization and RTL-safe-layout conventions are followed from P02 — retrofitting hardcoded English (and left-to-right-only layouts) across the whole feature stack is far more expensive. Dependencies: FIBR-0014 (settings screen hosts the switcher; transitively pulls the feature-complete UI so all strings exist to translate).
-  **Layman:** Lets people use finbreak in their own language — ships in 6 languages to start (including Arabic, which reads right-to-left), with more addable later.
-  Kind: implement.
-  Lanes: ui, i18n, services, tests.
-  Source: user-request-2026-07-01.
-  Deferred from FIBR-0004 (P02) per user decision 2026-07-02: the three P02 screens (first_run, unlock, main_window) build their strings once in __init__ and do NOT implement live language switching (changeEvent → retranslateUi). coding.md §5.2 asks for this "from P02"; the FIBR-0004 spec deliverable required only tr() strings + RTL layouts + QLocale amounts (all shipped), and there are no translations to switch yet. When this phase lands, add changeEvent/retranslateUi to those three screens (and every screen built between P02 and here) so the language switcher takes effect without a relaunch.
-  Scope note (2026-08-03, user request): loading the right catalog **at
-  startup from the system language** is FIBR-0209, not this bullet. This
-  item's "loaded via QTranslator at startup and on live switch" says the
-  mechanism exists but never says which locale is chosen on a first run
-  with no stored preference — FIBR-0209 pins that (system locale, full
-  `pt_BR` then bare `pt`, else English) and the silent-fallback rule.
-  Fold FIBR-0209 in if this is specced first; otherwise ship it after.
-
 - ✅ [FIBR-0127] **App-wide six-theme (finance-flavoured) + follow-system theme system & modern polish.**
   Split from FIBR-0014 (P12). Nothing exists today: the app rides the system/Qt default palette (dark by convention) with NO stylesheet, no QPalette install, no theme setting key, no toggle (app.py sets no palette). This builds the theme system from scratch (Fusion + token-driven QPalette/QSS — ADR-0010): a non-vault `theme` pref with 7 values (`system` + six named themes Ledger/Parchment/Mint · Midnight/Graphite/Emerald), palette+stylesheet application at the app entry point, and live follow-system detection, plus the sleek modern polish (gradient/glow accents + grid row-highlighting). Widgets already READ the live palette (ui/icons.py _is_dark_theme, home.py ChartTheme from palette().text(), _amount.py fixed mid-tones) so they adapt once a palette is installed. Delivers FIBR-0116's live icon re-tint on theme switch (toolbar glyphs re-tint on the ThemeController themeChanged signal); the _amount.py palette-adaptive re-tinting stays deferred here. Hosted in the FIBR-0055 Settings dialog. (The old note that the code mis-cites ADR-0002 for the dark theme and "write a real theme ADR when specced" is done — ADR-0010 is that theme ADR; the icons.py citation is corrected in the spec.)
   **Layman:** A proper set of light and dark themes (six finance-flavoured looks) you can choose — or have the app follow your operating system's light/dark setting — instead of the app being dark-only.
@@ -3654,66 +5694,12 @@ lands on top.
   Placement decided (spec FIBR-0128 D1, user directive 2026-07-14): the presence/forget controls live on the **Accounts screen** (per-account, selection-driven), NOT Settings — different accounts can have different statement passwords, so the per-account surface is the natural home. Forget-only (no reveal, no manual set); the secret never crosses into the UI. Spec written; /cold-eyes next.
   Resolved (2026-07-14): SHIPPED by /close-phase (code). TDD 8-leg tests/features/accounts/ (INV-1..5) → repo ids_with_pdf_password + service account_ids_with_pdf_password + ui/accounts.py Forget button/marker/handler. Presence is an id-set (never selects the secret column); the plaintext never crosses into the UI (INV-1). Forget-only, per-account, confirm-gated, VaultLockedError-silent; enable/disable recomputed before the None early-return so a post-Forget refresh disables the button. semgrep+bandit 0 on the changed surface; 1 cold review lane → production CLEAN, 2 LOW test-precision folded inline. Gate green 915/1, mypy 0. Tag FIBR-0128-complete; journal docs/journal/FIBR-0128.md.
 
-- 📋 [FIBR-0129] **Host the language switcher in Settings (picker widget + language setting key).**
-  Split from FIBR-0014 (P12). Strings are tr()-wrapped throughout and RTL-ready (app.setLayoutDirection), but there is NO QTranslator, no .ts/.qm, no language setting key, no picker. This provides the language-picker widget in the FIBR-0055 Settings dialog + a `language` settings key. The translation pipeline itself (lupdate -> .ts -> .qm -> QTranslator at startup + live retranslateUi) is FIBR-0017; gate the picker's usefulness on that, or ship the widget writing the key now and wire it when FIBR-0017 lands.
-  **Layman:** A place in Settings to pick your language. The actual translations arrive with FIBR-0017; this just provides the chooser and remembers your pick.
-  Kind: implement.
-  Lanes: ui, i18n.
-  Source: split-from-FIBR-0014-2026-07-13.
-  Scope note (2026-08-03, user request): the `language` key this bullet
-  adds must default to a `"system"` sentinel, not to `"en"` — FIBR-0209
-  makes "follow the operating system's language" the out-of-the-box
-  behaviour, so the picker's first entry is "System default" and an
-  explicit pick is what overrides detection. Same shape as the timezone
-  / date / time combos (`DATETIME_SYSTEM`, `ui/_datetime_prefs.py`),
-  which this dialog already hosts.
-
 - ✅ [FIBR-0135] **Auto-lock "Never" option — let the user disable the idle timer entirely.**
   User lives alone / rarely has visitors and doesn't want the idle auto-lock. Added 0="Never" to ALLOWED_AUTO_LOCK_MINUTES (listed LAST so a corrupt/absent value still falls back to the 1-minute floor, never to "Never" — the INV-1 safe-fail is preserved). _arm_timer stops the timer instead of starting it when Never; notify_activity gains an isActive() guard so user activity can't silently re-arm a disabled timer. Settings combo gains a "Never" label. Password-on-open and manual Lock button are unchanged; the key is still wiped on lock and exit. security-model.md T3 amended to record the accepted residual risk (an unattended unlocked session stays unlocked — a user choice, not a silent default). Reverses the FIBR-0055 D6 "no never option" decision by explicit user request. Kind: enhancement.
   **Layman:** Add a "Never" choice to the auto-lock setting so the app won't lock itself while you're away — you still type your password when you open it and can lock it any time with the Lock button.
   Kind: enhancement.
   Source: user-request-2026-07-14.
   Resolved (2026-07-14) — commit b915254. Auto-lock "Never" (0) added; _arm_timer stops on it, notify_activity isActive()-guarded, combo label + security-model T3 note. Gate green 862/1.
-
-- 📋 [FIBR-0209] **Launch in the system language automatically, falling back to English.**
-  User request 2026-08-03. On startup, detect the operating system's
-  language and load that locale's translation automatically — the user
-  should not have to find a setting to be understood.
-
-  Resolution order (first hit wins):
-  1. An explicit language the user picked, if one is stored (FIBR-0129's
-  `language` key). An explicit choice always beats detection.
-  2. The system language, via `QLocale.system()` — match on the full
-  locale first (e.g. `pt_BR`), then fall back to the bare language
-  (`pt`), so a regional variant still finds its base translation.
-  3. English, if the system language is absent, unreadable, or has no
-  bundled `.qm` catalog.
-
-  Follow the project's existing sentinel shape: the stored `language`
-  key should default to a `"system"` token exactly like
-  `DATETIME_SYSTEM` in `ui/_datetime_prefs.py`, so "follow the system"
-  is a real stored state and not merely the absence of a value. That
-  also makes the Settings picker's first entry ("System default")
-  consistent with the timezone / date / time combos already there.
-
-  Two traps worth pinning in the spec:
-  - The fallback must be **silent and total** — an unsupported language
-  is the normal case for most of the world until more locales ship,
-  so it must never surface an error or an empty UI, just English.
-  - Detection runs BEFORE the first window is built, like the theme
-  pref (`app.py` applies the theme before `MainWindow`), so the
-  locked first window is already in the right language. The theme
-  system's `load_theme_pref` allowlist-against-known-ids is the
-  pattern to copy for validating a stored/detected language token.
-
-  Depends on FIBR-0017 (the QTranslator pipeline + the bundled `.qm`
-  catalogs must exist before there is anything to detect INTO) and
-  FIBR-0129 (owns the `language` settings key this reads). Ship after
-  both, or fold into FIBR-0017 if that is specced first.
-  **Layman:** finbreak should open in whatever language your computer is set to, without you having to pick it. If it does not know your language, or does not have a translation for it yet, it opens in English.
-  Kind: feature.
-  Source: user-request-2026-08-03.
-  Lanes: ui, i18n.
 
 - ✅ [FIBR-0210] **Startup is bricked by a corrupt window.ini (int('') on last_tab).**
   From the FIBR-0204 sweep (MEDIUM, verified). `MainWindow._restore_geometry`
@@ -4097,45 +6083,6 @@ lands on top.
   Kind: fix.
   Source: in-session-2026-08-03 (split out of FIBR-0216).
 
-- 📋 [FIBR-0218] **The AppImage installs no launcher, so a hand-made one shows a second panel icon.**
-  Reported by the user 2026-08-03 with screenshots: two finbreak icons in the
-  KDE panel while running 0.1.19 (the latest). DIAGNOSED on their machine, not
-  inferred.
-
-  Root cause is an app-ID mismatch, and finbreak's own side is correct. On
-  Wayland KDE associates a window with a pinned launcher by matching the window's
-  `app_id` to the launcher's desktop-file BASENAME. `app.py` sets
-  `QGuiApplication.setDesktopFileName("io.github.milnet01.finbreak")` and the
-  AppImage bundles `io.github.milnet01.finbreak.desktop` — consistent. But the
-  user's panel pinned `~/.local/share/applications/finbreak.desktop`, a
-  hand-rolled launcher whose basename id is `finbreak`, so KDE saw a pinned
-  launcher and an unrelated window. (`StartupWMClass=finbreak` in that file is
-  the X11 key and is ignored on Wayland — a trap, since it LOOKS like the
-  association key.)
-
-  Resolved for the reporter by renaming their launcher to
-  `io.github.milnet01.finbreak.desktop` and pointing `Icon=` at the installed
-  `io.github.milnet01.finbreak` hicolor PNGs.
-
-  The product gap: the AppImage installs no desktop entry of its own, so a user
-  who wants a menu/panel entry hand-writes one and will usually name it
-  `finbreak.desktop` — reproducing this. Options to weigh: (a) document the
-  required basename in the README's AppImage install section (cheapest, and the
-  README is refreshed every release anyway); (b) have the AppImage offer to
-  install a correct launcher on first run, the way many AppImages do; (c) rely on
-  AppImageLauncher, which does it correctly but is not installed by default on
-  openSUSE. (a) is the minimum and should ship regardless of the rest.
-
-  Also observed on the reporter's machine, and NOT part of this item: three
-  concurrent installs — the AppImage 0.1.19, an RPM/deb providing
-  `/usr/share/applications/io.github.milnet01.finbreak.desktop`, and a Flatpak
-  `io.github.milnet01.finbreak` still on 0.1.16. Worth asking whether the docs
-  should warn that the three can shadow each other's launchers.
-  **Layman:** If you make your own shortcut for the AppImage, finbreak shows up twice in the taskbar — once for the shortcut and once for the running window.
-  Kind: fix.
-  Source: user-report-2026-08-03.
-  Progress (2026-08-19): option (a) SHIPPED -- the README's AppImage install section now tells you to name a hand-made shortcut io.github.milnet01.finbreak.desktop rather than finbreak.desktop, points Icon= at the installed hicolor id, and says outright that a differently-named one gives you two panel icons. It also names the StartupWMClass trap: right on X11, ignored on Wayland, which is what makes the wrong file look correct. The bullet called (a) "the minimum and should ship regardless of the rest", so this is that. STAYS OPEN for (b) and (c): the AppImage still installs no launcher of its own, so this is guidance a user has to find rather than a product that does the right thing unaided. (b) offering to install a correct launcher on first run remains the real fix. Also still unanswered, and recorded here so it is not lost: whether the docs should warn that a concurrent AppImage, RPM/deb and Flatpak install can shadow each other's launchers -- observed on the reporter's machine with three versions live at once.
-
 - ✅ [FIBR-0219] **Amount input is C-locale only, and the obvious fix silently multiplies by 100.**
   Split out of FIBR-0216 because implementing it turned up a hazard the original
   finding did not name, which changes what the fix has to be.
@@ -4216,51 +6163,6 @@ lands on top.
   `1,50`, `1.50` and `1500` all work. The mirror hazard under a `.`-decimal locale
   (a European pasting `1.500`) is deliberately retained — the app does the same
   today and refusing it would cost every en_US user.
-
-- 📋 [FIBR-0220] **Agreeing with a "~ guess" cannot teach the app — the no-nag gate has no escape hatch.**
-  Reported by the user 2026-08-03. VERIFIED against source; the current
-  behaviour is deliberate and documented, and the gap is a missing action rather
-  than a defect.
-
-  What happens today. Right-click a `~ guess` row -> Set category -> the picker
-  opens with the guessed category ALREADY selected (`_on_set_category` passes
-  `txn.category_id`). Accepting it calls `set_manual_category`, which writes
-  `(same_id, 'manual')` — the source differs from `'library'`, so the row really
-  is written and the `~` marker clears (`transactions.py:354` renders the marker
-  only for `category_source == 'library'`). So the row IS confirmed and frozen.
-
-  But `_maybe_offer_rule` returns early when `chosen == would_categorize(desc)`
-  (`transactions.py:427`), and `would_categorize` includes the LIBRARY layer
-  (`categorization.py:293-301`, FIBR-0139 D4 — which explicitly supersedes
-  FIBR-0010 INV-5's rules-only phrasing: "confirming a library guess raises no
-  learning nag; overriding one still offers the rule"). Agreeing with a guess is
-  therefore, by construction, the one case that can never produce a rule.
-
-  Consequence: confirming a guess fixes exactly one row. The next import of the
-  same merchant is a `~ guess` again, and the user repeats the work per
-  statement. The only two routes to a persistent rule are to pick a DIFFERENT
-  category (tripping the "differs" check) or to hand-write one on the Rules tab —
-  neither discoverable from the row being looked at.
-
-  The no-nag rule itself is right and should stay: a modal offer on every
-  agreement would be intolerable. What is missing is an explicit, opt-in action.
-  Candidates, cheapest first: (a) a second context-menu item on a guessed row —
-  "Always file <merchant> here" — that skips the differs-check and opens the
-  existing `RuleEditDialog` pre-filled exactly as the learn offer does, reusing
-  `_maybe_offer_rule`'s dialog and `_apply_learned_rule` wholesale; (b) a
-  "remember this" checkbox in the CategoryPickerDialog; (c) a bulk "turn my
-  confirmed guesses into rules" pass. (a) is the smallest and is the one route
-  that starts where the user already is.
-
-  Whichever ships, the merchant-key question needs deciding: the learn offer
-  pre-fills the rule with the FULL description and tells the user to trim it to a
-  keyword. For a guess-derived rule the library's own matched pattern is the
-  better default, since it is already the generalised merchant token — but that
-  means surfacing which library pattern matched, which `match_library` currently
-  discards (it returns only the category id).
-  **Layman:** When the app guesses a category correctly, saying "yes, that's right" only fixes that one row — the next statement guesses again. There is no way to say "always file this shop here".
-  Kind: enhancement.
-  Source: user-report-2026-08-03.
 
 - ✅ [FIBR-0222] **A huge exponent crashes the Add-transaction slot before the 64-bit bound is reached.**
   Surfaced by the FIBR-0219 spec review; VERIFIED against source, and
@@ -4982,28 +6884,6 @@ lands on top.
   Closes condition 4 of the FIBR-0304 v1.0 gate. Three blockers
   remain: FIBR-0019, FIBR-0208, FIBR-0217.
 
-- 📋 [FIBR-0336] **The month pickers render their numbers with an f-string, so a locale with its own digits gets Western ones.**
-  Found while closing FIBR-0328's display-string class and set aside there
-  rather than fixed, because the fix belongs with the i18n pass.
-
-  ui/home.py's _build_selectors and ui/export_dialog.py both build the month
-  label as an f-string with a zero-padded integer. coding.md 5.2 says render
-  numbers through QLocale, never a hand-rolled format. The two are identical
-  in every locale that uses Western digits, which is why nothing has noticed;
-  they differ in one that does not, where QLocale would produce that locale's
-  own digits.
-
-  LATENT until FIBR-0017 ships a locale that needs it, so this is not a bug a
-  user can see today. Filed rather than folded into FIBR-0017 because it is a
-  specific, already-located site, and FIBR-0017 is a whole pass.
-
-  Not allowlist-006's case: that entry covers joining whole translated
-  sentences, and this is a number rendered without its locale.
-  **Layman:** In a language that writes numbers with different digit shapes, the month dropdown would still show Western digits.
-  Kind: fix.
-  Source: review-code 2026-08-31 tail (FIBR-0328 display-string class), surfaced 2026-09-06.
-  Lanes: ui, i18n.
-
 ## P13 — Packaging & release
 
 ### 📦 Packaging
@@ -5027,15 +6907,6 @@ lands on top.
   Source: planned.
   Lanes: build, ci, packaging.
 
-- 📋 [FIBR-0130] **P13: macOS `.dmg` packaging**
-  (Flatpak/Flathub → FIBR-0159).
-  The macOS `.app`-in-`.dmg` — the packaging remainder split out of FIBR-0015 when its Windows `.exe` slice closed (2026-07-13). The Flatpak/Flathub half moved to FIBR-0159 (see the scope update below). The SQLCipher crypto blocker is already cleared (the `sqlcipher3-wheels` fork ships macOS + Linux wheels of the same 4.12.0 engine, ADR-0009), so this is packaging-only: freeze the macOS app on a `macos-latest` runner (reusing the FIBR-0015 `windows_freeze_flags.py` collection list + `--self-test` clean-room); the artifact still meets ADR-0007's "no Python installed" launch bar. (The Flatpak manifest is FIBR-0159's, not this item's — see the scope update below.) Dependencies: FIBR-0015 (freeze tooling), FIBR-0037 (icon → `.icns`). Lanes: build, ci, packaging. Kind: chore. Source: split-from-FIBR-0015-2026-07-13.
-  Scope update (2026-07-23): the Flatpak/Flathub half is now owned end-to-end by FIBR-0159 (docs/specs/FIBR-0159.md — freedesktop 25.08 runtime + pinned-wheel closure, portal-only sandbox). FIBR-0130 is left to deliver the macOS `.app`/`.dmg` only; do NOT re-author a Flatpak manifest here.
-  **Layman:** A proper macOS download you open and drag to Applications, like any other Mac app.
-  Kind: chore.
-  Source: split-from-FIBR-0015-2026-07-13.
-  Lanes: build, ci, packaging.
-
 - ✅ [FIBR-0131] **Windows in-app auto-update.**
   Extend the FIBR-0054 self-update stack (check GitHub → Ed25519-verify the download → the Later/Skip/Update-now dialog — all already cross-platform) to actually *install* the update on Windows, which `detect_installer()` currently returns `None` for (inert, INV-7). A running Windows `.exe` locks itself, so the Linux "os.replace the file then relaunch" trick can't be copied. **Design (user-approved 2026-07-13): a separate helper process does the swap** — the app writes the verified new `.exe` beside the old one and spawns a detached waiter (cmd/PowerShell) that waits for finbreak to exit, moves the new file over the old one, and relaunches it (the Windows analogue of the FIBR-0122 `/bin/sh` waiter; watch the same PyInstaller-onefile `_MEI`-teardown race). Adds a `WindowsInstaller` + `detect_installer()` returning it on a frozen Windows build, and an asset-picker that selects the `.exe` release asset on Windows. Also promote the Windows `.exe` from a CI artifact to a signed release asset (attach + an Ed25519 `.sig` for the updater to verify; FIBR-0015 D6 deferred this) and evaluate Authenticode code-signing (an unsigned self-swapping-and-relaunching `.exe` is what Defender/SmartScreen distrusts most; free-ish for OSS via Azure Trusted Signing / SignPath). Same two-cycle caveat as Linux — the relaunch only proves out on the update *after* it ships. Dependencies: FIBR-0054 (update infra), FIBR-0015 (Windows build). Lanes: services, ui, ci, security. Kind: feature. Source: user-request-2026-07-13.
   Sequencing (2026-07-14): the "evaluate Authenticode code-signing" clause above is split out to FIBR-0133 (SignPath, blocked on approval). FIBR-0131 ships the Ed25519-signed .exe release asset + the in-app Windows updater ONLY; publisher (Authenticode/SmartScreen) trust is FIBR-0133 and does not block this. Spec: docs/specs/FIBR-0131.md.
@@ -5044,21 +6915,6 @@ lands on top.
   Kind: feature.
   Source: user-request-2026-07-13.
   Lanes: services, ui, ci, security.
-
-- 📋 [FIBR-0016] **P13: `scripts/publish-release.sh` + release automation.**
-  One committed script builds every
-  artifact above, publishes the GitHub Release, and drives the
-  Flathub submission/update — consuming the Flathub manifest
-  produced by FIBR-0015. It is itself a specced item (its own
-  `docs/specs/`, cold-eyes-reviewed) — a publish script can't
-  predate the thing it publishes. Dependencies: FIBR-0015. Lanes:
-  build, ci, packaging. Kind: chore. Source: planned.
-  Note (2026-07-10): FIBR-0054 pulls a **Linux-only** slice of release automation forward — a thin `scripts/publish-release.sh` (or `gh release create`) that publishes the signed AppImage + `.sig` as GitHub Release `v0.1.0`, so the in-app updater has a real release to check/download. FIBR-0016 remains owner of the full multi-artifact publish + the Flathub submission/update flow; extend the Linux slice rather than replacing it.
-  Note (2026-07-12, user request — "automate the release as much as possible"): the version-bump half is now automated — `.claude/bump.json` (added 2026-07-12) drives /bump and /release: source of truth src/finbreak/__init__.py, mechanical edits to pyproject.toml + tests/test_smoke.py + a dated CHANGELOG cut from [Unreleased], a post_check version-lockstep gate, and tag template v{NEW}. What remains MANUAL (the Linux-slice glue this item should close): after the bump, a human still runs scripts/build-release-appimage.sh (freeze + clean-room + sign), verifies the .sig against the committed RELEASE_PUBLIC_KEY_B64, extracts the CHANGELOG [X.Y.Z] section for notes, and runs `gh release create v<NEW> <appimage> <sig> --notes-file … --latest` (non-prerelease). Deliverable: a single `scripts/publish-release.sh` that chains bump (via the recipe) → full gate (ci-local.sh) → build+clean-room+sign → **verify .sig vs RELEASE_PUBLIC_KEY_B64 (hard gate — never publish an unverifiable release the in-app updater would reject)** → gh release create with the AppImage + .sig attached, notes from the changelog, non-prerelease so /releases/latest resolves. Idempotency + preconditions (clean tree, tag not already present, signing key available) checked up front. Keep it the Linux slice under FIBR-0016; the multi-artifact + Flathub publish stays the full-item scope. Spec-first per the item's own note (docs/specs/, cold-eyes) before coding.
-  **Layman:** One command builds every download, publishes the release and updates the store listings, instead of a person running several scripts by hand and hoping none was skipped.
-  Kind: chore.
-  Source: planned.
-  Lanes: build, ci, packaging.
 
 - ✅ [FIBR-0037] **P13: a proper branded app icon (not a flat glyph).**
   Design a polished, richly-shaded application icon —
@@ -5085,19 +6941,6 @@ lands on top.
   Lanes: design, packaging.
 
 ---
-
-- 📋 [FIBR-0044] **Broaden Linux store reach: Snap Store + AUR + native distro packages.**
-  Flathub (FIBR-0015) already surfaces the app in GNOME Software + KDE Discover across most distros, so this item adds the remaining self-publishable Linux channels: (a) Snap Store — a snapcraft.yaml (Ubuntu App Centre's default backend); (b) AUR — a PKGBUILD pointing at the GitHub release/AppImage (community-maintained, low overhead); (c) native RPM + DEB packages for Fedora/openSUSE/Debian/Ubuntu built via the openSUSE Build Service (OBS) and/or Fedora COPR, published to a project repo. (Getting INTO official distro repos is maintainer-driven and slow — tracked separately if pursued.) All free, all self-publish. Depends on FIBR-0015 (the built artifacts) and FIBR-0016 (release automation extends to push each channel).
-  **Layman:** Beyond Flathub (which already puts us in most Linux app stores), also publish to Ubuntu's Snap Store and Arch's AUR, plus ready-to-install packages for Fedora/openSUSE/Debian — so almost any Linux user can install us in one click.
-  Kind: package.
-  Source: user-request-2026-07-04.
-  Clarified (2026-07-04): this is the item that delivers the user's "each distro's built-in app store / software centre" request. Those centres (GNOME Software, KDE Discover, Ubuntu App Center, Pop!_Shop, Mint Software Manager, elementary AppCenter) are front-ends that read Flathub / Snap / distro repos — there is no per-store submission. So FIBR-0015 (Flathub → GNOME Software + KDE Discover, the majority of distros) + this item (Snap → Ubuntu App Center; native RPM/DEB → repo-based centres) together cover essentially every distro software centre. No separate work per store.
-
-- 📋 [FIBR-0045] **Free Windows/macOS package managers: winget, Chocolatey, Homebrew Cask.**
-  Free, self-publishable manager listings that just reference the GitHub Release artifact: (a) winget — a manifest PR to microsoft/winget-pkgs (`winget install finbreak`); (b) Chocolatey — a community nuspec package; (c) Homebrew Cask — a Ruby cask pointing at the macOS .dmg (`brew install --cask finbreak`). No paid account and no signing rework beyond what FIBR-0015 already does. Reaches the more technical slice of Windows/Mac users and gives them auto-update. Depends on FIBR-0015/FIBR-0016.
-  **Layman:** Also list the app in the free 'app installers' many Windows and Mac users already use, so they can install and auto-update it with one command — no store account needed from us.
-  Kind: package.
-  Source: user-request-2026-07-04.
 
 - ✅ [FIBR-0056] **Desktop-launcher integration — running window groups under its launcher (single taskbar icon) + branded icon.**
   Shipped 2026-07-09. A down-payment on FIBR-0015 desktop integration, done now at
@@ -5149,18 +6992,6 @@ lands on top.
   Source: user-request-2026-07-21.
   Lanes: packaging, release.
 
-- 📋 [FIBR-0163] **Add a populated Statements-tab screenshot via a synthetic statement import.**
-  FIBR-0082's capture omits the Statements tab: the demo seeder inserts
-  transactions straight through the repository, so no StatementPeriod rows
-  exist and the Statements list renders empty. To capture it, drive a
-  synthetic CSV/OFX through the real import path (ImportService / the import
-  wizard) in scripts/seed_demo_vault.py, then re-add "statements" to
-  scripts/capture_screenshots.py's _SCREENS. Low priority — the other 7 tabs
-  already cover the headline features.
-  **Layman:** One screenshot (the "Statements" list) is still blank because the demo data is added directly rather than by importing a bank file; this adds that missing shot.
-  Kind: marketing.
-  Source: in-session-2026-07-23.
-
 - ✅ [FIBR-0164] **Keep README.md current every release; fix stale Windows signing + auto-update status.**
   User directive (2026-07-23): ensure README.md is up to date on every
   release. Fixed two stale claims: the "Code signing" section said Windows
@@ -5176,258 +7007,6 @@ lands on top.
   **Layman:** Fixed the README so it no longer wrongly says the Windows app is officially signed or that it can't auto-update, and set things up so the README is checked on every release.
   Kind: doc-fix.
   Source: user-request-2026-07-23.
-
-- 📋 [FIBR-0275] **A release can publish with no assets, and nothing notices — the README sends users to an empty page.**
-  `cut-release` / the bump recipe carry the version bump, the tag and
-  `gh release create`, but the AppImage and Windows `.exe` are built by a
-  SEPARATE manual step (`.claude/bump.json` `_comment` says so). Nothing
-  asserts the two ever meet. Cutting 0.1.21 published the release with
-  **0 assets**, and the only thing that caught it was reading
-  `gh release view --json assets` by hand.
-
-  That matters more than it looks, because three things point users at
-  those assets:
-  - `README.md` § Install step 1 — "Download the `finbreak-*-x86_64.AppImage`
-  from the latest release";
-  - the in-app updater, which resolves the newest release and looks for an
-  asset matching `AppImage`/`WindowsInstaller.asset_suffix()`;
-  - `FIBR-0203`, already ✅, which was the same class of failure once
-  removed — a release that existed but was invisible to the updater.
-
-  So the gap has bitten before and was closed as a one-off rather than
-  guarded.
-
-  Cheapest guard, and it needs no new machinery: a post-publish assertion
-  in the release path that `gh release view v<NEW> --json assets` returns at
-  least the AppImage plus its `.sig`, and fails loudly otherwise. A
-  stronger version also checks each asset name against the pattern the
-  updater actually greps for, which is the specific trap `.claude/bump.json`
-  already warns about in prose for the Windows `.exe` ("the name MUST match
-  `WindowsInstaller.asset_suffix()` '-x86_64.exe' or the updater won't find
-  it — no automated guard").
-
-  Note the ordering constraint: the assets cannot exist before the tag, so
-  this is a check that runs after `gh release create`, not a pre-flight.
-  **Layman:** If the person cutting a release forgets the separate build step, the download page is published empty and the app's own "download the latest release" link leads nowhere.
-  Kind: fix.
-  Source: in-session-2026-08-17 (found while cutting 0.1.21).
-  Progress (2026-08-17): still open — but the case is now stronger than
-  when this was filed, and the guard should check MORE than presence.
-
-  Cutting 0.1.21 hit the failure a second time, in a worse shape. The
-  final `gh release upload --clobber` in `release-windows.sh` took an
-  HTTP 503 part-way down its file list. `--clobber` deletes each existing
-  asset before replacing it, so the release was left carrying
-  `SHA256SUMS.sig` but NOT `SHA256SUMS`, and `.exe.sig` but NOT the
-  `.exe` — a signed release whose signed manifest had been deleted.
-  Nothing errored loudly: the script had already printed its signing and
-  verification successes, and the failure was the last line.
-
-  So presence-of-any-asset is too weak a guard. Three checks, cheapest
-  first:
-  1. the asset COUNT is 8;
-  2. every `.sig` has its subject present (a `.sig` without its artifact
-  is the partial-upload signature, and it is silent);
-  3. each name matches what the updater greps for — `AppImage` and
-  `WindowsInstaller.asset_suffix()`'s `-x86_64.exe`.
-
-  Also worth folding in: upload one file per call rather than batching,
-  so a partial failure is visible in the exit status.
-
-  Repaired by hand for 0.1.21; `/releases/latest` now resolves to
-  v0.1.21 with all 8 assets, and the published SHA256SUMS verifies
-  against the committed RELEASE_PUBLIC_KEY_B64.
-
-  v0.1.20 remains at ZERO assets and is NOT repaired — it is no longer
-  `latest`, so nothing resolves to it, but anyone holding that tag's URL
-  still gets an empty page. Decide separately whether to back-fill it
-  (FIBR-0203 is the precedent for doing so).
-  Progress (2026-08-19, commits d482545 + e49285e): the three-check guard is IMPLEMENTED and green, locked by a new INV-8 in tests/features/release_integrity/. Both release scripts now read their asset list back after publishing and refuse to report success on an incomplete set -- count (phase-correct: 5 after release-linux.sh, 8 after release-windows.sh), every .sig having its subject, and each name matching the updater's asset_suffix(). A fourth check reports a read-back that could not COMPLETE as its own failure and retries 3x, so the API's transient 503s do not cry wolf. Exercised against real data, not just source-scraped: the real v0.1.21 asset set passes, and zero assets / a dangling SHA256SUMS.sig at count 5 / a misnamed AppImage / a misnamed .exe each fail the check they should, with the dangling-sig case passing check 1 first -- which is the proof that check 2 is not redundant. STAYS OPEN, because the headline scenario is NOT fully closed. v0.1.20 published empty because cut-release created the release and release-linux.sh was never run at all; a guard living INSIDE release-linux.sh cannot fire when nobody runs release-linux.sh. What is covered now is "the asset step ran and the result is wrong". What is still uncovered is "the asset step never ran" -- which needs a check at the end of the whole release recipe, not inside one of its scripts. Also not done: the bullet's "upload one file per call". INV-4 asserts each upload block carries the whole asset list, so splitting it would redden that test, and the read-back already covers the partial state that change was meant to make visible. Recorded as a decision rather than an oversight.
-  Progress (2026-08-19): v0.1.20 is BACK-FILLED and the "remains at ZERO
-  assets and is NOT repaired" paragraph above is now historical. User
-  decision 2026-08-19, given the choice between leaving it, back-filling
-  and deleting the release. Built from a detached worktree at the v0.1.20
-  tag using THAT tag's own release scripts (not HEAD's), so the artifacts
-  are what 0.1.20 should have shipped. The tag's committed
-  RELEASE_PUBLIC_KEY_B64 is byte-identical to HEAD's, so the signatures
-  are the ones every installed copy's updater checks. v0.1.20 now carries
-  all EIGHT assets and the PUBLISHED SHA256SUMS verifies against that key
-  and names both platforms. /releases/latest still resolves to v0.1.22 --
-  release-linux.sh took its `gh release upload --clobber` branch, and
-  `--latest` appears only on the `gh release create` branch it did not
-  take. This closes the FIBR-0203-precedent half of this item and nothing
-  else: the item STAYS OPEN for the reason recorded above, that a guard
-  living inside release-linux.sh cannot fire when nobody runs
-  release-linux.sh.
-
-- 📋 [FIBR-0304] **Cut v1.0.0 — the gate is five conditions and four named blockers.**
-  User-approved 2026-08-20 on the question "what gets us to v1.0?".
-  docs/standards/versioning.md 5 owns the CRITERIA; this item owns the
-  current blocker list, because a standard naming today's roadmap ids
-  goes stale and a roadmap bullet does not.
-
-  Why now: 196 shipped items across all thirteen planned phases, P02-P11
-  with zero open items, 23 published releases -- all still numbered
-  0.1.22 because nothing said when to stop.
-
-  BLOCKERS, and only these four:
-  - FIBR-0019 (recovery key) -- 5 condition 1. Its own body says the key
-    envelope must exist at vault creation and retrofitting needs a full
-    re-encrypt migration, so doing it before 1.0 is cheap and after is a
-    migration over real financial data.
-  - FIBR-0208 (AppImage libxkbcommon segfault) -- 5 condition 3, a crash
-    on a mainstream Linux configuration.
-  - FIBR-0237 (no SECURITY.md / CODE_OF_CONDUCT.md) -- 5 condition 4.
-  - FIBR-0217 (dark-theme PDF page numbers black on dark) -- a visible
-    defect in a headline feature; 5 condition 5.
-  Plus FIBR-0300, the stale pre-alpha badge, whose wording should be
-  picked against this standard rather than in isolation.
-
-  EXPLICITLY NOT BLOCKERS, decided rather than overlooked:
-  - FIBR-0159 (Flathub) and FIBR-0133 (SignPath code signing). Both are
-    stuck on a third party, and versioning.md 5 rules out any third
-    party's queue as a gate by name -- a version number that waits on
-    somebody else's inbox never arrives.
-  - The 48-item features backlog, i18n, macOS, Snap/AUR/winget and the
-    performance items. Those are 1.1 and 1.2.
-
-  OPEN QUESTION FOR THE USER, not yet answered: does FIBR-0019 ship IN
-  1.0, or do we freeze the vault format without it? Freezing without it
-  means either living with "forget your password, lose everything"
-  permanently, or paying a full re-encrypt migration later. If it is too
-  big to take now, versioning.md 5's named interim applies: cut 0.9.0
-  ("we believe this is it; the format is not frozen yet"), which is the
-  one judgement-based exception to 4.2 and 6.2.
-  Answered (2026-08-20, user): FIBR-0019 SHIPS IN 1.0. The open
-  question above is closed -- we do not freeze the vault format
-  without a recovery key, and we do not cut 0.9.0 as an interim.
-  The reasoning the user accepted: the key envelope has to exist at
-  vault-creation time, so building it now is cheap, while
-  retrofitting it later is a full re-encrypt migration over real
-  financial data. So the blocker list stands at four, unchanged,
-  with FIBR-0019 as the long pole and the only one needing a spec.
-  Blocker status (2026-08-25): THREE remain, not four. FIBR-0237
-  (SECURITY.md + CODE_OF_CONDUCT.md) is ✅ — both files are in the tree —
-  so the list above is stale on that one line and is not re-edited here,
-  because the bullet records the decision as it was taken.
-
-  Still blocking: FIBR-0019 (recovery key), FIBR-0208 (AppImage
-  libxkbcommon segfault), FIBR-0217 (dark-theme PDF page numbers). Plus
-  FIBR-0300's badge wording, to be picked against versioning.md § 5.
-
-  FIBR-0019 is further from done than its 🚧 suggests. FP02 closed all
-  thirteen of its review findings, then its own close attempt was BLOCKED:
-  review-code found nine defects FP02 itself introduced, now FP03
-  (FIBR-0310). FIBR-0019 returns to ✅ only when that chain closes clean.
-  The other two blockers are small self-contained defects.
-  BLOCKER STATUS (2026-09-21): TWO remain, not three. The 2026-08-25 note above
-  is stale on its first line and is left as written, because it records the
-  status as it was then.
-
-  - FIBR-0019 (recovery key) is ✅ -- it shipped in 0.1.23, and its whole
-    fix-pass chain (FP02 FIBR-0307, FP03 FIBR-0310, FP04 FIBR-0313, FP05
-    FIBR-0337) closed with it. That was the long pole and it is gone.
-  - FIBR-0237 (SECURITY.md + CODE_OF_CONDUCT.md) is ✅, as the 2026-08-25 note
-    already said.
-
-  STILL BLOCKING: FIBR-0208 (condition 3) and FIBR-0217 (condition 5), plus
-  FIBR-0300's badge wording. Both remaining ones were re-read against the tree
-  today and neither is the small job its bullet implies -- see the notes on each.
-  FIBR-0208 additionally may not still BE a condition-3 crash: its startup
-  segfault did not reproduce on 0.1.23, and the keystroke path is untested.
-
-  USER DECISION (2026-09-21): GO FOR 1.0.0, and the route is the five conditions
-  above rather than intermediate 0.x minors. The question put was "what roadmap
-  items get us to 0.2.0, 0.3.0, 0.4.0?", on the reasoning that jumping 0.1.x ->
-  1.0.0 looks suspicious to a user. That reasoning is accepted; the answer is
-  that this project does not need those numbers, because the 1.0 gate is two
-  small defects away and after 1.0 a feature release is genuinely 1.1.0, 1.2.0 --
-  the meaningful ladder, with no standard overridden. See FIBR-0303's note for
-  why the 0.x minor rule is not this project's to change.
-
-  So the post-1.0 milestone shape is the one this bullet already states: the
-  features backlog, i18n, macOS, Snap/AUR/winget and the performance items are
-  1.1 and 1.2. Breaking those into named milestones is still to be done and is
-  not a blocker.
-
-  USER DIRECTIVE (2026-09-21): a CODE REVIEW runs before 1.0.0 is cut, and the
-  user initiates it themselves in a FRESH session -- /code-review ultra is
-  billed and user-triggered, so no session can launch it. Do not cut 1.0.0
-  without it. The advice given was to fix FIBR-0208 and FIBR-0217 first, so the
-  review reads the tree that would actually ship.
-  BOTH REMAINING BLOCKERS ARE CLOSED (2026-09-21). The defect list this bullet
-  owns is now empty.
-
-  - FIBR-0208 (condition 3, the AppImage crash) is ✅. It DID still reproduce on
-    0.1.23 -- the earlier non-reproduction was a method error, since this desktop
-    is Wayland and the AppImage was mapping on the real compositor rather than the
-    test display. Fixed by not bundling half of the libxkbcommon pair, and
-    verified by an A/B on fresh X servers: 0.1.23 segfaults, the new build
-    survives.
-  - FIBR-0217 (condition 5, the unreadable dark-theme page number) is ✅, resolved
-    by withdrawing the dark export on the user's decision. Light was already the
-    default, so almost no export changes.
-
-  WHAT REMAINS BEFORE THE CUT, and neither is a defect:
-  1. FIBR-0300's badge wording. The user decided (2026-09-21) to change it ONCE,
-     in the 1.0.0 release itself, alongside the version bump and the README
-     refresh every release already gets -- one edit rather than two, and it never
-     states something the release does not back up.
-  2. The user's own code review, run by them in a fresh session. /code-review
-     ultra is billed and user-triggered, so no session can launch it. The standing
-     directive is that 1.0.0 is not cut without it, and the advice given was to
-     fix both blockers first so the review reads the tree that would actually
-     ship. That is now true.
-
-  ONE THING SEQUENCED INTO THE RELEASE, so it is not lost: FIBR-0346. The RPM and
-  deb recipes still bundle the same split libxkbcommon pair FIBR-0208 fixed for
-  the AppImage. It is not a defect in anything shipped today -- the OBS packages
-  are built and installed on the same distro, so the halves start in step -- but
-  it must land with the 1.0 OBS submit, which is the user's chosen moment to
-  re-submit. docs/specs/FIBR-0155.md § 3.5 carries the pending qualifier so a
-  packager reading it is not walked back into the crash.
-
-  The OBS builds themselves are green on all four targets (Debian 13, Fedora 44,
-  Tumbleweed, xUbuntu 24.04), last built before 0.1.23 was tagged.
-  Blocker list amended (2026-09-21): FIBR-0346 IS a gate blocker and this
-  item's list does not name it. Both of the three named blockers that
-  remained are now closed -- FIBR-0208 and FIBR-0217 -- so FIBR-0346 is
-  the only one left.
-
-  WHY IT FIRES THE GATE, on two of versioning.md § 5's five conditions.
-  README.md offers the openSUSE/Fedora RPM as a live download, with
-  `zypper addrepo` and `dnf config-manager` commands against the
-  openSUSE Build Service repo. FIBR-0346 records that those recipes still
-  bundle the split libxkbcommon pair FIBR-0208 measured segfaulting, and
-  that the halves drift apart "as soon as the host updates libxkbcommon
-  and the installed payload does not, which is the normal state of a
-  package a few weeks after release".
-
-  - Condition 3, no open defect crashes the app on a supported platform's
-    default configuration: the RPM does, on the ordinary upgrade path.
-  - Condition 5, every feature the README advertises works on every
-    platform the README offers a download for: if it will not launch, no
-    advertised feature works there at all.
-
-  NOT A CHANGE OF PLAN. The user's decision of 2026-09-21 already
-  sequences FIBR-0346 into the 1.0 OBS submit, which is where it can be
-  verified -- installing the built package in a bare container of that
-  distro and running the self-test, as packaging/obs/README.md
-  prescribes. What changes is its STATUS: it is a gate condition rather
-  than work sequenced alongside the release, so 1.0.0 does not cut
-  without it.
-
-  Conditions 1, 2 and 4 assessed the same day. Condition 4 is MET --
-  SECURITY.md and CODE_OF_CONDUCT.md are both in the tree. Conditions 1
-  and 2 were assessed by classifying every open item against § 2's
-  surfaces; nothing else fires them, and FIBR-0019's closure removed the
-  one case § 5 named by name.
-
-  Flathub and code signing remain NON-blockers, per § 5's own rule that a
-  third party's inbox is not a gate.
-  **Layman:** The plan for calling the app finished: what has to be true first, and which four jobs are standing in the way.
-  Kind: release.
-  Source: user-decision-2026-08-20 ("what gets us to v1.0?").
 
 ## Enhancements & performance backlog
 
@@ -5684,20 +7263,6 @@ because retrofitting them is a data migration.
   Source: user-request-2026-07-01.
   Lanes: crypto, security.
 
-- 📋 [FIBR-0020] **Biometric unlock (fingerprint / face) with capability detection.**
-  Store a key-wrapped copy of the vault key in the OS secure
-  keystore, released by the platform biometric (Windows Hello, macOS
-  Touch ID, Linux fprintd where present). **Detect** availability per-OS
-  and offer it only when present; always keep the password as fallback. A
-  convenience unlock, **not** a recovery method — Linux biometric support
-  is uneven, so degrade gracefully. Target phase: P12. Dependencies:
-  FIBR-0004, FIBR-0019 (shares the key-wrapping envelope). Lanes: crypto,
-  platform, ux. Kind: feature. Source: user-request-2026-07-01.
-  **Layman:** Unlock the vault with your fingerprint or face where your computer supports it, with the password always still available as a fallback.
-  Kind: feature.
-  Source: user-request-2026-07-01.
-  Lanes: crypto, platform, ux.
-
 - ✅ [FIBR-0029] **Password reminder / hint (shown before unlock).**
   An optional user-set hint on the unlock screen to jog memory —
   enforced to **not be the password** (and not to contain it). *Security
@@ -5794,33 +7359,6 @@ because retrofitting them is a data migration.
   Kind: security.
   Source: claude-suggestion-2026-07-11.
   Resolved (2026-07-21): spec cold-eyes-converged over 8 loops (security/cross-ref lane clean 6–8; release-shell hardened), then reproduce-first TDD (10 tests, INV-1..7). Ships gen-checksums.sh (merge-aware manifest helper), two-phase signed SHA256SUMS with an anti-laundering fetch-verify gate + release-view fail-closed fetch, per-platform CycloneDX SBOM (freeze-before-PyInstaller, pip-audit -r --no-deps), and security-model INV-13. Gate green (1219 passed).
-
-- 📋 [FIBR-0305] **Change the master password from Settings — nearly free once FIBR-0019 lands.**
-  Surfaced by the FIBR-0019 review gate and verified as untracked:
-  `roadmap_query query:"master password" status:all` returns seven
-  bullets and none of them is this.
-
-  Today there is no user-facing change-password flow at all. `Vault.rekey`
-  exists but is called only by `BackupService.restore_backup`, which
-  re-keys a restored COPY to a password chosen at restore time — never the
-  live vault's own password.
-
-  FIBR-0019 changes the economics completely. Under envelope encryption
-  the master password only ever wraps a 32-byte data key, so changing it
-  is: derive a KEK from the new password against a fresh salt, re-wrap the
-  same DEK, rewrite the sidecar. The database is not touched. Before
-  FIBR-0019 the same feature meant `PRAGMA rekey` over every page.
-
-  Blocked by FIBR-0019 — the envelope has to exist first. Small once it
-  does, and it shares the Settings surface and the current-password gate
-  that FIBR-0019 section 4.7 already specifies for managing the recovery
-  key.
-
-  Deliberately NOT added to the FIBR-0304 v1.0 gate: it is a new
-  user-visible capability, not a condition of freezing the format.
-  **Layman:** Once the recovery-key work is in, changing your master password becomes a quick, safe operation instead of re-encrypting the whole vault — but nothing yet tracks actually adding the button.
-  Kind: feature.
-  Source: review-contract-2026-08-20 (FIBR-0019 gate, surfaced not fixed).
 
 - ✅ [FIBR-0307] **FP02 — fix-pass after FIBR-0019: thirteen findings from check-code and review-code.**
   Every one is a defect FIBR-0019 introduced; pre-existing findings are filed separately. Verified independently before filing.
@@ -6040,15 +7578,6 @@ because retrofitting them is a data migration.
   Kind: review-fix.
   Source: close-phase-2026-08-21 (check-code + 3 review-code lanes over f704605..HEAD).
   Lanes: crypto, security, ux.
-
-- 📋 [FIBR-0308] **INV-11's hint scan misses the 27-symbol payload, which is the whole credential.**
-  A SPEC question, not an implementation defect -- ui/_password_hint._code_candidates implements section 5 INV-11 faithfully. INV-11 says to scan for a 28-symbol Crockford candidate and verify its check symbol. But the check symbol is a pure function of the 27-symbol payload (CHECK_ALPHABET[_payload_int(payload) % 37]), so the payload ALONE is the entire credential, and Argon2id is fed exactly those 27 symbols decoded. A hint holding the payload without its check symbol -- or with a mistyped one -- therefore passes the guard and is written to plaintext window.ini.
-
-  FP02 finding 1 is the narrow instance of this and is fixed there. This is the general case and needs INV-11's own wording changed: scan 27-symbol windows too, COMPUTING the check symbol rather than reading it, then trial-unwrap. Filed rather than fixed because amending an invariant is a spec change, and section 5 is what a conformer builds from.
-  **Layman:** The check that stops you putting your recovery code in your password hint only looks for the full code, not the part of it that actually matters.
-  Kind: security.
-  Source: close-phase-2026-08-21 (review-code lane 3, UI edges).
-  Lanes: security.
 
 - ✅ [FIBR-0310] **FP03 — fix-pass after FP02: nine regressions from the fix-pass itself, plus twelve pre-existing.**
   check-code was clean on this scope. Every item below is a review-code
@@ -7441,40 +8970,6 @@ because retrofitting them is a data migration.
   Source: close-phase-2026-09-06 (check-code + review-code x4 lanes, FP04 close, fresh context).
   Lanes: migration, crypto, backup, auth, ui.
 
-- 📋 [FIBR-0339] **Make "cannot verify" a first-class state in the resume ladder.**
-  Four consecutive fix-passes each found the same shape, and FP05 found
-  four instances of it in one pass:
-
-    H1  a replacement that cannot be COMPARED was deleted as debris
-    M1  a ladder entered with the wrong slot's KEK answered "no" to every
-        question and withheld the rollback offer silently
-    M5  a restore left artefacts it had no opinion about
-    L4  a reset that could not finish left an orphan for the next vault
-
-  Each site is now correct. What is NOT addressed is the design that keeps
-  producing them: the ladder's helpers return two-valued answers (a bool, a
-  None) to three-valued questions, and the callers act destructively on the
-  merged result. `_replacement_verdict` is the first helper to name the
-  third answer; the rest still fold it.
-
-  The work: audit every helper the ladder calls for a question whose honest
-  answer set is {yes, no, cannot tell}, and give the third one a name at the
-  point it is produced rather than at each call site. The candidates are
-  `_opens`, `_reads_end_to_end`, `_row_counts_or_none` and
-  `rollback_copy_is_usable` — all four return a bool or an Optional today,
-  and all four are asked questions that can fail to have an answer.
-
-  Not a 1.0 blocker: every path the four reviews reached is correct, and the
-  invariants that matter (INV-7, INV-8, INV-13) hold. This is about how many
-  more passes it takes to keep them holding.
-
-  Filed at FP05's close rather than becoming FP06, because a fifth
-  consecutive fix-pass trips the convergence checkpoint and the checkpoint
-  exists for exactly this: to stop patching sites and look at the shape.
-  **Layman:** The upgrade-recovery code keeps confusing "I could not check this" with "this is broken", and the second answer throws things away.
-  Kind: refactor.
-  Source: FP02-FP05 pattern, recorded at FP05's close 2026-09-06.
-
 ### 🎨 Features & accessibility
 
 - ✅ [FIBR-0021] **Multi-currency decision (ADR).**
@@ -7498,65 +8993,6 @@ because retrofitting them is a data migration.
   Source: user-request-2026-07-01.
   Lanes: data.
 
-- 📋 [FIBR-0022] **Budgets + recurring / subscription detection.**
-  Per-category monthly spending limits with progress + over-budget
-  signalling on the dashboard, plus automatic detection of repeating
-  charges (same payee / amount cadence) so subscriptions surface. Target
-  phase: P10. Dependencies: FIBR-0006 (category tree), FIBR-0010 (rules).
-  Lanes: reporting, ux. Kind: feature. Source: user-request-2026-07-01.
-  Split 2026-07-15: the recurring/subscription-detection half is now FIBR-0142 (active, being built first per user pick). This bullet stays as the budgets tracking item (per-category monthly limits + over-budget dashboard signalling) — the follow-up after FIBR-0142 ships.
-  **Layman:** Set a monthly spending limit per category and see when you go over it, and have repeating charges like subscriptions spotted for you automatically.
-  Kind: feature.
-  Source: user-request-2026-07-01.
-
-- 📋 [FIBR-0023] **Theming: separate theme sets for normal and colourblind vision + picker.**
-  Ship **two families** of themes — a set
-  for normal colour vision **and** a set designed for colourblind users
-  (protanopia / deuteranopia / tritanopia-friendly palettes) — selectable
-  from the FIBR-0014 Settings screen (beside the FIBR-0017 language
-  picker). The normal-vision family goes beyond plain light/dark: ship a
-  small curated set of named themes — at minimum **Light**, **Dark**,
-  **Midnight** (near-black OLED-friendly), **Solarized Light**,
-  **Solarized Dark**, **Sepia** (warm, low-eyestrain), and a
-  **High-contrast** pairing — plus a **"follow the OS"** option that
-  tracks the system light/dark setting. Each theme is a named palette
-  (window / surface / text / accent / chart-series roles), defined in one
-  place so adding a theme is data, not code — no per-widget hardcoded
-  colours (coding.md § 8 bars magic constants without a named source; a
-  QSS stylesheet + palette tokens keeps colours in one table). Dashboard
-  charts (FIBR-0012) draw series colours from the
-  active theme's chart-series role, so whichever theme is chosen keeps the
-  chart series distinguishable. Target phase: P12. Dependencies:
-  FIBR-0012, FIBR-0014. Lanes: ui, accessibility. Kind: ux.
-  **Layman:** Pick from a set of colour schemes, including a family designed to stay readable if you are colourblind.
-  Kind: ux.
-  Source: user-request-2026-07-01.
-  Lanes: ui, accessibility.
-
-- 📋 [FIBR-0024] **Accessibility: keyboard navigation + screen-reader support.**
-  Full keyboard control (focus order, shortcuts, no mouse-only
-  actions) and screen-reader labels/roles via Qt accessibility
-  (`QAccessible`) on widgets and charts. Pairs with the i18n/RTL
-  (FIBR-0017) and theming (FIBR-0023) work. Target phase: P12.
-  Dependencies: FIBR-0014. Lanes: ui, accessibility. Kind: accessibility.
-  **Layman:** Use the whole app with the keyboard alone, and have a screen reader announce what is on screen.
-  Kind: accessibility.
-  Source: user-request-2026-07-01.
-  Lanes: ui, accessibility.
-
-- 📋 [FIBR-0034] **Import preview + undo (rollback a whole import batch).**
-  Before an import lands, show a preview — "about to add 214 transactions
-  from 3 May–2 Jun across 1 account" — so a wrong file can be cancelled
-  before it touches the ledger. Each committed import is tagged as a batch
-  so it can be undone in one action if it was the wrong statement.
-  Preserves manual category overrides on re-import per FIBR-0010's rule.
-  Target phase: P06 (lands with the first import UI). Dependencies:
-  FIBR-0007. Lanes: services, ui, repo, tests. Kind: feature.
-  **Layman:** See exactly what an import is about to add before it lands, and undo a whole import in one action if it turns out to be the wrong file.
-  Kind: feature.
-  Source: user-request-2026-07-01.
-  Lanes: services, ui, repo, tests.
-
 - ✅ [FIBR-0035] **Auto-categorisation that learns from corrections.**
   Extends the FIBR-0010 rules engine: when the user manually re-files a
   transaction (e.g. "TESCO" → Groceries), offer to create or update a rule
@@ -7571,47 +9007,6 @@ because retrofitting them is a data migration.
   Kind: feature.
   Source: user-request-2026-07-01.
   Lanes: services, ui, tests.
-
-- 📋 [FIBR-0036] **Net-worth-over-time trend.**
-  A dashboard line showing
-  the running total across all accounts month to month — is the overall
-  picture trending up or down — distinct from FIBR-0012's
-  income-vs-expenditure bars (this is the cumulative balance, not per-month
-  flow). Draws its series colour from the active theme (FIBR-0023) like the
-  other charts. Target phase: P10. Dependencies: FIBR-0012. Lanes:
-  reporting, ui, tests. Kind: feature. Source: user-request-2026-07-01.
-  **Layman:** A dashboard line showing whether your overall money position is trending up or down month by month.
-  Kind: feature.
-  Source: user-request-2026-07-01.
-  Lanes: reporting, ui, tests.
-
-- 📋 [FIBR-0038] **Statement coverage tracking + gap detection.**
-  Record each imported statement's coverage period (start/end date) per
-  account as first-class data, then a gap-detection pass reports
-  uncovered date ranges between covered ranges, per account (e.g.
-  Jan–Mar + May-onwards -> flags April missing). Range-based, so it is
-  reliable where a transaction-date heuristic is not: a quiet month with
-  zero transactions is still "covered" if its statement was imported, and
-  it handles non-monthly cycles (quarterly) and overlapping imports
-  (merge coverage). "Up to date" (latest statement -> today) is not a
-  gap; only holes between covered ranges are. Surfaces as a per-account
-  completeness report + a dashboard warning badge. Depends on the
-  coverage-period capture hook added at first import (FIBR-0007) — without
-  recorded periods, gaps can only be guessed from transaction dates
-  (false alarms on quiet months). Dependencies: FIBR-0005 (accounts —
-  gaps are per-account), FIBR-0007 (import captures the periods).
-  **Layman:** Warns you when you've skipped a statement — e.g. you loaded January–March and then May onwards, and it spots that April is missing for that account.
-  Kind: feature.
-  Source: user-request-2026-07-02.
-  Lanes: services, repo, ui, tests.
-
-- 📋 [FIBR-0039] **In-app liability disclaimer + issue reporting.**
-  A plain-language liability disclaimer — the app is provided as-is and is not responsible for incorrect information it may display (mis-parsed amounts, wrong totals); it is local-only and not financial advice. Shown at first run (acknowledged once, persisted) and always available from an About/Help dialog. Alongside it, a "Report an issue" link opening the GitHub Issues page (https://github.com/milnet01/finbreak/issues) so users can log problems for resolution. Complements the MIT LICENSE's warranty disclaimer with a user-facing, plain-English one. Shares the About/Help screen with the donate-links item — whichever ships first builds the screen.
-  **Layman:** A clear notice that the app isn't responsible for any incorrect figures it shows, with an easy button to report problems so they get fixed.
-  Note (FIBR-0054): when this disclaimer copy is written, phrase "local-only" as **data-locality** ("your financial data stays on your machine"), not "never connects" — the opt-in updater is a consented outbound exception, so a bare "local-only" shown on-screen would mislead.
-  Kind: feature.
-  Source: user-request-2026-07-03.
-  Coordination note update: FIBR-0051 (P07.5) ships only a minimal About (QMessageBox.about) and puts donate links in their own Donate menu — it does NOT build the shared About/Help screen. So this bullet still owns building that screen (disclaimer + "Report an issue" link); the old "whichever of FIBR-0039/0040 ships first builds the screen" pact no longer applies.
 
 - ✅ [FIBR-0040] **In-app donate / support links.**
   Clickable support links that open each FUNDING.yml sponsor page in the user's browser — GitHub Sponsors (milnet01), Patreon (AntsProjectsHub), and the Paybru tip URL (https://paybru.co.za/tip/ants-projects-hub). Surfaced in the About/Help dialog and a Help-menu entry. Keep the URLs in one place in sync with .github/FUNDING.yml (a small constants module or read at build time) so they never drift. Shares the About/Help screen with the disclaimer item.
@@ -7641,13 +9036,6 @@ because retrofitting them is a data migration.
   Kind: feature.
   Source: user-request-2026-07-04.
   Resolved (2026-07-11): subsumed by FIBR-0083, which shipped the user-configurable date-display format (plus timezone + time format) as its date half. No separate work remains.
-
-- 📋 [FIBR-0049] **First-run onboarding / empty-state guidance on the home screen.**
-  The home screen opens on the manual add-transaction form with cryptic fields (Amount, Description) and no guidance, which confused a real non-technical tester. Add empty-state help + inline field hints (Amount = money in/out, negative = out; Description = what it was for).
-  **Layman:** A friendly welcome for a brand-new user — 'import a statement, or add a transaction by hand' — instead of a bare form.
-  Kind: ux.
-  Source: user-request-2026-07-04.
-  Empty-state half delivered by FIBR-0051 (P07.5): the HomeView getting-started page is this bullet's "friendly welcome — import a statement or add a transaction". Remaining scope: the inline Amount/Description field hints on the manual-entry form (not in FIBR-0051). Stays open for those hints.
 
 - ✅ [FIBR-0050] **Standard Bank (SA) statement text-parser — one reader for all account types.**
   Extends P07 (FIBR-0009). The generic ruled-table extractor
@@ -7699,24 +9087,6 @@ because retrofitting them is a data migration.
   Kind: feature.
   Source: user-request-2026-07-09.
   Resolved (2026-07-09): a "Change account" action on the Statements tab. StatementService.reassign_account(period_id, new_account_id) atomically re-points statement_periods.account_id AND every transaction stamped with it (one owned BEGIN…COMMIT mirroring delete_statement; ROLLBACK to a re-openable vault). A span-collision guard runs BEFORE BEGIN (pure read + refuse) with a period_id self-exclusion, so a same-account pick is the INV-5 no-op, not a false refusal; a real collision (target already has that span) raises ValueError → a tr() warning. A DISTINCT reassigned signal (the changed handler hard-codes "Statement deleted") drives a "Statement account changed" status via a shared refresh helper. New AccountPickerDialog (preselects the current account, deleteLater'd). StatementRow += account_id; repos get()/set_account()/reassign_account() (commit-free); no schema change (reuses the v6 provenance stamp). Spec /cold-eyes-converged in 6 cold loops (2 lanes = 12 reviews; design stable since loop 2). TDD 14 tests. Close: /audit 0; /indie-review 2 cold lanes — data/service CLEAN, UI/shell 1 LOW (undisposed picker dialog) folded inline. Gate green 366 passed/1 skipped; FIBR-0059 src mypy-clean. Also filed FIBR-0061 (mypy not enforced in the gate + 4 pre-existing test-file type errors, found during this close). Commits 2fc5a42 + review fold.
-
-- 📋 [FIBR-0072] **Warn (or disable chrome) when navigating away from an in-progress import.**
-  main_window._open_import() never disables the toolbar/menu, so clicking Home/Statements/Accounts/Categories/Rules mid-import silently rebuilds the workspace and destroys the in-progress wizard (chosen file, column mapping, unsaved preview) with no confirmation. Either confirm before discarding, or disable navigation chrome during an import (as locked states do).
-  **Layman:** Clicking away mid-import warns you first, instead of silently throwing away the file and column choices you just made.
-  Kind: ux.
-  Source: indie-review-2026-07-10 (M-shell1).
-
-- 📋 [FIBR-0073] **Add keyboard mnemonics to menus + dialog labels (a11y sweep).**
-  Menu titles (File/View/Window/Help/Donate) have no '&' Alt-accelerators; no dialog uses label mnemonics. Weakens keyboard-only navigation vs a typical desktop app (WCAG-adjacent). One focused sweep across main_window + the dialogs.
-  **Layman:** Menus and dialog fields get Alt-key shortcuts, so the app can be driven from the keyboard like any other desktop program.
-  Kind: accessibility.
-  Source: indie-review-2026-07-10 (shell L1 + dialog INFO).
-
-- 📋 [FIBR-0074] **Dedicated per-bank PDF readers for ABSA / Nedbank / FNB (needs real anonymised sample statements).**
-  Today ABSA/Nedbank/FNB statements CAN already be imported two ways: (1) their CSV/OFX exports (most reliable), and (2) the generic PDF table-extractor (pdf_importer.py) for any PDF with ruled transaction tables, via the column-mapping step. A DEDICATED zero-config text-layer reader like standard_bank.py (auto-detect + no mapping) needs REAL anonymised sample statements per bank to build and validate — the SB reader (FIBR-0050) required 6 real statements to catch layout edge cases; synthetic dummy PDFs exercise code paths but don't validate real-world layouts. Blocked on the user providing (or the project sourcing) a few real anonymised statements per bank. Until then, the generic extractor + CSV/OFX cover these banks.
-  **Layman:** Zero-config PDF import for the other big SA banks, the way Standard Bank statements already import without mapping columns.
-  Kind: feature.
-  Source: user-request-2026-07-10.
 
 - ✅ [FIBR-0083] **User-configurable timezone + date/time display format (Settings).**
   Motivated by dogfooding v0.1.0: the Statements tab 'Imported' column shows a raw ISO UTC timestamp (e.g. 2026-07-11T06:49:15.506928+00:00). Extends FIBR-0048 (user-chosen DATE-display format) to also cover the user's TIME ZONE and TIME-of-day format, so any timestamp renders in the user's zone + preferred format. Belongs with FIBR-0014 / FIBR-0055 Settings; the prefs persist in the vault settings (like the auto-lock timeout). Render via QDateTime + QTimeZone + QLocale (coding.md 5.2), consistent with FIBR-0017 QLocale formatting. Ships together with / absorbs FIBR-0048 (date half).
@@ -7936,67 +9306,6 @@ because retrofitting them is a data migration.
   keyed to the pick-step account), FIBR-0250 (ASCII-only zero-strip).
   Unblocks FIBR-0085 (batch import).
 
-- 📋 [FIBR-0087] **Per-account currency — support offshore/foreign-currency accounts in the portfolio (revisits FIBR-0021).**
-  The user wants to include an offshore account in their portfolio — the "real multi-currency need" FIBR-0021 deferred to (it chose single base_currency for v1, set at first-run, and said revisit when this arises). Per FIBR-0021's own "if revisited" note: add a currency column on accounts (default = the vault base currency), CHOOSE the currency when ADDING an account (the user's ask), QLocale-format each amount in its account's currency, and enforce that the dashboard NEVER sums across currencies without explicit conversion. Needs its OWN design/spec — the hard decisions: (a) consolidated totals across currencies — NO live FX rates (that would widen the network surface beyond the one FIBR-0054 update egress), so either per-currency subtotals or a user-entered/stored conversion rate; (b) how the dashboard presents mixed currencies (per-currency subtotals vs one converted total). Schema migration (currently v7 -> v8). Deps: FIBR-0005 (accounts), FIBR-0012 (dashboard totals). Kept SEPARATE from FIBR-0083 (date/time formatting).
-  **Layman:** Let each account have its own currency (e.g. a USD offshore account alongside your ZAR accounts), chosen when you create the account, so foreign accounts show and total correctly.
-  Kind: feature.
-  Source: user-request-2026-07-11 (dogfooding v0.1.0).
-  Consolidation design (proposed direction, user Q 2026-07-11 "how do mixed-currency statements consolidate into graphs/summaries?"): NO live FX rates (offline posture — only the FIBR-0054 updater egress). Default = per-currency subtotals: the dashboard shows each currency separately (ZAR panel, USD panel), NEVER summing across currencies (upholds FIBR-0021's rule). PLUS an optional USER-ENTERED exchange rate (stored in the vault) that converts everything to the base currency for a single consolidated total + unified graphs, always LABELLED "converted at your rate, entered <date>" so it's never mistaken for a live figure; user updates it at will. Warrants a small ADR ("how finbreak handles FX") when built. Rejected: live-rate fetch (breaks offline).
-
-- 📋 [FIBR-0088] **Detect an already-imported statement up front (content hash) — warn before re-importing.**
-  User wants an early 'already imported?' check that short-circuits BEFORE the per-transaction dedup (saving redundant work). Partly plumbed already: statements store source_filename and statement_periods has id_for_span (account+period existence check). Robust key = a CONTENT HASH (SHA-256 of the file bytes): detects a re-import of the IDENTICAL file regardless of filename — filename alone is unreliable (same file renamed; or two different files both named 'statement.pdf'). Add a file_hash column (schema migration, currently v7), compute it at import start, and if it matches a prior import WARN the user with an import-anyway option (a corrected re-issue is a legit re-import) rather than silently skipping. The existing account+period match (id_for_span) is a softer secondary signal. COMPLEMENTS, not replaces, transaction dedup (INV-6), which still catches overlapping-but-different files. Primarily a UX safeguard against accidental re-import; the CPU saving is a bonus. Also gives FIBR-0085 (batch import) its per-file 'already imported -> skipped' outcome. Deps: FIBR-0007/0008/0009 (importers), FIBR-0052 (statement provenance).
-  **Layman:** When you import a statement finbreak has already seen, it tells you up front ('looks like you already imported this') instead of silently re-processing it.
-  Kind: feature.
-  Source: user-request-2026-07-11 (dogfooding v0.1.0).
-
-- 📋 [FIBR-0089] **Backup safety nudge — first-run emphasis + a 'last backup was N days ago' reminder.**
-  The encrypted-backup MECHANISM is planned in FIBR-0014; this is the SAFETY UX around it. ADR-0003: no password recovery = permanent data loss, so a backup is the only mitigation. Add (a) first-run copy stressing 'back this up somewhere safe', and (b) a gentle, non-blocking reminder when the last backup (tracked via a vault-settings timestamp) is older than a threshold. Depends on / complements FIBR-0014 (the export itself). Highest-value safety improvement per the 2026-07-11 review.
-  **Layman:** Because a forgotten master password means your data is gone for good, finbreak reminds you to keep a backup — stressed at first run and gently nudged if it's been a while.
-  Kind: ux.
-  Source: claude-suggestion-2026-07-11.
-
-- 📋 [FIBR-0090] **Split a transaction across multiple categories.**
-  A personal-finance staple. One transaction carries N category allocations summing to its amount. Affects the categorization model (per-transaction allocations, not a single category_id) and the dashboard totals (aggregate by allocation, not whole-transaction). Schema change (an allocations/splits table). Deps: FIBR-0006 (categories), FIBR-0010 (categorization), FIBR-0012 (dashboard totals must respect splits). Own spec.
-  **Layman:** Split one purchase across categories — e.g. a R1,200 shop = R900 groceries + R300 household — so your breakdowns are accurate.
-  Kind: feature.
-  Source: claude-suggestion-2026-07-11.
-
-- 📋 [FIBR-0091] **Free-text notes + tags on transactions.**
-  A free-text note and/or tags (labels) per transaction, orthogonal to the category tree. Enables richer filtering/reporting in the dashboard's filterable table (FIBR-0012). Schema: a note column + a tags table (many-to-many). Deps: FIBR-0012 (filters), FIBR-0052 (transactions). Own spec.
-  **Layman:** Attach a note or tag ('reimbursable', 'holiday 2026') to a transaction for context the category tree can't hold, and to filter/report on.
-  Kind: feature.
-  Source: claude-suggestion-2026-07-11.
-
-- 📋 [FIBR-0092] **Rule preview (what will it match?) + bulk re-categorize selected transactions.**
-  Enhances FIBR-0010's rules engine + the categorization UX. (a) Rule preview: on rule create/edit, show the matching transactions (the would_categorize primitive already exists, FIBR-0010) before commit. (b) Bulk action: multi-select rows in the Home/transactions table -> set category (and optionally offer to make a rule). Pairs with FIBR-0084 (column/row UX) and FIBR-0012 (filterable table). Deps: FIBR-0010. Mostly UI + reuse of existing services.
-  **Layman:** When you write a categorisation rule, see which transactions it'll catch before saving; and select many rows to set their category at once.
-  Kind: enhancement.
-  Source: claude-suggestion-2026-07-11.
-
-- 📋 [FIBR-0093] **Plain data export — CSV / spreadsheet of your categorised transactions.**
-  A 'File -> Export data' that writes the (filtered) transactions — date, amount, description, account, category, notes/tags — to CSV (and optionally XLSX). Complements the report-style PDF export (FIBR-0013): this is RAW DATA for spreadsheets, not a formatted report. Local file write, no network (offline posture holds). Deps: FIBR-0007/0008/0009 (the data), FIBR-0012 (filters define the export scope). Own small spec.
-  **Layman:** Export your categorised transactions to a CSV/spreadsheet for your own analysis or your accountant.
-  Kind: feature.
-  Source: claude-suggestion-2026-07-11.
-
-- 📋 [FIBR-0094] **Account balances + net-worth over time (opening balance + running balance).**
-  Today finbreak tracks TRANSACTIONS, not balances. Add a per-account opening balance (+ as-of date); derive a running balance per transaction; surface an account-balance and consolidated net-worth trend on the dashboard. Interacts with FIBR-0011 (transfers — moving money between your own accounts must not change net worth) and FIBR-0087 (multi-currency net worth needs the FX decision). Schema: opening_balance on accounts. Deps: FIBR-0011, FIBR-0012, FIBR-0087. Bigger; own spec + likely an ADR on balance derivation.
-  **Layman:** Track each account's balance over time — set an opening balance and finbreak shows running balances and your overall net-worth trend, beyond just spending-by-category.
-  Kind: feature.
-  Source: claude-suggestion-2026-07-11.
-
-- 📋 [FIBR-0100] **Undo for destructive actions (delete statement / delete category).**
-  Today destructive actions are confirm-only (Statements delete with its transactions, FIBR-0052; category delete-cascade, FIBR-0010). Add a short-lived undo — a status-bar 'Deleted — Undo' for a few seconds, or Edit -> Undo — that restores the deleted rows within the same session. Friendlier than confirm-only; reduces fear of the delete buttons. Design: soft-delete or an in-memory undo stack + a re-insert. Deps: FIBR-0052, FIBR-0010.
-  **Layman:** An 'undo' right after deleting a statement or category, so a misclick isn't permanent.
-  Kind: ux.
-  Source: claude-suggestion-2026-07-11.
-
-- 📋 [FIBR-0101] **Keyboard-first categorising — shortcuts for fast triage of a big import.**
-  Add keyboard shortcuts to the transaction table: set-category (opens the picker), jump-to-next-uncategorised, and quick-assign recent categories. Speeds triaging a large import. Pairs with FIBR-0092 (bulk re-categorize) and FIBR-0010 (rules); cleaner once FIBR-0097 (model/view) lands. Mostly UI. Deps: FIBR-0010.
-  **Layman:** Categorise a large import quickly with the keyboard — set a category and jump to the next one without reaching for the mouse.
-  Kind: ux.
-  Source: claude-suggestion-2026-07-11.
-
 - ✅ [FIBR-0105] **User-configurable amount display: negative sign style + colour (Settings).**
   Two independent prefs persisted in the vault settings (mirrors FIBR-0083
   DateTimePrefs / FIBR-0055 auto-lock): (1) negative-amount style — "minus"
@@ -8056,20 +9365,6 @@ because retrofitting them is a data migration.
   minus one piece. The amount-range (min/max) filter the 2026-07-12 absorb
   note explicitly DEFERRED is still wanted, and is re-filed as its own
   item rather than kept alive here.
-
-- 📋 [FIBR-0110] **Every date input accepts typed entry (validated) or a date picker.**
-  User request 2026-07-12. Cross-cutting UX: wherever a date is entered — the manual-entry dialog, the future Transactions filters (above), any settings/import date field — offer both a typed field (ISO-validated, the existing parse_transaction date check) and a QDateEdit-style calendar picker, so neither typists nor mouse users are forced. A shared date-input widget/helper so the two modes stay consistent (Rule-of-Three: extract on the third site).
-  **Layman:** Anywhere you enter a date in the app, you can either type it (with a check that it's a real date) or pick it from a small calendar.
-  Kind: ux.
-  Source: user-request-2026-07-12.
-  Lanes: ui.
-
-- 📋 [FIBR-0111] **Show the currency in its own column, separate from the amount value.**
-  User request 2026-07-12 (screenshot): the Home Amount column renders "ZAR69.00" / "-ZAR25,000.00" with the currency crammed against the number, hard to read. Give the currency its own column (or right-align the bare number and show the currency code separately), so the value column holds just the formatted number + sign. Touches HomeView._format_amount / the Amount column layout (FIBR-0105 amount-display work) and should carry through to the future dedicated Transactions tab (FIBR-0109). Keep the negative-style (minus/brackets) + red/green colour prefs (FIBR-0105) working on the value column.
-  **Layman:** Put the currency code (e.g. ZAR) in its own column so the number is easy to read, instead of "ZAR69.00" crammed together.
-  Kind: ux.
-  Source: user-request-2026-07-12.
-  Lanes: ui.
 
 - ✅ [FIBR-0112] **Credit-card (Family C) import: continuation page without a column header drops its transactions.**
   Root-caused against a real SBSA CC statement (2025-10-20; real file/password never committed, synthetic fixture/tests to follow). A 3-page statement: page 1 = summary, page 2 = transaction table WITH the "Date Description Amount" column header, page 3 = continuation transactions with NO column header (opens straight into a "Debit Debit" section). _table_region (standard_bank.py:229) locates the Family-C region only by that column header, so page 3's region is empty and its 3 transactions (Checkers 514.21 + Cash Finance Charge 23.05 + Tips 10.00 = 547.26) are silently dropped. The completeness checksum then fails (opening 1348.95 - Σ = 1421.51 vs closing 1968.77; the 547.26 gap is exactly the dropped rows) and the whole statement is refused. Fix: when a Family-C page has no column header, fall back to starting the region at the first real transaction row (a CC segment ending in a 2-decimal amount) — which excludes summary-page date spans like "Statement Period 20 Sep 25 to 20 Oct 25" that carry no 2-decimal tail. TDD: pure _table_region unit tests (header-less continuation page captured; header-less summary page stays empty) + reconciliation; validated end-to-end against the real statement in a throwaway scratchpad.
@@ -8299,26 +9594,6 @@ because retrofitting them is a data migration.
   Kind: enhancement.
   Source: user-request-2026-07-12.
 
-- 📋 [FIBR-0121] **Loan-account sign display: show debt-reducing amounts as positive on loan-type accounts.**
-  Approach APPROVED by user (2026-07-13): DISPLAY-ONLY, display-time inversion for
-  loan-type accounts (AccountType.HOME_LOAN / PERSONAL_LOAN). Keep amount_minor
-  stored canonical (FIBR-0007: debit negative / credit positive) so the exact-money
-  math, transfer detection, and the FIBR-0012 dashboard totals are all undisturbed;
-  only the on-screen sign + direction colour flip for loan accounts. Scope is
-  display-only for now (NOT changing how loan flows count in dashboard totals) — a
-  deeper "interest-as-expense / repayment-as-transfer" semantic is a possible later
-  follow-up.
-  Needs its own spec + the project's 7-loop cold-eyes (correctness-critical money
-  display). OPEN QUESTION to verify during that spec (do NOT assume): how the
-  importer currently signs loan-statement debit/credit columns, and whether transfers
-  INTO a loan are being detected at all (the loan-payment leg and its current-account
-  leg may currently share a sign, which opposite-sign transfer matching would miss).
-  If a real detection gap exists, split it out as a bug-fix. Touches ui/_amount.py +
-  the Transactions table render; the account type is on models.Account.type.
-  **Layman:** On home-loan / personal-loan accounts, your payments (which reduce what you owe) will read as positive/green and interest &amp; fees (which increase what you owe) as negative/red — the natural way round, instead of the current back-to-front look.
-  Kind: feature.
-  Source: user-request-2026-07-12 (approved 2026-07-13).
-
 - ✅ [FIBR-0122] **Auto-update relaunch: stop the /bin/sh waiter inheriting the frozen app's bundled-library path.**
   Root cause (from update-relaunch.log): the relaunch /bin/sh waiter inherited the
   PyInstaller onefile app's LD_LIBRARY_PATH pointing at its private _MEI extraction
@@ -8395,12 +9670,6 @@ because retrofitting them is a data migration.
   Resolved (2026-07-14): SHIPPED by TDD. category_library.py (LibraryEntry, pure+total parse_library, fail-safe cached load_library, match_library) + data/category_library.json seed (every entry bound by name to a v3 DEFAULT_CATEGORIES leaf). CategorySource.LIBRARY (free-text column, no migration); categorize_with_library (rule beats library), _match_inputs (toggle-gated), _leaf_name_to_id (first-wins), library_enabled; recategorize_auto_rows + would_categorize rerouted. Settings toggle (default ON) wired through the shell; Transactions "~ guess" marker with every Category cell a bare-name SortableItem. data/*.json package-data + second --add-data pair in all three freeze sites; parity guard set-checks both targets. tests/features/category_library/ (INV-1..11) + autouse neutralise fixture + real_library marker. /audit (semgrep full) 0 actionable; /indie-review 2 cold lanes 0 CRIT/HIGH/MED, only LOW substring-precision (accepted D2 substring-only tradeoff, marked overridable guesses, money never touched). Gate green 934/1, mypy 0. Commit 24e7a91; tag FIBR-0139-complete; journal docs/journal/FIBR-0139.md. FIBR-0140 (learn-from-history) remains the deferred "later" half.
   Lanes: services, ui, repo, tests.
 
-- 📋 [FIBR-0140] **Auto-categorise learns from your own history (statistical, no hand-written rule).**
-  The 'later' half of the 2026-07-14 'both' decision (library now, learning later). Distinct from FIBR-0035 (offer-to-MAKE-a-rule, shipped) and FIBR-0092 (bulk re-categorize + rule preview): this auto-applies a category learned from the user's OWN past manual picks (merchant-keyed), ranked with/near the library, still overridable, manual always wins. Deps: the built-in category library item + FIBR-0010. Design TBD in its own brainstorm.
-  **Layman:** Once you've categorised a shop by hand a few times, finbreak remembers and auto-applies that to future transactions from the same shop — without you writing a rule.
-  Kind: enhancement.
-  Source: user-request-2026-07-14.
-
 - ✅ [FIBR-0142] **Recurring money detection (subscriptions + standing income).**
   Split from FIBR-0022 (the recurring half; budgets stay on FIBR-0022 as the follow-up). Auto-detect repeating money movements — recurring OUT (subscriptions, debit orders, insurance) and recurring IN (salary, standing deposits) — surface for confirm/dismiss. User-chosen scope (2026-07-15 brainstorm): both directions; "Balanced" sensitivity (seen 3+ times, amount within ~10% of the group median, gaps consistently in one cadence bucket — weekly/fortnightly/monthly/yearly with slack). Pure deterministic detect_recurring(rows, today) grouping on normalise_text(merchant_name(description)) x direction (reuses FIBR-0138 cleanup); excludes confirmed transfers; integer amount_minor throughout (INV-13). Persistence: new schema v9 recurring_decisions table keyed on (direction, merchant_key) — not txn ids — mirroring transfer_pairs. RecurringService shaped like TransferDetectionService (candidates/confirmed/confirm/dismiss/reset/summary). SURFACES: dedicated Recurring tab (Suggested/Confirmed tables mirroring Transfers) built now; the read-only Home dashboard card is DEFERRED until the dashboard-focus rework so it isn't added to a layout being decluttered. Deps: FIBR-0138 (merchant_name), FIBR-0011 (transfer exclusion), FIBR-0012 (dashboard).
   **Layman:** finbreak spots your regular payments and deposits — subscriptions, debit orders, salary — so you can see what's on autopilot and what it costs you each month.
@@ -8418,18 +9687,6 @@ because retrofitting them is a data migration.
   Started 2026-07-16: design brainstormed + user-approved against the mockup (dashboard_2.html). Decisions: pies in all 3 columns (fed from the existing drill_down branch children — pie mirrors each column's breakdown list); keep Net as a slim full-width strip; include the deferred FIBR-0142 recurring Home card now. Layout: 3 side-by-side columns (Expenditure/Income/Transfers) each = pie → coloured header+total → expandable breakdown tree; Net strip; full-width Recurring card; monthly-trend bar demoted to a bottom strip. No schema/service-data change — all reuse (drill_down + summary + monthly_trend + RecurringService.summary). Spec docs/specs/FIBR-0143.md next → /cold-eyes (cap 7) → TDD.
   Spec CLEARED FOR CODE 2026-07-16 — /cold-eyes converged loop 7 (7 loops × 3 cold lanes = 21 reviews; loop 7 all-polish, 0 CRIT/HIGH/MED). Spec docs/specs/FIBR-0143.md written + 7-loop log. Key contract details settled across the loops: build_breakdown_donut does its own cap loop (no _donut_wedges extraction — donut stays byte-for-byte unchanged for the PDF export); each column's header+pie+list all source from the one drill_down branch node (summary feeds only the Net strip); explicit node→column map (Expenditure←nodes[1]/Spending, Income←nodes[0], Transfers←nodes[2]) so a naive zip can't mis-colour; recurring card is UNSCOPED by the Home selectors (summary(today) takes only today — shows all confirmed recurring money vault-wide); branch colour on header+tree only (pie is palette-coloured), gated on amount_prefs.colour; monthly_out is a positive magnitude so In/Out colours are forced-by-role. Commits d132c18→7238685, all pushed, gate green. NEXT: TDD tests/features/dashboard_focus/.
   Resolved (2026-07-16): shipped by TDD. build_breakdown_donut (own cap loop, palette, empty-safe; PDF donut byte-for-byte unchanged) + HomeView reworked into three columns (Expenditure/Income/Transfers, each pie+coloured header+drill tree) + slim Net strip + unscoped Recurring card + demoted trend strip; explicit node→column map; RecurringService wired into main_window (amount_prefs by keyword). New tests/features/dashboard_focus/ (INV-1..9, 20 legs) + rippled FIBR-0138/FIBR-0012 tests onto the new surfaces. Closed by /close-phase: semgrep 0; 2 cold review lanes → production clean (0 CRIT/HIGH/MED), 3 LOW test-strength adds folded inline. Gate green (1040 pytest, mypy 0). Commits 070cd76→6719de5. Tag FIBR-0143-complete.
-
-- 📋 [FIBR-0144] **Centralise the schema-version drift guard to remove per-bump test churn.**
-  Surfaced during the FIBR-0142 close. Every feature that ever added a migration hard-asserts `LATEST_SCHEMA_VERSION == N` (and encodes the version in test function names + spec.md INV lines), so each schema bump forces ~24 assertion edits + ~15 renames across ~9 feature suites (v8→v9 did exactly this). Replace the scattered per-feature guards with ONE canonical "latest schema version" test (assert the constant + that a fresh vault reaches it) and have each feature's migration test assert only its OWN delta (the intermediate step it introduced), never the moving global latest. Removes the churn and the drift risk. Low priority, no user-facing effect.
-  **Layman:** A cleanup: right now every time the database format is upgraded, a bunch of unrelated tests have to be hand-edited. This would make that a one-line change instead.
-  Kind: refactor.
-  Source: in-session-2026-07-15 (FIBR-0142 review observation).
-
-- 📋 [FIBR-0145] **Transfer detection learns from confirmed/rejected transfer pairs.**
-  User feedback 2026-07-16 (general use of the shipped Transfers tab): confirming/rejecting a transfer should TEACH the detector, not just decide the one pair. Today FIBR-0011's `transfer_pairs` records a decision keyed on the two specific transaction ids, so an equivalent pair next month (same two accounts, same kind of description, same equal-magnitude/opposite-sign shape) is presented cold again. Enhancement: derive a reusable signal from each confirm/reject — keyed on something like (account_pair, direction, normalised description/merchant pattern) — so future candidate pairs that match a CONFIRMED pattern are auto-suggested or pre-confirmed, and pairs that match a REJECTED pattern are suppressed. Mirror the FIBR-0010 categorization-rules learning-from-manual-overrides design (a learned-rule table + a manual decision always winning + an overridable marker), applied to the transfer surface. Correctness guard: a learned auto-confirm must never merge money that isn't genuinely a transfer, so the learned pattern should stay conservative (exact account pair + tight amount/description match) and remain user-overridable. Deps: FIBR-0011 (transfer detection), pattern-reuse from FIBR-0010 (rules engine).
-  **Layman:** When you confirm or reject that two transactions are the same money moving between your own accounts, the app should remember the pattern and get better at spotting (or ignoring) similar transfers next time — instead of re-asking about the same kind of pair every import.
-  Kind: enhancement.
-  Source: user-feedback-2026-07-16 (general use).
 
 - ✅ [FIBR-0146] **PDF statement import fails every row with a raw "time data ... does not match format" date error.**
   Reported 2026-07-16 (external Windows tester, screenshot). Import preview: all 165 rows red, Status "Error", the Description column filled with the raw Python message "time data '20 ...' does not match format ...", Date/Amount blank, footer "0 new · 0 duplicate · 165 error". Root cause: the generic PDF importer (importers/pdf_importer.py) extracts the table then parses each date via the shared CSV path importers/csv_importer.py:74 datetime.strptime(row[date_column], mapping.date_format); on failure it appends RowError(row_number, str(exc)) (csv_importer.py:88-89), so the raw strptime message becomes the shown text. The applied mapping.date_format does not match this bank's date format — the failing values step through days 20,21,22,26,27,28,31,02,03 (a DD-first statement rolling over a month boundary), so a wrong/guessed format was applied (wrong profile matched, or the wizard's date-format guess/selection was wrong for an unrecognised bank). TWO fixes: (1) correctness — parse this bank's actual date format (needs the sample to know the exact string; may need a new mapping profile or a smarter date-format auto-detect / a clearer wizard affordance to pick it); (2) UX — a row-level failure should show a friendly "couldn't read the date in this row" not the raw str(ValueError), and a 100%-failure import should surface a "the date format didn't match — pick the right one / this bank isn't recognised yet" banner instead of 165 identical raw errors. Needs from the user: which bank, and the exact date format as printed (e.g. "20/07/2026" vs "20 Jul 2026" vs "2026-07-20"), ideally a redacted sample PDF, to reproduce-first then fix.
@@ -8600,30 +9857,6 @@ because retrofitting them is a data migration.
   Source: in-session-2026-07-23.
   Resolved 2026-07-24 (self-directed autonomous run). Three dismissable Home-dashboard alerts: (a) new recurring OUT charge (suggested stream, occurrences<=4 — cadence-agnostic "just detected"); (b) category spike (last COMPLETE month >= 2x prior-3-month integer average, confirmed-transfer + None-bucket excluded so totals match the donut); (c) missed expected debit (confirmed OUT overdue past next_expected+3d). Pure integer-only detectors + AlertService (sole Decimal->minor in input prep); new v12 alert_dismissals table (recurring_decisions idiom), persisted per-scope dismissal keys; non-intrusive AlertsCard (hidden when empty, VaultLockedError-silent dismiss, card-local rebuild). Spec docs/specs/FIBR-0172.md cold-eyes CONVERGED loop 3 (caught + fixed a monthly-detector-dead boundary hole, a snapshot.confirmed AttributeError, an INV-15 Decimal leak, and a cross-feature v12 drift-guard conflict). Reproduce-first TDD tests/features/spending_alerts/ (32 tests +1 folded, INV-1..19); /audit semgrep 0 + cold code-review 0 defects; gate green 1360 passed. Schema 11->12 rippled 12 feature guard files + reworked the FIBR-0177 reconciliation guard. Journal docs/journal/FIBR-0172.md.
 
-- 📋 [FIBR-0173] **Savings goals — track progress toward a target amount, distinct from spending budgets.**
-  Budgets cap spending; goals build toward a target — a separate concept from the planned Budgets item (FIBR-0022). Per-goal: name, target amount, optional target date, current progress (linked account balance or manual contributions), and an on-track / behind indicator.
-  **Layman:** Set a target like "R10,000 holiday fund" and watch a progress bar fill as you save toward it.
-  Kind: feature.
-  Source: in-session-2026-07-23.
-
-- 📋 [FIBR-0174] **Tax-year summary — per-category totals for a chosen tax year with a tax-deductible flag, exportable to PDF/CSV.**
-  Adds a "tax-deductible" flag to categories and a tax-year report view (configurable year boundary for the SA Mar–Feb tax year). Reuses the existing PDF (services/pdf_export.py) and the planned plain-data CSV export (FIBR-0093). Locally useful given the SA bank focus.
-  **Layman:** A one-click annual report of what you earned and spent per category for a tax year, with deductible categories flagged — ready for filing.
-  Kind: feature.
-  Source: in-session-2026-07-23.
-
-- 📋 [FIBR-0175] **Compare periods on the dashboard — this month vs last, this year vs last year, side by side.**
-  The dashboard shows one period at a time (FIBR-0143). Add a compare toggle that renders a second period alongside the current one with per-category deltas (up/down arrows + amount/percent). Small addition to the existing reporting aggregation for a big 'aha'.
-  **Layman:** See two periods next to each other so you can spot what went up or down.
-  Kind: feature.
-  Source: in-session-2026-07-23.
-
-- 📋 [FIBR-0176] **Receipt attachments — attach a photo/PDF of a receipt to a transaction, stored inside the encrypted vault.**
-  Store attachment blobs inside the SQLCipher vault (not on disk) so they inherit the same at-rest encryption as transactions. Needs a size cap (reuse the INV-5b resource-size cap pattern) and a schema/migration for an attachments table. Fits the privacy-first, everything-encrypted design.
-  **Layman:** Keep a picture of a receipt with its transaction, encrypted like everything else.
-  Kind: feature.
-  Source: in-session-2026-07-23.
-
 - ✅ [FIBR-0177] **Account-level balance reconciliation — verify imported transactions sum to the bank's stated balance for every account.**
   Generalises the Standard Bank import-time reconciliation (importers/standard_bank.py: opening ± total vs closing) into a visible, ongoing account-level check: opening balance + running sum of transactions vs the latest known statement balance, surfaced as ✓ / off-by-R-X. Catches import gaps for every account and every bank, complementing the planned statement coverage/gap detection (FIBR-0038) and running-balance work (FIBR-0094).
   **Layman:** A tick that confirms your imported transactions add up to the balance your bank states — or flags the gap — for any account, not just at import time.
@@ -8631,20 +9864,6 @@ because retrofitting them is a data migration.
   Source: in-session-2026-07-23.
   Started 2026-07-24 (self-directed autonomous run). Spec docs/specs/FIBR-0177.md drafted: v1 reconciles current+savings cash accounts only (debt/investment/other deferred — persisted closing sign convention is canonical only for asset accounts); cross-statement telescoping over persisted closing balances (C_prev + sum_after(P_prev,P_curr] == C_curr, exact), reusing FIBR-0171 primitives; Accounts-tab per-account marker; no schema change. Next: /cold-eyes.
   Resolved 2026-07-24 (self-directed autonomous run). v1 reconciles current+savings cash accounts via cross-statement telescoping over persisted closing balances (C_prev + sum_after(P_prev,P_curr] == C_curr, exact integer minor units); debt/investment/other quietly NOT_SUPPORTED (deferred v2 — their persisted closing sign convention differs). Accounts-tab per-account marker. No schema change. Spec docs/specs/FIBR-0177.md cold-eyes CONVERGED loop 3; reproduce-first TDD tests/features/reconciliation/ (20 tests, INV-1..12); /audit semgrep 0 + cold code-review 0 defects; gate green 1327 passed. Surfaced + filed FIBR-0179 (forecast anchor debt-account sign bug). Journal docs/journal/FIBR-0177.md.
-
-- 📋 [FIBR-0178] **Cash-flow forecast v2 follow-ups (FIBR-0171 D12, logged not dropped).**
-  Deferred out of the FIBR-0171 v1 cash-flow forecast (spec D12),
-  logged so they are not lost: (a) a user-typed manual balance
-  override for balance-less accounts (CSV-only), so those accounts can
-  contribute to the anchor without waiting for a balance-bearing
-  statement; (b) per-account (rather than vault-wide) forecasts;
-  (c) scenario / what-if one-off inputs (a known future cost the
-  recurring engine won't model); (d) a CSV balance-column mapping so a
-  CSV import can persist a closing balance too. Multi-currency forecasts
-  stay out of scope and are tracked by FIBR-0087.
-  **Layman:** Optional extras for the new Forecast tab, deferred from v1.
-  Kind: feature.
-  Source: FIBR-0171 spec D12 (in-session 2026-07-24).
 
 - ✅ [FIBR-0179] **Forecast anchor mishandles debt-account (credit-card / loan) closing balances — wrong-sign roll-forward + an owed figure folded into the vault-wide cash total.**
   ForecastService._anchor (services/forecast.py) sums
@@ -8967,43 +10186,6 @@ because retrofitting them is a data migration.
   Cross-doc: FIBR-0050 (5 enumerations that said "A/B/D" or named Savings
   as the sole closing-less family), the test contract, CHANGELOG.
 
-- 📋 [FIBR-0191] **Amount-range (min/max) filter on the Transactions tab.**
-  Split out of FIBR-0109 (2026-07-28) as the one piece its absorb target
-  did not build. FIBR-0012 shipped the Transactions tab
-  (src/finbreak/ui/transactions.py) with search + date-range + account +
-  category filters, all combinable; the amount-range (min/max) filter
-  FIBR-0109 originally named was deliberately NOT chosen in the FIBR-0012
-  brainstorm and is recorded under Out-of-scope in
-  docs/specs/FIBR-0012.md. The user confirmed on 2026-07-28 that it is
-  still wanted, so it is re-filed here rather than left implicit in a
-  closed bullet.
-
-  Scope: two optional amount inputs (min, max) in the existing Transactions
-  filter bar, combinable with every filter already present, pushed into the
-  same query/where layer the other filters use — not a post-filter in
-  Python. Decisions the spec must settle, none of them obvious:
-
-  - Whether the comparison is on the SIGNED amount or its magnitude. The
-  app stores money-out as negative, so "over 1000" most likely means
-  |amount| >= 1000 to a user, but a signed reading is defensible and the
-  two disagree on every debit. Getting this wrong is a wrong-total class
-  bug, so it needs an explicit invariant either way.
-  - Whether a blank input means unbounded on that side (expected) and how
-  min &gt; max is handled — refuse, swap, or return empty.
-  - Currency: FIBR-0087 (per-account currency) and FIBR-0111 (currency in
-  its own column) are both open, so a mixed-currency vault would compare
-  unlike amounts. Either scope this to the single-currency case with a
-  note, or gate it on those items.
-  - Whether the range participates in the saved per-tab filter state the
-  other Transactions filters use.
-
-  Reuses the existing list_transactions read path and the tab's current
-  filter plumbing; no new repository. Dependencies: FIBR-0012 (✅).
-  **Layman:** Let people narrow the transaction list to amounts between two figures — e.g. "show me everything over R1 000" — alongside the search, date, account and category filters already there.
-  Kind: feature.
-  Source: user-request-2026-07-28.
-  Lanes: ui.
-
 - ✅ [FIBR-0192] **Finish FIBR-0084: the shared column scheme on the last unwired headers, and make Reset layout actually reset columns.**
   Split out of FIBR-0113 on 2026-07-28 after a /cold-eyes loop-2 pass found
   that FIBR-0113's fold-in of this work was the single largest source of
@@ -9190,101 +10372,6 @@ because retrofitting them is a data migration.
   Lanes: ui.
   Source: cold-eyes-2026-07-28 loop 5 on docs/specs/FIBR-0113.md (code-side observation, surfaced not fixed).
   Resolved (2026-08-19): ALREADY FIXED by FIBR-0204, which took the better of the two routes this bullet offered. The bullet proposed a leading setRowCount(0) in StatementsWidget.refresh and said to check the other four tables on the same seam first; FIBR-0204 did check them, found four of five refilled in place, and put the clear inside fill_guard itself rather than in five call sites -- src/finbreak/ui/_table_state.py, whose docstring now states this defect and its reasoning in the same terms ("a wrong row-to-action map in a money app is unacceptable"). Verified 2026-08-19: no ui/*.py carries a local setRowCount(0) any more except main_window's unrelated one, and accounts.py carries a comment saying its own was removed for this reason. Covered by tests/features/table_state/ row 16 (sort-then-refill) and by the every-row assertion in tests/features/accounts/test_accounts.py. Closed on verification, not on recall.
-
-- 📋 [FIBR-0195] **Resolve the docs/plans/ gap once, project-wide, instead of re-arguing it in every spec.**
-  spec-format §2 makes a plan mandatory "once the build order matters (a
-  migration, a change that must land in a specific sequence, or anything a
-  second person will execute)". Verified 2026-07-28: docs/plans/ does not
-  exist anywhere in this tree, and none of the 49 files in docs/specs/ has
-  one — including every spec that ships a schema migration.
-
-  The cost is not the missing files, it is that each affected spec now spends
-  a paragraph explaining why it has no plan, and a cold reviewer correctly
-  re-raises it every time. Prior non-compliance is not a waiver, so the
-  paragraph cannot just say "nobody else does it either".
-
-  Decide one of:
-  (a) adopt docs/plans/ for specs that carry a migration or an ordered build,
-  starting with the next one, and backfill nothing; or
-  (b) record the departure ONCE — in docs/standards/documentation.md or a
-  project spec-format override — and have every spec point at that single
-  statement instead of restating it.
-
-  (b) is the cheaper answer if the build order genuinely lives fine inside
-  the spec's design section, which is what the existing 49 specs suggest in
-  practice. Either way the per-spec paragraph goes away.
-
-  Surfaced by /cold-eyes rather than fixed inline: choosing between (a) and
-  (b) is a project-convention decision, not a docs defect.
-  **Layman:** Every spec that involves a database change is supposed to ship a short build-order file. None of them do, and each spec currently explains that omission again. Decide once: either start writing them, or record the exemption in one place.
-  Kind: doc.
-  Source: cold-eyes-2026-07-28 loop 1 on docs/specs/FIBR-0193.md.
-
-- 📋 [FIBR-0196] **Reconcile the spec-filename rule: naming.md says `<ID>.md`, the shared spec-format says `<ID>-<topic>.md`.**
-  Two standards claim authority over the same filename and give
-  different answers:
-
-  - docs/standards/naming.md: "**Spec doc** | `<ID>.md` (the stable
-  roadmap ID)", repeated under *ID-named docs* ("using the **stable ID
-  verbatim**"). Its §9 *Project overrides* says "(None yet.)"
-  - ~/.claude/skills/_shared/spec-format.md §2 (the governing format
-  standard, since this project has no docs/standards/spec-format.md):
-  `docs/specs/<ID>-<topic>.md`.
-
-  Measured 2026-07-28: 48 of the 49 files in docs/specs/ use the bare-ID
-  form. The single exception was FIBR-0193, written topic-suffixed during
-  the FIBR-0113 split; it has been renamed to docs/specs/FIBR-0193.md so
-  the tree is uniform again, and every reference repointed.
-
-  That fixes the instance, not the conflict. The next spec written from
-  the shared format standard will depart again, and a cold reviewer will
-  correctly flag it again.
-
-  Decide one of:
-  (a) keep the bare-ID form (matches all 49 specs and naming.md) and
-  record it as a project override in naming.md §9, so the departure from
-  the shared standard is stated once and deliberately; or
-  (b) adopt `<ID>-<topic>.md`, update naming.md's table and its ID-named
-  docs paragraph, and accept that the existing 49 are grandfathered.
-
-  (a) is the cheaper answer — it is what the tree already does, and the
-  topic suffix buys nothing that the spec's own title line does not.
-
-  Surfaced by /cold-eyes rather than decided inline: which standard wins
-  is a project-convention call, not a docs defect.
-  **Layman:** Two rulebooks disagree about what to call a spec file. Pick one so the next spec doesn't get named wrong.
-  Kind: doc.
-  Source: cold-eyes-2026-07-28 loop 2 on docs/specs/FIBR-0193.md.
-  DECIDED (2026-08-05, user): `<ID>-<topic>.md` wins — a filename a
-  human can read and parse without opening it. So `naming.md` line 85
-  (`<ID>.md`) and its line-207 counter-example are the side that changes,
-  not the shared spec-format.
-  Two pieces of work, deliberately separated: (a) amend `naming.md` —
-  a `docs/standards/` edit, so it trips the rule-14 /cold-eyes gate on
-  its own; (b) back-migrate the existing corpus. Measured 2026-08-05:
-  54 specs match `FIBR-NNNN.md` (`ls docs/specs/*.md | grep -cE
-  '/FIBR-[0-9]+\.md$'`) and 374 inbound citations name those filenames
-  (`grep -rnoE 'FIBR-[0-9]{4}\.md' --include=*.md --include=*.py
-  --include=*.sh . | wc -l`), so (b) is a scripted rename plus a
-  citation sweep, not a hand edit.
-  First file written under the new rule:
-  `docs/specs/FIBR-0231-plain-english-month-summary.md`.
-
-- 📋 [FIBR-0197] **Two feature spec.md files still pin LATEST_SCHEMA_VERSION == 5.**
-  `tests/features/pdf_import/spec.md` INV-8 pins `LATEST_SCHEMA_VERSION == 5`
-  and `tests/features/import_/spec.md` INV-8 says the version "is now 5".
-  Both are prose-only staleness in test-contract files: the *tests* those
-  specs describe are green, so nothing fails. Surfaced by a cold-eyes lane
-  while reviewing FIBR-0193 and deliberately NOT folded into that item —
-  these two files are outside its blast radius (they are not in the
-  `== 12` pin set FIBR-0193 §6/§12 own), and widening a review run into
-  unrelated documents is how a review silently becomes an edit run.
-  Fix: advance both to whatever `LATEST_SCHEMA_VERSION` is when this is
-  picked up, or reword them to cite the constant instead of a literal so
-  they stop churning on every migration.
-  **Layman:** Two old test-contract files still say the database format is at version 5, when it is really at 12 (and about to be 13) — harmless today, but confusing to read.
-  Kind: doc-fix.
-  Source: in-session-2026-07-30 (FIBR-0193 cold-eyes loop 4, deferred finding).
 
 - ✅ [FIBR-0198] **Accounts tab: reveal the masked account number, with an auto re-mask after 30s.**
   Split out of FIBR-0113 on 2026-07-30. FIBR-0113 ships the sortable
@@ -9743,55 +10830,6 @@ because retrofitting them is a data migration.
   Gate green **1455 passed, 2 skipped**; `/doc-lint` clean on all six
   edited docs.
 
-- 📋 [FIBR-0205] **tests/features/bundling cannot be run on its own — it SIGABRTs with a coredump.**
-  Found while running a subset of the suite during the v0.1.19 bump.
-  `pytest tests/features/bundling` aborts the interpreter — SIGABRT,
-  `Fatal Python error: Aborted`, a 12 MB coredump per run. The whole suite
-  is green (1455 passed), so this is invisible to the gate and to CI.
-
-  Verified against source 2026-08-02, and reproduced with the release bump
-  stashed so it is not caused by the version edits:
-
-  1. `test_INV1_selftest_fail_names_the_broken_stack`
-  (`tests/features/bundling/test_bundling.py:86`) monkeypatches
-  `_selftest._check_qt` to `lambda: None` and `_check_sqlcipher` to raise,
-  then calls `run_self_test`.
-
-  2. `run_self_test` (`src/finbreak/_selftest.py:266`) runs its checks in
-  the order `qt → qtcharts → icons → sqlcipher → …`. So `_check_icons`
-  runs for real, BEFORE the stubbed-out sqlcipher failure it is testing
-  for — and `_check_icons` (`:63`) renders a pixmap
-  (`icon("lock").pixmap(QSize(16, 16))`).
-
-  3. `_check_qt` is what constructs the QApplication — its own docstring at
-  `:72` says `_check_icons` "Runs after `_check_qt` (needs the
-  QApplication)". Stubbing `_check_qt` removes it, so `QIcon::pixmap`
-  reaches Qt's `qFatal` in `libqsvgicon.so` and calls `abort()`.
-  `run_self_test`'s `except Exception` cannot catch it — `qFatal` is not a
-  Python exception.
-
-  4. It passes in the full suite only because an EARLIER test file leaks a
-  process-wide QApplication. Proven both ways:
-  `pytest tests/features/bundling` → SIGABRT;
-  `pytest tests/features/theme tests/features/bundling` → 42 passed.
-  So the test's docstring claim that it unit-tests the FAIL contract
-  "independent of installed native deps" is false — it depends on a
-  QApplication it does not create.
-
-  Consequence beyond the noise: `docs/specs/FIBR-0001.md` INV-6 and
-  CLAUDE.md both document running a single test / a single file as a
-  supported workflow, and for this file it is not — it dumps core.
-
-  Likely fix: stub `_check_qtcharts` and `_check_icons` alongside the other
-  two (the test only asserts the ordered-token contract, so the real
-  renderers are incidental), or take pytest-qt's `qapp` fixture so the
-  QApplication is created explicitly rather than inherited. Prefer the
-  stub — it makes the test's stated independence true.
-  **Layman:** One test file crashes hard unless other tests run first, so you can't run it by itself.
-  Kind: test.
-  Source: in-session-2026-08-02 v0.1.19 release.
-  Lanes: tests.
-
 - ✅ [FIBR-0207] **The theme INV-1 test failed whenever a real finbreak was open on the same machine.**
   Caught by the pre-push gate while pushing the v0.1.19 release record:
   `test_INV1_theme_applied_before_window` failed `DID NOT RAISE
@@ -9968,246 +11006,6 @@ because retrofitting them is a data migration.
   clean, spec_lint + doc_integrity 0, 18/18 citations resolve. Journal
   docs/journal/FIBR-0231.md; tag FIBR-0231-complete.
 
-- 📋 [FIBR-0232] **"Safe to spend" — one number for what's left after everything still due this month.**
-  The cash-flow forecast (FIBR-0171) already projects a balance forward
-  through every known recurring payment to a horizon. This derives ONE
-  figure from it and puts it where a nervous user will actually look:
-
-  "After everything still due this month, you have R1,240 left."
-
-  That is the question a layman actually asks. Today the app answers it
-  with a line graph they have to interpret first.
-
-  Must degrade honestly, and this is the whole risk of the item: the
-  number is only meaningful in `ForecastMode.ANCHORED`. In `NET_FLOW`
-  (no account has a persisted closing balance) there IS no safe-to-spend
-  figure, and the card must say so — showing a projected CHANGE as
-  though it were money in hand is exactly the harm to avoid.
-
-  Pairs with the forecast-uncertainty item: a number the app cannot
-  stand behind should not be printed at all.
-  **Layman:** One number telling you what you can still spend this month, after the bills that haven't gone off yet.
-  Kind: feature.
-  Source: user-request-2026-08-05 (layman-comprehension suggestions).
-
-- 📋 [FIBR-0233] **Committed vs free income — show what share of income is spoken for before the month starts.**
-  Not a budget — no targets, no envelopes, no discipline required. That
-  is FIBR-0022, and this is deliberately the opposite: a mirror, not a
-  tool. One line and one bar:
-
-  "71% of your income is spoken for before the month starts — rent,
-  debit orders, subscriptions. R4,100 is yours to decide about."
-
-  The recurring detector (FIBR-0142) already identifies the committed
-  OUT streams and carries `monthly_equivalent` for each; income is
-  already separated from spending on the dashboard.
-
-  People systematically misjudge this ratio. Seeing it reframes "I am
-  hopeless with money" into "I have less room than I thought" — which
-  is true, actionable, and considerably kinder.
-
-  Open question for the spec: what counts as committed. Confirmed
-  recurring OUT items are the obvious core; whether suggested-but-
-  undecided streams are included changes the headline percentage, so
-  the rule must be stated on the card, not just in code.
-  **Layman:** Shows how much of your pay is already promised to bills before you spend anything.
-  Kind: feature.
-  Source: user-request-2026-08-05 (layman-comprehension suggestions).
-
-- 📋 [FIBR-0234] **Show the yearly equivalent beside every recurring amount.**
-  A presentation change rather than a feature: anywhere a recurring
-  amount is shown, show its yearly equivalent beside it.
-
-  "R85/week → R4,420/year"
-
-  `RecurringItem.monthly_equivalent` already exists (FIBR-0142 D8), so
-  the cadence normalisation is done and this is a formatting change on
-  top of it.
-
-  Small repeated amounts are the single thing laymen underestimate most
-  badly, and this is the cheapest correction to that error the app can
-  make — which is what earns it a place despite being cosmetic.
-
-  Two cares: rounding (a yearly figure derived from a weekly median
-  should not imply false precision), and phrasing that does not read as
-  a promise — it is an equivalent at today's rate, not a prediction.
-  **Layman:** Shows what a small regular payment adds up to over a year, which is usually far more than people expect.
-  Kind: enhancement.
-  Source: user-request-2026-08-05 (layman-comprehension suggestions).
-
-- 📋 [FIBR-0235] **Show the forecast's uncertainty — a band and a data-basis label, not a confident line.**
-  The app forecasts and detects patterns. A layman who trusts a
-  confident-looking WRONG forecast is a real harm — this is money, and
-  a crisp single line reads as certainty the data does not support.
-
-  Two changes:
-
-  - Draw the projection as a band rather than one line.
-  - Label the basis on its face ("based on 3 months of data").
-
-  `ForecastMode` already distinguishes ANCHORED from NET_FLOW, so the
-  weaker case is known to the code — it is just not visible enough at a
-  glance to change how the number is read.
-
-  Pairs with the "safe to spend" item, which must not print a figure it
-  cannot stand behind. Consider these together: the same honesty rule
-  drives both, and shipping the number without the caveat is worse than
-  shipping neither.
-  **Layman:** Makes it obvious how sure (or unsure) the app is about a prediction, so nobody leans on a guess.
-  Kind: ux.
-  Source: user-request-2026-08-05 (layman-comprehension suggestions).
-
-- 📋 [FIBR-0238] **Add a deterministic "What checks this" tally check so the row count stops being hand-counted.**
-  Every spec carrying a §11-style "What checks this" table closes it with a
-  prose tally ("Eighteen rows, five with a bolded `nothing`"). That tally
-  was miscounted by hand THREE times in a single FIBR-0231 session — 19
-  for 18, 20 for 22, and 26/10 for 28/11 — twice in the same direction,
-  and each time it was a cold reviewer who caught it, at review prices.
-
-  The rule this trips is documentation.md § 8.2 / spec-format.md § 5.7:
-  the same class caught twice becomes a mechanical check. It is trivially
-  deterministic — count table rows under the heading, count rows matching
-  `**nothing**`, compare against the two numbers in the following
-  paragraph.
-
-  FIBR-0231 works around it locally by stating the awk command beside the
-  figure, which is the right shape but the wrong home: every spec with
-  such a table needs it, not one. The check belongs in `/doc-lint`
-  (a new finding kind, e.g. `tally_mismatch`), which already owns the
-  deterministic half and is already run at /write-spec write time, before
-  a /cold-eyes dispatch, and in /debt-sweep.
-
-  Note `/doc-lint` is a machine-local global skill
-  (`~/.claude/skills/doc-lint/`), not part of this repo — so this item is
-  a pointer to work that lands there, and the verify step is that a spec
-  with a deliberately wrong tally comes back with the new finding.
-  **Layman:** Specs end with a little "here is what tests each rule" table and a sentence counting its rows. I keep miscounting that sentence by hand; this makes the computer count it instead.
-  Kind: doc.
-  Source: in-session-2026-08-06 (FIBR-0231 cold-eyes run, 3 miscounts of one table).
-
-- 📋 [FIBR-0240] **Credit-card statement account auto-detect — needs a stable card identifier.**
-  Deferred from FIBR-0086 (§9). Standard Bank credit-card statements (importer Family C) are EXCLUDED from import auto-detect because neither number on the page is usable as a matching key. The text after the statement's `account number` label is the DEBIT-ORDER account (the current account that pays the card) — measured 2026-08-06 across 13 real statements, where it normalises to exactly the user's current-account number, so matching on it would file every card statement under the current account. The card's own identifier is a masked PAN (printed as `Account NNNN **** **** NNNN`) which is NOT stable: the same corpus shows it changing mid-sequence on a card reissue — four statements carry one PAN, the following nine carry another. Revisit if SB starts printing a non-PAN account number on the statement, or if the user accepts re-entering the last four digits after each reissue. Until then credit-card imports keep the manual account pick.
-  **Layman:** Credit-card statements still need you to pick the account by hand — the number printed on them belongs to the account that pays the card, not to the card itself.
-  Kind: feature.
-  Source: spec-FIBR-0086-2026-08-06 (measured against 13 real SBSA credit-card statements).
-
-- 📋 [FIBR-0241] **Masked / trailing-digit account matching on import.**
-  Deferred from FIBR-0086 (§3 decision 3, §9). The FIBR-0086 bullet originally asked to match on TRAILING digits when a statement masks its account number (e.g. "xxxx1234"). Measured 2026-08-06 across 48 real Standard Bank statements: NO statement presents a masked number as its OWN identifier. The only masked self-identifier is the credit-card PAN, which FIBR-0232 excludes for separate reasons; every other masked string in the corpus (printed as `*****NNNNNNN`) is a COUNTERPARTY inside a transaction row, which must never be matched on. So the loosened matching path had nothing to exercise it and was left unbuilt rather than shipped untested. Revisit trigger: the first real statement or OFX file whose own identifier is masked.
-  **Layman:** If a bank ever prints only the last few digits of its own account number, finbreak will need a looser matching rule — no statement we have does that today.
-  Kind: feature.
-  Source: spec-FIBR-0086-2026-08-06 (48-statement corpus measurement).
-
-- 📋 [FIBR-0242] **Account auto-detect for statement Family E.**
-  Deferred from FIBR-0086 (§4.2, §9). FIBR-0086 enables header account-number extraction for importer families A, B and D. Family E (the Current-account "Payments / Deposits" layout added by FIBR-0190) is omitted because no Family E statement exists in the user's 48-file corpus — it would be expected to print a Family-A-style `Account Number` label, but including it would ship an untested claim about a layout nobody has seen. Add `Family.E` to `_ACCOUNT_NUMBER_FAMILIES` in `importers/standard_bank.py` and add a synthetic extraction test once a real Family E statement is available to measure against.
-  **Layman:** One statement layout is left out of automatic account-filing because we have no real example of it to check against.
-  Kind: feature.
-  Source: spec-FIBR-0086-2026-08-06.
-
-- 📋 [FIBR-0243] **OFX account-type prefill — map &lt;ACCTTYPE&gt; onto finbreak's account types.**
-  Deferred from FIBR-0086 (§4.1, §9). `models.OfxAccountInfo` already carries
-  `account_type` straight from ofxparse, and the FIBR-0086 roadmap bullet asks
-  for "type/currency where available" — but FIBR-0086 deliberately leaves the
-  create-account type prefill empty for OFX imports. Reason: the OFX
-  `&lt;ACCTTYPE&gt;` vocabulary (CHECKING, SAVINGS, MONEYMRKT, CREDITLINE, ...)
-  does not map onto this app's account types without a translation table nobody
-  has validated against real files, and a WRONG prefilled type is worse than an
-  empty one the user fills in — it looks authoritative. Build the mapping when
-  there are real OFX files to validate it against; the corpus that grounded
-  FIBR-0086 is 48 PDFs and contains none.
-  **Layman:** When importing an OFX file, finbreak could guess whether an account is a cheque or savings account — it doesn't yet, because guessing wrong is worse than leaving it blank.
-  Kind: feature.
-  Source: spec-FIBR-0086-2026-08-06 cold-eyes loop 2.
-
-- 📋 [FIBR-0283] **Accounts have no bank field, so a multi-bank vault distinguishes them only by account number.**
-  The Accounts screen carries Name, Type, Account number, Note and
-  Status, and nothing else. A vault holding accounts at two banks
-  therefore records the owning bank nowhere at all: the only signal is
-  the account number itself, which is masked in the table by default
-  and is not something a person recognises on sight. Reported by the
-  user 2026-08-19 against a real vault of six accounts at one bank
-  plus one at another.
-
-  Scope:
-  - A `bank` field on the account record: schema migration, repository
-    and domain model.
-  - An input on the Accounts screen's add / update row, and a Bank
-    column in the accounts table.
-  - Carried through everywhere an account is named to the user - the
-    account picker, the import wizard's pick step, and account
-    headings in reports and PDF export.
-
-  Two design calls to settle when this is picked up, deliberately NOT
-  decided here:
-  - Free text with a suggestion list, versus a closed enum. A closed
-    list refuses a bank whose statements we cannot yet parse, and the
-    importer families are Standard Bank only today (FIBR-0050), with
-    other banks tracked as FIBR-0074 - so free text with suggestions
-    is the likely answer.
-  - Whether the field is optional. Existing accounts must migrate to
-    an empty bank rather than a guessed one; inferring it from an
-    account number is exactly the fragile guess this item removes.
-
-  Adjacent and out of scope: FIBR-0086's import auto-detect and
-  FIBR-0241's masked / trailing-digit matching both compare account
-  numbers alone. Now filed as FIBR-0284: a bank on the account gives
-  FIBR-0086's create-prompt somewhere to store the bank name it
-  already extracts, and is the precondition that makes FIBR-0241's
-  looser trailing-digit key safe to build.
-  **Layman:** Add a "Bank" field to each account, so you can see at a glance which accounts are at which bank instead of having to match account numbers.
-  Kind: feature.
-  Source: user-request-2026-08-19.
-  Lanes: ui, repositories, services.
-
-- 📋 [FIBR-0284] **Import auto-detect should use the account's bank as a matching signal, not the account number alone.**
-  BLOCKED ON FIBR-0283 (the `bank` field itself). File this now so the
-  dependency is visible; there is nothing to build until that field
-  exists.
-
-  FIBR-0086 shipped auto-detect matching on the FULL normalised account
-  number, and falls back to a manual pick whenever the number matches
-  zero or multiple accounts. Four places a bank on the account earns
-  its keep, in descending order of how real they are today:
-
-  1. It makes FIBR-0086's own create-prompt promise storable. That
-     bullet already says the prompt to create an unrecognised account
-     is "pre-filled from statement metadata (number, BANK NAME IF
-     PRINTED, type/currency where available)" - and there has never
-     been a field to put the bank name in. This is the one part that
-     is live the moment FIBR-0283 lands.
-
-  2. It is the precondition that makes FIBR-0241 safe. That item
-     loosens matching to trailing digits, which is a genuinely weaker
-     key; bank + last-four is materially safer than last-four alone.
-     Worth having in place BEFORE FIBR-0241 is built, not after.
-
-  3. Multi-match disambiguation. FIBR-0086's "matches multiple
-     accounts" branch currently falls back to a manual pick; a
-     detected bank narrows it to one. Theoretical against today's
-     single-bank corpus, and live the moment a second bank's account
-     is added.
-
-  4. A wrong-bank refusal signal. A statement clearly from bank X
-     whose only number match is an account at bank Y is evidence of a
-     collision rather than a match, and should refuse rather than
-     auto-file - cf. FIBR-0059, never silently import to the wrong
-     account.
-
-  Design note: detecting the bank FROM the statement is the limiting
-  factor, not storing it. The only dedicated reader today is Standard
-  Bank (FIBR-0050); other banks are FIBR-0074. So scope this to a
-  best-effort bank hint with a manual fallback, in the same
-  smart-default-never-silent shape FIBR-0086 already uses. Where no
-  bank can be read off the statement, behaviour must be exactly what
-  it is today.
-
-  Do NOT infer a bank from an account number's shape or prefix. That
-  is the fragile guess FIBR-0283 exists to remove, reintroduced one
-  layer down.
-  **Layman:** Once accounts know which bank they belong to, statement auto-filing can use that too - so it picks the right account when two accounts look alike, and refuses rather than guessing when the statement is clearly from a different bank.
-  Kind: feature.
-  Source: user-request-2026-08-19 (adjacency raised while filing FIBR-0283).
-  Lanes: services, importers, ui.
-
 ### ⚡ Performance
 
 - ✅ [FIBR-0025] **Enable SQLite WAL mode.**
@@ -10235,27 +11033,6 @@ because retrofitting them is a data migration.
   Kind: perf.
   Lanes: data, perf.
 
-- 📋 [FIBR-0027] **SQL-side dashboard aggregation + incremental refresh.**
-  Compute dashboard summaries / charts with SQL `GROUP BY` rather than
-  Python loops, and refresh incrementally on a single-row edit instead of
-  a full recompute; add supporting indexes (`date`, `category_id`). Keeps
-  the dashboard fast at tens of thousands of transactions. Target phase:
-  P10. Dependencies: FIBR-0012. Lanes: reporting, perf. Kind: perf.
-  **Layman:** The dashboard stays fast once you have tens of thousands of transactions, and editing one row no longer recalculates everything.
-  Kind: perf.
-  Source: user-request-2026-07-01.
-  Lanes: reporting, perf.
-
-- 📋 [FIBR-0028] **Virtual table model for the transaction list.**
-  Back
-  the transaction table with a `QAbstractTableModel` (lazy / virtual
-  rows) rather than per-row widgets, so a large history scrolls smoothly.
-  Target phase: P10. Dependencies: FIBR-0012. Lanes: ui, perf.
-  Kind: perf. Source: user-request-2026-07-01.
-  **Layman:** A long transaction history scrolls smoothly instead of slowing down as it grows.
-  Source: user-request-2026-07-01.
-  Lanes: ui, perf.
-
 ---
 
 - ✅ [FIBR-0071] **Add DB indexes for the import-dedup + count lookups (full-table scans today).**
@@ -10264,45 +11041,12 @@ because retrofitting them is a data migration.
   Source: indie-review-2026-07-10 (M-data3).
   Resolved 2026-07-17 (commit 6c74966): shipped together with FIBR-0098. The composite transactions(account_id, occurred_on, amount_minor) flattens existing_for() import-dedup + count_for_account; categorization_rules(category_id) covers the rules count_for_category. EXPLAIN QUERY PLAN test proves the dedup probe is an indexed search, not a scan.
 
-- 📋 [FIBR-0097] **Virtualize the transaction tables — QTableWidget → QTableView + QAbstractTableModel.**
-  Verified 2026-07-11: Home, Statements, and Rules use QTableWidget (ui/home.py, ui/statements.py, ui/rules.py), which builds a widget for EVERY cell — fine at 50 rows, sluggish at thousands. Migrate to QTableView + a QAbstractTableModel so rendering is virtualized (only visible rows built). Also a cleaner data/view separation that FIBR-0012 (sort/filter) and FIBR-0084 (movable/resizable columns) build on naturally. Sizeable refactor; own spec. Deps: FIBR-0051/0052 (the current widgets).
-  **Layman:** Keep the transaction lists fast even with thousands of rows by only drawing the rows you can actually see.
-  Kind: perf.
-  Source: claude-suggestion-2026-07-11.
-
 - ✅ [FIBR-0098] **Add database indexes on the hot query columns.**
   Verified 2026-07-11: the schema (migrations.py) declares NO indexes. Add them on the frequently-queried columns — transactions(occurred_on), transactions(account_id), transactions(category_id), transactions(statement_period_id) (+ any dedup/lookup key). A forward migration (current v7 -> v8). Speeds listing, filtering (FIBR-0012), cross-source dedup, and delete-cascade. Cheap, high-value. Deps: FIBR-0005/0006/0010/0052 (the columns).
   **Layman:** Add quick-lookup indexes so finbreak finds and filters transactions fast as your history grows.
   Kind: perf.
   Source: claude-suggestion-2026-07-11.
   Resolved 2026-07-17 (commit 6c74966): v9->v10 forward migration adds five indexes on the hot columns — transactions(account_id, occurred_on, amount_minor) [composite; its account_id prefix also serves count_for_account, so no redundant standalone account_id index], transactions(occurred_on), transactions(category_id), transactions(statement_period_id), and categorization_rules(category_id) [the rules half of the category-delete blast radius]. Pure-DDL, atomic (one owned transaction; a wedged build rolls back to a re-openable v9). Subsumes FIBR-0071 + FIBR-0026. New tests/features/db_performance/ suite; full gate green.
-
-- 📋 [FIBR-0099] **Faster cold start — PyInstaller --onedir inside the AppImage (skip per-launch extraction).**
-  Verified 2026-07-11: the release build uses PyInstaller --onefile (scripts/_build-smoke-in-container.sh:85), which re-extracts the whole bundle to /tmp on EVERY launch (adds seconds of cold-start latency). Since the AppImage is ITSELF a self-contained mounted container, freeze with --onedir and place the dir inside the AppDir — the app then runs directly, no per-launch extraction. Transparent to the user; measure before/after start time and confirm the FIBR-0003 clean-room bundling proof still passes. Deps: FIBR-0003/FIBR-0054 (build pipeline).
-  **Layman:** Make the app open faster by not unpacking itself every single time you launch it.
-  Kind: perf.
-  Source: claude-suggestion-2026-07-11.
-
-- 📋 [FIBR-0104] **Move slow statement import onto a worker thread (responsive UI + native overlap).**
-  User idea (multi-threading for performance). Honest framing: Python's GIL means threading helps RESPONSIVENESS + native-code overlap, NOT pure-Python CPU parallelism. The app already threads its two slow blocking ops correctly (Argon2 key derivation via DeriveWorker; network via UpdateCheck/DownloadWorker — both native/GIL-releasing). Best next win: move IMPORT (pdfplumber text extraction, in-memory pikepdf decrypt, CSV/OFX parse, dedup + commit) onto a QThread worker (reuse the ui/_worker.py DeriveWorker pattern) with a progress indicator — today it runs ON THE UI THREAD (security-model / FIBR-0075 note: pdfplumber extract runs on the UI thread), so a large statement freezes the window. These ops are native-heavy (pdfplumber/pikepdf C++, SQLCipher C) so they RELEASE the GIL → genuine overlap with the GUI. CAVEAT: SQLite/SQLCipher connections are NOT shareable across threads — the worker needs its OWN connection to the vault (or marshal results back via signals). Pure-Python CPU hotspots (rule matching) won't benefit (GIL) — indexes (FIBR-0098) + virtualized tables (FIBR-0097) are the levers there. Deps: FIBR-0007/0008/0009 (import), reuses the QThread worker pattern; pairs with FIBR-0065 (non-blocking dialog discipline)."
-  **Layman:** When importing a big statement, do the heavy reading on a background thread with a progress bar so the window stays responsive instead of freezing.
-  Kind: perf.
-  Source: user-suggestion-2026-07-11.
-
-- 📋 [FIBR-0147] **Index the transfer_pairs cascade-delete FK columns.**
-  Surfaced while shipping FIBR-0098. `transfer_pairs` (FIBR-0011) has two
-  `ON DELETE CASCADE` FKs — `txn_a_id` / `txn_b_id` REFERENCES transactions(id) —
-  but SQLite does NOT auto-index FK columns, so each transaction delete scans
-  `transfer_pairs` for a match. `delete_for_statement` deletes many transactions
-  at once (one statement), so a bulk statement delete is O(deleted × pairs). The
-  table is small today (only confirmed/rejected pairs), so it was left OUT of the
-  FIBR-0098 index set to stay in-lane. Add `CREATE INDEX` on
-  `transfer_pairs(txn_a_id)` and `transfer_pairs(txn_b_id)` (a v10->v11 forward
-  migration) if a large multi-year vault with many detected transfers measures a
-  slow statement delete. Kind: perf.
-  **Layman:** Make deleting a big statement fast even when transfers have been detected.
-  Kind: perf.
-  Source: claude-suggestion-2026-07-17 (deferred from FIBR-0098).
 
 ### 🧹 Warnings & tech debt
 
@@ -10475,36 +11219,6 @@ is a future error tomorrow.
   Source: indie-review-2026-07-10 loop-2 (misc LOW).
   Resolved (2026-07-10): (1) ui/rules.py _on_move now types direction as Literal['up','down'], dropping the # type: ignore[arg-type] against move_rule. (3) FIBR-0007 spec INV-7 narrative corrected with a FIBR-0052 addendum — commit_import inserts the period row first (statement_period_id FK) then the transactions batch, and the wedge test raises on the transactions INSERT. (2) _selected_row dedup deliberately NOT done — only 2 sites, Rule-of-Three defers extraction to the 3rd (CLAUDE.md §3).
 
-- 📋 [FIBR-0102] **Tighten mypy toward strict.**
-  Verified 2026-07-11: [tool.mypy] sets only python_version + per-module stub-ignores — NOT strict. Enable strict (or stage it: disallow_untyped_defs, warn_return_any, disallow_any_generics, no_implicit_optional) to catch a class of bugs at the type layer — valuable for a money app. Incremental: turn flags on one at a time, fix the fallout, keep the gate green each step. Deps: none (gate/CI config).
-  MEASURED (2026-09-21), and it SPLITS the item into one tractable half and one
-  much larger one. mypy --strict over src+tests reports 3800 errors across 107
-  files, which reads as impossible; the split is what makes it actionable.
-
-  - src ALONE: 46 errors across 26 files -- 19 no-any-return, 15
-    no-untyped-def, 9 type-arg, plus three singletons worth fixing on their own
-    merits: a redundant cast at ui/_widgets.py:103, SIDECAR_VERSION not
-    explicitly re-exported from crypto (services/vault_migration.py:28), and the
-    expected consequence of subclassing the untyped OfxParser
-    (importers/ofx_importer.py:47). That is a bounded one-sitting job.
-  - tests: the other 3754, dominated by 2091 no-untyped-def + 1188
-    no-untyped-call. That is annotating the test suite, not fixing defects, and
-    it overlaps FIBR-0331.
-
-  So strict-on-src is worth doing as its own change; strict-on-tests is a
-  different and much larger project and should be decided separately rather than
-  inherited by whoever picks this up.
-
-  Source: a check-code sweep with --strict, run 2026-09-21.
-  **Layman:** Turn on stricter automatic type-checking to catch more bugs before they ship.
-  Kind: refactor.
-
-- 📋 [FIBR-0103] **Consolidate presentation formatting into one module.**
-  FIBR-0083 introduces src/finbreak/datetime_format.py (date/time display). Fold the existing amount/currency QLocale formatting (ui/_amount.py::_format_amount -> QLocale.toCurrencyString; already lifted out of ui/home.py and now imported by 8 modules, so the remaining work is the fold into a shared formatting package) into a shared formatting package alongside it, so all presentation logic is centralised + unit-tested in one place (Rule of Three: date + currency + future). Deps: FIBR-0083 (lands the first formatter). Small refactor; do AFTER FIBR-0083 ships.
-  **Layman:** Keep all the 'how numbers and dates look' code in one tidy, tested place.
-  Kind: refactor.
-  Source: claude-suggestion-2026-07-11.
-
 - ✅ [FIBR-0141] **CategoryService.update_category has no descendant-cycle guard — re-parenting a category under its own child creates a cycle.**
   Found during the FIBR-0138 close (indie-review). `update_category`
   (`src/finbreak/services/categories.py`) blocks re-parenting a *root* and
@@ -10560,24 +11274,12 @@ is a future error tomorrow.
   Kind: review-fix.
   Source: indie-review-2026-07-23.
 
-- 📋 [FIBR-0169] **Auto-update anti-rollback: bind the offered version into the signed artifact to prevent a signed-but-older downgrade.**
-  indie-review (update/signature lane), LOW — deferred (design + release-pipeline change, needs a spec). The Ed25519 signature binds only the artifact BYTES, not the version; the offered version comes verbatim from the untrusted GitHub tag_name. A GitHub-release-WRITE attacker (no signing key — the residual security-model §2 already acknowledges) could re-publish an old, still-validly-signed AppImage under a higher tag; check_for_update sees it as newer, download_and_verify passes (authentic bytes), and the user is silently downgraded to a version with known bugs. Fix options: sign a manifest naming version+hash, or refuse to install a payload whose embedded __version__ <= current. At minimum document the downgrade case alongside the existing 'no rollback' accepted-risk in FIBR-0054 Out-of-scope.
-  **Layman:** Stop a would-be attacker (who can write GitHub releases but holds no signing key) from tricking the app into installing an older, still-signed version.
-  Kind: security.
-  Source: indie-review-2026-07-23.
-
 - ✅ [FIBR-0170] **Install the verified update from the in-memory buffer to close the verify-in-memory / install-from-disk TOCTOU.**
   indie-review (update/signature lane), INFO — out of the current threat model (needs a same-user/root attacker able to rewrite the 0600 mkstemp temp in the target dir, explicitly out of scope per security-model §4), so deferred. download_and_verify verifies data read into memory (asset_tmp.read_bytes()) but the installer later os.replace()s the on-disk temp — the file could differ from the verified bytes in the window. Hardening: write the verified `data` buffer to a fresh temp and install THAT, rather than trusting the re-read file. Low priority; noted for completeness.
   **Layman:** Extra hardening so the exact bytes we checked are the exact bytes installed.
   Kind: security.
   Source: indie-review-2026-07-23.
   Resolved (2026-07-28): download_and_verify now writes the verified in-memory buffer to a fresh mkstemp (0600, O_EXCL) and deletes the download temp it re-read those bytes from, so the file the installer swaps in is the file the signature check passed. Shrinks the swap window from the whole transfer to the moment before os.replace(). Test: test_FIBR0170_installs_the_verified_buffer_not_the_re_read_download.
-
-- 📋 [FIBR-0180] **Decide deliberately whether to move the CI/build base image off Debian 12 (bookworm, now oldstable).**
-  ci.yml, ci-docker.sh and build-smoke.sh all pin python:3.12-slim-bookworm. Debian 13 (trixie) has been stable since Aug 2025, so bookworm is oldstable and a python:3.12-slim-trixie image exists. This is NOT a routine bump: the build image's glibc (~2.36) is the EFFECTIVE floor of every frozen artifact (libpython links it - see the pyproject.toml dependencies comment), so moving to trixie raises the minimum glibc an AppImage/.exe user needs. The debt sweep added that rationale as a comment on ci.yml's container line rather than bumping. Decide: (a) hold on bookworm until the AppImage's target-distro floor justifies moving, or (b) bump all three call-sites together and re-run build-smoke to confirm the clean-room launch still passes on the oldest distro we claim to support. Either way, record the decision so the next sweep does not re-raise it.
-  **Layman:** Our build machine runs an older Debian. Moving to the newer one is a trade-off: it may stop finbreak running on older Linux systems, so it needs a decision rather than a routine update.
-  Kind: chore.
-  Source: debt-sweep-2026-07-26.
 
 - ✅ [FIBR-0181] **Consolidate the five hand-rolled Decimal to minor-units conversions behind one to_minor() helper.**
   Five independent implementations of the same Decimal->minor-units conversion: services/alerts.py:167 (_to_minor), services/forecast.py:215, importers/standard_bank.py:445 (_minor), importers/ofx_importer.py:157 (inline), services/transactions.py:73 (a scaleb variant). The duplication is already self-admitted in two places: alerts.py's docstring says it is 'the exact idiom ForecastService._to_input uses', and ofx_importer.py's comment points at a _minor that lives in a different module it does not import. The REVERSE direction already has a single home (transactions.to_display_decimal) - add the forward to_minor(amount, exponent) beside it and route all five through it. Well past Rule of Three. Deliberately NOT done in the debt sweep: this is money code in a correctness-critical app, so it wants its own reproduce-first cycle with a test pinning rounding behaviour (esp. the scaleb variant, which may not round identically) rather than a drive-by edit. Related watch item: services/forecast.py CASH_TYPES and services/reconciliation.py _RECONCILABLE_TYPES are the identical frozenset kept in manual sync by comment - only 2 sites, so below Rule of Three; extract on the third caller.
@@ -10646,67 +11348,6 @@ is a future error tomorrow.
   Source: in-session-2026-08-04.
   Lanes: dependencies, security.
 
-- 📋 [FIBR-0239] **design.md's service list and architecture diagram are two services behind.**
-  Noticed while adding MonthSummaryService to `docs/design.md`'s
-  "Service layer — one service per concern" list (FIBR-0231 § 12). The
-  list, and the mermaid `subgraph Svc` diagram above it, both name
-  Auth / Import / Categorization / TransferDetection / Reporting /
-  PdfExport / Update / Crypto — but NOT `RecurringService` (FIBR-0142)
-  or `AlertService` (FIBR-0172), both of which shipped and both of
-  which HomeView constructs today. So the list was already incomplete
-  before this item touched it.
-
-  Left as-is rather than fixed in passing: repairing pre-existing doc
-  debt inside a feature commit is out of that commit's lane, and the
-  mermaid diagram needs the same two nodes plus their edges, which is a
-  second decision (the diagram is deliberately not exhaustive — it omits
-  the repositories layer's members too, so "add every service" may be
-  the wrong answer for the picture even where it is right for the list).
-
-  Fix: add RecurringService and AlertService to the prose list; decide
-  separately whether the diagram tracks the list or stays a sketch, and
-  say which in the diagram's caption so the next session does not have
-  to re-derive the answer.
-  **Layman:** An internal architecture document lists most of the app's parts but has quietly fallen behind by two.
-  Kind: doc-fix.
-  Source: in-session-2026-08-06 (surfaced while landing FIBR-0231).
-
-- 📋 [FIBR-0251] **ci-docker.sh cannot run during a GitHub outage — ci-setup.sh downloads its pinned binaries from GitHub releases.**
-  Surfaced 2026-08-06 while proving the tree green during a GitHub
-  Actions major outage. `scripts/ci-setup.sh` fetches the four pinned
-  non-pip binaries (gitleaks, shellcheck, actionlint, zizmor) from
-  GitHub release URLs, so `scripts/ci-docker.sh` inherits a hard
-  dependency on GitHub being up. Observed: gitleaks 8.30.1 installed,
-  then shellcheck's download returned `curl: (22) ... error: 504` and
-  the run died in `tar`.
-
-  Consequence: during a GitHub incident BOTH the CI run and the
-  containerised local reproduction are unavailable at once, leaving only
-  `scripts/ci-local.sh` on a desktop that already has the binaries on
-  PATH. That is the pre-push hook's path, so the gate itself still
-  works — this is a loss of the *reproduction* tool, not of the gate.
-
-  Options, cheapest first: (a) cache the four binaries in a local
-  directory and have ci-setup.sh reuse a present, version-matching copy
-  before reaching for the network; (b) let ci-docker.sh mount the host's
-  already-downloaded binaries; (c) accept it and document the fallback.
-  Note (a) must still verify the pinned version, or the cache becomes a
-  way to silently run an older rule set — the exact drift the pins in
-  CLAUDE.md exist to prevent.
-
-  Not urgent: the pre-push gate is unaffected.
-  **Layman:** The "reproduce CI exactly on my own machine" check stops working when GitHub itself is down, which is exactly when you most want it.
-  Kind: chore.
-  Source: in-session-2026-08-06 (GitHub Actions major outage, 15:22 UTC).
-  Context for a later session reading red CI on main: the two failed
-  runs on `983559e` (2026-08-06, 15:53 and 16:23 UTC) were THIS outage,
-  not a code defect. Both died before any gate stage ran — the first
-  never acquired a runner, the second failed to download
-  `actions/checkout` ("Service Unavailable"). The tree was green
-  throughout: `./scripts/ci-local.sh` passed all 11 stages, 1840 passed /
-  3 skipped, mypy clean over 178 files. Do not re-investigate those two
-  runs; re-run them once Actions is healthy.
-
 - ✅ [FIBR-0257] **The CVE-2026-69247 fix is committed but unreleased — every downloadable build still ships cryptography 49.0.0.**
   FIBR-0221 pinned `cryptography==50.0.0` on 2026-08-04 and is marked ✅ —
   but the newest release, v0.1.19, was tagged 2026-08-02. The fix has
@@ -10769,22 +11410,6 @@ is a future error tomorrow.
   socket and the test passes vacuously. Confirmed red (exit -6, SIGABRT)
   before the fix; the documented bare `python -m finbreak --self-test`
   now prints FINBREAK_SELFTEST_OK in a display-less container.
-
-- 📋 [FIBR-0262] **`pytest tests/features/bundling/` alone aborts the interpreter.**
-  Pre-existing (reproduced on baf48b8, before the FIBR-0261 fix), found
-  while running that directory on its own. The three `..._selftest_fail_...`
-  tests monkeypatch `_check_qt` to a no-op, so no `QApplication` is
-  constructed, and the unpatched `_check_icons` then renders a `QPixmap`
-  — which aborts the process (SIGABRT) when no QApplication exists. In a
-  full-suite run an earlier test has already built one, so the whole gate
-  stays green and only the directory-alone / `-k` invocation dies; both
-  are invocations CLAUDE.md § "Run tests / a single test" documents.
-  Fix: patch `_check_icons` alongside `_check_qt` in those tests, or give
-  them the shared `qapp` fixture, so they stop depending on global state
-  another test happens to leave behind.
-  **Layman:** One folder of tests crashes if you run just that folder; run the whole suite and it passes, which is why nobody noticed.
-  Kind: test.
-  Source: in-session-2026-08-11.
 
 - ✅ [FIBR-0263] **A batch-import UI test raced the report and turned CI red at random.**
   `test_INV14_done_waits_for_the_report` waited only for every file's
@@ -10949,26 +11574,6 @@ is a future error tomorrow.
   Source: close-phase-2026-08-21 (review-code lane 1 + lane 2, FIBR-0019 close).
   Lanes: crypto, security.
 
-- 📋 [FIBR-0311] **services/pdf_export.py's translated strings extract to an empty catalog.**
-  The module routes 30 user-facing strings through a one-argument `_tr(text)`
-  wrapper, and pyside6-lupdate extracts nothing through a wrapper -- measured
-  2026-08-25 on a probe file. Its own docstring claims the opposite: "keeps every
-  user-facing string translatable".
-
-  Not fixed with the rest of FIBR-0310 R3 because the mechanical inline makes the
-  file worse: a third of the sites sit inside f-strings, where
-  `QCoreApplication.translate("PdfExport", "Income")` blows the 88-column limit
-  and the HTML becomes unreadable. The fix is to hoist the labels to locals
-  before each f-string, which is a readability refactor of the PDF renderer
-  rather than the plumbing change R3 was.
-
-  tests/features/i18n/ excludes this file BY NAME and carries a leg that goes RED
-  once it conforms, so the exclusion cannot outlive the work. Closing this item
-  means deleting `_KNOWN_OFFENDER`, its use, and that leg.
-  **Layman:** The PDF report's labels look translated in the code but would come out in English in every language.
-  Kind: refactor.
-  Source: in-session-2026-08-25 (FIBR-0310 R3).
-
 - ✅ [FIBR-0312] **tests/features/recovery_key/spec.md still says the suite is expected to fail.**
   The spec carries a "## Status -- this suite is expected to FAIL" section
   stating that FIBR-0019 is not implemented and that keywrap.py,
@@ -11088,55 +11693,6 @@ is a future error tomorrow.
   **Layman:** Thirty spreadsheets sharing one unknown layout still ask you to describe it thirty times.
   Kind: fix.
   Source: review-code 2026-08-31 lane=import-orchestration.
-
-- 📋 [FIBR-0320] **The Linux relaunch waits on the PyInstaller child, where Windows was redesigned to wait on the image.**
-  FIBR-0131 D3 states that onefile is a two-process tree and that the bootloader
-  parent holds the write-lock and does the _MEI cleanup, then concludes waiting on
-  a single PID is fragile. Windows was redesigned to poll the exe image path; the
-  Linux waiter still polls os.getpid().
-
-  Deliberately NOT fixed blind. The finding rests on os.getpid() being the child
-  rather than the bootloader, which needs confirming inside a live AppImage
-  (ps -o pid,ppid,comm); if it is the bootloader the finding collapses to INFO.
-  And per the known trap, a relaunch change only proves out on the update AFTER
-  it ships, so guessing here is the worst option available.
-  MEASURED (2026-09-21), and the finding STANDS. This bullet said not to fix it
-  blind and named the measurement that would settle it; that measurement is now
-  done, so the next session is not guessing.
-
-  PyInstaller onefile on LINUX is a two-process tree, exactly as FIBR-0131 D3
-  asserts for Windows. Read off a live 0.1.23 AppImage:
-
-    PID     PPID    what
-    332680  332675  the BOOTLOADER -- /proc/332680/maps carries NO libpython and
-                    NO _MEI mapping
-    332704  332680  the APP -- 512 _MEI maps, 5 libpython maps, 4 threads
-
-  So the Python process is the CHILD, and os.getpid() inside the app returns the
-  child's pid. update_installer.AppImageInstaller.apply reads os.getpid() and the
-  waiter polls `kill -0` on it, so it waits on the process that exits FIRST and
-  returns while the bootloader parent is still doing its _MEI cleanup. That is
-  the fragility D3 describes, and it does NOT collapse to INFO.
-
-  Note for whoever fixes it: the child's PPID is the bootloader, so os.getppid()
-  names the process actually worth waiting for -- but only when frozen. Run from
-  source the parent is a shell, and waiting on that would hang until the shell
-  exits, so the fix has to be conditional on being frozen. Windows solved the
-  same problem by polling the exe IMAGE path instead, which is the other
-  available shape.
-
-  Still deliberately NOT fixed here, and the reason is unchanged: the RUNNING
-  (old) version performs each relaunch, so a relaunch change only proves out on
-  the update AFTER the one that ships it. That makes it unverifiable in-session
-  by construction, and an unverifiable change to the updater immediately before
-  a 1.0 is the wrong risk. Not a 1.0 blocker (FIBR-0304 does not list it).
-
-  Also corrected: this bullet inferred the two-process tree from FIBR-0131 D3,
-  whose claim is written Windows-scoped. The inference happened to be right, and
-  it is now measured on Linux rather than carried over.
-  **Layman:** After a self-update the app might fail to reopen -- and it cannot be tested until the next update ships.
-  Kind: investigate.
-  Source: review-code 2026-08-31 lane=update-installer.
 
 - ✅ [FIBR-0321] **A remembered PDF password is written to the provisional account before the destination is known.**
   FIBR-0249 added a prior/restore pair, but the restore runs only after a
@@ -11841,274 +12397,6 @@ is a future error tomorrow.
   Kind: review-fix.
   Source: review-code 2026-08-31.
 
-- 📋 [FIBR-0329] **check-code has no tool that reads shell for supply-chain fetches.**
-  FIBR-0318 fixed five unverified `curl | tar` fetches in ci-setup.sh and
-  _build-smoke-in-container.sh. No tool in check-code's set decides that class:
-  zizmor reads workflows only and covers `uses:` pins, actionlint checks workflow
-  correctness, and shellcheck reads syntax rather than provenance.
-
-  So the fix holds only while someone remembers. A semgrep rule matching a fetch
-  piped into an extractor, or one reaching `install`, would make it mechanical --
-  and check-code already runs semgrep.
-  **Layman:** Nothing automatically catches a build script downloading a tool without verifying it.
-  Kind: chore.
-  Source: check-code 2026-08-31 tool-gap.
-
-- 📋 [FIBR-0332] **A batch mapping answered with the profile-name field blank is still asked once per file.**
-  Surfaced while fixing FIBR-0319 and deliberately NOT widened into it.
-
-  FIBR-0319 makes an answered mapping settle every other file sharing that
-  header -- but only through the SAVED PROFILE, because that is the
-  mechanism § 4.3 gives for remembering an answer. _on_map_next saves only
-  when the profile-name field is non-empty, so a user who leaves it blank
-  still answers the same question per file.
-
-  The password half has no such condition: a typed password joins
-  _run_passwords for the run whether or not anything is persisted. The
-  mapping analogue would be a per-run map from header signature to
-  ColumnMapping, consulted by the ladder ahead of match_profile.
-
-  Whether that is a defect or the design is the question to settle first.
-  Declining to name a profile is arguably declining to remember it -- but
-  § 4.3 decision 1 says re-asking an answered question is babysitting, and
-  thirty identical questions is what that decision exists to prevent. The
-  spec should say which, and the code follow.
-  **Layman:** Import thirty spreadsheets of the same layout without naming a saved layout, and it still asks you thirty times.
-  Kind: ux.
-  Source: in-session-2026-09-03 (observed while fixing FIBR-0319).
-
-- 📋 [FIBR-0333] **Nothing ties a downloaded update to the version it claims to be.**
-  Found while correcting FIBR-0096's claim that the per-artifact `.sig` is
-  the primary integrity gate (2026-08-31 audit). The signature binds bytes
-  to the signing key and nothing else -- not a version, a basename or a
-  platform.
-
-  update.py compares the release TAG against __version__ and then verifies
-  the asset's `.sig`. Neither step ties the downloaded bytes to that tag.
-  So a release-write attacker with no signing key can re-upload a
-  previously published, genuinely signed AppImage or .exe under the new
-  release's asset names: the version compare passes because the tag is
-  newer, the signature passes because the bytes really were signed, and
-  the user is silently downgraded to a build whose fixed defects are back.
-  It then repeats on every check, because the installed version stays
-  below the tag.
-
-  SHA256SUMS is the only published thing binding a basename to its bytes,
-  and the updater never reads it -- confirmed, the update services do not
-  mention it. That manifest is also what the same attacker can delete,
-  which FIBR-0096 already records as a residual.
-
-  Not yet decided, and worth deciding before building: whether the updater
-  should verify the artifact against a signed SHA256SUMS, or whether the
-  signed payload should carry the version so the bytes themselves assert
-  what they are. The second needs a release-format change; the first
-  inherits the "attacker deletes the manifest" residual and needs a
-  policy for a missing one.
-
-  Requires release-write compromise, which is already a strong position --
-  so this is defence in depth rather than an open door.
-  **Layman:** Someone who could publish to our releases page could hand the updater an older, genuine finbreak and it would install as if it were newer.
-  Kind: security.
-  Source: FIBR-0327 tail, 2026-09-04.
-
-- 📋 [FIBR-0334] **A batch-import UI test failed once in a gate run and has not been reproduced.**
-  test_INV5_displayed_account_is_the_targeted_account failed in a full
-  ./scripts/ci-local.sh run (1 failed, 2192 passed). It then passed alone,
-  passed on an immediate full re-run (2193 passed), and passed six further
-  times with the whole batch_import suite driven under four spinning CPU
-  hogs.
-
-  What is recorded rather than concluded: the failing run took 211s against
-  140s for the clean re-run, so that machine was loaded at the time, and
-  this test waits on background scan work through several
-  qtbot.waitUntil(..., timeout=3000) calls. That makes a load-sensitive
-  timeout the obvious suspect -- but six deliberate attempts under load did
-  not reproduce it, so the cause is NOT established and no fix should be
-  written against this guess.
-
-  The failure output was not captured: the gate prints only its summary
-  line, and the re-run was already green by the time it was wanted. First
-  thing to do next time is capture the assertion.
-
-  Worth taking seriously rather than closing as noise. A prior session's
-  note on this suite records the same shape -- a waitUntil on a proxy
-  condition returning a turn early, green locally and red about once in
-  forty CI runs. If it recurs, the fix is to wait on the state actually
-  asserted rather than to raise the timeout.
-  **Layman:** One automated check failed once and then passed every time since; recorded so it is not forgotten if it happens again.
-  Kind: test.
-  Source: observed in-session 2026-09-04.
-
-- 📋 [FIBR-0335] **Family B's completeness gate is weakened on a premise nothing in the repo supports.**
-  _verify_checksum compares MAGNITUDES for Family B and signed totals for
-  every other family. The reason its comment gives is that B's
-  running-balance column prints unsigned magnitudes while its CLOSING
-  BALANCE row prints a sign.
-
-  Two independent cold lanes questioned that premise and it does not hold
-  up against the code:
-
-  - _parse_family_b's balance group is `([\d.,]+-?)` -- it accepts a
-    trailing `-` -- and the token goes through _signed_balance, so a
-    negative B balance is parsed signed.
-  - D9 and INV-8 both list "a leading `-` for Family B's negative
-    balances" among the signs to strip.
-  - Both endpoints are parsed by the same helper: _capture_closing also
-    calls _signed_balance, and _money_tokens deliberately re-attaches an
-    adjacent sign "so _is_negative can see it". So there is no parsing
-    asymmetry between the two ends.
-
-  What IS verified is narrower: B prints no per-amount sign, which is why
-  _verify_row takes check_sign=False there and nowhere else.
-
-  Why it matters rather than being a wording quibble: the magnitude form
-  cannot catch a truncation that flips the reconciled total's sign, which
-  the same comment says is what the signed form exists to catch on an
-  overdrawn account. If the premise is wrong, B is carrying a weaker gate
-  for no reason.
-
-  Not settleable from this repo, which holds no real statements by design.
-  It needs one real Home Loan statement whose ledger goes negative --
-  then either the exemption is justified and the comment should say which
-  convention differs, or the abs() comes out and B joins the signed
-  comparison.
-
-  Surfaced rather than fixed: a docs gate does not edit code. FIBR-0050
-  now states the magnitude form as what the reader does, and no longer
-  asserts the printing convention.
-  THIS MAY BE CLOSEABLE FROM DATA THE SPEC ALREADY HOLDS (2026-09-21), raised
-  by a cold lane during FIBR-0050 loop 13 and passed through with its hedge
-  intact rather than as a verdict.
-
-  INV-11 says settling Family B's sign convention "needs a real Home Loan
-  statement whose ledger goes negative". FIBR-0050 § Verified basis transcribes,
-  from a real statement, a Home Loan "CLOSING BALANCE -915.60" on a ledger row,
-  while the Family B worked run in the same document shows the ledger running
-  strongly positive. So the document may already contain the thing it says it is
-  waiting for.
-
-  WHAT IS NOT SETTLED, and it is the whole question: whether that real ledger
-  actually CROSSES zero, or whether its closing row simply prints the negated
-  running balance. Those two look identical in a single transcribed line, and
-  neither the lane nor I will guess about the underlying statement. Deciding it
-  needs the statement itself, which is why this stays open rather than closing.
-
-  WHY IT IS WORTH THE LOOK RATHER THAN WAITING. By the strict materiality test no
-  line of code changes today and the finding would normally be dismissed -- the
-  spec is internally consistent about its own uncertainty. What earns it a place
-  is what INV-11 concedes two sentences before: B's magnitude gate "misses a
-  truncation that flips the reconciled total's sign". That is a silently short
-  money import, not a wording defect. If the convention can be settled from a
-  statement already in hand, that gate can be tightened now instead of someday.
-
-  Next step is a person reading the Home Loan statement, not a session reading
-  the spec.
-  **Layman:** A Home Loan statement gets a weaker arithmetic check than the others, and the reason given for that may not be true.
-  Kind: investigate.
-  Source: review-contract on FIBR-0050, 2026-09-04.
-
-- 📋 [FIBR-0338] **Two files still cite the retired global rule 5 for the latest-stable policy.**
-  Found by the FIBR-0337 security-model gate's blast-radius sweep, and
-  left out of that run deliberately: neither file was its subject.
-
-  `~/.claude/CLAUDE.md` retired rules 1-5 on 2026-08-12 (CFG-0043); the
-  standards own them now. Two places here still cite the old numbering:
-
-    docs/standards/dependencies.md:164  "global rule § 5b"
-    pyproject.toml:79                   "global rule § 5c"
-
-  security-model.md T7 carried the same citation and was corrected in
-  that gate. The owners are `standards/dependencies.md` itself and
-  `coding.md` § 1.5 for libraries.
-
-  Filed rather than fixed in passing because `docs/standards/dependencies.md`
-  is a contract document: editing it is CLAUDE.md rule 14's own question,
-  and a one-line correction inside someone else's gate is how a document
-  gets edited with no review at all. The pyproject comment is trivial and
-  can ride along with it.
-  **Layman:** Two files point at a rule that no longer exists, so anyone following the pointer finds nothing.
-  Kind: doc-fix.
-  Source: review-contract-2026-09-06 (FIBR-0019 gate, 4b sweep, out of scope).
-
-- 📋 [FIBR-0340] **versioning.md still calls FIBR-0019 planned, and names it as the live blocker of the 1.0 gate.**
-  FIBR-0019 shipped in 0.1.23. Two passages in
-  `docs/standards/versioning.md` were written while it was still ahead of
-  us and now read false:
-
-  § 4.1 gives it as the reason the compatibility surface is not frozen —
-  "FIBR-0019 (master-password recovery) is a PLANNED change to the vault's
-  key envelope". Correcting that changes nothing a conformer writes.
-
-  § 5 condition 1 is the load-bearing one: "FIBR-0019 is the live case,
-  and it blocks this condition." That condition is the first of the five
-  1.0 gates, so the standard currently names a blocker that no longer
-  exists. A session reading § 5 to decide whether 1.0 can be cut gets the
-  wrong answer.
-
-  WHAT IS NOT CLAIMED HERE: that the 1.0 gate is now met. Only that its
-  named blocker is discharged. Conditions 2, 3 and 5 have not been
-  assessed, and condition 4 (SECURITY.md + CODE_OF_CONDUCT.md) is
-  satisfied by FIBR-0237, also in 0.1.23.
-
-  Also worth settling in the same pass: § 4.2 observes that "every release
-  since 0.1.0 has been a PATCH bump because nothing said when to do
-  otherwise". That is still true and is now a deliberate choice rather
-  than an omission — under § 3.1 a 0.2.0 needs a § 2 compatibility break
-  or a change requiring user action, and nothing has shipped that is
-  either. § 5's `0.9.z` interim is the route if the 0.1.x number ever
-  understates the project.
-
-  `versioning.md` is a contract document, so the § 5 edit is a change of
-  direction and owes CLAUDE.md rule 14's gate. That is why this is filed
-  rather than corrected in passing.
-  **Layman:** The rules for choosing a version number still describe the recovery-code work as upcoming, when it shipped.
-  Kind: doc-fix.
-  Source: in-session 2026-09-07, cutting 0.1.23.
-
-- 📋 [FIBR-0341] **A hand-edited zero cost parameter reaches argon2 uncaught on the local unlock path.**
-  The surviving third of FIBR-0309, isolated rather than inherited. That
-  bullet's other two gaps are closed and its gap 3 is superseded at the trust
-  boundary; this is the one thing left, and it is about the LOCAL open path.
-
-  Measured 2026-09-21. validate_params accepts time_cost=0 and parallelism=0 --
-  it checks format_version, key_len, the salt twice and the memory FLOOR, and
-  nothing else. derive_key then raises argon2.exceptions.HashingError: "Time
-  cost is too small" / "Too few lanes". ui/unlock.py's three except arms catch
-  KdfPolicyError only (lines 284, 363, 400), and auth.py:340 likewise, so that
-  HashingError is UNCAUGHT on the unlock path. FIBR-0310 R5 added it to
-  ui/_password_hint.py's tuple; unlock was not given the same treatment.
-
-  This contradicts load_and_validate_params' own stated posture, which
-  security-model INV-2c states as a contract: every malformed input is
-  normalised to KdfPolicyError so callers assert one failure type.
-
-  The fix is a LOW-side bound in validate_params -- time_cost >= 1 and
-  parallelism >= 1 -- and not a ceiling. That distinction is the whole reason
-  this is separable: security-model INV-2 makes the floor deliberately
-  one-sided because a ceiling there would bind every existing vault, and an
-  INFLATED cost is bounded at the trust boundary by validate_untrusted_params
-  (T5, FIBR-0327). A floor at Argon2id's own minimum of 1 binds no real vault:
-  creation pins ARGON2_TIME_COST = ARGON2_PARALLELISM = 1, so no vault this app
-  ever wrote records 0. Catching HashingError in unlock as well is the cheaper
-  half and fixes the crash without fixing the contract.
-
-  Owes CLAUDE.md rule 14's gate, and that is why it is filed rather than done
-  in passing: docs/security-model.md INV-2 currently DESCRIBES this behaviour
-  on purpose -- "a sidecar can record 0, and on the local open path that
-  surfaces as argon2-cffi's HashingError at derivation rather than as a clean
-  refusal". Making it a clean refusal falsifies that sentence, and a conformer
-  reading it today writes a caller that catches HashingError. So the amendment
-  is a change of direction on a document that has already had five review
-  loops, at this project's cap of 3.
-
-  Precondition is write access to the data directory, where an attacker could
-  delete the vault instead -- so this is robustness and contract-honesty, not a
-  confidentiality hole. Ranked accordingly.
-  **Layman:** If the vault's settings file is hand-edited to an impossible value, unlocking raises an error the app does not catch, instead of the clean refusal it already knows how to show.
-  Kind: fix.
-  Source: in-session-2026-09-21 (isolated while closing FIBR-0309).
-  Lanes: crypto, ui.
-
 - ✅ [FIBR-0342] **The PDF report and its own filename resolve their period on different clocks.**
   A wrong-month defect on a money document, and an outright violation of
   FIBR-0013 INV-7 -- "the report's period and 12-month trend span resolve exactly
@@ -12172,116 +12460,6 @@ is a future error tomorrow.
   Kind: fix.
   Source: check-code-2026-09-21 (ruff DTZ011, verified by hand).
   Lanes: ui, services.
-
-- 📋 [FIBR-0343] **FIBR-0013 D1 gives ExportOptions a today field it does not have.**
-  Noticed while fixing FIBR-0342 and deliberately NOT fixed in passing
-  (coding.md 1.7): it is pre-existing drift rather than anything that fix
-  caused.
-
-  docs/specs/FIBR-0013.md D1 lists ExportOptions' fields as "prefs, account_ids,
-  sections, theme, password, today: date | None", and describes the lower-level
-  entry point as "render_pdf_bytes(options) -> bytes".
-
-  The dataclass in services/pdf_export.py carries prefs, account_ids,
-  include_summary, include_charts, include_transactions, theme and password --
-  no today. The date is a SEPARATE parameter on both render_pdf_bytes(options,
-  today=None) and export(options, out_path, today=None). D1's own "sections:
-  frozenset[str]" is likewise three booleans in the code.
-
-  Why it matters beyond tidiness: a session reading D1 to answer "where does the
-  export get its date from?" is told the answer is on the options object, and
-  would look for the defect FIBR-0342 fixed in the wrong place. That is what
-  happened here -- the field was checked before the call site.
-
-  Amending D1 changes what a conformer writes, so it owes CLAUDE.md rule 14's
-  gate at this project's cap of 3. Worth batching with any other FIBR-0013
-  amendment rather than gating that document for this alone.
-  **Layman:** The export design document describes a field the code does not carry.
-  Kind: doc-fix.
-  Source: in-session-2026-09-21 (noticed while fixing {{id:0}}).
-  Lanes: docs.
-
-- 📋 [FIBR-0345] **ci.yml pins every action to a SHA but names its container by a mutable tag.**
-  FIBR-0226 adopted commit-SHA pinning for GitHub Actions as deliberate\nsupply-chain policy, CLAUDE.md records it, and the gate's own zizmor stage\nenforces it -- every uses: across all three workflows complies. But the\nCONTAINER, which executes the entire gate and is strictly more privileged than\nany action running inside it, is a floating tag: ci.yml line 29,\n`container: python:3.12-slim-bookworm`. So the stated policy has a hole at its\nmost privileged point.\n\nWhy the project's own tooling cannot see it: the gate runs zizmor's default\n`regular` persona, and `unpinned-images` is an `auditor`-persona check. So\n`zizmor .github/workflows/` exits 0 and the hole is invisible to the gate that\nwas added to catch exactly this class.\n\nNOT a one-liner, which is why it is filed rather than fixed in passing. ci.yml\nlines 22-28 hold the image at bookworm ON PURPOSE -- its glibc is the effective\nfloor for every frozen artifact, tracked as FIBR-0180 -- and the comment there\nsays a bump must move build-smoke.sh and ci-docker.sh together. So a digest pin\nmeans pinning in three places plus a documented refresh cadence, and a stale\ndigest is its own smaller hazard. Real trade-off.\n\nThe fix shape: `python:3.12-slim-bookworm@sha256:<digest>` in all three places,\nwith the refresh trigger recorded beside the existing FIBR-0180 note. Consider\nwhether to raise the gate's zizmor to `--persona auditor` at the same time, and\nif so decide the three `concurrency-limits` advisories it also reports.\n\nDismissed from the same run, recorded so it is not re-raised: zizmor's\n`template-injection` on ${{ github.workspace }} at windows-build.yml line 136 --\nthat path is not attacker-controllable.
-  **Layman:** The build recipe carefully locks down the tools it uses, but not the base system image those tools run inside.
-  Kind: security.
-  Source: check-code-2026-09-21 (zizmor --persona auditor).
-  Lanes: ci, security.
-
-- 📋 [FIBR-0347] **A batch-import UI test fails in the full suite and passes alone, so the gate is not reliably repeatable.**
-  Observed 2026-09-21 on a pre-push gate run:
-  tests/features/batch_import/test_batch_import_ui.py::
-  test_INV5_displayed_account_is_the_targeted_account failed, with 2225 passed.
-  Re-run alone it passed immediately. The same commit's next full gate run went
-  green (2226 passed) and the push landed, so it is intermittent rather than a
-  real regression -- the change under test was a docstring and a spec edit and
-  touches nothing this test reads.
-
-  WHY IT IS WORTH FILING RATHER THAN SHRUGGING AT. The gate is what stands
-  between this project and a bad release, and a gate that fails once in N runs
-  for no reason trains a session to re-run until green. That is exactly how a
-  REAL failure gets pushed through. The cost is not the minute lost; it is the
-  habit.
-
-  LIKELY CLASS, not yet confirmed. This project has a recorded qtbot pattern: a
-  waitUntil on a PROXY condition returns a turn early when the code under test
-  chains singleShot(0) callbacks, which is green alone and red occasionally
-  under load. A full-suite run is exactly when load is highest. That is a
-  hypothesis from the shape, not a diagnosis -- nobody has read this test yet.
-
-  HOW TO ACTUALLY PIN IT, because a re-run proves nothing either way:
-  - Reproduce under load rather than by repeating: run the full suite, or at
-    least the ui-heavy suites together, rather than the file alone.
-  - pytest -p no:randomly (or the project's ordering plugin if one is active) to
-    establish whether it is ORDER-dependent rather than timing-dependent -- those
-    need different fixes and a re-run cannot tell them apart.
-  - If it is the qtbot class, the fix is to waitUntil on the state the test
-    ASSERTS, not on a proxy for it.
-
-  Do not "fix" it by adding a sleep or by widening a timeout. That converts a
-  visible flake into a slow one and leaves the race in place.
-  **Layman:** One test occasionally fails when the whole suite runs but passes on its own, which makes a green build less trustworthy.
-  Kind: test.
-  Source: in-session-2026-09-21 (observed during a pre-push gate run).
-
-- 📋 [FIBR-0348] **The i18n guard is blind to a keyword-argument tr() call, so the class it closes can reopen silently.**
-  tests/features/i18n/test_translatable_strings.py closes FIBR-0310 R3: a
-  tr() or translate() argument that pyside6-lupdate reads must be a string
-  literal, or the string extracts to an empty catalog entry and ships
-  untranslatable while reading at the call site as though it were handled.
-
-  THE HOLE. _offences walks positional arguments only. For each index it
-  needs it does `if index >= len(node.args): continue` — so a call that
-  passes those arguments by KEYWORD presents an empty args list and every
-  index is skipped. The call is not flagged; it is not examined at all.
-  node.keywords is never read.
-
-  MEASURED 2026-09-21 by replicating the guard's own logic against four
-  probe calls. The positional non-literal form is FLAGGED, as it should be.
-  All three keyword forms are INVISIBLE: translate("Ctx", sourceText=var),
-  translate(context=CTX, sourceText=var), and tr(text=var).
-
-  NOT A LIVE DEFECT — and that is why this is filed rather than fixed in
-  passing. The same walk over src/finbreak/ finds no tr() or translate()
-  call using keyword arguments at all, and none passing fewer positional
-  arguments than the guard needs. So nothing ships untranslatable today.
-  The hole is that the guard cannot object if such a call is added, and a
-  guard that reports clean on a defect it cannot see is the failure mode
-  FIBR-0310 R3 filed in the first place.
-
-  THE FIX SHAPE, credited to the peer session that prompted this: make
-  ARITY its own offender rather than a skip. Assert that every matched call
-  supplies the arguments lupdate reads POSITIONALLY, so a keyword call
-  fails with "too few positional arguments" instead of passing quietly.
-  That closes the class rather than the instance, which is the same
-  reasoning the planted-offence leg beside it already rests on.
-
-  Do NOT close this by adding the keyword form to the walk and reading
-  node.keywords for a literal. A keyword call with a literal is still
-  invisible to lupdate, so accepting it would encode a false allowance.
-  **Layman:** A safety net that catches untranslatable text has a gap — write the same mistake one particular way and it slips past unnoticed.
-  Kind: test.
-  Source: in-session-2026-09-21 (peer session reported the same defect class from its own tree).
 
 - ✅ [FIBR-0349] **Two specs still prescribe the unbounded balance conversion FIBR-0224 replaced.**
   Found by the blast-radius sweep of FIBR-0050's loop-15 review, which added
@@ -12391,101 +12569,6 @@ is a future error tomorrow.
   **Layman:** Two design documents still tell a builder to convert a statement balance the old way, which can crash when saving an absurdly large figure.
   Kind: doc-fix.
   Source: in-session-2026-09-21 (FIBR-0050 review-contract loop 15, 4b blast-radius sweep).
-
-- 📋 [FIBR-0350] **CLAUDE.md steers every cold reviewer of FIBR-0050 away from a named area, and three lanes said so unprompted.**
-  MEASURED, not inferred. Loop 15 of FIBR-0050's review required each lane
-  to open with what it already knew. All three, independently, named the
-  same thing: CLAUDE.md § Module map carries a paragraph about that spec
-  which says the INV-11 / D10 / D13 drift "is now repaired and this note is
-  no longer a live warning: checked 2026-09-21 by three independent cold
-  lanes ... Do not go looking for a divergence that was fixed."
-
-  WHY THAT IS A PROBLEM. review-contract's whole method is that loop 2 and
-  after run COLD — a fixed defect not raised again is the proof the fix
-  held. The paragraph pre-announces a prior loop's finding AND its verdict,
-  in language a lane is not free to question, about the single most
-  contested area of this spec. One lane recorded being "steered away" from
-  it. Every lane read the area anyway and found it sound, so this run was
-  not damaged; the channel is what matters, because it is permanent and
-  applies to every future review of that spec.
-
-  It is not closed by scrubbing. review-contract withholds the spec's own
-  loop log by handing lanes a scrubbed copy, but CLAUDE.md is loaded as
-  project instructions by the harness, before any brief. A lane cannot
-  decline it.
-
-  SECOND CHANNEL, same run, same disclosure: the harness git snapshot names
-  recent commit subjects, so "FIBR-0050: fix four loop-2 findings" tells a
-  lane a prior loop ran and roughly what it found. That one is the global
-  skill's to solve and is already described in
-  skills/_shared/cold-reader-contamination.md; this item is only about the
-  paragraph we control.
-
-  THE FIX, and it is small. Move the settled history to
-  docs/history/claude-md.md, which exists for exactly this and is not
-  loaded at session start. Keep in CLAUDE.md only the part that is still a
-  live instruction for a writer: that INV-11 is the canonical
-  all-or-nothing clause, that it must be amended in the same commit as a
-  behaviour change, and the _draft trap that decides degrade-vs-refuse on
-  the amount rather than the rejection reason. Drop the verdict sentence,
-  the loop count and the "do not go looking" instruction.
-
-  WHY FILED RATHER THAN DONE HERE. Editing CLAUDE.md changes what a
-  conformer writes, so it trips rule 14's gate on that document, and this
-  session was mid-gate on a different one. Adjacent to FIBR-0296, which
-  proposes splitting CLAUDE.md for size; this is a distinct cause and the
-  two fixes do not depend on each other.
-  **Layman:** Our own project notes tell a fresh reviewer where not to look, which quietly weakens every independent review of the import parser.
-  Kind: doc-fix.
-  Source: in-session-2026-09-21 (FIBR-0050 review-contract loop 15; all three lanes disclosed it).
-
-- 📋 [FIBR-0351] **Family E's signature can be loosened with no test catching it, and no fixture can catch it.**
-  Filed out of FIBR-0190's loop-7 cap tail, where it was recorded as owed.
-  A loop-log row is not a tracked item, so it goes here.
-
-  THE GAP. `_signature_present` requires EVERY token, so removing one from
-  Family E's five-token signature LOOSENS the detector rather than breaking
-  it. FIBR-0190 INV-1 and INV-2 both name that removal as their breaker,
-  and neither's test can catch it: `family_e_current.pdf` still matches, so
-  the detection leg stays green by construction.
-
-  MEASURED 2026-09-21, by extracting every pre-E fixture's text with the
-  same helper FIBR-0190 § 7.10's leg uses and re-running all five
-  single-token drops against that text:
-
-  - no pre-E fixture satisfies the full five-token E signature;
-  - exactly one drop, `payments`, is satisfied by exactly one fixture,
-    `family_d_moneymarket.pdf`, whose header does print `date` and
-    `description` as FIBR-0050's § Family D records;
-  - that fixture resolves as `Family.D` before E is reached, so it cannot
-    be stolen however loose E becomes.
-
-  SO NO FIXTURE CAN CLOSE THIS. Only a fixture resolved after E under the
-  C→D→E→B→A order could be stolen -- B and A -- and none satisfies any
-  drop. A fixture-driven assertion is therefore not the fix, which is what
-  an earlier loop wrongly prescribed.
-
-  THE FIX. Export E's token tuple from `importers/standard_bank.py` and
-  have the detector and the test consume the same object. A test carrying
-  its own copy of the five tokens asserts its copy: the source can be
-  loosened away from it while the test stays green, which is the drift the
-  assertion exists to catch. Then state it in FIBR-0190 § 7.2, which
-  currently records the gap as open.
-
-  DO NOT close it by asserting `detect_standard_bank(...) is not
-  Family.E` -- that is entailed by the detect-as-today list already in the
-  same leg, so it catches nothing new. And do NOT close it by moving E
-  above D in the dispatch order: that is a live behaviour change on the
-  Money-Market case FIBR-0190 D2 exists for.
-
-  SECOND, SMALLER HALF, same leg. `test_FIBR0190_INV2_covers_every_pre_e_fixture`
-  asserts `len(_PRE_E_FIXTURES) == 15` -- a literal. It agrees with the
-  hand-written pair list by maintenance rather than construction, and that
-  same literal was wrong in ten places until loop 5 of that spec's review.
-  Assert it against the pair list's own length instead.
-  **Layman:** A safety check on how the app recognises one statement layout can be weakened without any test noticing.
-  Kind: test.
-  Source: in-session-2026-09-21 (FIBR-0190 review-contract loop 7, the cap tail).
 
 ## How to add an item
 
