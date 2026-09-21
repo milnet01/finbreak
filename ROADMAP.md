@@ -5389,6 +5389,42 @@ lands on top.
 
   The OBS builds themselves are green on all four targets (Debian 13, Fedora 44,
   Tumbleweed, xUbuntu 24.04), last built before 0.1.23 was tagged.
+  Blocker list amended (2026-09-21): FIBR-0346 IS a gate blocker and this
+  item's list does not name it. Both of the three named blockers that
+  remained are now closed -- FIBR-0208 and FIBR-0217 -- so FIBR-0346 is
+  the only one left.
+
+  WHY IT FIRES THE GATE, on two of versioning.md § 5's five conditions.
+  README.md offers the openSUSE/Fedora RPM as a live download, with
+  `zypper addrepo` and `dnf config-manager` commands against the
+  openSUSE Build Service repo. FIBR-0346 records that those recipes still
+  bundle the split libxkbcommon pair FIBR-0208 measured segfaulting, and
+  that the halves drift apart "as soon as the host updates libxkbcommon
+  and the installed payload does not, which is the normal state of a
+  package a few weeks after release".
+
+  - Condition 3, no open defect crashes the app on a supported platform's
+    default configuration: the RPM does, on the ordinary upgrade path.
+  - Condition 5, every feature the README advertises works on every
+    platform the README offers a download for: if it will not launch, no
+    advertised feature works there at all.
+
+  NOT A CHANGE OF PLAN. The user's decision of 2026-09-21 already
+  sequences FIBR-0346 into the 1.0 OBS submit, which is where it can be
+  verified -- installing the built package in a bare container of that
+  distro and running the self-test, as packaging/obs/README.md
+  prescribes. What changes is its STATUS: it is a gate condition rather
+  than work sequenced alongside the release, so 1.0.0 does not cut
+  without it.
+
+  Conditions 1, 2 and 4 assessed the same day. Condition 4 is MET --
+  SECURITY.md and CODE_OF_CONDUCT.md are both in the tree. Conditions 1
+  and 2 were assessed by classifying every open item against § 2's
+  surfaces; nothing else fires them, and FIBR-0019's closure removed the
+  one case § 5 named by name.
+
+  Flathub and code signing remain NON-blockers, per § 5's own rule that a
+  third party's inbox is not a gate.
   **Layman:** The plan for calling the app finished: what has to be true first, and which four jobs are standing in the way.
   Kind: release.
   Source: user-decision-2026-08-20 ("what gets us to v1.0?").
