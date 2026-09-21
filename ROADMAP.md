@@ -12304,6 +12304,34 @@ is a future error tomorrow.
   the closing" -- was right and was not enough: it stated the rule and
   enumerated only two of the three places to apply it. Verified in the
   tree before recording this.
+  Progress (2026-09-21): the FIBR-0171 half is DONE (7be0b20). The other
+  half is deliberately blocked, not forgotten.
+
+  FIBR-0171's defect was sharper than this item recorded. Its Standard
+  Bank bullet did not merely name an unbounded conversion -- it named
+  `_minor`, which exists only in services/month_summary.py, takes an
+  `int` threshold, and whose own docstring says the Decimal job is
+  `to_minor`'s and that it is deliberately not reused for it. What
+  `parse` calls is `_storable(closing, exponent)`, the reader's own
+  wrapper over `to_minor_storable`. So the bullet named a real symbol in
+  the wrong module with the wrong parameter type.
+
+  And FIBR-0171 already stated the rule CORRECTLY for its OFX bullet
+  three lines below, "Not the bare to_minor", with FIBR-0223 cited -- an
+  earlier loop of that document's own gate had fixed that one and not its
+  sibling. The fix points at that bullet rather than restating its
+  reasoning.
+
+  No rule-14 gate was owed on it, by the records-what-was-built
+  exception: the edit's only effect is to make the document name the
+  function the shipped code already calls.
+
+  STILL OPEN -- FIBR-0190 § 4.5's two `to_minor(closing, exponent)` sites
+  and the third site this item's earlier correction added. Blocked
+  because a peer session is running that document's loop 3 cold, and
+  editing it would shift what its lanes' citations point at. Fold these
+  into that loop's fix pass when it returns, which also saves a second
+  gate on one document.
   **Layman:** Two design documents still tell a builder to convert a statement balance the old way, which can crash when saving an absurdly large figure.
   Kind: doc-fix.
   Source: in-session-2026-09-21 (FIBR-0050 review-contract loop 15, 4b blast-radius sweep).
