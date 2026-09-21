@@ -2880,6 +2880,43 @@ scariest unknown (native-library bundling) up front.
 
   Ranked as a 1.0 blocker under versioning.md § 5 condition 3 (FIBR-0304), and
   it stays one -- this note establishes the cause, not the cure.
+  PARTIALLY RE-MEASURED (2026-09-21) against 0.1.23, and the two halves came out
+  differently. Reported separately because one of them changes this item's 1.0
+  standing and the other does not.
+
+  THE VERSION SKEW REPRODUCES, on the current release. Running
+  dist/finbreak-0.1.23-x86_64.AppImage against a plain X server produced exactly
+  the milder symptom this bullet describes:
+    xkbcommon: ERROR: /usr/share/X11/locale/en_US.UTF-8/Compose:1661:1:
+    unrecognized keysym "dead_hamza" on left-hand side
+  repeated down the Compose file. So the bundled parser still cannot read the
+  host's newer xkeyboard-config data, and the provenance note above stands.
+
+  THE STARTUP SEGFAULT DID NOT REPRODUCE. The AppImage ran for 25 seconds and
+  was still alive when the timeout ended it (exit 124, not 139). It had
+  demonstrably reached X and initialised the keyboard, since the Compose errors
+  above are its own output. The original measurement was against 0.1.19, and
+  several things have moved since -- FIBR-0259's krb5 module and a PySide6 bump
+  among them.
+
+  THE FIRST-KEYSTROKE PATH IS UNVERIFIED, and I am not claiming otherwise. The
+  harness was wrong: Xvfb refused to start because display :99 was already held
+  by a server this session did not own ("Server is already active for display
+  99"), so the app attached to that one, xdotool found no window owned by the
+  app's pid, and a root capture of that display came back a single colour at a
+  geometry nobody had asked for. Keystrokes went to a root window. Nothing about
+  the keystroke path can be concluded from that run, and the foreign X server
+  was left running.
+
+  WHAT THIS MEANS FOR THE 1.0 GATE, stated carefully. FIBR-0304 lists this under
+  versioning.md § 5 condition 3, "no open defect crashes the app on a supported
+  platform's default configuration". A startup crash is not currently
+  reproducible on the shipped release. That is NOT the same as proving it cannot
+  crash, so the item stays a blocker until the keystroke path is tested on a
+  display the tester owns -- one clean re-run on a free display number decides
+  it. If it holds up, this stops being a condition-3 crash and becomes a quality
+  defect (a noisy log and a stale keymap parser), which is a different
+  conversation about whether it gates 1.0.
   **Layman:** The app carries its own copy of a keyboard-layout library that is older than the system's keyboard data — it crashed in testing.
   Kind: fix.
   Source: in-session-2026-08-02 FIBR-0200 pre-check.
@@ -10705,6 +10742,40 @@ is a future error tomorrow.
   (ps -o pid,ppid,comm); if it is the bootloader the finding collapses to INFO.
   And per the known trap, a relaunch change only proves out on the update AFTER
   it ships, so guessing here is the worst option available.
+  MEASURED (2026-09-21), and the finding STANDS. This bullet said not to fix it
+  blind and named the measurement that would settle it; that measurement is now
+  done, so the next session is not guessing.
+
+  PyInstaller onefile on LINUX is a two-process tree, exactly as FIBR-0131 D3
+  asserts for Windows. Read off a live 0.1.23 AppImage:
+
+    PID     PPID    what
+    332680  332675  the BOOTLOADER -- /proc/332680/maps carries NO libpython and
+                    NO _MEI mapping
+    332704  332680  the APP -- 512 _MEI maps, 5 libpython maps, 4 threads
+
+  So the Python process is the CHILD, and os.getpid() inside the app returns the
+  child's pid. update_installer.AppImageInstaller.apply reads os.getpid() and the
+  waiter polls `kill -0` on it, so it waits on the process that exits FIRST and
+  returns while the bootloader parent is still doing its _MEI cleanup. That is
+  the fragility D3 describes, and it does NOT collapse to INFO.
+
+  Note for whoever fixes it: the child's PPID is the bootloader, so os.getppid()
+  names the process actually worth waiting for -- but only when frozen. Run from
+  source the parent is a shell, and waiting on that would hang until the shell
+  exits, so the fix has to be conditional on being frozen. Windows solved the
+  same problem by polling the exe IMAGE path instead, which is the other
+  available shape.
+
+  Still deliberately NOT fixed here, and the reason is unchanged: the RUNNING
+  (old) version performs each relaunch, so a relaunch change only proves out on
+  the update AFTER the one that ships it. That makes it unverifiable in-session
+  by construction, and an unverifiable change to the updater immediately before
+  a 1.0 is the wrong risk. Not a 1.0 blocker (FIBR-0304 does not list it).
+
+  Also corrected: this bullet inferred the two-process tree from FIBR-0131 D3,
+  whose claim is written Windows-scoped. The inference happened to be right, and
+  it is now measured on Linux rather than carried over.
   **Layman:** After a self-update the app might fail to reopen -- and it cannot be tested until the next update ships.
   Kind: investigate.
   Source: review-code 2026-08-31 lane=update-installer.
