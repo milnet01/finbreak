@@ -3114,6 +3114,51 @@ work, and none of it is a release decision.
   living inside release-linux.sh cannot fire when nobody runs
   release-linux.sh.
 
+- 📋 [FIBR-0352] **FIBR-0146's 13-split loop-log row has one cell too many, so its whole explanation is dropped from the render.**
+  docs/specs/FIBR-0146.md, the `13-split` row of the cold-eyes
+  loop log: the header has 7 columns and the row has 8 (it adds a
+  date cell), so every cell shifts right and the Headline-fixes
+  prose falls off the end. Found by check-doc.py's structure check.
+  Decision needed first: CLAUDE.md rule 14 freezes landed loop-log
+  rows, so whether a render-breaking row may be repaired is the
+  user's call, not an automatic fix.
+  **Layman:** One row of a review log in the FIBR-0146 spec is formatted wrongly, so its explanation never shows up when the page is displayed.
+  Kind: doc-fix.
+  Source: in-session-2026-09-24 check-doc measurement.
+
+- 📋 [FIBR-0353] **FIBR-0219 lists docs/specs/FIBR-0216.md as checked, and that file has never existed.**
+  docs/specs/FIBR-0219.md, the list of documents checked: "`docs/specs/FIBR-0216.md` — no change needed". `git log --all` on
+  that path is empty on every branch; FIBR-0216 was a batched
+  roadmap item with no spec. Reword to name where the placeholder
+  decision actually lives (the FIBR-0216 roadmap bullet), or drop
+  the line. Found by check-doc.py's path check.
+  **Layman:** A spec claims it checked another spec that was never written.
+  Kind: doc-fix.
+  Source: in-session-2026-09-24 check-doc measurement.
+
+- 📋 [FIBR-0354] **Shipped specs name functions that no longer exist in the code.**
+  A sample of 15 shipped specs names 43 distinct identifiers that
+  appear nowhere in src/, tests/ or scripts/. A hand read of 8 of
+  them split about evenly: deliberate past-tense mentions, which
+  are correct ("rename `AUTO_LOCK_MINUTES` to ..."), and real
+  drift, e.g. FIBR-0013 names `_render_donut` in ui/home.py (gone;
+  home.py has `_render_net`/`_render_column`/`_render_trend`), and
+  FIBR-0007 names `MainWindow.import_transactions` and
+  `AppShell._show_accounts` (neither exists). Each hit needs a
+  reader to decide which kind it is; no script can.
+  Why not a scripted fix: about half of spec symbol citations
+  resolve to exactly one definition and could be rewritten as
+  `file.py::symbol` mechanically, but those are the ones already
+  correct, so the rewrite adds almost no detection. The drift is
+  in names that resolve to nothing. (Measured for the machine-wide
+  check-doc work, filed there as CFG-0590.)
+  Method to repeat on the rest: AST-index every def/class/module
+  assignment, take backticked code-shaped identifiers from each
+  spec, keep those whose name is absent from all code text.
+  **Layman:** Several older specs refer to parts of the program by names that were later renamed or removed, so a reader following them hits dead ends.
+  Kind: doc-fix.
+  Source: in-session-2026-09-24 check-doc measurement.
+
 ## P01 — Bootstrap (target: next)
 
 **Theme:** wire up the build, lint, format, test, **security
