@@ -33,6 +33,10 @@ signaling per
 
 ### Fixed
 
+- **The Forecast tab no longer says you have no confirmed recurring items when you do** (FIBR-0359)
+  When confirmed items exist but none falls due before the forecast's end
+  date, the tab now says nothing confirmed falls due by that date.
+
 - **A vault settings file hand-edited to an impossible key-strength value now gets a clear refusal at unlock instead of an unhandled error** (FIBR-0341)
 
 - **The Linux AppImage no longer crashes on the first keystroke** (FIBR-0208)

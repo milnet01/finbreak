@@ -88,6 +88,29 @@ def test_INV10_empty_vault_renders_net_flow_without_crashing(
     assert w._chart_view.chart() is not None
 
 
+def test_FIBR0359_empty_state_names_zero_confirmed_items(qtbot, vault_service) -> None:
+    w = ForecastWidget(vault_service)
+    qtbot.addWidget(w)
+    assert "no confirmed recurring items" in w._status.text().lower()
+
+
+def test_FIBR0359_confirmed_items_due_after_the_horizon_are_not_called_absent(
+    qtbot, vault_service
+) -> None:
+    # A monthly item last charged today is next due a month out, past the
+    # end-of-month horizon — so nothing falls due, yet one item IS confirmed.
+    _seed_anchored(vault_service)
+    w = ForecastWidget(vault_service)
+    qtbot.addWidget(w)
+    w._horizon.setCurrentIndex(0)  # end of this month
+    w.refresh()
+    assert w._events_table.rowCount() == 0, "precondition: nothing due by horizon"
+
+    status = w._status.text().lower()
+    assert "no confirmed recurring items" not in status
+    assert "due" in status
+
+
 def test_INV10_horizon_picker_has_four_presets_default_end_of_month(
     qtbot, vault_service
 ) -> None:

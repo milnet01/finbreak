@@ -942,7 +942,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: enhancement.
   Source: in-session-2026-09-25 (follow-up to FIBR-0335's real-statement check).
 
-- 📋 [FIBR-0359] **The Forecast tab says "No confirmed recurring items yet" when confirmed items exist but none falls due in the window.**
+- ✅ [FIBR-0359] **The Forecast tab says "No confirmed recurring items yet" when confirmed items exist but none falls due in the window.**
   `ui/forecast.py` shows that text whenever `fc.events` is empty. That
   covers two different states: nothing confirmed at all, and confirmed
   items whose next due date lies past the "Project to" horizon. Seen on
@@ -950,6 +950,12 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   confirmed items, all next due in October, and Forecast ("End of this
   month") showed the message. The fix is to tell the two states apart
   and word the second as "nothing due before <date>".
+  Resolved 2026-09-25: ForecastService.has_confirmed tells the two empty
+  states apart. With nothing confirmed the tab keeps the FIBR-0171 D9
+  text; with items confirmed but none due, it says "Nothing confirmed
+  falls due by <horizon>". Test-first: seen red on the assertion, with
+  its precondition held. mutation_probe killed the old rule and a broken
+  has_confirmed. FIBR-0171 D9 now names both states.
   **Layman:** The Forecast tab can wrongly tell you that you have no confirmed repeating payments, when you do and they simply aren't due before the forecast's end date.
   Kind: fix.
   Source: in-session-2026-09-25 demo recording.

@@ -177,6 +177,9 @@ class ForecastWidget(QWidget):
             # touch only widgets.
             headline = self._headline_text(fc, exponent, symbol)
             provenance = self._provenance_text(fc, exponent, symbol)
+            has_confirmed = bool(fc.events) or self._forecast_service.has_confirmed(
+                today
+            )
         except VaultLockedError:
             return  # auto-lock fired; the workspace is being torn down
 
@@ -186,11 +189,18 @@ class ForecastWidget(QWidget):
             build_forecast_chart(fc.points, self._chart_theme(), exponent)
         )
         self._fill_events(fc, exponent, symbol)
-        if not fc.events:
+        if not has_confirmed:
             self._status.setText(
                 self.tr(
                     "No confirmed recurring items yet — "
                     "confirm some on the Recurring tab."
+                )
+            )
+        elif not fc.events:
+            horizon = format_date(fc.horizon.isoformat(), self._prefs.date_format)
+            self._status.setText(
+                self.tr("Nothing confirmed falls due by {horizon}.").format(
+                    horizon=horizon
                 )
             )
         else:

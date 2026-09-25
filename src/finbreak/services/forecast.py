@@ -187,6 +187,11 @@ class ForecastService:
         items = self._inputs(today)
         return project_forecast(anchor_minor, items, today, horizon, sources)
 
+    def has_confirmed(self, today: date) -> bool:
+        """Whether any recurring item is confirmed. An empty forecast can mean
+        none is, or only that none falls due before the horizon (FIBR-0359)."""
+        return bool(RecurringService(self._vault).confirmed(today))
+
     def _anchor(self, today: date) -> tuple[int | None, list[AnchorSource]]:
         """The vault-wide current-balance anchor + its provenance (D1/D10/INV-6/13),
         or ``(None, [])`` when no **cash** account has a recorded closing balance.
