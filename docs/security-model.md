@@ -199,8 +199,9 @@ be checkable. Enforcement arrives in step with the code:
   the vault. On open the app derives the key from the parameters
   **recorded with the vault** and **must refuse to proceed** unless
   the record passes every check below — a known **`format_version`**, a
-  directional **strength floor** on memory, and an **exact-format**
-  match on the lengths. An unknown `format_version` is refused first,
+  directional **strength floor** on memory, a **floor of 1** on
+  iterations and parallelism, and an **exact-format** match on the
+  lengths. An unknown `format_version` is refused first,
   so a future or foreign layout is never reinterpreted against this
   version's field meanings. The strength floor is a **second constant**
   (`ARGON2_MEMORY_FLOOR_KIB`), deliberately separate from the creation
@@ -221,15 +222,15 @@ be checkable. Enforcement arrives in step with the code:
   recorded `salt_len` must each equal 16; the key never reaches disk, so
   only its recorded `key_len` is checkable. A validator comparing
   `salt_len` alone accepts a record declaring 16 over a 4-byte salt, and
-  Argon2id then derives from that salt. Iterations and parallelism get no
-  on-open check, and Argon2id's own minimum of 1 does **not** pin them:
-  a sidecar can record 0, and on the local open path that surfaces as
-  `argon2-cffi`'s `HashingError` at derivation rather than as a clean
-  refusal. That covers **downgrade only**; an *inflated* recorded cost
-  is unchecked **here**. Both the low and the high side are bounded at
-  the trust boundary instead, by `validate_untrusted_params` (T5,
-  FIBR-0327) — so anything parsing a sidecar that arrived from outside
-  owes that second call. So a tampered or downgraded
+  Argon2id then derives from that salt. Iterations and parallelism are
+  floored at **1**, Argon2id's own minimum: a sidecar recording 0 is
+  refused as `KdfPolicyError` on open, never left to surface as
+  `argon2-cffi`'s `HashingError` at derivation (FIBR-0341). That floor
+  binds no vault this app wrote, because creation pins both at 1. Like
+  the memory floor it has no ceiling, so an *inflated* recorded cost is
+  unchecked **here**. It is bounded at the trust boundary instead, by
+  `validate_untrusted_params` (T5, FIBR-0327) — so anything parsing a
+  sidecar that arrived from outside owes that second call. So a tampered or downgraded
   vault cannot force a weaker KDF. The
   FIBR-0004 (P02) spec implements and *tests* these values. Since
   FIBR-0019 what reaches SQLCipher's **raw**-key pragma is the **DEK**,
