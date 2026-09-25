@@ -35,7 +35,12 @@ from finbreak.services.import_ import ImportResult, ImportService
 from finbreak.ui import import_batch as import_batch_mod
 from finbreak.ui import import_wizard as wizard_mod
 from finbreak.ui.account_picker import AccountPickerDialog
-from finbreak.ui.import_wizard import _STEP_BATCH, _STEP_MAP, ImportWizardWidget
+from finbreak.ui.import_wizard import (
+    _STEP_BATCH,
+    _STEP_MAP,
+    _STEP_PICK,
+    ImportWizardWidget,
+)
 
 pytestmark = pytest.mark.features
 
@@ -755,7 +760,51 @@ def test_INV14_done_waits_for_the_report(
     )
 
 
-# -- FIBR-0252 INV-4 (render half) ------------------------------------------- #
+def test_cancel_during_scan_drops_the_batch_and_returns_to_pick(
+    qtbot, service, tmp_path, monkeypatch
+):
+    """Review-step § 3: Cancel "before RUN ... drops the whole batch ... and
+    returns to the pick step *without* emitting `done`". SCAN is before RUN, so a
+    Cancel pressed mid-scan takes that branch too (FIBR-0265) — no report is left
+    on screen and the scan chain stops.
+
+    The click is interposed on `scan_step` for the reason INV-14's run case
+    gives: a chain of `singleShot(0)` turns has no gap a `waitUntil` can click in.
+    """
+    widget = _wizard(qtbot, service)
+    emissions: list[int] = []
+    widget.done.connect(lambda: emissions.append(1))
+
+    real_step = BatchImportService.scan_step
+    calls: list[int] = []
+
+    def cancelling_step(self, batch_files, index):
+        calls.append(index)
+        result = real_step(self, batch_files, index)
+        if index == 0:
+            widget._batch_review._cancel_button.click()
+        return result
+
+    monkeypatch.setattr(BatchImportService, "scan_step", cancelling_step)
+    widget._select_files(
+        [
+            _csv(tmp_path, "g.csv", _rows(2, day_from=3, tag="g")),
+            _csv(tmp_path, "h.csv", _rows(2, day_from=6, tag="h")),
+            _csv(tmp_path, "i.csv", _rows(2, day_from=9, tag="i")),
+        ]
+    )
+    qtbot.waitUntil(lambda: bool(calls), timeout=3000)
+    qtbot.wait(200)
+
+    assert calls == [0], f"the scan chain kept going after Cancel: {calls}"
+    assert widget._stack.currentIndex() == _STEP_PICK, (
+        "a pre-RUN Cancel returns to the pick step"
+    )
+    assert widget._batch_files == [], "the whole batch is dropped, not reported"
+    assert emissions == [], "the batch step's Cancel must not emit done"
+
+
+# -- FIBR-0252 INV-4 (render half)------------------------------------------- #
 
 
 def test_FIBR0252_errors_column_shows_the_count(qtbot, service, profile, tmp_path):

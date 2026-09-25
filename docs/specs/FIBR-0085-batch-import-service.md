@@ -203,6 +203,8 @@ ASK    passwords and mappings ONLY (§3 decision 5), one file at a time:
        an answered file re-enters SCAN at the step that stopped it — a
        password resumes at decrypt, a mapping at CsvImporter().parse — and
        runs the rest of the ladder, INCLUDING the draft-cap check;
+       tripping the cap here makes ONLY that record `not_attempted`
+       (cap wording), and ASK carries on to the next question
        a declined or exhausted file becomes `skipped`
 
 REVIEW on entry and after EVERY account change, re-evaluate the whole batch:
@@ -231,10 +233,12 @@ single-file `_on_import` catches, not a bare `except Exception`. `coding.md`
 rather than a swallow: an unexpected exception type still escapes and is a bug,
 where "continue past anything" would hide one behind a per-file report line.
 
-**Cancel during SCAN behaves the same way as during RUN**: every record not yet
-reached becomes `not_attempted` with the cancelled wording. Without that rule a
-cancelled scan would strand rows reading *Waiting…* forever, which §4.8 says is
-a state seen only while SCAN is running.
+**Cancel during SCAN is a pre-RUN Cancel**, so it takes that branch of the
+review step's controls: the whole batch is dropped and the wizard returns to
+the pick step, with no report left on screen. `stop_from` still marks every
+record not yet reached `not_attempted` with the cancelled wording before the
+drop. Nothing displays that marking, because the drop clears the table; it is
+the same `stop_from` the SCAN draft cap uses, where the marking is shown.
 
 **Ordering is `(path, statement_index or 0)`** — `statement_index` is
 `int | None`, and sorting a mixed `None`/`int` column raises `TypeError` in

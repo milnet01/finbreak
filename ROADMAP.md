@@ -1983,7 +1983,7 @@ work, and none of it is a release decision.
   Kind: test.
   Source: in-session-2026-08-06 (FIBR-0086 review lane 3).
 
-- 📋 [FIBR-0265] **FIBR-0085 gives Cancel-during-SCAN two contradictory behaviours.**
+- ✅ [FIBR-0265] **FIBR-0085 gives Cancel-during-SCAN two contradictory behaviours.**
   §4.3 says "Cancel during SCAN behaves the same way as during RUN:
   every record not yet reached becomes `not_attempted` with the cancelled
   wording" -- which implies the table stays on screen to show them.
@@ -1998,11 +1998,19 @@ work, and none of it is a release decision.
   SCAN but before RUN, during RUN), not a wording repair. Check the
   shipped behaviour first -- the code may already have picked one, in
   which case this is a doc-only correction.
+  Resolved (2026-09-25): the shipped code had already chosen §4.6.
+  `ImportWizardWidget._on_batch_cancel` drops the batch and returns to
+  the pick step on any pre-RUN Cancel, SCAN included. The service spec
+  now says so, and no longer claims the not_attempted marking is shown.
+  The behaviour had no test, so
+  `test_cancel_during_scan_drops_the_batch_and_returns_to_pick` now pins
+  it. A mutation forcing the during-RUN branch fails it. The `stop_from`
+  docstring's matching claim was corrected too.
   **Layman:** Two parts of the batch-import design describe what the Cancel button does mid-scan in ways that cannot both be true.
   Kind: doc-fix.
   Source: in-session-2026-08-12 (review-contract gate on FIBR-0085, loop 1).
 
-- 📋 [FIBR-0266] **FIBR-0085 leaves the draft-cap outcome undefined when it trips during ASK.**
+- ✅ [FIBR-0266] **FIBR-0085 leaves the draft-cap outcome undefined when it trips during ASK.**
   §4.3 has ASK's resume path run "the rest of the ladder, INCLUDING the
   draft-cap check", but the only stated consequence of tripping that cap
   is SCAN's: "this and every later record become `not_attempted`; stop".
@@ -2014,6 +2022,11 @@ work, and none of it is a release decision.
   unscanned record and abort ASK. The two produce different batches from
   the same input. Left open because it is a behaviour decision, not a
   wording repair.
+  Resolved (2026-09-25): the code marks only the answered record
+  `not_attempted` with the cap wording, and ASK carries on
+  (`BatchImportService.answer`). This is already pinned by
+  `test_INV11_the_draft_cap_binds_an_answered_file_too`. The service
+  spec's ASK ladder now states it.
   **Layman:** The batch-import design says what happens when a run hits its size limit while scanning files, but not when it hits the same limit after the user answers a question.
   Kind: doc-fix.
   Source: in-session-2026-08-12 (review-contract gate on FIBR-0085, loop 1).
@@ -3177,6 +3190,21 @@ work, and none of it is a release decision.
   **Layman:** Several older specs refer to parts of the program by names that were later renamed or removed, so a reader following them hits dead ends.
   Kind: doc-fix.
   Source: in-session-2026-09-24 check-doc measurement.
+
+- 📋 [FIBR-0355] **The leaked-private-key test matches only the PKCS8 header, so an OpenSSH, EC or RSA key would pass.**
+  tests/features/auto_update/test_auto_update.py,
+  test_INV14_no_private_key_material_is_tracked: it fails on a tracked
+  path ending `.key`, or on a file containing exactly
+  `-----BEGIN PRIVATE KEY-----`. A key saved under another name in
+  another PEM flavour (`BEGIN OPENSSH PRIVATE KEY`, `BEGIN EC PRIVATE
+  KEY`, `BEGIN RSA PRIVATE KEY`) is not caught. Fix: match
+  `-----BEGIN [A-Z ]*PRIVATE KEY-----`, still assembled at runtime so
+  the test does not match itself. gitleaks covers some of this class,
+  but this test is the named INV-14 guard. Found while answering
+  pressless-e4's request about finbreak's updater.
+  **Layman:** A safety test that checks no secret signing key was committed only recognises one of the common key formats.
+  Kind: test.
+  Source: in-session-2026-09-25 (peer request from pressless-e4, PRESS-0023).
 
 ## P01 — Bootstrap (target: next)
 

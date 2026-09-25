@@ -716,8 +716,9 @@ class BatchImportService:
         Outcomes that already say something truer are left alone: a record that
         is ``already_imported``, ``failed`` or ``skipped`` has a report line of
         its own, and overwriting it with "the batch was cancelled" would lose
-        the more useful sentence. Without this rule a cancelled scan would also
-        strand rows reading *Waiting…* forever.
+        the more useful sentence. Without this rule a cap-stopped scan would
+        also strand rows reading *Waiting…* forever. (A cancelled scan drops
+        the whole batch afterwards, so its marking is never displayed.)
         """
         for record in files[index:]:
             if record.outcome in ("waiting", "ready"):
