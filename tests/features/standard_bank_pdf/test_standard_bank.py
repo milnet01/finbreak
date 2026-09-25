@@ -725,6 +725,26 @@ def test_FIBR0190_INV9_dmy_lead_widening_is_opt_in():
     assert _looks_like_row(line, dmy_lead=True) is True
 
 
+def test_FIBR0363_a_family_a_continuation_leading_with_a_date_still_folds():
+    # INV9 above pins the predicate's default; this pins the FOLD, the caller the
+    # widening would actually reach. Mutating `_fold`'s own default to
+    # dmy_lead=True survived every other test in this file (FIBR-0358).
+    continuation = "12 Jan 25 REF 4421 INVOICE"
+    assert _looks_like_row(continuation, dmy_lead=True), (
+        "precondition: the line must be one the E widening would promote"
+    )
+    lines = [
+        "BALANCE BROUGHT FORWARD 01 01 100.00",
+        "PAYMENT TO SUPPLIER 10.00- 01 12 90.00",
+        continuation,
+        "DEPOSIT 5.00 01 14 95.00",
+    ]
+    r = _parse_family_a(lines, 2, "us", ("2025-01-01", "2025-01-31"))
+
+    assert [d.amount_minor for d in r.drafts] == [-1000, 500]
+    assert r.drafts[0].description == "PAYMENT TO SUPPLIER 12 Jan 25 REF 4421 INVOICE"
+
+
 @pytest.mark.parametrize(
     "line, desc, amt, bal",
     [

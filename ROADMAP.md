@@ -1018,7 +1018,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Source: FIBR-0354 follow-up, 2026-09-25.
   Lanes: docs.
 
-- 📋 [FIBR-0363] **No test catches the Standard Bank dmy_lead widening switched on for every family's _fold.**
+- ✅ [FIBR-0363] **No test catches the Standard Bank dmy_lead widening switched on for every family's _fold.**
   test_FIBR0190_INV9_dmy_lead_widening_is_opt_in pins only
   _looks_like_row's default. Mutating `_fold(..., dmy_lead: bool = False)`
   to `True` turns the widening on for all three non-E `_fold(lines)`
@@ -1031,6 +1031,13 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   with a real date. The same "no fixture can produce it" shape as
   FIBR-0351. The fix is a synthetic fixture with such a line, asserting
   it folds into the row above rather than becoming a row.
+  Resolved 2026-09-25: test_FIBR0363_a_family_a_continuation_leading_with_a_date_still_folds
+  feeds _parse_family_a a synthetic statement whose continuation line
+  starts "12 Jan 25", with a precondition that the E widening would
+  promote it. It asserts the line folds into the row above and both
+  transactions import. mutation_probe killed _fold's default widened and
+  Family A's call site widened. Families B and D are not covered by this
+  fixture; the documented hazard is Family A's.
   **Layman:** A change that would make the bank-statement reader mistake some description lines for transactions would not be caught by any test.
   Kind: test.
   Source: FIBR-0358 mutation audit, 2026-09-25.
