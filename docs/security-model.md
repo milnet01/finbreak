@@ -460,22 +460,25 @@ be checkable. Enforcement arrives in step with the code:
   works differently of necessity: the app does not hold the code
   (INV-3c forbids it) and the hint is set long after the one-time
   display, so there is nothing to compare against. Instead the hint is
-  **normalised first** — the user holds the code as `A1B2-C3D4-…`,
-  whose longest unbroken run is four symbols, so scanning the raw text
-  finds no candidate and would cheerfully accept a hint that *is* the
-  code — then every window of 27 consecutive symbols that decode to data
+  **reassembled first**, because the user holds the code as
+  `A1B2-C3D4-…` and may write it hyphenated, spaced or across a line
+  break, so the raw text holds no long run. The hint is split on
+  whitespace and each piece has its hyphens removed. A piece is scanned
+  on its own, and consecutive pieces holding **no lowercase letter** —
+  the display form is upper case — are also joined and scanned
+  together. Every window of 27 consecutive symbols that decode to data
   values (the data alphabet plus Crockford's `I`/`L`/`O` folds), the
-  length of the code's **payload**, is a candidate and is trial-unwrapped against
-  `slots.recovery`. The payload alone is the whole credential: the
-  check symbol is computed from it, so a hint holding the payload with
-  a wrong check symbol, or none, carries the live code too. No
-  candidate is filtered on its check symbol (FIBR-0308). A successful
-  unwrap proves the hint carries the live code. A hint with no
-  candidate — the common case, since prose splits into short runs —
-  costs no key derivation at all. The worst case, one unbroken run
-  filling the hint's length cap, costs one derivation per window; that
-  is accepted rather than capped, since only a hint that is itself a
-  long random string reaches it. **Where the slot cannot be tested the leg fails
+  length of the code's **payload**, is a candidate and is
+  trial-unwrapped against `slots.recovery`. The payload alone is the
+  whole credential: the check symbol is computed from it, so a hint
+  holding the payload with a wrong check symbol, or none, carries the
+  live code too. No candidate is filtered on its check symbol
+  (FIBR-0308). A successful unwrap proves the hint carries the live
+  code. Sentence-case prose yields no candidate, because its pieces are
+  words and none of them joins, so it costs no key derivation at all.
+  Each candidate costs one derivation, uncapped; a hint reaches many
+  only by being a long run of code-like text, such as all-caps prose.
+  **Where the slot cannot be tested the leg fails
   OPEN**: a v1 vault, an unreadable sidecar, an absent slot, or one
   `validate_slot` refuses all accept the hint, logging that a code-like
   sequence went untested (never the hint itself). A slot that cannot be
