@@ -228,6 +228,21 @@ pin is covered by the local run; what is uncovered is the step executing.
 
 ---
 
+## Module map
+
+### Why FIBR-0050 INV-11 carries a same-commit rule
+
+INV-11 was silently falsified twice. FIBR-0216 added the zero-amount degrade,
+and FIBR-0252 made `parse` return per-row errors. Neither updated INV-11.
+
+The CLAUDE.md note used to add that the drift was repaired and checked by cold
+review lanes, and told readers not to look for it. That sentence moved here in
+FIBR-0350. CLAUDE.md is loaded into every review lane before its brief, so it
+steered each cold reviewer of FIBR-0050 away from that spec's most contested
+area. Every lane of one review loop reported it unprompted.
+
+---
+
 ## Standards reference
 
 ### The spec-filename reconciliation

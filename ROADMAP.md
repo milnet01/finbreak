@@ -2373,7 +2373,7 @@ work, and none of it is a release decision.
   Kind: doc.
   Source: fleet-survey-2026-08-20 (other projects' versioning standards, after FIBR-0299).
 
-- 📋 [FIBR-0330] **CLAUDE.md runs the two roadmap_query survey calls together, so a session skips a call it owes.**
+- ✅ [FIBR-0330] **CLAUDE.md runs the two roadmap_query survey calls together, so a session skips a call it owes.**
   Where state lives item 2 names `mode:"headline_only"` as the cheap survey, then
   says a filtered call withholds bodies "but still returns `kind` as a field --
   so the survey answers Resumption flow step 2 on its own; no second call is
@@ -2418,6 +2418,12 @@ work, and none of it is a release decision.
   is now measured rather than predicted: two sessions, two wasted survey
   calls, and in today's case the survey it invalidated was the largest single
   reply of the session (114 items, spilled to a handle).
+  Resolved 2026-09-25: § Where state lives item 2 now names
+  `bullet_fields: ["id","status","kind","headline_oneline"]` as the survey
+  call, and says headline_only cannot carry `kind`. Checked live the same
+  day: bullet_fields rows carry `kind`, headline_only rows do not. No
+  review gate: rule 14's exception for an amendment that brings the
+  document into line with verified existing behaviour.
   **Layman:** A note in our own instructions is ambiguous enough that Claude can skip a lookup it actually needs at the start of a session.
   Kind: doc-fix.
   Source: in-session-2026-09-02.
@@ -2809,7 +2815,7 @@ work, and none of it is a release decision.
   Kind: test.
   Source: in-session-2026-09-21 (peer session reported the same defect class from its own tree).
 
-- 📋 [FIBR-0350] **CLAUDE.md steers every cold reviewer of FIBR-0050 away from a named area, and three lanes said so unprompted.**
+- ✅ [FIBR-0350] **CLAUDE.md steers every cold reviewer of FIBR-0050 away from a named area, and three lanes said so unprompted.**
   MEASURED, not inferred. Loop 15 of FIBR-0050's review required each lane
   to open with what it already knew. All three, independently, named the
   same thing: CLAUDE.md § Module map carries a paragraph about that spec
@@ -2852,6 +2858,12 @@ work, and none of it is a release decision.
   session was mid-gate on a different one. Adjacent to FIBR-0296, which
   proposes splitting CLAUDE.md for size; this is a distinct cause and the
   two fixes do not depend on each other.
+  Resolved 2026-09-25: the verdict sentence and the "do not go looking"
+  instruction left CLAUDE.md § Module map. Their history is in
+  docs/history/claude-md.md § Module map. The live instructions stay:
+  INV-11 is canonical, amend it in the same commit, and the `_draft`
+  amount trap. No review gate: no remaining instruction changes for a
+  writer, which is at most rule 14's grey zone.
   **Layman:** Our own project notes tell a fresh reviewer where not to look, which quietly weakens every independent review of the import parser.
   Kind: doc-fix.
   Source: in-session-2026-09-21 (FIBR-0050 review-contract loop 15; all three lanes disclosed it).

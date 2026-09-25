@@ -20,11 +20,15 @@ six-plus reads to answer a question the roadmap DB already answers.
    file** — the next render overwrites you. Query the DB with `roadmap_query`
    rather than reading a 600 KB file: **`status:"active"`** for the open items
    (that is planned + in-progress — the resumption flow's call), `id` / `ids`
-   for one item **with its body**, `mode:"headline_only"` for a cheap survey.
+   for one item **with its body**.
    **A filtered call withholds bodies** (the envelope says so, with
-   `bodies_omitted: true`) **but still returns `kind` as a field** — so the
-   survey answers § Resumption flow step 2 on its own; no second call is
-   owed. A targeted `id` / `ids` fetch returns bodies without `include_body`.
+   `bodies_omitted: true`). **For the survey, pass
+   `bullet_fields: ["id","status","kind","headline_oneline"]`** — it keeps
+   the rows small and still carries `kind`, so it answers § Resumption flow
+   step 2 on its own. **`mode:"headline_only"` cannot**: its rows are fixed
+   to `id`, `status`, `headline_oneline` and `section_slug`, with no `kind`
+   under any argument (FIBR-0330). A targeted `id` / `ids` fetch returns
+   bodies without `include_body`.
    Write through `roadmap_log`, which enforces the format and **re-renders the
    whole file on every write** (`items_rendered: 277` on a one-item annotate)
    — that render is what overwrites a hand edit. Keep a bold headline on **one
@@ -812,14 +816,10 @@ what finds the symbol-only citations.
   - **The Standard Bank import contract is stated in
     [`docs/specs/FIBR-0050.md`](docs/specs/FIBR-0050.md) INV-11 — amend it in the
     same commit that changes the behaviour.** It is the canonical "all-or-nothing,
-    and here is every way a statement can be refused" clause. It was silently
-    falsified twice — FIBR-0216 added the zero-amount degrade and FIBR-0252 made
-    `parse` return per-row errors, neither updating INV-11 — which is why the
-    same-commit rule is stated here at all. **That drift is now repaired and this
-    note is no longer a live warning:** checked 2026-09-21 by three independent
-    cold lanes, INV-11, D10 and D13 all state the discriminator as the amount and
-    agree with `_draft`. Do not go looking for a divergence that was fixed.
-    The trap in the code is the part still worth carrying: `_draft` decides
+    and here is every way a statement can be refused" clause. Why the
+    same-commit rule is stated here at all:
+    [`docs/history/claude-md.md`](docs/history/claude-md.md).
+    The trap in the code: `_draft` decides
     degrade-vs-refuse on the **amount**, never on the rejection reason —
     `parse_transaction` checks description and date first, so a printed `0.00`
     line can be rejected for its *date* and must still degrade (FIBR-0255 §4.1).
