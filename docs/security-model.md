@@ -292,9 +292,10 @@ be checkable. Enforcement arrives in step with the code:
   T13 governs. That is the user storing their own credential, not the app
   retaining it, and the difference between the two is what this invariant
   is about. Stated as the principle rather than as a list, because a
-  closed list of one refuses the copy button the app already ships. In particular it never
-  reaches `window.ini`, which is plaintext by design and is where the
-  password hint already lives.
+  closed list of one refuses the copy button the app already ships. In particular the app
+  never writes it to `window.ini`, which is plaintext by design and is
+  where the password hint lives. A hint is text the user types, so INV-11
+  bounds it instead, including where INV-11's recovery leg fails open.
 
 - **INV-3d — Slot wrapping is authenticated and fails closed**
   (FIBR-0019 INV-3). Any modification to a slot — a flipped
@@ -467,7 +468,9 @@ be checkable. Enforcement arrives in step with the code:
   on its own, and consecutive pieces holding **no lowercase letter** —
   the display form is upper case — are also joined and scanned
   together. Only that join test reads case; symbols are matched
-  case-insensitively. Every window of 27 consecutive symbols that decode
+  case-insensitively. So a code written in lower case AND spaced or split
+  across lines is not reassembled, and that form is outside this leg, as
+  obfuscation is outside the password leg. Every window of 27 consecutive symbols that decode
   to data values (the data alphabet plus Crockford's `I`/`L`/`O` folds),
   the length of the code's **payload**, is a candidate and is
   trial-unwrapped against `slots.recovery`. The payload alone is the
