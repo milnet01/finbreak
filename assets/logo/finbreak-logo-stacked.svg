@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="292 0 620 370" width="620" height="370">
+  <title>finbreak</title>
+  <g fill="none" stroke-width="48">
+    <path d="M531.13,99.73 A70,70 0 0 1 596.73,34.13" stroke="#A2D536"/>
+    <path d="M605.27,34.13 A70,70 0 0 1 670.87,99.73" stroke="#2979FC"/>
+    <path d="M596.73,173.87 A70,70 0 0 1 531.13,108.27" stroke="#15BBB1"/>
+    <path d="M670.87,108.27 A70,70 0 0 1 605.27,173.87" stroke="#FC7A01"/>
+  </g>
+  <circle cx="601" cy="104" r="32.2" fill="#F1B722" stroke="#C98A0E" stroke-width="4.7"/>
+  <circle cx="601" cy="104" r="21.8" fill="none" stroke="#FFD65A" stroke-width="2.8"/>
+  <g transform="translate(0 160)">
+  <g fill="none" stroke="#F3F6FA" stroke-width="20" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M312,190 V95 A25,25 0 0 1 337,70"/>
+    <path d="M298,112 H334"/>
+    <path d="M372,190 V112"/>
+    <path d="M406,190 V112 M406,145 A30,30 0 0 1 466,145 V190"/>
+    <path d="M500,70 V190"/>
+    <path d="M530,120 a30,30 0 1 1 0,60 a30,30 0 1 1 0,-60"/>
+    <path d="M594,190 V112 M594,148 A36,36 0 0 1 632,114"/>
+    <path d="M660,150 H720 A30,30 0 1 0 711.2,171.2"/>
+    <path d="M782,120 a30,30 0 1 0 0,60 a30,30 0 1 0 0,-60"/>
+    <path d="M812,112 V190"/>
+    <path d="M846,70 V190"/>
+    <path d="M892,112 L846,160"/>
+    <path d="M863,143 L894,190"/>
+  </g>
+  <circle cx="372" cy="80" r="12" fill="#F3F6FA"/>
+  </g>
+</svg>
