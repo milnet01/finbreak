@@ -3325,6 +3325,19 @@ work, and none of it is a release decision.
   Kind: test.
   Source: in-session-2026-09-25 (peer request from pressless-e4, PRESS-0023).
 
+- 📋 [FIBR-0358] **Audit tests whose docstring claims to catch a widening their fixture cannot produce.**
+  Shape reported by the pressless-e4 session from its own test review: a test
+  claims "fails if X is widened/added", but its fixture is built so a widened
+  X cannot leak through it, and the real guard sits elsewhere. A
+  workspace_search for widen/loosen/"a new field" across tests/ on 2026-09-25
+  matched many tests. Some already record a measured check, e.g.
+  table_state's note that an earlier version "also passes with the widening
+  removed". So this is a review-tests job: judge each by mutation, not by
+  reading. FIBR-0351 is one known instance.
+  **Layman:** Some tests may claim to guard against a change they could never actually detect; each needs checking by deliberately breaking the code.
+  Kind: test.
+  Source: peer-2026-09-25 (pressless-e4 test-review tip).
+
 ## P01 — Bootstrap (target: next)
 
 **Theme:** wire up the build, lint, format, test, **security
