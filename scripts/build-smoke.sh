@@ -17,7 +17,9 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DIST="$ROOT/dist"
 CACHE="$DIST/.build-cache"
-BUILD_IMAGE="docker.io/library/python:3.12-slim-bookworm"
+# python:3.12-slim-bookworm, pinned by digest to match ci.yml (FIBR-0345;
+# harness INV-6). podman refuses tag+digest together, so the tag lives here.
+BUILD_IMAGE="docker.io/library/python@sha256:392307d22300de8b5986851a12d9176dfc0fc073e65bf6523ebd7dcbeb23564e"
 TEST_IMAGE="docker.io/library/debian:13-slim"
 CLEANROOM_IMAGE="localhost/finbreak-cleanroom:13"
 SENTINEL="FINBREAK_SELFTEST_OK"

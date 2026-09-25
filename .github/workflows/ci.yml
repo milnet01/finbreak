@@ -26,7 +26,14 @@ jobs:
     # would raise the minimum glibc every AppImage/.exe user needs. Bump only
     # together with build-smoke.sh + ci-docker.sh, and only as a deliberate
     # floor-raise. Tracked as FIBR-0180.
-    container: python:3.12-slim-bookworm
+    #
+    # PINNED by digest, like every `uses:` (FIBR-0345): a tag can be re-pointed
+    # under the gate. The same digest is in build-smoke.sh + ci-docker.sh and
+    # tests/features/harness INV-6 fails if they drift. A pinned digest takes no
+    # Debian security patches, so refresh it on each dependency sweep: the
+    # multi-arch index digest of python:3.12-slim-bookworm, from Docker Hub's
+    # `docker-content-digest` header.
+    container: python:3.12-slim-bookworm@sha256:392307d22300de8b5986851a12d9176dfc0fc073e65bf6523ebd7dcbeb23564e
     steps:
       # actions/checkout shells out to git, which the slim image lacks.
       - name: Install git for checkout

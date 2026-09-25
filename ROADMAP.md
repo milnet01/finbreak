@@ -2624,8 +2624,21 @@ work, and none of it is a release decision.
   Source: in-session-2026-09-21 (noticed while fixing {{id:0}}).
   Lanes: docs.
 
-- 📋 [FIBR-0345] **ci.yml pins every action to a SHA but names its container by a mutable tag.**
+- ✅ [FIBR-0345] **ci.yml pins every action to a SHA but names its container by a mutable tag.**
   FIBR-0226 adopted commit-SHA pinning for GitHub Actions as deliberate\nsupply-chain policy, CLAUDE.md records it, and the gate's own zizmor stage\nenforces it -- every uses: across all three workflows complies. But the\nCONTAINER, which executes the entire gate and is strictly more privileged than\nany action running inside it, is a floating tag: ci.yml line 29,\n`container: python:3.12-slim-bookworm`. So the stated policy has a hole at its\nmost privileged point.\n\nWhy the project's own tooling cannot see it: the gate runs zizmor's default\n`regular` persona, and `unpinned-images` is an `auditor`-persona check. So\n`zizmor .github/workflows/` exits 0 and the hole is invisible to the gate that\nwas added to catch exactly this class.\n\nNOT a one-liner, which is why it is filed rather than fixed in passing. ci.yml\nlines 22-28 hold the image at bookworm ON PURPOSE -- its glibc is the effective\nfloor for every frozen artifact, tracked as FIBR-0180 -- and the comment there\nsays a bump must move build-smoke.sh and ci-docker.sh together. So a digest pin\nmeans pinning in three places plus a documented refresh cadence, and a stale\ndigest is its own smaller hazard. Real trade-off.\n\nThe fix shape: `python:3.12-slim-bookworm@sha256:<digest>` in all three places,\nwith the refresh trigger recorded beside the existing FIBR-0180 note. Consider\nwhether to raise the gate's zizmor to `--persona auditor` at the same time, and\nif so decide the three `concurrency-limits` advisories it also reports.\n\nDismissed from the same run, recorded so it is not re-raised: zizmor's\n`template-injection` on ${{ github.workspace }} at windows-build.yml line 136 --\nthat path is not attacker-controllable.
+  Resolved (2026-09-25, user chose pin plus auto-check): the CI base
+  image is pinned by its multi-arch index digest at all three sites.
+  ci.yml keeps tag@digest. build-smoke.sh and ci-docker.sh use
+  python@sha256:…, because podman refuses a tag and a digest together
+  (measured). New harness INV-6
+  (`test_INV6_ci_image_is_pinned_by_one_digest_at_every_site`) fails on
+  a bare tag or on drift between the three; a one-digit mutation fails
+  it. The ci.yml comment says how to refresh the digest;
+  check-dependencies (container bases) owns the stale-digest sweep.
+  `zizmor --persona auditor` no longer reports unpinned-images.
+  `ci-docker.sh` ran green in the pinned image. Not done: raising the
+  gate's zizmor to the auditor persona, which would also need its
+  concurrency-limits advisories decided. INV-6 enforces the pin instead.
   **Layman:** The build recipe carefully locks down the tools it uses, but not the base system image those tools run inside.
   Kind: security.
   Source: check-code-2026-09-21 (zizmor --persona auditor).

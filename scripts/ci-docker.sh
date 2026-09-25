@@ -24,7 +24,9 @@ runtime="$(command -v podman || command -v docker || true)"
 # by someone else — faithfully reproducing GitHub's container checkout, where
 # git otherwise trips "dubious ownership". This is what makes ci-setup.sh's
 # safe.directory line get exercised locally, not just on CI.
+# The image is python:3.12-slim-bookworm, pinned by digest to match ci.yml
+# (FIBR-0345; harness INV-6). podman refuses tag+digest together.
 exec "$runtime" run --rm -t --security-opt label=disable \
     -v "$PWD":/repo:ro \
-    docker.io/library/python:3.12-slim-bookworm \
+    docker.io/library/python@sha256:392307d22300de8b5986851a12d9176dfc0fc073e65bf6523ebd7dcbeb23564e \
     bash -c 'cp -a /repo /work && chown -R 1001:1001 /work && cd /work && ./scripts/ci-setup.sh && ./scripts/ci-local.sh "$@"' _ "$@"

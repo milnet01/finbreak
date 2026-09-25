@@ -420,3 +420,38 @@ def _copy_hook(work: Path) -> Path:
     shutil.copy(_HOOK, hook)
     hook.chmod(0o755)
     return hook
+
+
+# -- INV-6: the CI base image is pinned by one digest everywhere ------------ #
+_IMAGE_SITES = (
+    _CI_YML,
+    _ROOT / "scripts" / "ci-docker.sh",
+    _ROOT / "scripts" / "build-smoke.sh",
+)
+# An IMAGE reference only — a tag, a digest, or both — so a bare `python -m`
+# in a script is not mistaken for one. Group 1 is the digest, if any.
+_PYTHON_IMAGE_REF = re.compile(
+    r"\bpython(?::[\w.-]+(@sha256:[0-9a-f]{64})?|(@sha256:[0-9a-f]{64}))"
+)
+
+
+def test_INV6_ci_image_is_pinned_by_one_digest_at_every_site() -> None:
+    """FIBR-0345: every python image reference at the three sites carries a
+    digest, and it is the same digest. A bare tag can be re-pointed under the
+    gate; a digest cannot, and the three must move together (FIBR-0180)."""
+    digests: dict[str, set[str | None]] = {}
+    for site in _IMAGE_SITES:
+        code = "\n".join(
+            line
+            for line in site.read_text().splitlines()
+            if not line.lstrip().startswith("#")
+        )
+        refs = [m.group(1) or m.group(2) for m in _PYTHON_IMAGE_REF.finditer(code)]
+        assert refs, f"precondition: {site.name} names the python image"
+        digests[site.name] = set(refs)
+    assert all(None not in found for found in digests.values()), (
+        f"an image reference has no digest: {digests}"
+    )
+    assert len(set().union(*digests.values())) == 1, (
+        f"the sites pin different digests: {digests}"
+    )
