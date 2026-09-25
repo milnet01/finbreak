@@ -595,7 +595,8 @@ def _verify_checksum(
     # Family B alone compares magnitudes, and only because its running-balance
     # column prints unsigned magnitudes while its "CLOSING BALANCE" row prints a
     # sign — the same asymmetry that makes `_verify_row` pass `check_sign=False`
-    # for B and no other family.
+    # for B and no other family. Confirmed on real Home Loan statements
+    # (FIBR-0335): the closing prints the running balance negated.
     #
     # Applying `abs()` to every family let a truncation through whenever the lost
     # rows flip the reconciled sign, which any overdrawn account reaches: opening

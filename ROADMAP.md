@@ -102,7 +102,7 @@ so Flathub review and code signing do not block this release.
   Kind: fix.
   Source: in-session-2026-09-21 (found while fixing FIBR-0208).
 
-- 📋 [FIBR-0335] **Family B's completeness gate is weakened on a premise nothing in the repo supports.**
+- ✅ [FIBR-0335] **Family B's completeness gate is weakened on a premise nothing in the repo supports.**
   _verify_checksum compares MAGNITUDES for Family B and signed totals for
   every other family. The reason its comment gives is that B's
   running-balance column prints unsigned magnitudes while its CLOSING
@@ -166,6 +166,17 @@ so Flathub review and code signing do not block this release.
 
   Next step is a person reading the Home Loan statement, not a session reading
   the spec.
+  Resolved (2026-09-25): settled against the user's real Home Loan
+  statements, read locally, with only yes/no facts printed and the
+  password file deleted afterwards. On every one, the running balance
+  stayed positive and never crossed zero, and `opening + Σ` equalled the
+  NEGATED printed closing, so the signed check fails and the magnitude
+  check passes. The exemption's premise holds: the running column is
+  unsigned and the closing row signed. FIBR-0050 INV-11 now records
+  this, including that an overpaid loan was not observed, and the
+  `_verify_checksum` comment says it was confirmed. No code behaviour
+  changed. The possible tightening to a negated-closing check is filed
+  as FIBR-0357. This clears FIBR-0335 from the 1.0 gate.
   **Layman:** A Home Loan statement gets a weaker arithmetic check than the others, and the reason given for that may not be true.
   Kind: investigate.
   Source: review-contract on FIBR-0050, 2026-09-04.
@@ -361,6 +372,11 @@ so Flathub review and code signing do not block this release.
   self-update on Windows, from the previous release to the 1.0
   candidate. The Windows swap helper (`WindowsInstaller.apply`) is only
   command-text tested on CI and has only been run by hand.
+  Progress (2026-09-25): FIBR-0335 is closed. Real Home Loan statements
+  confirmed the magnitude gate's premise, so it leaves the 1.0 gate. The
+  remaining named blocker in the gate section is FIBR-0346, scheduled to
+  land with the single OBS re-submit at 1.0 per the user's 2026-09-21
+  decision.
   **Layman:** The plan for calling the app finished: what has to be true first, and which four jobs are standing in the way.
   Kind: release.
   Source: user-decision-2026-08-20 ("what gets us to v1.0?").
@@ -907,6 +923,24 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   **Layman:** The openSUSE/Fedora packages on the build service were still the version from late July, because publishing a new release never updates them. Anyone installing from there got old software.
   Kind: package.
   Source: in-session-2026-08-31 (found while working FIBR-0158).
+
+- 📋 [FIBR-0357] **Family B's completeness gate could check the negated closing instead of magnitudes, closing its sign-flip gap.**
+  FIBR-0335 settled Family B's convention on real Home Loan statements: the
+  running balance is printed unsigned and never crossed zero, and the closing
+  row prints it negated, so `opening + Σ == -closing` held on every one. That
+  means `_verify_checksum` could compare `reconciled == -closing_m` for B
+  instead of `abs(reconciled) == abs(closing_m)`. That would catch the
+  truncation FIBR-0050 INV-11 names as B's accepted blind spot, one that
+  flips the reconciled total's sign.
+
+  Not done with FIBR-0335, because an overpaid loan (balance crossing into
+  credit) was never observed, and the signed form would refuse such a
+  statement if its convention differs. Needs one overpaid-loan statement, or
+  a decision to accept that refusal (the CSV/OFX route stays open). FIBR-0050
+  INV-11 amendment plus rule 14's gate when taken.
+  **Layman:** Home Loan statements could get the same stricter arithmetic check as other accounts now that we know how the bank prints them.
+  Kind: enhancement.
+  Source: in-session-2026-09-25 (follow-up to FIBR-0335's real-statement check).
 
 ## v1.1.0 — Localisation
 
@@ -1949,6 +1983,15 @@ that may never arrive.
   today. The rule above stands: do not open a new PR while 9662 stands.
   Any bump comment posted from here should cite the v0.1.23 pin rather
   than the old one.
+  Progress (2026-09-25, user go-ahead): fork branch milnet01/flathub
+  add-io.github.milnet01.finbreak re-pinned to v0.1.23 / c86d9c7 as fork
+  commit a50f4c2, a normal commit touching only the tag and commit
+  lines. flatpak-builder-lint on the fork's three files exits 0; its one
+  warning is a newer runtime (26.08), filed as FIBR-0356. An offline
+  build of v0.1.23 was NOT re-run, so a nudge must not claim one. Next
+  action is the USER's: post the drafted nudge on Flathub Discourse,
+  citing #9662 and the v0.1.23 pin, then record the post's link here.
+  Still do not open a new PR while #9662 stands.
 
 - 📋 [FIBR-0160] **Add openSUSE Leap 15.6 as an OBS target (deferred — Leap ships no python 3.12+).**
   Attempted 2026-07-23: added the Leap 15.6 target + a %if 0%{?sle_version}
@@ -1973,6 +2016,19 @@ that may never arrive.
   **Layman:** Offer a native openSUSE Leap package too. Parked for now: Leap's software repos don't carry a new-enough Python to match our bundled parts, and Flathub will reach Leap users in the meantime.
   Kind: package.
   Source: user-request-2026-07-23.
+
+- 📋 [FIBR-0356] **The Flatpak manifest targets Freedesktop runtime 25.08 while 26.08 is out.**
+  flatpak-builder-lint (org.flatpak.Builder) on the Flathub fork's manifest,
+  2026-09-25: exit 0, with one warning,
+  `runtime-update-available-to-org.freedesktop.Platform-26.08`. The
+  dependencies policy says stay on the latest version. Bumping means an
+  offline build and a self-test run under the new runtime, then updating both
+  packaging/flatpak/ and the fork branch together. Not folded into the
+  FIBR-0159 nudge, because an unbuilt runtime change is the wrong thing to
+  land in the middle of a stalled review.
+  **Layman:** The Linux app-store package is built on last year's base system; a newer one is available.
+  Kind: package.
+  Source: in-session-2026-09-25 (flatpak-builder-lint while re-pinning the FIBR-0159 fork).
 
 ## Carries no version — ships in no artifact
 
