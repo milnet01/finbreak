@@ -18,6 +18,10 @@ release](https://github.com/milnet01/finbreak/releases/latest)**, or see
 [CHANGELOG](CHANGELOG.md) for what's shipped and [ROADMAP](ROADMAP.md) for
 what's coming.
 
+**[▶ Watch a short tour](https://antsprojectshub.co.za/p/fin-break.html)**
+on the project page. It is silent, and every name and amount in it is
+invented demo data.
+
 **Code signing.** Windows builds are **not yet code-signed**, so Windows
 SmartScreen may warn about an "unknown publisher" the first time you run finbreak
 (see [Install](#install) for how to proceed). We applied to the
