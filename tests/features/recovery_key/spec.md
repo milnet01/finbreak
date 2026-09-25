@@ -127,11 +127,14 @@ every credential, account and transaction here is synthetic
   nor the recovery code.
   *Test:* `test_recovery_code.py::test_hint_rejects_the_recovery_code` — asserts
   a hint containing the real code is rejected, a hint containing a well-formed
-  but *wrong* code is accepted, and a hint containing no candidate performs no
-  derivation at all. The hint must be **normalised before** the 28-symbol scan:
-  the user holds the code as `A1B2-C3D4-…`, whose longest unbroken symbol run is
-  four, so scanning the raw text finds no candidate and cheerfully accepts a hint
-  that *is* the recovery code. Also asserts `validate_hint(hint, password)` keeps
+  but *wrong* code is accepted, and a hint containing no candidate — including a
+  punctuation-free sentence-case sentence — performs no derivation at all.
+  `test_recovery_code.py::test_hint_rejects_the_payload_in_every_written_form`
+  asserts the 27-symbol payload is caught however the user wrote it: alone, with
+  a wrong check symbol, lower case, as spaced groups, across a line break, or
+  glued to prose (security-model INV-11, FIBR-0308). The scan reassembles the
+  hint rather than scanning its raw text: the user holds the code as
+  `A1B2-C3D4-…`, whose longest unbroken symbol run is four. Also asserts `validate_hint(hint, password)` keeps
   its two-argument signature — the trial-unwrap is the caller's, in
   `ui/_password_hint.py`, because `services/password_hint.py`'s contract is to be
   pure.

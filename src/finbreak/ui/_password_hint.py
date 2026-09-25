@@ -27,11 +27,9 @@ from finbreak.errors import KdfPolicyError, KeyUnwrapError
 from finbreak.keywrap import SLOT_RECOVERY, unwrap_dek
 from finbreak.services.password_hint import HintPolicyError, validate_hint
 from finbreak.services.recovery_code import (
-    CODE_SYMBOLS,
-    INPUT_SYMBOLS,
-    decode,
-    normalise,
-    verify_check_symbol,
+    PAYLOAD_INPUT_SYMBOLS,
+    PAYLOAD_SYMBOLS,
+    decode_payload,
 )
 
 log = logging.getLogger(__name__)
@@ -61,41 +59,51 @@ def clear_hint() -> None:
     settings.sync()
 
 
-def _code_candidates(normalised_hint: str) -> list[str]:
-    """Every ``CODE_SYMBOLS``-long window in ``normalised_hint`` whose check
-    symbol verifies locally — the free half of INV-11's test.
+def _code_candidates(hint: str) -> list[str]:
+    """Every payload-length window in ``hint`` — security-model INV-11's scan.
 
-    Scans the NORMALISED hint, which is load-bearing: the user holds the code as
-    ``A1B2-C3D4-…``, whose longest unbroken symbol run is four, so a scan of the
-    raw text finds no 28-symbol candidate and cheerfully accepts a hint that IS
-    the recovery code. Runs are split on anything outside the input alphabet, so
-    ordinary prose around the code cannot merge with it.
+    The 27-symbol payload is the whole credential (the check symbol is computed
+    from it), so every window of ``PAYLOAD_SYMBOLS`` consecutive data-value
+    symbols is a candidate, filtered on nothing (FIBR-0308).
+
+    The hint is REASSEMBLED rather than stripped of all whitespace: the user may
+    write ``A1B2-C3D4-…`` hyphenated, spaced or across a line break, but
+    stripping every space also fused ordinary prose into one long run, which an
+    unfiltered scan would pay one derivation per window for. So each
+    whitespace-separated piece loses its hyphens; a piece holding a lowercase
+    letter is scanned alone, and consecutive pieces holding none — the display
+    form is upper case — are joined and scanned together. Only that join test
+    reads case; matching is case-insensitive. Sentence-case prose yields
+    nothing; a lower-case code written spaced is outside the leg, per INV-11.
 
     De-duplicated, keeping first-seen order: two identical windows unwrap
     identically, so a repeated one is a second ~46 MiB derivation that can only
-    reach the answer the first already gave (FIBR-0310 P12).
-
-    **There is no cap on top of that, and the absence is measured rather than an
-    oversight.** ``MAX_HINT_LEN`` (100) leaves 73 windows, each verifying by
-    chance with probability 1/37. Measured 2026-08-25 on this machine: a
-    derivation is 26 ms; 20 000 random 100-symbol hints averaged 2.0 candidates
-    and peaked at 10, and hill-climbing to maximise the count reached 24 — so
-    the crafted worst case is ~0.6 s on the UI thread, against ~50 ms for an
-    ordinary hint. A cap would have to sit below 24 to bound anything and above
-    10 to never refuse an honest hint, and no value does both.
+    reach the answer the first already gave (FIBR-0310 P12). Uncapped, per
+    INV-11: only code-like text (all-caps prose, say) reaches many windows.
     """
     candidates: dict[str, None] = {}
-    run: list[str] = []
-    for char in [*normalised_hint, " "]:
-        if char in INPUT_SYMBOLS:
-            run.append(char)
-            continue
-        text = "".join(run)
-        run.clear()
-        for start in range(len(text) - CODE_SYMBOLS + 1):
-            window = text[start : start + CODE_SYMBOLS]
-            if verify_check_symbol(window):
-                candidates[window] = None
+
+    def scan(text: str) -> None:
+        run: list[str] = []
+        for char in [*text.upper(), " "]:
+            if char in PAYLOAD_INPUT_SYMBOLS:
+                run.append(char)
+                continue
+            symbols = "".join(run)
+            run.clear()
+            for start in range(len(symbols) - PAYLOAD_SYMBOLS + 1):
+                candidates[symbols[start : start + PAYLOAD_SYMBOLS]] = None
+
+    joined: list[str] = []
+    for piece in hint.split():
+        piece = piece.replace("-", "")
+        if any(char.islower() for char in piece):
+            scan("".join(joined))
+            joined.clear()
+            scan(piece)
+        else:
+            joined.append(piece)
+    scan("".join(joined))
     return list(candidates)
 
 
@@ -112,17 +120,17 @@ def validate_hint_with_recovery(hint: str, password: str) -> None:
     The check works **without holding the code**, and that constraint decides its
     shape: INV-5 forbids retaining it, and the hint is set from Settings long
     after the one-time display, so nothing in memory has it. Instead the hint is
-    normalised, scanned for a check-symbol-valid candidate, and any candidate is
+    scanned for payload windows (``_code_candidates``) and each is
     trial-unwrapped against ``slots.recovery``. A successful unwrap proves the
     hint carries the LIVE code. No candidate — the common case — costs no key
     derivation at all.
 
-    A well-formed but *wrong* code is accepted: the check symbol proves only that
-    it is not a typo, and it is the unwrap that decides (INV-6).
+    A well-formed but *wrong* code is accepted: it is the unwrap that decides
+    (INV-6).
     """
     validate_hint(hint, password)
 
-    candidates = _code_candidates(normalise(hint))
+    candidates = _code_candidates(hint)
     if not candidates:
         return
     try:
@@ -152,7 +160,7 @@ def validate_hint_with_recovery(hint: str, password: str) -> None:
         for candidate in candidates:
             # ``derive_key`` copies its argument in and never touches it, so the
             # decoded code needs a name of its own to be wiped by.
-            secret = bytearray(decode(candidate))
+            secret = bytearray(decode_payload(candidate))
             try:
                 kek = derive_key(secret, params.salt, params)
             finally:

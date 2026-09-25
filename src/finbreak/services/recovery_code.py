@@ -40,11 +40,11 @@ GROUP_SIZE = 4
 _DECODE = {symbol: value for value, symbol in enumerate(DATA_ALPHABET)}
 _DECODE.update({"I": 1, "L": 1, "O": 0})
 
-# Every character a user may legitimately type as part of a code, once
-# normalised — the data alphabet, the three folded stand-ins, and the four
-# punctuation check symbols. Used to find candidate runs inside free text
-# (INV-11); never to validate one, which is `verify_check_symbol`'s job.
-INPUT_SYMBOLS = frozenset(DATA_ALPHABET + "ILOU*~$=")
+# Every character that decodes to a PAYLOAD value, upper-cased — the data
+# alphabet plus the three folded stand-ins. Used to find candidate payload
+# windows inside free text (security-model INV-11, FIBR-0308); a check-only
+# symbol (`U`, `*~$=`) can never sit inside a payload, so it ends a window.
+PAYLOAD_INPUT_SYMBOLS = frozenset(DATA_ALPHABET + "ILO")
 
 # The check symbol is taken modulo the size of the CHECK alphabet — 37, the
 # least prime above 32, which is what gives it its detection properties.
@@ -155,4 +155,18 @@ def decode(code: str) -> bytes:
             f"a recovery code is {CODE_SYMBOLS} symbols once normalised, "
             f"got {len(text)}"
         )
-    return _payload_int(text[:PAYLOAD_SYMBOLS]).to_bytes(PAYLOAD_BYTES, "big")
+    return decode_payload(text[:PAYLOAD_SYMBOLS])
+
+
+def decode_payload(payload: str) -> bytes:
+    """The 27-symbol ``payload`` alone as ``PAYLOAD_BYTES`` big-endian bytes.
+
+    The payload is the whole credential — the check symbol is computed from it —
+    so INV-11's hint scan trial-unwraps a payload window with no check symbol
+    at all (FIBR-0308). ``ValueError`` on any other length or a non-data symbol.
+    """
+    if len(payload) != PAYLOAD_SYMBOLS:
+        raise ValueError(
+            f"a payload is {PAYLOAD_SYMBOLS} data symbols, got {len(payload)}"
+        )
+    return _payload_int(payload).to_bytes(PAYLOAD_BYTES, "big")

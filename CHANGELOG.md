@@ -60,6 +60,10 @@ signaling per
   the clipboard auto-clear was due, and the copied text used to stay on the
   clipboard for good. The clear now survives the lock and still happens.
 
+### Security
+
+- **The password hint now refuses your recovery code however you write it — without its last character, spaced out, or split across lines — not only the exact printed form** (FIBR-0308)
+
 ## [0.1.23] - 2026-09-07
 
 ### Added

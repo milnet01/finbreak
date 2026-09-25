@@ -319,6 +319,10 @@ def test_hint_rejects_the_recovery_code(
 
     monkeypatch.setattr("finbreak.crypto.hash_secret_raw", counting_hash)
     check("the one I always use", MASTER_PASSWORD.decode())
+    # A longer sentence with no punctuation and no `U`: once whitespace was
+    # stripped this was one long run, so a payload scan would derive per
+    # window. Reassembly keeps its lower-case words apart (FIBR-0308).
+    check("the name of my first dog was rex and my first car", MASTER_PASSWORD.decode())
     assert derivations == [], (
         "INV-11: a hint holding no 28-symbol Crockford candidate must perform NO "
         "key derivation -- the trial-unwrap runs only where a candidate passes "
@@ -326,6 +330,48 @@ def test_hint_rejects_the_recovery_code(
         "  expected: 0 Argon2id derivations\n"
         f"  actual:   {len(derivations)}"
     )
+
+
+def test_hint_rejects_the_payload_in_every_written_form(
+    paths: tuple[Path, Path], service: AuthService, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """security-model INV-11 (FIBR-0308): the 27-symbol payload is the whole
+    credential -- the check symbol is computed from it -- so a hint holding the
+    payload with a wrong check symbol, or none, carries the live code. And the
+    hint is reassembled from pieces rather than stripped of all whitespace, so
+    each form the user may write it in must still be caught."""
+    _vault_path, sidecar_path = paths
+    from finbreak.ui import _password_hint as hint_io
+
+    check = require_seam(
+        hint_io,
+        "validate_hint_with_recovery",
+        "INV-11's trial-unwrap lives in ui/_password_hint.py (§ 11).",
+    )
+    monkeypatch.setattr("finbreak.paths.sidecar_path", lambda: sidecar_path)
+    code = create_vault(service)
+    keep_recovery_key(service, code)
+
+    full = normalise(code)
+    payload = full[:PAYLOAD_SYMBOLS]
+    wrong_check = next(c for c in "*~$=U" if c != full[-1])
+    display = format_code(full)
+    groups = display.split("-")
+    forms = {
+        "payload only, display form": format_code(payload),
+        "payload with a wrong check symbol": payload + wrong_check,
+        "payload only, lower case, contiguous": "mine: " + payload.lower(),
+        "spaced upper-case groups": "card says " + " ".join(groups),
+        "split across a line break": "card says "
+        + "-".join(groups[:3])
+        + "-\n"
+        + "-".join(groups[3:]),
+        "glued to prose": "mycodeis" + full,
+    }
+    for label, hint in forms.items():
+        with pytest.raises(HintPolicyError):
+            check(hint, MASTER_PASSWORD.decode())
+            pytest.fail(f"INV-11 accepted the live code written as: {label}")
 
 
 # --------------------------------------------------------------------------- #
@@ -338,10 +384,8 @@ def test_the_trial_unwrap_is_deduplicated(
     """A repeated candidate bought a second ~46 MiB Argon2id derivation of the
     first one's answer (FIBR-0310 P12).
 
-    No cap sits on top of the dedup, deliberately: measured, the crafted worst
-    case a 100-character hint can reach is 24 distinct candidates (~0.6 s), and
-    a random one peaks at 10 -- so no cap value both bounds the work and never
-    refuses an honest hint. ``_code_candidates``' docstring carries the numbers.
+    No cap sits on top of the dedup, deliberately (security-model INV-11): only
+    code-like text reaches many windows, and a cap would refuse an honest hint.
     """
     _vault_path, sidecar_path = paths
     from finbreak.ui import _password_hint as hint_io
@@ -364,26 +408,27 @@ def test_the_trial_unwrap_is_deduplicated(
 
     monkeypatch.setattr("finbreak.crypto.hash_secret_raw", counting_hash)
 
-    # Leg 1 -- the same wrong-but-well-formed candidate twice is ONE derivation.
-    # Two identical windows unwrap identically, so the second can only reach the
-    # answer the first already gave.
-    # Separated by "." rather than by prose: `normalise` strips SPACES, so
-    # "or maybe" between the two copies would merge into one run and produce
-    # straddling windows -- three candidates, not the repeat this leg is about.
+    # Leg 1 -- a repeated wrong-but-well-formed code costs no more than one copy.
+    # Two identical windows unwrap identically, so a repeat can only reach the
+    # answer the first already gave. One code can itself give two windows (its
+    # payload, and a window ending on a data-value check symbol), so the bound
+    # is one copy's candidate count, not 1.
+    # Separated by "." so the copies cannot join into straddling windows.
     forged = forge_wrong_code_with_a_valid_check_symbol(code)
-    assert len(_distinct(hint_io, f"{forged}.{forged}")) == 1, (
-        "precondition: the two copies must be ONE distinct candidate"
+    one_copy = _distinct(hint_io, forged)
+    assert one_copy and _distinct(hint_io, f"{forged}.{forged}") == one_copy, (
+        "precondition: the second copy must add no distinct candidate"
     )
     check(f"{forged}.{forged}", MASTER_PASSWORD.decode())
-    assert derivations == [1], (
+    assert len(derivations) == len(one_copy), (
         "a repeated candidate must not be derived twice\n"
-        "  expected: 1 Argon2id derivation\n"
+        f"  expected: {len(one_copy)} Argon2id derivation(s), one per distinct window\n"
         f"  actual:   {len(derivations)}"
     )
 
 
 def _distinct(hint_io: Any, text: str) -> list[str]:
-    return hint_io._code_candidates(normalise(text))
+    return hint_io._code_candidates(text)
 
 
 def test_an_unreadable_sidecar_fails_open_but_says_so(

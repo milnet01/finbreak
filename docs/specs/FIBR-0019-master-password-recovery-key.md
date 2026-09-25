@@ -720,20 +720,15 @@ delete one slot, rewrite the sidecar atomically. The database is untouched.
   **The check must work without the code, and that constraint decides its
   shape.** INV-5 forbids retaining the code, and the hint is set from
   Settings long after the one-time display, so nothing in memory holds it.
-  Instead: **normalise the hint first** — strip hyphens, spaces and case,
-  exactly as §4.3's Input rule does — then scan for any 28-symbol Crockford
-  candidate — **27 data symbols followed by ONE symbol from §4.3's 37-symbol
-  check alphabet**, which is what makes the scan cover the roughly five codes
-  in thirty-seven whose check symbol is `*`, `~`, `$`, `=` or `U`; a
-  data-alphabet-only scan silently accepts those hints, which is the breach
-  this invariant forbids — verify its check symbol locally, and where one passes, attempt
-  `unwrap_dek` against `slots.recovery`. A successful unwrap proves the hint
-  carries the live code. No candidate, or no successful unwrap, and the hint
-  is accepted — so the common case costs no key derivation at all.
-  **Normalising first is load-bearing**: the user holds the code in its
-  display form, `A1B2-C3D4-…`, whose longest unbroken symbol run is four, so
-  a scan of the raw hint text finds no 28-symbol candidate and cheerfully
-  accepts a hint that is the recovery code.
+  Instead the hint is scanned for the code's **27-symbol payload**, and each
+  candidate is tried with `unwrap_dek` against `slots.recovery`. The payload
+  alone is the whole credential — §4.3's check symbol is computed from it — so
+  no candidate is filtered on a check symbol (FIBR-0308). A successful unwrap
+  proves the hint carries the live code. No candidate, or no successful
+  unwrap, and the hint is accepted. **`docs/security-model.md` INV-11 owns
+  how the hint is reassembled into candidates**: the user holds the code in
+  its display form, `A1B2-C3D4-…`, whose longest unbroken symbol run is four,
+  so the raw hint text holds no candidate at all.
   **The trial-unwrap lives in `ui/_password_hint.py`, not in
   `services/password_hint.py`.** That module's own contract is to be pure —
   no Qt, no I/O — and the only sidecar locator, `paths.sidecar_path()`, sits
@@ -743,10 +738,13 @@ delete one slot, rewrite the sidecar atomically. The database is untouched.
   *Test:* `tests/features/recovery_key/test_recovery_code.py::test_hint_rejects_the_recovery_code`
   — asserts a hint containing the real code is rejected, a hint containing a
   well-formed but *wrong* code is accepted, and a hint containing no
-  candidate performs no derivation.
+  candidate performs no derivation;
+  `test_hint_rejects_the_payload_in_every_written_form` asserts the payload
+  is caught however it was written, check symbol included or not.
   *Breaks when:* the check is implemented by retaining the plaintext code,
-  which breaches INV-5 while appearing to satisfy this one; or by scanning
-  the hint before normalising it, which accepts the display form. Note that
+  which breaches INV-5 while appearing to satisfy this one; by scanning the
+  raw hint text, which accepts the display form; or by filtering candidates
+  on the check symbol, which accepts the payload alone. Note that
   `validate_hint(hint, password)` keeps its two-argument signature (verified
   2026-08-20) — the recovery-slot leg is the caller's, per the seam above.
 
@@ -929,7 +927,7 @@ inferred from this section.
 | INV-8 | `tests/features/recovery_key/test_migration.py::test_migration_preserves_every_row` |
 | INV-9 | `tests/features/recovery_key/test_recovery_unlock.py::test_recovery_unlock_forces_a_new_master_password` |
 | INV-10 | `tests/features/recovery_key/test_recovery_unlock.py::test_recovery_attempts_share_the_password_backoff` |
-| INV-11 | `tests/features/recovery_key/test_recovery_code.py::test_hint_rejects_the_recovery_code` |
+| INV-11 | `tests/features/recovery_key/test_recovery_code.py::test_hint_rejects_the_recovery_code`, `::test_hint_rejects_the_payload_in_every_written_form` |
 | INV-12 | `tests/features/recovery_key/test_sidecar_v2.py::test_declining_still_writes_the_envelope` |
 | INV-13 | `tests/features/recovery_key/test_migration.py::test_no_swap_without_a_verified_rollback_copy` |
 | The construction is cryptographically sound | **nothing** — no test in this project can establish that. It rests on AES-256-GCM and Argon2id as used, and on §4.2's AAD binding being complete. The mitigations are that no primitive is hand-rolled and that `bandit` and `pip-audit` run in the gate; neither reads a design. |

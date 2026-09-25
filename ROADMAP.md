@@ -743,10 +743,25 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: feature.
   Source: user-request-2026-07-12 (approved 2026-07-13).
 
-- 📋 [FIBR-0308] **INV-11's hint scan misses the 27-symbol payload, which is the whole credential.**
+- ✅ [FIBR-0308] **INV-11's hint scan misses the 27-symbol payload, which is the whole credential.**
   A SPEC question, not an implementation defect -- ui/_password_hint._code_candidates implements section 5 INV-11 faithfully. INV-11 says to scan for a 28-symbol Crockford candidate and verify its check symbol. But the check symbol is a pure function of the 27-symbol payload (CHECK_ALPHABET[_payload_int(payload) % 37]), so the payload ALONE is the entire credential, and Argon2id is fed exactly those 27 symbols decoded. A hint holding the payload without its check symbol -- or with a mistyped one -- therefore passes the guard and is written to plaintext window.ini.
 
   FP02 finding 1 is the narrow instance of this and is fixed there. This is the general case and needs INV-11's own wording changed: scan 27-symbol windows too, COMPUTING the check symbol rather than reading it, then trial-unwrap. Filed rather than fixed because amending an invariant is a spec change, and section 5 is what a conformer builds from.
+  Resolved (2026-09-25): security-model INV-11 was amended and gated
+  first (review-contract, three loops, capped calm; log rows 8–10). The
+  hint scan now trial-unwraps every 27-symbol payload window, filtered
+  on nothing. The hint is reassembled (split on whitespace, hyphens
+  removed, lowercase-free pieces joined) instead of having all
+  whitespace stripped. That keeps ordinary prose at zero derivations,
+  which the gate found an unfiltered scan of the old normalised text
+  would have broken. `recovery_code.decode_payload` added;
+  `INPUT_SYMBOLS` replaced by `PAYLOAD_INPUT_SYMBOLS`. Tests:
+  `test_hint_rejects_the_payload_in_every_written_form` (red before the
+  fix on the payload-only form) and a sentence-case prose leg in
+  `test_hint_rejects_the_recovery_code`. Two mutations fail them:
+  restoring whitespace-stripping, and dropping the join. FIBR-0019
+  INV-11 and the recovery_key test contract were written back to the
+  decision.
   **Layman:** The check that stops you putting your recovery code in your password hint only looks for the full code, not the part of it that actually matters.
   Kind: security.
   Source: close-phase-2026-08-21 (review-code lane 3, UI edges).
