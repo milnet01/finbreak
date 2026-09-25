@@ -1013,6 +1013,12 @@ touches the § 2 surface. A security fix takes the number its change takes — �
     deleted in favour of `_ROW_INDEX_ROLE`.
   - FIBR-0006's "Verified API basis" says Accounts mirrors item-data
     roles, which is no longer true.
+  Progress 2026-09-25: the false behaviour claim is fixed. FIBR-0008's
+  INV-10 row, D13, the INV-10 detail and the read_file_bytes deliverable
+  now describe _read_capped's bounded read of _MAX_IMPORT_BYTES + 1 bytes,
+  and the "benign TOCTOU" note is gone. A search of docs/ finds no other
+  stat-then-read claim; the journal record keeps its dated wording. The
+  superseded-design entries are still open.
   **Layman:** Some older design documents still describe how parts of the app used to be built, not how they work now.
   Kind: doc-fix.
   Source: FIBR-0354 follow-up, 2026-09-25.
