@@ -35,15 +35,12 @@ six-plus reads to answer a question the roadmap DB already answers.
    line**: a wrapped one renders its continuation at column 0, which markdown
    reads as a new list item. (User decision 2026-08-18, FIBR-0281.)
 
-   **The freshness check a session owes before writing has two halves, because
-   the two verbs read different things.** `roadmap_query` on the id it is about
-   to touch, reading the body back — and again after every flip or annotate,
-   because a note can land mid-bullet and still report success. Then the
-   file-side half: `roadmap_log` locates against the **file** while
-   `roadmap_query` reads the **store**, so a store-only item is queryable but
-   not writable and refuses `bullet_not_found`. A `dry_run` on the write you
-   are about to make is the cheapest test of **that half** — it resolves the
-   locator and echoes `from_status`. It returns no body, so the read-back is
+   **The freshness check a session owes before writing:** `roadmap_query` on
+   the id it is about to touch, reading the body back — and again after every
+   flip or annotate, because a note can land mid-bullet and still report
+   success. Both verbs locate items in the **store** (ANTS-4485, checked
+   2026-09-25), so anything `roadmap_query` shows can be written. A write replies with
+   the item's id, status and headline only, not its body, so the read-back is
    still owed. And there is **no delete verb**, so an `append` cannot be
    undone — reverting the file with git leaves the item orphaned and the
    next render injects it back. Get
