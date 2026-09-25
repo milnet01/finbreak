@@ -2491,7 +2491,7 @@ work, and none of it is a release decision.
   Kind: test.
   Source: observed in-session 2026-09-04.
 
-- 📋 [FIBR-0338] **Two files still cite the retired global rule 5 for the latest-stable policy.**
+- ✅ [FIBR-0338] **Two files still cite the retired global rule 5 for the latest-stable policy.**
   Found by the FIBR-0337 security-model gate's blast-radius sweep, and
   left out of that run deliberately: neither file was its subject.
 
@@ -2510,6 +2510,12 @@ work, and none of it is a release decision.
   and a one-line correction inside someone else's gate is how a document
   gets edited with no review at all. The pyproject comment is trivial and
   can ride along with it.
+  Resolved (2026-09-25): three citations fixed, not two.
+  docs/standards/dependencies.md § 6 now cites the global dependencies
+  standard § 6 for updating callers in the same change. pyproject.toml
+  now cites its § 5 for the periodic sweep. The same file's intro also
+  cited `~/.claude/CLAUDE.md § 5` and now names coding.md § 1.5 plus the
+  global dependencies standard. Citations only; no rule changed.
   **Layman:** Two files point at a rule that no longer exists, so anyone following the pointer finds nothing.
   Kind: doc-fix.
   Source: review-contract-2026-09-06 (FIBR-0019 gate, 4b sweep, out of scope).
@@ -2839,7 +2845,7 @@ work, and none of it is a release decision.
   First file written under the new rule:
   `docs/specs/FIBR-0231-plain-english-month-summary.md`.
 
-- 📋 [FIBR-0197] **Two feature spec.md files still pin LATEST_SCHEMA_VERSION == 5.**
+- ✅ [FIBR-0197] **Two feature spec.md files still pin LATEST_SCHEMA_VERSION == 5.**
   `tests/features/pdf_import/spec.md` INV-8 pins `LATEST_SCHEMA_VERSION == 5`
   and `tests/features/import_/spec.md` INV-8 says the version "is now 5".
   Both are prose-only staleness in test-contract files: the *tests* those
@@ -2851,6 +2857,9 @@ work, and none of it is a release decision.
   Fix: advance both to whatever `LATEST_SCHEMA_VERSION` is when this is
   picked up, or reword them to cite the constant instead of a literal so
   they stop churning on every migration.
+  Resolved (2026-09-25): both INV-8 rows now cite the constant instead
+  of a literal, so they stop drifting on each migration. That matches
+  their tests, which compare against `LATEST_SCHEMA_VERSION` by name.
   **Layman:** Two old test-contract files still say the database format is at version 5, when it is really at 12 (and about to be 13) — harmless today, but confusing to read.
   Kind: doc-fix.
   Source: in-session-2026-07-30 (FIBR-0193 cold-eyes loop 4, deferred finding).

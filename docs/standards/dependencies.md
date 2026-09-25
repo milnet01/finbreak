@@ -9,7 +9,9 @@ with the other standards in this folder ([coding](coding.md),
 
 Like `naming.md`, this standard is **cross-cutting**: it governs every
 dependency the project pulls in, whatever the Kind of work that added it.
-It operationalises the global rule (`~/.claude/CLAUDE.md § 5`) — "use the
+It operationalises the latest-stable rule (`~/.claude/standards/coding.md`
+§ 1.5, with `~/.claude/standards/dependencies.md` owning the dependency
+half) — "use the
 latest external-library version, with current idioms" — and adds the
 project's break-tracking mechanism.
 
@@ -161,7 +163,7 @@ workflow, `ci-setup.sh`) for any other reason.
 ## 6. Bumping is not just a version number
 
 When you bump a dependency, **update the code that calls it in the same
-change** (global rule § 5b) — new idioms, renamed APIs, changed
+change** (`~/.claude/standards/dependencies.md` § 6) — new idioms, renamed APIs, changed
 signatures. The bump and the idiom-refresh ship together, or the codebase
 rots into "compiles but nobody meant it." If the bump is a patch with no
 API surface change, say so explicitly in the commit ("no caller changes —

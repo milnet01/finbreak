@@ -76,7 +76,7 @@ finbreak = "finbreak.__main__:main"
 
 # PEP 735 dev dependency group. Pinned EXACTLY (==) for a reproducible
 # toolchain across machines (FIBR-0001 INV-4); refreshed to latest-stable on
-# the periodic sweep (coding.md § 1.5 / global rule § 5c), not silently.
+# the periodic sweep (coding.md § 1.5 / ~/.claude/standards/dependencies.md § 5), not silently.
 # gitleaks is intentionally absent: it is a Go binary, not a pip package, and
 # is installed separately (see CLAUDE.md "Build and test").
 [dependency-groups]

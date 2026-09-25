@@ -37,7 +37,7 @@ The three data rows are preserved, so the cap tests still monkeypatch
 | INV-5 | A PDF with no usable table (no ruled table; zero pages → no `IndexError`) → one friendly `ValueError` |
 | INV-6 | A multi-table PDF surfaces **all** candidate tables (the summary + the transactions table); header-only (0-data-row) candidates dropped |
 | INV-7 | Import-wizard PDF round-trip (7a–f, `qtbot`): pick→map step; encrypted→dialog, wrong-pw re-prompts, Cancel abandons; >1 table→chooser (default largest, switch repopulates combos); profile match auto-fills (single→preview, multi→stay on map); Import inserts + re-import adds zero; remembered pw auto-applies |
-| INV-8 | v4→v5 migration adds the **nullable** `accounts.statement_pdf_password` atomically; forward-only; `LATEST_SCHEMA_VERSION == 5`; a first-run vault is v5; the password is **not** on the `Account` object (D6 credential hygiene) |
+| INV-8 | v4→v5 migration adds the **nullable** `accounts.statement_pdf_password` atomically; forward-only; a first-run vault is at `LATEST_SCHEMA_VERSION`; the password is **not** on the `Account` object (D6 credential hygiene) |
 | INV-9 | PDF is resource-bounded: over-`_MAX_PDF_PAGES` (500) and over-`_MAX_PDF_ROWS` (100 000) each refused with a `ValueError`; a formula-looking cell round-trips as inert `str` |
 | INV-10 | PDF feeds the **same** write pipeline as CSV/OFX: import then re-import the same statement adds zero rows |
 | INV-11 | No secret logged: a sentinel password appears in **no** log record and **no** exception message; `ImportWizardWidget` defines no `self._*password*` attribute |
