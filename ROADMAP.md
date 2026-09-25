@@ -955,6 +955,19 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Source: in-session-2026-09-25 demo recording.
   Lanes: ui.
 
+- 📋 [FIBR-0361] **No test reads a saved import profile written by an earlier release.**
+  FIBR-0302 named this and closed only the backup half.
+  tests/features/import_/ round-trips column_mapping() from a stored
+  record, but same-build. docs/standards/versioning.md § 2's saved import
+  profiles row says the same. The shape that worked for backups: a
+  fixture vault written by an old tag's own code in a throwaway worktree,
+  carrying a saved profile, opened and read by today's build. See
+  tests/fixtures/backup_restore/README.md for the generator pattern.
+  **Layman:** Saved bank-import settings are only ever tested with the same app version that made them, so an update that broke old ones would go unnoticed.
+  Kind: test.
+  Source: split from FIBR-0302, 2026-09-25.
+  Lanes: tests.
+
 ## v1.1.0 — Localisation
 
 The first feature minor after 1.0. Chosen to go first because it is
@@ -2250,7 +2263,7 @@ work, and none of it is a release decision.
   Kind: test.
   Source: review-contract-2026-08-20 (FIBR-0299 loop 3, lane finding).
 
-- 📋 [FIBR-0302] **No test restores a .fbk backup written by an earlier release.**
+- ✅ [FIBR-0302] **No test restores a .fbk backup written by an earlier release.**
   `tests/features/backup/test_backup.py`'s round-trip is same-build: it
   exports from a seed and verifies with one version, asserting
   `res.schema_version == LATEST_SCHEMA_VERSION`. It never crosses a
@@ -2281,6 +2294,16 @@ work, and none of it is a release decision.
   The fixture wanted is now two, not one: a .fbk at an older SCHEMA
   version, and a .fbk taken by a pre-envelope build. Both restore through
   the same path and neither is covered.
+  Resolved 2026-09-25: tests/features/backup/ INV-20 restores two fixtures
+  through today's restore_backup: v0.1.12 (schema 8) and v0.1.22 (schema
+  13, pre-envelope). Each was written by that tag's own code in a
+  throwaway worktree, with synthetic data. The test asserts the new
+  password unlocks, both sentinel rows survive, the schema migrates to
+  LATEST and the sidecar is v2. mutation_probe killed four mutants: the
+  older-schema floor raised, the newer-guard widened, a broken middle
+  migration and a broken final one. Not covered: saved import profiles
+  (still open; see the fixture README), intermediate schemas, and the UI
+  restore path.
   **Layman:** Backups are only ever tested by writing and reading them with the same version, so a change that made old backups unrestorable would not be caught.
   Kind: test.
   Source: review-contract-2026-08-20 (FIBR-0299 loop 3, lane finding).

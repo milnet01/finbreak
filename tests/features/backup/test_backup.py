@@ -7,6 +7,7 @@ slices add ``BackupService`` export/restore and the UI. Every vault lives under
 ``tmp_path``; no network, no real financial data (testing.md § 6).
 """
 
+import importlib.util
 import json
 import os
 import secrets
@@ -27,11 +28,12 @@ from finbreak.crypto import (
     derive_key,
     load_and_validate_params,
     read_sidecar_v2,
+    sidecar_version,
 )
 from finbreak.errors import BackupError, VaultLockedError
 from finbreak.keywrap import SLOT_MASTER, unwrap_dek
 from finbreak.migrations import LATEST_SCHEMA_VERSION
-from finbreak.models import FORMAT_VERSION, KdfParams
+from finbreak.models import FORMAT_VERSION, SIDECAR_VERSION, KdfParams
 from finbreak.services.auth import (
     ARGON2_MEMORY_KIB,
     ARGON2_PARALLELISM,
@@ -55,6 +57,12 @@ pytestmark = pytest.mark.features
 KEY_LEN = 32
 _SENTINEL = "SENTINEL-" + secrets.token_hex(6)
 _BACKUP_PW = "backup-pass-1234"
+
+# FIBR-0302 (INV-20) — real .fbk fixtures written by an OLDER release's own
+# code, not simulated by today's. See tests/fixtures/backup_restore/README.md
+# for provenance/regeneration.
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_OLD_RELEASE_FIXTURE_DIR = _REPO_ROOT / "tests" / "fixtures" / "backup_restore"
 
 
 def _seeded_auth(paths) -> AuthService:
@@ -1883,3 +1891,110 @@ def test_export_refuses_a_destination_that_is_the_live_vault(tmp_path, target) -
         f"the export overwrote the live vault it was backing up.\n  target:   {target}"
     )
     auth.lock()
+
+
+# --------------------------------------------------------------------------- #
+# INV-20 (FIBR-0302) — restore of a .fbk written by an OLDER RELEASE
+#
+# Every restore test above is same-build: export and restore both run against
+# today's BackupService. docs/standards/versioning.md § 2 names "a backup
+# taken on any earlier release cannot be restored" as a MAJOR break, and
+# nothing before this test crossed a version boundary to prove it still
+# works. The two fixtures are real `.fbk` files written by that release's own
+# export_backup (see tests/fixtures/backup_restore/README.md for how), not a
+# simulation of an old backup by today's code.
+# --------------------------------------------------------------------------- #
+def _load_old_release_fixture_module():
+    """Load ``_generate_fibr0302_fixture.py`` by path (never collected by
+    pytest — no ``test_`` functions) so this suite reads the sentinel
+    constants from the single place that defines them, the same pattern
+    ``tests/features/windows_build/test_windows_build.py`` uses for its own
+    fixture module. Named distinctly from that module's own
+    ``_generate_fixture.py`` — mypy resolves a file with no ``__init__.py``
+    by basename, and two files sharing one would collide as the same module."""
+    spec = importlib.util.spec_from_file_location(
+        "_fibr0302_old_release_fixture",
+        _OLD_RELEASE_FIXTURE_DIR / "_generate_fibr0302_fixture.py",
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_OLD_RELEASE = _load_old_release_fixture_module()
+_RESTORED_NEW_MASTER = "fibr0302-restored-new-master-pw"
+
+
+@pytest.mark.parametrize(
+    "fbk_name,tag",
+    [
+        ("v0.1.22-schema13.fbk", "v0.1.22 (schema 13, pre-key-envelope)"),
+        ("v0.1.12-schema8.fbk", "v0.1.12 (schema 8)"),
+    ],
+    ids=["v0_1_22", "v0_1_12"],
+)
+def test_INV20_restores_a_backup_from_an_earlier_release(tmp_path, fbk_name, tag):
+    fbk = _OLD_RELEASE_FIXTURE_DIR / fbk_name
+    assert fbk.exists(), (
+        f"missing fixture: {fbk} — see tests/fixtures/backup_restore/README.md "
+        "to regenerate"
+    )
+
+    dest = _dest_auth(tmp_path)
+    BackupService(dest.vault, dest).restore_backup(
+        fbk, _OLD_RELEASE.BACKUP_PASSWORD, _RESTORED_NEW_MASTER
+    )
+
+    assert dest.unlock(bytearray(_RESTORED_NEW_MASTER, "utf-8")) is True, (
+        f"a backup from {tag} must restore and open under the credential "
+        "restore just set up (the NEW master password, never the fixture's "
+        "own original master)"
+    )
+    try:
+        conn = dest.vault.connection
+        schema = conn.execute("SELECT version FROM schema_version").fetchone()[0]
+        assert schema == LATEST_SCHEMA_VERSION, (
+            f"a {tag} backup restored but landed on schema {schema}, expected "
+            f"it migrated forward to LATEST_SCHEMA_VERSION={LATEST_SCHEMA_VERSION}\n"
+            f"  expected: {LATEST_SCHEMA_VERSION}\n  actual:   {schema}"
+        )
+
+        rows = {
+            r[0]: r[1]
+            for r in conn.execute(
+                "SELECT description, amount_minor FROM transactions"
+            ).fetchall()
+        }
+        assert (
+            rows.get(_OLD_RELEASE.SENTINEL_TXN_1_DESCRIPTION)
+            == _OLD_RELEASE.SENTINEL_TXN_1_AMOUNT_MINOR
+        ), (
+            f"the {tag} backup's first synthetic transaction did not survive "
+            f"the restore.\n  expected: {_OLD_RELEASE.SENTINEL_TXN_1_DESCRIPTION!r} "
+            f"= {_OLD_RELEASE.SENTINEL_TXN_1_AMOUNT_MINOR}\n  actual rows: {rows}"
+        )
+        assert (
+            rows.get(_OLD_RELEASE.SENTINEL_TXN_2_DESCRIPTION)
+            == _OLD_RELEASE.SENTINEL_TXN_2_AMOUNT_MINOR
+        ), (
+            f"the {tag} backup's second synthetic transaction did not survive "
+            f"the restore.\n  expected: {_OLD_RELEASE.SENTINEL_TXN_2_DESCRIPTION!r} "
+            f"= {_OLD_RELEASE.SENTINEL_TXN_2_AMOUNT_MINOR}\n  actual rows: {rows}"
+        )
+
+        # FIBR-0019's half of INV-20: a restore always mints a fresh DEK and
+        # writes the v2 slots sidecar, even for a fixture that predates the
+        # key envelope entirely (v0.1.12/v0.1.22 never wrote a v2 sidecar
+        # themselves) — so what a restored vault LOOKS like has changed under
+        # this surface, and this pins that it lands on the NEW shape rather
+        # than silently keeping the fixture's own old one.
+        got_sidecar_version = sidecar_version(dest.vault.sidecar_path)
+        assert got_sidecar_version == SIDECAR_VERSION, (
+            f"a restore of the {tag} backup must install a v{SIDECAR_VERSION} "
+            f"sidecar (the slots shape FIBR-0019 introduced), not the "
+            f"fixture's own original shape.\n"
+            f"  expected: {SIDECAR_VERSION}\n  actual:   {got_sidecar_version}"
+        )
+    finally:
+        dest.lock()
