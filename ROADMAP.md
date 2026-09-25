@@ -472,6 +472,15 @@ touches the § 2 surface. A security fix takes the number its change takes — �
 
 - 📋 [FIBR-0169] **Auto-update anti-rollback: bind the offered version into the signed artifact to prevent a signed-but-older downgrade.**
   indie-review (update/signature lane), LOW — deferred (design + release-pipeline change, needs a spec). The Ed25519 signature binds only the artifact BYTES, not the version; the offered version comes verbatim from the untrusted GitHub tag_name. A GitHub-release-WRITE attacker (no signing key — the residual security-model §2 already acknowledges) could re-publish an old, still-validly-signed AppImage under a higher tag; check_for_update sees it as newer, download_and_verify passes (authentic bytes), and the user is silently downgraded to a version with known bugs. Fix options: sign a manifest naming version+hash, or refuse to install a payload whose embedded __version__ <= current. At minimum document the downgrade case alongside the existing 'no rollback' accepted-risk in FIBR-0054 Out-of-scope.
+  Design input (2026-09-25, from the pressless session): sign one ASCII
+  release list per release instead of each file. It holds "pressless-release
+  1", "version X.Y.Z", then one "<platform> <name> <size> <sha256>" line
+  per artefact. The .sig carries 1-4 raw Ed25519 signatures over the
+  list's exact bytes. The client refuses unless the signed version equals
+  the release tag's, which closes rollback, and a key rotation can
+  dual-sign. Contract: /mnt/Games/Scripts/Linux/Pressless/docs/specs/PRESS-0023-self-update.md
+  §§ 4.3-4.4. finbreak's signed SHA256SUMS is close to this already; the
+  gap is that it carries no version line. Overlaps FIBR-0333.
   **Layman:** Stop a would-be attacker (who can write GitHub releases but holds no signing key) from tricking the app into installing an older, still-signed version.
   Kind: security.
   Source: indie-review-2026-07-23.
