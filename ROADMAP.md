@@ -1014,6 +1014,24 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Source: FIBR-0354 follow-up, 2026-09-25.
   Lanes: docs.
 
+- 📋 [FIBR-0363] **No test catches the Standard Bank dmy_lead widening switched on for every family's _fold.**
+  test_FIBR0190_INV9_dmy_lead_widening_is_opt_in pins only
+  _looks_like_row's default. Mutating `_fold(..., dmy_lead: bool = False)`
+  to `True` turns the widening on for all three non-E `_fold(lines)`
+  callers, which is the global widening the test's comment warns about.
+  It survived all 117 tests in test_standard_bank.py. The other test
+  files importing standard_bank were not run against it (a RAM limit),
+  so check those first.
+
+  Likely cause: no Family A-D fixture has a continuation line that begins
+  with a real date. The same "no fixture can produce it" shape as
+  FIBR-0351. The fix is a synthetic fixture with such a line, asserting
+  it folds into the row above rather than becoming a row.
+  **Layman:** A change that would make the bank-statement reader mistake some description lines for transactions would not be caught by any test.
+  Kind: test.
+  Source: FIBR-0358 mutation audit, 2026-09-25.
+  Lanes: tests, importers.
+
 ## v1.1.0 — Localisation
 
 The first feature minor after 1.0. Chosen to go first because it is
@@ -3442,7 +3460,7 @@ work, and none of it is a release decision.
   Kind: test.
   Source: in-session-2026-09-25 (peer request from pressless-e4, PRESS-0023).
 
-- 📋 [FIBR-0358] **Audit tests whose docstring claims to catch a widening their fixture cannot produce.**
+- ✅ [FIBR-0358] **Audit tests whose docstring claims to catch a widening their fixture cannot produce.**
   Shape reported by the pressless-e4 session from its own test review: a test
   claims "fails if X is widened/added", but its fixture is built so a widened
   X cannot leak through it, and the real guard sits elsewhere. A
@@ -3451,6 +3469,17 @@ work, and none of it is a release decision.
   table_state's note that an earlier version "also passes with the widening
   removed". So this is a review-tests job: judge each by mutation, not by
   reading. FIBR-0351 is one known instance.
+  Resolved 2026-09-25: 15 candidates. 13 probed by mutation (18
+  mutants: 16 killed, 2 survived), 2 untestable (the widening would be in
+  Qt, or the test checks fixture text). 11 claims hold. Two are false:
+  - test_ignores_number_in_transaction_rows claimed to catch a whole-page
+    scan and does not. Its docstring now says so and names the real
+    guard, test_label_below_the_column_header_is_not_read; re-probed, it
+    kills the mutant.
+  - The _fold half of FIBR0190_INV9 is unguarded; filed as FIBR-0363.
+  Not probed: the weaker "would pass" mentions, listed in the audit
+  report. table_state and backup FIBR-0327 were skipped because they
+  already record a measured check.
   **Layman:** Some tests may claim to guard against a change they could never actually detect; each needs checking by deliberately breaking the code.
   Kind: test.
   Source: peer-2026-09-25 (pressless-e4 test-review tip).

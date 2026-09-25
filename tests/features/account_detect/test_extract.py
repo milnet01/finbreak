@@ -107,8 +107,12 @@ def test_ignores_number_in_transaction_rows() -> None:
     """Extraction reads only above ``_table_region(...).start``.
 
     The fixture's rows carry ``447556667`` — a different account's number, in the
-    position a real current-account statement prints the home loan's. Widening the
-    scan to the whole page picks it up and misfiles the statement.
+    position a real current-account statement prints the home loan's.
+
+    This does NOT catch a scan widened to the whole page: the header label comes
+    first and the first match wins, so the right number is still returned
+    (measured by mutation, FIBR-0358). The guard for that is
+    ``test_label_below_the_column_header_is_not_read``.
     """
     page = _family_a_page("PRESTIGE CURRENT ACCOUNT Account Number 11 222 333 4")
 
