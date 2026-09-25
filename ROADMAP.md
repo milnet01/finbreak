@@ -3114,7 +3114,7 @@ work, and none of it is a release decision.
   living inside release-linux.sh cannot fire when nobody runs
   release-linux.sh.
 
-- 📋 [FIBR-0352] **FIBR-0146's 13-split loop-log row has one cell too many, so its whole explanation is dropped from the render.**
+- ✅ [FIBR-0352] **FIBR-0146's 13-split loop-log row has one cell too many, so its whole explanation is dropped from the render.**
   docs/specs/FIBR-0146.md, the `13-split` row of the cold-eyes
   loop log: the header has 7 columns and the row has 8 (it adds a
   date cell), so every cell shifts right and the Headline-fixes
@@ -3122,16 +3122,26 @@ work, and none of it is a release decision.
   Decision needed first: CLAUDE.md rule 14 freezes landed loop-log
   rows, so whether a render-breaking row may be repaired is the
   user's call, not an automatic fix.
+  Resolved (2026-09-25, user ruling): the user allowed a format-only
+  repair of this landed row. The stray date cell and the "none — no
+  reviewer dispatched" cell moved into the Headline-fixes cell, and
+  every word was kept. The row now has the header's column count, so its
+  explanation renders.
   **Layman:** One row of a review log in the FIBR-0146 spec is formatted wrongly, so its explanation never shows up when the page is displayed.
   Kind: doc-fix.
   Source: in-session-2026-09-24 check-doc measurement.
 
-- 📋 [FIBR-0353] **FIBR-0219 lists docs/specs/FIBR-0216.md as checked, and that file has never existed.**
+- ✅ [FIBR-0353] **FIBR-0219 lists docs/specs/FIBR-0216.md as checked, and that file has never existed.**
   docs/specs/FIBR-0219.md, the list of documents checked: "`docs/specs/FIBR-0216.md` — no change needed". `git log --all` on
   that path is empty on every branch; FIBR-0216 was a batched
   roadmap item with no spec. Reword to name where the placeholder
   decision actually lives (the FIBR-0216 roadmap bullet), or drop
   the line. Found by check-doc.py's path check.
+  Resolved (2026-09-25): FIBR-0219's cross-doc list now names the
+  FIBR-0216 roadmap bullet as where the placeholder decision lives, and
+  says FIBR-0216 shipped with no spec. The second mention, in the
+  FIBR-0219 bullet entry, was reworded the same way. `git log --all --
+  docs/specs/FIBR-0216.md` is empty, confirming the file never existed.
   **Layman:** A spec claims it checked another spec that was never written.
   Kind: doc-fix.
   Source: in-session-2026-09-24 check-doc measurement.
