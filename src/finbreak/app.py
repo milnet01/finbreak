@@ -10,6 +10,7 @@ silent re-first-run — so the window is never shown. The key is wiped on quit v
 
 from __future__ import annotations
 
+import os
 import sys
 from contextlib import suppress
 from typing import cast
@@ -21,6 +22,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox, QWidget
 
 from finbreak import paths, single_instance
 from finbreak.errors import VaultStateError
+from finbreak.loader_env import restore_system_loader_env
 from finbreak.services.auth import AuthService
 from finbreak.ui.icons import app_icon
 from finbreak.ui.main_window import MainWindow
@@ -64,7 +66,19 @@ def _install_excepthook() -> None:
     sys.excepthook = hook
 
 
+def _restore_loader_env_if_frozen() -> None:
+    """Give every child the SYSTEM loader path, not the bundle's (FIBR-0364).
+
+    The frozen app's own loader has already read ``LD_LIBRARY_PATH``, so changing
+    ``os.environ`` now reaches only the processes it starts — ``xdg-open`` behind
+    ``QDesktopServices.openUrl`` among them. Windows has no such variables.
+    """
+    if getattr(sys, "frozen", False) and sys.platform != "win32":
+        restore_system_loader_env(os.environ)
+
+
 def run(argv: list[str] | None = None) -> int:
+    _restore_loader_env_if_frozen()
     # Reuse a live QApplication when one already exists (e.g. the pytest-qt session
     # app) — a second QApplication(sys.argv) would raise (FIBR-0127 INV-1).
     # instance() is typed QCoreApplication|None; in this GUI entry point it is always

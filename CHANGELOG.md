@@ -33,6 +33,12 @@ signaling per
 
 ### Fixed
 
+- **Links opened from the Linux AppImage no longer risk failing silently** (FIBR-0364)
+  Programs the app starts, such as the helper that opens a web link, now
+  run with the system's libraries instead of the ones bundled inside
+  finbreak. On some Linux systems those bundled libraries crashed the
+  helper before it could open anything.
+
 - **The Forecast tab no longer says you have no confirmed recurring items when you do** (FIBR-0359)
   When confirmed items exist but none falls due before the forecast's end
   date, the tab now says nothing confirmed falls due by that date.

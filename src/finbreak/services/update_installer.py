@@ -28,16 +28,12 @@ from pathlib import Path
 from typing import NoReturn, Protocol, TextIO, runtime_checkable
 
 from finbreak.errors import UpdateError
+from finbreak.loader_env import LOADER_ENV, restore_system_loader_env
 
 # AppImage-runtime markers of the *currently running* image. Dropped so the
 # relaunched image's outer runtime re-mounts + re-derives them from scratch,
 # rather than short-circuiting on the old (soon-unmounted) values.
 _STALE_APPIMAGE_ENV = ("APPDIR", "APPIMAGE", "ARGV0")
-
-# Dynamic-loader vars the PyInstaller onefile bootloader repoints at its private
-# ``_MEI`` bundle dir. They must be restored to the SYSTEM values before spawning
-# ``/bin/sh`` — see _relaunch_env. AppImage is Linux-only, so only the Linux pair.
-_LOADER_ENV = ("LD_LIBRARY_PATH", "LD_PRELOAD")
 
 
 def _relaunch_env() -> dict[str, str]:
@@ -65,12 +61,9 @@ def _relaunch_env() -> dict[str, str]:
     env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
     for key in _STALE_APPIMAGE_ENV:
         env.pop(key, None)
-    for var in _LOADER_ENV:
-        original = env.pop(f"{var}_ORIG", None)
-        if original:  # a real pre-launch value → restore it; empty/absent → drop
-            env[var] = original
-        else:
-            env.pop(var, None)
+    restore_system_loader_env(env)
+    for var in LOADER_ENV:
+        env.pop(f"{var}_ORIG", None)
     return env
 
 

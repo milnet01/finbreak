@@ -1032,6 +1032,37 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Source: FIBR-0358 mutation audit, 2026-09-25.
   Lanes: tests, importers.
 
+- ✅ [FIBR-0364] **Every shell script the AppImage starts inherits the bundle's library path, so opening a link can silently fail.**
+  The PyInstaller bootloader points LD_LIBRARY_PATH at its _MEI dir.
+  FIBR-0122 cleans it for the relaunch waiter only. Anything else the app
+  starts inherits it. MainWindow._open_url calls QDesktopServices.openUrl,
+  and bundled Qt falls back to xdg-open, a /bin/sh script. On a system
+  whose /bin/sh is bash, the bundled Debian libreadline.so.8 then fails
+  symbol lookup and the launcher dies. The selftest AppImage's archive
+  does carry libreadline.so.8 and libtinfo.so.6 (checked 2026-09-25).
+  The pressless session measured the crash with its own PyInstaller
+  AppImage on this openSUSE machine. CI's /bin/sh is dash, so it cannot
+  see it.
+
+  Fix, as pressless did in PRESS-0146: at start-up, in a frozen
+  non-Windows run, restore LD_LIBRARY_PATH and LD_PRELOAD from their
+  _ORIG copies, or drop them. The loader has already read them, so only
+  children change. Keep the _ORIG copies, so the relaunch env's own
+  restoration stays idempotent.
+  Resolved 2026-09-25: new finbreak/loader_env.py holds the restoration.
+  app.run() applies it to os.environ first, in a frozen non-Windows run.
+  _relaunch_env reuses it and still strips the _ORIG copies. Test-first:
+  seen red on the assertion. mutation_probe killed four mutants: start-up
+  restore skipped, the frozen check dropped, the helper popping _ORIG,
+  and the helper not dropping a bundle-only path. NOT verified on a real
+  AppImage: the crash was measured by pressless, not reproduced in
+  finbreak's own build. Confirm it at the next release by opening the
+  Report an Issue menu from the AppImage on this openSUSE desktop.
+  **Layman:** On some Linux systems, finbreak's Donate and Report an Issue links may silently do nothing, because the helper that opens the browser crashes.
+  Kind: fix.
+  Source: peer-2026-09-25 (pressless-53, PRESS-0146).
+  Lanes: packaging, ui.
+
 ## v1.1.0 — Localisation
 
 The first feature minor after 1.0. Chosen to go first because it is

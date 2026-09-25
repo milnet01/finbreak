@@ -431,6 +431,56 @@ def test_relaunch_env_drops_leaked_loader_path_when_no_original(monkeypatch):
     assert "LD_PRELOAD" not in env
 
 
+def _frozen_linux(monkeypatch) -> None:
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "platform", "linux")
+
+
+def test_FIBR0364_a_frozen_app_hands_every_child_the_system_loader_path(monkeypatch):
+    # Not only the relaunch waiter: xdg-open (behind QDesktopServices.openUrl) is a
+    # /bin/sh script too, and dies on the bundled libreadline the same way.
+    from finbreak import app
+
+    _frozen_linux(monkeypatch)
+    monkeypatch.setenv("LD_LIBRARY_PATH", "/tmp/_MEIabc123")
+    monkeypatch.setenv("LD_LIBRARY_PATH_ORIG", "/usr/lib:/usr/local/lib")
+    monkeypatch.setenv("LD_PRELOAD", "/tmp/_MEIabc123/libpreload.so")
+    monkeypatch.delenv("LD_PRELOAD_ORIG", raising=False)
+
+    app._restore_loader_env_if_frozen()
+
+    assert os.environ["LD_LIBRARY_PATH"] == "/usr/lib:/usr/local/lib"
+    assert "LD_PRELOAD" not in os.environ
+
+
+def test_FIBR0364_the_relaunch_env_keeps_a_value_start_up_restored(monkeypatch):
+    # Start-up restores first; the relaunch env restores again later. The second
+    # pass must not drop the user's real library path the first one put back.
+    from finbreak import app
+
+    _frozen_linux(monkeypatch)
+    monkeypatch.setenv("LD_LIBRARY_PATH", "/tmp/_MEIabc123")
+    monkeypatch.setenv("LD_LIBRARY_PATH_ORIG", "/usr/lib:/usr/local/lib")
+
+    app._restore_loader_env_if_frozen()
+    env = _relaunch_env()
+
+    assert env["LD_LIBRARY_PATH"] == "/usr/lib:/usr/local/lib"
+    assert "LD_LIBRARY_PATH_ORIG" not in env
+
+
+def test_FIBR0364_an_unfrozen_run_leaves_the_loader_path_alone(monkeypatch):
+    from finbreak import app
+
+    monkeypatch.delattr(sys, "frozen", raising=False)
+    monkeypatch.setenv("LD_LIBRARY_PATH", "/opt/dev/lib")
+    monkeypatch.delenv("LD_LIBRARY_PATH_ORIG", raising=False)
+
+    app._restore_loader_env_if_frozen()
+
+    assert os.environ["LD_LIBRARY_PATH"] == "/opt/dev/lib"
+
+
 def test_relaunch_command_waits_for_old_pid_then_execs_the_image():
     # The waiter: poll `kill -0 <pid>` until the old process is gone (its FUSE
     # mount unmounted + PyInstaller _MEI dir cleaned), THEN exec the image. The
