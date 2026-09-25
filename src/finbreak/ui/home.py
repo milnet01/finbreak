@@ -23,7 +23,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from PySide6.QtCharts import QChart, QChartView
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QLocale, Qt, Signal
 from PySide6.QtGui import QBrush, QColor, QPainter
 from PySide6.QtWidgets import (
     QComboBox,
@@ -261,8 +261,10 @@ class HomeView(QWidget):
 
         self._month_picker = QComboBox()
         self._month_picker.setObjectName("period_month")
+        locale = QLocale()  # the locale's own digits and zero (coding.md § 5.2)
         for month in range(1, 13):
-            self._month_picker.addItem(f"{month:02d}", month)
+            label = locale.toString(month).rjust(2, locale.zeroDigit())
+            self._month_picker.addItem(label, month)
         self._month_picker.currentIndexChanged.connect(self._on_period_changed)
 
         self._year_picker = QSpinBox()

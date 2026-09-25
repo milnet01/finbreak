@@ -18,7 +18,7 @@ carries the one-line reason as its tooltip.
 
 from __future__ import annotations
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import QLocale, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -101,8 +101,10 @@ class ExportDialog(QDialog):
         ):
             self._period_selector.addItem(label, mode)
         self._month_picker = QComboBox()
+        locale = QLocale()  # the locale's own digits and zero (coding.md § 5.2)
         for month in range(1, 13):
-            self._month_picker.addItem(f"{month:02d}", month)
+            label = locale.toString(month).rjust(2, locale.zeroDigit())
+            self._month_picker.addItem(label, month)
         self._year_picker = QSpinBox()
         self._year_picker.setRange(1970, 9999)
         # Pre-fill from Home's current selection (INV-7).

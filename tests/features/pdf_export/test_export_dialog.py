@@ -6,6 +6,7 @@ is handed the account list + the pre-fill prefs), so no vault fixture is needed.
 """
 
 import pytest
+from PySide6.QtCore import QLocale
 from PySide6.QtWidgets import QGroupBox, QLineEdit, QRadioButton
 
 from finbreak.models import Account
@@ -32,6 +33,22 @@ def _dialog(qtbot, accounts=(_A, _B), selected=None, prefs=_PREFS):
 
 def _btn(d):
     return d._export_button()
+
+
+def test_FIBR0336_month_picker_uses_the_locales_own_digits(qtbot):
+    """coding.md § 5.2: numbers go through QLocale. Under a locale with its own
+    digits the month labels must be in those digits, zero-padded with the
+    locale's zero — not Western digits from an f-string."""
+    previous = QLocale()
+    QLocale.setDefault(QLocale("ar_EG"))
+    try:
+        d = _dialog(qtbot)
+        picker = d._month_picker
+        labels = [picker.itemText(i) for i in range(picker.count())]
+    finally:
+        QLocale.setDefault(previous)
+    assert labels[0] == "٠١" and labels[-1] == "١٢", labels
+    assert picker.itemData(0) == 1, "the stored value stays the plain int"
 
 
 # -- pre-fill --------------------------------------------------------------- #

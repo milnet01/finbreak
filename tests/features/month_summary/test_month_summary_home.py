@@ -18,6 +18,7 @@ from collections.abc import Iterator
 from datetime import date, timedelta
 
 import pytest
+from PySide6.QtCore import QLocale
 from PySide6.QtWidgets import QLabel
 
 from conftest import _PW
@@ -158,6 +159,22 @@ class _RecordingReporting:
 # --------------------------------------------------------------------------- #
 # The period-mode wiring — the strip follows the selector across all five modes
 # --------------------------------------------------------------------------- #
+def test_FIBR0336_month_picker_uses_the_locales_own_digits(qtbot, service) -> None:
+    """coding.md § 5.2 — the Home month picker renders through QLocale, so a
+    locale with its own digits gets them, zero-padded with its own zero."""
+    previous = QLocale()
+    QLocale.setDefault(QLocale("ar_EG"))
+    try:
+        home = _home(service)
+        qtbot.addWidget(home)
+        picker = home._month_picker
+        labels = [picker.itemText(i) for i in range(picker.count())]
+    finally:
+        QLocale.setDefault(previous)
+    assert labels[0] == "٠١" and labels[-1] == "١٢", labels
+    assert picker.itemData(0) == 1, "the stored value stays the plain int"
+
+
 def test_the_previous_month_renders_a_sentence(qtbot, service) -> None:
     service.set_report_prefs(ReportPrefs(MODE_PREVIOUS_MONTH))
     _seed(service)

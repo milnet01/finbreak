@@ -356,6 +356,11 @@ so Flathub review and code signing do not block this release.
   User instruction (2026-09-25): before v1.0.0 is published, stop and
   tell the user, so they can start a codebase review first. Do not run
   cut-release 1.0.0 until they say go.
+  Windows test machine available (2026-09-25, `ssh wintest`; an SSH
+  session has no interactive desktop). Before 1.0, use it for one real
+  self-update on Windows, from the previous release to the 1.0
+  candidate. The Windows swap helper (`WindowsInstaller.apply`) is only
+  command-text tested on CI and has only been run by hand.
   **Layman:** The plan for calling the app finished: what has to be true first, and which four jobs are standing in the way.
   Kind: release.
   Source: user-decision-2026-08-20 ("what gets us to v1.0?").
@@ -781,7 +786,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: refactor.
   Source: FP02-FP05 pattern, recorded at FP05's close 2026-09-06.
 
-- 📋 [FIBR-0336] **The month pickers render their numbers with an f-string, so a locale with its own digits gets Western ones.**
+- ✅ [FIBR-0336] **The month pickers render their numbers with an f-string, so a locale with its own digits gets Western ones.**
   Found while closing FIBR-0328's display-string class and set aside there
   rather than fixed, because the fix belongs with the i18n pass.
 
@@ -798,6 +803,13 @@ touches the § 2 surface. A security fix takes the number its change takes — �
 
   Not allowlist-006's case: that entry covers joining whole translated
   sentences, and this is a number rendered without its locale.
+  Resolved (2026-09-25): both month pickers (`ui/home.py`,
+  `ui/export_dialog.py`) now render through `QLocale().toString(month)`,
+  padded with `QLocale().zeroDigit()`. Under ar_EG they read ٠١…١٢; the
+  item data stays the plain int. One
+  `test_FIBR0336_month_picker_uses_the_locales_own_digits` per picker,
+  red before the fix. No CHANGELOG entry: latent until FIBR-0017 ships a
+  locale with its own digits.
   **Layman:** In a language that writes numbers with different digit shapes, the month dropdown would still show Western digits.
   Kind: fix.
   Source: review-code 2026-08-31 tail (FIBR-0328 display-string class), surfaced 2026-09-06.
