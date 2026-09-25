@@ -3555,6 +3555,26 @@ work, and none of it is a release decision.
   Source: check-code-2026-09-21, split from FIBR-0344.
   Lanes: ci.
 
+- 📋 [FIBR-0365] **CLAUDE.md's roadmap freshness check describes a file-side locate the Ants MCP no longer does.**
+  § Where state lives item 2 says roadmap_log locates against the FILE
+  while roadmap_query reads the STORE, so a store-only item is queryable
+  but refuses bullet_not_found. It prescribes a dry_run as the file-side
+  half of the freshness check. ANTS-4485 (reported via FIBR-0281) makes
+  flip, annotate, flip_batch, annotate_batch, amend_body, amend_headline
+  and set_body locate in the store. An id only in ROADMAP.md now refuses
+  with a pointer to roadmap_migrate.
+
+  Live only after /mcp, so it could not be verified in the session that
+  filed this. Before editing: confirm by a dry_run flip on an id, and read
+  the refusal for a file-only id if one exists. The read-back half (a note
+  can land mid-bullet) is unaffected. This changes what a session does,
+  so rule 14 applies; the exception for matching verified existing
+  behaviour covers it once verified.
+  **Layman:** A note in our instructions describes an old limit of the roadmap tool that has since been removed.
+  Kind: doc-fix.
+  Source: peer-2026-09-25 (ants-terminal-dd, ANTS-4485).
+  Lanes: docs.
+
 ## P01 — Bootstrap (target: next)
 
 **Theme:** wire up the build, lint, format, test, **security
