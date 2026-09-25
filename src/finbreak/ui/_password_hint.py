@@ -143,9 +143,10 @@ def validate_hint_with_recovery(hint: str, password: str) -> None:
         # optional slot is the one that refuses a damaged one: ``read_sidecar_v2``
         # hard-fails on ``master`` alone, so a damaged ``recovery`` slot loads
         # without complaint (FIBR-0310 R5). ``HashingError`` is the remainder of
-        # that refusal — ``validate_params`` bounds only the low side, leaving
-        # ``time_cost`` and ``parallelism`` for argon2 itself to reject
-        # (FIBR-0327). It turns on the params rather than the candidate, so it
+        # that refusal — ``validate_params`` floors ``time_cost`` and
+        # ``parallelism`` at 1 but sets no ceiling (FIBR-0341), so a combination
+        # argon2 cannot run (more lanes than the memory holds) is still argon2's
+        # to reject. It turns on the params rather than the candidate, so it
         # cannot single one out and the guard covers the whole loop.
         validate_slot(sidecar, SLOT_RECOVERY)
         for candidate in candidates:

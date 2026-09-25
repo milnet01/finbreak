@@ -1424,7 +1424,7 @@ def test_the_incumbent_wal_moves_aside_with_its_database(tmp_path):
     "bad_params",
     [
         {"memory_kib": 64 * 1024 * 1024},  # 64 GiB — an allocation, not a KDF
-        {"time_cost": 0},  # argon2-cffi raises HashingError, uncaught
+        {"time_cost": 0},  # below Argon2id's minimum (validate_params floors it too)
         {"time_cost": 10_000_000},  # no memory needed, still never returns
         {"parallelism": 0},
     ],

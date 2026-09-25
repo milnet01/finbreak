@@ -437,12 +437,16 @@ def _damage_recovery_salt(data: dict[str, Any]) -> dict[str, Any]:
     return data
 
 
-def _damage_recovery_time_cost(data: dict[str, Any]) -> dict[str, Any]:
-    """``time_cost`` is a shared ``kdf``-group field, and ``validate_params``
-    checks neither slot's copy of it -- so ``validate_slot`` would NOT catch
-    this one either. It is still argon2's to refuse, inside ``derive_key``.
+def _damage_recovery_parallelism(data: dict[str, Any]) -> dict[str, Any]:
+    """More lanes than the recorded memory can hold (Argon2id needs 8 KiB per
+    lane). ``validate_params`` floors ``parallelism`` at 1 and sets no ceiling,
+    so ``validate_slot`` would NOT catch this one; argon2 refuses it inside
+    ``derive_key`` as ``HashingError`` ("Memory cost is too small"). It replaces
+    a ``time_cost`` of 0, which FIBR-0341's floor now refuses as
+    ``KdfPolicyError`` -- and since ``kdf`` is shared, already at
+    ``read_sidecar_v2``, before this route runs.
     """
-    data["kdf"]["time_cost"] = 0
+    data["kdf"]["parallelism"] = 6000
     return data
 
 
@@ -462,7 +466,7 @@ def _damage_recovery_nonce(data: dict[str, Any]) -> dict[str, Any]:
 
 @pytest.mark.parametrize(
     "damage",
-    [_damage_recovery_salt, _damage_recovery_time_cost, _damage_recovery_nonce],
+    [_damage_recovery_salt, _damage_recovery_parallelism, _damage_recovery_nonce],
     ids=[
         "validate_slot-would-catch-this",
         "validate_slot-would-NOT-catch-this",
@@ -484,8 +488,9 @@ def test_a_damaged_recovery_slot_fails_open_with_a_warning(
     ``recovery`` slot without complaint (FIBR-0310 R5).
 
     Two damage shapes, deliberately: one ``validate_slot`` would catch (a
-    salt too short for ``validate_params``), one it would NOT (``time_cost``,
-    which nothing here checks) -- both must land in the SAME place. A hint
+    salt too short for ``validate_params``), one it would NOT (a
+    ``parallelism`` the recorded memory cannot hold, which ``validate_params``
+    accepts) -- both must land in the SAME place. A hint
     that merely looks like it might carry a code must never crash the
     "save hint" action over a slot the user may never even use.
     """

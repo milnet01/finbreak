@@ -167,6 +167,25 @@ def test_INV2b_memory_floor_is_directional():
     validate_params(above)  # above the floor — allowed (creation pin can rise)
 
 
+@pytest.mark.parametrize("field", ["time_cost", "parallelism"])
+def test_INV2b_cost_floor_refuses_below_one_as_policy_error(field):
+    """INV-2 floors iterations and parallelism at 1, Argon2id's own minimum, so
+    a recorded 0 (or less) is a clean ``KdfPolicyError`` on open rather than an
+    uncaught ``HashingError`` / ``OverflowError`` out of ``derive_key``
+    (FIBR-0341). The floor is one-sided like the memory floor: at 1 and far
+    above it still pass, because a ceiling here would bind existing vaults."""
+    for bad in (0, -1):
+        params = _params(bytes(SALT_LEN))
+        setattr(params, field, bad)
+        with pytest.raises(KdfPolicyError):
+            validate_params(params)
+
+    for good in (1, 10_000):
+        params = _params(bytes(SALT_LEN))
+        setattr(params, field, good)
+        validate_params(params)
+
+
 def test_INV2c_exact_format_rejects_wrong_lengths():
     wrong_key_len = _params(bytes(SALT_LEN))
     wrong_key_len.key_len = KEY_LEN * 2
@@ -217,6 +236,17 @@ def test_INV2c_exact_format_rejects_wrong_lengths():
                 "format_version": FORMAT_VERSION + 1,
                 "memory_kib": ARGON2_MEMORY_KIB,
                 "time_cost": ARGON2_TIME_COST,
+                "parallelism": ARGON2_PARALLELISM,
+                "key_len": KEY_LEN,
+                "salt_len": SALT_LEN,
+                "salt_hex": "00" * SALT_LEN,
+            }
+        ),
+        json.dumps(  # a hand-edited zero cost: the open path's clean refusal
+            {  # (FIBR-0341), never argon2's HashingError from derive_key
+                "format_version": 1,
+                "memory_kib": ARGON2_MEMORY_KIB,
+                "time_cost": 0,
                 "parallelism": ARGON2_PARALLELISM,
                 "key_len": KEY_LEN,
                 "salt_len": SALT_LEN,

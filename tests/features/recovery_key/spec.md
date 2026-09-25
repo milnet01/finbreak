@@ -385,8 +385,9 @@ every credential, account and transaction here is synthetic
   hard-fails on `master` only and loads a damaged `recovery` slot without
   complaint (FIBR-0310 R5). Three damage shapes must land in the same place,
   and they are chosen so that neither half of the guard can be dropped. A salt
-  too short for `validate_params`, and a `time_cost` of zero that
-  `validate_params` never checks, both reach Argon2id inside `derive_key` and
+  too short for `validate_params`, and a `parallelism` too large for the
+  recorded memory, which `validate_params` accepts (it floors that field at 1
+  and sets no ceiling, FIBR-0341), both reach Argon2id inside `derive_key` and
   raise `argon2.exceptions.HashingError` — which propagates straight out of
   `MainWindow._on_set_hint_requested`, whose `except HintPolicyError` does not
   catch it. A nonce too short for `_validate_slot_lengths` never reaches

@@ -587,7 +587,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: security.
   Source: FIBR-0327 tail, 2026-09-04.
 
-- 📋 [FIBR-0341] **A hand-edited zero cost parameter reaches argon2 uncaught on the local unlock path.**
+- ✅ [FIBR-0341] **A hand-edited zero cost parameter reaches argon2 uncaught on the local unlock path.**
   The surviving third of FIBR-0309, isolated rather than inherited. That
   bullet's other two gaps are closed and its gap 3 is superseded at the trust
   boundary; this is the one thing left, and it is about the LOCAL open path.
@@ -626,6 +626,19 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Precondition is write access to the data directory, where an attacker could
   delete the vault instead -- so this is robustness and contract-honesty, not a
   confidentiality hole. Ranked accordingly.
+  Resolved (2026-09-25): `validate_params` now floors `time_cost` and
+  `parallelism` at 1 and raises `KdfPolicyError` below it, so every open
+  route gets the clean refusal the unlock arms already catch.
+  security-model.md INV-2 was amended first and gated by review-contract
+  (converged at its first loop, log row 7). The gate's one finding was
+  in the recovery_key INV-23 test contract. Its zero-`time_cost` damage
+  shape became a `parallelism` of 6000, which `validate_params` accepts
+  and Argon2id refuses, so the hint route's `HashingError` arm stays
+  pinned. A mutation removing that arm fails the test. Tests:
+  `test_INV2b_cost_floor_refuses_below_one_as_policy_error`, plus a
+  zero-cost case in
+  `test_INV2c_malformed_sidecar_raises_kdf_policy_error`, red before the
+  fix.
   **Layman:** If the vault's settings file is hand-edited to an impossible value, unlocking raises an error the app does not catch, instead of the clean refusal it already knows how to show.
   Kind: fix.
   Source: in-session-2026-09-21 (isolated while closing FIBR-0309).

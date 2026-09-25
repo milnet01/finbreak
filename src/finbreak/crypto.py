@@ -128,6 +128,11 @@ def validate_params(params: KdfParams) -> None:
     from the creation pin (``ARGON2_MEMORY_KIB``) so the pin can be raised later
     to strengthen new vaults without locking out existing ones (their recorded
     ``memory_kib`` stays at-or-above the unchanged floor).
+    ``time_cost`` and ``parallelism`` are floored at 1, Argon2id's own minimum,
+    so a recorded 0 is refused here instead of escaping ``derive_key`` as a
+    ``HashingError`` no caller catches (FIBR-0341). No ceiling, as for memory:
+    an inflated cost is bounded at the trust boundary by
+    ``validate_untrusted_params``.
     The salt exists on disk, so both its real length and the recorded
     ``salt_len`` must equal ``SALT_LEN``; the key is never on disk, so only its
     recorded ``key_len`` is checked against the constant.
@@ -152,6 +157,10 @@ def validate_params(params: KdfParams) -> None:
             f"memory_kib {params.memory_kib} is below the floor "
             f"{ARGON2_MEMORY_FLOOR_KIB}"
         )
+    for name in ("time_cost", "parallelism"):
+        value = getattr(params, name)
+        if value < 1:
+            raise KdfPolicyError(f"{name} {value} is below Argon2id's minimum of 1")
 
 
 def validate_untrusted_params(params: KdfParams) -> None:

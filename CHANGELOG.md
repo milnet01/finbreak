@@ -33,6 +33,8 @@ signaling per
 
 ### Fixed
 
+- **A vault settings file hand-edited to an impossible key-strength value now gets a clear refusal at unlock instead of an unhandled error** (FIBR-0341)
+
 - **The Linux AppImage no longer crashes on the first keystroke** (FIBR-0208)
   It carried its own copy of a keyboard library while relying on your
   system for that library's other half, and the mismatched pair could
