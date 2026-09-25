@@ -466,22 +466,26 @@ be checkable. Enforcement arrives in step with the code:
   whitespace and each piece has its hyphens removed. A piece is scanned
   on its own, and consecutive pieces holding **no lowercase letter** —
   the display form is upper case — are also joined and scanned
-  together. Every window of 27 consecutive symbols that decode to data
-  values (the data alphabet plus Crockford's `I`/`L`/`O` folds), the
-  length of the code's **payload**, is a candidate and is
+  together. Only that join test reads case; symbols are matched
+  case-insensitively. Every window of 27 consecutive symbols that decode
+  to data values (the data alphabet plus Crockford's `I`/`L`/`O` folds),
+  the length of the code's **payload**, is a candidate and is
   trial-unwrapped against `slots.recovery`. The payload alone is the
   whole credential: the check symbol is computed from it, so a hint
   holding the payload with a wrong check symbol, or none, carries the
   live code too. No candidate is filtered on its check symbol
   (FIBR-0308). A successful unwrap proves the hint carries the live
   code. Sentence-case prose yields no candidate, because its pieces are
-  words and none of them joins, so it costs no key derivation at all.
+  words that do not join into long runs, so it costs no key derivation.
   Each candidate costs one derivation, uncapped; a hint reaches many
   only by being a long run of code-like text, such as all-caps prose.
   **Where the slot cannot be tested the leg fails
-  OPEN**: a v1 vault, an unreadable sidecar, an absent slot, or one
-  `validate_slot` refuses all accept the hint, logging that a code-like
-  sequence went untested (never the hint itself). A slot that cannot be
+  OPEN**: a v1 vault, an unreadable sidecar, a slot `validate_slot`
+  refuses, or a slot whose parameters Argon2id itself cannot run all
+  accept the hint, logging that a code-like sequence went untested
+  (never the hint itself). An absent slot means the vault has no
+  recovery key, so there is no code to leak and the hint is accepted
+  without a log. A slot that cannot be
   tested is no evidence about the hint, and failing closed would refuse a
   legitimate hint over an unrelated defect (INV-3d). Falsifiable by test
   (`services/password_hint.validate_hint` for the password leg;
