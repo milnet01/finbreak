@@ -1567,6 +1567,54 @@ def test_INV14_no_private_key_material_is_tracked():
 
 
 # --------------------------------------------------------------------------- #
+# INV-15 (FIBR-0301) — a signing-key ROTATION is caught, not just a tampered
+# download. INV-4/INV-14 sign and verify with a throwaway key generated
+# *inside* the test, so neither can ever detect RELEASE_PUBLIC_KEY_B64 no
+# longer matching what was actually shipped: whatever key the test generates,
+# it both signs and checks with, every run. This fixture was signed ONCE,
+# outside any test run, with the maintainer's real private key against a real
+# release; verifying it here against the REAL, non-monkeypatched committed
+# constant is the only leg that would notice the constant having drifted.
+# See tests/fixtures/auto_update_v0.1.23/README.md for the full rationale.
+# --------------------------------------------------------------------------- #
+_HISTORICAL_FIXTURE_DIR = _REPO_ROOT / "tests" / "fixtures" / "auto_update_v0.1.23"
+
+
+def test_INV15_historical_release_verifies_against_committed_key():
+    """A failure here means every already-installed copy of finbreak can no
+    longer verify an update signed under the currently-committed key — the
+    exact break docs/standards/versioning.md § 2 names for the update-path
+    compatibility surface ("an installed copy can no longer ... verify ... an
+    update -- including a signing-key rotation"). The fix is almost never to
+    re-sign this fixture with a fresh key: that would make the test pass again
+    while re-creating the very same-build blind spot INV-4/INV-14 already have
+    (both sign and verify with whatever key the test just generated) — see
+    tests/fixtures/auto_update_v0.1.23/README.md before touching this fixture.
+    """
+    data = (_HISTORICAL_FIXTURE_DIR / "SHA256SUMS").read_bytes()
+    sig = (_HISTORICAL_FIXTURE_DIR / "SHA256SUMS.sig").read_bytes()
+    assert len(sig) == 64  # raw Ed25519 signature (D1), not e.g. base64 text
+
+    # The exact primitive services/update.py's download_and_verify calls
+    # (INV-4) — through the REAL, non-monkeypatched committed key, never a
+    # test-generated one. Raises cryptography.exceptions.InvalidSignature
+    # (uncaught -> a diagnosable test failure) if the key no longer matches.
+    update_key.public_key().verify(sig, data)
+
+
+def test_INV15_a_tampered_historical_manifest_still_fails_verification():
+    """Sanity leg: the fixture pair does not vacuously verify against
+    anything. A 1-byte flip of the signed bytes (the same class of check
+    INV-4 runs on a live download) is rejected by the real committed key too,
+    so a pass above is the signature actually matching, not a no-op."""
+    data = (_HISTORICAL_FIXTURE_DIR / "SHA256SUMS").read_bytes()
+    sig = (_HISTORICAL_FIXTURE_DIR / "SHA256SUMS.sig").read_bytes()
+    tampered = data[:-1] + bytes([data[-1] ^ 0x01])
+    with pytest.raises(InvalidSignature):
+        update_key.public_key().verify(sig, tampered)
+
+
+# --------------------------------------------------------------------------- #
 # Help → Check for updates — a manual, on-demand check that gives feedback on
 # every outcome and runs even if the startup setting is off (the click is
 # consent). Surfaced dogfooding v0.1.0.

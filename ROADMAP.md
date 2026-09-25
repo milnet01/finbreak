@@ -2216,7 +2216,7 @@ work, and none of it is a release decision.
   Kind: doc-fix.
   Source: in-session-2026-08-20 (found answering the v1.0 question).
 
-- 📋 [FIBR-0301] **Nothing catches a signing-key rotation that strands every installed copy's updater.**
+- ✅ [FIBR-0301] **Nothing catches a signing-key rotation that strands every installed copy's updater.**
   docs/standards/versioning.md 2 names the update path as a
   compatibility surface whose break includes "a signing-key rotation".
   Neither existing catcher covers that:
@@ -2236,6 +2236,16 @@ work, and none of it is a release decision.
   Wanted: a test that verifies a release artifact against a pinned
   historical public key, so changing the committed constant turns
   something red.
+  Resolved 2026-09-25: tests/features/auto_update/ INV-15 verifies the
+  shipped v0.1.23 SHA256SUMS.sig against the committed
+  RELEASE_PUBLIC_KEY_B64 through update_key.public_key(), with no
+  monkeypatching. The fixture is under tests/fixtures/auto_update_v0.1.23/.
+  mutation_probe killed both mutants, a rotation to another valid key and
+  public_key() decoding a different constant, and the file restored clean.
+  Not covered: the real key and the real download_and_verify call path
+  together, and a fixture re-signed to match a new key. The fixture
+  README warns against the second. versioning.md § 2's update-path row
+  now names INV-15.
   **Layman:** If the release signing key is ever changed, every already-installed copy would silently stop being able to update, and no test would notice.
   Kind: test.
   Source: review-contract-2026-08-20 (FIBR-0299 loop 3, lane finding).

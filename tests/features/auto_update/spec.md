@@ -12,7 +12,12 @@ single deliberate network egress, confined to `services/update_fetch.py`.
 
 All tests use `tmp_path` + synthetic bytes and an **injected fake fetcher** — no
 network (`testing.md § 6`), no real signing key (a throwaway test key is
-monkeypatched in per INV-4/14, `testing.md § 3.5`).
+monkeypatched in per INV-4/14, `testing.md § 3.5`). **INV-15 is the one
+exception**, and deliberately so: it is the only leg that verifies against the
+**real, committed** `RELEASE_PUBLIC_KEY_B64`, using a real historical release
+artifact rather than a synthetic blob — see INV-15's row and
+`tests/fixtures/auto_update_v0.1.23/README.md` for why a throwaway key cannot
+stand in for it.
 
 ## Coverage
 
@@ -32,10 +37,11 @@ monkeypatched in per INV-4/14, `testing.md § 3.5`).
 | INV-12 | Network code confined to one allowlisted module: `_network_offenders` flags a planted `import socket` at `services/update_fetch.py`, a planted `import urllib` at another path, and a planted dynamic `import_module("socket")` — but **not** a `urllib` import at `services/update_fetch.py`. |
 | INV-13 | The new dialog is RTL-safe: covered by the existing `test_INV10_no_fixed_geometry_in_new_ui` source-scan (globs `ui/*.py`); `tr()`-wrapping is a review-checklist item per `coding.md § 5.2`. |
 | INV-14 | The signature round-trips: a fixture blob signed with a test key verifies against that key; a repo-scan asserts no private-key material (`*.key` / a PEM `PRIVATE KEY` marker) is tracked. |
+| INV-15 | **A signing-key rotation is caught, not just a tampered download (FIBR-0301).** `RELEASE_PUBLIC_KEY_B64` verifies a **real, previously-shipped** signed artifact (the v0.1.23 release's `SHA256SUMS` + `SHA256SUMS.sig`, `tests/fixtures/auto_update_v0.1.23/`) through the app's own gate (`update_key.public_key().verify`) — **not** a throwaway key monkeypatched in per-test as INV-4/INV-14 do. Rotating the committed constant, with no matching fixture regenerated, must turn this red; INV-4/INV-14's same-build round-trips cannot, because both sign and verify with whatever key the test just generated. *Test: `test_auto_update.py::test_INV15_historical_release_verifies_against_committed_key`.* |
 | D13 | Version grammar: leading `v`/`V` stripped; every segment `isascii() and isdigit()`; comparison zero-pads the shorter tuple. |
 | D14 | Asset predicate: the picker takes the suffix as a parameter; the asset ends in it; its signature is that name + `.sig`; absent-or-duplicate either → `None`. |
 
-The FIBR-0054 rows above number INV-1…14; the **FIBR-0131** rows below are
+The FIBR-0054 rows above number INV-1…15; the **FIBR-0131** rows below are
 prefixed so the two specs' invariants don't collide (see `docs/specs/FIBR-0131.md`).
 
 | INV | What it pins (FIBR-0131 — Windows in-app auto-update) |
