@@ -556,6 +556,10 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Also corrected: this bullet inferred the two-process tree from FIBR-0131 D3,
   whose claim is written Windows-scoped. The inference happened to be right, and
   it is now measured on Linux rather than carried over.
+  Input (2026-09-25, pressless session): a live --onedir PyInstaller
+  AppImage showed ONE Python process directly under the AppImage runtime,
+  with no bootloader parent. So the two-process tree is onefile-specific.
+  finbreak is onefile, so this item still applies to it.
   **Layman:** After a self-update the app might fail to reopen -- and it cannot be tested until the next update ships.
   Kind: investigate.
   Source: review-code 2026-08-31 lane=update-installer.
