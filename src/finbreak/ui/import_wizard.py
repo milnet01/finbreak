@@ -1237,7 +1237,10 @@ class ImportWizardWidget(QWidget):
         parsed: list[str] = []
         for sample in samples[:_PREVIEW_SAMPLES]:
             try:
-                parsed.append(datetime.strptime(sample, fmt).date().isoformat())
+                # A statement date carries no zone; only .date() survives.
+                parsed.append(
+                    datetime.strptime(sample, fmt).date().isoformat()  # noqa: DTZ007
+                )
             except ValueError:
                 self._date_preview.setText(
                     self.tr(

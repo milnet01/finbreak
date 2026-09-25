@@ -77,7 +77,9 @@ def detect_date_format(samples: Sequence[str]) -> DateFormatGuess:
         dates: dict[int, datetime] = {}
         for index, sample in enumerate(cleaned):
             try:
-                dates[index] = datetime.strptime(sample, fmt)
+                # A statement date carries no zone; these naive values are only
+                # compared with each other, never with a clock.
+                dates[index] = datetime.strptime(sample, fmt)  # noqa: DTZ007
             except ValueError:
                 continue
         count = len(dates)

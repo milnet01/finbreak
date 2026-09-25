@@ -126,7 +126,16 @@ src = ["src", "tests"]
 # exactly the "silencing without a root cause" shape the project forbids. Their
 # rationale now lives in plain comments; this rule stops inert directives
 # returning. (bandit's `# nosec` is a separate, live mechanism — untouched.)
-select = ["E", "W", "F", "I", "UP", "B", "RUF100"]
+# DTZ flake8-datetimez (FIBR-0344): a naive-clock call is how FIBR-0342's
+# wrong-month report got in, and nothing else in the gate reads for one. Each
+# legitimate src/ site carries its reason beside its `noqa`.
+select = ["E", "W", "F", "I", "UP", "B", "RUF100", "DTZ"]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests read the local date to build the expectation the app should show, and
+# parse zone-less fixture dates — the same two shapes DTZ exists to question in
+# app code. The rule guards src/, where a wrong clock reaches a user.
+"tests/**" = ["DTZ"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

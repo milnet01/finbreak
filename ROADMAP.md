@@ -2457,7 +2457,7 @@ work, and none of it is a release decision.
   **Layman:** The type checker currently reads the app's code closely but skims the tests, so a broken test can look fine.
   Kind: test.
 
-- 📋 [FIBR-0344] **Add ruff's DTZ family to the gate, so the clock class cannot come back unseen.**
+- ✅ [FIBR-0344] **Add ruff's DTZ family to the gate, so the clock class cannot come back unseen.**
   FIBR-0342 was a wrong-month defect on a money report, and NOTHING in the tree
   could see it: pyproject's [tool.ruff.lint] select is E,W,F,I,UP,B,RUF100, so
   the DTZ family is off and the gate never reads a naive-clock call. Every test
@@ -2493,6 +2493,12 @@ work, and none of it is a release decision.
   re-proposed: adding ruff's S family. It would flag five sites that already
   carry a written # nosec justification, because ruff does not honour nosec -- so
   it buys five new noqa comments and no new information.
+  Resolved 2026-09-25: DTZ is in the ruff select list. Each of the eight
+  src/ sites carries a written reason beside its noqa. tests/** is exempt
+  via per-file-ignores, with the reason in pyproject. A probe file holding
+  a bare date.today() was flagged DTZ011, and the full gate is green. The
+  scripts/ half moved to FIBR-0360, because widening the gate's file
+  scope amends FIBR-0001 INV-1.
   **Layman:** Turn on the lint rule that would have caught the wrong-month report bug, so that kind of mistake cannot slip through again.
   Kind: chore.
   Source: check-code-2026-09-21 (the sweep's one durable recommendation).
@@ -3350,6 +3356,29 @@ work, and none of it is a release decision.
   **Layman:** Some tests may claim to guard against a change they could never actually detect; each needs checking by deliberately breaking the code.
   Kind: test.
   Source: peer-2026-09-25 (pressless-e4 test-review tip).
+
+- 📋 [FIBR-0360] **Bring scripts/*.py under the ruff and mypy gate stages, including the release-signing scripts.**
+  ruff and mypy scope to src and tests, so scripts/*.py is in no gate
+  stage. That includes sign-release.py and gen-signing-key.py, which are
+  on the release-signing path. The shellcheck stage closed the same gap
+  for *.sh.
+
+  Split from FIBR-0344 because it changes a contract. FIBR-0001's INV-1
+  stage table names `ruff check src tests`, and its prose says every
+  stage scopes to src and tests. So the spec amendment runs
+  `review-contract --max-loops 3` before the edit.
+
+  Measured 2026-09-25: ruff and ruff format are already clean over
+  scripts/. mypy reports four real errors in capture_screenshots.py:
+  `QApplication.instance()` is typed as a QCoreApplication and is passed
+  where a QApplication is expected. The rest of its report is
+  import-untyped noise from running it outside the project config. DTZ011
+  fires twice (capture_screenshots, seed_demo_vault), and both are
+  legitimate for a demo seeded at today's date.
+  **Layman:** The small helper programs that build and sign releases are not checked by the automatic code checks yet; add them.
+  Kind: chore.
+  Source: check-code-2026-09-21, split from FIBR-0344.
+  Lanes: ci.
 
 ## P01 — Bootstrap (target: next)
 

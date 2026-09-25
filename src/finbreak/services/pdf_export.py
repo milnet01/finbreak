@@ -126,7 +126,9 @@ class PdfExportService:
         """The report as PDF bytes — encrypted iff ``options.password`` is set.
         Takes **no path**: the (possibly plaintext) bytes live only in memory
         (INV-2)."""
-        today = today or date.today()
+        # The UI passes the app clock's date (FIBR-0342); this fallback serves a
+        # headless or test caller. A service does not reach into the UI's clock.
+        today = today or date.today()  # noqa: DTZ011
         html, images = self._build_html(options, today)
         buffer = QBuffer()
         buffer.open(QIODevice.OpenModeFlag.WriteOnly)

@@ -116,8 +116,11 @@ class CsvImporter:
             # (D3), so only the date branch is re-worded.
             raw_date = row[mapping.date_column].strip()
             try:
+                # A statement date carries no zone; only .date() survives.
                 occurred_on = (
-                    datetime.strptime(raw_date, mapping.date_format).date().isoformat()
+                    datetime.strptime(raw_date, mapping.date_format)  # noqa: DTZ007
+                    .date()
+                    .isoformat()
                 )
             except ValueError:
                 reason = (
