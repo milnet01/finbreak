@@ -8,6 +8,7 @@ no real signing key (a throwaway test key is monkeypatched in).
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -1548,8 +1549,9 @@ def test_INV14_signing_scripts_roundtrip(tmp_path):
 
 def test_INV14_no_private_key_material_is_tracked():
     """No ``*.key`` file and no PEM private-key block is git-tracked (the private
-    signing key must never enter the repo). Marker assembled at runtime so this
-    test file itself doesn't trip the scan."""
+    signing key must never enter the repo). Every PEM flavour counts — PKCS8,
+    OpenSSH, EC, RSA — not only the PKCS8 header (FIBR-0355). Marker assembled
+    at runtime so this test file itself doesn't trip the scan."""
     tracked = subprocess.run(
         ["git", "ls-files"],
         cwd=_REPO_ROOT,
@@ -1557,11 +1559,11 @@ def test_INV14_no_private_key_material_is_tracked():
         text=True,
         check=True,
     ).stdout.splitlines()
-    pem_marker = ("-----BEGIN " + "PRIVATE KEY-----").encode()
+    pem_marker = re.compile(("-----BEGIN [A-Z ]*" + "PRIVATE KEY-----").encode())
     for rel in tracked:
         assert not rel.endswith(".key"), f"private-key file is tracked: {rel}"
         data = (_REPO_ROOT / rel).read_bytes()
-        assert pem_marker not in data, f"PEM private-key block tracked in: {rel}"
+        assert not pem_marker.search(data), f"PEM private-key block tracked in: {rel}"
 
 
 # --------------------------------------------------------------------------- #

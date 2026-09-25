@@ -353,6 +353,9 @@ so Flathub review and code signing do not block this release.
   the list noticing itself. Re-derive the five conditions from
   versioning.md § 5 against the tree, then make the list and the section agree
   with the result.
+  User instruction (2026-09-25): before v1.0.0 is published, stop and
+  tell the user, so they can start a codebase review first. Do not run
+  cut-release 1.0.0 until they say go.
   **Layman:** The plan for calling the app finished: what has to be true first, and which four jobs are standing in the way.
   Kind: release.
   Source: user-decision-2026-08-20 ("what gets us to v1.0?").
@@ -3191,17 +3194,24 @@ work, and none of it is a release decision.
   Kind: doc-fix.
   Source: in-session-2026-09-24 check-doc measurement.
 
-- 📋 [FIBR-0355] **The leaked-private-key test matches only the PKCS8 header, so an OpenSSH, EC or RSA key would pass.**
+- ✅ [FIBR-0355] **The leaked-private-key test matches only the PKCS8 header, so an OpenSSH, EC or RSA key would pass.**
   tests/features/auto_update/test_auto_update.py,
   test_INV14_no_private_key_material_is_tracked: it fails on a tracked
   path ending `.key`, or on a file containing exactly
-  `-----BEGIN PRIVATE KEY-----`. A key saved under another name in
+  the PKCS8 header (`BEGIN PRIVATE KEY` inside five-dash fences; not
+  spelled out here, because the test scans this file too). A key saved under another name in
   another PEM flavour (`BEGIN OPENSSH PRIVATE KEY`, `BEGIN EC PRIVATE
   KEY`, `BEGIN RSA PRIVATE KEY`) is not caught. Fix: match
   `-----BEGIN [A-Z ]*PRIVATE KEY-----`, still assembled at runtime so
   the test does not match itself. gitleaks covers some of this class,
   but this test is the named INV-14 guard. Found while answering
   pressless-e4's request about finbreak's updater.
+  Resolved (2026-09-25): the test now matches every PEM private-key
+  flavour with a runtime-assembled regex. Proved red by tracking a dummy
+  file carrying an OpenSSH private-key header: the test failed on it and
+  passed once it was removed. Writing this bullet also tripped the test,
+  because its first draft quoted the PKCS8 header verbatim. The body was
+  reworded before any push.
   **Layman:** A safety test that checks no secret signing key was committed only recognises one of the common key formats.
   Kind: test.
   Source: in-session-2026-09-25 (peer request from pressless-e4, PRESS-0023).
