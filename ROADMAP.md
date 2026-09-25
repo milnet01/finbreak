@@ -968,6 +968,37 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Source: split from FIBR-0302, 2026-09-25.
   Lanes: tests.
 
+- 📋 [FIBR-0362] **Shipped specs still describe designs later work replaced, beyond what a rename fixes.**
+  FIBR-0354 renamed the stale names that had a like-for-like replacement.
+  These did not, and each needs a decision: rewrite the passage, or mark
+  the spec as superseded where it states current behaviour.
+
+  - FIBR-0008 D13 and INV-10 say the import size cap stat-checks the file
+    before read_bytes. `_read_capped` does a bounded read of cap + 1
+    bytes instead, and deliberately does not trust stat. This one is a
+    false behaviour claim, not just an old name.
+  - FIBR-0005, FIBR-0006 and FIBR-0007 describe the retired AppShell
+    signal routing (manage_accounts, manage_categories,
+    import_transactions, _show_accounts), which FIBR-0051 replaced with
+    MainWindow tabs.
+  - FIBR-0010 D10/D11 put the context-menu and learning flow on HomeView;
+    it lives in TransactionsView (ui/transactions.py).
+  - FIBR-0050 describes D6's synchronous `_decrypt_pdf(data) -> bytes |
+    None`; FIBR-0065 replaced it with the non-blocking `_begin_decrypt`
+    state machine.
+  - FIBR-0138 describes one `_render_drilldown` tree, and FIBR-0143
+    describes separate per-column helpers; both became `_render_column`.
+  - FIBR-0172 INV-6 names `_MIN_BASELINE`, while the comparison uses the
+    scaled `min_baseline`.
+  - FIBR-0193 names the `_ACCOUNT_*_ROLE` item-data roles, which FIBR-0113
+    deleted in favour of `_ROW_INDEX_ROLE`.
+  - FIBR-0006's "Verified API basis" says Accounts mirrors item-data
+    roles, which is no longer true.
+  **Layman:** Some older design documents still describe how parts of the app used to be built, not how they work now.
+  Kind: doc-fix.
+  Source: FIBR-0354 follow-up, 2026-09-25.
+  Lanes: docs.
+
 ## v1.1.0 — Localisation
 
 The first feature minor after 1.0. Chosen to go first because it is
@@ -3344,7 +3375,7 @@ work, and none of it is a release decision.
   Kind: doc-fix.
   Source: in-session-2026-09-24 check-doc measurement.
 
-- 📋 [FIBR-0354] **Shipped specs name functions that no longer exist in the code.**
+- ✅ [FIBR-0354] **Shipped specs name functions that no longer exist in the code.**
   A sample of 15 shipped specs names 43 distinct identifiers that
   appear nowhere in src/, tests/ or scripts/. A hand read of 8 of
   them split about evenly: deliberate past-tense mentions, which
@@ -3363,6 +3394,13 @@ work, and none of it is a release decision.
   Method to repeat on the rest: AST-index every def/class/module
   assignment, take backticked code-shaped identifiers from each
   spec, keep those whose name is absent from all code text.
+  Resolved 2026-09-25: an AST-indexed survey of all specs found 30 stale
+  names. Those a sentence presents as current code, and that have a
+  like-for-like replacement, were renamed in 13 specs, each checked
+  against the source. History passages, rename lists and dated "read at
+  spec time" snapshots were left as written. Passages describing a design
+  later work replaced are FIBR-0362, including one false behaviour claim
+  in FIBR-0008 INV-10.
   **Layman:** Several older specs refer to parts of the program by names that were later renamed or removed, so a reader following them hits dead ends.
   Kind: doc-fix.
   Source: in-session-2026-09-24 check-doc measurement.
