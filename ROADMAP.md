@@ -2665,6 +2665,14 @@ work, and none of it is a release decision.
   warns about.
 
   Source: a check-code sweep with --check-untyped-defs, run 2026-09-21.
+  Progress (2026-09-26): three batches landed (3c87bb0, a688239,
+  e20ac3c), 370 errors in 25 files down to 254 in 10. Every file with
+  fewer than ten errors is clean. New conftest.cell_text reads a table
+  cell and fails on a missing item rather than returning "". Use it for
+  the remaining table reads. The heavy files are left: theme, app_shell,
+  statements, datetime_display, settings, pdf_import, import_, categories,
+  backup_ui, auto_update. The pyproject override stays off until all of
+  them are clean.
   **Layman:** The type checker currently reads the app's code closely but skims the tests, so a broken test can look fine.
   Kind: test.
 
