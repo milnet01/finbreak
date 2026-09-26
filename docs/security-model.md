@@ -84,7 +84,7 @@ unavoidable it is glossed on first use.
   such as `pip-audit` and Dependabot run in CI and the local dev gate,
   never in the shipped app — INV-8.)
 - **Imported files are untrusted input.** CSV/OFX/PDF files come
-  from outside and are parsed defensively (§ 4, T5).
+  from outside and are parsed defensively (§ 3, T5).
 - **A restore backup (`.fbk`) is untrusted input parsed _pre-login_.**
   The encrypted backup a user restores (FIBR-0014) is an off-device zip
   opened **before** any authentication — a distinct, higher-risk surface
@@ -92,7 +92,7 @@ unavoidable it is glossed on first use.
   the three fixed entry names, per-entry size caps checked **before**
   inflating, never `extractall`, traversal/extra/duplicate entries
   rejected), and its KDF params are re-validated against the pinned
-  Argon2 floor **before any key is derived** (§ 4, T5; FIBR-0014
+  Argon2 floor **before any key is derived** (§ 3, T5; FIBR-0014
   INV-11/INV-12).
 
 ## 3. Threats and mitigations (STRIDE-lite)

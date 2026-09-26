@@ -1100,6 +1100,28 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Source: peer-2026-09-25 (pressless-53, PRESS-0146).
   Lanes: packaging, ui.
 
+- 📋 [FIBR-0366] **security-model.md § 2 names a process crossing with no check, and lists no boundary for files the app reads back.**
+  ~/.claude/standards/security.md §1 (revised 2026-09-26, CFG-0600) wants
+  each boundary to name what crosses and what is checked at the crossing,
+  and says control is not the test: a file the app wrote is still a
+  boundary.
+
+  - The Windows install hand-off spawns a PowerShell helper. § 2 says it
+    opens no socket and touches no vault, but not what is checked on the
+    arguments handed to it. update_installer.py builds that command;
+    read it and name the check.
+  - § 2 declares the machine trusted, so the vault sidecar, window.ini
+    and the vault DB read back from disk appear as no boundary. The code
+    does validate the sidecar (load_and_validate_params). Either list
+    those read-backs with their checks, or state why the trusted-machine
+    line scopes them out. The standard does not yet say whether a
+    project may scope a whole context out this way; that question went
+    to the ~/.claude session.
+  **Layman:** The security notes skip two places where the app hands data to another program or reads its own files back, so nobody can tell what protects them.
+  Kind: doc-fix.
+  Source: in-session-2026-09-26 (re-check of security.md §1 for the ~/.claude session).
+  Lanes: docs, security.
+
 ## v1.1.0 — Localisation
 
 The first feature minor after 1.0. Chosen to go first because it is
