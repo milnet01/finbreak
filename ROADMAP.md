@@ -2172,6 +2172,18 @@ that may never arrive.
   action is the USER's: post the drafted nudge on Flathub Discourse,
   citing #9662 and the v0.1.23 pin, then record the post's link here.
   Still do not open a new PR while #9662 stands.
+  BLOCKER (2026-09-26): Flathub's Generative AI policy, effective
+  2026-09-09 (docs.flathub.org/docs/for-app-authors/requirements, section
+  generative-ai-policy), forbids an AI-generated or AI-assisted manifest
+  and any AI-written submission PR text, commit messages, review comments
+  or replies, and requires disclosure of AI-generated app code. Our
+  manifest carries a Claude co-author line on 15 of its 16 commits. So
+  Claude must NOT draft the Discourse nudge, the PR description or any
+  reply; it may only explain what a field means. The submission-checker
+  source (flathub-infra/flathub-submission-checker) also shows the bot
+  never reopens a PR and reads the checklist from the PR body only, so a
+  reopened #9662 would be re-closed. Next step is the user's: ask
+  Flathub in their own words whether it would accept this app at all.
 
 - 📋 [FIBR-0160] **Add openSUSE Leap 15.6 as an OBS target (deferred — Leap ships no python 3.12+).**
   Attempted 2026-07-23: added the Leap 15.6 target + a %if 0%{?sle_version}
