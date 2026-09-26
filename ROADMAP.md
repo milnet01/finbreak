@@ -999,7 +999,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Source: split from FIBR-0302, 2026-09-25.
   Lanes: tests.
 
-- 📋 [FIBR-0362] **Shipped specs still describe designs later work replaced, beyond what a rename fixes.**
+- ✅ [FIBR-0362] **Shipped specs still describe designs later work replaced, beyond what a rename fixes.**
   FIBR-0354 renamed the stale names that had a like-for-like replacement.
   These did not, and each needs a decision: rewrite the passage, or mark
   the spec as superseded where it states current behaviour.
@@ -1034,6 +1034,11 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   User decision (2026-09-26): mark superseded, do not rewrite. Each
   remaining entry gets a short note at the passage naming the item that
   replaced the design. The historical wording stays as written.
+  Resolved (2026-09-26): every remaining entry now carries a one-line
+  Superseded note naming its replacement, checked against src/ and git
+  log. FIBR-0143's note is "as built" (no later item replaced it; its
+  _render_column_breakdown was never built). FIBR-0172 INV-6 was a single
+  stale name and now says min_baseline.
   **Layman:** Some older design documents still describe how parts of the app used to be built, not how they work now.
   Kind: doc-fix.
   Source: FIBR-0354 follow-up, 2026-09-25.

@@ -90,6 +90,10 @@ here.
 
 ## Scope
 
+**Trust boundaries** — the list is
+[`docs/security-model.md`](docs/security-model.md) § 2. It is kept
+there, beside the threats and invariants it feeds, and not copied here.
+
 **In scope** — anything that breaks one of the security invariants in
 [`docs/security-model.md`](docs/security-model.md) § 5, and anything
 that lets someone who is not sitting at the unlocked machine read,
