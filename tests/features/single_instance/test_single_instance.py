@@ -10,11 +10,13 @@ from __future__ import annotations
 
 import os
 import socket
+from typing import cast
 
 import pytest
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 
 from finbreak import single_instance
+from finbreak.services.auth import AuthService
 
 pytestmark = pytest.mark.features
 
@@ -252,7 +254,7 @@ def test_INV5_relaunch_releases_the_socket_before_wiping_the_key(qapp, name):
             order.append("key wiped")
 
     window = MainWindow.__new__(MainWindow)  # no vault needed for this seam
-    window._service = _Service()
+    window._service = cast(AuthService, _Service())  # a stand-in for the seam
     window.set_single_instance_guard(_Guard())
     window._release_for_relaunch()
 
@@ -272,7 +274,7 @@ def test_INV5_relaunch_without_a_guard_still_wipes_the_key(qapp):
             wiped.append("key wiped")
 
     window = MainWindow.__new__(MainWindow)
-    window._service = _Service()
+    window._service = cast(AuthService, _Service())  # a stand-in for the seam
     window.set_single_instance_guard(None)
     window._release_for_relaunch()
 

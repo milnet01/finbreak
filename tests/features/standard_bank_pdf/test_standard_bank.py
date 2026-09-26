@@ -1106,14 +1106,16 @@ def test_INV1_end_to_end_preview_result_pipeline(service):
     exponent = read_minor_unit_exponent(service.vault.connection)
     acct = _acct(service)
     result = StandardBankImporter().parse(_fx("family_a_current.pdf"), exponent)
+    assert result is not None
     imp = ImportService(service.vault)
     preview = imp.preview_result(result, acct)
     assert preview.new_count == 3
+    assert preview.period_start is not None and preview.period_end is not None
     imp.commit_import(preview, preview.period_start, preview.period_end, "stmt.pdf")
     # re-import the same statement -> all duplicate.
-    again = imp.preview_result(
-        StandardBankImporter().parse(_fx("family_a_current.pdf"), exponent), acct
-    )
+    reparsed = StandardBankImporter().parse(_fx("family_a_current.pdf"), exponent)
+    assert reparsed is not None
+    again = imp.preview_result(reparsed, acct)
     assert again.new_count == 0
 
 

@@ -14,8 +14,10 @@ import re
 from collections.abc import Iterator
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
 
 import pytest
+from PySide6.QtWidgets import QStackedWidget, QTabWidget
 from sqlcipher3.dbapi2 import DatabaseError
 
 import finbreak
@@ -735,7 +737,7 @@ def test_INV6_unlock_ignores_reentrant_submit_while_deriving(qtbot, service):
     qtbot.addWidget(widget)
 
     widget._password.setText(_PW.decode())
-    sentinel = object()
+    sentinel: Any = object()  # a stand-in, never run as a DeriveWorker
     widget._worker = sentinel  # simulate a derivation already running
     widget._on_unlock()
     assert widget._worker is sentinel, "a re-entrant submit must not replace the worker"
@@ -789,13 +791,20 @@ def test_INV6_idle_autolock_routes_ui_back_to_unlock(qtbot, service):
     window = MainWindow(service)
     qtbot.addWidget(window)
     window._enter_unlocked()  # drive past locked-file routing to a live workspace
-    workspace = window.centralWidget().currentWidget()
+    content = window.centralWidget()
+    assert isinstance(content, QStackedWidget)
+    workspace = content.currentWidget()
+    assert isinstance(workspace, QTabWidget)
     assert workspace.objectName() == "workspace"
-    assert workspace.currentWidget().objectName() == "tab_home"
+    home = workspace.currentWidget()
+    assert home is not None
+    assert home.objectName() == "tab_home"
 
     service._on_idle_timeout()  # the 10-minute idle timer fires
     assert service._key is None, "idle auto-lock wipes the key"
-    assert window.centralWidget().currentWidget().objectName() == "placeholder_locked"
+    locked = content.currentWidget()
+    assert locked is not None
+    assert locked.objectName() == "placeholder_locked"
     assert isinstance(window._dialog, UnlockDialog), (
         "the UI returns to the locked shell so no action reaches the locked vault"
     )

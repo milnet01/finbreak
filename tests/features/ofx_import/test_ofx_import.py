@@ -323,6 +323,7 @@ def test_INV6_preview_result_feeds_pipeline_and_reimport_adds_zero(service):
 
     preview = imp.preview_result(result, acct)
     assert preview.new_count == 2
+    assert preview.period_start is not None and preview.period_end is not None
     imp.commit_import(preview, preview.period_start, preview.period_end, "stmt.ofx")
     assert TransactionRepository(conn).count_for_account(acct) == 2
     assert len(StatementPeriodRepository(conn).list_for_account(acct)) == 1
@@ -331,6 +332,7 @@ def test_INV6_preview_result_feeds_pipeline_and_reimport_adds_zero(service):
     _, result2 = OfxImporter().parse(data, _exp(service))[0]
     preview2 = imp.preview_result(result2, acct)
     assert preview2.new_count == 0
+    assert preview2.period_start is not None and preview2.period_end is not None
     imp.commit_import(preview2, preview2.period_start, preview2.period_end, "stmt.ofx")
     assert TransactionRepository(conn).count_for_account(acct) == 2
     assert len(StatementPeriodRepository(conn).list_for_account(acct)) == 1
@@ -560,6 +562,7 @@ def test_INV8_formula_and_path_fields_stored_inert(service, caplog):
     with caplog.at_level(logging.DEBUG):
         _, result = OfxImporter().parse(data, _exp(service))[0]
         preview = imp.preview_result(result, acct)
+        assert preview.period_start is not None and preview.period_end is not None
         imp.commit_import(preview, preview.period_start, preview.period_end, "x.ofx")
     stored = {
         r[0] for r in conn.execute("SELECT description FROM transactions").fetchall()
