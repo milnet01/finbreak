@@ -16,7 +16,7 @@ import pytest
 from sqlcipher3 import dbapi2
 from sqlcipher3.dbapi2 import IntegrityError
 
-from conftest import _PW, _params, build_v1_vault, raising_conn
+from conftest import _PW, _params, build_v1_vault, cell_text, raising_conn
 from finbreak.crypto import SALT_LEN, derive_key
 from finbreak.errors import (
     AccountInUseError,
@@ -103,7 +103,9 @@ def test_INV1_crud_roundtrip_and_order(service):
     datetime.fromisoformat(got.created_at)
 
     svc.update_account(current.id, "Cheque", "current", account_number=None, note=None)
-    assert repo.get(current.id).name == "Cheque"
+    got = repo.get(current.id)
+    assert got is not None
+    assert got.name == "Cheque"
 
     repo.delete(current.id)
     assert repo.get(current.id) is None
@@ -424,7 +426,7 @@ def test_INV7c_transaction_shows_account_name_in_table(qtbot, service):
     )
     qtbot.addWidget(view)
     assert view._table.rowCount() == 1
-    cells = [view._table.item(0, c).text() for c in range(view._table.columnCount())]
+    cells = [cell_text(view._table, 0, c) for c in range(view._table.columnCount())]
     assert any(DEFAULT_ACCOUNT_NAME in c for c in cells), "the account name is shown"
 
 
@@ -882,7 +884,9 @@ def test_INV4_statement_pdf_password_confined_to_its_accessors():
 
     # Located through the imported symbol, not a path relative to this file, so
     # it keeps working if either tree moves.
-    module = Path(sys.modules[AccountRepository.__module__].__file__)
+    module_file = sys.modules[AccountRepository.__module__].__file__
+    assert module_file is not None
+    module = Path(module_file)
     tree = ast.parse(module.read_text(encoding="utf-8"))
     accessors = {
         fn.name: fn
@@ -1295,11 +1299,11 @@ def test_INV18_refresh_under_a_sort_never_mispairs_cells(qtbot, service):
         widget._refresh()
         assert widget._table.rowCount() == len(_SORTED_ACCOUNTS)
         for row in range(widget._table.rowCount()):
-            name = widget._table.item(row, _COL_NAME).text()
+            name = cell_text(widget._table, row, _COL_NAME)
             cells = (
-                widget._table.item(row, _COL_TYPE).text(),
-                widget._table.item(row, _COL_NUMBER).text(),
-                widget._table.item(row, _COL_NOTE).text(),
+                cell_text(widget._table, row, _COL_TYPE),
+                cell_text(widget._table, row, _COL_NUMBER),
+                cell_text(widget._table, row, _COL_NOTE),
             )
             assert cells == expected[name], f"row {row} ({order}) mixes accounts"
 

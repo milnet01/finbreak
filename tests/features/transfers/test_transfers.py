@@ -16,7 +16,7 @@ from decimal import Decimal
 import pytest
 from PySide6.QtCore import Qt
 
-from conftest import _PW, build_v7_vault, keyed_connection, raising_conn
+from conftest import _PW, build_v7_vault, cell_text, keyed_connection, raising_conn
 from finbreak.crypto import SALT_LEN
 from finbreak.errors import VaultLockedError
 from finbreak.migrations import LATEST_SCHEMA_VERSION, run_migrations
@@ -498,8 +498,8 @@ def test_INV10_tab_from_to_and_amount_cells(qtbot, service):
     widget = TransfersWidget(service)
     qtbot.addWidget(widget)
     # Columns: Date / Amount / From -> To / Description.
-    assert widget._suggested.item(0, 2).text() == "Default → Savings"
-    assert "500.00" in widget._suggested.item(0, 1).text()
+    assert cell_text(widget._suggested, 0, 2) == "Default → Savings"
+    assert "500.00" in cell_text(widget._suggested, 0, 1)
 
 
 @pytest.mark.parametrize(
@@ -815,7 +815,7 @@ def test_FIBR0201_INV3_bulk_confirm_resolves_ids_before_mutating(qtbot, service)
     widget = TransfersWidget(service)
     qtbot.addWidget(widget)
     widget._suggested.sortItems(1, Qt.SortOrder.DescendingOrder)  # 500.00 on top
-    assert widget._suggested.item(0, 1).text().endswith("500.00")
+    assert cell_text(widget._suggested, 0, 1).endswith("500.00")
 
     widget._suggested.selectRow(0)
     widget._suggested.selectRow(1)
@@ -927,13 +927,13 @@ def test_FIBR0328_date_column_reads_in_the_user_format_and_still_sorts(qtbot, se
     table = widget._suggested
     assert table.rowCount() == 2, "the fixture did not produce two candidates"
 
-    shown = {table.item(row, _COL_DATE).text() for row in range(table.rowCount())}
+    shown = {cell_text(table, row, _COL_DATE) for row in range(table.rowCount())}
     assert shown == {"05/01/2026", "03/02/2026"}, (
         f"the Date column ignored the date preference: {sorted(shown)}"
     )
 
     table.sortItems(_COL_DATE, Qt.SortOrder.AscendingOrder)
-    assert table.item(0, _COL_DATE).text() == "05/01/2026", (
+    assert cell_text(table, 0, _COL_DATE) == "05/01/2026", (
         "ascending by date must put January before February. Sorting on the "
         "DISPLAY string orders by day-of-month under dd/MM/yyyy, which is why "
         "the ISO form has to stay as the sort key."

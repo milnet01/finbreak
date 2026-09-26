@@ -25,7 +25,7 @@ import pytest
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import QDialog, QDialogButtonBox, QPushButton
 
-from conftest import _PW, _acct
+from conftest import _PW, _acct, cell_text
 from finbreak.importers.pdf_importer import PasswordError
 from finbreak.models import AccountType, ColumnMapping
 from finbreak.services.accounts import AccountService
@@ -302,7 +302,7 @@ def test_INV5_displayed_account_is_the_targeted_account(
         "— building it before match_account runs is the wrong-account commit"
     )
     assert (
-        matched_widget._batch_review._table.item(0, import_batch_mod.COL_ACCOUNT).text()
+        cell_text(matched_widget._batch_review._table, 0, import_batch_mod.COL_ACCOUNT)
         == "Matched"
     )
 
@@ -745,9 +745,11 @@ def test_INV14_done_waits_for_the_report(
     # to `done`" — a regression to `cancel.clicked.connect(self.done)` leaves
     # `_on_map_cancel` itself perfectly correct, so calling the slot directly
     # would pass straight through the defect.
+    map_page = widget3._stack.widget(_STEP_MAP)
+    assert map_page is not None
     map_cancel = next(
         button
-        for button in widget3._stack.widget(_STEP_MAP).findChildren(QPushButton)
+        for button in map_page.findChildren(QPushButton)
         if button.text() == "Cancel"
     )
     map_cancel.click()
@@ -855,7 +857,7 @@ def test_FIBR0252_errors_column_shows_the_count(qtbot, service, profile, tmp_pat
 
     table = widget._batch_review._table
     cells = [
-        table.item(row, import_batch_mod.COL_ERRORS).text()
+        cell_text(table, row, import_batch_mod.COL_ERRORS)
         for row in range(table.rowCount())
     ]
     assert cells[statement] == "1", (
@@ -978,13 +980,13 @@ def test_account_cell_is_reachable_without_a_mouse(
         lambda: widget._batch_files[0].outcome == "needs_account", timeout=3000
     )
     review = widget._batch_review
-    assert review._table.item(0, import_batch_mod.COL_ACCOUNT).text() == "— pick one —"
+    assert cell_text(review._table, 0, import_batch_mod.COL_ACCOUNT) == "— pick one —"
 
     _stub_picker(monkeypatch, _acct(service))
     review._table.setCurrentCell(0, import_batch_mod.COL_ACCOUNT)
     qtbot.keyClick(review._table, Qt.Key.Key_Return)
 
-    assert review._table.item(0, import_batch_mod.COL_ACCOUNT).text() == "Default", (
+    assert cell_text(review._table, 0, import_batch_mod.COL_ACCOUNT) == "Default", (
         "FIBR-0327: the Account cell must have a keyboard route — with "
         "NoEditTriggers set, cellClicked alone leaves a keyboard-only user "
         "unable to give any statement a destination"
@@ -1032,4 +1034,4 @@ def test_unplaced_row_opens_a_picker_that_has_chosen_nothing(
     # the row exactly as unplaced as its own cell says it is.
     dialog.accept()
     assert widget._batch_files[0].account_id is None
-    assert review._table.item(0, import_batch_mod.COL_ACCOUNT).text() == "— pick one —"
+    assert cell_text(review._table, 0, import_batch_mod.COL_ACCOUNT) == "— pick one —"

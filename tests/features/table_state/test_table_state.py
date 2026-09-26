@@ -9,6 +9,7 @@ column-state INI is redirected to tmp by the autouse `window_ini` fixture.
 
 from collections.abc import Iterator
 from datetime import date, timedelta
+from typing import Any
 
 import pytest
 import shiboken6
@@ -20,7 +21,7 @@ from PySide6.QtWidgets import (
     QTreeWidget,
 )
 
-from conftest import _PW, _pump_deferred_delete
+from conftest import _PW, _pump_deferred_delete, cell_text
 from finbreak import paths as fb_paths
 from finbreak.repositories.accounts import AccountRepository
 from finbreak.repositories.transactions import TransactionRepository
@@ -156,7 +157,7 @@ def test_sort_order_persists_across_rebuild(qtbot, service):
     first = TransfersWidget(service)
     qtbot.addWidget(first)
     first._suggested.sortItems(1, Qt.SortOrder.DescendingOrder)  # Amount, descending
-    assert first._suggested.item(0, 1).text() == "R 500.00"
+    assert cell_text(first._suggested, 0, 1) == "R 500.00"
 
     rebuilt = TransfersWidget(service)  # fresh session
     qtbot.addWidget(rebuilt)
@@ -164,7 +165,7 @@ def test_sort_order_persists_across_rebuild(qtbot, service):
     assert header.sortIndicatorSection() == 1
     assert header.sortIndicatorOrder() == Qt.SortOrder.DescendingOrder
     # ...and the rows are actually re-sorted, not just the arrow restored.
-    assert rebuilt._suggested.item(0, 1).text() == "R 500.00"
+    assert cell_text(rebuilt._suggested, 0, 1) == "R 500.00"
 
 
 # --------------------------------------------------------------------------- #
@@ -370,10 +371,10 @@ def _window_ini() -> QSettings:
     return QSettings(str(fb_paths.window_settings_path()), QSettings.Format.IniFormat)
 
 
-def _sort_keys(table: QTableWidget, col: int) -> list[object]:
+def _sort_keys(table: QTableWidget, col: int) -> list[Any]:
     """Each row's sort key in `col` — every Transactions cell is a SortableItem, so
     this is the value Qt actually ordered by (falls back to display text)."""
-    out: list[object] = []
+    out: list[Any] = []
     for row in range(table.rowCount()):
         item = table.item(row, col)
         assert item is not None
@@ -441,12 +442,12 @@ def test_FIBR0192_INV2_forecast_is_not_click_sortable(qtbot, service):
 
     assert widget._events_table.isSortingEnabled() is False
     dates_before = [
-        widget._events_table.item(r, 0).text()
+        cell_text(widget._events_table, r, 0)
         for r in range(widget._events_table.rowCount())
     ]
     assert len(set(dates_before)) >= 2, "the seed must give ≥2 distinct event dates"
     merchants = [
-        widget._events_table.item(r, 1).text()
+        cell_text(widget._events_table, r, 1)
         for r in range(widget._events_table.rowCount())
     ]
     assert merchants != sorted(merchants), (
@@ -468,7 +469,7 @@ def test_FIBR0192_INV2_forecast_is_not_click_sortable(qtbot, service):
 
     assert widget._events_table.isSortingEnabled() is False
     dates_after = [
-        widget._events_table.item(r, 0).text()
+        cell_text(widget._events_table, r, 0)
         for r in range(widget._events_table.rowCount())
     ]
     assert dates_after == dates_before, "a header click must not reorder the rows"
@@ -864,7 +865,8 @@ def test_FIBR0204_refill_under_a_sort_does_not_retarget_the_selection(qtbot):
     after = selected_index(table)
     assert after in (None, chosen), (
         f"the refill retargeted the action from {rows[chosen][0]} to "
-        f"{rows[after][0]} — a wrong row-to-action map in a money app"
+        f"{rows[after][0] if after is not None else None} — a wrong row-to-action "
+        "map in a money app"
     )
 
 

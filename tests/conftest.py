@@ -20,7 +20,7 @@ import json
 from pathlib import Path
 
 import pytest
-from PySide6.QtWidgets import QDialog
+from PySide6.QtWidgets import QDialog, QTableWidget
 from sqlcipher3 import dbapi2
 
 from finbreak.crypto import KEY_LEN, SALT_LEN, derive_key
@@ -81,6 +81,15 @@ def _pump_deferred_delete() -> None:
     from PySide6.QtWidgets import QApplication
 
     QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+
+
+def cell_text(table: QTableWidget, row: int, column: int) -> str:
+    """One table cell's text, failing if the cell holds no item. Never returns
+    "" for a missing item: that would let an assertion on the text pass against
+    a table that rendered nothing (FIBR-0331)."""
+    item = table.item(row, column)
+    assert item is not None, f"no item at row {row}, column {column}"
+    return item.text()
 
 
 def raising_conn(real, trigger: str, message: str, *, on: str = "execute"):
