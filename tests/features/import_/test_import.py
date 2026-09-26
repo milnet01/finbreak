@@ -1257,3 +1257,84 @@ def test_FIBR0328_custom_date_format_field_has_an_accessible_name(qtbot, service
     widget = ImportWizardWidget(service)
     qtbot.addWidget(widget)
     assert widget._date_format_custom.accessibleName() != ""
+
+
+# --------------------------------------------------------------------------- #
+# INV-12 (FIBR-0361) — a saved profile written by an OLDER RELEASE still matches
+#
+# Every profile test above saves and matches within one build, so a change to
+# signature_for or to the stored column layout would pass them all while every
+# user's saved bank layouts silently stopped auto-applying after an update. The
+# fixture is a .fbk written by v0.1.12's own save_profile + export_backup (see
+# tests/fixtures/backup_restore/README.md), restored here by today's build.
+# --------------------------------------------------------------------------- #
+_OLD_PROFILE_DIR = Path(__file__).resolve().parents[2] / "fixtures" / "backup_restore"
+
+
+def _load_old_profile_fixture_module():
+    """Load ``_generate_fibr0361_fixture.py`` by path, so the header, mapping and
+    passwords come from the one place that wrote the fixture."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "_fibr0361_old_profile_fixture",
+        _OLD_PROFILE_DIR / "_generate_fibr0361_fixture.py",
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_INV12_profile_saved_by_an_earlier_release_still_matches(tmp_path):
+    from finbreak.services.backup import BackupService
+
+    old = _load_old_profile_fixture_module()
+    fbk = _OLD_PROFILE_DIR / "v0.1.12-schema8-import-profile.fbk"
+    assert fbk.exists(), f"missing fixture: {fbk} — see its README to regenerate"
+
+    dest_dir = tmp_path / "dest"
+    dest_dir.mkdir()
+    auth = AuthService(dest_dir / "vault.db", dest_dir / "vault.kdf.json")
+    new_master = "fibr0361-restored-new-master-pw"
+    BackupService(auth.vault, auth).restore_backup(fbk, old.BACKUP_PASSWORD, new_master)
+    assert auth.unlock(bytearray(new_master, "utf-8")) is True
+    try:
+        profile = ImportService(auth.vault).match_profile(list(old.HEADER))
+        assert profile is not None, (
+            "a profile saved by v0.1.12 no longer matches its own bank's header "
+            "under today's signature_for — every saved bank layout would stop "
+            "auto-applying after an update"
+        )
+        assert profile.name == old.PROFILE_NAME
+
+        mapping = profile.column_mapping()
+        expected = ColumnMapping(
+            date_column=old.DATE_COLUMN,
+            description_column=old.DESCRIPTION_COLUMN,
+            amount_column=None,
+            debit_column=old.DEBIT_COLUMN,
+            credit_column=old.CREDIT_COLUMN,
+            date_format=old.DATE_FORMAT,
+            invert_amount=False,
+        )
+        assert mapping == expected, (
+            f"the v0.1.12 profile's mapping did not survive into today's build\n"
+            f"  expected: {expected}\n  actual:   {mapping}"
+        )
+
+        # The outcome a user sees: the old profile still parses their statement.
+        text = (
+            ",".join(old.HEADER) + "\n"
+            "03/02/2026,Coffee,12.50,,987.50\n"
+            "04/02/2026,Salary,,300.00,1287.50\n"
+        )
+        result = CsvImporter().parse(text, mapping, 2)
+        assert result.errors == []
+        got = [(d.occurred_on, d.amount_minor, d.description) for d in result.drafts]
+        assert got == [
+            ("2026-02-03", -1250, "Coffee"),
+            ("2026-02-04", 30000, "Salary"),
+        ]
+    finally:
+        auth.lock()

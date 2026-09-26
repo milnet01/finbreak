@@ -1,6 +1,6 @@
-# FIBR-0302 older-release `.fbk` fixtures
+# Older-release `.fbk` fixtures (FIBR-0302, FIBR-0361)
 
-Two `.fbk` backups, each written by an **older release's own code** —
+The FIBR-0302 `.fbk` backups are each written by an **older release's own code** —
 `BackupService.export_backup` as it existed at that tag, not a simulation of
 it by today's code — so `tests/features/backup/test_backup.py`'s INV-20 can
 prove the surface `docs/standards/versioning.md` § 2 calls a MAJOR break ("a
@@ -65,10 +65,21 @@ git worktree remove --force /tmp/fbk-v0.1.12
 Never check out an old tag in the live working tree to do this — always a
 throwaway `git worktree`, removed afterwards.
 
-## Saved import profiles — out of scope here
+## Saved import profiles (FIBR-0361)
 
-The ROADMAP item (FIBR-0302) that wanted these fixtures also notes saved
-import profiles (FIBR-0007) round-trip same-build for the identical reason
-backups did. That is **not** covered by these fixtures or by INV-20 — it
-would need its own older-release fixture (a vault carrying a saved profile,
-opened by today's build) and is left for a separate item.
+`v0.1.12-schema8-import-profile.fbk` is a backup from v0.1.12 carrying one
+saved import profile for an invented bank. `tests/features/import_/`'s INV-12
+restores it with today's build, matches the profile by its header, and parses a
+statement with it.
+
+`_generate_fibr0361_fixture.py` defines the header, mapping and passwords, and
+regenerates the file the same way as above:
+
+```bash
+git worktree add /tmp/fbk-v0.1.12 v0.1.12
+PYTHONPATH=/tmp/fbk-v0.1.12/src .venv/bin/python \
+    tests/fixtures/backup_restore/_generate_fibr0361_fixture.py \
+    --tag v0.1.12 --schema 8 \
+    --out tests/fixtures/backup_restore/v0.1.12-schema8-import-profile.fbk
+git worktree remove --force /tmp/fbk-v0.1.12
+```
