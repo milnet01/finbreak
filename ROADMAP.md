@@ -981,7 +981,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Source: in-session-2026-09-25 demo recording.
   Lanes: ui.
 
-- 📋 [FIBR-0361] **No test reads a saved import profile written by an earlier release.**
+- ✅ [FIBR-0361] **No test reads a saved import profile written by an earlier release.**
   FIBR-0302 named this and closed only the backup half.
   tests/features/import_/ round-trips column_mapping() from a stored
   record, but same-build. docs/standards/versioning.md § 2's saved import
@@ -989,6 +989,11 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   fixture vault written by an old tag's own code in a throwaway worktree,
   carrying a saved profile, opened and read by today's build. See
   tests/fixtures/backup_restore/README.md for the generator pattern.
+  Resolved (2026-09-26, 935f5b3): tests/features/import_/ INV-12 restores
+  v0.1.12-schema8-import-profile.fbk, written by v0.1.12's own
+  save_profile + export_backup, and matches, maps and parses with it in
+  today's build. Mutation-probed on signature_for and column_mapping.
+  versioning.md § 2's profile row now names the test.
   **Layman:** Saved bank-import settings are only ever tested with the same app version that made them, so an update that broke old ones would go unnoticed.
   Kind: test.
   Source: split from FIBR-0302, 2026-09-25.
