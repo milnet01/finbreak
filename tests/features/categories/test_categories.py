@@ -24,7 +24,7 @@ from finbreak.migrations import (
     LATEST_SCHEMA_VERSION,
     run_migrations,
 )
-from finbreak.models import CategoryKind
+from finbreak.models import Category, CategoryKind
 from finbreak.repositories.categories import CategoryRepository
 from finbreak.services.auth import AuthService
 from finbreak.services.categories import CategoryService
@@ -40,7 +40,7 @@ def service(paths) -> Iterator[AuthService]:
     svc.lock()
 
 
-def _roots(conn) -> dict[str, object]:
+def _roots(conn) -> dict[str, Category]:
     """The two Type roots, keyed by kind token."""
     roots = CategoryRepository(conn).children_of(None)
     return {r.kind: r for r in roots if r.kind is not None}

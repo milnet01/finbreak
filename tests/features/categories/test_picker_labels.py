@@ -18,6 +18,7 @@ from collections.abc import Iterator
 import pytest
 
 from conftest import _PW, spy_learning, stub_picker
+from finbreak.models import Category
 from finbreak.repositories.accounts import AccountRepository
 from finbreak.repositories.categories import CategoryRepository
 from finbreak.repositories.transactions import TransactionRepository
@@ -40,7 +41,7 @@ def service(paths) -> Iterator[AuthService]:
     svc.lock()
 
 
-def _roots(conn) -> dict[str, object]:
+def _roots(conn) -> dict[str, Category]:
     roots = CategoryRepository(conn).children_of(None)
     return {r.kind: r for r in roots if r.kind is not None}
 

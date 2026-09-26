@@ -11,7 +11,13 @@ themed colours — the contract both call-sites rely on.
 from decimal import Decimal
 
 import pytest
-from PySide6.QtCharts import QBarCategoryAxis, QBarSeries, QChart, QPieSeries
+from PySide6.QtCharts import (
+    QBarCategoryAxis,
+    QBarSeries,
+    QChart,
+    QLineSeries,
+    QPieSeries,
+)
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 
@@ -131,6 +137,7 @@ def test_forecast_chart_plots_major_units_not_minor(qapp):
     ]
     chart = build_forecast_chart(points, _THEME, 2)
     (series,) = chart.series()
+    assert isinstance(series, QLineSeries)
     ys = [series.at(i).y() for i in range(series.count())]
     assert ys == [8600.00, 9150.50], "y values are major units, not cents"
 

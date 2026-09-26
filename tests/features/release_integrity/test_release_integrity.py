@@ -652,9 +652,9 @@ def test_FIBR0327_release_linux_requires_the_bump_to_be_pushed():
     )
     fetch_at = text.index("git fetch --quiet origin")
     # The INVOCATION, not the header comment that also names the script.
-    build_at = re.search(
-        r"^scripts/build-release-appimage\.sh", text, re.MULTILINE
-    ).start()
+    build_match = re.search(r"^scripts/build-release-appimage\.sh", text, re.MULTILINE)
+    assert build_match is not None, "release-linux.sh no longer runs the build"
+    build_at = build_match.start()
     assert fetch_at < build_at, (
         "the check must come before the multi-minute build, not after it"
     )

@@ -10,7 +10,7 @@ re-sort-then-act (INV-9).
 import pytest
 from PySide6.QtCore import QDate
 
-from conftest import _PW, spy_learning, stub_picker
+from conftest import _PW, cell_text, spy_learning, stub_picker
 from finbreak.errors import VaultLockedError
 from finbreak.repositories.accounts import AccountRepository
 from finbreak.repositories.categories import CategoryRepository
@@ -419,10 +419,8 @@ def test_INV9_all_filters_combine_AND(qtbot, service):
     assert descriptions == ["Coffee shop"]
     # Clearing the search widens the set back (still AND of the other three).
     view._search.setText("")
-    descriptions = {
-        view._table.item(r, 3).text() for r in range(view._table.rowCount())
-    }
-    assert descriptions == {"Coffee shop"}
+    widened = {cell_text(view._table, r, 3) for r in range(view._table.rowCount())}
+    assert widened == {"Coffee shop"}
 
 
 def test_INV9_resort_then_context_acts_on_correct_txn(qtbot, service):

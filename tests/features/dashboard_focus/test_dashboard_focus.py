@@ -61,6 +61,7 @@ def test_breakdown_donut_collapses_tail_into_other_over_cap(qapp):
     slices = _slices(10)  # 10 > 8
     chart = build_breakdown_donut(slices, "Other", _THEME)
     (series,) = chart.series()
+    assert isinstance(series, QPieSeries)
     wedges = series.slices()
     assert len(wedges) == 8  # 7 kept + Other
     labels = [w.label() for w in wedges]
@@ -77,6 +78,7 @@ def test_breakdown_donut_kept_wedges_take_palette_no_neutral_grey(qapp):
 
     chart = build_breakdown_donut(_slices(10), "Other", _THEME)
     (series,) = chart.series()
+    assert isinstance(series, QPieSeries)
     wedges = series.slices()
     assert [w.color() for w in wedges[:7]] == _DONUT_PALETTE[:7]  # palette, in order
     assert wedges[7].color() == _OTHER_COLOUR  # the tail wedge is the Other neutral
@@ -88,6 +90,7 @@ def test_breakdown_donut_is_a_donut_with_hole(qapp):
 
     chart = build_breakdown_donut(_slices(3), "Other", _THEME)
     (series,) = chart.series()
+    assert isinstance(series, QPieSeries)
     assert series.holeSize() == pytest.approx(0.4)
     assert chart.legend().labelColor() == _THEME.text  # themed, not ambient palette
 
@@ -98,6 +101,7 @@ def test_breakdown_donut_empty_is_no_wedges_never_raises(qapp):
 
     chart = build_breakdown_donut([], "Other", _THEME)
     (series,) = chart.series()
+    assert isinstance(series, QPieSeries)
     assert series.slices() == []
 
 

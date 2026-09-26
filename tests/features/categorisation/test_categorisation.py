@@ -59,7 +59,7 @@ def service(paths) -> Iterator[AuthService]:
 # --------------------------------------------------------------------------- #
 # helpers
 # --------------------------------------------------------------------------- #
-def _roots(conn) -> dict[str, object]:
+def _roots(conn) -> dict[str, Category]:
     roots = CategoryRepository(conn).children_of(None)
     return {r.kind: r for r in roots if r.kind is not None}
 
@@ -1079,7 +1079,9 @@ def test_rule_dialog_ok_disabled_without_leaf_categories(qtbot):
 
     dialog = RuleEditDialog([], pattern="rent")  # [] == an empty grouped list
     qtbot.addWidget(dialog)
-    ok = dialog.findChild(QDialogButtonBox).button(QDialogButtonBox.StandardButton.Ok)
+    box = dialog.findChild(QDialogButtonBox)
+    assert box is not None
+    ok = box.button(QDialogButtonBox.StandardButton.Ok)
     assert ok is not None and not ok.isEnabled()
     assert dialog.selected_category_id() is None
 

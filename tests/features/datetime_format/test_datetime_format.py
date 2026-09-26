@@ -156,4 +156,4 @@ def test_every_date_preset_token_routes_through_format_date():
 
 
 def test_system_timezone_id_decodes_qt_system_zone():
-    assert system_timezone_id() == QTimeZone.systemTimeZoneId().data().decode()
+    assert system_timezone_id() == bytes(QTimeZone.systemTimeZoneId().data()).decode()
