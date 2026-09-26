@@ -2184,6 +2184,12 @@ that may never arrive.
   never reopens a PR and reads the checklist from the PR body only, so a
   reopened #9662 would be re-closed. Next step is the user's: ask
   Flathub in their own words whether it would accept this app at all.
+  Progress (2026-09-26): the user posted, in their own words, on
+  Flathub Discourse (General): https://discourse.flathub.org/t/12873
+  ("Submission for my app finbreak"). It links #9662, discloses that the
+  app and manifest were written with an AI assistant, and asks whether
+  Flathub will consider it and whether to edit #9662 or open a new PR.
+  Waiting on Flathub's reply. Do not open a new PR meanwhile.
 
 - 📋 [FIBR-0160] **Add openSUSE Leap 15.6 as an OBS target (deferred — Leap ships no python 3.12+).**
   Attempted 2026-07-23: added the Leap 15.6 target + a %if 0%{?sle_version}
