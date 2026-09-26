@@ -377,6 +377,9 @@ so Flathub review and code signing do not block this release.
   remaining named blocker in the gate section is FIBR-0346, scheduled to
   land with the single OBS re-submit at 1.0 per the user's 2026-09-21
   decision.
+  User decision (2026-09-26): clear the review-fix backlog first, then
+  run the Windows self-update test on wintest, then stop and tell the
+  user 1.0 is ready for their codebase review.
   **Layman:** The plan for calling the app finished: what has to be true first, and which four jobs are standing in the way.
   Kind: release.
   Source: user-decision-2026-08-20 ("what gets us to v1.0?").
@@ -937,7 +940,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: package.
   Source: in-session-2026-08-31 (found while working FIBR-0158).
 
-- 📋 [FIBR-0357] **Family B's completeness gate could check the negated closing instead of magnitudes, closing its sign-flip gap.**
+- 💭 [FIBR-0357] **Family B's completeness gate could check the negated closing instead of magnitudes, closing its sign-flip gap.**
   FIBR-0335 settled Family B's convention on real Home Loan statements: the
   running balance is printed unsigned and never crossed zero, and the closing
   row prints it negated, so `opening + Σ == -closing` held on every one. That
@@ -951,6 +954,10 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   statement if its convention differs. Needs one overpaid-loan statement, or
   a decision to accept that refusal (the CSV/OFX route stays open). FIBR-0050
   INV-11 amendment plus rule 14's gate when taken.
+  User decision (2026-09-26): keep the magnitude check and park this.
+  A wrongly refused statement reaches a real user; the sign-flip gap
+  stays as FIBR-0050 INV-11 already records it. Reopen if an overpaid
+  Home Loan statement turns up.
   **Layman:** Home Loan statements could get the same stricter arithmetic check as other accounts now that we know how the bank prints them.
   Kind: enhancement.
   Source: in-session-2026-09-25 (follow-up to FIBR-0335's real-statement check).
@@ -1019,6 +1026,9 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   and the "benign TOCTOU" note is gone. A search of docs/ finds no other
   stat-then-read claim; the journal record keeps its dated wording. The
   superseded-design entries are still open.
+  User decision (2026-09-26): mark superseded, do not rewrite. Each
+  remaining entry gets a short note at the passage naming the item that
+  replaced the design. The historical wording stays as written.
   **Layman:** Some older design documents still describe how parts of the app used to be built, not how they work now.
   Kind: doc-fix.
   Source: FIBR-0354 follow-up, 2026-09-25.
