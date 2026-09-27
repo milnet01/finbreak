@@ -384,6 +384,22 @@ so Flathub review and code signing do not block this release.
   Kind: release.
   Source: user-decision-2026-08-20 ("what gets us to v1.0?").
 
+- 🚧 [FIBR-0367] **Close the 2026-09-27 full-audit findings — serious tier now, the rest queued.**
+  check-code --tree, review-code FULL, review-tests FULL and
+  verify-delivery ([0.1.23]) ran against 52e5162.
+  The ledger is docs/reviews/close-findings-2026-09-27.md: it names the
+  audited commit, the serious-tier fix list as numbered rows grouped by
+  subject, and the rule that every other finding is queued as one roadmap
+  item per lane file. Lane returns are kept verbatim under
+  docs/reviews/2026-09-27-full-audit/.
+  Scope was chosen by the user on 2026-09-27 ("serious tier").
+  Progress: no fix has landed yet; each group lands as its own commit
+  with its own close-findings sweep.
+  **Layman:** A full check of the app found bugs; the serious ones (wrong dates or amounts, lost data, security gaps) are being fixed now and the rest are filed.
+  Kind: review-fix.
+  Source: full-audit-2026-09-27.
+  Evidence: docs/reviews/close-findings-2026-09-27.md, docs/reviews/2026-09-27-full-audit/
+
 ## v1.0.x — patch stream
 
 Bug fixes, security fixes, performance work, refactors, dependency bumps and
