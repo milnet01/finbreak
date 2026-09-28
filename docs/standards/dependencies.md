@@ -1,4 +1,5 @@
 <!-- ants-dependency-standards: 1 -->
+<!-- OWNED-HERE dependencies.md — finbreak's own standard, read instead of the global dependencies.md; it grew from the Ants App-Build v1 template and now shares little with the global file. Decided 2026-09-28 (FIBR-0368) -->
 # Dependency Version Standards — v1
 
 A shareable contract for **which version of a dependency to use**. Pairs

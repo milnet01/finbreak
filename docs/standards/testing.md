@@ -1,4 +1,5 @@
 <!-- ants-test-standards: 1 -->
+<!-- OWNED-HERE testing.md — finbreak's own standard, read instead of the global testing.md; it grew from the Ants App-Build v1 template and now shares little with the global file. Decided 2026-09-28 (FIBR-0368) -->
 # Testing Standards — v1
 
 A shareable contract for tests in this project. Pairs with the

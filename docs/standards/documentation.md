@@ -1,4 +1,5 @@
 <!-- ants-doc-standards: 1 -->
+<!-- OWNED-HERE documentation.md — finbreak's own standard, read instead of the global documentation.md; it grew from the Ants App-Build v1 template and now shares little with the global file. Decided 2026-09-28 (FIBR-0368) -->
 # Documentation Standards — v1
 
 Documentation contract for this project. Pairs with

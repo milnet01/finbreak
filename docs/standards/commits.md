@@ -1,4 +1,5 @@
 <!-- ants-commit-standards: 1 -->
+<!-- OWNED-HERE commits.md — finbreak's own standard, read instead of the global commits.md; it grew from the Ants App-Build v1 template and now shares little with the global file. Decided 2026-09-28 (FIBR-0368) -->
 # Commit Standards — v1
 
 A shareable contract for git commits in this project. Pairs with

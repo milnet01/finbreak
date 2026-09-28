@@ -1,4 +1,5 @@
 <!-- ants-coding-standards: 1 -->
+<!-- OWNED-HERE coding.md — finbreak's own standard, read instead of the global coding.md; it grew from the Ants App-Build v1 template and now shares little with the global file. Decided 2026-09-28 (FIBR-0368) -->
 # Coding Standards — v1
 
 A shareable contract for code in this project. Pairs with the

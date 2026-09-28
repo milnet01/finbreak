@@ -3671,6 +3671,23 @@ work, and none of it is a release decision.
   Source: peer-2026-09-25 (ants-terminal-dd, ANTS-4485).
   Lanes: docs.
 
+- 🚧 [FIBR-0368] **Move finbreak off the old phase workflow and record its standards decisions (CFG-0645).**
+  align-report 2026-09-28 named eight gaps. User decisions the same day:
+  - The seven docs/standards/ files that share a name with a global
+    standard (coding, commits, dependencies, documentation,
+    roadmap-format, testing, versioning) are finbreak's own. Each gets
+    an OWNED-HERE marker naming this item.
+  - Retire .claude/workflow.md: carry its live settings into docs/ or
+    the roadmap, move its session history to a history file, delete it,
+    and drop CLAUDE.md's references to /app-workflow and /close-phase.
+  - docs/discovery.md: draft a currency success criterion and reword
+    criterion 4 to allow the opt-in update check, for the user to
+    approve before it is committed. adopt-project found 6 of 7 stated
+    dimensions carry a bar; currency had none.
+  **Layman:** Tidy how the project records its own rules, so the machine-wide tools stop flagging it and the old step-by-step workflow can be retired.
+  Kind: chore.
+  Source: peer-request-claude-87-2026-09-28 (CFG-0645); user decisions 2026-09-28.
+
 ## P01 — Bootstrap (target: next)
 
 **Theme:** wire up the build, lint, format, test, **security

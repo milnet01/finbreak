@@ -1,4 +1,5 @@
 <!-- ants-roadmap-format-spec: 1 -->
+<!-- OWNED-HERE roadmap-format.md — finbreak's own standard, read instead of the global roadmap-format.md; it grew from the Ants App-Build v1 template and now shares little with the global file. Decided 2026-09-28 (FIBR-0368) -->
 # ROADMAP.md & CHANGELOG.md format spec (v1)
 
 > Detailed format spec for the two files the Ants Terminal Roadmap

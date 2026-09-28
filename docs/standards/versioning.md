@@ -1,4 +1,5 @@
 <!-- ants-versioning-standards: 1 -->
+<!-- OWNED-HERE versioning.md — finbreak's own standard, read instead of the global versioning.md; it grew from the Ants App-Build v1 template and now shares little with the global file. Decided 2026-09-28 (FIBR-0368) -->
 
 # Versioning Standard — v1
 
