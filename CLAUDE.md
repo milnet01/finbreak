@@ -213,7 +213,8 @@ mutable tag, or a checkout starts persisting its token (FIBR-0226). `pip-audit`
 runs **twice** against two different advisory databases — the default PyPI one
 and OSV.dev (`-s osv`, FIBR-0227) — because neither is a superset and only
 OSV.dev carries the malicious-package feed that catches a hijacked release with
-no CVE. That second run costs ~28s of the gate's runtime:
+no CVE. Both runs start with the gate and finish alongside the other stages,
+so they add little to its runtime (FIBR-0373):
 
 ```bash
 ./scripts/ci-local.sh

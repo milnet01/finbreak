@@ -31,6 +31,27 @@ if [ "${1:-}" = "--build" ]; then
     export FINBREAK_BUILD_SMOKE=1
 fi
 
+# The two pip-audit stages spend their time waiting on the network (~57s here,
+# one after the other), so they start now and run alongside every other stage;
+# their results are read at the end, where each still fails the gate on its own
+# (FIBR-0373). The EXIT trap stops them if an earlier stage fails first.
+AUDIT_DIR=$(mktemp -d)
+# Nothing in here may fail: a failing command in an EXIT trap replaces the
+# gate's own exit status (a finished job leaves `kill` nothing to kill).
+PYPI_PID=""
+OSV_PID=""
+stop_audits() {
+    for pid in "$PYPI_PID" "$OSV_PID"; do
+        if [ -n "$pid" ]; then kill "$pid" 2>/dev/null || true; fi
+    done
+    rm -rf "$AUDIT_DIR"
+}
+trap stop_audits EXIT
+pip-audit > "$AUDIT_DIR/pypi" 2>&1 &
+PYPI_PID=$!
+pip-audit -s osv > "$AUDIT_DIR/osv" 2>&1 &
+OSV_PID=$!
+
 # `src tests`, not the whole tree, and that is a decision rather than an
 # oversight. The one tracked .py outside it is a captured reproduction script
 # under docs/reviews/ — evidence of a defect, kept exactly as it was run. It is
@@ -84,13 +105,10 @@ bandit -c pyproject.toml -r src -q
 # project that ships signed desktop binaries. Both were verified green on this
 # tree, and `-s osv` verified red against a known-vulnerable pin, before this
 # landed. The accepted cost is a SECOND network-dependent stage on a gate that
-# runs on every push (~28s); if the flake rate becomes annoying, dropping the
+# runs on every push (~28s, overlapped with the other stages since FIBR-0373);
+# if the flake rate becomes annoying, dropping the
 # osv stage again is a legitimate outcome, not a regression.
-echo "== pip-audit (pypi) =="
-pip-audit
-
-echo "== pip-audit (osv) =="
-pip-audit -s osv
+# Started at the top of the script; their results are read at the end.
 
 echo "== gitleaks =="
 gitleaks dir . --no-banner --redact --config .gitleaks.toml
@@ -124,5 +142,17 @@ else
     echo "== pytest (excluding perf; $WORKERS workers) =="
 fi
 pytest -m "not perf" -n "$WORKERS"
+
+# A non-zero `wait` would end the script under `set -e` before the output
+# printed, so the status is captured first and the output shown either way.
+echo "== pip-audit (pypi) =="
+rc=0; wait "$PYPI_PID" || rc=$?
+cat "$AUDIT_DIR/pypi"
+[ "$rc" -eq 0 ] || exit "$rc"
+
+echo "== pip-audit (osv) =="
+rc=0; wait "$OSV_PID" || rc=$?
+cat "$AUDIT_DIR/osv"
+[ "$rc" -eq 0 ] || exit "$rc"
 
 echo "All gates passed."
