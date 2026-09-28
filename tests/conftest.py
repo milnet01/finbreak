@@ -141,6 +141,29 @@ def window_ini(tmp_path, monkeypatch):
     return ini
 
 
+@pytest.fixture(autouse=True)
+def _close_leftover_windows():
+    """Close and delete every top-level widget a test left alive.
+
+    A test that builds a window without handing it to ``qtbot.addWidget`` leaves
+    it in the shared QApplication for every later test on that process. Applying
+    a theme re-polishes every live widget, so the theme suite's cost grew with
+    whatever ran before it: 0 to 4,070 live widgets measured at the same test
+    across parallel runs, and a 60-second stall under load. Runs after qtbot's
+    own teardown (autouse fixtures are set up first, so they finish last).
+    """
+    yield
+    from PySide6.QtCore import QEvent
+    from PySide6.QtWidgets import QApplication
+
+    if not isinstance(QApplication.instance(), QApplication):
+        return
+    for widget in QApplication.topLevelWidgets():
+        widget.close()
+        widget.deleteLater()
+    QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+
+
 @pytest.fixture
 def app_run_isolation(qapp):
     """Undo what ``finbreak.app.run()`` does to the process before it returns.

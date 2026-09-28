@@ -3750,6 +3750,25 @@ work, and none of it is a release decision.
   Kind: chore.
   Source: in-session-2026-09-28.
 
+- 🚧 [FIBR-0373] **Take the local-gate.md § 9 speed-ups for the push gate and GitHub CI.**
+  Baseline 2026-09-28 (local, one stage at a time): pytest 193s serial,
+  pip-audit pypi 29s + osv 28s run one after the other, gitleaks 8s,
+  mypy 6s, the rest under 5s. GitHub: setup 26s (pip install 18s),
+  gate 3m23s of which pytest 180s. ci-gate advisories: no concurrency,
+  no timeout-minutes on any job, no dependency cache, no docs-only mode.
+  Levers, one commit each: (1) close windows a test leaves alive, which
+  stalled the theme suite by up to 60s depending on test order; (2) run
+  tests in parallel (pytest-xdist) with a per-test timeout, workers sized
+  from memory; (3) overlap the two network-bound pip-audit runs with the
+  rest of the gate; (4) GitHub concurrency + timeout-minutes; (5) a
+  docs-only mode in the project's own pre-push hook.
+  Skipped: a pip download cache on GitHub. The whole install is 18s,
+  pip's cache directory is not even writable in the container, and a
+  shared cache is one more tamper point on a public repo.
+  **Layman:** The checks that run before every upload take about four and a half minutes; this makes them faster without making them less thorough.
+  Kind: perf.
+  Source: user-request-2026-09-28.
+
 ## P01 — Bootstrap (target: next)
 
 **Theme:** wire up the build, lint, format, test, **security
