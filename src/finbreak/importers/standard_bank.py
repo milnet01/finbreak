@@ -241,6 +241,11 @@ def _money_tokens(text: str) -> list[str]:
 # Region bounding (D11) + credit-card de-interleave (INV-6)
 # --------------------------------------------------------------------------- #
 def _is_terminator(line: str) -> bool:
+    """A region terminator (D11) — a phrase on a line that is NOT a row. A row may
+    carry the phrase in its description ("CLOSING BALANCE TRANSFER"), and treating
+    it as the end would drop every later row on the page (audit 2026-09-27 row 20)."""
+    if _looks_like_row(line, dmy_lead=True):
+        return False
     low = line.strip().lower()
     return any(t in low for t in _TERMINATORS)
 
@@ -752,10 +757,12 @@ def _fold(lines: list[str], *, dmy_lead: bool = False) -> list[tuple[str, list[s
     for line in lines:
         if not line.strip():
             continue
-        if _is_boilerplate(line):
-            continue  # page footer / letterhead / repeated header — never folded
+        # Row test FIRST: a real row whose description matches a letterhead
+        # pattern ("PO BOX 123 …") is a row, not furniture (audit 2026-09-27 row 20).
         if _looks_like_row(line, dmy_lead=dmy_lead):
             groups.append((line, []))
+        elif _is_boilerplate(line):
+            continue  # page footer / letterhead / repeated header — never folded
         elif groups:
             groups[-1][1].append(line.strip())
     return groups
@@ -786,6 +793,16 @@ def _looks_like_row(line: str, *, dmy_lead: bool = False) -> bool:
         or _ISO_LEAD.search(line)
         or _YMD_LEAD.search(line)
     )
+
+
+def _reanchor(prev_balance: Decimal | None, anchor: Decimal) -> Decimal:
+    """The running balance after an opening anchor. A continuation page's
+    brought-forward must equal the running balance so far (D12); overwriting it
+    unchecked let rows lost at a page end restart the chain while every surviving
+    row still reconciled (audit 2026-09-27 row 20)."""
+    if prev_balance is not None and anchor != prev_balance:
+        raise ValueError(_MISPARSE)
+    return anchor
 
 
 def _anchor_balance(line: str, fmt: Fmt) -> Decimal | None:
@@ -898,7 +915,7 @@ def _parse_family_a(
     for line, cont in groups:
         bf = _anchor_balance(line, fmt)
         if bf is not None:
-            prev_balance = bf  # brought-forward anchor (dated page-1 or undated repeat)
+            prev_balance = _reanchor(prev_balance, bf)  # page-1 or undated repeat
             continue
         m = re.search(
             r"(.*?)\s+((?:R?-?[\d.,]+-?)\s+)(\d{1,2})\s+(\d{1,2})\s+([\d.,]+-?)\s*$",
@@ -950,7 +967,7 @@ def _parse_family_b(lines: list[str], exponent: int, fmt: Fmt) -> ParseResult:
     for line, cont in groups:
         bf = _anchor_balance(line, fmt)
         if bf is not None:
-            prev_balance = bf
+            prev_balance = _reanchor(prev_balance, bf)
             continue
         m = re.match(
             r"\s*(\d{4}-\d{2}-\d{2})(?:\s+\d{4}-\d{2}-\d{2})?\s+(.*?)\s+"
@@ -985,7 +1002,7 @@ def _parse_family_d(lines: list[str], exponent: int, fmt: Fmt) -> ParseResult:
     for line, cont in groups:
         bf = _anchor_balance(line, fmt)
         if bf is not None:
-            prev_balance = bf
+            prev_balance = _reanchor(prev_balance, bf)
             continue
         m = re.match(
             r"\s*(\d{4})\s+(\d{1,2})\s+(\d{1,2})\s+(.*?)\s+"
@@ -1045,7 +1062,7 @@ def _parse_family_e(lines: list[str], exponent: int, fmt: Fmt) -> ParseResult:
     for line, cont in groups:
         bf = _anchor_balance(line, fmt)
         if bf is not None:
-            prev_balance = bf
+            prev_balance = _reanchor(prev_balance, bf)
             continue
         m = _E_ROW.match(line)
         if not m:

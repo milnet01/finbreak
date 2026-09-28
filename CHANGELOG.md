@@ -33,6 +33,15 @@ signaling per
 
 ### Fixed
 
+- **Standard Bank PDF imports no longer lose transactions silently** (FIBR-0367)
+  Three things could make a Standard Bank PDF statement import short with
+  no warning: a transaction described as, say, "CLOSING BALANCE TRANSFER"
+  ended the page early; one mentioning a PO Box was taken for the bank's
+  letterhead; and a page whose opening balance did not match the page
+  before went unchecked. Those two kinds of transaction now import, and a
+  mismatched page refuses the statement so you can use your bank's CSV or
+  OFX export instead.
+
 - **An OFX file whose balance is "Infinity" no longer crashes the import** (FIBR-0367)
   A damaged or deliberately odd OFX file giving its closing balance as
   Infinity or NaN could close the import wizard or end a batch import.

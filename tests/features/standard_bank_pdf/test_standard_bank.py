@@ -26,6 +26,7 @@ from finbreak.importers.standard_bank import (
     _cc_opening,
     _detect_number_format,
     _infer_years,
+    _is_terminator,
     _looks_like_row,
     _parse_amount,
     _parse_family_a,
@@ -249,6 +250,61 @@ def test_FIBR0216_zero_amount_row_degrades_instead_of_aborting_the_statement():
         "the 0.00 row is reported, not fatal"
     )
     assert "non-zero" in r.errors[0].reason
+
+
+# Audit 2026-09-27 row 20 — three ways a real row was lost with nothing to say so.
+# On a statement printing no closing (Savings, E without both totals) the per-row
+# gate is the only gate, so each loss was silent there.
+def test_row20_a_continuation_anchor_that_disagrees_is_refused():
+    """D12: a continuation page's brought-forward equals the prior page's closing.
+    The anchor used to overwrite the running balance unchecked, so rows lost at a
+    page end restarted the chain and every surviving row still reconciled."""
+    head = [
+        "BALANCE BROUGHT FORWARD 05 01 1,000.00",
+        "GROCERIES 05 03 100.00- 05 03 900.00",
+    ]
+    tail = ["FUEL 05 04 50.00- 05 04 750.00"]
+    agrees = _parse_family_a(
+        [*head, "BALANCE BROUGHT FORWARD 900.00", "FUEL 05 04 50.00- 05 04 850.00"],
+        2,
+        "us",
+        ("2026-05-01", "2026-05-31"),
+    )
+    assert [d.amount_minor for d in agrees.drafts] == [-10000, -5000]
+    with pytest.raises(ValueError):
+        _parse_family_a(
+            [*head, "BALANCE BROUGHT FORWARD 800.00", *tail],
+            2,
+            "us",
+            ("2026-05-01", "2026-05-31"),
+        )
+
+
+def test_row20_b_a_terminator_phrase_inside_a_row_does_not_end_the_region():
+    """D11's terminators were a substring test on every line, so a transaction
+    described as "CLOSING BALANCE TRANSFER" ended the page's region there."""
+    page = [
+        "Debit Debit",
+        "20 Oct 25 CLOSING BALANCE TRANSFER 100.00",
+        "20 Oct 25 Fake Shop 10.00",
+        "Closing balance 1,968.77",
+    ]
+    region = page[_table_region(page, Family.C)]
+    assert region == page[1:3]
+    assert not _is_terminator("CLOSING BALANCE TRANSFER 05 03 100.00 05 03 1,100.00")
+    assert _is_terminator("Closing balance 1,968.77")
+
+
+def test_row20_c_a_row_mentioning_a_po_box_is_kept_not_dropped_as_letterhead():
+    """The boilerplate filter ran before the row test, so a real transaction whose
+    description matched the letterhead patterns was discarded as page furniture."""
+    lines = [
+        "BALANCE BROUGHT FORWARD 05 01 1,000.00",
+        "GROCERIES 05 03 100.00- 05 03 900.00",
+        "PO BOX 123 MERCHANT 05 04 25.00- 05 04 875.00",
+    ]
+    r = _parse_family_a(lines, 2, "us", ("2026-05-01", "2026-05-31"))
+    assert [d.amount_minor for d in r.drafts] == [-10000, -2500]
 
 
 def test_FIBR0255_money_moving_unreadable_row_refuses_the_statement():
