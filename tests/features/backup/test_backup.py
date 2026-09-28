@@ -769,6 +769,60 @@ def test_INV17_second_restore_prunes_older_old_set_keeps_newest(tmp_path):
 # re-validation) landed on the restore critical path in slice 3; slice 4 locks in
 # the fail-closed + no-disk-change behaviour explicitly (money/crypto surface).
 # --------------------------------------------------------------------------- #
+# Audit 2026-09-27 row 24 — the prune kept the lexically NEWEST stamp, not the
+# set this restore made, so two ordinary events deleted the copy INV-5 promises.
+_FAR_FUTURE = "29991231T235959999999"
+_LONG_AGO = "20200101T000000000000"
+
+
+def _stamp_set(d: Path, stamp: str, *, db: bool = True, sidecar: bool = True):
+    """Move the live pair aside under ``stamp``, as `_install` would."""
+    if db:
+        (d / "vault.db").replace(d / f"vault.db.{stamp}.old")
+    if sidecar:
+        (d / "vault.kdf.json").replace(d / f"vault.kdf.json.{stamp}.old")
+
+
+def test_row24_a_clock_set_back_does_not_prune_the_set_just_made(tmp_path):
+    """A set stamped in the "future" (the clock has since been set back) sorted
+    last, so it survived and the set this restore had just created was
+    deleted."""
+    fbk, _snap = _export_from_seed(tmp_path)
+    auth, d, vault_bytes, _sb = _dest_with_vault(tmp_path)
+    shutil.copy(d / "vault.db", tmp_path / "stale.db")
+    shutil.copy(d / "vault.kdf.json", tmp_path / "stale.kdf.json")
+    # A stale set whose stamp sorts after anything this clock will produce.
+    shutil.copy(tmp_path / "stale.db", d / f"vault.db.{_FAR_FUTURE}.old")
+    shutil.copy(tmp_path / "stale.kdf.json", d / f"vault.kdf.json.{_FAR_FUTURE}.old")
+    before = {p.name for p in d.glob("*.old*")}
+
+    BackupService(auth.vault, auth).restore_backup(fbk, _BACKUP_PW, _M2)
+
+    made = {p.name for p in d.glob("*.old*")} - before
+    assert any(n.startswith("vault.db.") for n in made), (
+        "the set this restore made survives the prune"
+    )
+    kept_db = next(d / n for n in made if n.startswith("vault.db."))
+    assert kept_db.read_bytes() == vault_bytes, "and it is the vault it replaced"
+
+
+def test_row24_a_retry_after_a_partial_install_keeps_the_original(tmp_path):
+    """A first restore moved the original pair aside and then failed installing
+    the sidecar, leaving the restored database alone. The retry moved that
+    orphan aside (a set with no sidecar), installed, and pruned — deleting the
+    user's original vault in favour of the orphan."""
+    fbk, _snap = _export_from_seed(tmp_path)
+    auth, d, vault_bytes, sidecar_bytes = _dest_with_vault(tmp_path)
+    _stamp_set(d, _LONG_AGO)  # the original pair, moved aside by attempt one
+    shutil.copy(d / f"vault.db.{_LONG_AGO}.old", d / "vault.db")  # the orphan
+    assert not (d / "vault.kdf.json").exists(), "precondition: no live sidecar"
+
+    BackupService(auth.vault, auth).restore_backup(fbk, _BACKUP_PW, _M2)
+
+    assert (d / f"vault.db.{_LONG_AGO}.old").read_bytes() == vault_bytes
+    assert (d / f"vault.kdf.json.{_LONG_AGO}.old").read_bytes() == sidecar_bytes
+
+
 def _rebuild_fbk(src: Path, dest: Path, *, manifest=None, params=None, extra=None):
     """Copy ``src`` into ``dest`` with optional manifest/params field overrides and
     optional extra entries, to synthesise a tampered `.fbk`."""

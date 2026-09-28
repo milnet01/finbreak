@@ -33,6 +33,14 @@ signaling per
 
 ### Fixed
 
+- **Restoring a backup can no longer delete the safety copy of the vault it replaced** (FIBR-0367)
+  When you restore a backup, finbreak keeps a copy of the vault it replaced
+  and tidies away older copies. If the computer's clock had been set back,
+  or a restore was retried after an interrupted one, the tidy-up could
+  delete the copy you would need to undo the restore. It now always keeps
+  the copy that restore made, and keeps your original vault when the only
+  newer copy is a leftover from the interrupted attempt.
+
 - **A damaged or tampered backup file is refused with a message, never a crash** (FIBR-0367)
   Three kinds of broken backup file could close the restore or verify
   window instead of explaining the problem: a settings value of the wrong

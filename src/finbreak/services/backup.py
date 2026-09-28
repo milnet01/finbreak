@@ -345,10 +345,10 @@ class BackupService:
                     )
                 finally:
                     backup_vault.close()
-                self._install(
+                made = self._install(
                     backup_vault.vault_path, backup_vault.sidecar_path, on_key
                 )  # INV-5
-            self._prune_superseded_old_copies()  # INV-17
+            self._prune_superseded_old_copies(made)  # INV-17
             self._prune_migration_artefacts()  # FIBR-0337 M5
             log.info("backup restored")
         except (
@@ -530,8 +530,17 @@ class BackupService:
             raise BackupError("backup was made by a newer version of finbreak")
         return compat
 
-    def _prune_superseded_old_copies(self) -> None:
-        """Keep the newest ``*.old`` set and drop the rest (INV-17).
+    def _prune_superseded_old_copies(self, made: str | None) -> None:
+        """Keep the ``*.old`` set this restore made and drop the rest (INV-17).
+
+        ``made`` is the stamp `_install` moved the replaced vault aside under.
+        Keeping the lexically NEWEST stamp instead deleted the wrong set twice
+        over (audit 2026-09-27 row 24): a clock set back since an older restore
+        made this set sort first; and a retry after a partial install — the
+        original pair aside, the sidecar never installed — moved aside a lone
+        database, so the "newest" set was that orphan and the user's original
+        vault was the one pruned. So when this restore's set is not a whole
+        vault (no sidecar), or it made none, the newest WHOLE set is kept too.
 
         INV-5's crash window is the interval between the move-aside and the
         second install ``os.replace``; it shuts the moment the restore returns
@@ -548,8 +557,15 @@ class BackupService:
         tidy must not turn that into a reported failure. The caller normalises
         ``OSError`` to ``BackupError``, which would do exactly that.
         """
+        sidecar = self._vault.sidecar_path.name
         sets = old_copy_sets(self._vault.vault_path, self._vault.sidecar_path)
-        for stamp in sorted(sets)[:-1]:
+        whole = sorted(
+            stamp
+            for stamp, paths in sets.items()
+            if any(path.name == f"{sidecar}.{stamp}.old" for path in paths)
+        )
+        keep = {made} if made in whole else {made, *whole[-1:]}
+        for stamp in set(sets) - keep:
             for path in sets[stamp]:
                 try:
                     path.unlink(missing_ok=True)
@@ -578,7 +594,7 @@ class BackupService:
             except OSError:
                 log.warning("could not remove migration artefact %s", path.name)
 
-    def _install(self, new_db: Path, new_sidecar: Path, on_key: OnKey) -> None:
+    def _install(self, new_db: Path, new_sidecar: Path, on_key: OnKey) -> str | None:
         """Move any existing vault + sidecar aside to timestamped ``*.old`` copies,
         then install the restored pair (``vault.db`` first, then the sidecar; D4).
         The ``on_key("post_move_aside", ...)`` seam fires between the two so a test
@@ -612,6 +628,7 @@ class BackupService:
         wal_siblings = [
             real_db.with_name(real_db.name + suffix) for suffix in _WAL_SIBLINGS
         ]
+        stamp: str | None = None  # the set moved aside, for the prune (INV-17)
         if (
             real_db.exists()
             or real_sidecar.exists()
@@ -660,6 +677,7 @@ class BackupService:
         os.replace(new_sidecar, real_sidecar)
         for directory in install_dirs:
             fsync_dir(directory)
+        return stamp
 
     def _read_fbk(self, src: Path) -> tuple[dict[str, object], bytes, bytes]:
         """Read exactly the three fixed entries of the `.fbk` safely (INV-12): only
