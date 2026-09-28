@@ -68,9 +68,16 @@ stop_audits() {
     rm -rf "$AUDIT_DIR"
 }
 trap stop_audits EXIT
-pip-audit > "$AUDIT_DIR/pypi" 2>&1 &
+# Audit the installed set WITHOUT finbreak itself (FIBR-0372). finbreak is not
+# on PyPI, so pip-audit's lookup of it can only answer "not found" -- or fail:
+# a PyPI "503 Backend is unhealthy" on that one URL failed CI and three pushes
+# on 2026-09-28. The frozen list is exactly the environment minus finbreak
+# (compared package by package: 72 of 73, the one missing being finbreak), and
+# --no-deps --disable-pip audits it as pinned, with no resolver run.
+pip freeze --all --exclude finbreak > "$AUDIT_DIR/requirements.txt"
+pip-audit -r "$AUDIT_DIR/requirements.txt" --no-deps --disable-pip > "$AUDIT_DIR/pypi" 2>&1 &
 PYPI_PID=$!
-pip-audit -s osv > "$AUDIT_DIR/osv" 2>&1 &
+pip-audit -s osv -r "$AUDIT_DIR/requirements.txt" --no-deps --disable-pip > "$AUDIT_DIR/osv" 2>&1 &
 OSV_PID=$!
 
 # `src tests`, not the whole tree, and that is a decision rather than an
