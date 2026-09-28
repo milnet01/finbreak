@@ -1063,7 +1063,9 @@ def test_FIBR0327_a_broken_dialog_does_not_replace_the_fault_it_reports(
     assert seen == ["previous ran"]
 
 
-def test_FIBR0327_run_installs_the_hook_before_anything_can_fail(qapp, monkeypatch):
+def test_FIBR0327_run_installs_the_hook_before_anything_can_fail(
+    qapp, monkeypatch, app_run_isolation
+):
     """The hook is worth nothing if ``run()`` stops calling it, and a fix that
     goes inert looks exactly like a fix that works.
 

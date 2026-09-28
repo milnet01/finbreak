@@ -86,7 +86,9 @@ class _Sentinel(Exception):
 # --------------------------------------------------------------------------- #
 # INV-1 — the theme is applied before MainWindow (the locked first window is themed)
 # --------------------------------------------------------------------------- #
-def test_INV1_theme_applied_before_window(qtbot, monkeypatch, theme_isolation):
+def test_INV1_theme_applied_before_window(
+    qtbot, monkeypatch, theme_isolation, app_run_isolation
+):
     from finbreak import app as app_mod
 
     theme.save_theme_pref("midnight")  # pinned -> a deterministic expected palette
@@ -100,7 +102,8 @@ def test_INV1_theme_applied_before_window(qtbot, monkeypatch, theme_isolation):
             raise _Sentinel
 
     monkeypatch.setattr(app_mod, "MainWindow", _Recorder)
-    monkeypatch.setattr(app_mod, "AuthService", lambda *a, **k: MagicMock())
+    stub_service = MagicMock()
+    monkeypatch.setattr(app_mod, "AuthService", lambda *a, **k: stub_service)
     # `run()` probes the FIBR-0189 single-instance guard before it builds the
     # window, and the socket name carries the uid — so a real finbreak open on
     # the developer's desktop makes `run()` return 0 and this test fail with
@@ -113,6 +116,8 @@ def test_INV1_theme_applied_before_window(qtbot, monkeypatch, theme_isolation):
 
     with pytest.raises(_Sentinel):
         app_mod.run([])
+    # run() connected the stub to aboutToQuit before the window raised.
+    QApplication.instance().aboutToQuit.disconnect(stub_service.on_about_to_quit)
 
     expected = theme.build_palette(theme.THEMES["midnight"].tokens)
     got = recorded["palette"]

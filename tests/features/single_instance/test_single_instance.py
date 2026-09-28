@@ -167,11 +167,9 @@ def test_INV3b_two_launches_recovering_one_stale_socket_do_not_both_win(
             racer.append(single_instance.listen(server_name))
         return answer
 
-    monkeypatch.setattr(
-        single_instance, "another_instance_is_running", _probe_then_race
-    )
-    first = single_instance.listen(name)
-    monkeypatch.undo()
+    with monkeypatch.context() as scoped:
+        scoped.setattr(single_instance, "another_instance_is_running", _probe_then_race)
+        first = single_instance.listen(name)
 
     assert interposed, (
         "the second launch was never interposed, so this test proves nothing "

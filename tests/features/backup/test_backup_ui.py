@@ -592,13 +592,14 @@ def test_FIBR0327_a_failed_recovery_routes_rather_than_crashing_startup(
     def refuse(*_args, **_kwargs):
         raise OSError(30, "Read-only file system")
 
-    monkeypatch.setattr(mw.os, "replace", refuse)
+    # A scoped patch, never monkeypatch.undo(): undo() also lifts the autouse
+    # window_ini redirect, and the MainWindow below then writes the real INI.
+    with monkeypatch.context() as scoped:
+        scoped.setattr(mw.os, "replace", refuse)
+        service = AuthService(vault_p, sidecar_p)
+        with pytest.raises(VaultStateError):
+            mw.MainWindow(service)  # the mixed pair is reported, not a traceback
 
-    service = AuthService(vault_p, sidecar_p)
-    with pytest.raises(VaultStateError):
-        mw.MainWindow(service)  # the mixed pair is reported, not a traceback
-
-    monkeypatch.undo()
     assert old_db.exists() and old_sidecar.exists(), (
         "FIBR-0327: a failed recovery must leave the *.old copies intact, or the "
         "retry has nothing to recover from"
@@ -662,13 +663,11 @@ def test_the_recovered_original_pair_is_made_durable(qtbot, tmp_path, monkeypatc
             events.append(("fsync_dir", "data dir"))
         return real_fsync(fd)
 
-    monkeypatch.setattr(os, "replace", recording_replace)
-    monkeypatch.setattr(os, "fsync", recording_fsync)
-    try:
+    with monkeypatch.context() as scoped:
+        scoped.setattr(os, "replace", recording_replace)
+        scoped.setattr(os, "fsync", recording_fsync)
         window = MainWindow(AuthService(vault_p, sidecar_p))
         qtbot.addWidget(window)
-    finally:
-        monkeypatch.undo()
 
     replaces = [i for i, event in enumerate(events) if event[0] == "replace"]
     assert replaces, (

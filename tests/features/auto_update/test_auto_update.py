@@ -2025,7 +2025,9 @@ def test_FIBR0327_a_complete_body_with_no_content_length_still_downloads(
     assert dest.read_bytes() == b"WHOLE-APPIMAGE"
 
 
-def test_FIBR0327_a_detached_worker_survives_gc_and_reaches_no_slot(qtbot, service):
+def test_FIBR0327_a_detached_worker_survives_gc_and_reaches_no_slot(
+    qtbot, service, monkeypatch
+):
     """FIBR-0327 — detaching a worker that outlasted the drain needed two things
     the C++ reasoning in the docstring did not cover.
 
@@ -2039,10 +2041,17 @@ def test_FIBR0327_a_detached_worker_survives_gc_and_reaches_no_slot(qtbot, servi
     with no other reference held, and an emission after the close.
     """
     import gc
+    import threading
 
     from PySide6.QtCore import QThread, Signal
 
-    from finbreak.ui.main_window import _DETACHED_WORKERS, _WORKER_DRAIN_MS
+    from finbreak.ui import main_window
+    from finbreak.ui.main_window import _DETACHED_WORKERS
+
+    # closeEvent reads the drain budget at call time; a short one keeps this
+    # test from idling through the production 1.5 s (full audit 2026-09-27, row 4).
+    monkeypatch.setattr(main_window, "_WORKER_DRAIN_MS", 50)
+    release = threading.Event()
 
     window, _ = _updater_shell(qtbot, service)
 
@@ -2050,20 +2059,31 @@ def test_FIBR0327_a_detached_worker_survives_gc_and_reaches_no_slot(qtbot, servi
         ready = Signal()
 
         def run(self) -> None:
-            # Ignores the interruption request, so it outlasts the drain wait.
-            self.msleep(_WORKER_DRAIN_MS * 3)
+            # Ignores the interruption request, so it outlasts the drain wait,
+            # and ends only when the test releases it.
+            release.wait(10)
 
     reached: list[str] = []
     worker = _Stubborn(window)
     worker.ready.connect(lambda: reached.append("slot ran"))
     window._download_worker = worker
     worker.start()
-    qtbot.waitUntil(worker.isRunning, timeout=2000)
+    try:
+        qtbot.waitUntil(worker.isRunning, timeout=2000)
+        _assert_detached_and_cut(window, worker, reached, _DETACHED_WORKERS, gc)
+    finally:
+        # Always end the thread and drop the module-level reference, so a failed
+        # assertion cannot leave a running worker behind for later tests.
+        release.set()
+        worker.wait(5000)
+        _DETACHED_WORKERS.clear()
 
+
+def _assert_detached_and_cut(window, worker, reached, detached, gc) -> None:  # type: ignore[no-untyped-def]
     window.close()
     assert window._download_worker is None
     assert worker.parent() is None, "it outlasted the drain, so it was detached"
-    assert worker in _DETACHED_WORKERS, (
+    assert worker in detached, (
         "FIBR-0327: a detached worker needs a Python reference that outlives the "
         "window, or setParent(None) simply makes it collectable while running."
     )
@@ -2078,6 +2098,3 @@ def test_FIBR0327_a_detached_worker_survives_gc_and_reaches_no_slot(qtbot, servi
         "hard-exits the process.\n"
         f"  slots that ran: {reached}"
     )
-
-    worker.wait(_WORKER_DRAIN_MS * 5)
-    _DETACHED_WORKERS.clear()

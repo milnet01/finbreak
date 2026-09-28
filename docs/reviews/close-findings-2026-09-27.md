@@ -55,10 +55,10 @@ Each group is one commit with its own sweep (`close-findings` § 3–4).
 
 | # | Group | Finding (lane : location) | disposition |
 |---|---|---|---|
-| 1 | Test isolation | T03 : `test_backup_ui.py:601,671` — `monkeypatch.undo()` lifts the `window_ini` redirect and writes the real INI | |
-| 2 | Test isolation | T11 : `test_theme.py:115` — `run()` leaks the excepthook and creates the real data dir | |
-| 3 | Test isolation | T07 : `test_app_shell.py:1080` — `run()` leaks app name, theme and controller | |
-| 4 | Test isolation | T07 : `test_auto_update.py:2054` — 4.5 s idle sleep; cleanup outside `finally` | |
+| 1 | Test isolation | T03 : `test_backup_ui.py:601,671` — `monkeypatch.undo()` lifts the `window_ini` redirect and writes the real INI | fixed — all seven `monkeypatch.undo()` calls became `monkeypatch.context()`; conftest puts `QStandardPaths` in test mode for the session; `tests/test_test_isolation.py` locks both (red run: both legs failed with the fix removed) |
+| 2 | Test isolation | T11 : `test_theme.py:115` — `run()` leaks the excepthook and creates the real data dir | fixed — new `app_run_isolation` fixture restores the excepthook, app name, desktop name, direction and icon, and deletes the controller `run()` made; the stub's `aboutToQuit` connection is cut. The data-dir half is closed by row 1's test mode |
+| 3 | Test isolation | T07 : `test_app_shell.py:1080` — `run()` leaks app name, theme and controller | fixed — same `app_run_isolation` fixture |
+| 4 | Test isolation | T07 : `test_auto_update.py:2054` — 4.5 s idle sleep; cleanup outside `finally` | fixed — drain budget patched to 50 ms, worker released by an `Event`, release/wait/clear in `finally`; 4.6 s → 0.1 s |
 | 5 | Test validity | T05 : `test_no_real_data.py:168,166` — leak guard misses digit-adjacent numbers and skips non-UTF-8 files | |
 | 6 | Test validity | T12 : `test_release_integrity.py:270` — anti-laundering check anchored to unrelated text | |
 | 7 | Test validity | T06 : `test_statements.py:1879,1852` — total-loss wording passes on the "will survive" branch | |

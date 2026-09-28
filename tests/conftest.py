@@ -20,6 +20,7 @@ import json
 from pathlib import Path
 
 import pytest
+from PySide6.QtCore import QStandardPaths
 from PySide6.QtWidgets import QDialog, QTableWidget
 from sqlcipher3 import dbapi2
 
@@ -40,6 +41,16 @@ from finbreak.services.auth import (
     ARGON2_PARALLELISM,
     ARGON2_TIME_COST,
 )
+
+# Keep the whole session out of the user's real data directory (full audit
+# 2026-09-27, rows 1-3). Every per-user file the app writes resolves through
+# paths.data_dir() -> QStandardPaths.AppDataLocation, and test mode moves that
+# to Qt's test location for THIS process only. A test that loses its per-test
+# redirect -- a monkeypatch.undo(), an unstubbed run() -- then lands there, not
+# in ~/.local/share/finbreak where the live vault is. Process-local on purpose:
+# redirecting XDG_* instead would also move podman's storage under the
+# build-smoke test's subprocesses. Locked by tests/test_test_isolation.py.
+QStandardPaths.setTestModeEnabled(True)
 
 # The test master password, shared by every migration/vault fixture.
 _PW = b"correct horse battery staple"
@@ -128,6 +139,39 @@ def window_ini(tmp_path, monkeypatch):
     ini = tmp_path / "window.ini"
     monkeypatch.setattr("finbreak.paths.window_settings_path", lambda: ini)
     return ini
+
+
+@pytest.fixture
+def app_run_isolation(qapp):
+    """Undo what ``finbreak.app.run()`` does to the process before it returns.
+
+    ``run()`` installs a ``sys.excepthook`` that opens a modal dialog, renames the
+    shared QApplication, sets its desktop file name and layout direction, and
+    parents a live ``ThemeController`` to it. A test driving the real ``run()``
+    left all of that behind, so later tests ran themed, under another name, and
+    with a hook that blocks an offscreen run (full audit 2026-09-27, rows 2-3).
+    """
+    import sys
+
+    from PySide6.QtGui import QGuiApplication
+
+    from finbreak.ui.theme import ThemeController
+
+    hook = sys.excepthook
+    name = qapp.applicationName()
+    desktop = QGuiApplication.desktopFileName()
+    direction = qapp.layoutDirection()
+    icon = qapp.windowIcon()
+    before = set(qapp.findChildren(ThemeController))
+    yield
+    sys.excepthook = hook
+    qapp.setApplicationName(name)
+    QGuiApplication.setDesktopFileName(desktop)
+    qapp.setLayoutDirection(direction)
+    qapp.setWindowIcon(icon)
+    for controller in set(qapp.findChildren(ThemeController)) - before:
+        controller.setParent(None)
+        controller.deleteLater()
 
 
 @pytest.fixture(autouse=True)

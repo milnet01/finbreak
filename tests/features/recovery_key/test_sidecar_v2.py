@@ -576,11 +576,9 @@ def test_write_sidecar_json_flushes_the_parent_directory(
             flushed.append((st.st_dev, st.st_ino))
         return real_fsync(fd)
 
-    monkeypatch.setattr(os, "fsync", recording_fsync)
-    try:
+    with monkeypatch.context() as scoped:
+        scoped.setattr(os, "fsync", recording_fsync)
         write_sidecar_json(sidecar_path, {"sidecar_version": 2})
-    finally:
-        monkeypatch.undo()
 
     assert parent_id in flushed, (
         "FIBR-0327: write_sidecar_json must fsync the sidecar's parent directory "

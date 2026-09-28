@@ -855,10 +855,10 @@ def test_an_interrupted_restore_leaves_a_resumable_pair(
             raise OSError(errno.ENOSPC, "no space left on device")
         real_replace(src, dst)
 
-    monkeypatch.setattr(vault_migration.os, "replace", fail_on_the_second)
-    with pytest.raises(OSError):
-        vault_migration.restore_rollback_copy(vault_path, sidecar_path)
-    monkeypatch.undo()
+    with monkeypatch.context() as scoped:
+        scoped.setattr(vault_migration.os, "replace", fail_on_the_second)
+        with pytest.raises(OSError):
+            vault_migration.restore_rollback_copy(vault_path, sidecar_path)
 
     assert read_sidecar(sidecar_path).get("sidecar_version") is not None, (
         "precondition: the crash landed BEFORE the sidecar was replaced — "
@@ -2374,12 +2374,10 @@ def test_commit_points_fsync_each_directory_with_s4_before_s5(
             events.append(("fsync_dir", ids[(st.st_dev, st.st_ino)]))
         return real_fsync(fd)
 
-    monkeypatch.setattr(os, "replace", recording_replace)
-    monkeypatch.setattr(os, "fsync", recording_fsync)
-    try:
+    with monkeypatch.context() as scoped:
+        scoped.setattr(os, "replace", recording_replace)
+        scoped.setattr(os, "fsync", recording_fsync)
         migrate_to_v2(vault_path, sidecar_path, bytearray(key))
-    finally:
-        monkeypatch.undo()
 
     s4 = events.index(("replace", sidecar_path.name))
     s5 = events.index(("replace", vault_path.name))
@@ -2703,11 +2701,9 @@ def test_s0_flushes_the_directories_its_copy_landed_in(
             flushed.append(ids[(st.st_dev, st.st_ino)])
         return real_fsync(fd)
 
-    monkeypatch.setattr(os, "fsync", recording_fsync)
-    try:
+    with monkeypatch.context() as scoped:
+        scoped.setattr(os, "fsync", recording_fsync)
         write_rollback_copy(vault_path, sidecar_path)
-    finally:
-        monkeypatch.undo()
 
     assert set(flushed) == {"db dir", "sidecar dir"}, (
         "FIBR-0337 L1 / INV-13: S0's copy is the migration's only route back, "
