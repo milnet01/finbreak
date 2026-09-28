@@ -158,6 +158,11 @@ def to_minor_storable(amount: Decimal, exponent: int) -> int:
     caught narrowly rather than `DecimalException`: with a finite operand and a
     currency exponent of 0-3 it is the only trapped signal reachable there.
     """
+    # A non-finite amount (Infinity, NaN, sNaN) fails inside the scaling as
+    # OverflowError or InvalidOperation, neither a ValueError — reject it first
+    # (audit 2026-09-27 row 19).
+    if not amount.is_finite():
+        raise ValueError("amount is not a finite number")
     try:
         amount_minor = to_minor(amount, exponent)
     except Overflow as exc:

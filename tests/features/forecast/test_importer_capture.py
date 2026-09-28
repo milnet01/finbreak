@@ -114,6 +114,13 @@ def test_INV8_ofx_without_ledger_balance_does_not_crash() -> None:
         # dead slot at commit time rather than at parse time.
         ("1e30", "past SQLite's 64-bit INTEGER, but scales fine"),
         ("-1e30", "same bound, negative"),
+        # Non-finite values also survive `toDecimal` (audit 2026-09-27 row 19):
+        # Infinity scales, then `int()` raises OverflowError; sNaN signals
+        # InvalidOperation inside `scaleb`. Neither is a ValueError.
+        ("Infinity", "non-finite: int() of an infinite Decimal"),
+        ("-Infinity", "non-finite, negative"),
+        ("NaN", "non-finite: a quiet NaN"),
+        ("sNaN", "non-finite: a signalling NaN"),
     ],
 )
 def test_INV7a_ofx_unstorable_ledger_balance_is_a_valueerror(ledger, why) -> None:

@@ -33,6 +33,11 @@ signaling per
 
 ### Fixed
 
+- **An OFX file whose balance is "Infinity" no longer crashes the import** (FIBR-0367)
+  A damaged or deliberately odd OFX file giving its closing balance as
+  Infinity or NaN could close the import wizard or end a batch import.
+  It is now refused with a message, like any other unusable file.
+
 - **A CSV with an unclosed quote no longer loses transactions silently** (FIBR-0367)
   A stray quote mark could make one line of a CSV statement swallow the
   lines after it, so those transactions disappeared without a warning.
