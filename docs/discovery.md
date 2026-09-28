@@ -62,8 +62,13 @@ Each is demonstrable by doing, not just by reading code.
    classified as a **Transfer**, and excluded from income/expenditure totals.
    The app *suggests* transfers and the user *confirms* them.
 4. **Private by construction.** The data file is encrypted at rest; opening the
-   app requires the master password; the app makes **no network connection of
-   any kind**. Different OS logins see only their own password-locked data.
+   app requires the master password; the app makes **no network connection**
+   except one the user switches on: the opt-in, off-by-default update check
+   ([`security-model.md`](security-model.md) INV-8), which sends nothing about
+   the user's money. Different OS logins see only their own password-locked
+   data. *(Reworded 2026-09-28, user-approved, FIBR-0368: it said "no network
+   connection of any kind", which the update check FIBR-0054 added had made
+   untrue.)*
 5. **Shareable PDF, optionally locked.** A user can export a PDF report,
    choosing which sections to include (summary / charts / transactions) and
    which accounts, that can **optionally** be locked with a password set at
@@ -76,6 +81,12 @@ Each is demonstrable by doing, not just by reading code.
    runtime and all dependencies**: the user downloads one file and runs it on a
    clean machine with **nothing pre-installed** (no "install Python 3 first").
    Each release will be verified on a clean machine with no Python before it ships.
+7. **Works in the user's own currency.** A user who picks any currency at first
+   run — not only the rand — sees every amount, total and report in that
+   currency's symbol and decimal places, with no code change, and a statement
+   in that currency imports with every amount correct to its smallest unit.
+   *(Added 2026-09-28, user-approved, FIBR-0368: the Users section required it
+   and no criterion measured it.)*
 
 > **Locked-PDF handling:** when an imported statement PDF is itself
 > password-protected, the app prompts for the PDF's open-password, decrypts it
@@ -186,7 +197,7 @@ issue templates, PR template). Public repo → push freely (global rule § 6).
 
 - [x] Problem captured.
 - [x] Users captured (3 personae).
-- [x] Success criteria captured (6 measurable outcomes).
+- [x] Success criteria captured (measurable outcomes).
 - [x] Tech stack chosen with one-sentence reasoning each.
 - [x] Out-of-scope list captured.
 - [x] Distribution chosen (public GitHub; optionals activated).
