@@ -82,7 +82,6 @@ desktop.ini
 .claude/*
 # Team-shared Claude Code config that SHOULD be in version control:
 !.claude/settings.json
-!.claude/workflow.md
 !.claude/bump.json
 
 # Logs / runtime

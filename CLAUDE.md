@@ -1,8 +1,10 @@
 # finbreak — Project instructions for Claude Code
 
-Scaffolded from the **Ants App-Build** template; follows the
-`app-workflow` skill — a machine-local file at
-`~/.claude/skills/app-workflow/SKILL.md`, not part of this repo.
+Scaffolded from the **Ants App-Build** template. Follows the machine-wide
+workflow, `~/.claude/workflow.md` — its five states, its gates, and § 6's six
+conditions for finishing an item. The old `app-workflow` phase loop and its
+`.claude/workflow.md` were retired on 2026-09-28 (FIBR-0368); that file's
+history is [`docs/history/workflow-state.md`](docs/history/workflow-state.md).
 
 ## Where state lives
 
@@ -62,15 +64,12 @@ six-plus reads to answer a question the roadmap DB already answers.
    item**; anything you cannot account for as a real edit to the file is the
    round trip, and a real run would clobber it.
 
-3. **`.claude/workflow.md` §1** — the small set of facts that
-   live nowhere else: repo visibility, convergence checkpoint,
-   debt-sweep threshold, active item + step. **The DB owns which items
-   are in progress; §1 owns which ONE of them is active, and the step
-   within it** — the DB can carry several 🚧 at once and does not say
-   which is being worked, so neither file answers the other's question.
-   Deliberately thin (FIBR-0229); it is *not* a narrative of recent work. After
-   reading both, **summarise back to the user** before doing any
-   work.
+3. **Which item is active.** The roadmap DB says which items are 🚧; it
+   does not say which ONE this session is working. Where exactly one is 🚧,
+   that is it. Where several are, **ask the user** rather than guessing.
+   Nothing else holds this: the file that used to, `.claude/workflow.md`,
+   was retired on 2026-09-28 (FIBR-0368). **Summarise back to the user**
+   before doing any work.
 4. **`docs/standards/{coding,naming,dependencies,documentation,testing,commits}.md`**
    — the seven shareable v1 standards. Read the **one** matching the active
    item's `Kind` — not all six. (§ Resumption flow step 2 is where that
@@ -82,17 +81,19 @@ six-plus reads to answer a question the roadmap DB already answers.
 6. **`docs/audit-allowlist.md`** — read **additionally** before
    invoking `check-code` or `review-code` so already-confirmed
    project-specific false positives aren't re-flagged. The
-   allowlist is the closed-loop memory for this project — see
-   the "False-positive learning" section of the `app-workflow`
-   skill (`~/.claude/skills/app-workflow/audit-fold.md`).
+   allowlist is the closed-loop memory for this project;
+   `close-findings` is what writes a new entry.
    (`check-code` replaced `/audit` on 2026-08-15 and `review-code`
    replaced `/code-quality-review` on 2026-08-18; the allowlist read is
    keyed to the job, not the old name.)
 
-## Closing a phase
+## Finishing an item
 
-Run **`/close-phase`** once steps 1–4 of the per-phase loop
-are done — see SKILL.md for the full description.
+An item is done when `~/.claude/workflow.md` § 6's six conditions hold: a
+test that failed for the right reason, the shortest correct code, the `check-`
+skills clean, the `review-` skills run, every finding given a disposition, and
+the record true. `/close-phase` and its `<ID>-complete` tags belonged to the
+retired phase loop and are no longer run here.
 
 ## Cold-eyes review cadence (project override)
 
@@ -382,11 +383,11 @@ either a phase ID (`P##`, `FP##`, `DS##`, `DOC##`, `R##`) or a
 stable per-bullet ID for ROADMAP_FORMAT v1 projects
 (`FIBR-NNNN`).
 
-Every implementation phase ends with `git tag -a <ID>-complete`
-on the closing commit. **Those phase tags are public, and that is
-fine** (user decision 2026-08-18) — they are build markers on a public
-repo and carry nothing private. § Push policy below has the reasoning
-and is the one home for it.
+Under the retired phase loop every implementation phase ended with
+`git tag -a <ID>-complete` on the closing commit; no new ones are made.
+**The existing phase tags are public, and that is fine** (user decision
+2026-08-18) — they are build markers on a public repo and carry nothing
+private. § Push policy below has the reasoning and is the one home for it.
 
 **A release tag `v<X.Y.Z>` is a different thing again** — it is pushed
 as part of cutting the release, without asking, per global
@@ -401,9 +402,8 @@ the `vX.Y.Z` ref on the **remote** via `gh release create`.
 Inherits from the user's global `~/.claude/CLAUDE.md` § 6
 (public repos: push freely; private: batch + ask). Detect repo
 visibility once per session via
-`gh repo view --json visibility -q .visibility` and cache;
-the result is recorded in `.claude/workflow.md` § 1 status
-header. This repo is **public**, so commits push freely.
+`gh repo view --json visibility -q .visibility` and cache.
+This repo is **public**, so commits push freely.
 
 **Tags too — `--follow-tags` is fine here** (user decision 2026-08-18). **A
 phase tag is a build marker and carries nothing private**, so publishing it costs
@@ -413,9 +413,8 @@ This repo used to hold that `<ID>-complete` tags stay local until you authorise 
 push. **That rule is retired because it was never enforceable**: `cut-release`
 Phase 5 on a public repo is `git push --follow-tags origin <branch>`
 (`~/.claude/skills/cut-release/SKILL.md` § Phase 5), and `/close-phase` Step 6
-offers the same command in a prompt naming the tag it is about to publish
-(`~/.claude/commands/close-phase.md`). Both take the push path every time here,
-so the tags went up regardless.
+offered the same command while this project still ran it. Both took the push
+path every time here, so the tags went up regardless.
 
 **Do not reinstate the ban without changing the tooling first.** Three earlier
 drafts tried, and each contradicted itself —
@@ -861,16 +860,13 @@ what finds the symbol-only citations.
 
 ## Resumption flow — MANDATORY summarise-back
 
-Per the app-workflow skill:
-
-1. **Parallel batch (one tool-call batch):** this file +
-   `.claude/workflow.md` §1 + `roadmap_query` for the open
-   items. **State comes from the roadmap DB, not from §1** — §1
-   carries only the settings and the active item (FIBR-0229).
+1. **One call:** `roadmap_query` for the open items (this file is
+   already loaded). State comes from the roadmap DB; § Where state lives
+   item 3 says how to tell which open item is active.
 2. Once `Kind` is known from the active item, read the
    matching `docs/standards/<which>.md` (single read).
-3. **Summarise back to the user:** "We're on `<ID>` step
-   `<N>`, last did `<X>`, next is `<Y>`."
+3. **Summarise back to the user:** "We're on `<ID>`, last did `<X>`,
+   next is `<Y>`."
 4. Wait for confirm or redirect.
 
 **Never skip step 3.** Catching state-recovery errors before

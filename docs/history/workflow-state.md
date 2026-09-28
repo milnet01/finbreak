@@ -1,4 +1,15 @@
-# finbreak — Workflow state
+# finbreak — Workflow state (retired)
+
+> **Retired 2026-09-28 (FIBR-0368).** This was `.claude/workflow.md`, the state
+> file of the old `app-workflow` phase loop. finbreak now follows
+> `~/.claude/workflow.md`: current state is the roadmap DB (`roadmap_query`),
+> and how an item is finished is that document's § 6. Kept as a frozen record
+> of the phase-loop era — do not update it. Nothing below is live; the "Active
+> item" and "Step progress" tables describe 2026-09-06, and FIBR-0054, which
+> they call not formally closed, is ✅. The debt-sweep and convergence
+> settings belonged to `/close-phase` and retired with it; the last debt sweep
+> was DS02 on 2026-07-26.
+
 
 ## §1. Status header
 

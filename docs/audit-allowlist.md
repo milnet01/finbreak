@@ -29,11 +29,10 @@ tokens and tempting "skip without thinking" reflexes.
 > So the token set here is deliberately mixed, and a future session
 > must not "tidy" it. **Write new entries with `review-code:R-N`.**
 
-The `app-workflow` skill
-(`~/.claude/skills/app-workflow/SKILL.md`, machine-local)
-reads this file **before** triaging audit findings, so
-already-confirmed false positives are discarded without
-re-evaluating.
+`check-code` and `review-code` read this file **before**
+triaging findings, so already-confirmed false positives are
+discarded without re-evaluating; `close-findings` is what adds
+to it.
 
 
 ## How entries are added

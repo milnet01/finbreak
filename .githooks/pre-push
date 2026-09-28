@@ -28,7 +28,7 @@ fi
 # A tag-only push whose commits are ALREADY on the remote cannot introduce
 # ungated code: the commit was gated by the push that put it there, so a second
 # run can only re-prove the same result. That case is a release tag going up
-# right behind its branch (cut-release Phase 5, /close-phase Step 6), and it
+# right behind its branch (cut-release Phase 5), and it
 # used to cost a second full ~3-minute gate -- long enough that the habit grew
 # of reaching for `git push --no-verify`, a bypass no project document
 # sanctioned (FIBR-0290). Skipping it here removes the reason for the habit.

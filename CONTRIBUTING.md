@@ -14,7 +14,8 @@ before opening an issue or PR so we're on the same page.
   project follows.
 - **`docs/specs/`** — per-feature specs.
 - **`docs/decisions/`** — Architecture Decision Records.
-- **`.claude/workflow.md`** — live workflow state and rules.
+- **`ROADMAP.md`** — what is open, in progress and next; generated from the
+  roadmap store.
 
 ## Reporting bugs
 
