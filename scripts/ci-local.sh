@@ -98,11 +98,31 @@ gitleaks dir . --no-banner --redact --config .gitleaks.toml
 echo "== mypy =="
 mypy
 
-if [ "${FINBREAK_BUILD_SMOKE:-}" = "1" ]; then
-    echo "== pytest (excluding perf; +build smoke-test) =="
+# Tests run on several processes (pytest-xdist, FIBR-0373): 193s -> ~45s here.
+# The worker count is sized from MEMORY, not CPUs (local-gate.md § 9): a worker
+# peaks near 0.7 GB, so one per free GiB, never more than the CPUs, and at most
+# 6 so a push leaves the rest of this shared desktop usable. A GitHub runner
+# (4 CPUs, 16 GB) gets 4. FINBREAK_TEST_WORKERS overrides it; 0 runs in one
+# process. Anything unreadable falls back to 1 worker, never to skipping tests.
+if [ -n "${FINBREAK_TEST_WORKERS:-}" ]; then
+    WORKERS=$FINBREAK_TEST_WORKERS
 else
-    echo "== pytest (excluding perf) =="
+    CPUS=$(nproc 2>/dev/null || echo 1)
+    MEM_GIB=$(awk '/^MemAvailable:/ { print int($2 / 1048576) }' /proc/meminfo 2>/dev/null || true)
+    WORKERS=${MEM_GIB:-1}
+    [ "$WORKERS" -gt "$CPUS" ] && WORKERS=$CPUS
+    [ "$WORKERS" -gt 6 ] && WORKERS=6
+    [ "$WORKERS" -lt 1 ] && WORKERS=1
 fi
-pytest -m "not perf"
+case "$WORKERS" in
+    '' | *[!0-9]*) echo "FINBREAK_TEST_WORKERS must be a whole number, got '$WORKERS'" >&2; exit 2 ;;
+esac
+
+if [ "${FINBREAK_BUILD_SMOKE:-}" = "1" ]; then
+    echo "== pytest (excluding perf; +build smoke-test; $WORKERS workers) =="
+else
+    echo "== pytest (excluding perf; $WORKERS workers) =="
+fi
+pytest -m "not perf" -n "$WORKERS"
 
 echo "All gates passed."

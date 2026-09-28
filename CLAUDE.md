@@ -359,7 +359,9 @@ pytest -k package_imports                           # by keyword
 pytest tests/test_smoke.py::test_package_imports    # by node id
 ```
 
-The gate runs `pytest -m "not perf"` (perf excluded; integration tests run).
+The gate runs `pytest -m "not perf"` (perf excluded; integration tests run) on
+several processes — `-n <workers>`, sized from free memory, capped at 6;
+`FINBREAK_TEST_WORKERS` overrides it (FIBR-0373). Every test has a 300s limit.
 `pytest-qt`'s `qtbot` fixture is **enabled** — P02 (FIBR-0004) shipped the first
 real GUI tests and removed the `addopts = "-p no:pytest-qt"` line.
 

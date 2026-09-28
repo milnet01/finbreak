@@ -296,6 +296,8 @@ def _container_runtime() -> str | None:
 
 
 @pytest.mark.integration
+# Freezes the app and builds an AppImage: far past the suite-wide 300s limit.
+@pytest.mark.timeout(3600)
 def test_INV2_INV3_build_smoke_clean_room():
     """build-smoke.sh freezes both artifacts and runs them Python-free (exit 0).
 

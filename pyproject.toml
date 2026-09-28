@@ -86,6 +86,13 @@ dev = [
     "pip-audit==2.10.0",
     "pytest==9.0.3",
     "pytest-qt==4.5.0",
+    # Runs the gate's test stage on several processes (scripts/ci-local.sh sizes
+    # the worker count from free memory; FIBR-0373). Tests share no state: each
+    # builds its vault under tmp_path and conftest closes leftover windows.
+    "pytest-xdist==3.8.0",
+    # A per-test time limit, so a stuck test fails with its stack instead of
+    # hanging the gate (local-gate.md § 9: parallel tests each need a timeout).
+    "pytest-timeout==2.4.0",
     # Runs the [tool.mypy] config below (also run server-side by the audit).
     "mypy==2.1.0",
     # Structural parse of the Flatpak manifest + generated python3-deps.yaml in
@@ -140,6 +147,9 @@ select = ["E", "W", "F", "I", "UP", "B", "RUF100", "DTZ"]
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
+# FIBR-0373. Generous: the slowest ordinary test takes about 5s. The opt-in
+# build smoke-test carries its own, longer limit.
+timeout = 300
 # Categories registered so `-m` selection and the gate's `-m "not perf"`
 # exclusion work without "unknown marker" warnings (testing.md § 3.2–3.4).
 markers = [
