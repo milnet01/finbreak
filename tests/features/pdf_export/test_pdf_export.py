@@ -612,3 +612,28 @@ def test_the_report_and_its_filename_agree_on_the_period(
         "while its filename named February. That is the wrong-month split.\n"
         f"  offered filename: {offered[0]!r}"
     )
+
+
+def test_amounts_follow_the_users_negative_style(qapp, service):
+    """Full audit 2026-09-27, row 16. FIBR-0013 D6 says the PDF reuses the
+    amount display prefs; a brackets user saw (R 420.00) on screen and -R 420.00
+    in the PDF. Checked in the summary, per-account and transaction tables."""
+    from finbreak.repositories.settings import SettingsRepository
+
+    a = _accounts(service)[0].id
+    b = _add_account(service, "Savings")
+    _add(service, a, -420_00)
+    _add(service, b, 100_00)
+    SettingsRepository(service.vault.connection).set(
+        "amount_negative_style", "brackets"
+    )
+    service.vault.connection.commit()
+
+    html, _ = _svc(service)._build_html(
+        _options(account_ids=frozenset({a, b}), include_transactions=True), _TODAY
+    )
+
+    assert "(R" in html, "a negative amount renders in brackets"
+    assert "-R" not in html and "−R" not in html, (
+        "no amount may fall back to the minus style"
+    )

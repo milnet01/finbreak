@@ -87,32 +87,35 @@ def parse_transaction(
         raise ValueError("amount is not a valid number") from exc
     if not amount.is_finite():
         raise ValueError("amount must be a finite decimal")
-    # Count SIGNIFICANT fractional digits: normalize() strips trailing zeros, so
+    # Count SIGNIFICANT fractional digits: trailing zeros are dropped, so
     # "12.340" (== 12.34) is accepted while "12.345" is still rejected. is_finite()
-    # above guarantees the exponent is an int (never 'n'/'N'/'F'); normalize() can
-    # yield a positive exponent for whole numbers (1E+2), which the sign handles.
+    # above guarantees the exponent is an int (never 'n'/'N'/'F').
     #
-    # normalize() APPLIES CONTEXT, so on an operand whose adjusted exponent
-    # exceeds Emax it signals Overflow — which is trapped by default and raised
-    # as decimal.Overflow, an ArithmeticError and NOT a ValueError. That walks
-    # straight through the `except ValueError` this function's docstring names as
-    # its contract, and which ManualEntryDialog, csv_importer and the import
-    # wizard each render with. Decimal("1e1000000") builds fine (string
-    # construction is context-free), so a single CSV cell reaches it and aborts a
-    # whole import instead of yielding one RowError (FIBR-0216/FIBR-0252).
-    # to_minor_storable guards the identical hazard on its own scaling call; this
-    # is the earlier context-applying operation, which did not.
-    try:
-        significant_exponent = cast(int, amount.normalize().as_tuple().exponent)
-    except Overflow as exc:
-        raise ValueError("amount is too large to store") from exc
-    if -significant_exponent > exponent:
+    # Read straight off the digit tuple, never through normalize(): that APPLIES
+    # CONTEXT, so it rounded a 29-significant-digit amount to 28 and accepted
+    # "1.0000000000000000000000000001" as 1.00, silently dropping the sub-cent
+    # fraction INV-4b refuses (full audit 2026-09-27, row 14); and on a huge
+    # exponent it raised decimal.Overflow, not ValueError (FIBR-0216/FIBR-0252).
+    # to_minor_storable below owns the too-large refusal.
+    if -_significant_exponent(amount) > exponent:
         raise ValueError("amount has more fractional digits than the currency allows")
 
     amount_minor = to_minor_storable(amount, exponent)
     if amount_minor == 0:
         raise ValueError("amount must be non-zero")
     return occurred_on, amount_minor, description
+
+
+def _significant_exponent(amount: Decimal) -> int:
+    """The exponent of ``amount`` with trailing fractional zeros removed,
+    computed from its digits alone -- no context, so no rounding and no
+    Overflow."""
+    digits = list(amount.as_tuple().digits)
+    exp = cast(int, amount.as_tuple().exponent)
+    while exp < 0 and len(digits) > 1 and digits[-1] == 0:
+        digits.pop()
+        exp += 1
+    return exp
 
 
 def to_display_decimal(amount_minor: int, exponent: int) -> Decimal:

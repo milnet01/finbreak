@@ -283,3 +283,35 @@ def test_INV15_service_amounts_are_exact_minor_and_decimal_free(service) -> None
         assert type(a.amount_minor) is int
         assert type(a.baseline_minor) is int
         assert a.on is None or isinstance(a.on, date)
+
+
+def test_a_month_with_nothing_imported_is_not_counted_as_zero_spend(service) -> None:
+    """Full audit 2026-09-27, row 13. With only May and June imported, the three
+    prior months for June are Mar, Apr and May, and Mar/Apr hold nothing at all.
+    Averaging them in as 0 gave R333.33, so June's ordinary R1000 read as a 3x
+    spike. A month with no transactions is missing data, not a quiet month."""
+    svc = service
+    a = _acct(svc)
+    groceries = _groceries(svc)
+    _add(svc, a, "2026-05-20", -100_000, "Groceries May", groceries)
+    _add(svc, a, "2026-06-20", -100_000, "Groceries Jun", groceries)
+
+    alerts = AlertService(svc.vault).alerts(_TODAY)
+
+    assert _by_kind(alerts, AlertKind.CATEGORY_SPIKE) == [], (
+        "the same spend two months running is not a spike"
+    )
+
+
+def test_a_real_spike_still_fires_over_the_months_that_hold_data(service) -> None:
+    """The other half of row 13: dropping empty months must not silence a real
+    spike. May R1000, June R2500 -- 2.5x the one month there is."""
+    svc = service
+    a = _acct(svc)
+    groceries = _groceries(svc)
+    _add(svc, a, "2026-05-20", -100_000, "Groceries May", groceries)
+    _add(svc, a, "2026-06-20", -250_000, "Groceries Jun", groceries)
+
+    spikes = _by_kind(AlertService(svc.vault).alerts(_TODAY), AlertKind.CATEGORY_SPIKE)
+
+    assert [s.baseline_minor for s in spikes] == [100_000]

@@ -255,12 +255,19 @@ class AlertService:
         repo = ReportingRepository(self._conn)
         # per (year, month) -> {category_id -> summed OUT magnitude}
         totals: dict[tuple[int, int], dict[int, int]] = {}
+        # Months holding at least one transaction of any kind. A prior month with
+        # none was never imported: it is missing data, not a zero-spend month,
+        # and averaging it in as 0 made every category look like a spike on a
+        # vault with under four months imported (full audit 2026-09-27, row 13;
+        # the same rule as FIBR-0231 § 4.8 condition 1).
+        has_data: set[tuple[int, int]] = set()
         for ym in window:
             start, end = _month_bounds(*ym)
             bucket: dict[int, int] = {}
             for txn_id, _occurred, amount_minor, category_id in repo.rows_in_range(
                 start.isoformat(), end.isoformat(), None
             ):
+                has_data.add(ym)
                 if txn_id in excluded or amount_minor >= 0 or category_id is None:
                     continue
                 bucket[category_id] = bucket.get(category_id, 0) + -amount_minor
@@ -276,7 +283,9 @@ class AlertService:
                 category_id=cid,
                 category_name=names.get(cid, ""),
                 current_minor=current.get(cid, 0),
-                prior_minor=tuple(totals[ym].get(cid, 0) for ym in priors),
+                prior_minor=tuple(
+                    totals[ym].get(cid, 0) for ym in priors if ym in has_data
+                ),
             )
             for cid in sorted(category_ids)
         ]

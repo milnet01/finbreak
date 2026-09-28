@@ -548,3 +548,18 @@ def test_FIBR0327_grouping_follows_the_locale_not_a_fixed_three_digits():
     assert "1,23,45,678" in rendered, (
         "hi_IN groups by lakh, not by thousands.\n  actual: " + repr(rendered)
     )
+
+
+def test_a_sub_cent_fraction_past_28_digits_is_refused_not_rounded():
+    """Full audit 2026-09-27, row 14. The digit count went through normalize(),
+    which applies the 28-digit context, so 29 significant digits rounded to
+    "1" and the amount was accepted as 1.00 -- silently dropping the fraction
+    INV-4b refuses."""
+    with pytest.raises(ValueError, match="more fractional digits"):
+        parse_transaction(
+            "2026-03-02", Decimal("1.0000000000000000000000000001"), "Fake Row", 2
+        )
+    # Trailing zeros are still not significant.
+    assert parse_transaction("2026-03-02", Decimal("12.3400"), "Fake Row", 2)[1] == (
+        1234
+    )

@@ -33,6 +33,23 @@ signaling per
 
 ### Fixed
 
+- **No false spending-spike alerts while you have few months imported** (FIBR-0367)
+  A month with no statements imported counted as a month of zero
+  spending, so with only a couple of months in the vault an ordinary
+  month looked like a spike. Months with no data are now left out of
+  the average.
+
+- **Amounts with an impossible fraction of a cent are refused, not rounded** (FIBR-0367)
+
+- **A cancelled batch import no longer leaves its 'amounts are reversed' tick behind** (FIBR-0367)
+  Importing a single file after cancelling a batch could start the
+  column-matching page with the batch's settings still set, which
+  would flip the sign of every amount.
+
+- **PDF reports show negative amounts the way you chose in Settings** (FIBR-0367)
+  Brackets or a minus sign, as on screen; the PDF always used a
+  minus sign.
+
 - **Month-end debit orders stay on month-end in the forecast** (FIBR-0367)
   A payment due on the 31st that was last seen in a shorter month
   (Feb 28, Apr 30) was projected a day or more early for every month

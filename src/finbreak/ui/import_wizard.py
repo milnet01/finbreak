@@ -590,6 +590,7 @@ class ImportWizardWidget(QWidget):
                 self._apply_profile_to_combos(matched)
                 self._run_preview(matched.column_mapping())
             else:
+                self._reset_unmatched_mapping_form()
                 # FIBR-0297: guess the columns from the header's own words FIRST,
                 # so the D5(a) detect below reads the guessed date column rather
                 # than whichever column happened to be first.
@@ -948,6 +949,7 @@ class ImportWizardWidget(QWidget):
             # matched, >1 table: refresh for the map step
             self._refresh_date_ui(detect=False)
         else:
+            self._reset_unmatched_mapping_form()
             # FIBR-0297: columns first, so the D5(b) detect below reads the
             # guessed date column.
             self._guess_mapping_combos()
@@ -1733,17 +1735,29 @@ class ImportWizardWidget(QWidget):
         # FLIPS EVERY SIGN on the next file, and a stale debit/credit style
         # reads the wrong columns. A money bug, and invisible unless the user
         # rereads the whole form each time.
-        self._invert_amount.setChecked(False)
-        self._amount_style.setCurrentIndex(0)  # single amount column
-        with QSignalBlocker(self._date_format_custom):
-            self._date_format_custom.clear()
+        self._reset_unmatched_mapping_form()
         # FIBR-0297: AFTER the resets above — this page is reused per file, so a
         # guess written before them would be wiped — and before the D5(d) detect,
         # which must read this file's guessed date column.
         self._guess_mapping_combos()
         self._refresh_date_ui(detect=True)
-        self._profile_name.clear()
         self._goto_step(_STEP_MAP)
+
+    def _reset_unmatched_mapping_form(self) -> None:
+        """Clear the map-step fields ``_populate_mapping_combos`` leaves alone.
+
+        Every route that shows the map step for a file NO profile matched calls
+        this. The page outlives one file: a batch Cancel returns to the pick step
+        without rebuilding the wizard, so a stale "Amounts are reversed" tick
+        from the batch flipped every sign of the next single file (full audit
+        2026-09-27, row 15). The batch route had this reset; the single-file CSV
+        and PDF routes did not.
+        """
+        self._invert_amount.setChecked(False)
+        self._amount_style.setCurrentIndex(0)  # single amount column
+        with QSignalBlocker(self._date_format_custom):
+            self._date_format_custom.clear()
+        self._profile_name.clear()
 
     def _answer_batch_mapping(self, mapping: ColumnMapping) -> None:
         record, self._batch_asking = self._batch_asking, None

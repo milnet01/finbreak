@@ -30,7 +30,11 @@ from finbreak.datetime_format import format_date
 from finbreak.models import Account, Summary
 from finbreak.repositories.settings import SettingsRepository
 from finbreak.services.accounts import AccountService
-from finbreak.services.auth import DATETIME_SYSTEM
+from finbreak.services.auth import (
+    ALLOWED_NEGATIVE_STYLES,
+    DATETIME_SYSTEM,
+    DEFAULT_NEGATIVE_STYLE,
+)
 from finbreak.services.reporting import (
     MODE_CURRENT_MONTH,
     MODE_PREVIOUS_MONTH,
@@ -228,6 +232,15 @@ class PdfExportService:
             or DATETIME_SYSTEM
         )
 
+    def _negative_style(self) -> str:
+        """The user's FIBR-0105 negative-amount style, read the way
+        ``AuthService.amount_prefs`` reads it. FIBR-0013 D6 says the PDF reuses
+        the amount display prefs; only the date pref was honoured, so a brackets
+        user saw ``(R 420.00)`` on screen and ``-R 420.00`` in the PDF (full
+        audit 2026-09-27, row 16)."""
+        style = SettingsRepository(self._vault.connection).get("amount_negative_style")
+        return style if style in ALLOWED_NEGATIVE_STYLES else DEFAULT_NEGATIVE_STYLE
+
     def _accounts_in_scope(self, options: ExportOptions) -> list[Account]:
         """The live accounts the export covers, **sorted by name** (INV-5). ``None``
         ⇒ every account; a subset ⇒ those still-present (a stale id drops out, D5)."""
@@ -315,9 +328,10 @@ class PdfExportService:
     def _summary_table(self, s: Summary, symbol: str) -> str:
         # escape() the formatted amount too (defence in depth): the currency symbol
         # is a fixed whitelist today, but the header escapes it, so the cells match.
-        inc = escape(_format_amount(s.income, symbol))
-        spend = escape(_format_amount(s.expenditure, symbol))
-        net = escape(_format_amount(s.net, symbol))
+        style = self._negative_style()
+        inc = escape(_format_amount(s.income, symbol, style))
+        spend = escape(_format_amount(s.expenditure, symbol, style))
+        net = escape(_format_amount(s.net, symbol, style))
         return (
             "<table>"
             f"<tr><td>{_tr('Income')}</td><td>{inc}</td></tr>"
@@ -335,11 +349,12 @@ class PdfExportService:
         acct: Account,
     ) -> str:
         s = reporting.summary(prefs, frozenset({acct.id}), today)
+        style = self._negative_style()
         return (
             f"<tr><td>{escape(acct.name)}</td>"
-            f"<td>{escape(_format_amount(s.income, symbol))}</td>"
-            f"<td>{escape(_format_amount(s.expenditure, symbol))}</td>"
-            f"<td>{escape(_format_amount(s.net, symbol))}</td></tr>"
+            f"<td>{escape(_format_amount(s.income, symbol, style))}</td>"
+            f"<td>{escape(_format_amount(s.expenditure, symbol, style))}</td>"
+            f"<td>{escape(_format_amount(s.net, symbol, style))}</td></tr>"
         )
 
     def _charts_html(
@@ -393,6 +408,7 @@ class PdfExportService:
         show_account = len(self._accounts_in_scope(options)) > 1
         # Read once, not per row — it is a vault read.
         date_pref = self._date_pref()
+        negative_style = self._negative_style()
         header = f"<tr><th>{_tr('Date')}</th>"
         if show_account:
             header += f"<th>{_tr('Account')}</th>"
@@ -414,7 +430,9 @@ class PdfExportService:
                 cells.append(f"<td>{escape(acct)}</td>")
             cells.append(f"<td>{escape(txn.description)}</td>")
             cells.append(f"<td>{category_cell}</td>")
-            cells.append(f"<td>{escape(_format_amount(disp, symbol))}</td>")
+            cells.append(
+                f"<td>{escape(_format_amount(disp, symbol, negative_style))}</td>"
+            )
             body_rows.append("<tr>" + "".join(cells) + "</tr>")
         footnote_text = _tr(
             "Summary and charts exclude money moved between your own "

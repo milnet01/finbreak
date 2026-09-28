@@ -1052,3 +1052,47 @@ def test_unplaced_row_opens_a_picker_that_has_chosen_nothing(
     dialog.accept()
     assert widget._batch_files[0].account_id is None
     assert cell_text(review._table, 0, import_batch_mod.COL_ACCOUNT) == "— pick one —"
+
+
+def test_a_single_file_after_a_cancelled_batch_starts_with_a_clean_mapping_form(
+    qtbot, service, tmp_path
+):
+    """Full audit 2026-09-27, row 15. A pre-RUN batch Cancel returns to the pick
+    step without rebuilding the wizard. The single-file unmatched route then
+    showed the map step still holding the batch's "Amounts are reversed" tick,
+    which flips every sign of the file being imported."""
+    first = _csv(
+        tmp_path,
+        "a-odd.csv",
+        [["2026-01-02", "shop", "-10.00"]],
+        header=["When", "What", "How much"],
+    )
+    second = _csv(
+        tmp_path,
+        "b-other.csv",
+        [["2026-01-03", "shop", "-20.00"]],
+        header=["Day", "Payee", "Value"],
+    )
+    widget = _wizard(qtbot, service)
+    widget._select_files([first, second])
+    qtbot.waitUntil(lambda: widget._stack.currentIndex() == _STEP_MAP, timeout=3000)
+    widget._invert_amount.setChecked(True)
+    widget._amount_style.setCurrentIndex(1)
+    widget._profile_name.setText("left over from the batch")
+    widget._on_batch_cancel()
+    assert widget._stack.currentIndex() == _STEP_PICK, "precondition: back at pick"
+
+    single = _csv(
+        tmp_path,
+        "c-third.csv",
+        [["2026-01-04", "shop", "-30.00"]],
+        header=["Posted", "Detail", "Sum"],
+    )
+    widget._select_file(str(single))
+    qtbot.waitUntil(lambda: widget._stack.currentIndex() == _STEP_MAP, timeout=3000)
+
+    assert not widget._invert_amount.isChecked(), (
+        "the batch's reversal tick would flip every sign of this file"
+    )
+    assert widget._amount_style.currentIndex() == 0
+    assert widget._profile_name.text() == ""
