@@ -11,7 +11,7 @@ history is [`docs/history/workflow-state.md`](docs/history/workflow-state.md).
 **Items 1–3 are read on every session start; 4–6 are read when you need
 them, not up front.** § Resumption flow at the bottom of this file is the
 operative procedure and it governs — it reads 1–3 in one batch, then pulls
-the *one* standard matching the active item's `Kind`. Do not read every
+the standard item 4 maps the active item's `Kind` to. Do not read every
 standard and the active spec before summarising: that is
 six-plus reads to answer a question the roadmap DB already answers.
 
@@ -855,11 +855,11 @@ what finds the symbol-only citations.
 1. **One call:** `roadmap_query` for the open items (this file is
    already loaded). State comes from the roadmap DB; § Where state lives
    item 3 says how to tell which open item is active.
-2. Once `Kind` is known from the active item, read the
-   matching `docs/standards/<which>.md` (single read).
+2. Once `Kind` is known from the active item, read the standard
+   § Where state lives item 4 maps it to — one read, two for `Kind: release`.
 3. **Summarise back to the user:** "We're on `<ID>`, last did `<X>`,
    next is `<Y>`." Take `<X>` from `git log --oneline -5` and `<Y>` from the
-   active item's body (`roadmap_query id`), which ends with its latest note.
+   latest note in the active item's body (`roadmap_query id`).
 4. Wait for confirm or redirect.
 
 **Never skip step 3.** Catching state-recovery errors before
