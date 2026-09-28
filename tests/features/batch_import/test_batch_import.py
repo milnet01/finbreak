@@ -29,6 +29,7 @@ from finbreak.repositories.statement_periods import StatementPeriodRepository
 from finbreak.services.accounts import AccountService
 from finbreak.services.auth import AuthService
 from finbreak.services.batch_import import (
+    CAP_REACHED,
     BatchImportService,
     next_question,
     stored_passwords,
@@ -1051,4 +1052,75 @@ def test_FIBR0319_the_password_retry_leaves_already_settled_records_alone(
         "screen going missing.\n"
         f"  expected: {before_outcome!r} pointing at account {before_account}\n"
         f"  actual:   {csv_record.outcome!r} pointing at {csv_record.account_id}"
+    )
+
+
+def _stub_locked_pdfs(monkeypatch, password: str = "sesame") -> None:
+    """Every PDF opens with ``password`` alone and parses to one draft."""
+
+    def fake_decrypt(data: bytes, given: str | None) -> bytes:
+        if given != password:
+            raise PasswordError("wrong password")
+        return b"%PDF-1.7 plain"
+
+    class _StubSb:
+        @staticmethod
+        def parse(data, exponent, password=None):
+            return ParseResult(
+                drafts=[TransactionDraft(1, "2026-03-05", -1000, "Fake Row")],
+                errors=[],
+                period_start="2026-03-01",
+                period_end="2026-03-31",
+            )
+
+    monkeypatch.setattr(
+        "finbreak.services.batch_import.PdfImporter.decrypt_to_plaintext",
+        staticmethod(fake_decrypt),
+    )
+    monkeypatch.setattr("finbreak.services.batch_import.StandardBankImporter", _StubSb)
+
+
+def test_row21_the_password_retry_honours_the_draft_cap(
+    batch, tmp_path, monkeypatch
+) -> None:
+    """Audit 2026-09-27 row 21: one answered password re-scans every other
+    locked file, and that retry called `scan` directly — which has no cap
+    check — so a batch of locked PDFs walked past INV-11's draft bound."""
+    monkeypatch.setattr("finbreak.services.batch_import._MAX_BATCH_DRAFTS", 2)
+    _stub_locked_pdfs(monkeypatch)
+    paths = []
+    for name in ("a.pdf", "b.pdf", "c.pdf"):
+        (tmp_path / name).write_bytes(b"%PDF-1.7 encrypted")
+        paths.append(str(tmp_path / name))
+    files = batch.build(paths)
+    _scan_all(batch, files)
+    assert [f.outcome for f in files] == ["needs_password"] * 3, "precondition"
+
+    batch.answer(files, files[0], "sesame")
+
+    assert batch.draft_total(files) == 2, "the retry stopped at the cap"
+    assert files[2].outcome == "not_attempted"
+    assert files[2].reason == CAP_REACHED
+
+
+def test_row21_a_typed_password_does_not_outlive_its_batch(
+    batch, tmp_path, monkeypatch
+) -> None:
+    """§ 4.4: a password typed during a run is held "for the run only". It was
+    held for the service's life, which is the wizard's, so the next batch's
+    locked files were silently unlocked with it."""
+    _stub_locked_pdfs(monkeypatch)
+    first = tmp_path / "first.pdf"
+    first.write_bytes(b"%PDF-1.7 encrypted")
+    files = batch.build([str(first)])
+    _scan_all(batch, files)
+    batch.answer(files, files[0], "sesame")
+    assert files[0].outcome != "needs_password", "precondition: it unlocked"
+
+    second = tmp_path / "second.pdf"
+    second.write_bytes(b"%PDF-1.7 encrypted")
+    files = batch.build([str(second)])
+    _scan_all(batch, files)
+    assert files[0].outcome == "needs_password", (
+        "a new batch asks again rather than reusing the last batch's password"
     )

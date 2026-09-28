@@ -126,6 +126,12 @@ signaling per
 
 ### Security
 
+- **Statement passwords typed during a batch import are forgotten when it ends** (FIBR-0367)
+  A password you typed to open a locked PDF in one batch import stayed in
+  memory after the batch was cancelled or finished, and was quietly tried
+  on the next batch's files. It is now discarded. A batch of locked PDFs
+  also now respects the import size limit after you answer a password.
+
 - **The password hint now refuses your recovery code however you write it — without its last character, spaced out, or split across lines — not only the exact printed form** (FIBR-0308)
 
 ## [0.1.23] - 2026-09-07

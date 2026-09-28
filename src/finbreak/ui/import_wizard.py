@@ -1789,6 +1789,7 @@ class ImportWizardWidget(QWidget):
             return
         if self._batch_index >= len(self._batch_files):
             self._batch_phase = "report"
+            self._batch.discard_passwords()  # the run is over (§ 4.4)
             self._batch_review.set_running(False)
             # The report is shown BEFORE anything is torn down: emitting `done`
             # here would have `MainWindow._on_import_done` rebuild the workspace
@@ -1807,12 +1808,12 @@ class ImportWizardWidget(QWidget):
         was_running = self._batch_phase == "run"
         self._batch_phase = "report" if was_running else "idle"
         self._batch.stop_from(self._batch_files, self._batch_index, CANCELLED)
+        # Every typed password is discarded unwritten, running or not (§ 4.6).
+        self._batch.discard_passwords()
         if was_running:
             self._batch_review.set_running(False)
             self._batch_review.finish()
             return
-        # Every held password is discarded unwritten: `_settle_password` only
-        # writes once a destination settles, and none now will.
         self._batch_files = []
         self._batch_asking = None
         self._batch_prompts.clear()

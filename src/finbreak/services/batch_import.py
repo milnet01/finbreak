@@ -277,6 +277,9 @@ class BatchImportService:
         The cap is applied here, **before anything is read**, so an over-large
         selection costs no disk at all.
         """
+        # A new batch starts with none of the last one's typed passwords: § 4.4
+        # holds them "for the run only" (audit 2026-09-27 row 21).
+        self.discard_passwords()
         files = sorted(
             (BatchFile(path=path) for path in paths), key=lambda r: r.sort_key
         )
@@ -285,6 +288,12 @@ class BatchImportService:
                 record.outcome = "not_attempted"
                 record.reason = CAP_REACHED
         return files
+
+    def discard_passwords(self) -> None:
+        """Forget every password typed during this run (§ 4.4, § 4.6). Only a
+        *Remember*-ticked one was ever written, and that already happened when
+        its destination settled."""
+        self._run_passwords.clear()
 
     @staticmethod
     def draft_total(files: Sequence[BatchFile]) -> int:
@@ -543,13 +552,10 @@ class BatchImportService:
         without a question. A record that still cannot be unlocked simply
         returns to ``needs_password`` and is asked about as before.
 
-        ``scan`` re-checks the draft cap per record, so this cannot walk past it.
+        Each re-scan is a door into the ladder like ``answer`` is, so it checks
+        the draft cap first (§ 4.3; audit 2026-09-27 row 21).
         """
-        for other in files:
-            if other is answered or other.outcome != "needs_password":
-                continue
-            other.outcome = "waiting"
-            self.scan(other)
+        self._rescan_blocked(files, answered, "needs_password")
 
     def _retry_blocked_on_mapping(
         self, files: Sequence[BatchFile], *, answered: BatchFile
@@ -573,10 +579,21 @@ class BatchImportService:
         a mapping answered with no profile NAME saved nothing, so nothing
         resolves and the batch behaves exactly as it did.
 
-        ``scan`` re-checks the draft cap per record, so this cannot walk past it.
+        Each re-scan checks the draft cap first, as the password twin does.
         """
+        self._rescan_blocked(files, answered, "needs_mapping")
+
+    def _rescan_blocked(
+        self, files: Sequence[BatchFile], answered: BatchFile, blocked_on: str
+    ) -> None:
+        """Re-scan every record other than ``answered`` still at ``blocked_on``,
+        refusing each once the batch holds the draft cap."""
         for other in files:
-            if other is answered or other.outcome != "needs_mapping":
+            if other is answered or other.outcome != blocked_on:
+                continue
+            if self.draft_total(files) >= _MAX_BATCH_DRAFTS:
+                other.outcome = "not_attempted"
+                other.reason = CAP_REACHED
                 continue
             other.outcome = "waiting"
             self.scan(other)
