@@ -413,6 +413,11 @@ so Flathub review and code signing do not block this release.
   Queued).
   Progress 2026-09-28: row 17 fixed (category rename no longer
   re-parents deep data; FIBR-0154 § 4.2 amended). Next: row 18.
+  Progress 2026-09-28 (later): rows 18-25 fixed, each with a regression
+  test run red first, one commit per row or group (bec806f, accb90c,
+  f83ce13, 9dccccf, 2ace5e2, 79f3b99, b51faa9); ledger cells filled;
+  CHANGELOG entries added. Next: row 26 (paths.py:25-28, empty
+  writableLocation puts the vault in the working dir).
   **Layman:** A full check of the app found bugs; the serious ones (wrong dates or amounts, lost data, security gaps) are being fixed now and the rest are filed.
   Kind: review-fix.
   Source: full-audit-2026-09-27.
@@ -3736,6 +3741,12 @@ work, and none of it is a release decision.
 - 📋 [FIBR-0370] **Marketing screenshot capture skips the Statements and Forecast tabs.**
   scripts/capture_screenshots.py writes dashboard, transactions, accounts, categories, rules, transfers and recurring only (run 2026-09-28). Also: the seeded demo vault carries no statement closing balances, so the Accounts capture shows an empty Status column rather than the ✓/⚠ balance check. Add both tabs and seed balances so the Hub site can show the forecast and the balance check.
   **Layman:** The script that takes the website's screenshots cannot yet photograph the Forecast or Statements screens, so the site shows neither.
+  Kind: chore.
+  Source: in-session-2026-09-28.
+
+- 📋 [FIBR-0372] **pip-audit fails the gate when PyPI's lookup of finbreak itself returns 503.**
+  On 2026-09-28 the pypi-backed pip-audit stage failed three times in about 20 minutes (CI run 36409341907 and its re-run, plus a local pre-push) with "503 Backend is unhealthy" on https://pypi.org/pypi/finbreak/<version>/json. finbreak is not published on PyPI, so that lookup can only ever answer 404 (skipped) or fail; it adds no coverage. Minutes later the same URL answered 404 again. Consider auditing the dependency set without the project itself (e.g. an exported requirements list, or pip-audit's option to skip the local package) so an outage on a lookup that cannot find anything stops blocking pushes. Check that the OSV run still covers the same dependency set.
+  **Layman:** The security check that looks up our dependencies also asks PyPI about finbreak itself, so a brief PyPI outage blocks every push.
   Kind: chore.
   Source: in-session-2026-09-28.
 
