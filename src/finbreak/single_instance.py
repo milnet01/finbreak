@@ -27,6 +27,7 @@ from __future__ import annotations
 import logging
 import os
 import tempfile
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 
@@ -52,6 +53,13 @@ _NUDGE = b"raise"
 # including the NUL (measured: a raw bind fails at 108 chars, succeeds at 107),
 # and Qt refuses one byte earlier again. 100 keeps a margin under both.
 _MAX_UNIX_SOCKET_PATH = 100
+
+# How long a launch that finds the recovery claim taken waits for it. The holder
+# releases it once it has bound its socket, so waiting is what lets the probe
+# that follows find the new owner (full audit 2026-09-27, row 27). The holder's
+# work is a probe, an unlink and a bind, so this is generous.
+_CLAIM_WAIT_S = 2.0
+_CLAIM_POLL_S = 0.02
 
 
 def socket_name(base: str = "finbreak") -> str:
@@ -111,9 +119,9 @@ def _claim_path(name: str) -> str:
 
 
 @contextmanager
-def _claim(name: str) -> Iterator[bool]:
-    """Hold the exclusive right to RECOVER *name*; yields False if someone else
-    holds it.
+def _claim(name: str, wait_s: float = 0.0) -> Iterator[bool]:
+    """Hold the exclusive right to RECOVER *name*, waiting up to *wait_s* for it;
+    yields False if someone else still holds it.
 
     `removeServer` then `listen` is two syscalls with nothing between them, so
     two launches clearing ONE crash leftover both unlink and both bind — and
@@ -134,7 +142,15 @@ def _claim(name: str) -> Iterator[bool]:
         if fcntl is not None:
             try:
                 fd = os.open(_claim_path(name), os.O_CREAT | os.O_RDWR, 0o600)
-                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                deadline = time.monotonic() + wait_s
+                while True:
+                    try:
+                        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                        break
+                    except BlockingIOError:
+                        if time.monotonic() >= deadline:
+                            raise
+                        time.sleep(_CLAIM_POLL_S)
             except BlockingIOError:
                 held = False
             except OSError:
@@ -190,13 +206,17 @@ def listen(name: str) -> QLocalServer | None:
     if server.serverError() != QAbstractSocket.SocketError.AddressInUseError:
         log.debug("single-instance: could not listen on %r; running unguarded", name)
         return None
-    with _claim(name) as claimed:
+    with _claim(name, _CLAIM_WAIT_S) as claimed:
         if not claimed:
-            # Another launch is recovering this very socket. It is about to
-            # become the owner or to fail open; joining in is how both of us
-            # end up unlinking the other's socket (INV-3b).
+            # Another launch is recovering this very socket and has held the
+            # claim past the wait. Joining in is how both of us end up
+            # unlinking the other's socket (INV-3b).
             log.debug("single-instance: %r is being recovered elsewhere", name)
             return None
+        # Waiting for the claim is what closes row 27: a holder releases it only
+        # once it has bound, so the probe below finds it, and so does app.py's
+        # re-probe after we return None -- where returning at once let that
+        # re-probe find nobody and run this launch unguarded beside the owner.
         # No need to re-try `listen` first: whoever held the claim before us
         # either bound their own socket, which the probe below finds, or left
         # the path clear, which makes the removeServer a no-op.

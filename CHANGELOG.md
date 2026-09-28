@@ -33,6 +33,10 @@ signaling per
 
 ### Fixed
 
+- **Opening finbreak twice right after a crash no longer risks two copies running on the same vault.** (FIBR-0367)
+  The second launch now waits the moment it takes the first to finish
+  starting, then hands over to it. (Full audit 2026-09-27, row 27.)
+
 - **If the system cannot say where finbreak should keep its data, finbreak now says so instead of using the folder it was started from.** (FIBR-0367)
   Before, it could create the vault there and lock that folder's
   permissions down. (Full audit 2026-09-27, row 26.)

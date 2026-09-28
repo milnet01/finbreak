@@ -8,6 +8,7 @@ a developer's own running finbreak can never collide.
 
 from __future__ import annotations
 
+import fcntl
 import os
 import socket
 from typing import cast
@@ -308,3 +309,48 @@ def test_INV6_a_knock_unminimises_and_raises_the_window(qtbot, name):
     )
     probe.disconnectFromServer()
     server.close()
+
+
+def test_row27_a_launch_that_loses_the_claim_waits_for_the_new_owner(qapp, name):
+    """The loser of the recovery claim used to return None at once, and app.py
+    then re-probed straight away -- while the winner could still be between its
+    own re-probe, removeServer and listen, so nothing answered, and the loser ran
+    "fail-open": two instances on one SQLCipher file, in exactly the crash-
+    leftover case INV-3b was written for (full audit 2026-09-27, row 27).
+
+    The winner is simulated on a thread that holds the claim, binds the socket a
+    moment later, and only then lets go -- the order a real winner follows. The
+    probe right after listen() returns is app.py's re-probe."""
+    import threading
+    import time
+
+    probe_server = QLocalServer()
+    assert probe_server.listen(name)
+    path = probe_server.fullServerName()
+    probe_server.close()
+    stale = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    stale.bind(path)  # a crash leftover: the file exists, nobody listens
+    stale.close()
+
+    fd = os.open(single_instance._claim_path(name), os.O_CREAT | os.O_RDWR, 0o600)
+    fcntl.flock(fd, fcntl.LOCK_EX)  # the winner holds the claim
+    owner = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+
+    def _winner() -> None:
+        time.sleep(0.3)
+        os.unlink(path)
+        owner.bind(path)
+        owner.listen(1)
+        os.close(fd)  # the winner releases the claim once it is bound
+
+    thread = threading.Thread(target=_winner)
+    thread.start()
+    try:
+        assert single_instance.listen(name) is None
+        assert single_instance.another_instance_is_running(name) is True, (
+            "the losing launch came back before the winner was bound, so app.py's "
+            "re-probe finds nobody and this launch runs unguarded beside it"
+        )
+    finally:
+        thread.join()
+        owner.close()
