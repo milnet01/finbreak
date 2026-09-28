@@ -1027,12 +1027,12 @@ def test_complete_first_run_over_existing_vault_wipes_key(paths):
     svc.first_run(bytearray(_PW), "ZAR")  # the vault now exists
     svc.lock()
 
-    wiped: list[int] = []
+    wiped: list[bytes] = []
     real = auth_mod._wipe
 
     def spy(buf):
         if buf:
-            wiped.append(len(buf))
+            wiped.append(bytes(buf))  # the contents, before the wipe zeroes them
         real(buf)
 
     auth_mod._wipe = spy
@@ -1042,7 +1042,12 @@ def test_complete_first_run_over_existing_vault_wipes_key(paths):
             other.complete_first_run(b"\x01" * KEY_LEN, other.new_params(), "ZAR")
     finally:
         auth_mod._wipe = real
-    assert KEY_LEN in wiped, "the derived key copy is wiped even when the guard fires"
+    # Match the key's own bytes, not its length: the DEK wipe on the same path
+    # is also KEY_LEN long, so a length match passed with the kek_master wipe
+    # deleted (full audit 2026-09-27, row 8).
+    assert b"\x01" * KEY_LEN in wiped, (
+        "the derived key copy is wiped even when the guard fires"
+    )
 
 
 def test_INV6_unlock_distinct_message_for_malformed_sidecar(qtbot, service, paths):

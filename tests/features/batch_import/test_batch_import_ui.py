@@ -543,7 +543,15 @@ def test_a_second_import_all_cannot_arm_a_second_run(
 
     monkeypatch.setattr(BatchImportService, "run_step", logging_step)
     widget._batch_review._import_button.click()
-    qtbot.wait(300)
+    # Wait on the finished state, not a fixed time: three chained turns each
+    # commit to SQLCipher, and a loaded runner can outlast any fixed wait
+    # (full audit 2026-09-27, row 10). Then a short settle, so a second chain
+    # armed by the queued press has room to show itself in `indices`.
+    qtbot.waitUntil(
+        lambda: all(f.outcome == "committed" for f in widget._batch_files),
+        timeout=5000,
+    )
+    qtbot.wait(50)
 
     assert indices == [0, 1, 2], (
         f"run_step saw indices {indices} — a second chain was armed, so the "
@@ -714,7 +722,13 @@ def test_INV14_done_waits_for_the_report(
 
     monkeypatch.setattr(BatchImportService, "run_step", cancelling_step)
     widget2._batch_review._import_button.click()
-    qtbot.wait(200)
+    qtbot.waitUntil(
+        lambda: (
+            widget2._batch_review._close_button.isVisible()
+            and any(f.outcome == "not_attempted" for f in widget2._batch_files)
+        ),
+        timeout=5000,
+    )
     assert widget2._batch_files[0].outcome == "committed", (
         "precondition: the run really did commit a prefix before the cancel"
     )
@@ -753,7 +767,10 @@ def test_INV14_done_waits_for_the_report(
         if button.text() == "Cancel"
     )
     map_cancel.click()
-    qtbot.wait(100)
+    qtbot.waitUntil(
+        lambda: any(f.outcome == "skipped" for f in widget3._batch_files),
+        timeout=5000,
+    )
     assert declines == [], (
         "declining ONE file's mapping must not tear down the whole batch"
     )

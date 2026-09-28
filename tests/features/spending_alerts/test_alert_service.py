@@ -15,7 +15,7 @@ from decimal import Decimal
 import pytest
 
 from conftest import _PW
-from finbreak.models import AlertKind
+from finbreak.models import AlertKind, Direction
 from finbreak.repositories.transactions import TransactionRepository
 from finbreak.services.accounts import AccountService
 from finbreak.services.alerts import AlertService
@@ -125,7 +125,10 @@ def test_INV2_confirmed_and_in_streams_do_not_yield_new_recurring(service) -> No
     svc = service
     a = _acct(svc)
     # An IN suggested stream (salary) must never fire — new-recurring is OUT-only.
-    for day in ("2026-05-25", "2026-06-25", "2026-07-05"):
+    # Evenly spaced, so the detector really does see a stream: the old dates
+    # (31 then 10 days apart) fell in two bands and were never recurring, so the
+    # OUT-only rule was never reached (full audit 2026-09-27, row 9).
+    for day in ("2026-05-05", "2026-06-05", "2026-07-05"):
         _add(svc, a, day, 300_000, "Salary")
     # A confirmed OUT stream is already known -> not "new".
     for day in ("2026-05-01", "2026-06-01", "2026-07-01"):
@@ -133,6 +136,11 @@ def test_INV2_confirmed_and_in_streams_do_not_yield_new_recurring(service) -> No
     rec = RecurringService(svc.vault)
     gym = next(it for it in rec.candidates(_TODAY) if it.merchant_key == "gym")
     rec.confirm(gym.direction, gym.merchant_key)
+    salary = [it for it in rec.candidates(_TODAY) if it.merchant_key == "salary"]
+    assert salary and salary[0].direction is Direction.IN, (
+        "precondition: salary must be a detected IN stream, or this leg never "
+        f"reaches the OUT-only rule: {salary}"
+    )
 
     alerts = AlertService(svc.vault).alerts(_TODAY)
     assert _by_kind(alerts, AlertKind.NEW_RECURRING) == []

@@ -1849,9 +1849,12 @@ def test_FIBR0202_batch_message_branches_are_ordered(qtbot, service):
 
     total = widget._confirm_text(removed=5, kept=0, statements=3)
     assert "5" in total and "3" in total, total
-    assert "shared" in total.lower(), (
+    # Words only the total-loss branch carries: "shared" and "staying" also
+    # appear in the partial-share branch, which says rows SURVIVE (audit row 7).
+    assert "every one of" in total and "Nothing is shared" in total, (
         f"the kept == 0 wording must state the loss is TOTAL (D7): {total!r}"
     )
+    assert "will survive" not in total, total
 
 
 def test_FIBR0202_INV11_delete_all_reaches_the_total_loss_wording(
@@ -1876,9 +1879,10 @@ def test_FIBR0202_INV11_delete_all_reaches_the_total_loss_wording(
 
     text = captured["text"]
     assert "3" in text, f"names all three statements: {text!r}"
-    assert "shared" in text.lower() and "staying" in text.lower(), (
+    assert "every one of" in text and "Nothing is shared" in text, (
         f"states the loss is total, not that anything survives: {text!r}"
     )
+    assert "will survive" not in text, text
     assert widget.statement_count() == 0
     assert TransactionRepository(conn).list_all() == []
 

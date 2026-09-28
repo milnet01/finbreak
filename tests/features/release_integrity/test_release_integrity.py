@@ -241,14 +241,37 @@ def test_INV3a_signed_manifest_roundtrip_and_tamper(tmp_path):
 # INV-3b — each release script double-verifies against the committed key: the
 # fetched manifest before the merge, the re-signed manifest before the upload.
 # --------------------------------------------------------------------------- #
+def _manifest_verify_starts(text: str) -> list[int]:
+    """Offsets of each heredoc that VERIFIES ``SHA256SUMS`` against the key.
+
+    Anchored to the verify block itself -- the ``python3 -`` heredoc fed the
+    manifest and its ``.sig``, whose body loads ``RELEASE_PUBLIC_KEY_B64`` and
+    calls ``.verify(`` -- not to the two names appearing anywhere in a range.
+    The looser form passed with the anti-laundering block deleted, because an
+    ``rm -f`` of the same files and the AppImage verify also name them (full
+    audit 2026-09-27, row 6).
+    """
+    starts = []
+    for match in re.finditer(
+        r'python3 - "\$DIST/SHA256SUMS" "\$DIST/SHA256SUMS\.sig" <<\'PY\'\n(.*?)\nPY\n',
+        text,
+        re.DOTALL,
+    ):
+        body = match.group(1)
+        if "RELEASE_PUBLIC_KEY_B64" in body and ".verify(" in body:
+            starts.append(match.start())
+    return starts
+
+
 @pytest.mark.parametrize(
     "script", [_RELEASE_LINUX, _RELEASE_WINDOWS], ids=lambda p: p.name
 )
 def test_INV3b_double_verify_gate_bound_to_position(script):
     text = script.read_text()
 
-    merge_i = text.find("gen-checksums.sh")
-    assert merge_i != -1, f"{script.name}: no gen-checksums.sh merge call"
+    merge = re.search(r"^\s*scripts/gen-checksums\.sh ", text, re.MULTILINE)
+    assert merge is not None, f"{script.name}: no gen-checksums.sh merge call"
+    merge_i = merge.start()
 
     # the gh release command that publishes the manifest
     upload_i = None
@@ -261,22 +284,19 @@ def test_INV3b_double_verify_gate_bound_to_position(script):
     )
     assert merge_i < upload_i, f"{script.name}: the merge must precede the upload"
 
-    before_merge = text[:merge_i]
-    between = text[merge_i:upload_i]
+    verifies = _manifest_verify_starts(text)
 
     # gate 1 — the FETCHED SHA256SUMS.sig verified against the committed key
-    # BEFORE the merge (§ 3.3 step 3, anti-laundering). Bound to its subject +
-    # position: deleting it strips the only SHA256SUMS.sig verify before merge.
-    assert (
-        "SHA256SUMS.sig" in before_merge and "RELEASE_PUBLIC_KEY_B64" in before_merge
-    ), (
+    # BEFORE the merge (§ 3.3 step 3, anti-laundering). Bound to the verify block
+    # itself and its position: deleting it leaves no verify before the merge.
+    assert any(i < merge_i for i in verifies), (
         f"{script.name}: no fetched-manifest verify gate (SHA256SUMS.sig vs "
         "RELEASE_PUBLIC_KEY_B64) before the gen-checksums.sh merge"
     )
 
     # gate 2 — the RE-SIGNED SHA256SUMS.sig verified against the committed key
     # BEFORE the upload (§ 3.3 step 6). Bound to the merge->upload window.
-    assert "SHA256SUMS.sig" in between and "RELEASE_PUBLIC_KEY_B64" in between, (
+    assert any(merge_i < i < upload_i for i in verifies), (
         f"{script.name}: no re-signed-manifest verify gate (SHA256SUMS.sig vs "
         "RELEASE_PUBLIC_KEY_B64) between the merge and the gh release upload"
     )

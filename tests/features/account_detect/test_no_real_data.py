@@ -93,6 +93,22 @@ _SKIP_SUFFIXES = frozenset(
 )
 
 
+def _leaks(text: str, keys: set[str]) -> bool:
+    """Does any digit run in ``text`` CONTAIN a key?
+
+    Containment, not equality (full audit 2026-09-27, row 5). The separator class
+    lets a number merge with digits a few spaces away -- a statement header pasted
+    into prose puts a date column right after it -- and the merged run never
+    EQUALS a key. Each run is reduced to its digits alone for the comparison; the
+    keys are already normalised, and a key found anywhere inside is the leak.
+    """
+    for run in _DIGIT_RUN.findall(text):
+        digits = "".join(ch for ch in run if ch.isdigit())
+        if len(digits) >= _MIN_DIGITS and any(key in digits for key in keys):
+            return True
+    return False
+
+
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[3]
 
@@ -117,6 +133,8 @@ def _tracked_files(root: Path) -> list[Path]:
         "5566\t777\t888\t9",  # tab-separated
         "5566-777-888-9",  # dash-separated
         "00 5566 777 888 9",  # zero-padded
+        "5566 777 888 9  2026-09-01",  # a date column two spaces after it
+        "Ref 12 5566 777 888 9",  # other digits just before it
     ],
 )
 def test_the_scanner_sees_every_spelling_a_leak_could_take(spelling: str) -> None:
@@ -129,13 +147,7 @@ def test_the_scanner_sees_every_spelling_a_leak_could_take(spelling: str) -> Non
     as-printed. A narrower separator class turns each fragment into a sub-8-digit
     run that the floor discards, and the guard passes on a live leak.
     """
-    hits = {
-        normalise_account_number(run)
-        for run in _DIGIT_RUN.findall(spelling)
-        if sum(ch.isdigit() for ch in run) >= _MIN_DIGITS
-    }
-
-    assert "55667778889" in hits
+    assert _leaks(spelling, {normalise_account_number("5566 777 888 9")})
 
 
 def test_no_corpus_numbers_in_tree() -> None:
@@ -162,18 +174,17 @@ def test_no_corpus_numbers_in_tree() -> None:
         if path.suffix.lower() in _SKIP_SUFFIXES or not path.is_file():
             continue
         try:
-            text = path.read_text(encoding="utf-8")
-        except (UnicodeDecodeError, OSError):
-            continue  # binary or unreadable — no prose to leak
-        for run in _DIGIT_RUN.findall(text):
-            if sum(ch.isdigit() for ch in run) < _MIN_DIGITS:
-                continue
-            if normalise_account_number(run) in keys:
-                # Report the location only — never the value. A failure message is
-                # printed to a terminal and pasted into issues; echoing the number
-                # would re-leak what the test exists to catch.
-                offenders.append(str(path.relative_to(root)))
-                break
+            # errors="replace": a cp1252 CSV or OFX is still text, and its digits
+            # are ASCII in every encoding involved -- skipping the file whole
+            # would pass a real number inside it (audit row 5).
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue  # unreadable -- nothing to scan
+        if _leaks(text, keys):
+            # Report the location only — never the value. A failure message is
+            # printed to a terminal and pasted into issues; echoing the number
+            # would re-leak what the test exists to catch.
+            offenders.append(str(path.relative_to(root)))
 
     assert not offenders, (
         "A real corpus account number appears in these tracked files: "
