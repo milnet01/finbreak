@@ -11,8 +11,8 @@ history is [`docs/history/workflow-state.md`](docs/history/workflow-state.md).
 **Items 1–3 are read on every session start; 4–6 are read when you need
 them, not up front.** § Resumption flow at the bottom of this file is the
 operative procedure and it governs — it reads 1–3 in one batch, then pulls
-the *one* standard matching the active item's `Kind`. Do not read all six
-standards and the active spec before summarising: that is
+the *one* standard matching the active item's `Kind`. Do not read every
+standard and the active spec before summarising: that is
 six-plus reads to answer a question the roadmap DB already answers.
 
 1. **This file** — stable rules and conventions.
@@ -66,14 +66,18 @@ six-plus reads to answer a question the roadmap DB already answers.
 
 3. **Which item is active.** The roadmap DB says which items are 🚧; it
    does not say which ONE this session is working. Where exactly one is 🚧,
-   that is it. Where several are, **ask the user** rather than guessing.
+   that is it. Where several are, **ask the user** rather than guessing;
+   where none is, say so and ask which planned item to take. **Flip an item
+   to 🚧 with `roadmap_log` when you start it** — that status is the only
+   record the next session has of what is in progress.
    Nothing else holds this: the file that used to, `.claude/workflow.md`,
    was retired on 2026-09-28 (FIBR-0368). **Summarise back to the user**
    before doing any work.
-4. **`docs/standards/{coding,naming,dependencies,documentation,testing,commits}.md`**
-   — the seven shareable v1 standards. Read the **one** matching the active
-   item's `Kind` — not all six. (§ Resumption flow step 2 is where that
-   read happens, and it governs.)
+4. **The one `docs/standards/` file the active item's `Kind` maps to** in
+   [`docs/standards/README.md`](docs/standards/README.md)'s Kind→standard
+   list — plus `versioning.md` for `Kind: release`, which that README says it
+   governs. Not every standard. (§ Resumption flow step 2 is where that read
+   happens, and it governs.)
 5. **`docs/specs/<active-id>.md`** — the contract for the
    currently-active roadmap item. Read it when you start work on that
    item; not every item has one (see § Spec discipline in the global
@@ -340,7 +344,8 @@ full pipeline run.
 `FINBREAK_BUILD_SMOKE=1`, but `ci-setup.sh` installs no container runtime, so
 inside the container the test hits
 `pytest.skip("no container runtime (podman/docker) on PATH")`
-(`tests/features/bundling/test_bundling.py:299`) and the smoke-test **silently
+(`test_INV2_INV3_build_smoke_clean_room` in
+`tests/features/bundling/test_bundling.py`) and the smoke-test **silently
 does not run** — a skip that reads as coverage. Run `./scripts/ci-local.sh
 --build` or `./scripts/build-smoke.sh` on the host instead.
 
@@ -853,7 +858,8 @@ what finds the symbol-only citations.
 2. Once `Kind` is known from the active item, read the
    matching `docs/standards/<which>.md` (single read).
 3. **Summarise back to the user:** "We're on `<ID>`, last did `<X>`,
-   next is `<Y>`."
+   next is `<Y>`." Take `<X>` from `git log --oneline -5` and `<Y>` from the
+   active item's body (`roadmap_query id`), which ends with its latest note.
 4. Wait for confirm or redirect.
 
 **Never skip step 3.** Catching state-recovery errors before
