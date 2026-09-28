@@ -269,7 +269,8 @@ hold them and never will, so this check is local-only by design.
 **Pre-push hook — the gate runs automatically before a `git push`, unless you
 pass `--no-verify` or the push is tag-only** (that second case is the hook's
 own doing, and reaching for the flag there is what it exists to stop — see
-below).
+below). **A push that changes only `.md` files runs the documentation checks
+instead of the full gate**, also by the hook's own choice (§ Doc-only pushes).
 
 **It also refuses outright on a tree with uncommitted changes to tracked
 files**, rather than running. The gate reads the files on disk, so its verdict
@@ -294,10 +295,8 @@ git config core.hooksPath .githooks
 (A rare `pip-audit` timeout — against either pypi or osv.dev — can make the
 hook flake on a non-finding; retry, or `git push --no-verify` for that
 transient case. Those two are the gate's only network-dependent stages.)
-**That is not the only sanctioned `--no-verify`** — a doc-only push takes it as
-its normal route, having run the prose checks by hand instead (§ Doc-only
-pushes below). Read this line alone and you run the full gate on every ROADMAP
-annotation.
+A doc-only push needs no `--no-verify`: the hook picks the documentation
+checks for it (FIBR-0373).
 
 **A tag-only push needs no `--no-verify` and never did: the hook skips it by
 itself.** The habit of reaching for the flag there came from a double gate that
@@ -430,39 +429,22 @@ reachable from what you are already pushing.
 
 ### Doc-only pushes skip the FULL gate, never the prose checks (user directives 2026-08-05, 2026-08-18)
 
-A push that touches **only** documentation does not run
-`./scripts/ci-local.sh`. It runs the prose checks below, then pushes with
-`git push --no-verify`. **This section is the standing authorisation
-[`docs/standards/commits.md` § 2.3](docs/standards/commits.md) requires** —
-that standard treats a skipped hook as an anti-pattern unless something
-explicitly authorises it, and points back here for the one case where
-something does. The full gate takes ~1m45s and most of it is aimed
-at code, so paying it for a ROADMAP annotation is mostly waiting — but the
-prose checks cost about **two seconds**, which is not a saving worth reasoning
-about.
+A push that touches **only** documentation does not run the full gate. It runs
+the documentation checks — the test suites that read prose, and `gitleaks` —
+and nothing else. **`.githooks/pre-push` makes that choice itself** (FIBR-0373):
+a plain `git push` is the whole route, with no `--no-verify`. **This section is
+the standing authorisation
+[`docs/standards/commits.md` § 2.3](docs/standards/commits.md) requires** for
+the hook to skip the rest of the gate on such a push. The documentation checks
+take a few seconds. To run them by hand:
 
 ```bash
-pytest tests/features/account_detect/ tests/features/harness/ \
-       tests/features/release_integrity/ \
-       tests/features/flatpak_packaging/ \
-       tests/features/prose_checks/                                # ~1.6s
-gitleaks dir . --no-banner --redact --config .gitleaks.toml       # ~0.3s
-git push --no-verify origin main
+./scripts/ci-local.sh --docs     # DOCS_SUITES + gitleaks --redact; the hook runs the same
 ```
 
-**Stop if either check fails — those are three independent commands, not a
-chain.** A red `pytest` or a `gitleaks` hit does not stop the `git push` on the
-line below it, and this route is the only thing standing in for the hook. Since
-the leak guard went live (below) a failure here means pushing a real account
-number. Read both results before the third line.
-
-**`gitleaks` is copied verbatim from `ci-local.sh`'s stage — do not shorten
-it.** `--config` is auto-discovered on this machine (checked 2026-08-18: bare
-`gitleaks dir .` and the full form both return *no leaks found*), so the flag
-that earns its place is **`--redact`**: without it a hit prints the secret in
+**The suite list lives in `scripts/ci-local.sh`'s `DOCS_SUITES` alone.** Its
+`gitleaks` line keeps **`--redact`**: without it a hit prints the secret in
 clear, and § Build and test three screens up says never to print those values.
-A check whose failure mode is "leak it to the terminal" is worse than the leak
-it found.
 
 **These suites read tracked prose, and the list is ENUMERATED, so it can go
 stale.** It has, twice. **Do not justify the skip by claiming no Python stage
@@ -491,11 +473,10 @@ is why the list is now bound to the tree by a guard rather than kept by hand
   **exists**, so moving or deleting that doc is a red doc-only push. Existence
   only — it never reads the contents.
 - **`tests/features/prose_checks/`** (FIBR-0278) reads **this file** — it
-  parses the fenced `pytest` command in this very section and asserts it
-  matches its own `_READS_PROSE` ledger, and separately asserts every
-  directory under `tests/features/` is sorted into that ledger or into
-  `_NO_PROSE`. It is a member of its own list: editing this fenced command
-  without editing that ledger (or vice versa) is exactly what turns it red.
+  asserts the fenced command in this section runs `ci-local.sh --docs` and
+  names no suites of its own. It also asserts `DOCS_SUITES` matches its
+  `_READS_PROSE` ledger, and that every directory under `tests/features/` is
+  sorted into that ledger or into `_NO_PROSE`.
 - **`gitleaks dir .`** scans prose too, and `.githooks/pre-push` exists
   because of a red **docs-only** commit (`a0cc895`).
 
@@ -510,17 +491,19 @@ turns nothing red.
 `git ls-files` and reads every tracked text file without naming one, so no path
 literal betrays it — any search-based audit misses the broadest member.
 `tests/features/prose_checks/` (**FIBR-0278**) is the guard instead: it fails if
-this fenced command and its `_READS_PROSE` ledger disagree, and it fails if any
+`DOCS_SUITES` and its `_READS_PROSE` ledger disagree, and it fails if any
 suite directory is sorted into neither ledger. Add a suite to **both** places —
-this fenced command and the ledger it checks against — whenever you write one
+`DOCS_SUITES` and the ledger it checks against — whenever you write one
 that reads a doc; the guard is what catches you if you only do one. Why it is a
 guard rather than a hand-kept list: [`docs/history/claude-md.md`](docs/history/claude-md.md).
 
 **The wider list costs a fraction of a second** against the old two — not a
 saving worth reasoning about.
 
-**What counts as "only documentation": every path in
-`git diff --name-only @{u}..HEAD` ends in `.md`.** That is the whole test, and
+**What counts as "only documentation": every path the push changes ends in
+`.md`.** The hook takes, for each ref, `git diff --name-only <remote tip>
+<pushed commit>`. It fails closed: a new branch has no remote tip, so it takes
+the full gate, as does a range git cannot resolve. That is the whole test, and
 two things about it are deliberate.
 
 **The unit is the PUSH, not the last commit** — every commit going up, which is

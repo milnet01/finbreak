@@ -31,6 +31,27 @@ if [ "${1:-}" = "--build" ]; then
     export FINBREAK_BUILD_SMOKE=1
 fi
 
+# `--docs`: the checks a push that changes only .md files still owes (FIBR-0373;
+# CLAUDE.md § Doc-only pushes). .githooks/pre-push picks it for such a push.
+# DOCS_SUITES is every suite that reads a tracked doc's contents or requires
+# one to exist; tests/features/prose_checks/ holds the ledger it must match,
+# and fails if a new suite is sorted into neither list.
+DOCS_SUITES=(
+    tests/features/account_detect/
+    tests/features/harness/
+    tests/features/release_integrity/
+    tests/features/flatpak_packaging/
+    tests/features/prose_checks/
+)
+if [ "${1:-}" = "--docs" ]; then
+    echo "== [docs] pytest: the suites that read prose =="
+    pytest -q "${DOCS_SUITES[@]}"
+    echo "== [docs] gitleaks =="
+    gitleaks dir . --no-banner --redact --config .gitleaks.toml
+    echo "Documentation checks passed."
+    exit 0
+fi
+
 # The two pip-audit stages spend their time waiting on the network (~57s here,
 # one after the other), so they start now and run alongside every other stage;
 # their results are read at the end, where each still fails the gate on its own

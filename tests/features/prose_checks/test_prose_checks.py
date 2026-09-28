@@ -2,11 +2,13 @@
 
 See spec.md. Two invariants:
 
-  INV-1 — the fenced ``pytest`` command under CLAUDE.md's "### Doc-only pushes
-  skip the FULL gate, never the prose checks" section names exactly the
-  suites this module's ``_READS_PROSE`` ledger names. Whichever side gains a
-  suite without the other is a stale list — the exact failure FIBR-0278 was
-  filed over (the section named two suites where the real answer was four).
+  INV-1 — ``scripts/ci-local.sh``'s ``DOCS_SUITES`` list, which its ``--docs``
+  mode runs on a docs-only push (FIBR-0373), names exactly the suites this
+  module's ``_READS_PROSE`` ledger names. Whichever side gains a suite without
+  the other is a stale list — the exact failure FIBR-0278 was filed over (the
+  list named two suites where the real answer was four). And the fenced
+  command under CLAUDE.md's "### Doc-only pushes skip the FULL gate, never the
+  prose checks" runs that mode rather than keeping a second list of its own.
 
   INV-2 — every directory under ``tests/features/`` is classified into
   ``_READS_PROSE`` or ``_NO_PROSE``. A new suite that reads a tracked doc's
@@ -34,6 +36,8 @@ pytestmark = pytest.mark.features
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _CLAUDE_MD = _REPO_ROOT / "CLAUDE.md"
+_GATE = _REPO_ROOT / "scripts" / "ci-local.sh"
+_DOCS_SUITES = re.compile(r"^DOCS_SUITES=\((.*?)^\)", re.MULTILINE | re.DOTALL)
 _FEATURES_DIR = _REPO_ROOT / "tests" / "features"
 
 _SECTION_HEADING = "### Doc-only pushes skip the FULL gate, never the prose checks"
@@ -174,31 +178,43 @@ def _fenced_pytest_block(claude_md_text: str) -> str:
     return after_heading[body_start:fence_close]
 
 
-def _suites_named_in_claude_md() -> frozenset[str]:
-    text = _CLAUDE_MD.read_text(encoding="utf-8")
-    block = _fenced_pytest_block(text)
-    # The pytest invocation is line-continued with trailing backslashes
-    # across multiple lines; join them before scanning for suite paths.
-    joined = block.replace("\\\n", " ")
-    return frozenset(_SUITE_PATH.findall(joined))
+def _suites_named_in_the_gate() -> frozenset[str]:
+    match = _DOCS_SUITES.search(_GATE.read_text(encoding="utf-8"))
+    assert match, (
+        "scripts/ci-local.sh has no `DOCS_SUITES=(` ... `)` array -- INV-1 "
+        "cannot find the list its --docs mode runs."
+    )
+    return frozenset(_SUITE_PATH.findall(match.group(1)))
 
 
-def test_INV1_claude_md_prose_list_matches_the_ledger() -> None:
-    claimed = _suites_named_in_claude_md()
+def test_INV1_the_gates_docs_list_matches_the_ledger() -> None:
+    claimed = _suites_named_in_the_gate()
 
-    only_in_claude_md = claimed - _READS_PROSE
+    only_in_gate = claimed - _READS_PROSE
     only_in_ledger = _READS_PROSE - claimed
 
-    assert not only_in_claude_md and not only_in_ledger, (
-        "CLAUDE.md's § Doc-only pushes fenced pytest command and this "
-        "module's _READS_PROSE ledger disagree.\n"
-        f"  named in CLAUDE.md but missing from _READS_PROSE: "
-        f"{sorted(only_in_claude_md) or '(none)'}\n"
-        f"  in _READS_PROSE but missing from CLAUDE.md's command: "
+    assert not only_in_gate and not only_in_ledger, (
+        "scripts/ci-local.sh's DOCS_SUITES and this module's _READS_PROSE "
+        "ledger disagree.\n"
+        f"  in DOCS_SUITES but missing from _READS_PROSE: "
+        f"{sorted(only_in_gate) or '(none)'}\n"
+        f"  in _READS_PROSE but missing from DOCS_SUITES: "
         f"{sorted(only_in_ledger) or '(none)'}\n"
-        "Fix: update CLAUDE.md's fenced pytest command AND this module's "
-        "_READS_PROSE ledger together -- updating only one leaves the "
-        "other stale again."
+        "Fix: update DOCS_SUITES AND this module's _READS_PROSE ledger "
+        "together -- updating only one leaves the other stale again."
+    )
+
+
+def test_INV1_claude_md_runs_the_docs_mode_instead_of_a_list() -> None:
+    block = _fenced_pytest_block(_CLAUDE_MD.read_text(encoding="utf-8"))
+    assert "./scripts/ci-local.sh --docs" in block, (
+        "CLAUDE.md's § Doc-only pushes fence no longer runs "
+        "`./scripts/ci-local.sh --docs`."
+    )
+    assert not _SUITE_PATH.findall(block), (
+        "CLAUDE.md's § Doc-only pushes fence names test suites again. The list "
+        "lives in scripts/ci-local.sh's DOCS_SUITES alone; a second copy here "
+        "is the stale list FIBR-0278 was filed over."
     )
 
 
@@ -226,5 +242,5 @@ def test_INV2_every_suite_directory_is_classified() -> None:
         f"  ledgered but no longer on disk: {sorted(stale_entries) or '(none)'}\n"
         "If a new suite reads a tracked doc's contents or requires one to "
         "exist, add it to _READS_PROSE (with a one-line reason) AND to "
-        "CLAUDE.md's fenced pytest command. Otherwise add it to _NO_PROSE."
+        "scripts/ci-local.sh's DOCS_SUITES. Otherwise add it to _NO_PROSE."
     )

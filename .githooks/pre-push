@@ -39,6 +39,8 @@ fi
 # as `<local ref> <local sha> <remote ref> <remote sha>`; with no stdin (a
 # hand-run hook) nothing is known, so the gate runs.
 ZERO=0000000000000000000000000000000000000000
+# Read once: the tag check below and the docs check after it both need the list.
+REFS=$(cat)
 saw_ref=0
 tags_only=1
 
@@ -68,7 +70,7 @@ while read -r _local_ref local_sha remote_ref _remote_sha; do
         tags_only=0
         break
     fi
-done
+done <<< "$REFS"
 
 if [ "$saw_ref" = 1 ] && [ "$tags_only" = 1 ]; then
     echo "== pre-push: tag-only push of commits already on the remote =="
@@ -94,6 +96,42 @@ if ! git diff --quiet HEAD -- 2>/dev/null; then
     echo "== not on the commits you are pushing. Commit or stash them first.   ==" >&2
     echo "== Deliberately pushing anyway: git push --no-verify                 ==" >&2
     exit 1
+fi
+
+# A push whose every changed path ends in .md runs `ci-local.sh --docs`: the
+# test suites that read prose, and gitleaks (FIBR-0373; local-gate.md § 6).
+# The unit is every commit going up -- the remote's tip to ours, per ref -- so a
+# code commit queued behind a doc commit still takes the full gate. It fails
+# closed: a new branch (no remote tip to compare), a range git cannot resolve,
+# an empty diff, or a push with no ref to classify all run everything.
+docs_only=0
+classified=0
+if [ -n "$REFS" ]; then
+    docs_only=1
+    while read -r _local_ref local_sha remote_ref remote_sha; do
+        if [ -z "${remote_ref:-}" ] || [ "$local_sha" = "$ZERO" ]; then
+            continue
+        fi
+        if [ "$remote_sha" = "$ZERO" ] ||
+            ! files=$(git diff --name-only --no-renames "$remote_sha" "$local_sha" 2>/dev/null) ||
+            [ -z "$files" ]; then
+            docs_only=0
+            break
+        fi
+        classified=1
+        while IFS= read -r path; do
+            case "$path" in
+                *.md) ;;
+                *) docs_only=0; break ;;
+            esac
+        done <<< "$files"
+        [ "$docs_only" = 1 ] || break
+    done <<< "$REFS"
+fi
+
+if [ "$docs_only" = 1 ] && [ "$classified" = 1 ]; then
+    echo "== pre-push: every changed path ends in .md -- running the documentation checks =="
+    exec ./scripts/ci-local.sh --docs
 fi
 
 echo "== pre-push: running scripts/ci-local.sh (the CI gate) =="

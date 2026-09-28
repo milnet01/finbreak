@@ -252,7 +252,11 @@ def _hook_sandbox(tmp_path: Path) -> tuple[Path, Path, str]:
     (work / "scripts").mkdir()
     sentinel = work / "gate-ran"
     stub = work / "scripts" / "ci-local.sh"
-    stub.write_text(f'#!/usr/bin/env bash\ntouch "{sentinel}"\n', encoding="utf-8")
+    # The stub records its arguments, so a test can tell the full gate (none)
+    # from the documentation-only mode (`--docs`, FIBR-0373).
+    stub.write_text(
+        f'#!/usr/bin/env bash\necho "$*" > "{sentinel}"\n', encoding="utf-8"
+    )
     stub.chmod(0o755)
 
     (work / "a.txt").write_text("1\n", encoding="utf-8")
@@ -411,6 +415,77 @@ def test_the_hook_still_runs_the_gate_on_a_clean_tree(tmp_path: Path) -> None:
         "a clean tree must still take the gate — refusing a dirty one must not "
         "have become refusing every one"
     )
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0373 — a push that changes only .md files runs the documentation checks  #
+# --------------------------------------------------------------------------- #
+def _git(work: Path, *args: str) -> str:
+    import subprocess
+
+    return subprocess.run(
+        ["git", *args],
+        cwd=work,
+        check=True,
+        capture_output=True,
+        text=True,
+        env=_sandbox_env(),
+    ).stdout.strip()
+
+
+def _commit_on_pushed(work: Path, pushed: str, name: str) -> str:
+    """Replace the sandbox's unpushed commit with one that changes `name` only."""
+    _git(work, "reset", "-q", "--hard", pushed)
+    (work / name).write_text("changed\n", encoding="utf-8")
+    _git(work, "add", name)
+    _git(work, "commit", "-qm", f"change {name}")
+    return _git(work, "rev-parse", "HEAD")
+
+
+def test_FIBR0373_a_docs_only_push_runs_the_docs_mode(tmp_path: Path) -> None:
+    work, sentinel, pushed = _hook_sandbox(tmp_path)
+    head = _commit_on_pushed(work, pushed, "README.md")
+    rc = _run_hook(work, f"refs/heads/main {head} refs/heads/main {pushed}\n")
+    assert rc == 0
+    assert sentinel.exists(), "a docs-only push must still run the prose checks"
+    assert sentinel.read_text(encoding="utf-8").split() == ["--docs"], (
+        "every changed path ends in .md, so the hook should run "
+        "`ci-local.sh --docs`, not the full gate"
+    )
+
+
+def test_FIBR0373_a_push_with_any_other_file_runs_the_full_gate(
+    tmp_path: Path,
+) -> None:
+    work, sentinel, pushed = _hook_sandbox(tmp_path)
+    head = _commit_on_pushed(work, pushed, "README.md")
+    (work / "b.py").write_text("x = 1\n", encoding="utf-8")
+    _git(work, "add", "b.py")
+    _git(work, "commit", "-qm", "code rides behind the doc commit")
+    head = _git(work, "rev-parse", "HEAD")
+    _run_hook(work, f"refs/heads/main {head} refs/heads/main {pushed}\n")
+    assert sentinel.read_text(encoding="utf-8").split() == [], (
+        "a .py file is in the push, so the full gate must run -- the unit is "
+        "every commit going up, not the last one"
+    )
+
+
+def test_FIBR0373_a_new_branch_runs_the_full_gate(tmp_path: Path) -> None:
+    """With no remote commit to compare against, the changed set is unknown."""
+    work, sentinel, pushed = _hook_sandbox(tmp_path)
+    head = _commit_on_pushed(work, pushed, "README.md")
+    _run_hook(work, f"refs/heads/topic {head} refs/heads/topic {_ZERO}\n")
+    assert sentinel.read_text(encoding="utf-8").split() == [], (
+        "a branch the remote has never seen has no range to classify, so the "
+        "hook must fail closed and run everything"
+    )
+
+
+def test_FIBR0373_the_docs_mode_skips_nothing_it_should_not(tmp_path: Path) -> None:
+    """A deletion-only push classifies nothing, so it is not docs-only."""
+    work, sentinel, _pushed = _hook_sandbox(tmp_path)
+    _run_hook(work, f"refs/heads/old {_ZERO} refs/heads/old {'1' * 40}\n")
+    assert sentinel.read_text(encoding="utf-8").split() == []
 
 
 def _copy_hook(work: Path) -> Path:

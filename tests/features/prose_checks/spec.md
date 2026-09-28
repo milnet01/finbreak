@@ -19,7 +19,7 @@ is honest only when something forces every new member to be sorted into it.
 
 | # | INV | Assertion |
 |---|-----|-----------|
-| 1 | INV-1 | **The CLAUDE.md list is not stale.** Parse the fenced ` ```bash ` block under "### Doc-only pushes skip the FULL gate, never the prose checks", join its backslash line-continuations, and extract every `tests/features/<name>/` path referenced on the `pytest` command line(s). That set must equal this test module's `_READS_PROSE` ledger exactly. A mismatch names which side has what the other doesn't, and says to update CLAUDE.md's fenced command **and** the ledger together — updating only one leaves the other stale again. |
+| 1 | INV-1 | **The docs-mode list is not stale, and it is the only list.** `scripts/ci-local.sh`'s `DOCS_SUITES` array — what `--docs` runs, and what `.githooks/pre-push` picks for a push changing only `.md` files (FIBR-0373) — must name exactly this module's `_READS_PROSE` ledger. A mismatch names which side has what the other doesn't, and says to update both together. Separately, the fenced ` ```bash ` block under CLAUDE.md's "### Doc-only pushes skip the FULL gate, never the prose checks" must run `./scripts/ci-local.sh --docs` and name no `tests/features/<name>/` path of its own — a second copy of the list is the staleness FIBR-0278 was filed over. |
 | 2 | INV-2 | **Every suite under `tests/features/` is classified.** Every directory there (barring `__pycache__`) appears in exactly one of `_READS_PROSE` or `_NO_PROSE` — the two are disjoint and their union is the full set of suite directories. A new suite that reads a tracked doc's contents, or requires one to exist, and is filed in neither, turns this test red rather than silently passing uncovered. The failure message states the membership rule verbatim: "a suite belongs here if it reads a tracked doc's CONTENTS or requires one to EXIST." |
 
 ## The ledger, as of this writing
@@ -27,7 +27,7 @@ is honest only when something forces every new member to be sorted into it.
 `_READS_PROSE` (5, each with the reason inline in the test module):
 `account_detect`, `harness`, `release_integrity`, `flatpak_packaging`,
 `prose_checks` (this suite reads `CLAUDE.md` itself, so it is its own
-member — see INV-1's parse).
+member — see INV-1's fence check).
 
 `_NO_PROSE` is every other suite directory. Two are near-misses called out by
 name in `CLAUDE.md` and carry an inline comment saying why they are excluded
@@ -39,7 +39,7 @@ absence never affects the result).
 
 ## Scope
 
-In scope: the two ledgers stay truthful against CLAUDE.md's fenced command and
+In scope: the two ledgers stay truthful against ci-local.sh's DOCS_SUITES, CLAUDE.md's fenced command and
 against the suite directories that exist on disk. Out of scope: judging
 whether the *membership rule itself* is correctly worded, and re-deriving
 `_READS_PROSE` from source (CLAUDE.md says not to, and INV-1 exists precisely
