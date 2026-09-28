@@ -628,6 +628,44 @@ def test_INV7a_rename_level3_keeps_parent(qtbot, service):
     assert edited.parent_id == groceries.id, "a rename leaves the parent unchanged"
 
 
+@pytest.mark.parametrize("subject", ["level3_with_child", "level4"])
+def test_INV7a_rename_of_deep_data_keeps_parent(qtbot, service, subject):
+    """INV-7(a) on the tolerated deep data of § 4.4 (audit 2026-09-27 row 17):
+    a subject whose current parent is not an authorable "Move under…" target —
+    a Level-4 node (parent at Level 3), or a Level-3 node with a child (offered
+    Types only) — still renames without moving. The combo used to fall back to
+    its first entry, a Type, so an untouched Update silently re-parented."""
+    from finbreak.ui.categories import CategoriesWidget
+
+    svc = CategoryService(service.vault)
+    expenditure = _roots(service.vault.connection)["expenditure"]
+    groceries = _child_named(svc, expenditure.id, "Groceries")
+    spar = svc.add_category(groceries.id, "Spar")
+    aisle = svc.add_category(spar.id, "Aisle")  # Level 4, via the service (§ 4.4)
+    target, parent_id = (
+        (spar, groceries.id) if subject == "level3_with_child" else (aisle, spar.id)
+    )
+
+    widget = CategoriesWidget(service)
+    qtbot.addWidget(widget)
+    widget._select_category(target.id)
+    assert widget._move_under.currentData() == parent_id, (
+        "Move under… preselects the current parent"
+    )
+    expected_path = (
+        "Groceries" if subject == "level3_with_child" else "Groceries › Spar"
+    )
+    assert widget._move_under.currentText().endswith(expected_path), (
+        "the entry names the current parent by its full path"
+    )
+    widget._name.setText("Renamed")
+    widget._update_button.click()
+    assert widget._error.text() == ""
+    edited = CategoryRepository(service.vault.connection).get(target.id)
+    assert edited.name == "Renamed"
+    assert edited.parent_id == parent_id, "a rename leaves the parent unchanged"
+
+
 def test_INV7b_pure_reparent_via_move_under_keeps_name(qtbot, service):
     """INV-7(b): a childless Level-2 (Fuel) with an EMPTY name field + a 'Move
     under…' change re-parents (parent_id updates) AND keeps the current name

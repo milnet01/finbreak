@@ -301,7 +301,30 @@ class CategoriesWidget(QWidget):
                     self._move_under.addItem(
                         self._reparent_label(type_label, cat.name), cat.id
                     )
-        select_combo_data(self._move_under, item.data(0, _PARENT_ROLE))
+        parent_id = item.data(0, _PARENT_ROLE)
+        if self._move_under.findData(parent_id) < 0:
+            # Tolerated deep data (§ 4.4): the current parent is not an authorable
+            # target, so offer it first — else the combo rests on a Type and an
+            # untouched Update silently re-parents (audit 2026-09-27 row 17).
+            self._move_under.insertItem(
+                0, self._path_label(parent_id, categories), parent_id
+            )
+        select_combo_data(self._move_under, parent_id)
+
+    def _path_label(self, category_id: int, categories: list[Category]) -> str:
+        """The full ``Type › … › Category`` label of ``category_id``, built from
+        the same translatable separator as the other targets."""
+        by_id = {c.id: c for c in categories}
+        chain: list[Category] = []
+        node = by_id.get(category_id)
+        while node is not None:
+            chain.append(node)
+            node = by_id.get(node.parent_id) if node.parent_id is not None else None
+        root, *rest = reversed(chain)
+        label = self._type_labels.get(root.kind or "", root.name)
+        for cat in rest:
+            label = self._reparent_label(label, cat.name)
+        return label
 
     @staticmethod
     def _subtree_ids(

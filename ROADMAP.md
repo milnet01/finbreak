@@ -411,6 +411,8 @@ so Flathub review and code signing do not block this release.
   behaviour change (CLAUDE.md § Module map). After row 48: file every
   non-serious finding as one roadmap item per lane file (ledger §
   Queued).
+  Progress 2026-09-28: row 17 fixed (category rename no longer
+  re-parents deep data; FIBR-0154 § 4.2 amended). Next: row 18.
   **Layman:** A full check of the app found bugs; the serious ones (wrong dates or amounts, lost data, security gaps) are being fixed now and the rest are filed.
   Kind: review-fix.
   Source: full-audit-2026-09-27.
@@ -421,6 +423,10 @@ so Flathub review and code signing do not block this release.
   User decision 2026-09-28: at 1.0 the badge says "stable", and "early
   preview" wording is dropped from the README and from the Hub site. The
   Hub website session was told the same day.
+  When 1.0.0 is published, message the Hub website session
+  (ants-projects-hub-website-6b): it will switch the page to "Stable,
+  with more still planned." and status live. Its download buttons match
+  by pattern, so they need nothing.
   **Layman:** The badge at the top of the README calls finbreak pre-alpha, while the text below it says early preview and the website says beta.
   Kind: doc-fix.
   Source: in-session-2026-09-28.

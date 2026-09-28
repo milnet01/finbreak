@@ -33,6 +33,12 @@ signaling per
 
 ### Fixed
 
+- **Renaming a deeply nested category no longer moves it** (FIBR-0367)
+  A category sitting deeper than the three levels finbreak lets you create,
+  or a sub-category with its own children, was quietly moved under a Type
+  when you only renamed it. "Move under…" now always lists where the
+  category already is, so leaving it alone keeps it in place.
+
 - **No false spending-spike alerts while you have few months imported** (FIBR-0367)
   A month with no statements imported counted as a month of zero
   spending, so with only a couple of months in the vault an ordinary
