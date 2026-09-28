@@ -15,6 +15,7 @@ No network, no vault, no Qt.
 
 import os
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -260,6 +261,9 @@ def _hook_sandbox(tmp_path: Path) -> tuple[Path, Path, str]:
     stub.chmod(0o755)
 
     (work / "a.txt").write_text("1\n", encoding="utf-8")
+    # The sandbox's own scaffolding -- the hook copy and the stub's sentinel --
+    # must not read as untracked files, which the hook refuses (local-gate.md 5.2).
+    (work / ".gitignore").write_text("pre-push\ngate-ran\n", encoding="utf-8")
     git("add", "-A", cwd=work)
     git("commit", "-qm", "one", cwd=work)
     git("remote", "add", "origin", str(origin), cwd=work)
@@ -322,6 +326,7 @@ def test_INV5_tag_push_of_an_unpushed_commit_runs_the_gate(tmp_path: Path) -> No
 
 def test_INV5_a_branch_ref_in_the_push_runs_the_gate(tmp_path: Path) -> None:
     work, sentinel, pushed = _hook_sandbox(tmp_path)
+    _git(work, "reset", "-q", "--hard", pushed)  # the gate answers only for HEAD
     _run_hook(
         work,
         f"refs/tags/v1 {pushed} refs/tags/v1 {_ZERO}\n"
@@ -378,7 +383,8 @@ def test_the_hook_refuses_a_dirty_tree_rather_than_gating_the_wrong_bytes(
     rc = subprocess.run(
         [str(_copy_hook(work)), "origin", "file://origin"],
         cwd=work,
-        input=f"refs/heads/main {'0' * 39}1 refs/heads/main {_ZERO}\n",
+        input=f"refs/heads/main {_git(work, 'rev-parse', 'HEAD')} "
+        f"refs/heads/main {_ZERO}\n",
         text=True,
         capture_output=True,
         env=_sandbox_env(),
@@ -405,7 +411,8 @@ def test_the_hook_still_runs_the_gate_on_a_clean_tree(tmp_path: Path) -> None:
     subprocess.run(
         [str(_copy_hook(work)), "origin", "file://origin"],
         cwd=work,
-        input=f"refs/heads/main {'0' * 39}1 refs/heads/main {_ZERO}\n",
+        input=f"refs/heads/main {_git(work, 'rev-parse', 'HEAD')} "
+        f"refs/heads/main {_ZERO}\n",
         text=True,
         capture_output=True,
         env=_sandbox_env(),
@@ -486,6 +493,85 @@ def test_FIBR0373_the_docs_mode_skips_nothing_it_should_not(tmp_path: Path) -> N
     work, sentinel, _pushed = _hook_sandbox(tmp_path)
     _run_hook(work, f"refs/heads/old {_ZERO} refs/heads/old {'1' * 40}\n")
     assert sentinel.read_text(encoding="utf-8").split() == []
+
+
+# --------------------------------------------------------------------------- #
+# local-gate.md § 2.1 — secrets over the pushed COMMITS; the gate answers for  #
+# what is pushed (tip == HEAD, no untracked files)                             #
+# --------------------------------------------------------------------------- #
+def _run_hook_output(work: Path, stdin: str) -> subprocess.CompletedProcess[str]:
+    import shutil
+
+    hook = work / "pre-push"
+    shutil.copy(_HOOK, hook)
+    hook.chmod(0o755)
+    return subprocess.run(
+        [str(hook), "origin", "file://origin"],
+        cwd=work,
+        input=stdin,
+        text=True,
+        capture_output=True,
+        env=_sandbox_env(),
+    )
+
+
+def test_a_secret_added_and_removed_inside_the_push_is_refused(
+    tmp_path: Path,
+) -> None:
+    """A tree scan sees only the last commit, so a token committed and then
+    deleted in the same push passed -- and still reached the remote's history.
+    The token is built at runtime so no real-looking one sits in this source."""
+    import secrets
+    import string
+
+    work, sentinel, pushed = _hook_sandbox(tmp_path)
+    _git(work, "reset", "-q", "--hard", pushed)
+    alphabet = string.ascii_letters + string.digits
+    token = "ghp_" + "".join(secrets.choice(alphabet) for _ in range(36))
+    (work / "config.py").write_text(f'TOKEN = "{token}"\n', encoding="utf-8")
+    _git(work, "add", "config.py")
+    _git(work, "commit", "-qm", "add a token")
+    (work / "config.py").write_text("TOKEN = None\n", encoding="utf-8")
+    _git(work, "commit", "-qam", "remove it again")
+    head = _git(work, "rev-parse", "HEAD")
+
+    result = _run_hook_output(
+        work, f"refs/heads/main {head} refs/heads/main {pushed}\n"
+    )
+    assert result.returncode != 0, (
+        "a secret in a pushed commit went through because only the final tree "
+        "was scanned"
+    )
+    assert not sentinel.exists(), "it must refuse before spending the gate"
+
+
+def test_a_push_of_a_commit_other_than_head_is_refused(tmp_path: Path) -> None:
+    """A clean tree proves the files match HEAD, never that HEAD is what is being
+    pushed: `git push origin side` from main gates main's bytes."""
+    work, sentinel, pushed = _hook_sandbox(tmp_path)
+    _git(work, "checkout", "-q", "-b", "side", pushed)
+    (work / "side.txt").write_text("side\n", encoding="utf-8")
+    _git(work, "add", "side.txt")
+    _git(work, "commit", "-qm", "side")
+    side = _git(work, "rev-parse", "HEAD")
+    _git(work, "checkout", "-q", "main")
+
+    result = _run_hook_output(work, f"refs/heads/side {side} refs/heads/side {_ZERO}\n")
+    assert result.returncode != 0, "the gate answered for main while side was pushed"
+    assert not sentinel.exists()
+
+
+def test_an_untracked_file_is_refused(tmp_path: Path) -> None:
+    """An untracked source file is in no commit, yet the gate reads it from disk,
+    so it can turn the local run green while CI -- a clean checkout -- goes red."""
+    work, sentinel, _pushed = _hook_sandbox(tmp_path)
+    head = _git(work, "rev-parse", "HEAD")
+    (work / "helper.py").write_text("X = 1\n", encoding="utf-8")
+
+    result = _run_hook_output(work, f"refs/heads/main {head} refs/heads/main {_ZERO}\n")
+    assert result.returncode != 0, "an untracked file could make the gate lie"
+    assert not sentinel.exists()
+    assert "helper.py" in result.stdout + result.stderr, "name the file"
 
 
 def _copy_hook(work: Path) -> Path:

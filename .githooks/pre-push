@@ -41,6 +41,36 @@ fi
 ZERO=0000000000000000000000000000000000000000
 # Read once: the tag check below and the docs check after it both need the list.
 REFS=$(cat)
+
+# Every commit this push adds is scanned for secrets, on EVERY push -- tag-only
+# and documentation-only included (local-gate.md § 2.1 item 1). The gate's own
+# gitleaks stage reads the files on disk, so a token committed and deleted again
+# inside one push passed it and still reached the remote's history. Fails
+# closed: no gitleaks, or a range git cannot resolve, and nothing is pushed.
+REMOTE=${1:-origin}
+if [ -n "$REFS" ]; then
+    if ! command -v gitleaks >/dev/null 2>&1; then
+        echo "== pre-push: gitleaks is not installed, so the pushed commits cannot be scanned ==" >&2
+        exit 1
+    fi
+    leak_config=()
+    if [ -f .gitleaks.toml ]; then leak_config=(--config .gitleaks.toml); fi
+    while read -r _local_ref local_sha remote_ref remote_sha; do
+        if [ -z "${remote_ref:-}" ] || [ "$local_sha" = "$ZERO" ]; then
+            continue
+        fi
+        if [ "$remote_sha" = "$ZERO" ]; then
+            range="$local_sha --not --remotes=$REMOTE"
+        else
+            range="$remote_sha..$local_sha"
+        fi
+        if ! gitleaks git --no-banner --redact "${leak_config[@]}" --log-opts="$range" . >&2; then
+            echo "== pre-push: gitleaks found a secret in a commit being pushed (above), ==" >&2
+            echo "== or could not read the range $range                              ==" >&2
+            exit 1
+        fi
+    done <<< "$REFS"
+fi
 saw_ref=0
 tags_only=1
 
@@ -88,12 +118,32 @@ fi
 # Refusing is the honest answer. Gating the pushed commit itself means building
 # it in a throwaway worktree with its own venv, which costs more than the case
 # is worth; stopping and saying the run would not be about your push does not
-# pretend otherwise. Tracked files only -- an untracked scratch file is not in
-# any commit and cannot make one look different.
-if ! git diff --quiet HEAD -- 2>/dev/null; then
-    echo "== pre-push: the working tree has uncommitted changes to tracked files ==" >&2
+# pretend otherwise.
+#
+# A clean tree proves the files match HEAD, never that HEAD is what is being
+# pushed: `git push origin side` from main would gate main's bytes. So every
+# pushed tip, peeled to its commit, must BE HEAD (local-gate.md § 5.2).
+# Untracked files count too: they are in no commit, yet the gate reads them from
+# disk, so an untracked module can turn the local run green while CI -- a clean
+# checkout -- goes red. Ignored files do not count.
+HEAD_SHA=$(git rev-parse HEAD)
+while read -r local_ref local_sha remote_ref _remote_sha; do
+    if [ -z "${remote_ref:-}" ] || [ "$local_sha" = "$ZERO" ]; then
+        continue
+    fi
+    if [ "$(git rev-parse --verify --quiet "${local_sha}^{commit}")" != "$HEAD_SHA" ]; then
+        echo "== pre-push: $local_ref is not the checked-out commit (HEAD).        ==" >&2
+        echo "== the gate reads the files on disk, so it would report on HEAD and  ==" >&2
+        echo "== not on what you are pushing. Check it out, then push again.       ==" >&2
+        exit 1
+    fi
+done <<< "$REFS"
+dirty=$(git status --porcelain --untracked-files=all)
+if [ -n "$dirty" ]; then
+    echo "== pre-push: the working tree has uncommitted or untracked files:     ==" >&2
+    printf '%s\n' "$dirty" | head -20 >&2
     echo "== the gate reads the files on disk, so it would report on those and ==" >&2
-    echo "== not on the commits you are pushing. Commit or stash them first.   ==" >&2
+    echo "== not on the commits you are pushing. Commit, stash or remove them. ==" >&2
     echo "== Deliberately pushing anyway: git push --no-verify                 ==" >&2
     exit 1
 fi

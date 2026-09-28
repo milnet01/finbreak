@@ -276,14 +276,18 @@ own doing, and reaching for the flag there is what it exists to stop — see
 below). **A push that changes only `.md` files runs the documentation checks
 instead of the full gate**, also by the hook's own choice (§ Doc-only pushes).
 
-**It also refuses outright on a tree with uncommitted changes to tracked
-files**, rather than running. The gate reads the files on disk, so its verdict
-is about the working tree and not about the commits being pushed — the same
-thing after a commit-then-push, and different the moment anything is
-uncommitted. The dangerous direction is real: a fix present in the tree but not
-in the commit makes the gate green about code that never leaves the machine.
-Commit or stash first; `--no-verify` is the deliberate way past. Untracked
-files are ignored — they are in no commit and cannot make one look different.
+**It also refuses outright on a tree with uncommitted or untracked files, or
+when the commit being pushed is not the one checked out**, rather than running.
+The gate reads the files on disk, so its verdict is about the working tree and
+not about the commits being pushed — the same thing only after a
+commit-then-push of `HEAD`. The dangerous direction is real: a fix present in
+the tree but not in the commit, or an untracked module the code imports, makes
+the gate green about code that never leaves the machine. Commit, stash or
+remove them first; pushing past the refusal with `--no-verify` needs the user's
+say-so (`commits.md` § 2.3), like any other skipped hook. **And on every push it
+scans each commit being pushed for secrets** (`gitleaks git` over the pushed
+range), because the gate's own scan sees only the final files (local-gate.md
+§ 2.1).
 
 CI (`ci.yml`) runs this exact script, so a green local gate means green in CI
 **for everything the environment does not decide** — see the container caveat

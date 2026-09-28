@@ -4659,7 +4659,7 @@ work, and none of it is a release decision.
   Kind: perf.
   Source: user-request-2026-09-28.
 
-- 📋 [FIBR-0377] **CLAUDE.md's dirty-tree paragraph reads as a standing `--no-verify` authorisation for code pushes.**
+- ✅ [FIBR-0377] **CLAUDE.md's dirty-tree paragraph reads as a standing `--no-verify` authorisation for code pushes.**
   Cold lane, 2026-09-28: § Build and test's pre-push paragraph says "Commit or
   stash first; `--no-verify` is the deliberate way past." commits.md § 2.3 names
   § Build and test as a home of this project's standing --no-verify
@@ -4670,6 +4670,11 @@ work, and none of it is a release decision.
   doubt touches the pip-audit transient-flake bypass nearby. Written in
   b0e929f (FIBR-0327), outside the change this run gated, so filed rather than
   fixed in the loop.
+  Resolved 2026-09-28 with the local-gate § 2.1 hook change: the refusal
+  paragraph now says pushing past it with --no-verify needs the user's say-so
+  (commits.md § 2.3). The pip-audit transient-flake line stays as the one
+  named exception; its main cause (the PyPI lookup of finbreak) is gone
+  since FIBR-0372.
   **Layman:** One sentence in the project instructions could be read as permission to skip the safety checks before uploading code; it should say that needs the owner's say-so.
   Kind: doc-fix.
   Source: review-contract-2026-09-28 CLAUDE.md loop 11.
