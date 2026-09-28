@@ -418,6 +418,12 @@ so Flathub review and code signing do not block this release.
   f83ce13, 9dccccf, 2ace5e2, 79f3b99, b51faa9); ledger cells filled;
   CHANGELOG entries added. Next: row 26 (paths.py:25-28, empty
   writableLocation puts the vault in the working dir).
+  Progress 2026-09-28 (evening): rows 26-29 fixed, each red first, one
+  commit per row (ef8473c, 3b79948, bd58687, c0f3c88). Next: row 30 (lock
+  wipe across Transfers, Recurring, Home, import wizard, batch review).
+  Also found and fixed on the way, outside the ledger: FIBR-0374 (unlock /
+  first-run dialogs could abort the app on deletion), FIBR-0372 (pip-audit
+  PyPI lookup of finbreak itself).
   **Layman:** A full check of the app found bugs; the serious ones (wrong dates or amounts, lost data, security gaps) are being fixed now and the rest are filed.
   Kind: review-fix.
   Source: full-audit-2026-09-27.
