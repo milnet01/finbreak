@@ -1238,7 +1238,7 @@ so Flathub review and code signing do not block this release.
   Kind: doc-fix.
   Source: in-session-2026-09-21 (FIBR-0050 review-contract loop 15, 4b blast-radius sweep).
 
-- 📋 [FIBR-0375] **docs/discovery.md names no success criterion for importing a bank finbreak has never seen.**
+- ✅ [FIBR-0375] **docs/discovery.md names no success criterion for importing a bank finbreak has never seen.**
   adopt-project cold read, 2026-09-28 (two readers, quotations verified): of the
   seven dimensions discovery.md § Users and the README name, six have a
   criterion. "Anyone worldwide ... on any bank, who ... needs to set up their
@@ -1250,17 +1250,24 @@ so Flathub review and code signing do not block this release.
   code change. A discovery criterion is the user's to approve (as SC4 and SC7
   were, FIBR-0368). Under workflow.md § 1 this gap alone makes the project read
   as state 1.
+  Resolved 2026-09-28: user approved the drafted wording; added to
+  docs/discovery.md as success criterion 8. Whether anything yet
+  demonstrates it is check-queue's question.
   **Layman:** The project's list of how we'd know finbreak works never says that someone with an unfamiliar bank can get their statements in; one sentence would close it.
   Kind: doc.
   Source: adopt-project-2026-09-28.
 
-- 📋 [FIBR-0376] **discovery.md rules forecasting and recurring prediction out of scope; the README advertises Forecast and Recurring tabs.**
+- ✅ [FIBR-0376] **discovery.md rules forecasting and recurring prediction out of scope; the README advertises Forecast and Recurring tabs.**
   Raised by the adopt-project cold reader, 2026-09-28, outside its brief.
   discovery.md § Out of scope excludes "Budgeting, forecasting" and
   "Recurring-transaction prediction" and says finbreak "explains the past";
   README.md advertises a Forecast tab and a Recurring tab, which shipped. Either
   discovery.md records the scope change or the README is wrong. A scope change in
   discovery is the user's decision.
+  Resolved 2026-09-28: user chose to update the document. discovery.md's
+  out-of-scope list now keeps budgeting, savings goals and bill
+  reminders out, and records that forecasting and recurring-money
+  detection shipped.
   **Layman:** The project's founding document says finbreak only explains the past, but the app now has forecast and recurring-payment screens; one of the two needs updating.
   Kind: doc-fix.
   Source: adopt-project-2026-09-28.
@@ -3123,6 +3130,46 @@ that may never arrive.
   **Layman:** The Linux app-store package is built on last year's base system; a newer one is available.
   Kind: package.
   Source: in-session-2026-09-25 (flatpak-builder-lint while re-pinning the FIBR-0159 fork).
+
+- 📋 [FIBR-0378] **Publish on winget and in a Scoop bucket.**
+  User decision 2026-09-28 (Flathub stalled). Both point at the .exe already
+  attached to each GitHub release. Before submitting: read each channel's
+  current submission rules and any policy on AI-authored contributions (Flathub's
+  is why this list exists) and record what they say here. winget: a manifest PR
+  to microsoft/winget-pkgs (portable exe); check how it treats an unsigned
+  binary (FIBR-0133). Scoop: our own bucket needs no approval; extras is a PR.
+  **Layman:** Lets Windows users install and update finbreak with one command.
+  Kind: package.
+  Source: user-request-2026-09-28.
+
+- 📋 [FIBR-0379] **Publish an AUR package and an AppImageHub listing.**
+  User decision 2026-09-28. AUR: a finbreak-bin PKGBUILD over the release
+  AppImage, with its signature/checksum verified. AppImageHub: one PR to
+  appimage.github.io. Check each channel's rules and any AI-contribution
+  policy first and record them here.
+  **Layman:** Gets finbreak into Arch Linux's package list and the AppImage app catalogue.
+  Kind: package.
+  Source: user-request-2026-09-28.
+
+- 📋 [FIBR-0380] **Publish in the Microsoft Store as an MSIX package (after 1.0).**
+  User decision 2026-09-28: after v1.0.0. Unverified hypothesis to check
+  first: a Store-distributed MSIX is signed by Microsoft, which would sidestep
+  the Authenticode blocker (FIBR-0133). Also check: the individual developer
+  account terms, MSIX packaging of a PyInstaller build, whether auto-update must
+  defer to the Store, and any AI-authorship policy.
+  **Layman:** Puts finbreak in the Microsoft Store, and may remove the 'unknown publisher' warning Windows shows today.
+  Kind: package.
+  Source: user-request-2026-09-28.
+
+- 📋 [FIBR-0381] **Publish on the Snap Store and host our own Flatpak repository.**
+  User decision 2026-09-28. Snap: a snapcraft recipe plus Canonical's review
+  (confinement vs. the vault's data folder). Own Flatpak repo: reuse
+  packaging/flatpak/, publish a signed repo + .flatpakref from the website or
+  GitHub Pages. Check each channel's rules and any AI-contribution policy first.
+  Lower priority than winget/Scoop/AUR.
+  **Layman:** Two more Linux install routes: Ubuntu's app store, and a Flatpak finbreak serves itself without Flathub.
+  Kind: package.
+  Source: user-request-2026-09-28.
 
 ## Carries no version — ships in no artifact
 

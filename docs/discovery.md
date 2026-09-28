@@ -87,6 +87,11 @@ Each is demonstrable by doing, not just by reading code.
    in that currency imports with every amount correct to its smallest unit.
    *(Added 2026-09-28, user-approved, FIBR-0368: the Users section required it
    and no criterion measured it.)*
+8. **Works with the user's own bank.** A statement from a bank finbreak has
+   never seen imports with every row correct, using only the in-app column
+   mapping, with no code change. *(Added 2026-09-28, user-approved, FIBR-0375:
+   the Users section promises any bank's statement layout and no criterion
+   measured it.)*
 
 > **Locked-PDF handling:** when an imported statement PDF is itself
 > password-protected, the app prompts for the PDF's open-password, decrypts it
@@ -135,9 +140,12 @@ Considered and deliberately excluded from v1:
 - **Multi-currency within one profile, with FX conversion** — v1 uses a single
   base currency per profile, chosen at first run. Cross-currency conversion is
   a later add-on.
-- **Budgeting, forecasting, savings-goal tracking** — finbreak explains the
-  past, it doesn't plan the future (yet).
-- **Recurring-transaction prediction / bill reminders.**
+- **Budgeting and savings-goal tracking.**
+- **Bill reminders** — nothing notifies the user before a payment is due.
+- *Forecasting and recurring-money detection were on this list. They shipped:
+  the Recurring tab suggests repeating money for the user to confirm, and the
+  Forecast tab projects the balance forward from what was confirmed. Removed
+  from out-of-scope on 2026-09-28, user-approved (FIBR-0376).*
 - **Mobile app, web app, or any cloud sync** — desktop-only, local-only by
   design.
 - **Shared multi-user server** — separation comes from per-OS-user local data,
