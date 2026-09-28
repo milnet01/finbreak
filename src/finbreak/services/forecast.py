@@ -69,6 +69,10 @@ class ForecastInput:
     cadence: Cadence
     merchant: str
     direction: Direction
+    # The day of the month to aim at on a month cadence (``intended_day``); 0
+    # means the anchor's own day. Needed because the anchor can itself be a
+    # clamped date -- a 31st debit order last seen on Feb 28 (audit row 12).
+    day_of_month: int = 0
 
 
 def _occurrences(item: ForecastInput, today: date, horizon: date) -> list[date]:
@@ -90,22 +94,22 @@ def _occurrences(item: ForecastInput, today: date, horizon: date) -> list[date]:
     debit orders are the common case, and at a horizon boundary the wrong dates
     move the projected end balance.
 
-    Anchoring on ``last_seen`` changes no first date: the roll-forward below
-    emits the same first occurrence, since for an unclamped item
-    ``_add_cadence_n(last_seen, cadence, 1) == next_expected``, and for a clamped
-    one it is the true month-end.
+    Anchoring on ``last_seen`` is not enough by itself: when ``last_seen`` fell
+    in a short month the bank had already clamped it, so its ``.day`` is 28 or
+    30 and every later step would aim there. ``day_of_month`` carries the day
+    the item really aims at, and each step clamps that to the target month.
     """
     anchor = item.anchor
     step = 0
     when = anchor
     while when <= today:
         step += 1
-        when = _add_cadence_n(anchor, item.cadence, step)
+        when = _add_cadence_n(anchor, item.cadence, step, item.day_of_month)
     dates: list[date] = []
     while when <= horizon:
         dates.append(when)
         step += 1
-        when = _add_cadence_n(anchor, item.cadence, step)
+        when = _add_cadence_n(anchor, item.cadence, step, item.day_of_month)
     return dates
 
 
@@ -255,4 +259,5 @@ class ForecastService:
             cadence=item.cadence,
             merchant=item.merchant,
             direction=item.direction,
+            day_of_month=item.day_of_month,
         )

@@ -303,7 +303,18 @@ def test_FIBR0327_no_ui_module_reads_the_os_clock_directly():
     from pathlib import Path
 
     ui_dir = Path(__file__).resolve().parents[3] / "src" / "finbreak" / "ui"
-    pattern = re.compile(r"\bdate\.today\(\)")
+    # Every spelling of "what day is it on this machine", not just one: the
+    # Qt-idiomatic QDate.currentDate() slipped past a date.today()-only pattern at
+    # three sites (full audit 2026-09-27, row 11). A timezone-aware
+    # datetime.now(UTC) is legitimate -- the unlock throttle keys on it -- so only
+    # the naive forms are banned.
+    pattern = re.compile(
+        r"\bdate\.today\(\)"
+        r"|\bQDate\.currentDate\(\)"
+        r"|\bQDateTime\.currentDateTime\(\)"
+        r"|\bdatetime\.today\(\)"
+        r"|\bdatetime\.now\(\)"
+    )
     offenders = [
         f"{path.name}:{n}"
         for path in sorted(ui_dir.glob("*.py"))
@@ -315,6 +326,33 @@ def test_FIBR0327_no_ui_module_reads_the_os_clock_directly():
         "use `from finbreak.datetime_format import today as app_today`:\n  "
         + "\n  ".join(offenders)
     )
+
+
+def test_manual_entry_defaults_to_the_pinned_zones_day(qtbot, service):
+    """Full audit 2026-09-27, row 11: the Add-transaction dialog opened on the
+    machine's day, not the user's. Pins whichever of two far-apart zones is on a
+    different day from the machine right now -- Kiritimati (UTC+14) and Niue
+    (UTC-11) are always a day apart, so at most one shares the system day."""
+    import finbreak.datetime_format as dtf
+    from finbreak.datetime_format import today_in
+    from finbreak.ui.manual_entry import ManualEntryDialog
+
+    system_day = today_in(DATETIME_SYSTEM)
+    zone = next(
+        z for z in ("Pacific/Kiritimati", "Pacific/Niue") if today_in(z) != system_day
+    )
+    dtf.set_app_timezone(zone)
+    try:
+        dialog = ManualEntryDialog(service)
+        qtbot.addWidget(dialog)
+        shown = dialog._date.date()
+        assert (shown.year(), shown.month(), shown.day()) == (
+            today_in(zone).year,
+            today_in(zone).month,
+            today_in(zone).day,
+        ), f"the dialog opened on {shown.toString()}, not {zone}'s day"
+    finally:
+        dtf.set_app_timezone(DATETIME_SYSTEM)
 
 
 def test_FIBR0327_a_free_typed_zone_is_what_gets_saved(qtbot, monkeypatch):

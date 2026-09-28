@@ -42,6 +42,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from finbreak.datetime_format import today_qdate
 from finbreak.errors import FinbreakError, VaultLockedError
 from finbreak.importers.base import ParseResult, SourceAccountHint
 from finbreak.importers.column_detect import guess_columns
@@ -1490,7 +1491,7 @@ class ImportWizardWidget(QWidget):
                 QDate.fromString(preview.period_end, Qt.DateFormat.ISODate)
             )
         else:  # zero drafts — unused, Import is disabled
-            today = QDate.currentDate()
+            today = today_qdate()
             self._period_start.setDate(today)
             self._period_end.setDate(today)
 

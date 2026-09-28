@@ -33,6 +33,17 @@ signaling per
 
 ### Fixed
 
+- **Month-end debit orders stay on month-end in the forecast** (FIBR-0367)
+  A payment due on the 31st that was last seen in a shorter month
+  (Feb 28, Apr 30) was projected a day or more early for every month
+  after. The forecast and the missed-payment alert now follow the day
+  the payment really aims at.
+
+- **New-transaction and date-filter defaults use your chosen time zone** (FIBR-0367)
+  The Add-transaction dialog, the Transactions date filter and the
+  import period fallback started on the computer's date instead of the
+  date in the time zone set in Settings.
+
 - **Links opened from the Linux AppImage no longer risk failing silently** (FIBR-0364)
   Programs the app starts, such as the helper that opens a web link, now
   run with the system's libraries instead of the ones bundled inside

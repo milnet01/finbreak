@@ -89,6 +89,15 @@ def today() -> date:
     return today_in(_app_timezone)
 
 
+def today_qdate() -> QDate:
+    """``today()`` as a ``QDate``, for a widget that needs one.
+
+    ``QDate.currentDate()`` is the machine's day, not the user's pinned zone's
+    (full audit 2026-09-27, row 11)."""
+    day = today()
+    return QDate(day.year, day.month, day.day)
+
+
 def today_in(tz_pref: str) -> date:
     """``today()`` against an explicit zone — the testable form, and what a
     caller holding its own prefs should use."""

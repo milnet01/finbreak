@@ -175,3 +175,34 @@ def test_INV2_empty_vault_is_net_flow_zero(service) -> None:
     assert fc.start_minor == 0 == fc.end_minor
     assert fc.events == []
     assert len(fc.points) == 2
+
+
+def test_a_month_end_debit_order_last_seen_in_a_short_month_stays_on_month_end(
+    service,
+) -> None:
+    """Full audit 2026-09-27, row 12. A debit order for the 31st was last seen on
+    Apr 30 -- the bank's own clamp -- and the forecast stepped from that date, so
+    it projected the 30th for the rest of the horizon: May 30, Jul 30, Aug 30,
+    each a day early. It must follow the day the order really aims at."""
+    svc = service
+    a = _acct(svc)
+    for day in ("2026-01-31", "2026-02-28", "2026-03-31", "2026-04-30"):
+        _add(svc, a, day, -250_000, "Bond repayment")
+    rec = RecurringService(svc.vault)
+    today = date(2026, 5, 5)
+    item = next(
+        it for it in rec.candidates(today) if it.merchant_key == "bond repayment"
+    )
+    rec.confirm(item.direction, item.merchant_key)
+
+    fc = ForecastService(svc.vault).forecast(today, date(2026, 8, 31))
+
+    assert [e.on for e in fc.events] == [
+        date(2026, 5, 31),
+        date(2026, 6, 30),
+        date(2026, 7, 31),
+        date(2026, 8, 31),
+    ]
+    assert item.next_expected == date(2026, 5, 31), (
+        "the missed-debit alert keys on next_expected, which had the same drift"
+    )

@@ -31,7 +31,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from finbreak.datetime_format import format_date
+from finbreak.datetime_format import format_date, today_qdate
 from finbreak.errors import VaultLockedError
 from finbreak.models import CategorySource, NegativeStyle, Transaction
 from finbreak.services.auth import (
@@ -239,7 +239,7 @@ class TransactionsView(QWidget):
         if not first.isValid() or not last.isValid():
             # No rows, or a stored date this widget cannot read: today spans
             # nothing, which is honest, and the user picks from there.
-            first = last = QDate.currentDate()
+            first = last = today_qdate()
         self._loading = True
         try:
             self._date_from.setDate(first)

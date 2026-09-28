@@ -12,7 +12,7 @@ auto-lock closes it before the vault shuts (INV-4b).
 
 from __future__ import annotations
 
-from PySide6.QtCore import QDate, Qt, Signal, Slot
+from PySide6.QtCore import Qt, Signal, Slot
 from PySide6.QtWidgets import (
     QComboBox,
     QDateEdit,
@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from finbreak.datetime_format import today_qdate
 from finbreak.errors import VaultLockedError
 from finbreak.services.accounts import AccountService
 from finbreak.services.auth import AuthService
@@ -44,7 +45,7 @@ class ManualEntryDialog(QDialog):
         self._account = QComboBox()
         for account in self._accounts.list_accounts():
             self._account.addItem(account.name, account.id)
-        self._date = QDateEdit(QDate.currentDate())
+        self._date = QDateEdit(today_qdate())
         self._date.setCalendarPopup(True)
         # Unambiguous ISO-style YYYY/MM/DD, not the locale's ambiguous M/D/YY.
         # Date *input* stays fixed; the user-configurable *display* format shipped

@@ -70,13 +70,14 @@ def nominal_interval_days(cadence: Cadence) -> int:
     return _NOMINAL[cadence]
 
 
-def _add_months(d: date, months: int) -> date:
+def _add_months(d: date, months: int, day: int | None = None) -> date:
     """``d`` plus ``months`` calendar months, clamping the day to the target
-    month's length (Jan 31 + 1 → Feb 28/29)."""
+    month's length (Jan 31 + 1 → Feb 28/29). ``day`` overrides ``d.day`` as the
+    day to aim for — see :func:`intended_day`."""
     total = d.month - 1 + months
     year = d.year + total // 12
     month = total % 12 + 1
-    day = min(d.day, calendar.monthrange(year, month)[1])
+    day = min(day or d.day, calendar.monthrange(year, month)[1])
     return date(year, month, day)
 
 
@@ -91,7 +92,24 @@ def _add_cadence(d: date, cadence: Cadence) -> date:
     return _add_cadence_n(d, cadence, 1)
 
 
-def _add_cadence_n(anchor: date, cadence: Cadence, n: int) -> date:
+def intended_day(dates: list[date]) -> int:
+    """The day of the month a month-cadence item is really aimed at.
+
+    ``last_seen.day`` is right unless ``last_seen`` was itself clamped: a debit
+    order for the 31st lands on Feb 28 or Apr 30, and stepping from that date
+    projects the 28th or 30th for ever (full audit 2026-09-27, row 12). So when
+    the last date is its month's last day, the item aims at the latest day any
+    member landed on; otherwise at ``last_seen``'s own day.
+    """
+    last = dates[-1]
+    if last.day == calendar.monthrange(last.year, last.month)[1]:
+        return max(d.day for d in dates)
+    return last.day
+
+
+def _add_cadence_n(
+    anchor: date, cadence: Cadence, n: int, day: int | None = None
+) -> date:
     """The ``n``-th occurrence after ``anchor`` — computed from the anchor, never by
     chaining single steps.
 
@@ -103,6 +121,9 @@ def _add_cadence_n(anchor: date, cadence: Cadence, n: int) -> date:
     leap one — the same standing order on a different day depending on February.
     Anchoring instead gives 31 → 28/29 → 31 → 30, which is what the bank does.
 
+    ``day`` is the day of the month to aim for on the month cadences, where the
+    anchor itself was clamped (:func:`intended_day`); ignored for week/fortnight.
+
     Strictly increasing in ``n`` for every cadence, so callers can loop on it.
     """
     if cadence is Cadence.WEEKLY:
@@ -110,8 +131,8 @@ def _add_cadence_n(anchor: date, cadence: Cadence, n: int) -> date:
     if cadence is Cadence.FORTNIGHTLY:
         return anchor + timedelta(days=14 * n)
     if cadence is Cadence.MONTHLY:
-        return _add_months(anchor, n)
-    return _add_months(anchor, 12 * n)
+        return _add_months(anchor, n, day)
+    return _add_months(anchor, 12 * n, day)
 
 
 def _classify(gaps: list[int]) -> Cadence | None:
@@ -215,8 +236,11 @@ def detect_recurring(
                 occurrences=len(members),
                 first_seen=dates[0],
                 last_seen=last_seen,
-                next_expected=_add_cadence(last_seen, cadence),
+                next_expected=_add_cadence_n(
+                    last_seen, cadence, 1, intended_day(dates)
+                ),
                 txn_ids=tuple(m.id for m in ordered),
+                day_of_month=intended_day(dates),
             )
         )
     items.sort(

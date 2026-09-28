@@ -444,6 +444,10 @@ class RecurringItem:
     last_seen: date
     next_expected: date
     txn_ids: tuple[int, ...]
+    # The day of the month a month-cadence item aims at, which differs from
+    # last_seen.day when last_seen was clamped (Feb 28 for a 31st debit order).
+    # 0 means "last_seen.day"; the detector always sets it.
+    day_of_month: int = 0
 
 
 class ForecastMode(StrEnum):

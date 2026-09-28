@@ -65,8 +65,8 @@ Each group is one commit with its own sweep (`close-findings` § 3–4).
 | 8 | Test validity | T03 : `test_vault.py:1045` — `kek_master` wipe not discriminated |  fixed — the spy records the bytes and the test looks for the key's own bytes; red with `_wipe(kek_master)` removed |
 | 9 | Test validity | T08 : `test_alert_service.py:127` — salary never recurring; OUT-only rule untested |  fixed — salary seeded evenly and asserted to be a detected IN stream first; red with the OUT filter removed |
 | 10 | Test validity | T05 : `test_batch_import_ui.py:546,717,756` — fixed waits before positive asserts |  fixed — all three waits now wait on the asserted state |
-| 11 | Wrong date | code 16 / T11 / delivery A12 : `manual_entry.py:47`, `transactions.py:242`, `import_wizard.py:1493` read the OS clock; the guard test greps `date.today()` only | |
-| 12 | Wrong date | code 11 : `forecast.py:254` — month-end debit orders ratchet to the 28th | |
+| 11 | Wrong date | code 16 / T11 / delivery A12 : `manual_entry.py:47`, `transactions.py:242`, `import_wizard.py:1493` read the OS clock; the guard test greps `date.today()` only |  fixed — new `datetime_format.today_qdate()` used at all three sites; the guard now bans `QDate.currentDate()`, `QDateTime.currentDateTime()` and naive `datetime.now/today()`; new outcome test on the Add-transaction dialog. Red: both failed on the old code |
+| 12 | Wrong date | code 11 : `forecast.py:254` — month-end debit orders ratchet to the 28th |  fixed — the detector's `intended_day` rides `RecurringItem.day_of_month` into the forecast and `next_expected`; FIBR-0171 INV-4 and FIBR-0142 D7 amended to record it; service-level test red on the old code (projected Aug 30) |
 | 13 | Wrong amount | code 11 : `alerts.py:279` — missing prior months counted as zero spend (check FIBR-0172 first) | |
 | 14 | Wrong amount | code 10 : `transactions.py:106` — sub-cent input beyond 28 digits is rounded, not refused | |
 | 15 | Wrong amount | code 08 : `import_wizard.py:~599-609` — mapping form not reset after a batch Cancel (stale sign flip) | |
