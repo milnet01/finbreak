@@ -33,6 +33,10 @@ signaling per
 
 ### Fixed
 
+- **If the system cannot say where finbreak should keep its data, finbreak now says so instead of using the folder it was started from.** (FIBR-0367)
+  Before, it could create the vault there and lock that folder's
+  permissions down. (Full audit 2026-09-27, row 26.)
+
 - **finbreak no longer risks crashing just after you unlock or create a vault on a busy computer.** (FIBR-0374)
   The password check runs in the background. The screen could close in
   the split second before that background work had fully finished, and

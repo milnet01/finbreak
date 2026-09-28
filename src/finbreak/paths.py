@@ -12,6 +12,8 @@ from pathlib import Path
 
 from PySide6.QtCore import QCoreApplication, QStandardPaths
 
+from finbreak.errors import FinbreakError
+
 APP_NAME = "finbreak"
 
 VAULT_FILENAME = "vault.db"
@@ -26,6 +28,14 @@ def data_dir() -> Path:
         QStandardPaths.StandardLocation.AppDataLocation
     )
     directory = Path(location)
+    # Qt returns "" when it cannot determine the location, and Path("") is the
+    # working directory -- which the chmod below would then lock down and the
+    # vault would land in (full audit 2026-09-27, row 26). Refuse instead.
+    if not location or not directory.is_absolute():
+        raise FinbreakError(
+            f"finbreak could not find a data folder for this user (the system "
+            f"reported {location!r}), so it will not guess one."
+        )
     # Create the leaf owner-only from the outset (mode applies to the final
     # component only, so shared parents keep their default perms), then chmod to
     # enforce 0o700 even under a permissive umask that would loosen mkdir's mode.

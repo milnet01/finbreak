@@ -1347,3 +1347,31 @@ def test_FIBR0374_deleting_the_dialog_after_unlock_does_not_abort(tmp_path) -> N
         f"the process died (rc {result.returncode}) deleting an unlock dialog "
         f"whose worker had reported but not yet finished:\n{result.stderr[-2000:]}"
     )
+
+
+@pytest.mark.parametrize("location", ["", "relative/finbreak"])
+def test_row26_no_usable_data_location_is_refused_not_the_working_dir(
+    tmp_path, monkeypatch, location
+) -> None:
+    """Qt returns "" from writableLocation when it cannot determine the location,
+    and Path("") is the working directory: data_dir() then chmod'ed whatever
+    folder finbreak was started from to 0o700 and put the vault there (full audit
+    2026-09-27, row 26). A relative answer resolves against the same folder."""
+    from PySide6.QtCore import QStandardPaths
+
+    from finbreak import paths as paths_mod
+    from finbreak.errors import FinbreakError
+
+    started_in = tmp_path / "started-here"
+    started_in.mkdir(mode=0o755)
+    monkeypatch.chdir(started_in)
+    monkeypatch.setattr(
+        QStandardPaths, "writableLocation", staticmethod(lambda _loc: location)
+    )
+
+    with pytest.raises(FinbreakError, match="data folder"):
+        paths_mod.vault_path()
+    assert started_in.stat().st_mode & 0o777 == 0o755, (
+        "the folder finbreak was started from had its permissions changed"
+    )
+    assert list(started_in.iterdir()) == [], "something was created in it"
