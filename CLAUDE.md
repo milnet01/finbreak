@@ -435,8 +435,9 @@ and nothing else. **`.githooks/pre-push` makes that choice itself** (FIBR-0373):
 a plain `git push` is the whole route, with no `--no-verify`. **This section is
 the standing authorisation
 [`docs/standards/commits.md` § 2.3](docs/standards/commits.md) requires** for
-the hook to skip the rest of the gate on such a push. The documentation checks
-take a few seconds. To run them by hand:
+the hook to skip the rest of the gate on such a push. GitHub CI skips it too
+(`paths-ignore: ["**.md"]` on `push` in `ci.yml`; a pull request still runs
+everything). The documentation checks take a few seconds. To run them by hand:
 
 ```bash
 ./scripts/ci-local.sh --docs     # DOCS_SUITES + gitleaks --redact; the hook runs the same

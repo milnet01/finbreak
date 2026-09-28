@@ -3,6 +3,11 @@ name: CI
 on:
   push:
     branches: [main]
+    # A push whose every changed path ends in .md runs no CI job. The pre-push
+    # hook ran `ci-local.sh --docs` on it -- the same test for "only
+    # documentation" (FIBR-0373). Push only: a pull request still runs
+    # everything (local-gate.md § 9).
+    paths-ignore: ["**.md"]
   pull_request:
     branches: [main]
 
