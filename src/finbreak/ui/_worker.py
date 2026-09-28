@@ -28,3 +28,16 @@ class DeriveWorker(QThread):
             self.done.emit(derive_raw(self._password, self._params))
         except Exception as exc:  # derivation failure is unexpected — surface it
             self.failed.emit(exc)
+
+
+def settle(worker: DeriveWorker | None) -> None:
+    """Wait out a worker that has already reported, before letting it go.
+
+    ``done`` and ``failed`` are emitted from inside ``run()``, so the thread is
+    still alive when the slot handling them runs. Clearing ``self._worker`` there
+    lifts the INV-2f guard, and a dialog deleted in that gap destroys a running
+    ``QThread``, which Qt answers by aborting the process (FIBR-0374). ``run()``
+    has nothing left to do but return, so the wait is momentary.
+    """
+    if worker is not None:
+        worker.wait()

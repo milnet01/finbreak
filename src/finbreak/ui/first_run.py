@@ -45,7 +45,7 @@ from finbreak.ui._datetime_prefs import (
     system_date_sample_label,
     system_time_sample_label,
 )
-from finbreak.ui._worker import DeriveWorker
+from finbreak.ui._worker import DeriveWorker, settle
 
 
 class FirstRunDialog(QDialog):
@@ -214,6 +214,7 @@ class FirstRunDialog(QDialog):
 
     @Slot(bytes)
     def _on_derived(self, raw: bytes) -> None:
+        settle(self._worker)
         self._worker = None
         self._set_busy(False)  # every worker-clearing path re-enables Cancel (D2)
         params = self._pending_params
@@ -253,6 +254,7 @@ class FirstRunDialog(QDialog):
 
     @Slot(object)
     def _on_failure(self, exc: object) -> None:
+        settle(self._worker)
         self._worker = None
         self._set_busy(False)
         self._error.setText(

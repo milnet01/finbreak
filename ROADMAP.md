@@ -443,6 +443,23 @@ so Flathub review and code signing do not block this release.
   Kind: review-fix.
   Source: full-audit-2026-09-27 code-lane-15.
 
+- 🚧 [FIBR-0374] **The unlock and first-run dialogs can abort the app when deleted just after a derivation reports.**
+  GitHub CI runs 36430689235 (26068cc) and 36430830285 (925832a) each lost a
+  pytest worker to "Fatal Python error: Aborted" in an unlock test. DeriveWorker
+  emits done/failed from inside run(), so the thread is still alive when the
+  dialog's slot runs; every such slot sets self._worker = None at once, lifting
+  the INV-2f guard (reject/closeEvent no-op while a derivation is in flight).
+  A dialog deleted in that window -- the shell closing it after unlock, or a test
+  dropping its last reference (pytest-qt holds widgets weakly) -- destroys a
+  running QThread, and Qt aborts the process. Six sites: unlock.py
+  _on_derived, _on_failure, _on_recovery_derived, _on_recovery_failure;
+  first_run.py _on_derived, _on_failure. Exposed by the parallel gate on a
+  4-vCPU runner (FIBR-0373), not caused by it.
+  **Layman:** On a slow or busy computer, finbreak could crash right after you type the correct password; this makes it wait the split second the background work needs to finish.
+  Kind: fix.
+  Source: ci-failure-2026-09-28.
+  Evidence: https://github.com/milnet01/finbreak/actions/runs/36430689235, https://github.com/milnet01/finbreak/actions/runs/36430830285
+
 ## v1.0.x — patch stream
 
 Bug fixes, security fixes, performance work, refactors, dependency bumps and

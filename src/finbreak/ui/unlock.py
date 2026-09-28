@@ -43,7 +43,7 @@ from finbreak.services.auth import AuthService
 from finbreak.services.recovery_code import decode, normalise, verify_check_symbol
 from finbreak.ui._password_hint import read_hint
 from finbreak.ui._unlock_throttle import UnlockThrottle
-from finbreak.ui._worker import DeriveWorker
+from finbreak.ui._worker import DeriveWorker, settle
 
 log = logging.getLogger(__name__)
 
@@ -393,6 +393,7 @@ class UnlockDialog(QDialog):
 
     @Slot(bytes)
     def _on_recovery_derived(self, raw: bytes) -> None:
+        settle(self._worker)
         self._worker = None
         self._set_busy(False)
         try:
@@ -428,6 +429,7 @@ class UnlockDialog(QDialog):
 
     @Slot(bytes)
     def _on_derived(self, raw: bytes) -> None:
+        settle(self._worker)
         self._worker = None
         self._set_busy(False)
         try:
@@ -522,6 +524,7 @@ class UnlockDialog(QDialog):
 
     @Slot(object)
     def _on_failure(self, _exc: object) -> None:
+        settle(self._worker)
         self._worker = None
         self._set_busy(False)
         self._show_failure()
@@ -535,6 +538,7 @@ class UnlockDialog(QDialog):
         in scope, so nothing has to survive between starting the worker and its
         failure (FIBR-0313 M5).
         """
+        settle(self._worker)
         self._worker = None
         self._set_busy(False)
         self._show_failure(recovery=True)

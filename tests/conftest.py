@@ -153,12 +153,16 @@ def _close_leftover_windows():
     own teardown (autouse fixtures are set up first, so they finish last).
     """
     yield
-    from PySide6.QtCore import QEvent
+    from PySide6.QtCore import QEvent, QThread
     from PySide6.QtWidgets import QApplication
 
     if not isinstance(QApplication.instance(), QApplication):
         return
     for widget in QApplication.topLevelWidgets():
+        # Deleting a window that owns a running QThread aborts the process
+        # (FIBR-0374), so let any worker it still holds finish first.
+        for thread in widget.findChildren(QThread):
+            thread.wait()
         widget.close()
         widget.deleteLater()
     QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)

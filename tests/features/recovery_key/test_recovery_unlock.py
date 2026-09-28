@@ -292,6 +292,11 @@ def test_recovery_derivation_failure_message_does_not_mention_password(
             self.failed.emit(RuntimeError("the KDF could not run"))
             self.finished.emit()
 
+        def wait(self) -> bool:
+            # The real worker is a QThread; the dialog settles it before
+            # letting go (FIBR-0374). This one has no thread to wait for.
+            return True
+
     dialog = _dialog(qtbot, service)
     field, submit, _pending = _recovery_seams(dialog)
 

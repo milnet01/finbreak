@@ -33,6 +33,11 @@ signaling per
 
 ### Fixed
 
+- **finbreak no longer risks crashing just after you unlock or create a vault on a busy computer.** (FIBR-0374)
+  The password check runs in the background. The screen could close in
+  the split second before that background work had fully finished, and
+  Qt then stopped the whole app. It now waits out that moment.
+
 - **A damaged recovery-code record no longer locks you out with the right master password** (FIBR-0367)
   If the recovery-code entry in the vault's settings file was damaged in
   certain ways, finbreak refused to open the vault even with the correct

@@ -1278,3 +1278,72 @@ def test_unlock_reports_a_disk_failure_from_the_resumed_migration(
         "a full disk is not a wrong password, so it must not advance the "
         "shared throttle."
     )
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0374 — a dialog deleted just after its derivation reports must not abort #
+# --------------------------------------------------------------------------- #
+_DELETE_AFTER_REPORT = r"""
+import gc, os, sys, time
+os.environ["QT_QPA_PLATFORM"] = "offscreen"
+from PySide6.QtCore import QStandardPaths
+from PySide6.QtWidgets import QApplication
+
+QStandardPaths.setTestModeEnabled(True)  # never the user's real data directory
+app = QApplication([])
+from finbreak.services.auth import AuthService
+from finbreak.ui import _worker
+from finbreak.ui.unlock import UnlockDialog
+
+# Hold the thread open after `done`, as a busy machine does: the signal is
+# emitted from inside run(), so the thread outlives the slot that handles it.
+_run = _worker.DeriveWorker.run
+def _slow_exit(self):
+    _run(self)
+    time.sleep(0.5)
+_worker.DeriveWorker.run = _slow_exit
+
+folder = sys.argv[1]
+password = sys.argv[2]
+from pathlib import Path
+service = AuthService(Path(folder) / "v.db", Path(folder) / "v.kdf.json")
+service.first_run(bytearray(password.encode()), "ZAR")
+service.lock()
+
+dialog = UnlockDialog(service)
+reported = []
+dialog.unlocked.connect(lambda: reported.append(True))
+dialog._password.setText(password)
+dialog._unlock_button.click()
+deadline = time.monotonic() + 30
+while not reported and time.monotonic() < deadline:
+    app.processEvents()
+    time.sleep(0.01)
+assert reported, "the unlock never reported"
+del dialog  # the last reference: the dialog, and its worker child, go now
+gc.collect()
+print("SURVIVED")
+"""
+
+
+def test_FIBR0374_deleting_the_dialog_after_unlock_does_not_abort(tmp_path) -> None:
+    """DeriveWorker emits `done` from inside run(), so its thread is still alive
+    when UnlockDialog._on_derived runs. That slot used to drop the worker at
+    once, lifting the INV-2f guard, so a dialog deleted in the gap destroyed a
+    running QThread and Qt aborted the process -- two GitHub CI runs on
+    2026-09-28 lost a worker that way. Run in a child process: the failure is an
+    abort, which would take this test runner down with it."""
+    import subprocess
+    import sys
+
+    result = subprocess.run(
+        [sys.executable, "-c", _DELETE_AFTER_REPORT, str(tmp_path), _PW.decode()],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        env={**os.environ, "PYTHONPATH": str(Path(finbreak.__file__).parents[1])},
+    )
+    assert result.returncode == 0 and "SURVIVED" in result.stdout, (
+        f"the process died (rc {result.returncode}) deleting an unlock dialog "
+        f"whose worker had reported but not yet finished:\n{result.stderr[-2000:]}"
+    )
