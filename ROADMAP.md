@@ -418,9 +418,19 @@ so Flathub review and code signing do not block this release.
 
 - 📋 [FIBR-0369] **README status badge still says pre-alpha.**
   README.md line with `status-pre--alpha` disagrees with the README's own "early preview" wording and with the Hub site's `beta` status. Set it to match what 1.0.0 is when the release README refresh happens. Found while answering the Hub website session's page review, 2026-09-28.
+  User decision 2026-09-28: at 1.0 the badge says "stable", and "early
+  preview" wording is dropped from the README and from the Hub site. The
+  Hub website session was told the same day.
   **Layman:** The badge at the top of the README calls finbreak pre-alpha, while the text below it says early preview and the website says beta.
   Kind: doc-fix.
   Source: in-session-2026-09-28.
+
+- 📋 [FIBR-0371] **Cap the unlock wait when the clock has moved.**
+  Audit 2026-09-27, code-lane-15-security-screens.md: a failure stamped while the clock ran ahead makes the wait 30 s plus the skew, with no cap. FIBR-0095 INV-3 allows that uncapped wait; security-model.md § 5 INV-10 says the backoff is capped. The two contradict.
+  User decision 2026-09-28: always capped. So amend FIBR-0095 INV-3 to the cap (a change of direction, so it runs review-contract --max-loops 3 before the code changes), then clamp the computed wait in the unlock throttle and add a regression test with a clock that moved backward.
+  **Layman:** If the computer's clock jumps, finbreak could make you wait hours to unlock your own vault; the wait will now never exceed its normal maximum.
+  Kind: review-fix.
+  Source: full-audit-2026-09-27 code-lane-15.
 
 ## v1.0.x — patch stream
 
