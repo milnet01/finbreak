@@ -416,6 +416,12 @@ so Flathub review and code signing do not block this release.
   Source: full-audit-2026-09-27.
   Evidence: docs/reviews/close-findings-2026-09-27.md, docs/reviews/2026-09-27-full-audit/
 
+- 📋 [FIBR-0369] **README status badge still says pre-alpha.**
+  README.md line with `status-pre--alpha` disagrees with the README's own "early preview" wording and with the Hub site's `beta` status. Set it to match what 1.0.0 is when the release README refresh happens. Found while answering the Hub website session's page review, 2026-09-28.
+  **Layman:** The badge at the top of the README calls finbreak pre-alpha, while the text below it says early preview and the website says beta.
+  Kind: doc-fix.
+  Source: in-session-2026-09-28.
+
 ## v1.0.x — patch stream
 
 Bug fixes, security fixes, performance work, refactors, dependency bumps and
@@ -3710,6 +3716,12 @@ work, and none of it is a release decision.
   **Layman:** Tidy how the project records its own rules, so the machine-wide tools stop flagging it and the old step-by-step workflow can be retired.
   Kind: chore.
   Source: peer-request-claude-87-2026-09-28 (CFG-0645); user decisions 2026-09-28.
+
+- 📋 [FIBR-0370] **Marketing screenshot capture skips the Statements and Forecast tabs.**
+  scripts/capture_screenshots.py writes dashboard, transactions, accounts, categories, rules, transfers and recurring only (run 2026-09-28). Also: the seeded demo vault carries no statement closing balances, so the Accounts capture shows an empty Status column rather than the ✓/⚠ balance check. Add both tabs and seed balances so the Hub site can show the forecast and the balance check.
+  **Layman:** The script that takes the website's screenshots cannot yet photograph the Forecast or Statements screens, so the site shows neither.
+  Kind: chore.
+  Source: in-session-2026-09-28.
 
 ## P01 — Bootstrap (target: next)
 
