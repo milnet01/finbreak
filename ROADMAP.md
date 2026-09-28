@@ -1232,6 +1232,33 @@ so Flathub review and code signing do not block this release.
   Kind: doc-fix.
   Source: in-session-2026-09-21 (FIBR-0050 review-contract loop 15, 4b blast-radius sweep).
 
+- 📋 [FIBR-0375] **docs/discovery.md names no success criterion for importing a bank finbreak has never seen.**
+  adopt-project cold read, 2026-09-28 (two readers, quotations verified): of the
+  seven dimensions discovery.md § Users and the README name, six have a
+  criterion. "Anyone worldwide ... on any bank, who ... needs to set up their
+  own bank's statement layout and their own currency" is half covered: SC7
+  covers currency; the bank-layout half has no bar. ADR-0005's "Works for any
+  bank, any country, with no code changes" was read as a design statement, not
+  a criterion. What would count: a user on a bank finbreak has never seen gets
+  a statement in, every row correct, using only the in-app column mapping, no
+  code change. A discovery criterion is the user's to approve (as SC4 and SC7
+  were, FIBR-0368). Under workflow.md § 1 this gap alone makes the project read
+  as state 1.
+  **Layman:** The project's list of how we'd know finbreak works never says that someone with an unfamiliar bank can get their statements in; one sentence would close it.
+  Kind: doc.
+  Source: adopt-project-2026-09-28.
+
+- 📋 [FIBR-0376] **discovery.md rules forecasting and recurring prediction out of scope; the README advertises Forecast and Recurring tabs.**
+  Raised by the adopt-project cold reader, 2026-09-28, outside its brief.
+  discovery.md § Out of scope excludes "Budgeting, forecasting" and
+  "Recurring-transaction prediction" and says finbreak "explains the past";
+  README.md advertises a Forecast tab and a Recurring tab, which shipped. Either
+  discovery.md records the scope change or the README is wrong. A scope change in
+  discovery is the user's decision.
+  **Layman:** The project's founding document says finbreak only explains the past, but the app now has forecast and recurring-payment screens; one of the two needs updating.
+  Kind: doc-fix.
+  Source: adopt-project-2026-09-28.
+
 ## v1.0.x — patch stream
 
 Bug fixes, security fixes, performance work, refactors, dependency bumps and
