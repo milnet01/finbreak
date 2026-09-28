@@ -198,10 +198,20 @@ def test_INV2d_first_run_cancel_quits(qtbot, service, monkeypatch, paths):
     dlg = window._dialog
     assert isinstance(dlg, FirstRunDialog)
 
-    calls = []
-    monkeypatch.setattr(QApplication, "quit", lambda *a: calls.append(1))
+    # The app ends by CLOSING its only window, not by QApplication.quit(): quit()
+    # skips closeEvent, so the update-worker drain and the geometry save never
+    # ran, and a launch check still in flight aborted the process (full audit
+    # 2026-09-27, row 29 -- the fix the Quit action already had).
+    window.show()
+    drained = []
+    real_drain = window._drain_update_workers
+    monkeypatch.setattr(
+        window, "_drain_update_workers", lambda: (drained.append(1), real_drain())
+    )
     dlg.reject()
-    assert calls == [1], "dismissing first-run quits the app"
+    assert drained == [1], "dismissing first-run must run the window's close path"
+    assert not window.isVisible(), "dismissing first-run closes the only window"
+    assert QApplication.quitOnLastWindowClosed(), "so the app ends with it"
     vault_path, _ = paths
     assert not vault_path.exists(), "no vault was created"
 

@@ -18,7 +18,7 @@ transaction table.
 | INV-2a | `test_INV2a_first_run_happy_path` | first_run state → Welcome placeholder + `FirstRunDialog`; completing it (real Argon2id) enables chrome + shows Home |
 | INV-2b | `test_INV2b_unlock_happy_path` | unlock state → 🔒 Locked placeholder + `UnlockDialog`; wrong pw keeps dialog + chrome disabled; correct pw → Home |
 | INV-2c | `test_INV2c_mixed_pair_raises_at_construction` | a mixed vault/sidecar pair raises `VaultStateError` out of `MainWindow.__init__` (run() then shows the critical + exits 1) |
-| INV-2d | `test_INV2d_first_run_cancel_quits` | `FirstRunDialog.rejected` → `QApplication.quit` called once, no vault created |
+| INV-2d | `test_INV2d_first_run_cancel_quits` | `FirstRunDialog.rejected` → the window closes through `closeEvent` (the update-worker drain runs; audit row 29), no vault created |
 | INV-2e | `test_INV2e_unlock_cancel_leaves_locked_shell` | `UnlockDialog.rejected` → app not quit, locked placeholder current, `button_unlock` re-opens the dialog |
 | INV-2f | `test_INV2f_no_cancel_during_derivation_crash` | mid-derivation (stubbed worker) reject()/close is a no-op; forcing `failed()` re-enables Cancel — both dialogs |
 | INV-3 | `test_INV3_no_transaction_data_while_locked` | while locked the current content widget is the placeholder (not a populated `HomeView`) |

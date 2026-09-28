@@ -942,7 +942,11 @@ class MainWindow(QMainWindow):
 
     def _on_first_run_rejected(self) -> None:
         self._teardown_dialog()
-        QApplication.quit()  # no vault can be created — nothing to show
+        # No vault can be created, so nothing to show. close(), NOT
+        # QApplication.quit(), for the reason the Quit action gives: quit() skips
+        # closeEvent, so the update-worker drain never ran and a launch check
+        # still in flight aborted the process (full audit 2026-09-27, row 29).
+        self.close()
 
     # --- content actions ---------------------------------------------------- #
     def _show_home(self) -> None:
