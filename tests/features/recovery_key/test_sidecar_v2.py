@@ -479,6 +479,51 @@ def test_the_damaged_recovery_slot_survives_a_master_unlock(
     )
 
 
+def _odd_hex(record: dict) -> object:
+    record["salt_hex"] = "abc"
+    return record
+
+
+def _not_a_string(record: dict) -> object:
+    record["nonce_hex"] = 123
+    return record
+
+
+def _missing_field(record: dict) -> object:
+    del record["wrapped_dek_hex"]
+    return record
+
+
+@pytest.mark.parametrize(
+    "damage",
+    [_odd_hex, _not_a_string, _missing_field, lambda record: "not a slot"],
+    ids=["odd-length-hex", "non-string", "missing-field", "not-an-object"],
+)
+def test_a_structurally_damaged_recovery_slot_does_not_bar_the_master_route(
+    paths: tuple[Path, Path], service: AuthService, damage
+) -> None:
+    """Audit 2026-09-27 row 25: the per-slot tolerance above ran only AFTER the
+    whole sidecar parsed, so structural damage to the recovery slot raised
+    inside the parse loop and refused the correct master password. It must
+    open, and the damaged record must survive the write-back byte for byte."""
+    vault_path, sidecar_path = paths
+    code = create_vault(service)
+    keep_recovery_key(service, code)
+    service.lock()
+
+    damaged = read_v2_sidecar(sidecar_path)
+    damaged[SLOTS][SLOT_RECOVERY] = damage(damaged[SLOTS][SLOT_RECOVERY])
+    sidecar_path.write_text(json.dumps(damaged), encoding="utf-8")
+    kept = damaged[SLOTS][SLOT_RECOVERY]
+
+    opened = AuthService(vault_path, sidecar_path)
+    assert opened.unlock(bytearray(MASTER_PASSWORD)) is True
+    opened.lock()
+    assert read_v2_sidecar(sidecar_path)[SLOTS][SLOT_RECOVERY] == kept, (
+        "the damaged record is written back exactly as it was found"
+    )
+
+
 def test_the_recovery_route_still_refuses_its_own_damaged_slot(
     paths: tuple[Path, Path], service: AuthService
 ) -> None:

@@ -293,6 +293,12 @@ class SlotRecord:
     #: Fields of this slot that this build does not recognise, kept verbatim so
     #: a write does not delete them. Empty for every slot this build creates.
     extra: dict[str, object] = field(default_factory=dict)
+    #: An OPTIONAL slot too damaged to parse at all (odd-length hex, a missing
+    #: field, not an object) is carried as the record found on disk, with empty
+    #: bytes above so its own route refuses it — and written back unchanged
+    #: rather than pruned (audit 2026-09-27 row 25; FIBR-0310 R5).
+    damaged: bool = False
+    raw: object = None
 
     @property
     def wrapped(self) -> Slot:
@@ -303,7 +309,9 @@ class SlotRecord:
     def from_wrap(cls, salt: bytes, slot: Slot) -> SlotRecord:
         return cls(salt=salt, nonce=slot.nonce, wrapped_dek=slot.wrapped_dek)
 
-    def to_dict(self) -> dict[str, object]:
+    def to_dict(self) -> object:
+        if self.damaged:
+            return self.raw
         # Unrecognised fields first, so a stray key colliding with one this
         # build owns loses to the real value rather than overwriting it.
         return {
@@ -565,6 +573,18 @@ def validate_slot(sidecar: VaultSidecar, name: str) -> None:
     validate_params(sidecar.params_for(name))
 
 
+def _parse_slot(name: str, record: object) -> SlotRecord:
+    """One slot record as read from disk, else an exception naming the damage."""
+    if not isinstance(record, dict) or not _V2_SLOT_FIELDS <= record.keys():
+        raise KdfPolicyError(f"slot {name!r} is missing a required field")
+    return SlotRecord(
+        salt=bytes.fromhex(record["salt_hex"]),
+        nonce=bytes.fromhex(record["nonce_hex"]),
+        wrapped_dek=bytes.fromhex(record["wrapped_dek_hex"]),
+        extra={k: v for k, v in record.items() if k not in _V2_SLOT_FIELDS},
+    )
+
+
 def read_sidecar_v2(sidecar_path: Path) -> VaultSidecar:
     """Parse and validate the v2 slots sidecar, else ``KdfPolicyError``.
 
@@ -590,16 +610,18 @@ def read_sidecar_v2(sidecar_path: Path) -> VaultSidecar:
         raise KdfPolicyError("v2 sidecar carries no `slots`")
 
     slots: dict[str, SlotRecord] = {}
+    for name, record in slots_raw.items():
+        try:
+            slots[name] = _parse_slot(name, record)
+        except (KdfPolicyError, *_BAD_SIDECAR_NUMBER) as exc:
+            # Structural damage gets the same per-slot tolerance as the length
+            # damage below: only `master` bars the vault (audit row 25).
+            if name == SLOT_MASTER:
+                if isinstance(exc, KdfPolicyError):
+                    raise
+                raise KdfPolicyError(f"sidecar field has a bad value: {exc}") from exc
+            slots[name] = SlotRecord(b"", b"", b"", damaged=True, raw=record)
     try:
-        for name, record in slots_raw.items():
-            if not isinstance(record, dict) or not _V2_SLOT_FIELDS <= record.keys():
-                raise KdfPolicyError(f"slot {name!r} is missing a required field")
-            slots[name] = SlotRecord(
-                salt=bytes.fromhex(record["salt_hex"]),
-                nonce=bytes.fromhex(record["nonce_hex"]),
-                wrapped_dek=bytes.fromhex(record["wrapped_dek_hex"]),
-                extra={k: v for k, v in record.items() if k not in _V2_SLOT_FIELDS},
-            )
         compat_raw = data.get(CIPHER_COMPATIBILITY_FIELD)
         sidecar = VaultSidecar(
             memory_kib=int(kdf["memory_kib"]),

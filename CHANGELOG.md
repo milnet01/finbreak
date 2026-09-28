@@ -33,6 +33,12 @@ signaling per
 
 ### Fixed
 
+- **A damaged recovery-code record no longer locks you out with the right master password** (FIBR-0367)
+  If the recovery-code entry in the vault's settings file was damaged in
+  certain ways, finbreak refused to open the vault even with the correct
+  master password. Now only the recovery code stops working, your password
+  opens the vault as normal, and the damaged entry is left as it was.
+
 - **Restoring a backup can no longer delete the safety copy of the vault it replaced** (FIBR-0367)
   When you restore a backup, finbreak keeps a copy of the vault it replaced
   and tidies away older copies. If the computer's clock had been set back,
