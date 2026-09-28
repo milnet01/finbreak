@@ -1160,6 +1160,22 @@ def test_FIBR0327_embedded_schema_version_must_be_a_real_version(paths, bad):
     service.lock()
 
 
+def test_row23_an_empty_schema_version_table_is_a_schema_error(paths):
+    """Audit 2026-09-27 row 23: zero rows made `fetchone()` return None, so
+    `None[0]` raised TypeError before the guard above could refuse it."""
+    from finbreak.errors import SchemaVersionError
+    from finbreak.migrations import run_migrations
+
+    service = AuthService(*paths)
+    service.first_run(bytearray(_PW), "ZAR")
+    conn = service.vault.connection
+    conn.execute("DELETE FROM schema_version")
+
+    with pytest.raises(SchemaVersionError):
+        run_migrations(conn)
+    service.lock()
+
+
 # --------------------------------------------------------------------------- #
 # FIBR-0327 — `cipher_compatibility` comes from the PLAINTEXT sidecar, so it is
 # attacker- or corruption-reachable without the vault key. `Vault.open`'s comment

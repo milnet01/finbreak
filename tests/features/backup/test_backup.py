@@ -1052,6 +1052,52 @@ def test_INV13_wrong_cipher_compat_refused(tmp_path):
     _assert_unchanged(d, vb, sb)
 
 
+@pytest.mark.parametrize("compat", [[], {}], ids=["list", "object"])
+def test_row22_unhashable_cipher_compat_refused(tmp_path, compat):
+    """Audit 2026-09-27 row 22: a list or object compat level raised TypeError
+    from the frozenset membership test before `isinstance` could refuse it."""
+    from finbreak.errors import BackupError
+
+    fbk, _snap = _export_from_seed(tmp_path)
+    bad = tmp_path / "compat-unhashable.fbk"
+    _rebuild_fbk(fbk, bad, manifest={"sqlcipher_compat": compat})
+    auth, d, vb, sb = _dest_with_vault(tmp_path)
+    with pytest.raises(BackupError):
+        BackupService(auth.vault, auth).restore_backup(bad, _BACKUP_PW, _M2)
+    _assert_unchanged(d, vb, sb)
+
+
+def test_row22_an_encrypted_zip_entry_is_refused(tmp_path):
+    """Audit 2026-09-27 row 22: an entry with the zip encryption flag makes
+    `zf.open` raise RuntimeError (an unknown compression method raises its
+    subclass NotImplementedError); neither was in `_read_fbk`'s net."""
+    from finbreak.errors import BackupError
+
+    fbk, _snap = _export_from_seed(tmp_path)
+    bad = tmp_path / "encrypted-entry.fbk"
+    # `zipfile` clears flag bits on write, so set bit 0 ("encrypted") in the
+    # bytes: +6 into each local header, +8 into each central-directory record.
+    # Offsets come from the archive itself, so the encrypted vault bytes can
+    # never be mistaken for a header.
+    raw = bytearray(fbk.read_bytes())
+    with zipfile.ZipFile(fbk) as zf:
+        local = [i.header_offset for i in zf.infolist()]
+        central = zf.start_dir
+    for at in local:
+        raw[at + 6] |= 0x1
+    at = raw.find(b"PK\x01\x02", central)
+    while at != -1:
+        raw[at + 8] |= 0x1
+        at = raw.find(b"PK\x01\x02", at + 4)
+    bad.write_bytes(bytes(raw))
+    with zipfile.ZipFile(bad) as zf:
+        assert all(i.flag_bits & 0x1 for i in zf.infolist()), "precondition"
+    auth, d, vb, sb = _dest_with_vault(tmp_path)
+    with pytest.raises(BackupError):
+        BackupService(auth.vault, auth).restore_backup(bad, _BACKUP_PW, _M2)
+    _assert_unchanged(d, vb, sb)
+
+
 def test_INV13_restore_under_forced_different_process_default(tmp_path):
     import sqlcipher3
 

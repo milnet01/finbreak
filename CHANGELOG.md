@@ -33,6 +33,13 @@ signaling per
 
 ### Fixed
 
+- **A damaged or tampered backup file is refused with a message, never a crash** (FIBR-0367)
+  Three kinds of broken backup file could close the restore or verify
+  window instead of explaining the problem: a settings value of the wrong
+  type, a zip entry marked as password-protected, and a vault with an empty
+  version record. Each is now refused with a clear message, and your
+  current vault is left untouched.
+
 - **Standard Bank PDF imports no longer lose transactions silently** (FIBR-0367)
   Three things could make a Standard Bank PDF statement import short with
   no warning: a transaction described as, say, "CLOSING BALANCE TRANSFER"

@@ -519,7 +519,9 @@ class BackupService:
         if manifest.get("format_version") != MANIFEST_FORMAT_VERSION:
             raise BackupError("unrecognised backup format_version")
         compat = manifest.get("sqlcipher_compat")
-        if compat not in SQLCIPHER_COMPAT_ACCEPTED or not isinstance(compat, int):
+        # isinstance FIRST: a list or object is unhashable, so the frozenset test
+        # would raise TypeError (audit 2026-09-27 row 22).
+        if not isinstance(compat, int) or compat not in SQLCIPHER_COMPAT_ACCEPTED:
             raise BackupError("unsupported backup cipher-compatibility level")
         schema_version = manifest.get("schema_version")
         if not isinstance(schema_version, int) or schema_version < 1:
@@ -704,6 +706,10 @@ class BackupService:
             # small machine can lose that allocation — a refused backup, not an
             # unhandled exception out of a Qt slot (FIBR-0212).
             MemoryError,
+            # An entry flagged encrypted, or packed with a compression method
+            # zipfile lacks (NotImplementedError is a subclass): `zf.open`
+            # raises these, not BadZipFile (audit 2026-09-27 row 22).
+            RuntimeError,
         ) as exc:
             raise BackupError(f"unreadable backup: {exc}") from exc
         if not isinstance(manifest, dict):
