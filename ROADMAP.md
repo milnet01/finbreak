@@ -2206,6 +2206,11 @@ that may never arrive.
   app and manifest were written with an AI assistant, and asks whether
   Flathub will consider it and whether to edit #9662 or open a new PR.
   Waiting on Flathub's reply. Do not open a new PR meanwhile.
+  Progress (2026-09-28): a Flathub reviewer replied on the Discourse
+  submission thread (2026-09-27) declining to review it because it is
+  AI-assisted. Treat the submission as stalled or likely rejected under
+  Flathub's generative-AI policy. Next step is the user's call; any
+  reply to Flathub must be written by the user, not Claude.
 
 - 📋 [FIBR-0160] **Add openSUSE Leap 15.6 as an OBS target (deferred — Leap ships no python 3.12+).**
   Attempted 2026-07-23: added the Leap 15.6 target + a %if 0%{?sle_version}
