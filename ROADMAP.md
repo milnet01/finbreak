@@ -380,6 +380,13 @@ so Flathub review and code signing do not block this release.
   User decision (2026-09-26): clear the review-fix backlog first, then
   run the Windows self-update test on wintest, then stop and tell the
   user 1.0 is ready for their codebase review.
+  User directive (2026-09-28): finish every audit fix (FIBR-0367),
+  then the remaining v1.0.0 items (FIBR-0346 with the OBS re-submit;
+  the Windows self-update test on ssh wintest), then CUT AND PUBLISH
+  1.0.0 -- the user's go is given, and the codebase review it waited
+  on is the 2026-09-27 full audit. After that, take as many of the
+  'carries no version' section's items as possible. Flathub (FIBR-0159)
+  stays a non-blocker; its reviewer declined AI-assisted work.
   **Layman:** The plan for calling the app finished: what has to be true first, and which four jobs are standing in the way.
   Kind: release.
   Source: user-decision-2026-08-20 ("what gets us to v1.0?").
@@ -395,6 +402,15 @@ so Flathub review and code signing do not block this release.
   Scope was chosen by the user on 2026-09-27 ("serious tier").
   Progress: no fix has landed yet; each group lands as its own commit
   with its own close-findings sweep.
+  Progress (2026-09-28): rows 1-16 of the ledger fixed, each with a
+  regression test run red first, gate green, pushed (commits 188358e,
+  c1d17d2, 0a2e869, 781f647). Rows 17-48 remain; the ledger's empty
+  disposition cells are the to-do list. Row 20 (Standard Bank PDF)
+  has no real statements in the repo, only synthetic fixtures under
+  tests/; FIBR-0050 INV-11 must be amended in the same commit as any
+  behaviour change (CLAUDE.md § Module map). After row 48: file every
+  non-serious finding as one roadmap item per lane file (ledger §
+  Queued).
   **Layman:** A full check of the app found bugs; the serious ones (wrong dates or amounts, lost data, security gaps) are being fixed now and the rest are filed.
   Kind: review-fix.
   Source: full-audit-2026-09-27.
@@ -3684,6 +3700,13 @@ work, and none of it is a release decision.
     criterion 4 to allow the opt-in update check, for the user to
     approve before it is committed. adopt-project found 6 of 7 stated
     dimensions carry a bar; currency had none.
+  Progress (2026-09-28): standards marked OWNED-HERE, workflow.md
+  retired to docs/history/workflow-state.md, discovery.md criteria 4
+  and 7 user-approved; align-report shows 0 gaps. OWED TODAY: the rule
+  14 gate (review-contract --max-loops 3) on CLAUDE.md and on
+  docs/discovery.md, one batch each -- both edits change what a
+  session or a later gate does. Report sent to the ~/.claude session
+  (claude-87).
   **Layman:** Tidy how the project records its own rules, so the machine-wide tools stop flagging it and the old step-by-step workflow can be retired.
   Kind: chore.
   Source: peer-request-claude-87-2026-09-28 (CFG-0645); user decisions 2026-09-28.
