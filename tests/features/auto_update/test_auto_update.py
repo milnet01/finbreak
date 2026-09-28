@@ -2098,3 +2098,52 @@ def _assert_detached_and_cut(window, worker, reached, detached, gc) -> None:  # 
         "hard-exits the process.\n"
         f"  slots that ran: {reached}"
     )
+
+
+_EXIT_WITH_A_STUCK_WORKER = r"""
+import os, sys, time
+os.environ["QT_QPA_PLATFORM"] = "offscreen"
+from PySide6.QtCore import QThread
+from PySide6.QtWidgets import QApplication
+
+app = QApplication([])
+from finbreak import app as app_mod
+from finbreak.ui import main_window
+
+class _SlowCheck(QThread):
+    # An update check blocked on the network: the real socket timeout is 30 s.
+    def run(self):
+        time.sleep(30)
+
+worker = _SlowCheck()
+worker.start()
+# What _drain_update_workers does with a worker still running after its wait.
+worker.blockSignals(True)
+main_window._DETACHED_WORKERS.append(worker)
+del worker
+
+finish = getattr(app_mod, "_finish", lambda code: code)
+sys.exit(finish(0))
+"""
+
+
+def test_row28_exiting_with_a_detached_worker_still_running_does_not_abort() -> None:
+    """Closing the window while the launch update check is still blocked on a
+    slow network: the drain detached the worker so the WINDOW could go, and
+    then Python's own shutdown destroyed the still-running QThread -- exit 134
+    and a core dump, not the Qt warning the docstring promised (full audit
+    2026-09-27, row 28). Run in a child process: the failure is an abort."""
+    started = __import__("time").monotonic()
+    result = subprocess.run(
+        [sys.executable, "-c", _EXIT_WITH_A_STUCK_WORKER],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        env={**os.environ, "PYTHONPATH": str(Path(__file__).parents[3] / "src")},
+    )
+    elapsed = __import__("time").monotonic() - started
+    assert result.returncode == 0, (
+        f"the process died (rc {result.returncode}) at exit with a detached "
+        f"worker still running:\n{result.stderr[-2000:]}"
+    )
+    assert elapsed < 20, "exit waited out the whole blocked check instead of a grace"

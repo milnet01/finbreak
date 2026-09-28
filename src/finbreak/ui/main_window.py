@@ -24,6 +24,7 @@ from __future__ import annotations
 import logging
 import os
 import tempfile
+import time
 from collections.abc import Callable
 from pathlib import Path
 
@@ -167,6 +168,19 @@ _WORKER_DRAIN_MS = 1500
 # the same destruction the detach exists to avoid (FIBR-0327). Entries are pruned
 # on the next drain, so the list holds only threads still running.
 _DETACHED_WORKERS: list[QThread] = []
+
+
+def settle_detached_workers(timeout_ms: int) -> bool:
+    """Give the workers detached at close up to *timeout_ms*, shared, to finish;
+    True when none is still running. The process must not reach interpreter
+    teardown with one running (see ``app._finish``)."""
+    deadline = time.monotonic() + timeout_ms / 1000
+    for worker in _DETACHED_WORKERS:
+        if shiboken6.isValid(worker) and worker.isRunning():
+            left_ms = max(0, int((deadline - time.monotonic()) * 1000))
+            worker.wait(left_ms)
+    return not any(shiboken6.isValid(w) and w.isRunning() for w in _DETACHED_WORKERS)
+
 
 # The workspace tab order (FIBR-0052 INV-1; Transactions inserted 2nd by FIBR-0012).
 # Fixed; the navigation actions and the import-done landing key on these indices.
@@ -1952,9 +1966,10 @@ class MainWindow(QMainWindow):
         Bounded on purpose. Both workers are a single blocking call, so there is
         no interruption point to honour mid-request — we ask, then wait a short
         while. If a worker outlasts that, detaching it from the window is what
-        actually prevents the abort: an unparented thread is not destroyed by the
-        window's destructor, so the worst case degrades to a Qt warning at process
-        exit instead of a crash the user sees.
+        prevents the abort at WINDOW close: an unparented thread is not destroyed
+        by the window's destructor. Interpreter teardown would still destroy it,
+        so ``app._finish`` gives it a grace and then ends the process before
+        teardown (full audit 2026-09-27, row 28).
 
         **Detaching needs two things the C++ reasoning does not cover** (both
         FIBR-0327). ``setParent(None)`` hands ownership back to *Python*, and the

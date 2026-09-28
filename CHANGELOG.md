@@ -33,6 +33,10 @@ signaling per
 
 ### Fixed
 
+- **Closing finbreak while a slow update check is still running no longer ends in a crash report.** (FIBR-0367)
+  It now waits a few seconds for the check, then closes cleanly
+  without it. (Full audit 2026-09-27, row 28.)
+
 - **Opening finbreak twice right after a crash no longer risks two copies running on the same vault.** (FIBR-0367)
   The second launch now waits the moment it takes the first to finish
   starting, then hands over to it. (Full audit 2026-09-27, row 27.)

@@ -10,6 +10,7 @@ silent re-first-run — so the window is never shown. The key is wiped on quit v
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 from contextlib import suppress
@@ -25,7 +26,7 @@ from finbreak.errors import VaultStateError
 from finbreak.loader_env import restore_system_loader_env
 from finbreak.services.auth import AuthService
 from finbreak.ui.icons import app_icon
-from finbreak.ui.main_window import MainWindow
+from finbreak.ui.main_window import MainWindow, settle_detached_workers
 from finbreak.ui.theme import ThemeController, load_theme_pref
 
 # Translation outside a QObject (this module is not one) calls
@@ -154,7 +155,31 @@ def run(argv: list[str] | None = None) -> int:
     if guard is not None:
         window.set_single_instance_guard(guard)
         guard.newConnection.connect(lambda: _raise_existing(guard, window))
-    return app.exec()
+    return _finish(app.exec())
+
+
+# How long, after the event loop ends, a detached update worker may still take to
+# finish before the process ends without it.
+_EXIT_GRACE_MS = 3000
+
+
+def _finish(code: int) -> int:
+    """End the run without destroying a thread that is still running.
+
+    A launch update check blocked on a slow network (its socket timeout is 30 s)
+    outlasts the window's drain and is detached so the WINDOW can close. Python's
+    own shutdown would then destroy that running QThread, which Qt answers with
+    abort() and a core dump (full audit 2026-09-27, row 28). So give it a grace;
+    if it is still blocked, end the process before interpreter teardown. The
+    vault was already locked on ``aboutToQuit``, and the worker's signals were
+    blocked when it was detached, so nothing it could still do is lost.
+    """
+    if settle_detached_workers(_EXIT_GRACE_MS):
+        return code
+    logging.shutdown()
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(code)
 
 
 def _raise_existing(guard: QLocalServer, window: QWidget) -> None:
