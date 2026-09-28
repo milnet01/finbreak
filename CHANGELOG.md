@@ -33,6 +33,12 @@ signaling per
 
 ### Fixed
 
+- **A CSV with an unclosed quote no longer loses transactions silently** (FIBR-0367)
+  A stray quote mark could make one line of a CSV statement swallow the
+  lines after it, so those transactions disappeared without a warning.
+  The import preview now flags the row, and a file whose quote is never
+  closed at all is refused with a message.
+
 - **Renaming a deeply nested category no longer moves it** (FIBR-0367)
   A category sitting deeper than the three levels finbreak lets you create,
   or a sub-category with its own children, was quietly moved under a Type

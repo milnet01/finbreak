@@ -74,7 +74,9 @@ def read_rows(text: str) -> list[dict[str, Any]]:
     is precisely the crash the other two comments warn about.
     """
     try:
-        return list(csv.DictReader(io.StringIO(text)))
+        # strict: an unclosed quote at end of file is csv.Error, not a partial
+        # field that swallowed every row after it (audit 2026-09-27 row 18).
+        return list(csv.DictReader(io.StringIO(text), strict=True))
     except csv.Error as exc:
         raise ValueError(f"the file is not valid CSV: {exc}") from exc
 
@@ -107,6 +109,19 @@ class CsvImporter:
             if any(row.get(col) is None for col in needed):
                 errors.append(
                     RowError(row_number, "row has fewer columns than the header")
+                )
+                continue
+            # A mapped cell holding a line break is a quote that opened and was
+            # closed only lines later: the rows in between are inside this one
+            # cell. Refuse it visibly rather than import one merged record and
+            # lose them (INV-4; audit 2026-09-27 row 18).
+            if any("\n" in row[col] or "\r" in row[col] for col in needed):
+                errors.append(
+                    RowError(
+                        row_number,
+                        "a quote in this row is not closed on the same line, so "
+                        "it swallowed the lines after it — check the file",
+                    )
                 )
                 continue
             # The date parse gets its own try so a strptime failure surfaces a

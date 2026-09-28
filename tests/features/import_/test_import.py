@@ -95,6 +95,30 @@ def test_INV4_malformed_csv_surfaces_valueerror_not_csv_error() -> None:
         CsvImporter().parse(text, SINGLE, 2)
 
 
+# INV-4 (audit 2026-09-27 row 18) — an unclosed quote must not swallow rows
+# silently. Non-strict csv ran the quoted field on across newlines: at end of
+# file it returned the partial field, and mid-file a later quote closed it, so
+# one merged "transaction" was imported and the rows inside it vanished.
+def test_INV4_unclosed_quote_at_end_of_file_is_refused() -> None:
+    text = ",".join(HEADER) + '\n2026-07-01,"Cash,10\n2026-07-02,Shop,5\n'
+    with pytest.raises(ValueError):
+        CsvImporter().parse(text, SINGLE, 2)
+
+
+def test_INV4_unclosed_quote_mid_file_is_a_row_error_not_a_merged_draft() -> None:
+    text = (
+        ",".join(HEADER)
+        + '\n2026-07-01,"Cash,10\n2026-07-02,Shop,5\n2026-07-03,Fuel",7'
+        + "\n2026-07-04,Bread,3\n"
+    )
+    result = CsvImporter().parse(text, SINGLE, 2)
+    assert [d.description for d in result.drafts] == ["Bread"], (
+        "the merged record is not imported as one transaction"
+    )
+    assert len(result.errors) == 1
+    assert "quote" in result.errors[0].reason
+
+
 # --------------------------------------------------------------------------- #
 # INV-1 — profile CRUD + signature round-trip + upsert
 # --------------------------------------------------------------------------- #
