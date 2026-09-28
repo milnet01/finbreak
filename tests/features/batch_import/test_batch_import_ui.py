@@ -142,6 +142,23 @@ def _stub_picker(monkeypatch, account_id: int | None):
     monkeypatch.setattr(import_batch_mod, "AccountPickerDialog", _Stub)
 
 
+def _wait_for_review(qtbot, widget) -> None:
+    """Wait for the review screen, with every row asking for an account.
+
+    The row outcomes alone are a turn early: the scan sets them, and the wizard
+    reaches ``review`` on a later turn of the event loop. "Import all" starts
+    only from ``review``, so a click in that gap is dropped and the test waits
+    for a run that never began -- seen under parallel load (FIBR-0373).
+    """
+    qtbot.waitUntil(
+        lambda: (
+            widget._batch_phase == "review"
+            and all(f.outcome == "needs_account" for f in widget._batch_files)
+        ),
+        timeout=3000,
+    )
+
+
 def _stub_password(monkeypatch, *, password: str | None, remember: bool = False):
     """Patch ``PasswordDialog`` with a stand-in that answers on show —
     ``password=None`` cancels. Returns the log of constructions, so a test can
@@ -312,10 +329,7 @@ def test_INV5_displayed_account_is_the_targeted_account(
     ]
     widget = _wizard(qtbot, service)
     widget._select_files(paths)
-    qtbot.waitUntil(
-        lambda: all(f.outcome == "needs_account" for f in widget._batch_files),
-        timeout=3000,
-    )
+    _wait_for_review(qtbot, widget)
     files = widget._batch_files
     review = widget._batch_review
 
@@ -386,10 +400,7 @@ def test_INV7_autolock_mid_batch_stops_the_run(
     assert widget is not None
 
     widget._select_files(paths)
-    qtbot.waitUntil(
-        lambda: all(f.outcome == "needs_account" for f in widget._batch_files),
-        timeout=3000,
-    )
+    _wait_for_review(qtbot, widget)
     files = widget._batch_files
     _stub_picker(monkeypatch, account)
     widget._batch_review._choose_account(0)
@@ -517,10 +528,7 @@ def test_a_second_import_all_cannot_arm_a_second_run(
             _csv(tmp_path, "c.csv", _rows(2, day_from=11, tag="c")),
         ]
     )
-    qtbot.waitUntil(
-        lambda: all(f.outcome == "needs_account" for f in widget._batch_files),
-        timeout=3000,
-    )
+    _wait_for_review(qtbot, widget)
     _stub_picker(monkeypatch, account)
     for row in range(3):
         widget._batch_review._choose_account(row)
@@ -653,10 +661,7 @@ def test_INV14_done_waits_for_the_report(
             _csv(tmp_path, "b.csv", _rows(2, day_from=9)),
         ]
     )
-    qtbot.waitUntil(
-        lambda: all(f.outcome == "needs_account" for f in widget._batch_files),
-        timeout=3000,
-    )
+    _wait_for_review(qtbot, widget)
     _stub_picker(monkeypatch, account)
     widget._batch_review._choose_account(0)
     widget._batch_review._choose_account(1)
@@ -698,10 +703,7 @@ def test_INV14_done_waits_for_the_report(
             _csv(tmp_path, "f.csv", _rows(2, day_from=21, tag="f")),
         ]
     )
-    qtbot.waitUntil(
-        lambda: all(f.outcome == "needs_account" for f in widget2._batch_files),
-        timeout=3000,
-    )
+    _wait_for_review(qtbot, widget2)
     _stub_picker(monkeypatch, account)
     for row in range(3):
         widget2._batch_review._choose_account(row)
