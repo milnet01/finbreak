@@ -9,12 +9,23 @@ on:
 permissions:
   contents: read
 
+# A newer push to the same branch or pull request cancels the older run -- but
+# never on main, where every commit keeps its own verdict so a red one can be
+# traced. Keyed on workflow, event and ref so a push and a PR run never cancel
+# each other (local-gate.md § 9, FIBR-0373).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 jobs:
   gate:
     name: lint + security + tests
     # Pinned, not `-latest`, so a runner-image rollover can't change the gate
     # under us; bump deliberately.
     runs-on: ubuntu-24.04
+    # Sized for a cold run: the job takes ~2-4 minutes. Without a limit a hung
+    # test holds the runner for GitHub's six-hour default (FIBR-0373).
+    timeout-minutes: 20
     # Run INSIDE the same image scripts/ci-docker.sh uses, so a local
     # `scripts/ci-docker.sh` run and this job install an identical environment
     # and run the identical gate — they cannot drift (FIBR-0001 INV-2). The

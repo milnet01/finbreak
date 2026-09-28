@@ -16,6 +16,9 @@ jobs:
     name: freeze + clean-room launch
     # Pinned, not `-latest` — see ci.yml.
     runs-on: ubuntu-24.04
+    # Sized for a cold run: the freeze + clean-room launch takes 5-7 minutes
+    # (FIBR-0373).
+    timeout-minutes: 45
     steps:
       # SHA-pinned, tag in the trailing comment, maintained by dependabot.yml —
       # see ci.yml for why (FIBR-0226). persist-credentials: false because

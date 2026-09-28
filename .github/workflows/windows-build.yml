@@ -14,6 +14,11 @@ jobs:
   windows-build:
     name: freeze + clean-room finbreak.exe
     runs-on: windows-latest
+    # Sized for a cold run: the freeze takes 3-8 minutes. release-windows.sh
+    # waits on this run, so a hang would otherwise hold it for six hours
+    # (FIBR-0373). No concurrency group: that script dispatches this workflow
+    # and waits for its own run, which a cancel would take away.
+    timeout-minutes: 45
     steps:
       # SHA-pinned, tag in the trailing comment, maintained by dependabot.yml —
       # see ci.yml for why (FIBR-0226). It matters most here: this job produces
