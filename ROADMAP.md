@@ -3750,7 +3750,7 @@ work, and none of it is a release decision.
   Kind: chore.
   Source: in-session-2026-09-28.
 
-- 🚧 [FIBR-0373] **Take the local-gate.md § 9 speed-ups for the push gate and GitHub CI.**
+- ✅ [FIBR-0373] **Take the local-gate.md § 9 speed-ups for the push gate and GitHub CI.**
   Baseline 2026-09-28 (local, one stage at a time): pytest 193s serial,
   pip-audit pypi 29s + osv 28s run one after the other, gitleaks 8s,
   mypy 6s, the rest under 5s. GitHub: setup 26s (pip install 18s),
@@ -3765,6 +3765,17 @@ work, and none of it is a release decision.
   Skipped: a pip download cache on GitHub. The whole install is 18s,
   pip's cache directory is not even writable in the container, and a
   shared cache is one more tamper point on a public repo.
+  Resolved (2026-09-28): whole local gate ~270s -> 31-44s; GitHub CI
+  run 4m13s -> ~2m; a docs-only push runs a ~3s check and no CI run.
+  Commits ded7960 (leftover windows closed after each test; serial
+  193s -> 146s), 11df5bc (pytest-xdist, workers sized from memory, cap
+  6; per-test 300s timeout), 41d54b8 (pip-audit runs overlapped),
+  1262494 (timeout-minutes on all jobs; concurrency cancels superseded
+  non-main runs), 6670d0d (the hook runs `ci-local.sh --docs` on a
+  docs-only push), 26068cc (five batch-import tests clicked Import
+  before the review phase -- a real race the parallel gate exposed,
+  proved by interposition), 925832a (paths-ignore **.md on push).
+  Download cache on GitHub skipped, reason above.
   **Layman:** The checks that run before every upload take about four and a half minutes; this makes them faster without making them less thorough.
   Kind: perf.
   Source: user-request-2026-09-28.
