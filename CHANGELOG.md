@@ -184,6 +184,13 @@ signaling per
 
 ### Security
 
+- **The recovery code can no longer be copied around its clipboard auto-clear.** (FIBR-0367)
+  Selecting the code with the mouse or keyboard used to leave it in
+  Linux's middle-click paste buffer, which nothing cleared, and Ctrl+C
+  copied it without the timed clear. Now the code cannot be selected,
+  and Ctrl+C works like the Copy button: the clipboard is wiped after
+  the timeout.
+
 - **Locking now clears every screen straight away, not only the tables.**
   The Home figures and charts, the Transfers and Recurring lists, account
   names in drop-downs, the Forecast note and a statement open in the

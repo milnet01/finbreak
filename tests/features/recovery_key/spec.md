@@ -511,6 +511,26 @@ every credential, account and transaction here is synthetic
   `_convert` deletes the file moments later.
   Source: FIBR-0337 H1.
 
+- **INV-27** — The recovery code leaves `RecoveryCodeDialog`'s display only
+  through `_copy`, the route the auto-clear guard sees. No user gesture may
+  select the code: on X11 a selection is copied to PRIMARY, which nothing
+  clears, and Qt's own Ctrl+C and context-menu Copy go around the guard. So
+  every mouse button event on the display is swallowed, as are the selecting
+  standard keys; the copy and cut keys call `_copy`; there is no context menu.
+  The display stays a `QLineEdit` and plain arrow keys still move its caret,
+  which is how a screen reader reads the code (FIBR-0328).
+  *Test:* `test_code_display.py` — offscreen, where PRIMARY does not exist, so
+  each leg asserts the cause instead: no selection forms after a drag, a
+  Shift+click, a double-click or a selecting key; Ctrl+C and Cut put the code
+  on the clipboard and the guard clears it; no popup opens on a context-menu
+  event; the arrow keys still move the caret.
+  *What it cannot see:* the release half. On X11 `QLineEdit` copies an
+  existing selection — the Copy button's highlight — to PRIMARY on release, and
+  offscreen that copy is a no-op, so dropping the release from the filter
+  leaves every leg green. It was measured instead, on a private Xvfb display
+  (FIBR-0367 ledger row 34).
+  Source: full-audit-2026-09-27, code lane 15 (FIBR-0367 row 34).
+
 ## Rationale
 
 `AuthService.reset_vault` — "start over" — is the live answer to *I forgot my

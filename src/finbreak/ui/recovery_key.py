@@ -16,8 +16,14 @@ from __future__ import annotations
 
 import os
 
-from PySide6.QtCore import QCoreApplication, QObject, Qt, Signal
-from PySide6.QtGui import QCloseEvent, QGuiApplication, QKeySequence, QShortcut
+from PySide6.QtCore import QCoreApplication, QEvent, QObject, Qt, Signal
+from PySide6.QtGui import (
+    QCloseEvent,
+    QGuiApplication,
+    QKeyEvent,
+    QKeySequence,
+    QShortcut,
+)
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
@@ -45,6 +51,26 @@ from finbreak.ui._clipboard import ClipboardAutoClear
 # 2026-08-25: pyside6-lupdate extracts neither a constant context nor a call
 # routed through a wrapper function, so the one-argument `_tr` helper this
 # replaces produced an empty catalog for all eight of its sites (FIBR-0310 R3).
+
+# Every key that would select text in the recovery-code display. Standard keys
+# rather than literal chords, so each platform's own binding is the one matched.
+_SELECTING_KEYS = (
+    QKeySequence.StandardKey.SelectAll,
+    QKeySequence.StandardKey.SelectNextChar,
+    QKeySequence.StandardKey.SelectPreviousChar,
+    QKeySequence.StandardKey.SelectNextWord,
+    QKeySequence.StandardKey.SelectPreviousWord,
+    QKeySequence.StandardKey.SelectStartOfLine,
+    QKeySequence.StandardKey.SelectEndOfLine,
+    QKeySequence.StandardKey.SelectStartOfBlock,
+    QKeySequence.StandardKey.SelectEndOfBlock,
+    QKeySequence.StandardKey.SelectStartOfDocument,
+    QKeySequence.StandardKey.SelectEndOfDocument,
+    QKeySequence.StandardKey.SelectNextLine,
+    QKeySequence.StandardKey.SelectPreviousLine,
+    QKeySequence.StandardKey.SelectNextPage,
+    QKeySequence.StandardKey.SelectPreviousPage,
+)
 
 
 class RecoveryCodeDialog(QDialog):
@@ -121,6 +147,16 @@ class RecoveryCodeDialog(QDialog):
         # has neither a placeholder nor a buddy label to fall back on
         # (FIBR-0328).
         self._display.setAccessibleName(self.tr("Your recovery code"))
+        # The code leaves this field through `_copy` and nowhere else, because
+        # that is the one route the auto-clear guard sees (security-model T13).
+        # Read-only still lets the user SELECT, and on X11 a selection is copied
+        # to PRIMARY, which nothing clears; Ctrl+C and the context menu's Copy
+        # are Qt's own copy, around the guard (FIBR-0367 row 34). So no user
+        # selection may form. It stays a QLineEdit rather than a QLabel: the
+        # caret lets a screen reader read the code character by character, and
+        # FIBR-0328 needs it announced.
+        self._display.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
+        self._display.installEventFilter(self)
 
         copy_button = QPushButton(self.tr("Copy"))
         copy_button.setObjectName("recovery_code_copy")
@@ -159,6 +195,36 @@ class RecoveryCodeDialog(QDialog):
 
         copy_button.clicked.connect(self._copy)
         save_button.clicked.connect(self._save)
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        """Keep every user gesture on the code display from selecting it.
+
+        Every mouse button event is swallowed. The click still focuses the
+        field, because QApplication gives click focus before any filter runs,
+        so the caret stays reachable. The release matters as much as the drag:
+        on X11 QLineEdit copies an existing selection — the Copy button's
+        highlight — to PRIMARY on release. Every selecting key is swallowed, and
+        the copy and cut keys go through :meth:`_copy`.
+        """
+        if watched is not self._display:
+            return super().eventFilter(watched, event)
+        kind = event.type()
+        if kind in (
+            QEvent.Type.MouseButtonPress,
+            QEvent.Type.MouseButtonDblClick,
+            QEvent.Type.MouseMove,
+            QEvent.Type.MouseButtonRelease,
+        ):
+            return True
+        if kind == QEvent.Type.KeyPress and isinstance(event, QKeyEvent):
+            if event.matches(QKeySequence.StandardKey.Copy) or event.matches(
+                QKeySequence.StandardKey.Cut
+            ):
+                self._copy()
+                return True
+            if any(event.matches(key) for key in _SELECTING_KEYS):
+                return True
+        return super().eventFilter(watched, event)
 
     def _copy(self) -> None:
         self._display.selectAll()  # visible feedback that the field was taken
