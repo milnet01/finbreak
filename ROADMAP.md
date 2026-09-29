@@ -424,6 +424,11 @@ so Flathub review and code signing do not block this release.
   Also found and fixed on the way, outside the ledger: FIBR-0374 (unlock /
   first-run dialogs could abort the app on deletion), FIBR-0372 (pip-audit
   PyPI lookup of finbreak itself).
+  Progress 2026-09-29: rows 30-32 fixed, each red first, one commit per
+  row (dd3a740, a974dd1, 278751d). Row 30's lock wipe is now generic
+  (combos, labels, text fields, charts) plus clear_rows on five widgets;
+  test_lock_wipe.py scans for marker data after a lock. Next: row 33
+  (first_run.py prefs failure after creation loses the recovery code).
   **Layman:** A full check of the app found bugs; the serious ones (wrong dates or amounts, lost data, security gaps) are being fixed now and the rest are filed.
   Kind: review-fix.
   Source: full-audit-2026-09-27.
