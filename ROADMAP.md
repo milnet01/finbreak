@@ -2776,7 +2776,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: security.
   Source: full-audit-2026-09-27 code lane 2 (queued by FIBR-0367).
 
-- 📋 [FIBR-0403] **Queued findings from the 2026-09-27 audit: vault migration lane (5 items).**
+- ✅ [FIBR-0403] **Queued findings from the 2026-09-27 audit: vault migration lane (5 items).**
   From docs/reviews/2026-09-27-full-audit/
     code-lane-03-vault-migration.md.
   Line numbers are the audited commit's (52e5162); find sites by symbol.
@@ -2802,6 +2802,13 @@ touches the § 2 surface. A security fix takes the number its change takes — �
     then restores a .pre-v2 copy that may be weeks old, dropping
     everything since. Fix: decide in section 13.3 whether the offer must
     say the copy is stale.
+  Resolved 2026-09-29 (7197737): three fixed, one dismissed, one
+  queued. S6 flushes the vault directory before clearing the flag;
+  migration_artefacts lists the rollback journals and sidecar .tmp files
+  (INV-12 follows); FIBR-0019 S4 records that Windows does no directory
+  flush. Dismissed: bytes(dek) is security-model INV-3's recorded,
+  declined DEK residual (FIBR-0307). Queued: the stale-copy offer, as
+  FIBR-0423.
   **Layman:** Five smaller problems in the code that upgrades an old vault to the new key format, mostly about a crash on Windows leaving the upgrade half-recorded.
   Kind: security.
   Source: full-audit-2026-09-27 code lane 3 (queued by FIBR-0367).
@@ -3401,6 +3408,21 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   **Layman:** Some build and release checks match comments or docs instead of the real steps, or skip silently; this makes them fail when a step goes.
   Kind: test.
   Source: full-audit-2026-09-27 tests lane T12 (queued by FIBR-0367).
+
+- 📋 [FIBR-0423] **The pre-upgrade rollback offer says how old the copy is.**
+  From FIBR-0403's open question (full audit 2026-09-27 code lane 3).
+  If § 13.2's S6 keeps failing on the resume path (_finish_quietly logs
+  an OSError and returns), migration_pending stays set and the .pre-v2
+  copy stays beside the vault. Weeks later a fault that reaches § 13.3's
+  terminal branch offers that copy, and restoring it silently drops
+  everything recorded since. Recommended: the offer states the copy's
+  date (from its file time) and that later changes are lost, so the
+  user can weigh it against a backup restore. Changes FIBR-0019 § 13.3,
+  so the amendment is gated (review-contract --max-loops 3) before the
+  UI change.
+  **Layman:** If upgrading an old vault was interrupted and never finished tidying up, finbreak might later offer to restore an old copy without saying how old it is; it should tell you the date so you don't lose recent changes by accident.
+  Kind: fix.
+  Source: full-audit-2026-09-27 code lane 3 open question (queued by FIBR-0403).
 
 ## v1.1.0 — Localisation
 
