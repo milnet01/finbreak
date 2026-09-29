@@ -2914,7 +2914,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: review-fix.
   Source: full-audit-2026-09-27 code lane 6 (queued by FIBR-0367).
 
-- 📋 [FIBR-0407] **Queued findings from the 2026-09-27 audit: batch import lane (10 items).**
+- ✅ [FIBR-0407] **Queued findings from the 2026-09-27 audit: batch import lane (10 items).**
   From docs/reviews/2026-09-27-full-audit/code-lane-07-batch-import.md.
   Line numbers are the audited commit's (52e5162); find sites by symbol.
   - [Medium] services/batch_import.py:548-552 -- one answer() re-runs
@@ -2953,6 +2953,15 @@ touches the § 2 surface. A security fix takes the number its change takes — �
     Current where FIBR-0086 section 4.6 says family A yields no type and
     the user picks. Fix: a placeholder that blocks OK, or amend the
     spec.
+  Resolved 2026-09-29 (ca66981): nine fixed, one queued. Re-scans
+  after an answer run one per turn and try each password once per file
+  (§ 4.7, INV-9); OFX fan-out labels escalate before the index; batch
+  Create reports the stored number; plain-text labels; failure logging
+  by type; an unexpected mid-run error ends the run with a report;
+  set_account keeps preview and account together; QLocale digits;
+  the Create dialog makes the user pick a type for family A (FIBR-0086
+  § 4.6). Queued: when a remembered password is written, since FIBR-0085
+  § 4.4 and § 4.6 contradict each other (FIBR-0427).
   **Layman:** Ten smaller problems in importing many statements at once, including the screen freezing while it retries locked PDFs and a remembered password being saved too early.
   Kind: security.
   Source: full-audit-2026-09-27 code lane 7 (queued by FIBR-0367).
@@ -3474,6 +3483,21 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   **Layman:** One automated check crashed once for no clear reason and then passed every time after; it needs a closer look so it doesn't hide a real problem.
   Kind: investigate.
   Source: in-session-2026-09-29 (FIBR-0405 gate run).
+
+- 📋 [FIBR-0427] **A remembered batch-import password is saved only when the import is committed.**
+  From FIBR-0407 finding 3 (full audit 2026-09-27 code lane 7).
+  FIBR-0085's two specs contradict each other. The service spec § 4.4
+  writes a Remember-ticked password once a file's account settles (at
+  SCAN, or at REVIEW when the user places it), while the review-step
+  spec § 4.6 promises Cancel before RUN discards every held password
+  unwritten. The code follows § 4.4 (_settle_password in set_account),
+  so Cancel does not undo it, and a file moved between accounts writes
+  the password to each one. Recommended: defer the write to _commit's
+  success path, which keeps § 4.6's promise. Amends § 4.4, so the change
+  is gated (review-contract --max-loops 3) before the build.
+  **Layman:** When importing many statements at once, a password you asked finbreak to remember is saved too early, even if you then cancel; it should be saved only once the import actually happens.
+  Kind: fix.
+  Source: full-audit-2026-09-27 code lane 7 (queued by FIBR-0407).
 
 ## v1.1.0 — Localisation
 
