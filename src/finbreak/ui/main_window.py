@@ -76,6 +76,7 @@ from finbreak.datetime_format import set_app_timezone
 from finbreak.datetime_format import today as app_today
 from finbreak.errors import (
     BackupError,
+    InterruptedRestoreError,
     UpdateError,
     VaultLockedError,
     VaultStateError,
@@ -1551,8 +1552,8 @@ class MainWindow(QMainWindow):
         # Guarded: this runs inside MainWindow.__init__, on a vault that is
         # mid-surgery, and a read-only or full data directory made an OSError here
         # the app's whole startup -- unlaunchable, with a traceback (FIBR-0327).
-        # Leaving the mixed pair in place instead routes to run()'s VaultStateError
-        # branch, which names the situation and says what to do.
+        # A failure leaves everything in place and raises InterruptedRestoreError,
+        # which run() turns into a message naming the situation and what to do.
         try:
             for suffix in ("", *_WAL_SIBLINGS):
                 live_db = vault_path.with_name(vault_path.name + suffix)
@@ -1578,6 +1579,10 @@ class MainWindow(QMainWindow):
             # renames or does nothing -- so a retry once the directory is writable
             # finds the same signature and recovers then.
             log.exception("could not recover the interrupted restore from %s", stamp)
+            # Raised rather than falling through: state() would report the
+            # mixed pair generically, or -- with neither live file present --
+            # route to first-run over the kept copies. run() says what happened.
+            raise InterruptedRestoreError(vault_path.parent) from None
 
     def _route_pre_login(self) -> None:
         """Return to the correct pre-login surface (first-run when no vault, unlock

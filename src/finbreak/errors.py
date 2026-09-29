@@ -28,6 +28,17 @@ class VaultStateError(FinbreakError):
     present without the other (FIBR-0004 INV-5)."""
 
 
+class InterruptedRestoreError(VaultStateError):
+    """A restore was interrupted and its ``*.old`` copies of the previous vault
+    could not be moved back (full audit 2026-09-27 row 37). The copies are intact
+    in ``directory``; a retry once it is writable recovers them. A subclass so a
+    handler that does not know it still fails closed on the mixed pair."""
+
+    def __init__(self, directory: object) -> None:
+        super().__init__(f"interrupted restore could not be undone in {directory}")
+        self.directory = directory
+
+
 class RollbackAvailableError(VaultStateError):
     """§ 13.3's terminal branch, with D8's pre-upgrade copy verified beside it.
 

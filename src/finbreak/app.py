@@ -22,7 +22,7 @@ from PySide6.QtNetwork import QLocalServer
 from PySide6.QtWidgets import QApplication, QMessageBox, QWidget
 
 from finbreak import paths, single_instance
-from finbreak.errors import VaultStateError
+from finbreak.errors import InterruptedRestoreError, VaultStateError
 from finbreak.loader_env import restore_system_loader_env
 from finbreak.services.auth import AuthService
 from finbreak.ui.icons import app_icon
@@ -127,6 +127,22 @@ def run(argv: list[str] | None = None) -> int:
 
     try:
         window = MainWindow(service, theme_controller=theme_controller)
+    except InterruptedRestoreError as exc:
+        QMessageBox.critical(
+            None,
+            "finbreak",
+            QCoreApplication.translate(
+                "App",
+                "finbreak was interrupted while restoring a backup, and could not "
+                "put your previous data back.\n\n"
+                "Your previous data is safe. It is kept in files ending in "
+                "“.old” in this folder:\n{folder}\n\n"
+                "Do not delete those files. If the folder is read-only or the disk "
+                "is full, fix that and start finbreak again: it will finish putting "
+                "your data back by itself.",
+            ).format(folder=exc.directory),
+        )
+        return 1
     except VaultStateError as exc:
         QMessageBox.critical(
             None,

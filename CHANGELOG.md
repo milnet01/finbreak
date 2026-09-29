@@ -33,6 +33,14 @@ signaling per
 
 ### Fixed
 
+- **A restore finbreak could not undo now says what happened and not to delete anything** (FIBR-0367)
+  If a restore was interrupted and finbreak could not put your previous data
+  back (for example, the folder was read-only), it used to say the vault was
+  "incomplete or corrupt" and suggest removing files to start over. It now
+  says a restore was interrupted, shows the folder holding your previous
+  data, asks you not to delete those files, and explains that restarting
+  once the folder can be written finishes the repair.
+
 - **Alert text and the password hint are shown exactly as written**
   A merchant name from a bank statement, or a password hint,
   containing something that looked like web formatting (such as

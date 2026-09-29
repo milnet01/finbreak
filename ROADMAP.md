@@ -1319,6 +1319,20 @@ so Flathub review and code signing do not block this release.
   Kind: doc-fix.
   Source: adopt-project-2026-09-28.
 
+- 📋 [FIBR-0383] **A restore crash between the two move-aside renames leaves a recoverable vault the app tells the user to delete.**
+  services/backup.py _install moves vault.db aside to vault.db.<stamp>.old,
+  then the sidecar. A crash between those two renames leaves the db .old
+  with no matching sidecar .old and the sidecar still live.
+  MainWindow._reconcile_interrupted_restore needs a common stamp, so it
+  does nothing; state() raises the mixed-pair VaultStateError and run()
+  shows the generic "Remove the partial data files to start over" over a
+  recoverable database. Fix: recognise an unpaired db .old beside a live
+  sidecar as the same restore and move the db back; test red first.
+  Found while fixing FIBR-0367 row 37 (delivery-report-group-A.md, A3).
+  **Layman:** If finbreak is cut off at one exact moment while restoring a backup, it fails to put your old data back and its message suggests deleting files that still hold that data.
+  Kind: fix.
+  Source: full-audit-2026-09-27 delivery A3 (adjacent).
+
 ## v1.0.x — patch stream
 
 Bug fixes, security fixes, performance work, refactors, dependency bumps and

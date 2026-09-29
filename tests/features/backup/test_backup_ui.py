@@ -611,6 +611,60 @@ def test_FIBR0327_a_failed_recovery_routes_rather_than_crashing_startup(
     assert vault_p.read_bytes() == original_vault_bytes
 
 
+def test_a_blocked_recovery_tells_the_user_why_and_not_to_delete(
+    qtbot, tmp_path, monkeypatch, app_run_isolation
+):
+    """Full audit 2026-09-27 row 37 (delivery A3) — the startup message for a
+    restore the app could not finish undoing.
+
+    It was the generic mixed-pair text: "incomplete or corrupt … Remove the partial
+    data files to start over". That says nothing about an interrupted restore or a
+    folder that cannot be written, and its advice steers the user to delete data
+    that a retry would recover. Driven through the real ``run()`` and
+    ``MainWindow``, with only ``os.replace`` refused, so the test sees what the
+    user sees.
+    """
+    import finbreak.ui.main_window as mw
+    from finbreak import app as app_mod
+
+    dest = tmp_path / "dest"
+    dest.mkdir()
+    vault_p, sidecar_p = dest / "vault.db", dest / "vault.kdf.json"
+    original_auth = AuthService(vault_p, sidecar_p)
+    original_auth.first_run(bytearray(b"the original master"), "USD")
+    original_auth.lock()
+    vault_p.rename(dest / "vault.db.20260101T000000.old")
+    sidecar_p.rename(dest / "vault.kdf.json.20260101T000000.old")
+    vault_p.write_bytes(b"a half-installed new vault with no sidecar yet")
+
+    def refuse(*_args, **_kwargs):
+        raise OSError(30, "Read-only file system")
+
+    shown: list[str] = []
+    with monkeypatch.context() as scoped:
+        scoped.setattr(mw.os, "replace", refuse)
+        scoped.setattr(app_mod.paths, "vault_path", lambda: vault_p)
+        scoped.setattr(app_mod.paths, "sidecar_path", lambda: sidecar_p)
+        scoped.setattr(
+            app_mod.single_instance, "another_instance_is_running", lambda _n: False
+        )
+        scoped.setattr(
+            app_mod.QMessageBox,
+            "critical",
+            lambda _parent, _title, text, *a, **k: shown.append(text),
+        )
+        assert app_mod.run([]) == 1
+
+    assert len(shown) == 1
+    message = shown[0]
+    assert "restor" in message.lower(), message  # says a restore was interrupted
+    assert str(dest) in message, message  # says where the kept copies are
+    assert ".old" in message, message  # names them
+    assert "not delete" in message.lower(), message
+    assert "start over" not in message.lower(), message
+    assert "remove" not in message.lower(), message
+
+
 def test_the_recovered_original_pair_is_made_durable(qtbot, tmp_path, monkeypatch):
     """FIBR-0314 — the interrupted-restore recovery must fsync its directory.
 
