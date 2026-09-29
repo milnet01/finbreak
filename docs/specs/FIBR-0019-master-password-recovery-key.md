@@ -789,19 +789,25 @@ delete one slot, rewrite the sidecar atomically. The database is untouched.
   back on. Verifying it by reading it END TO END is the whole of the
   difference; an open-probe alone passes the damage this exists to catch.
 
-- **INV-14** — **No vault is opened or created at the library's default cipher
-  level** (FIBR-0401, amended 2026-09-29). A vault whose sidecar records a
-  `cipher_compatibility` opens at that level. One that records none — every
-  vault created fresh — opens at `LIVE_VAULT_CIPHER_COMPAT` (4), and
-  `Vault.create` writes it at that level. Every vault finbreak has created was
+- **INV-14** — **No database is opened or created at the library's default
+  cipher level** (FIBR-0401, amended 2026-09-29). A database opens at the level
+  it was written at. Where its own sidecar records a `cipher_compatibility` — a
+  migrated or restored vault — that is the level. Every other database opens at
+  `LIVE_VAULT_CIPHER_COMPAT` (4): every vault created fresh, the v1 `vault.db`
+  still under a migration-pending sidecar (whose recorded level describes the
+  replacement, not this file), and the `.pre-v2` copy. `Vault` applies it
+  whenever a caller passes no level, in `create` and in `open`, so every call
+  site that passes none inherits it. Every vault finbreak has created was
   written under SQLCipher 4's defaults, which are level 4, so the pin changes
   no file on disk; it removes the dependence on a default a `sqlcipher3-wheels`
-  bump could move. `LIVE_VAULT_CIPHER_COMPAT` is its own constant and never
-  changes: raising `SQLCIPHER_COMPAT` to export at a newer level must not
-  change the level an unrecorded vault opens at.
+  bump could move. `LIVE_VAULT_CIPHER_COMPAT` is its own constant, defined by
+  the literal 4, and never changes: raising `SQLCIPHER_COMPAT` to export at a
+  newer level must not change the level an unrecorded database opens at.
   *Test:* move SQLCipher's process-wide default to level 3
   (`PRAGMA cipher_default_compatibility = 3`). A vault created before the move
   still opens. A vault created during it opens after the default is put back.
+  With `SQLCIPHER_COMPAT` patched to another level, a fresh vault is still
+  created and opened at 4.
   *Breaks when:* the pin is applied on open but not on create — a vault
   created while the default is moved is then written at a level no open uses.
 
@@ -823,7 +829,7 @@ delete one slot, rewrite the sidecar atomically. The database is untouched.
 ## 7. Tests
 
 New suite `tests/features/recovery_key/`, with `spec.md` beside it per
-`docs/standards/testing.md`. Five files, one per concern:
+`docs/standards/testing.md`. One file per concern:
 
 | File | Locks | Runs headless |
 |---|---|---|
@@ -835,14 +841,16 @@ New suite `tests/features/recovery_key/`, with `spec.md` beside it per
 | `tests/features/vault/test_vault.py` | INV-14 | yes — vault-level, no UI |
 
 **Every one of these must be seen to fail before the change exists**
-(`testing.md` § 1). Five of the thirteen invariants fail against today's code
+(`testing.md` § 1). These fail against today's code
 for reasons already established rather than assumed: INV-1 because every current
 call site passes a derived key as the database key (§2.1); INV-11 because
 nothing today can reach `slots.recovery` to trial-unwrap a candidate, there
 being no such slot (§5); INV-4 because the current sidecar has seven flat
 fields (§4.4); INV-12 because no `sidecar_version` field exists today at all
-(§4.4); and INV-13 because no migration exists to take a
-rollback copy before.
+(§4.4); INV-13 because no migration exists to take a
+rollback copy before; and INV-14 because nothing pins the level today, so a
+vault created at the default fails to open once the default moves (measured
+on SQLCipher 4.12.0, 2026-09-29).
 
 **Registration.** `recovery_key` must be added to `_NO_PROSE` in
 `tests/features/prose_checks/test_prose_checks.py` — that suite fails if any
@@ -1004,6 +1012,7 @@ leaves two amendment paragraphs a later reader has to reconcile.
 | 5 | 2026-09-06 | 3, cold — genre pinned `spec`, packet 72 KB / 14 windows, `spec_lint` + `doc_integrity` clean and every check actually run | 2 | 3 | 4 | 1 | **Ten verified, ten fixed; none dismissed. First loop of a NEW run**, gating FP05's amendment to § 13.3 branch 2. **All three lanes independently found the same defect, and it was that amendment's own**: branch 2 was rewritten as three CASES, and a replacement that reads end to end and then declines its own counts matched none of them — so a builder folds it into the delete branch and destroys the one complete copy, which is the exact FIBR-0337 H1 class the third bullet was added to stop. Restated as a RULE: delete only on positive evidence about the replacement, and treat every unavailable count set as cannot-compare. **Two lanes each found the two branch-3 defects, and the code names both gaps in its own docstring**: § 13.3 said only "Restart from S1" while `_ensure_rollback_copy` reads "INV-13 carries no carve-out for the resume path", and the retake REBUILDS the sidecar half because past S4 the live sidecar is the migration-pending one — a byte copy makes "rollback" restore the stalled state. Two lanes also found S1's "Generate the DEK" reads as minting a second DEK on the restart, which would leave the pending sidecar wrapping one no file answers to. **The best single finding was a test clause that cannot fail**: INV-1 claimed leg 2 excludes § 8.1, and it cannot — § 8.1 is scoped to migrated vaults, and under it two vaults still hold different DEKs because their v1 salts differ. A third leg was added and `mutation_probe` confirms it kills that design. **My own first draft of that leg was wrong** and 4a step 3 caught it: it asserted DEK ≠ KEK-master, which is leg 1 again; the leg that bites tries the PRE-migration key against the migrated database. Also fixed: INV-7's headline said "opens" where its own test says "with every row intact", so a builder would have used the weak check branch 1 rejects; INV-13's test clause omitted the sidecar leg that is the only one able to fail (the test has it, the spec did not describe it); § 13.3's implementation note said "the slot" where FP05's M1 fix requires the MASTER slot; `Slot` was a return type named nowhere else, leaving the v2 sidecar's record bound to an invention; S0 copied two files where a vault is four, which is what INV-13 means by *complete*; and § 15.2 listed two routes to a v1 vault while `Vault.create`'s `write_sidecar` keyword is a third and defaults on. Three lane open questions settled as non-findings: `validate_params`' first check IS `format_version`, the two Argon2 constants ARE equal today, and the restore DOES record `cipher_compatibility`. |
 | 6 | 2026-09-06 | 3, cold — identical brief, packet rebuilt from disk | 0 | 7 | 2 | 1 | **Ten verified, ten fixed; none dismissed. Three of the ten landed on text loop 5 wrote (30%).** Not one Q1: every defect was two passages disagreeing, an unspecified seam, or a test clause that could not fail. **All three lanes found the same one, and it was loop 5's own**: INV-1's leg count still read *two legs* while three were enumerated, and INV-3 four lines down uses its count as the build instruction — so a builder writes two and omits the only leg reaching § 8.1. **Two lanes found the other half of that fix**: § 13.5 still said leg 2 *fires on a non-fresh salt, which is what § 8.1 actually is*, the exact opposite of what loop 5 wrote into § 5 — and § 8.1 keeps each vault's own v1 salt, which is per-vault random, so leg 2 cannot fire there either. **The sharpest pre-existing finding**: INV-13 required a copy that *opens*, where loop 5 had just widened INV-7 to *opens and reads end to end* for the same damage class — and S0's abort condition said *if it does not open* while `verify_rollback_copy` runs a full `integrity_check`. Both now state the full read. Also fixed: § 13.2's S6 deletes the rollback pair on S2's word while § 13.3 says S2 cannot have seen damage arriving after it — not an inconsistency, and the straight-through path's exemption (one uninterrupted call, so no crash intervened) is now stated rather than left to be re-derived; the terminal bullet named no seam where the UI binds to `RollbackAvailableError` and `restore_pre_upgrade_copy`; INV-11's 28-symbol candidate left its alphabet unstated, so a data-alphabet scan silently accepts the ~5-in-37 codes whose check symbol is punctuation — the breach it forbids; § 4.5 said the code is *wrapped either way* where Decline now wraps nothing; INV-2's transcription leg is a no-op on a code carrying no `1` or `0` (about one run in five) and its fixed-alphabet companion was undescribed; and § 11 carried no row for INV-12 / `reset_vault` while gaining a row that still prescribed deleting `Vault.create`'s sidecar write, which § 13.5 reversed. **Collateral swept into the feature contract**: `tests/features/recovery_key/spec.md` carried both the *two legs* count and INV-13's *opens*. **One out-of-scope finding filed as FIBR-0338** rather than corrected in passing: two files cite the retired global rule 5, and one of them is a contract document with its own gate. |
 | 7 | 2026-09-06 | 3, cold — identical brief, packet rebuilt from disk and extended with `_finish`, `_password_hint` and the INV-1 test | 2 | 5 | 1 | 0 | **Nine verified, nine fixed. CAP REACHED (3, this project's override for every genre). A CALM cap: 2 of the 9 landed on text this run wrote (22%), down from 30% at loop 6** — the document held more defects than the cap held loops, so shipping is the right exit. **All three lanes found the same defect, and it is the best of the whole run**: § 13.2's S6 row states its two steps in the order `_finish` documents as the unsafe one. `migration_pending` is the only thing that brings the ladder back to S6, so clearing it before the unlink — and then hitting the disk-full or held-file class § 6 names — strands an encrypted copy that still opens under the master password of the moment, with no bookkeeping left to remove it and nothing that ever tries again. I edited that same cell in loop 6 and did not see it. **Two lanes found S4 and S5 pinning no directory flush** where the code makes the barrier load-bearing: without it a crash can leave a v1 sidecar over a DEK-keyed database, which every unlock reports as a wrong password over an intact vault and which § 13.3 has no branch for. **Two findings were loop 6's own collateral**: § 6 still stated the S0 gate as an open-probe after INV-13 and S0 were widened to a full read, and § 4.5's numbered steps 4 and 5 still derived and wrapped both KEKs against the step-9 sentence loop 6 rewrote — with § 14's first-run cost row unqualified behind it, caught by the 4b sweep. Also fixed: § 6's pairing row prescribed a bare refusal where § 13.3's terminal branch makes the D8 offer; § 6 conflated a damaged slot RECORD (a `KdfPolicyError` from `validate_slot`, refusing one route without advancing the throttle) with a wrong credential; § 11's blanket *each one currently asserts the opposite* is false of three rows that have landed, so working it as a to-do list re-applies them; and D5's regeneration offer appeared in no step of § 4.6, leaving it discoverable only in Settings, which § 15.3 says is not where users look. **Second share, for the audit half**: across all three loops of this run, roughly 2 of 33 verified findings landed inside the change that armed the gate — this run was overwhelmingly an audit of a document nobody had re-read since 2026-08-20, and it paid. **Two lane open questions settled clean**: `INPUT_SYMBOLS` does include `*~$=U`, so the hint scan can form a window around a punctuation check symbol; and `to_dict` writes `migration_pending` only when true, so § 4.4's *removed at S6* is accurate. |
+| 8 | 2026-09-29 | 2, cold — genre pinned `spec`, neutral-lane dispatch, every lane held every question; packet 32 KB / 13 windows + one measured fact (the cipher-default probe); `spec_lint` + `doc_integrity` clean | 0 | 1 | 1 | 2 | **Four verified, four fixed; none dismissed. First loop of a NEW run**, gating the FIBR-0401 INV-14 amendment (commit 81f1127). **Both lanes independently found the same defect**: INV-14 took a database's cipher level from its sidecar, but § 13.3 opens the v1 `vault.db` while the migration-pending sidecar records the export level — the code passes `None` there (`vault_migration.py` resume and `_replacement_verdict`), so a builder following INV-14 literally would refuse an intact vault the day `SQLCIPHER_COMPAT` is raised. INV-14 now keys on the level a database was written at and names the three unrecorded cases. Q3 (lane 2): where the pin lives was unstated, and a service-layer pin would leave the v1 unlock and every migration open unpinned — now `Vault` applies it when a caller passes none. Q4 (lane 1): no leg failed if the new constant aliased `SQLCIPHER_COMPAT` — a patched-constant leg added. Q4 (orchestrator, from lane 2's open question): the amendment left § 7 counting five files and five of thirteen invariants, and omitted INV-14 from the must-fail-first list. One absolute the fix pass wrote ("no call site supplies it") narrowed before commit. Open questions: the packet window line labels one lane read as offset — windows re-checked against disk, none affected a finding.
 
 ## 13. Migration / compatibility
 
