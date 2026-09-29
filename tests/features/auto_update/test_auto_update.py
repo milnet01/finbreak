@@ -776,6 +776,48 @@ def test_relaunch_spawn_failure_still_exits_no_wiped_key_zombie(monkeypatch, tmp
     assert appimage.read_bytes() == b"NEW-APP"  # the swap did land
 
 
+def _raising_wipe(order: list[str]):
+    def wipe() -> None:
+        order.append("wipe")
+        raise RuntimeError("guard close failed")
+
+    return wipe
+
+
+def test_FIBR0392_a_raising_wipe_after_the_swap_still_relaunches_and_exits(
+    monkeypatch, tmp_path
+):
+    # FIBR-0392 finding 8: the swap has committed, so an exception from the wipe
+    # callback must not escape apply() into a live GUI running from a replaced
+    # binary. The relaunch and the hard exit still happen.
+    appimage = tmp_path / "app.AppImage"
+    appimage.write_bytes(b"OLD-APP")
+    new_file = tmp_path / "new.AppImage"
+    new_file.write_bytes(b"NEW-APP")
+    record = _capture_relaunch(monkeypatch)
+
+    AppImageInstaller(appimage).apply(new_file, _raising_wipe(record["order"]))
+
+    assert record["order"] == ["wipe", "relaunch", "exit"]
+    assert appimage.read_bytes() == b"NEW-APP"
+
+
+def test_FIBR0392_windows_a_raising_wipe_after_the_spawn_still_exits(
+    monkeypatch, tmp_path
+):
+    # Windows twin: the helper is already running and waits for this process to
+    # exit, so the exit must still happen when the wipe raises.
+    exe = tmp_path / "finbreak.exe"
+    exe.write_bytes(b"OLD-EXE")
+    new_file = tmp_path / "finbreak-update-xyz.exe"
+    new_file.write_bytes(b"NEW-EXE")
+    record = _capture_relaunch(monkeypatch)
+
+    WindowsInstaller(exe).apply(new_file, _raising_wipe(record["order"]))
+
+    assert record["order"] == ["relaunch", "wipe", "exit"]
+
+
 def test_FIBR0131_windows_download_stages_exe_extension_temp(monkeypatch, tmp_path):
     # download_and_verify stages its temp with the installer-derived extension
     # (.exe on Windows), so a Windows download isn't a misleadingly-named *.AppImage.

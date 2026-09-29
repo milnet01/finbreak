@@ -142,6 +142,21 @@ def _relaunch_log_handle() -> TextIO | None:
         return None
 
 
+def _run_before_exec(on_before_exec: Callable[[], None]) -> None:
+    """Run the key-wipe callback once the update is committed, and never let it
+    raise. By then the binary is swapped (Linux) or the helper is waiting for this
+    process to exit (Windows), so an escaping exception would leave a live GUI on a
+    replaced install (FIBR-0392). The caller still relaunches and hard-exits, and the
+    exit ends the process holding the key either way."""
+    try:
+        on_before_exec()
+    except Exception as exc:  # the exit below must still happen
+        log = _relaunch_log_handle()
+        if log is not None:
+            log.write(f"relaunch: key-wipe callback failed ({exc!r}); exiting anyway\n")
+            log.close()
+
+
 # --------------------------------------------------------------------------- #
 # Windows relaunch helpers (FIBR-0131) — the out-of-process swap+relaunch.
 # --------------------------------------------------------------------------- #
@@ -293,7 +308,7 @@ class AppImageInstaller:
         # The swap succeeded — wipe the derived key before we hand the process
         # over, since the relaunch replaces this process and never runs Qt's
         # aboutToQuit (INV-6). Then relaunch the just-swapped AppImage.
-        on_before_exec()
+        _run_before_exec(on_before_exec)
         # Relaunch via a DETACHED WAITER, then hard-exit this one. Spawning the new
         # image and immediately exiting (the 0.1.4→0.1.5 attempt) still raced the
         # old image's teardown: the fresh onefile bootloader collided with the
@@ -398,7 +413,7 @@ class WindowsInstaller:
             raise UpdateError(f"could not start the update helper: {exc}") from exc
         # Helper is running (blocked until we exit). Wipe the key, then hard-exit;
         # the helper then swaps + relaunches (INV-4/INV-6).
-        on_before_exec()
+        _run_before_exec(on_before_exec)
         os._exit(0)
 
 
