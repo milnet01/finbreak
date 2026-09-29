@@ -1361,6 +1361,27 @@ so Flathub review and code signing do not block this release.
   Kind: fix.
   Source: close-findings sweep 2026-09-29 (FIBR-0367 row 43, next door).
 
+- 📋 [FIBR-0410] **Queued findings from the 2026-09-27 audit: models and repositories lane (2 items, one High).**
+  From docs/reviews/2026-09-27-full-audit/code-lane-09-models-repos.md.
+  Line numbers are the audited commit's (52e5162); find sites by symbol.
+  A High the serious tier (FIBR-0367 rows 1-48) did not list, so filed in
+  the 1.0.0 gate rather than the patch stream.
+  - [High] repositories/statement_periods.py:91-94 -- no log handler is
+    installed anywhere in src/ (confirmed 2026-09-29: no FileHandler,
+    basicConfig or addHandler), so design.md's Observability section's
+    rotating log file and Settings log path do not exist and every log
+    call goes to stderr or nowhere. Fix: install a RotatingFileHandler
+    under data_dir() and show its path in Settings, or amend the
+    Observability section (a real choice).
+  - [Medium] statement_periods.py:88-99 -- a re-imported closing balance
+    that disagrees with the stored one is only logged, and with no log
+    sink the user never learns of it. Fix: return a flag from
+    update_closing_balance so commit_import reports it in ImportResult;
+    keep the id-only log line.
+  **Layman:** The app promises a log file you can find in Settings, but no log file is ever written, so warnings such as a statement balance that does not match are seen by nobody.
+  Kind: review-fix.
+  Source: full-audit-2026-09-27 code lane 9 (queued by FIBR-0367).
+
 ## v1.0.x — patch stream
 
 Bug fixes, security fixes, performance work, refactors, dependency bumps and
@@ -2163,6 +2184,735 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   **Layman:** The version-bump notes still describe publishing a release by hand with two of its eight files, the mistake that shipped empty releases before.
   Kind: fix.
   Source: close-findings sweep 2026-09-29 (FIBR-0367 row 41/43 must_agree).
+
+- 📋 [FIBR-0388] **Queued delivery findings from the 2026-09-27 audit: group A (6 items).**
+  From docs/reviews/2026-09-27-full-audit/delivery-report-group-A.md.
+  - A5 damaged settings file not a wrong password -- a well-formed
+    corrupt byte (a salt or wrapped-key hex digit) in vault.kdf.json
+    still reads as a wrong password in ui/unlock.py _on_derived and
+    _show_failure, and counts toward the lock-out. Fix: give the
+    sidecar an integrity check, or narrow the CHANGELOG claim to
+    malformed or out-of-range damage (a real choice).
+  - A5 test -- test_INV6_unlock_distinct_message_for_malformed_sidecar
+    and
+    test_FIBR0327_damaged_cipher_level_is_reported_as_a_pairing_problem
+    assert at service level with invalid values only, never the
+    throttle. Fix: drive UnlockDialog over a damaged sidecar and
+    assert the message and an untouched throttle count.
+  - A1 recovery code test --
+    test_recovery_unlock_forces_a_new_master_password types the exact
+    code only. Fix: add a UI leg typing a lowercase, I/L/O-folded,
+    hyphenated code and assert it unlocks.
+  - A7 apostrophe in path test --
+    test_FIBR0327_export_works_from_a_path_containing_an_apostrophe
+    calls vault.export_to directly. Fix: run
+    BackupService.export_backup then verify_backup under such a path,
+    and add the v1-to-v2 sidecar upgrade leg.
+  - A10 crafted backup test --
+    test_FIBR0327_hostile_kdf_cost_refused_before_any_derivation
+    covers parallelism 0 but not above the ceiling. Fix: add an
+    over-ceiling parallelism parameter.
+  - A11 screen-reader names test --
+    test_FIBR0328_password_and_recovery_fields_have_accessible_names
+    checks five fields through accessibleName() only. Fix: cover
+    every dialog with a password or recovery field and read the name
+    through QAccessible.
+  **Layman:** A damaged settings file can still look like a wrong password and count toward the lock-out, and five tests pass without checking what their feature promises.
+  Kind: review-fix.
+  Source: full-audit-2026-09-27 delivery group A (queued by FIBR-0367).
+
+- 📋 [FIBR-0389] **Queued delivery findings from the 2026-09-27 audit: group B (9 items).**
+  From docs/reviews/2026-09-27-full-audit/delivery-report-group-B.md.
+  - B1 column guess, adjacent gap -- for a Withdrawal/Deposit file the
+    wizard guesses the Debit/Credit columns but leaves Amount style on
+    "Single amount column" (ui/import_wizard.py), so Preview shows a
+    "mapped to more than one role" error. Fix: set the Amount style to
+    debit/credit when the guess fills both of those roles.
+  - B6 same-layout batch, adjacent gap -- the map step repeats for
+    every file when "Save this layout as... (optional)" is left blank.
+    Fix: reuse an unnamed answer within the batch, or say on the field
+    that naming it stops the repeat questions.
+  - B11 identical-looking names, a decision to confirm -- text.py
+    fold_name deliberately does not collapse inner whitespace (its
+    docstring says so), so "Cafe  float" with a doubled space sits
+    beside "Cafe float", against the CHANGELOG's "identical-looking"
+    wording. Fix: confirm the decision and narrow the wording, or
+    fold inner runs of spaces.
+  - B2 test -- test_FIBR0327_an_auto_lock_never_escapes_a_wizard_slot
+    calls slots directly and misses the map-step Preview, date and
+    style changes and preview Back. Fix: add those legs.
+  - B3 test --
+    test_unplaced_row_opens_a_picker_that_has_chosen_nothing never
+    checks the picker shows "-- pick one --". Fix: assert its text.
+  - B5 test -- test_FIBR0321_cancelling_restores_the_provisional_
+    accounts_own_password emits done() instead of clicking Cancel,
+    and misses the map-step Cancel and an account with no password.
+    Fix: click the real Cancel and add both legs.
+  - B6 test --
+    test_FIBR0319_an_answered_mapping_settles_the_rest_of_the_batch
+    runs at service level only. Fix: add a wizard-level leg asserting
+    the map step shows once.
+  - B8 test --
+    test_FIBR0222_huge_exponent_is_a_ValueError_not_a_decimal_Overflow
+    checks parse_transaction only. Fix: import a CSV with one huge
+    amount and assert one RowError while the other rows preview.
+  - B10 test --
+    test_FIBR0050_INV11_gate_is_signed_for_families_that_print_a_sign
+    calls the private _verify_checksum with hand-built drafts. Fix:
+    run a truncated overdrawn statement through
+    StandardBankImporter.parse, and settle the Family-D control the
+    audit could not parse.
+  **Layman:** Three import and naming rough edges the audit found next to working features, and six import tests that pass without checking the thing their feature promises.
+  Kind: review-fix.
+  Source: full-audit-2026-09-27 delivery group B (queued by FIBR-0367).
+
+- 📋 [FIBR-0390] **Queued delivery findings from the 2026-09-27 audit: group C (10 items).**
+  From docs/reviews/2026-09-27-full-audit/delivery-report-group-C.md.
+  - C17 trend chart labels on dark -- the CHANGELOG [0.1.23] sentence
+    also promises "a dark PDF export", which has not existed since
+    FIBR-0217 (the PDF is always a light page). Fix: a released
+    section stays as written, so add an [Unreleased] note correcting
+    it to the on-screen dark themes only.
+  - C2 test --
+    test_a_refresh_leaves_no_button_live_against_a_gone_selection
+    calls _refresh() directly. Fix: click the real Add and Delete
+    buttons and assert every button is disabled after.
+  - C4 test --
+    test_FIBR0327_an_unhandled_startup_error_is_shown_not_swallowed
+    calls the hook by hand. Fix: make run() actually fail at startup
+    and assert the dialog names the fault.
+  - C6 self-update apostrophe test -- the Windows tests
+    (test_FIBR0131_ps_single_quote_doubles_embedded_quotes and its
+    sibling) check command text only. Fix: run the PowerShell command
+    on the Windows test box against an apostrophe path.
+  - C10 test -- test_FIBR0327_period_month_name_follows_the_locale
+    checks the HTML from _build_html. Fix: read the rendered PDF.
+  - C12 failed install explains itself -- no test. Fix: an installer
+    whose apply raises UpdateError must produce one warning and remove
+    the verified temp file.
+  - C13 check for updates twice -- no test. Fix: a second
+    _check_for_updates_now while one runs must reuse the worker and
+    make one check call.
+  - C14 Quit and Ctrl+Q save layout -- no test. Fix: trigger Quit and
+    Ctrl+Q with a worker running and assert window.ini holds the
+    layout and the worker is drained.
+  - C15 auto-lock during reassign / move-under -- the one test,
+    test_FIBR0059_reassign_autolock_caught, reaches the older apply
+    guard, not the new list_accounts read, and the move-under guard
+    has none. Fix: lock for real, then click Reassign and select a
+    category, asserting no slot error.
+  - C16 PDF transaction dates follow the date format -- no test. Fix:
+    render a PDF under two date formats and assert the row dates.
+  **Layman:** One release note promises a dark PDF that no longer exists, and nine update, lock and export fixes have tests that miss the promise or no test at all.
+  Kind: review-fix.
+  Source: full-audit-2026-09-27 delivery group C (queued by FIBR-0367).
+
+- 📋 [FIBR-0391] **Queued findings from the 2026-09-27 audit: reporting lane (4 items).**
+  From docs/reviews/2026-09-27-full-audit/code-lane-11-reporting.md.
+  Line numbers are the audited commit's (52e5162); find sites by symbol.
+  - [Low] services/reporting.py:397-399 -- a row whose category_id is a
+    Type root makes category_node count every Level-2 subtree twice, so
+    a branch total can exceed its tile (INV-1), reachable only via
+    corrupt or restored data. Fix: treat a root id like None, or place
+    root-assigned rows as merchant nodes under the branch.
+  - [Low] services/reporting.py:533 -- the transfer drill label is an
+    f-string with a fixed arrow, bypassing tr() and not mirroring in
+    right-to-left layouts. Fix: add a tr()-ed "{from} -> {to}" template
+    to DrillLabels.
+  - [Low] services/reporting.py:183,217,267,319 -- today falls back to
+    the naive OS clock when a caller omits it; no live caller does, so
+    the wrong-month risk is latent. Fix: make today a required argument,
+    as MonthSummaryService.summary does.
+  - [Low] services/categorization.py:91-139,168-185 -- FIBR-0139 D2/D5
+    and its New-symbols table still describe list returns and first-wins
+    duplicates, and the code cites an INV-6a FIBR-0139 never defines;
+    the spec is stale. Fix: amend FIBR-0139 to match the code.
+  **Layman:** Four small problems in the reports code: a total that can double-count on damaged data, one label that won't translate, a hidden fallback to the wrong clock, and a spec that no longer matches the code.
+  Kind: review-fix.
+  Source: full-audit-2026-09-27 code lane 11 (queued by FIBR-0367).
+
+- 📋 [FIBR-0392] **Queued findings from the 2026-09-27 audit: update and self-install lane (10 items).**
+  From docs/reviews/2026-09-27-full-audit/code-lane-12-update.md.
+  Line numbers are the audited commit's (52e5162); find sites by symbol.
+  - [High] services/update_installer.py is_update_supported() has no
+    caller in src/ (confirmed 2026-09-29), so the shell gates on the
+    installer being present and can_self_update() is never asked,
+    against FIBR-0054 D7/INV-7; its docstring claims otherwise. Both
+    installers return True today, so the harm is latent. Fix: call it
+    at the main_window.py gates and in check_for_update, or correct
+    the docstring.
+  - [Medium] _selftest.py:337-352 -- the self-test has no TLS leg
+    although startup imports ssl and certifi, so a bundle missing libssl
+    or cacert.pem passes the self-test. Fix: add a tls check running
+    ssl.create_default_context(cafile=certifi.where()).
+  - [Low] services/update_fetch.py:105-108,171-186 -- the timeout is per
+    read, so a server trickling bytes can hold a check or a 200 MiB
+    download indefinitely. Fix: add a wall-clock deadline to the read
+    loop.
+  - [Low] services/update_fetch.py:147; ui/update_dialog.py:131 -- the
+    advertised Content-Length is never bounded, and a value above 2^31
+    should overflow setRange inside a slot (not executed). Fix: treat
+    total > max_bytes as an immediate error.
+  - [Low] ui/_update_worker.py:51-61 -- DownloadWorker never checks
+    isInterruptionRequested, so a detached download at shutdown leaves
+    its verified temp beside the binary, against Deliverable 13. Fix:
+    abort from the progress callback and unlink in the worker.
+  - [Low] services/update_installer.py:92-95 -- the relaunch waiter
+    waits on the Python child's PID, not the onefile bootloader that
+    holds the FUSE mount and _MEI dir (not executed). Fix: also wait on
+    os.getppid() when frozen, or correct the docstring.
+  - [Low] app.py:56-64 -- the excepthook may build a QMessageBox off the
+    GUI thread when a QThread.run exception reaches it (not executed).
+    Fix: marshal to the GUI thread when not on app.thread().
+  - [Low] services/update_installer.py:282,387 -- an exception from
+    on_before_exec after os.replace escapes as a non-UpdateError,
+    leaving a live GUI with the binary swapped. Fix: wrap it in
+    try/finally that still reaches os._exit.
+  - [Low] FIBR-0054 D8, Deliverable 10; FIBR-0131 D3 -- the specs
+    describe a direct Popen relaunch and CREATE_NO_WINDOW; the code uses
+    a /bin/sh waiter and a log, and omits the flag harmlessly. Fix:
+    amend both specs to the built behaviour.
+  - [Low] __main__.py:51-54 -- a fixed temp filename opened with "w"
+    follows a symlink on a shared /tmp, reached only when sys.stdout is
+    None. Fix: open it with O_EXCL/O_NOFOLLOW or a per-user mkstemp
+    name.
+  **Layman:** Ten fixes to the in-app updater: one safety check it promises but never uses, a missing self-test for secure connections, downloads that can hang, leftover files, and a few error paths that could misbehave.
+  Kind: security.
+  Source: full-audit-2026-09-27 code lane 12 (queued by FIBR-0367).
+
+- 📋 [FIBR-0393] **Queued findings from the 2026-09-27 audit: PDF export lane (8 items).**
+  From docs/reviews/2026-09-27-full-audit/code-lane-13-pdf-export.md.
+  Line numbers are the audited commit's (52e5162); find sites by symbol.
+  - [Medium] ui/export_dialog.py:121-123,193-194 -- hiding the Month and
+    Year pickers leaves their form labels showing, so the default mode
+    displays bare labels, against FIBR-0013 D7. Fix: use
+    form.setRowVisible(), or setEnabled as the spec words it.
+  - [Low] services/pdf_export.py:178-180 -- no flush and fsync before
+    os.replace, so a power loss can leave a zero-length PDF, against D1.
+    Fix: flush and os.fsync the handle before the replace.
+  - [Low] services/pdf_export.py:172 -- the temp cleanup silently
+    deletes any existing user file named <chosen name>.part. Fix: use a
+    unique temp name the user cannot own.
+  - [Low] services/pdf_export.py:134-143 -- the buffer.open result is
+    ignored and the bytes are not checked, so an empty render is written
+    and reported as exported. Fix: refuse bytes that are empty or do not
+    start with %PDF.
+  - [Low] services/pdf_export.py:255,268; ui/charts.py:210,247 -- the
+    year prints in ASCII digits beside a QLocale month name, and chart
+    value axes never call setLocalizeNumbers(True). Fix: format the year
+    through QLocale and localise axis numbers.
+  - [Low] ui/charts.py:131,156 -- slice and legend labels may render as
+    rich text, so a category name holding markup could be interpreted
+    (not executed). Fix: probe with a <b>x</b> label and escape if
+    confirmed.
+  - [Low] ui/charts.py:13,238-240; ui/export_dialog.py:267 -- comments
+    still cite a Dark PDF theme withdrawn by FIBR-0217 and an exec() the
+    dialog never runs. Fix: correct the comments.
+  - [Low] FIBR-0013 D1 -- the spec describes ExportOptions with a
+    sections frozenset and a today field; the code uses three booleans
+    and a today parameter. Fix: amend FIBR-0013 to match the code.
+  **Layman:** Eight fixes around saving a report as PDF: stray empty labels in the export window, safer file writing, a check that the PDF isn't empty, number formatting for other languages, and some out-of-date notes.
+  Kind: review-fix.
+  Source: full-audit-2026-09-27 code lane 13 (queued by FIBR-0367).
+
+- 📋 [FIBR-0394] **Queued findings from the 2026-09-27 audit: main window lane (6 items).**
+  From docs/reviews/2026-09-27-full-audit/code-lane-14-main-window.md.
+  Line numbers are the audited commit's (52e5162); find sites by symbol.
+  - [Medium] ui/main_window.py:1679-1680,1701-1702 -- Help > Check for
+    updates stays enabled while locked, and an up-to-date or error
+    result from a check started there is dropped silently, against the
+    every-outcome promise. Fix: record the lock state at click time and
+    suppress only if it changed.
+  - [Low] ui/main_window.py:1110-1126,1166-1199 -- an auto-lock inside
+    the save-file picker makes PDF or backup export show a
+    choose-another-location error over the lock screen. Fix: after the
+    picker returns, stop if locked or the dialog changed.
+  - [Low] ui/main_window.py:414,759 -- the last-used tab is read once at
+    launch, so a lock and unlock in one session returns to the
+    launch-time tab. Fix: re-read the last-tab key in _enter_unlocked.
+  - [Low] ui/main_window.py:1567-1569 -- a successful restore skips the
+    hint clear and throttle reset Start over runs, so the unlock screen
+    shows the replaced vault's hint. Fix: clear both after a restore,
+    once a contract says so.
+  - [Low] ui/main_window.py:1792-1795 -- an untranslated UpdateError
+    message is formatted into a translated sentence (the install-failure
+    path; row 38 changed only the download-failure path). Fix: map known
+    failure kinds to tr() strings.
+  - [Low] FIBR-0159, FIBR-0155, FIBR-0231 section 4.9 -- these specs
+    cite main_window.py line numbers that no longer match. Fix: replace
+    the line numbers with symbol names.
+  **Layman:** Six fixes in the main window: an update check started from the lock screen gives no answer, a wrong error after an auto-lock, the app forgetting your last tab, an old password hint after a restore, and stale spec notes.
+  Kind: review-fix.
+  Source: full-audit-2026-09-27 code lane 14 (queued by FIBR-0367).
+
+- 📋 [FIBR-0395] **Queued findings from the 2026-09-27 audit: security screens lane (3 items).**
+  From docs/reviews/2026-09-27-full-audit/code-lane-15-security-screens.md.
+  Line numbers are the audited commit's (52e5162); find sites by symbol.
+  - [Low] ui/first_run.py:196,242; ui/recovery_key.py:350,389 -- English
+    exception text is shown or interpolated into tr() strings, bypassing
+    the i18n commitment. Fix: map known errors to tr() literals.
+  - [Low] ui/settings.py:318 -- the Save slot catches only
+    VaultLockedError, so a SQLite write error from a set_* call escapes
+    the slot. Fix: catch the storage error and show it.
+  - [Info] ui/settings.py:170 vs FIBR-0054 INV-7 -- the spec calls
+    Windows un-wired for updates while Settings names the Windows build
+    as supported. Fix: amend FIBR-0054 INV-7.
+  **Layman:** Three small fixes on the password and settings screens: some error messages are English-only, one save error isn't caught, and one spec wrongly says Windows updates aren't wired up.
+  Kind: review-fix.
+  Source: full-audit-2026-09-27 code lane 15 (queued by FIBR-0367).
+
+- 📋 [FIBR-0396] **Queued findings from the 2026-09-27 audit: data views lane (4 items).**
+  From docs/reviews/2026-09-27-full-audit/code-lane-16-data-views.md.
+  Line numbers are the audited commit's (52e5162); find sites by symbol.
+  - [Low] ui/transfers.py:51,172 -- the transfer cell arrow is a
+    hard-coded literal in an f-string, not mirrored for right-to-left
+    names and able to disagree with the translated header. Fix: use a
+    tr("{source} -> {target}") template.
+  - [Low] ui/transfers.py:242; ui/accounts.py:555; ui/statements.py:159
+    -- display strings are assembled by + , join or f-string, against
+    design.md i18n (FIBR-0201 section 4.8 prescribes the transfers one).
+    Fix: one tr()-ed template per combination, amending FIBR-0201 where
+    needed.
+  - [Low] ui/manual_entry.py:114; ui/accounts.py:337,366,451 -- English
+    service error text is shown via str(exc), bypassing tr(); FIBR-0219
+    section 4.1 designs it so. Fix: decide which document governs, then
+    map errors to tr() or record the exception.
+  - [Low] ui/transactions.py:449-460 -- _on_set_category reads
+    categories with no VaultLockedError guard, unlike its lock-safe menu
+    siblings (not executed). Fix: wrap it in try/except
+    VaultLockedError: return.
+  **Layman:** Four small fixes in the account and transaction screens: text built in ways that won't translate or display right-to-left, English-only error messages, and one menu action that could crash right after an auto-lock.
+  Kind: review-fix.
+  Source: full-audit-2026-09-27 code lane 16 (queued by FIBR-0367).
+
+- 📋 [FIBR-0397] **Queued findings from the 2026-09-27 audit: category views lane (7 items).**
+  From docs/reviews/2026-09-27-full-audit/code-lane-17-category-views.md.
+  Line numbers are the audited commit's (52e5162); find sites by symbol.
+  - [Medium] ui/recurring.py:145 -- refresh() has no VaultLockedError
+    guard, so an auto-lock between a confirm/dismiss write and the
+    re-read raises out of a slot. Fix: guard the snapshot and
+    base_currency reads as rules.py does.
+  - [Medium] ui/categories.py:357,374 -- _refresh() and _add_children
+    read the vault unguarded after add/update/delete writes. Fix: the
+    same guard as rules.py.
+  - [Medium] ui/categories.py:161,183,234; ui/rules.py:240,270 --
+    untranslated service exception text, with the typed name inside,
+    goes to an AutoText error label. Fix: map exception types to tr()
+    messages and set the labels to PlainText.
+  - [Low] ui/forecast.py:188 (and home.py:510,517,620) -- setChart
+    releases the old chart without deleting it, so each refresh may leak
+    a QChart (not executed). Fix: count live QCharts over refreshes; if
+    confirmed, deleteLater the old chart.
+  - [Low] ui/categories.py:292,300 -- a Level-2 subject with
+    grandchildren may get an empty Move-under combo and cannot even be
+    renamed; ledger row 17's fix may cover it (it tested Level-3 and
+    Level-4 only). Fix: check first, then offer the current parent for
+    rename-only.
+  - [Low] ui/forecast.py:242,248,268,272,277 -- the sign is built by
+    concatenation and name lists use a hard-coded ", " separator. Fix:
+    use a tr("+{amount}") template and a translatable separator.
+  - [Info] ui/alerts_dialog.py:97 -- _render reparents the row holding
+    the button whose clicked signal is still being delivered; probably
+    safe. Fix: use deleteLater() to remove the question.
+  **Layman:** Seven fixes in the categories, recurring and forecast screens: two screens can crash if the app auto-locks at the wrong moment, error messages are English-only, a possible memory leak in charts, and a rename that may be blocked.
+  Kind: review-fix.
+  Source: full-audit-2026-09-27 code lane 17 (queued by FIBR-0367).
+
+- 📋 [FIBR-0398] **Queued findings from the 2026-09-27 audit: UI infrastructure lane (6 items).**
+  From docs/reviews/2026-09-27-full-audit/code-lane-18-ui-infra.md.
+  Line numbers are the audited commit's (52e5162); find sites by symbol.
+  - [Medium] ui/_amount.py:81-82 -- under ar_EG or fa_IR the whole part
+    uses locale digits but the fraction stays ASCII, so amounts mix two
+    digit systems (not executed). Fix: map the fraction's digits onto
+    locale.zeroDigit().
+  - [Medium] ui/_datetime_prefs.py:125-127 -- a mistyped timezone is
+    silently saved as system on the next Save, moving every timestamp
+    with no message. Fix: refuse Save with an error, or keep the
+    previous zone.
+  - [Low] FIBR-0153 section 3.2, INV-3; FIBR-0219 sections 4.2, 4.5 --
+    both specs still describe the float formatting route FIBR-0327
+    removed. Fix: amend both to match the code.
+  - [Low] FIBR-0127 INV-3, INV-4; ui/theme.py:3 -- INV-4 maps Link to
+    accent_soft (code and INV-4b use accent), INV-3 lists eight tokens
+    (code has nine), and theme.py:3 says eight. Fix: amend FIBR-0127 and
+    fix the comment.
+  - [Low] ui/_amount.py:239-243 -- the ambiguity refusal is an
+    untranslated f-string; design.md i18n and FIBR-0219 section 9
+    disagree on whether it must be. Fix: settle which document governs,
+    then conform.
+  - [Low] ui/_amount.py:81 -- int(whole) on a typed amount over 4300
+    digits raises an interpreter message shown to the user (not
+    executed). Fix: cap the input length in parse_amount_input.
+  **Layman:** Six fixes in shared screen code: amounts could mix two kinds of digits in Arabic or Persian, a mistyped time zone is quietly replaced, a huge typed number gives a confusing error, and three specs are out of date.
+  Kind: review-fix.
+  Source: full-audit-2026-09-27 code lane 18 (queued by FIBR-0367).
+
+- 📋 [FIBR-0399] **Queued findings from the 2026-09-27 audit: release scripts lane (12 items).**
+  From docs/reviews/2026-09-27-full-audit/code-lane-19-release-scripts.md.
+  Line numbers are the audited commit's (52e5162); find sites by symbol.
+  - [Low] scripts/release-windows.sh:56-59 -- TAG_SHA is computed after
+    the dispatch, so a missing local tag stops the script after a build
+    was started. Fix: compute TAG_SHA before the dispatch.
+  - [Low] scripts/release-windows.sh:74,81,88 -- gh run
+    view/watch/download are unguarded, so a transient error throws away
+    a finished build with no resume. Fix: retry them, or add a --run-id
+    resume option.
+  - [Low] scripts/release-windows.sh:262 -- the final check counts eight
+    assets without naming them, so a stray extra fails and a stand-in
+    passes. Fix: check the eight exact names.
+  - [Low] scripts/release-linux.sh:49-53 -- the lockstep check claims to
+    mirror bump.json post_check but checks four of its files. Fix: add
+    the missing files or call post_check.
+  - [Low] .github/workflows/windows-build.yml:121-122 -- the job has no
+    timeout-minutes, so a hung self-test holds the runner up to 6 h.
+    Fix: set timeout-minutes.
+  - [Low] .github/workflows/windows-build.yml:16 -- runs-on
+    windows-latest, while build-smoke.yml pins its runner. Fix: pin the
+    runner image if ci.yml's rule applies.
+  - [Low] scripts/_build-smoke-in-container.sh:178 -- a cached
+    appimagetool skips the checksum, the persistence hazard its own
+    comment names. Fix: re-run sha256sum -c on every use.
+  - [Low] scripts/build-smoke.sh:117 -- a failed clean-room image build
+    exits with its output sent to /dev/null. Fix: send the output to
+    stderr.
+  - [Low] scripts/release-linux.sh, release-windows.sh -- both merge
+    SHA256SUMS with no lock, so running them at once loses a line. Fix:
+    take a lock, or refuse a concurrent run.
+  - [Low] scripts/capture_screenshots.py:152 -- missing curated shots
+    are skipped silently, leaving a mixed-date set in site/. Fix: warn,
+    or clear site/ first.
+  - [Low] scripts/capture_screenshots.py:31 -- setdefault lets an
+    inherited QT_QPA_PLATFORM win, against the no-display docstring.
+    Fix: assign it outright.
+  - [Low] scripts/seed_demo_vault.py:19,27 -- the usage imports an
+    installed finbreak that may be older than src/. Fix: add the
+    sys.path insert capture_screenshots.py uses.
+  **Layman:** Twelve fixes to the scripts that build and publish releases: making the Windows step recover from GitHub hiccups, checking asset names exactly, re-checking a cached download tool, adding timeouts and clearer errors.
+  Kind: security.
+  Source: full-audit-2026-09-27 code lane 19 (queued by FIBR-0367).
+
+- 📋 [FIBR-0400] **Queued findings from the 2026-09-27 audit: gate and packaging lane (10 items).**
+  From docs/reviews/2026-09-27-full-audit/code-lane-20-gate-packaging.md.
+  Line numbers are the audited commit's (52e5162); find sites by symbol.
+  - [Medium] scripts/ci-docker.sh:11 -- the usage line advertises
+    --build, which silently skips inside the container. Fix: refuse
+    --build with a pointer to ci-local.sh --build on the host.
+  - [Low] packaging/obs/obs-submit.sh:63,82-84 -- osc rm/add/addremove
+    errors are discarded, so a commit can miss a new tarball silently.
+    Fix: drop the redirects and || true, tolerating only
+    already-tracked.
+  - [Low] packaging/obs/obs-status.sh:23-51 -- exits 0 on failed builds
+    or when MAX_POLLS runs out, with no timeout notice. Fix: track a
+    failure flag, exit non-zero, report a timeout.
+  - [Low] packaging/flatpak/flatpak-build.sh:53-54,59 -- the install
+    call lacks --disable-rofiles-fuse, so it can fail or rebuild instead
+    of installing. Fix: one invocation, or the same flags on both.
+  - [Low] packaging/flatpak/flatpak-build.sh:37 -- a detached checkout
+    gives the local manifest a branch named HEAD. Fix: use git rev-parse
+    HEAD and a commit: key.
+  - [Low] .githooks/pre-push:45 -- run by hand from a terminal, the ref
+    loop blocks on the tty until Ctrl-D. Fix: skip the loop when stdin
+    is a tty.
+  - [Low] .githooks/pre-push:67 -- the tag skip trusts any remote's
+    branches, so a commit pushed with --no-verify is skipped again at
+    tag time. Fix: restrict the check to the pushed remote's refs.
+  - [Low] scripts/ci-local.sh:4-5,18 -- two header comments are stale
+    about what ci.yml installs and a build stage. Fix: reword both.
+  - [Low] FIBR-0155 section 3.6 -- the spec says cp312 and cp313 with
+    Fedora on 3.13; vendor-wheels.sh vendors 3.12-3.14, Fedora 44 on
+    cp314. Fix: amend the spec.
+  - [Low] scripts/ci-setup.sh:75,89 -- x86_64-only binaries are
+    installed with no architecture check. Fix: check uname -m first.
+  **Layman:** Ten fixes to the check scripts and Linux packaging: a misleading build option, errors that are thrown away, a status script that reports success on failure, a push-hook gap, and some stale notes.
+  Kind: security.
+  Source: full-audit-2026-09-27 code lane 20 (queued by FIBR-0367).
+
+- 📋 [FIBR-0401] **Queued findings from the 2026-09-27 audit: crypto lane (6 items).**
+  From docs/reviews/2026-09-27-full-audit/code-lane-01-crypto.md.
+  Line numbers are the audited commit's (52e5162); find sites by symbol.
+  - [Medium] vault.py:323-324 -- a freshly created vault records no
+    cipher level, so it opens at the installed SQLCipher's defaults and
+    a library upgrade that moves them could make it unopenable. Fix:
+    write SQLCIPHER_COMPAT into the v2 sidecar at creation, or apply it
+    in _connect when the sidecar has none.
+  - [Low] crypto.py:232-237, :605-611 -- int() accepts true, "32" and
+    32.9, and bool() reads the string "false" as True, so a hand-edited
+    sidecar passes INV-2's exact-format match. Fix: require type(v) is
+    int, and is bool for the migration flag.
+  - [Low] vault.py:309-346 -- if a PRAGMA after dbapi2.connect raises,
+    the connection is never closed, and on Windows the stray handle can
+    block a later rename or delete. Fix: close the connection and
+    re-raise when the PRAGMA block fails.
+  - [Low] vault.py:355, :384 -- rekey and export_to build an unwipeable
+    hex string of a key, which security-model.md INV-3's residual list
+    does not name. Fix: add both to that list and check whether
+    sqlcipher3's statement cache keeps the SQL text.
+  - [Low] services/update_key.py:5-9 -- the docstring says
+    RELEASE_PUBLIC_KEY_B64 holds 32 zero bytes, but :22 holds the real
+    key. Fix: delete the interim paragraph.
+  - [Open question] loader_env.py:27-30 -- LD_PRELOAD is deleted
+    whenever LD_PRELOAD_ORIG is absent, which may drop a user's own
+    pre-launch LD_PRELOAD from child processes (unverified). Fix: check
+    the PyInstaller bootloader source, then restore only what it
+    changed.
+  **Layman:** Six smaller problems in the code that locks and unlocks your vault, including one where a future library update could stop a new vault from opening.
+  Kind: security.
+  Source: full-audit-2026-09-27 code lane 1 (queued by FIBR-0367).
+
+- 📋 [FIBR-0402] **Queued findings from the 2026-09-27 audit: auth lane (8 items).**
+  From docs/reviews/2026-09-27-full-audit/code-lane-02-auth.md.
+  Line numbers are the audited commit's (52e5162); find sites by symbol.
+  - [Medium] services/auth.py:580-592 -- a failed v1-to-v2 key-envelope
+    migration is swallowed, so the user unlocks with no recovery key and
+    every later unlock silently repeats the whole-vault copy; FIBR-0019
+    section 6 says report it. Fix: catch the migration's named errors
+    and return the failure so the UI can say it.
+  - [Low] auth.py:596 -- read_sidecar_v2 sits before the try/finally
+    that wipes the v1 key, so a raise there leaves the key unwiped
+    (INV-3). Fix: move the read inside the try.
+  - [Low] auth.py:667-668, :314-315 -- if _arm_timer's settings read
+    raises, the service holds the key and connection but the idle timer
+    is never armed. Fix: arm inside a try that locks on failure, or arm
+    before taking ownership.
+  - [Low] auth.py:714-719, :785-790 -- vault.close() runs before
+    _wipe(self._key), so a raising close leaves the key neither wiped
+    nor cleared. Fix: wipe in a finally.
+  - [Low] single_instance.py:136 -- with XDG_RUNTIME_DIR unset the claim
+    file is a predictable /tmp name opened without O_NOFOLLOW, so
+    another local account can pre-create it or hold its flock. Fix: add
+    O_NOFOLLOW and check the owner after fstat.
+  - [Low] single_instance.py:76-77, :95-96 -- the comment says Windows
+    named pipes are per-session, but the namespace is machine-wide, so a
+    second Windows user may run unguarded or be refused (unverified).
+    Fix: add the user's SID or name to the pipe name.
+  - [Low] auth.py:91-95 -- the comment says the INV-1 fallback is the
+    1-minute floor; FIBR-0055 INV-1 and the code use
+    DEFAULT_AUTO_LOCK_MINUTES (10). Fix: reword the comment.
+  - [Open question] ui/recovery_key.py -- the idle timer stays live
+    during the forced new-password step after a recovery unlock, and an
+    idle lock there leaves the forgotten old password in slots.master.
+    Fix: decide whether that step suspends the idle lock.
+  **Layman:** Several smaller problems in the unlock and login code: a failed vault upgrade is hidden from you, and in a few rare error cases a key is left in memory.
+  Kind: security.
+  Source: full-audit-2026-09-27 code lane 2 (queued by FIBR-0367).
+
+- 📋 [FIBR-0403] **Queued findings from the 2026-09-27 audit: vault migration lane (5 items).**
+  From docs/reviews/2026-09-27-full-audit/
+    code-lane-03-vault-migration.md.
+  Line numbers are the audited commit's (52e5162); find sites by symbol.
+  - [Low] services/vault_migration.py:601 -- bytes(dek) makes an
+    unwipeable copy of the data key and defeats the finally wipe
+    (INV-3); same at auth.py:426 and backup.py:320. Fix: widen
+    wrap_dek's dek parameter to bytes | bytearray and pass the buffer.
+  - [Low] vault_migration.py:622 -- fsync_dir is a no-op on Windows, so
+    S4's rename is not made durable before S5 as FIBR-0019 section 13.2
+    requires (NTFS ordering unverified). Fix: use MoveFileExW with
+    MOVEFILE_WRITE_THROUGH on Windows, or record the gap in 13.2.
+  - [Low] vault_migration.py:667-670 -- _finish unlinks the .pre-v2
+    copies in vault_path.parent but flushes only sidecar_path.parent, so
+    the flag clear can be durable while the unlink is not. Fix:
+    fsync_dir(vault_path.parent) after the unlinks, before
+    write_sidecar_v2.
+  - [Low] vault_migration.py:673-692 -- migration_artefacts omits the
+    write_sidecar_json temp files and a possible
+    vault.db.migrating-journal, so start-over and the prune can leave
+    them (unexecuted). Fix: add them to the list.
+  - [Open question] vault_migration.py -- a resume-path S6 OSError can
+    leave migration_pending set indefinitely, and a later branch-1 offer
+    then restores a .pre-v2 copy that may be weeks old, dropping
+    everything since. Fix: decide in section 13.3 whether the offer must
+    say the copy is stale.
+  **Layman:** Five smaller problems in the code that upgrades an old vault to the new key format, mostly about a crash on Windows leaving the upgrade half-recorded.
+  Kind: security.
+  Source: full-audit-2026-09-27 code lane 3 (queued by FIBR-0367).
+
+- 📋 [FIBR-0404] **Queued findings from the 2026-09-27 audit: backup lane (8 items).**
+  From docs/reviews/2026-09-27-full-audit/code-lane-04-backup.md.
+  Line numbers are the audited commit's (52e5162); find sites by symbol.
+  - [Medium] services/backup.py:181 -- picking the live vault as the
+    export destination raises a BackupError that
+    main_window.py:1170-1175 always shows as "this vault is too large to
+    back up". Fix: tell the two causes apart with a subclass or a code
+    on BackupError.
+  - [Low] backup.py:213 -- export stages up to 512 MiB in the system
+    temp dir (RAM on tmpfs), and a full /tmp is reported as "choose
+    another location". Fix: stage beside dest.
+  - [Low] backup.py:437 -- a disk-full while migrating verify's temp
+    copy raises OperationalError and is reported as wrong_password, not
+    io_error. Fix: map it to io_error.
+  - [Low] backup.py:289-352 -- the post-install temp cleanup runs inside
+    the normalising try, so a cleanup failure after a good install
+    reports "Restore failed ... unchanged" (unexecuted). Fix: move the
+    cleanup out of that try.
+  - [Low] backup.py:180 -- the destination guard compares only the live
+    pair, so a destination resolving to vault.db-wal or -shm is replaced
+    under the open connection. Fix: include the WAL siblings in the
+    guard.
+  - [Low] ui/backup_verify.py:117 -- "{n} transactions." has no plural
+    form, so it reads "1 transactions.". Fix: tr("%n transaction(s)",
+    "", n).
+  - [Low] docs/specs/FIBR-0014.md -- Out-of-scope says pruning the .old
+    copies is manual and INV-5 says "always recoverable", but the code
+    prunes under INV-17. Fix: amend the spec to the code.
+  - [Low] docs/specs/FIBR-0030.md section 3.2 -- still says DELETE sits
+    inside the tr() string; the code interpolates it (FIBR-0216), which
+    is right. Fix: amend the spec.
+  **Layman:** Eight smaller problems in backup and restore, mostly misleading error messages and two spec documents that no longer match the code.
+  Kind: review-fix.
+  Source: full-audit-2026-09-27 code lane 4 (queued by FIBR-0367).
+
+- 📋 [FIBR-0405] **Queued findings from the 2026-09-27 audit: Standard Bank PDF lane (5 items).**
+  From docs/reviews/2026-09-27-full-audit/code-lane-05-standard-bank.md.
+  Line numbers are the audited commit's (52e5162); find sites by symbol.
+  - [Medium] importers/pdf_importer.py:208-211, :171,
+    standard_bank.py:1174 -- nothing bounds decompressed size, so a
+    Flate bomb inside the 16 MiB input cap can exhaust memory or CPU
+    before any cap fires (unexecuted). Fix: save with
+    stream_decode_level none and bound each page's content by a ratio,
+    or decode through a capped decompressobj.
+  - [Low] pdf_importer.py:172-173, standard_bank.py:1175-1176 -- except
+    ValueError: raise also passes through ValueErrors raised inside
+    pdfminer or pdfplumber, showing internal text. Fix: raise the
+    page-cap error outside the try, or re-raise only a private
+    ValueError subclass.
+  - [Low] standard_bank.py:518, :1296, :196, :1140 -- these refusals
+    omit the "use the CSV/OFX export" tail that D10 requires. Fix:
+    append the standard tail (FIBR-0050 INV-11 amended in the same
+    commit).
+  - [Low] standard_bank.py:419-436 -- in _infer_years one back-dated row
+    pushes every later row a year late, and nothing checks inferred
+    dates lie inside the printed period. Fix: refuse when an inferred
+    date falls outside the period plus slack.
+  - [Low] standard_bank.py (_MISPARSE, _UNREADABLE_MONEY_ROW,
+    _E_TOTALS_MISMATCH and others), pdf_importer.py:165-188 -- refusal
+    strings are English literals shown to the user, against design.md
+    i18n (real only if the UI does not translate them). Fix: route them
+    through tr().
+  **Layman:** Five smaller problems in reading Standard Bank PDF statements, including a booby-trapped PDF that could use up all the computer's memory.
+  Kind: security.
+  Source: full-audit-2026-09-27 code lane 5 (queued by FIBR-0367).
+
+- 📋 [FIBR-0406] **Queued findings from the 2026-09-27 audit: CSV and OFX import lane (5 items).**
+  From docs/reviews/2026-09-27-full-audit/
+    code-lane-06-csv-ofx-import.md.
+  Line numbers are the audited commit's (52e5162); find sites by symbol.
+  - [Medium] datetime_format.py:62, :95 -- _resolve_zone never checks
+    the system zone is valid; if Qt then returns an invalid date,
+    date(0, 0, 0) raises and every "today" consumer crashes (unexecuted,
+    depends on Qt). Fix: use QTimeZone.systemTimeZone() and fall back to
+    local time when it is not isValid().
+  - [Low] services/import_.py:466-467 -- _validate_span checks but does
+    not canonicalise span dates, so commit_import can store raw strings
+    like "20260715", unlike parse_transaction since FIBR-0216 (latent).
+    Fix: return and use start.isoformat() and end.isoformat().
+  - [Low] import_.py:170 -- a non-UTF-8 file shows the raw codec error
+    text in the wizard. Fix: catch UnicodeDecodeError and raise a
+    ValueError saying the file is not UTF-8 text.
+  - [Low] csv_importer.py:129, :172, import_.py:451 -- user-facing
+    errors are English f-strings shown with setText(str(exc)), one with
+    a Python list repr, against design.md i18n. Fix: return error codes
+    and values, and translate in the UI.
+  - [Low] datetime_format.py:103 -- qdate.toString(date_pref) renders
+    English month names whatever the UI language. Fix:
+    QLocale().toString(qdate, date_pref).
+  **Layman:** Five smaller problems in importing CSV and OFX files, including a possible crash on computers with an unusual time-zone setting and some untranslated messages.
+  Kind: review-fix.
+  Source: full-audit-2026-09-27 code lane 6 (queued by FIBR-0367).
+
+- 📋 [FIBR-0407] **Queued findings from the 2026-09-27 audit: batch import lane (10 items).**
+  From docs/reviews/2026-09-27-full-audit/code-lane-07-batch-import.md.
+  Line numbers are the audited commit's (52e5162); find sites by symbol.
+  - [Medium] services/batch_import.py:548-552 -- one answer() re-runs
+    the decrypt ladder for every still-locked file in one Qt slot,
+    freezing the GUI and retrying stored passwords after every prompt,
+    against section 4.7 and INV-9. Row 21 moved these loops into
+    _rescan_blocked; check the current code first. Fix: mark blocked
+    records for re-scan, let the wizard chain scan one per turn, and try
+    only the new password.
+  - [Low] ui/import_batch.py:86-87 -- OFX fan-out rows use the bare
+    basename, so bank.ofx in two folders both read "bank.ofx [1 of 2]".
+    Fix: escalate the label first, then append the index.
+  - [Low] batch_import.py:605 -- _settle_password runs on every
+    set_account, so a remembered password is written to each account
+    passed through, and at SCAN before approval; Cancel does not undo it
+    (sections 4.4 and 4.6 disagree). Fix: defer it to _commit's success
+    path.
+  - [Low] ui/import_batch.py:468-469 -- the batch Create account says
+    nothing about the number stored or a cleared number, unlike the
+    single-file path. Fix: show the same stored-number line.
+  - [Low] ui/import_batch.py:466 -- self._error.setText(str(exc)) lets
+    Qt render rich text in the error label. Fix:
+    setTextFormat(Qt.PlainText) on the label.
+  - [Low] batch_import.py:346, :703-708 -- _fail and _commit drop the
+    exception with no log line. Fix: log.warning with the exception type
+    name only.
+  - [Low] batch_import.py:703 -- an sqlite3 error escapes the slot and
+    the chain is never re-armed; rows stay waiting and only Cancel
+    exits. Fix: re-arm or end the chain (the narrow net is deliberate).
+  - [Low] batch_import.py:599 -- record.account_id is set before the
+    preview is built, so a raise leaves the shown account and the
+    preview's target apart. Fix: assign after the preview.
+  - [Low] ui/import_batch.py:264 -- counts render in Western digits
+    whatever the locale. Fix: QLocale().toString(value).
+  - [Open question] ui/account_create.py:64-76 -- the dialog pre-selects
+    Current where FIBR-0086 section 4.6 says family A yields no type and
+    the user picks. Fix: a placeholder that blocks OK, or amend the
+    spec.
+  **Layman:** Ten smaller problems in importing many statements at once, including the screen freezing while it retries locked PDFs and a remembered password being saved too early.
+  Kind: security.
+  Source: full-audit-2026-09-27 code lane 7 (queued by FIBR-0367).
+
+- 📋 [FIBR-0408] **Queued findings from the 2026-09-27 audit: import wizard lane (7 items).**
+  From docs/reviews/2026-09-27-full-audit/code-lane-08-import-wizard.md.
+  Line numbers are the audited commit's (52e5162); find sites by symbol.
+  - [Medium] ui/import_wizard.py:~748, :~1422-1423 -- after "Create it"
+    the combo change hides _account_match_label, so the confirmation and
+    the no-account-number warning land in a hidden label (FIBR-0086
+    section 4.6). Fix: setVisible(True) after setText in both branches.
+  - [Low] import_wizard.py:~872 -- a wrong PDF password re-prompts with
+    an identical dialog; the batch _ask_password does the same. Fix:
+    pass a "that password didn't work" line on a re-prompt.
+  - [Low] import_wizard.py:~1253-1259 -- tr(...) + " " + text joins
+    display strings, against design.md i18n. Fix: one tr() string with
+    a placeholder.
+  - [Low] import_wizard.py:~630 -- the OFX statement label is an
+    f-string showing the raw account type untranslated. Fix: a tr()
+    template and a translated type map.
+  - [Low] docs/design.md:236 -- quotes "12 of 240 rows couldn't be
+    parsed", but the preview shows "{new} new, {dup} duplicate, {err}
+    error". Fix: amend design.md to the built wording.
+  - [Low] import_wizard.py:~1426 -- _on_confirm_account_changed catches
+    only VaultLockedError around retarget, so another error escapes the
+    slot. Fix: check what retarget raises and catch it.
+  - [Low] import_wizard.py:~1725 -- _ask_mapping calls read_header
+    unguarded in a timer-driven slot (defensive only). Fix: guard the
+    call.
+  **Layman:** Seven smaller problems in the import screens, including a hidden warning after creating an account and a wrong PDF password giving no sign it was wrong.
+  Kind: review-fix.
+  Source: full-audit-2026-09-27 code lane 8 (queued by FIBR-0367).
+
+- 📋 [FIBR-0409] **Queued findings from the 2026-09-27 audit: money services lane (3 items).**
+  From docs/reviews/2026-09-27-full-audit/
+    code-lane-10-money-services.md.
+  Line numbers are the audited commit's (52e5162); find sites by symbol.
+  - [Medium] services/transactions.py, accounts.py, categories.py (every
+    raise) -- service errors are English strings the UI shows through
+    setText(str(exc)), and the f-strings splice names in, against
+    design.md i18n. Fix: raise typed errors or codes and build the
+    message with tr() in the widget, as ui/statements.py does.
+  - [Low] services/transfer_detection.py:141, :160 -- bulk confirm and
+    reject skip every database check, so a stale Transfers list can
+    raise IntegrityError mid-batch after earlier decisions committed, or
+    confirm a same-account pair (INV-4). Fix: have add_decision re-check
+    candidacy and skip, or refresh before resolving.
+  - [Open question] reassign_account (FIBR-0059) -- reassigning a
+    statement can leave a confirmed transfer with both legs in one
+    account, still excluded from totals, against FIBR-0011's matching
+    rule. Fix: decide whether reassign_account unlinks such pairs or
+    refuses.
+  **Layman:** Error messages from the money code are always in English, and confirming many transfers at once can fail half-way if another tab changed the data first.
+  Kind: review-fix.
+  Source: full-audit-2026-09-27 code lane 10 (queued by FIBR-0367).
 
 ## v1.1.0 — Localisation
 
