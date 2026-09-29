@@ -58,9 +58,20 @@ class UnlockThrottle:
 
     def remaining(self, now: datetime) -> float:
         """Seconds still owed before the next attempt is accepted, recomputed from
-        persisted wall-clock state (the authoritative gate — spec D4)."""
+        persisted wall-clock state (the authoritative gate — spec D4).
+
+        A stamp that is missing, malformed or in the future is re-stamped to
+        ``now`` (spec D5, FIBR-0371). Every submit re-reads it, and a refused
+        submit never reaches ``record_failure`` or ``reset``, so left alone such
+        a stamp refused the owner until the clock caught up — or for ever."""
         state = self.load()
-        return remaining_lockout_seconds(state.fail_count, state.last_fail, now)
+        last_fail = state.last_fail
+        if state.fail_count > 0 and (last_fail is None or last_fail > now):
+            settings = self._settings()
+            settings.setValue(_LAST_FAIL_KEY, now.isoformat())
+            settings.sync()
+            last_fail = now
+        return remaining_lockout_seconds(state.fail_count, last_fail, now)
 
     def record_failure(self, now: datetime) -> None:
         """Increment ``fail_count`` by one and stamp ``last_fail = now``."""

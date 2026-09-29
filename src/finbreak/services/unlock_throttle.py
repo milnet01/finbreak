@@ -58,11 +58,12 @@ def remaining_lockout_seconds(
     corners (spec INV-3): a missing ``last_fail`` with a positive count yields the
     **full** delay (a partial/corrupt write is treated as if the failure just
     happened); a ``last_fail`` in the future (clock moved back / tampered stamp)
-    makes ``elapsed`` negative and so owes a *longer* wait — never a shorter one."""
+    owes the full delay and no more (FIBR-0371). The adapter re-stamps both, so
+    the lockout also ENDS within the delay."""
     if fail_count <= 0:
         return 0.0
     delay = backoff_delay_seconds(fail_count)
     if last_fail is None:
         return delay
     elapsed = (now - last_fail).total_seconds()
-    return max(0.0, delay - elapsed)
+    return min(delay, max(0.0, delay - elapsed))

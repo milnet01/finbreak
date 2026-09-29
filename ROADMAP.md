@@ -518,9 +518,18 @@ so Flathub review and code signing do not block this release.
   Kind: doc-fix.
   Source: in-session-2026-09-28.
 
-- 📋 [FIBR-0371] **Cap the unlock wait when the clock has moved.**
+- ✅ [FIBR-0371] **Cap the unlock wait when the clock has moved.**
   Audit 2026-09-27, code-lane-15-security-screens.md: a failure stamped while the clock ran ahead makes the wait 30 s plus the skew, with no cap. FIBR-0095 INV-3 allows that uncapped wait; security-model.md § 5 INV-10 says the backoff is capped. The two contradict.
   User decision 2026-09-28: always capped. So amend FIBR-0095 INV-3 to the cap (a change of direction, so it runs review-contract --max-loops 3 before the code changes), then clamp the computed wait in the unlock throttle and add a regression test with a clock that moved backward.
+  Resolved (2026-09-29): FIBR-0095 amended and gated (review-contract, 3
+  loops at the project cap, calm; loop-log rows 5-7). The review found
+  that capping the returned value alone does not end the lockout,
+  because every submit re-reads the stamp. It also found an older
+  permanent lockout: a missing or malformed stamp with a positive count
+  refused every submit for ever. UnlockThrottle.remaining(now) now
+  re-stamps a missing, malformed or future last_fail to now, and
+  remaining_lockout_seconds caps at delay(n). Red-first tests cover all
+  three corners and the lockout ending.
   **Layman:** If the computer's clock jumps, finbreak could make you wait hours to unlock your own vault; the wait will now never exceed its normal maximum.
   Kind: review-fix.
   Source: full-audit-2026-09-27 code-lane-15.

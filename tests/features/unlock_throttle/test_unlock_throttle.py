@@ -89,11 +89,10 @@ def test_INV3_missing_last_fail_owes_full_delay() -> None:
     assert remaining_lockout_seconds(3, None, _LAST) == backoff_delay_seconds(3)
 
 
-def test_INV3_future_last_fail_owes_more_than_full_delay() -> None:
-    now = _LAST - timedelta(seconds=5)  # clock moved back / tampered stamp
-    remaining = remaining_lockout_seconds(3, _LAST, now)
-    assert remaining > backoff_delay_seconds(3)
-    assert remaining == pytest.approx(9.0)  # 4 s delay + 5 s of negative elapsed
+def test_INV3_future_last_fail_owes_exactly_the_full_delay() -> None:
+    """FIBR-0371: a clock that moved back owed the delay PLUS the jump."""
+    now = _LAST - timedelta(days=1)  # clock moved back / tampered stamp
+    assert remaining_lockout_seconds(3, _LAST, now) == backoff_delay_seconds(3)
 
 
 def test_ThrottleState_is_frozen() -> None:
@@ -158,6 +157,31 @@ def test_INV3_naive_last_fail_treated_as_malformed(window_ini: Path) -> None:
     assert UnlockThrottle().remaining(now) == backoff_delay_seconds(3)
 
 
+@pytest.mark.parametrize(
+    "seed",
+    [
+        "[unlock]\nfail_count=3\n",  # a lone surviving count: reset() interrupted
+        "[unlock]\nfail_count=3\nlast_fail=2026-07-18T09:00:00\x00garbage\n",
+        "[unlock]\nfail_count=3\nlast_fail=2026-07-19T09:00:00+00:00\n",  # future
+    ],
+    ids=["missing", "malformed", "future"],
+)
+def test_INV3_unusable_stamp_is_restamped_so_the_lockout_ends(
+    window_ini: Path, seed: str
+) -> None:
+    """FIBR-0371: with no usable stamp every submit was refused before it could
+    record or reset anything, so the owner stayed locked out until the clock
+    caught up — or, with no stamp at all, forever. The adapter re-stamps it."""
+    window_ini.write_text(seed)
+    now = datetime(2026, 7, 18, 9, 0, 0, tzinfo=UTC)
+    throttle = UnlockThrottle()
+
+    assert throttle.remaining(now) == backoff_delay_seconds(3)
+    assert UnlockThrottle().load().last_fail == now, "re-stamped and persisted"
+    later = now + timedelta(seconds=backoff_delay_seconds(3))
+    assert UnlockThrottle().remaining(later) == 0.0, "the lockout ends"
+
+
 # --------------------------------------------------------------------------- #
 # INV-5 — reset() on a successful unlock
 # --------------------------------------------------------------------------- #
@@ -205,6 +229,11 @@ def test_INV7_adapter_never_touches_vault_or_secret() -> None:
         "now",
     ]
     assert list(inspect.signature(UnlockThrottle.reset).parameters) == ["self"]
+    # remaining() writes too, when it re-stamps an unusable stamp (FIBR-0371).
+    assert list(inspect.signature(UnlockThrottle.remaining).parameters) == [
+        "self",
+        "now",
+    ]
 
 
 # --------------------------------------------------------------------------- #
