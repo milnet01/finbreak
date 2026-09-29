@@ -741,3 +741,44 @@ def test_FIBR0400_obs_status_exit_reflects_the_builds(
 
     assert (result.returncode != 0) == bool(expect_rc), result.stdout
     assert expect_text in (result.stdout + result.stderr)
+
+
+# --------------------------------------------------------------------------- #
+# INV-11 — the libxkbcommon pair comes from the host, never half from the payload
+# --------------------------------------------------------------------------- #
+def _spec_branch(spec: str, macro: str) -> str:
+    """Every ``%if 0%{?<macro>}`` block's body in the spec, joined."""
+    bodies = re.findall(rf"%if 0%\{{\?{macro}\}}\n(.*?)%endif", spec, re.S)
+    assert bodies, f"no %if 0%{{?{macro}}} branch"
+    return "\n".join(bodies)
+
+
+def test_INV11_host_supplies_both_libxkbcommon_halves() -> None:
+    """FIBR-0346: the recipes bundled libxkbcommon and left libxkbcommon-x11 to
+    the host — the split pair FIBR-0208 measured segfaulting. Both halves must
+    be runtime deps, and neither may stay in the payload."""
+    spec = _read(_SPEC)
+    rules = _read(_DEB_RULES)
+    control = _read(_DEB_CONTROL)
+
+    runtime = {
+        "suse": _requires_lines(_spec_branch(spec, "suse_version")),
+        "fedora": _requires_lines(_spec_branch(spec, "fedora")),
+    }
+    assert any("libxkbcommon0" in ln for ln in runtime["suse"]), runtime
+    assert any("libxkbcommon-x11-0" in ln for ln in runtime["suse"]), runtime
+    assert any(ln.split()[-1] == "libxkbcommon" for ln in runtime["fedora"]), runtime
+    assert any("libxkbcommon-x11" in ln for ln in runtime["fedora"]), runtime
+
+    depends = _pkg_names(_control_field(control, "Depends"))
+    assert {"libxkbcommon0", "libxkbcommon-x11-0"} <= depends, depends
+
+    # The payload drops whatever copy PyInstaller collected, BEFORE the staged
+    # self-test runs, so that test proves the frozen app runs on the host's.
+    for name, text, selftest in (
+        ("finbreak.spec", spec, "--self-test"),
+        ("debian/rules", rules, "--self-test"),
+    ):
+        drop = re.search(r"-name 'libxkbcommon\*\.so\*' -delete", text)
+        assert drop, f"{name} does not remove the bundled libxkbcommon"
+        assert drop.start() < text.index(selftest), f"{name}: removed after self-test"

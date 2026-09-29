@@ -82,18 +82,25 @@ BuildRequires:  fontconfig
 BuildRequires:  harfbuzz
 %endif
 
-# --- Runtime deps: ONLY the host-left libGL/libEGL pair (the clean-room proof,
-#     build-smoke.sh:95-96). Everything else travels in-bundle, so a Requires on
-#     it would be over-broad + risk a wrong per-distro name (§ 3.5). The bundled
-#     .so's are dlopen'd — invisible to RPM's auto-scanner, which we also disable
-#     below — so libGL/libEGL are required explicitly.
+# --- Runtime deps: ONLY the host-left libGL/libEGL pair and the libxkbcommon
+#     pair (the clean-room proof, scripts/build-smoke.sh). Everything else travels
+#     in-bundle, so a Requires on it would be over-broad + risk a wrong per-distro
+#     name (§ 3.5). The bundled .so's are dlopen'd — invisible to RPM's
+#     auto-scanner, which we also disable below — so these are required
+#     explicitly. libxkbcommon and libxkbcommon-x11 are one upstream release and
+#     must match: %install drops the payload's copy so both come from the host
+#     (FIBR-0346; the AppImage's FIBR-0208).
 %if 0%{?suse_version}
 Requires:       Mesa-libGL1
 Requires:       Mesa-libEGL1
+Requires:       libxkbcommon0
+Requires:       libxkbcommon-x11-0
 %endif
 %if 0%{?fedora}
 Requires:       mesa-libGL
 Requires:       mesa-libEGL
+Requires:       libxkbcommon
+Requires:       libxkbcommon-x11
 %endif
 # Owns the shared /usr/share/icons/hicolor/*/apps dirs our PNGs land in, so the
 # openSUSE filelist check doesn't fail on "directories not owned by a package"
@@ -159,6 +166,10 @@ pyinstaller --onedir --name finbreak \
 # dist/finbreak/finbreak).
 mkdir -p %{buildroot}%{_prefix}/lib/finbreak
 cp -a dist/finbreak/. %{buildroot}%{_prefix}/lib/finbreak/
+# The host supplies both libxkbcommon halves (Requires above). BuildRequires keeps
+# libxkbcommon0 because %check loads QtGui, so PyInstaller collects a copy: drop
+# it, or the payload's copy meets the host's -x11 half (FIBR-0346).
+find %{buildroot}%{_prefix}/lib/finbreak -name 'libxkbcommon*.so*' -delete
 # The /usr/bin launcher wrapper (§ 3.4).
 install -Dm0755 packaging/obs/finbreak.sh %{buildroot}%{_bindir}/finbreak
 # Desktop entry + AppStream metainfo (§ 3.3).

@@ -38,11 +38,14 @@ Rules-Requires-Root: no
 
 Package: finbreak
 Architecture: amd64
-# Runtime: ONLY the host-left libGL/libEGL pair — everything else travels in the
-# frozen payload (§ 3.5). No ${shlibs:Depends}: dpkg-shlibdeps is scoped away from
+# Runtime: ONLY the host-left libGL/libEGL pair and the libxkbcommon pair, which
+# must match each other (FIBR-0346) — everything else travels in the frozen
+# payload (§ 3.5). No ${shlibs:Depends}: dpkg-shlibdeps is scoped away from
 # the bundled tree in debian/rules, so the bundled .so's don't leak into Depends.
 Depends: libgl1,
  libegl1,
+ libxkbcommon0,
+ libxkbcommon-x11-0,
  ${misc:Depends}
 Description: Private, offline personal-finance desktop app
  finbreak imports bank statements (CSV, OFX, PDF), categorises transactions, and

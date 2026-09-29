@@ -57,6 +57,10 @@ override_dh_auto_install:
 	# Payload tree → /usr/lib/finbreak/ (bootloader = dist/finbreak/finbreak).
 	mkdir -p debian/finbreak/usr/lib/finbreak
 	cp -a dist/finbreak/. debian/finbreak/usr/lib/finbreak/
+	# The host supplies both libxkbcommon halves (control Depends). Build-Depends
+	# keeps libxkbcommon0 because the self-test below loads QtGui, so PyInstaller
+	# collects a copy: drop it, or it meets the host's -x11 half (FIBR-0346).
+	find debian/finbreak/usr/lib/finbreak -name 'libxkbcommon*.so*' -delete
 	# The /usr/bin launcher wrapper (renamed from finbreak.sh → finbreak, § 3.4).
 	install -Dm0755 packaging/obs/finbreak.sh debian/finbreak/usr/bin/finbreak
 	# Hicolor icons renamed to the app-ID (themed-icon name = Icon= in .desktop).

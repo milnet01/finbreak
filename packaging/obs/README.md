@@ -147,7 +147,8 @@ failures.
   reject the bundled payload (`dh_dwz`, `dh_strip`) in one pass.
 - **Then install the result** into a bare container of the same distro and run
   `finbreak --self-test`. Building is not evidence the package works; this also
-  checks the dependency set stayed the host-left `libgl1`/`libegl1` pair.
+  checks the dependency set stayed the host-left libs: `libgl1`/`libegl1` and
+  the `libxkbcommon` pair, with no `libxkbcommon` inside `/usr/lib/finbreak/`.
 - **Do NOT diagnose a missing library from `ldd`.** A sweep over the frozen tree
   reports ~50 not-found libraries, and almost all are optional Qt plugin
   dependencies (SQL drivers, the GTK platform theme, speech-dispatcher) plus
