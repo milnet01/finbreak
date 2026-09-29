@@ -48,15 +48,15 @@ def _relaunch_env() -> dict[str, str]:
     drop the AppImage runtime's own markers so the outer runtime re-mounts cleanly.
 
     **Loader-path restoration (the real 0.1.6→0.1.7 "closed but didn't reopen"):**
-    the frozen onefile app runs with ``LD_LIBRARY_PATH`` (and possibly
-    ``LD_PRELOAD``) pointing at its private ``_MEI`` extraction dir so it finds its
-    *bundled* libs. Inherited by the ``/bin/sh`` waiter, the **system** shell then
-    loads those bundled libs — e.g. an ``_MEI`` ``libreadline.so.8`` incompatible
-    with the system ``/bin/sh`` — and dies on a symbol lookup *before it can
-    relaunch* (evidenced in ``update-relaunch.log``). PyInstaller preserves the
-    pre-launch value in ``<VAR>_ORIG``; we restore each loader var to that (or drop
-    it when there was none), so the waiter runs against the SYSTEM libraries. The
-    exec'd AppImage sets up its own loader path via its runtime, so this is safe."""
+    the frozen onefile app runs with ``LD_LIBRARY_PATH`` pointing at its private
+    ``_MEI`` extraction dir so it finds its *bundled* libs. Inherited by the
+    ``/bin/sh`` waiter, the **system** shell then loads those bundled libs —
+    e.g. an ``_MEI`` ``libreadline.so.8`` incompatible with the system
+    ``/bin/sh`` — and dies on a symbol lookup *before it can relaunch*
+    (evidenced in ``update-relaunch.log``). PyInstaller preserves the pre-launch
+    value in ``LD_LIBRARY_PATH_ORIG``; we restore it (or drop it when there was
+    none), so the waiter runs against the SYSTEM libraries. The exec'd AppImage
+    sets up its own loader path via its runtime, so this is safe."""
     env = dict(os.environ)
     env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
     for key in _STALE_APPIMAGE_ENV:

@@ -59,6 +59,25 @@ SALT_LEN = 16
 # rather than the class (FIBR-0337 M2).
 _BAD_SIDECAR_NUMBER = (TypeError, ValueError, OverflowError)
 
+
+def _json_int(value: Any) -> int:
+    """A sidecar number, which the app writes as a JSON integer and nothing
+    else. ``int()`` accepted ``true``, ``"32"`` and ``32.9``, so a hand-edited
+    file passed INV-2's exact-format match (FIBR-0401). ``bool`` is an ``int``
+    subclass, so the test is on the exact type."""
+    if type(value) is not int:
+        raise TypeError(f"expected a JSON integer, got {value!r}")
+    return value
+
+
+def _json_bool(value: Any) -> bool:
+    """A sidecar flag. ``bool("false")`` is True, which sent an intact vault
+    down the migration-resume ladder (FIBR-0401)."""
+    if type(value) is not bool:
+        raise TypeError(f"expected a JSON boolean, got {value!r}")
+    return value
+
+
 _REQUIRED_SIDECAR_FIELDS = frozenset(
     {
         "format_version",
@@ -229,12 +248,12 @@ def load_and_validate_params(sidecar_path: Path) -> KdfParams:
 
     try:
         params = KdfParams(
-            format_version=int(data["format_version"]),
-            memory_kib=int(data["memory_kib"]),
-            time_cost=int(data["time_cost"]),
-            parallelism=int(data["parallelism"]),
-            key_len=int(data["key_len"]),
-            salt_len=int(data["salt_len"]),
+            format_version=_json_int(data["format_version"]),
+            memory_kib=_json_int(data["memory_kib"]),
+            time_cost=_json_int(data["time_cost"]),
+            parallelism=_json_int(data["parallelism"]),
+            key_len=_json_int(data["key_len"]),
+            salt_len=_json_int(data["salt_len"]),
             salt=bytes.fromhex(data["salt_hex"]),
         )
     except _BAD_SIDECAR_NUMBER as exc:
@@ -522,7 +541,7 @@ def _version_of(data: dict[str, Any]) -> int:
     if "sidecar_version" not in data:
         return 1
     try:
-        version = int(data["sidecar_version"])
+        version = _json_int(data["sidecar_version"])
     except _BAD_SIDECAR_NUMBER as exc:
         raise KdfPolicyError(f"sidecar_version is not an integer: {exc}") from exc
     if version != SIDECAR_VERSION:
@@ -624,14 +643,14 @@ def read_sidecar_v2(sidecar_path: Path) -> VaultSidecar:
     try:
         compat_raw = data.get(CIPHER_COMPATIBILITY_FIELD)
         sidecar = VaultSidecar(
-            memory_kib=int(kdf["memory_kib"]),
-            time_cost=int(kdf["time_cost"]),
-            parallelism=int(kdf["parallelism"]),
-            key_len=int(kdf["key_len"]),
-            salt_len=int(kdf["salt_len"]),
+            memory_kib=_json_int(kdf["memory_kib"]),
+            time_cost=_json_int(kdf["time_cost"]),
+            parallelism=_json_int(kdf["parallelism"]),
+            key_len=_json_int(kdf["key_len"]),
+            salt_len=_json_int(kdf["salt_len"]),
             slots=slots,
-            migration_pending=bool(data.get(MIGRATION_PENDING_FIELD, False)),
-            cipher_compatibility=None if compat_raw is None else int(compat_raw),
+            migration_pending=_json_bool(data.get(MIGRATION_PENDING_FIELD, False)),
+            cipher_compatibility=None if compat_raw is None else _json_int(compat_raw),
             extra={k: v for k, v in data.items() if k not in _V2_TOP_FIELDS},
             kdf_extra={k: v for k, v in kdf.items() if k not in _V2_KDF_FIELDS},
         )

@@ -2689,7 +2689,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: security.
   Source: full-audit-2026-09-27 code lane 20 (queued by FIBR-0367).
 
-- 📋 [FIBR-0401] **Queued findings from the 2026-09-27 audit: crypto lane (6 items).**
+- 🚧 [FIBR-0401] **Queued findings from the 2026-09-27 audit: crypto lane (6 items).**
   From docs/reviews/2026-09-27-full-audit/code-lane-01-crypto.md.
   Line numbers are the audited commit's (52e5162); find sites by symbol.
   - [Medium] vault.py:323-324 -- a freshly created vault records no

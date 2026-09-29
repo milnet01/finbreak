@@ -307,43 +307,49 @@ class Vault:
         # Default isolation_level "" → manual-commit (DBAPI), so writes are
         # delimited by an explicit commit() (INV-4a).
         conn = dbapi2.connect(str(self._vault_path))
-        # Raw-key pragma MUST be the first statement. key.hex() is exactly 64
-        # chars from [0-9a-f] (Argon2 output, never user text), so this
-        # interpolation has no injection surface; SQLCipher does not
-        # bind-parameterise PRAGMA key. The transient hex `str` is an
-        # un-wipeable copy of the key (SQLCipher's PRAGMA takes a string) — an
-        # accepted best-effort gap, consistent with the D5 stance on the other
-        # immutable key/password intermediates.
-        conn.execute(f"PRAGMA key = \"x'{key.hex()}'\"")
-        # Apply a recorded cipher_compatibility level (FIBR-0014 INV-13) right
-        # after PRAGMA key and BEFORE cipher_use_hmac — a lower level resets the
-        # per-page HMAC off, so setting it first then forcing HMAC ON means HMAC
-        # can never be left disabled. cipher_compat is an int the caller has
-        # already allowlist-validated (services/backup.py), never user text.
-        if cipher_compat is not None:
-            conn.execute(f"PRAGMA cipher_compatibility = {int(cipher_compat)}")
-        # Pin per-page HMAC integrity ON explicitly (FIBR-0077, revisiting
-        # FIBR-0004 D4 which only *asserted* the SQLCipher-4 default). AES gives
-        # confidentiality, not integrity; the HMAC is what makes a tampered page
-        # fail to open (security-model INV-1/T9). Every vault is created with the
-        # default ON, so pinning ON here can never mismatch an existing file — it
-        # only removes the reliance on a dep default a future bump could flip
-        # (global rule §5). Must be issued right after PRAGMA key, before the
-        # first read, as a cipher-configuration statement.
-        conn.execute("PRAGMA cipher_use_hmac = ON")
-        # Enforce the transactions->accounts foreign key (FIBR-0005 D4). Set on
-        # a fresh connection before its first statement: a *change* to
-        # foreign_keys is a no-op mid-transaction, but once ON it stays enforced.
-        conn.execute("PRAGMA foreign_keys = ON")
-        # Wait up to 5s for a held lock instead of raising OperationalError
-        # immediately (FIBR-0076): a second app instance or a slow backup/AV
-        # holding a transient read lock serialises rather than crashing the UI.
-        conn.execute("PRAGMA busy_timeout = 5000")
-        # Keep temp tables / migration-rebuild scratch in memory so a restore's
-        # v1→v2 transactions rebuild spills no plaintext to a temp file (INV-1b).
-        # Set here, before the first read/migration, so it covers run_migrations.
-        if in_memory_temp:
-            conn.execute("PRAGMA temp_store = MEMORY")
+        # Closed on any setup failure: a leaked handle can block a later rename
+        # or delete of the vault on Windows (FIBR-0401).
+        try:
+            # Raw-key pragma MUST be the first statement. key.hex() is exactly 64
+            # chars from [0-9a-f] (Argon2 output, never user text), so this
+            # interpolation has no injection surface; SQLCipher does not
+            # bind-parameterise PRAGMA key. The transient hex `str` is an
+            # un-wipeable copy of the key (SQLCipher's PRAGMA takes a string) — an
+            # accepted best-effort gap, consistent with the D5 stance on the other
+            # immutable key/password intermediates.
+            conn.execute(f"PRAGMA key = \"x'{key.hex()}'\"")
+            # Apply a recorded cipher_compatibility level (FIBR-0014 INV-13) right
+            # after PRAGMA key and BEFORE cipher_use_hmac — a lower level resets the
+            # per-page HMAC off, so setting it first then forcing HMAC ON means HMAC
+            # can never be left disabled. cipher_compat is an int the caller has
+            # already allowlist-validated (services/backup.py), never user text.
+            if cipher_compat is not None:
+                conn.execute(f"PRAGMA cipher_compatibility = {int(cipher_compat)}")
+            # Pin per-page HMAC integrity ON explicitly (FIBR-0077, revisiting
+            # FIBR-0004 D4 which only *asserted* the SQLCipher-4 default). AES gives
+            # confidentiality, not integrity; the HMAC is what makes a tampered page
+            # fail to open (security-model INV-1/T9). Every vault is created with the
+            # default ON, so pinning ON here can never mismatch an existing file — it
+            # only removes the reliance on a dep default a future bump could flip
+            # (global rule §5). Must be issued right after PRAGMA key, before the
+            # first read, as a cipher-configuration statement.
+            conn.execute("PRAGMA cipher_use_hmac = ON")
+            # Enforce the transactions->accounts foreign key (FIBR-0005 D4). Set on
+            # a fresh connection before its first statement: a *change* to
+            # foreign_keys is a no-op mid-transaction, but once ON it stays enforced.
+            conn.execute("PRAGMA foreign_keys = ON")
+            # Wait up to 5s for a held lock instead of raising OperationalError
+            # immediately (FIBR-0076): a second app instance or a slow backup/AV
+            # holding a transient read lock serialises rather than crashing the UI.
+            conn.execute("PRAGMA busy_timeout = 5000")
+            # Keep temp tables / migration-rebuild scratch in memory so a restore's
+            # v1→v2 transactions rebuild spills no plaintext to a temp file (INV-1b).
+            # Set here, before the first read/migration, so it covers run_migrations.
+            if in_memory_temp:
+                conn.execute("PRAGMA temp_store = MEMORY")
+        except BaseException:
+            conn.close()
+            raise
         return conn
 
     def rekey(self, new_key: bytearray) -> None:
@@ -351,7 +357,9 @@ class Vault:
         D4). After it the old key no longer opens the file and the new key does,
         with data intact (spike-proven). Raises ``VaultLockedError`` if locked."""
         # new_key.hex() is 64 hex chars from Argon2 output (never user text), so
-        # this interpolation has no injection surface — same posture as PRAGMA key.
+        # this interpolation has no injection surface — same posture as PRAGMA key,
+        # and the same accepted residual (security-model INV-3): the hex SQL is an
+        # unwipeable copy the connection keeps referenced until it closes.
         self.connection.execute(f"PRAGMA rekey = \"x'{new_key.hex()}'\"")
 
     def export_to(self, dest_db: Path, backup_key: bytearray) -> None:

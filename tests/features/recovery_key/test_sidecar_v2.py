@@ -816,3 +816,97 @@ def test_a_planted_temp_file_does_not_set_the_sidecars_mode(
         "create that path decides the sidecar's permissions.\n"
         f"  expected: 0o600\n  actual:   {oct(mode)}"
     )
+
+
+def _v1_from(kdf: dict[str, Any], **override: object) -> dict[str, Any]:
+    return {
+        "format_version": 1,
+        "memory_kib": kdf["memory_kib"],
+        "time_cost": kdf["time_cost"],
+        "parallelism": kdf["parallelism"],
+        "key_len": kdf["key_len"],
+        "salt_len": kdf["salt_len"],
+        "salt_hex": "00" * kdf["salt_len"],
+        **override,
+    }
+
+
+@pytest.mark.parametrize(
+    ("reader", "build"),
+    [
+        ("load_and_validate_params", lambda kdf, _s: _v1_from(kdf, time_cost=True)),
+        (
+            "load_and_validate_params",
+            lambda kdf, _s: _v1_from(kdf, memory_kib=str(kdf["memory_kib"])),
+        ),
+        (
+            "load_and_validate_params",
+            lambda kdf, _s: _v1_from(kdf, key_len=float(kdf["key_len"])),
+        ),
+        (
+            "read_sidecar_v2",
+            lambda kdf, s: {
+                "sidecar_version": SIDECAR_VERSION,
+                "kdf": {**kdf, "memory_kib": str(kdf["memory_kib"])},
+                SLOTS: s,
+            },
+        ),
+        (
+            "read_sidecar_v2",
+            lambda kdf, s: {
+                "sidecar_version": SIDECAR_VERSION,
+                "kdf": {**kdf, "parallelism": True},
+                SLOTS: s,
+            },
+        ),
+        (
+            "read_sidecar_v2",
+            lambda kdf, s: {
+                "sidecar_version": SIDECAR_VERSION,
+                "kdf": kdf,
+                SLOTS: s,
+                "migration_pending": "false",
+            },
+        ),
+        (
+            "read_sidecar_v2",
+            lambda kdf, s: {
+                "sidecar_version": SIDECAR_VERSION,
+                "kdf": kdf,
+                SLOTS: s,
+                "cipher_compatibility": "4",
+            },
+        ),
+    ],
+    ids=[
+        "v1-bool-int",
+        "v1-string-int",
+        "v1-float-int",
+        "v2-string-int",
+        "v2-bool-int",
+        "v2-string-flag",
+        "v2-string-cipher-level",
+    ],
+)
+def test_FIBR0401_a_sidecar_number_or_flag_of_the_wrong_type_is_refused(
+    paths: tuple[Path, Path], reader: str, build: Any
+) -> None:
+    """``int()`` accepted ``true``, ``"32"`` and ``32.9``, and ``bool()`` read
+    the string ``"false"`` as True -- the migration flag then sends an intact
+    vault down the resume ladder. The app writes JSON numbers and booleans, so
+    anything else is a hand-edited or damaged file, and INV-2's exact-format
+    match refuses it."""
+    from finbreak import crypto
+
+    _vault_path, sidecar_path = paths
+    service = AuthService(*paths)
+    create_vault(service)
+    service.lock()
+
+    intact = read_v2_sidecar(sidecar_path)
+    sidecar_path.write_text(
+        json.dumps(build(intact["kdf"], intact[SLOTS])), encoding="utf-8"
+    )
+
+    with pytest.raises(KdfPolicyError):
+        getattr(crypto, reader)(sidecar_path)

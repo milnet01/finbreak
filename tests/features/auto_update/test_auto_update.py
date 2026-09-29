@@ -463,15 +463,17 @@ def test_relaunch_env_restores_leaked_loader_path_from_orig(monkeypatch):
 
 
 def test_relaunch_env_drops_leaked_loader_path_when_no_original(monkeypatch):
-    # No <VAR>_ORIG (there was no LD_LIBRARY_PATH / LD_PRELOAD before the frozen app
-    # set it) -> drop it entirely, so the system /bin/sh loads system libraries.
+    # No LD_LIBRARY_PATH_ORIG (there was none before the frozen app set it) ->
+    # drop it entirely, so the system /bin/sh loads system libraries.
+    # LD_PRELOAD is the USER's: the bootloader never sets it (measured on a
+    # 6.21.0 bundle, FIBR-0401), so it passes through untouched.
     monkeypatch.setenv("LD_LIBRARY_PATH", "/tmp/_MEIabc123")
     monkeypatch.delenv("LD_LIBRARY_PATH_ORIG", raising=False)
-    monkeypatch.setenv("LD_PRELOAD", "/tmp/_MEIabc123/libpreload.so")
+    monkeypatch.setenv("LD_PRELOAD", "/usr/lib/libuser.so")
     monkeypatch.delenv("LD_PRELOAD_ORIG", raising=False)
     env = _relaunch_env()
     assert "LD_LIBRARY_PATH" not in env
-    assert "LD_PRELOAD" not in env
+    assert env["LD_PRELOAD"] == "/usr/lib/libuser.so"
 
 
 def _frozen_linux(monkeypatch) -> None:
@@ -487,13 +489,14 @@ def test_FIBR0364_a_frozen_app_hands_every_child_the_system_loader_path(monkeypa
     _frozen_linux(monkeypatch)
     monkeypatch.setenv("LD_LIBRARY_PATH", "/tmp/_MEIabc123")
     monkeypatch.setenv("LD_LIBRARY_PATH_ORIG", "/usr/lib:/usr/local/lib")
-    monkeypatch.setenv("LD_PRELOAD", "/tmp/_MEIabc123/libpreload.so")
+    monkeypatch.setenv("LD_PRELOAD", "/usr/lib/libuser.so")
     monkeypatch.delenv("LD_PRELOAD_ORIG", raising=False)
 
     app._restore_loader_env_if_frozen()
 
     assert os.environ["LD_LIBRARY_PATH"] == "/usr/lib:/usr/local/lib"
-    assert "LD_PRELOAD" not in os.environ
+    # The user's own LD_PRELOAD: the bootloader never touches it (FIBR-0401).
+    assert os.environ["LD_PRELOAD"] == "/usr/lib/libuser.so"
 
 
 def test_FIBR0364_the_relaunch_env_keeps_a_value_start_up_restored(monkeypatch):

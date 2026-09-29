@@ -257,8 +257,10 @@ be checkable. Enforcement arrives in step with the code:
   to an unqualified "wiped" asserts something the code deliberately
   does not do: `derive_key` must hand the C binding an
   immutable `bytes(password)` copy, which cannot be zeroed and lingers
-  until GC; `vault._connect` builds the raw key as a hex `str` with the
-  same property; and an `AESGCM` object keeps OpenSSL's own copy of the
+  until GC; `vault._connect`, `Vault.rekey` and `Vault.export_to` each build
+  a raw key as a hex `str` in the SQL they send, with the same property —
+  and the database connection keeps that SQL text referenced until it is
+  closed, statement cache on or off (measured 2026-09-29, FIBR-0401); and an `AESGCM` object keeps OpenSSL's own copy of the
   key, so it still decrypts after the `bytearray` it was built from is
   zeroed. These three are about what the app HANDS those APIs; what they
   RETURN is the same residual and is key material itself.

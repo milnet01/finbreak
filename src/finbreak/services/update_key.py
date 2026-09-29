@@ -1,12 +1,9 @@
 """The release-signing public key (FIBR-0054 INV-4/INV-14).
 
-The updater verifies every downloaded AppImage against **this** Ed25519 public
-key — the private half never enters the repo or Claude's context (it is generated
-once by the user via ``scripts/gen-signing-key.py`` and kept off-tree). Until that
-keygen runs, ``RELEASE_PUBLIC_KEY_B64`` holds a **valid** base64 of 32 zero bytes:
-the module imports cleanly and ``public_key()`` loads, but no real signature
-verifies against an all-zero key — so verification **fails closed** in the interim
-(a Phase-2 test asserts exactly that).
+The updater verifies every downloaded release asset against **this** Ed25519
+public key — the private half never enters the repo or Claude's context (it was
+generated once by the user via ``scripts/gen-signing-key.py`` and is kept
+off-tree).
 """
 
 from __future__ import annotations

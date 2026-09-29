@@ -1,8 +1,11 @@
 """The dynamic-loader variables a PyInstaller bundle leaks to its children.
 
-The onefile bootloader repoints ``LD_LIBRARY_PATH`` (and possibly ``LD_PRELOAD``)
-at its private ``_MEI`` extraction dir so the app finds its *bundled* libraries,
-and saves any pre-launch value in ``<VAR>_ORIG``. A child that is a SYSTEM
+The onefile bootloader repoints ``LD_LIBRARY_PATH`` at its private ``_MEI``
+extraction dir so the app finds its *bundled* libraries, and saves any pre-launch
+value in ``LD_LIBRARY_PATH_ORIG``. It never touches ``LD_PRELOAD``: neither name
+appears in a 6.21.0 bootloader or the AppImage runtime (measured 2026-09-29), so
+an ``LD_PRELOAD`` in the environment is the user's own and is left alone
+(FIBR-0401). A child that is a SYSTEM
 program — ``/bin/sh``, ``xdg-open``, a browser — then loads those bundled
 libraries instead of its own. The bundle's Debian ``libreadline.so.8`` makes a
 bash ``/bin/sh`` die on a symbol lookup before it runs a line (FIBR-0122,
@@ -13,7 +16,7 @@ from __future__ import annotations
 
 from collections.abc import MutableMapping
 
-LOADER_ENV = ("LD_LIBRARY_PATH", "LD_PRELOAD")
+LOADER_ENV = ("LD_LIBRARY_PATH",)
 
 
 def restore_system_loader_env(env: MutableMapping[str, str]) -> None:

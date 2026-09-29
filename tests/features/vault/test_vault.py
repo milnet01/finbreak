@@ -1461,3 +1461,34 @@ def test_row26_no_usable_data_location_is_refused_not_the_working_dir(
         "the folder finbreak was started from had its permissions changed"
     )
     assert list(started_in.iterdir()) == [], "something was created in it"
+
+
+def test_FIBR0401_a_failed_connection_setup_closes_the_connection(paths, monkeypatch):
+    """If a PRAGMA after ``dbapi2.connect`` raised, the connection was never
+    closed. On Windows the stray handle can block a later rename or delete of
+    the vault -- the restore's install and "start over" both do one."""
+    import finbreak.vault as vault_mod
+    from finbreak.vault import Vault
+
+    closed: list[bool] = []
+    real_connect = vault_mod.dbapi2.connect
+
+    class _Failing:
+        def __init__(self, conn: Any) -> None:
+            self._conn = conn
+
+        def execute(self, sql: str, *args: Any) -> Any:
+            if "busy_timeout" in sql:
+                raise DatabaseError("injected setup failure")
+            return self._conn.execute(sql, *args)
+
+        def close(self) -> None:
+            closed.append(True)
+            self._conn.close()
+
+    monkeypatch.setattr(
+        vault_mod.dbapi2, "connect", lambda *a, **k: _Failing(real_connect(*a, **k))
+    )
+    with pytest.raises(DatabaseError):
+        Vault(*paths).open(bytearray(b"\x01" * 32))
+    assert closed == [True]
