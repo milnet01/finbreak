@@ -454,7 +454,7 @@ so Flathub review and code signing do not block this release.
   Kind: review-fix.
   Source: full-audit-2026-09-27 code-lane-15.
 
-- 🚧 [FIBR-0374] **The unlock and first-run dialogs can abort the app when deleted just after a derivation reports.**
+- ✅ [FIBR-0374] **The unlock and first-run dialogs can abort the app when deleted just after a derivation reports.**
   GitHub CI runs 36430689235 (26068cc) and 36430830285 (925832a) each lost a
   pytest worker to "Fatal Python error: Aborted" in an unlock test. DeriveWorker
   emits done/failed from inside run(), so the thread is still alive when the
@@ -466,6 +466,9 @@ so Flathub review and code signing do not block this release.
   _on_derived, _on_failure, _on_recovery_derived, _on_recovery_failure;
   first_run.py _on_derived, _on_failure. Exposed by the parallel gate on a
   4-vCPU runner (FIBR-0373), not caused by it.
+  Resolved 2026-09-28 (000ebac): settle() waits out the worker at all six
+  sites; regression test red first (rc -6), green after. CI green on the
+  five runs since (c0f3c88 through 278751d).
   **Layman:** On a slow or busy computer, finbreak could crash right after you type the correct password; this makes it wait the split second the background work needs to finish.
   Kind: fix.
   Source: ci-failure-2026-09-28.

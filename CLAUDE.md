@@ -27,7 +27,11 @@ six-plus reads to answer a question the roadmap DB already answers.
    `bodies_omitted: true`). **For the survey, pass
    `bullet_fields: ["id","status","kind","headline_oneline"]`** — it keeps
    the rows small and still carries `kind`, so it answers § Resumption flow
-   step 2 on its own. **`mode:"headline_only"` cannot**: its rows are fixed
+   step 2 on its own. **One call over every open item spills** (measured
+   2026-09-29), so narrow WHICH rows come back: `status:"active"` plus
+   `section:<slug>` or `kind:<kind>` fits, and
+   `mode:"section_index" status:"active" slugs_only:true` lists the sections
+   holding open work. **`mode:"headline_only"` cannot**: its rows are fixed
    to `id`, `status`, `headline_oneline` and `section_slug`, with no `kind`
    under any argument (FIBR-0330). A targeted `id` / `ids` fetch returns
    bodies without `include_body`.
@@ -856,8 +860,8 @@ what finds the symbol-only citations.
 
 ## Resumption flow — MANDATORY summarise-back
 
-1. **One call:** `roadmap_query` for the open items (this file is
-   already loaded). State comes from the roadmap DB; § Where state lives
+1. **`roadmap_query` for the open items** (this file is already loaded) —
+   narrowed per § Where state lives item 2, since one unnarrowed call spills. State comes from the roadmap DB; § Where state lives
    item 3 says how to tell which open item is active.
 2. Once `Kind` is known from the active item, read the standard
    § Where state lives item 4 maps it to — one read, two for `Kind: release`.
