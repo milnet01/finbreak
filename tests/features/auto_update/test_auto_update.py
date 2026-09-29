@@ -832,6 +832,71 @@ def _fake_urlopen(payload: bytes, headers: dict | None = None):
     return opener
 
 
+class _TrickleResponse(_FakeHTTPResponse):
+    """A server that never finishes: one byte per read, forever."""
+
+    def read(self, size: int = -1) -> bytes:
+        return b"x"
+
+
+def _fast_clock(monkeypatch, step: float = 10.0) -> None:
+    """update_fetch's clock, advancing *step* seconds per reading."""
+    now = [0.0]
+
+    def tick() -> float:
+        now[0] += step
+        return now[0]
+
+    monkeypatch.setattr(update_fetch.time, "monotonic", tick)
+
+
+def test_FIBR0392_a_trickling_download_hits_a_deadline(monkeypatch, tmp_path):
+    """Full audit 2026-09-27 (FIBR-0392, code lane 12): the timeout was per read,
+    so a server sending a byte just inside it held a 200 MiB download open
+    indefinitely. The total time is now bounded, and the partial file goes."""
+    monkeypatch.setattr(
+        update_fetch.urllib.request, "urlopen", lambda *a, **k: _TrickleResponse(b"")
+    )
+    _fast_clock(monkeypatch)
+    dest = tmp_path / "out.AppImage"
+    with pytest.raises(ValueError, match="longer than"):
+        update_fetch.download("https://dl/a", dest, max_bytes=10**9, timeout=5)
+    assert not dest.exists()
+
+
+def test_FIBR0392_a_trickling_release_check_hits_a_deadline(monkeypatch):
+    monkeypatch.setattr(
+        update_fetch.urllib.request, "urlopen", lambda *a, **k: _TrickleResponse(b"")
+    )
+    _fast_clock(monkeypatch)
+    with pytest.raises(ValueError, match="longer than"):
+        update_fetch.fetch_latest_release("o", "r", timeout=5, max_bytes=10**9)
+
+
+def test_FIBR0392_an_advertised_size_over_the_cap_is_refused_before_reading(
+    monkeypatch, tmp_path
+):
+    """The advertised Content-Length was never bounded, and a value past 2^31
+    reached the progress bar's setRange. Refused at once instead."""
+    monkeypatch.setattr(
+        update_fetch.urllib.request,
+        "urlopen",
+        _fake_urlopen(b"small", {"Content-Length": str(2**31 + 1)}),
+    )
+    progress: list = []
+    dest = tmp_path / "out.AppImage"
+    with pytest.raises(ValueError, match="size cap"):
+        update_fetch.download(
+            "https://dl/a",
+            dest,
+            max_bytes=1024,
+            timeout=5,
+            on_progress=lambda *a: progress.append(a),
+        )
+    assert progress == [], "the oversized total reached the progress callback"
+    assert not dest.exists()
+
+
 def test_ssl_context_uses_bundled_ca_regardless_of_system_paths(monkeypatch):
     """The frozen AppImage must verify TLS on ANY distro: the SSL context loads
     CAs from the BUNDLED certifi set, not the host's (possibly absent or

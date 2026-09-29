@@ -14,6 +14,7 @@ from __future__ import annotations
 import functools
 import json
 import ssl
+import time
 import urllib.request
 from collections.abc import Callable
 from pathlib import Path
@@ -30,6 +31,11 @@ _RELEASES_URL_TEMPLATE = (
 _USER_AGENT = "finbreak-updater"
 _ACCEPT_GITHUB_JSON = "application/vnd.github+json"
 _DOWNLOAD_CHUNK_BYTES = 64 * 1024
+# Total-time bounds (FIBR-0392). The socket timeout is per read, so a server
+# sending a byte just inside it could hold a request open indefinitely. A
+# 200 MiB asset at ~110 KB/s still finishes inside the download bound.
+_DOWNLOAD_DEADLINE_S = 30 * 60
+_JSON_DEADLINE_S = 2 * 60
 
 
 @functools.lru_cache(maxsize=1)
@@ -102,10 +108,23 @@ def _get_json(url: str, *, timeout: float, max_bytes: int) -> Any:
     request = urllib.request.Request(
         url, headers={"User-Agent": _USER_AGENT, "Accept": _ACCEPT_GITHUB_JSON}
     )
+    deadline = time.monotonic() + _JSON_DEADLINE_S
+    parts: list[bytes] = []
+    size = 0
     with urllib.request.urlopen(  # nosec B310  # nosemgrep: dynamic-urllib-use-detected
         request, timeout=timeout
     ) as response:
-        raw = response.read(max_bytes + 1)
+        while size <= max_bytes:
+            chunk = response.read(min(_DOWNLOAD_CHUNK_BYTES, max_bytes + 1 - size))
+            if not chunk:
+                break
+            parts.append(chunk)
+            size += len(chunk)
+            if time.monotonic() > deadline:
+                raise ValueError(
+                    f"release API response took longer than {_JSON_DEADLINE_S} s"
+                )
+    raw = b"".join(parts)
     if len(raw) > max_bytes:
         raise ValueError("release API response exceeds the size cap")
     return json.loads(raw.decode("utf-8"))
@@ -174,6 +193,9 @@ def download(
             open(dest, "wb") as handle,
         ):
             total = _content_length(response)
+            if total > max_bytes:
+                raise ValueError("download exceeds the size cap")
+            deadline = time.monotonic() + _DOWNLOAD_DEADLINE_S
             while True:
                 chunk = response.read(_DOWNLOAD_CHUNK_BYTES)
                 if not chunk:
@@ -184,6 +206,10 @@ def download(
                 handle.write(chunk)
                 if on_progress is not None:
                     on_progress(received, total)
+                if time.monotonic() > deadline:
+                    raise ValueError(
+                        f"download took longer than {_DOWNLOAD_DEADLINE_S} s"
+                    )
             # A body that ended short of what the server advertised is a DROPPED
             # connection, and saying so here is the whole point: left to run on,
             # the truncated bytes reached the signature check and failed it, so a
