@@ -220,6 +220,14 @@ signaling per
 
 ### Security
 
+- **The updater refuses an older version or another system's file dressed as a new release** (FIBR-0169)
+  Someone able to post to the GitHub releases page, but without our
+  signing key, could offer an older genuine finbreak as a new version, or
+  the Windows file renamed for Linux, and the updater would install it.
+  It now also checks the release's signed list of files and installs a
+  download only if that list names it for the exact version and system
+  being offered.
+
 - **The updater can no longer overwrite another application's AppImage** (FIBR-0367)
   A finbreak installed from a package, or run from source, and started
   from inside another AppImage (such as a terminal or editor) took that

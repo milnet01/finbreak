@@ -7,6 +7,7 @@ no real signing key (a throwaway test key is monkeypatched in).
 
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import subprocess
@@ -19,7 +20,12 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PublicKey,
 )
 
-from finbreak.errors import FinbreakError, UpdateError, UpdateVerificationError
+from finbreak.errors import (
+    FinbreakError,
+    UpdateDownloadError,
+    UpdateError,
+    UpdateVerificationError,
+)
 from finbreak.services import update_fetch, update_installer, update_key
 from finbreak.services.update import (
     UpdateInfo,
@@ -106,6 +112,7 @@ def _release(tag: str) -> dict:
         "assets": [
             {"name": app, "browser_download_url": f"https://dl/{app}"},
             {"name": app + ".sig", "browser_download_url": f"https://dl/{app}.sig"},
+            *_manifest_assets(),
         ],
     }
 
@@ -736,17 +743,15 @@ def test_FIBR0131_windows_download_stages_exe_extension_temp(monkeypatch, tmp_pa
     # download_and_verify stages its temp with the installer-derived extension
     # (.exe on Windows), so a Windows download isn't a misleadingly-named *.AppImage.
     blob = b"REAL-EXE-BYTES"
-    sig = _signing_setup(monkeypatch, blob)
-    fetcher = _FakeFetcher(blobs={"https://dl/app.exe": blob, "https://dl/sig": sig})
+    priv = _signing_key(monkeypatch)
+    fetcher = _FakeFetcher(
+        blobs={"https://dl/app.exe": blob, "https://dl/sig": priv.sign(blob)}
+        | _manifest(priv, _line(blob, "finbreak-0.2.0-x86_64.exe"))
+    )
     svc = _service(
         tmp_path, installer=WindowsInstaller(tmp_path / "finbreak.exe"), fetcher=fetcher
     )
-    info = UpdateInfo(
-        version="0.2.0",
-        asset_url="https://dl/app.exe",
-        sig_url="https://dl/sig",
-        notes="notes",
-    )
+    info = _info("0.2.0", "https://dl/app.exe", "https://dl/sig")
     verified = svc.download_and_verify(info)
     assert verified.read_bytes() == blob
     assert verified.suffix == ".exe"  # installer-derived, not .AppImage
@@ -769,7 +774,8 @@ def _release_both(tag: str) -> dict:
         "body": f"notes for {tag}",
         "assets": [
             {"name": n, "browser_download_url": f"https://dl/{n}"} for n in names
-        ],
+        ]
+        + _manifest_assets(),
     }
 
 
@@ -1042,30 +1048,68 @@ def test_INV11_check_swallows_fetcher_errors(tmp_path):
 # --------------------------------------------------------------------------- #
 # INV-4 — download_and_verify: only an Ed25519-signed download is returned
 # --------------------------------------------------------------------------- #
+def _signing_key(monkeypatch) -> Ed25519PrivateKey:
+    """A throwaway keypair with its public half monkeypatched in."""
+    priv = Ed25519PrivateKey.generate()
+    monkeypatch.setattr(update_key, "public_key", lambda: priv.public_key())
+    return priv
+
+
 def _signing_setup(monkeypatch, blob: bytes, *, sign: bytes | None = None):
     """A throwaway keypair with its public half monkeypatched in; sign *blob*
     (or *sign* if given, to forge a mismatch)."""
-    priv = Ed25519PrivateKey.generate()
-    monkeypatch.setattr(update_key, "public_key", lambda: priv.public_key())
-    return priv.sign(sign if sign is not None else blob)
+    return _signing_key(monkeypatch).sign(sign if sign is not None else blob)
+
+
+_MANIFEST_URL = "https://dl/SHA256SUMS"
+
+
+def _manifest_assets() -> list[dict]:
+    """The release's signed SHA256SUMS pair, as release assets (FIBR-0169)."""
+    return [
+        {"name": "SHA256SUMS", "browser_download_url": _MANIFEST_URL},
+        {"name": "SHA256SUMS.sig", "browser_download_url": _MANIFEST_URL + ".sig"},
+    ]
+
+
+def _line(blob: bytes, name: str) -> str:
+    """One SHA256SUMS line, in gen-checksums.sh's `<sha256>  <name>` form."""
+    return f"{hashlib.sha256(blob).hexdigest()}  {name}"
+
+
+def _manifest(priv: Ed25519PrivateKey, *lines: str) -> dict[str, bytes]:
+    """The fetcher blobs for a SHA256SUMS holding *lines*, signed by *priv*."""
+    body = "".join(f"{line}\n" for line in lines).encode()
+    return {_MANIFEST_URL: body, _MANIFEST_URL + ".sig": priv.sign(body)}
+
+
+def _info(version: str, asset_url: str, sig_url: str) -> UpdateInfo:
+    return UpdateInfo(
+        version=version,
+        asset_url=asset_url,
+        sig_url=sig_url,
+        notes="notes",
+        manifest_url=_MANIFEST_URL,
+        manifest_sig_url=_MANIFEST_URL + ".sig",
+    )
 
 
 def test_INV4_good_signature_returns_verified_path(monkeypatch, tmp_path):
     blob = b"REAL-APPIMAGE-BYTES"
-    sig = _signing_setup(monkeypatch, blob)
+    priv = _signing_key(monkeypatch)
     fetcher = _FakeFetcher(
         blobs={
             "https://dl/finbreak-0.1.1-x86_64.AppImage": blob,
-            "https://dl/finbreak-0.1.1-x86_64.AppImage.sig": sig,
+            "https://dl/finbreak-0.1.1-x86_64.AppImage.sig": priv.sign(blob),
         }
+        | _manifest(priv, _line(blob, "finbreak-0.1.1-x86_64.AppImage"))
     )
     installer = AppImageInstaller(tmp_path / "app.AppImage")
     svc = _service(tmp_path, installer=installer, fetcher=fetcher)
-    update_info = UpdateInfo(
-        version="0.1.1",
-        asset_url="https://dl/finbreak-0.1.1-x86_64.AppImage",
-        sig_url="https://dl/finbreak-0.1.1-x86_64.AppImage.sig",
-        notes="notes",
+    update_info = _info(
+        "0.1.1",
+        "https://dl/finbreak-0.1.1-x86_64.AppImage",
+        "https://dl/finbreak-0.1.1-x86_64.AppImage.sig",
     )
     verified = svc.download_and_verify(update_info)
     assert verified.read_bytes() == blob
@@ -1080,16 +1124,14 @@ def test_FIBR0170_installs_the_verified_buffer_not_the_re_read_download(
     sat on disk since the transfer began (FIBR-0170). So the returned path is a
     DIFFERENT file from the download dest, and the download temp is gone."""
     blob = b"REAL-APPIMAGE-BYTES"
-    sig = _signing_setup(monkeypatch, blob)
-    fetcher = _FakeFetcher(blobs={"https://dl/app": blob, "https://dl/sig": sig})
+    priv = _signing_key(monkeypatch)
+    fetcher = _FakeFetcher(
+        blobs={"https://dl/app": blob, "https://dl/sig": priv.sign(blob)}
+        | _manifest(priv, _line(blob, "finbreak-0.1.1-x86_64.AppImage"))
+    )
     installer = AppImageInstaller(tmp_path / "app.AppImage")
     svc = _service(tmp_path, installer=installer, fetcher=fetcher)
-    info = UpdateInfo(
-        version="0.1.1",
-        asset_url="https://dl/app",
-        sig_url="https://dl/sig",
-        notes="notes",
-    )
+    info = _info("0.1.1", "https://dl/app", "https://dl/sig")
 
     verified = svc.download_and_verify(info)
 
@@ -1103,20 +1145,19 @@ def test_FIBR0170_installs_the_verified_buffer_not_the_re_read_download(
 
 
 def _dv_service(monkeypatch, tmp_path, blob, sig):
+    # A manifest signed by a key nothing trusts: the per-file checks these tests
+    # break refuse first, so it is fetched and never believed.
+    stranger = Ed25519PrivateKey.generate()
     fetcher = _FakeFetcher(
         blobs={
             "https://dl/app": blob,
             "https://dl/sig": sig,
         }
+        | _manifest(stranger, _line(blob, "finbreak-0.1.1-x86_64.AppImage"))
     )
     installer = AppImageInstaller(tmp_path / "app.AppImage")
     svc = _service(tmp_path, installer=installer, fetcher=fetcher)
-    info = UpdateInfo(
-        version="0.1.1",
-        asset_url="https://dl/app",
-        sig_url="https://dl/sig",
-        notes="notes",
-    )
+    info = _info("0.1.1", "https://dl/app", "https://dl/sig")
     return svc, info
 
 
@@ -1136,6 +1177,148 @@ def test_INV4_tampered_signature_rejected(monkeypatch, tmp_path):
     forged = bytes((sig[0] ^ 0x01,)) + sig[1:]  # flip one sig bit
     svc, info = _dv_service(monkeypatch, tmp_path, blob, forged)
     with pytest.raises(UpdateVerificationError):
+        svc.download_and_verify(info)
+    assert list(tmp_path.glob("finbreak-update-*")) == []
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0169 — the signed SHA256SUMS binds version and platform
+# (docs/specs/FIBR-0169-signed-manifest-binding.md)
+# --------------------------------------------------------------------------- #
+_APPIMAGE = "finbreak-0.1.1-x86_64.AppImage"
+_APPIMAGE_URL = f"https://dl/{_APPIMAGE}"
+
+
+class _RecordingFetcher(_FakeFetcher):
+    """A _FakeFetcher that records each download's cap and can fail one URL the
+    way update_fetch does when a body stops short."""
+
+    def __init__(self, *args, fail_url=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.caps: dict[str, int] = {}
+        self.fail_url = fail_url
+
+    def download(self, url, dest, *, max_bytes, timeout, on_progress=None):
+        self.caps[url] = max_bytes
+        if url == self.fail_url:
+            raise ValueError("download ended early: 4 of 8 bytes")
+        return super().download(
+            url, dest, max_bytes=max_bytes, timeout=timeout, on_progress=on_progress
+        )
+
+
+def _manifest_case(monkeypatch, tmp_path, blob, *lines, manifest_key=None, **fetch):
+    """A release whose AppImage and .sig are genuine under the trusted key, so the
+    per-file check passes and only the manifest can refuse."""
+    priv = _signing_key(monkeypatch)
+    fetcher = _RecordingFetcher(
+        blobs={_APPIMAGE_URL: blob, _APPIMAGE_URL + ".sig": priv.sign(blob)}
+        | _manifest(manifest_key or priv, *lines),
+        **fetch,
+    )
+    svc = _service(
+        tmp_path,
+        installer=AppImageInstaller(tmp_path / "app.AppImage"),
+        fetcher=fetcher,
+    )
+    return svc, _info("0.1.1", _APPIMAGE_URL, _APPIMAGE_URL + ".sig"), fetcher
+
+
+def test_FIBR0169_INV1_a_release_without_its_signed_manifest_is_not_offered(
+    tmp_path,
+):
+    """Every leg keeps the AppImage and its .sig, so _select_assets alone would
+    offer it: only the manifest rule can say no."""
+    for missing in ("SHA256SUMS", "SHA256SUMS.sig"):
+        release = _release("v0.1.1")
+        release["assets"] = [a for a in release["assets"] if a["name"] != missing]
+        svc = _enabled_service(tmp_path, release)
+        assert svc.check_for_update() is None, f"offered without {missing}"
+    doubled = _release("v0.1.1")
+    doubled["assets"] += _manifest_assets()
+    assert _enabled_service(tmp_path, doubled).check_for_update() is None
+
+    info = _enabled_service(tmp_path, _release("v0.1.1")).check_for_update()
+    assert info is not None
+    assert (info.manifest_url, info.manifest_sig_url) == (
+        _MANIFEST_URL,
+        _MANIFEST_URL + ".sig",
+    )
+
+
+def test_FIBR0169_INV2_a_manifest_the_release_key_did_not_sign_is_refused(
+    monkeypatch, tmp_path
+):
+    blob = b"REAL-APPIMAGE-BYTES"
+    svc, info, _ = _manifest_case(
+        monkeypatch,
+        tmp_path,
+        blob,
+        _line(blob, _APPIMAGE),
+        manifest_key=Ed25519PrivateKey.generate(),
+    )
+    with pytest.raises(UpdateVerificationError):
+        svc.download_and_verify(info)
+    assert list(tmp_path.glob("finbreak-update-*")) == []
+
+
+@pytest.mark.parametrize(
+    "case",
+    ["downgrade", "platform-swap", "duplicate-line"],
+)
+def test_FIBR0169_INV3_the_manifest_must_name_this_version_and_these_bytes(
+    monkeypatch, tmp_path, case
+):
+    """(a) a genuine older artifact: its own hash, the older name — only the
+    name/version rule can refuse. (b) the .exe's bytes, signed as the real .exe
+    is, under the AppImage's name — the per-file .sig passes and only the hash
+    differs. (c) the expected name on two lines."""
+    appimage, exe = b"REAL-APPIMAGE-BYTES", b"REAL-EXE-BYTES"
+    if case == "downgrade":
+        blob, lines = appimage, [_line(appimage, "finbreak-0.1.0-x86_64.AppImage")]
+    elif case == "platform-swap":
+        blob = exe
+        lines = [_line(appimage, _APPIMAGE), _line(exe, "finbreak-0.1.1-x86_64.exe")]
+    else:
+        blob, lines = appimage, [_line(appimage, _APPIMAGE), _line(appimage, _APPIMAGE)]
+    svc, info, _ = _manifest_case(monkeypatch, tmp_path, blob, *lines)
+    with pytest.raises(UpdateVerificationError):
+        svc.download_and_verify(info)
+    assert list(tmp_path.glob("finbreak-update-*")) == []
+
+
+def test_FIBR0169_INV3_INV4_a_matching_line_installs_and_other_lines_are_ignored(
+    monkeypatch, tmp_path
+):
+    """The passing legs: a guard against an over-strict check, so they pass
+    before and after the change (spec § 7)."""
+    blob = b"REAL-APPIMAGE-BYTES"
+    for lines in (
+        [_line(blob, _APPIMAGE)],
+        ["# finbreak release manifest", _line(blob, _APPIMAGE)],
+    ):
+        svc, info, _ = _manifest_case(monkeypatch, tmp_path, blob, *lines)
+        verified = svc.download_and_verify(info)
+        assert verified.read_bytes() == blob, lines
+        verified.unlink()
+
+
+def test_FIBR0169_INV5_the_manifest_is_capped_and_its_failure_is_a_download_error(
+    monkeypatch, tmp_path
+):
+    from finbreak.services import update as update_mod
+
+    blob = b"REAL-APPIMAGE-BYTES"
+    svc, info, fetcher = _manifest_case(
+        monkeypatch, tmp_path, blob, _line(blob, _APPIMAGE)
+    )
+    svc.download_and_verify(info).unlink()
+    assert fetcher.caps[_MANIFEST_URL] == update_mod._MAX_MANIFEST_BYTES
+
+    svc, info, _ = _manifest_case(
+        monkeypatch, tmp_path, blob, _line(blob, _APPIMAGE), fail_url=_MANIFEST_URL
+    )
+    with pytest.raises(UpdateDownloadError):
         svc.download_and_verify(info)
     assert list(tmp_path.glob("finbreak-update-*")) == []
 
@@ -1299,7 +1482,7 @@ class _StubCheckService:
 def test_D7_check_worker_emits_found(qtbot):
     from finbreak.ui._update_worker import UpdateCheckWorker
 
-    info = UpdateInfo("0.1.1", "a", "b", "c")
+    info = UpdateInfo("0.1.1", "a", "b", "c", "d", "e")
     worker = UpdateCheckWorker(_StubCheckService(result=info))
     seen: list = []
     worker.found.connect(lambda i: seen.append(("found", i)))
@@ -1351,7 +1534,7 @@ def test_FIBR0108_download_worker_relays_progress(qtbot, tmp_path):
     from finbreak.ui._update_worker import DownloadWorker
 
     service = _StubDownloadService(path=tmp_path / "v", chunks=[(10, 100), (100, 100)])
-    worker = DownloadWorker(service, UpdateInfo("0.1.1", "", "", ""))
+    worker = DownloadWorker(service, UpdateInfo("0.1.1", "", "", "", "", ""))
     seen: list[tuple[int, int]] = []
     worker.progress.connect(lambda received, total: seen.append((received, total)))
     worker.run()
@@ -1363,7 +1546,7 @@ def test_D7_download_worker_emits_ready(qtbot, tmp_path):
 
     verified = tmp_path / "verified.AppImage"
     worker = DownloadWorker(
-        _StubDownloadService(path=verified), UpdateInfo("0.1.1", "", "", "")
+        _StubDownloadService(path=verified), UpdateInfo("0.1.1", "", "", "", "", "")
     )
     seen: list = []
     worker.ready.connect(lambda p: seen.append(p))
@@ -1376,7 +1559,7 @@ def test_D7_download_worker_emits_failed(qtbot):
 
     worker = DownloadWorker(
         _StubDownloadService(error=UpdateVerificationError("bad")),
-        UpdateInfo("0.1.1", "", "", ""),
+        UpdateInfo("0.1.1", "", "", "", "", ""),
     )
     seen: list = []
     worker.failed.connect(lambda exc: seen.append(exc))
@@ -1453,12 +1636,7 @@ def _updater_shell(qtbot, service, *, info=None, enabled=True, installer=None):
 
 
 def _sample_info():
-    return UpdateInfo(
-        version="0.1.1",
-        asset_url="https://dl/app",
-        sig_url="https://dl/sig",
-        notes="notes",
-    )
+    return _info("0.1.1", "https://dl/app", "https://dl/sig")
 
 
 def test_D15_found_while_locked_defers_offer_until_unlock(qtbot, service, tmp_path):
@@ -1551,9 +1729,7 @@ def test_a_dropped_download_and_a_bad_signature_tell_the_user_different_things(
     promised — and each is handed to the shell's own failure slot.
     """
     asset = "https://dl/finbreak-0.1.1-x86_64.AppImage"
-    info = UpdateInfo(
-        version="0.1.1", asset_url=asset, sig_url=asset + ".sig", notes="notes"
-    )
+    info = _info("0.1.1", asset, asset + ".sig")
     payload = b"HALF-AN-APPIMAGE"
 
     def failure(fetcher) -> Exception:
@@ -1574,7 +1750,12 @@ def test_a_dropped_download_and_a_bad_signature_tell_the_user_different_things(
         )
         dropped = failure(update_fetch)
     _signing_setup(monkeypatch, payload, sign=b"something else")
-    tampered = failure(_FakeFetcher(blobs={asset: payload, asset + ".sig": b"x" * 64}))
+    tampered = failure(
+        _FakeFetcher(
+            blobs={asset: payload, asset + ".sig": b"x" * 64}
+            | _manifest(Ed25519PrivateKey.generate(), _line(payload, "unused"))
+        )
+    )
 
     shown: dict[str, str] = {}
     for name, exc in (("dropped", dropped), ("tampered", tampered)):

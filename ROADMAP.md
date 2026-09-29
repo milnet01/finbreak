@@ -1478,7 +1478,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: refactor.
   Source: claude-suggestion-2026-07-11.
 
-- 📋 [FIBR-0169] **Auto-update anti-rollback: bind the offered version into the signed artifact to prevent a signed-but-older downgrade.**
+- 🚧 [FIBR-0169] **Auto-update anti-rollback: bind the offered version into the signed artifact to prevent a signed-but-older downgrade.**
   indie-review (update/signature lane), LOW — deferred (design + release-pipeline change, needs a spec). The Ed25519 signature binds only the artifact BYTES, not the version; the offered version comes verbatim from the untrusted GitHub tag_name. A GitHub-release-WRITE attacker (no signing key — the residual security-model §2 already acknowledges) could re-publish an old, still-validly-signed AppImage under a higher tag; check_for_update sees it as newer, download_and_verify passes (authentic bytes), and the user is silently downgraded to a version with known bugs. Fix options: sign a manifest naming version+hash, or refuse to install a payload whose embedded __version__ <= current. At minimum document the downgrade case alongside the existing 'no rollback' accepted-risk in FIBR-0054 Out-of-scope.
   Design input (2026-09-25, from the pressless session): sign one ASCII
   release list per release instead of each file. It holds "pressless-release
@@ -1492,6 +1492,13 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Re-found by the 2026-09-27 full audit (code lane 12); the finding
   and its signed-manifest remedy are recorded on FIBR-0333, which this
   item overlaps. Recorded by FIBR-0367 (ledger: already tracked).
+  Spec accepted 2026-09-29: docs/specs/FIBR-0169-signed-manifest-binding.md
+  (review-contract, three loops, calm cap, 11 verified findings fixed).
+  Design: the updater also verifies the release's signed SHA256SUMS,
+  requires exactly one line named finbreak-<offered version><platform
+  suffix>, and matches its hash to the downloaded bytes. No release-
+  format change: artifact names already carry version and platform.
+  Covers FIBR-0333.
   **Layman:** Stop a would-be attacker (who can write GitHub releases but holds no signing key) from tricking the app into installing an older, still-signed version.
   Kind: security.
   Source: indie-review-2026-07-23.
@@ -1636,6 +1643,10 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   The lane's remedy: sign a small manifest (asset name, version,
   sha256) and require it to match info.version and the installer's
   suffix. Recorded by FIBR-0367 (ledger: already tracked, annotated).
+  Covered by the FIBR-0169 spec, accepted 2026-09-29:
+  docs/specs/FIBR-0169-signed-manifest-binding.md. Both the downgrade and
+  the cross-platform rename are refused by its INV-3; implementation is
+  tracked on FIBR-0169.
   **Layman:** Someone who could publish to our releases page could hand the updater an older, genuine finbreak and it would install as if it were newer.
   Kind: security.
   Source: FIBR-0327 tail, 2026-09-04.

@@ -12,8 +12,10 @@ the small, dependency-free helper below.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
+import re
 import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -45,6 +47,8 @@ _MAX_API_BYTES = 1024 * 1024
 # single-release JSON (FIBR-0152) — still a hard cap, not an open door.
 _MAX_RELEASES_BYTES = 4 * 1024 * 1024
 _MAX_SIG_BYTES = 4096
+# The release's SHA256SUMS lists one line per artifact (FIBR-0169).
+_MAX_MANIFEST_BYTES = 64 * 1024
 _TIMEOUT_S = 30
 
 # The plaintext window.ini keys (D4) — non-sensitive, read before unlock.
@@ -60,6 +64,10 @@ class UpdateInfo:
     asset_url: str  # the platform binary asset (.AppImage on Linux, .exe on Windows)
     sig_url: str
     notes: str  # the release body (markdown), shown inline in the update prompt
+    # The release's signed SHA256SUMS and its .sig (FIBR-0169). Required with no
+    # default: an empty one is never read as "skip the manifest check".
+    manifest_url: str
+    manifest_sig_url: str
 
 
 # --------------------------------------------------------------------------- #
@@ -116,6 +124,49 @@ def _select_assets(assets: list[dict], suffix: str) -> tuple[str, str] | None:
     if not asset_url or not sig_url:
         return None
     return asset_url, sig_url
+
+
+def _select_manifest(assets: list[dict]) -> tuple[str, str] | None:
+    """The release's signed ``SHA256SUMS`` and ``SHA256SUMS.sig`` URLs, or
+    ``None`` unless each is present exactly once with a URL (FIBR-0169 INV-1)."""
+    urls = []
+    for name in ("SHA256SUMS", "SHA256SUMS.sig"):
+        found = [a for a in assets if a.get("name") == name]
+        if len(found) != 1 or not found[0].get("browser_download_url"):
+            return None
+        urls.append(found[0]["browser_download_url"])
+    return urls[0], urls[1]
+
+
+# A counting SHA256SUMS line: gen-checksums.sh's `<sha256>  <name>` form. Any
+# other line is ignored, so a later release may add one (FIBR-0169 § 4.3).
+_MANIFEST_LINE = re.compile(r"([0-9a-f]{64})  (.+)")
+
+
+def _verify_manifest(
+    manifest: bytes, signature: bytes, expected_name: str, data: bytes
+) -> None:
+    """Refuse *data* unless the release key signed *manifest* and it names
+    *expected_name* on exactly one line whose hash is *data*'s (FIBR-0169
+    INV-2/INV-3/INV-4). The per-file ``.sig`` binds bytes only; this binds the
+    version and the platform, which the name carries."""
+    try:
+        update_key.public_key().verify(signature, manifest)
+    except InvalidSignature as exc:
+        raise UpdateVerificationError(
+            "the release manifest's signature did not verify"
+        ) from exc
+    hashes = [
+        match.group(1)
+        for line in manifest.decode("utf-8", "replace").splitlines()
+        if (match := _MANIFEST_LINE.fullmatch(line)) and match.group(2) == expected_name
+    ]
+    if len(hashes) != 1:
+        raise UpdateVerificationError(
+            f"the release manifest lists {expected_name} {len(hashes)} times, not once"
+        )
+    if hashlib.sha256(data).hexdigest() != hashes[0]:
+        raise UpdateVerificationError("the update does not match the release manifest")
 
 
 def _version_string(tag: str) -> str:
@@ -251,7 +302,8 @@ class UpdateService:
             urls = _select_assets(
                 release.get("assets") or [], self._installer.asset_suffix()
             )
-            if urls is None:
+            manifest = _select_manifest(release.get("assets") or [])
+            if urls is None or manifest is None:
                 return None
             asset_url, sig_url = urls
             return UpdateInfo(
@@ -259,6 +311,8 @@ class UpdateService:
                 asset_url=asset_url,
                 sig_url=sig_url,
                 notes=self._notes_since(current, latest, release),
+                manifest_url=manifest[0],
+                manifest_sig_url=manifest[1],
             )
         except Exception as exc:  # DNS/HTTP/JSON/anything — stay silent + safe
             log.debug("update check failed: %r", exc)
@@ -297,11 +351,14 @@ class UpdateService:
     def download_and_verify(
         self, info: UpdateInfo, *, on_progress: Callable[[int, int], None] | None = None
     ) -> Path:
-        """Download the platform binary asset + its ``.sig`` into the running
-        binary's directory (``target_path().parent``) and verify the Ed25519
-        signature over the **exact** downloaded bytes against the committed public
-        key. Return a fresh temp holding those **verified** bytes, re-written from
-        memory so the file the installer swaps in is the file we checked
+        """Download the platform binary asset + its ``.sig``, and the release's
+        signed ``SHA256SUMS`` + ``.sig``, into the running binary's directory
+        (``target_path().parent``). Verify the Ed25519 signature over the
+        **exact** downloaded bytes against the committed public key, then that the
+        signed manifest names this version and platform with those bytes' hash
+        (FIBR-0169). Return a fresh temp holding those **verified** bytes,
+        re-written from memory so the file the installer swaps in is the file we
+        checked
         (FIBR-0170); on **any** failure delete the temps and raise —
         ``UpdateVerificationError`` for a bad signature, ``UpdateDownloadError``
         for an oversize / timed-out / dropped download, ``UpdateError`` for a
@@ -321,11 +378,15 @@ class UpdateService:
         # not leaked as a raw OSError with the first temp orphaned.
         asset_tmp: Path | None = None
         sig_tmp: Path | None = None
+        sums_tmp: Path | None = None
+        sums_sig_tmp: Path | None = None
         verified_tmp: Path | None = None
         fetching = False  # a failure while True is the download's, not the disk's
         try:
             asset_tmp = _stage_temp(directory, asset_ext)
             sig_tmp = _stage_temp(directory, ".sig")
+            sums_tmp = _stage_temp(directory, ".sums")
+            sums_sig_tmp = _stage_temp(directory, ".sums.sig")
             fetching = True
             self._fetcher.download(
                 info.asset_url,
@@ -337,6 +398,19 @@ class UpdateService:
             self._fetcher.download(
                 info.sig_url, sig_tmp, max_bytes=_MAX_SIG_BYTES, timeout=_TIMEOUT_S
             )
+            # The signed manifest is part of the fetch (FIBR-0169 § 4.2 step 1).
+            self._fetcher.download(
+                info.manifest_url,
+                sums_tmp,
+                max_bytes=_MAX_MANIFEST_BYTES,
+                timeout=_TIMEOUT_S,
+            )
+            self._fetcher.download(
+                info.manifest_sig_url,
+                sums_sig_tmp,
+                max_bytes=_MAX_SIG_BYTES,
+                timeout=_TIMEOUT_S,
+            )
             fetching = False
             data = asset_tmp.read_bytes()
             signature = sig_tmp.read_bytes()
@@ -346,7 +420,14 @@ class UpdateService:
                 raise UpdateVerificationError(
                     "the update's signature did not verify"
                 ) from exc
-            sig_tmp.unlink(missing_ok=True)  # only the verified binary is installed
+            _verify_manifest(
+                sums_tmp.read_bytes(),
+                sums_sig_tmp.read_bytes(),
+                f"finbreak-{info.version}{self._installer.asset_suffix()}",
+                data,
+            )
+            for spent in (sig_tmp, sums_tmp, sums_sig_tmp):
+                _unlink(spent)  # only the verified binary is installed
             # Hand the installer the bytes we VERIFIED, not the file we re-read
             # them from (FIBR-0170). The download temp has sat on disk since the
             # transfer began; writing the in-memory buffer to a fresh mkstemp
@@ -358,12 +439,12 @@ class UpdateService:
             asset_tmp.unlink(missing_ok=True)
             return verified_tmp
         except UpdateVerificationError:
-            _unlink(asset_tmp)
-            _unlink(sig_tmp)
+            for tmp in (asset_tmp, sig_tmp, sums_tmp, sums_sig_tmp):
+                _unlink(tmp)
             raise
         except Exception as exc:  # staging / oversize / timeout / dropped / disk
-            _unlink(asset_tmp)
-            _unlink(sig_tmp)
+            for tmp in (asset_tmp, sig_tmp, sums_tmp, sums_sig_tmp):
+                _unlink(tmp)
             _unlink(verified_tmp)  # a failed re-write orphans nothing (INV-5)
             error = UpdateDownloadError if fetching else UpdateError
             raise error(f"could not download the update: {exc}") from exc

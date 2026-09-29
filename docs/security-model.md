@@ -68,15 +68,18 @@ unavoidable it is glossed on first use.
   release additionally carries a **signed `SHA256SUMS`** manifest
   (`SHA256SUMS.sig`, the same Ed25519 release key) plus a per-platform
   CycloneDX **SBOM** (`finbreak-<V>-<os>.cdx.json`) — a manual-verification
-  integrity signal for users who download from the GitHub release page
-  (complementary to the per-artifact `.sig` the in-app updater checks) and a
+  integrity signal for users who download from the GitHub release page, and
+  a gate the in-app updater requires beside the per-artifact `.sig` (FIBR-0169),
+  and a
   bundled-dependency parts-list for auditing (FIBR-0096, INV-13). **Honest
   residual:** a GitHub-release-**write** attacker (no signing key) can
   *remove* the manifest signal but cannot *forge* it — the release scripts
   verify any carried other-platform line against the committed key before
   re-signing (the anti-laundering gate), so a tampered line is never
-  laundered into a valid signature. The per-artifact `.sig` (FIBR-0054 INV-4)
-  therefore stays the **primary** integrity gate; a user should confirm
+  laundered into a valid signature. The updater installs only a download
+  whose bytes the signed manifest names for the offered version and platform
+  (FIBR-0169), so a removed manifest stops updates rather than weakening them;
+  a user downloading by hand should confirm
   **their** artifact's basename actually appears in `SHA256SUMS`
   (verifying with `sha256sum -c --ignore-missing SHA256SUMS`) and treat a
   missing manifest/line as a red flag, not a bare `--ignore-missing` exit-0
@@ -540,8 +543,9 @@ be checkable. Enforcement arrives in step with the code:
   a tampered line. This is an **integrity** (tamper-evidence) guarantee,
   **not** confidentiality: a release-write attacker can *delete* the manifest
   or a line but cannot *forge* a valid signature, and a missing manifest/line
-  should be read as a red flag, not a pass — the per-artifact `.sig`
-  (FIBR-0054 INV-4) remains the primary download-integrity gate. Falsifiable
+  should be read as a red flag, not a pass. The in-app updater requires both
+  the per-artifact `.sig` (FIBR-0054 INV-4) and this manifest (FIBR-0169), so a
+  deleted manifest stops updates rather than weakening them. Falsifiable
   by the FIBR-0096 `release_integrity` suite (the `gen-checksums.sh` +
   sign/verify roundtrip and the source-scrape of the two verify gates).
 
