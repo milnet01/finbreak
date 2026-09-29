@@ -58,7 +58,7 @@ class StatementPeriodRepository:
         )
         return last_insert_id(cursor)
 
-    def update_closing_balance(self, period_id: int, balance_minor: int) -> None:
+    def update_closing_balance(self, period_id: int, balance_minor: int) -> bool:
         """**Fill-only** write of a span's closing balance (FIBR-0171 D4/INV-12):
         set ``closing_balance_minor`` for ``period_id`` **only when the stored value
         is currently ``NULL``** — filling a gap left by a prior CSV-only import. For
@@ -72,13 +72,16 @@ class StatementPeriodRepository:
 
         The incoming-``None`` test is the CALLER's: this takes an ``int``, and a
         caller that passes on every span reuse logs a spurious disagreement on
-        each CSV re-import over a span that already has a balance."""
+        each CSV re-import over a span that already has a balance.
+
+        Returns ``True`` on a disagreement, so the import can tell the user: it
+        usually means the wrong file for the span (FIBR-0410)."""
         stored = self._conn.execute(
             "SELECT closing_balance_minor FROM statement_periods WHERE id = ?",
             (period_id,),
         ).fetchone()
         if stored is None:
-            return  # no such span
+            return False  # no such span
         current = stored[0]
         if current is None:
             self._conn.execute(
@@ -88,15 +91,13 @@ class StatementPeriodRepository:
         elif current != balance_minor:
             # The period id ONLY. security-model INV-9 says the log never records
             # decrypted data, and a closing balance is decrypted vault content.
-            # No handler is configured anywhere in the app, so this falls through
-            # to logging.lastResort -- which emits WARNING and above to stderr,
-            # i.e. the terminal or the desktop journal, outside the encryption
-            # boundary and outside any rotation INV-9 assumes.
             log.warning(
                 "closing balance disagreement for statement period %d — keeping "
                 "the stored value (a span's balance is fixed)",
                 period_id,
             )
+            return True
+        return False
 
     def latest_closing_balances(self) -> list[tuple[int, int, str]]:
         """One ``(account_id, closing_balance_minor, period_end)`` per account: the

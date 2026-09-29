@@ -13,7 +13,7 @@ shell so an idle auto-lock closes it before the vault shuts (INV-7).
 
 from __future__ import annotations
 
-from PySide6.QtCore import Signal, Slot
+from PySide6.QtCore import Qt, Signal, Slot
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -26,8 +26,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from finbreak import paths
 from finbreak.datetime_format import system_timezone_id
-from finbreak.errors import VaultLockedError
+from finbreak.errors import FinbreakError, VaultLockedError
+from finbreak.log_file import log_file_path
 from finbreak.models import NegativeStyle
 from finbreak.services.auth import (
     ALLOWED_AUTO_LOCK_MINUTES,
@@ -220,6 +222,20 @@ class SettingsDialog(QDialog):
         self._export_backup.setObjectName("settings_export_backup")
         self._export_backup.clicked.connect(self.export_backup_requested)
         form.addRow(self.tr("Encrypted backup"), self._export_backup)
+
+        # design.md § Observability: the log path is shown so a user can find it
+        # for support (FIBR-0410). Selectable, so it can be copied.
+        self._log_path = QLabel()
+        self._log_path.setTextFormat(Qt.TextFormat.PlainText)
+        self._log_path.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        self._log_path.setWordWrap(True)
+        try:
+            self._log_path.setText(str(log_file_path(paths.data_dir())))
+        except FinbreakError:
+            self._log_path.setText(self.tr("No data folder could be found."))
+        form.addRow(self.tr("Log file"), self._log_path)
 
         # Proactive, read-only "does my backup open?" check (FIBR-0033 D5). Like
         # Export the button only signals intent; the shell owns the verify dialog +

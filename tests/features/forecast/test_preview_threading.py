@@ -101,3 +101,33 @@ def test_INV12_span_reuse_never_overwrites_a_nonnull_balance(service) -> None:
         "june-again.pdf",
     )
     assert _stored_balance(svc, a) == 860_000
+
+
+def test_FIBR0410_a_disagreeing_closing_balance_is_reported(service) -> None:
+    """INV-12 keeps the stored balance and only logged the disagreement, which
+    usually means the wrong file for the period. The result now says so, so the
+    screen can; an agreeing or first balance says nothing."""
+    svc = service
+    a = AccountService(svc.vault).list_accounts()[0].id
+    imp = ImportService(svc.vault)
+
+    first = imp.commit_import(
+        imp.preview_result(_result(860_000), a), _START, _END, "june.pdf"
+    )
+    agreeing = imp.commit_import(
+        imp.preview_result(_result(860_000, day="2026-06-16"), a),
+        _START,
+        _END,
+        "june-copy.pdf",
+    )
+    disagreeing = imp.commit_import(
+        imp.preview_result(_result(999_999, day="2026-06-17"), a),
+        _START,
+        _END,
+        "june-other.pdf",
+    )
+
+    assert first.closing_balance_mismatch is False
+    assert agreeing.closing_balance_mismatch is False
+    assert disagreeing.closing_balance_mismatch is True
+    assert _stored_balance(svc, a) == 860_000, "the stored balance is still kept"

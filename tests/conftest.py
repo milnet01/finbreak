@@ -206,12 +206,16 @@ def app_run_isolation(qapp):
     left all of that behind, so later tests ran themed, under another name, and
     with a hook that blocks an offscreen run (full audit 2026-09-27, rows 2-3).
     """
+    import logging
     import sys
 
     from PySide6.QtGui import QGuiApplication
 
     from finbreak.ui.theme import ThemeController
 
+    finbreak_logger = logging.getLogger("finbreak")
+    handlers = list(finbreak_logger.handlers)
+    level = finbreak_logger.level
     hook = sys.excepthook
     name = qapp.applicationName()
     desktop = QGuiApplication.desktopFileName()
@@ -227,6 +231,12 @@ def app_run_isolation(qapp):
     for controller in set(qapp.findChildren(ThemeController)) - before:
         controller.setParent(None)
         controller.deleteLater()
+    # run() installs the log file (FIBR-0410); a handler left behind would keep
+    # writing every later test's records into this test's data folder.
+    for handler in set(finbreak_logger.handlers) - set(handlers):
+        finbreak_logger.removeHandler(handler)
+        handler.close()
+    finbreak_logger.setLevel(level)
 
 
 @pytest.fixture(autouse=True)

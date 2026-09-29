@@ -1207,7 +1207,15 @@ def _case_import_carries_stored_password(
     _current, other = accounts
     # The rows commit, and the vault locks before the password is carried across
     # — the one leg whose guard sits AFTER the work has already succeeded.
-    monkeypatch.setattr(widget._imports, "commit_import", lambda *a, **k: None)
+    from finbreak.services.import_ import ImportResult
+
+    monkeypatch.setattr(
+        widget._imports,
+        "commit_import",
+        lambda *a, **k: ImportResult(
+            inserted_count=0, duplicate_count=0, error_count=0, period_recorded=False
+        ),
+    )
     widget._stored_pw = (other, "hunter2", None)
     return widget._on_import
 

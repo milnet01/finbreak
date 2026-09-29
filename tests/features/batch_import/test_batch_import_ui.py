@@ -1249,3 +1249,45 @@ def test_FIBR0407_counts_use_the_locales_digits(qapp):
         assert BatchReviewWidget._number(0) == ""
     finally:
         QLocale.setDefault(previous)
+
+
+def test_FIBR0410_the_report_line_mentions_a_disagreeing_balance(qtbot, service):
+    widget = _wizard(qtbot, service)
+    record = BatchFile(path="/tmp/june.pdf")
+    record.outcome = "committed"
+    record.result = ImportResult(
+        inserted_count=3,
+        duplicate_count=0,
+        error_count=0,
+        period_recorded=True,
+        closing_balance_mismatch=True,
+    )
+    line = widget._batch_review.report_line(record)
+    assert "closing balance" in line, line
+
+
+def test_FIBR0410_a_single_file_import_warns_about_a_disagreeing_balance(
+    qtbot, service, monkeypatch
+):
+    widget = _wizard(qtbot, service)
+    widget._preview = object()  # type: ignore[assignment]
+    monkeypatch.setattr(
+        widget._imports,
+        "commit_import",
+        lambda *_a, **_k: ImportResult(
+            inserted_count=3,
+            duplicate_count=0,
+            error_count=0,
+            period_recorded=False,
+            closing_balance_mismatch=True,
+        ),
+    )
+    monkeypatch.setattr(widget, "_carry_stored_pw_to_committed_account", lambda: None)
+    warnings: list[str] = []
+    monkeypatch.setattr(
+        wizard_mod.QMessageBox,
+        "warning",
+        lambda _parent, _title, text, *a, **k: warnings.append(text),
+    )
+    widget._on_import()
+    assert len(warnings) == 1 and "closing balance" in warnings[0], warnings

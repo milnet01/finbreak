@@ -114,6 +114,10 @@ class ImportResult:
     duplicate_count: int
     error_count: int
     period_recorded: bool
+    # A re-import's closing balance disagreed with the one already recorded for
+    # the span, which was kept (FIBR-0171 INV-12). Usually the wrong file for
+    # the period, so the screen says so (FIBR-0410).
+    closing_balance_mismatch: bool = False
 
 
 class ImportService:
@@ -312,6 +316,7 @@ class ImportService:
                 preview.account_id, period_start, period_end
             )
             period_recorded = existing_id is None
+            mismatch = False
             if existing_id is None:
                 period_id = period_repo.add(
                     preview.account_id,
@@ -325,7 +330,7 @@ class ImportService:
                 # Span-reuse: fill a NULL balance left by a prior CSV-only import,
                 # but never overwrite a fixed non-NULL one (FIBR-0171 D4/INV-12).
                 if preview.closing_balance_minor is not None:
-                    period_repo.update_closing_balance(
+                    mismatch = period_repo.update_closing_balance(
                         period_id, preview.closing_balance_minor
                     )
             if to_insert:
@@ -361,6 +366,7 @@ class ImportService:
             duplicate_count=len(preview.drafts) - len(to_insert),
             error_count=len(preview.errors),
             period_recorded=period_recorded,
+            closing_balance_mismatch=mismatch,
         )
 
     # -- helpers --------------------------------------------------------------

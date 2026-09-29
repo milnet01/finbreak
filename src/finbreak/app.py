@@ -22,8 +22,9 @@ from PySide6.QtNetwork import QLocalServer
 from PySide6.QtWidgets import QApplication, QMessageBox, QWidget
 
 from finbreak import paths, single_instance
-from finbreak.errors import InterruptedRestoreError, VaultStateError
+from finbreak.errors import FinbreakError, InterruptedRestoreError, VaultStateError
 from finbreak.loader_env import restore_system_loader_env
+from finbreak.log_file import install_log_file
 from finbreak.services.auth import AuthService
 from finbreak.ui.icons import app_icon
 from finbreak.ui.main_window import MainWindow, settle_detached_workers
@@ -120,6 +121,12 @@ def run(argv: list[str] | None = None) -> int:
     # After the QApplication, because the hook shows a dialog; before anything
     # that can fail, because that is what it is for.
     _install_excepthook()
+
+    # The local log file design.md § Observability promises (FIBR-0410). A data
+    # folder that cannot be found is reported later by the vault's own path
+    # lookup, so it is not reported twice here.
+    with suppress(FinbreakError):
+        install_log_file(paths.data_dir())
 
     # Apply the stored theme BEFORE the main window, so the very first, still-locked
     # window is themed (FIBR-0127 INV-1). The controller parents to the app and

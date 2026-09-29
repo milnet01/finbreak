@@ -34,6 +34,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPushButton,
     QStackedLayout,
     QTableWidget,
@@ -1506,12 +1507,25 @@ class ImportWizardWidget(QWidget):
         period_start = self._period_start.date().toString(Qt.DateFormat.ISODate)
         period_end = self._period_end.date().toString(Qt.DateFormat.ISODate)
         try:
-            self._imports.commit_import(
+            result = self._imports.commit_import(
                 self._preview, period_start, period_end, self._source_path
             )
         except (ValueError, FinbreakError) as exc:
             self._error.setText(str(exc))
             return
+        if result.closing_balance_mismatch:
+            # FIBR-0171 INV-12 keeps the recorded balance; a different one here
+            # usually means the wrong file for the period (FIBR-0410).
+            QMessageBox.warning(
+                self,
+                self.tr("Statement balance"),
+                self.tr(
+                    "This statement's closing balance differs from the one already "
+                    "recorded for the same period, so the recorded balance was kept. "
+                    "It may be the wrong file for that period — check it on the "
+                    "Statements tab."
+                ),
+            )
         try:
             self._carry_stored_pw_to_committed_account()
         except VaultLockedError:

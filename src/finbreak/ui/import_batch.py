@@ -337,8 +337,16 @@ class BatchReviewWidget(QWidget):
         """
         outcome = record.outcome
         if outcome == "committed" and record.result is not None:
+            if record.result.closing_balance_mismatch:
+                # FIBR-0410: the recorded balance was kept; say it disagreed.
+                line = self.tr(
+                    "{new} added, {dup} duplicates — its closing balance differs "
+                    "from the one recorded for this period, which was kept"
+                )
+            else:
+                line = self.tr("{new} added, {dup} duplicates")
             return self._with_unreadable_rows(
-                self.tr("{new} added, {dup} duplicates").format(
+                line.format(
                     new=record.result.inserted_count, dup=record.result.duplicate_count
                 ),
                 record,
