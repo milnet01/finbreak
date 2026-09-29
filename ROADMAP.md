@@ -3533,6 +3533,20 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: chore.
   Source: in-session-2026-09-29 (flatpak-builder-lint while verifying FIBR-0161).
 
+- 📋 [FIBR-0429] **FIBR-0159's portal contingency would turn its own sandbox allowlist test red.**
+  From FIBR-0159's review loop 11 (2026-09-29), outside the FIBR-0161
+  amendment it gated. § 3.5 names the fallback if the pip-bundled Qt
+  does not route file dialogs through the portal: a
+  `--env=QT_QPA_PLATFORMTHEME=xdgdesktopportal` entry in finish-args.
+  INV-2 asserts finish-args is exactly an enumerated allowlist, so
+  applying the fallback fails INV-2, and the spec does not say whether
+  the allowlist widens. The portal test passed, so the fallback is
+  unused today. Fix: INV-2 says that entry, and only that one, joins the
+  allowlist if the fallback is ever applied (a spec amendment, gated).
+  **Layman:** A backup plan written into the Flatpak design would, if ever used, break one of its own checks; the design should say how the two fit together.
+  Kind: doc-fix.
+  Source: review-contract FIBR-0159 loop 11 (2026-09-29).
+
 ## v1.1.0 — Localisation
 
 The first feature minor after 1.0. Chosen to go first because it is
