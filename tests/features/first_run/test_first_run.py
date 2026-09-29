@@ -130,3 +130,81 @@ def test_first_run_cancel_never_persists_amount(qtbot, service, monkeypatch):
     qtbot.addWidget(dialog)
     dialog.reject()
     assert calls == [], "a cancelled first-run persists no amount prefs"
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0367 audit row 33 — the vault exists before the display prefs are
+# written. A prefs write failing after creation must not be reported as a
+# failed creation: that drops the recovery code unseen and leaves a dialog
+# whose retry refuses ("cannot first-run over an existing vault").
+# --------------------------------------------------------------------------- #
+def test_FIBR0367_prefs_failure_after_creation_keeps_the_recovery_code(
+    qtbot, service, monkeypatch
+):
+    import finbreak.ui.first_run as module
+
+    monkeypatch.setattr(module, "DeriveWorker", _SyncDeriveWorker)
+
+    def _disk_full(self, prefs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(AuthService, "set_datetime_prefs", _disk_full)
+    dialog = FirstRunDialog(service)
+    qtbot.addWidget(dialog)
+    codes: list[str] = []
+    completed: list[bool] = []
+    warnings: list[str] = []
+    dialog.recovery_code_ready.connect(codes.append)
+    dialog.completed.connect(lambda: completed.append(True))
+    dialog.prefs_not_saved.connect(warnings.append)
+    negative, _colour = _amount_controls(dialog)
+    negative.setCurrentIndex(negative.findData("brackets"))
+
+    dialog._password.setText(_PW.decode())
+    dialog._confirm.setText(_PW.decode())
+    dialog._submit.click()  # synchronous stub -> _on_derived runs inline
+
+    assert service.vault.is_open, "precondition: the vault was created"
+    assert len(codes) == 1 and codes[0], "the recovery code is handed over"
+    assert completed == [True], "the shell is told the vault exists"
+    assert len(warnings) == 1 and "disk full" in warnings[0]
+    assert "could not create the vault" not in dialog._error.text().lower()
+    assert service.amount_prefs().negative_style == "brackets", (
+        "the amount prefs are still written when the datetime write fails"
+    )
+
+
+def test_FIBR0367_shell_shows_the_prefs_warning_after_first_run(
+    qtbot, service, monkeypatch
+):
+    """End to end through the shell: the real first-run dialog, a failing
+    prefs write, and what the user is left looking at."""
+    import finbreak.ui.first_run as module
+    from finbreak.ui.main_window import MainWindow
+    from finbreak.ui.recovery_key import RecoveryCodeDialog
+
+    monkeypatch.setattr(module, "DeriveWorker", _SyncDeriveWorker)
+
+    def _disk_full(self, prefs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(AuthService, "set_datetime_prefs", _disk_full)
+    window = MainWindow(service)  # no vault yet, so it opens first run
+    qtbot.addWidget(window)
+    first_run = window._dialog
+    assert isinstance(first_run, FirstRunDialog), "precondition: first run"
+    first_run._password.setText(_PW.decode())
+    first_run._confirm.setText(_PW.decode())
+    first_run._submit.click()  # synchronous stub -> _on_derived runs inline
+
+    display = window._dialog
+    assert isinstance(display, RecoveryCodeDialog), "the code is still shown"
+    assert "disk full" in window.statusBar().currentMessage()
+    display.reject()
+    assert "disk full" in window.statusBar().currentMessage(), (
+        "the warning outlives the recovery display"
+    )
+    window._enter_unlocked()
+    assert "disk full" not in window.statusBar().currentMessage(), (
+        "consumed on show, so a later unlock does not repeat it"
+    )

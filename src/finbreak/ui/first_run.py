@@ -55,6 +55,9 @@ class FirstRunDialog(QDialog):
     # once the vault exists. Nothing retains it — INV-5 forbids the app keeping
     # it — so this signal is the only route by which anything can learn it.
     recovery_code_ready = Signal(str)
+    # A translated warning: the vault was created but its display prefs were
+    # not written. Emitted before `completed`, for the shell to show once open.
+    prefs_not_saved = Signal(str)
     # "Restore from a backup instead" — a user with an existing `.fbk` restores it
     # rather than creating a fresh vault (FIBR-0014 INV-8/D5). The shell owns it.
     restore_requested = Signal()
@@ -225,24 +228,43 @@ class FirstRunDialog(QDialog):
             return
         try:
             code = self._service.complete_first_run(raw, params, currency)
-            # The vault now exists — persist the datetime prefs at this post-create
-            # site (D6), on the same guarded path as vault creation.
+        except Exception as exc:  # vault creation failed — surface, don't crash
+            self._error.setText(
+                self.tr("Could not create the vault: {error}").format(error=exc)
+            )
+            return
+        # The vault now exists, so the display prefs are written here (D6) — and
+        # outside the creation guard: a failed write here is not a failed
+        # creation. Reporting it as one would drop the recovery code unseen and
+        # leave a dialog whose retry refuses an existing vault (FIBR-0367 row
+        # 33). Each write is tried on its own; unwritten prefs read back as
+        # their defaults.
+        unsaved: Exception | None = None
+        try:
             self._service.set_datetime_prefs(
                 read_datetime_prefs(
                     self._timezone, self._date_format, self._time_format
                 )
             )
+        except Exception as exc:
+            unsaved = exc
+        try:
             self._service.set_amount_prefs(
                 AmountPrefs(
                     self._amount_negative.currentData(),
                     self._amount_colour.isChecked(),
                 )
             )
-        except Exception as exc:  # vault creation failed — surface, don't crash
-            self._error.setText(
-                self.tr("Could not create the vault: {error}").format(error=exc)
+        except Exception as exc:
+            unsaved = unsaved or exc
+        if unsaved is not None:
+            # Before `completed`, like the code below, so the shell holds it.
+            self.prefs_not_saved.emit(
+                self.tr(
+                    "Your display settings could not be saved ({error}), so the "
+                    "defaults are in use. You can set them again in Settings."
+                ).format(error=unsaved)
             )
-            return
         # § 4.5 step 8 is the SHELL's, and the code is handed over here — after
         # the vault exists, because a code displayed for a vault whose creation
         # then failed is a code the user has carefully stored for nothing. This

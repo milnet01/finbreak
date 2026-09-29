@@ -33,6 +33,14 @@ signaling per
 
 ### Fixed
 
+- **A settings save that fails during setup no longer loses your recovery code** (FIBR-0367)
+  If finbreak created your vault but then could not save your date,
+  time or amount display choices (for example, a full disk), it said
+  the vault could not be created, never showed the recovery code, and
+  refused to try again. Now setup finishes, the recovery code is shown,
+  and a status-bar note says the display settings fell back to their
+  defaults and can be set again in Settings.
+
 - **A security check that cannot run is no longer reported as a wrong password.**
   If the unlock check itself failed, for example because the computer
   was short of memory, finbreak said to check your password and made you

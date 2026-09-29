@@ -383,6 +383,9 @@ class MainWindow(QMainWindow):
         # First-run's freshly generated recovery code, held for the § 4.5 step 8
         # display in _enter_unlocked. Session state only, cleared on show.
         self._pending_recovery_code: str | None = None
+        # First-run's warning that the display prefs were not written, held for
+        # _enter_unlocked like the code above and consumed on show.
+        self._pending_prefs_warning: str | None = None
         # D5's offer, owed once after a recovery unlock. Consumed on read like
         # the pending code above, so it cannot fire on a later ordinary unlock.
         self._regeneration_offer_owed: bool = False
@@ -748,6 +751,7 @@ class MainWindow(QMainWindow):
         self._set_vault_chrome_enabled(False)
         dialog = FirstRunDialog(self._service, self)
         dialog.recovery_code_ready.connect(self._hold_recovery_code)
+        dialog.prefs_not_saved.connect(self._hold_prefs_warning)
         dialog.completed.connect(self._enter_unlocked)
         dialog.restore_requested.connect(self._open_restore)
         dialog.rejected.connect(self._on_first_run_rejected)
@@ -799,6 +803,11 @@ class MainWindow(QMainWindow):
         if self._home_tab is not None:
             self._refresh_count(self._home_tab.transaction_count())
         self._status(self.tr("Unlocked"))
+        warning, self._pending_prefs_warning = self._pending_prefs_warning, None
+        if warning:
+            # No timeout: the recovery display opens next and holds the user's
+            # attention, so a transient message would expire unread.
+            self.statusBar().showMessage(warning)
         # § 4.5 step 8, and D7's offer to a vault that just converted — one
         # site, because they are the same display on the same terms. It takes
         # the single dialog slot BEFORE the held update offer is considered, so
@@ -1298,6 +1307,10 @@ class MainWindow(QMainWindow):
         ``_enter_unlocked``, and cleared whether or not the user keeps it.
         """
         self._pending_recovery_code = code
+
+    def _hold_prefs_warning(self, warning: str) -> None:
+        """Take first-run's already-translated prefs warning for _enter_unlocked."""
+        self._pending_prefs_warning = warning
 
     def _show_recovery_offer(self) -> bool:
         """§ 4.5 step 8 — show the one-time display if one is owed.
