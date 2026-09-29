@@ -99,6 +99,13 @@ class UpdateError(FinbreakError):
     swap (FIBR-0054 INV-10/INV-11). The session stays on the current version."""
 
 
+class UpdateDownloadError(UpdateError):
+    """The update's bytes never fully arrived — a dropped or stalled connection,
+    a body shorter than advertised, or one over the size cap (FIBR-0054 INV-10/
+    INV-11). Told apart from a bad signature so the user hears "try again", not
+    a tamper alarm (full audit 2026-09-27 row 38)."""
+
+
 class UpdateVerificationError(UpdateError):
     """A downloaded AppImage failed its Ed25519 signature check — the *core*
     integrity gate (FIBR-0054 INV-4). Nothing is installed; the temp is deleted."""

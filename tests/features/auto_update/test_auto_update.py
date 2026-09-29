@@ -1459,6 +1459,69 @@ def test_download_failed_while_prompt_live_warns_and_closes(
     assert not isinstance(window._dialog, UpdateDialog)  # the busy prompt is closed
 
 
+def test_a_dropped_download_and_a_bad_signature_tell_the_user_different_things(
+    qtbot, service, tmp_path, monkeypatch
+):
+    """Full audit 2026-09-27 row 38 (delivery C5) — the service told a dropped
+    download from a bad signature (FIBR-0327), and the shell threw the difference
+    away: both showed "The update could not be installed". A flaky connection read
+    like any failure, and a tampered file raised no alarm at all.
+
+    Each exception comes from the real ``download_and_verify`` — the dropped one
+    through the real ``update_fetch`` with a server that sends half what it
+    promised — and each is handed to the shell's own failure slot.
+    """
+    asset = "https://dl/finbreak-0.1.1-x86_64.AppImage"
+    info = UpdateInfo(
+        version="0.1.1", asset_url=asset, sig_url=asset + ".sig", notes="notes"
+    )
+    payload = b"HALF-AN-APPIMAGE"
+
+    def failure(fetcher) -> Exception:
+        svc = _service(
+            tmp_path,
+            installer=AppImageInstaller(tmp_path / "a.AppImage"),
+            fetcher=fetcher,
+        )
+        with pytest.raises(UpdateError) as caught:
+            svc.download_and_verify(info)
+        return caught.value
+
+    with monkeypatch.context() as scoped:
+        scoped.setattr(
+            update_fetch.urllib.request,
+            "urlopen",
+            _fake_urlopen(payload, {"Content-Length": str(len(payload) * 2)}),
+        )
+        dropped = failure(update_fetch)
+    _signing_setup(monkeypatch, payload, sign=b"something else")
+    tampered = failure(_FakeFetcher(blobs={asset: payload, asset + ".sig": b"x" * 64}))
+
+    shown: dict[str, str] = {}
+    for name, exc in (("dropped", dropped), ("tampered", tampered)):
+        window, _ = _updater_shell(
+            qtbot, service, info=info, installer=_FakeInstaller(tmp_path / "b")
+        )
+        texts: list[str] = []
+        monkeypatch.setattr(
+            "finbreak.ui.main_window.QMessageBox.warning",
+            lambda _p, _t, text, *a, _texts=texts, **k: _texts.append(text),
+        )
+        window._enter_unlocked()
+        window._on_update_found(info)
+        window._on_download_failed(exc, window._dialog)
+        assert len(texts) == 1, name
+        shown[name] = texts[0]
+
+    assert shown["dropped"] != shown["tampered"]
+    assert "did not download completely" in shown["dropped"], shown["dropped"]
+    assert "security check" not in shown["dropped"], shown["dropped"]
+    assert "security check" in shown["tampered"], shown["tampered"]
+    assert "tampered" in shown["tampered"], shown["tampered"]
+    for text in shown.values():
+        assert "still on the current version" in text, text
+
+
 def test_download_failed_after_autolock_teardown_stays_silent(
     qtbot, service, tmp_path, monkeypatch
 ):

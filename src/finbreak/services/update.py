@@ -23,7 +23,11 @@ from cryptography.exceptions import InvalidSignature
 from PySide6.QtCore import QSettings
 
 from finbreak import __version__
-from finbreak.errors import UpdateError, UpdateVerificationError
+from finbreak.errors import (
+    UpdateDownloadError,
+    UpdateError,
+    UpdateVerificationError,
+)
 from finbreak.services import update_fetch, update_key
 from finbreak.services.update_installer import Installer
 
@@ -299,8 +303,9 @@ class UpdateService:
         key. Return a fresh temp holding those **verified** bytes, re-written from
         memory so the file the installer swaps in is the file we checked
         (FIBR-0170); on **any** failure delete the temps and raise —
-        ``UpdateVerificationError`` for a bad signature, ``UpdateError`` for an
-        oversize / timed-out / dropped download (INV-4/INV-10/INV-11).
+        ``UpdateVerificationError`` for a bad signature, ``UpdateDownloadError``
+        for an oversize / timed-out / dropped download, ``UpdateError`` for a
+        staging or disk failure (INV-4/INV-10/INV-11).
 
         *on_progress* rides through to the **asset** download only — the ``.sig``
         is 64 bytes, so a second bar for it would only flicker (FIBR-0108)."""
@@ -317,9 +322,11 @@ class UpdateService:
         asset_tmp: Path | None = None
         sig_tmp: Path | None = None
         verified_tmp: Path | None = None
+        fetching = False  # a failure while True is the download's, not the disk's
         try:
             asset_tmp = _stage_temp(directory, asset_ext)
             sig_tmp = _stage_temp(directory, ".sig")
+            fetching = True
             self._fetcher.download(
                 info.asset_url,
                 asset_tmp,
@@ -330,6 +337,7 @@ class UpdateService:
             self._fetcher.download(
                 info.sig_url, sig_tmp, max_bytes=_MAX_SIG_BYTES, timeout=_TIMEOUT_S
             )
+            fetching = False
             data = asset_tmp.read_bytes()
             signature = sig_tmp.read_bytes()
             try:
@@ -357,4 +365,5 @@ class UpdateService:
             _unlink(asset_tmp)
             _unlink(sig_tmp)
             _unlink(verified_tmp)  # a failed re-write orphans nothing (INV-5)
-            raise UpdateError(f"could not download the update: {exc}") from exc
+            error = UpdateDownloadError if fetching else UpdateError
+            raise error(f"could not download the update: {exc}") from exc

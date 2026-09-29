@@ -33,6 +33,12 @@ signaling per
 
 ### Fixed
 
+- **A failed update now says whether the download dropped or the file failed its security check** (FIBR-0367)
+  Both used to show the same "could not be installed" message. A download
+  that did not finish now says so and suggests trying again. A file that
+  fails its signature check now says it was deleted and may have been
+  damaged or tampered with.
+
 - **A restore finbreak could not undo now says what happened and not to delete anything** (FIBR-0367)
   If a restore was interrupted and finbreak could not put your previous data
   back (for example, the folder was read-only), it used to say the vault was

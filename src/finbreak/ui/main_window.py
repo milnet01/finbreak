@@ -77,7 +77,9 @@ from finbreak.datetime_format import today as app_today
 from finbreak.errors import (
     BackupError,
     InterruptedRestoreError,
+    UpdateDownloadError,
     UpdateError,
+    UpdateVerificationError,
     VaultLockedError,
     VaultStateError,
 )
@@ -1859,7 +1861,7 @@ class MainWindow(QMainWindow):
             # doesn't orphan next to the running binary (INV-9).
             Path(path).unlink(missing_ok=True)
 
-    def _on_download_failed(self, _exc: object, prompt: QDialog | None) -> None:
+    def _on_download_failed(self, exc: object, prompt: QDialog | None) -> None:
         # Any verify/oversize/timeout/disk failure surfaces here and stays on the
         # current version (INV-11). Mirror _on_download_ready's guard: if an
         # auto-lock tore the busy prompt down mid-download (self._dialog is now
@@ -1872,14 +1874,27 @@ class MainWindow(QMainWindow):
         if not prompt_live:
             return
         self._teardown_dialog()
-        QMessageBox.warning(
-            self,
-            self.tr("Update failed"),
-            self.tr(
+        # The service tells a dropped download from a bad signature; say which,
+        # so a flaky connection reads as "try again" and a tampered file raises
+        # the alarm (full audit 2026-09-27 row 38).
+        if isinstance(exc, UpdateVerificationError):
+            text = self.tr(
+                "The downloaded update failed its security check and was deleted, "
+                "so nothing was installed. The file may have been damaged or "
+                "tampered with on the way. You are still on the current version."
+            )
+        elif isinstance(exc, UpdateDownloadError):
+            text = self.tr(
+                "The update did not download completely, so nothing was installed. "
+                "This is usually a dropped or slow connection; try again later. "
+                "You are still on the current version."
+            )
+        else:
+            text = self.tr(
                 "The update could not be installed. You are still on the "
                 "current version."
-            ),
-        )
+            )
+        QMessageBox.warning(self, self.tr("Update failed"), text)
 
     def _open_import(self) -> None:
         # Import wants the full content area — it REPLACES the workspace (via

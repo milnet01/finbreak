@@ -92,7 +92,7 @@ Each group is one commit with its own sweep (`close-findings` § 3–4).
 | 35 | Recovery code | code 15 : `recovery_key.py:167-203` — Save before Keep can overwrite the live code's file | fixed — remedy checked and extended: a warning alone cannot give back an overwritten file, so a Decline after a Save now ASKS, naming the file — Keep the new code (accepts, so the saved file works) / Decline anyway / Go back. The suggested name carries the app clock's day. `_write_code_file` writes `<name>.part` (0600, `O_EXCL`, `O_NOFOLLOW`, stale one cleared) then `os.replace`, and removes the temp on failure. New `tests/features/recovery_key/test_saving_the_code.py` (INV-28): red on the old code for the question, the name and a part-way write failure (old file emptied); each part mutation-checked — all killed except `fsync`, whose symptom is a power loss (no red run possible; kept, as `crypto.write_sidecar_json` does). `test_saving_the_code_chmods_the_file_it_opened_not_whatever_the_path_holds` removed: the post-open chmod it guarded no longer exists; its hazard's successor (a link planted at the temp name, before or after the stale-clear) has two new tests. This also retires lane 15's dim-7 note (silent `fchmod` failure) and tests-lane T02's note on the removed test — nothing to queue for either |
 | 36 | Rich text | code 17 / code 15 : `alerts_dialog.py:106,118`, `unlock.py:217` — bank text and hint rendered as rich text | fixed — verified: the alert summary `QLabel`, the Dismiss tooltip and the unlock hint `QLabel` all used Qt's AutoText guess. Both labels now set `PlainText`; a tooltip has no plain mode, so it gets `convertFromPlainText` (escaped HTML) and the accessible name stays raw. Red first: `test_alerts_ui.py` row-36 test (an `<img>` in the merchant name drew an image placeholder in label and tooltip) and `test_password_hint.py` row-36 test (hint label AutoText). FIBR-0216's `toolTip() == accessibleName()` re-fixtured to compare what the tooltip SHOWS — the contract (hover and screen reader say the same) is unchanged. Each of the three parts mutation-checked, each killed. Sweep: the other `setToolTip` calls in `ui/` carry fixed strings, except `import_batch.py` `_set`, whose tooltip is the statement's file path — same class, pre-existing, queued as FIBR-0382 |
 | 37 | Messages | delivery A3 : `app.py:128-137` — blocked restore recovery gives a generic "start over" | fixed — verified through the real `run()`: the message named the mixed pair and said to remove the partial files. A failed move-back now raises `InterruptedRestoreError` (a `VaultStateError` subclass), and `run()` says a restore was interrupted, names the folder and the `.old` files, says not to delete them, and says a restart after fixing a read-only or full folder finishes the repair. It also stops a failed move-back with no live files from routing to first-run. Test: `test_a_blocked_recovery_tells_the_user_why_and_not_to_delete`, red first. The adjacent unpaired-`.old` case is FIBR-0383 |
-| 38 | Messages | delivery C5 : `main_window.py` `_on_download_failed` — dropped download shown as a generic failure | |
+| 38 | Messages | delivery C5 : `main_window.py` `_on_download_failed` — dropped download shown as a generic failure | fixed — verified: `_on_download_failed` ignored its exception. `download_and_verify` now raises `UpdateDownloadError` (an `UpdateError` subclass) for a failure while fetching, and the shell shows three texts: bad signature → a security-check/tamper warning; dropped download → "did not download completely … try again later"; anything else → the old text. Test: `test_a_dropped_download_and_a_bad_signature_tell_the_user_different_things`, red first, both exceptions from the real service; each part mutation-checked |
 | 39 | Updater | code 12 : `update_installer.py:400-406` — inherited `$APPIMAGE` targets another app | |
 | 40 | Updater | code 12 : `update_dialog.py:118-138` — Esc during download leads to an unannounced relaunch | |
 | 41 | Release | code 19 : `release-linux.sh:69-71,202-212` — AppImage not bound to the tag's commit | |
@@ -111,3 +111,24 @@ finding (FIBR-0169, FIBR-0333); code 20's libxkbcommon finding (FIBR-0346).
 
 Every finding not listed above is queued. Filing is by lane: one roadmap item
 per lane file, naming each finding it carries. The lane files are the source.
+
+## Sweep (rows 37-48)
+
+Rows 1-36 were closed before this section existed; their sweeps ran per
+group and are in their commits. From row 37 on, one sweep runs after the
+last row lands, and its run-level lists live here.
+
+**must_agree** (opened before each fix):
+
+- row 37 — `docs/specs/FIBR-0051.md` INV-2c (a mixed pair still ends in
+  `QMessageBox.critical` + exit 1); `docs/specs/FIBR-0014.md` § install order
+  and INV-5 (recovery from the `*.old` pair); `docs/specs/FIBR-0030.md`'s note
+  on `_reconcile_interrupted_restore`'s scope; CHANGELOG `[Unreleased]`.
+- row 38 — `docs/specs/FIBR-0054.md` INV-4 ("truncated file" among the
+  verification failures) and INV-11 (which failures surface a dialog);
+  `ui/_update_worker.py`'s docstring on what `failed` carries; CHANGELOG
+  `[Unreleased]`.
+
+**swept:** (filled at the sweep)
+
+**collateral / surfaced / out_of_scope / falsified:** (filled at the sweep)
