@@ -191,7 +191,8 @@ defence; FIBR-0054 INV-4 and INV-10 stay as they are.
 
 ## 7. Tests
 
-INV-1 to INV-5 live in `tests/features/auto_update/test_auto_update.py` and
+INV-1, INV-2, INV-3, INV-4 and INV-5 live in
+`tests/features/auto_update/test_auto_update.py` and
 drive `UpdateService` through the `_FakeFetcher` seam with a throwaway key
 monkeypatched into `update_key.public_key` (the existing `_signing_setup`
 helper). INV-6 lives in
