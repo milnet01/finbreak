@@ -238,6 +238,24 @@ def _check_cryptography() -> None:
     signing_key.public_key().verify(signing_key.sign(message), message)
 
 
+def _check_tls() -> None:
+    """Build the updater's TLS context and load its bundled CA set (FIBR-0392).
+
+    ``app.py`` imports ``update_fetch``, which imports ``ssl`` and ``certifi``
+    at module scope, so a bundle missing libssl or certifi's ``cacert.pem`` dies
+    at launch while every other check here passes -- FIBR-0259's shape. Built
+    the way ``update_fetch`` builds it, and the CA set is LOADED rather than
+    located: a dropped ``cacert.pem`` imports fine and fails only here.
+    """
+    import ssl
+
+    import certifi
+
+    context = ssl.create_default_context(cafile=certifi.where())
+    if not context.get_ca_certs():
+        raise RuntimeError("the bundled CA set loaded no certificates")
+
+
 def _check_ofxparse() -> None:
     """Parse a tiny OFX document, proving ofxparse + its transitive tree
     (beautifulsoup4, native lxml) travel with the bundle (FIBR-0008).
@@ -347,6 +365,7 @@ CHECK_NAMES = (
     # cryptography in today, so a check placed after it could pass on that
     # import alone and say nothing about a bundle that ships neither.
     "cryptography",
+    "tls",
     "ofxparse",
     "pdfplumber",
 )

@@ -658,3 +658,48 @@ def test_FIBR0208_the_clean_room_supplies_libxkbcommon_from_the_host():
         "will fail to load QtGui now that the freeze does not bundle it "
         "(FIBR-0208)"
     )
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0392 (2026-09-27 audit, code lane 12) — the self-test proves TLS loads.
+# --------------------------------------------------------------------------- #
+@pytest.mark.features
+def test_FIBR0392_tls_is_checked_and_reported_by_name(monkeypatch):
+    """`app.py` imports `update_fetch`, which imports `ssl` and `certifi` at
+    module scope, so a bundle missing libssl or certifi's cacert.pem dies at
+    launch -- and the self-test had no leg for either, so it printed OK (the
+    FIBR-0259 shape)."""
+    from finbreak import _selftest
+
+    assert "tls" in _selftest.CHECK_NAMES
+    monkeypatch.setattr(_selftest, "_check_qt", lambda: None)
+
+    def _boom() -> None:
+        raise ImportError("no module named _ssl")
+
+    monkeypatch.setattr(_selftest, "_check_tls", _boom)
+    out = io.StringIO()
+    assert _selftest.run_self_test(out) != 0
+    assert out.getvalue().splitlines() == ["FINBREAK_SELFTEST_FAIL: tls"]
+
+
+@pytest.mark.features
+def test_FIBR0392_the_tls_check_passes_on_a_working_stack():
+    from finbreak import _selftest
+
+    _selftest._check_tls()
+
+
+@pytest.mark.features
+def test_FIBR0392_the_tls_check_fails_without_the_bundled_ca_set(monkeypatch, tmp_path):
+    """The check must LOAD the CA set the updater verifies against, not merely
+    import the modules: a bundle whose cacert.pem was dropped imports fine."""
+    import certifi
+
+    from finbreak import _selftest
+
+    monkeypatch.setattr(certifi, "where", lambda: str(tmp_path / "missing.pem"))
+    # OSError covers FileNotFoundError and ssl.SSLError alike; an
+    # AttributeError (no check at all) must NOT satisfy this.
+    with pytest.raises(OSError):
+        _selftest._check_tls()
