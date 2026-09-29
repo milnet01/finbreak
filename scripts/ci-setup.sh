@@ -41,9 +41,13 @@ $SUDO apt-get install -y --no-install-recommends \
 # The gate's feature tests run `git` against the checkout. In a container the
 # checkout is usually owned by a different uid than the user running the gate,
 # so git 2.35.2+ refuses with "detected dubious ownership" (exit 128). Trust the
-# workspace explicitly — standard for ephemeral CI containers, and harmless on a
-# developer's own repo.
-git config --global --add safe.directory '*'
+# workspace explicitly -- standard for an ephemeral CI container, and ONLY there:
+# the setting is global, so on a developer's machine it would switch the check
+# off for every repository they touch, one more duplicate line per run (full
+# audit 2026-09-27 row 45). Running as themselves, their checkout is theirs.
+if [ "$(id -u)" -eq 0 ] || [ -n "${CI:-}" ]; then
+    git config --global --add safe.directory '*'
+fi
 
 
 # --- verified fetch -------------------------------------------------------
@@ -72,14 +76,20 @@ fetch_verified() {
         exit 1; }
 }
 
+# A private directory for every download and extraction. Fixed /tmp names let
+# another local user pre-create them and swap a binary between the checksum
+# check and the root `install` below (full audit 2026-09-27 row 45).
+WORK="$(mktemp -d)"
+trap 'rm -rf "$WORK"' EXIT
+
 echo "== gitleaks (a Go binary, not a pip package) =="
 GITLEAKS_VERSION=8.30.1
 GITLEAKS_SHA256=551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
 fetch_verified \
     "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
-    "$GITLEAKS_SHA256" /tmp/gitleaks.tar.gz
-tar -xz -C /tmp -f /tmp/gitleaks.tar.gz gitleaks
-$SUDO install -m 0755 /tmp/gitleaks /usr/local/bin/gitleaks
+    "$GITLEAKS_SHA256" "$WORK/gitleaks.tar.gz"
+tar -xz -C "$WORK" -f "$WORK/gitleaks.tar.gz" gitleaks
+$SUDO install -m 0755 "$WORK/gitleaks" /usr/local/bin/gitleaks
 gitleaks version
 
 # Both are single static binaries rather than pip packages, and both are VERSION-
@@ -91,9 +101,9 @@ SHELLCHECK_VERSION=0.11.0
 SHELLCHECK_SHA256=8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198
 fetch_verified \
     "https://github.com/koalaman/shellcheck/releases/download/v${SHELLCHECK_VERSION}/shellcheck-v${SHELLCHECK_VERSION}.linux.x86_64.tar.xz" \
-    "$SHELLCHECK_SHA256" /tmp/shellcheck.tar.xz
-tar -xJ -C /tmp -f /tmp/shellcheck.tar.xz "shellcheck-v${SHELLCHECK_VERSION}/shellcheck"
-$SUDO install -m 0755 "/tmp/shellcheck-v${SHELLCHECK_VERSION}/shellcheck" /usr/local/bin/shellcheck
+    "$SHELLCHECK_SHA256" "$WORK/shellcheck.tar.xz"
+tar -xJ -C "$WORK" -f "$WORK/shellcheck.tar.xz" "shellcheck-v${SHELLCHECK_VERSION}/shellcheck"
+$SUDO install -m 0755 "$WORK/shellcheck-v${SHELLCHECK_VERSION}/shellcheck" /usr/local/bin/shellcheck
 shellcheck --version | grep version:
 
 echo "== actionlint (the gate lints its own workflows) =="
@@ -101,9 +111,9 @@ ACTIONLINT_VERSION=1.7.12
 ACTIONLINT_SHA256=8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
 fetch_verified \
     "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" \
-    "$ACTIONLINT_SHA256" /tmp/actionlint.tar.gz
-tar -xz -C /tmp -f /tmp/actionlint.tar.gz actionlint
-$SUDO install -m 0755 /tmp/actionlint /usr/local/bin/actionlint
+    "$ACTIONLINT_SHA256" "$WORK/actionlint.tar.gz"
+tar -xz -C "$WORK" -f "$WORK/actionlint.tar.gz" actionlint
+$SUDO install -m 0755 "$WORK/actionlint" /usr/local/bin/actionlint
 actionlint --version
 
 # actionlint checks whether a workflow is CORRECT; zizmor checks whether it is
@@ -120,9 +130,9 @@ ZIZMOR_VERSION=1.29.0
 ZIZMOR_SHA256=dd96df044a6e8538d5f423790f453bdd03d49e5b2bcc38214acc41a2f1297839
 fetch_verified \
     "https://github.com/zizmorcore/zizmor/releases/download/v${ZIZMOR_VERSION}/zizmor-x86_64-unknown-linux-gnu.tar.gz" \
-    "$ZIZMOR_SHA256" /tmp/zizmor.tar.gz
-tar -xz -C /tmp -f /tmp/zizmor.tar.gz zizmor
-$SUDO install -m 0755 /tmp/zizmor /usr/local/bin/zizmor
+    "$ZIZMOR_SHA256" "$WORK/zizmor.tar.gz"
+tar -xz -C "$WORK" -f "$WORK/zizmor.tar.gz" zizmor
+$SUDO install -m 0755 "$WORK/zizmor" /usr/local/bin/zizmor
 zizmor --version
 
 echo "== python: dev group + runtime deps =="

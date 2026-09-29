@@ -616,3 +616,37 @@ def test_INV6_ci_image_is_pinned_by_one_digest_at_every_site() -> None:
     assert len(set().union(*digests.values())) == 1, (
         f"the sites pin different digests: {digests}"
     )
+
+
+# --------------------------------------------------------------------------- #
+# Full audit 2026-09-27 row 45 — ci-setup.sh on a developer's own machine.
+# CLAUDE.md tells apt-host developers to run it, so it must not weaken their
+# git or race another user through /tmp. Text-level: running it needs apt and
+# root; scripts/ci-docker.sh is the execution check.
+# --------------------------------------------------------------------------- #
+_CI_SETUP = _ROOT / "scripts" / "ci-setup.sh"
+
+
+def test_ci_setup_trusts_every_repository_only_in_a_throwaway_environment() -> None:
+    """`git config --global --add safe.directory '*'` switches off git's
+    repository-ownership check for EVERY repository the user touches, and adds
+    a duplicate line on every run. A CI container needs it (the checkout belongs
+    to another uid); a developer running as themselves does not."""
+    lines = _CI_SETUP.read_text().splitlines()
+    at = next(i for i, line in enumerate(lines) if "safe.directory '*'" in line)
+    guard = "\n".join(lines[max(0, at - 3) : at])
+    assert re.search(r"id -u.*-eq 0|\$\{?CI\b", guard), (
+        "safe.directory '*' must sit under a root/CI guard:\n" + guard
+    )
+
+
+def test_ci_setup_downloads_into_a_private_directory() -> None:
+    """Fixed /tmp names let another local user pre-create the extraction
+    directory and swap a binary between the checksum check and the root
+    `install`. A mktemp -d directory is this run's own."""
+    text = _CI_SETUP.read_text()
+    code = "\n".join(
+        line for line in text.splitlines() if not line.lstrip().startswith("#")
+    )
+    assert "/tmp/" not in code, [line for line in code.splitlines() if "/tmp/" in line]
+    assert re.search(r"mktemp -d", code) and re.search(r"trap .*rm -rf", code)
