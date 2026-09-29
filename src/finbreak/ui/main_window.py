@@ -30,6 +30,7 @@ from pathlib import Path
 
 import pikepdf
 import shiboken6
+from PySide6.QtCharts import QChartView
 from PySide6.QtCore import (
     QByteArray,
     QEvent,
@@ -50,15 +51,19 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import (
     QApplication,
+    QComboBox,
     QDialog,
     QFileDialog,
     QLabel,
+    QLineEdit,
     QMainWindow,
     QMessageBox,
+    QPlainTextEdit,
     QPushButton,
     QStackedWidget,
     QTableWidget,
     QTabWidget,
+    QTextEdit,
     QTreeWidget,
     QVBoxLayout,
     QWidget,
@@ -262,12 +267,31 @@ def _clear_decrypted_rows(widget: QWidget) -> None:
     — so clearing the models alone left those alive for exactly as long
     (FIBR-0322). A tab that keeps one offers ``clear_rows``; asked for by duck
     type, so this stays out of the tabs' imports and a tab added later is covered
-    by writing the method rather than by editing a list here."""
-    for view in widget.findChildren(QTableWidget):
-        view.setRowCount(0)
-    for tree in widget.findChildren(QTreeWidget):
-        tree.clear()
-    for child in (widget, *widget.findChildren(QWidget)):
+    by writing the method rather than by editing a list here.
+
+    Tables were not the only place decrypted values sat: account names in combo
+    boxes, figures in labels, category and account names in chart slices
+    (FIBR-0367 audit row 30). Every such widget is emptied too. The widget is
+    about to be deleted, so its signals are blocked first: nothing reacts to
+    the emptying by reading a vault that is already locked."""
+    children = widget.findChildren(QWidget)
+    for child in (widget, *children):
+        child.blockSignals(True)
+    for child in children:
+        if isinstance(child, QTableWidget):
+            child.setRowCount(0)
+        elif isinstance(
+            child,
+            (QTreeWidget, QComboBox, QLabel, QLineEdit, QPlainTextEdit, QTextEdit),
+        ):
+            child.clear()
+        elif isinstance(child, QChartView):
+            chart = child.chart()
+            chart.removeAllSeries()
+            for axis in chart.axes():
+                chart.removeAxis(axis)
+            chart.setTitle("")
+    for child in (widget, *children):
         clear_rows = getattr(child, "clear_rows", None)
         if callable(clear_rows):
             clear_rows()

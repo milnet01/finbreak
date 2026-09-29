@@ -209,6 +209,7 @@ class TransactionsView(QWidget):
         """
         self._master = []
         self._rows = []
+        self._transfer_labels = {}  # "Transfer to <account>" per row
 
     def refresh(self) -> None:
         """Reload the master list from the vault and rebuild the account / category

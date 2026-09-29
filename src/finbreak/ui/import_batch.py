@@ -192,6 +192,12 @@ class BatchReviewWidget(QWidget):
         self._close_button.clicked.connect(self.closed)
 
     # -- population -----------------------------------------------------------
+    def clear_rows(self) -> None:
+        """Drop the batch and the account names at LOCK time (FIBR-0322) — the
+        shell's item-model clear does not reach a Python list."""
+        self._files = []
+        self._account_names = {}
+
     def set_files(self, files: list[BatchFile]) -> None:
         """Adopt a fresh batch. The table is on screen before SCAN starts, so it
         fills in row by row rather than hiding behind a progress dialog (§ 6)."""

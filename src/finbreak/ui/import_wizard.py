@@ -1555,6 +1555,20 @@ class ImportWizardWidget(QWidget):
         self._accounts.set_pdf_password(stored_account, prior)
         self._stored_pw = None  # settled — `_release_stored_pw` must not re-run it
 
+    def clear_rows(self) -> None:
+        """Drop the parsed statement at LOCK time (FIBR-0322): the raw text, the
+        parsed OFX statements, the decrypted PDF table cells, the batch and every
+        password held for it. The shell's item-model clear reaches none of
+        them. The stored-password record goes too: after a lock it can no
+        longer be written back (see ``_release_stored_pw``)."""
+        self._text = None
+        self._date_sample_text = None
+        self._ofx_statements = []
+        self._pdf_candidates = []
+        self._batch_files = []
+        self._batch.discard_passwords()
+        self._stored_pw = None
+
     def _release_stored_pw(self) -> None:
         """Give the provisional account its password back, on any exit that is
         NOT a completed import (FIBR-0321).

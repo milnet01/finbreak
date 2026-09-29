@@ -150,6 +150,12 @@ class TransfersWidget(QWidget):
         self._prefs = prefs
         self._refresh()
 
+    def clear_rows(self) -> None:
+        """Drop the parallel pair lists at LOCK time (FIBR-0322) — the shell's
+        item-model clear does not reach a Python list."""
+        self._candidates = []
+        self._confirmed = []
+
     def _refresh(self) -> None:
         self._candidates = self._detection.candidates()
         self._confirmed = self._detection.confirmed_transfers()

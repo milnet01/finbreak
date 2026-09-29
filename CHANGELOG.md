@@ -164,6 +164,13 @@ signaling per
 
 ### Security
 
+- **Locking now clears every screen straight away, not only the tables.**
+  The Home figures and charts, the Transfers and Recurring lists, account
+  names in drop-downs, the Forecast note and a statement open in the
+  import wizard stayed in memory until the locked window was finally
+  torn down, which an open dialog could delay. They are now wiped at
+  the moment of locking. (FIBR-0367)
+
 - **Statement passwords typed during a batch import are forgotten when it ends** (FIBR-0367)
   A password you typed to open a locked PDF in one batch import stayed in
   memory after the batch was cancelled or finished, and was quietly tried

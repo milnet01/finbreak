@@ -138,6 +138,12 @@ class RecurringWidget(QWidget):
         self._prefs = prefs
         self.refresh()
 
+    def clear_rows(self) -> None:
+        """Drop the parallel item lists at LOCK time (FIBR-0322) — the shell's
+        item-model clear does not reach a Python list."""
+        self._suggested_items = []
+        self._confirmed_items = []
+
     def refresh(self) -> None:
         """Re-read the vault on view (INV-2/D9). One ``snapshot`` pass partitions the
         detected items into Suggested / Confirmed; the summary is the FIBR-0143 card's,
