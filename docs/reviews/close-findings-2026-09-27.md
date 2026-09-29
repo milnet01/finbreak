@@ -152,6 +152,55 @@ last row lands, and its run-level lists live here.
   `obs-submit.sh`'s "pulls the tagged source" comment; `packaging/obs/README.md`;
   `.claude/bump.json` files and `post_check`.
 
-**swept:** (filled at the sweep)
+**swept** (2026-09-29, after row 48; each target re-opened; asked of every
+fix: does it contradict, break, or make stale):
 
-**collateral / surfaced / out_of_scope / falsified:** (filled at the sweep)
+- row 37 — FIBR-0051 INV-2c: agrees (`InterruptedRestoreError` is a
+  `VaultStateError`, so startup still ends in a critical message and exit 1);
+  FIBR-0014 INV-5 and install order: agrees; FIBR-0030's scope note: agrees;
+  CHANGELOG: fixed (entry added).
+- row 38 — FIBR-0054 INV-11: agrees; INV-4's failure list: out_of_scope
+  (below); `_update_worker.py` docstring: agrees (both new classes are
+  `UpdateError`s); CHANGELOG: fixed.
+- row 39 — FIBR-0054 INV-7 and D6, FIBR-0131 INV-1, FIBR-0155 and FIBR-0159's
+  inert-updater clauses, `security-model.md`'s distro passage, the three
+  feature `spec.md` rows: agree (each states "only when" or "unset → none");
+  CHANGELOG: fixed.
+- row 40 — FIBR-0054 D15 / Deliverable 12 and the auto_update INV-9 row:
+  agree; CHANGELOG: fixed.
+- row 41 — CLAUDE.md § Cutting a release: fixed (one sentence); the script
+  header: fixed; `release-windows.sh` headSha check: agrees;
+  `.claude/bump.json` `_comment`: out_of_scope (below).
+- row 42 — both scripts' "never regresses the manifest" comments: agree now;
+  FIBR-0096 step 2 and Residual: fixed; CLAUDE.md's re-upload loop: agrees.
+- row 43 — CLAUDE.md's documented order and `build-release-appimage.sh`'s
+  header: agree.
+- row 45 — CLAUDE.md § Build and test: agrees; `ci.yml`: agrees (GitHub CI
+  green on b9838da and every later push); `ci-docker.sh`: agrees (executed).
+- row 46 — `packaging/flatpak/README.md` and FIBR-0159: agree (neither says
+  where the generator comes from).
+- row 47 — FIBR-0155 "tagged source" and `obs-submit.sh`'s comment: agree
+  now; `packaging/obs/README.md`: fixed; `bump.json` files and `post_check`:
+  fixed (mutation-checked).
+- Pair list: `.claude/code-pairs.json` does not exist on this project; no
+  pair walked.
+
+**collateral:** none. No fix in rows 37-48 broke a target that agreed
+before it. Two tests' own first drafts were caught before commit: row 41's
+control test found a check that read a tag object's sha, and row 40's
+first test let a guard-less mutant pass.
+
+**surfaced:** none.
+
+**out_of_scope:** FIBR-0386 (FIBR-0054 INV-4's failure list, stale since
+FIBR-0327); FIBR-0387 (`bump.json`'s two-asset hand-publish note); FIBR-0384
+(`build-smoke.sh` advising a new signing key, found at row 43); FIBR-0383
+(the unpaired `.old` restore crash, found at row 37); FIBR-0385
+(`obs-submit.sh` mixing sources, row 47's sub-points). Also noted, not filed:
+`release-linux.sh`'s version-lockstep check "mirrors" `bump.json`'s
+`post_check` but checks four files of its nine; a subset, harmless, and older
+than this run.
+
+**falsified:** none.
+
+**Already tracked, annotated 2026-09-29:** FIBR-0333, FIBR-0169, FIBR-0346.

@@ -98,6 +98,12 @@ so Flathub review and code signing do not block this release.
   container of that distro and run finbreak --self-test, which is what
   packaging/obs/README.md already prescribes, then check no libxkbcommon
   travels under /usr/lib/finbreak/.
+  Re-found by the 2026-09-27 full audit (code lane 20,
+  packaging/obs/finbreak.spec BuildRequires libxkbcommon0 and
+  debian/control Build-Depends): the shipped rpm/deb still carry it.
+  The lane's remedy: drop it from BuildRequires/Build-Depends and add
+  libxkbcommon0 + libxkbcommon-x11-0 (per-distro rpm names) to runtime
+  Requires/Depends. Recorded by FIBR-0367 (ledger: already tracked).
   **Layman:** The Linux app-store packages carry the same keyboard-library bug the downloadable version just had fixed.
   Kind: fix.
   Source: in-session-2026-09-21 (found while fixing FIBR-0208).
@@ -1455,6 +1461,9 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   dual-sign. Contract: /mnt/Games/Scripts/Linux/Pressless/docs/specs/PRESS-0023-self-update.md
   §§ 4.3-4.4. finbreak's signed SHA256SUMS is close to this already; the
   gap is that it carries no version line. Overlaps FIBR-0333.
+  Re-found by the 2026-09-27 full audit (code lane 12); the finding
+  and its signed-manifest remedy are recorded on FIBR-0333, which this
+  item overlaps. Recorded by FIBR-0367 (ledger: already tracked).
   **Layman:** Stop a would-be attacker (who can write GitHub releases but holds no signing key) from tricking the app into installing an older, still-signed version.
   Kind: security.
   Source: indie-review-2026-07-23.
@@ -1591,6 +1600,14 @@ touches the § 2 surface. A security fix takes the number its change takes — �
 
   Requires release-write compromise, which is already a strong position --
   so this is defence in depth rather than an open door.
+  Re-found by the 2026-09-27 full audit (code lane 12,
+  services/update.py verify call; docs/reviews/2026-09-27-full-audit/
+  code-lane-12-update.md). New angle: a release-write attacker can also
+  rename a signed .exe and its .sig to the -x86_64.AppImage names, and
+  os.replace puts a Windows binary at $APPIMAGE, bricking the install.
+  The lane's remedy: sign a small manifest (asset name, version,
+  sha256) and require it to match info.version and the installer's
+  suffix. Recorded by FIBR-0367 (ledger: already tracked, annotated).
   **Layman:** Someone who could publish to our releases page could hand the updater an older, genuine finbreak and it would install as if it were newer.
   Kind: security.
   Source: FIBR-0327 tail, 2026-09-04.
@@ -2120,6 +2137,32 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   **Layman:** The openSUSE package upload can combine files from different moments, so a package might not match the release it is labelled with.
   Kind: fix.
   Source: full-audit-2026-09-27 code lane 20 (_service:15 sub-points), queued from FIBR-0367 row 47.
+
+- 📋 [FIBR-0386] **FIBR-0054 INV-4 still lists a truncated file and an absent .sig as signature failures.**
+  INV-4 says any verification failure -- "bad signature, truncated file,
+  wrong key, absent .sig" -- raises UpdateVerificationError. Since
+  FIBR-0327 a body shorter than its Content-Length raises a download
+  error, and row 38 named that UpdateDownloadError; an absent .sig (the
+  .sig fetch fails) takes the same route. Only a truncated file with no
+  Content-Length still reaches the signature check. Amend INV-4 to record
+  the code (annex: the code already exists, no gate). Stale before this
+  run, so filed rather than fixed in the sweep.
+  **Layman:** The updater's design document describes two download failures as security failures, which the app stopped doing weeks ago.
+  Kind: doc-fix.
+  Source: close-findings sweep 2026-09-29 (FIBR-0367 row 38 must_agree).
+
+- 📋 [FIBR-0387] **.claude/bump.json's note still prints a two-asset hand-publish recipe.**
+  The _comment ends "then gh release create v<NEW> with the AppImage +
+  .sig attached" and walks a manual Windows sign-and-attach. Row 43
+  removed the same recipe from build-smoke.sh; CLAUDE.md § Cutting a
+  release already says the two release scripts are what to run.
+  cut-release reads this file, so the recipe is in front of every release.
+  Fix: replace the publish half of the note with a pointer to
+  scripts/release-linux.sh and scripts/release-windows.sh. Stale before
+  this run, so filed rather than fixed in the sweep.
+  **Layman:** The version-bump notes still describe publishing a release by hand with two of its eight files, the mistake that shipped empty releases before.
+  Kind: fix.
+  Source: close-findings sweep 2026-09-29 (FIBR-0367 row 41/43 must_agree).
 
 ## v1.1.0 — Localisation
 
