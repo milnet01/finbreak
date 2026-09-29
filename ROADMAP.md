@@ -2215,7 +2215,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: doc-fix.
   Source: close-findings sweep 2026-09-29 (FIBR-0367 row 38 must_agree).
 
-- 📋 [FIBR-0387] **.claude/bump.json's note still prints a two-asset hand-publish recipe.**
+- ✅ [FIBR-0387] **.claude/bump.json's note still prints a two-asset hand-publish recipe.**
   The _comment ends "then gh release create v<NEW> with the AppImage +
   .sig attached" and walks a manual Windows sign-and-attach. Row 43
   removed the same recipe from build-smoke.sh; CLAUDE.md § Cutting a
@@ -2224,6 +2224,9 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Fix: replace the publish half of the note with a pointer to
   scripts/release-linux.sh and scripts/release-windows.sh. Stale before
   this run, so filed rather than fixed in the sweep.
+  Resolved 2026-09-29: bump.json's _comment points at release-linux.sh
+  and release-windows.sh and says never to publish by hand; CLAUDE.md's
+  aside corrected.
   **Layman:** The version-bump notes still describe publishing a release by hand with two of its eight files, the mistake that shipped empty releases before.
   Kind: fix.
   Source: close-findings sweep 2026-09-29 (FIBR-0367 row 41/43 must_agree).
@@ -5805,7 +5808,7 @@ work, and none of it is a release decision.
   runtime branch 25.08 is current (freedesktop-sdk-25.08.15) and the
   manifest is correctly pinned to v0.1.19.
 
-- 📋 [FIBR-0184] **bump.json's Flatpak re-pin todo names a tagging step the release path doesn't use, so `git rev-parse v<NEW>` fails locally.**
+- ✅ [FIBR-0184] **bump.json's Flatpak re-pin todo names a tagging step the release path doesn't use, so `git rev-parse v<NEW>` fails locally.**
   Hit during the v0.1.18 release. The `.claude/bump.json` todo for the
   Flatpak `commit:` pin says to set it "AFTER `git tag -a v{NEW}`" — but
   nothing in the release path runs `git tag -a`. `scripts/release-linux.sh`
@@ -5830,6 +5833,9 @@ work, and none of it is a release decision.
   still pass either way because they cannot tell whether the tag and the
   commit point at the same object. That blind spot is the reason this is a
   manual step at all, so a wrong instruction here is worth fixing.
+  Resolved 2026-09-29: option (b) had already landed (release-linux.sh
+  fetches the tag and prints the sha to pin); the bump.json todo still
+  named `git tag -a` and now names that sequence instead.
   **Layman:** A release checklist step tells you to look up something that isn't on your computer yet, so it fails until you fetch it first.
   Kind: doc-fix.
   Source: in-session-2026-07-28 (v0.1.18 release).
