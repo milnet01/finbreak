@@ -2689,7 +2689,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: security.
   Source: full-audit-2026-09-27 code lane 20 (queued by FIBR-0367).
 
-- 🚧 [FIBR-0401] **Queued findings from the 2026-09-27 audit: crypto lane (6 items).**
+- ✅ [FIBR-0401] **Queued findings from the 2026-09-27 audit: crypto lane (6 items).**
   From docs/reviews/2026-09-27-full-audit/code-lane-01-crypto.md.
   Line numbers are the audited commit's (52e5162); find sites by symbol.
   - [Medium] vault.py:323-324 -- a freshly created vault records no
@@ -2717,6 +2717,15 @@ touches the § 2 surface. A security fix takes the number its change takes — �
     pre-launch LD_PRELOAD from child processes (unverified). Fix: check
     the PyInstaller bootloader source, then restore only what it
     changed.
+  Resolved 2026-09-29: all six fixed, each red-first. The Medium:
+  FIBR-0019 gained INV-14 (a database with no recorded cipher level is
+  created and opened at LIVE_VAULT_CIPHER_COMPAT, 4), gated by
+  review-contract loops 8-10 (7 verified, 7 fixed, cap reached), then
+  built in Vault._connect (e2a87f9). The rest (e6ed518): strict JSON
+  types in the sidecar readers; _connect closes the connection on a
+  failed setup PRAGMA; security-model INV-3 names rekey and export_to;
+  update_key docstring corrected; LD_PRELOAD left alone, since the
+  bootloader never sets it (measured on a 6.21.0 bundle).
   **Layman:** Six smaller problems in the code that locks and unlocks your vault, including one where a future library update could stop a new vault from opening.
   Kind: security.
   Source: full-audit-2026-09-27 code lane 1 (queued by FIBR-0367).
