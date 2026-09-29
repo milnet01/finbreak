@@ -12,8 +12,30 @@ import os
 import sys
 import tempfile
 from pathlib import Path
+from typing import TextIO
 
 from finbreak import _selftest
+
+
+def _open_fallback_output(directory: Path) -> TextIO:
+    """Open the no-console self-test file, never through a symlink.
+
+    The name is fixed so a user can find it, and the directory may be a shared
+    ``/tmp``. A symlink planted at that name would redirect the write, so the open
+    refuses to follow one and falls back to a fresh private file beside it
+    (FIBR-0392). ``O_NOFOLLOW`` does not exist on Windows, whose temp directory is
+    per-user."""
+    path = directory / "finbreak-selftest.txt"
+    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        fd = os.open(path, flags, 0o600)
+    except OSError:
+        fd, name = tempfile.mkstemp(
+            prefix="finbreak-selftest-", suffix=".txt", dir=directory
+        )
+        path = Path(name)
+    print(f"finbreak: self-test output -> {path}", file=sys.stderr)
+    return os.fdopen(fd, "w", encoding="utf-8")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -48,8 +70,8 @@ def main(argv: list[str] | None = None) -> int:
             # nothing else. Fall back to a known file so the mode always has an
             # observable result. Named on stderr too, which costs nothing when
             # stderr is also None.
-            out_path = str(Path(tempfile.gettempdir()) / "finbreak-selftest.txt")
-            print(f"finbreak: self-test output -> {out_path}", file=sys.stderr)
+            with _open_fallback_output(Path(tempfile.gettempdir())) as out:
+                return _selftest.run_self_test(out=out)
         if out_path:
             with open(out_path, "w", encoding="utf-8") as out:
                 return _selftest.run_self_test(out=out)

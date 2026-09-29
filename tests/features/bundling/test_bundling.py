@@ -466,6 +466,34 @@ def test_FIBR0132_windowed_build_still_emits_a_sentinel(monkeypatch, tmp_path):
     assert rc == 0
 
 
+@pytest.mark.skipif(not hasattr(os, "O_NOFOLLOW"), reason="POSIX symlink guard")
+def test_FIBR0392_self_test_fallback_does_not_write_through_a_symlink(
+    qapp, monkeypatch, tmp_path
+):
+    """FIBR-0392 finding 10: the no-console fallback file has a fixed name in a
+    shared temp dir. A symlink planted there must not redirect the write; the
+    sentinel goes to a fresh file beside it instead."""
+    import finbreak.__main__ as main_mod
+
+    out_dir = tmp_path / "shared-tmp"
+    out_dir.mkdir()
+    victim = tmp_path / "victim.txt"
+    victim.write_text("precious", encoding="utf-8")
+    (out_dir / "finbreak-selftest.txt").symlink_to(victim)
+    monkeypatch.setattr(main_mod.tempfile, "gettempdir", lambda: str(out_dir))
+    monkeypatch.delenv("FINBREAK_SELFTEST_OUT", raising=False)
+    monkeypatch.setattr(main_mod.sys, "argv", ["finbreak", "--self-test"])
+    monkeypatch.setattr(main_mod.sys, "stdout", None)
+
+    rc = main_mod.main()
+
+    assert victim.read_text(encoding="utf-8") == "precious"
+    written = [p for p in out_dir.glob("finbreak-selftest-*.txt") if not p.is_symlink()]
+    assert len(written) == 1
+    assert written[0].read_text(encoding="utf-8").strip() == "FINBREAK_SELFTEST_OK"
+    assert rc == 0
+
+
 def test_FIBR0132_run_self_test_falls_back_to_stderr_when_stdout_is_none(
     qapp, monkeypatch
 ):
