@@ -33,6 +33,15 @@ signaling per
 
 ### Fixed
 
+- **Saving a new recovery code can no longer leave you with a saved code that does not work.** (FIBR-0367)
+  "Save to a file" comes before choosing Keep or Decline. Saving and
+  then declining left the file holding a code that opens nothing — and
+  when replacing a code, that file could be the one holding the code
+  that still works. Declining after a save now asks first, and "Keep
+  the new code" makes the saved file the working one. The suggested
+  file name carries the date, and a save that fails part-way leaves
+  the old file as it was.
+
 - **A settings save that fails during setup no longer loses your recovery code** (FIBR-0367)
   If finbreak created your vault but then could not save your date,
   time or amount display choices (for example, a full disk), it said

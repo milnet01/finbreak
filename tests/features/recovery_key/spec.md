@@ -531,6 +531,25 @@ every credential, account and transaction here is synthetic
   (FIBR-0367 ledger row 34).
   Source: full-audit-2026-09-27, code lane 15 (FIBR-0367 row 34).
 
+- **INV-28** — "Save to a file" never leaves the user a saved code that opens
+  nothing. Save runs before Keep or Decline, so a Decline after a successful
+  Save asks first, naming the file: **Keep the new code** accepts the offer (so
+  the saved file holds the working code), **Decline anyway** declines, **Go
+  back** decides nothing. A Decline with no Save goes straight through. The
+  suggested name carries the app clock's day, so the default target is never an
+  earlier save's file. The file is replaced whole or not at all: the code goes
+  to `<name>.part`, created fresh at 0600, `O_EXCL` and never through a link,
+  then `os.replace`; on failure the temp is removed and the old file stands.
+  *Test:* `test_saving_the_code.py` — the question appears and names the file;
+  after Keep the saved file's code unwraps the recovery slot and opens the
+  vault; Decline anyway writes no slot; Go back leaves the offer open; no Save,
+  no question; the suggested name; a write failing part-way leaves the old
+  file's contents and no partial file; a `.part` planted as a link to another
+  file is never written through, and the saved file is 0600.
+  `test_settings_flows.py::test_the_saved_recovery_code_is_owner_only` keeps
+  the mode leg over an existing 0644 file.
+  Source: full-audit-2026-09-27, code lane 15 (FIBR-0367 row 35).
+
 ## Rationale
 
 `AuthService.reset_vault` — "start over" — is the live answer to *I forgot my

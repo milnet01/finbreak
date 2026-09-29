@@ -15,6 +15,7 @@ is what INV-5 is about.
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 from PySide6.QtCore import QCoreApplication, QEvent, QObject, Qt, Signal
 from PySide6.QtGui import (
@@ -39,6 +40,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from finbreak.datetime_format import today as app_today
 from finbreak.errors import VaultLockedError
 from finbreak.services.auth import DEFAULT_CLIPBOARD_CLEAR_SECONDS, AuthService
 from finbreak.services.password_strength import assess
@@ -102,6 +104,9 @@ class RecoveryCodeDialog(QDialog):
     ):
         super().__init__(parent)
         self._code = code
+        # Where Save wrote the code, so a Decline after it can say so.
+        self._saved_to: str | None = None
+        self._decline_confirmed = False
         # Copy goes through the auto-clear guard, as a transaction description
         # already does (FIBR-0032) — and this is the most sensitive thing the
         # app copies, since it opens the vault on its own.
@@ -231,42 +236,18 @@ class RecoveryCodeDialog(QDialog):
         self._clipboard.copy(self._code)
 
     def _save(self) -> None:
+        # Dated, so the default target is never the file an earlier save made —
+        # which on Replace holds the code that still works (FIBR-0367 row 35).
         path, _filter = QFileDialog.getSaveFileName(
             self,
             self.tr("Save your recovery code"),
-            "finbreak-recovery-code.txt",
+            f"finbreak-recovery-code-{app_today().isoformat()}.txt",
             self.tr("Text files (*.txt)"),
         )
         if not path:
             return
         try:
-            # Owner-only, like every other secret-bearing write in the app
-            # (coding.md § 7). A plain open() creates at the process umask,
-            # which is 0644 on a normal desktop — a credential that opens the
-            # vault on its own, readable by every account on the machine
-            # (FIBR-0310 P4).
-            #
-            # The chmod covers the case the mode argument cannot: an EXISTING
-            # file the user chose to overwrite keeps its own permissions, and
-            # that is the file this code is about to be written into. Both are
-            # near no-ops on Windows, which has no umask and where chmod only
-            # toggles the read-only bit; the POSIX desktops are where the
-            # exposure is.
-            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-            try:
-                # By DESCRIPTOR, never by path: a chmod on the path acts on
-                # whatever the name means by then, which need not be the file
-                # this fd was opened on (CWE-367). os.fchmod is POSIX-only, and
-                # the comment above already places the exposure on POSIX.
-                if hasattr(os, "fchmod"):
-                    os.fchmod(fd, 0o600)
-            except OSError:
-                # Refusing to save over a mode the platform will not change
-                # would deny the user the copy they asked for, and the write
-                # below is still the point of the affordance.
-                pass
-            with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                handle.write(self._code + "\n")
+            _write_code_file(Path(path), self._code)
         except OSError as exc:
             QMessageBox.warning(
                 self,
@@ -275,6 +256,88 @@ class RecoveryCodeDialog(QDialog):
                     error=exc
                 ),
             )
+            return
+        self._saved_to = path
+
+    def reject(self) -> None:
+        """Decline — but not past a saved file without saying what it holds.
+
+        Save runs before Keep or Decline. Declining after it leaves the file
+        holding a code no slot opens, and on Replace that file may be the one
+        that held the code which still works. So ask, and let "Keep the new
+        code" make the saved file the working one. Decline, Escape and the
+        window [X] all arrive here.
+
+        Non-blocking, like every other dialog in the shell: ``exec()`` would
+        spin a nested loop inside the handler that called this.
+        """
+        if self._saved_to is None or self._decline_confirmed:
+            super().reject()
+            return
+        box = QMessageBox(self)
+        box.setObjectName("recovery_code_decline_check")
+        box.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setWindowTitle(self.tr("You saved this code"))
+        box.setText(
+            self.tr(
+                "You saved this code to:\n{path}\n\nIf you decline it, that file "
+                "holds a code that will not open your vault. If the file used to "
+                "hold a code that works, that copy is gone — keeping the new code "
+                "is how you keep a saved code that works."
+            ).format(path=self._saved_to)
+        )
+        keep = box.addButton(
+            self.tr("Keep the new code"), QMessageBox.ButtonRole.AcceptRole
+        )
+        decline = box.addButton(
+            self.tr("Decline anyway"), QMessageBox.ButtonRole.DestructiveRole
+        )
+        back = box.addButton(self.tr("Go back"), QMessageBox.ButtonRole.RejectRole)
+        box.setDefaultButton(keep)
+        box.setEscapeButton(back)
+
+        def answered(button: object) -> None:
+            if button is keep:
+                self.accept()
+            elif button is decline:
+                self._decline_confirmed = True
+                self.reject()
+
+        box.buttonClicked.connect(answered)
+        box.open()
+
+
+def _write_code_file(target: Path, code: str) -> None:
+    """Replace ``target`` with the code whole, or leave it as it was.
+
+    Truncating the file and then writing it lost the old contents on any failure
+    in between, and the file being saved over may hold the only copy of the code
+    that works. So the code goes to a temp file beside it, then ``os.replace``.
+
+    Owner-only, like every other secret-bearing write in the app (coding.md
+    § 7): the code opens the vault on its own. The temp file is created fresh
+    at 0600 and the rename carries that inode, so an existing file's looser mode
+    is never inherited. The temp name is predictable, so it is created
+    ``O_EXCL`` and never through a link — the guarded open ``pdf_export`` uses —
+    after clearing any stale one (``unlink`` removes a link, never its target).
+    """
+    tmp = target.with_name(target.name + ".part")
+    try:
+        tmp.unlink(missing_ok=True)
+        fd = os.open(
+            tmp,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
+            0o600,
+        )
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(code + "\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp, target)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
 
 
 class NewMasterPasswordDialog(QDialog):
