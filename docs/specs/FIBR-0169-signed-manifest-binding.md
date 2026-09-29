@@ -65,7 +65,10 @@ both files (`gh release view v<V> --json assets`). The updater never reads them.
 
 ### 4.1 Offer (`check_for_update`)
 
-`UpdateInfo` gains `manifest_url` and `manifest_sig_url`. A release is offered
+`UpdateInfo` gains `manifest_url` and `manifest_sig_url`, both required with no
+default: an empty or absent one is never read as "skip the check". Existing
+code and tests that build an `UpdateInfo` pass both, and the existing
+`download_and_verify` tests gain a signed manifest. A release is offered
 only if its assets carry exactly one `SHA256SUMS` and exactly one
 `SHA256SUMS.sig`, each with a download URL, in addition to what
 `_select_assets` already requires. Otherwise `check_for_update` returns `None`,
@@ -100,9 +103,10 @@ does, and reaches the shell's security-check message (FIBR-0367 row 38).
 
 A Windows release adds its `.exe` to a release whose `SHA256SUMS` lists only
 the AppImage. Uploaded together, the `.exe` can be public while the manifest
-still lacks its line, and a client checking then is refused with the tamper
-message. So `release-windows.sh` uploads `SHA256SUMS` and `SHA256SUMS.sig` in
-one `gh release upload` call, and the `.exe`, its `.sig` and the SBOM in a
+still lacks its line, and a Windows client checking then is refused with the
+tamper message — for as long as the `.exe` upload takes. So
+`release-windows.sh` uploads `SHA256SUMS` and `SHA256SUMS.sig` in one
+`gh release upload` call, and the `.exe`, its `.sig` and the SBOM in a
 second call after the first succeeds. Between the two, the manifest names an
 `.exe` the release does not carry yet, so § 4.1 offers nothing.
 `release-linux.sh` needs no change: on the documented path its manifest and
@@ -157,9 +161,12 @@ two lines for one file can only mean an edited manifest.
 
 - **INV-5** — `SHA256SUMS` is read under `_MAX_MANIFEST_BYTES`; a larger
   response is an `UpdateDownloadError` and nothing is installed.
-  *Test:* `test_auto_update.py`, a fetcher recording the `max_bytes` passed
-  for the manifest URL → `_MAX_MANIFEST_BYTES`.
-  *Breaks when:* the manifest is fetched with the 200 MiB asset cap or none.
+  *Test:* `test_auto_update.py`, two legs: a fetcher recording the
+  `max_bytes` passed for the manifest URL → `_MAX_MANIFEST_BYTES`; and a
+  fetcher raising `ValueError` for the manifest URL → `UpdateDownloadError`,
+  with no temp file left.
+  *Breaks when:* the manifest is fetched with the 200 MiB asset cap or none,
+  or after the fetch window closes, so its failure is a plain `UpdateError`.
 
 - **INV-6** — `release-windows.sh` uploads `SHA256SUMS` and its `.sig` in a
   `gh release upload` call that finishes before the call uploading the `.exe`.
@@ -185,6 +192,15 @@ defence; FIBR-0054 INV-4 and INV-10 stay as they are.
   between the two uploads the manifest and the binary disagree, and a client
   checking then gets the security-check message. Accepted: it happens only on a
   deliberate repair, and the next check succeeds.
+- **The manifest pair on every Windows publish, for Linux clients.**
+  `--clobber` replaces `SHA256SUMS` and `SHA256SUMS.sig` as separate assets
+  (`CLAUDE.md` § Cutting a release records a failed upload leaving
+  `SHA256SUMS.sig` without `SHA256SUMS`) on a release Linux clients are already offered. Between
+  the two, a new file sits beside an old one, and a Linux client downloading
+  then gets the security-check message. Accepted: the gap is one small upload
+  long, the next check succeeds, and closing it would need a client retry the
+  gap does not justify. § 4.3's split closes the much longer window, the whole
+  `.exe` upload, for Windows clients.
 - **A release published by hand without `SHA256SUMS`.** Not offered.
   FIBR-0096 and the release scripts' read-back gate (FIBR-0275) already make
   it a required asset.
@@ -244,7 +260,11 @@ and (b) are the two attacks in § 2.
 - `docs/security-model.md` — the two passages calling the per-file `.sig` the
   primary gate and the manifest a manual signal: the updater now requires both.
 - `docs/specs/FIBR-0096.md` — its Residual paragraph: a deleted manifest now
-  also stops updates (INV-1).
+  also stops updates (INV-1). And "the manifest always matches the assets
+  present", with the INV-13 wording "every basename it lists is a genuine
+  release asset" (also in `docs/security-model.md`): between § 4.3's two
+  uploads the manifest names an `.exe` not yet attached, so both become true
+  once a publish completes.
 - `docs/specs/FIBR-0054.md` — its Out-of-scope "Rollback" entry gains a
   pointer here, since the downgrade case is now covered.
 - `CHANGELOG.md` `[Unreleased]` — a Security entry.
