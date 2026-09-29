@@ -2591,7 +2591,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: review-fix.
   Source: full-audit-2026-09-27 code lane 18 (queued by FIBR-0367).
 
-- 📋 [FIBR-0399] **Queued findings from the 2026-09-27 audit: release scripts lane (12 items).**
+- ✅ [FIBR-0399] **Queued findings from the 2026-09-27 audit: release scripts lane (12 items).**
   From docs/reviews/2026-09-27-full-audit/code-lane-19-release-scripts.md.
   Line numbers are the audited commit's (52e5162); find sites by symbol.
   - [Low] scripts/release-windows.sh:56-59 -- TAG_SHA is computed after
@@ -2631,6 +2631,16 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   - [Low] scripts/seed_demo_vault.py:19,27 -- the usage imports an
     installed finbreak that may be older than src/. Fix: add the
     sys.path insert capture_screenshots.py uses.
+  Resolved 2026-09-29 (5e9a1ef): eleven fixed, one dismissed as
+  already fixed (windows-build.yml timeout-minutes, set by FIBR-0373).
+  release-windows.sh: tag resolved before dispatch, retried gh run calls,
+  --run-id resume, exact eight-name check. release-linux.sh runs
+  bump.json's post_check. Both scripts share a per-clone lock. Windows
+  runner pinned to windows-2025-vs2026. Cached appimagetool re-checked on
+  every use; clean-room build output shown on failure. Screenshot and
+  demo-vault helpers fixed, with a new demo_scripts test suite. Real
+  build smoke test passed. Sweep updated current-state windows-latest
+  mentions and added the --run-id resume to CLAUDE.md.
   **Layman:** Twelve fixes to the scripts that build and publish releases: making the Windows step recover from GitHub hiccups, checking asset names exactly, re-checking a cached download tool, adding timeouts and clearer errors.
   Kind: security.
   Source: full-audit-2026-09-27 code lane 19 (queued by FIBR-0367).
