@@ -528,7 +528,7 @@ def test_relaunch_command_waits_for_old_pid_then_execs_the_image():
     # The waiter: poll `kill -0 <pid>` until the old process is gone (its FUSE
     # mount unmounted + PyInstaller _MEI dir cleaned), THEN exec the image. The
     # path rides in as an ARGV positional, so no quoting of it reaches the script.
-    cmd = _relaunch_command("/opt/My Apps/finbreak.AppImage", 4242)
+    cmd = _relaunch_command("/opt/My Apps/finbreak.AppImage", (4242,))
     assert cmd[:2] == ["/bin/sh", "-c"]
     script = cmd[2]
     assert "kill -0 4242" in script  # blocks on the OLD pid
@@ -536,6 +536,43 @@ def test_relaunch_command_waits_for_old_pid_then_execs_the_image():
     assert script.rstrip().endswith('exec "$1"')  # the exec target is $1
     assert cmd[3:] == ["sh", "/opt/My Apps/finbreak.AppImage"]
     assert script.index("kill -0 4242") < script.index("exec ")
+
+
+def test_FIBR0392_the_relaunch_waits_for_every_pid_it_is_given(tmp_path):
+    """Full audit 2026-09-27 (FIBR-0392, code lane 12): the waiter blocked on
+    the Python process only. In a onefile AppImage that is the CHILD; its
+    bootloader parent -- which cleans the _MEI dir and outlives it -- was not
+    waited on, so the new image could start while the old one tore down."""
+    import time
+
+    target = tmp_path / "finbreak.AppImage"
+    target.write_text("#!/bin/sh\necho REACHED-THE-IMAGE\n")
+    target.chmod(0o755)
+    gone = subprocess.Popen(["true"])  # the Python child: already exited
+    gone.wait()
+    launcher = subprocess.Popen(["sleep", "1.5"])  # the parent still tearing down
+    try:
+        waiter = subprocess.Popen(  # nosec B603 - fixed /bin/sh, our own argv
+            _relaunch_command(str(target), (gone.pid, launcher.pid)),
+            stdout=subprocess.PIPE,
+            text=True,
+        )
+        time.sleep(0.5)
+        assert waiter.poll() is None, "the image started before the parent exited"
+        launcher.wait()
+        out, _ = waiter.communicate(timeout=10)
+    finally:
+        launcher.kill()
+    assert "REACHED-THE-IMAGE" in out
+
+
+def test_FIBR0392_a_frozen_build_waits_for_its_bootloader_too(monkeypatch):
+    from finbreak.services import update_installer as ui
+
+    monkeypatch.setattr(ui.sys, "frozen", True, raising=False)
+    assert ui._relaunch_pids() == (os.getpid(), os.getppid())
+    monkeypatch.setattr(ui.sys, "frozen", False, raising=False)
+    assert ui._relaunch_pids() == (os.getpid(),)
 
 
 def test_relaunch_writes_diagnostic_log(monkeypatch, tmp_path):
@@ -2454,7 +2491,7 @@ def test_FIBR0327_relaunch_actually_execs_an_apostrophe_bearing_path(tmp_path):
         dead -= 1
 
     done = subprocess.run(  # nosec B603 - fixed /bin/sh, our own argv
-        _relaunch_command(str(target), dead),
+        _relaunch_command(str(target), (dead,)),
         capture_output=True,
         text=True,
         timeout=30,

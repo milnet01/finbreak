@@ -23,7 +23,7 @@ import shutil
 import subprocess  # nosec B404
 import sys
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import NoReturn, Protocol, TextIO, runtime_checkable
 
@@ -67,10 +67,11 @@ def _relaunch_env() -> dict[str, str]:
     return env
 
 
-def _relaunch_command(appimage: str, pid: int) -> list[str]:
-    """A detached ``/bin/sh`` waiter: block until the OLD process (*pid*) has fully
-    exited — so the AppImage's FUSE mount is unmounted and its PyInstaller ``_MEI``
-    extraction dir is cleaned — THEN ``exec`` the swapped image.
+def _relaunch_command(appimage: str, pids: Sequence[int]) -> list[str]:
+    """A detached ``/bin/sh`` waiter: block until every OLD process in *pids* has
+    fully exited — so the AppImage's FUSE mount is unmounted and its PyInstaller
+    ``_MEI`` extraction dir is cleaned — THEN ``exec`` the swapped image.
+    ``_relaunch_pids`` says which processes those are.
 
     Launching the new image *before* the old one tears down is the "closed but
     didn't reopen" race (0.1.2→0.1.3, 0.1.4→0.1.5): the fresh onefile bootloader
@@ -88,10 +89,12 @@ def _relaunch_command(appimage: str, pid: int) -> list[str]:
     ``"$1"`` the path never reaches the shell's parser at all, so there is no
     quoting to get right (FIBR-0327).
     """
+    alive = " || ".join(f"kill -0 {int(pid)} 2>/dev/null" for pid in pids)
+    waited = " ".join(str(int(pid)) for pid in pids)
     script = (
-        f'echo "[finbreak] waiting for pid {pid} to exit before relaunch"; '
+        f'echo "[finbreak] waiting for pid {waited} to exit before relaunch"; '
         "i=0; "
-        f"while kill -0 {pid} 2>/dev/null; do "
+        f"while {alive}; do "
         'i=$((i+1)); [ "$i" -ge 600 ] && break; sleep 0.1; '
         "done; "
         'echo "[finbreak] launching $1"; '
@@ -100,6 +103,17 @@ def _relaunch_command(appimage: str, pid: int) -> list[str]:
     # argv after the script is $0, $1, ...: "sh" names the shell for its own error
     # messages, and the image path arrives as $1.
     return ["/bin/sh", "-c", script, "sh", appimage]
+
+
+def _relaunch_pids() -> tuple[int, ...]:
+    """The processes the relaunch must outlive. A frozen onefile build runs as
+    TWO: the PyInstaller bootloader and the Python child it spawned. The child
+    is this process; the bootloader, its parent, cleans the ``_MEI`` dir after
+    the child exits, so waiting on the child alone let the new image start
+    while the old one was still tearing down (FIBR-0392)."""
+    if getattr(sys, "frozen", False):
+        return (os.getpid(), os.getppid())
+    return (os.getpid(),)
 
 
 def _relaunch_log_path() -> Path | None:
@@ -289,19 +303,19 @@ class AppImageInstaller:
         # image with a reset environment (see _relaunch_env / _relaunch_command). A
         # NEW SESSION lets the waiter outlive this process's exit. Any output is
         # captured to the relaunch log so a future silent failure leaves evidence.
-        pid = os.getpid()
+        pids = _relaunch_pids()
         log = _relaunch_log_handle()
         if log is not None:
             log.write(
                 f"{time.strftime('%Y-%m-%d %H:%M:%S')} relaunch: swapped in "
-                f"{self._appimage_path}; waiting on pid {pid} then exec\n"
+                f"{self._appimage_path}; waiting on pid {pids} then exec\n"
             )
             log.flush()
         stdio: TextIO | int = log if log is not None else subprocess.DEVNULL
         try:
             # B603: fixed /bin/sh waiter, our own argv.
             subprocess.Popen(  # nosec B603
-                _relaunch_command(str(self._appimage_path), pid),
+                _relaunch_command(str(self._appimage_path), pids),
                 env=_relaunch_env(),
                 stdin=subprocess.DEVNULL,
                 stdout=stdio,
