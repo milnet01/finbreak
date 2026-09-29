@@ -1368,7 +1368,7 @@ so Flathub review and code signing do not block this release.
   Kind: fix.
   Source: close-findings sweep 2026-09-29 (FIBR-0367 row 43, next door).
 
-- 📋 [FIBR-0410] **Queued findings from the 2026-09-27 audit: models and repositories lane (2 items, one High).**
+- ✅ [FIBR-0410] **Queued findings from the 2026-09-27 audit: models and repositories lane (2 items, one High).**
   From docs/reviews/2026-09-27-full-audit/code-lane-09-models-repos.md.
   Line numbers are the audited commit's (52e5162); find sites by symbol.
   A High the serious tier (FIBR-0367 rows 1-48) did not list, so filed in
@@ -1385,6 +1385,13 @@ so Flathub review and code signing do not block this release.
     sink the user never learns of it. Fix: return a flag from
     update_closing_balance so commit_import reports it in ImportResult;
     keep the id-only log line.
+  Resolved 2026-09-29 (bd5b818): both fixed. The High: design.md's
+  rotating log file now exists (finbreak/log_file.py, installed at
+  startup in the data folder, owner-only, 1 MB x 3), and Settings shows
+  its path. Every existing log line was checked against INV-9 first. The
+  Medium: a re-import whose closing balance disagrees is reported by the
+  wizard and the batch report (ImportResult.closing_balance_mismatch),
+  never showing the amounts.
   **Layman:** The app promises a log file you can find in Settings, but no log file is ever written, so warnings such as a statement balance that does not match are seen by nobody.
   Kind: review-fix.
   Source: full-audit-2026-09-27 code lane 9 (queued by FIBR-0367).
