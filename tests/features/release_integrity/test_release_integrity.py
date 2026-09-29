@@ -835,3 +835,63 @@ def test_release_linux_creates_the_release_on_the_commit_it_built():
     create = re.search(r"^\s*gh release create [^\n]*", joined, re.MULTILINE)
     assert create is not None
     assert '--target "$HEAD_SHA"' in create.group(0), create.group(0)
+
+
+# --------------------------------------------------------------------------- #
+# Full audit 2026-09-27 row 42 — a release that EXISTS but lists no SHA256SUMS
+# is not a fresh start unless nothing else says a manifest was ever published.
+# --------------------------------------------------------------------------- #
+_FRESH_GUARD = _SCRIPTS / "_manifest-may-start-fresh.sh"
+
+
+def _may_start_fresh(tmp_path: Path, assets: list[str], other: str) -> int:
+    listing = tmp_path / "assets.txt"
+    listing.write_text("".join(f"{name}\n" for name in assets))
+    return subprocess.run(
+        [str(_FRESH_GUARD), str(listing), other], capture_output=True, text=True
+    ).returncode
+
+
+@pytest.mark.parametrize(
+    ("assets", "other", "fresh"),
+    [
+        # cut-release made the release; nothing is attached yet -> fresh.
+        ([], "*.exe", True),
+        # The 0.1.21 half-state: the sig survived a failed --clobber, the
+        # manifest did not. A fresh one drops the other platform's line.
+        (["SHA256SUMS.sig"], "*.exe", False),
+        # Linux re-run after the Windows half landed without a manifest.
+        (
+            ["finbreak-1.2.3-x86_64.exe", "finbreak-1.2.3-x86_64.exe.sig"],
+            "*.exe",
+            False,
+        ),
+        # Windows run after the Linux half: same, the other way round.
+        (["finbreak-1.2.3-x86_64.AppImage"], "*.AppImage", False),
+        # This platform's own leftovers are replaced, so they do not block.
+        (["finbreak-1.2.3-x86_64.AppImage"], "*.exe", True),
+    ],
+    ids=["empty", "orphan-sig", "linux-sees-exe", "windows-sees-appimage", "own-only"],
+)
+def test_a_release_without_sha256sums_starts_fresh_only_when_unambiguous(
+    tmp_path, assets, other, fresh
+):
+    assert (_may_start_fresh(tmp_path, assets, other) == 0) is fresh
+
+
+@pytest.mark.parametrize(
+    ("script", "other"),
+    [(_RELEASE_LINUX, "'*.exe'"), (_RELEASE_WINDOWS, "'*.AppImage'")],
+    ids=lambda v: getattr(v, "name", v),
+)
+def test_both_release_scripts_ask_the_guard_before_a_fresh_manifest(script, other):
+    """The guard does nothing unless both scripts call it on the existing-release
+    branch that finds no SHA256SUMS, naming the OTHER platform's artifact."""
+    text = script.read_text()
+    call = f'scripts/_manifest-may-start-fresh.sh "$VIEW_ASSETS" {other}'
+    assert call in text, f"{script.name} does not call the guard as {call}"
+    listed = text.index('if grep -qx SHA256SUMS "$VIEW_ASSETS"; then')
+    not_found = text.index('elif grep -qi "release not found" "$VIEW_ERR"; then')
+    assert listed < text.index(call) < not_found, (
+        f"{script.name}: the guard must sit on the existing-release branch"
+    )

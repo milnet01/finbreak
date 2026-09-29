@@ -161,6 +161,11 @@ except InvalidSignature:
     sys.exit("release-windows: FETCHED SHA256SUMS FAILED VERIFICATION — refusing to merge (won't launder a tampered manifest)")
 print("release-windows: fetched SHA256SUMS verified against the committed public key")
 PY
+    else
+        # The release exists and lists no manifest. That is a fresh start only
+        # when nothing says one was ever published (full audit 2026-09-27 row 42).
+        scripts/_manifest-may-start-fresh.sh "$VIEW_ASSETS" '*.AppImage'
+        echo "== release-windows: release $TAG has no SHA256SUMS yet — starting a fresh one =="
     fi
 elif grep -qi "release not found" "$VIEW_ERR"; then
     echo "== release-windows: no existing release $TAG — starting a fresh SHA256SUMS =="
