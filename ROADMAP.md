@@ -397,7 +397,7 @@ so Flathub review and code signing do not block this release.
   Kind: release.
   Source: user-decision-2026-08-20 ("what gets us to v1.0?").
 
-- 🚧 [FIBR-0367] **Close the 2026-09-27 full-audit findings — serious tier now, the rest queued.**
+- ✅ [FIBR-0367] **Close the 2026-09-27 full-audit findings — serious tier now, the rest queued.**
   check-code --tree, review-code FULL, review-tests FULL and
   verify-delivery ([0.1.23]) ran against 52e5162.
   The ledger is docs/reviews/close-findings-2026-09-27.md: it names the
@@ -482,6 +482,13 @@ so Flathub review and code signing do not block this release.
   passed). Rows 37-48 share one sweep, recorded in the ledger's § Sweep
   section and run after row 48. Next: row 39 (update_installer.py
   inherited $APPIMAGE targets another app).
+  Resolved 2026-09-29: all 48 serious-tier rows closed (rows 37-48
+  this session: f97ff08..8b9ac35), each red first where anything was
+  observable, gate green, GitHub CI green. One sweep over rows 37-48
+  is in the ledger's § Sweep. Every other finding is queued, one item
+  per lane file: FIBR-0388..0422 (FIBR-0410, a High, in the 1.0.0
+  gate). Found next door and filed: FIBR-0383..0387. Already-tracked
+  items annotated: FIBR-0169, FIBR-0333, FIBR-0346.
   **Layman:** A full check of the app found bugs; the serious ones (wrong dates or amounts, lost data, security gaps) are being fixed now and the rest are filed.
   Kind: review-fix.
   Source: full-audit-2026-09-27.
