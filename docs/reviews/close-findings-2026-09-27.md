@@ -112,6 +112,22 @@ finding (FIBR-0169, FIBR-0333); code 20's libxkbcommon finding (FIBR-0346).
 Every finding not listed above is queued. Filing is by lane: one roadmap item
 per lane file, naming each finding it carries. The lane files are the source.
 
+Filed 2026-09-29, one item per lane file, each naming its findings and what
+it excluded (a ledger row, an existing item, or a refutation):
+
+| Lane files | Items |
+|---|---|
+| delivery reports A, B, C | FIBR-0388, FIBR-0389, FIBR-0390 |
+| code lanes 1-8, 10 | FIBR-0401 to FIBR-0409 |
+| code lane 9 (carries a High: no log handler exists) | FIBR-0410, in the 1.0.0 gate |
+| code lanes 11-20 | FIBR-0391 to FIBR-0400 |
+| tests lanes T01-T12 | FIBR-0411 to FIBR-0422 |
+
+The drafts were written by read-only helpers from the lane files and rows
+1-48; each High and a sample of other claims were re-checked against the
+tree before filing. Two test-lane code notes with no code-lane home ride on
+FIBR-0413 and FIBR-0419.
+
 ## Sweep (rows 37-48)
 
 Rows 1-36 were closed before this section existed; their sweeps ran per

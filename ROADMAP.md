@@ -2914,6 +2914,414 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: review-fix.
   Source: full-audit-2026-09-27 code lane 10 (queued by FIBR-0367).
 
+- 📋 [FIBR-0411] **Queued test findings from the 2026-09-27 audit: recovery-key migration and envelope tests (9 items).**
+  From docs/reviews/2026-09-27-full-audit/tests-lane-T01-recovery-migration.md.
+  Paths are under tests/features/; lines as of 2026-09-29.
+  - recovery_key/test_migration.py:134 -- the crash-point legs swallow
+    _Abort with try/except, so a leg whose abort never fires runs a full
+    migration and still passes. Fix: record that the abort fired and use
+    pytest.raises(_Abort) whenever a target is set.
+  - recovery_key/test_migration.py:1247 -- seen_before_copy == [] also
+    holds when watch_ensure never runs, so dropping the
+    _ensure_rollback_copy call (the INV-13 regression) stays green. Fix:
+    count watch_ensure calls and assert exactly one before checking the
+    list.
+  - recovery_key/test_envelope.py:135 -- the v1-key-does-not-open check
+    has no positive control, and opens_with ignores the sidecar's
+    cipher_compatibility, so an unopenable vault passes. Fix: first open
+    the vault with its unwrapped DEK via open_after_restart, then assert
+    the v1 key fails.
+  - recovery_key/test_sidecar_v2.py:552 -- the KdfPolicyError refusal
+    has no control showing the same KEK unlocks the intact sidecar. Fix:
+    unlock with that KEK on the intact file, lock, then damage the slot
+    and assert the refusal.
+  - recovery_key/test_envelope.py:263 -- the memory-floor refusal never
+    shows the un-weakened v2 file loads. Fix: load the pristine sidecar
+    at that path first, then halve memory_kib.
+  - recovery_key/test_migration.py:1107 -- pytest.raises(OSError)
+    accepts any OSError and never checks the symlink was planted. Fix:
+    assert copy_vault.is_symlink() and narrow to FileExistsError or the
+    errno.
+  - recovery_key/test_migration.py:1071 -- the 0o600 check passes on the
+    old code under a 077 umask. Fix: set os.umask(0o022) for the test
+    and restore it afterwards.
+  - recovery_key/test_migration.py:2543 and :2594 -- banning every digit
+    fails a correct message citing S2 or a section number. Fix: assert
+    only that the injected and real row counts are absent.
+  - recovery_key/test_envelope.py:291 -- the static wrapper guard
+    matches bare-name calls only, so keywrap.wrap_dek(...) escapes it.
+    Fix: also match ast.Attribute nodes whose attr is in _WRAPPERS.
+  **Layman:** Some checks on the recovery-key upgrade could pass even if the upgrade broke; this tightens them so they fail when they should.
+  Kind: test.
+  Source: full-audit-2026-09-27 tests lane T01 (queued by FIBR-0367).
+
+- 📋 [FIBR-0412] **Queued test findings from the 2026-09-27 audit: recovery-key screens tests (2 items).**
+  From docs/reviews/2026-09-27-full-audit/tests-lane-T02-recovery-ui.md.
+  Paths are under tests/features/; lines as of 2026-09-29.
+  - recovery_key/test_settings_flows.py:755 -- the no-leaked-guards
+    check never asserts a guard was found under window, so guards owned
+    by the application would leave it green. Fix: assert three live
+    ClipboardAutoClear guards exist before the pumps.
+  - recovery_key/test_failure_modes.py:237 -- the rollback question
+    passes on any text containing "before", including the
+    destructive-reset wording. Fix: assert asked[0] ==
+    _rollback_offer().
+  **Layman:** Two checks on the recovery-key screens could pass for the wrong reason; this makes them check the exact thing they claim.
+  Kind: test.
+  Source: full-audit-2026-09-27 tests lane T02 (queued by FIBR-0367).
+
+- 📋 [FIBR-0413] **Queued test findings from the 2026-09-27 audit: backup, restore and vault reset tests (7 items).**
+  From docs/reviews/2026-09-27-full-audit/tests-lane-T03-backup-vault.md.
+  Paths are under tests/features/; lines as of 2026-09-29.
+  - backup/test_backup.py:1194 -- b"\xff\xfe..." is read as UTF-16 and
+    raises JSONDecodeError, so the UnicodeDecodeError branch it claims
+    is never reached. Fix: use invalid UTF-8 with no BOM, or assert
+    __cause__ is a UnicodeDecodeError.
+  - backup/test_backup.py:1095 (test_INV13_wrong_cipher_compat_refused)
+    -- a compat-3 manifest fails at page 1 as BackupError even with the
+    _guard_manifest allowlist removed. Fix: assert no backup key was
+    derived, or add match="cipher-compatibility".
+  - backup/test_backup_ui.py:141 -- fired == [] holds after any plain
+    call, so an export moved to a worker thread passes the INV-9
+    synchronous claim. Fix: assert inside slow_export_to that it runs on
+    the main thread, and that the .fbk is complete on return.
+  - backup/test_backup_ui.py:178 -- checking that vault.db and the
+    sidecar exist passes for a restore that installed an empty vault.
+    Fix: query the unlocked vault for the source's seeded row.
+  - vault_reset/test_vault_reset.py:436 -- the WAL is planted before
+    lock(), whose clean close may delete it, so the unlink-order
+    assertion can pass vacuously. Fix: plant the WAL after lock() and
+    assert it exists before reset_vault().
+  - backup/test_backup.py:996 -- the zip bomb allocates and deflates 512
+    MiB (2.1 s and a large memory spike). Fix: monkeypatch
+    MAX_BACKUP_DB_BYTES down to a few MiB and build the bomb at that
+    size.
+  - backup/test_backup.py:945 -- the ../evil.txt case is refused by the
+    exact entry-set check, never by the traversal check its id names.
+    Fix: drop the traversal claim or say the entry-set gate refuses it.
+  Code note the lane handed on (no code-lane item carries it): the
+  unsafe-name check in services/backup.py _read_fbk is unreachable
+  behind the exact entry-set check. Decide whether to keep it as
+  defence in depth (say so in a comment) or remove it.
+  **Layman:** Several backup and restore checks could pass even if the protection they test were removed; this makes each one prove its own point.
+  Kind: test.
+  Source: full-audit-2026-09-27 tests lane T03 (queued by FIBR-0367).
+
+- 📋 [FIBR-0414] **Queued test findings from the 2026-09-27 audit: CSV, OFX and PDF importer tests (11 items).**
+  From docs/reviews/2026-09-27-full-audit/tests-lane-T04-importers.md.
+  Paths are under tests/features/; lines as of 2026-09-29.
+  - import_/test_import.py:319 (the both_styles case) -- the header
+    lacks Debit/Credit, so the missing-column ValueError fires even with
+    the one-amount-style check deleted. Fix: put Debit/Credit in that
+    header, or add match= to all three cases.
+  - ofx_import/test_ofx_import.py:671 (investment statement) -- a bare
+    pytest.raises(ValueError) is met by the generic boundary catch
+    before the investment filter. Fix: add match="investment/brokerage".
+  - ofx_import/test_ofx_import.py:282 (statement-less envelope) -- it
+    cannot tell the distinct no-statements message from the generic one.
+    Fix: add match="no statements were found".
+  - pdf_import/test_pdf_import.py:282 -- the len(c) > 1 filter is
+    applied by the test itself and candidate_tables is never called.
+    Fix: call candidate_tables on a header-only table and assert on its
+    result.
+  - ofx_import/test_ofx_import.py:547 -- the no-network check uses exact
+    substrings, so from http.client, ssl or asyncio pass. Fix: walk the
+    module's ast Import/ImportFrom roots against a denylist.
+  - pdf_import/test_pdf_import.py:212 -- the no-disk-write token list
+    misses write_text, os.open, shutil.copy and write-mode open. Fix:
+    widen the tokens or use an ast walk for write calls.
+  - standard_bank_pdf/test_standard_bank.py:742 -- the fixture drift
+    guard checks only the count. Fix: assert the glob's name set equals
+    the parametrised list's.
+  - ofx_import/test_ofx_import.py:571 -- the master password never flows
+    through the caplog block, so the not-logged assertion cannot fail.
+    Fix: drop it or check a secret the OFX path handles.
+  - pdf_import/test_pdf_import.py:679 -- LATEST_SCHEMA_VERSION >= 9
+    exercises no migration. Fix: delete it or fold it into a walk test.
+  - import_/test_import.py:952 -- a regression to an unbounded read of
+    /dev/zero exhausts memory instead of failing (the suite's 300 s
+    timeout bounds time, not memory). Fix: patch a small endless source
+    into open.
+  - pdf_import/test_pdf_import.py:211, :790 and
+    ofx_import/test_ofx_import.py:546 -- source paths are relative to
+    the working directory, so pytest from elsewhere errors. Fix: resolve
+    through Path(__file__).parents[N].
+  **Layman:** Several import checks could pass without testing the rule they name; this makes each one fail if that rule breaks.
+  Kind: test.
+  Source: full-audit-2026-09-27 tests lane T04 (queued by FIBR-0367).
+
+- 📋 [FIBR-0415] **Queued test findings from the 2026-09-27 audit: batch import and detection tests (6 items).**
+  From docs/reviews/2026-09-27-full-audit/tests-lane-T05-batch-detect.md.
+  Paths are under tests/features/; lines as of 2026-09-29.
+  - batch_import/test_batch_import_ui.py:271 -- INV-3 leg (b) checks
+    only that Import is disabled, its initial state, after a proxy wait.
+    Fix: also assert not BatchImportService.can_import(files2), as leg
+    (a) does.
+  - import_date_detect/test_import_date_detect.py:194 -- it patches
+    date_detect.date with raising=False, a name the module never binds,
+    so a datetime.now() read passes. Fix: patch date_detect.datetime
+    with a raising now/today and drop raising=False.
+  - import_column_detect/test_import_column_detect.py:290 -- it calls
+    guess_columns twice on the same header in one process, so it cannot
+    fail. Fix: permute the header and assert each role maps to the same
+    column, or drop it.
+  - import_date_detect/test_import_date_detect.py:799 -- it reads the
+    wizard source by a cwd-relative path. Fix: resolve from
+    Path(__file__).resolve().parents[3].
+  - batch_import/test_batch_import_ui.py:959 -- the __iter__ pass
+    counter misses a quadratic that walks a derived list. Fix: add a
+    scaling bound or narrow the docstring's claim.
+  - import_date_detect/test_import_date_detect.py:368 and its sibling
+    near :333 -- they assert CPython strptime behaviour that changes in
+    3.15, not finbreak's. Fix: make it a comment or mark it as bound to
+    the Python version.
+  **Layman:** Some checks on importing many statements and on detecting dates and columns cannot fail as written; this makes them real checks.
+  Kind: test.
+  Source: full-audit-2026-09-27 tests lane T05 (queued by FIBR-0367).
+
+- 📋 [FIBR-0416] **Queued test findings from the 2026-09-27 audit: accounts and transactions tab tests (4 items).**
+  From docs/reviews/2026-09-27-full-audit/tests-lane-T06-accounts-statements.md.
+  Paths are under tests/features/; lines as of 2026-09-29.
+  - accounts/test_accounts.py:1124 -- the account names sort
+    alphabetically into the expected severity order, so a constant
+    status sort key passes. Fix: name the accounts so name order differs
+    from rank order.
+  - transactions_tab/test_transactions_tab.py:434 -- _select_txn and
+    _selected_txn invert the same mapping, so a wrong highlighted row
+    passes. Fix: also assert the Description cell of currentRow() is
+    "Zzz late coffee".
+  - transactions_tab/test_transactions_tab.py:253 and
+    accounts/test_accounts.py:595 -- nothing asserts the raising stub
+    ran, so a slot that never reaches it passes. Fix: record the stub's
+    call and assert it happened.
+  - accounts/test_accounts.py:1183 -- "500" in off_text also matches
+    wrong magnitudes. Fix: compare exactly with "off by " plus the money
+    formatter's output for 50_000.
+  **Layman:** A few account and transaction checks could pass on the wrong answer, such as a wrong amount or the wrong row; this makes them exact.
+  Kind: test.
+  Source: full-audit-2026-09-27 tests lane T06 (queued by FIBR-0367).
+
+- 📋 [FIBR-0417] **Queued test findings from the 2026-09-27 audit: updater, app shell and unlock tests (10 items).**
+  From docs/reviews/2026-09-27-full-audit/tests-lane-T07-update-shell-unlock.md.
+  Paths are under tests/features/; lines as of 2026-09-29.
+  - auto_update/test_auto_update.py (INV-9 stays-open and the FIBR-0108
+    bar tests) -- result() == 0 is also Rejected, so a prompt that
+    closed passes the stays-open claim. Fix: spy on finished and assert
+    it never fired, or show it and assert not isHidden(). (Row 40 added
+    a shown-dialog test for Esc/close, not for these.)
+  - app_shell/test_app_shell.py:812 -- the unmapped-glyph test uses
+    "lock", which is mapped, so the fallback never runs. Fix: use a
+    glyph with an SVG but no hue entry and compare with icon(name).
+  - dialog_lifecycle/test_dialog_lifecycle.py:165 -- transactions.py is
+    exempt as a whole file, so a blocking exec() or processEvents added
+    there passes INV-1. Fix: move it into _FILES with a line-level
+    menu.exec( exemption.
+  - password_hint/test_password_hint.py:178 -- it greps all of auth.py
+    for compare_digest, which occurs twice. Fix: grep
+    inspect.getsource(AuthService.verify_password).
+  - auto_update/test_auto_update.py (service fixture) -- eight tests
+    each pay a real Argon2id vault and workspace build (1.0 to 1.8 s).
+    Fix: build the vault once per module and copy it, or use cheap KDF
+    parameters.
+  - auto_update/test_auto_update.py (placeholder key test) -- the
+    committed key is real now, so it only proves a fresh key does not
+    verify. Fix: delete it or rename it to what it proves.
+  - auto_update/test_auto_update.py (later, not persisted) and the
+    skip/update-now siblings -- does-not-persist is unchecked and the
+    slots are called directly. Fix: click the buttons and assert nothing
+    reached the tmp INI.
+  - auto_update/test_auto_update.py (download-ready/failed prompt
+    tests) -- nothing asserts prompt is an UpdateDialog, so a missing
+    prompt passes. Fix: assert isinstance(prompt, UpdateDialog) first.
+  - auto_update/test_auto_update.py (INV-9 nested-loop check) -- it
+    looks for .exec( but not processEvents. Fix: reuse the
+    exec-or-processEvents pattern.
+  - unlock_throttle/test_unlock_throttle.py:224 -- a 4 s lockout against
+    the real clock expires on a slow runner and spawns a real worker.
+    Fix: seed CAP_N failures, a future last_fail, or pin the clock.
+  **Layman:** Several updater and window checks do not prove what their names say, and one set is slow; this tightens them and speeds them up.
+  Kind: test.
+  Source: full-audit-2026-09-27 tests lane T07 (queued by FIBR-0367).
+
+- 📋 [FIBR-0418] **Queued test findings from the 2026-09-27 audit: forecast, recurring, alerts and month summary tests (9 items).**
+  From docs/reviews/2026-09-27-full-audit/tests-lane-T08-summary-forecast-alerts.md.
+  Paths are under tests/features/; lines as of 2026-09-29.
+  - forecast/test_forecast.py:168 -- comparing points with
+    running_after_minor is an identity, so storing the amount in that
+    slot passes. Fix: assert the literal running totals [15_000, 12_000,
+    22_000, 19_000].
+  - month_summary/test_month_summary_home.py:222 -- the branch tested
+    depends on the run date, and it seeds from date.today() while
+    HomeView reads app_today. Fix: pin app_today and parametrize before
+    the 7th, after it, and the 29th to 31st.
+  - spending_alerts/test_alerts_ui.py:233 -- it builds only the dialog,
+    so Home recomputing on changed (the defect named) passes. Fix: count
+    alerts calls across the real dialog-to-HomeView wiring.
+  - recurring/test_recurring.py:680,
+    spending_alerts/test_alerts_ui.py:278,
+    forecast/test_forecast_tab.py:196 -- the must-not-raise calls never
+    assert the raiser was reached. Fix: record hits and assert at least
+    one.
+  - forecast/test_forecast_service.py:108 and
+    spending_alerts/test_alert_service.py:208 -- nothing asserts Gym or
+    Insurance is detected before the negative check. Fix: assert each is
+    in rec.candidates(_TODAY) first.
+  - forecast/test_forecast_tab.py:40, recurring/test_recurring.py:569,
+    test_alerts_ui.py:80 and :102, test_month_summary_home.py:59 and
+    :233 -- fixtures seed from date.today() while the widgets read the
+    app clock. Fix: monkeypatch app_today in each ui module to one fixed
+    date.
+  - recurring/test_recurring.py:296 and :307,
+    spending_alerts/test_migration_v12.py:52 -- they pin
+    LATEST_SCHEMA_VERSION == 14 under unrelated names. Fix: compare with
+    LATEST_SCHEMA_VERSION or assert 9 in _MIGRATIONS.
+  - recurring/test_recurring.py:645 -- any non-empty status text passes.
+    Fix: assert a substring of the empty-state wording.
+  - spending_alerts/test_alert_service.py:191 -- ":None" not in key
+    guesses one spelling. Fix: assert exactly one category spike,
+    labelled Groceries.
+  **Layman:** Some forecast and alert checks depend on today's date or cannot fail; this pins the date and makes them check real totals.
+  Kind: test.
+  Source: full-audit-2026-09-27 tests lane T08 (queued by FIBR-0367).
+
+- 📋 [FIBR-0419] **Queued test findings from the 2026-09-27 audit: dashboard, reports and PDF export tests (12 items).**
+  From docs/reviews/2026-09-27-full-audit/tests-lane-T09-dashboard-reporting-export.md.
+  Paths are under tests/features/; lines as of 2026-09-29.
+  - dashboard_focus/test_dashboard_focus.py:339 -- a leaked transfer
+    lands in Uncategorised, never in a Savings label, so the check
+    cannot fail. Fix: assert pie amounts, e.g. Expenditure total 550.
+  - dashboard_drilldown/test_dashboard_drilldown.py:501 (equal
+    magnitude) -- labels differ and it compares two builds with each
+    other. Fix: tie sibling nodes with identical labels and assert the
+    expected id order.
+  - dashboard_drilldown/test_dashboard_drilldown.py:534 -- both leaves'
+    tuples are identical, so snapshot() == snapshot() cannot fail. Fix:
+    include a distinguishing field and assert its order.
+  - transfers/test_transfers.py:540 -- nothing asserts _boom ran. Fix:
+    record calls and assert one after the click.
+  - reconciliation/test_reconciliation_marker.py:99 -- "500" also
+    matches the 100x bug "50000". Fix: compare with
+    _format_amount(Decimal("500.00"), symbol).
+  - dashboard/test_dashboard.py:161 and
+    dashboard_focus/test_dashboard_focus.py:394 -- loose substrings pass
+    wrong headline totals. Fix: compare exact formatted amounts.
+  - pdf_export/test_pdf_export.py:133 -- "Savings" also appears in the
+    By-account table. Fix: assert on the text before the first <h2>.
+  - pdf_export/test_pdf_export.py:469 and the test near :491 -- no umask
+    is set, so a 077 runner passes the old code. Fix: set
+    os.umask(0o022) and restore it.
+  - pdf_export/test_pdf_export.py:401 -- only Path.write_bytes is
+    watched, while the module writes via os.open. Fix: also patch
+    os.open and builtins.open.
+  - dashboard/test_dashboard.py:221 -- only persistence is asserted, not
+    the re-render. Fix: assert a period-dependent figure changed.
+  - transfers/test_transfers.py:98 -- >= 8 verifies nothing. Fix: delete
+    it or fold it into the v7 upgrade test.
+  - dashboard_focus/test_dashboard_focus.py:201, :410, :453, :490 --
+    they seed from date.today() while HomeView reads app_today. Fix: pin
+    app_today.
+  Code note the lane handed on (no code-lane item carries it):
+  services/pdf_export.py falls back to date.today() when no today is
+  passed, the same latent wrong-month shape the reporting lane item
+  describes. Fix: make today required.
+  **Layman:** Several dashboard and report checks accept wrong money figures or cannot fail; this makes them compare exact amounts.
+  Kind: test.
+  Source: full-audit-2026-09-27 tests lane T09 (queued by FIBR-0367).
+
+- 📋 [FIBR-0420] **Queued test findings from the 2026-09-27 audit: categories, clipboard and table state tests (7 items).**
+  From docs/reviews/2026-09-27-full-audit/tests-lane-T10-categories-settings.md.
+  Paths are under tests/features/; lines as of 2026-09-29.
+  - clipboard/test_clipboard.py:266 -- the Selection-buffer leg skips on
+    offscreen, so it runs nowhere, and the static backstop greps
+    _clipboard.py only. Fix: delete the runtime leg or run it in a job
+    forcing xcb.
+  - categorisation/test_categorisation.py:174 -- the library is
+    neutralised to [], so match_library's per-row folding is unchecked.
+    Fix: inject several library entries and include them in the call
+    bound.
+  - category_library/test_category_library.py:460 -- the test persists
+    the toggle itself, so a shell that never saves passes. Fix: drive
+    Settings through MainWindow and check library_enabled() and a
+    reopened dialog.
+  - table_state/test_table_state.py:547 -- header and docstring claim a
+    clear-LAST ordering check that the test's own NOTE says it lacks.
+    Fix: correct the claim or add an order-dependent leg.
+  - categorisation/test_categorisation.py:845 and :847 -- substrings "1"
+    and "0" pass wrong counts. Fix: compare with the full tr("Re-filed
+    %n transaction(s).") text.
+  - category_library/test_category_library.py:361 -- the cache clear is
+    skipped when an earlier assertion fails, poisoning later tests. Fix:
+    clear in try/finally or fixture teardown.
+  - clipboard/test_clipboard.py:394 -- a 1 s real timer, because the
+    clear takes whole seconds only. Fix: let _clipboard.py take
+    milliseconds (a code change; the lane rated it low).
+  **Layman:** Some category, clipboard and table checks never run or check less than they claim; this makes them run and check it all.
+  Kind: test.
+  Source: full-audit-2026-09-27 tests lane T10 (queued by FIBR-0367).
+
+- 📋 [FIBR-0421] **Queued test findings from the 2026-09-27 audit: time zone and theme tests (6 items).**
+  From docs/reviews/2026-09-27-full-audit/tests-lane-T11-theme-locale-conftest.md.
+  Paths are under tests/features/; lines as of 2026-09-29.
+  - datetime_display/test_datetime_display.py:282 -- no precondition
+    that Kiritimati's day differs from the system day, so unwired zone
+    passes about half the time. Fix: assert the days differ first,
+    choosing Kiritimati or Niue.
+  - datetime_display/test_datetime_display.py:259 -- a UTC fallback
+    passes on a UTC runner. Fix: pick a zone whose day differs now, or
+    assert the resolved zone id.
+  - datetime_display/test_datetime_display.py:228 -- it reads the clock
+    several times, so a midnight crossing fails it. Fix: freeze
+    QDateTime.currentDateTimeUtc.
+  - theme/test_theme.py:379 and about 14 more -- ThemeControllers are
+    never deleted or disconnected. Fix: use a fixture that disconnects
+    and deleteLater()s them.
+  - theme/test_theme.py:495 -- it checks only two attribute names. Fix:
+    assert no value in vars(controller) is an AuthService or Vault.
+  - theme/test_theme.py:592 -- 1.25 s with a real Argon2id service. Fix:
+    use a module-scoped unlocked service if the KDF dominates.
+  **Layman:** Some time-zone checks pass by luck of the hour, and some theme tests leave objects behind; this makes both reliable.
+  Kind: test.
+  Source: full-audit-2026-09-27 tests lane T11 (queued by FIBR-0367).
+
+- 📋 [FIBR-0422] **Queued test findings from the 2026-09-27 audit: build, release and packaging tests (11 items).**
+  From docs/reviews/2026-09-27-full-audit/tests-lane-T12-harness-packaging.md.
+  Paths are under tests/features/; lines as of 2026-09-29.
+  - bundling/test_bundling.py:381 -- it counts pins in every tracked
+    file incl. docs, so dropping a build pin stays above the bound. Fix:
+    scan build paths only and bound on the named build files.
+  - release_integrity/test_release_integrity.py:602 -- the guard region
+    holds unrelated exits, so incomplete-set exits made warnings pass.
+    Fix: bind the exit to the incomplete-set branch.
+  - flatpak_packaging/test_flatpak_packaging.py:111 -- an expired skip:
+    deleting python3-deps.yaml turns six guards into skips. Fix: add
+    _DEPS to test_recipe_files_present and drop the skip.
+  - bundling/test_bundling.py:313 -- it skips on a missing container
+    runtime after the FINBREAK_BUILD_SMOKE=1 opt-in. Fix: pytest.fail
+    when opted in.
+  - bundling/test_bundling.py:311 -- an expired skip on a missing
+    build-smoke.sh. Fix: remove the branch.
+  - release_integrity/test_release_integrity.py:352 -- "freeze" is
+    always present via the windows_freeze_flags import. Fix: assert the
+    pip freeze argv literal.
+  - windows_build/test_windows_build.py:223, :229, :234, :260 -- they
+    match docstrings and tuples, not guard logic. Fix: exercise the
+    guard, or strip comments and docstrings first.
+  - harness/test_gate_stages.py:186 -- it catches only a single-line
+    run: <stage>. Fix: parse ci.yml and scan every run body.
+  - gitignore/test_gitignore.py:40 -- git init inherits global config
+    incl. init.templateDir. Fix: set GIT_CONFIG_GLOBAL and
+    GIT_CONFIG_SYSTEM to os.devnull.
+  - bundling/test_bundling.py:23 and gitignore/test_gitignore.py:26 --
+    the root comes from git rev-parse in the cwd. Fix: use
+    Path(__file__).resolve().parents[3].
+  - windows_build/test_windows_build.py:51 -- the mkdtemp vault is never
+    removed from RAM-backed /tmp. Fix: use tmp_path.
+  Also stale, not a lane finding: bundling/test_bundling.py says no
+  pytest-timeout plugin is configured; pyproject.toml sets timeout 300.
+  **Layman:** Some build and release checks match comments or docs instead of the real steps, or skip silently; this makes them fail when a step goes.
+  Kind: test.
+  Source: full-audit-2026-09-27 tests lane T12 (queued by FIBR-0367).
+
 ## v1.1.0 — Localisation
 
 The first feature minor after 1.0. Chosen to go first because it is
