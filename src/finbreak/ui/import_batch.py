@@ -27,6 +27,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QCoreApplication, QEvent, QLocale, QObject, Qt, Signal, Slot
 from PySide6.QtGui import QKeyEvent
+from PySide6.QtGui import Qt as QtGuiNamespace
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
@@ -277,7 +278,9 @@ class BatchReviewWidget(QWidget):
 
     def _set(self, row: int, column: int, text: str, tooltip: str) -> None:
         item = QTableWidgetItem(text)
-        item.setToolTip(tooltip)  # the full path, on every row regardless
+        # The full path, on every row regardless. A tooltip has no PlainText
+        # mode, so a path that looks like markup is escaped (FIBR-0382).
+        item.setToolTip(QtGuiNamespace.convertFromPlainText(tooltip))
         self._table.setItem(row, column, item)
 
     @staticmethod

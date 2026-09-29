@@ -1291,3 +1291,34 @@ def test_FIBR0410_a_single_file_import_warns_about_a_disagreeing_balance(
     )
     widget._on_import()
     assert len(warnings) == 1 and "closing balance" in warnings[0], warnings
+
+
+def test_FIBR0382_row_tooltip_shows_the_path_as_typed(
+    qtbot, service, profile, tmp_path
+):
+    """FIBR-0382 — a tooltip has no PlainText mode: Qt guesses with
+    ``mightBeRichText`` and renders a hit as HTML, so a file named like markup
+    showed formatted and lost its tags. Asserts what the tooltip SHOWS."""
+    from PySide6 import QtGui
+
+    marked = _csv(tmp_path, "<b>bold.csv", _rows(2))
+    widget = _wizard(qtbot, service)
+    widget._select_files([marked, _csv(tmp_path, "plain.csv", _rows(2, tag="b"))])
+    qtbot.waitUntil(lambda: widget._batch_review._table.rowCount() == 2, timeout=3000)
+
+    table = widget._batch_review._table
+    tips = [
+        table.item(row, 0).toolTip()
+        for row in range(table.rowCount())
+        if "bold" in table.item(row, 0).toolTip()
+    ]
+    assert tips, "precondition: the marked file's row carries a tooltip"
+    shown = QtGui.QTextDocument()
+    tip = tips[0]
+    if QtGui.Qt.mightBeRichText(tip):
+        shown.setHtml(tip)
+    else:
+        shown.setPlainText(tip)
+    assert shown.toPlainText() == marked, (
+        f"the tooltip shows {shown.toPlainText()!r}, not the path {marked!r}"
+    )
