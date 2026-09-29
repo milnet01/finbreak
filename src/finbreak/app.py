@@ -16,7 +16,7 @@ import sys
 from contextlib import suppress
 from typing import cast
 
-from PySide6.QtCore import QCoreApplication, QLocale, Qt
+from PySide6.QtCore import QCoreApplication, QLocale, Qt, QThread, QTimer
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtNetwork import QLocalServer
 from PySide6.QtWidgets import QApplication, QMessageBox, QWidget
@@ -54,15 +54,27 @@ def _install_excepthook() -> None:
 
     def hook(exc_type: type[BaseException], exc: BaseException, tb: object) -> None:
         previous(exc_type, exc, tb)  # type: ignore[arg-type]
-        with suppress(Exception):
-            QMessageBox.critical(
-                None,
-                "finbreak",
-                QCoreApplication.translate(
-                    "App",
-                    "finbreak hit an unexpected error and cannot continue:\n{error}",
-                ).format(error=f"{exc_type.__name__}: {exc}"),
-            )
+
+        def show() -> None:
+            with suppress(Exception):
+                QMessageBox.critical(
+                    None,
+                    "finbreak",
+                    QCoreApplication.translate(
+                        "App",
+                        "finbreak hit an unexpected error and cannot continue:"
+                        "\n{error}",
+                    ).format(error=f"{exc_type.__name__}: {exc}"),
+                )
+
+        # PySide6 runs this hook on the thread that raised, and a QThread's
+        # run() is one: a widget may only be built on the GUI thread, so the
+        # dialog is posted there (FIBR-0392).
+        app = QCoreApplication.instance()
+        if app is not None and QThread.currentThread() != app.thread():
+            QTimer.singleShot(0, app, show)
+        else:
+            show()
 
     sys.excepthook = hook
 

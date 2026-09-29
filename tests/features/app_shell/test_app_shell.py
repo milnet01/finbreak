@@ -1172,3 +1172,46 @@ def test_the_lock_time_wipe_reaches_the_widget_it_is_handed(qtbot, service):
         "children.\n"
         f"  actual:   {len(tab._rows)} rows still held"
     )
+
+
+def test_FIBR0392_a_worker_thread_error_shows_its_dialog_on_the_gui_thread(
+    qapp, qtbot, monkeypatch
+):
+    """Full audit 2026-09-27 (FIBR-0392, code lane 12): PySide6 routes an
+    exception raised in a QThread's run() to sys.excepthook ON THAT THREAD
+    (measured 2026-09-29), and the hook built its QMessageBox there -- a widget
+    off the GUI thread, which Qt does not allow. The dialog is now posted to the
+    application's thread."""
+    import threading
+
+    from PySide6.QtCore import QThread
+    from PySide6.QtWidgets import QMessageBox
+
+    from finbreak.app import _install_excepthook
+
+    on_main: list[bool] = []
+    monkeypatch.setattr(
+        QMessageBox,
+        "critical",
+        staticmethod(
+            lambda *a, **k: on_main.append(
+                threading.current_thread() is threading.main_thread()
+            )
+        ),
+    )
+
+    class _Failing(QThread):
+        def run(self) -> None:
+            raise RuntimeError("a worker fault")
+
+    previous = sys.excepthook
+    sys.excepthook = lambda *args: None
+    try:
+        _install_excepthook()
+        worker = _Failing()
+        worker.start()
+        assert worker.wait(5000)
+        qtbot.waitUntil(lambda: bool(on_main), timeout=2000)
+    finally:
+        sys.excepthook = previous
+    assert on_main == [True], f"the dialog was built off the GUI thread: {on_main}"
