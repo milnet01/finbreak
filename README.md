@@ -10,7 +10,7 @@
 > (after confirming the download is genuinely signed). Leave it off — the
 > default — and the app never touches the internet at all.
 
-[![Status](https://img.shields.io/badge/status-pre--alpha-orange)]()
+[![Status](https://img.shields.io/badge/status-early_preview-orange)]()
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 Current version: **0.1.23** (early preview). **[⬇ Download the latest
