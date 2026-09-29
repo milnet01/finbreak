@@ -2022,6 +2022,10 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Sdk and network in CI), or a regenerate-and-rebuild step in the
   release checklist (.claude/bump.json todos). Either way a refresh
   needs a LOCAL=0 rebuild ending FINBREAK_SELFTEST_OK before it ships.
+  Awaiting user decision (2026-09-29). Two options: a scheduled CI job
+  that regenerates the file, or a step on the release checklist.
+  Recommendation: the release-checklist step, because it costs no CI
+  minutes and the release is when the file matters.
   **Layman:** The Linux app-store build freezes an exact list of code libraries. Nothing checks whether newer, possibly security-fixed versions of them have come out, so the build can quietly ship old ones.
   Kind: security.
   Source: in-session-2026-08-20 (found during the FIBR-0159 pre-submit checks).
@@ -4312,6 +4316,9 @@ always keeps the password slot, so no earlier vault becomes unopenable.
   Kind: fix.
   Source: user-report-2026-08-03.
   Progress (2026-08-19): option (a) SHIPPED -- the README's AppImage install section now tells you to name a hand-made shortcut io.github.milnet01.finbreak.desktop rather than finbreak.desktop, points Icon= at the installed hicolor id, and says outright that a differently-named one gives you two panel icons. It also names the StartupWMClass trap: right on X11, ignored on Wayland, which is what makes the wrong file look correct. The bullet called (a) "the minimum and should ship regardless of the rest", so this is that. STAYS OPEN for (b) and (c): the AppImage still installs no launcher of its own, so this is guidance a user has to find rather than a product that does the right thing unaided. (b) offering to install a correct launcher on first run remains the real fix. Also still unanswered, and recorded here so it is not lost: whether the docs should warn that a concurrent AppImage, RPM/deb and Flatpak install can shadow each other's launchers -- observed on the reporter's machine with three versions live at once.
+  Awaiting user decision (2026-09-29). Recommendation: the remainder is
+  the v1.6.0 first-run launcher feature; leave it in that release rather
+  than pulling it into 1.0.
 
 - 📋 [FIBR-0220] **Agreeing with a "~ guess" cannot teach the app — the no-nag gate has no escape hatch.**
   Reported by the user 2026-08-03. VERIFIED against source; the current
@@ -4824,6 +4831,9 @@ work, and none of it is a release decision.
   packaging changelog. Both are a value call for the user; recommended:
   document that .corpus-numbers takes any real number, and park (1)
   and (2) as considered.
+  Awaiting user decision (2026-09-29). Recommendation: document the
+  name/address check as it stands and park both parts as considered,
+  since neither is needed for 1.0.
   **Layman:** Add an automatic check that stops real bank details from ever being committed — the current security scanner only looks for passwords and keys, so it has never checked for these.
   Kind: security.
   Source: in-session-2026-08-06 (gap found while closing FIBR-0244).
@@ -6086,6 +6096,11 @@ work, and none of it is a release decision.
   else: the item STAYS OPEN for the reason recorded above, that a guard
   living inside release-linux.sh cannot fire when nobody runs
   release-linux.sh.
+  Awaiting user decision (2026-09-29). Remaining gap: nothing notices
+  release-linux.sh never ran. Recommendation: run cut-release with
+  --no-publish, so release-linux.sh creates the release together with
+  its assets. That changes CLAUDE.md's release procedure, so it owes a
+  rule-14 gate first.
 
 - ✅ [FIBR-0352] **FIBR-0146's 13-split loop-log row has one cell too many, so its whole explanation is dropped from the render.**
   docs/specs/FIBR-0146.md, the `13-split` row of the cold-eyes
