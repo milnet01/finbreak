@@ -25,9 +25,10 @@ rather than as loops — a headless caller walks the identical steps in a plain
 
 from __future__ import annotations
 
+import logging
 from collections import Counter
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 
 from finbreak.errors import FinbreakError
@@ -63,7 +64,10 @@ _MAX_BATCH_DRAFTS = 200_000
 # simply false for someone who selected 201 files and cancelled nothing. They
 # are carried in `reason` — widening its "user-facing text for failed/skipped"
 # role, since § 4.2 gives `not_attempted` no other field to distinguish them.
+log = logging.getLogger(__name__)
+
 CANCELLED = "Not imported — the batch was cancelled"
+STOPPED_BY_ERROR = "Not imported — the batch stopped after an unexpected error"
 CAP_REACHED = "Not imported — the batch reached its size limit"
 
 # SCAN failure text reuses the wizard's existing friendly strings (§ 4.8) rather
@@ -150,6 +154,13 @@ class BatchFile:
     # file (nor re-extract a PDF's table).
     source_text: str | None = None  # CSV text, or a PDF table serialised to CSV
     mapping: ColumnMapping | None = None  # the mapping ASK supplied
+    # INV-9: each distinct password is tried once per file. A re-scan after an
+    # answer skips every password this file has already been tried with, so it
+    # tries only the one just typed (FIBR-0407).
+    tried_passwords: set[str | None] = field(default_factory=set, repr=False)
+    # Queued by an answer for `rescan_step`, which the wizard runs one per turn
+    # (§ 4.7); an answer no longer re-scans the whole batch in its own slot.
+    rescan: bool = False
 
     @property
     def sort_key(self) -> tuple[str, int]:
@@ -352,7 +363,10 @@ class BatchImportService:
         return []
 
     @staticmethod
-    def _fail(record: BatchFile, reason: str, _exc: Exception) -> None:
+    def _fail(record: BatchFile, reason: str, exc: Exception) -> None:
+        # The TYPE only: the message can carry the statement's own text
+        # (security-model INV-9, FIBR-0407).
+        log.warning("batch import: a file failed at scan (%s)", type(exc).__name__)
         record.outcome = "failed"
         record.reason = reason
 
@@ -406,6 +420,9 @@ class BatchImportService:
         net, so the friendly-message mapping has one home.
         """
         for password in [None, *self._password_ladder()]:
+            if password in record.tried_passwords:
+                continue
+            record.tried_passwords.add(password)
             try:
                 return PdfImporter.decrypt_to_plaintext(data, password)
             except PasswordError:
@@ -586,17 +603,36 @@ class BatchImportService:
     def _rescan_blocked(
         self, files: Sequence[BatchFile], answered: BatchFile, blocked_on: str
     ) -> None:
-        """Re-scan every record other than ``answered`` still at ``blocked_on``,
-        refusing each once the batch holds the draft cap."""
+        """Queue every record other than ``answered`` still at ``blocked_on`` for
+        :meth:`rescan_step`. Queued, not scanned: re-scanning them all here ran a
+        decrypt ladder per file inside the one slot the reply arrived on, which
+        § 4.7's one-file-per-turn chain forbids (FIBR-0407)."""
         for other in files:
-            if other is answered or other.outcome != blocked_on:
+            if other is not answered and other.outcome == blocked_on:
+                other.rescan = True
+
+    def rescan_step(self, files: Sequence[BatchFile]) -> bool:
+        """Re-scan ONE record an answer queued; ``False`` when none is left.
+
+        The wizard calls this once per event-loop turn before it hands out the
+        next question (§ 4.7), so a record a new password or profile unlocks
+        settles without being asked about. Each re-scan is a door into the
+        ladder, so it checks the draft cap first (§ 4.3; audit row 21).
+        """
+        for other in files:
+            if not other.rescan:
                 continue
+            other.rescan = False
+            if other.outcome not in _BLOCKING:
+                return True  # settled some other way since it was queued
             if self.draft_total(files) >= _MAX_BATCH_DRAFTS:
                 other.outcome = "not_attempted"
                 other.reason = CAP_REACHED
-                continue
+                return True
             other.outcome = "waiting"
             self.scan(other)
+            return True
+        return False
 
     # -- REVIEW ---------------------------------------------------------------
     def set_account(self, record: BatchFile, account_id: int) -> None:
@@ -613,11 +649,14 @@ class BatchImportService:
         """
         if record.parsed is None or record.outcome in _TERMINAL:
             return
-        record.account_id = account_id
+        # The preview first, the account after: a raise from either call must
+        # leave the shown account and the preview's target together (INV-5,
+        # FIBR-0407).
         if record.preview is None:
             record.preview = self._imports.preview_result(record.parsed, account_id)
         else:
             record.preview = self._imports.retarget(record.preview, account_id)
+        record.account_id = account_id
         record.outcome = "ready"  # REVIEW re-derives already_imported from here
         self._settle_password(record)
 
@@ -720,6 +759,9 @@ class BatchImportService:
         except (ValueError, FinbreakError) as exc:
             # INV-1: a file that fails does not stop the batch. The caught set is
             # the same pair the wizard's single-file `_on_import` catches.
+            log.warning(
+                "batch import: a file failed at commit (%s)", type(exc).__name__
+            )
             record.outcome = "failed"
             record.reason = str(exc)
             return

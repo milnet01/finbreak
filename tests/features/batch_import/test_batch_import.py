@@ -137,6 +137,13 @@ def _scan_all(batch, files) -> None:
         index = batch.scan_step(files, index)
 
 
+def _drain_rescans(batch, files) -> None:
+    """Run the re-scans an answer queued, one per call as the wizard's chain
+    does between turns (§ 4.7)."""
+    while batch.rescan_step(files):
+        pass
+
+
 def _run_all(batch, files) -> None:
     index = 0
     while index < len(files):
@@ -875,6 +882,7 @@ def test_FIBR0085_4_4_an_answered_password_unlocks_the_rest_of_the_batch(
     asked = next_question(files)
     assert asked is not None
     batch.answer(files, asked, "sesame")
+    _drain_rescans(batch, files)  # § 4.7: one per turn
 
     assert next_question(files) is None, (
         "one answered password must settle the whole same-password batch; a "
@@ -925,6 +933,7 @@ def test_FIBR0319_an_answered_mapping_settles_the_rest_of_the_batch(
         "odd layout", odd_header.split(","), mapping
     )
     batch.answer(files, asked, mapping)
+    _drain_rescans(batch, files)  # § 4.7: one per turn
 
     assert next_question(files) is None, (
         "one answered mapping must settle the whole same-header batch; a second "
@@ -1097,6 +1106,7 @@ def test_row21_the_password_retry_honours_the_draft_cap(
     assert [f.outcome for f in files] == ["needs_password"] * 3, "precondition"
 
     batch.answer(files, files[0], "sesame")
+    _drain_rescans(batch, files)  # § 4.7: one per turn
 
     assert batch.draft_total(files) == 2, "the retry stopped at the cap"
     assert files[2].outcome == "not_attempted"
@@ -1124,3 +1134,119 @@ def test_row21_a_typed_password_does_not_outlive_its_batch(
     assert files[0].outcome == "needs_password", (
         "a new batch asks again rather than reusing the last batch's password"
     )
+
+
+def test_FIBR0407_an_answer_scans_one_file_and_queues_the_rest(
+    batch, tmp_path, monkeypatch
+) -> None:
+    """§ 4.7: one file per event-loop turn. ``answer`` re-scanned every other
+    locked file inside the one slot the reply arrived on, freezing the window
+    for the whole batch. It now scans the answered file and queues the others
+    for ``rescan_step``, which the wizard runs one per turn."""
+    _stub_locked_pdfs(monkeypatch)
+    paths = []
+    for name in ("a.pdf", "b.pdf", "c.pdf"):
+        (tmp_path / name).write_bytes(b"%PDF-1.7 encrypted")
+        paths.append(str(tmp_path / name))
+    files = batch.build(paths)
+    _scan_all(batch, files)
+
+    scanned: list[str] = []
+    real_scan = type(batch).scan
+
+    def counting_scan(self, record):
+        scanned.append(record.path)
+        return real_scan(self, record)
+
+    monkeypatch.setattr(type(batch), "scan", counting_scan)
+    batch.answer(files, files[0], "sesame")
+    assert scanned == [files[0].path], "an answer scans only the answered file"
+
+    assert batch.rescan_step(files) is True
+    assert batch.rescan_step(files) is True
+    assert batch.rescan_step(files) is False
+    assert len(scanned) == 3
+    assert next_question(files) is None
+
+
+def test_FIBR0407_a_rescan_tries_only_the_new_password(
+    batch, tmp_path, monkeypatch
+) -> None:
+    """INV-9: each distinct remembered password is tried at most once per file,
+    and only before the user is prompted. The re-scan after an answer ran the
+    whole ladder again, retrying every stored password on every locked file
+    after every prompt."""
+    attempts: dict[str, list[str | None]] = {}
+
+    def fake_decrypt(data: bytes, password: str | None) -> bytes:
+        attempts.setdefault(data.decode(), []).append(password)
+        if password != "sesame":
+            raise PasswordError("wrong password")
+        return b"%PDF-1.7 plain"
+
+    _stub_locked_pdfs(monkeypatch)
+    monkeypatch.setattr(
+        "finbreak.services.batch_import.PdfImporter.decrypt_to_plaintext",
+        staticmethod(fake_decrypt),
+    )
+    monkeypatch.setattr(
+        batch, "_password_ladder", lambda: ["stored-one", *batch._run_passwords]
+    )
+    paths = []
+    for name in ("a", "b"):
+        (tmp_path / f"{name}.pdf").write_bytes(name.encode())
+        paths.append(str(tmp_path / f"{name}.pdf"))
+    files = batch.build(paths)
+    _scan_all(batch, files)
+    batch.answer(files, files[0], "sesame")
+    _drain_rescans(batch, files)
+
+    assert attempts["b"] == [None, "stored-one", "sesame"], attempts["b"]
+
+
+def test_FIBR0407_a_failed_file_leaves_a_log_line_naming_only_the_error_type(
+    batch, tmp_path, monkeypatch, caplog
+) -> None:
+    """``_fail`` and ``_commit`` dropped the exception without a trace, so a
+    report line had nothing behind it in the log. The TYPE is logged and never
+    the message, which can carry a statement's own text."""
+    import logging
+
+    def boom(*_a, **_k):
+        raise ValueError("Salary ACME 12 345.67 -- statement text")
+
+    monkeypatch.setattr(type(batch), "_scan_csv", boom)
+    (tmp_path / "a.csv").write_text("x")
+    files = batch.build([str(tmp_path / "a.csv")])
+    with caplog.at_level(logging.WARNING, logger="finbreak.services.batch_import"):
+        _scan_all(batch, files)
+
+    assert files[0].outcome == "failed"
+    assert "ValueError" in caplog.text
+    assert "statement text" not in caplog.text and "ACME" not in caplog.text
+
+
+def test_FIBR0407_a_failed_retarget_leaves_the_account_where_it_was(
+    batch, monkeypatch
+) -> None:
+    """``set_account`` pointed the record at the new account BEFORE building its
+    preview, so a raise left the account shown on screen and the preview's
+    target apart -- the wrong-account shape INV-5 exists to stop."""
+    from finbreak.services.batch_import import BatchFile
+
+    record = BatchFile(path="/tmp/a.pdf")
+    record.parsed = ParseResult(
+        drafts=[TransactionDraft(1, "2026-03-05", -1000, "Fake Row")],
+        errors=[],
+        period_start="2026-03-01",
+        period_end="2026-03-31",
+    )
+    record.outcome = "needs_account"
+
+    def refuse(*_a, **_k):
+        raise ValueError("the account was deleted meanwhile")
+
+    monkeypatch.setattr(batch._imports, "preview_result", refuse)
+    with pytest.raises(ValueError):
+        batch.set_account(record, 42)
+    assert record.account_id is None

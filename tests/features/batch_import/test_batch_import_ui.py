@@ -1098,3 +1098,154 @@ def test_a_single_file_after_a_cancelled_batch_starts_with_a_clean_mapping_form(
     )
     assert widget._amount_style.currentIndex() == 0
     assert widget._profile_name.text() == ""
+
+
+def test_FIBR0407_one_prompt_unlocks_a_same_password_batch(
+    qtbot, service, profile, tmp_path, monkeypatch
+):
+    """§ 4.4: a password typed during the run joins the list for every later
+    file before any further prompting. The re-scans that make it so now run one
+    per turn from the wizard's chain (§ 4.7), so this pins the end to end: three
+    same-password PDFs, ONE prompt, all three unlocked."""
+    from finbreak.importers.base import ParseResult
+    from finbreak.models import TransactionDraft
+
+    def fake_decrypt(data: bytes, password: str | None = None) -> bytes:
+        if password != "sesame":
+            raise PasswordError("wrong password")
+        return b"%PDF-1.7 plain"
+
+    class _StubSb:
+        @staticmethod
+        def parse(data, exponent, password=None):
+            return ParseResult(
+                drafts=[TransactionDraft(1, "2026-03-05", -1000, "Fake Row")],
+                errors=[],
+                period_start="2026-03-01",
+                period_end="2026-03-31",
+            )
+
+    monkeypatch.setattr(
+        "finbreak.services.batch_import.PdfImporter.decrypt_to_plaintext",
+        staticmethod(fake_decrypt),
+    )
+    monkeypatch.setattr("finbreak.services.batch_import.StandardBankImporter", _StubSb)
+    paths = []
+    for name in ("a.pdf", "b.pdf", "c.pdf"):
+        (tmp_path / name).write_bytes(b"%PDF-1.7 encrypted")
+        paths.append(str(tmp_path / name))
+    prompts = _stub_password(monkeypatch, password="sesame")
+
+    widget = _wizard(qtbot, service)
+    widget._select_files(paths)
+    qtbot.waitUntil(lambda: widget._batch_phase == "review", timeout=5000)
+
+    assert len(prompts) == 1, f"{len(prompts)} prompts for one shared password"
+    assert all(f.outcome != "needs_password" for f in widget._batch_files)
+
+
+def test_FIBR0407_fanned_out_statements_from_two_same_named_files_are_told_apart():
+    """A fanned-out OFX statement appended its index to the BARE basename, so
+    ``bank.ofx`` in two folders read "bank.ofx [1 of 2]" twice. The label
+    escalates first, then takes the index."""
+    from finbreak.ui.import_batch import file_labels
+
+    rows = []
+    for folder in ("/home/a/jan", "/home/a/feb"):
+        for index in (0, 1):
+            record = BatchFile(path=f"{folder}/bank.ofx")
+            record.statement_index = index
+            rows.append(record)
+    rows.append(BatchFile(path="/home/a/other.csv"))
+
+    labels = file_labels(rows)
+
+    assert len(set(labels)) == len(labels), labels
+    assert labels[-1] == "other.csv"
+    assert all("jan" in label or "feb" in label for label in labels[:4]), labels
+
+
+class _EnteredAccount:
+    """What CreateAccountDialog hands back once the user accepts it."""
+
+    def __init__(self, name: str, number: str | None) -> None:
+        self._name, self._number = name, number
+
+    def entered_name(self) -> str:
+        return self._name
+
+    def entered_type(self):
+        return AccountType.CURRENT
+
+    def entered_number(self) -> str | None:
+        return self._number
+
+
+@pytest.mark.parametrize(
+    ("number", "expected"),
+    [(None, "no account number"), ("447556667", "447556667")],
+    ids=["number-cleared", "number-stored"],
+)
+def test_FIBR0407_batch_create_says_what_number_was_stored(
+    qtbot, service, monkeypatch, number, expected
+):
+    """The single-file Create reports the number actually STORED, and warns
+    when there is none (later statements will not file themselves). The batch
+    Create said nothing, so a cleared number went unnoticed."""
+    widget = _wizard(qtbot, service)
+    review = widget._batch_review
+    monkeypatch.setattr(review, "_settle", lambda _record, _account_id: None)
+
+    review._created(BatchFile(path="/tmp/x.pdf"), _EnteredAccount("Cheque", number))
+
+    assert expected in review._note.text(), review._note.text()
+    assert review._note.textFormat() == Qt.TextFormat.PlainText
+    assert review._error.textFormat() == Qt.TextFormat.PlainText
+
+
+def test_FIBR0407_an_unexpected_error_mid_run_ends_the_chain(
+    qtbot, service, monkeypatch
+):
+    """A database error from a commit is outside ``_commit``'s deliberately
+    narrow net, so it escaped the slot and the chain was never re-armed: every
+    later row sat at its old state and only Cancel got out. The run now ends,
+    reports, and re-raises for the crash hook."""
+    from sqlcipher3.dbapi2 import DatabaseError
+
+    widget = _wizard(qtbot, service)
+    files = [BatchFile(path="/tmp/a.pdf"), BatchFile(path="/tmp/b.pdf")]
+    for record in files:
+        record.outcome = "ready"
+    widget._batch_files = files
+    widget._batch_review.set_files(files)
+    widget._batch_phase = "run"
+    widget._batch_index = 0
+
+    def disk_full(_files, _index):
+        raise DatabaseError("database or disk is full")
+
+    monkeypatch.setattr(widget._batch, "run_step", disk_full)
+    with pytest.raises(DatabaseError):
+        widget._run_next()
+
+    assert widget._batch_phase == "report"
+    assert files[0].outcome == "failed"
+    assert files[1].outcome == "not_attempted"
+
+
+def test_FIBR0407_counts_use_the_locales_digits(qapp):
+    """design.md i18n: numbers go through QLocale. The batch table's counts were
+    ``str(value)``, Western digits in every locale."""
+    from PySide6.QtCore import QLocale
+
+    from finbreak.ui.import_batch import BatchReviewWidget
+
+    previous = QLocale()
+    QLocale.setDefault(QLocale(QLocale.Language.Arabic, QLocale.Country.Egypt))
+    try:
+        expected = QLocale().toString(12)
+        assert expected != "12", "precondition: this locale has its own digits"
+        assert BatchReviewWidget._number(12) == expected
+        assert BatchReviewWidget._number(0) == ""
+    finally:
+        QLocale.setDefault(previous)

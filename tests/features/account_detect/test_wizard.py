@@ -281,6 +281,8 @@ def test_created_account_receives_the_preview(qtbot, service, tmp_path):
     dialog = _open_create_dialog(widget)
     assert dialog.entered_number() == "99 888 777 6", "prefilled as printed"
     dialog._name.setText("New Savings")
+    # OFX determines no type, so the user picks one (FIBR-0086 § 4.6).
+    dialog._type.setCurrentIndex(dialog._type.findData("savings"))
     dialog.accept()
 
     created = [a for a in svc.list_accounts() if a.id != seeded]
@@ -302,6 +304,7 @@ def test_create_with_no_name_surfaces_the_error(qtbot, service, tmp_path):
 
     dialog = _open_create_dialog(widget)
     assert dialog.entered_name() == "", "OFX carries no name to prefill"
+    dialog._type.setCurrentIndex(dialog._type.findData("savings"))
     dialog.accept()
 
     assert len(svc.list_accounts()) == 1, "nothing created"
@@ -412,7 +415,7 @@ def test_create_dialog_prefills_from_the_statement() -> None:
         number="11 222 333 4", name="PRESTIGE CURRENT ACCOUNT", family="A"
     )
     assert current.entered_name() == "PRESTIGE CURRENT ACCOUNT"
-    assert current.entered_type() == "current", "family A infers nothing; first entry"
+    assert current.entered_type() is None, "family A infers nothing; the user picks"
 
 
 def test_ambiguous_leaves_the_pick_step_selection(qtbot, service, tmp_path):
@@ -430,3 +433,30 @@ def test_ambiguous_leaves_the_pick_step_selection(qtbot, service, tmp_path):
     assert widget._confirm_account_combo.currentData() == seeded
     assert widget._preview is not None
     assert widget._preview.account_id == seeded
+
+
+def test_FIBR0407_family_a_create_makes_the_user_pick_a_type(qtbot):
+    """FIBR-0086 § 4.6: family A spans current, savings and revolving credit,
+    "so it yields no type and the user picks". The combo fell to its first
+    entry, Current, so an OK without looking filed a savings account as one."""
+    from PySide6.QtWidgets import QDialogButtonBox
+
+    from finbreak.models import AccountType
+    from finbreak.ui.account_create import CreateAccountDialog
+
+    dialog = CreateAccountDialog(number="1234", name="PURESAVE", family="A")
+    qtbot.addWidget(dialog)
+    ok = dialog.findChild(QDialogButtonBox).button(QDialogButtonBox.StandardButton.Ok)
+
+    assert dialog._type.currentData() is None
+    assert not ok.isEnabled(), "OK must wait for a type to be chosen"
+    dialog._type.setCurrentIndex(dialog._type.findData(AccountType.SAVINGS.value))
+    assert ok.isEnabled()
+    assert dialog.entered_type() == AccountType.SAVINGS
+
+    loan = CreateAccountDialog(number="447556667", name=None, family="B")
+    qtbot.addWidget(loan)
+    loan_ok = loan.findChild(QDialogButtonBox).button(
+        QDialogButtonBox.StandardButton.Ok
+    )
+    assert loan_ok.isEnabled(), "a family that determines the type needs no pick"

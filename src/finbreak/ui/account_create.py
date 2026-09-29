@@ -74,12 +74,24 @@ class CreateAccountDialog(QDialog):
         inferred = _FAMILY_TYPES.get(family or "")
         if inferred is not None:
             select_combo_data(self._type, inferred)
+        else:
+            # FIBR-0086 § 4.6: where the family does not determine the type (A
+            # spans current, savings and revolving credit) the user picks. The
+            # combo otherwise fell to its first entry, Current, so an OK without
+            # looking filed the account as one (FIBR-0407).
+            self._type.insertItem(0, self.tr("— choose a type —"), None)
+            self._type.setCurrentIndex(0)
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
+        ok = buttons.button(QDialogButtonBox.StandardButton.Ok)
+        ok.setEnabled(self._type.currentData() is not None)
+        self._type.currentIndexChanged.connect(
+            lambda _index: ok.setEnabled(self._type.currentData() is not None)
+        )
 
         form = QFormLayout()
         form.addRow(self.tr("Name"), self._name)
@@ -92,6 +104,12 @@ class CreateAccountDialog(QDialog):
 
     def entered_name(self) -> str:
         return self._name.text()
+
+    def accept(self) -> None:
+        # No route past the type choice, the OK button's included (FIBR-0407).
+        if self._type.currentData() is None:
+            return
+        super().accept()
 
     def entered_type(self) -> str:
         return self._type.currentData()

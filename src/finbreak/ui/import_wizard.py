@@ -64,6 +64,7 @@ from finbreak.services.accounts import AccountService
 from finbreak.services.auth import AmountPrefs, AuthService
 from finbreak.services.batch_import import (
     CANCELLED,
+    STOPPED_BY_ERROR,
     BatchFile,
     BatchImportService,
     next_question,
@@ -1664,6 +1665,18 @@ class ImportWizardWidget(QWidget):
         if self._batch_phase not in ("scan", "ask"):
             return
         self._batch_phase = "ask"
+        # A reply may have queued other files a new password or profile might
+        # unlock. Re-scan them one per turn BEFORE asking anything else, so a
+        # same-password batch settles without a second prompt and the window
+        # stays live between files (§ 4.4, § 4.7; FIBR-0407).
+        try:
+            rescanned = self._batch.rescan_step(self._batch_files)
+        except VaultLockedError:
+            return  # auto-lock fired between turns — the shell takes over
+        if rescanned:
+            self._batch_review.refresh()
+            self._arm(self._begin_ask)
+            return
         record = next_question(self._batch_files)
         if record is None:
             try:
@@ -1810,7 +1823,27 @@ class ImportWizardWidget(QWidget):
             # and destroy the very table the report is written into (INV-14).
             self._batch_review.finish()
             return
-        self._batch_index = self._batch.run_step(self._batch_files, self._batch_index)
+        try:
+            self._batch_index = self._batch.run_step(
+                self._batch_files, self._batch_index
+            )
+        except VaultLockedError:
+            return  # auto-lock fired between turns — the shell takes over
+        except Exception:
+            # Outside `_commit`'s deliberately narrow net — a database error,
+            # say. Left to escape, the chain was never re-armed and every later
+            # row sat unreported with only Cancel as a way out. End the run and
+            # show the report, then re-raise so the crash hook still reports it
+            # as the bug it is (FIBR-0407).
+            record = self._batch_files[self._batch_index]
+            record.outcome = "failed"
+            record.reason = STOPPED_BY_ERROR
+            self._batch.stop_from(
+                self._batch_files, self._batch_index + 1, STOPPED_BY_ERROR
+            )
+            self._batch_index = len(self._batch_files)
+            self._run_next()  # the report branch above
+            raise
         self._batch_review.refresh()
         self._arm(self._run_next)
 

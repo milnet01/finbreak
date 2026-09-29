@@ -25,7 +25,7 @@ from collections import Counter
 from collections.abc import Sequence
 from pathlib import Path
 
-from PySide6.QtCore import QCoreApplication, QEvent, QObject, Qt, Signal, Slot
+from PySide6.QtCore import QCoreApplication, QEvent, QLocale, QObject, Qt, Signal, Slot
 from PySide6.QtGui import QKeyEvent
 from PySide6.QtWidgets import (
     QHBoxLayout,
@@ -76,21 +76,27 @@ def file_labels(files: Sequence[BatchFile]) -> list[str]:
     hundreds of files long", by ``refresh``'s own account (FIBR-0327).
     """
     same_path = Counter(other.path for other in files)
-    basenames = Counter(Path(other.path).name for other in files)
-    parented = Counter(_with_parent(other.path) for other in files)
+    # Counted over DISTINCT paths: an OFX's own fanned-out siblings share one
+    # path and are not a name clash (FIBR-0407).
+    paths = set(same_path)
+    basenames = Counter(Path(path).name for path in paths)
+    parented = Counter(_with_parent(path) for path in paths)
 
     labels: list[str] = []
     for record in files:
-        path = Path(record.path)
+        name = Path(record.path).name
+        if basenames[name] == 1:
+            label = name
+        elif parented[_with_parent(record.path)] == 1:
+            label = _with_parent(record.path)
+        else:
+            label = record.path
         siblings = same_path[record.path]
         if siblings > 1 and record.statement_index is not None:
-            labels.append(self_index_label(path.name, record.statement_index, siblings))
-        elif basenames[path.name] == 1:
-            labels.append(path.name)
-        elif parented[_with_parent(record.path)] == 1:
-            labels.append(_with_parent(record.path))
-        else:
-            labels.append(record.path)
+            # Escalated first, then indexed: `bank.ofx` in two folders read
+            # "bank.ofx [1 of 2]" twice when the index went on the bare name.
+            label = self_index_label(label, record.statement_index, siblings)
+        labels.append(label)
     return labels
 
 
@@ -175,6 +181,13 @@ class BatchReviewWidget(QWidget):
         # wizard's error label.
         self._error = QLabel()
         self._error.setWordWrap(True)
+        # Plain text: the message can carry a user-typed account name, and a
+        # QLabel otherwise guesses rich text and renders markup (FIBR-0407).
+        self._error.setTextFormat(Qt.TextFormat.PlainText)
+        # What a Create actually stored, as the single-file path reports it.
+        self._note = QLabel()
+        self._note.setWordWrap(True)
+        self._note.setTextFormat(Qt.TextFormat.PlainText)
 
         buttons = QHBoxLayout()
         buttons.addWidget(self._cancel_button)
@@ -184,6 +197,7 @@ class BatchReviewWidget(QWidget):
 
         layout = QVBoxLayout(self)
         layout.addWidget(self._table)
+        layout.addWidget(self._note)
         layout.addWidget(self._error)
         layout.addLayout(buttons)
 
@@ -205,6 +219,7 @@ class BatchReviewWidget(QWidget):
         self._finished = False
         self._running = False
         self._error.clear()
+        self._note.clear()
         self._close_button.hide()
         self._cancel_button.show()
         self._import_button.show()
@@ -267,7 +282,8 @@ class BatchReviewWidget(QWidget):
 
     @staticmethod
     def _number(value: int) -> str:
-        return str(value) if value else ""
+        # QLocale, not str(): the locale's own digits (design.md i18n, FIBR-0407).
+        return QLocale().toString(value) if value else ""
 
     def _account_name(self, record: BatchFile) -> str:
         # The literal must sit INSIDE tr(): `lupdate` scans source text, so a
@@ -472,6 +488,22 @@ class BatchReviewWidget(QWidget):
             self._error.setText(str(exc))
             return
         self.accounts_changed.emit()
+        # Report what was STORED, not what the statement printed: the number box
+        # is editable, and a cleared one means later statements for this account
+        # will not file themselves -- the single-file Create says so (FIBR-0407).
+        if account.account_number:
+            self._note.setText(
+                self.tr("Created {name} with account number {number}.").format(
+                    name=account.name, number=account.account_number
+                )
+            )
+        else:
+            self._note.setText(
+                self.tr(
+                    "Created {name}. It has no account number, so future statements "
+                    "will not file themselves."
+                ).format(name=account.name)
+            )
         self._settle(record, account.id)
 
     def _settle(self, record: BatchFile, account_id: int) -> None:
