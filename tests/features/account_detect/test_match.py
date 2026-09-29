@@ -167,3 +167,17 @@ def test_masked_check_precedes_normalisation() -> None:
     normalising is visibly matching on a tail, not merely failing a unit test.
     """
     assert normalise_account_number("xxxx1234") == normalise_account_number("1234")
+
+
+@pytest.mark.parametrize(
+    "raw",
+    ["０１２３", "٠١٢٣", "۰۱۲۳", "0 1 2 3"],
+    ids=["fullwidth", "arabic-indic", "extended-arabic-indic", "ascii"],
+)
+def test_FIBR0250_every_digit_script_normalises_to_the_same_key(raw):
+    """``\\D`` is Unicode-aware, so non-ASCII digits were kept, and
+    ``lstrip("0")`` removed none of their zeros: the key never equalled its
+    ASCII twin. Every decimal digit now becomes its ASCII value first."""
+    from finbreak.services.account_match import normalise_account_number
+
+    assert normalise_account_number(raw) == "123"

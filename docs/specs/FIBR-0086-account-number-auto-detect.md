@@ -400,7 +400,8 @@ def normalise_account_number(raw: str) -> str:
     Grouping varies by layout ("11 222 333 4" vs "447556667"), so it must not
     decide identity. Returns "" for a value with no digits, which never
     matches (INV-4)."""
-    return re.sub(r"\D", "", raw).lstrip("0")
+    # Every decimal digit, in any script, as its ASCII value (FIBR-0250).
+    return "".join(str(int(ch)) for ch in raw if ch.isdecimal()).lstrip("0")
 ```
 
 **Grouping-insensitivity is measured; padding-insensitivity is defensive, and

@@ -60,8 +60,12 @@ def normalise_account_number(raw: str) -> str:
     stripping can only make two numbers *more* likely to be equal, and an equal
     pair lands in ``ambiguous`` (manual); not stripping can make a statement fail
     to match its own account, which offers to create a duplicate.
+
+    Every decimal digit becomes its ASCII value first. A regex non-digit filter
+    alone kept fullwidth and Arabic-Indic digits as they were, so their zeros
+    were never stripped and the key never equalled its ASCII twin (FIBR-0250).
     """
-    return re.sub(r"\D", "", raw).lstrip("0")
+    return "".join(str(int(ch)) for ch in raw if ch.isdecimal()).lstrip("0")
 
 
 @dataclass(frozen=True)

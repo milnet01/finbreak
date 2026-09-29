@@ -5216,7 +5216,7 @@ work, and none of it is a release decision.
   Source: check-code-2026-09-21 (the sweep's one durable recommendation).
   Lanes: ci, tests.
 
-- 📋 [FIBR-0239] **design.md's service list and architecture diagram are two services behind.**
+- ✅ [FIBR-0239] **design.md's service list and architecture diagram are two services behind.**
   Noticed while adding MonthSummaryService to `docs/design.md`'s
   "Service layer — one service per concern" list (FIBR-0231 § 12). The
   list, and the mermaid `subgraph Svc` diagram above it, both name
@@ -5237,6 +5237,10 @@ work, and none of it is a release decision.
   separately whether the diagram tracks the list or stays a sketch, and
   say which in the diagram's caption so the next session does not have
   to re-derive the answer.
+  Resolved 2026-09-29: RecurringService and AlertService added to
+  design.md's service list. The list now says it names the main concerns
+  and the diagram says it is a sketch, with src/finbreak/services/ as the
+  full set. The diagram question the bullet raised is settled that way.
   **Layman:** An internal architecture document lists most of the app's parts but has quietly fallen behind by two.
   Kind: doc-fix.
   Source: in-session-2026-08-06 (surfaced while landing FIBR-0231).
