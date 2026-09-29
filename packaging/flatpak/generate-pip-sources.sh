@@ -34,7 +34,16 @@ REPO="$(cd "$HERE/../.." && pwd)"
 RUNTIME_BRANCH="${RUNTIME_BRANCH:-25.08}"
 SDK="org.freedesktop.Sdk//${RUNTIME_BRANCH}"
 GENERATOR="${GENERATOR:-$HERE/.flatpak-pip-generator.py}"
-GEN_URL="https://raw.githubusercontent.com/flatpak/flatpak-builder-tools/master/pip/flatpak-pip-generator.py"
+# Pinned to a commit and a digest (full audit 2026-09-27 row 46). This script
+# writes every sha256 pin the offline Flathub build then trusts, so running
+# whatever `master` holds today would let a compromised upstream mint pins that
+# look legitimate. The digest was taken from the commit below on 2026-09-29 and
+# matched the cached copy that produced the committed python3-deps.yaml. To move
+# it: take the newest commit touching pip/flatpak-pip-generator.py, download it,
+# and pin both values together.
+GEN_COMMIT=dda10aa5949811589747e6e485da6ae2e86b5d2b
+GEN_URL="https://raw.githubusercontent.com/flatpak/flatpak-builder-tools/${GEN_COMMIT}/pip/flatpak-pip-generator.py"
+GEN_SHA256=5e26c4ddd560f4867aa2a90bf53c747fbb476d575ae4a2d8f32c229e317aa4c6
 # The generator runs on the HOST interpreter (it only queries the Sdk for platform
 # tags) and imports `requirements-parser`. Prefer an active venv, else python3 —
 # override with PYGEN=. A distro python3 is often PEP-668 externally-managed, so
@@ -54,9 +63,18 @@ if ! "$PYGEN" -c "import requirements" 2>/dev/null; then
 fi
 
 # --- The generator itself (cached next to this script; refetch with REFETCH=1).
-if [[ "${REFETCH:-0}" == "1" || ! -f "$GENERATOR" ]]; then
-    echo ">> fetching flatpak-pip-generator"
-    curl -sSL -o "$GENERATOR" "$GEN_URL"
+# Verified on EVERY run, cached or fresh: a cached file is re-fetched once if it
+# does not match, and nothing unverified is ever run.
+generator_ok() { echo "$GEN_SHA256  $GENERATOR" | sha256sum -c - >/dev/null 2>&1; }
+if [[ "${REFETCH:-0}" == "1" || ! -f "$GENERATOR" ]] || ! generator_ok; then
+    echo ">> fetching flatpak-pip-generator @ ${GEN_COMMIT:0:12}"
+    curl -fsSL --retry 3 -o "$GENERATOR" "$GEN_URL"
+fi
+if ! generator_ok; then
+    echo "!! CHECKSUM MISMATCH for $GEN_URL" >&2
+    echo "   expected $GEN_SHA256" >&2
+    echo "   actual   $(sha256sum "$GENERATOR" | cut -d' ' -f1)" >&2
+    exit 1
 fi
 
 # --- Sanity: the Sdk must be installed (it runs pip for python-version parity).

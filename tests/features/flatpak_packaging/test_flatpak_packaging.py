@@ -535,3 +535,72 @@ def test_recipe_files_present() -> None:
     )
     for path in required:
         assert path.exists(), f"missing packaging/flatpak file: {path.name}"
+
+
+# --------------------------------------------------------------------------- #
+# Full audit 2026-09-27 row 46 — the generator that writes every sha256 pin the
+# offline Flathub build trusts is itself pinned and verified.
+# --------------------------------------------------------------------------- #
+def test_the_pip_generator_is_fetched_from_a_fixed_commit_and_fails_on_http_errors():
+    text = _GEN_SCRIPT.read_text()
+    url = re.search(r'^GEN_URL="([^"]+)"', text, re.MULTILINE)
+    assert url is not None
+    commit = re.search(r"^GEN_COMMIT=([0-9a-f]{40})$", text, re.MULTILINE)
+    assert commit is not None, "GEN_COMMIT must be a 40-hex commit"
+    assert url.group(1).endswith("/${GEN_COMMIT}/pip/flatpak-pip-generator.py"), (
+        f"the URL does not use the pinned commit: {url.group(1)}"
+    )
+    assert re.search(r"^GEN_SHA256=[0-9a-f]{64}$", text, re.MULTILINE)
+    assert "curl -sSL " not in text, "without -f an HTTP error page is saved as code"
+
+
+def test_a_generator_that_fails_its_checksum_is_never_run(tmp_path):
+    """Executed: a cached generator with the wrong bytes, and a `curl` that can
+    only fetch the same wrong bytes. The script must stop on the checksum before
+    it reaches `flatpak` or runs anything it fetched.
+
+    It runs a COPY of the script in a scratch tree: the real one deletes and
+    rewrites packaging/flatpak/python3-deps.yaml beside itself, and an early red
+    run of this test did exactly that to the committed file."""
+    sandbox = tmp_path / "repo"
+    (sandbox / "packaging" / "flatpak").mkdir(parents=True)
+    script = sandbox / "packaging" / "flatpak" / _GEN_SCRIPT.name
+    script.write_bytes(_GEN_SCRIPT.read_bytes())
+    script.chmod(0o755)
+    shutil.copy(_PYPROJECT, sandbox / "pyproject.toml")
+
+    stubs = tmp_path / "bin"
+    stubs.mkdir()
+    bad = "print('not the generator')"
+    stub_bodies = {
+        "curl": (
+            'while [ $# -gt 0 ]; do [ "$1" = -o ] && { shift; out="$1"; }; shift; '
+            f'done\nprintf %s "{bad}" > "$out"'
+        ),
+        "python": "exit 0",  # `import requirements` passes
+        "flatpak": "echo FLATPAK-REACHED >&2; exit 1",
+    }
+    for name, body in stub_bodies.items():
+        (stubs / name).write_text(f"#!/bin/sh\n{body}\n")
+        (stubs / name).chmod(0o755)
+    cached = tmp_path / "gen.py"
+    cached.write_text(bad)
+
+    import os
+
+    result = subprocess.run(
+        [str(script)],
+        env={
+            **os.environ,
+            "PATH": f"{stubs}:{os.environ['PATH']}",
+            "PYGEN": str(stubs / "python"),
+            "GENERATOR": str(cached),
+        },
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+
+    assert result.returncode != 0
+    assert "CHECKSUM" in result.stderr.upper(), result.stderr
+    assert "FLATPAK-REACHED" not in result.stderr, "it went on past the check"
