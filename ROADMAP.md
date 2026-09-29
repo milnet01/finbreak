@@ -448,6 +448,13 @@ so Flathub review and code signing do not block this release.
   lands on the clipboard and is auto-cleared, no context menu. Re-run
   the probe after the fix and record PRIMARY unchanged in the ledger.
   T13 in docs/security-model.md then stays true as written.
+  Progress 2026-09-29 (evening): row 34 fixed (f880f52), red first,
+  gate green (2311 passed). The display filters every mouse button event
+  and the selecting standard keys, routes Copy/Cut to _copy, and has no
+  context menu; tests/features/recovery_key INV-27. Xvfb probe: PRIMARY
+  unchanged for every gesture after the fix. Probe file deleted. Next:
+  row 35 (recovery_key.py _save before Keep can overwrite the live
+  code's file).
   **Layman:** A full check of the app found bugs; the serious ones (wrong dates or amounts, lost data, security gaps) are being fixed now and the rest are filed.
   Kind: review-fix.
   Source: full-audit-2026-09-27.
