@@ -14,7 +14,8 @@ open dialogs down, FIBR-0051 INV-4b) — never ``exec()``. Every service call is
 
 from __future__ import annotations
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import Qt as QtGuiNamespace
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
@@ -103,7 +104,13 @@ class AlertsDialog(QDialog):
             row = QWidget()
             row_layout = QHBoxLayout(row)
             row_layout.setContentsMargins(0, 0, 0, 0)
-            row_layout.addWidget(QLabel(self._summary(alert)))
+            # PlainText, never the default AutoText: the summary carries a merchant
+            # name from the bank's description text, and Qt's guess would draw a
+            # `<b>` or an `<img src=…>` in it as formatting (audit row 36; the class
+            # FIBR-0327 fixed in month_summary.py and forecast.py).
+            summary = QLabel(self._summary(alert))
+            summary.setTextFormat(Qt.TextFormat.PlainText)
+            row_layout.addWidget(summary)
             row_layout.addStretch()
             # The glyph is DATA, not a translatable string — there is nothing in
             # "✕" for a translator to work with, and a bare glyph left a screen
@@ -115,7 +122,9 @@ class AlertsDialog(QDialog):
             dismiss.setObjectName("alert_dismiss")
             label = self.tr("Dismiss: {alert}").format(alert=self._summary(alert))
             dismiss.setAccessibleName(label)
-            dismiss.setToolTip(label)
+            # A tooltip has no PlainText mode — Qt always guesses — so hand it the
+            # text already converted to escaped HTML. The accessible name stays raw.
+            dismiss.setToolTip(QtGuiNamespace.convertFromPlainText(label))
             dismiss.setProperty("alert_key", alert.key)
             dismiss.clicked.connect(self._on_dismiss)
             row_layout.addWidget(dismiss)

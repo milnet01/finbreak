@@ -2051,6 +2051,20 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Source: in-session-2026-09-26 (re-check of security.md §1 for the ~/.claude session).
   Lanes: docs, security.
 
+- 📋 [FIBR-0382] **Batch-import review table tooltip renders a file path as rich text.**
+  `ui/import_batch.py` `_set` passes the statement's full path
+  straight to `QTableWidgetItem.setToolTip`. A tooltip has no
+  PlainText mode, so Qt guesses with `mightBeRichText`: a file named
+  `<b>x</b>.pdf` renders bold, and an `<img src=…>` asks Qt to load
+  a local file. Same class as audit row 36 (fixed in FIBR-0367):
+  wrap it with `QtGui.Qt.convertFromPlainText`, and test what the
+  tooltip SHOWS, as `test_alerts_ui.py`'s `_as_qt_shows` does. Found
+  by the row 36 sweep; pre-existing, so not fixed in that commit.
+  **Layman:** A statement file whose name looks like web formatting shows as formatted text when you hover over it in the import list.
+  Kind: fix.
+  Source: close-findings-2026-09-27 row 36 sweep.
+  Lanes: ui.
+
 ## v1.1.0 — Localisation
 
 The first feature minor after 1.0. Chosen to go first because it is

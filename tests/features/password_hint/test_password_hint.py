@@ -264,3 +264,24 @@ def test_show_hint_reveals_the_stored_hint(qtbot, service):
     button.click()
     assert not label.isHidden(), "clicking Show hint reveals the hint label"
     assert label.text() == "Spar loyalty year"
+
+
+def test_FIBR0367_row36_hint_is_shown_as_typed_not_as_markup(qtbot, service):
+    """2026-09-27 audit row 36 — the hint label on the unlock screen let Qt guess
+    whether the hint was markup. The hint lives in plaintext ``window.ini``, which
+    anyone with access to the user's files can write, so a hint of
+    ``<img src=…>`` or ``<a href=…>`` was drawn as formatting on the one screen
+    shown before the vault is open. The strength labels beside it already set
+    ``PlainText``."""
+    from PySide6.QtCore import Qt
+
+    hint = "<b>mat</b><img src=x>"
+    write_hint(hint)
+    dialog = UnlockDialog(service)
+    qtbot.addWidget(dialog)
+    label = dialog.findChild(QLabel, "unlock_hint_text")
+    assert label is not None
+    assert label.text() == hint
+    assert label.textFormat() is Qt.TextFormat.PlainText, (
+        "a hint must never be interpreted as markup"
+    )

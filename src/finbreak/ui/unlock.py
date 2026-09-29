@@ -20,7 +20,7 @@ import logging
 import math
 from datetime import UTC, datetime
 
-from PySide6.QtCore import QCoreApplication, QTimer, Signal, Slot
+from PySide6.QtCore import QCoreApplication, Qt, QTimer, Signal, Slot
 from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
     QDialog,
@@ -229,6 +229,10 @@ class UnlockDialog(QDialog):
             self._hint_label = QLabel(hint)
             self._hint_label.setObjectName("unlock_hint_text")
             self._hint_label.setWordWrap(True)
+            # PlainText, never the default AutoText: the hint comes from plaintext
+            # window.ini, which anyone with the user's files can write, and Qt's
+            # guess would draw markup in it on the pre-unlock screen (audit row 36).
+            self._hint_label.setTextFormat(Qt.TextFormat.PlainText)
             self._hint_label.hide()
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Cancel)

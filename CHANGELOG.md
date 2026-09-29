@@ -33,6 +33,13 @@ signaling per
 
 ### Fixed
 
+- **Alert text and the password hint are shown exactly as written**
+  A merchant name from a bank statement, or a password hint,
+  containing something that looked like web formatting (such as
+  `<b>`) was drawn as formatting instead of as text. The alerts
+  list, its Dismiss tooltip and the unlock screen's hint now always
+  show the text as it is. (FIBR-0367)
+
 - **Saving a new recovery code can no longer leave you with a saved code that does not work.** (FIBR-0367)
   "Save to a file" comes before choosing Keep or Decline. Saving and
   then declining left the file holding a code that opens nothing — and

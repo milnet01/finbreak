@@ -18,7 +18,9 @@ from collections.abc import Iterator
 from datetime import date, timedelta
 
 import pytest
-from PySide6.QtWidgets import QPushButton, QWidget
+from PySide6 import QtGui
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QLabel, QPushButton, QWidget
 
 from conftest import _PW
 from finbreak.errors import VaultLockedError
@@ -221,7 +223,11 @@ def test_FIBR0216_dismiss_buttons_are_individually_named(qtbot, service) -> None
     assert "Spotify".lower() in button.accessibleName().lower(), (
         "and it identifies the alert it acts on, not just 'Dismiss'"
     )
-    assert button.toolTip() == button.accessibleName()
+    # The tooltip is escaped against Qt's rich-text guess (audit row 36), so compare
+    # what it SHOWS rather than its source string.
+    assert _as_qt_shows(button.toolTip(), Qt.TextFormat.AutoText) == (
+        button.accessibleName()
+    )
 
 
 def test_FIBR0216_dismiss_computes_the_alert_set_once_not_twice(
@@ -310,3 +316,60 @@ def test_FIBR0328_missed_payment_due_date_reads_in_the_users_format(qtbot, servi
     summary = dialog._summary(alert)
     assert "05/01/2026" in summary, f"the due date ignored the preference: {summary!r}"
     assert "2026-01-05" not in summary, f"still showing a raw ISO date: {summary!r}"
+
+
+def _as_qt_shows(text: str, fmt) -> str:
+    """The characters Qt actually puts on screen for ``text`` shown in ``fmt``.
+
+    ``AutoText`` is what a QLabel defaults to and the ONLY mode a tooltip has: Qt
+    guesses with ``mightBeRichText`` and, on a hit, renders the string as HTML."""
+    if fmt is Qt.TextFormat.PlainText:
+        return text
+    # mightBeRichText lives on QtGui's Qt namespace, not QtCore's.
+    rich = fmt is Qt.TextFormat.RichText or QtGui.Qt.mightBeRichText(text)
+    doc = QtGui.QTextDocument()
+    if rich:
+        doc.setHtml(text)
+    else:
+        doc.setPlainText(text)
+    return doc.toPlainText()
+
+
+def test_FIBR0367_row36_bank_text_is_shown_as_typed_not_as_markup(
+    qtbot, service, monkeypatch
+) -> None:
+    """2026-09-27 audit row 36 — an alert names a merchant taken from the bank's
+    description text, and both the row's label and its Dismiss tooltip let Qt guess
+    whether that text was markup. A description carrying ``<b>`` or ``<img src=…>``
+    was drawn as formatting — and an image tag asks Qt to load a local file — so the
+    user saw something other than what the bank sent. month_summary.py and
+    forecast.py were fixed for the same class (FIBR-0327)."""
+    from finbreak.models import AlertKind, SpendingAlert
+
+    name = "<b>Gym</b><img src=x>"
+    alert = SpendingAlert(
+        kind=AlertKind.NEW_RECURRING,
+        key="new_recurring:gym",
+        label=name,
+        amount_minor=19_900,
+        baseline_minor=0,
+        on=None,
+    )
+    alerts = AlertService(service.vault)
+    monkeypatch.setattr(alerts, "alerts", lambda _today: [alert])
+    dialog = _dialog(service, alerts)
+    qtbot.addWidget(dialog)
+
+    shown = [
+        _as_qt_shows(label.text(), label.textFormat())
+        for label in dialog.findChildren(QLabel)
+        if name in label.text()
+    ]
+    assert shown, "the alert row's label carries the merchant name"
+    for text in shown:
+        assert name in text, f"the label drew the name as markup: {text!r}"
+
+    (button,) = _dismiss_buttons(dialog)
+    tip = _as_qt_shows(button.toolTip(), Qt.TextFormat.AutoText)
+    assert name in tip, f"the tooltip drew the name as markup: {tip!r}"
+    assert tip == button.accessibleName(), "hover and screen reader say the same"
