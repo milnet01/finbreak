@@ -934,3 +934,107 @@ def test_FIBR0321_remembering_without_retargeting_keeps_the_password(
         "stored against, and the password is gone.\n"
         f"  actual:   {accounts.get_pdf_password(current)!r}"
     )
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0405 — a compression bomb is refused before anything inflates it
+# --------------------------------------------------------------------------- #
+def _pdf_with_page_content(inflated_mb: int, *, ascii85: bool) -> bytes:
+    import base64
+    import zlib
+
+    pdf = pikepdf.new()
+    pdf.add_blank_page(page_size=(612, 792))
+    packed = zlib.compress(b" " * (inflated_mb * 1024 * 1024), 9)
+    if ascii85:
+        stream = pikepdf.Stream(pdf, base64.a85encode(packed) + b"~>")
+        stream.Filter = pikepdf.Array(
+            [pikepdf.Name.ASCII85Decode, pikepdf.Name.FlateDecode]
+        )
+    else:
+        stream = pikepdf.Stream(pdf, packed)
+        stream.Filter = pikepdf.Name.FlateDecode
+    pdf.pages[0].Contents = pdf.make_indirect(stream)
+    out = io.BytesIO()
+    pdf.save(
+        out,
+        compress_streams=False,
+        stream_decode_level=pikepdf.StreamDecodeLevel.none,
+    )
+    return out.getvalue()
+
+
+@pytest.mark.parametrize("ascii85", [False, True], ids=["flate", "ascii85-flate"])
+def test_FIBR0405_a_compression_bomb_is_refused(ascii85):
+    """Nothing bounded the INFLATED size: a 255 KB file whose page content
+    inflates to 256 MB took the import to ~560 MB resident (measured
+    2026-09-29), and the 16 MiB input cap allows ~16 GB. The normaliser every
+    PDF path goes through now refuses past a decoded-size budget."""
+    from finbreak.importers.pdf_importer import PdfImporter
+
+    bomb = _pdf_with_page_content(80, ascii85=ascii85)
+    assert len(bomb) < 1024 * 1024, "precondition: the bomb itself is small"
+    with pytest.raises(ValueError, match="CSV or OFX"):
+        PdfImporter.decrypt_to_plaintext(bomb)
+
+
+def test_FIBR0405_an_ordinary_sized_pdf_still_opens():
+    from finbreak.importers.pdf_importer import PdfImporter
+
+    PdfImporter.decrypt_to_plaintext(_pdf_with_page_content(4, ascii85=True))
+
+
+def test_FIBR0405_a_stream_that_will_not_decode_is_not_a_crash():
+    """The bomb check measures streams by decoding them. One that will not
+    decode must not escape as ``zlib.error``, which the wizard does not catch;
+    it is left to the table reader's own friendly boundary."""
+    from finbreak.importers.pdf_importer import PdfImporter
+
+    pdf = pikepdf.new()
+    pdf.add_blank_page(page_size=(612, 792))
+    stream = pikepdf.Stream(pdf, b"this is not deflate data")
+    stream.Filter = pikepdf.Name.FlateDecode
+    pdf.pages[0].Contents = pdf.make_indirect(stream)
+    out = io.BytesIO()
+    pdf.save(
+        out, compress_streams=False, stream_decode_level=pikepdf.StreamDecodeLevel.none
+    )
+
+    try:
+        PdfImporter.decrypt_to_plaintext(out.getvalue())
+    except ValueError:
+        pass  # a friendly refusal is fine; an uncaught zlib.error is not
+
+
+class _LibraryFault:
+    """A pdfplumber stand-in whose pages raise the library's own ValueError."""
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_exc):
+        return False
+
+    @property
+    def pages(self):
+        raise ValueError("pdfminer internal: bad xref entry at offset 1234")
+
+
+@pytest.mark.parametrize("importer", ["generic", "standard_bank"])
+def test_FIBR0405_a_library_value_error_is_not_shown_raw(monkeypatch, importer):
+    """``except ValueError: raise`` meant to pass OUR page-cap message through,
+    and passed the PDF library's internal ValueErrors through with it."""
+    import pdfplumber
+
+    from finbreak.importers.pdf_importer import PdfImporter
+    from finbreak.importers.standard_bank import StandardBankImporter
+
+    monkeypatch.setattr(pdfplumber, "open", lambda *_a, **_k: _LibraryFault())
+    pdf = _pdf_with_page_content(1, ascii85=False)
+    with pytest.raises(ValueError) as excinfo:
+        if importer == "generic":
+            PdfImporter().candidate_tables(pdf)
+        else:
+            StandardBankImporter().parse(pdf, 2)
+    assert "pdfminer internal" not in str(excinfo.value)
+    assert "CSV or OFX" in str(excinfo.value)

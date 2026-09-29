@@ -94,9 +94,8 @@ both are recorded here rather than in a commit message:
    reasoning for the one taken.
 2. **The refusal message names no row number and no internal reason.** Every
    other **user-reachable** refusal in this file is one sentence of plain English
-   ending in *try your bank's CSV or OFX export* — `_dmy_iso`'s
-   `couldn't read the date …` is the sole exception and is marked defensive, its
-   own comment saying the validated date regex should preclude it;
+   ending in *try your bank's CSV or OFX export* — `_dmy_iso`'s defensive
+   `couldn't read the date …` included since FIBR-0405;
    `occurred_on must be a valid ISO-8601 date` is
    `parse_transaction`'s wording for a developer, not a statement a user can act
    on. §6 states what the user is left with instead.

@@ -370,11 +370,14 @@ be checkable. Enforcement arrives in step with the code:
   service ingesting untrusted uploads), and the only robust bound —
   running extraction in a separate memory-capped process (POSIX
   `RLIMIT_AS` / Windows Job Objects) — is disproportionate to that risk
-  on a cross-platform desktop app. `pdfplumber`/`pdfminer` expose no
-  streaming size limit to do it cheaply in-process. **Revisit if
-  finbreak ever ingests PDFs from an untrusted channel** (a shared inbox,
-  a sync folder, a server). The decompression bound is the documented
-  residual, not a silently-unmet claim.
+  on a cross-platform desktop app. **Narrowed by FIBR-0405 (2026-09-29):**
+  before `pdfplumber` sees a file, every stream is measured with a capped
+  decompressor and the file is refused once they would inflate past
+  `_MAX_DECODED_BYTES` (64 MiB) in total. What stays unbounded is the
+  decoding `pikepdf.open` itself performs while parsing (object and
+  cross-reference streams). **Revisit if finbreak ever ingests PDFs from an
+  untrusted channel** (a shared inbox, a sync folder, a server). That
+  remainder is the documented residual, not a silently-unmet claim.
 - **INV-5c — Per-row failure.** A malformed row is reported and
   skipped; the rest of the import proceeds. Owned by the import
   specs (FIBR-0007 / FIBR-0008 / FIBR-0009), **not** by P01.

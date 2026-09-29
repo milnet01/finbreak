@@ -42,6 +42,7 @@ from finbreak.importers.base import ParseResult, RowError, SourceAccountHint
 from finbreak.importers.pdf_importer import (
     _MAX_PDF_PAGES,
     _MAX_PDF_ROWS,
+    PdfRefusal,
     _normalise_to_plaintext,
 )
 from finbreak.models import TransactionDraft
@@ -193,7 +194,9 @@ def _parse_amount(token: str, fmt: Fmt) -> Decimal:
     try:
         return Decimal(t)
     except InvalidOperation as exc:
-        raise ValueError(f"couldn't read the amount {token!r}") from exc
+        raise ValueError(
+            f"couldn't read the amount {token!r} — try your bank's CSV or OFX export"
+        ) from exc
 
 
 def _is_negative(token: str) -> bool:
@@ -520,7 +523,10 @@ def _capture_opening(region_lines: list[str], fmt: Fmt) -> Decimal:
             if toks:
                 bal = toks[-1]
                 return _signed_balance(bal, fmt)
-    raise ValueError("couldn't find the opening balance on this statement")
+    raise ValueError(
+        "couldn't find the opening balance on this statement — "
+        "try your bank's CSV or OFX export"
+    )
 
 
 def _capture_closing(full_text: str, family: Family, fmt: Fmt) -> Decimal | None:
@@ -1154,7 +1160,9 @@ def _dmy_iso(date_s: str) -> str:
     d, mon, yy = date_s.split()
     month = _MON3.get(mon.lower())
     if month is None:  # defensive — the validated _CC_DATE regex should preclude it
-        raise ValueError(f"couldn't read the date {date_s!r}")
+        raise ValueError(
+            f"couldn't read the date {date_s!r} — try your bank's CSV or OFX export"
+        )
     return _iso(2000 + int(yy), month, int(d))
 
 
@@ -1183,13 +1191,13 @@ class StandardBankImporter:
         try:
             with pdfplumber.open(io.BytesIO(plaintext)) as pdf:
                 if len(pdf.pages) > _MAX_PDF_PAGES:
-                    raise ValueError(
+                    raise PdfRefusal(
                         "this PDF has too many pages to import — "
                         "try your bank's CSV or OFX export"
                     )
                 for page in pdf.pages:
                     pages.append((page.extract_text() or "").splitlines())
-        except ValueError:
+        except PdfRefusal:
             raise  # our own friendly guards (e.g. the page cap) pass through
         except Exception as exc:  # untrusted-PDF boundary (mirrors OFX D7)
             raise ValueError(
@@ -1310,7 +1318,10 @@ def _cc_opening(full_text: str, fmt: Fmt) -> Decimal:
             toks = _money_tokens(line[m.start() :])
             if toks:
                 return _signed_balance(toks[0], fmt)
-    raise ValueError("couldn't find the opening balance on this statement")
+    raise ValueError(
+        "couldn't find the opening balance on this statement — "
+        "try your bank's CSV or OFX export"
+    )
 
 
 def _span(

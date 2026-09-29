@@ -1361,3 +1361,22 @@ def test_FIBR0050_INV11_gate_is_signed_for_families_that_print_a_sign():
     # Family B keeps the magnitude endpoint match, so the truncated set passes
     # there. That is the documented exemption, not an oversight.
     _verify_checksum(Family.B, Decimal("100.00"), truncated, Decimal("-50.00"), 2)
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda sb: sb._capture_opening(["nothing here"], "en"),
+        lambda sb: sb._cc_opening("no brought-forward line", "en"),
+        lambda sb: sb._parse_amount("1.2.3", "en"),
+        lambda sb: sb._dmy_iso("01 Xyz 26"),
+    ],
+    ids=["opening", "cc-opening", "amount", "date"],
+)
+def test_FIBR0405_every_refusal_points_at_the_csv_or_ofx_export(call):
+    """D10: every refusal tells the user what to do instead. Four raised a
+    bare message (FIBR-0405)."""
+    from finbreak.importers import standard_bank as sb
+
+    with pytest.raises(ValueError, match="try your bank's CSV or OFX export"):
+        call(sb)

@@ -23,8 +23,10 @@ a candidate with more than ``_MAX_PDF_ROWS`` data rows is refused with a friendl
 
 from __future__ import annotations
 
+import base64
 import csv
 import io
+import zlib
 
 import pikepdf
 
@@ -41,6 +43,30 @@ PdfError = pikepdf.PdfError
 # tunable. The byte cap (_MAX_IMPORT_BYTES) lives on the service.
 _MAX_PDF_PAGES = 500
 _MAX_PDF_ROWS = 100_000
+# What the PDF's streams may INFLATE to, all together. Nothing bounded it: a
+# 255 KB file whose page content inflated to 256 MB took an import to ~560 MB
+# resident, and the 16 MiB input cap allows ~16 GB (FIBR-0405, measured
+# 2026-09-29). A real statement's streams come to a few MB.
+_MAX_DECODED_BYTES = 64 * 1024 * 1024
+# LZW emits at most one 4096-entry dictionary string per 9-bit code, and
+# RunLength at most 128 bytes per 2; their output is bounded by input times
+# this, so a stream is refused only when that bound could pass the budget.
+_MAX_EXPANSION = {"/LZWDecode": 3641, "/LZW": 3641, "/RunLengthDecode": 64, "/RL": 64}
+_TOO_BIG = (
+    "this PDF expands to far more data than a bank statement — "
+    "try your bank's CSV or OFX export"
+)
+
+
+class PdfRefusal(ValueError):
+    """A refusal of ours, whose message is written for the user. Only these pass
+    the untrusted-PDF boundary as they are; any other ``ValueError`` raised inside
+    it is the PDF library's own, internal text, and is replaced (FIBR-0405)."""
+
+
+class _TooBig(PdfRefusal):
+    """The decoded-size refusal, told apart from a stream that will not decode."""
+
 
 # A cell may be an empty ``str`` or ``None`` depending on table settings; both
 # are treated as empty. The type is ``str | None`` end-to-end (mypy-0).
@@ -162,14 +188,14 @@ class PdfImporter:
         try:
             with pdfplumber.open(io.BytesIO(plaintext)) as pdf:
                 if len(pdf.pages) > _MAX_PDF_PAGES:
-                    raise ValueError(
+                    raise PdfRefusal(
                         "this PDF has too many pages to import — "
                         "try your bank's CSV or OFX export"
                     )
                 raw_tables: list[_Table] = []
                 for page in pdf.pages:  # iterate, never index .pages[0] (INV-5)
                     raw_tables.extend(page.extract_tables())
-        except ValueError:
+        except PdfRefusal:
             raise  # our own friendly guards (e.g. the page cap) pass through
         except Exception as exc:  # untrusted-PDF boundary (mirrors OFX D7)
             raise ValueError(
@@ -206,6 +232,76 @@ def _normalise_to_plaintext(raw: bytes, password: str | None) -> bytes:
     user-password PDF opened without the right password (INV-3). The bytes never
     touch disk (INV-2)."""
     with pikepdf.open(io.BytesIO(raw), password=password or "") as pdf:
+        _refuse_a_compression_bomb(pdf)
         out = io.BytesIO()
         pdf.save(out)
         return out.getvalue()
+
+
+def _filter_names(stream: pikepdf.Stream) -> list[str]:
+    flt = stream.get("/Filter")
+    if flt is None:
+        return []
+    if isinstance(flt, pikepdf.Array):
+        return [str(name) for name in flt]
+    return [str(flt)]
+
+
+def _refuse_a_compression_bomb(pdf: pikepdf.Pdf) -> None:
+    """Raise ``ValueError`` before anything inflates a stream past
+    ``_MAX_DECODED_BYTES`` in total (FIBR-0405).
+
+    Every PDF path comes through ``_normalise_to_plaintext``, so this is the one
+    place it needs to run. Flate is measured with a capped ``decompressobj``,
+    never decoded whole; the ASCII filters only shrink their input, so they are
+    decoded first where a chain starts with one; LZW and RunLength are refused
+    only when their worst case could pass the budget. Image-only filters (DCT,
+    JPX, CCITT, JBIG2) count at their stored size: the table reader never decodes
+    them. What it cannot reach is qpdf's own decoding while ``pikepdf.open``
+    parses the file (object and cross-reference streams), which happens first.
+    """
+    remaining = _MAX_DECODED_BYTES
+    for obj in pdf.objects:
+        if not isinstance(obj, pikepdf.Stream):
+            continue
+        data = obj.read_raw_bytes()
+        try:
+            data = _decode_within(data, _filter_names(obj), remaining)
+        except _TooBig:
+            raise
+        except (ValueError, zlib.error):
+            # A stream this cannot decode is left to the table reader, which
+            # fails on it through its own friendly boundary.
+            pass
+        remaining -= len(data)
+        if remaining < 0:
+            raise _TooBig(_TOO_BIG)
+
+
+def _inflate_capped(data: bytes, cap: int) -> bytes:
+    """``data`` inflated, or ``ValueError`` once it passes ``cap`` bytes."""
+    inflater = zlib.decompressobj()
+    out = inflater.decompress(data, cap + 1)
+    if len(out) > cap:
+        raise _TooBig(_TOO_BIG)
+    return out
+
+
+def _decode_within(data: bytes, filters: list[str], budget: int) -> bytes:
+    """``data`` decoded as far as it can be measured, within ``budget``."""
+    for name in filters:
+        if name in ("/ASCII85Decode", "/A85"):
+            data = base64.a85decode(
+                data.strip().removesuffix(b"~>"), ignorechars=b" \t\n\r\x0b\x0c"
+            )
+        elif name in ("/ASCIIHexDecode", "/AHx"):
+            data = bytes.fromhex(data.split(b">")[0].decode("latin-1").replace(" ", ""))
+        elif name in ("/FlateDecode", "/Fl"):
+            data = _inflate_capped(data, budget)
+        elif name in _MAX_EXPANSION:
+            if len(data) * _MAX_EXPANSION[name] > budget:
+                raise _TooBig(_TOO_BIG)
+            break
+        else:
+            break  # an image filter: stays at its stored size
+    return data
