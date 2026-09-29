@@ -61,7 +61,7 @@ FIBR-0019 shipped, and SECURITY.md and CODE_OF_CONDUCT.md both exist. Note what
 is deliberately NOT here: § 5 rules that a third party's inbox is never a gate,
 so Flathub review and code signing do not block this release.
 
-- 📋 [FIBR-0346] **The RPM and deb still bundle the split libxkbcommon pair the AppImage stopped bundling.**
+- ✅ [FIBR-0346] **The RPM and deb still bundle the split libxkbcommon pair the AppImage stopped bundling.**
   FIBR-0208 is fixed for the AppImage only. The OBS recipes freeze with
   PyInstaller too and have the same shape of defect, found while reading
   them to check whether the fix rippled.
@@ -104,6 +104,15 @@ so Flathub review and code signing do not block this release.
   The lane's remedy: drop it from BuildRequires/Build-Depends and add
   libxkbcommon0 + libxkbcommon-x11-0 (per-distro rpm names) to runtime
   Requires/Depends. Recorded by FIBR-0367 (ledger: already tracked).
+  Resolved (2026-09-29): both recipes Require/Depend on libxkbcommon and
+  libxkbcommon-x11, and delete the collected libxkbcommon from the
+  payload before the staged self-test. Build deps keep it, because that
+  self-test loads QtGui. Locked by obs_packaging INV-11 (red on the old
+  recipes). Verified with a local deb build in debian:13-slim, installed
+  in a bare container: no libxkbcommon in the payload, and --self-test
+  passed offscreen and under Xvfb on xcb. The RPM is proved at the 1.0.0
+  OBS submit. That run also found the xcb utility-library gap, filed
+  separately.
   **Layman:** The Linux app-store packages carry the same keyboard-library bug the downloadable version just had fixed.
   Kind: fix.
   Source: in-session-2026-09-21 (found while fixing FIBR-0208).
@@ -1342,7 +1351,7 @@ so Flathub review and code signing do not block this release.
   Kind: doc-fix.
   Source: adopt-project-2026-09-28.
 
-- 📋 [FIBR-0383] **A restore crash between the two move-aside renames leaves a recoverable vault the app tells the user to delete.**
+- ✅ [FIBR-0383] **A restore crash between the two move-aside renames leaves a recoverable vault the app tells the user to delete.**
   services/backup.py _install moves vault.db aside to vault.db.<stamp>.old,
   then the sidecar. A crash between those two renames leaves the db .old
   with no matching sidecar .old and the sidecar still live.
@@ -1352,6 +1361,13 @@ so Flathub review and code signing do not block this release.
   recoverable database. Fix: recognise an unpaired db .old beside a live
   sidecar as the same restore and move the db back; test red first.
   Found while fixing FIBR-0367 row 37 (delivery-report-group-A.md, A3).
+  Resolved (2026-09-29): _reconcile_interrupted_restore first checks for
+  a live sidecar, no live database, and a newest database .old with no
+  sidecar .old at its stamp. It moves that database back, with any
+  journal moved aside with it, and never removes a journal still live.
+  The test covers both crash points, with an older complete pair
+  present, which the old code wrongly recovered. Backup test-contract
+  INV-21; FIBR-0014 D4 gains window (iii).
   **Layman:** If finbreak is cut off at one exact moment while restoring a backup, it fails to put your old data back and its message suggests deleting files that still hold that data.
   Kind: fix.
   Source: full-audit-2026-09-27 delivery A3 (adjacent).
@@ -1397,6 +1413,31 @@ so Flathub review and code signing do not block this release.
   **Layman:** The app promises a log file you can find in Settings, but no log file is ever written, so warnings such as a statement balance that does not match are seen by nobody.
   Kind: review-fix.
   Source: full-audit-2026-09-27 code lane 9 (queued by FIBR-0367).
+
+- 📋 [FIBR-0430] **The Linux packages cannot open an X11 window on a host without the xcb utility libraries.**
+  Found while verifying FIBR-0346 (2026-09-29). A deb built locally from
+  packaging/obs/ and installed into a bare debian:13-slim ran --self-test
+  offscreen, but under Xvfb with QT_QPA_PLATFORM=xcb Qt could not load
+  libqxcb.so: libxcb-icccm.so.4, libxcb-keysyms.so.1 and libxcb-shape.so.0
+  were not found, and Qt names xcb-cursor0 as required since 6.5. The
+  freeze does not collect them and debian/control does not Depend on them.
+  With libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-shape0
+  libxcb-image0 libxcb-render-util0 installed the X11 self-test passed.
+
+  A full desktop usually has these, which is why nothing reported it. A
+  Wayland session uses the wayland plugin and is unaffected. The AppImage
+  freeze container does not install them either, so the AppImage probably
+  has the same gap; build-smoke's clean room launches offscreen and cannot
+  see it. Check that before choosing a fix.
+
+  Fix direction: add the set to the deb Depends and the RPM Requires (per-
+  distro names checked against each target), or collect them in the freeze.
+  Verify the way FIBR-0346 was: install in a bare container, self-test on
+  xcb under Xvfb.
+  **Layman:** On a Linux computer missing a few common display libraries, the store-package version of finbreak cannot open its window under the older X11 display system.
+  Kind: fix.
+  Source: in-session-2026-09-29 (found verifying FIBR-0346).
+  Lanes: packaging.
 
 ## v1.0.x — patch stream
 

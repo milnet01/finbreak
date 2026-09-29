@@ -323,6 +323,62 @@ def test_interrupted_restore_clears_an_orphan_wal_the_original_lacked(qtbot, tmp
     service.lock()
 
 
+@pytest.mark.parametrize("wal_moved", [True, False], ids=["wal-aside", "wal-live"])
+def test_interrupted_restore_recovers_a_db_moved_aside_without_its_sidecar(
+    qtbot, tmp_path, wal_moved
+):
+    """FIBR-0383: a crash between ``_install``'s database and sidecar move-aside
+    leaves the database under a stamp the sidecar never got. There is no common
+    stamp, so nothing recovered it, and ``run()`` told the user to remove the
+    files holding their vault. Recover the database; keep the live sidecar.
+
+    ``wal-live`` is the earlier crash point, before the journal moved: the live
+    ``-wal`` is the original's own and must survive the recovery. An older
+    complete pair is planted too — recovering THAT instead puts a stale sidecar
+    over the live one and leaves the newest database aside."""
+    from finbreak.ui.main_window import MainWindow
+
+    dest = tmp_path / "dest"
+    dest.mkdir()
+    vault_p, sidecar_p = dest / "vault.db", dest / "vault.kdf.json"
+    older = AuthService(vault_p, sidecar_p)
+    older.first_run(bytearray(b"an older master"), "USD")
+    older.lock()
+    vault_p.rename(dest / "vault.db.20250101T000000.old")
+    sidecar_p.rename(dest / "vault.kdf.json.20250101T000000.old")
+
+    original = AuthService(vault_p, sidecar_p)
+    original.first_run(bytearray(b"the original master"), "USD")
+    original.lock()
+    original_db = vault_p.read_bytes()
+    original_sidecar = sidecar_p.read_bytes()
+    wal_bytes = b"the original's committed WAL frames"
+    stamp = "20260101T000000"
+    vault_p.rename(dest / f"vault.db.{stamp}.old")
+    if wal_moved:
+        (dest / f"vault.db.{stamp}.old-wal").write_bytes(wal_bytes)
+    else:
+        (dest / "vault.db-wal").write_bytes(wal_bytes)
+
+    service = AuthService(vault_p, sidecar_p)
+    window = MainWindow(service)
+    qtbot.addWidget(window)
+
+    got = vault_p.read_bytes() if vault_p.exists() else "absent"
+    assert got == original_db, (
+        "FIBR-0383: the database moved aside without its sidecar must come back.\n"
+        f"  actual: vault.db {'absent' if got == 'absent' else 'holds other bytes'}"
+    )
+    assert sidecar_p.read_bytes() == original_sidecar, "the live sidecar is kept"
+    live_wal = dest / "vault.db-wal"
+    assert (live_wal.read_bytes() if live_wal.exists() else None) == wal_bytes, (
+        "the original's journal ends up beside it, whichever side it was on"
+    )
+    assert isinstance(window._dialog, UnlockDialog), "lands on unlock"
+    assert service.unlock(bytearray(b"the original master")) is True
+    service.lock()
+
+
 # --------------------------------------------------------------------------- #
 # Review fixes — UI robustness
 # --------------------------------------------------------------------------- #

@@ -1529,6 +1529,16 @@ class MainWindow(QMainWindow):
 
         db_olds = _by_stamp(vault_path.parent, vault_path.name)
         sidecar_olds = _by_stamp(sidecar_path.parent, sidecar_path.name)
+        # A crash between backup._install's two move-aside renames: the database
+        # (and perhaps its journal) went aside under a stamp the sidecar never
+        # got, and nothing was installed. There is no common stamp for this
+        # restore, and recovering an OLDER complete pair would put a stale
+        # sidecar over the live one (FIBR-0383). Checked first for that reason.
+        if db_olds and not vault_path.exists() and sidecar_path.exists():
+            newest = max(db_olds)
+            if newest not in sidecar_olds:
+                self._recover_unpaired_db(db_olds[newest], vault_path, newest)
+                return
         # A restore moves BOTH files aside under one stamp, so only a shared stamp is
         # a real original pair — pairing db[-1] with sidecar[-1] independently could
         # mismatch a db with an unrelated sidecar (wrong salt → un-openable).
@@ -1597,6 +1607,25 @@ class MainWindow(QMainWindow):
             # Raised rather than falling through: state() would report the
             # mixed pair generically, or -- with neither live file present --
             # route to first-run over the kept copies. run() says what happened.
+            raise InterruptedRestoreError(vault_path.parent) from None
+
+    @staticmethod
+    def _recover_unpaired_db(old_db: Path, vault_path: Path, stamp: str) -> None:
+        """Move a database set aside without its sidecar back into place.
+
+        Unlike the paired route, a live journal sibling is never removed: no
+        restored database was installed, so one still live is the original's own,
+        left there by a crash before it could be moved (FIBR-0383). Failure
+        handling is the paired route's, for the same reason.
+        """
+        try:
+            for suffix in ("", *_WAL_SIBLINGS):
+                old = old_db.with_name(old_db.name + suffix)
+                if old.exists():
+                    os.replace(old, vault_path.with_name(vault_path.name + suffix))
+            fsync_dir(vault_path.parent)
+        except OSError:
+            log.exception("could not recover the interrupted restore from %s", stamp)
             raise InterruptedRestoreError(vault_path.parent) from None
 
     def _route_pre_login(self) -> None:
