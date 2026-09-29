@@ -46,7 +46,27 @@ unavoidable it is glossed on first use.
   separate by construction (ADR-0003). We do **not** defend
   against a root-level attacker on the same machine or a
   hardware key-logger — that is out of scope for a local
-  desktop app and stated as such.
+  desktop app and stated as such. Nor against an attacker already
+  running as the user, who could replace the app itself.
+- **Files the app wrote and reads back are still crossings.** The
+  trusted-machine line names what is not defended; it does not remove
+  these reads, and each is checked:
+  - **The vault database** opens only under the derived key; SQLCipher's
+    per-page HMAC refuses a tampered page (T9, INV-1), and a
+    `schema_version` newer than `migrations.LATEST_SCHEMA_VERSION`
+    refuses to open.
+  - **The KDF sidecar** is read by `crypto.load_and_validate_params`,
+    which dispatches on `sidecar_version`, takes each field only at its
+    exact JSON type, and refuses parameters below the pinned floor before
+    any key is derived (INV-2).
+  - **`window.ini`** is attacker-writable by design (A1). Each value is
+    type-checked on read and falls back to its default, so a damaged file
+    cannot stop the app starting; the unlock throttle clamps a tampered
+    count before using it (INV-10). Nothing in it is a boundary: the hint
+    and the throttle are friction.
+  - **The single-instance claim file** is opened with `O_NOFOLLOW` and
+    owner-checked, and a failed check fails open
+    (`single_instance._claim`).
 - **Everything off the machine is untrusted — and unreachable
   except for one opt-in, off-by-default flow.** The **shipped
   application** makes **exactly one** kind of outbound access — an
@@ -63,7 +83,13 @@ unavoidable it is glossed on first use.
   trust is a separate, orthogonal concern (FIBR-0133) — its absence does
   not weaken this integrity gate.** The Windows install hand-off spawns a
   local helper process (a PowerShell waiter that swaps the `.exe` after
-  finbreak exits); it opens no socket and touches no vault. The near-total
+  finbreak exits); it opens no socket and touches no vault. What crosses
+  is two paths, both the app's own: `sys.executable` and the staged
+  download, which reaches the hand-off only after its signature verified
+  (INV-4). `update_installer._windows_relaunch_command` passes an argv
+  list, not a shell line, to `powershell.exe` resolved by absolute path
+  from `%SystemRoot%`, run `-NoProfile -NonInteractive`; each path is a
+  single-quote-escaped literal. The near-total
   absence of network code keeps the attack surface minimal. Each published
   release additionally carries a **signed `SHA256SUMS`** manifest
   (`SHA256SUMS.sig`, the same Ed25519 release key) plus a per-platform

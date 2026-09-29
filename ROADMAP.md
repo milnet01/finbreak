@@ -2201,7 +2201,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Source: peer-2026-09-25 (pressless-53, PRESS-0146).
   Lanes: packaging, ui.
 
-- 📋 [FIBR-0366] **security-model.md § 2 names a process crossing with no check, and lists no boundary for files the app reads back.**
+- ✅ [FIBR-0366] **security-model.md § 2 names a process crossing with no check, and lists no boundary for files the app reads back.**
   ~/.claude/standards/security.md §1 (revised 2026-09-26, CFG-0600) wants
   each boundary to name what crosses and what is checked at the crossing,
   and says control is not the test: a file the app wrote is still a
@@ -2218,6 +2218,14 @@ touches the § 2 surface. A security fix takes the number its change takes — �
     line scopes them out. The standard does not yet say whether a
     project may scope a whole context out this way; that question went
     to the ~/.claude session.
+  Resolved (2026-09-29): security.md § 1 now settles the open question
+  (a declared trusted context does not remove a crossing; name the
+  exclusion instead). § 2 names the exclusion (an attacker already
+  running as the user) and gains a bullet listing the read-backs with
+  the check at each: vault DB, KDF sidecar, window.ini, single-instance
+  claim file. The PowerShell hand-off now names what crosses and the
+  checks in _windows_relaunch_command. Each check was read in the code;
+  records existing code, so no gate.
   **Layman:** The security notes skip two places where the app hands data to another program or reads its own files back, so nobody can tell what protects them.
   Kind: doc-fix.
   Source: in-session-2026-09-26 (re-check of security.md §1 for the ~/.claude session).
