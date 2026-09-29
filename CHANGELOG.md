@@ -214,6 +214,12 @@ signaling per
 
 ### Security
 
+- **The updater can no longer overwrite another application's AppImage** (FIBR-0367)
+  A finbreak installed from a package, or run from source, and started
+  from inside another AppImage (such as a terminal or editor) took that
+  program's file for its own, and "Update now" would have replaced it.
+  The updater now acts only when finbreak itself is the running AppImage.
+
 - **The recovery code can no longer be copied around its clipboard auto-clear.** (FIBR-0367)
   Selecting the code with the mouse or keyboard used to leave it in
   Linux's middle-click paste buffer, which nothing cleared, and Ctrl+C

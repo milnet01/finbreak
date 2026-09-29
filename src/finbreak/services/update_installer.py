@@ -393,8 +393,16 @@ def detect_installer() -> Installer | None:
 
     A frozen Windows ``.exe`` → ``WindowsInstaller`` (``sys.executable`` is the
     running ``.exe``). Else a real AppImage (``$APPIMAGE`` set + pointing at an
-    existing file) → ``AppImageInstaller``. Else ``None`` — a ``python -m finbreak``
-    dev run, a Flatpak, a future macOS ``.app``, so the feature stays inert."""
+    existing file, AND this process running from inside that image) →
+    ``AppImageInstaller``. Else ``None`` — a ``python -m finbreak`` dev run, a
+    Flatpak, a future macOS ``.app``, so the feature stays inert.
+
+    ``$APPIMAGE`` alone is not proof: it is inherited. A packaged or source run
+    started from inside ANOTHER AppImage (a terminal, an IDE) carries that app's
+    variable, and an update would overwrite the other app's file (full audit
+    2026-09-27 row 39). So the process must also be frozen and its executable
+    must sit under ``$APPDIR``, the image's mount, which is where the AppImage
+    runtime puts it (measured on a real 0.1.9 image)."""
     if sys.platform == "win32" and getattr(sys, "frozen", False):
         return WindowsInstaller(Path(sys.executable))
     raw = os.environ.get("APPIMAGE")
@@ -402,6 +410,11 @@ def detect_installer() -> Installer | None:
         return None
     path = Path(raw)
     if not path.is_file():
+        return None
+    appdir = os.environ.get("APPDIR")
+    if not getattr(sys, "frozen", False) or not appdir:
+        return None
+    if not Path(sys.executable).resolve().is_relative_to(Path(appdir).resolve()):
         return None
     return AppImageInstaller(path)
 

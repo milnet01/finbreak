@@ -309,10 +309,46 @@ def test_INV7_appimage_env_pointing_at_missing_file_is_inert(monkeypatch, tmp_pa
     assert is_update_supported() is False
 
 
-def test_INV7_real_appimage_env_yields_installer(monkeypatch, tmp_path):
+def _as_running_appimage(monkeypatch, tmp_path) -> Path:
+    """The environment a real finbreak AppImage runs in, as measured on
+    dist/finbreak-0.1.9-x86_64.AppImage (2026-09-29): the runtime sets
+    ``APPIMAGE`` to the image and ``APPDIR`` to its mount, and the frozen onefile
+    runs from ``$APPDIR/usr/bin/``. Returns the image path."""
     appimage = tmp_path / "finbreak-0.1.0-x86_64.AppImage"
     appimage.write_bytes(b"OLD-APP")
+    mount = tmp_path / ".mount_finbreXYZ"
+    (mount / "usr" / "bin").mkdir(parents=True)
+    binary = mount / "usr" / "bin" / "finbreak-0.1.0"
+    binary.write_bytes(b"frozen")
     monkeypatch.setenv("APPIMAGE", str(appimage))
+    monkeypatch.setenv("APPDIR", str(mount))
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(binary))
+    return appimage
+
+
+def test_an_inherited_appimage_variable_does_not_arm_the_updater(monkeypatch, tmp_path):
+    """Full audit 2026-09-27 row 39 (code lane 12) — a finbreak that is NOT an
+    AppImage (the rpm/deb package, ``python -m finbreak``) started from inside
+    ANOTHER AppImage — a terminal, an IDE, a launcher — inherits that app's
+    ``APPIMAGE``, which names a real file. The updater then took it for its own
+    and an "Update now" would ``os.replace`` the other application's binary.
+
+    Two legs, one per way the process can fail to be the image: not frozen at
+    all, and frozen but running from outside the image's mount."""
+    other = _as_running_appimage(monkeypatch, tmp_path)
+
+    monkeypatch.setattr(sys, "frozen", False, raising=False)
+    assert detect_installer() is None, f"a source run adopted {other}"
+    assert is_update_supported() is False
+
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", "/usr/bin/finbreak")  # the rpm build
+    assert detect_installer() is None, f"a packaged build adopted {other}"
+
+
+def test_INV7_real_appimage_env_yields_installer(monkeypatch, tmp_path):
+    appimage = _as_running_appimage(monkeypatch, tmp_path)
     installer = detect_installer()
     assert isinstance(installer, AppImageInstaller)
     assert installer.target_path() == appimage
