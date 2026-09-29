@@ -895,3 +895,19 @@ def test_both_release_scripts_ask_the_guard_before_a_fresh_manifest(script, othe
     assert listed < text.index(call) < not_found, (
         f"{script.name}: the guard must sit on the existing-release branch"
     )
+
+
+def test_build_smoke_prints_no_hand_publish_recipe():
+    """Full audit 2026-09-27 row 43 — every release-linux.sh run printed, part
+    way through, a `gh release create` attaching two of the eight assets: the
+    recipe for the short release FIBR-0203 and FIBR-0275 record. An operator who
+    followed it after a later gate refused published a broken --latest release.
+    The build now names the script that publishes, and nothing to type."""
+    text = (_SCRIPTS / "build-smoke.sh").read_text()
+    echoes = [line for line in text.splitlines() if line.lstrip().startswith("echo")]
+    assert not any("gh release" in line for line in echoes), [
+        line for line in echoes if "gh release" in line
+    ]
+    assert any("release-linux.sh" in line for line in echoes), (
+        "the build must say which script publishes"
+    )

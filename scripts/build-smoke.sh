@@ -174,8 +174,7 @@ if [ "$MODE" = "release" ]; then
     # are NOT listed here — release-linux.sh creates those later, after this returns.
     [ -f "$DIST/finbreak-$VERSION-linux.cdx.json" ] && echo "    finbreak-$VERSION-linux.cdx.json"
     echo ""
-    echo "Publish as a NON-prerelease (D11 — /releases/latest skips prereleases):"
-    echo "    gh release create v$VERSION \\"
-    echo "        \"$DIST/$APPIMAGE\" \"$DIST/$APPIMAGE.sig\" \\"
-    echo "        --title \"finbreak v$VERSION\" --notes \"First public release.\""
+    # No hand-publish recipe: a release needs all eight assets, and one printed
+    # here attached two (full audit 2026-09-27 row 43).
+    echo "Next: scripts/release-linux.sh publishes these with SHA256SUMS. Do not publish by hand."
 fi

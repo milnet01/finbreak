@@ -1341,6 +1341,20 @@ so Flathub review and code signing do not block this release.
   Kind: fix.
   Source: full-audit-2026-09-27 delivery A3 (adjacent).
 
+- 📋 [FIBR-0384] **build-smoke.sh tells a release run with no signing key to mint a new one.**
+  scripts/build-smoke.sh's --release branch, on a missing
+  release/finbreak-signing.key, prints "Run scripts/gen-signing-key.py
+  first (once), then re-run this". On this project a key already exists
+  and its public half is committed as RELEASE_PUBLIC_KEY_B64; a new key
+  signs releases every installed updater rejects. CLAUDE.md § Cutting a
+  release says so ("Do not run scripts/gen-signing-key.py to fix a
+  missing key"). Fix: say the key is missing and where it is expected,
+  and name gen-signing-key.py only for a project with no committed key.
+  Found beside row 43; not fixed there (a different finding).
+  **Layman:** If the release signing key is missing, a build script suggests creating a new key, which would make every installed copy reject the update.
+  Kind: fix.
+  Source: close-findings sweep 2026-09-29 (FIBR-0367 row 43, next door).
+
 ## v1.0.x — patch stream
 
 Bug fixes, security fixes, performance work, refactors, dependency bumps and
