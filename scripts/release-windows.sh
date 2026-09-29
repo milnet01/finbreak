@@ -4,7 +4,7 @@
 #
 # Run this AFTER scripts/release-linux.sh, which creates the vX.Y.Z tag + GitHub
 # release this builds against. PyInstaller can't cross-compile, so the .exe is
-# frozen on a windows-latest runner via .github/workflows/windows-build.yml.
+# frozen on a pinned Windows runner via .github/workflows/windows-build.yml.
 #
 # What it does:
 #   1. Read VERSION; require the vX.Y.Z release to already exist.
@@ -18,7 +18,32 @@
 # Prerequisites: the project venv ACTIVE (cryptography), a signing key at
 # release/finbreak-signing.key (or $FINBREAK_SIGNING_KEY), and an authenticated
 # `gh` with workflow + repo scope.
+#
+# Usage: scripts/release-windows.sh [--run-id <id>]
+#   --run-id resumes an earlier run of windows-build.yml instead of dispatching a
+#   new one — for when this script stopped after the build had already finished.
 set -euo pipefail
+
+RUN_ID_ARG=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+    --run-id) RUN_ID_ARG="${2:?release-windows: --run-id needs a run id}"; shift 2 ;;
+    *) echo "release-windows: unknown argument $1 (usage: $0 [--run-id <id>])" >&2; exit 2 ;;
+    esac
+done
+
+# Retry a gh call that a transient API error can fail. Losing the
+# view/watch/download after a finished build threw that build away (FIBR-0399).
+RETRY_SLEEP="${RELEASE_RETRY_SLEEP:-10}"
+retry() {
+    local attempt
+    for attempt in 1 2 3; do
+        "$@" && return 0
+        echo "release-windows: '$*' failed (attempt $attempt of 3)" >&2
+        [ "$attempt" -eq 3 ] || sleep "$RETRY_SLEEP"
+    done
+    return 1
+}
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
@@ -28,6 +53,7 @@ VERSION="$(sed -n 's/^__version__ = "\([0-9.]*\)"/\1/p' src/finbreak/__init__.py
 TAG="v$VERSION"
 DIST="$ROOT/dist"
 EXE="finbreak-$VERSION-x86_64.exe"
+APPIMAGE="finbreak-$VERSION-x86_64.AppImage"
 WORKFLOW="windows-build.yml"
 echo "== release-windows: version $VERSION (tag $TAG) =="
 
@@ -40,6 +66,17 @@ python3 -c "import cryptography" 2>/dev/null || {
 gh release view "$TAG" >/dev/null 2>&1 || {
     echo "release-windows: release $TAG not found — run scripts/release-linux.sh first" >&2; exit 1; }
 
+# One release run at a time per clone: both release scripts merge SHA256SUMS,
+# and two at once lose a line (FIBR-0399). release-linux.sh takes the same lock.
+LOCK="$(git rev-parse --git-dir)/finbreak-release.lock"
+exec 9>"$LOCK"
+flock -n 9 || { echo "release-windows: another release run holds $LOCK — wait for it to finish" >&2; exit 1; }
+
+# Resolved BEFORE the dispatch: a missing local tag used to stop the script with
+# a Windows build already started (FIBR-0399).
+TAG_SHA="$(git rev-parse -q --verify "$TAG^{commit}")" || {
+    echo "release-windows: tag $TAG is not in this clone — run 'git fetch --tags origin' first. Nothing was dispatched." >&2; exit 1; }
+
 # --- 1) dispatch the Windows build on the tag -----------------------------
 # Record the newest existing run id so we can detect the one we trigger (the tag
 # ref may not appear as headBranch, so match on "a newer run than before").
@@ -51,41 +88,51 @@ gh release view "$TAG" >/dev/null 2>&1 || {
 # download it, rename it to THIS version, sign it with the real key and publish
 # it. A `gh` 503 here is routine during a release (four endpoints returned one
 # while cutting 0.1.21), so the failure this guards is not hypothetical.
-PREV_RUN="$(gh run list --workflow="$WORKFLOW" --limit 1 --json databaseId -q '.[0].databaseId')"
-echo "== release-windows: dispatching $WORKFLOW on $TAG =="
-gh workflow run "$WORKFLOW" --ref "$TAG"
+if [ -n "$RUN_ID_ARG" ]; then
+    RUN_ID="$RUN_ID_ARG"
+    echo "== release-windows: resuming run $RUN_ID (no new dispatch) =="
+else
+    PREV_RUN="$(gh run list --workflow="$WORKFLOW" --limit 1 --json databaseId -q '.[0].databaseId')"
+    echo "== release-windows: dispatching $WORKFLOW on $TAG =="
+    gh workflow run "$WORKFLOW" --ref "$TAG"
 
-echo "== release-windows: waiting for the run to register =="
-TAG_SHA="$(git rev-parse "$TAG^{commit}")"
-RUN_ID=""
-for _ in $(seq 1 30); do
-    RUN_ID="$(gh run list --workflow="$WORKFLOW" --limit 1 --json databaseId -q '.[0].databaseId' 2>/dev/null || echo "")"
-    [ -n "$RUN_ID" ] && [ "$RUN_ID" != "$PREV_RUN" ] && break
+    echo "== release-windows: waiting for the run to register =="
     RUN_ID=""
-    sleep 5
-done
-[ -n "$RUN_ID" ] || { echo "release-windows: could not find the dispatched run — check 'gh run list --workflow=$WORKFLOW'" >&2; exit 1; }
+    for _ in $(seq 1 30); do
+        RUN_ID="$(gh run list --workflow="$WORKFLOW" --limit 1 --json databaseId -q '.[0].databaseId' 2>/dev/null || echo "")"
+        [ -n "$RUN_ID" ] && [ "$RUN_ID" != "$PREV_RUN" ] && break
+        RUN_ID=""
+        sleep 5
+    done
+    [ -n "$RUN_ID" ] || { echo "release-windows: could not find the dispatched run — check 'gh run list --workflow=$WORKFLOW'" >&2; exit 1; }
+    echo "== release-windows: run $RUN_ID (if this script stops later, resume with --run-id $RUN_ID) =="
+fi
 
 # Bind the run to the tag before trusting anything it produced. "Newer than
 # before" is an ordering heuristic; this is the identity check. Without it
 # NOTHING in this script ever compares the downloaded .exe to $TAG -- check 3
 # greps the FILENAME, which we ourselves chose. A validly-signed older binary
 # published as the new version is invisible to every guard and auto-installs.
-RUN_SHA="$(gh run view "$RUN_ID" --json headSha -q .headSha)"
+RUN_SHA="$(retry gh run view "$RUN_ID" --json headSha -q .headSha)"
 [ "$RUN_SHA" = "$TAG_SHA" ] || {
     echo "release-windows: run $RUN_ID was built from $RUN_SHA, not $TAG ($TAG_SHA) —" >&2
     echo "  refusing to publish its artifact. Re-run once the dispatched build registers." >&2
     exit 1; }
 
 echo "== release-windows: watching run $RUN_ID (the Windows freeze + clean-room takes several minutes) =="
-gh run watch "$RUN_ID" --exit-status
+# Watch without --exit-status so a dropped connection can be retried; the
+# conclusion is then read separately, so a failed build still stops here.
+retry gh run watch "$RUN_ID"
+CONCLUSION="$(retry gh run view "$RUN_ID" --json conclusion -q .conclusion)"
+[ "$CONCLUSION" = "success" ] || {
+    echo "release-windows: run $RUN_ID finished with conclusion '$CONCLUSION' — nothing to publish" >&2; exit 1; }
 
 # --- 2) download + rename the artifact ------------------------------------
 echo "== release-windows: downloading the finbreak-windows-exe artifact =="
 mkdir -p "$DIST"
 rm -f "$DIST/finbreak.exe" "$DIST/$EXE" "$DIST/$EXE.sig" \
       "$DIST/finbreak-windows.cdx.json" "$DIST/finbreak-$VERSION-windows.cdx.json"
-gh run download "$RUN_ID" -n finbreak-windows-exe -D "$DIST"
+retry gh run download "$RUN_ID" -n finbreak-windows-exe -D "$DIST"
 [ -f "$DIST/finbreak.exe" ] || { echo "release-windows: finbreak.exe not present in the artifact" >&2; exit 1; }
 mv "$DIST/finbreak.exe" "$DIST/$EXE"
 
@@ -269,6 +316,27 @@ if [ "$ASSET_COUNT" -ne 8 ]; then
         printf 'release-windows: PUBLISH INCOMPLETE — %s carries %d asset(s), expected 8.\n' \
             "$TAG" "$ASSET_COUNT"
         printf 'Published now: %s\n' "${ASSET_NAMES:-<none>}"
+    } >&2
+    exit 1
+fi
+
+# Check 1b — the eight EXACT names. A count alone failed on a stray extra asset
+# and passed a stand-in carrying the right count (FIBR-0399).
+EXPECTED=("$APPIMAGE" "$APPIMAGE.sig" "$EXE" "$EXE.sig" SHA256SUMS SHA256SUMS.sig
+    "finbreak-$VERSION-linux.cdx.json" "finbreak-$VERSION-windows.cdx.json")
+MISSING=()
+for want in "${EXPECTED[@]}"; do
+    printf '%s\n' "${PUBLISHED[@]}" | grep -qxF -- "$want" || MISSING+=("$want")
+done
+UNEXPECTED=()
+for name in "${PUBLISHED[@]}"; do
+    printf '%s\n' "${EXPECTED[@]}" | grep -qxF -- "$name" || UNEXPECTED+=("$name")
+done
+if [ ${#MISSING[@]} -ne 0 ] || [ ${#UNEXPECTED[@]} -ne 0 ]; then
+    {
+        printf 'release-windows: PUBLISH INCOMPLETE — %s does not carry exactly the eight expected assets.\n' "$TAG"
+        [ ${#MISSING[@]} -eq 0 ] || printf '  MISSING: %s\n' "${MISSING[@]}"
+        [ ${#UNEXPECTED[@]} -eq 0 ] || printf '  UNEXPECTED: %s\n' "${UNEXPECTED[@]}"
     } >&2
     exit 1
 fi

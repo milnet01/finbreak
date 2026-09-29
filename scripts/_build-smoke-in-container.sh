@@ -187,6 +187,12 @@ if [ ! -x "$TOOL" ]; then
     mv "$TOOL.part" "$TOOL"
     chmod +x "$TOOL"
 fi
+# Re-checked on EVERY use, not only after a download: the cache persists across
+# releases, so a tool altered there would otherwise build every later AppImage
+# (FIBR-0399). A mismatch deletes the cached copy so the next run re-downloads.
+echo "$APPIMAGETOOL_SHA256  $TOOL" | sha256sum -c - >/dev/null || {
+    echo "build-smoke: cached appimagetool CHECKSUM MISMATCH — deleted $TOOL; re-run to download it again" >&2
+    rm -f "$TOOL"; exit 1; }
 
 echo "-- assembling AppDir --"
 rm -rf "$APPDIR"

@@ -271,3 +271,13 @@ def test_driver_embeds_the_app_icon():
     assert ico.is_file(), f"{ico} missing — regenerate via scripts/make-icons.sh"
     # MS Windows .ico magic: reserved(0) + type 1 (icon).
     assert ico.read_bytes()[:4] == b"\x00\x00\x01\x00"
+
+
+def test_FIBR0399_the_windows_release_runner_is_pinned():
+    """FIBR-0399: ci.yml pins its runner so an image rollover cannot change the
+    build under us. The Windows job builds the .exe users download, and ran on
+    windows-latest."""
+    workflow = (_REPO_ROOT / ".github/workflows/windows-build.yml").read_text()
+    runners = re.findall(r"^\s*runs-on:\s*(\S+)", workflow, re.MULTILINE)
+    assert runners, "no runs-on in windows-build.yml"
+    assert all(not r.endswith("-latest") for r in runners), runners

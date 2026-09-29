@@ -721,6 +721,13 @@ def _release_sandbox(tmp_path: Path) -> Path:
         "tests/test_smoke.py": 'assert __version__ == "1.2.3"\n',
         "CHANGELOG.md": "## [1.2.3] - 2026-01-01\n",
         "README.md": "Current version: **1.2.3**\n",
+        "packaging/obs/io.github.milnet01.finbreak.metainfo.xml": (
+            '<release version="1.2.3" date="2026-01-01">\n'
+        ),
+        "packaging/obs/debian/changelog": "finbreak (1.2.3) unstable\n",
+        "packaging/flatpak/io.github.milnet01.finbreak.yaml": "tag: v1.2.3\n",
+        "packaging/obs/_service": '<param name="revision">v1.2.3</param>\n',
+        ".claude/bump.json": (_REPO_ROOT / ".claude" / "bump.json").read_text(),
         ".gitignore": "build-started\n",
         "scripts/build-release-appimage.sh": "#!/bin/sh\ntouch build-started\nexit 3\n",
     }.items():
@@ -825,6 +832,160 @@ def test_release_linux_builds_from_a_detached_checkout_of_the_tag(tmp_path):
     result = _run_release(work)
 
     assert (work / "build-started").exists(), result.stderr
+
+
+def test_release_linux_checks_every_file_bump_json_checks(tmp_path):
+    """FIBR-0399: the lockstep check said it mirrored bump.json's post_check
+    and tested four of its files. A Flatpak tag left on the old version passed
+    it and reached the build."""
+    work = _release_sandbox(tmp_path)
+    flatpak = work / "packaging/flatpak/io.github.milnet01.finbreak.yaml"
+    flatpak.write_text("tag: v1.2.2\n")
+    _commit_and_push(work, "half-bumped")
+    _tag_head(work)
+
+    result = _run_release(work)
+
+    assert result.returncode != 0
+    assert not (work / "build-started").exists(), result.stderr
+    assert "DRIFT" in result.stderr, result.stderr
+
+
+def test_release_linux_refuses_while_another_release_run_holds_the_lock(tmp_path):
+    """FIBR-0399: both release scripts merge SHA256SUMS, so two at once lose a
+    line. A second run refuses before it builds anything."""
+    import fcntl
+
+    work = _release_sandbox(tmp_path)
+    _tag_head(work)
+    lock_path = work / ".git" / "finbreak-release.lock"
+    with open(lock_path, "w") as held:
+        fcntl.flock(held, fcntl.LOCK_EX)
+        result = _run_release(work)
+
+    assert result.returncode != 0
+    assert not (work / "build-started").exists(), result.stderr
+    assert "another release" in result.stderr, result.stderr
+
+
+def test_release_windows_takes_the_same_lock():
+    text = _RELEASE_WINDOWS.read_text()
+    assert 'finbreak-release.lock"' in text and "flock -n" in text
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0399 — release-windows.sh, EXECUTED with a stub `gh` that logs its calls.
+# --------------------------------------------------------------------------- #
+_WINDOWS_GH_STUB = """#!/bin/sh
+echo "$*" >> "$GH_LOG"
+case "$1 $2" in
+  "release view") exit 0 ;;
+  "run list") echo 100 ;;
+  "workflow run") exit 0 ;;
+  "run view")
+    case "$*" in *conclusion*) echo success ;; *) echo "$GH_RUN_SHA" ;; esac ;;
+  "run watch") exit 0 ;;
+  *) exit 1 ;;
+esac
+"""
+
+
+def _windows_sandbox(tmp_path: Path, *, tagged: bool) -> Path:
+    work = tmp_path / "work"
+    work.mkdir()
+    _git(work, "init", "-q")
+    (work / "src/finbreak").mkdir(parents=True)
+    (work / "src/finbreak/__init__.py").write_text('__version__ = "1.2.3"\n')
+    (work / "scripts").mkdir()
+    script = work / "scripts" / "release-windows.sh"
+    script.write_bytes(_RELEASE_WINDOWS.read_bytes())
+    script.chmod(0o755)
+    _git(work, "add", "-A")
+    _git(work, "commit", "-q", "-m", "one")
+    if tagged:
+        _git(work, "tag", "-a", "v1.2.3", "-m", "v1.2.3")
+    stubs = tmp_path / "bin"
+    stubs.mkdir()
+    (stubs / "gh").write_text(_WINDOWS_GH_STUB)
+    (stubs / "gh").chmod(0o755)
+    return work
+
+
+def _run_windows(
+    work: Path, *args: str, run_sha: str = ""
+) -> tuple[subprocess.CompletedProcess[str], list[str]]:
+    import os
+    import sys
+
+    log = work.parent / "gh.log"
+    env = {
+        **os.environ,
+        **_GIT_ENV,
+        "PATH": f"{work.parent / 'bin'}:{Path(sys.executable).parent}:"
+        f"{os.environ['PATH']}",
+        "FINBREAK_SIGNING_KEY": "unused",
+        "GH_LOG": str(log),
+        "GH_RUN_SHA": run_sha,
+        "RELEASE_RETRY_SLEEP": "0",
+    }
+    result = subprocess.run(
+        ["scripts/release-windows.sh", *args],
+        cwd=work,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    calls = log.read_text().splitlines() if log.exists() else []
+    return result, calls
+
+
+def test_release_windows_refuses_a_missing_tag_before_dispatching(tmp_path):
+    """FIBR-0399: the tag was resolved after the dispatch, so a missing local
+    tag stopped the script with a Windows build already started."""
+    work = _windows_sandbox(tmp_path, tagged=False)
+
+    result, calls = _run_windows(work)
+
+    assert result.returncode != 0
+    assert not any(c.startswith("workflow run") for c in calls), calls
+    assert "v1.2.3" in result.stderr, result.stderr
+
+
+def test_release_windows_resumes_a_run_and_retries_its_calls(tmp_path):
+    """FIBR-0399: a transient error on `gh run view/watch/download` threw away a
+    finished build. --run-id resumes it without a second dispatch, and each
+    of those calls is retried before the script gives up."""
+    work = _windows_sandbox(tmp_path, tagged=True)
+    tag_sha = _git(work, "rev-parse", "v1.2.3^{commit}")
+
+    result, calls = _run_windows(work, "--run-id", "555", run_sha=tag_sha)
+
+    assert result.returncode != 0  # the stub download always fails
+    assert not any(c.startswith("workflow run") for c in calls), calls
+    assert any(c.startswith("run view 555") for c in calls), calls
+    downloads = [c for c in calls if c.startswith("run download 555")]
+    assert len(downloads) == 3, calls
+
+
+def test_release_windows_readback_checks_the_exact_eight_names():
+    """FIBR-0399: the gate counted eight without naming them, so a stray extra
+    asset failed it and a stand-in with the right count passed."""
+    found = _post_publish_readback(_RELEASE_WINDOWS.read_text())
+    assert found is not None
+    _, guard = found
+    for name in (
+        '"$APPIMAGE"',
+        '"$APPIMAGE.sig"',
+        '"$EXE"',
+        '"$EXE.sig"',
+        "SHA256SUMS",
+        "SHA256SUMS.sig",
+        '"finbreak-$VERSION-linux.cdx.json"',
+        '"finbreak-$VERSION-windows.cdx.json"',
+    ):
+        assert name in guard, name
+    assert "UNEXPECTED" in guard, "an asset outside the eight must fail the gate"
 
 
 def test_release_linux_creates_the_release_on_the_commit_it_built():

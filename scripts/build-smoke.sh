@@ -113,8 +113,14 @@ echo "== build-smoke: freezing in $BUILD_IMAGE (this takes a few minutes) =="
 # supplies both halves as a matched pair. Without it here the clean-room's
 # --self-test cannot load QtGui, so this line is what keeps that proof honest.
 echo "== build-smoke: preparing clean-room image ($TEST_IMAGE + desktop baseline) =="
-printf 'FROM %s\nRUN apt-get update && apt-get install -y --no-install-recommends libgl1 libegl1 libxkbcommon0 && rm -rf /var/lib/apt/lists/*\n' \
-    "$TEST_IMAGE" | "$RUNNER" build -t "$CLEANROOM_IMAGE" -f - "$DIST" >/dev/null
+# Output is kept and shown only on failure; discarding it left a failed build
+# with nothing to read (FIBR-0399).
+if ! CLEANROOM_BUILD_OUT="$(printf 'FROM %s\nRUN apt-get update && apt-get install -y --no-install-recommends libgl1 libegl1 libxkbcommon0 && rm -rf /var/lib/apt/lists/*\n' \
+    "$TEST_IMAGE" | "$RUNNER" build -t "$CLEANROOM_IMAGE" -f - "$DIST" 2>&1)"; then
+    printf '%s\n' "$CLEANROOM_BUILD_OUT" >&2
+    echo "build-smoke: building the clean-room image failed (output above)" >&2
+    exit 1
+fi
 
 # --- 2) clean-room: run each artifact in a Python-free, offline container ----
 # Absence of an exact SENTINEL stdout line == failure (catches a loader crash

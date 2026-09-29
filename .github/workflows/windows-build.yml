@@ -13,7 +13,9 @@ permissions:
 jobs:
   windows-build:
     name: freeze + clean-room finbreak.exe
-    runs-on: windows-latest
+    # Pinned, not `-latest` — see ci.yml. This is the image windows-latest
+    # resolved to for the last release build (FIBR-0399); bump deliberately.
+    runs-on: windows-2025-vs2026
     # Sized for a cold run: the freeze takes 3-8 minutes. release-windows.sh
     # waits on this run, so a hang would otherwise hold it for six hours
     # (FIBR-0373). No concurrency group: that script dispatches this workflow

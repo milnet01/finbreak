@@ -28,7 +28,9 @@ from pathlib import Path
 # Isolate ALL app state to a throwaway dir and force offscreen rendering BEFORE
 # anything imports Qt (QStandardPaths / the platform plugin read these at import).
 _TMP = Path(tempfile.mkdtemp(prefix="finbreak-shots-"))
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+# Assigned, not setdefault: an inherited xcb or wayland would put the window on
+# the real display, against the no-display promise above (FIBR-0399).
+os.environ["QT_QPA_PLATFORM"] = "offscreen"
 for _var in ("XDG_DATA_HOME", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME"):
     os.environ[_var] = str(_TMP / _var.lower())
 
@@ -93,6 +95,31 @@ def _freeze_charts(window: MainWindow) -> None:
             chart.setAnimationOptions(QChart.AnimationOption.NoAnimation)
 
 
+def _assemble_site(out_root: Path) -> list[str]:
+    """Copy the curated mixed-theme set the metainfo + website reference into
+    <out>/site/, and return the names it could not fill.
+
+    A shot this run did not capture (its theme was left out of --themes) keeps
+    whatever older copy site/ holds, so the set would ship mixed-date. That is
+    said on stderr rather than skipped silently (FIBR-0399)."""
+    site_dir = out_root / "site"
+    site_dir.mkdir(parents=True, exist_ok=True)
+    missing: list[str] = []
+    for hosted_name, theme_id, screen in _SITE_SET:
+        source = out_root / theme_id / f"{screen}.png"
+        if source.exists():
+            shutil.copyfile(source, site_dir / hosted_name)
+            print(f"  site/{hosted_name}  <- {theme_id}/{screen}.png")
+        else:
+            missing.append(hosted_name)
+            print(
+                f"  WARNING: site/{hosted_name} not refreshed — {theme_id}/"
+                f"{screen}.png was not captured (add {theme_id} to --themes)",
+                file=sys.stderr,
+            )
+    return missing
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", default=str(_ROOT / "assets" / "screenshots"))
@@ -144,14 +171,7 @@ def main() -> None:
             pixmap.save(str(theme_dir / f"{name}.png"))
             print(f"  {theme_id}/{name}.png  ({pixmap.width()}x{pixmap.height()})")
 
-    # Assemble the curated mixed-theme set the metainfo + website reference.
-    site_dir = out_root / "site"
-    site_dir.mkdir(parents=True, exist_ok=True)
-    for hosted_name, theme_id, screen in _SITE_SET:
-        source = out_root / theme_id / f"{screen}.png"
-        if source.exists():
-            shutil.copyfile(source, site_dir / hosted_name)
-            print(f"  site/{hosted_name}  <- {theme_id}/{screen}.png")
+    _assemble_site(out_root)
 
     auth.lock()
     print(f"\nWrote screenshots under {out_root}")

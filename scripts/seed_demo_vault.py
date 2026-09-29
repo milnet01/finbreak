@@ -22,7 +22,13 @@ Used two ways:
 from __future__ import annotations
 
 import calendar
+import sys
 from datetime import date
+from pathlib import Path
+
+# `import finbreak` from this checkout, as capture_screenshots.py does. Without
+# it an installed copy older than src/ is imported instead (FIBR-0399).
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from finbreak.repositories.categories import CategoryRepository
 from finbreak.repositories.transactions import TransactionRepository

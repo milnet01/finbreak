@@ -79,6 +79,7 @@ _READS_PROSE = frozenset(
 # name -- each mentions a doc path but is excluded, and the comment says why.
 _NO_PROSE = frozenset(
     {
+        "demo_scripts",
         "accounts",
         "amount_input",
         "app_shell",

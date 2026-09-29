@@ -703,6 +703,11 @@ entry. Your hand-dispatched build is discarded and a Windows freeze is burned fo
 nothing — which has happened
 ([`docs/history/claude-md.md`](docs/history/claude-md.md)).
 
+If the script stops **after** the build was dispatched — a failed watch,
+download or identity check — do not re-run it bare, which starts a second
+freeze. Resume the same build with `scripts/release-windows.sh --run-id <id>`;
+the script prints the id as soon as the run registers.
+
 Finish the Windows half through the script, never by hand: the steps
 you would be skipping are the Ed25519 signing and its verification
 against the committed public key.

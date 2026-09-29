@@ -1,5 +1,5 @@
 """Freeze `python -m finbreak --self-test` to a single Windows `finbreak.exe`
-(FIBR-0015 D2). Runs on a `windows-latest` GitHub Actions runner — PyInstaller
+(FIBR-0015 D2). Runs on a pinned Windows GitHub Actions runner — PyInstaller
 cannot cross-compile, so the `.exe` must be produced on Windows.
 
 This is the Windows analogue of `scripts/_build-smoke-in-container.sh`'s freeze:

@@ -1,7 +1,7 @@
 # windows_build — test contract (FIBR-0015)
 
 Enforces the FIBR-0015 spec (`docs/specs/FIBR-0015.md`). The Windows `.exe` itself
-is produced only on a `windows-latest` runner (PyInstaller can't cross-compile), so
+is produced only on a pinned Windows runner (PyInstaller can't cross-compile), so
 these Linux-gate tests cover the parts that *can* be checked on the gate: the
 SQLCipher-package swap is vault-safe (INV-1), the Windows freeze reuses the exact
 Linux collection flags (INV-3), and the freeze driver is shaped correctly (INV-2,
@@ -50,5 +50,5 @@ INV-5, INV-6). The runner-only behaviour (EC2/EC3 — `.exe` builds green,
 
 ## Out of scope for the Linux gate
 
-Producing/launching `finbreak.exe` (a `windows-latest` job), Windows code-signing,
+Producing/launching `finbreak.exe` (a Windows runner job), Windows code-signing,
 installers, and Windows auto-update (all deferred per the spec).

@@ -47,14 +47,22 @@ python3 -c "import cryptography" 2>/dev/null || {
 [ -f release/finbreak-signing.key ] || [ -n "${FINBREAK_SIGNING_KEY:-}" ] || {
     echo "release-linux: no signing key (release/finbreak-signing.key or \$FINBREAK_SIGNING_KEY)" >&2; exit 1; }
 
-# Version lockstep (mirrors .claude/bump.json's post_check) — refuse a half-bumped tree.
-if ! { grep -q "^version = \"$VERSION\"$" pyproject.toml \
-    && grep -q "__version__ == \"$VERSION\"" tests/test_smoke.py \
-    && grep -q "^## \[$VERSION\] - " CHANGELOG.md \
-    && grep -qF "Current version: **$VERSION**" README.md; }; then
+# Version lockstep — refuse a half-bumped tree. It RUNS .claude/bump.json's own
+# post_check rather than copying it: the copy that stood here checked four of
+# its files and let a stale Flatpak tag or OBS revision through (FIBR-0399).
+POST_CHECK="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["post_check"])' .claude/bump.json)" || {
+    echo "release-linux: could not read post_check from .claude/bump.json" >&2; exit 1; }
+if ! LOCKSTEP_OUT="$(bash -c "$POST_CHECK" 2>&1)"; then
+    printf '%s\n' "$LOCKSTEP_OUT" >&2
     echo "release-linux: VERSION DRIFT — bump every version-bearing file to $VERSION first (see .claude/bump.json)" >&2
     exit 1
 fi
+
+# One release run at a time per clone: both release scripts merge SHA256SUMS,
+# and two at once lose a line (FIBR-0399). release-windows.sh takes the same lock.
+LOCK="$(git rev-parse --git-dir)/finbreak-release.lock"
+exec 9>"$LOCK"
+flock -n 9 || { echo "release-linux: another release run holds $LOCK — wait for it to finish" >&2; exit 1; }
 
 [ -z "$(git status --porcelain)" ] || { echo "release-linux: working tree is dirty — commit + push the bump first" >&2; exit 1; }
 

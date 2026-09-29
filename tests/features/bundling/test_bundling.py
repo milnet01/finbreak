@@ -731,3 +731,26 @@ def test_FIBR0392_the_tls_check_fails_without_the_bundled_ca_set(monkeypatch, tm
     # AttributeError (no check at all) must NOT satisfy this.
     with pytest.raises(OSError):
         _selftest._check_tls()
+
+
+def test_FIBR0399_a_cached_appimagetool_is_rechecked_on_every_use():
+    """FIBR-0399: the checksum ran only on a fresh download, so a tool poisoned
+    in the cache persisted into every later release — the hazard the script's
+    own comment names."""
+    text = (_PROJECT_ROOT / "scripts/_build-smoke-in-container.sh").read_text()
+    download = text.index('if [ ! -x "$TOOL" ]; then')
+    close = text.index("\nfi\n", download)
+    after = text[close : text.index("-- assembling AppDir --")]
+    assert '$TOOL" | sha256sum -c' in after, (
+        "the cached $TOOL must be checked after the download block, on every run"
+    )
+
+
+def test_FIBR0399_a_failed_clean_room_image_build_shows_its_output():
+    """FIBR-0399: the clean-room image build sent its output to /dev/null, so a
+    failure exited with nothing to read."""
+    text = (_PROJECT_ROOT / "scripts/build-smoke.sh").read_text()
+    joined = re.sub(r"\\\s*\n\s*", " ", text)
+    marker = '"$RUNNER" build -t "$CLEANROOM_IMAGE"'
+    build = next(line for line in joined.splitlines() if marker in line)
+    assert ">/dev/null" not in build, build
