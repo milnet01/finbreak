@@ -455,6 +455,13 @@ so Flathub review and code signing do not block this release.
   unchanged for every gesture after the fix. Probe file deleted. Next:
   row 35 (recovery_key.py _save before Keep can overwrite the live
   code's file).
+  Progress 2026-09-29 (night): row 35 fixed (c300f87), red first, CI
+  green. On the way, f880f52 broke GitHub CI through a Shift state
+  leaking between tests on one xdist worker (1b4bb6f: conftest now fails
+  the leaking test itself), and GitHub/local parity was closed (b39a206:
+  appstream in ci-setup.sh, fetch-depth 0, ci-docker.sh sends tracked
+  files only, -rs lists skips); both now skip the same three tests.
+  Next: row 36.
   **Layman:** A full check of the app found bugs; the serious ones (wrong dates or amounts, lost data, security gaps) are being fixed now and the rest are filed.
   Kind: review-fix.
   Source: full-audit-2026-09-27.
