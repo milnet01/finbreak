@@ -90,9 +90,10 @@ CURRENCY_SYMBOLS: dict[str, str] = {
 DEFAULT_AUTO_LOCK_MINUTES = 10
 # 0 == "Never": idle auto-lock off (FIBR-0135, user request — the vault still needs
 # the password on open and still locks via the manual Lock button and on exit; only
-# the idle timer is disabled). It is listed LAST so a select_combo_data miss / the
-# INV-1 fallback resolves to index 0 (the 1-minute floor, the MOST-aggressive lock),
-# never to "Never" — a corrupt/absent value must never silently disable the lock.
+# the idle timer is disabled). It is listed LAST so a select_combo_data miss resolves
+# to index 0 (the 1-minute floor, the MOST-aggressive lock), never to "Never". The
+# service's own INV-1 fallback for a corrupt/absent value is DEFAULT_AUTO_LOCK_MINUTES
+# (FIBR-0055 INV-1); neither silently disables the lock.
 AUTO_LOCK_NEVER = 0
 # The offered choices (minutes); DEFAULT is a member so it always resolves.
 ALLOWED_AUTO_LOCK_MINUTES = (1, 5, 10, 15, 30, AUTO_LOCK_NEVER)
@@ -203,6 +204,7 @@ class AuthService:
         # not persisted: a declined or closed offer costs nothing already done,
         # and re-offering it on every launch would be nagging.
         self._just_migrated = False
+        self._migration_failed = False
         # Invoked after an idle auto-lock so the UI can route away from the now
         # -locked vault (else the next action hits a closed connection). Set by
         # the UI shell; None in headless use.
@@ -588,13 +590,21 @@ class AuthService:
                 _wipe(key)
                 raise
             if not swapped:
-                # Nothing was swapped, so the vault is exactly as it was.
-                return self._open_with(key, None)
+                # Nothing was swapped, so the vault is exactly as it was. Opened,
+                # and then SAID: FIBR-0019 § 6 reports a migration that could not
+                # secure its rollback copy so the user can free space and retry,
+                # and a log line alone left every unlock repeating the whole-vault
+                # copy with nothing shown (FIBR-0402).
+                opened = self._open_with(key, None)
+                self._migration_failed = opened
+                return opened
             # The sidecar was already replaced when the failure landed, which is
             # § 13.3's window — the resume ladder owns it from here.
             return self._unlock_through_slot(key, SLOT_MASTER)
-        sidecar = read_sidecar_v2(self._sidecar_path)
         try:
+            # Inside the try: a raise from the read must still wipe the key
+            # (security-model INV-3, FIBR-0402).
+            sidecar = read_sidecar_v2(self._sidecar_path)
             dek = unwrap_dek(
                 key,
                 sidecar.slots[SLOT_MASTER].wrapped,
@@ -618,6 +628,13 @@ class AuthService:
         """
         notice, self._just_migrated = self._just_migrated, False
         return notice
+
+    def consume_migration_failure(self) -> bool:
+        """``True`` once if this unlock tried to convert a v1 vault and could
+        not, leaving it exactly as it was (FIBR-0019 § 6). The attempt repeats
+        at the next unlock; this is what tells the user it did not happen."""
+        failed, self._migration_failed = self._migration_failed, False
+        return failed
 
     def _open_with(self, key: bytearray, cipher_compat: int | None) -> bool:
         """Open the vault with ``key`` and take ownership of it.
@@ -713,9 +730,12 @@ class AuthService:
     # --- lock / idle / exit ------------------------------------------------ #
     def lock(self) -> None:
         self._stop_timer()
-        self._vault.close()
-        _wipe(self._key)
-        self._key = None
+        try:
+            self._vault.close()
+        finally:
+            # Wiped even if the close raises (security-model INV-3, FIBR-0402).
+            _wipe(self._key)
+            self._key = None
         log.info("locked")
 
     def reset_vault(self) -> None:
@@ -785,9 +805,11 @@ class AuthService:
     def on_about_to_quit(self) -> None:
         """Wipe on shutdown; a no-op when already locked (no key held)."""
         self._stop_timer()
-        self._vault.close()
-        _wipe(self._key)
-        self._key = None
+        try:
+            self._vault.close()
+        finally:
+            _wipe(self._key)  # even if the close raises (INV-3, FIBR-0402)
+            self._key = None
 
     def _arm_timer(self) -> None:
         # Only meaningful with a running event loop; headless tests invoke the
@@ -798,7 +820,13 @@ class AuthService:
             self._timer = QTimer()
             self._timer.setSingleShot(True)
             self._timer.timeout.connect(self._on_idle_timeout)
-        minutes = self.auto_lock_minutes()
+        try:
+            minutes = self.auto_lock_minutes()
+        except Exception:
+            # An unreadable setting must not leave the key held with no idle
+            # lock at all; the default is INV-1's own fallback (FIBR-0402).
+            log.exception("auto-lock setting unreadable; using the default")
+            minutes = DEFAULT_AUTO_LOCK_MINUTES
         if minutes == AUTO_LOCK_NEVER:
             self._timer.stop()  # "Never" — no idle lock (FIBR-0135); manual lock holds
             return

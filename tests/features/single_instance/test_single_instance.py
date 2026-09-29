@@ -354,3 +354,47 @@ def test_row27_a_launch_that_loses_the_claim_waits_for_the_new_owner(qapp, name)
     finally:
         thread.join()
         owner.close()
+
+
+def test_FIBR0402_the_claim_does_not_follow_a_planted_symlink(tmp_path):
+    """With no ``$XDG_RUNTIME_DIR`` the claim file is a predictable name in a
+    shared temp dir. A symlink planted there must not be followed: the open
+    would create or lock a file of the attacker's choosing. The claim fails
+    open instead, as it does with nowhere to put it."""
+    name = str(tmp_path / "finbreak-test")
+    target = tmp_path / "elsewhere"
+    os.symlink(target, single_instance._claim_path(name))
+
+    with single_instance._claim(name) as held:
+        assert held is True
+    assert not target.exists(), "the claim followed the planted symlink"
+
+
+def test_FIBR0402_a_claim_file_owned_by_someone_else_is_not_used(tmp_path, monkeypatch):
+    """Another local account can pre-create the claim file and hold its lock
+    for ever, so a launch would wait on a stranger. A claim file this user
+    does not own is ignored, and the claim fails open."""
+    name = str(tmp_path / "finbreak-test")
+    fd = os.open(single_instance._claim_path(name), os.O_CREAT | os.O_RDWR, 0o600)
+    fcntl.flock(fd, fcntl.LOCK_EX)
+    someone_else = os.getuid() + 1
+    monkeypatch.setattr(single_instance.os, "getuid", lambda: someone_else)
+    try:
+        with single_instance._claim(name, wait_s=0.0) as held:
+            assert held is True, "waited on a claim file another account owns"
+    finally:
+        os.close(fd)
+
+
+def test_FIBR0402_a_windows_pipe_name_carries_the_user(monkeypatch):
+    """Windows named pipes share one machine-wide namespace, so the bare name
+    made two signed-in users collide: the second user's launch either found
+    the first user's instance or was refused. The user's name keeps them apart."""
+    monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
+    monkeypatch.delattr(single_instance.os, "getuid", raising=False)
+    monkeypatch.setattr(single_instance.getpass, "getuser", lambda: "Ann Smith")
+
+    name = single_instance.socket_name()
+
+    assert name != "finbreak"
+    assert "Ann" in name and " " not in name and "\\" not in name

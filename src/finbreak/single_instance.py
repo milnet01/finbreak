@@ -24,8 +24,10 @@ against.
 
 from __future__ import annotations
 
+import getpass
 import logging
 import os
+import re
 import tempfile
 import time
 from collections.abc import Iterator
@@ -81,8 +83,9 @@ def socket_name(base: str = "finbreak") -> str:
     Falls back to the old shared-dir name when the variable is unset (a bare
     ``su``, some containers, macOS, Windows) — the guard is best-effort, and an
     app that will not start is worse than one that can be blocked by a hostile
-    local user. Windows named pipes are already per-session, so the bare base
-    name is correct there.
+    local user. Windows has no uid, and its named pipes share ONE machine-wide
+    namespace, so the bare name made two signed-in users collide; the user's
+    name is added there instead (FIBR-0402).
     """
     runtime_dir = os.environ.get("XDG_RUNTIME_DIR")
     if runtime_dir and os.path.isdir(runtime_dir):
@@ -100,8 +103,15 @@ def socket_name(base: str = "finbreak") -> str:
         # case anyone hits on a normal desktop.
         if len(candidate.encode()) <= _MAX_UNIX_SOCKET_PATH:
             return candidate
-    uid = os.getuid() if hasattr(os, "getuid") else None
-    return base if uid is None else f"{base}-{uid}"
+    if hasattr(os, "getuid"):
+        return f"{base}-{os.getuid()}"
+    try:
+        user = getpass.getuser()
+    except Exception:  # no user name to be had: best-effort, as above
+        return base
+    # A pipe name may not contain a backslash; keep it to a safe, short set.
+    safe = re.sub(r"[^A-Za-z0-9_.-]", "_", user)[:64]
+    return f"{base}-{safe}" if safe else base
 
 
 def _claim_path(name: str) -> str:
@@ -141,7 +151,19 @@ def _claim(name: str, wait_s: float = 0.0) -> Iterator[bool]:
     try:
         if fcntl is not None:
             try:
-                fd = os.open(_claim_path(name), os.O_CREAT | os.O_RDWR, 0o600)
+                # O_NOFOLLOW and an owner check: with no $XDG_RUNTIME_DIR the
+                # claim is a predictable name in a shared temp dir, so another
+                # account could plant a symlink there or hold the lock on a file
+                # it created. Either way the claim fails open (FIBR-0402).
+                fd = os.open(
+                    _claim_path(name),
+                    os.O_CREAT | os.O_RDWR | getattr(os, "O_NOFOLLOW", 0),
+                    0o600,
+                )
+                if os.fstat(fd).st_uid != os.getuid():
+                    os.close(fd)
+                    fd = None
+                    raise OSError("the recovery claim file belongs to another user")
                 deadline = time.monotonic() + wait_s
                 while True:
                     try:

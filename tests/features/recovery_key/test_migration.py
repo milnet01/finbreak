@@ -1165,9 +1165,10 @@ def test_a_failing_fsync_abandons_the_migration_silently(
 ) -> None:
     """The half of P1 that IS reproducible here, and the reason it went unseen.
 
-    An OSError out of ``_fsync`` at S0 does not reach the user. ``_unlock_v1``
+    An OSError out of ``_fsync`` at S0 does not stop the unlock. ``_unlock_v1``
     catches Exception, sees the sidecar is still v1 -- nothing was swapped --
-    and opens the vault. It works, every time, and never migrates. This leg
+    and opens the vault. It works, every time, and never migrates; since
+    FIBR-0402 the user is told so after unlocking. This leg
     exists so the consequence is written down as a behaviour rather than only
     in a comment.
     """
@@ -1190,6 +1191,59 @@ def test_a_failing_fsync_abandons_the_migration_silently(
         "state P1 describes. If it migrated anyway, _fsync is no longer on the "
         "path this leg is about and the leg is asserting nothing.\n"
         f"  actual:   {read_sidecar(sidecar_path)}"
+    )
+
+
+def test_FIBR0402_an_abandoned_migration_is_reported_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """FIBR-0019 § 6: a migration that could not secure its rollback copy is
+    reported, so the user can free space and retry. It was only logged, so
+    every unlock repeated the whole-vault copy with nothing said (FIBR-0402).
+    The vault still opens -- nothing was swapped."""
+    vault_path, sidecar_path, _key, _digests = _fresh_v1_vault(tmp_path, "report")
+
+    def refuse(_path: Path) -> None:
+        raise OSError(errno.ENOSPC, "No space left on device")
+
+    monkeypatch.setattr(vault_migration, "_fsync", refuse)
+
+    service = AuthService(vault_path, sidecar_path)
+    assert service.unlock(bytearray(MASTER_PASSWORD)) is True
+    assert service.consume_migration_failure() is True
+    assert service.consume_migration_failure() is False, "reported once, not twice"
+    assert service.consume_migration_notice() is False
+    service.lock()
+
+
+def test_FIBR0402_a_sidecar_read_failure_after_migrating_still_wipes_the_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``read_sidecar_v2`` ran before the ``try`` whose ``finally`` wipes the
+    v1 key, so a raise there left KEK-master in memory (security-model
+    INV-3)."""
+    vault_path, sidecar_path, _key, _digests = _fresh_v1_vault(tmp_path, "wipe")
+    handed: list[bytearray] = []
+    real_migrate = vault_migration.migrate_to_v2
+
+    def migrate_and_capture(vault: Path, sidecar: Path, key_buf: bytearray, **kw: Any):
+        handed.append(key_buf)
+        real_migrate(vault, sidecar, key_buf, **kw)
+
+        def unreadable(_path: Path) -> Any:
+            raise KdfPolicyError("sidecar unreadable")
+
+        monkeypatch.setattr(auth_module, "read_sidecar_v2", unreadable)
+
+    monkeypatch.setattr(vault_migration, "migrate_to_v2", migrate_and_capture)
+
+    service = AuthService(vault_path, sidecar_path)
+    with pytest.raises(KdfPolicyError):
+        service.unlock(bytearray(MASTER_PASSWORD))
+
+    assert handed, "precondition: the migration must have been reached"
+    assert bytes(handed[0]) == bytes(len(handed[0])), (
+        "the v1 key was left in memory after the post-migration sidecar read raised"
     )
 
 

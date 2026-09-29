@@ -1585,3 +1585,51 @@ def test_FIBR0401_no_vault_depends_on_the_library_cipher_default(tmp_path, monke
         and isinstance(node.value, ast.Constant)
     ]
     assert literal == [4], "LIVE_VAULT_CIPHER_COMPAT must be defined by the literal 4"
+
+
+def test_FIBR0402_a_failed_settings_read_still_arms_the_idle_lock(
+    qapp, paths, monkeypatch
+):
+    """If reading the auto-lock setting raised while arming, the service held
+    the key and the open vault with no idle timer at all. A bad or unreadable
+    setting must never weaken the lock (FIBR-0055 INV-1), so it falls back to
+    the default timeout."""
+    from finbreak.services.auth import DEFAULT_AUTO_LOCK_MINUTES
+
+    service = AuthService(*paths)
+    service.first_run(bytearray(_PW), "ZAR")
+    service.lock()
+
+    def unreadable(_self):
+        raise DatabaseError("settings table unreadable")
+
+    monkeypatch.setattr(AuthService, "auto_lock_minutes", unreadable)
+    assert service.unlock(bytearray(_PW)) is True
+    timer = service._timer
+    assert timer is not None and timer.isActive(), "the key is held with no idle lock"
+    assert timer.interval() == DEFAULT_AUTO_LOCK_MINUTES * 60 * 1000
+    service.lock()
+
+
+@pytest.mark.parametrize("method", ["lock", "on_about_to_quit"])
+def test_FIBR0402_a_raising_close_still_wipes_the_key(paths, monkeypatch, method):
+    """``vault.close()`` ran before the wipe, so a close that raised left the
+    key neither wiped nor cleared (security-model INV-3)."""
+    from finbreak.vault import Vault
+
+    service = AuthService(*paths)
+    service.first_run(bytearray(_PW), "ZAR")
+    key = service._key
+    assert key is not None
+
+    real_close = Vault.close
+
+    def failing_close(self):
+        real_close(self)
+        raise DatabaseError("close failed")
+
+    monkeypatch.setattr(Vault, "close", failing_close)
+    with pytest.raises(DatabaseError):
+        getattr(service, method)()
+    assert bytes(key) == bytes(len(key)), "the key survived a failing close"
+    assert service._key is None

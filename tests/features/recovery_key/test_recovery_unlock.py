@@ -630,3 +630,50 @@ def test_FIBR0328_password_and_recovery_fields_have_accessible_names(qtbot, serv
     qtbot.addWidget(reset)
     assert reset._password.accessibleName() != "", "the new master password field"
     assert reset._confirm.accessibleName() != "", "the confirm field"
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0402 — an abandoned key-envelope migration is said, not only logged
+# --------------------------------------------------------------------------- #
+def test_FIBR0402_an_abandoned_migration_is_shown_after_unlock(
+    qtbot: Any, paths: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """FIBR-0019 § 6 says a migration that cannot secure its rollback copy is
+    reported so the user can free space and retry. The unlock itself still
+    succeeds -- nothing was swapped -- so the report comes after it."""
+    import errno
+
+    from _recovery_helpers import create_v1_vault
+
+    import finbreak.ui.main_window as main_window_mod
+    from finbreak.services import vault_migration
+    from finbreak.ui.main_window import MainWindow
+    from finbreak.ui.unlock import UnlockDialog
+
+    vault, _params, _key = create_v1_vault(*paths)
+    vault.close()
+
+    def no_space(_path: Path) -> None:
+        raise OSError(errno.ENOSPC, "No space left on device")
+
+    monkeypatch.setattr(vault_migration, "_fsync", no_space)
+    warnings: list[str] = []
+    monkeypatch.setattr(
+        main_window_mod.QMessageBox,
+        "warning",
+        lambda _parent, _title, text, *a, **k: warnings.append(text),
+    )
+
+    service = AuthService(*paths)
+    window = MainWindow(service)
+    qtbot.addWidget(window)
+    dialog = window._dialog
+    assert isinstance(dialog, UnlockDialog)
+    dialog._password.setText(MASTER_PASSWORD.decode())
+    dialog._on_unlock()
+
+    _wait_or_timeout(qtbot, lambda: window._unlocked, timeout_ms=10_000)
+    assert window._unlocked, "precondition: the v1 vault must still unlock"
+    assert len(warnings) == 1, warnings
+    assert "free" in warnings[0] and "space" in warnings[0], warnings[0]
+    service.lock()

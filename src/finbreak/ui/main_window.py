@@ -811,6 +811,19 @@ class MainWindow(QMainWindow):
             # No timeout: the recovery display opens next and holds the user's
             # attention, so a transient message would expire unread.
             self.statusBar().showMessage(warning)
+        if self._service.consume_migration_failure():
+            # FIBR-0019 § 6: the upgrade to the recovery-key format did not
+            # happen, and a log line alone told the user nothing (FIBR-0402).
+            QMessageBox.warning(
+                self,
+                self.tr("Vault upgrade"),
+                self.tr(
+                    "finbreak could not finish upgrading how your vault is "
+                    "protected, so nothing was changed and your vault opened as "
+                    "before. It will try again the next time you unlock. If your "
+                    "disk is nearly full, free some space first."
+                ),
+            )
         # § 4.5 step 8, and D7's offer to a vault that just converted — one
         # site, because they are the same display on the same terms. It takes
         # the single dialog slot BEFORE the held update offer is considered, so
