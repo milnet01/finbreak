@@ -105,8 +105,7 @@ Each is demonstrable by doing, not just by reading code.
 
 Claude recommends; user accepted on 2026-06-30. Domain-specific library rows
 are added below the standard layers because parsing and crypto are central to
-this project. Charts library and distributable packaging are deliberately
-deferred (marked *design-phase decision*).
+this project.
 
 | Layer | Choice | Why | Runner-up |
 |-------|--------|-----|-----------|
@@ -119,11 +118,11 @@ deferred (marked *design-phase decision*).
 | OFX import | `ofxparse` | OFX is a worldwide standard; this parses it generically | hand-rolled SGML/XML parsing |
 | CSV import | stdlib `csv` + reusable per-bank column-mapping profiles | No dependency; mapping handles any bank's column order | pandas — heavyweight for this need |
 | PDF statement import | `pdfplumber` | Strong text + table extraction from statement PDFs | camelot / tabula — pull in a Java dependency |
-| Charts | *design-phase decision* (QtCharts vs matplotlib vs pyqtgraph) | Need: dark-themeable, render on screen **and** into the PDF | — |
+| Charts | QtCharts ([ADR-0008](decisions/0008-qtcharts-for-reporting.md)) | Need: dark-themeable, render on screen **and** into the PDF | matplotlib / pyqtgraph |
 | Dev environment | pip + venv + `pyproject.toml` | Matches the user's other Python projects | Poetry |
 | Windows package | PyInstaller → standalone `.exe` | One bundle, no Python install needed on the target machine | Briefcase / cx_Freeze |
 | macOS package | PyInstaller → **unsigned** `.app` inside a `.dmg` | Free; one-time right-click → Open bypasses Gatekeeper. Signing/notarisation deferred until an Apple Developer account exists | Briefcase |
-| Linux package | **AppImage** (appimagetool) **and Flatpak on Flathub** | AppImage = portable single file; Flatpak = distro storefronts via Flathub | native `.deb` / `.rpm` |
+| Linux package | **AppImage** (appimagetool), **Flatpak on Flathub**, and native RPM/deb via the openSUSE Build Service (FIBR-0155) | AppImage = portable single file; Flatpak = distro storefronts via Flathub; OBS = distro package managers | — |
 | Test runner | pytest (+ pytest-qt for GUI) | Matches Music_Production | unittest |
 | Linter / formatter | ruff | Matches the user's other Python projects | flake8 + black |
 | CI | GitHub Actions | Free for public repos; matches existing tooling | GitLab CI / Buildkite |
@@ -154,7 +153,6 @@ Considered and deliberately excluded from v1:
   it (Type → Category → Sub-category), but v1's screens expose only two levels.
 - **Code-signing / notarisation** (macOS *and* Windows) — v1 ships unsigned
   builds; signing is wired in later once developer certificates exist.
-- **Native `.deb` / `.rpm` packages** — AppImage + Flathub cover Linux for v1.
 
 
 ## Distribution
@@ -169,25 +167,21 @@ Considered and deliberately excluded from v1:
 - **macOS** — unsigned `.app` in a `.dmg` (PyInstaller); right-click → Open the
   first time. Signing/notarisation deferred until an Apple Developer account
   exists.
-- **Linux** — portable **AppImage**, and a **Flatpak published on Flathub** to
-  reach distro storefronts.
+- **Linux** — portable **AppImage**, a **Flatpak published on Flathub** to
+  reach distro storefronts, and native RPM/deb packages built by the openSUSE
+  Build Service (`packaging/obs/`, FIBR-0155).
 
-**Release automation:** a single committed shell script
-(`scripts/publish-release.sh`) builds every artifact above and publishes the
-GitHub Release (and drives the Flathub submission/update). It is itself a
-specced roadmap item (its own `docs/specs/<ID>.md`, cold-eyes-reviewed), and is
-implemented in the packaging phase once the app and its packaging are designed —
-a publish script can't predate the thing it publishes.
+**Release automation:** `scripts/release-linux.sh` builds and signs the
+AppImage and publishes the GitHub Release; `scripts/release-windows.sh` then
+builds the Windows `.exe` and attaches it to the same release. The Flatpak
+re-pin is a manual step, and macOS has no release script yet (FIBR-0130). One
+script covering every artifact is still planned (FIBR-0016).
 
-**Local CI emulation:** a committed `scripts/ci-local.sh` runs the *same* gates
-as the GitHub Actions workflow (lint with ruff, format check, the security
-scanners — bandit/pip-audit/gitleaks, tests with pytest, and a build
-smoke-test) so problems are caught **before** pushing to the public repo. The CI
-workflow (`.github/workflows/ci.yml`) and this mirror script are P01 (Bootstrap)
-deliverables and are kept in lockstep (one source of truth for the gate list).
-The lint/test/security stages land in the first P01 bullet (`FIBR-0001`); the
-**build smoke-test** stage is added to the same script by the later P01 bullet
-`FIBR-0003`.
+**Local CI emulation:** `scripts/ci-local.sh` is the gate, and
+`.github/workflows/ci.yml` runs that same script, so the gate list has one home
+(`FIBR-0001`). Problems are caught **before** pushing to the public repo. The
+build smoke-test (`FIBR-0003`) is opt-in (`--build`); CI runs it weekly in
+`.github/workflows/build-smoke.yml`, not on every push.
 
 **Licensing:** the project is **MIT**; PySide6 is **LGPL**, which permits
 distributing our binaries under MIT without forcing a copyleft licence on the
