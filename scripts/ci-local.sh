@@ -169,7 +169,9 @@ if [ "${FINBREAK_BUILD_SMOKE:-}" = "1" ]; then
 else
     echo "== pytest (excluding perf; $WORKERS workers) =="
 fi
-pytest -m "not perf" -n "$WORKERS"
+# -rs lists every skip with its reason, so a local log and a GitHub log can be
+# compared test by test rather than by a count.
+pytest -m "not perf" -n "$WORKERS" -rs
 
 # A non-zero `wait` would end the script under `set -e` before the output
 # printed, so the status is captured first and the output shown either way.

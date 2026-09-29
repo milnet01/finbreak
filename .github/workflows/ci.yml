@@ -65,9 +65,15 @@ jobs:
       # .git/config, readable by every later step (zizmor `artipacked`). Nothing
       # here pushes; the gate's git use (ls-files, check-ignore, rev-parse) is
       # local and needs no credential.
+      #
+      # fetch-depth: 0 — full history, as a developer's clone has. A shallow
+      # clone skipped the flatpak test that reads the manifest's pinned commit,
+      # so CI ran fewer tests than the local gate (scripts/ci-docker.sh sends
+      # the same tree).
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
 
       # System libs (PySide6's OS deps) + gitleaks + Python deps. Shared with
       # scripts/ci-docker.sh — one definition, so local and CI can't diverge.

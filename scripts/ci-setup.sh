@@ -31,8 +31,11 @@ $SUDO apt-get update -qq
 # and bundling feature tests shell out to `git check-ignore` / `git rev-parse`.
 # xz-utils: the shellcheck release below ships as .tar.xz, and the slim image
 # carries gzip but not xz.
+# appstream: `appstreamcli validate`, which the flatpak and OBS packaging tests
+# run on the metainfo and skip without. A developer's desktop has it, so CI
+# without it ran fewer tests than the local gate.
 $SUDO apt-get install -y --no-install-recommends \
-    curl ca-certificates git xz-utils \
+    curl ca-certificates git xz-utils appstream \
     libgl1 libegl1 libglib2.0-0 libxkbcommon0 libdbus-1-3 libfontconfig1
 
 # The gate's feature tests run `git` against the checkout. In a container the

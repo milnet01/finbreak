@@ -747,13 +747,12 @@ run.
 2. **The `apt-get install git ca-certificates` step** before checkout. Its
    *effect* is covered — `ci-setup.sh` installs `git` as well — but the step
    itself never executes.
-3. **The tree under test, which is the one worth knowing.** `ci-docker.sh`
-   does `cp -a` of your working directory into the container, so gitignored
-   and untracked files travel with it; `actions/checkout` hands CI a clean
-   clone of **tracked files only**. Verified by running that `cp` and listing
-   the result: `.corpus-numbers` reaches the container. So a gate
-   stage that reads an untracked file passes here without having been tested
-   the way CI will run it.
+3. **The tree under test is your working copy, not the commit.**
+   `ci-docker.sh` sends the container the tracked files and `.git` — never
+   untracked or gitignored ones, so `.corpus-numbers` stays out, as it does on
+   GitHub. What differs is that an uncommitted edit to a tracked file is
+   tested here, while `actions/checkout` tests the commit. Commit first when
+   the run is meant to stand for the push.
 
 **If `act` is ever configured on this machine this override lapses.**
 *Configured* means `~/.config/act/actrc` exists **and**

@@ -64,4 +64,4 @@ network, no financial data.
   stays green before first generation. The live offline `flatpak-builder` run
   (§ 5) is the backstop for pin-vs-pyproject match and the `finbreak`-module
   `--no-index` command (which lives in the main manifest, outside INV-3's file).
-- INV-5 is skip-if-absent (`appstreamcli` not in CI).
+- INV-5 is skip-if-absent; CI installs `appstreamcli` (`scripts/ci-setup.sh`), so it runs there.
