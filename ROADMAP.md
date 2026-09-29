@@ -2848,7 +2848,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: review-fix.
   Source: full-audit-2026-09-27 code lane 4 (queued by FIBR-0367).
 
-- 📋 [FIBR-0405] **Queued findings from the 2026-09-27 audit: Standard Bank PDF lane (5 items).**
+- ✅ [FIBR-0405] **Queued findings from the 2026-09-27 audit: Standard Bank PDF lane (5 items).**
   From docs/reviews/2026-09-27-full-audit/code-lane-05-standard-bank.md.
   Line numbers are the audited commit's (52e5162); find sites by symbol.
   - [Medium] importers/pdf_importer.py:208-211, :171,
@@ -2875,6 +2875,14 @@ touches the § 2 surface. A security fix takes the number its change takes — �
     strings are English literals shown to the user, against design.md
     i18n (real only if the UI does not translate them). Fix: route them
     through tr().
+  Resolved 2026-09-29 (6cf4e87): three fixed, two queued. The
+  compression bomb is refused before pdfplumber decodes anything, via
+  a capped measurement in _normalise_to_plaintext (64 MiB total;
+  security-model INV-5b's residual narrowed). Library ValueErrors are no
+  longer shown raw (PdfRefusal). Four refusals gained the CSV/OFX tail.
+  Queued: the back-dated year inference as FIBR-0424 (needs a FIBR-0050
+  D8 gate), and translation of importer refusals as FIBR-0425 (one root
+  cause across every importer).
   **Layman:** Five smaller problems in reading Standard Bank PDF statements, including a booby-trapped PDF that could use up all the computer's memory.
   Kind: security.
   Source: full-audit-2026-09-27 code lane 5 (queued by FIBR-0367).
@@ -3423,6 +3431,49 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   **Layman:** If upgrading an old vault was interrupted and never finished tidying up, finbreak might later offer to restore an old copy without saying how old it is; it should tell you the date so you don't lose recent changes by accident.
   Kind: fix.
   Source: full-audit-2026-09-27 code lane 3 open question (queued by FIBR-0403).
+
+- 📋 [FIBR-0424] **A Standard Bank statement row back-dated before the period is dated in the right year.**
+  From FIBR-0405 finding 4. _infer_years (FIBR-0050 D8, Family A)
+  seeds the year from the period start and adds one whenever a month
+  is lower than the previous row's. A March statement holding a row
+  back-dated to 28 February therefore dates that row, and every later
+  row, a year late, silently. Recommended: give each (month, day) the
+  year that puts it inside the printed period plus a slack, and
+  refuse the statement when no year does. Changes FIBR-0050 D8 and
+  adds a refusal to INV-11, so the amendment is gated (review-contract
+  --max-loops 3) before the build.
+  **Layman:** On some Standard Bank statements, one row dated just before the statement period could make that row and every row after it land a whole year late; the year should come from the statement's own dates.
+  Kind: fix.
+  Source: full-audit-2026-09-27 code lane 5 (queued by FIBR-0405).
+
+- 📋 [FIBR-0425] **Importer refusal messages reach the screen through Qt's translation system.**
+  From FIBR-0405 finding 5, and the matching finding in the CSV/OFX
+  lane. design.md i18n: every user-facing string goes through tr() /
+  QCoreApplication.translate(). The importers (CSV, OFX, generic PDF,
+  Standard Bank) raise ValueError with English literals that the
+  wizard and batch import show verbatim. The importers are Qt-free by
+  design, as the services are. Recommended: importers raise a typed
+  refusal carrying a stable key and its values, and the UI maps each
+  key to a tr() sentence, substituting values after translation.
+  Spans importers, wizard and batch import, so apply spec-format §1
+  before building.
+  **Layman:** Messages that explain why a statement could not be imported are written in English inside the importers and cannot be translated yet; they should use the same translation system as the rest of the app.
+  Kind: fix.
+  Source: full-audit-2026-09-27 code lanes 5 and 6 (queued by FIBR-0405).
+
+- 📋 [FIBR-0426] **A batch-import UI test crashed its test worker once under the full gate.**
+  Seen 2026-09-29 during FIBR-0405's gate: pytest-xdist reported
+  "worker 'gw5' crashed while running test_batch_import_ui.py::
+  test_INV8_cancelling_a_prompt_skips_that_file_immediately". Alone it
+  passed 5 of 5, the batch_import suite passed under -n 6, and the next
+  full gate was green. The test replaces decrypt_to_plaintext outright,
+  so the change under test that day never ran in it. A crashed worker
+  is a native crash (Qt or a C extension), not an assertion. To find
+  out: rerun the full gate in a loop with faulthandler output kept, and
+  note which test and thread the crash lands on.
+  **Layman:** One automated check crashed once for no clear reason and then passed every time after; it needs a closer look so it doesn't hide a real problem.
+  Kind: investigate.
+  Source: in-session-2026-09-29 (FIBR-0405 gate run).
 
 ## v1.1.0 — Localisation
 
