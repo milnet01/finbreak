@@ -1492,3 +1492,96 @@ def test_FIBR0401_a_failed_connection_setup_closes_the_connection(paths, monkeyp
     with pytest.raises(DatabaseError):
         Vault(*paths).open(bytearray(b"\x01" * 32))
     assert closed == [True]
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0019 INV-14 (FIBR-0401) — no vault depends on the library's default
+# cipher level, which a sqlcipher3-wheels bump could move.
+# --------------------------------------------------------------------------- #
+_INV14_KEY = b"\x07" * 32
+
+
+def _set_default_cipher_level(level: int) -> None:
+    """``cipher_default_compatibility`` is process-wide: every LATER
+    connection in this process defaults to it (measured, SQLCipher 4.12.0)."""
+    from sqlcipher3 import dbapi2
+
+    conn = dbapi2.connect(":memory:")
+    try:
+        conn.execute(f"PRAGMA cipher_default_compatibility = {level}")
+    finally:
+        conn.close()
+
+
+def _fresh_vault(paths) -> None:
+    from finbreak.vault import Vault
+
+    vault = Vault(*paths)
+    vault.create(bytearray(_INV14_KEY), None, "ZAR", 2, write_sidecar=False)  # type: ignore[arg-type]
+    vault.close()
+
+
+def _opens_via_vault(paths) -> bool:
+    from finbreak.vault import Vault
+
+    vault = Vault(*paths)
+    try:
+        vault.open(bytearray(_INV14_KEY), migrate=False)
+    except DatabaseError:
+        return False
+    vault.close()
+    return True
+
+
+def _opens_raw_at_level_4(db_path) -> bool:
+    from sqlcipher3 import dbapi2
+
+    conn = dbapi2.connect(str(db_path))
+    try:
+        conn.execute(f"PRAGMA key = \"x'{_INV14_KEY.hex()}'\"")
+        conn.execute("PRAGMA cipher_compatibility = 4")
+        conn.execute("PRAGMA cipher_use_hmac = ON")
+        conn.execute("SELECT count(*) FROM sqlite_master").fetchone()
+        return True
+    except DatabaseError:
+        return False
+    finally:
+        conn.close()
+
+
+def test_FIBR0401_no_vault_depends_on_the_library_cipher_default(tmp_path, monkeypatch):
+    import finbreak.vault as vault_mod
+
+    before = (tmp_path / "before.db", tmp_path / "before.kdf.json")
+    during = (tmp_path / "during.db", tmp_path / "during.kdf.json")
+    patched = (tmp_path / "patched.db", tmp_path / "patched.kdf.json")
+
+    _fresh_vault(before)
+    try:
+        _set_default_cipher_level(3)
+        # Leg 1: created at the default, opened after the default moved.
+        assert _opens_via_vault(before), "a vault created before the move must open"
+        # Leg 2: created while the default is moved.
+        _fresh_vault(during)
+    finally:
+        _set_default_cipher_level(4)
+    assert _opens_via_vault(during), "a vault created during the move must open"
+
+    # Leg 3: the export constant does not decide the level a fresh vault gets.
+    monkeypatch.setattr(vault_mod, "SQLCIPHER_COMPAT", 3)
+    _fresh_vault(patched)
+    assert _opens_raw_at_level_4(patched[0])
+
+    # Leg 4: the live constant is its own literal, not an alias.
+    tree = ast.parse(Path(vault_mod.__file__).read_text(encoding="utf-8"))
+    literal = [
+        node.value.value
+        for node in tree.body
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(t, ast.Name) and t.id == "LIVE_VAULT_CIPHER_COMPAT"
+            for t in node.targets
+        )
+        and isinstance(node.value, ast.Constant)
+    ]
+    assert literal == [4], "LIVE_VAULT_CIPHER_COMPAT must be defined by the literal 4"

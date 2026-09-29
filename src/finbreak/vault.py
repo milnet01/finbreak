@@ -41,6 +41,16 @@ SQLCIPHER_COMPAT = 4
 # older level stays readable. Never narrow it below a level ever shipped.
 SQLCIPHER_COMPAT_ACCEPTED = frozenset({SQLCIPHER_COMPAT})
 
+# The level every database with NO recorded level is created and opened at
+# (FIBR-0019 INV-14): every vault created fresh, a v1 vault still under a
+# migration-pending sidecar, and the `.pre-v2` rollback copy. Every vault
+# finbreak has created was written under SQLCipher 4's defaults, which are this
+# level, so pinning it changes no file; it removes the dependence on a library
+# default a wheel bump could move (FIBR-0401). Its own literal, never an alias of
+# SQLCIPHER_COMPAT, and it never changes: raising the export level must not move
+# the level these databases open at.
+LIVE_VAULT_CIPHER_COMPAT = 4
+
 # What a restore's move-aside leaves behind. `BackupService._install` renames
 # the incumbent to `<name>.<stamp>.old`, carrying the SQLite `-wal`/`-shm`
 # siblings and the sidecar's own copy under the same stamp, so one stamp names
@@ -318,13 +328,15 @@ class Vault:
             # accepted best-effort gap, consistent with the D5 stance on the other
             # immutable key/password intermediates.
             conn.execute(f"PRAGMA key = \"x'{key.hex()}'\"")
-            # Apply a recorded cipher_compatibility level (FIBR-0014 INV-13) right
-            # after PRAGMA key and BEFORE cipher_use_hmac — a lower level resets the
-            # per-page HMAC off, so setting it first then forcing HMAC ON means HMAC
-            # can never be left disabled. cipher_compat is an int the caller has
-            # already allowlist-validated (services/backup.py), never user text.
-            if cipher_compat is not None:
-                conn.execute(f"PRAGMA cipher_compatibility = {int(cipher_compat)}")
+            # Apply the cipher_compatibility level right after PRAGMA key and
+            # BEFORE cipher_use_hmac — a lower level resets the per-page HMAC off,
+            # so setting it first then forcing HMAC ON means HMAC can never be
+            # left disabled. A recorded level (FIBR-0014 INV-13) is an int the
+            # caller has already allowlist-validated, never user text; with none
+            # recorded it is LIVE_VAULT_CIPHER_COMPAT, never the library default
+            # (FIBR-0019 INV-14). Every create and open comes through here.
+            level = LIVE_VAULT_CIPHER_COMPAT if cipher_compat is None else cipher_compat
+            conn.execute(f"PRAGMA cipher_compatibility = {int(level)}")
             # Pin per-page HMAC integrity ON explicitly (FIBR-0077, revisiting
             # FIBR-0004 D4 which only *asserted* the SQLCipher-4 default). AES gives
             # confidentiality, not integrity; the HMAC is what makes a tampered page
