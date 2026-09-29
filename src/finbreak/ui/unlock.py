@@ -115,6 +115,18 @@ def _migration_write_failed() -> str:
     )
 
 
+def _settings_file_damaged() -> str:
+    """The KDF sidecar is missing, malformed or below the strength floor — NOT
+    a wrong password. Single-homed: the params load and the post-derivation
+    slot read both render the same words."""
+    return QCoreApplication.translate(
+        "UnlockDialog",
+        "finbreak can't read this vault's security-settings file "
+        "(it's missing or damaged), so it can't be unlocked. If you "
+        "have a backup of your vault folder, restore it.",
+    )
+
+
 def _rollback_restored() -> str:
     return QCoreApplication.translate(
         "UnlockDialog",
@@ -288,13 +300,7 @@ class UnlockDialog(QDialog):
             # the *correct* password isn't told to re-check it forever. Only the
             # HMAC-tamper case is meant to be indistinguishable from a wrong
             # password (security-model), not this. (indie-review M-auth1)
-            self._error.setText(
-                self.tr(
-                    "finbreak can't read this vault's security-settings file "
-                    "(it's missing or damaged), so it can't be unlocked. If you "
-                    "have a backup of your vault folder, restore it."
-                )
-            )
+            self._error.setText(_settings_file_damaged())
             self.unlock_failed.emit()
             return
 
@@ -439,6 +445,15 @@ class UnlockDialog(QDialog):
             # this is the same broken pairing plus a pre-upgrade copy that
             # opens, and § 13.3 says the app offers it rather than hiding it.
             self._offer_rollback()
+            return
+        except KdfPolicyError:
+            # A failed key-envelope migration can leave the sidecar unreadable,
+            # and the file can change between the params load and the slot
+            # read. The recovery route guards the same case: out of a Qt slot
+            # it is the crash class FIBR-0065 exists to stop. Not a wrong
+            # password, so the throttle is left alone.
+            self._error.setText(_settings_file_damaged())
+            self.unlock_failed.emit()
             return
         except VaultStateError:
             # The slot unwrapped but SQLCipher refused the DEK: the sidecar and

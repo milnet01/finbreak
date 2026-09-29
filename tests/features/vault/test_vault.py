@@ -1280,6 +1280,47 @@ def test_unlock_reports_a_disk_failure_from_the_resumed_migration(
     )
 
 
+def test_unlock_reports_a_security_settings_file_left_unreadable(
+    qtbot, service, monkeypatch
+):
+    """FIBR-0367 audit row 31 — ``complete_unlock`` raises ``KdfPolicyError``
+    when a failed key-envelope migration leaves the sidecar unreadable (the
+    ``sidecar_version`` probe re-raises), or when the file changes between the
+    params load and the slot read. The recovery route guards it; the password
+    route had no arm, so it escaped the Qt slot with the dialog still up.
+
+    Same answer as ``_on_unlock``'s load-time arm: the file is damaged, not the
+    password, so the throttle is left alone.
+    """
+    from finbreak.ui.unlock import UnlockDialog
+
+    service.first_run(bytearray(_PW), "ZAR")
+    service.lock()
+    dialog = UnlockDialog(service)
+    qtbot.addWidget(dialog)
+
+    def _unreadable(_raw):
+        raise KdfPolicyError("sidecar unreadable after a failed migration")
+
+    monkeypatch.setattr(service, "complete_unlock", _unreadable)
+    failed: list[int] = []
+    dialog.unlock_failed.connect(lambda: failed.append(1))
+    before = dialog._throttle.load().fail_count
+
+    dialog._on_derived(b"\x00" * 32)
+
+    assert "security-settings file" in dialog._error.text(), (
+        "a damaged security-settings file escaped the slot, or was reported as "
+        "something else.\n"
+        f"  actual:   {dialog._error.text()!r}"
+    )
+    assert failed == [1], "unlock_failed emitted, not unlocked"
+    assert dialog._throttle.load().fail_count == before, (
+        "a damaged file is not a wrong password, so it must not advance the "
+        "shared throttle."
+    )
+
+
 # --------------------------------------------------------------------------- #
 # FIBR-0374 — a dialog deleted just after its derivation reports must not abort #
 # --------------------------------------------------------------------------- #

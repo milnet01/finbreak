@@ -33,6 +33,12 @@ signaling per
 
 ### Fixed
 
+- **A damaged security-settings file found after the password is checked is reported, not a crash.**
+  If an interrupted vault upgrade left that file unreadable, the unlock
+  screen hit an unhandled error instead of saying what was wrong. It now
+  shows the same message as when the file is damaged before unlocking,
+  and does not count it as a wrong password. (FIBR-0367)
+
 - **Closing finbreak while a slow update check is still running no longer ends in a crash report.** (FIBR-0367)
   It now waits a few seconds for the check, then closes cleanly
   without it. (Full audit 2026-09-27, row 28.)
