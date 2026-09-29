@@ -5417,7 +5417,7 @@ work, and none of it is a release decision.
   Kind: doc-fix.
   Source: in-session 2026-09-07, cutting 0.1.23.
 
-- 📋 [FIBR-0343] **FIBR-0013 D1 gives ExportOptions a today field it does not have.**
+- ✅ [FIBR-0343] **FIBR-0013 D1 gives ExportOptions a today field it does not have.**
   Noticed while fixing FIBR-0342 and deliberately NOT fixed in passing
   (coding.md 1.7): it is pre-existing drift rather than anything that fix
   caused.
@@ -5440,6 +5440,10 @@ work, and none of it is a release decision.
   Amending D1 changes what a conformer writes, so it owes CLAUDE.md rule 14's
   gate at this project's cap of 3. Worth batching with any other FIBR-0013
   amendment rather than gating that document for this alone.
+  Resolved (2026-09-29): D1 now lists the three include_* booleans and
+  password default, and puts today on export() and render_pdf_bytes() as
+  the code has it. It records shipped code only (rule 14 annex, "the
+  code already exists"), so no gate.
   **Layman:** The export design document describes a field the code does not carry.
   Kind: doc-fix.
   Source: in-session-2026-09-21 (noticed while fixing {{id:0}}).
