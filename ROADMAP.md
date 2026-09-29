@@ -494,7 +494,7 @@ so Flathub review and code signing do not block this release.
   Source: full-audit-2026-09-27.
   Evidence: docs/reviews/close-findings-2026-09-27.md, docs/reviews/2026-09-27-full-audit/
 
-- 📋 [FIBR-0369] **README status badge still says pre-alpha.**
+- ✅ [FIBR-0369] **README status badge still says pre-alpha.**
   README.md line with `status-pre--alpha` disagrees with the README's own "early preview" wording and with the Hub site's `beta` status. Set it to match what 1.0.0 is when the release README refresh happens. Found while answering the Hub website session's page review, 2026-09-28.
   User decision 2026-09-28: at 1.0 the badge says "stable", and "early
   preview" wording is dropped from the README and from the Hub site. The
@@ -503,6 +503,8 @@ so Flathub review and code signing do not block this release.
   (ants-projects-hub-website-6b): it will switch the page to "Stable,
   with more still planned." and status live. Its download buttons match
   by pattern, so they need nothing.
+  Resolved 2026-09-29 (0c73e19), with its duplicate FIBR-0300: the badge
+  reads "early preview".
   **Layman:** The badge at the top of the README calls finbreak pre-alpha, while the text below it says early preview and the website says beta.
   Kind: doc-fix.
   Source: in-session-2026-09-28.
@@ -1404,7 +1406,7 @@ rides the next patch release whenever it is done, and none adds capability or
 touches the § 2 surface. A security fix takes the number its change takes — §
 3.4 forbids inflating the version to signal severity.
 
-- 📋 [FIBR-0250] **normalise_account_number's zero-strip is ASCII-only while its digit filter is not.**
+- ✅ [FIBR-0250] **normalise_account_number's zero-strip is ASCII-only while its digit filter is not.**
   `re.sub(r"\D", "", raw)` is Unicode-aware and keeps Arabic-Indic or
   fullwidth digits; `.lstrip("0")` then does nothing to them, so the key
   never equals its ASCII counterpart.
@@ -1420,6 +1422,12 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: fix.
   Source: in-session-2026-08-06 (FIBR-0086 review lane 1).
   Considered and deliberately left open (2026-08-12), on this bullet's own instruction: "fix it when something else touches this function". It was picked up alongside FIBR-0253/0254, then put back — nothing in that run touches `normalise_account_number`, and fixing it standalone is not the cheap change it looks like. `docs/specs/FIBR-0086` §4.4 quotes the implementation verbatim (line ~397), so the fix is a spec amendment plus its rule-14 cold-read gate; and `tests/features/account_detect/spec.md` INV-8's leak scanner normalises the haystack "the way `normalise_account_number` does", so its helper has to move in step or the scanner starts missing the spelling it guards against. That is three surfaces for a bug that, as recorded above, can only fail to match — never mis-match. The precondition for fixing it is unchanged: the next change that opens this function.
+  Resolved 2026-09-29 (9e67fe5): every decimal digit, in any script,
+  becomes its ASCII value before the zero-strip, so fullwidth and
+  Arabic-Indic numbers match their ASCII twins. Red-first test over four
+  scripts. The leak scanner imports the function, so it moved in step.
+  FIBR-0086 § 4.4's quoted code was updated in the same commit. Taken up
+  now under the 2026-09-29 instruction to fix every open fix item.
 
 - 📋 [FIBR-0274] **The stored-password auto-try consults only the pick-step account, so a re-targeted statement re-prompts next month.**
   `_begin_decrypt` looks the remembered password up with
@@ -4879,7 +4887,7 @@ work, and none of it is a release decision.
   Kind: doc.
   Source: review-contract-2026-08-19 loop 3 cap note (FIBR-0295 gate).
 
-- 📋 [FIBR-0300] **README.md's status badge still reads pre-alpha after 196 shipped items and 22 releases.**
+- ✅ [FIBR-0300] **README.md's status badge still reads pre-alpha after 196 shipped items and 22 releases.**
   README.md line 13 carries
   `[![Status](https://img.shields.io/badge/status-pre--alpha-orange)]()`.
   It is the first thing a visitor to a public repo sees, and it has been
@@ -4890,6 +4898,8 @@ work, and none of it is a release decision.
   Fix is one line, but pick the wording against the versioning standard
   (sibling item) rather than in isolation -- badge and version number
   should tell the same story.
+  Resolved 2026-09-29 (0c73e19): the badge reads "early preview", the
+  README's own term for the current stage.
   **Layman:** The front page of the project still calls it pre-alpha, which puts people off something far more finished than that.
   Kind: doc-fix.
   Source: in-session-2026-08-20 (found answering the v1.0 question).
