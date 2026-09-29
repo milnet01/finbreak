@@ -112,10 +112,10 @@ nothing.
 ## 4. Before 1.0
 
 **4.1 — `0.y.z` means the § 2 surface is not yet frozen.** That is what the
-leading zero is for under Semantic Versioning 2.0.0 § 4, and it is an honest
-description of finbreak today: FIBR-0019 (master-password recovery) is a
-planned change to the vault's key envelope, and its own roadmap bullet says
-retrofitting it needs a full re-encrypt migration.
+leading zero is for under Semantic Versioning 2.0.0 § 4, and it stays the
+honest description of finbreak until § 5's gate is met. FIBR-0019
+(master-password recovery) used that latitude: it changed the vault's key
+envelope and shipped in `0.1.23` with an automatic migration.
 
 **4.2 — While below 1.0, `0.MINOR.PATCH` shifts down one place.** Anything
 MAJOR under § 3.1 — a § 2 break, **or** a change requiring user action — bumps
@@ -148,8 +148,8 @@ past. Cut it when all five hold:
    item is not a *break***: the carve-out decides what number a shipped change
    takes, never whether the surface is settled enough to freeze. An additive
    migration that runs automatically does **not** fire it — otherwise 93 open
-   items make this gate permanently unmeetable. FIBR-0019 is the live case,
-   and it blocks this condition.
+   items make this gate permanently unmeetable. FIBR-0019 was the live case
+   until it shipped in `0.1.23`.
 2. **No open defect can lose or corrupt user data.**
 3. **No open defect crashes the app on a supported platform's default
    configuration.**

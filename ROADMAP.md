@@ -5377,7 +5377,7 @@ work, and none of it is a release decision.
   Kind: doc-fix.
   Source: review-contract-2026-09-06 (FIBR-0019 gate, 4b sweep, out of scope).
 
-- 📋 [FIBR-0340] **versioning.md still calls FIBR-0019 planned, and names it as the live blocker of the 1.0 gate.**
+- ✅ [FIBR-0340] **versioning.md still calls FIBR-0019 planned, and names it as the live blocker of the 1.0 gate.**
   FIBR-0019 shipped in 0.1.23. Two passages in
   `docs/standards/versioning.md` were written while it was still ahead of
   us and now read false:
@@ -5408,6 +5408,11 @@ work, and none of it is a release decision.
   `versioning.md` is a contract document, so the § 5 edit is a change of
   direction and owes CLAUDE.md rule 14's gate. That is why this is filed
   rather than corrected in passing.
+  Resolved (2026-09-29): § 4.1 and § 5 condition 1 now record FIBR-0019
+  as shipped in 0.1.23 with an automatic migration. No condition's
+  wording changed, so this records existing code (rule 14 annex, "the
+  code already exists") and owes no gate. It does not claim § 5's gate
+  is met.
   **Layman:** The rules for choosing a version number still describe the recovery-code work as upcoming, when it shipped.
   Kind: doc-fix.
   Source: in-session 2026-09-07, cutting 0.1.23.
