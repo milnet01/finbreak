@@ -1072,3 +1072,16 @@ def test_build_smoke_prints_no_hand_publish_recipe():
     assert any("release-linux.sh" in line for line in echoes), (
         "the build must say which script publishes"
     )
+
+
+def test_FIBR0384_missing_key_never_advises_minting_a_new_one():
+    """FIBR-0384 — with a public key committed, a new signing key signs releases
+    every installed updater rejects. The no-key branches must not tell a release
+    run to mint one; they say where the existing key is expected."""
+    for name in ("build-smoke.sh", "build-release-appimage.sh"):
+        text = (_SCRIPTS / name).read_text(encoding="utf-8")
+        for line in text.splitlines():
+            if "gen-signing-key.py" in line:
+                assert "no committed" in line or "never" in line.lower(), (
+                    f"{name}: {line.strip()!r} advises minting a key unconditionally"
+                )

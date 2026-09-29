@@ -169,8 +169,11 @@ if [ "$MODE" = "release" ]; then
         python3 "$ROOT/scripts/sign-release.py" --key "$KEY" "$DIST/$APPIMAGE"
     else
         echo "== build-release: NO signing key at $KEY — AppImage is UNSIGNED ==" >&2
-        echo "   Run scripts/gen-signing-key.py first (once), then re-run this," >&2
-        echo "   or sign manually: python scripts/sign-release.py $DIST/$APPIMAGE" >&2
+        echo "   Restore the existing key to that path (or set FINBREAK_SIGNING_KEY)," >&2
+        echo "   then re-run this, or sign manually: python scripts/sign-release.py $DIST/$APPIMAGE" >&2
+        echo "   Never run scripts/gen-signing-key.py here: its public half is committed" >&2
+        echo "   (update_key.RELEASE_PUBLIC_KEY_B64), and a new key signs releases every" >&2
+        echo "   installed updater rejects (FIBR-0384)." >&2
     fi
     echo ""
     echo "Release artifacts in $DIST:"

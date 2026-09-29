@@ -12,8 +12,9 @@
 #   - podman or docker on PATH (the container build/clean-room);
 #   - the project venv ACTIVE (`. .venv/bin/activate`) so the signing step can
 #     import cryptography;
-#   - a signing key at release/finbreak-signing.key (run scripts/gen-signing-key.py
-#     once first) or $FINBREAK_SIGNING_KEY — without it the AppImage builds but is
-#     left unsigned, with a warning.
+#   - the existing signing key at release/finbreak-signing.key, or
+#     $FINBREAK_SIGNING_KEY — without it the AppImage builds but is left unsigned,
+#     with a warning. This project has a committed public key, so never run
+#     scripts/gen-signing-key.py (it is for a project with no committed key).
 set -euo pipefail
 exec "$(cd "$(dirname "$0")" && pwd)/build-smoke.sh" --release "$@"

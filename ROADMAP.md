@@ -1381,7 +1381,7 @@ so Flathub review and code signing do not block this release.
   Kind: fix.
   Source: full-audit-2026-09-27 delivery A3 (adjacent).
 
-- 📋 [FIBR-0384] **build-smoke.sh tells a release run with no signing key to mint a new one.**
+- ✅ [FIBR-0384] **build-smoke.sh tells a release run with no signing key to mint a new one.**
   scripts/build-smoke.sh's --release branch, on a missing
   release/finbreak-signing.key, prints "Run scripts/gen-signing-key.py
   first (once), then re-run this". On this project a key already exists
@@ -1391,6 +1391,11 @@ so Flathub review and code signing do not block this release.
   missing key"). Fix: say the key is missing and where it is expected,
   and name gen-signing-key.py only for a project with no committed key.
   Found beside row 43; not fixed there (a different finding).
+  Resolved (2026-09-29): build-smoke.sh's no-key branch now says to
+  restore the existing key (or set FINBREAK_SIGNING_KEY) and never to
+  run gen-signing-key.py; build-release-appimage.sh's header says the
+  same. test_FIBR0384_missing_key_never_advises_minting_a_new_one
+  (release_integrity) was red on the old message.
   **Layman:** If the release signing key is missing, a build script suggests creating a new key, which would make every installed copy reject the update.
   Kind: fix.
   Source: close-findings sweep 2026-09-29 (FIBR-0367 row 43, next door).
@@ -2240,7 +2245,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Source: in-session-2026-09-26 (re-check of security.md §1 for the ~/.claude session).
   Lanes: docs, security.
 
-- 📋 [FIBR-0382] **Batch-import review table tooltip renders a file path as rich text.**
+- ✅ [FIBR-0382] **Batch-import review table tooltip renders a file path as rich text.**
   `ui/import_batch.py` `_set` passes the statement's full path
   straight to `QTableWidgetItem.setToolTip`. A tooltip has no
   PlainText mode, so Qt guesses with `mightBeRichText`: a file named
@@ -2249,6 +2254,10 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   wrap it with `QtGui.Qt.convertFromPlainText`, and test what the
   tooltip SHOWS, as `test_alerts_ui.py`'s `_as_qt_shows` does. Found
   by the row 36 sweep; pre-existing, so not fixed in that commit.
+  Resolved (2026-09-29): _set escapes the tooltip with
+  QtGui.Qt.convertFromPlainText.
+  test_FIBR0382_row_tooltip_shows_the_path_as_typed asserts what the
+  tooltip shows, and was red on a file named <b>bold.csv.
   **Layman:** A statement file whose name looks like web formatting shows as formatted text when you hover over it in the import list.
   Kind: fix.
   Source: close-findings-2026-09-27 row 36 sweep.
