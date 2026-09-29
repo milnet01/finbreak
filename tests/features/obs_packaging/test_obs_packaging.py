@@ -628,3 +628,32 @@ def test_INV10_deb_rules_commands_are_valid_shell() -> None:
         "  expected: every logical command parses under `sh -n`\n"
         "  actual:\n    " + "\n    ".join(failures)
     )
+
+
+# --------------------------------------------------------------------------- #
+# Full audit 2026-09-27 row 47 — the OBS source is the release tag, not `main`.
+# --------------------------------------------------------------------------- #
+def test_obs_builds_the_release_tag_not_main() -> None:
+    """`revision` was `main`, while the version came from the latest tag: a
+    package labelled 0.1.23 carried every unreleased commit on main. The
+    revision is now the tag for __version__, and the bump recipe moves it."""
+    import json
+
+    from finbreak import __version__
+
+    revision = re.search(
+        r'<param name="revision">([^<]+)</param>', _SERVICE.read_text()
+    )
+    assert revision is not None
+    assert revision.group(1) == f"v{__version__}", (
+        f"_service builds {revision.group(1)!r}, not the release v{__version__}"
+    )
+
+    bump = json.loads((_REPO_ROOT / ".claude" / "bump.json").read_text())
+    patterns = {f["path"]: f["pattern"] for f in bump["files"]}
+    assert patterns.get("packaging/obs/_service") == (
+        '<param name="revision">v{OLD}</param>'
+    ), "the bump recipe must move the OBS revision with the version"
+    assert "packaging/obs/_service" in bump["post_check"], (
+        "the lockstep check must catch an OBS revision left behind"
+    )

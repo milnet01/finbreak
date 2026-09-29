@@ -5,14 +5,14 @@
        manualrun) for the documented first-cut submit; CI auto-submit is a
        follow-up (§ 2). -->
 
-  <!-- 1. Source checkout. During bring-up this tracks the default branch (main),
-          which carries the packaging/obs tree the recipes reference;
-          versionformat derives the version from the most recent tag. For a
-          published release, pin revision to that release tag instead. -->
+  <!-- 1. Source checkout: the RELEASE TAG, never a branch. On `main` a package
+          labelled with the last tag carried every commit made since (full audit
+          2026-09-27 row 47). .claude/bump.json moves this revision with
+          __version__ and its post_check refuses one left behind. -->
   <service name="obs_scm" mode="manual">
     <param name="scm">git</param>
     <param name="url">https://github.com/milnet01/finbreak.git</param>
-    <param name="revision">main</param>
+    <param name="revision">v0.1.23</param>
     <param name="match-tag">v*</param>
     <param name="versionformat">@PARENT_TAG@</param>
     <param name="versionrewrite-pattern">v(.*)</param>

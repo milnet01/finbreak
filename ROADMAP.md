@@ -2107,6 +2107,20 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Source: close-findings-2026-09-27 row 36 sweep.
   Lanes: ui.
 
+- 📋 [FIBR-0385] **obs-submit.sh mixes a tagged source with working-tree recipes and a possibly stale wheel bundle.**
+  Row 47 pinned _service to the release tag. Two sub-points of the same
+  lane finding remain in packaging/obs/obs-submit.sh: it copies the recipe
+  files from the local working tree, which may hold uncommitted edits, and
+  it reuses vendor.tar.gz even when that was built from an older
+  pyproject.toml (REVENDOR defaults off). So one submission can mix three
+  moments. Fix: copy recipes from the tag (git show v<version>:path) or
+  refuse a dirty packaging/obs tree, and re-vendor when pyproject.toml is
+  newer than vendor.tar.gz. Queued, not fixed with row 47: a different
+  file and a submit-flow decision.
+  **Layman:** The openSUSE package upload can combine files from different moments, so a package might not match the release it is labelled with.
+  Kind: fix.
+  Source: full-audit-2026-09-27 code lane 20 (_service:15 sub-points), queued from FIBR-0367 row 47.
+
 ## v1.1.0 — Localisation
 
 The first feature minor after 1.0. Chosen to go first because it is

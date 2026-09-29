@@ -66,9 +66,9 @@ closure or a target's default python changes). The spec's `%check` runs the
 frozen `--self-test` with `FINBREAK_SELFTEST_DEBUG=1`, so a Qt/native failure
 prints its real traceback in the build log.
 
-`_service` tracks `revision=main` with `match-tag=v*` during bring-up (builds the
-newest release code + derives the version from the latest `v*` tag). For a pinned
-release, set `revision` to that tag.
+`_service` builds `revision=v<version>`, the release tag, and derives the version
+from it. `.claude/bump.json` moves the revision with every release, and its
+lockstep check refuses one left behind.
 
 **Doing it by hand** (what the scripts automate): `osc checkout
 home:milnet:finbreak finbreak`, copy the recipe files + `vendor.tar.gz` in, `osc

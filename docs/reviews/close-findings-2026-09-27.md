@@ -101,7 +101,7 @@ Each group is one commit with its own sweep (`close-findings` § 3–4).
 | 44 | Gate | code 20 : `.githooks/pre-push:91,45-71` — untracked imports pass; a non-HEAD ref is gated as HEAD | fixed — already, by `7707a28` (FIBR-0373, after the audited commit): the hook refuses `git status --porcelain --untracked-files=all` output and any pushed tip that is not HEAD. Checked against the current hook; `test_an_untracked_file_is_refused` and `test_a_push_of_a_commit_other_than_head_is_refused` execute it and pass |
 | 45 | Gate | code 20 : `ci-setup.sh:42,76-92` — global `safe.directory '*'`; fixed `/tmp` paths before a root install | fixed — verified: both still present. `safe.directory '*'` is now written only as root or under `$CI`; every download and extraction goes to a `mktemp -d` directory removed on exit (b9838da). Tests: `test_ci_setup_trusts_every_repository_only_in_a_throwaway_environment`, `test_ci_setup_downloads_into_a_private_directory` (text-level, red first). Executed by `scripts/ci-docker.sh` in CI's image: all four binaries installed, no dubious-ownership error, 2340 passed |
 | 46 | Supply chain | code 20 : `generate-pip-sources.sh:37,59,113` — unpinned, unverified generator | fixed — verified: it fetched `master` with `curl -sSL` (no `-f`) and trusted any cached copy. Now pinned to commit `dda10aa` with a sha256, fetched with `curl -fsSL`, and verified on every run, cached or fresh (a failing cache is re-fetched once, then refused). The pinned bytes equal the cached copy that produced the committed `python3-deps.yaml`, so the closure is unchanged. Tests: a text check, and an executed run of a sandboxed copy with stub `curl`/`python`/`flatpak` that must stop on the checksum; red first, the final gate mutation-checked. An early red run of the executed test ran the REAL script and deleted `packaging/flatpak/python3-deps.yaml`; it was recreated from HEAD (only change: the deletion) and the test now runs a copy |
-| 47 | Packaging | code 20 : `packaging/obs/_service:15` — OBS builds `main`, not the tag | |
+| 47 | Packaging | code 20 : `packaging/obs/_service:15` — OBS builds `main`, not the tag | fixed — verified: `revision` was `main` while the version came from the latest tag. It is now `v0.1.23`; `.claude/bump.json` moves it with `__version__` and its `post_check` refuses a stale one (mutation-checked: a `v0.1.22` revision fails both the check and the test). Test: `test_obs_builds_the_release_tag_not_main`, red first. `packaging/obs/README.md` updated. The lane's sub-points in `obs-submit.sh` (working-tree recipes, a reused `vendor.tar.gz`) are queued as FIBR-0385 |
 | 48 | Packaging | check-code : `packaging/flatpak/io.github.milnet01.finbreak.yaml` — no final newline | |
 
 **Already tracked, to annotate rather than fix:** code 12's signature-binding
@@ -148,6 +148,9 @@ last row lands, and its run-level lists live here.
   runs); `ci.yml` (runs as root in its container, `CI` set); `ci-docker.sh`.
 - row 46 — `packaging/flatpak/README.md` and `docs/specs/FIBR-0159.md` § 3.6
   (how the generator is obtained); `ci-setup.sh`'s `fetch_verified` (the model).
+- row 47 — `docs/specs/FIBR-0155.md` ("fetches the tagged source tarball");
+  `obs-submit.sh`'s "pulls the tagged source" comment; `packaging/obs/README.md`;
+  `.claude/bump.json` files and `post_check`.
 
 **swept:** (filled at the sweep)
 
