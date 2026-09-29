@@ -1947,6 +1947,11 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   minutes from a Flathub submission whose reviewers check that it builds from
   pinned source. Taking them needs a LOCAL=0 rebuild to prove the offline build
   still ends FINBREAK_SELFTEST_OK. Do that first; do not bump and push.
+  Pending a user call (2026-09-29): the fix is either a scheduled CI job
+  that regenerates the closure and fails on a diff (needs the Flatpak
+  Sdk and network in CI), or a regenerate-and-rebuild step in the
+  release checklist (.claude/bump.json todos). Either way a refresh
+  needs a LOCAL=0 rebuild ending FINBREAK_SELFTEST_OK before it ships.
   **Layman:** The Linux app-store build freezes an exact list of code libraries. Nothing checks whether newer, possibly security-fixed versions of them have come out, so the build can quietly ship old ones.
   Kind: security.
   Source: in-session-2026-08-20 (found during the FIBR-0159 pre-submit checks).
@@ -4542,6 +4547,19 @@ work, and none of it is a release decision.
   and the rule that fired, never the value.
   Scope also covers prose, not just fixtures — FIBR-0244's worst site was a
   spec sentence forbidding the values by quoting them.
+  Checked 2026-09-29 against tests/features/account_detect/
+  test_no_real_data.py (FIBR-0086 INV-8, FIBR-0248). Already delivered:
+  a gitignored deny-list; any grouping of a number (separator-tolerant,
+  8+ digits, so a card PAN or ID number in .corpus-numbers is caught
+  too, though the docs say only 'account numbers'); prose bound as well
+  as fixtures; runs in ci-local.sh and the pre-push hook; a hit
+  reports the path, never the value. Not built: (1) a structural rule
+  for CI -- 374 digit-run hits of 9-13 digits across 51 tracked files
+  today, all needing a synthetic allowlist; (2) names, addresses and
+  dates of birth -- the maintainer's name legitimately appears in the
+  packaging changelog. Both are a value call for the user; recommended:
+  document that .corpus-numbers takes any real number, and park (1)
+  and (2) as considered.
   **Layman:** Add an automatic check that stops real bank details from ever being committed — the current security scanner only looks for passwords and keys, so it has never checked for these.
   Kind: security.
   Source: in-session-2026-08-06 (gap found while closing FIBR-0244).
