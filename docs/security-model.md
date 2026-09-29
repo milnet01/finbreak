@@ -504,7 +504,8 @@ be checkable. Enforcement arrives in step with the code:
   double-confirmed "start over" reset (FIBR-0030) removes the vault's
   complete on-disk data footprint — the DB, the KDF sidecar, **both**
   SQLite WAL sidecars (`vault.db-wal` / `vault.db-shm`), the migration
-  artefacts (`.pre-v2` and `.migrating`, with their own WAL siblings),
+  artefacts (`.pre-v2` and `.migrating`, with their own WAL siblings,
+  rollback journals and the sidecars' `.tmp` files),
   every `*.old` set a past restore left behind, and any
   `restore-assembly-*` directory a crashed restore left in the data
   location — so no file of a deleted vault remains to interfere with a

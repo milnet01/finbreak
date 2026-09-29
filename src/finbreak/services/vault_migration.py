@@ -667,6 +667,10 @@ def _finish(sidecar_path: Path, sidecar: VaultSidecar, vault_path: Path) -> None
     _suffixed(vault_path, ROLLBACK_SUFFIX).unlink(missing_ok=True)
     _drop_wal_siblings(_suffixed(vault_path, ROLLBACK_SUFFIX))
     _suffixed(sidecar_path, ROLLBACK_SUFFIX).unlink(missing_ok=True)
+    # The unlinks are in the vault's directory; the sidecar write below flushes
+    # only its own. Flush this one first, or a cleared flag can outlive a lost
+    # unlink where the two directories differ (FIBR-0403).
+    fsync_dir(vault_path.parent)
     write_sidecar_v2(sidecar_path, replace(sidecar, migration_pending=False))
 
 
@@ -685,10 +689,18 @@ def migration_artefacts(vault_path: Path, sidecar_path: Path) -> list[Path]:
     rollback_db, rollback_sidecar = rollback_copy_paths(vault_path, sidecar_path)
     migrating_db = _suffixed(vault_path, MIGRATING_SUFFIX)
     paths: list[Path] = []
+    migrating_sidecar = _suffixed(sidecar_path, MIGRATING_SUFFIX)
     for base in (rollback_db, migrating_db):
         paths.append(base)
         paths.extend(_suffixed(base, sfx) for sfx in _WAL_SIBLINGS)
-    paths.extend((rollback_sidecar, _suffixed(sidecar_path, MIGRATING_SUFFIX)))
+        # A rollback journal too: these databases are opened outside WAL. Safe
+        # here only because the database it belongs to goes in the same sweep;
+        # _WAL_SIBLINGS stays without it, since a live database's -journal is
+        # its crash recovery (FIBR-0403).
+        paths.append(_suffixed(base, "-journal"))
+    for sidecar in (rollback_sidecar, migrating_sidecar):
+        # write_sidecar_json's temp file, left by a crash mid-write (FIBR-0403).
+        paths.extend((sidecar, sidecar.with_name(sidecar.name + ".tmp")))
     return paths
 
 

@@ -2767,3 +2767,60 @@ def test_s0_flushes_the_directories_its_copy_landed_in(
         "  expected: both directories flushed\n"
         f"  actual:   {sorted(set(flushed))}"
     )
+
+
+def test_FIBR0403_s6_flushes_the_vault_directory_before_clearing_the_flag(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """S6 unlinks the `.pre-v2` copy beside the VAULT, then clears the flag in
+    the SIDECAR's directory, and flushed only the second. Where the two differ
+    the cleared flag could reach the disk while the unlink does not, stranding
+    a copy that still opens under an old password with nothing left to remove
+    it -- the order § 13.2 S6 exists to prevent."""
+    vault_dir, sidecar_dir = tmp_path / "db", tmp_path / "keys"
+    vault_dir.mkdir()
+    sidecar_dir.mkdir()
+    vault_path, sidecar_path = vault_dir / "vault.db", sidecar_dir / "vault.kdf.json"
+    events: list[str] = []
+    monkeypatch.setattr(
+        vault_migration, "fsync_dir", lambda d: events.append(f"flush {Path(d).name}")
+    )
+    monkeypatch.setattr(
+        vault_migration,
+        "write_sidecar_v2",
+        lambda *_a, **_k: events.append("clear flag"),
+    )
+
+    monkeypatch.setattr(vault_migration, "replace", lambda record, **_k: record)
+
+    vault_migration._finish(sidecar_path, object(), vault_path)  # type: ignore[arg-type]
+
+    assert "flush db" in events, events
+    assert events.index("flush db") < events.index("clear flag"), events
+
+
+def test_FIBR0403_migration_artefacts_names_the_temp_and_journal_files(
+    tmp_path: Path,
+) -> None:
+    """Start-over and the post-restore prune delete what this lists. A crash
+    mid-write leaves ``write_sidecar_json``'s ``<name>.tmp`` beside the rollback
+    or migrating sidecar, and the migrating database is opened with a rollback
+    journal, so either can survive a start-over that should leave nothing."""
+    vault_path, sidecar_path = tmp_path / "vault.db", tmp_path / "vault.kdf.json"
+    rollback_db, rollback_sidecar = vault_migration.rollback_copy_paths(
+        vault_path, sidecar_path
+    )
+    migrating_db = vault_migration._suffixed(
+        vault_path, vault_migration.MIGRATING_SUFFIX
+    )
+    migrating_sidecar = vault_migration._suffixed(
+        sidecar_path, vault_migration.MIGRATING_SUFFIX
+    )
+    listed = set(vault_migration.migration_artefacts(vault_path, sidecar_path))
+    for expected in (
+        rollback_sidecar.with_name(rollback_sidecar.name + ".tmp"),
+        migrating_sidecar.with_name(migrating_sidecar.name + ".tmp"),
+        migrating_db.with_name(migrating_db.name + "-journal"),
+        rollback_db.with_name(rollback_db.name + "-journal"),
+    ):
+        assert expected in listed, expected.name
