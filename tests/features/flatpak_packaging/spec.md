@@ -32,7 +32,8 @@ network, no financial data.
   (The `.desktop`/metainfo/`app.py` == app-ID legs are the reused `obs_packaging`
   `test_INV3` — not re-asserted here, rule 3.)
 - **INV-5 — metainfo validates for Flathub.** `appstreamcli validate` on the
-  reused metainfo — **skip-if-absent / manual pre-submit** (not in the CI image).
+  reused metainfo, run with `--no-net` — skip-if-absent; CI installs it. The
+  networked run (screenshot URLs) is manual pre-submit.
 - **INV-6 — self-updater inert under a Flatpak launch.** With `$APPIMAGE` unset on
   Linux, `detect_installer()` is `None` and `is_update_supported()` is `False`
   (reuses the obs_packaging updater-inert predicate).

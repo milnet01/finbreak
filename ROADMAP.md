@@ -3519,6 +3519,16 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   CPython ABI the wheel closure is pinned to (FIBR-0159 § 3.6, INV-3c),
   so regenerate python3-deps.yaml against the 26.08 Sdk and rebuild
   through org.flatpak.Builder before submitting.
+  From FIBR-0159's review loop 10 (2026-09-29, both lanes): the runtime
+  number is load-bearing, though FIBR-0159 § 3.1 says it is not. It sets
+  the Sdk's python3 minor and so the whole closure's ABI; the generator
+  fixes it separately (generate-pip-sources.sh RUNTIME_BRANCH=25.08,
+  --runtime); and the krb5 module exists because 25.08 lacks
+  libgssapi_krb5. INV-3(c) checks the wheels share one minor, not that it
+  is the Sdk's. So the bump is one change: runtime-version, the
+  generator's branch (derived from the manifest, not a second copy), a
+  regenerated python3-deps.yaml, and a re-check of the krb5 need. Amend
+  § 3.1 and § 5 to say so, gated, before building.
   **Layman:** The Flatpak version of finbreak is built on a base system that now has a newer release; it should move to the new one.
   Kind: chore.
   Source: in-session-2026-09-29 (flatpak-builder-lint while verifying FIBR-0161).
