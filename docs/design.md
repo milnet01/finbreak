@@ -19,7 +19,8 @@ isolation (services tested with an in-memory repo; importers tested with sample
 files). The `Svc --> Repo` arrow below is representative, not universal: the opt-in
 updater (`UpdateService`, FIBR-0054) never touches the vault at all — it reads the
 plaintext `window.ini` and the GitHub Releases API (its own drawn edge), so no
-repository sits under it.
+repository sits under it. The diagram is a sketch of the layers, not an inventory:
+it draws the main services, and `src/finbreak/services/` holds the full set.
 
 ```mermaid
 flowchart TB
@@ -111,7 +112,8 @@ logic. Notable screens:
 > dashboard is built, so it lives with that phase — this is a hand-off, not a
 > dropped thread.
 
-**Service layer** — the business logic; one service per concern:
+**Service layer** — the business logic; one service per concern. These are the
+main concerns; `src/finbreak/services/` holds every service:
 
 - **AuthService** — turns the master password into the DB key (via
   CryptoService), unlocks/locks the database, runs the inactivity auto-lock.
@@ -136,6 +138,12 @@ logic. Notable screens:
   change. Main responsibility: decide what a month *did*, in figures; the
   sentence itself is assembled in `ui/month_summary.py`, so the service stays
   translation-free.
+- **RecurringService** — detects repeating payments and income from the vault's
+  transactions and suggests them; the user confirms or dismisses each (FIBR-0142).
+  Main responsibility: find recurring items and remember the user's verdicts.
+- **AlertService** — composes the dashboard's spending alerts from the recurring
+  items and each category's monthly figures (FIBR-0172). Main responsibility: turn
+  the detectors' results into the ordered alerts the Home tab shows.
 - **PdfExportService** — renders the chosen sections to PDF (Qt engine), then
   encrypts with a password (pikepdf). Main responsibility: produce the locked
   shareable report.
