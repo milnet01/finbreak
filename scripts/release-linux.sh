@@ -11,7 +11,8 @@
 # What it does:
 #   1. Read VERSION from src/finbreak/__init__.py (the single source of truth),
 #      check version lockstep across all version-bearing files, and require a
-#      clean, pushed working tree.
+#      clean tree at the commit the tag names (or, before the tag exists, at the
+#      pushed branch tip).
 #   2. scripts/build-release-appimage.sh → freeze + Python-free clean-room proof +
 #      Ed25519-sign → dist/finbreak-<V>-x86_64.AppImage (+ .sig).
 #   3. HARD GATE: verify the .sig against the committed RELEASE_PUBLIC_KEY_B64 (the
@@ -67,8 +68,28 @@ fi
 # answers a stale question. A fetch failure is fatal here rather than skipped —
 # the script cannot reach GitHub for the release either.
 git fetch --quiet origin || { echo "release-linux: could not fetch origin — cannot tell whether the bump is pushed" >&2; exit 1; }
-UNPUSHED="$(git rev-list --count '@{u}..HEAD')"
-[ "$UNPUSHED" -eq 0 ] || { echo "release-linux: $UNPUSHED commit(s) not pushed — the tag is created on the REMOTE, so it would point at the pre-bump commit. Push first." >&2; exit 1; }
+
+# The AppImage must be built from the commit the tag names (full audit
+# 2026-09-27 row 41). cut-release creates the tag BEFORE this script runs, so a
+# commit pushed after it was frozen into that version's AppImage; and counting
+# unpushed commits never caught a clone BEHIND its upstream or on another branch.
+#   - Tag exists on origin: HEAD must be the commit it names. Nothing else is
+#     asked -- a detached checkout of the tag is the fix for a mismatch, and it
+#     has no upstream.
+#   - No tag yet: HEAD must be the pushed tip (not ahead, not behind), and the
+#     release is created with --target "$HEAD_SHA" below, so the tag lands here.
+HEAD_SHA="$(git rev-parse HEAD)"
+# Every tag, matched exactly below: a pattern argument would drop the "^{}" line.
+TAG_REFS="$(git ls-remote --tags origin)" || { echo "release-linux: could not list origin's tags — cannot tell what $TAG names" >&2; exit 1; }
+# An annotated tag lists twice: the tag object, then "^{}" peeled to its commit.
+TAG_SHA="$(printf '%s\n' "$TAG_REFS" | awk -v peeled="refs/tags/$TAG^{}" -v plain="refs/tags/$TAG" '$2 == peeled { p = $1 } $2 == plain { t = $1 } END { print (p != "" ? p : t) }')"
+if [ -n "$TAG_SHA" ]; then
+    [ "$TAG_SHA" = "$HEAD_SHA" ] || { echo "release-linux: tag $TAG names $TAG_SHA but HEAD is $HEAD_SHA — the AppImage must be built from the tagged commit. Run: git checkout $TAG" >&2; exit 1; }
+else
+    UNPUSHED="$(git rev-list --count '@{u}..HEAD')"
+    [ "$UNPUSHED" -eq 0 ] || { echo "release-linux: $UNPUSHED commit(s) not pushed — the tag is created on the REMOTE, so it would point at the pre-bump commit. Push first." >&2; exit 1; }
+    [ "$HEAD_SHA" = "$(git rev-parse '@{u}')" ] || { echo "release-linux: HEAD is not the pushed branch tip (behind it, or on another branch) — the release would be tagged on a commit this build did not come from." >&2; exit 1; }
+fi
 
 # --- 1) build + clean-room + sign the AppImage ----------------------------
 echo "== release-linux: building + clean-rooming + signing the AppImage (a few minutes) =="
@@ -208,7 +229,7 @@ else
     echo "== release-linux: creating release $TAG =="
     gh release create "$TAG" "$DIST/$APPIMAGE" "$DIST/$APPIMAGE.sig" \
         "$DIST/SHA256SUMS" "$DIST/SHA256SUMS.sig" "$DIST/finbreak-$VERSION-linux.cdx.json" \
-        --title "finbreak $TAG" --notes-file "$NOTES" --latest ||
+        --target "$HEAD_SHA" --title "finbreak $TAG" --notes-file "$NOTES" --latest ||
         UPLOAD_RC=$?
 fi
 if [ "$UPLOAD_RC" -ne 0 ]; then

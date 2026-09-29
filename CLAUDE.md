@@ -609,6 +609,9 @@ Worth knowing before you run them:
   script tagged the **remote's** HEAD — the pre-bump commit — publishing assets
   built from a version the tag does not point at
   ([`docs/history/claude-md.md`](docs/history/claude-md.md)).
+  **Once the tag exists it also refuses unless HEAD is the tagged commit**, so
+  commit nothing between `cut-release` and this script — or run it from
+  `git checkout v<X.Y.Z>`, which it accepts (audit row 41).
   (`dist/` is gitignored, so a dirty tree here is
   your own ROADMAP or CHANGELOG edit.) Do not pipe either script
   through `grep`/`tail` while debugging — that masks its exit status and

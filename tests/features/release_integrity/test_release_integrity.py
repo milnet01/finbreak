@@ -678,3 +678,160 @@ def test_FIBR0327_release_linux_requires_the_bump_to_be_pushed():
     assert fetch_at < build_at, (
         "the check must come before the multi-minute build, not after it"
     )
+
+
+# --------------------------------------------------------------------------- #
+# Full audit 2026-09-27 row 41 — the AppImage is built from the commit the tag
+# names. EXECUTED, not scraped: the real script runs in a throwaway repo with a
+# stub `gh` and a stub build that only records it was reached.
+# --------------------------------------------------------------------------- #
+_GIT_ENV = {
+    "GIT_AUTHOR_NAME": "t",
+    "GIT_AUTHOR_EMAIL": "t@t",
+    "GIT_COMMITTER_NAME": "t",
+    "GIT_COMMITTER_EMAIL": "t@t",
+}
+
+
+def _git(cwd: Path, *args: str) -> str:
+    import os
+
+    return subprocess.run(
+        ["git", *args],
+        cwd=cwd,
+        check=True,
+        capture_output=True,
+        text=True,
+        env={**os.environ, **_GIT_ENV},
+    ).stdout.strip()
+
+
+def _release_sandbox(tmp_path: Path) -> Path:
+    """A clone whose origin is a local bare repo, carrying just enough for
+    release-linux.sh's preconditions: every version-bearing file at 1.2.3, the
+    real script, and a build stub that drops a marker and fails. The stub `gh`
+    lives outside the clone, so the tree stays clean."""
+    origin = tmp_path / "origin.git"
+    _git(tmp_path, "init", "-q", "--bare", str(origin))
+    work = tmp_path / "work"
+    _git(tmp_path, "clone", "-q", str(origin), str(work))
+    for rel, text in {
+        "src/finbreak/__init__.py": '__version__ = "1.2.3"\n',
+        "pyproject.toml": 'version = "1.2.3"\n',
+        "tests/test_smoke.py": 'assert __version__ == "1.2.3"\n',
+        "CHANGELOG.md": "## [1.2.3] - 2026-01-01\n",
+        "README.md": "Current version: **1.2.3**\n",
+        ".gitignore": "build-started\n",
+        "scripts/build-release-appimage.sh": "#!/bin/sh\ntouch build-started\nexit 3\n",
+    }.items():
+        (work / rel).parent.mkdir(parents=True, exist_ok=True)
+        (work / rel).write_text(text)
+    (work / "scripts" / "release-linux.sh").write_bytes(_RELEASE_LINUX.read_bytes())
+    for name in ("release-linux.sh", "build-release-appimage.sh"):
+        (work / "scripts" / name).chmod(0o755)
+    stubs = tmp_path / "bin"
+    stubs.mkdir()
+    (stubs / "gh").write_text("#!/bin/sh\nexit 1\n")  # every release: not found
+    (stubs / "gh").chmod(0o755)
+    _commit_and_push(work, "one")
+    return work
+
+
+def _commit_and_push(work: Path, message: str) -> None:
+    (work / f"{message}.txt").write_text(message)
+    _git(work, "add", "-A")
+    _git(work, "commit", "-q", "-m", message)
+    _git(work, "push", "-q", "origin", "HEAD")
+
+
+def _tag_head(work: Path) -> None:
+    _git(work, "tag", "-a", "v1.2.3", "-m", "v1.2.3")
+    _git(work, "push", "-q", "origin", "v1.2.3")
+
+
+def _run_release(work: Path) -> subprocess.CompletedProcess[str]:
+    import os
+    import sys
+
+    stubs = work.parent / "bin"
+    env = {
+        **os.environ,
+        **_GIT_ENV,
+        # The venv's interpreter first: the script's precondition imports
+        # cryptography through a bare `python3`.
+        "PATH": f"{stubs}:{Path(sys.executable).parent}:{os.environ['PATH']}",
+        "FINBREAK_SIGNING_KEY": "unused",
+    }
+    return subprocess.run(
+        ["scripts/release-linux.sh"],
+        cwd=work,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+
+
+def test_release_linux_refuses_when_the_tag_names_another_commit(tmp_path):
+    """cut-release creates the tag before release-linux.sh runs, and the script
+    only refused UNPUSHED commits. A commit pushed after the tag was frozen into
+    the AppImage for a version whose tag points elsewhere."""
+    work = _release_sandbox(tmp_path)
+    _tag_head(work)
+    _commit_and_push(work, "pushed-after-the-tag")
+
+    result = _run_release(work)
+
+    assert result.returncode != 0
+    assert not (work / "build-started").exists(), (
+        "the build ran from a commit the tag does not name:\n" + result.stderr
+    )
+    assert "v1.2.3" in result.stderr and "tag" in result.stderr, result.stderr
+
+
+def test_release_linux_refuses_a_checkout_behind_the_pushed_branch(tmp_path):
+    """No tag yet: `gh release create` tags the REMOTE's head, so a clone BEHIND
+    it built one commit and published a tag on another. Counting unpushed
+    commits only ever caught the ahead case."""
+    work = _release_sandbox(tmp_path)
+    _commit_and_push(work, "two")
+    _git(work, "reset", "-q", "--hard", "HEAD~1")
+
+    result = _run_release(work)
+
+    assert result.returncode != 0
+    assert not (work / "build-started").exists(), result.stderr
+
+
+def test_release_linux_still_builds_when_the_tag_is_head(tmp_path):
+    """The control: a checkout at the pushed tip, with the tag on it, reaches the
+    build — so the two refusals above are about the mismatch and nothing else."""
+    work = _release_sandbox(tmp_path)
+    _tag_head(work)
+
+    result = _run_release(work)
+
+    assert (work / "build-started").exists(), result.stderr
+
+
+def test_release_linux_builds_from_a_detached_checkout_of_the_tag(tmp_path):
+    """The refusal's own advice is `git checkout <tag>`, which leaves no branch
+    and so no upstream. The script must accept that, or its fix is unfollowable."""
+    work = _release_sandbox(tmp_path)
+    _tag_head(work)
+    _commit_and_push(work, "pushed-after-the-tag")
+    _git(work, "checkout", "-q", "v1.2.3")
+
+    result = _run_release(work)
+
+    assert (work / "build-started").exists(), result.stderr
+
+
+def test_release_linux_creates_the_release_on_the_commit_it_built():
+    """The create branch: without --target, GitHub tags the default branch's
+    head, which need not be the commit the AppImage came from."""
+    text = _RELEASE_LINUX.read_text()
+    joined = re.sub(r"\\\s*\n\s*", " ", text)
+    create = re.search(r"^\s*gh release create [^\n]*", joined, re.MULTILINE)
+    assert create is not None
+    assert '--target "$HEAD_SHA"' in create.group(0), create.group(0)
