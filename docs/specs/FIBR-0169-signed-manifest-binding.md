@@ -88,7 +88,7 @@ bytes are staged for the installer:
 2. Verify the manifest signature with `update_key.public_key()`. Failure →
    `UpdateVerificationError`.
 3. Parse: a line counts only if it is 64 lowercase hex digits, two spaces, and
-   a name. Any other line is ignored (§ 4.4).
+   a name. Any other line is ignored (§ 4.3).
 4. Expected name: `f"finbreak-{info.version}{installer.asset_suffix()}"`.
    Exactly one counting line must carry that name. None, or more than one →
    `UpdateVerificationError`.
@@ -99,20 +99,7 @@ bytes are staged for the installer:
 Every refusal removes the temps, as the existing `UpdateVerificationError` path
 does, and reaches the shell's security-check message (FIBR-0367 row 38).
 
-### 4.3 Publish order (`scripts/release-windows.sh`)
-
-A Windows release adds its `.exe` to a release whose `SHA256SUMS` lists only
-the AppImage. Uploaded together, the `.exe` can be public while the manifest
-still lacks its line, and a Windows client checking then is refused with the
-tamper message — for as long as the `.exe` upload takes. So
-`release-windows.sh` uploads `SHA256SUMS` and `SHA256SUMS.sig` in one
-`gh release upload` call, and the `.exe`, its `.sig` and the SBOM in a
-second call after the first succeeds. Between the two, the manifest names an
-`.exe` the release does not carry yet, so § 4.1 offers nothing.
-`release-linux.sh` needs no change: on the documented path its manifest and
-AppImage are new together, and a release with no `SHA256SUMS` is not offered.
-
-### 4.4 Forward compatibility
+### 4.3 Forward compatibility
 
 Ignoring non-matching lines (§ 4.2 step 3) keeps a later release free to add a
 header or comment to `SHA256SUMS` without every installed copy refusing it for
@@ -144,9 +131,10 @@ two lines for one file can only mean an edited manifest.
   equals SHA-256 of the downloaded bytes; otherwise `UpdateVerificationError`.
   *Test:* `test_auto_update.py`, three legs, each with a correctly signed
   asset, `.sig` and manifest, so only this rule can refuse: (a) the manifest
-  names `finbreak-0.1.0-x86_64.AppImage` while `info.version` is `0.1.1` (the
-  downgrade); (b) the Linux installer, a genuine manifest listing both
-  platforms, and downloaded bytes that are the `.exe`'s, signed as the real
+  names `finbreak-0.1.0-x86_64.AppImage` with the downloaded bytes' own hash
+  while `info.version` is `0.1.1` — a genuine older artifact, so only the name
+  rule can refuse (the downgrade); (b) the Linux installer, a genuine
+  manifest listing both platforms, and downloaded bytes that are the `.exe`'s, signed as the real
   `.exe` is — so the per-file `.sig` passes and only the hash differs (the
   swap); (c) the expected name on two lines. Each →
   `UpdateVerificationError`. A fourth leg with a matching line installs.
@@ -168,15 +156,6 @@ two lines for one file can only mean an edited manifest.
   *Breaks when:* the manifest is fetched with the 200 MiB asset cap or none,
   or after the fetch window closes, so its failure is a plain `UpdateError`.
 
-- **INV-6** — `release-windows.sh` uploads `SHA256SUMS` and its `.sig` in a
-  `gh release upload` call that finishes before the call uploading the `.exe`.
-  *Test:* `tests/features/release_integrity/test_release_integrity.py`, reading
-  the script's publish commands in order: the first names `SHA256SUMS` and not
-  the `.exe`; a later one names the `.exe`. Text-level, because running it
-  publishes a release.
-  *Breaks when:* the `.exe` and the manifest are uploaded in one call, or the
-  `.exe` first.
-
 The trust boundary is the GitHub release: its `tag_name` and every asset are
 attacker-controlled under the release-write threat. The only trusted input is
 the public key committed in `services/update_key.py`. INV-2 and INV-3 are the
@@ -192,15 +171,17 @@ defence; FIBR-0054 INV-4 and INV-10 stay as they are.
   between the two uploads the manifest and the binary disagree, and a client
   checking then gets the security-check message. Accepted: it happens only on a
   deliberate repair, and the next check succeeds.
-- **The manifest pair on every Windows publish, for Linux clients.**
-  `--clobber` replaces `SHA256SUMS` and `SHA256SUMS.sig` as separate assets
-  (`CLAUDE.md` § Cutting a release records a failed upload leaving
-  `SHA256SUMS.sig` without `SHA256SUMS`) on a release Linux clients are already offered. Between
-  the two, a new file sits beside an old one, and a Linux client downloading
-  then gets the security-check message. Accepted: the gap is one small upload
-  long, the next check succeeds, and closing it would need a client retry the
-  gap does not justify. § 4.3's split closes the much longer window, the whole
-  `.exe` upload, for Windows clients.
+- **Every Windows publish, for clients on both platforms.** The Windows phase
+  re-uploads `SHA256SUMS` and `SHA256SUMS.sig`, with its `.exe` line added,
+  onto a release already offered, and `--clobber` replaces them as separate
+  assets (`CLAUDE.md` § Cutting a release records a failed upload leaving
+  `SHA256SUMS.sig` without `SHA256SUMS`). A client downloading while one of
+  the pair is new and the other old, or while the `.exe` is listed before the
+  new manifest, gets the security-check message. `_select_assets` offers
+  nothing until the `.exe`'s `.sig` is listed too, so the window is at most
+  the manifest pair's upload, whatever order `gh` uploads in (not measured).
+  Accepted: the next check succeeds, and closing a gap that short would need a
+  client retry or a publish-order change it does not justify.
 - **A release published by hand without `SHA256SUMS`.** Not offered.
   FIBR-0096 and the release scripts' read-back gate (FIBR-0275) already make
   it a required asset.
@@ -213,8 +194,7 @@ INV-1, INV-2, INV-3, INV-4 and INV-5 live in
 `tests/features/auto_update/test_auto_update.py` and
 drive `UpdateService` through the `_FakeFetcher` seam with a throwaway key
 monkeypatched into `update_key.public_key` (the existing `_signing_setup`
-helper). INV-6 lives in
-`tests/features/release_integrity/test_release_integrity.py`. Each is seen to
+helper). Each is seen to
 fail against the pre-change code before the change lands; INV-3's legs (a)
 and (b) are the two attacks in § 2.
 
@@ -251,7 +231,6 @@ and (b) are the two attacks in § 2.
 | INV-3 | `test_auto_update.py` (INV-3 legs a–d, to be written) |
 | INV-4 | `test_auto_update.py` (INV-4 test, to be written) |
 | INV-5 | `test_auto_update.py` (INV-5 test, to be written) |
-| INV-6 | `test_release_integrity.py` (INV-6 test, to be written) |
 | Every release carries `SHA256SUMS` | the release scripts' eight-asset read-back (FIBR-0275); **Partial:** nothing checks a release published by hand |
 | A freeze attack is not stopped | **nothing** — out of scope (§ 9) |
 
@@ -260,11 +239,7 @@ and (b) are the two attacks in § 2.
 - `docs/security-model.md` — the two passages calling the per-file `.sig` the
   primary gate and the manifest a manual signal: the updater now requires both.
 - `docs/specs/FIBR-0096.md` — its Residual paragraph: a deleted manifest now
-  also stops updates (INV-1). And "the manifest always matches the assets
-  present", with the INV-13 wording "every basename it lists is a genuine
-  release asset" (also in `docs/security-model.md`): between § 4.3's two
-  uploads the manifest names an `.exe` not yet attached, so both become true
-  once a publish completes.
+  also stops updates (INV-1).
 - `docs/specs/FIBR-0054.md` — its Out-of-scope "Rollback" entry gains a
   pointer here, since the downgrade case is now covered.
 - `CHANGELOG.md` `[Unreleased]` — a Security entry.
