@@ -565,9 +565,7 @@ not inline — an always-loaded file should not carry a growing audit table.*
 AppImage build + publish is a separate manual step". The AppImage and
 the Windows `.exe` are built and attached by `scripts/release-linux.sh`
 and `scripts/release-windows.sh`, and **nothing invokes those for you**.
-(`bump.json` names the lower-level `scripts/build-release-appimage.sh`
-and a hand-run `gh release create`; the two wrappers are what to run
-today.)
+(`bump.json`'s note points at the same two scripts.)
 
 **A release can publish with ZERO assets, and both the README's "download the
 latest release" link and the in-app updater resolve to that page.** It has
