@@ -468,6 +468,14 @@ so Flathub review and code signing do not block this release.
   through QtGui.Qt.convertFromPlainText. The sweep found the same class
   in import_batch.py's file-path tooltip, queued as FIBR-0382. Next:
   row 37 (app.py blocked restore recovery gives a generic start over).
+  Progress 2026-09-29 (close-findings run): row 37 fixed (f97ff08;
+  blocked restore recovery now says why, names the .old files, says not
+  to delete; adjacent unpaired-.old case filed as FIBR-0383). Row 38
+  fixed (05611b6; dropped download vs bad signature now show different
+  messages), red first, each half mutation-checked, gate green (2323
+  passed). Rows 37-48 share one sweep, recorded in the ledger's § Sweep
+  section and run after row 48. Next: row 39 (update_installer.py
+  inherited $APPIMAGE targets another app).
   **Layman:** A full check of the app found bugs; the serious ones (wrong dates or amounts, lost data, security gaps) are being fixed now and the rest are filed.
   Kind: review-fix.
   Source: full-audit-2026-09-27.
