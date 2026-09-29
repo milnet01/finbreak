@@ -5803,7 +5803,7 @@ work, and none of it is a release decision.
   Kind: doc.
   Source: in-session-2026-08-06 (FIBR-0231 cold-eyes run, 3 miscounts of one table).
 
-- 📋 [FIBR-0161] **Fold the Flathub `flathub.json` arch-restriction into the FIBR-0159 spec §5 checklist.**
+- ✅ [FIBR-0161] **Fold the Flathub `flathub.json` arch-restriction into the FIBR-0159 spec §5 checklist.**
   During FIBR-0159 submission prep we found the pinned wheel closure is
   x86_64-only, but Flathub's buildbot builds every arch by default — so the
   submission needs a `flathub.json` with `only-arches: [x86_64]` or the aarch64
@@ -5845,6 +5845,15 @@ work, and none of it is a release decision.
   Already recorded on the FIBR-0159 bullet, no § 5 change needed: the
   runtime branch 25.08 is current (freedesktop-sdk-25.08.15) and the
   manifest is correctly pinned to v0.1.19.
+  Resolved 2026-09-29 (947bfed, then review loops 9-11 to 53cf45e):
+  FIBR-0159 § 5 now names flathub.json's only-arches (gated by INV-9),
+  the networked appstreamcli run as the pre-submit one, the
+  FIBR-0256/0258 tests in place of the manual pin diff,
+  flatpak-builder-lint (manifest and appstream checked clean today), and
+  one build through org.flatpak.Builder. The cold review (cap 3, calm)
+  also brought § 2, § 3 and § 4 up to the code (INV-9, INV-10, krb5,
+  --wheel-arches). It filed FIBR-0428 (runtime bump and its coupling)
+  and FIBR-0429 (portal fallback vs INV-2).
 
 - ✅ [FIBR-0184] **bump.json's Flatpak re-pin todo names a tagging step the release path doesn't use, so `git rev-parse v<NEW>` fails locally.**
   Hit during the v0.1.18 release. The `.claude/bump.json` todo for the
