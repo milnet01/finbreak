@@ -53,6 +53,12 @@ def display(qtbot: Any) -> Iterator[tuple[RecoveryCodeDialog, QLineEdit]]:
     finally:
         board.clear()
         owner.deleteLater()
+        # A QTest mouse event carrying Shift leaves the application believing
+        # Shift is still held, and the next test on this worker inherits it: a
+        # `selectRow` then EXTENDS a selection instead of moving it. That broke
+        # table_state on CI, where xdist put the two tests on one worker. One
+        # plain click, on a widget with no filter, resets the state.
+        QTest.mouseClick(dialog, Qt.MouseButton.LeftButton)
 
 
 def _mid(field: QLineEdit, x: int) -> QPoint:

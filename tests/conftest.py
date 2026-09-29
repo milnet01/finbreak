@@ -168,6 +168,34 @@ def _close_leftover_windows():
     QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 
 
+@pytest.fixture(autouse=True)
+def _no_held_input_after_the_test():
+    """Fail the test that leaves a modifier key or mouse button "held".
+
+    Qt keeps the modifiers and buttons of the last input event it saw, so a
+    QTest click carrying Shift leaves every later test on that process running
+    with Shift down — and a `selectRow` there extends a selection instead of
+    moving it. The victim fails, not the culprit, and only where xdist happens
+    to put the two on one worker: green locally, red on GitHub (f880f52).
+    Checking after every test makes the culprit fail, on every machine.
+    """
+    yield
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QGuiApplication
+
+    if QGuiApplication.instance() is None:
+        return
+    modifiers = QGuiApplication.keyboardModifiers()
+    buttons = QGuiApplication.mouseButtons()
+    assert modifiers == Qt.KeyboardModifier.NoModifier, (
+        f"this test left {modifiers!r} held for the next test on this process; "
+        "end with an input event carrying no modifier"
+    )
+    assert buttons == Qt.MouseButton.NoButton, (
+        f"this test left {buttons!r} pressed for the next test on this process"
+    )
+
+
 @pytest.fixture
 def app_run_isolation(qapp):
     """Undo what ``finbreak.app.run()`` does to the process before it returns.
