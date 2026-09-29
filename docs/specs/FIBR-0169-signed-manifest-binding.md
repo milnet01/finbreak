@@ -1,6 +1,6 @@
 # FIBR-0169 — Install an update only if the signed manifest names it for this version and platform
 
-**Status:** spec draft (2026-09-29).
+**Status:** accepted (2026-09-29) — review-contract reached this project's cap of three loops, calm; 11 verified findings, all fixed.
 **Kind:** security.
 **Source:** ROADMAP FIBR-0169 (indie-review-2026-07-23); re-found as FIBR-0333
 (2026-09-04) and by the 2026-09-27 full audit, code lane 12.
@@ -182,6 +182,11 @@ defence; FIBR-0054 INV-4 and INV-10 stay as they are.
   the manifest pair's upload, whatever order `gh` uploads in (not measured).
   Accepted: the next check succeeds, and closing a gap that short would need a
   client retry or a publish-order change it does not justify.
+- **A publish that fails part-way through the manifest pair.** It can leave a
+  new `SHA256SUMS` beside an old `SHA256SUMS.sig`, and then every client
+  running this check gets the security-check message until the release is repaired. The release
+  scripts already exit non-zero after a failed upload, and `CLAUDE.md`
+  § Cutting a release has the re-upload loop that repairs it.
 - **A release published by hand without `SHA256SUMS`.** Not offered.
   FIBR-0096 and the release scripts' read-back gate (FIBR-0275) already make
   it a required asset.
@@ -194,9 +199,11 @@ INV-1, INV-2, INV-3, INV-4 and INV-5 live in
 `tests/features/auto_update/test_auto_update.py` and
 drive `UpdateService` through the `_FakeFetcher` seam with a throwaway key
 monkeypatched into `update_key.public_key` (the existing `_signing_setup`
-helper). Each is seen to
-fail against the pre-change code before the change lands; INV-3's legs (a)
-and (b) are the two attacks in § 2.
+helper). Each refusing leg is seen to fail against the pre-change code
+before the change lands; INV-3's legs (a) and (b) are the two attacks in § 2.
+INV-4 and the passing legs of INV-1 and INV-3 guard against an over-strict
+implementation instead: they pass before and after the change, and are not
+fail-first tests.
 
 ## 8. Alternatives considered (and rejected)
 
@@ -240,8 +247,9 @@ and (b) are the two attacks in § 2.
   primary gate and the manifest a manual signal: the updater now requires both.
 - `docs/specs/FIBR-0096.md` — its Residual paragraph: a deleted manifest now
   also stops updates (INV-1).
-- `docs/specs/FIBR-0054.md` — its Out-of-scope "Rollback" entry gains a
-  pointer here, since the downgrade case is now covered.
+- `docs/specs/FIBR-0054.md` — Out of scope gains a note that a signed but
+  older download is refused here. Its "Rollback" entry, about reverting a
+  failed launch, is a different case and stays as it is.
 - `CHANGELOG.md` `[Unreleased]` — a Security entry.
 - FIBR-0131 INV-2 is unchanged: the picker still matches by suffix; the new
   check is a separate gate.
