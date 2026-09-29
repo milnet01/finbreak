@@ -429,6 +429,25 @@ so Flathub review and code signing do not block this release.
   (combos, labels, text fields, charts) plus clear_rows on five widgets;
   test_lock_wipe.py scans for marker data after a lock. Next: row 33
   (first_run.py prefs failure after creation loses the recovery code).
+  Progress 2026-09-29 (later): row 33 fixed (3f4b572), red first, gate green (2300 passed).
+  Row 34 verified, not yet fixed. Measured on a private Xvfb display
+  (xcb, supportsSelection True) against RecoveryCodeDialog: mouse drag,
+  Shift+End and Ctrl+A each put the code in X11 PRIMARY, which nothing
+  clears; Ctrl+C puts it on CLIPBOARD outside ClipboardAutoClear. The
+  Copy button's own selectAll() does NOT reach PRIMARY, so its
+  highlight can stay. Probe script:
+  ~/.local/share/claude-handoff/finbreak-row34-primary-probe-2026-09-29.py
+  (run with env -u WAYLAND_DISPLAY QT_QPA_PLATFORM=xcb DISPLAY=:free
+  PYTHONPATH=src). Chosen design: keep the QLineEdit (a screen reader
+  reads it char by char with arrow keys, and FIBR-0328 names it); add
+  an event filter on _display that routes Copy/Cut key sequences to
+  _copy(), swallows the context menu, swallows mouse press/move/
+  double-click (setting focus on press) and selection keys (Shift+
+  movement, SelectAll), so no user selection ever forms. Tests run
+  offscreen: hasSelectedText() stays False after each gesture, Ctrl+C
+  lands on the clipboard and is auto-cleared, no context menu. Re-run
+  the probe after the fix and record PRIMARY unchanged in the ledger.
+  T13 in docs/security-model.md then stays true as written.
   **Layman:** A full check of the app found bugs; the serious ones (wrong dates or amounts, lost data, security gaps) are being fixed now and the rest are filed.
   Kind: review-fix.
   Source: full-audit-2026-09-27.
