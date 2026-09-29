@@ -657,3 +657,87 @@ def test_obs_builds_the_release_tag_not_main() -> None:
     assert "packaging/obs/_service" in bump["post_check"], (
         "the lockstep check must catch an OBS revision left behind"
     )
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0400 — obs-submit.sh and obs-status.sh, EXECUTED with a stub `osc`.
+# --------------------------------------------------------------------------- #
+_OSC_STUB = """#!/bin/sh
+# Drop the -A <api> pair, log the rest.
+shift 2
+echo "$*" >> "$OSC_LOG"
+case "$1" in
+  checkout) mkdir -p "$2/$3/.osc" ;;
+  add) [ -z "${OSC_FAIL_ADD:-}" ] || { echo "osc: add failed" >&2; exit 1; } ;;
+  results) cat "$OSC_RESULTS" ;;
+  buildlog) echo "log tail" ;;
+esac
+exit 0
+"""
+
+
+def _osc_env(tmp_path: Path, **extra: str) -> dict[str, str]:
+    import os
+
+    stubs = tmp_path / "bin"
+    stubs.mkdir(exist_ok=True)
+    (stubs / "osc").write_text(_OSC_STUB)
+    (stubs / "osc").chmod(0o755)
+    return {
+        **os.environ,
+        "PATH": f"{stubs}:{os.environ['PATH']}",
+        "OSC_LOG": str(tmp_path / "osc.log"),
+        **extra,
+    }
+
+
+def test_FIBR0400_a_failed_osc_add_stops_the_submit(tmp_path):
+    """osc add/addremove errors were sent to /dev/null behind `|| true`, so a
+    commit could go up without the new source tarball."""
+    root = tmp_path / "repo"
+    shutil.copytree(_OBS, root / "packaging" / "obs")
+    (root / "src" / "finbreak").mkdir(parents=True)
+    (root / "src" / "finbreak" / "__init__.py").write_text('__version__ = "1.2.3"\n')
+    (root / "vendor.tar.gz").write_bytes(b"")
+    env = _osc_env(tmp_path, OSC_FAIL_ADD="1", OBS_WORKDIR=str(tmp_path / "co"))
+
+    result = subprocess.run(
+        ["sh", str(root / "packaging" / "obs" / "obs-submit.sh")],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+
+    calls = (tmp_path / "osc.log").read_text().splitlines()
+    assert result.returncode != 0, result.stdout
+    assert not any(c.startswith("commit") for c in calls), calls
+
+
+@pytest.mark.parametrize(
+    ("rows", "expect_rc", "expect_text"),
+    [
+        ("repo x86_64 finbreak succeeded\n", 0, ""),
+        ("repo x86_64 finbreak failed\n", 1, "failed"),
+        ("repo x86_64 finbreak building\n", 1, "timed out"),
+    ],
+    ids=["succeeded", "failed", "timeout"],
+)
+def test_FIBR0400_obs_status_exit_reflects_the_builds(
+    tmp_path, rows, expect_rc, expect_text
+):
+    """obs-status.sh exited 0 on a failed build and when its polls ran out."""
+    results = tmp_path / "results.txt"
+    results.write_text(rows)
+    env = _osc_env(tmp_path, OSC_RESULTS=str(results), POLL_SECS="0", MAX_POLLS="2")
+
+    result = subprocess.run(
+        ["sh", str(_OBS / "obs-status.sh")],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+
+    assert (result.returncode != 0) == bool(expect_rc), result.stdout
+    assert expect_text in (result.stdout + result.stderr)

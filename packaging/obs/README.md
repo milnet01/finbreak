@@ -16,7 +16,7 @@ full design and rationale.
 | `finbreak.dsc` | deb source-control file. Without it OBS marks every Debian/Ubuntu target "excluded" and builds no `.deb` at all |
 | `obs-setup.sh` | create/update the OBS sub-project + package + build targets (one-time, idempotent) |
 | `obs-submit.sh` | vendor → populate the checkout → run services → commit a revision (per-release) |
-| `obs-status.sh` | poll the build results + tail any failing build log |
+| `obs-status.sh` | poll the build results + tail any failing build log; exits non-zero on a failed build or a timeout |
 | `vendor-wheels.sh` | builds `vendor.tar.gz` — the offline wheel closure (run on a glibc ≥ 2.34 host) |
 | `finbreak-rpmlintrc` | filters rpmlint noise inherent to the bundled foreign tree (openSUSE gate) |
 | `io.github.milnet01.finbreak.desktop` | desktop entry (menu + launcher association) |

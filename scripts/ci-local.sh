@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # finbreak local quality + security gate (FIBR-0001 INV-1).
 #
-# One command, all gates, cheapest-first. .github/workflows/ci.yml installs the
-# dev dependency group and gitleaks, then invokes THIS script rather than
-# re-listing the stages — so the gate list has a single source of truth and CI
+# One command, all gates, cheapest-first. .github/workflows/ci.yml runs
+# scripts/ci-setup.sh to build the environment, then invokes THIS script rather
+# than re-listing the stages — so the gate list has a single source of truth and CI
 # and local runs cannot drift (INV-2).
 #
 # Assumes the environment scripts/ci-setup.sh builds (CLAUDE.md "Build and
@@ -15,7 +15,7 @@
 # them). gitleaks, shellcheck, actionlint and zizmor are separate
 # binaries, not pip packages, and must be on PATH; ci-setup.sh pins all four.
 #
-# FIBR-0003 later appends a build smoke-test stage to this same script.
+# --build adds the FIBR-0003 build smoke test; it is off by default.
 #
 # Exits non-zero on the first failing stage.
 set -euo pipefail

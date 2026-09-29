@@ -40,7 +40,13 @@ fi
 # hand-run hook) nothing is known, so the gate runs.
 ZERO=0000000000000000000000000000000000000000
 # Read once: the tag check below and the docs check after it both need the list.
-REFS=$(cat)
+# Run by hand from a terminal there is no list, and reading the tty would wait
+# for Ctrl-D (FIBR-0400); nothing is known, so the gate runs.
+if [ -t 0 ]; then
+    REFS=""
+else
+    REFS=$(cat)
+fi
 
 # Every commit this push adds is scanned for secrets, on EVERY push -- tag-only
 # and documentation-only included (local-gate.md § 2.1 item 1). The gate's own
@@ -95,8 +101,10 @@ while read -r _local_ref local_sha remote_ref _remote_sha; do
         break
     fi
 
-    # Reachable from any remote-tracking branch => already pushed, already gated.
-    if [ -z "$(git branch -r --contains "$commit" 2>/dev/null)" ]; then
+    # Reachable from a branch of the remote being pushed to => already pushed,
+    # already gated. Not any remote: a commit that reached another one with
+    # --no-verify was never gated (FIBR-0400).
+    if [ -z "$(git branch -r --contains "$commit" --list "$REMOTE/*" 2>/dev/null)" ]; then
         tags_only=0
         break
     fi

@@ -60,7 +60,7 @@ tar -C "$HERE" -czf "$CO/debian.tar.gz" debian
 # only ever looked like a deb recipe. Harmless to re-run once it is gone.
 rm -rf "$CO/debian"
 if [ -e "$CO/debian.obscpio" ]; then
-    ( cd "$CO" && osc -A "$API" rm --force debian.obscpio ) || true
+    ( cd "$CO" && osc -A "$API" rm --force debian.obscpio )
 fi
 
 # 4. Run the source services (obs_scm pulls the tagged source; set_version
@@ -79,9 +79,12 @@ rm -f finbreak-*.tar.gz
 echo ">>> running source services (obs_scm + tar + set_version)"
 osc -A "$API" service manualrun
 
+# No `|| true`: an already-tracked file is only a warning to `osc add` (exit 0),
+# so an error here is real -- a new source tarball that would otherwise be
+# missing from the commit (FIBR-0400).
 osc -A "$API" add _service finbreak.spec finbreak.dsc finbreak-rpmlintrc \
-    finbreak-*.tar.gz vendor.tar.gz debian.tar.gz 2>/dev/null || true
-osc -A "$API" addremove 2>/dev/null || true
+    finbreak-*.tar.gz vendor.tar.gz debian.tar.gz
+osc -A "$API" addremove
 
 VER="$(sed -n 's/^__version__ = "\(.*\)"/\1/p' "$ROOT/src/finbreak/__init__.py")"
 osc -A "$API" commit -m "${OBS_MSG:-finbreak $VER}"

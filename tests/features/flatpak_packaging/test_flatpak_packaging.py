@@ -604,3 +604,87 @@ def test_a_generator_that_fails_its_checksum_is_never_run(tmp_path):
     assert result.returncode != 0
     assert "CHECKSUM" in result.stderr.upper(), result.stderr
     assert "FLATPAK-REACHED" not in result.stderr, "it went on past the check"
+
+
+def test_FIBR0400_local_build_installs_in_one_pinned_invocation(tmp_path):
+    """flatpak-build.sh ran flatpak-builder twice, the install call without
+    --disable-rofiles-fuse, and a LOCAL build from a detached checkout named
+    its source branch `HEAD`. Executed in a sandbox repo with a stub
+    flatpak-builder that records each call and the manifest it was given."""
+    import os
+
+    repo = tmp_path / "repo"
+    # Tracked files only: the directory also holds gigabytes of local build
+    # output (.build, .repo, .flatpak-builder) that copytree would drag along.
+    tracked = subprocess.run(
+        ["git", "ls-files", "packaging/flatpak"],
+        cwd=_REPO_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.split()
+    for rel in tracked:
+        (repo / rel).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(_REPO_ROOT / rel, repo / rel)
+    env = {
+        **os.environ,
+        "GIT_CONFIG_GLOBAL": os.devnull,
+        "GIT_CONFIG_SYSTEM": os.devnull,
+    }
+
+    def git(*args: str) -> str:
+        return subprocess.run(
+            ["git", *args],
+            cwd=repo,
+            check=True,
+            capture_output=True,
+            text=True,
+            env={
+                **env,
+                "GIT_AUTHOR_NAME": "t",
+                "GIT_AUTHOR_EMAIL": "t@t",
+                "GIT_COMMITTER_NAME": "t",
+                "GIT_COMMITTER_EMAIL": "t@t",
+            },
+        ).stdout.strip()
+
+    git("init", "-q")
+    git("add", "-A")
+    git("commit", "-qm", "one")
+    head = git("rev-parse", "HEAD")
+    git("checkout", "-q", "--detach", head)
+
+    stubs = tmp_path / "bin"
+    stubs.mkdir()
+    calls = tmp_path / "calls.txt"
+    (stubs / "flatpak-builder").write_text(
+        "#!/bin/sh\n"
+        f'echo "$*" >> "{calls}"\n'
+        "for last; do :; done\n"
+        f'cp "$last" "{tmp_path / "manifest.yaml"}"\n'
+    )
+    (stubs / "flatpak-builder").chmod(0o755)
+
+    result = subprocess.run(
+        ["bash", str(repo / "packaging" / "flatpak" / "flatpak-build.sh")],
+        env={**env, "PATH": f"{stubs}:{env['PATH']}", "NO_SELFTEST": "1"},
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert result.returncode == 0, result.stderr
+
+    invocations = calls.read_text().splitlines()
+    assert len(invocations) == 1, invocations
+    assert "--disable-rofiles-fuse" in invocations[0]
+    assert "--install" in invocations[0] and "--repo=" in invocations[0]
+
+    manifest = yaml.safe_load((tmp_path / "manifest.yaml").read_text())
+    finbreak = next(
+        m
+        for m in manifest["modules"]
+        if isinstance(m, dict) and m["name"] == "finbreak"
+    )
+    assert finbreak["sources"] == [
+        {"type": "git", "url": f"file://{repo}", "commit": head}
+    ], finbreak["sources"]

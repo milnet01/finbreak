@@ -316,9 +316,11 @@ no longer runs — a bypass no project document sanctioned (FIBR-0290;
 [`docs/history/claude-md.md`](docs/history/claude-md.md)). The hook reads the ref
 list git gives it and exits early when
 **every** ref is a tag **and** every tagged commit is already reachable from a
-remote-tracking branch. Anything else still takes the gate: a branch ref
+branch of the remote being pushed to — not any remote, since a commit that
+reached another one with `--no-verify` was never gated. Anything else still takes the gate: a branch ref
 anywhere in the push, a tag whose commit is not yet on the remote (skipping
-that would publish ungated code), or a hand-run hook with no refs on stdin.
+that would publish ungated code), or a hand-run hook with no refs on stdin (run from a terminal, it does not wait
+for any).
 Locked by `tests/features/harness/` INV-5, which runs the hook against a real
 throwaway repo rather than reading it. **So do not type `--no-verify` for a
 tag** — if the gate runs on one, that is the hook telling you the commit is not
@@ -348,14 +350,13 @@ The two `ci.yml` steps it does not execute, and the tree it runs against, are
 named in § `cut-release` Phase 2b below; do not report a green run here as a
 full pipeline run.
 
-**Do not pass `--build` to it.** The flag reaches `ci-local.sh` and sets
-`FINBREAK_BUILD_SMOKE=1`, but `ci-setup.sh` installs no container runtime, so
-inside the container the test hits
+**It refuses `--build`.** `ci-setup.sh` installs no container runtime, so
+inside the container the smoke test would hit
 `pytest.skip("no container runtime (podman/docker) on PATH")`
 (`test_INV2_INV3_build_smoke_clean_room` in
-`tests/features/bundling/test_bundling.py`) and the smoke-test **silently
-does not run** — a skip that reads as coverage. Run `./scripts/ci-local.sh
---build` or `./scripts/build-smoke.sh` on the host instead.
+`tests/features/bundling/test_bundling.py`) and **silently not run** — a skip
+that reads as coverage. Run `./scripts/ci-local.sh --build` or
+`./scripts/build-smoke.sh` on the host instead.
 
 `ci.yml` and `ci-docker.sh` both run the same image and both call
 `scripts/ci-setup.sh` (environment: system libs + the pinned non-pip binaries —

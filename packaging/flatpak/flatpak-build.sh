@@ -28,35 +28,36 @@ if [[ ! -f "$HERE/python3-deps.yaml" ]]; then
 fi
 
 # LOCAL=1 (the default for dev iteration) builds the CURRENT local checkout: it
-# rewrites the finbreak module's git source to file://$REPO at the current branch
-# HEAD, so you validate committed-but-unpushed work (e.g. the _in_flatpak gate)
+# rewrites the finbreak module's git source to file://$REPO at the checked-out
+# commit, so you validate committed-but-unpushed work (e.g. the _in_flatpak gate)
 # without pushing + re-pinning. The committed manifest stays github+release-pinned
 # for submission (§ 3.8); LOCAL=0 builds it verbatim to reproduce Flathub exactly.
 # NOTE: a git source builds COMMITTED state — commit your work before a LOCAL build.
 if [[ "${LOCAL:-1}" == "1" ]]; then
-    BRANCH="$(git -C "$REPO" rev-parse --abbrev-ref HEAD)"
+    # The commit, not the branch name: a detached checkout has no branch, and
+    # `--abbrev-ref` then answers `HEAD` (FIBR-0400).
+    COMMIT="$(git -C "$REPO" rev-parse HEAD)"
     MANIFEST="$HERE/.local-manifest.yaml"
-    REPO="$REPO" BRANCH="$BRANCH" SRC="$HERE/${APP_ID}.yaml" OUT="$MANIFEST" \
+    REPO="$REPO" COMMIT="$COMMIT" SRC="$HERE/${APP_ID}.yaml" OUT="$MANIFEST" \
         python3 - <<'PY'
 import os, yaml
 m = yaml.safe_load(open(os.environ["SRC"]))
-repo, branch = os.environ["REPO"], os.environ["BRANCH"]
+repo, commit = os.environ["REPO"], os.environ["COMMIT"]
 for mod in m["modules"]:
     if isinstance(mod, dict) and mod.get("name") == "finbreak":
-        mod["sources"] = [{"type": "git", "url": f"file://{repo}", "branch": branch}]
+        mod["sources"] = [{"type": "git", "url": f"file://{repo}", "commit": commit}]
 yaml.safe_dump(m, open(os.environ["OUT"], "w"), sort_keys=False)
 PY
-    echo ">> LOCAL build: finbreak source = file://$REPO @ $BRANCH (HEAD)"
+    echo ">> LOCAL build: finbreak source = file://$REPO @ $COMMIT"
 fi
 
-echo ">> flatpak-builder: build (offline; all sources pinned)"
+# One invocation builds, exports to the local repo and installs. A second call
+# without --disable-rofiles-fuse could fail or rebuild instead of installing
+# (FIBR-0400).
+echo ">> flatpak-builder: build + install --user (offline; all sources pinned)"
 flatpak-builder \
-    --user --force-clean --disable-rofiles-fuse \
+    --user --force-clean --disable-rofiles-fuse --install \
     --repo="$REPODIR" \
-    "$BUILDDIR" "$MANIFEST"
-
-echo ">> install --user from the local repo"
-flatpak-builder --user --force-clean --install \
     "$BUILDDIR" "$MANIFEST"
 
 if [[ "${NO_SELFTEST:-0}" != "1" ]]; then

@@ -2645,7 +2645,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: security.
   Source: full-audit-2026-09-27 code lane 19 (queued by FIBR-0367).
 
-- 📋 [FIBR-0400] **Queued findings from the 2026-09-27 audit: gate and packaging lane (10 items).**
+- ✅ [FIBR-0400] **Queued findings from the 2026-09-27 audit: gate and packaging lane (10 items).**
   From docs/reviews/2026-09-27-full-audit/code-lane-20-gate-packaging.md.
   Line numbers are the audited commit's (52e5162); find sites by symbol.
   - [Medium] scripts/ci-docker.sh:11 -- the usage line advertises
@@ -2677,6 +2677,14 @@ touches the § 2 surface. A security fix takes the number its change takes — �
     cp314. Fix: amend the spec.
   - [Low] scripts/ci-setup.sh:75,89 -- x86_64-only binaries are
     installed with no architecture check. Fix: check uname -m first.
+  Resolved 2026-09-29: all ten fixed, each red-first; eight broken
+  on purpose and caught. ci-docker.sh refuses --build; obs-submit.sh
+  stops on osc errors; obs-status.sh exits non-zero on a failed build
+  or timeout; flatpak-build.sh builds and installs in one call pinned
+  to the commit; the pre-push hook does not wait on a tty and trusts
+  only the pushed remote for the tag skip; ci-setup.sh refuses a
+  non-x86_64 host; ci-local.sh comments and FIBR-0155 § 3.6 corrected.
+  CI's container gate and the local gate both passed.
   **Layman:** Ten fixes to the check scripts and Linux packaging: a misleading build option, errors that are thrown away, a status script that reports success on failure, a push-hook gap, and some stale notes.
   Kind: security.
   Source: full-audit-2026-09-27 code lane 20 (queued by FIBR-0367).

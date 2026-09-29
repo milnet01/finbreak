@@ -7,10 +7,18 @@
 # `git push` can't surprise you with an environment failure a configured desktop
 # masks (a missing Qt system lib, fresh-install breakage). Run it before pushing.
 #
-# Needs podman or docker. Extra args pass straight through to ci-local.sh, e.g.
-#   scripts/ci-docker.sh --build      # also run the FIBR-0003 build smoke-test
+# Needs podman or docker. Extra args pass straight through to ci-local.sh, except
+# --build: the container has no container runtime, so the build smoke test would
+# skip silently. Run `scripts/ci-local.sh --build` on the host for that.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+
+for arg in "$@"; do
+    if [ "$arg" = "--build" ]; then
+        echo "ci-docker.sh: --build cannot run in the container (no podman/docker inside), so the smoke test would skip silently. Run scripts/ci-local.sh --build on the host instead." >&2
+        exit 2
+    fi
+done
 
 runtime="$(command -v podman || command -v docker || true)"
 [ -n "$runtime" ] || { echo "ci-docker.sh: need podman or docker on PATH" >&2; exit 1; }

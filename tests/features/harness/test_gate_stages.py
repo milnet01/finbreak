@@ -650,3 +650,101 @@ def test_ci_setup_downloads_into_a_private_directory() -> None:
     )
     assert "/tmp/" not in code, [line for line in code.splitlines() if "/tmp/" in line]
     assert re.search(r"mktemp -d", code) and re.search(r"trap .*rm -rf", code)
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0400 — gate and packaging lane                                          #
+# --------------------------------------------------------------------------- #
+def test_FIBR0400_a_hand_run_hook_does_not_wait_on_the_terminal(
+    tmp_path: Path,
+) -> None:
+    """Run by hand from a terminal, the hook read its ref list from the tty and
+    sat there until Ctrl-D. With stdin a terminal it now knows nothing about
+    the push, so it takes the gate at once."""
+    import shutil
+
+    work, sentinel, _pushed = _hook_sandbox(tmp_path)
+    _git(work, "reset", "-q", "--hard", "HEAD")
+    hook = work / "pre-push"
+    shutil.copy(_HOOK, hook)
+    hook.chmod(0o755)
+    primary, secondary = os.openpty()
+    try:
+        subprocess.run(
+            [str(hook), "origin", "file://origin"],
+            cwd=work,
+            stdin=secondary,
+            capture_output=True,
+            env=_sandbox_env(),
+            timeout=20,
+        )
+    finally:
+        os.close(primary)
+        os.close(secondary)
+    assert sentinel.exists()
+
+
+def test_FIBR0400_a_tag_skip_asks_only_the_remote_being_pushed_to(
+    tmp_path: Path,
+) -> None:
+    """The tag skip trusted any remote's branches, so a commit that reached a
+    second remote ungated (--no-verify) was skipped again when its tag went to
+    origin."""
+    work, sentinel, _pushed = _hook_sandbox(tmp_path)
+    head = _git(work, "rev-parse", "HEAD")
+    mirror = tmp_path / "mirror.git"
+    subprocess.run(
+        ["git", "init", "--bare", "-q", str(mirror)], check=True, env=_sandbox_env()
+    )
+    _git(work, "remote", "add", "mirror", str(mirror))
+    _git(work, "push", "-q", "mirror", "main")
+    _run_hook(work, f"refs/tags/v2 {head} refs/tags/v2 {_ZERO}\n")
+    assert sentinel.exists(), (
+        "a tag's commit that is on another remote, not on origin, skipped the gate"
+    )
+
+
+def _stub_bin(tmp_path: Path, name: str, body: str) -> Path:
+    stubs = tmp_path / "bin"
+    stubs.mkdir(exist_ok=True)
+    stub = stubs / name
+    stub.write_text("#!/bin/sh\n" + body, encoding="utf-8")
+    stub.chmod(0o755)
+    return stubs
+
+
+def test_FIBR0400_ci_docker_refuses_build(tmp_path: Path) -> None:
+    """--build passed through to ci-local.sh inside a container with no
+    container runtime, so the smoke test skipped silently."""
+    marker = tmp_path / "container-ran"
+    stubs = _stub_bin(tmp_path, "podman", f'touch "{marker}"\n')
+    result = subprocess.run(
+        [str(_ROOT / "scripts" / "ci-docker.sh"), "--build"],
+        env={**os.environ, "PATH": f"{stubs}:{os.environ['PATH']}"},
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert result.returncode != 0
+    assert not marker.exists()
+    assert "ci-local.sh --build" in result.stderr, result.stderr
+
+
+def test_FIBR0400_ci_setup_refuses_a_host_its_binaries_do_not_fit(
+    tmp_path: Path,
+) -> None:
+    """The pinned binaries are x86_64 builds and were installed on any host."""
+    marker = tmp_path / "apt-ran"
+    stubs = _stub_bin(tmp_path, "uname", "echo aarch64\n")
+    _stub_bin(tmp_path, "apt-get", f'touch "{marker}"\n')
+    _stub_bin(tmp_path, "sudo", '"$@"\n')
+    result = subprocess.run(
+        [str(_ROOT / "scripts" / "ci-setup.sh")],
+        env={**os.environ, "PATH": f"{stubs}:{os.environ['PATH']}"},
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert result.returncode != 0
+    assert not marker.exists(), "ci-setup.sh changed the system before refusing"
+    assert "aarch64" in result.stderr, result.stderr

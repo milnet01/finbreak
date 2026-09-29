@@ -39,14 +39,32 @@ while [ "$i" -lt "$MAX_POLLS" ]; do
     sleep "$POLL_SECS"
 done
 
-echo "=== final ==="
-osc -A "$API" results "$PROJ" "$PKG" || true
+# Exit non-zero on a failed build or a timeout, so a caller cannot read either
+# as success (FIBR-0400).
+failed=0
+if [ "$pending" -ne 0 ]; then
+    echo "!!! timed out after $MAX_POLLS polls with builds still pending" >&2
+    failed=1
+fi
 
-# Dump the log tail for any repo that did not succeed.
-osc -A "$API" results "$PROJ" "$PKG" 2>/dev/null | while read -r repo arch _pkg status _rest; do
+echo "=== final ==="
+final="$(osc -A "$API" results "$PROJ" "$PKG")" || { echo "!!! could not read the build results" >&2; exit 1; }
+echo "$final"
+
+# Dump the log tail for any repo that did not succeed. A here-document, not a
+# pipe, so `failed` is set in this shell rather than in a subshell.
+while read -r repo arch _pkg status _rest; do
     [ -n "${repo:-}" ] || continue
     if [ "$status" != "succeeded" ] && [ "$status" != "excluded" ] && [ "$status" != "disabled" ]; then
+        failed=1
         echo "########## $repo ($status) ##########"
         osc -A "$API" buildlog "$PROJ" "$PKG" "$repo" "$arch" 2>&1 | tail -40
     fi
-done
+done <<RESULTS
+$final
+RESULTS
+
+if [ "$failed" -ne 0 ]; then
+    echo "!!! at least one build failed or did not finish" >&2
+    exit 1
+fi

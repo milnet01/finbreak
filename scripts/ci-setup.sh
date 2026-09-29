@@ -14,6 +14,14 @@
 # them. Runs as root in that container; falls back to sudo on a normal host.
 set -euo pipefail
 
+# The pinned binaries below (gitleaks, shellcheck, actionlint, zizmor) are
+# x86_64 builds. Refuse any other host before changing anything (FIBR-0400).
+ARCH="$(uname -m)"
+if [ "$ARCH" != "x86_64" ]; then
+    echo "ci-setup: this host is $ARCH; the pinned tool binaries are x86_64 builds, so nothing was installed" >&2
+    exit 1
+fi
+
 SUDO=""
 [ "$(id -u)" -ne 0 ] && SUDO="sudo"
 export DEBIAN_FRONTEND=noninteractive
