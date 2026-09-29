@@ -1212,6 +1212,49 @@ def test_INV9_prompt_update_now_emits_and_stays_open_busy(qtbot):
     assert not dialog._update_button.isEnabled()
 
 
+def test_esc_and_close_cannot_hide_the_prompt_mid_download(qtbot):
+    """Full audit 2026-09-27 row 40 (code lane 12) — only the three buttons were
+    disabled while busy. Esc and the title-bar close still reached ``reject()``,
+    which HID the prompt; the shell kept it as its live dialog, so the finished
+    download swapped the binary and relaunched with nothing on screen — an
+    unannounced restart for a user who meant "cancel". D15: the prompt stays open
+    until the install relaunches or an error tears it down."""
+    from PySide6.QtCore import Qt
+
+    dialog = _prompt(qtbot)
+    dialog.show()
+    qtbot.waitExposed(dialog)
+    dialog._on_update_now()
+    # A "later" here would have the shell tear the prompt down mid-download.
+    emitted: list[str] = []
+    dialog.later.connect(lambda: emitted.append("later"))
+    dialog.skip.connect(lambda: emitted.append("skip"))
+
+    qtbot.keyClick(dialog, Qt.Key.Key_Escape)
+    assert dialog.isVisible(), "Esc hid the busy prompt"
+    dialog.close()  # the title-bar close button
+    assert dialog.isVisible(), "the close button hid the busy prompt"
+    assert dialog.result() == 0
+    assert emitted == [], f"dismissing a busy prompt emitted {emitted}"
+
+
+def test_esc_before_the_download_is_later_not_a_hidden_prompt(qtbot):
+    """The same slot, before the busy state: Esc hid the prompt without emitting
+    ``later``, so the shell kept a hidden modal as its dialog. Esc and close now
+    mean Later, which the shell tears down."""
+    from PySide6.QtCore import Qt
+
+    for dismiss in ("esc", "close"):
+        dialog = _prompt(qtbot)
+        dialog.show()
+        qtbot.waitExposed(dialog)
+        with qtbot.waitSignal(dialog.later, timeout=1000):
+            if dismiss == "esc":
+                qtbot.keyClick(dialog, Qt.Key.Key_Escape)
+            else:
+                dialog.close()
+
+
 def test_FIBR0108_prompt_bar_goes_determinate_on_a_known_size(qtbot):
     """A download that advertises its size drives a real percentage bar; before
     the first report the bar is still the indeterminate busy one (FIBR-0108)."""

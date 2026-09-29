@@ -33,6 +33,12 @@ signaling per
 
 ### Fixed
 
+- **Pressing Esc during an update download no longer leads to a surprise restart** (FIBR-0367)
+  Esc or the window's close button hid the update window while it was
+  downloading, and finbreak then restarted into the new version with no
+  warning. The window now stays open until the update installs. Before the
+  download starts, Esc or close means "Later".
+
 - **A failed update now says whether the download dropped or the file failed its security check** (FIBR-0367)
   Both used to show the same "could not be installed" message. A download
   that did not finish now says so and suggests trying again. A file that

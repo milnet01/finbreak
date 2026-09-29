@@ -76,6 +76,7 @@ class UpdateDialog(QDialog):
         # Busy indicator — hidden until Update now. Starts indeterminate and
         # switches to a real percentage on the first sized progress report
         # (FIBR-0108); an unsized download keeps the striped look.
+        self._busy_active = False  # set on Update now; blocks Esc/close (row 40)
         self._busy = QProgressBar()
         self._busy.setObjectName("update_busy")
         self._busy.setRange(0, 0)  # indeterminate until a size is known
@@ -131,7 +132,19 @@ class UpdateDialog(QDialog):
             self._busy.setRange(0, total)
         self._busy.setValue(received)
 
+    def reject(self) -> None:
+        # Esc and the title-bar close both land here (QDialog.closeEvent calls
+        # reject). While downloading the prompt stays open until the install
+        # relaunches or an error tears it down (D15) -- a hidden prompt let the
+        # finished download restart the app unannounced (full audit 2026-09-27
+        # row 40). Before that, dismissing it means Later, which the shell tears
+        # down, rather than a hidden modal left in the shell's dialog slot.
+        if self._busy_active:
+            return
+        self.later.emit()
+
     def _enter_busy(self) -> None:
+        self._busy_active = True
         for button in (self._later_button, self._skip_button, self._update_button):
             button.setEnabled(False)
         self._busy_label.setVisible(True)
