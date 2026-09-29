@@ -73,13 +73,15 @@ silently, like every other missing-asset case (FIBR-0054 INV-3/INV-11).
 
 ### 4.2 Verify (`download_and_verify`)
 
-After the existing download and per-file signature check, and before the
-verified bytes are staged for the installer:
-
 1. Download `SHA256SUMS` under a new cap `_MAX_MANIFEST_BYTES = 64 * 1024` and
-   `SHA256SUMS.sig` under the existing `_MAX_SIG_BYTES`, through the same
-   `update_fetch.download` and inside the same fetch window, so a failure is an
+   `SHA256SUMS.sig` under the existing `_MAX_SIG_BYTES`, through
+   `update_fetch.download`, right after the asset and its `.sig` and before any
+   verification. They are part of the fetch, so a failure is an
    `UpdateDownloadError` exactly as for the asset.
+
+Then, after the existing per-file signature check and before the verified
+bytes are staged for the installer:
+
 2. Verify the manifest signature with `update_key.public_key()`. Failure →
    `UpdateVerificationError`.
 3. Parse: a line counts only if it is 64 lowercase hex digits, two spaces, and
