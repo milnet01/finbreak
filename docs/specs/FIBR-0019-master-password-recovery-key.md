@@ -394,7 +394,8 @@ DEK:
   `cipher_compatibility` is written at S3 and **stays**. It is carried by every
   vault whose database was written at an **explicit** cipher level — a migrated
   one (§13.2), and a restored one, whose database comes from `export_to` — and
-  never by one created fresh, which takes the library default. The JSON above is
+  never by one created fresh, which is written and opened at
+  `LIVE_VAULT_CIPHER_COMPAT` without recording it (INV-14). The JSON above is
   the newly-created shape, which is why neither appears in it.
   Neither is a foreign key — a loader that rejects an unrecognised v2 key
   would refuse the resume sidecar on the next open and take §13.3's resume
@@ -788,6 +789,22 @@ delete one slot, rewrite the sidecar atomically. The database is untouched.
   back on. Verifying it by reading it END TO END is the whole of the
   difference; an open-probe alone passes the damage this exists to catch.
 
+- **INV-14** — **No vault is opened or created at the library's default cipher
+  level** (FIBR-0401, amended 2026-09-29). A vault whose sidecar records a
+  `cipher_compatibility` opens at that level. One that records none — every
+  vault created fresh — opens at `LIVE_VAULT_CIPHER_COMPAT` (4), and
+  `Vault.create` writes it at that level. Every vault finbreak has created was
+  written under SQLCipher 4's defaults, which are level 4, so the pin changes
+  no file on disk; it removes the dependence on a default a `sqlcipher3-wheels`
+  bump could move. `LIVE_VAULT_CIPHER_COMPAT` is its own constant and never
+  changes: raising `SQLCIPHER_COMPAT` to export at a newer level must not
+  change the level an unrecorded vault opens at.
+  *Test:* move SQLCipher's process-wide default to level 3
+  (`PRAGMA cipher_default_compatibility = 3`). A vault created before the move
+  still opens. A vault created during it opens after the default is put back.
+  *Breaks when:* the pin is applied on open but not on create — a vault
+  created while the default is moved is then written at a level no open uses.
+
 ## 6. Failure modes
 
 | Assumption | When it breaks | Behaviour required |
@@ -815,6 +832,7 @@ New suite `tests/features/recovery_key/`, with `spec.md` beside it per
 | `test_recovery_code.py` | INV-5, INV-6, INV-11 | INV-5 and INV-6 yes — `recovery_code` is pure. **INV-11 no**: its trial-unwrap seam lives in `ui/_password_hint.py`, which imports Qt, so that test needs `qtbot`. |
 | `test_migration.py` | INV-7, INV-8, INV-13 | yes — vault-level, no UI |
 | `test_recovery_unlock.py` | INV-9, INV-10 | needs `qtbot` |
+| `tests/features/vault/test_vault.py` | INV-14 | yes — vault-level, no UI |
 
 **Every one of these must be seen to fail before the change exists**
 (`testing.md` § 1). Five of the thirteen invariants fail against today's code
@@ -930,13 +948,14 @@ inferred from this section.
 | INV-11 | `tests/features/recovery_key/test_recovery_code.py::test_hint_rejects_the_recovery_code`, `::test_hint_rejects_the_payload_in_every_written_form` |
 | INV-12 | `tests/features/recovery_key/test_sidecar_v2.py::test_declining_still_writes_the_envelope` |
 | INV-13 | `tests/features/recovery_key/test_migration.py::test_no_swap_without_a_verified_rollback_copy` |
+| INV-14 | `tests/features/vault/test_vault.py::test_FIBR0401_no_vault_depends_on_the_library_cipher_default` |
 | The construction is cryptographically sound | **nothing** — no test in this project can establish that. It rests on AES-256-GCM and Argon2id as used, and on §4.2's AAD binding being complete. The mitigations are that no primitive is hand-rolled and that `bandit` and `pip-audit` run in the gate; neither reads a design. |
 | The user actually stored the recovery code | **nothing** — unknowable to the app. §4.5's acknowledgement step records only that a screen was dismissed. This is a real limit, not a defect, and the honest mitigation is copy that says what is being given up rather than a checkbox that implies proof. |
 | The recovery code is not written down somewhere insecure | **nothing** — outside the trust boundary (`docs/security-model.md` § 4). |
 | The user has not lost both credentials | **nothing** — FIBR-0018 restore and FIBR-0030 reset remain the last resorts, unchanged. |
 | The migration ran at all on a given user's machine | **nothing** at the time of writing — the app has no telemetry and will not gain any. A vault that never gets unlocked never migrates, which is harmless but means "every field vault is v2" is not a statement anyone can make. §15 raises what, if anything, 1.0 should do about it. |
 
-Five of eighteen rows say `nothing`. **Three** of the five are limits of
+Five of nineteen rows say `nothing`. **Three** of the five are limits of
 what software can know about a human — whether the user stored the code,
 stored it safely, and has not lost both credentials — and are recorded rather
 than fixed. A fourth, whether a given user's vault migrated at all, is a
@@ -1041,15 +1060,13 @@ replacement has been built and verified too.
 
 **One property of S1's product needs recording: it is written at an explicit
 cipher level.** `Vault.export_to` issues
-`PRAGMA backup.cipher_compatibility = SQLCIPHER_COMPAT` (4), where a `create`d
-vault issues no such PRAGMA and takes the library default, and a normal
-`Vault.open` passes `cipher_compat=None`. They agree today. They stop agreeing
-the moment a `sqlcipher3-wheels` bump moves the default — which is the reason
-`vault.py` pins the constant at all — and a migrated vault would then be
-unopenable by the very build that migrated it. **So S3 records the level in
-the v2 sidecar and every later open passes it**, exactly as
+`PRAGMA backup.cipher_compatibility = SQLCIPHER_COMPAT` (4). **So S3 records
+the level in the v2 sidecar and every later open passes it**, exactly as
 `BackupService._open_backup_vault` already does from a `.fbk` manifest. The
-precedent exists; this only extends it to the installed vault.
+precedent exists; this only extends it to the installed vault. A vault with
+nothing recorded is opened at `LIVE_VAULT_CIPHER_COMPAT` (INV-14), which is
+also 4, so the two agree today; the recorded level is what keeps a migrated
+vault openable if `SQLCIPHER_COMPAT` is ever raised.
 
 ### 13.3 Resume, which is what makes INV-7 true
 
