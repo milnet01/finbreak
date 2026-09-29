@@ -462,6 +462,12 @@ so Flathub review and code signing do not block this release.
   appstream in ci-setup.sh, fetch-depth 0, ci-docker.sh sends tracked
   files only, -rs lists skips); both now skip the same three tests.
   Next: row 36.
+  Progress 2026-09-29 (late): row 36 fixed (46e223e), red first, each
+  part mutation-checked, GitHub CI green (2320 passed, 3 skipped). The
+  alert label and hint label are PlainText; the Dismiss tooltip goes
+  through QtGui.Qt.convertFromPlainText. The sweep found the same class
+  in import_batch.py's file-path tooltip, queued as FIBR-0382. Next:
+  row 37 (app.py blocked restore recovery gives a generic start over).
   **Layman:** A full check of the app found bugs; the serious ones (wrong dates or amounts, lost data, security gaps) are being fixed now and the rest are filed.
   Kind: review-fix.
   Source: full-audit-2026-09-27.
