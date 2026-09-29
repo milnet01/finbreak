@@ -538,25 +538,43 @@ class UnlockDialog(QDialog):
         self.unlock_failed.emit()
 
     @Slot(object)
-    def _on_failure(self, _exc: object) -> None:
-        settle(self._worker)
-        self._worker = None
-        self._set_busy(False)
-        self._show_failure()
+    def _on_failure(self, exc: object) -> None:
+        self._derivation_failed(exc)
 
     @Slot(object)
-    def _on_recovery_failure(self, _exc: object) -> None:
+    def _on_recovery_failure(self, exc: object) -> None:
         """:meth:`_on_failure`'s counterpart for the recovery route.
 
         A separate slot rather than a remembered flag: the worker knows which
         credential it derived, and the connection is made where that is still
         in scope, so nothing has to survive between starting the worker and its
-        failure (FIBR-0313 M5).
+        failure (FIBR-0313 M5). Both now say the same thing, which names no
+        credential (INV-20).
         """
+        self._derivation_failed(exc)
+
+    def _derivation_failed(self, exc: object) -> None:
+        """The derivation itself raised — never a wrong credential, since a
+        wrong one derives a key that simply does not open the vault. Out of
+        memory for Argon2id, or cost parameters it refuses. So it is logged,
+        reported as what it is, and NOT charged to the throttle: charging it
+        told a user with the correct password to re-check it, with a growing
+        lockout and nothing logged (FIBR-0367 audit row 32)."""
         settle(self._worker)
         self._worker = None
         self._set_busy(False)
-        self._show_failure(recovery=True)
+        log.error(
+            "key derivation failed",
+            exc_info=exc if isinstance(exc, BaseException) else None,
+        )
+        self._error.setText(
+            self.tr(
+                "finbreak could not check what you entered, because the "
+                "security check itself failed — the computer may be short of "
+                "memory. Close other programs and try again."
+            )
+        )
+        self.unlock_failed.emit()
 
     def _show_failure(self, *, recovery: bool = False) -> None:
         # Record the failure, then start the countdown to the freshly-owed delay

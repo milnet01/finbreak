@@ -1321,6 +1321,51 @@ def test_unlock_reports_a_security_settings_file_left_unreadable(
     )
 
 
+@pytest.mark.parametrize("route", ["_on_failure", "_on_recovery_failure"])
+def test_a_derivation_that_raises_is_not_a_wrong_credential(
+    qtbot, service, caplog, route
+):
+    """FIBR-0367 audit row 32 — Argon2id never fails on a wrong credential: a
+    wrong one derives a key that simply does not open the vault. So the worker's
+    ``failed`` signal means the derivation itself could not run — out of memory
+    for its 46 MiB, or cost parameters argon2 refuses. Both routes charged that
+    to the throttle, told the user to check what they typed, and logged
+    nothing: a correct password refused forever, with a growing lockout and no
+    trace to diagnose it.
+    """
+    from finbreak.ui.unlock import UnlockDialog
+
+    service.first_run(bytearray(_PW), "ZAR")
+    service.lock()
+    dialog = UnlockDialog(service)
+    qtbot.addWidget(dialog)
+    failed: list[int] = []
+    dialog.unlock_failed.connect(lambda: failed.append(1))
+    before = dialog._throttle.load().fail_count
+
+    with caplog.at_level("ERROR"):
+        getattr(dialog, route)(MemoryError("argon2 could not allocate"))
+
+    assert dialog._throttle.load().fail_count == before, (
+        "a derivation that could not run is not a wrong credential, so it must "
+        "not advance the shared throttle."
+    )
+    message = dialog._error.text()
+    assert message.strip() and "check your" not in message.lower(), (
+        "the user was told to re-check a credential that was never checked.\n"
+        f"  actual:   {message!r}"
+    )
+    assert "password" not in message.lower(), (
+        "INV-20: the message is shared by the recovery route, so it may not "
+        f"send anyone to a password.\n  actual:   {message!r}"
+    )
+    assert failed == [1], "unlock_failed emitted, not unlocked"
+    assert any(r.exc_info for r in caplog.records), (
+        "the derivation error was discarded unlogged; nothing is left to "
+        "diagnose it from."
+    )
+
+
 # --------------------------------------------------------------------------- #
 # FIBR-0374 — a dialog deleted just after its derivation reports must not abort #
 # --------------------------------------------------------------------------- #

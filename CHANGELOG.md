@@ -33,6 +33,12 @@ signaling per
 
 ### Fixed
 
+- **A security check that cannot run is no longer reported as a wrong password.**
+  If the unlock check itself failed, for example because the computer
+  was short of memory, finbreak said to check your password and made you
+  wait longer after each try. It now says what happened, records it in
+  the log, and does not count it against you. (FIBR-0367)
+
 - **A damaged security-settings file found after the password is checked is reported, not a crash.**
   If an interrupted vault upgrade left that file unreadable, the unlock
   screen hit an unhandled error instead of saying what was wrong. It now

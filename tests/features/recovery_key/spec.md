@@ -328,12 +328,12 @@ every credential, account and transaction here is synthetic
   without needing to break `window.ini` on disk, and asserts "password" does
   not appear in the resulting message.
   `test_recovery_unlock.py::test_recovery_derivation_failure_message_does_not_mention_password`
-  — the second route into the same message, where the KDF itself fails rather
+  — the second route into a failure message, where the KDF itself fails rather
   than the code being wrong, so the worker's `failed` signal is what reaches
-  `_show_failure`. It is a separate test because a single shared failure slot
-  satisfies the first one and not this one: `mutation_probe` re-pointed that
-  connection back at the password slot and the suite stayed green until this
-  test existed.
+  the dialog. Since FIBR-0367 audit row 32 that signal goes to
+  `_derivation_failed`, not `_show_failure`: a derivation that could not run is
+  not a wrong credential, so it is not charged to the throttle, and its message
+  names no credential on either route.
   Source: FIBR-0313 M5.
 
 - **INV-21** — `RecoveryCodeDialog`'s clipboard-clear guard must outlive the

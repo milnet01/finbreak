@@ -263,12 +263,12 @@ def test_recovery_derivation_failure_message_does_not_mention_password(
 ) -> None:
     """The other way into INV-20's message, and the one a shared slot hides.
 
-    ``_show_failure`` is reached twice on the recovery route: from
+    A failure message is reached twice on the recovery route: from
     ``_on_recovery_derived`` when the code is simply wrong, and from the
     worker's ``failed`` signal when the DERIVATION itself raises. The sibling
-    test above covers the first only -- measured with ``mutation_probe``, which
-    is how this gap was found: re-pointing the recovery worker's ``failed``
-    connection back at the shared password slot left the suite green.
+    test above covers the first only. The second now goes to
+    ``_derivation_failed``, whose message names no credential (FIBR-0367 audit
+    row 32).
 
     The stub worker emits synchronously, so the message is set before
     ``submit()`` returns and there is no state to wait for.
