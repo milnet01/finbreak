@@ -2730,7 +2730,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: security.
   Source: full-audit-2026-09-27 code lane 1 (queued by FIBR-0367).
 
-- 📋 [FIBR-0402] **Queued findings from the 2026-09-27 audit: auth lane (8 items).**
+- ✅ [FIBR-0402] **Queued findings from the 2026-09-27 audit: auth lane (8 items).**
   From docs/reviews/2026-09-27-full-audit/code-lane-02-auth.md.
   Line numbers are the audited commit's (52e5162); find sites by symbol.
   - [Medium] services/auth.py:580-592 -- a failed v1-to-v2 key-envelope
@@ -2763,6 +2763,15 @@ touches the § 2 surface. A security fix takes the number its change takes — �
     during the forced new-password step after a recovery unlock, and an
     idle lock there leaves the forgotten old password in slots.master.
     Fix: decide whether that step suspends the idle lock.
+  Resolved 2026-09-29 (7928a5e): seven fixed, each red-first. A
+  failed key-envelope migration is shown after unlock; the post-migration
+  sidecar read is inside the wiping try; an unreadable auto-lock setting
+  falls back to the default timeout; lock and exit wipe the key even if
+  close raises; the recovery claim refuses symlinks and foreign-owned
+  files; the Windows pipe name carries the user's name; the INV-1 comment
+  corrected. Dismissed: the open question on the forced new-password
+  step. The idle lock stays live there, because locking an unattended
+  vault is correct and the recovery code still opens it.
   **Layman:** Several smaller problems in the unlock and login code: a failed vault upgrade is hidden from you, and in a few rare error cases a key is left in memory.
   Kind: security.
   Source: full-audit-2026-09-27 code lane 2 (queued by FIBR-0367).
