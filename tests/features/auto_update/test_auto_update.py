@@ -1693,6 +1693,59 @@ class _FakeInstaller:
         self.applied.append((new_file, on_before_exec))
 
 
+class _BlockingDownloadService:
+    """download_and_verify blocks until released, then either reports progress
+    (the real fetch loop does, per chunk) or returns a verified temp file."""
+
+    def __init__(self, path, *, report_progress):
+        import threading
+
+        self.entered = threading.Event()
+        self.release = threading.Event()
+        self._path = path
+        self._report_progress = report_progress
+        self.completed = False
+
+    def download_and_verify(self, info, *, on_progress=None):
+        self.entered.set()
+        self.release.wait(10)
+        if self._report_progress and on_progress is not None:
+            on_progress(1, 2)
+        self.completed = True  # the transfer ran to its end
+        self._path.write_bytes(b"verified")
+        return self._path
+
+
+@pytest.mark.parametrize("report_progress", [True, False], ids=["mid", "done"])
+def test_FIBR0392_an_interrupted_download_leaves_no_file_and_says_nothing(
+    qtbot, tmp_path, report_progress
+):
+    """Full audit 2026-09-27 (FIBR-0392, code lane 12): at shutdown the drain
+    requests interruption and detaches a worker that outlasts it, with its
+    signals blocked -- but the worker never checked, so the download ran on and
+    its verified temp stayed beside the binary with nobody to install or delete
+    it. Interrupted mid-download it aborts; finished anyway, it deletes."""
+    from finbreak.ui._update_worker import DownloadWorker
+
+    verified = tmp_path / "finbreak-update-x.AppImage"
+    service = _BlockingDownloadService(verified, report_progress=report_progress)
+    worker = DownloadWorker(service, _sample_info())
+    seen: list = []
+    worker.ready.connect(lambda p: seen.append(("ready", p)))
+    worker.failed.connect(lambda e: seen.append(("failed", e)))
+    worker.start()
+    assert service.entered.wait(5)
+    worker.requestInterruption()
+    service.release.set()
+    assert worker.wait(5000)
+    qtbot.wait(50)
+    assert seen == [], f"an interrupted download still reported: {seen}"
+    if report_progress:
+        assert not service.completed, "the download ran on past the interruption"
+    else:
+        assert not verified.exists(), "the verified temp outlived the interruption"
+
+
 class _NotReadyInstaller(_FakeInstaller):
     """An installer present on this platform that says it cannot self-update."""
 

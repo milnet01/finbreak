@@ -53,9 +53,26 @@ class DownloadWorker(QThread):
             # The service reports bytes as they land; re-emitting them as a Qt
             # signal hops them to the GUI thread for the bar (FIBR-0108).
             path = self._service.download_and_verify(
-                self._info, on_progress=self.progress.emit
+                self._info, on_progress=self._on_progress
             )
         except Exception as exc:  # signature mismatch / oversize / timeout / disk
-            self.failed.emit(exc)
+            if not self.isInterruptionRequested():
+                self.failed.emit(exc)
+            return
+        if self.isInterruptionRequested():
+            # Nobody will install it: the shutdown drain asked us to stop, and a
+            # worker it detached has its signals blocked (FIBR-0392).
+            path.unlink(missing_ok=True)
             return
         self.ready.emit(path)
+
+    def _on_progress(self, received: int, total: int) -> None:
+        # Called per chunk from the fetch loop. Raising here aborts the transfer,
+        # and download_and_verify then removes every temp it staged (FIBR-0392).
+        if self.isInterruptionRequested():
+            raise _DownloadInterrupted
+        self.progress.emit(received, total)
+
+
+class _DownloadInterrupted(RuntimeError):
+    """The shutdown drain interrupted a download; nothing is reported."""
