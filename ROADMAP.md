@@ -3509,6 +3509,20 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: fix.
   Source: full-audit-2026-09-27 code lane 7 (queued by FIBR-0407).
 
+- 📋 [FIBR-0428] **Move the Flatpak to the freedesktop 26.08 runtime.**
+  Found 2026-09-29 while verifying FIBR-0161's commands:
+  `flatpak-builder-lint manifest` on
+  packaging/flatpak/io.github.milnet01.finbreak.yaml warns
+  runtime-update-available-to-org.freedesktop.Platform-26.08. The
+  manifest pins 25.08, and dependencies stay on the latest version.
+  The Sdk's python3 minor may change with it, which moves the single
+  CPython ABI the wheel closure is pinned to (FIBR-0159 § 3.6, INV-3c),
+  so regenerate python3-deps.yaml against the 26.08 Sdk and rebuild
+  through org.flatpak.Builder before submitting.
+  **Layman:** The Flatpak version of finbreak is built on a base system that now has a newer release; it should move to the new one.
+  Kind: chore.
+  Source: in-session-2026-09-29 (flatpak-builder-lint while verifying FIBR-0161).
+
 ## v1.1.0 — Localisation
 
 The first feature minor after 1.0. Chosen to go first because it is
