@@ -1628,6 +1628,56 @@ class _FakeInstaller:
         self.applied.append((new_file, on_before_exec))
 
 
+class _NotReadyInstaller(_FakeInstaller):
+    """An installer present on this platform that says it cannot self-update."""
+
+    def can_self_update(self):
+        return False
+
+
+def test_an_installer_that_cannot_self_update_leaves_the_updater_inert(
+    qtbot, service, tmp_path, monkeypatch
+):
+    """Full audit 2026-09-27 (FIBR-0392, code lane 12, High): every gate asked
+    only whether an installer EXISTED, so can_self_update() -- promised by
+    FIBR-0054 D6 and asked by is_update_supported() -- was never consulted and
+    an installer answering False changed nothing. Service and shell both."""
+    import finbreak.ui.main_window as mw
+
+    fetcher = _FakeFetcher(release=_release("v0.1.1"))
+    svc = _service(
+        tmp_path, installer=_NotReadyInstaller(tmp_path / "a"), fetcher=fetcher
+    )
+    svc.set_enabled(True)
+    assert svc.check_for_update(force=True) is None
+    assert fetcher.fetch_calls == 0, "a check ran for an installer that said no"
+
+    started: list = []
+    monkeypatch.setattr(
+        mw, "UpdateCheckWorker", lambda *a, **k: started.append(a) or _NoWorker()
+    )
+    told: list = []
+    monkeypatch.setattr(mw.QMessageBox, "information", lambda *a, **k: told.append(a))
+    window, _ = _updater_shell(
+        qtbot,
+        service,
+        info=_sample_info(),
+        installer=_NotReadyInstaller(tmp_path / "b"),
+    )
+    window._enter_unlocked()
+    window._maybe_check_for_update()
+    assert started == [], "the launch check started anyway"
+    window._check_for_updates_now()
+    assert started == [] and len(told) == 1, "the manual check did not say so"
+
+
+class _NoWorker:
+    """Stands in for UpdateCheckWorker; a gate that works never builds one."""
+
+    def __getattr__(self, name):
+        raise AssertionError(f"UpdateCheckWorker.{name} used by an inert updater")
+
+
 def _updater_shell(qtbot, service, *, info=None, enabled=True, installer=None):
     updater = _FakeUpdateService(info=info, enabled=enabled)
     window = MainWindow(service, update_service=updater, installer=installer)

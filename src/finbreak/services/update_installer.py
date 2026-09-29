@@ -421,15 +421,14 @@ def detect_installer() -> Installer | None:
 
 def is_update_supported() -> bool:
     """Whether self-update can run on this package (INV-7) — an installer exists
-    AND reports it can run. The Settings checkbox is disabled + tooltipped when
-    this is False.
+    AND reports it can run, for the installer this environment detects.
 
-    Both conditions are asked. ``can_self_update()`` is promised by FIBR-0054 D6
-    and re-promised by FIBR-0131 Deliverable 1, and had NO caller anywhere: both
-    implementations return True unconditionally and every real gate used
-    ``detect_installer() is not None`` instead. A protocol method nothing calls
-    is a promise nothing keeps — so this asks it, which is what makes adding a
-    real precondition to either installer take effect rather than being ignored.
+    The running app asks the same two questions of the installer it holds:
+    ``MainWindow._update_supported`` gates the Settings checkbox and both
+    checks, and ``UpdateService.check_for_update`` refuses on either. Until the
+    2026-09-27 audit (FIBR-0392) every gate asked only whether an installer
+    existed, so ``can_self_update()`` -- promised by FIBR-0054 D6 -- was never
+    consulted.
     """
     installer = detect_installer()
     return installer is not None and installer.can_self_update()

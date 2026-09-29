@@ -278,7 +278,7 @@ class UpdateService:
         guard (version compare, skip, the installer-driven asset predicate) still
         applies. Every failure — malformed version, network error, missing asset,
         not-newer, skipped — yields ``None`` and never propagates (INV-3/INV-11)."""
-        if self._installer is None:
+        if self._installer is None or not self._installer.can_self_update():
             return None
         if not force and not self.is_enabled():
             return None

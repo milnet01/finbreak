@@ -1075,7 +1075,7 @@ class MainWindow(QMainWindow):
             currency,
             self,
             update_enabled=self._update_service.is_enabled(),
-            update_supported=self._installer is not None,
+            update_supported=self._update_supported(),
             library_enabled=CategorizationService(
                 self._service.vault
             ).library_enabled(),
@@ -1671,11 +1671,17 @@ class MainWindow(QMainWindow):
         self._status(self.tr("Settings saved"))
 
     # --- opt-in auto-update (FIBR-0054 D7/D15) ------------------------------ #
+    def _update_supported(self) -> bool:
+        """Whether self-update can run on this package: an installer exists AND
+        says it can (FIBR-0054 D6/INV-7). Asked of the installer this window
+        holds, never re-detected, so an injected one is the one consulted."""
+        return self._installer is not None and self._installer.can_self_update()
+
     def _maybe_check_for_update(self) -> None:
         # Off a supported package (no installer), or opted out, the feature is inert
         # (INV-1/INV-7). One bounded check per launch, on a worker so the network
         # never blocks the UI.
-        if self._installer is None or not self._update_service.is_enabled():
+        if not self._update_supported() or not self._update_service.is_enabled():
             return
         worker = UpdateCheckWorker(self._update_service, self)
         worker.found.connect(self._on_update_found)
@@ -1712,7 +1718,7 @@ class MainWindow(QMainWindow):
         # The click is its own consent, so it runs even if the startup opt-in is
         # off (force=True). A found offer reuses the D15 prompt via
         # _on_update_found (we're unlocked + idle when the menu is used).
-        if self._installer is None:
+        if not self._update_supported():
             QMessageBox.information(
                 self,
                 self.tr("Check for updates"),
