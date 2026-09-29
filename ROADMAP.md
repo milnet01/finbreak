@@ -2367,7 +2367,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: review-fix.
   Source: full-audit-2026-09-27 code lane 11 (queued by FIBR-0367).
 
-- 📋 [FIBR-0392] **Queued findings from the 2026-09-27 audit: update and self-install lane (10 items).**
+- ✅ [FIBR-0392] **Queued findings from the 2026-09-27 audit: update and self-install lane (10 items).**
   From docs/reviews/2026-09-27-full-audit/code-lane-12-update.md.
   Line numbers are the audited commit's (52e5162); find sites by symbol.
   - [High] services/update_installer.py is_update_supported() has no
@@ -2412,6 +2412,14 @@ touches the § 2 surface. A security fix takes the number its change takes — �
     follows a symlink on a shared /tmp, reached only when sys.stdout is
     None. Fix: open it with O_EXCL/O_NOFOLLOW or a per-user mkstemp
     name.
+  Resolved 2026-09-29: all ten fixed, each red-first with a mutation
+  check. is_update_supported gate 3511099; TLS self-test leg 6f425e4;
+  total-time bounds and size gate 644f047; interrupted download stops
+  and leaves no file 33bbc56; relaunch waits on the bootloader too
+  25b37e3; crash dialog marshalled to the GUI thread e87baab; a raising
+  key wipe still relaunches and exits abb6b74; FIBR-0054/0131 amended to
+  the built relaunch 2d28799; self-test fallback file refuses symlinks
+  74cdd4e. Sweep fixed two stale claims in FIBR-0155 (31eda95).
   **Layman:** Ten fixes to the in-app updater: one safety check it promises but never uses, a missing self-test for secure connections, downloads that can hang, leftover files, and a few error paths that could misbehave.
   Kind: security.
   Source: full-audit-2026-09-27 code lane 12 (queued by FIBR-0367).
