@@ -69,7 +69,7 @@ uniqueness key.
 | finding | verified | disposition | was → now | must_agree |
 |---|---|---|---|---|
 | C17 CHANGELOG promises a dark PDF | yes — pdf_export `_PDF_THEME` is always light (FIBR-0217) | fixed | no correction → [Unreleased] note; no red run: nothing observable changes | CHANGELOG [0.1.23] (frozen) |
-| C2 refresh test calls `_refresh()` | | | | |
+| C2 refresh test calls `_refresh()` | yes | fixed | direct `_refresh()` → real Add and Delete clicks (confirm answered Yes); mutation: dropping the re-gate in `_refresh` reddens both | |
 | C4 startup-error test calls the hook by hand | | | | |
 | C6 Windows apostrophe: command text only | | | | |
 | C10 month name read from HTML, not the PDF | | | | |
@@ -83,5 +83,6 @@ uniqueness key.
 - **swept:**
 - **collateral:**
 - **surfaced:**
-- **out_of_scope:**
+- **out_of_scope:** docs/specs/FIBR-0127.md cites "`services/pdf_export.py:99` (dark PDF
+  theme)" — stale since FIBR-0217, before this run; left.
 - **falsified:**

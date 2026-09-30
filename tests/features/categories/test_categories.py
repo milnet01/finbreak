@@ -839,6 +839,54 @@ def test_add_category_unknown_parent_raises(service):
 # --------------------------------------------------------------------------- #
 # FIBR-0327 — a refresh re-runs the gating slot
 # --------------------------------------------------------------------------- #
+@pytest.mark.parametrize("action", ["add", "delete"])
+def test_FIBR0390_clicking_add_or_delete_leaves_no_button_live(
+    qtbot, service, monkeypatch, action
+):
+    """Audit delivery C2: the test below calls ``_refresh()`` by hand. The
+    promise is about the buttons a user presses, so this presses them -- the
+    real Add and Delete (its confirmation answered Yes) -- and checks the
+    rebuilt tree leaves no button live with nothing selected."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QMessageBox
+
+    import finbreak.ui.categories as categories_ui
+    from finbreak.ui.categories import CategoriesWidget
+
+    categories = CategoryService(service.vault)
+    root = next(r for r in categories.children_of(None) if r.kind is not None)
+    made = categories.add_category(root.id, "Click probe")
+    monkeypatch.setattr(
+        categories_ui.QMessageBox,
+        "question",
+        staticmethod(lambda *a, **k: QMessageBox.StandardButton.Yes),
+    )
+
+    widget = CategoriesWidget(service)
+    qtbot.addWidget(widget)
+    widget._select_category(made.id)
+    if action == "add":
+        widget._name.setText("Click probe child")
+        button = widget._add_button
+    else:
+        button = widget._delete_button
+    assert button.isEnabled(), "precondition: the button can be pressed"
+    qtbot.mouseClick(button, Qt.MouseButton.LeftButton)
+
+    names = [c.name for c in categories.children_of(made.id)]
+    gone = made.id not in [c.id for c in categories.children_of(root.id)]
+    assert (names == ["Click probe child"]) if action == "add" else gone, (
+        "precondition: the click did its work"
+    )
+    assert widget._tree.currentItem() is None
+    live = [
+        b.text()
+        for b in (widget._update_button, widget._delete_button, widget._add_button)
+        if b.isEnabled()
+    ]
+    assert live == [], f"live with nothing selected: {live}"
+
+
 def test_a_refresh_leaves_no_button_live_against_a_gone_selection(qtbot, service):
     """`_refresh` clears the tree and rebuilds it, so nothing is selected
     afterwards -- but Update and Delete stayed ENABLED, because
