@@ -130,6 +130,41 @@ def test_recovery_unlock_forces_a_new_master_password(
         unwrap_slot(MASTER_PASSWORD, data, SLOT_MASTER)
 
 
+def test_FIBR0388_a_code_copied_by_hand_unlocks_through_the_screen(
+    qtbot: Any, service: AuthService, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The test above types the code exactly as displayed, so the screen's
+    handling of a code written down by hand -- lower case, I/L for 1, O for 0,
+    spaces for hyphens -- was checked only by the audit's own repros."""
+    from types import SimpleNamespace
+
+    from finbreak.services import recovery_code
+
+    # A payload whose 27 symbols run 0, 1, 2, ... so the code carries both
+    # folded digits; a random code lacks one of them about one time in six.
+    value = sum(i << (5 * i) for i in range(27))
+    monkeypatch.setattr(
+        recovery_code, "secrets", SimpleNamespace(randbits=lambda _: value)
+    )
+
+    dialog = _dialog(qtbot, service)
+    field, submit, pending = _recovery_seams(dialog)
+    code = create_vault(service)
+    keep_recovery_key(service, code)
+    service.lock()
+    assert "0" in code and "1" in code, code  # both folds are exercised
+
+    copied = code.lower().replace("-", " ").replace("0", "o")
+    copied = copied.replace("1", "l", 1).replace("1", "I")
+    awaiting_password: list[int] = []
+    pending.connect(lambda: awaiting_password.append(1))
+
+    field.setText(copied)
+    submit()
+
+    qtbot.waitUntil(lambda: bool(awaiting_password), timeout=10_000)
+
+
 # --------------------------------------------------------------------------- #
 # INV-10 — the recovery route shares the password route's backoff counter
 # --------------------------------------------------------------------------- #
