@@ -73,7 +73,7 @@ uniqueness key.
 | C4 startup-error test calls the hook by hand | yes | fixed | hook called by hand → `run()` fails building the window, the exception goes to `sys.excepthook` as the interpreter would; dialog names the fault, console hook still runs; mutation: removing `_install_excepthook()` from `run()` reddens it | |
 | C6 Windows apostrophe: command text only | | | | |
 | C10 month name read from HTML, not the PDF | | | | |
-| C12 failed install: no test | | | | |
+| C12 failed install: no test | yes — no test drove `apply()` raising | fixed | none → installer raising UpdateError: one warning with the reason, verified file removed; mutations: dropping the unlink or the reason each redden it | |
 | C13 check for updates twice: no test | | | | |
 | C14 Quit / Ctrl+Q save layout: no test | | | | |
 | C15 auto-lock during reassign / move-under | | | | |

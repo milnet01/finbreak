@@ -2082,6 +2082,39 @@ def test_INV6_download_ready_applies_with_key_wipe_callback(qtbot, service, tmp_
     assert wiped == ["key"]
 
 
+def test_FIBR0390_a_failed_install_warns_once_and_removes_the_download(
+    qtbot, service, tmp_path, monkeypatch
+):
+    """Audit delivery C12: no test drove an install that fails. ``apply()``
+    raising ``UpdateError`` -- a full disk or read-only folder at the swap --
+    must end in exactly one warning that says why, and must not leave the
+    verified download lying beside the running binary."""
+
+    class _FailingInstaller(_FakeInstaller):
+        def apply(self, new_file, on_before_exec):
+            raise UpdateError("there is no space left on the disk")
+
+    info = _sample_info()
+    verified = tmp_path / "finbreak-update-abc.AppImage"
+    verified.write_bytes(b"NEW")
+    installer = _FailingInstaller(tmp_path / "app.AppImage")
+    window, _ = _updater_shell(qtbot, service, info=info, installer=installer)
+    window._enter_unlocked()
+    window._on_update_found(info)
+    prompt = window._dialog
+    warned: list[str] = []
+    monkeypatch.setattr(
+        "finbreak.ui.main_window.QMessageBox.warning",
+        lambda _parent, _title, text, *a, **k: warned.append(text),
+    )
+
+    window._on_download_ready(verified, prompt)
+
+    assert len(warned) == 1, f"warnings: {warned}"
+    assert "there is no space left on the disk" in warned[0]
+    assert not verified.exists(), "the verified download was left behind"
+
+
 def test_INV7_settings_checkbox_disabled_when_unsupported(qtbot, service):
     dialog = SettingsDialog(
         service, "ZAR", update_enabled=False, update_supported=False
