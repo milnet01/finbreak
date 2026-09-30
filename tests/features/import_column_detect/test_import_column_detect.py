@@ -184,6 +184,49 @@ def test_FIBR0297_guessed_date_column_feeds_the_FIBR0146_detector(
     )
 
 
+@pytest.mark.parametrize(
+    "pair", [["Withdrawal", "Deposit"], ["Debit", "Credit"]], ids=["wd", "dc"]
+)
+def test_FIBR0389_a_guessed_debit_credit_pair_selects_the_split_style(
+    qtbot, service, tmp_path, pair
+):
+    """Audit delivery B1. The guess filled the Debit and Credit combos but left
+    the style on "Single amount column", whose Amount combo sat on index 0 --
+    the date column -- so Preview refused with "mapped to more than one role".
+    A header naming both halves of the pair and no single amount column now
+    selects the split style, and Preview goes through."""
+    acct = _acct(service)
+    header = ["Date", "Description", *pair]
+    rows = [["20/07/2026", "Coffee", "10.00", ""], ["21/07/2026", "Pay", "", "5.00"]]
+    widget = _wizard(qtbot, service, acct)
+    widget._select_file(_write(tmp_path, header, rows))
+
+    assert widget._amount_style.currentData() == "debit_credit"
+    widget._on_map_next()
+    assert widget._error.text() == ""
+    assert widget._stack.currentIndex() == 2, "Preview did not open"
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [["Amount", "Debit", "Credit"], ["Withdrawal"], ["Deposit"]],
+    ids=["amount-beside-pair", "debit-only", "credit-only"],
+)
+def test_FIBR0389_without_a_whole_pair_the_style_stays_single(
+    qtbot, service, tmp_path, extra
+):
+    """The counter-cases: an Amount column beside the pair is a single-amount
+    statement, and one half of the pair cannot fill the split form. The style
+    stays where it was."""
+    acct = _acct(service)
+    header = ["Date", "Description", *extra]
+    rows = [["20/07/2026", "Coffee", *(["1.00"] * len(extra))]]
+    widget = _wizard(qtbot, service, acct)
+    widget._select_file(_write(tmp_path, header, rows))
+
+    assert widget._amount_style.currentData() == "single"
+
+
 # --------------------------------------------------------------------------- #
 # Layer 2 — the pure guesser (INV-2, INV-3, INV-4, INV-5 module half).        #
 # `finbreak.importers.column_detect` does not exist yet: every test imports  #

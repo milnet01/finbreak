@@ -1105,6 +1105,13 @@ class ImportWizardWidget(QWidget):
             if index >= 0:
                 with QSignalBlocker(combo):
                     combo.setCurrentIndex(index)
+        # A header naming both halves of the pair and no single amount column is
+        # a split-amount statement; left on "single", Preview refuses a form
+        # whose Amount combo still sits on the first column (FIBR-0389 B1).
+        if guess.debit and guess.credit and guess.amount is None:
+            self._amount_style.setCurrentIndex(
+                self._amount_style.findData("debit_credit")
+            )
 
     @Slot()
     def _on_map_next(self) -> None:

@@ -53,10 +53,10 @@ real statements, no network (testing.md § 6).
 
 ## Out of scope
 
-The `amount_style` radio (single vs. debit/credit) is not touched by the
-guess in this contract — the wizard already requires the user to pick that
-explicitly, and the roadmap bullet's proposal is a column guess, not a style
-guess. Locale / non-English header spellings are not covered — the bullet's
+The `amount_style` choice is touched in one case only: a guess that finds
+both Debit and Credit and no Amount column selects the split style, since
+the single style would leave Preview refusing the form (FIBR-0389 B1,
+`test_FIBR0389_a_guessed_debit_credit_pair_selects_the_split_style`). Locale / non-English header spellings are not covered — the bullet's
 synonym set is English-only, matching the rest of the wizard's `tr()`-wrapped
 but not multi-locale-dictionary UI. The saved-profile *matching* logic itself
 (FIBR-0007) is exercised only enough to prove the guess does not run on that

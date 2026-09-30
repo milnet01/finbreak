@@ -40,6 +40,12 @@ signaling per
 
 ### Fixed
 
+- **A statement with separate Withdrawal and Deposit columns now previews without adjusting the form** (FIBR-0389)
+  The import wizard recognised the two columns but left "Amount style"
+  on "Single amount column", so Preview showed a "mapped to more than one
+  role" error until you changed it by hand. It now picks the separate
+  debit / credit style itself.
+
 - **Two accounts or categories whose names differ only in spacing can no longer both exist** (FIBR-0389)
   "Cafe float" and "Cafe  float" (with a doubled or no-break space)
   look the same on screen, but both were accepted. Extra spaces inside a
