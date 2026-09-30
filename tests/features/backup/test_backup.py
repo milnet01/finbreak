@@ -24,6 +24,7 @@ from sqlcipher3.dbapi2 import DatabaseError
 import finbreak
 from conftest import _PW
 from finbreak.crypto import (
+    ARGON2_PARALLELISM_CEILING,
     SALT_LEN,
     derive_key,
     load_and_validate_params,
@@ -1535,8 +1536,15 @@ def test_the_incumbent_wal_moves_aside_with_its_database(tmp_path):
         {"time_cost": 0},  # below Argon2id's minimum (validate_params floors it too)
         {"time_cost": 10_000_000},  # no memory needed, still never returns
         {"parallelism": 0},
+        {"parallelism": ARGON2_PARALLELISM_CEILING + 1},  # FIBR-0388: the upper edge
     ],
-    ids=["memory-ceiling", "time-cost-zero", "time-cost-ceiling", "parallelism-zero"],
+    ids=[
+        "memory-ceiling",
+        "time-cost-zero",
+        "time-cost-ceiling",
+        "parallelism-zero",
+        "parallelism-ceiling",
+    ],
 )
 def test_FIBR0327_hostile_kdf_cost_refused_before_any_derivation(
     tmp_path, monkeypatch, bad_params
