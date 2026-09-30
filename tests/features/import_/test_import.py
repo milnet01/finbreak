@@ -1220,9 +1220,47 @@ def _case_import_carries_stored_password(
     return widget._on_import
 
 
+def _at_map_step(widget, tmp_path, accounts):
+    """An unmatched CSV, so the map step shows with its columns guessed."""
+    current, _other = accounts
+    widget._account_combo.setCurrentIndex(widget._account_combo.findData(current))
+    path = _write_csv(tmp_path, "odd.csv", HEADER, [["2026-01-05", "Coffee", "-10.00"]])
+    widget._select_file(str(path))
+    assert widget._stack.currentIndex() == 1, "the fixture did not reach the map step"
+
+
+def _case_map_next_named(widget, service, tmp_path, monkeypatch, accounts):
+    # FIBR-0389 B2: a named layout reaches save_profile before the preview.
+    _at_map_step(widget, tmp_path, accounts)
+    widget._profile_name.setText("MyBank")
+    return widget._on_map_next
+
+
+def _case_map_next_unnamed(widget, service, tmp_path, monkeypatch, accounts):
+    _at_map_step(widget, tmp_path, accounts)
+    return widget._on_map_next
+
+
+def _case_date_format_changed(widget, service, tmp_path, monkeypatch, accounts):
+    # Reads no vault today; here so a later vault read on this path is caught.
+    _at_map_step(widget, tmp_path, accounts)
+    combo = widget._date_format
+    return lambda: combo.setCurrentIndex((combo.currentIndex() + 1) % combo.count())
+
+
+def _case_preview_back(widget, service, tmp_path, monkeypatch, accounts):
+    # Reads no vault today; here so a later vault read on this path is caught.
+    _seed_csv_preview(widget, service, tmp_path, accounts)
+    return widget._back_button.click
+
+
 @pytest.mark.parametrize(
     "setup",
     [
+        pytest.param(_case_map_next_named, id="map_next_named"),
+        pytest.param(_case_map_next_unnamed, id="map_next_unnamed"),
+        pytest.param(_case_date_format_changed, id="date_format_changed"),
+        pytest.param(_case_preview_back, id="preview_back"),
         pytest.param(_case_refill_account_combos, id="refill_account_combos"),
         pytest.param(_case_pick_file, id="on_pick_file"),
         pytest.param(_case_ofx_statement_changed, id="on_ofx_statement_changed"),
