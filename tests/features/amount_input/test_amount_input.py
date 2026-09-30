@@ -465,6 +465,22 @@ def test_INV9_en_US_refuses_a_typed_unicode_minus_without_crashing():
             parse_amount_input(f"{MINUS}1234.56")
 
 
+def test_FIBR0389_a_huge_amount_in_a_csv_is_one_row_error():
+    """Audit delivery B8. The test below calls ``parse_transaction`` alone; the
+    promise is about a file. A CSV holding one ``1e1000000`` cell yields ONE
+    row error for that row while the rows either side still import."""
+    text = (
+        "Date,Details,Amount\n"
+        "2026-03-01,Before,-12.34\n"
+        "2026-03-02,Huge,1e1000000\n"
+        "2026-03-03,After,5.00\n"
+    )
+    parsed = CsvImporter().parse(text, _CSV_MAPPING, 2)
+    assert [d.description for d in parsed.drafts] == ["Before", "After"]
+    assert len(parsed.errors) == 1
+    assert "too large" in parsed.errors[0].reason
+
+
 def test_FIBR0222_huge_exponent_is_a_ValueError_not_a_decimal_Overflow():
     """`parse_transaction` raises ValueError for EVERY rejection — including one
     reached through `normalize()`.

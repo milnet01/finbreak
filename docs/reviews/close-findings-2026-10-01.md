@@ -35,7 +35,7 @@ are in the roadmap note and the commits named there.
 | B2 auto-lock test misses map-step legs | | | | |
 | B3 picker text unasserted | yes — test checks id and OK only | fixed | no text check → asserts combo reads "— pick one —"; mutation: blank placeholder reddens it | |
 | B5 cancel test emits done() | | | | |
-| B8 huge exponent at parse only | | | | |
+| B8 huge exponent at parse only | yes — parse_transaction only | fixed | row-level only → CsvImporter.parse: one RowError, neighbours import; mutation: dropping the Overflow catch aborts the file with decimal.Overflow | |
 | B10 private checksum with hand-built drafts | | | | |
 
 User decisions 2026-10-01: B6 reuse an answer within the batch for an
