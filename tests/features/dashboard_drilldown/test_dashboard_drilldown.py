@@ -405,6 +405,33 @@ def test_INV4_category_cycle_terminates_and_keeps_the_row(service):
     assert spending.amount == Decimal("300.00")  # the row survives the cycle
 
 
+def test_FIBR0391_root_assigned_row_does_not_double_count_its_subtrees(service):
+    """Corrupt or restored data — a row filed on a Type ROOT (the write path's
+    ``_require_leaf`` blocks it). The root is its own top-of-chain, so its node must
+    hold only its own rows: walking into its children would count every non-empty
+    Level-2 subtree a second time, beside that subtree's own top node, and the
+    branch would exceed its tile (INV-1). Named after the root, as the donut names
+    the root's wedge."""
+    a, _b = _two_accounts(service)
+    exp_root = _root(service, "expenditure")
+    leaf = _expenditure_leaf(service, "Ztest Groceries")
+    _set_cat(service, _add(service, a, -10000, "2026-01-05"), leaf)
+    _force_cat(service, _add(service, a, -30000, "2026-01-06", "SHOP"), exp_root.id)
+
+    reporting = ReportingService(service.vault)
+    _, spending, _ = reporting.drill_down(_JAN, None, _TODAY, labels=_LABELS)
+    assert (
+        spending.amount
+        == reporting.summary(_JAN, None, _TODAY).expenditure
+        == Decimal("400.00")
+    )
+    _assert_parent_sums_children(spending)
+    assert _child(spending, "Ztest Groceries").amount == Decimal("100.00")
+    root_node = _child(spending, exp_root.name)
+    assert root_node.amount == Decimal("300.00")
+    assert [c.label for c in root_node.children] == ["Shop"]
+
+
 def test_INV4_same_id_under_both_branches_no_double_count(service):
     """A leaf holding both a positive and a negative row yields a node under Income
     AND under Spending, each carrying only its own sign bucket."""

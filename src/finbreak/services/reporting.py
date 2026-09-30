@@ -452,7 +452,13 @@ class ReportingService:
                 return None
             ancestry = ancestry | {category.id}
             child_items: list[tuple[DrillNode, str]] = []
-            for child in children_by_parent.get(category.id, []):
+            # A root reaches here only as the top-of-chain of rows filed on the root
+            # itself (corrupt or restored data). Its Level-2 subtrees are already top
+            # items of their own, so walking them again would count them twice (INV-1).
+            child_categories = (
+                [] if category.id in roots else children_by_parent.get(category.id, [])
+            )
+            for child in child_categories:
                 node = category_node(child, ancestry)
                 if node is not None:
                     child_items.append((node, f"cat:{child.id}"))

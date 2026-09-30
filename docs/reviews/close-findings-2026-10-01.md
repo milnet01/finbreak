@@ -97,7 +97,7 @@ uniqueness key.
 
 | finding | verified | disposition | was → now | must_agree |
 |---|---|---|---|---|
-| R1 root-assigned row double-counts a branch | | | | FIBR-0138 INV-1 |
+| R1 root-assigned row double-counts a branch | yes — `category_node(root)` walks every child subtree, each also a top item; remedy checked: "treat a root like None" would disagree with the donut, which names the root's wedge | fixed | root node walked its children → holds its own rows only, named after the root; red: drill 500.00 vs tile 400.00; mutation: dropping the root guard reddens it | FIBR-0138 INV-1, D4a (amended: a root node holds only its own rows) |
 | R2 transfer drill label bypasses tr() | | | | |
 | R3 `today` falls back to the OS clock | | | | callers of the four methods |
 | R4 FIBR-0139 D2/D5 stale against the code | | | | FIBR-0139 |

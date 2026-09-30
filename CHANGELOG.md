@@ -40,6 +40,8 @@ signaling per
 
 ### Fixed
 
+- **The dashboard drill-down no longer counts a spending group twice when a restored or damaged vault holds a transaction filed on a top-level type** (FIBR-0391)
+
 - **Correction to the 0.1.23 notes: there is no dark PDF export** (FIBR-0390)
   The 0.1.23 notes said the trend chart's labels became readable "on
   the dark theme and in a dark PDF export". The PDF report is always
