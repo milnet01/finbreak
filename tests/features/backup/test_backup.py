@@ -1628,6 +1628,41 @@ def test_FIBR0327_export_works_from_a_path_containing_an_apostrophe(tmp_path):
     auth.lock()
 
 
+def test_FIBR0388_apostrophe_path_backup_exports_and_verifies(tmp_path, monkeypatch):
+    """The test above calls `vault.export_to` alone. The CHANGELOG promise is
+    about the features a user runs: a backup exported and verified from a
+    folder with an apostrophe, and (below) an old vault upgraded there.
+
+    Export stages its copy in the system temp folder, which on Windows sits
+    inside the user's home (C:\\Users\\O'Brien\\AppData\\Local\\Temp), so that
+    folder carries the apostrophe here too."""
+    home = tmp_path / "O'Brien" / "it's here"
+    (home / "Temp").mkdir(parents=True)
+    monkeypatch.setattr(tempfile, "tempdir", str(home / "Temp"))
+    auth = AuthService(home / "vault.db", home / "vault.kdf.json")
+    auth.first_run(bytearray(_M2, "utf-8"), "ZAR")
+    dest = home / "backup's.fbk"
+    service = BackupService(auth.vault, auth)
+    service.export_backup(dest, _BACKUP_PW)
+    result = service.verify_backup(dest, _BACKUP_PW)
+    auth.lock()
+    assert result.ok, result.reason
+
+
+def test_FIBR0388_apostrophe_path_v1_vault_upgrades(tmp_path):
+    from conftest import build_v1_vault
+
+    old = tmp_path / "D'Arcy"
+    old.mkdir()
+    sidecar = old / "vault.kdf.json"
+    build_v1_vault(old / "vault.db", sidecar, secrets.token_bytes(16), [])
+    assert json.loads(sidecar.read_text()).get("sidecar_version", 1) == 1
+    upgraded = AuthService(old / "vault.db", sidecar)
+    upgraded.unlock(bytearray(_PW))
+    upgraded.lock()
+    assert json.loads(sidecar.read_text())["sidecar_version"] == 2
+
+
 # --------------------------------------------------------------------------- #
 # FIBR-0327 — `SQLCIPHER_COMPAT` was both what an export WRITES and what a
 # restore ACCEPTS. Bumping it to write a new level would have made every `.fbk`
