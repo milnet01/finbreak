@@ -71,7 +71,7 @@ uniqueness key.
 | C17 CHANGELOG promises a dark PDF | yes — pdf_export `_PDF_THEME` is always light (FIBR-0217) | fixed | no correction → [Unreleased] note; no red run: nothing observable changes | CHANGELOG [0.1.23] (frozen) |
 | C2 refresh test calls `_refresh()` | yes | fixed | direct `_refresh()` → real Add and Delete clicks (confirm answered Yes); mutation: dropping the re-gate in `_refresh` reddens both | |
 | C4 startup-error test calls the hook by hand | yes | fixed | hook called by hand → `run()` fails building the window, the exception goes to `sys.excepthook` as the interpreter would; dialog names the fault, console hook still runs; mutation: removing `_install_excepthook()` from `run()` reddens it | |
-| C6 Windows apostrophe: command text only | | | | |
+| C6 Windows apostrophe: command text only | yes — both tests read the command text | queued as FIBR-0432 | needs a real run on `ssh wintest`, which was off (no route to host); rides with the Windows self-update test after FIBR-0346 | |
 | C10 month name read from HTML, not the PDF | yes | fixed | `_build_html` → text of the rendered PDF under fr_FR; mutation: an English-only month name reddens it | |
 | C12 failed install: no test | yes — no test drove `apply()` raising | fixed | none → installer raising UpdateError: one warning with the reason, verified file removed; mutations: dropping the unlink or the reason each redden it | |
 | C13 check for updates twice: no test | yes | fixed | none → a blocking service; the second click while the first runs keeps the same worker and one forced call; mutation: removing the running-worker guard reddens it | |
@@ -79,12 +79,16 @@ uniqueness key.
 | C15 auto-lock during reassign / move-under | yes — the one test forces the apply step; move-under untested | fixed | + real `service.lock()` then Reassign click (no picker, no slot error) and category selection (move-under disabled); mutations: removing either guard reddens its test | |
 | C16 PDF row dates follow the date format: no test | yes | fixed | none → rendered PDF under dd/MM/yyyy and yyyy/MM/dd, rows carry that spelling, no ISO date; mutation: ISO row dates redden both | |
 
-- **cited_by:**
-- **swept:**
-- **collateral:**
+- **cited_by:** "dark PDF" across docs and packaging — CHANGELOG [0.1.23]
+  and docs/specs/FIBR-0127.md; no other file.
+- **swept:** CHANGELOG [0.1.23] trend-chart bullet — frozen, corrected by
+  an [Unreleased] entry. No source file changed in this group (tests and
+  the changelog only), so no code→docs target moved; the test contracts
+  (spec.md) of the touched suites state nothing the new tests contradict.
+- **collateral:** none.
 - **surfaced:** none.
 - **out_of_scope:** docs/specs/FIBR-0127.md cites "`services/pdf_export.py:99` (dark PDF
   theme)" — stale since FIBR-0217, before this run; left. Ctrl+Q does
   nothing on the locked and first-run screens (modal dialogs block the
   application shortcut), found while testing C14 — queued as FIBR-0431.
-- **falsified:**
+- **falsified:** none.

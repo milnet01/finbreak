@@ -2425,7 +2425,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: review-fix.
   Source: full-audit-2026-09-27 delivery group B (queued by FIBR-0367).
 
-- 📋 [FIBR-0390] **Queued delivery findings from the 2026-09-27 audit: group C (10 items).**
+- ✅ [FIBR-0390] **Queued delivery findings from the 2026-09-27 audit: group C (10 items).**
   From docs/reviews/2026-09-27-full-audit/delivery-report-group-C.md.
   - C17 trend chart labels on dark -- the CHANGELOG [0.1.23] sentence
     also promises "a dark PDF export", which has not existed since
@@ -2462,6 +2462,15 @@ touches the § 2 surface. A security fix takes the number its change takes — �
     category, asserting no slot error.
   - C16 PDF transaction dates follow the date format -- no test. Fix:
     render a PDF under two date formats and assert the row dates.
+  Resolved 2026-10-01: nine fixed, one queued; ledger
+  docs/reviews/close-findings-2026-10-01.md. C17 [Unreleased] correction
+  of the dark-PDF claim (5546cbb). Tests, each mutation-checked: C2 real
+  Add/Delete clicks (a2b16cf), C4 run() failing for real (5308ba3), C12
+  failed install (bb74ff0), C13 second update check (43dc9f8), C14 Quit
+  and Ctrl+Q (de9e66f), C15 real-lock Reassign and Move under (66cef9d),
+  C10 and C16 read from the rendered PDF (4a95d04). C6 queued as
+  FIBR-0432: needs a real run on the Windows box, which was off. Found
+  next door: FIBR-0431, Ctrl+Q dead on the locked and first-run screens.
   **Layman:** One release note promises a dark PDF that no longer exists, and nine update, lock and export fixes have tests that miss the promise or no test at all.
   Kind: review-fix.
   Source: full-audit-2026-09-27 delivery group C (queued by FIBR-0367).
@@ -3676,6 +3685,20 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: fix.
   Source: close-findings 2026-10-01, found next door to FIBR-0390 C14.
   Lanes: ui.
+
+- 📋 [FIBR-0432] **Run the Windows self-update command for real against a path with an apostrophe.**
+  test_FIBR0131_ps_single_quote_doubles_embedded_quotes and
+  test_FIBR0131_relaunch_command_waits_by_image_path_not_pid check the
+  PowerShell command's TEXT only. Fix: on the Windows test box
+  (`ssh wintest`), build the relaunch command for an install folder whose
+  path holds an apostrophe and a space, run it, and confirm it moves the
+  new file into place and relaunches. Queued 2026-10-01 because the box
+  was off (ssh: no route to host); do it in the same session as the
+  Windows self-update test planned after FIBR-0346.
+  **Layman:** The Windows updater is only checked on paper for folders like "O'Brien"; it needs one real run on a Windows machine.
+  Kind: test.
+  Source: full-audit-2026-09-27 delivery group C, C6 (queued from FIBR-0390).
+  Lanes: update.
 
 ## v1.1.0 — Localisation
 
