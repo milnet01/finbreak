@@ -2371,7 +2371,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: review-fix.
   Source: full-audit-2026-09-27 delivery group A (queued by FIBR-0367).
 
-- 📋 [FIBR-0389] **Queued delivery findings from the 2026-09-27 audit: group B (9 items).**
+- ✅ [FIBR-0389] **Queued delivery findings from the 2026-09-27 audit: group B (9 items).**
   From docs/reviews/2026-09-27-full-audit/delivery-report-group-B.md.
   - B1 column guess, adjacent gap -- for a Withdrawal/Deposit file the
     wizard guesses the Debit/Credit columns but leaves Amount style on
@@ -2412,6 +2412,15 @@ touches the § 2 surface. A security fix takes the number its change takes — �
     run a truncated overdrawn statement through
     StandardBankImporter.parse, and settle the Family-D control the
     audit could not parse.
+  Resolved 2026-10-01: all nine fixed, each red-first or mutation-checked;
+  ledger docs/reviews/close-findings-2026-10-01.md. User decisions
+  2026-10-01: B6 reuse an answer within the batch for an identical header,
+  named or not (2ba9d6c, with the wizard-level test); B11 fold inner
+  whitespace in the name key (214130c). B1 a guessed Withdrawal/Deposit
+  pair selects the split style (e2c5aaf). Tests: B3 picker text (240b6a0),
+  B8 CSV-level huge amount (dc3dbca), B5 real Cancel on both steps
+  (bd0d70d), B2 map-step and Back auto-lock legs (3fd2e5e), B10 A and D
+  through parse, which settles the D control (12d55bd).
   **Layman:** Three import and naming rough edges the audit found next to working features, and six import tests that pass without checking the thing their feature promises.
   Kind: review-fix.
   Source: full-audit-2026-09-27 delivery group B (queued by FIBR-0367).

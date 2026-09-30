@@ -42,11 +42,24 @@ User decisions 2026-10-01: B6 reuse an answer within the batch for an
 identical header, named or not; B11 fold runs of inner whitespace in the
 uniqueness key.
 
-- **cited_by:**
-- **swept:**
-- **collateral:**
+- **cited_by:** `workspace_search` casefold / "Save this layout" / amount
+  style / same layout / column guess over docs and packaging: 15 files; the
+  password-hint containment (security-model, FIBR-0029) and the import dedup
+  key (FIBR-0010, FIBR-0142) are different functions, not targets.
+- **swept:** FIBR-0085-batch-import-service and -statement-import INVs (B6)
+  — agrees, none states whether an answer is reused; FIBR-0085
+  decision 1 — agrees (re-asking is babysitting); FIBR-0146-wizard-date-step
+  "resets invert and amount style" (B1) — agrees, the reset still runs before
+  the guess; FIBR-0085-batch-statement-import "five column combos, amount
+  style" — agrees; metainfo and debian/changelog 0.1.23 wording on names and
+  same-layout imports — frozen, the promises now hold more widely;
+  CHANGELOG [0.1.23] B6 and B11 bullets — frozen, new [Unreleased] entries
+  added instead. Code→code: no pair list (`.claude/code-pairs.json` absent).
+- **collateral:** none.
 - **surfaced:** B11 — a vault already holding two names that now share a
   key refuses any edit to either until one is renamed (the same held for
   accented names after FIBR-0328). Accepted as rare; not fixed.
-- **out_of_scope:**
-- **falsified:**
+- **out_of_scope:** docs/specs/FIBR-0193.md verification table says the
+  account check "compares only `existing.name.casefold()`" — stale since
+  FIBR-0328 added NFC, before this run; a dated verification record, left.
+- **falsified:** none.
