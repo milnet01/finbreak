@@ -92,3 +92,19 @@ uniqueness key.
   nothing on the locked and first-run screens (modal dialogs block the
   application shortcut), found while testing C14 — queued as FIBR-0431.
 - **falsified:** none.
+
+## FIBR-0391 — code lane 11, reporting
+
+| finding | verified | disposition | was → now | must_agree |
+|---|---|---|---|---|
+| R1 root-assigned row double-counts a branch | | | | FIBR-0138 INV-1 |
+| R2 transfer drill label bypasses tr() | | | | |
+| R3 `today` falls back to the OS clock | | | | callers of the four methods |
+| R4 FIBR-0139 D2/D5 stale against the code | | | | FIBR-0139 |
+
+- **cited_by:**
+- **swept:**
+- **collateral:**
+- **surfaced:**
+- **out_of_scope:**
+- **falsified:**
