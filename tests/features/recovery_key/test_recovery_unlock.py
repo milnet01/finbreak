@@ -667,6 +667,78 @@ def test_FIBR0328_password_and_recovery_fields_have_accessible_names(qtbot, serv
     assert reset._confirm.accessibleName() != "", "the confirm field"
 
 
+def test_FIBR0388_every_masked_or_code_field_is_named_for_a_screen_reader(
+    qtbot: Any, service: AuthService, tmp_path: Path
+) -> None:
+    """The test above checks five fields through ``accessibleName()``, which is
+    empty on a field named by its ``QFormLayout`` label -- a name only the
+    accessibility layer reports. So this reads the name the way a screen reader
+    does, on every masked field of every screen that has one, plus the two
+    recovery-code fields, and fails if a UI module gains a masked field this
+    list does not open."""
+    from PySide6.QtGui import QAccessible
+    from PySide6.QtWidgets import QLineEdit
+
+    from finbreak.models import Account
+    from finbreak.services.reporting import MODE_SPECIFIC_MONTH, ReportPrefs
+    from finbreak.ui.accounts import AccountsWidget
+    from finbreak.ui.backup_export import BackupExportDialog
+    from finbreak.ui.backup_restore import BackupRestoreDialog
+    from finbreak.ui.backup_verify import BackupVerifyDialog
+    from finbreak.ui.export_dialog import ExportDialog
+    from finbreak.ui.first_run import FirstRunDialog
+    from finbreak.ui.password_dialog import PasswordDialog
+    from finbreak.ui.recovery_key import NewMasterPasswordDialog, RecoveryCodeDialog
+    from finbreak.ui.set_hint import SetHintDialog
+    from finbreak.ui.unlock import UnlockDialog
+
+    # First run is only ever shown before a vault exists, so it gets its own.
+    fresh = tmp_path / "fresh"
+    fresh.mkdir()
+    first_run = FirstRunDialog(
+        AuthService(fresh / "vault.db", fresh / "vault.kdf.json")
+    )
+    create_vault(service)
+    account = Account(1, "Current", "current", "2026-01-01T00:00:00Z")
+    screens = [
+        first_run,
+        UnlockDialog(service),
+        NewMasterPasswordDialog(service),
+        RecoveryCodeDialog("ABCD-EFGH-JKMN-PQRS"),
+        SetHintDialog(),
+        PasswordDialog("Current"),
+        ExportDialog(
+            [account], ReportPrefs(MODE_SPECIFIC_MONTH, year=2026, month=1), None
+        ),
+        BackupExportDialog(),
+        BackupRestoreDialog(),
+        BackupVerifyDialog(),
+        AccountsWidget(service),
+    ]
+    code_fields = {"_recovery_code", "_display"}
+    unnamed = []
+    for screen in screens:
+        qtbot.addWidget(screen)
+        fields = [
+            field
+            for field in screen.findChildren(QLineEdit)
+            if field.echoMode() != QLineEdit.EchoMode.Normal
+            or field.objectName() in code_fields
+            or any(getattr(screen, name, None) is field for name in code_fields)
+        ]
+        assert fields, f"{type(screen).__name__} has no masked field to check"
+        for field in fields:
+            iface = QAccessible.queryAccessibleInterface(field)
+            if iface is None or not iface.text(QAccessible.Text.Name).strip():
+                unnamed.append(f"{type(screen).__name__}: {field.placeholderText()!r}")
+    assert unnamed == [], "fields a screen reader announces with no name"
+
+    ui = Path(__file__).resolve().parents[3] / "src" / "finbreak" / "ui"
+    with_masks = {p.stem for p in ui.glob("*.py") if "setEchoMode" in p.read_text()}
+    opened = {type(s).__module__.rsplit(".", 1)[1] for s in screens}
+    assert with_masks <= opened, f"not opened here: {sorted(with_masks - opened)}"
+
+
 # --------------------------------------------------------------------------- #
 # FIBR-0402 — an abandoned key-envelope migration is said, not only logged
 # --------------------------------------------------------------------------- #

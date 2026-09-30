@@ -2324,7 +2324,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: fix.
   Source: close-findings sweep 2026-09-29 (FIBR-0367 row 41/43 must_agree).
 
-- 📋 [FIBR-0388] **Queued delivery findings from the 2026-09-27 audit: group A (6 items).**
+- ✅ [FIBR-0388] **Queued delivery findings from the 2026-09-27 audit: group A (6 items).**
   From docs/reviews/2026-09-27-full-audit/delivery-report-group-A.md.
   - A5 damaged settings file not a wrong password -- a well-formed
     corrupt byte (a salt or wrapped-key hex digit) in vault.kdf.json
@@ -2356,6 +2356,17 @@ touches the § 2 surface. A security fix takes the number its change takes — �
     checks five fields through accessibleName() only. Fix: cover
     every dialog with a password or recovery field and read the name
     through QAccessible.
+  Resolved 2026-10-01: all six, each mutation-checked. A5 the user
+  chose on 2026-10-01 to correct the CHANGELOG [0.1.23] claim rather
+  than add a checksum; the damaged-file test drives UnlockDialog over six
+  damages and asserts a zero lock-out count (2df60bd). A1 hand-copied
+  recovery code through the screen (5741faf). A7 export+verify and the
+  v1 upgrade under apostrophe paths; the export stages in the temp
+  folder, so the test puts that under an apostrophe too (a861512). A10
+  parallelism one above the ceiling (a6882ee). A11 every masked or
+  recovery-code field, read through QAccessible, with a guard that fails
+  when a UI module gains a masked field the test does not open (next
+  commit).
   **Layman:** A damaged settings file can still look like a wrong password and count toward the lock-out, and five tests pass without checking what their feature promises.
   Kind: review-fix.
   Source: full-audit-2026-09-27 delivery group A (queued by FIBR-0367).
