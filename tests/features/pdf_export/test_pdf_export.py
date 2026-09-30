@@ -520,6 +520,59 @@ def test_FIBR0327_period_month_name_follows_the_locale(qapp, service, monkeypatc
     assert "January 2026" not in html
 
 
+def _pdf_text(pdf: bytes) -> str:
+    import pdfplumber
+
+    with pdfplumber.open(BytesIO(pdf)) as doc:
+        return "\n".join(page.extract_text() or "" for page in doc.pages)
+
+
+def test_FIBR0390_the_rendered_pdf_names_the_month_in_the_locale(qapp, service):
+    """Audit delivery C10: the test above reads the HTML handed to the PDF
+    engine. This reads the text of the PDF itself."""
+    from PySide6.QtCore import QLocale
+
+    a = _accounts(service)[0].id
+    _add(service, a, 100_00)
+    previous = QLocale()
+    QLocale.setDefault(QLocale(QLocale.Language.French, QLocale.Country.France))
+    try:
+        text = _pdf_text(_svc(service).render_pdf_bytes(_options(), _TODAY))
+    finally:
+        QLocale.setDefault(previous)
+
+    assert "janvier 2026" in text
+    assert "January 2026" not in text
+
+
+@pytest.mark.parametrize(
+    ("pref", "first", "second"),
+    [
+        ("dd/MM/yyyy", "05/01/2026", "28/01/2026"),
+        ("yyyy/MM/dd", "2026/01/05", "2026/01/28"),
+    ],
+)
+def test_FIBR0390_pdf_transaction_dates_follow_the_date_format(
+    qapp, service, pref, first, second
+):
+    """Audit delivery C16: no test covered the transactions table's dates.
+    Under each chosen format the rendered rows carry that spelling and no
+    ISO date."""
+    from finbreak.repositories.settings import SettingsRepository
+
+    a = _accounts(service)[0].id
+    _add(service, a, -12_34, occurred_on="2026-01-05", desc="FIRST")
+    _add(service, a, -56_78, occurred_on="2026-01-28", desc="SECOND")
+    SettingsRepository(service.vault.connection).set("date_format", pref)
+
+    text = _pdf_text(_svc(service).render_pdf_bytes(_options(), _TODAY))
+
+    rows = [line for line in text.splitlines() if "FIRST" in line or "SECOND" in line]
+    assert len(rows) == 2, f"precondition: both rows rendered: {rows}"
+    assert first in rows[0] + rows[1] and second in rows[0] + rows[1], rows
+    assert "2026-01-05" not in text and "2026-01-28" not in text
+
+
 def test_the_report_and_its_filename_agree_on_the_period(
     qtbot, service, monkeypatch, tmp_path
 ):
