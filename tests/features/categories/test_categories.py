@@ -839,6 +839,25 @@ def test_add_category_unknown_parent_raises(service):
 # --------------------------------------------------------------------------- #
 # FIBR-0327 — a refresh re-runs the gating slot
 # --------------------------------------------------------------------------- #
+def test_FIBR0390_selecting_after_a_real_lock_disables_move_under(qtbot, service):
+    """Audit delivery C15. Selecting a category rebuilds the "Move under"
+    list from the vault. With the vault really locked the selection must not
+    raise out of the slot, and the list must be left disabled."""
+    from finbreak.ui.categories import CategoriesWidget
+
+    categories = CategoryService(service.vault)
+    root = next(r for r in categories.children_of(None) if r.kind is not None)
+    made = categories.add_category(root.id, "Lock probe")
+    widget = CategoriesWidget(service)
+    qtbot.addWidget(widget)
+
+    service.lock()
+    widget._select_category(made.id)
+
+    assert widget._tree.currentItem() is not None, "precondition: selected"
+    assert not widget._move_under.isEnabled()
+
+
 @pytest.mark.parametrize("action", ["add", "delete"])
 def test_FIBR0390_clicking_add_or_delete_leaves_no_button_live(
     qtbot, service, monkeypatch, action

@@ -76,7 +76,7 @@ uniqueness key.
 | C12 failed install: no test | yes — no test drove `apply()` raising | fixed | none → installer raising UpdateError: one warning with the reason, verified file removed; mutations: dropping the unlink or the reason each redden it | |
 | C13 check for updates twice: no test | yes | fixed | none → a blocking service; the second click while the first runs keeps the same worker and one forced call; mutation: removing the running-worker guard reddens it | |
 | C14 Quit / Ctrl+Q save layout: no test | yes | fixed | none → menu Quit and Ctrl+Q with a check running: window closes, size in window.ini, check finished when close returns; mutations: Quit not closing, no save, no drain each redden both | |
-| C15 auto-lock during reassign / move-under | | | | |
+| C15 auto-lock during reassign / move-under | yes — the one test forces the apply step; move-under untested | fixed | + real `service.lock()` then Reassign click (no picker, no slot error) and category selection (move-under disabled); mutations: removing either guard reddens its test | |
 | C16 PDF row dates follow the date format: no test | | | | |
 
 - **cited_by:**

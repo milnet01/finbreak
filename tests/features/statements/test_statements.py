@@ -1100,6 +1100,27 @@ def test_FIBR0059_reassign_autolock_caught(qtbot, service, monkeypatch):
     )
 
 
+def test_FIBR0390_reassign_after_a_real_lock_opens_no_picker(qtbot, service):
+    """Audit delivery C15. The test above stubs the picker and forces the
+    apply step to raise, so it never reaches the account read that builds
+    the picker. Here the vault really locks, then Reassign is clicked: the
+    click must not raise out of the slot and must open no picker."""
+    from finbreak.ui.account_picker import AccountPickerDialog
+
+    imp, a = ImportService(service.vault), _acct(service)
+    _second_account(service)
+    _do_import(imp, _csv(HEADER, [["2026-01-05", "x", "-1.00"]]), a)
+    widget = StatementsWidget(service)
+    qtbot.addWidget(widget)
+    widget._select_period(widget._rows[0].id)
+    assert widget._reassign_button.isEnabled(), "precondition: Reassign is live"
+
+    service.lock()
+    widget._reassign_button.click()
+
+    assert widget.findChildren(AccountPickerDialog) == []
+
+
 # -- UI (shell): INV-8 status message ---------------------------------------- #
 def test_FIBR0059_shell_reports_account_changed(qtbot, service, monkeypatch):
     window = _shell(qtbot, service)
