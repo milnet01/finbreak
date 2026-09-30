@@ -55,17 +55,17 @@ def normalise_text(text: str) -> str:
 def fold_name(name: str) -> str:
     """Fold a user-entered NAME for a case-insensitive uniqueness check.
 
-    ``normalise_text`` above is the wrong tool here: it also collapses internal
-    whitespace, which would make "My  Budget" a duplicate of "My Budget" — a
-    behaviour change nobody asked for. What the two share is the part that
-    matters, and the reason is the same one that function's docstring gives:
-    "Café" with a precomposed U+00E9 and "Café" spelled "e" + U+0301 are
-    visually identical and casefold to DIFFERENT strings, so a bare
-    ``casefold()`` lets two names the user cannot tell apart sit side by side.
+    Two names a user cannot tell apart on screen fold to one key. "Café" with a
+    precomposed U+00E9 and "Café" spelled "e" + U+0301 are visually identical
+    and casefold to DIFFERENT strings, so the key normalises to NFC first, as
+    ``normalise_text`` does. A run of whitespace inside the name — a doubled
+    space, a no-break space — reads as one space, so it folds to one too
+    (FIBR-0389 B11; the user chose this on 2026-10-01). Only the KEY folds: the
+    stored name keeps exactly what was typed.
 
     Here so the category and account checks cannot drift apart (FIBR-0328).
     """
-    return unicodedata.normalize("NFC", name.strip()).casefold()
+    return " ".join(unicodedata.normalize("NFC", name).split()).casefold()
 
 
 def merchant_name(description: str) -> str:

@@ -916,3 +916,15 @@ def test_FIBR0328_visually_identical_sibling_names_are_refused(service):
     assert other.id is not None
     with pytest.raises(ValueError):
         svc.add_category(expenditure.id, "Rosé")
+
+
+@pytest.mark.parametrize(
+    "gap", ["  ", "\u00a0"], ids=["doubled-space", "no-break-space"]
+)
+def test_FIBR0389_sibling_names_differing_only_in_spacing_are_refused(service, gap):
+    """Audit delivery B11, the category half of the same shared key."""
+    svc = CategoryService(service.vault)
+    expenditure = _roots(service.vault.connection)["expenditure"]
+    svc.add_category(expenditure.id, "Cafe float")
+    with pytest.raises(ValueError):
+        svc.add_category(expenditure.id, f"Cafe{gap}float")

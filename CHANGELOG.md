@@ -40,6 +40,12 @@ signaling per
 
 ### Fixed
 
+- **Two accounts or categories whose names differ only in spacing can no longer both exist** (FIBR-0389)
+  "Cafe float" and "Cafe  float" (with a doubled or no-break space)
+  look the same on screen, but both were accepted. Extra spaces inside a
+  name now count as one when finbreak checks for duplicates. The name is
+  still stored exactly as you typed it.
+
 - **Pressing Esc during an update download no longer leads to a surprise restart** (FIBR-0367)
   Esc or the window's close button hid the update window while it was
   downloading, and finbreak then restarted into the new version with no

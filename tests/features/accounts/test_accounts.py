@@ -1701,3 +1701,16 @@ def test_FIBR0328_visually_identical_account_names_are_refused(service):
     svc.add_account(precomposed, "current")
     with pytest.raises(ValueError):
         svc.add_account(decomposed, "current")
+
+
+@pytest.mark.parametrize(
+    "gap", ["  ", "\u00a0"], ids=["doubled-space", "no-break-space"]
+)
+def test_FIBR0389_names_differing_only_in_spacing_are_refused(service, gap):
+    """Audit delivery B11: the key stripped the ends but kept inner runs of
+    spaces, so "Cafe  float" sat beside "Cafe float" -- two names a user
+    cannot tell apart on screen, against the promise the name check makes."""
+    svc = AccountService(service.vault)
+    svc.add_account("Cafe float", "current")
+    with pytest.raises(ValueError):
+        svc.add_account(f"Cafe{gap}float", "current")

@@ -30,7 +30,7 @@ are in the roadmap note and the commits named there.
 |---|---|---|---|---|
 | B6 unnamed layout re-asked per file | yes — wizard repro: asked a-odd0, a-odd1, a-odd2, b-other | fixed | unnamed answer re-asked per file → applied to every identical header in the batch; red: asked all four | batch_import `_retry_blocked_on_mapping` docstring (rewritten); CHANGELOG [Unreleased] (added) |
 | B6 test (wizard level) | yes — service level only | fixed | none → wizard test, named and unnamed, asserts asked == [a-odd0, b-other] | |
-| B11 doubled inner space passes | yes — `fold_name` strips, does not collapse | | | `fold_name` docstring; FIBR-0328 tests |
+| B11 doubled inner space passes | yes — `fold_name` strips, does not collapse | fixed | inner runs kept → collapsed in the key only; red: 4 × DID NOT RAISE (space, NBSP; accounts, categories) | `fold_name` docstring (rewritten); FIBR-0328 tests (agree); CHANGELOG [Unreleased] (added) |
 | B1 debit/credit guess leaves single style | | | | |
 | B2 auto-lock test misses map-step legs | | | | |
 | B3 picker text unasserted | | | | |
@@ -45,6 +45,8 @@ uniqueness key.
 - **cited_by:**
 - **swept:**
 - **collateral:**
-- **surfaced:**
+- **surfaced:** B11 — a vault already holding two names that now share a
+  key refuses any edit to either until one is renamed (the same held for
+  accented names after FIBR-0328). Accepted as rare; not fixed.
 - **out_of_scope:**
 - **falsified:**
