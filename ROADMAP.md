@@ -2267,7 +2267,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Source: close-findings-2026-09-27 row 36 sweep.
   Lanes: ui.
 
-- 📋 [FIBR-0385] **obs-submit.sh mixes a tagged source with working-tree recipes and a possibly stale wheel bundle.**
+- ✅ [FIBR-0385] **obs-submit.sh mixes a tagged source with working-tree recipes and a possibly stale wheel bundle.**
   Row 47 pinned _service to the release tag. Two sub-points of the same
   lane finding remain in packaging/obs/obs-submit.sh: it copies the recipe
   files from the local working tree, which may hold uncommitted edits, and
@@ -2277,11 +2277,19 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   refuse a dirty packaging/obs tree, and re-vendor when pyproject.toml is
   newer than vendor.tar.gz. Queued, not fixed with row 47: a different
   file and a submit-flow decision.
+  Resolved 2026-10-01 (997fa1d): obs-submit.sh refuses when the tag
+  _service names is missing, or when the shipped recipes or
+  pyproject.toml differ from it (uncommitted, committed since, or
+  untracked); it rebuilds vendor.tar.gz when pyproject.toml or
+  vendor-wheels.sh is newer. Chose refuse over copy-from-tag: one
+  check covers both halves, and the bundle is built from the same
+  tree. Until 1.0.0 is cut a submit refuses, since the FIBR-0346
+  recipe changes are unreleased.
   **Layman:** The openSUSE package upload can combine files from different moments, so a package might not match the release it is labelled with.
   Kind: fix.
   Source: full-audit-2026-09-27 code lane 20 (_service:15 sub-points), queued from FIBR-0367 row 47.
 
-- 📋 [FIBR-0386] **FIBR-0054 INV-4 still lists a truncated file and an absent .sig as signature failures.**
+- ✅ [FIBR-0386] **FIBR-0054 INV-4 still lists a truncated file and an absent .sig as signature failures.**
   INV-4 says any verification failure -- "bad signature, truncated file,
   wrong key, absent .sig" -- raises UpdateVerificationError. Since
   FIBR-0327 a body shorter than its Content-Length raises a download
@@ -2290,6 +2298,12 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Content-Length still reaches the signature check. Amend INV-4 to record
   the code (annex: the code already exists, no gate). Stale before this
   run, so filed rather than fixed in the sweep.
+  Resolved 2026-10-01: INV-4 now names UpdateVerificationError for a bad
+  signature, a wrong key, or a short file from a server that sent no
+  Content-Length, and UpdateDownloadError for a failed .sig fetch or a
+  body short of its Content-Length. Checked against
+  update_fetch.download and update.download_and_verify. Records existing
+  code, so no gate.
   **Layman:** The updater's design document describes two download failures as security failures, which the app stopped doing weeks ago.
   Kind: doc-fix.
   Source: close-findings sweep 2026-09-29 (FIBR-0367 row 38 must_agree).
