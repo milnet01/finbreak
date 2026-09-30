@@ -11,6 +11,7 @@ import logging
 from collections.abc import Iterator
 from decimal import Decimal
 from pathlib import Path
+from types import SimpleNamespace
 
 import pikepdf
 import pytest
@@ -1361,6 +1362,77 @@ def test_FIBR0050_INV11_gate_is_signed_for_families_that_print_a_sign():
     # Family B keeps the magnitude endpoint match, so the truncated set passes
     # there. That is the documented exemption, not an oversight.
     _verify_checksum(Family.B, Decimal("100.00"), truncated, Decimal("-50.00"), 2)
+
+
+# FIBR-0389 B10: the gate above is exercised through `_verify_checksum` with
+# hand-built drafts. These run whole statements through the public `parse`,
+# replacing only the PDF's text layer, so family detection, the row parser and
+# the closing-balance capture are all the real code. The text is synthetic,
+# shaped on family_a_current.pdf and family_d_moneymarket.pdf.
+_OVERDRAWN_A = [
+    "Standard Bank",
+    "BANK STATEMENT / TAX INVOICE",
+    "PRESTIGE CURRENT ACCOUNT Account Number 00 000 000 0",
+    "Statement from 1 May 2026 to 31 May 2026",
+    "Details Service Fee Debits Credits Date Balance",
+    "BALANCE BROUGHT FORWARD 05 01 100.00",
+    "FAKE SHOP PURCHASE 50.00- 05 02 50.00",
+    "FAKE SHOP PURCHASE TWO 100.00- 05 03 50.00-",
+    "Balance at date of statement 50.00-",
+    "The Standard Bank of South Africa Limited (Reg. No. 1962/000738/06)",
+]
+_OVERDRAWN_D = [
+    "Standard Bank",
+    "MoneyMarket Select",
+    "Bank Statement / Tax Invoice",
+    "Transaction details",
+    "Date",
+    "Transaction description Withdrawals Deposits Interest rate Balance",
+    "ccyy mm dd",
+    "2026 03 01 Balance brought forward R100.00",
+    "2026 03 02 Fake withdrawal -R50.00 R50.00",
+    "2026 03 03 Fake withdrawal two -R100.00 R50.00-",
+    "Balance as at 3 March 2026 R50.00-",
+    "The Standard Bank of South Africa Limited (Reg. No. 1962/000738/06)",
+]
+
+
+def _parse_text(monkeypatch, lines: list[str]):
+    import pdfplumber
+
+    import finbreak.importers.standard_bank as sb_mod
+
+    page = SimpleNamespace(extract_text=lambda: "\n".join(lines))
+
+    class _Pdf:
+        pages = [page]
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    monkeypatch.setattr(sb_mod, "_normalise_to_plaintext", lambda raw, pw: raw)
+    monkeypatch.setattr(pdfplumber, "open", lambda *a, **k: _Pdf())
+    return StandardBankImporter().parse(b"%PDF", 2)
+
+
+@pytest.mark.parametrize("lines", [_OVERDRAWN_A, _OVERDRAWN_D], ids=["A", "D"])
+def test_FIBR0389_a_truncated_overdrawn_statement_is_refused_through_parse(
+    monkeypatch, lines
+):
+    whole = _parse_text(monkeypatch, lines)
+    assert whole is not None, "precondition: detected as Standard Bank"
+    assert [d.amount_minor for d in whole.drafts] == [-5000, -10000], (
+        "the complete statement is the control: it must import both rows"
+    )
+
+    # Drop the last row, the multi-page truncation the gate exists for: the
+    # reconciled balance is +50.00 against a printed -50.00.
+    truncated = [line for line in lines if "TWO" not in line.upper()]
+    with pytest.raises(ValueError, match="didn't add up"):
+        _parse_text(monkeypatch, truncated)
 
 
 @pytest.mark.parametrize(
