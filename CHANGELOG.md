@@ -452,7 +452,10 @@ signaling per
   A single corrupted byte in a small unencrypted file beside the vault
   made unlocking fail as though you had typed the wrong password — which
   counts against the lock-out limit and offers to erase and start over, on
-  a vault whose data was completely intact.
+  a vault whose data was completely intact. One kind of damage is still
+  read as a wrong password: a changed character in the file's random
+  security values that is itself a valid one, because the file carries no
+  checksum. (Corrected 2026-10-01; FIBR-0388.)
 
 - **Backups written by one version stay restorable by later ones.** (FIBR-0327)
   One internal setting recorded both what a new backup is written with and

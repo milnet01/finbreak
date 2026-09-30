@@ -1073,6 +1073,72 @@ def test_INV6_unlock_distinct_message_for_malformed_sidecar(qtbot, service, path
     )
 
 
+def _damage_sidecar(sidecar_path: Path, how: str) -> None:
+    if how == "json":
+        sidecar_path.write_text("{ not valid json")
+        return
+    payload = json.loads(sidecar_path.read_text())
+    if how == "version":
+        payload["sidecar_version"] = 9
+    elif how == "memory":
+        payload["kdf"]["memory_kib"] = 1
+    elif how == "key-name":
+        payload["kdff"] = payload.pop("kdf")
+    elif how == "salt":
+        salt = payload["slots"]["master"]["salt_hex"]
+        payload["slots"]["master"]["salt_hex"] = "g" + salt[1:]
+    elif how == "cipher-level":
+        payload["cipher_compatibility"] = 99
+    sidecar_path.write_text(json.dumps(payload))
+
+
+@pytest.mark.parametrize(
+    "how", ["json", "version", "memory", "key-name", "salt", "cipher-level"]
+)
+def test_FIBR0388_damaged_sidecar_through_the_unlock_screen(qtbot, service, paths, how):
+    """The service-level tests never drove the screen, so nothing checked the
+    lock-out: a damaged file reported correctly but still charged to the
+    throttle would pass them. Each structural damage the audit ran, with the
+    CORRECT password, must say so and leave the failure count at zero."""
+    from finbreak.ui.unlock import (
+        UnlockDialog,
+        _pairing_broken,
+        _settings_file_damaged,
+    )
+
+    _, sidecar_path = paths
+    service.first_run(bytearray(_PW), "ZAR")
+    service.lock()
+    _damage_sidecar(sidecar_path, how)
+
+    widget = UnlockDialog(service)
+    qtbot.addWidget(widget)
+    widget._password.setText(_PW.decode())
+    with qtbot.waitSignal(widget.unlock_failed, timeout=10000):
+        widget._unlock_button.click()
+
+    expected = _pairing_broken() if how == "cipher-level" else _settings_file_damaged()
+    assert widget._error.text() == expected
+    assert widget._throttle.load().fail_count == 0, "a correct password was charged"
+
+
+def test_FIBR0388_a_wrong_password_is_charged_to_the_throttle(qtbot, service):
+    """The control for the test above: the count it reads does move on a real
+    failure, so its zero is not a counter that never changes."""
+    from finbreak.ui.unlock import UnlockDialog
+
+    service.first_run(bytearray(_PW), "ZAR")
+    service.lock()
+
+    widget = UnlockDialog(service)
+    qtbot.addWidget(widget)
+    widget._password.setText("not the password")
+    with qtbot.waitSignal(widget.unlock_failed, timeout=10000):
+        widget._unlock_button.click()
+
+    assert widget._throttle.load().fail_count == 1
+
+
 def test_unlock_wipes_password_on_load_failure(paths):
     """AuthService.unlock zeroes the password bytearray when load_params fails (a
     corrupt sidecar), so a failed unlock leaves no plaintext password in memory
