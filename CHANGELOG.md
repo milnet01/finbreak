@@ -40,6 +40,12 @@ signaling per
 
 ### Fixed
 
+- **Correction to the 0.1.23 notes: there is no dark PDF export** (FIBR-0390)
+  The 0.1.23 notes said the trend chart's labels became readable "on
+  the dark theme and in a dark PDF export". The PDF report is always
+  printed on a light page, so only the on-screen dark themes were
+  affected. Nothing changed in the app; this corrects the note.
+
 - **A statement with separate Withdrawal and Deposit columns now previews without adjusting the form** (FIBR-0389)
   The import wizard recognised the two columns but left "Amount style"
   on "Single amount column", so Preview showed a "mapped to more than one

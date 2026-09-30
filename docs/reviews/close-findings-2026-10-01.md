@@ -63,3 +63,25 @@ uniqueness key.
   account check "compares only `existing.name.casefold()`" — stale since
   FIBR-0328 added NFC, before this run; a dated verification record, left.
 - **falsified:** none.
+
+## FIBR-0390 — delivery group C
+
+| finding | verified | disposition | was → now | must_agree |
+|---|---|---|---|---|
+| C17 CHANGELOG promises a dark PDF | yes — pdf_export `_PDF_THEME` is always light (FIBR-0217) | fixed | no correction → [Unreleased] note; no red run: nothing observable changes | CHANGELOG [0.1.23] (frozen) |
+| C2 refresh test calls `_refresh()` | | | | |
+| C4 startup-error test calls the hook by hand | | | | |
+| C6 Windows apostrophe: command text only | | | | |
+| C10 month name read from HTML, not the PDF | | | | |
+| C12 failed install: no test | | | | |
+| C13 check for updates twice: no test | | | | |
+| C14 Quit / Ctrl+Q save layout: no test | | | | |
+| C15 auto-lock during reassign / move-under | | | | |
+| C16 PDF row dates follow the date format: no test | | | | |
+
+- **cited_by:**
+- **swept:**
+- **collateral:**
+- **surfaced:**
+- **out_of_scope:**
+- **falsified:**
