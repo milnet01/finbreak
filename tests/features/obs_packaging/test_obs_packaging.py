@@ -691,17 +691,58 @@ def _osc_env(tmp_path: Path, **extra: str) -> dict[str, str]:
     }
 
 
-def test_FIBR0400_a_failed_osc_add_stops_the_submit(tmp_path):
-    """osc add/addremove errors were sent to /dev/null behind `|| true`, so a
-    commit could go up without the new source tarball."""
+def _git(root: Path, *args: str) -> None:
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@example.invalid",
+            "-c",
+            "core.hooksPath=/dev/null",
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "tag.gpgsign=false",
+            *args,
+        ],
+        cwd=root,
+        check=True,
+        capture_output=True,
+    )
+
+
+def _tagged_repo(tmp_path: Path) -> Path:
+    """A throwaway repo holding the real recipes, committed and tagged with the
+    release `_service` builds, plus a stub vendor-wheels.sh that records a run.
+    The bundle is left newer than pyproject.toml, so a submit reuses it."""
+    import os
+    import time
+
     root = tmp_path / "repo"
     shutil.copytree(_OBS, root / "packaging" / "obs")
+    shutil.copy(_PYPROJECT, root / "pyproject.toml")
     (root / "src" / "finbreak").mkdir(parents=True)
     (root / "src" / "finbreak" / "__init__.py").write_text('__version__ = "1.2.3"\n')
-    (root / "vendor.tar.gz").write_bytes(b"")
-    env = _osc_env(tmp_path, OSC_FAIL_ADD="1", OBS_WORKDIR=str(tmp_path / "co"))
+    (root / "packaging" / "obs" / "vendor-wheels.sh").write_text(
+        'echo vendored >> "$OSC_LOG"; : > vendor.tar.gz\n'
+    )
+    _git(root, "init", "-q")
+    _git(root, "add", ".")
+    _git(root, "commit", "-q", "-m", "release")
+    tag = re.search(r'<param name="revision">([^<]+)</param>', _SERVICE.read_text())
+    assert tag is not None
+    _git(root, "tag", tag.group(1))
+    vendor = root / "vendor.tar.gz"
+    vendor.write_bytes(b"")
+    later = time.time() + 60
+    os.utime(vendor, (later, later))
+    return root
 
-    result = subprocess.run(
+
+def _submit(root: Path, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
         ["sh", str(root / "packaging" / "obs" / "obs-submit.sh")],
         env=env,
         capture_output=True,
@@ -709,9 +750,99 @@ def test_FIBR0400_a_failed_osc_add_stops_the_submit(tmp_path):
         timeout=60,
     )
 
-    calls = (tmp_path / "osc.log").read_text().splitlines()
+
+def _osc_calls(tmp_path: Path) -> list[str]:
+    log = tmp_path / "osc.log"
+    return log.read_text().splitlines() if log.exists() else []
+
+
+def test_FIBR0400_a_failed_osc_add_stops_the_submit(tmp_path):
+    """osc add/addremove errors were sent to /dev/null behind `|| true`, so a
+    commit could go up without the new source tarball."""
+    root = _tagged_repo(tmp_path)
+    env = _osc_env(tmp_path, OSC_FAIL_ADD="1", OBS_WORKDIR=str(tmp_path / "co"))
+
+    result = _submit(root, env)
+
+    calls = _osc_calls(tmp_path)
+    assert any(c.startswith("add") for c in calls), calls  # reached the add
     assert result.returncode != 0, result.stdout
     assert not any(c.startswith("commit") for c in calls), calls
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0385 — one submission, one moment: the recipes and the wheel bundle
+# must match the release tag the source is taken from.
+# --------------------------------------------------------------------------- #
+def test_FIBR0385_a_clean_tree_at_the_tag_submits(tmp_path):
+    root = _tagged_repo(tmp_path)
+    env = _osc_env(tmp_path, OBS_WORKDIR=str(tmp_path / "co"))
+
+    result = _submit(root, env)
+
+    calls = _osc_calls(tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert any(c.startswith("commit") for c in calls), calls
+    assert "vendored" not in calls, "a bundle newer than pyproject was rebuilt"
+
+
+@pytest.mark.parametrize(
+    ("changed", "committed"),
+    [
+        ("finbreak.spec", False),
+        ("finbreak.spec", True),
+        ("debian/new-file", False),
+    ],
+    ids=["uncommitted", "after-tag", "untracked"],
+)
+def test_FIBR0385_a_recipe_unlike_the_tag_refuses(tmp_path, changed, committed):
+    """The source came from the tag while the recipes came from the working
+    tree, so an edit made since the release shipped under the release's name."""
+    root = _tagged_repo(tmp_path)
+    path = root / "packaging" / "obs" / changed
+    path.write_text((path.read_text() if path.exists() else "") + "# after\n")
+    if committed:
+        _git(root, "commit", "-q", "-am", "later")
+    env = _osc_env(tmp_path, OBS_WORKDIR=str(tmp_path / "co"))
+
+    result = _submit(root, env)
+
+    assert result.returncode != 0, result.stdout
+    assert Path(changed).name in result.stderr, result.stderr
+    assert _osc_calls(tmp_path) == [], "refused only after touching OBS"
+
+
+def test_FIBR0385_a_missing_release_tag_refuses(tmp_path):
+    """With no tag to compare against, `git diff` fails inside a command
+    substitution that still succeeds — so the drift check would pass empty."""
+    root = _tagged_repo(tmp_path)
+    tag = re.search(r'<param name="revision">([^<]+)</param>', _SERVICE.read_text())
+    assert tag is not None
+    _git(root, "tag", "-d", tag.group(1))
+    env = _osc_env(tmp_path, OBS_WORKDIR=str(tmp_path / "co"))
+
+    result = _submit(root, env)
+
+    assert result.returncode != 0, result.stdout
+    assert "not a tag" in result.stderr, result.stderr
+    assert _osc_calls(tmp_path) == []
+
+
+@pytest.mark.parametrize("newer", ["pyproject.toml", "packaging/obs/vendor-wheels.sh"])
+def test_FIBR0385_a_bundle_older_than_its_inputs_is_rebuilt(tmp_path, newer):
+    """REVENDOR defaulted off, so a bundle built from an older pyproject.toml
+    shipped with a newer source whose pins it did not satisfy."""
+    import os
+
+    root = _tagged_repo(tmp_path)
+    base = (root / "vendor.tar.gz").stat().st_mtime  # newer than both inputs
+    os.utime(root / newer, (base + 60, base + 60))  # only this one moves past it
+    env = _osc_env(tmp_path, OBS_WORKDIR=str(tmp_path / "co"))
+
+    result = _submit(root, env)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "vendored" in _osc_calls(tmp_path)
 
 
 @pytest.mark.parametrize(

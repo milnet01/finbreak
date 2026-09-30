@@ -7,8 +7,10 @@
 #
 # Needs: osc (authenticated), obs-service-tar + obs-service-obs_scm, and a
 # glibc >= 2.34 host for the wheel vendoring. Override via env: OBS_API,
-# OBS_PROJECT, OBS_PACKAGE, OBS_WORKDIR, OBS_MSG. Set REVENDOR=1 to force a fresh
-# vendor.tar.gz even if one already exists.
+# OBS_PROJECT, OBS_PACKAGE, OBS_WORKDIR, OBS_MSG. vendor.tar.gz is rebuilt when
+# pyproject.toml is newer than it; set REVENDOR=1 to force a fresh one anyway.
+# Refuses when the recipe files or pyproject.toml differ from the release tag
+# _service builds (FIBR-0385).
 set -eu
 
 API="${OBS_API:-https://api.opensuse.org}"
@@ -20,8 +22,34 @@ ROOT="$(cd "$HERE/../.." && pwd)"         # repo root
 WORKDIR="${OBS_WORKDIR:-$ROOT/build-obs}" # osc checkout lives here (gitignored)
 VENDOR="$ROOT/vendor.tar.gz"
 
-# 1. Offline wheel closure (reuse unless missing or REVENDOR=1).
-if [ "${REVENDOR:-0}" = "1" ] || [ ! -f "$VENDOR" ]; then
+# 0. One submission, one moment (FIBR-0385). obs_scm takes the source from the
+#    release tag _service names, but the recipes below are copied from this
+#    working tree and the wheel closure is built from its pyproject.toml. Refuse
+#    unless both match that tag, so an edit made since the release never ships
+#    under the release's name.
+TAG="$(sed -n 's:.*<param name="revision">\(.*\)</param>.*:\1:p' "$HERE/_service")"
+SHIPPED="packaging/obs/_service packaging/obs/finbreak.spec
+packaging/obs/finbreak-rpmlintrc packaging/obs/finbreak.dsc
+packaging/obs/debian pyproject.toml"
+if ! git -C "$ROOT" rev-parse -q --verify "$TAG^{commit}" >/dev/null; then
+    echo "obs-submit: _service builds '$TAG', which is not a tag in this repo" >&2
+    exit 1
+fi
+# shellcheck disable=SC2086 # SHIPPED is a list of paths without spaces
+DRIFT="$(git -C "$ROOT" diff --name-only "$TAG" -- $SHIPPED;
+         git -C "$ROOT" ls-files --others --exclude-standard -- $SHIPPED)"
+if [ -n "$DRIFT" ]; then
+    echo "obs-submit: these differ from $TAG, the source OBS will build:" >&2
+    echo "$DRIFT" >&2
+    echo "Commit them in a release, or run from 'git checkout $TAG'." >&2
+    exit 1
+fi
+
+# 1. Offline wheel closure: rebuilt when missing, when REVENDOR=1, or when
+#    pyproject.toml or the vendoring script is newer than it (FIBR-0385).
+if [ "${REVENDOR:-0}" = "1" ] || [ ! -f "$VENDOR" ] \
+   || [ "$ROOT/pyproject.toml" -nt "$VENDOR" ] \
+   || [ "$HERE/vendor-wheels.sh" -nt "$VENDOR" ]; then
     echo ">>> vendoring wheels -> $VENDOR"
     ( cd "$ROOT" && sh "$HERE/vendor-wheels.sh" )
 else

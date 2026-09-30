@@ -61,8 +61,10 @@ packaging/obs/obs-status.sh    # poll results; tail any failing build log
 All three take defaults for `home:milnet:finbreak/finbreak` on
 `api.opensuse.org`, overridable via env vars (`OBS_API`, `OBS_PROJECT`,
 `OBS_PACKAGE`, …; see each script's header). `obs-submit.sh` reuses an existing
-`vendor.tar.gz`; pass `REVENDOR=1` to rebuild it (do so when the dependency
-closure or a target's default python changes). The spec's `%check` runs the
+`vendor.tar.gz` unless `pyproject.toml` or `vendor-wheels.sh` is newer than it;
+pass `REVENDOR=1` to rebuild it anyway (do so when a target's default python
+changes). It refuses when the recipe files or `pyproject.toml` differ from the
+release tag `_service` builds, so run it from a tree at that tag (FIBR-0385). The spec's `%check` runs the
 frozen `--self-test` with `FINBREAK_SELFTEST_DEBUG=1`, so a Qt/native failure
 prints its real traceback in the build log.
 
@@ -192,7 +194,8 @@ The `.claude/bump.json` recipe (run by `cut-release`) keeps the metainfo
 `<release>` and `debian/changelog` in lockstep with `CHANGELOG.md`.
 
 **Re-vendor whenever a dependency PIN moves**, not only when a package is added
-or removed — `REVENDOR=1 ./obs-submit.sh`. A stale closure is invisible until
+or removed. `obs-submit.sh` does this itself when `pyproject.toml` is newer than
+`vendor.tar.gz`; `REVENDOR=1 ./obs-submit.sh` forces it. A stale closure is invisible until
 the source advances past it: advancing the tarball to 0.1.22 turned both RPM
 targets red on `cryptography==50.0.0` missing from a closure vendored months
 earlier. A target's default python changing needs one too.
