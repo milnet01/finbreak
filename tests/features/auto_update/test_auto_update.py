@@ -2313,6 +2313,53 @@ def test_manual_check_supported_starts_a_worker(qtbot, service, tmp_path, monkey
     window._manual_check_worker.wait(2000)  # let the thread finish cleanly
 
 
+def test_FIBR0390_a_second_check_while_one_runs_reuses_it(
+    qtbot, service, tmp_path, monkeypatch
+):
+    """Audit delivery C13: nothing tested a second Help -> Check for updates
+    while the first is still running. It must neither start a second worker
+    (the first would be orphaned and abort the app at close) nor make a second
+    network call."""
+    import threading
+
+    monkeypatch.setattr(
+        "finbreak.ui.main_window.QMessageBox.information", lambda *a, **k: None
+    )
+    release = threading.Event()
+    calls: list[bool] = []
+
+    class _Blocking(_FakeUpdateService):
+        def check_for_update(self, *, force=False):
+            if force:  # the manual check; the startup check is not forced
+                calls.append(force)
+                release.wait(5)
+            return None
+
+    window = MainWindow(
+        service,
+        update_service=_Blocking(),
+        installer=_FakeInstaller(tmp_path / "app.AppImage"),
+    )
+    qtbot.addWidget(window)
+
+    window._check_for_updates_now()
+    first = window._manual_check_worker
+    assert first is not None
+    try:
+        qtbot.waitUntil(lambda: calls == [True], timeout=3000)  # it is running
+        window._check_for_updates_now()
+        second = window._manual_check_worker
+    finally:
+        release.set()  # never leave a worker blocked, whatever failed
+        first.wait(3000)
+        latest = window._manual_check_worker
+        if latest is not None and latest is not first:
+            latest.wait(3000)
+
+    assert second is first, "a second worker was started"
+    assert calls == [True], f"check_for_update calls: {calls}"
+
+
 def test_manual_check_up_to_date_shows_info(qtbot, service, monkeypatch):
     window, _ = _updater_shell(qtbot, service)
     # Unlocked first (FIBR-0216): Help→Check is only reachable from a running,

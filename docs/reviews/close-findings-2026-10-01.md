@@ -74,7 +74,7 @@ uniqueness key.
 | C6 Windows apostrophe: command text only | | | | |
 | C10 month name read from HTML, not the PDF | | | | |
 | C12 failed install: no test | yes — no test drove `apply()` raising | fixed | none → installer raising UpdateError: one warning with the reason, verified file removed; mutations: dropping the unlink or the reason each redden it | |
-| C13 check for updates twice: no test | | | | |
+| C13 check for updates twice: no test | yes | fixed | none → a blocking service; the second click while the first runs keeps the same worker and one forced call; mutation: removing the running-worker guard reddens it | |
 | C14 Quit / Ctrl+Q save layout: no test | | | | |
 | C15 auto-lock during reassign / move-under | | | | |
 | C16 PDF row dates follow the date format: no test | | | | |
