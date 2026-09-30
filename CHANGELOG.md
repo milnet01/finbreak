@@ -23,6 +23,13 @@ signaling per
 
 ### Changed
 
+- **Importing several statements with the same layout asks about the columns once, even if you do not name the layout** (FIBR-0389)
+  The "Save this layout as…" field is optional, but leaving it blank
+  meant every file with the same columns was asked about again. Your
+  answer now applies to every file in the same import whose column
+  headings are exactly the same. Naming the layout still saves it for
+  next time.
+
 - **PDF reports are always exported on a light page** (FIBR-0217)
   The Light/Dark choice in the export dialog is gone and every report
   now prints on a light page. Dark reports had an unreadable page number

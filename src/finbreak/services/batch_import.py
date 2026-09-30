@@ -590,14 +590,28 @@ class BatchImportService:
         its ladder. § 4.3 decision 1: re-asking an answered question is
         babysitting.
 
-        The answered mapping is NOT applied to the others. Each re-scanned
-        record consults ``match_profile`` with its OWN header, so a different
-        layout returns to ``needs_mapping`` and is asked about as before — and
-        a mapping answered with no profile NAME saved nothing, so nothing
-        resolves and the batch behaves exactly as it did.
+        The answered mapping is applied to every other blocked record whose
+        header is EXACTLY the answered one's, whether or not the user named the
+        layout: the name field is optional, and a blank one saved nothing for
+        ``match_profile`` to find, so each same-layout file was asked about
+        again (FIBR-0389 B6). A different layout keeps no mapping, consults
+        ``match_profile`` with its OWN header, and is asked about as before.
+        Nothing is saved for a later batch unless the layout was named.
 
         Each re-scan checks the draft cap first, as the password twin does.
         """
+        if answered.source_text is None:
+            self._rescan_blocked(files, answered, "needs_mapping")
+            return
+        header = read_header(answered.source_text)
+        for other in files:
+            if (
+                other is not answered
+                and other.outcome == "needs_mapping"
+                and other.source_text is not None
+                and read_header(other.source_text) == header
+            ):
+                other.mapping = answered.mapping
         self._rescan_blocked(files, answered, "needs_mapping")
 
     def _rescan_blocked(

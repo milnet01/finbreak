@@ -630,6 +630,71 @@ def test_the_mapping_form_does_not_carry_one_files_answers_into_the_next(
     )
 
 
+@pytest.mark.parametrize("name", ["odd layout", ""], ids=["named", "unnamed"])
+def test_FIBR0388_a_same_layout_batch_asks_about_its_columns_once(
+    qtbot, service, tmp_path, name
+):
+    """FIBR-0389 B6. The service-level test saved a profile by hand and called
+    `answer`; nothing drove the wizard. And with "Save this layout as…" left
+    blank -- the field is optional -- every same-layout file was asked about
+    again, since nothing was saved for `match_profile` to find. Within one
+    batch an answer now settles every file with exactly the same header, named
+    or not; a different layout is still asked about."""
+    odd = ["When", "What", "How much"]
+    paths = [
+        _csv(tmp_path, f"a-odd{n}.csv", [[f"2026-01-0{n + 1}", "shop", "-1.00"]], odd)
+        for n in range(3)
+    ]
+    paths.append(
+        _csv(
+            tmp_path, "b-other.csv", [["2026-01-09", "shop", "-2.00"]], ["D", "P", "V"]
+        )
+    )
+    widget = _wizard(qtbot, service)
+    asked: list[str] = []
+    ask = widget._ask_mapping
+
+    def _counting(record):
+        asked.append(Path(record.path).name)
+        ask(record)
+
+    widget._ask_mapping = _counting  # type: ignore[method-assign]
+    widget._select_files(paths)
+
+    answered: set[str] = set()
+
+    def _new_question() -> bool:
+        record = widget._batch_asking
+        return (
+            widget._stack.currentIndex() == _STEP_MAP
+            and record is not None
+            and record.path not in answered
+        )
+
+    def _review() -> bool:
+        return widget._batch_phase == "review" and all(
+            f.outcome == "needs_account" for f in widget._batch_files
+        )
+
+    for _ in range(len(paths)):  # at most one question per file
+        qtbot.waitUntil(lambda: _new_question() or _review(), timeout=3000)
+        if _review():
+            break
+        record = widget._batch_asking
+        assert record is not None
+        answered.add(record.path)
+        header = Path(record.path).read_text(encoding="utf-8").splitlines()[0]
+        roles = ("date", "description", "amount")
+        for role, column in zip(roles, header.split(","), strict=True):
+            combo = widget._column_combos[role]
+            combo.setCurrentIndex(combo.findData(column))
+        widget._profile_name.setText(name)
+        widget._on_map_next()
+    _wait_for_review(qtbot, widget)
+
+    assert asked == ["a-odd0.csv", "b-other.csv"]
+
+
 # -- INV-14 ------------------------------------------------------------------ #
 
 
