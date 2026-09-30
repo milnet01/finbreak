@@ -2360,6 +2360,65 @@ def test_FIBR0390_a_second_check_while_one_runs_reuses_it(
     assert calls == [True], f"check_for_update calls: {calls}"
 
 
+@pytest.mark.parametrize("how", ["menu", "ctrl_q"])
+def test_FIBR0390_quit_saves_the_layout_and_drains_a_running_check(
+    qtbot, service, tmp_path, monkeypatch, window_ini, how
+):
+    """Audit delivery C14: no test pressed Quit or Ctrl+Q. Both go through
+    ``close()`` so the close event saves the window layout and waits for a
+    running update check; ``QApplication.quit()`` would have skipped both."""
+    import threading
+
+    from PySide6.QtCore import QSettings, Qt
+
+    monkeypatch.setattr(
+        "finbreak.ui.main_window.QMessageBox.information", lambda *a, **k: None
+    )
+    release = threading.Event()
+    started = threading.Event()
+
+    class _Slow(_FakeUpdateService):
+        def check_for_update(self, *, force=False):
+            if force:
+                started.set()
+                release.wait(5)
+            return None
+
+    window = MainWindow(
+        service,
+        update_service=_Slow(),
+        installer=_FakeInstaller(tmp_path / "app.AppImage"),
+    )
+    qtbot.addWidget(window)
+    window.show()
+    # Unlocked: on the locked and first-run screens a modal dialog swallows
+    # Ctrl+Q (filed separately as FIBR-0431).
+    window._enter_unlocked()
+    window.resize(911, 677)
+    window._check_for_updates_now()
+    worker = window._manual_check_worker
+    assert worker is not None and started.wait(3), "precondition: a check is running"
+    # The check ends a moment into the close, inside the drain's wait.
+    threading.Timer(0.2, release.set).start()
+    try:
+        if how == "menu":
+            window._action_quit.trigger()
+        else:
+            with qtbot.waitActive(window):  # an application shortcut needs one
+                window.activateWindow()
+            qtbot.keyClick(window, Qt.Key.Key_Q, Qt.KeyboardModifier.ControlModifier)
+            qtbot.mouseClick(window, Qt.MouseButton.LeftButton)  # release Ctrl
+        running_after_close = worker.isRunning()  # before this test waits on it
+    finally:
+        release.set()
+        worker.wait(3000)
+
+    assert window.isHidden(), "the window did not close"
+    assert not running_after_close, "the close did not wait for the running check"
+    size = QSettings(str(window_ini), QSettings.Format.IniFormat).value("window_size")
+    assert size is not None and (size.width(), size.height()) == (911, 677)
+
+
 def test_manual_check_up_to_date_shows_info(qtbot, service, monkeypatch):
     window, _ = _updater_shell(qtbot, service)
     # Unlocked first (FIBR-0216): Help→Check is only reachable from a running,

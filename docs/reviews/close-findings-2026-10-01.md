@@ -75,14 +75,16 @@ uniqueness key.
 | C10 month name read from HTML, not the PDF | | | | |
 | C12 failed install: no test | yes — no test drove `apply()` raising | fixed | none → installer raising UpdateError: one warning with the reason, verified file removed; mutations: dropping the unlink or the reason each redden it | |
 | C13 check for updates twice: no test | yes | fixed | none → a blocking service; the second click while the first runs keeps the same worker and one forced call; mutation: removing the running-worker guard reddens it | |
-| C14 Quit / Ctrl+Q save layout: no test | | | | |
+| C14 Quit / Ctrl+Q save layout: no test | yes | fixed | none → menu Quit and Ctrl+Q with a check running: window closes, size in window.ini, check finished when close returns; mutations: Quit not closing, no save, no drain each redden both | |
 | C15 auto-lock during reassign / move-under | | | | |
 | C16 PDF row dates follow the date format: no test | | | | |
 
 - **cited_by:**
 - **swept:**
 - **collateral:**
-- **surfaced:**
+- **surfaced:** none.
 - **out_of_scope:** docs/specs/FIBR-0127.md cites "`services/pdf_export.py:99` (dark PDF
-  theme)" — stale since FIBR-0217, before this run; left.
+  theme)" — stale since FIBR-0217, before this run; left. Ctrl+Q does
+  nothing on the locked and first-run screens (modal dialogs block the
+  application shortcut), found while testing C14 — queued as FIBR-0431.
 - **falsified:**

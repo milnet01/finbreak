@@ -3660,6 +3660,23 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: doc-fix.
   Source: review-contract FIBR-0159 loop 11 (2026-09-29).
 
+- 📋 [FIBR-0431] **Ctrl+Q does nothing on the locked and first-run screens.**
+  The Quit action (main_window.py, `_action_quit`) carries Ctrl+Q as an
+  ApplicationShortcut, and its comment says that makes it work from the
+  locked screen. It does not: the action's only widget is its menu, and
+  Qt refuses an application shortcut while a modal dialog is active
+  unless the shortcut's widget sits inside it. UnlockDialog and
+  FirstRunDialog are both modal. Measured 2026-10-01 (offscreen): a
+  Ctrl+Q key click fired the action unlocked, and did not fire with
+  either dialog up. Not yet checked on a real X11 or Wayland desktop.
+  Likely fix: add the action to those dialogs as well
+  (`dialog.addAction(self._action_quit)`), and correct the comment.
+  Filed rather than fixed inside C14, which is a test finding.
+  **Layman:** Pressing Ctrl+Q to quit only works after you unlock; on the password screen and the first-run screen it does nothing.
+  Kind: fix.
+  Source: close-findings 2026-10-01, found next door to FIBR-0390 C14.
+  Lanes: ui.
+
 ## v1.1.0 — Localisation
 
 The first feature minor after 1.0. Chosen to go first because it is
