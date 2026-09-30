@@ -33,7 +33,7 @@ are in the roadmap note and the commits named there.
 | B11 doubled inner space passes | yes — `fold_name` strips, does not collapse | fixed | inner runs kept → collapsed in the key only; red: 4 × DID NOT RAISE (space, NBSP; accounts, categories) | `fold_name` docstring (rewritten); FIBR-0328 tests (agree); CHANGELOG [Unreleased] (added) |
 | B1 debit/credit guess leaves single style | yes — `_guess_mapping_combos` sets combos only | fixed | style left single → split style on a whole pair with no Amount; red: 'single' == 'debit_credit' | import_column_detect spec.md Out of scope (rewritten, test contract); CHANGELOG [Unreleased] (added) |
 | B2 auto-lock test misses map-step legs | | | | |
-| B3 picker text unasserted | | | | |
+| B3 picker text unasserted | yes — test checks id and OK only | fixed | no text check → asserts combo reads "— pick one —"; mutation: blank placeholder reddens it | |
 | B5 cancel test emits done() | | | | |
 | B8 huge exponent at parse only | | | | |
 | B10 private checksum with hand-built drafts | | | | |

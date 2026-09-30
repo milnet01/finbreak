@@ -23,7 +23,7 @@ from pathlib import Path
 
 import pytest
 from PySide6.QtCore import Qt, QTimer, Signal
-from PySide6.QtWidgets import QDialog, QDialogButtonBox, QPushButton
+from PySide6.QtWidgets import QComboBox, QDialog, QDialogButtonBox, QPushButton
 
 from conftest import _PW, _acct, cell_text
 from finbreak.importers.pdf_importer import PasswordError
@@ -1107,6 +1107,11 @@ def test_unplaced_row_opens_a_picker_that_has_chosen_nothing(
         "FIBR-0327: a row with no destination must open a picker with no "
         "account chosen — anything else preselects one the user never picked"
     )
+    # What the user reads must agree with the row's own "— pick one —" cell
+    # (FIBR-0389 B3): a blank or account-named box with no id behind it would
+    # pass both checks around this one.
+    combo = dialog.findChild(QComboBox)
+    assert combo is not None and combo.currentText() == "— pick one —"
     ok = next(
         button
         for box in dialog.findChildren(QDialogButtonBox)
