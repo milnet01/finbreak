@@ -812,8 +812,12 @@ def test_candidate_tables_maps_pdf_parse_error_to_value_error(monkeypatch):
 # --------------------------------------------------------------------------- #
 # FIBR-0321 — every exit gives the provisional account its password back
 # --------------------------------------------------------------------------- #
+@pytest.mark.parametrize(
+    "own", ["the accounts own password", None], ids=["own", "none"]
+)
+@pytest.mark.parametrize("step", ["preview", "map"])
 def test_FIBR0321_cancelling_restores_the_provisional_accounts_own_password(
-    qtbot, service, tmp_path, monkeypatch
+    qtbot, service, tmp_path, monkeypatch, step, own
 ):
     """The restore ran only after a SUCCESSFUL commit. Cancel, and ours stayed
     on the provisional account with that account's own password discarded — a
@@ -821,11 +825,21 @@ def test_FIBR0321_cancelling_restores_the_provisional_accounts_own_password(
 
     The write is eager because the decrypt needs the password before any
     destination is known; what was missing is undoing it on the way out.
+
+    FIBR-0389 B5: this emitted ``done`` instead of clicking a Cancel, and never
+    reached the map step's Cancel (which is not wired straight to ``done``) or
+    an account with no password of its own, where the restore is to NONE.
     """
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QPushButton
+
+    from finbreak.ui.import_wizard import _STEP_MAP, _STEP_PREVIEW
+
     accounts = AccountService(service.vault)
     current = accounts.add_account("Current acct", "current").id
-    accounts.set_pdf_password(current, "the accounts own password")
-    ImportService(service.vault).save_profile("bank", _PDF_HEADER, _PDF_MAPPING)
+    accounts.set_pdf_password(current, own)
+    if step == "preview":  # a matched layout goes straight to Preview
+        ImportService(service.vault).save_profile("bank", _PDF_HEADER, _PDF_MAPPING)
     enc = _encrypt(_fixture("single_table.pdf"), user="secret")
     path = _write(tmp_path, "locked.pdf", enc)
     _patch_dialog(monkeypatch, [{"password": "secret", "remember": True}])
@@ -836,12 +850,18 @@ def test_FIBR0321_cancelling_restores_the_provisional_accounts_own_password(
         "precondition: the eager write must have landed, or there is nothing "
         "for the cancel to undo"
     )
+    page_index = _STEP_PREVIEW if step == "preview" else _STEP_MAP
+    assert widget._stack.currentIndex() == page_index, "precondition: that step"
+    cancel = next(
+        b
+        for b in widget._stack.widget(page_index).findChildren(QPushButton)
+        if b.text() == "Cancel"
+    )
+    qtbot.mouseClick(cancel, Qt.MouseButton.LeftButton)
 
-    widget.done.emit()  # what every Cancel in this wizard reaches
-
-    assert accounts.get_pdf_password(current) == "the accounts own password", (
+    assert accounts.get_pdf_password(current) == own, (
         "cancelling left this statement's password on the provisional account "
-        "and threw away that account's own.\n"
+        "instead of what the account held before.\n"
         f"  actual:   {accounts.get_pdf_password(current)!r}"
     )
 
