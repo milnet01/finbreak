@@ -70,7 +70,7 @@ uniqueness key.
 |---|---|---|---|---|
 | C17 CHANGELOG promises a dark PDF | yes — pdf_export `_PDF_THEME` is always light (FIBR-0217) | fixed | no correction → [Unreleased] note; no red run: nothing observable changes | CHANGELOG [0.1.23] (frozen) |
 | C2 refresh test calls `_refresh()` | yes | fixed | direct `_refresh()` → real Add and Delete clicks (confirm answered Yes); mutation: dropping the re-gate in `_refresh` reddens both | |
-| C4 startup-error test calls the hook by hand | | | | |
+| C4 startup-error test calls the hook by hand | yes | fixed | hook called by hand → `run()` fails building the window, the exception goes to `sys.excepthook` as the interpreter would; dialog names the fault, console hook still runs; mutation: removing `_install_excepthook()` from `run()` reddens it | |
 | C6 Windows apostrophe: command text only | | | | |
 | C10 month name read from HTML, not the PDF | | | | |
 | C12 failed install: no test | | | | |

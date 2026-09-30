@@ -1001,6 +1001,51 @@ def test_about_text_shows_version(qtbot, service):
     assert "finbreak" in text
 
 
+def test_FIBR0390_a_real_startup_failure_reaches_the_user(
+    qapp, monkeypatch, app_run_isolation
+):
+    """Audit delivery C4. The test below hands the hook an exception by hand,
+    so it cannot see whether ``run()`` installs it before the thing that fails.
+    Here ``run()`` itself fails -- building the main window raises -- and the
+    exception is handed to ``sys.excepthook`` exactly as the interpreter does
+    when it leaves ``__main__`` uncaught. The dialog must name the fault."""
+    from unittest.mock import MagicMock
+
+    from PySide6.QtWidgets import QApplication
+
+    from finbreak import app as app_mod
+
+    def _broken(*a, **k):
+        raise PermissionError("the vault dir is read-only")
+
+    shown: list[str] = []
+    chained: list[type] = []
+    # The hook run() installs chains to this one, standing in for the console
+    # traceback -- and for pytest-qt's capture, which would fail the test.
+    monkeypatch.setattr(sys, "excepthook", lambda t, *_: chained.append(t))
+    stub_service = MagicMock()
+    monkeypatch.setattr(app_mod, "MainWindow", _broken)
+    monkeypatch.setattr(app_mod, "AuthService", lambda *a, **k: stub_service)
+    monkeypatch.setattr(app_mod, "install_log_file", lambda _d: None)
+    monkeypatch.setattr(
+        app_mod.single_instance, "another_instance_is_running", lambda _n: False
+    )
+    monkeypatch.setattr(
+        app_mod.QMessageBox,
+        "critical",
+        staticmethod(lambda _p, _t, text, *a, **k: shown.append(text)),
+    )
+
+    with pytest.raises(PermissionError) as raised:
+        app_mod.run([])
+    QApplication.instance().aboutToQuit.disconnect(stub_service.on_about_to_quit)
+    sys.excepthook(raised.type, raised.value, raised.tb)
+
+    assert chained == [PermissionError], "the console traceback still runs"
+    assert len(shown) == 1, f"dialogs shown: {shown}"
+    assert "PermissionError: the vault dir is read-only" in shown[0]
+
+
 def test_FIBR0327_an_unhandled_startup_error_is_shown_not_swallowed(qapp, monkeypatch):
     """FIBR-0327 — ``run()`` caught only ``VaultStateError``.
 
