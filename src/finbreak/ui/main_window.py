@@ -963,6 +963,10 @@ class MainWindow(QMainWindow):
 
     def _on_tab_changed(self, index: int) -> None:
         self._save_geometry()  # persist the last tab so it survives a crash (D7)
+        # ...and remember it for the next unlock in this session, which builds a
+        # fresh workspace: the launch-time value would send a lock and unlock back
+        # to whichever tab the app opened on (FIBR-0394).
+        self._initial_tab = index
         self._refresh_tab(index)
 
     def _refresh_tab(self, index: int) -> None:

@@ -40,6 +40,8 @@ signaling per
 
 ### Fixed
 
+- **After locking and unlocking, finbreak returns you to the tab you were using, not the one it opened on** (FIBR-0394)
+
 - **If finbreak locks itself while the save window is open during a PDF or backup export, the export now stops quietly instead of showing a "choose another location" error over the lock screen** (FIBR-0394)
 
 - **Help → Check for updates started from the locked screen now tells you the result, instead of saying nothing when you are up to date or the check fails** (FIBR-0394)

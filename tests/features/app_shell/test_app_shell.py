@@ -1017,6 +1017,18 @@ def test_FIBR0394_an_auto_lock_inside_the_save_picker_ends_the_export(
     assert isinstance(window._dialog, UnlockDialog)
 
 
+def test_FIBR0394_unlock_returns_to_the_tab_used_before_the_lock(qtbot, service):
+    """The last-used tab is saved on every switch, but it was read only once,
+    at launch: lock and unlock in one session and you landed on the launch-time
+    tab instead of the one you were using."""
+    window = _unlocked_home_shell(qtbot, service)
+    window._workspace.setCurrentIndex(3)  # the user moves to another tab
+    window._lock()
+    assert service.unlock(bytearray(_PW))  # what the unlock dialog's worker does
+    window._enter_unlocked()
+    assert window._workspace.currentIndex() == 3
+
+
 def test_about_text_shows_version(qtbot, service):
     """The About box states the running version so a user can tell which build
     they're on (surfaced dogfooding v0.1.0 — the About box showed no version)."""
