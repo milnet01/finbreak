@@ -157,3 +157,27 @@ def test_every_date_preset_token_routes_through_format_date():
 
 def test_system_timezone_id_decodes_qt_system_zone():
     assert system_timezone_id() == bytes(QTimeZone.systemTimeZoneId().data()).decode()
+
+
+def test_FIBR0406_an_invalid_system_zone_does_not_break_today(monkeypatch):
+    """With TZ set to a zone that does not exist (measured: TZ=Nowhere/Nope),
+    the system zone id is invalid, toTimeZone() returns an invalid date and
+    date(0, 0, 0) raised - from every "today" consumer, startup included. It
+    falls back to local time instead, which follows the OS's own fallback."""
+    from datetime import date
+
+    from PySide6.QtCore import QByteArray
+
+    from finbreak import datetime_format
+
+    monkeypatch.setattr(
+        QTimeZone,
+        "systemTimeZoneId",
+        staticmethod(lambda: QByteArray(b"Nowhere/Nope")),
+    )
+    assert not QTimeZone(QTimeZone.systemTimeZoneId()).isValid(), "precondition"
+    assert isinstance(datetime_format.today_in("system"), date)
+    shown = datetime_format.format_timestamp(
+        "2026-07-15T10:00:00Z", "system", "yyyy-MM-dd", "HH:mm"
+    )
+    assert shown.startswith("2026-07-1"), shown

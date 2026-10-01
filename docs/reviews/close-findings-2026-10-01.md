@@ -353,7 +353,7 @@ uniqueness key.
 
 | finding | verified | disposition | was → now | must_agree |
 |---|---|---|---|---|
-| I1 `_resolve_zone` trusts the system zone; `date(0,0,0)` crashes "today" | | | | FIBR-0083 INV-6 |
+| I1 `_resolve_zone` trusts the system zone; `date(0,0,0)` crashes "today" | yes, executed — TZ=Nowhere/Nope and TZ=:/etc/missing both crashed `today_in("system")` with "year 0 is out of range" | fixed | invalid system zone → `QTimeZone(LocalTime)` (the OS fallback); timestamps display again too; red: ValueError with a faked invalid system zone; mutation: trusting the system zone reddens it; the real TZ=Nowhere/Nope run now gives today's date | FIBR-0083 INV-6 (fail-safe on a bad zone; agrees) |
 | I2 `_validate_span` does not canonicalise span dates | | | | FIBR-0216 parse_transaction |
 | I3 a non-UTF-8 file shows the raw codec error | | | | |
 | I4 importer errors are English f-strings, one a list repr | | | | FIBR-0434 |

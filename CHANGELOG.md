@@ -40,6 +40,8 @@ signaling per
 
 ### Fixed
 
+- **finbreak no longer crashes on a computer whose time-zone setting names a zone that doesn't exist; it uses the computer's local time instead** (FIBR-0406)
+
 - **A restore that succeeded is no longer reported as failed when finbreak can't tidy away its temporary folder afterwards** (FIBR-0404)
 
 - **Choosing the vault file itself as a backup's destination now says so, instead of claiming the vault is too large to back up** (FIBR-0404)

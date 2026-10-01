@@ -54,12 +54,18 @@ def system_timezone_id() -> str:
 
 
 def _resolve_zone(tz_pref: str) -> QTimeZone:
-    """The pinned zone, or the system zone for ``"system"`` / an invalid id."""
+    """The pinned zone, or the system zone for ``"system"`` / an invalid id —
+    and local time when the system zone itself is invalid (``TZ`` naming a zone
+    that does not exist), whose dates were year 0 and crashed every "today"
+    consumer (FIBR-0406). Local time follows the OS's own fallback."""
     if tz_pref != "system":
         zone = QTimeZone(tz_pref.encode())
         if zone.isValid():
             return zone
-    return QTimeZone(QTimeZone.systemTimeZoneId())
+    system = QTimeZone(QTimeZone.systemTimeZoneId())
+    if system.isValid():
+        return system
+    return QTimeZone(QTimeZone.Initialization.LocalTime)
 
 
 # The app clock (FIBR-0327). "Today" — for this month's totals, the alert
