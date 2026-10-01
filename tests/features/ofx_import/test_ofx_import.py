@@ -697,3 +697,24 @@ def test_INV4_null_dtposted_is_a_row_error_not_a_crash(service):
     assert [d.description for d in result.drafts] == ["Valid"]
     assert [e.row_number for e in result.errors] == [2]
     assert "date" in result.errors[0].reason.lower()
+
+
+def test_FIBR0408_the_statement_chooser_labels_are_translatable(
+    qtbot, service, tmp_path, translate_one
+):
+    """design.md § i18n: the chooser's label was an f-string showing the bank's
+    raw OFX type code ("BANK111 · SAVINGS"). It is a template with a translated
+    type name, so a catalog can reword and reorder both."""
+    translate_one("ImportWizardWidget", "Savings", "Spaar")
+    translate_one("ImportWizardWidget", "{number} · {type}", "{type}: {number}")
+    data = _ofx(
+        _stmt(
+            [_txn("20260105", "-10.00", name="Shop", fitid="e1")],
+            acctid="BANK111",
+            acct_type="SAVINGS",
+        ),
+        _ccstmt([_txn("20260106", "-25.00", name="Fuel", fitid="e2")], acctid="CC999"),
+    )
+    widget = _wizard(qtbot, service, _acct(service))
+    widget._select_file(str(_write(tmp_path, "multi.ofx", data)))
+    assert widget._ofx_statement_combo.itemText(0) == "Spaar: BANK111"

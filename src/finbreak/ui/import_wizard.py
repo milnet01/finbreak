@@ -631,16 +631,28 @@ class ImportWizardWidget(QWidget):
         with QSignalBlocker(combo):  # don't fire currentIndexChanged mid-populate
             combo.clear()
             for index, (info, _result) in enumerate(statements):
-                label = (
-                    f"{info.account_id} · {info.account_type}"
-                    if info.account_type
-                    else info.account_id
-                )
-                combo.addItem(label, index)
+                combo.addItem(self._ofx_statement_label(info), index)
         # Shown for >1 statement, hidden for a single one — set explicitly on
         # every OFX pick, so a prior file's visibility never leaks (D8).
         combo.setVisible(len(statements) > 1)
         self._preview_ofx_statement(0)
+
+    def _ofx_statement_label(self, info: OfxAccountInfo) -> str:
+        """The chooser's label: the account number and, where the file gives
+        one, its OFX type in translated words. An f-string showed the bank's raw
+        code ("SAVINGS") and fixed the order (FIBR-0408); an unknown code is
+        shown as the bank wrote it."""
+        if not info.account_type:
+            return info.account_id
+        types = {
+            "CHECKING": self.tr("Checking"),
+            "SAVINGS": self.tr("Savings"),
+            "MONEYMRKT": self.tr("Money market"),
+            "CREDITLINE": self.tr("Credit line"),
+            "CD": self.tr("Fixed deposit"),
+        }
+        kind = types.get(info.account_type.upper(), info.account_type)
+        return self.tr("{number} · {type}").format(number=info.account_id, type=kind)
 
     def _apply_account_match(self, result: ParseResult) -> None:
         """Point the destination at the account the statement names (FIBR-0086).
@@ -1268,13 +1280,13 @@ class ImportWizardWidget(QWidget):
                 return
         text = self.tr("Dates read as: {samples}").format(samples=", ".join(parsed))
         if self._date_ambiguous:
-            text = (
-                self.tr(
+            # One template, so a translation can order the two (FIBR-0408).
+            text = self.tr("{warning} {dates}").format(
+                warning=self.tr(
                     "Check these are right — the day and month might be the other "
                     "way around."
-                )
-                + " "
-                + text
+                ),
+                dates=text,
             )
         self._date_preview.setText(text)
 

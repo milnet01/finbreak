@@ -23,6 +23,8 @@ signaling per
 
 ### Changed
 
+- **When an OFX file holds several accounts, the chooser names each account's type in words (for example "Savings") instead of the bank's code** (FIBR-0408)
+
 - **Importing several statements with the same layout asks about the columns once, even if you do not name the layout** (FIBR-0389)
   The "Save this layout as…" field is optional, but leaving it blank
   meant every file with the same columns was asked about again. Your

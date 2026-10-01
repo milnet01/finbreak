@@ -868,3 +868,20 @@ def test_FIBR0269_map_step_reads_the_statement_once_per_load(
         widget._column_combos["date"].findData("Details")
     )
     assert calls["n"] <= 1, f"detect + preview read the file {calls['n']} times"
+
+
+def test_FIBR0408_the_date_nudge_and_samples_are_one_template(
+    qtbot, service, tmp_path, translate_one
+):
+    """design.md § i18n: the day/month nudge was glued to the sample line with
+    " " +, so a translation could not put the samples first."""
+    translate_one("ImportWizardWidget", "{warning} {dates}", "{dates} || {warning}")
+    path = _write(
+        tmp_path, HEADER, [["05/06/2026", "A", "-1.00"], ["07/08/2026", "B", "-2.00"]]
+    )
+    widget = _wizard(qtbot, service, _acct(service))
+    widget._select_file(path)
+    shown = widget._date_preview.text()
+    assert " || " in shown, shown
+    dates, warning = shown.split(" || ")
+    assert dates.startswith("Dates read as") and "other way around" in warning
