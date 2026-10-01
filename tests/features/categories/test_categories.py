@@ -628,12 +628,15 @@ def test_INV7a_rename_level3_keeps_parent(qtbot, service):
     assert edited.parent_id == groceries.id, "a rename leaves the parent unchanged"
 
 
-@pytest.mark.parametrize("subject", ["level3_with_child", "level4"])
+@pytest.mark.parametrize(
+    "subject", ["level2_with_grandchild", "level3_with_child", "level4"]
+)
 def test_INV7a_rename_of_deep_data_keeps_parent(qtbot, service, subject):
     """INV-7(a) on the tolerated deep data of § 4.4 (audit 2026-09-27 row 17):
     a subject whose current parent is not an authorable "Move under…" target —
-    a Level-4 node (parent at Level 3), or a Level-3 node with a child (offered
-    Types only) — still renames without moving. The combo used to fall back to
+    a Level-4 node (parent at Level 3), a Level-3 node with a child (offered
+    Types only), or a Level-2 node with a grandchild (offered nothing at all,
+    FIBR-0397 C5) — still renames without moving. The combo used to fall back to
     its first entry, a Type, so an untouched Update silently re-parented."""
     from finbreak.ui.categories import CategoriesWidget
 
@@ -642,9 +645,11 @@ def test_INV7a_rename_of_deep_data_keeps_parent(qtbot, service, subject):
     groceries = _child_named(svc, expenditure.id, "Groceries")
     spar = svc.add_category(groceries.id, "Spar")
     aisle = svc.add_category(spar.id, "Aisle")  # Level 4, via the service (§ 4.4)
-    target, parent_id = (
-        (spar, groceries.id) if subject == "level3_with_child" else (aisle, spar.id)
-    )
+    target, parent_id = {
+        "level2_with_grandchild": (groceries, expenditure.id),
+        "level3_with_child": (spar, groceries.id),
+        "level4": (aisle, spar.id),
+    }[subject]
 
     widget = CategoriesWidget(service)
     qtbot.addWidget(widget)
@@ -652,9 +657,13 @@ def test_INV7a_rename_of_deep_data_keeps_parent(qtbot, service, subject):
     assert widget._move_under.currentData() == parent_id, (
         "Move under… preselects the current parent"
     )
-    expected_path = (
-        "Groceries" if subject == "level3_with_child" else "Groceries › Spar"
-    )
+    expected_path = {
+        "level2_with_grandchild": widget._path_label(
+            expenditure.id, CategoryService(service.vault).list_all()
+        ),
+        "level3_with_child": "Groceries",
+        "level4": "Groceries › Spar",
+    }[subject]
     assert widget._move_under.currentText().endswith(expected_path), (
         "the entry names the current parent by its full path"
     )
