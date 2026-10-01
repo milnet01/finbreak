@@ -91,6 +91,7 @@ class ExportDialog(QDialog):
     def _build_period(self, prefs: ReportPrefs) -> QWidget:
         box = QGroupBox(self.tr("Period"))
         form = QFormLayout(box)
+        self._period_form = form
         self._period_selector = QComboBox()
         for label, mode in (
             (self.tr("Previous month"), MODE_PREVIOUS_MONTH),
@@ -190,8 +191,12 @@ class ExportDialog(QDialog):
 
     def _sync_period_pickers(self) -> None:
         mode = self._period_selector.currentData()
-        self._month_picker.setVisible(mode == MODE_SPECIFIC_MONTH)
-        self._year_picker.setVisible(mode in (MODE_SPECIFIC_MONTH, MODE_SPECIFIC_YEAR))
+        # Hide the whole row: hiding only the field left its "Month" / "Year"
+        # label standing beside nothing (FIBR-0393).
+        self._period_form.setRowVisible(self._month_picker, mode == MODE_SPECIFIC_MONTH)
+        self._period_form.setRowVisible(
+            self._year_picker, mode in (MODE_SPECIFIC_MONTH, MODE_SPECIFIC_YEAR)
+        )
 
     def _on_all_accounts_toggled(self, checked: bool) -> None:
         # All ticked ⇒ rows disabled (their state is not meaningful, options() is

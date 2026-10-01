@@ -131,7 +131,7 @@ uniqueness key.
 
 | finding | verified | disposition | was → now | must_agree |
 |---|---|---|---|---|
-| P1 hidden Month/Year pickers leave bare labels | | | | FIBR-0013 D7 |
+| P1 hidden Month/Year pickers leave bare labels | yes — `_sync_period_pickers` hid the field only; remedy checked: Home hides its pickers too, so hide the row rather than disable | fixed | field hidden, label left → `QFormLayout.setRowVisible` per row; red: bare "Month" label in Previous month; mutations: field-only hiding for either picker reddens it | FIBR-0013 mock-up note (amended: shown, not enabled) |
 | P2 no flush + fsync before os.replace | | | | FIBR-0013 D1 |
 | P3 temp cleanup deletes a user's `<name>.part` | | | | FIBR-0013 D1, INV-12 |
 | P4 empty render written and reported as exported | | | | FIBR-0013 INV-2 |

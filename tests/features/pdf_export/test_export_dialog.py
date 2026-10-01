@@ -7,13 +7,16 @@ is handed the account list + the pre-fill prefs), so no vault fixture is needed.
 
 import pytest
 from PySide6.QtCore import QLocale
-from PySide6.QtWidgets import QGroupBox, QLineEdit, QRadioButton
+from PySide6.QtWidgets import QFormLayout, QGroupBox, QLineEdit, QRadioButton
 
 from finbreak.models import Account
 from finbreak.services.pdf_export import ExportOptions
 from finbreak.services.reporting import (
+    MODE_CURRENT_MONTH,
+    MODE_PREVIOUS_MONTH,
     MODE_SPECIFIC_MONTH,
     MODE_SPECIFIC_YEAR,
+    MODE_YEAR_TO_DATE,
     ReportPrefs,
 )
 from finbreak.ui.export_dialog import MIN_EXPORT_PASSWORD_LEN, ExportDialog
@@ -49,6 +52,34 @@ def test_FIBR0336_month_picker_uses_the_locales_own_digits(qtbot):
         QLocale.setDefault(previous)
     assert labels[0] == "٠١" and labels[-1] == "١٢", labels
     assert picker.itemData(0) == 1, "the stored value stays the plain int"
+
+
+@pytest.mark.parametrize(
+    ("mode", "month_shown", "year_shown"),
+    [
+        (MODE_PREVIOUS_MONTH, False, False),
+        (MODE_CURRENT_MONTH, False, False),
+        (MODE_YEAR_TO_DATE, False, False),
+        (MODE_SPECIFIC_YEAR, False, True),
+        (MODE_SPECIFIC_MONTH, True, True),
+    ],
+)
+def test_FIBR0393_a_hidden_picker_takes_its_label_with_it(
+    qtbot, mode, month_shown, year_shown
+):
+    """D7: the Month and Year pickers appear only in the modes that use them. A
+    hidden picker must not leave its "Month" / "Year" label standing alone beside
+    nothing — the default Previous-month mode showed both bare labels."""
+    d = _dialog(qtbot)
+    selector = d._period_selector
+    selector.setCurrentIndex(selector.findData(mode))
+    form = d._month_picker.parentWidget().layout()
+    assert isinstance(form, QFormLayout)
+    for picker, shown in ((d._month_picker, month_shown), (d._year_picker, year_shown)):
+        label = form.labelForField(picker)
+        assert label is not None
+        assert picker.isHidden() is not shown
+        assert label.isHidden() is not shown, label.text()
 
 
 # -- pre-fill --------------------------------------------------------------- #

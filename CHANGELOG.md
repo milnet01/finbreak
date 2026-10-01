@@ -40,6 +40,8 @@ signaling per
 
 ### Fixed
 
+- **The Export report window no longer shows empty "Month" and "Year" labels when the chosen period does not use them** (FIBR-0393)
+
 - **The dashboard drill-down no longer counts a spending group twice when a restored or damaged vault holds a transaction filed on a top-level type** (FIBR-0391)
 
 - **Correction to the 0.1.23 notes: there is no dark PDF export** (FIBR-0390)
