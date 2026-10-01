@@ -3174,7 +3174,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: security.
   Source: full-audit-2026-09-27 code lane 7 (queued by FIBR-0367).
 
-- 📋 [FIBR-0408] **Queued findings from the 2026-09-27 audit: import wizard lane (7 items).**
+- ✅ [FIBR-0408] **Queued findings from the 2026-09-27 audit: import wizard lane (7 items).**
   From docs/reviews/2026-09-27-full-audit/code-lane-08-import-wizard.md.
   Line numbers are the audited commit's (52e5162); find sites by symbol.
   - [Medium] ui/import_wizard.py:~748, :~1422-1423 -- after "Create it"
@@ -3199,6 +3199,14 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   - [Low] import_wizard.py:~1725 -- _ask_mapping calls read_header
     unguarded in a timer-driven slot (defensive only). Fix: guard the
     call.
+  Resolved (2026-10-01): five fixed, two dismissed. W1 (6e4baf7)
+  "Create it" shows what it stored. W2 (20dfc3b) a wrong PDF password
+  is named on the re-prompt. W3 and W4 (0ce6d8a) the date nudge and the
+  OFX chooser label are templates. W5 (fe2884d) design.md quotes the
+  real preview. W6 and W7 dismissed (e77511a): retarget raises nothing
+  but the lock and storage faults, and the mapping header was already
+  read. The sweep fixed the last glued sentence (3b344a9). Ledger:
+  docs/reviews/close-findings-2026-10-01.md section FIBR-0408.
   **Layman:** Seven smaller problems in the import screens, including a hidden warning after creating an account and a wrong PDF password giving no sign it was wrong.
   Kind: review-fix.
   Source: full-audit-2026-09-27 code lane 8 (queued by FIBR-0367).

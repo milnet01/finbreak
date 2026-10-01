@@ -392,9 +392,20 @@ uniqueness key.
 | W6 `_on_confirm_account_changed` catches only VaultLockedError | no — `retarget` → `_build_preview` → `_dedup` (vault reads) raises `VaultLockedError` (caught) or a storage `DatabaseError`; coding.md §2 routes unexpected faults to propagate loudly (the crash reporter), as main_window's handlers state | dismissed | by design: nothing else is raised, and catching a storage fault here would swallow it; no change | coding.md §2 (agrees) |
 | W7 `_ask_mapping` calls `read_header` unguarded | no — a record reaches `needs_mapping` only after SCAN's `read_header(record.source_text)` succeeded (batch_import `_scan_text`), and `_ask_mapping` re-reads that same text; `read_header` is deterministic | dismissed | a guard would be a path that cannot happen (coding.md §2); no change | coding.md §2 (agrees) |
 
-- **cited_by:**
-- **swept:**
-- **collateral:**
-- **surfaced:**
-- **out_of_scope:**
-- **falsified:**
+- **cited_by:** `_account_match_label`, `PasswordDialog(`, `" " +` joins,
+  the OFX chooser label, "couldn't be parsed", `read_header`, `retarget`
+  across specs, design, src and tests.
+- **swept:** FIBR-0086 §4.6 — agrees (W1 restores it). FIBR-0009 INV-3 —
+  agrees (the dialog is still re-shown, W2). FIBR-0008 D8's label shape —
+  kept (W4). docs/design.md § Error handling — amended (W5). coding.md §2
+  — decided W6 and W7. Every other `PasswordDialog(` caller is one of the
+  two changed sites; all three test fakes widened. No
+  `.claude/code-pairs.json` exists.
+- **collateral:** test_create_dialog_prefills_from_the_statement had no
+  QApplication fixture and aborted once tests were added beside it; it
+  takes `qapp` now (in W1's commit).
+- **surfaced:** none.
+- **out_of_scope:** the Categories delete confirmation was the last
+  `" " +` join of display sentences in the UI — fixed (3b344a9), the
+  D2 / W3 class with the same template fix.
+- **falsified:** none.
