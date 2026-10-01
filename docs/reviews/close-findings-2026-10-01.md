@@ -234,7 +234,7 @@ uniqueness key.
 | finding | verified | disposition | was → now | must_agree |
 |---|---|---|---|---|
 | D1 transfer cell arrow is a fixed literal | yes — `f"{item.from_account} {_ARROW} {item.to_account}"` | fixed | f-string → `tr("{source} → {target}")`, the same source text as the dashboard's transfer label (FIBR-0391 R2); `_ARROW` removed (no other user); red: a stub catalog's reordered template was ignored; mutation: the untranslated literal reddens it | FIBR-0391 R2 template (agrees); only audit reports quoted the old literal (frozen) |
-| D2 display strings joined by +, join or f-string | | | | FIBR-0201 §4.8 |
+| D2 display strings joined by +, join or f-string | yes — transfers `text += " " + tr(...)`, accounts `" · ".join(...)`, statements `f"{start} – {end}"` | fixed | glued → one `tr()` template each: `{confirmed} {skipped}` (each sentence keeps its own `%n`), `{reconciliation} · {password}` (a single part shown alone), `{start} – {end}`; tests use a new shared `translate_one` fixture (stub catalog), which D1's test now uses too; red: each reordered template was ignored (real text shown); mutations: each site's old join reddens its test | FIBR-0201 §4.8 (two translated sentences; agrees) |
 | D3 service error text shown via str(exc) | | | | FIBR-0219 §4.1; design.md § i18n |
 | D4 `_on_set_category` has no VaultLockedError guard | | | | |
 

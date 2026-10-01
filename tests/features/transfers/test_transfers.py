@@ -489,24 +489,9 @@ def test_INV10_tab_unlink_returns_pair_to_suggested(qtbot, service):
     assert len(widget._confirmed) == 0
 
 
-class _Catalog:
-    """A stand-in translation catalog: a QTranslator answering one source
-    string in one context, so a test proves the text goes through tr()."""
-
-    @staticmethod
-    def install(qapp, context: str, source: str, translation: str):
-        from PySide6.QtCore import QTranslator
-
-        class _One(QTranslator):
-            def translate(self, ctx, src, disambiguation=None, n=-1):
-                return translation if (ctx, src) == (context, source) else ""
-
-        catalog = _One()
-        qapp.installTranslator(catalog)
-        return catalog
-
-
-def test_FIBR0396_the_from_to_cell_is_a_translatable_template(qtbot, qapp, service):
+def test_FIBR0396_the_from_to_cell_is_a_translatable_template(
+    qtbot, service, translate_one
+):
     """design.md § i18n: the From -> To cell was an f-string with a fixed arrow,
     so a translation could neither reorder nor mirror it, and could disagree with
     its own translated header. It is one tr() template now."""
@@ -515,16 +500,10 @@ def test_FIBR0396_the_from_to_cell_is_a_translatable_template(qtbot, qapp, servi
     a, b = _two_accounts(service)
     _add(service, a, -50000, "2026-01-05", "pay savings")
     _add(service, b, 50000, "2026-01-05", "deposit")
-    catalog = _Catalog.install(
-        qapp, "TransfersWidget", "{source} → {target}", "{target} ← {source}"
-    )
-    try:
-        widget = TransfersWidget(service)
-        qtbot.addWidget(widget)
-        shown = cell_text(widget._suggested, 0, 2)
-    finally:
-        qapp.removeTranslator(catalog)
-    assert shown == "Savings ← Default"
+    translate_one("TransfersWidget", "{source} → {target}", "{target} ← {source}")
+    widget = TransfersWidget(service)
+    qtbot.addWidget(widget)
+    assert cell_text(widget._suggested, 0, 2) == "Savings ← Default"
 
 
 def test_INV10_tab_from_to_and_amount_cells(qtbot, service):
@@ -976,3 +955,27 @@ def test_FIBR0328_date_column_reads_in_the_user_format_and_still_sorts(qtbot, se
         "DISPLAY string orders by day-of-month under dd/MM/yyyy, which is why "
         "the ISO form has to stay as the sort key."
     )
+
+
+def test_FIBR0396_the_skip_note_is_composed_by_one_template(
+    qtbot, service, translate_one
+):
+    """design.md § i18n: the Confirmed line and its skip note were glued with
+    " " +, so a translation could not reorder the two sentences."""
+    from finbreak.ui.transfers import TransfersWidget
+
+    a, b = _two_accounts(service)
+    _add(service, a, -1000, "2026-01-05")  # one debit...
+    _add(service, b, 1000, "2026-01-05")  # ...matching two credits
+    _add(service, b, 1000, "2026-01-06")
+    translate_one("TransfersWidget", "{confirmed} {skipped}", "{skipped} | {confirmed}")
+    widget = TransfersWidget(service)
+    qtbot.addWidget(widget)
+    widget._suggested.selectRow(0)
+    widget._suggested.selectRow(1)
+    widget._confirm_button.click()
+
+    text = widget._status.text()
+    assert " | " in text, text
+    skipped, confirmed = text.split(" | ")
+    assert "skipped" in skipped and "Confirmed" in confirmed

@@ -1714,3 +1714,30 @@ def test_FIBR0389_names_differing_only_in_spacing_are_refused(service, gap):
     svc.add_account("Cafe float", "current")
     with pytest.raises(ValueError):
         svc.add_account(f"Cafe{gap}float", "current")
+
+
+def test_FIBR0396_the_status_cell_is_composed_by_one_template(
+    qtbot, service, translate_one
+):
+    """design.md § i18n: reconciliation text and the key marker were joined with
+    " · ", which a translation could neither reorder nor re-punctuate."""
+    from finbreak.ui.accounts import AccountsWidget
+
+    svc = AccountService(service.vault)
+    good_key = svc.add_account("EEgoodkey", "current").id
+    _statement(service, good_key, "2026-01-01", "2026-04-30", "a.pdf", 100_000)
+    _statement(service, good_key, "2026-05-01", "2026-05-31", "b.pdf", 150_000)
+    TransactionRepository(service.vault.connection).add(
+        good_key, "2026-05-15", 50_000, "bridge"
+    )
+    svc.set_pdf_password(good_key, "PW-G")
+    translate_one(
+        "AccountsWidget",
+        "{reconciliation} · {password}",
+        "{password} / {reconciliation}",
+    )
+    widget = AccountsWidget(service)
+    qtbot.addWidget(widget)
+    assert _cell(widget, "EEgoodkey", _COL_STATUS) == (
+        "🔑 statement password saved / ✓ balances reconcile"
+    )

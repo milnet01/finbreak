@@ -477,6 +477,15 @@ class AccountsWidget(QWidget):
         self._rows = []
         self._with_pw = set()
 
+    def _status_text(self, recon_text: str, key_text: str) -> str:
+        """The Status cell: either part alone, or both through one template so a
+        translation can reorder and re-punctuate them (FIBR-0396)."""
+        if recon_text and key_text:
+            return self.tr("{reconciliation} · {password}").format(
+                reconciliation=recon_text, password=key_text
+            )
+        return recon_text or key_text
+
     def _refresh(self) -> None:
         # The guard wraps the WHOLE pre-fill read block, not a named subset. All
         # five reads reach ``Vault.connection``, which is where VaultLockedError
@@ -552,7 +561,7 @@ class AccountsWidget(QWidget):
                     # reversal of the old list line, because the column sorts by
                     # reconciliation severity.
                     _COL_STATUS: SortableItem(
-                        " · ".join(part for part in (recon_text, key_text) if part),
+                        self._status_text(recon_text, key_text),
                         self._severity_rank(statuses[account.id]),
                     ),
                 }

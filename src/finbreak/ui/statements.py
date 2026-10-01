@@ -156,7 +156,10 @@ class StatementsWidget(QWidget):
                 items = {
                     _COL_ACCOUNT: QTableWidgetItem(statement.account_name),
                     _COL_PERIOD: SortableItem(
-                        f"{start} – {end}", statement.period_start
+                        # A template, so a translation can order the two dates
+                        # and choose its own dash (FIBR-0396).
+                        self.tr("{start} – {end}").format(start=start, end=end),
+                        statement.period_start,
                     ),
                     _COL_FILE: QTableWidgetItem(statement.source_filename or ""),
                     _COL_IMPORTED: SortableItem(imported, statement.imported_at),

@@ -247,11 +247,16 @@ class TransfersWidget(QWidget):
         text = self.tr("Confirmed %n transfer(s).", "", confirmed)
         skipped = asked - confirmed
         if skipped > 0:
-            text += " " + self.tr(
-                "%n suggestion(s) were skipped — they share a transaction with a "
-                "transfer you just confirmed.",
-                "",
-                skipped,
+            # Composed by one template, not glued with " " +, so a translation
+            # can order the two sentences (FIBR-0396). Each keeps its own %n.
+            text = self.tr("{confirmed} {skipped}").format(
+                confirmed=text,
+                skipped=self.tr(
+                    "%n suggestion(s) were skipped — they share a transaction "
+                    "with a transfer you just confirmed.",
+                    "",
+                    skipped,
+                ),
             )
         return text
 

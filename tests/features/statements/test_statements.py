@@ -1990,3 +1990,18 @@ def test_FIBR0202_INV18_a_single_delete_still_reads_as_one(qtbot, service, monke
     _select_periods(widget, p)
     widget._delete_button.click()
     assert window.statusBar().currentMessage() == "Statement deleted"
+
+
+def test_FIBR0396_the_period_cell_is_one_template(qtbot, service, translate_one):
+    """design.md § i18n: the period was an f-string around a fixed dash, so a
+    translation could not reorder or re-punctuate it."""
+    imp, acct = ImportService(service.vault), _acct(service)
+    _do_import(imp, _csv(HEADER, [["2026-01-05", "a", "-1.00"]]), acct)
+    translate_one("StatementsWidget", "{start} – {end}", "{end} ← {start}")
+    widget = StatementsWidget(service)
+    qtbot.addWidget(widget)
+    shown = widget._table.item(0, _COL_PERIOD).text()
+    assert " ← " in shown, shown
+    end, start = shown.split(" ← ")
+    assert start <= end, shown  # both are the same day here; the order is the point
+    assert " – " not in shown

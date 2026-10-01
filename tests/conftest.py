@@ -315,6 +315,32 @@ class RuleStub(QDialog):
         return self._category_id
 
 
+@pytest.fixture
+def translate_one(qapp):
+    """Install stand-in translations: ``translate_one(context, source, text)``
+    makes ``tr(source)`` in ``context`` return ``text``. A test then proves a
+    display string goes through ONE ``tr()`` template, by giving that template a
+    reordered translation. Every catalog is removed at teardown."""
+    from PySide6.QtCore import QTranslator
+
+    installed = []
+
+    def install(context: str, source: str, translation: str) -> None:
+        class _One(QTranslator):
+            def translate(self, ctx, src, disambiguation=None, n=-1):
+                # None, not "": Qt takes an empty string as a translation and
+                # would blank every other label in the app.
+                return translation if (ctx, src) == (context, source) else None
+
+        catalog = _One()
+        qapp.installTranslator(catalog)
+        installed.append(catalog)
+
+    yield install
+    for catalog in installed:
+        qapp.removeTranslator(catalog)
+
+
 def stub_picker(monkeypatch, ui_mod, selected_id, accept=True):
     """Patch ``ui_mod.CategoryPickerDialog`` with an auto-driven ``PickerStub``.
     Returns a ``_CallLog`` whose ``.parent_names`` captures the map the dialog was
