@@ -389,8 +389,8 @@ uniqueness key.
 | W3 tr(...) + " " + text joins display strings | yes — the date nudge was glued to the sample line | fixed | → `tr("{warning} {dates}")`; red: a reordered catalog template was ignored; mutation: the untranslated template reddens it | |
 | W4 the OFX statement label is an f-string with a raw type | yes — `f"{account_id} · {account_type}"`, the bank's code shown raw; spec checked: FIBR-0008 D8 gives the shape `"<account_id> · <type>"` (kept) without saying raw code or name — grey zone, no gate | fixed | → `tr("{number} · {type}")` with translated names for the standard OFX types, an unknown code as written; English now reads "Savings", not "SAVINGS" (changelog: Changed); red: a catalog's type name and order were ignored; mutations: raw code, fixed order each redden it | FIBR-0008 D8 (shape agrees) |
 | W5 design.md quotes preview wording the app never shows | yes — "12 of 240 rows couldn't be parsed" vs the built `{new} new · {dup} duplicate · {err} error` | fixed | the example now quotes the built counts line; no red run: nothing observable changes | docs/design.md § Error handling (amended) |
-| W6 `_on_confirm_account_changed` catches only VaultLockedError | | | | |
-| W7 `_ask_mapping` calls `read_header` unguarded | | | | |
+| W6 `_on_confirm_account_changed` catches only VaultLockedError | no — `retarget` → `_build_preview` → `_dedup` (vault reads) raises `VaultLockedError` (caught) or a storage `DatabaseError`; coding.md §2 routes unexpected faults to propagate loudly (the crash reporter), as main_window's handlers state | dismissed | by design: nothing else is raised, and catching a storage fault here would swallow it; no change | coding.md §2 (agrees) |
+| W7 `_ask_mapping` calls `read_header` unguarded | no — a record reaches `needs_mapping` only after SCAN's `read_header(record.source_text)` succeeded (batch_import `_scan_text`), and `_ask_mapping` re-reads that same text; `read_header` is deterministic | dismissed | a guard would be a path that cannot happen (coding.md §2); no change | coding.md §2 (agrees) |
 
 - **cited_by:**
 - **swept:**
