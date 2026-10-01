@@ -119,6 +119,11 @@ _PDF_THEME = _PdfTheme(
 )
 
 
+class PdfRenderError(RuntimeError):
+    """Qt's print produced no PDF document. A fault in the renderer, not a save
+    error, so the caller does not catch it as one (FIBR-0393)."""
+
+
 class PdfExportService:
     """Vault-scoped, read-only PDF renderer (FIBR-0013)."""
 
@@ -141,6 +146,10 @@ class PdfExportService:
         doc.print_(writer)
         buffer.close()
         pdf_bytes = bytes(buffer.data().data())  # QByteArray -> bytes
+        if not pdf_bytes.startswith(b"%PDF"):
+            # An empty render — a buffer that would not open, or a print that
+            # drew nothing — would otherwise be written and reported as exported.
+            raise PdfRenderError("the PDF render produced no document")
         if options.password:
             pdf_bytes = self._encrypt(pdf_bytes, options.password)
         return pdf_bytes

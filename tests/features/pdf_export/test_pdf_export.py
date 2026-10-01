@@ -420,6 +420,21 @@ def test_FIBR0393_the_bytes_reach_the_disk_before_the_rename(
     assert events[0][1] == len(small)  # every byte was written when synced
 
 
+def test_FIBR0393_an_empty_render_is_refused_not_exported(
+    qapp, service, tmp_path, monkeypatch
+):
+    """If Qt's print produced no document, the export must fail rather than
+    write an empty file and report "Report exported"."""
+    import finbreak.services.pdf_export as mod
+
+    monkeypatch.setattr(mod.QTextDocument, "print_", lambda self, printer: None)
+    out = tmp_path / "report.pdf"
+    with pytest.raises(mod.PdfRenderError):
+        _svc(service).export(_options(), out, _TODAY)
+    assert not out.exists()
+    assert not _temps(tmp_path, "report.pdf")
+
+
 def test_export_vault_locked_leaves_no_file(qapp, service, tmp_path):
     # INV-12(b): a vault lock mid-export — render raises before any write.
     a = _accounts(service)[0].id
