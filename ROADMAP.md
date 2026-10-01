@@ -3784,9 +3784,27 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   handlers show str(exc) from CategoryService and CategorizationService
   the same way. The markup half of C3 is fixed: the categories error
   label is plain text, so a quoted category name shows as typed.
+  FIBR-0398 U5 (2026-10-01) is this item's ambiguous-amount message:
+  ui/_amount.py's refusal is an English f-string, and FIBR-0219 9 and
+  design.md i18n disagree on whether it must be translated. Settle that
+  here with the rest.
   **Layman:** Some error messages when adding a transaction or editing an account can't be translated yet; it only matters once finbreak offers other languages.
   Kind: review-fix.
   Source: full-audit-2026-09-27 code lane 16 D3, queued by FIBR-0396.
+
+- 📋 [FIBR-0435] **A mistyped time zone in Settings or first run is saved as the system zone without a word, as FIBR-0083 specifies.**
+  Queued from FIBR-0398 U2 (2026-10-01). ui/_datetime_prefs.py
+  _read_timezone persists "system" when the typed text names no zone,
+  so a typo silently moves every timestamp and can change which day
+  "today" is. That is FIBR-0083 Deliverables 3 and 4's persist rule, so
+  changing it changes the spec's direction and owes its review gate.
+  Recommendation: refuse Save (and first-run submit) with a translated
+  message naming the field, keeping the dialog open, rather than keeping
+  the previous zone, which would leave the field showing text that was
+  never saved. Then amend FIBR-0083 D3/D4 and run review-contract on it.
+  **Layman:** If you mistype a time zone, finbreak quietly uses your computer's zone instead of telling you; it should say so and let you fix it.
+  Kind: review-fix.
+  Source: full-audit-2026-09-27 code lane 18 U2, queued by FIBR-0398.
 
 ## v1.1.0 — Localisation
 

@@ -295,10 +295,10 @@ uniqueness key.
 | finding | verified | disposition | was → now | must_agree |
 |---|---|---|---|---|
 | U1 amounts mix locale digits with an ASCII fraction | yes, executed — the FIBR-0393 strip test rendered "R ٢٬٣٤٠٫00"; the ungrouped fallback for a huge whole part is ASCII too | fixed | Python's ASCII digits → `_locale_digits`, through QLocale's own 0-9, for the fraction and the fallback (a helper, not `str.translate`, which the i18n guard reads as Qt's `translate()`); red: ar_EG and fa_IR each showed two digit systems; mutations: either part left ASCII reddens it; round-trip parse tests still green | FIBR-0153 (agrees) |
-| U2 a mistyped timezone is silently saved as system | | | | FIBR-0083 |
-| U3 FIBR-0153 / FIBR-0219 describe the removed float route | | | | FIBR-0153 §3.2 INV-3; FIBR-0219 §4.2 §4.5 |
+| U2 a mistyped timezone is silently saved as system | yes — `_read_timezone` returns "system" for text naming no zone; that is FIBR-0083 Deliverables 3–4's specified persist rule | queued as FIBR-0435 | a direction change to a spec (owes its gate), so not an edit here; recommended: refuse Save / first-run submit with a translated message, then amend FIBR-0083 D3/D4 | FIBR-0083 D3/D4 |
+| U3 FIBR-0153 / FIBR-0219 describe the removed float route | yes — both specs (and FIBR-0219's ambiguity-message rendering) name `QLocale().toString(float(...))`; the code uses `_grouped` everywhere | fixed | five passages amended to `_grouped`, exact and never `float` (FIBR-0327, FIBR-0398); FIBR-0219's scientific-notation rationale replaced by the exact-path reason; no red run: nothing observable changes | FIBR-0153 §3.2, INV-3; FIBR-0219 §2, §4.5, §9 (amended) |
 | U4 FIBR-0127 INV-3/INV-4 and theme.py token counts | | | | FIBR-0127 |
-| U5 the ambiguity refusal is an untranslated f-string | | | | FIBR-0434; FIBR-0219 §9 |
+| U5 the ambiguity refusal is an untranslated f-string | yes — `_ambiguous` builds English text; FIBR-0219 §9 says plain English, design.md § i18n says tr() | queued as FIBR-0434 | the same decision as FIBR-0434's service messages (it already names the ambiguous-amount message); annotated there | FIBR-0434 (annotated) |
 | U6 a 4300+-digit amount shows an interpreter message | | | | FIBR-0219 |
 
 - **cited_by:**
