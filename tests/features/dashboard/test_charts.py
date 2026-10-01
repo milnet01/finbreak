@@ -147,8 +147,7 @@ def test_build_trend_chart_themes_both_axis_labels(qapp):
     explicit colours so an offscreen render does not depend on a live palette.
 
     `build_trend_chart` themed neither axis, so the labels fell back to QChart's
-    default light-theme brush — dark-on-dark on the shipped dark default, and
-    invisible in the Dark PDF export, which feeds this same builder.
+    default light-theme brush — dark-on-dark on the shipped dark default.
     """
     trend = [
         MonthlyTotal(label="2026-03", income=Decimal("10"), expenditure=Decimal("5"))

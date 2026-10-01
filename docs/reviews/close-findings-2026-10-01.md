@@ -138,11 +138,32 @@ uniqueness key.
 | P5 ASCII year beside a QLocale month; chart axes not localised | yes — `str(end.year)` / `year=end.year`; no `setLocalizeNumbers` | fixed | ASCII year → `datetime_format.format_year` (locale digits, no group separator) in the PDF period line and, as its stated pair, the month-summary strip; value axes → `setLocalizeNumbers(True)`; red: "يناير 2026", "2026" in the strip, `localizeNumbers()` False; mutations: each year site, the separator option, and each chart separately redden a test | ui/month_summary.py "same spelling" pair (both changed) |
 | P6 slice and legend labels may render rich text | yes, by probe — `<b>x</b>` drew as wide as `x` (markup honoured), its escaped form as wide as the literal text | fixed | raw labels → `html.escape` in `build_donut_chart` and `build_breakdown_donut` (the "Other" label too, untested: a translated string, not user data); `label()` now returns the escaped text, read back only by tests; red: the marked-up name drew as narrow as "x" in both builders; mutations: either site unescaped reddens it | |
 | P7 comments cite the withdrawn Dark theme and an unrun exec() | yes — charts.py module docstring and trend comment; `options()` docstring | fixed | "Light or Dark", "the Dark PDF export", "after an accepted exec()" → the one light theme (FIBR-0217), the dark-default reason alone, "in the accepted slot"; no red run: nothing observable changes | |
-| P8 FIBR-0013 D1 describes `sections` + `today` fields | | | | FIBR-0013 D1 |
+| P8 FIBR-0013 D1 describes `sections` + `today` fields | no — D1 already lists the three booleans and no `today` field (7cc7fe4, FIBR-0343); its `today` signatures were settled by FIBR-0391 R3 | dismissed | fixed before this run; nothing to do | FIBR-0013 D1 (agrees) |
 
-- **cited_by:**
-- **swept:**
-- **collateral:**
-- **surfaced:**
-- **out_of_scope:**
-- **falsified:**
+- **cited_by:** `.pdf.part`, "Dark PDF", "Light or Dark", "accepted
+  `exec()`", `str(end.year)`, `setLocalizeNumbers`, `_sync_period_pickers`,
+  `standaloneMonthName` across docs, src, tests and packaging.
+- **swept:** FIBR-0013 D1 write step ("a sibling temp file") — agrees; mock-up
+  picker note — fixed (P1). docs/security-model.md INV-7 temp note — fixed
+  (P3). FIBR-0013 INV-2 / INV-12 against the `PdfRenderError` refusal —
+  agree. FIBR-0231 §4 `{month}` passage (says how the month is composed, not
+  how the year is spelled) — agrees. `period_filename_slug`'s
+  `str(end.year)` — agrees (a file name stays ASCII by design).
+  ui/month_summary.py "same spelling" pair with the PDF period line — fixed
+  together (P5). main_window.py's export handler — agrees (`finally`
+  restores the cursor; a propagated `PdfRenderError` skips "Report
+  exported"). Test readers of a slice's `label()` — agree (none uses a name
+  with `&` or `<`; the lock-wipe walk only collects texts). The audit
+  report and earlier ledgers — frozen. No `.claude/code-pairs.json` exists.
+- **collateral:** two FIBR-0013 lines my own R3 and P1 amendments left
+  unwrapped — rewrapped in the group-close commit.
+- **surfaced:** none.
+- **out_of_scope:** tests/features/dashboard/test_charts.py docstring still
+  said unthemed axes were "invisible in the Dark PDF export" — the P7
+  class, stale since FIBR-0217; fixed (deterministic). The audit's other
+  two lane-13 findings are not in FIBR-0393: the `O_BINARY` Critical was
+  refuted on the Windows box and the bracket-negatives Medium fixed, both
+  in the 2026-09-27 ledger. Amounts mix digit systems under ar_EG — the
+  strip test rendered "R ٢٬٣٤٠٫00" — already FIBR-0398's Medium, which the
+  audit marked not executed; this is the execution.
+- **falsified:** none.

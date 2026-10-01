@@ -2564,7 +2564,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: security.
   Source: full-audit-2026-09-27 code lane 12 (queued by FIBR-0367).
 
-- 📋 [FIBR-0393] **Queued findings from the 2026-09-27 audit: PDF export lane (8 items).**
+- ✅ [FIBR-0393] **Queued findings from the 2026-09-27 audit: PDF export lane (8 items).**
   From docs/reviews/2026-09-27-full-audit/code-lane-13-pdf-export.md.
   Line numbers are the audited commit's (52e5162); find sites by symbol.
   - [Medium] ui/export_dialog.py:121-123,193-194 -- hiding the Month and
@@ -2595,6 +2595,16 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   - [Low] FIBR-0013 D1 -- the spec describes ExportOptions with a
     sections frozenset and a today field; the code uses three booleans
     and a today parameter. Fix: amend FIBR-0013 to match the code.
+  Resolved (2026-10-01): seven fixed, one dismissed. P1 (8a34c37)
+  a hidden period picker takes its label with it. P3 (0c5e96c) the
+  temp file is a random mkstemp name, so a user's .part survives. P2
+  (d03c18c) the bytes are flushed and fsynced before the rename. P4
+  (730f6e4) an empty render raises PdfRenderError instead of being
+  exported. P5 (f8963e7) years and chart axes use the locale's
+  numbers. P6 (42fca3f) pie labels are escaped, shown as typed. P7
+  (3c61bed) stale comments corrected. P8 dismissed: FIBR-0013 D1 was
+  already corrected (7cc7fe4). Ledger and sweep:
+  docs/reviews/close-findings-2026-10-01.md section FIBR-0393.
   **Layman:** Eight fixes around saving a report as PDF: stray empty labels in the export window, safer file writing, a check that the PDF isn't empty, number formatting for other languages, and some out-of-date notes.
   Kind: review-fix.
   Source: full-audit-2026-09-27 code lane 13 (queued by FIBR-0367).
