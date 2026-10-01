@@ -670,8 +670,7 @@ class MonthSummaryStrip(QWidget):
 **`MonthSummaryService.summary` owns the §3 decision 1 mode allow-list** and
 returns `None` for any other mode, so INV-4 is testable without Qt and
 `HomeView` does nothing but hide the strip on `None`. `today` is required, not
-defaulted — unlike `ReportingService`, whose `today: date | None = None` predates
-this contract.
+defaulted — as `ReportingService`'s is since FIBR-0391.
 
 **The allow-list tests the whole `ReportPrefs`, not just the mode token.**
 `MODE_SPECIFIC_MONTH` is admitted only when `prefs.year` and `prefs.month` are

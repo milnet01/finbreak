@@ -331,3 +331,15 @@ def test_INV13_transaction_count_is_live_whole_vault(service):
 
 def test_base_currency_symbol(service):
     assert ReportingService(service.vault).base_currency() == "ZAR"
+
+
+@pytest.mark.parametrize(
+    "method", ["summary", "spending_by_category", "monthly_trend", "drill_down"]
+)
+def test_FIBR0391_today_is_required_never_the_os_clock(service, method):
+    """A caller that omits ``today`` is refused rather than handed the naive OS
+    clock, which can name the wrong month (the FIBR-0342 trap). Every caller passes
+    the app clock's date; ``MonthSummaryService.summary`` already requires it."""
+    reporting = ReportingService(service.vault)
+    with pytest.raises(TypeError, match="today"):
+        getattr(reporting, method)(_JAN, None)

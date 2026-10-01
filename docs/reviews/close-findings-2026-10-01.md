@@ -99,7 +99,7 @@ uniqueness key.
 |---|---|---|---|---|
 | R1 root-assigned row double-counts a branch | yes — `category_node(root)` walks every child subtree, each also a top item; remedy checked: "treat a root like None" would disagree with the donut, which names the root's wedge | fixed | root node walked its children → holds its own rows only, named after the root; red: drill 500.00 vs tile 400.00; mutation: dropping the root guard reddens it | FIBR-0138 INV-1, D4a (amended: a root node holds only its own rows) |
 | R2 transfer drill label bypasses tr() | yes — `_transfers_branch` builds `f"{from_account} → {to_account}"` | fixed | fixed arrow → `DrillLabels.transfer_pair`, `tr("{source} → {target}")` from HomeView; red: sentinel template ignored; mutations: the fixed arrow in the service, a bad placeholder and a swapped order in home.py each redden | FIBR-0138 INV-9, D2, D4b, symbols table; test contract INV-9 (all amended) |
-| R3 `today` falls back to the OS clock | | | | callers of the four methods |
+| R3 `today` falls back to the OS clock | yes — four `today or date.today()` fallbacks; every src caller passes `today` (mypy clean after removal) | fixed | optional `today` + OS-clock fallback → required, in `ReportingService` and (same root cause) `PdfExportService.render_pdf_bytes`/`export`; red: a call without `today` ran; mutations: a default on any one of the six reddens it; two tests that leaned on the OS clock now pass a fixed date | callers of the four methods; FIBR-0013, 0138, 0143, 0231; month_summary docstring; pdf_export + datetime_display test text (all amended) |
 | R4 FIBR-0139 D2/D5 stale against the code | | | | FIBR-0139 |
 
 - **cited_by:**

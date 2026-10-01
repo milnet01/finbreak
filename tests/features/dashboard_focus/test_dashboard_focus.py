@@ -155,6 +155,8 @@ from finbreak.ui._amount import (  # noqa: E402
 )
 
 _JAN = ReportPrefs(MODE_SPECIFIC_MONTH, year=2026, month=1)
+# A specific month resolves the same whatever today is; the service still needs one.
+_TODAY = date(2026, 7, 12)
 
 
 @pytest.fixture
@@ -289,7 +291,7 @@ def test_INV9_node_to_column_map_expenditure_shows_spending_node(qtbot, service)
     home = _home(service)
     qtbot.addWidget(home)
     reporting = ReportingService(service.vault)
-    summary = reporting.summary(_JAN, None)
+    summary = reporting.summary(_JAN, None, _TODAY)
     symbol = reporting.base_currency()
     exp_total = home.findChild(QLabel, "dashboard_total_expenditure").text()
     inc_total = home.findChild(QLabel, "dashboard_total_income").text()
@@ -308,7 +310,9 @@ def test_INV1_column_totals_equal_drill_nodes_and_pies_mirror_children(qtbot, se
     home = _home(service)
     qtbot.addWidget(home)
     reporting = ReportingService(service.vault)
-    income, spending, transfers = reporting.drill_down(_JAN, None, labels=_labels())
+    income, spending, transfers = reporting.drill_down(
+        _JAN, None, _TODAY, labels=_labels()
+    )
     col_node = {"expenditure": spending, "income": income, "transfers": transfers}
     for col, node in col_node.items():
         pie = home.findChild(QChartView, f"dashboard_pie_{col}")

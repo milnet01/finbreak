@@ -5,7 +5,7 @@ is set, locks it with AES-256 — the money-clarity report a user can share.
 
 ## Contract
 
-- **`render_pdf_bytes(options, today=None) -> bytes`** returns a valid PDF
+- **`render_pdf_bytes(options, today) -> bytes`** returns a valid PDF
   (`%PDF-` header, `pikepdf.open` succeeds). It takes **no path** — plaintext PDF
   bytes never reach disk (INV-2, structural).
 - **Password is optional, the lock is real (INV-1).** A blank / `None` password

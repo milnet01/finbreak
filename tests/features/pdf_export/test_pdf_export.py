@@ -70,7 +70,7 @@ def test_render_produces_valid_pdf(qapp, service):
     a = _accounts(service)[0].id
     _add(service, a, 50_00)
     _add(service, a, -20_00)
-    pdf = PdfExportService(service.vault).render_pdf_bytes(_options())
+    pdf = PdfExportService(service.vault).render_pdf_bytes(_options(), _TODAY)
     assert pdf[:5] == b"%PDF-"
     with pikepdf.open(BytesIO(pdf)) as doc:
         assert len(doc.pages) >= 1
@@ -79,7 +79,9 @@ def test_render_produces_valid_pdf(qapp, service):
 def test_blank_password_is_unencrypted(qapp, service):
     a = _accounts(service)[0].id
     _add(service, a, 50_00)
-    pdf = PdfExportService(service.vault).render_pdf_bytes(_options(password=None))
+    pdf = PdfExportService(service.vault).render_pdf_bytes(
+        _options(password=None), _TODAY
+    )
     pikepdf.open(BytesIO(pdf)).close()  # opens with no password
 
 
@@ -87,7 +89,7 @@ def test_password_encrypts_round_trip(qapp, service):
     a = _accounts(service)[0].id
     _add(service, a, 50_00)
     pdf = PdfExportService(service.vault).render_pdf_bytes(
-        _options(password="secret12")
+        _options(password="secret12"), _TODAY
     )
     pikepdf.open(BytesIO(pdf), password="secret12").close()  # opens WITH
     with pytest.raises(pikepdf.PasswordError):
@@ -264,7 +266,7 @@ def test_empty_period_still_valid_pdf(qapp, service):
     a = _accounts(service)[0].id
     _add(service, a, 100_00)  # January data; export an empty March 2020
     empty = ReportPrefs(MODE_SPECIFIC_MONTH, year=2020, month=3)
-    pdf = _svc(service).render_pdf_bytes(_options(prefs=empty))
+    pdf = _svc(service).render_pdf_bytes(_options(prefs=empty), _TODAY)
     assert pdf[:5] == b"%PDF-"
 
 
@@ -334,7 +336,7 @@ def test_export_writes_valid_pdf_and_cleans_temp(qapp, service, tmp_path):
     a = _accounts(service)[0].id
     _add(service, a, 100_00)
     out = tmp_path / "report.pdf"
-    _svc(service).export(_options(), out)
+    _svc(service).export(_options(), out, _TODAY)
     with pikepdf.open(str(out)) as doc:
         assert len(doc.pages) >= 1
     assert not (tmp_path / "report.pdf.part").exists()  # temp removed after replace
@@ -344,7 +346,7 @@ def test_export_encrypted_file_opens_only_with_password(qapp, service, tmp_path)
     a = _accounts(service)[0].id
     _add(service, a, 100_00)
     out = tmp_path / "locked.pdf"
-    _svc(service).export(_options(password="secret12"), out)
+    _svc(service).export(_options(password="secret12"), out, _TODAY)
     pikepdf.open(str(out), password="secret12").close()
     with pytest.raises(pikepdf.PasswordError):
         pikepdf.open(str(out))
@@ -356,7 +358,7 @@ def test_export_write_error_leaves_no_file(qapp, service, tmp_path):
     _add(service, a, 100_00)
     out = tmp_path / "missing_dir" / "report.pdf"  # parent does not exist
     with pytest.raises(OSError):
-        _svc(service).export(_options(), out)
+        _svc(service).export(_options(), out, _TODAY)
     assert not out.exists()
     assert not out.with_name("report.pdf.part").exists()
 
@@ -369,7 +371,7 @@ def test_export_vault_locked_leaves_no_file(qapp, service, tmp_path):
     svc = _svc(service)
     service.lock()
     with pytest.raises(VaultLockedError):
-        svc.export(_options(), out)
+        svc.export(_options(), out, _TODAY)
     assert not out.exists()
     assert not (tmp_path / "report.pdf.part").exists()
 
@@ -387,7 +389,7 @@ def test_export_encryption_error_leaves_no_file(qapp, service, tmp_path, monkeyp
     _add(service, a, 100_00)
     out = tmp_path / "report.pdf"
     with pytest.raises(RuntimeError):
-        _svc(service).export(_options(password="secret12"), out)
+        _svc(service).export(_options(password="secret12"), out, _TODAY)
     assert not out.exists()
     assert not (tmp_path / "report.pdf.part").exists()
 
@@ -400,7 +402,7 @@ def test_render_with_password_writes_nothing_to_disk(qapp, service, monkeypatch)
     monkeypatch.setattr(
         Path, "write_bytes", lambda self, data: writes.append(str(self))
     )
-    pdf = _svc(service).render_pdf_bytes(_options(password="secret12"))
+    pdf = _svc(service).render_pdf_bytes(_options(password="secret12"), _TODAY)
     assert writes == []
     pikepdf.open(BytesIO(pdf), password="secret12").close()  # really encrypted
 
@@ -463,7 +465,7 @@ def test_export_temp_is_owner_only_and_final_file_inherits_it(qapp, service, tmp
     is the same class of file with the weaker posture.
     """
     out = tmp_path / "report.pdf"
-    _svc(service).export(_options(), out)
+    _svc(service).export(_options(), out, _TODAY)
 
     mode = out.stat().st_mode & 0o777
     assert mode == 0o600, f"exported report is mode {mode:o}, expected 600"
@@ -480,7 +482,7 @@ def test_export_temp_refuses_to_follow_a_symlink(qapp, service, tmp_path):
     out = tmp_path / "report.pdf"
     (tmp_path / "report.pdf.part").symlink_to(target)
 
-    _svc(service).export(_options(), out)
+    _svc(service).export(_options(), out, _TODAY)
 
     # The planted link is cleared rather than written through, so the export still
     # succeeds — what must NOT happen is the target being truncated.
@@ -690,3 +692,14 @@ def test_amounts_follow_the_users_negative_style(qapp, service):
     assert "-R" not in html and "−R" not in html, (
         "no amount may fall back to the minus style"
     )
+
+
+def test_FIBR0391_today_is_required_never_the_os_clock(qapp, service, tmp_path):
+    """The export refuses a call that omits ``today`` rather than falling back to
+    the naive OS clock, which can name the wrong month in the header and the
+    period (the FIBR-0342 trap). The UI passes the app clock's date."""
+    svc = _svc(service)
+    with pytest.raises(TypeError, match="today"):
+        svc.render_pdf_bytes(_options())  # type: ignore[call-arg]
+    with pytest.raises(TypeError, match="today"):
+        svc.export(_options(), tmp_path / "report.pdf")  # type: ignore[call-arg]

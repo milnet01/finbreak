@@ -173,14 +173,11 @@ class ReportingService:
         self,
         prefs: ReportPrefs,
         account_ids: frozenset[int] | None,
-        today: date | None = None,
+        today: date,
     ) -> Summary:
         """Income / expenditure / net over the period's non-transfer rows (INV-4).
         All arithmetic on integer ``amount_minor``; only the returned ``Decimal``s
         cross to display scaling (INV-13)."""
-        # The UI passes the app clock's date (FIBR-0342); this fallback serves a
-        # headless or test caller. Qt-free by design, so no app clock here.
-        today = today or date.today()  # noqa: DTZ011
         start, end = resolve_period(prefs, today)
         excluded = self._excluded()
         income_minor = 0
@@ -204,7 +201,7 @@ class ReportingService:
         self,
         prefs: ReportPrefs,
         account_ids: frozenset[int] | None,
-        today: date | None = None,
+        today: date,
     ) -> list[CategorySpend]:
         """The category donut feed: expenditure (negative, non-transfer) rows
         grouped by ``category_id`` (INV-5). Categorised buckets sorted
@@ -212,9 +209,6 @@ class ReportingService:
         is **appended last**, so the sort key never compares ``None``. Returns the
         full uncapped list — the ≤8-wedge cap + Other collapse is a UI-render step
         (D9)."""
-        # The UI passes the app clock's date (FIBR-0342); this fallback serves a
-        # headless or test caller. Qt-free by design, so no app clock here.
-        today = today or date.today()  # noqa: DTZ011
         start, end = resolve_period(prefs, today)
         excluded = self._excluded()
         by_id: dict[int | None, int] = {}
@@ -257,14 +251,11 @@ class ReportingService:
         self,
         prefs: ReportPrefs,
         account_ids: frozenset[int] | None,
-        today: date | None = None,
+        today: date,
     ) -> list[MonthlyTotal]:
         """Exactly 12 ``(month, income, expenditure)`` points, oldest first, ending
         at the period's end month; an empty month is a **zero** point, not omitted
         (INV-6). Buckets whole calendar months by ``occurred_on[:7]``."""
-        # The UI passes the app clock's date (FIBR-0342); this fallback serves a
-        # headless or test caller. Qt-free by design, so no app clock here.
-        today = today or date.today()  # noqa: DTZ011
         months = resolve_trend_months(prefs, today)
         start, _ = _month_bounds(*months[0])
         _, end = _month_bounds(*months[-1])
@@ -302,7 +293,7 @@ class ReportingService:
         self,
         prefs: ReportPrefs,
         account_ids: frozenset[int] | None,
-        today: date | None = None,
+        today: date,
         *,
         labels: DrillLabels,
     ) -> list[DrillNode]:
@@ -312,11 +303,8 @@ class ReportingService:
         totals **equal** the tiles (INV-1). Confirmed transfers drop out of the two
         category branches and appear only under Transfers (INV-2). Read-only; a fresh
         tree per call so a change elsewhere shows on next view (INV-3). ``labels``
-        carries the four ``tr()``-ed fixed strings (this service is not a
+        carries the five ``tr()``-ed fixed strings (this service is not a
         ``QObject``, D2/INV-9)."""
-        # The UI passes the app clock's date (FIBR-0342); this fallback serves a
-        # headless or test caller. Qt-free by design, so no app clock here.
-        today = today or date.today()  # noqa: DTZ011
         start, end = resolve_period(prefs, today)
         excluded = self._excluded()
         exponent = read_minor_unit_exponent(self._conn)

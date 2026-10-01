@@ -225,9 +225,9 @@ class MonthSummaryService:
     ) -> MonthSummary | None:
         """The summarised month, or ``None`` when the strip must stay silent.
 
-        ``today`` is required rather than defaulted — unlike ``ReportingService``,
-        whose ``today: date | None = None`` predates this contract — because the
-        strip and the tiles must not straddle midnight (INV-10)."""
+        ``today`` is required rather than defaulted — as ``ReportingService``'s is
+        since FIBR-0391 — because the strip and the tiles must not straddle
+        midnight (INV-10)."""
         if prefs.mode not in _MONTH_MODES:
             return None
         if prefs.mode == MODE_SPECIFIC_MONTH and (

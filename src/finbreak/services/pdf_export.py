@@ -124,15 +124,10 @@ class PdfExportService:
     def __init__(self, vault: Vault):
         self._vault = vault
 
-    def render_pdf_bytes(
-        self, options: ExportOptions, today: date | None = None
-    ) -> bytes:
+    def render_pdf_bytes(self, options: ExportOptions, today: date) -> bytes:
         """The report as PDF bytes — encrypted iff ``options.password`` is set.
         Takes **no path**: the (possibly plaintext) bytes live only in memory
         (INV-2)."""
-        # The UI passes the app clock's date (FIBR-0342); this fallback serves a
-        # headless or test caller. A service does not reach into the UI's clock.
-        today = today or date.today()  # noqa: DTZ011
         html, images = self._build_html(options, today)
         buffer = QBuffer()
         buffer.open(QIODevice.OpenModeFlag.WriteOnly)
@@ -149,9 +144,7 @@ class PdfExportService:
             pdf_bytes = self._encrypt(pdf_bytes, options.password)
         return pdf_bytes
 
-    def export(
-        self, options: ExportOptions, out_path: str | Path, today: date | None = None
-    ) -> None:
+    def export(self, options: ExportOptions, out_path: str | Path, today: date) -> None:
         """Render and write the **single** final file atomically (temp →
         `os.replace`). On any failure the temp is unlinked, so no partial or
         accidentally-unencrypted file is ever left (INV-2/INV-12)."""

@@ -295,8 +295,7 @@ def test_FIBR0327_no_ui_module_reads_the_os_clock_directly():
     disagree about which month's totals to show. There is no lint rule for it.
 
     Services are deliberately OUT of scope. `reporting.py` and `pdf_export.py`
-    keep `today or date.today()` fallbacks: every date-bearing UI call passes
-    `today` explicitly, so production never takes them, and importing
+    require `today` from their caller (FIBR-0391), and importing
     `datetime_format` there would pull QtCore into the Qt-free service layer.
     """
     import re
