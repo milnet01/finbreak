@@ -379,3 +379,22 @@ uniqueness key.
   a user sees. FIBR-0437 (user-visible) still owes FIBR-0083's gate.
 - **out_of_scope:** none new.
 - **falsified:** none.
+
+## FIBR-0408 — code lane 8, import wizard
+
+| finding | verified | disposition | was → now | must_agree |
+|---|---|---|---|---|
+| W1 after "Create it" the match label is hidden | | | | FIBR-0086 §4.6 |
+| W2 a wrong PDF password re-prompts with an identical dialog | | | | FIBR-0050 / FIBR-0085 |
+| W3 tr(...) + " " + text joins display strings | | | | design.md § i18n |
+| W4 the OFX statement label is an f-string with a raw type | | | | |
+| W5 design.md quotes preview wording the app never shows | | | | design.md |
+| W6 `_on_confirm_account_changed` catches only VaultLockedError | | | | |
+| W7 `_ask_mapping` calls `read_header` unguarded | | | | |
+
+- **cited_by:**
+- **swept:**
+- **collateral:**
+- **surfaced:**
+- **out_of_scope:**
+- **falsified:**
