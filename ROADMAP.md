@@ -3747,6 +3747,23 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: doc-fix.
   Source: close-findings FIBR-0394 sweep 2026-10-01.
 
+- 📋 [FIBR-0434] **Manual entry and Accounts show the services' English validation text, which FIBR-0219 4.1 designs and design.md i18n forbids.**
+  Queued from FIBR-0396 D3 (2026-10-01). ui/manual_entry.py and three
+  handlers in ui/accounts.py render str(exc) from Qt-free services
+  (parse_transaction, parse_amount_input, AccountService): their
+  English ValueError messages, one of them an ambiguous-amount message
+  that embeds both readings. FIBR-0219 4.1 relies on that rendering;
+  design.md i18n requires tr() for every user-facing string, so the two
+  documents disagree.
+  Recommendation: give each rejection a type (or a code plus its
+  values) in the services and map it to a tr() template in the UI, and
+  then amend FIBR-0219 4.1. Do it with FIBR-0017 (multi-language UI):
+  finbreak ships English only, so no user sees untranslated text before
+  then. Not fixed now because it needs that decision, not an edit.
+  **Layman:** Some error messages when adding a transaction or editing an account can't be translated yet; it only matters once finbreak offers other languages.
+  Kind: review-fix.
+  Source: full-audit-2026-09-27 code lane 16 D3, queued by FIBR-0396.
+
 ## v1.1.0 — Localisation
 
 The first feature minor after 1.0. Chosen to go first because it is
