@@ -1424,3 +1424,17 @@ def test_INV12_profile_saved_by_an_earlier_release_still_matches(tmp_path):
         ]
     finally:
         auth.lock()
+
+
+def test_FIBR0406_a_non_utf8_file_is_refused_in_plain_words(service, tmp_path):
+    """A statement saved in another encoding showed the codec's own text in
+    the wizard ("'utf-8' codec can't decode byte 0xe9 in position ...")."""
+    path = tmp_path / "latin1.csv"
+    path.write_bytes(
+        "Date,Details,Amount\n2026-01-05,Caf\u00e9,-1.00\n".encode("latin-1")
+    )
+    with pytest.raises(ValueError) as excinfo:
+        ImportService(service.vault).read_file(str(path))
+    message = str(excinfo.value)
+    assert "codec" not in message and "0xe9" not in message, message
+    assert "UTF-8" in message, message

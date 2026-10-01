@@ -171,7 +171,14 @@ class ImportService:
         Any OS read error (missing / permission-denied / removed mid-read) is
         mapped to the friendly ``ValueError`` the wizard catches, matching this
         module's ValueError-only boundary (indie-review H-F/H-G)."""
-        return self._read_capped(path).decode("utf-8-sig")
+        try:
+            return self._read_capped(path).decode("utf-8-sig")
+        except UnicodeDecodeError as exc:
+            # The codec's own text ("can't decode byte 0xe9 in position 34")
+            # reached the wizard as-is (FIBR-0406).
+            raise ValueError(
+                "the file is not UTF-8 text; save it as UTF-8 and try again"
+            ) from exc
 
     def read_file_bytes(self, path: str) -> bytes:
         """Read a picked file as raw bytes, refusing an oversized file **before**
