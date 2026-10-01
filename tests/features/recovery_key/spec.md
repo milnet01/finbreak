@@ -2,9 +2,10 @@
 
 Conformance tests for
 [`docs/specs/FIBR-0019-master-password-recovery-key.md`](../../../docs/specs/FIBR-0019-master-password-recovery-key.md).
-Each `INV-N` below is that design spec's invariant of the same number; the
-`Test:` clause names the function that enforces it, exactly as § 10 of the
-design spec maps them. Five files, one per concern (§ 7).
+INV-1 to INV-13 below are that design spec's invariants of the same number,
+and each `Test:` clause names the function § 10 of the design spec maps it to.
+From INV-14 on the numbers are this suite's own, and each entry names its
+source. Five files, one per concern (§ 7).
 
 **Theme:** the vault stops being encrypted by a password-derived key and is
 encrypted instead by a random **data key (DEK)**, stored twice over — wrapped

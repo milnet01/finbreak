@@ -816,19 +816,24 @@ delete one slot, rewrite the sidecar atomically. The database is untouched.
 
 - **INV-15** — **The rollback offer says when the copy was taken, and that
   everything changed since is lost** (FIBR-0423, amended 2026-10-01).
-  `RollbackAvailableError.taken_at` is the file time of the copy's SIDECAR
-  half as a UTC instant, or `None` where it cannot be read. The offer shows it
+  `RollbackAvailableError.taken_at: str | None` is the copy's SIDECAR half's
+  `st_mtime` as `datetime.fromtimestamp(st_mtime, UTC).isoformat()` — the
+  form `format_timestamp` takes — or `None` where it cannot be read. Every
+  site that raises the error sets it. The offer shows it
   in the operating system's zone and date-and-time format, and says that
   anything added or changed after it is lost and that a newer backup keeps
   it. With `None` it keeps the loss sentence and drops the date. § 13.3 says
   why each choice.
   *Test:* `tests/features/recovery_key/test_migration.py::test_FIBR0423_rollback_offer_carries_when_the_copy_was_taken`
-  — sets the copy's two halves to two DIFFERENT past file times, drives the
-  ladder to the terminal branch, and asserts `taken_at` equals the sidecar
-  half's. `tests/features/recovery_key/test_recovery_unlock.py::test_FIBR0423_offer_names_the_date_and_the_loss`
+  — parametrised over the three branches that raise the error (branch 1's
+  unreadable vault, branch 2's cannot-compare refusal, the terminal branch):
+  sets the copy's two halves to two DIFFERENT past file times and asserts
+  `taken_at` is the sidecar half's in each. `tests/features/recovery_key/test_recovery_unlock.py::test_FIBR0423_offer_names_the_date_and_the_loss`
   — raises the error with a known instant and asserts the question holds
   `format_timestamp(<instant>, "system", "system", "system")` and the loss
-  sentence; with `None`, the loss sentence and no date.
+  sentence; with `None`, the loss sentence and no date. The suite's
+  `spec.md` numbers its own invariants from INV-14 on, so this enters it as
+  its next free number with `Source: FIBR-0019 INV-15`.
   *Breaks when:* the date comes from anything but the copy — the live vault,
   or the moment of the unlock — and the offer calls a weeks-old copy current.
   Or the loss sentence goes, and a user restores the copy over everything
@@ -1040,6 +1045,7 @@ leaves two amendment paragraphs a later reader has to reconcile.
 | 8 | 2026-09-29 | 2, cold — genre pinned `spec`, neutral-lane dispatch, every lane held every question; packet 32 KB / 13 windows + one measured fact (the cipher-default probe); `spec_lint` + `doc_integrity` clean | 0 | 1 | 1 | 2 | **Four verified, four fixed; none dismissed. First loop of a NEW run**, gating the FIBR-0401 INV-14 amendment (commit 81f1127). **Both lanes independently found the same defect**: INV-14 took a database's cipher level from its sidecar, but § 13.3 opens the v1 `vault.db` while the migration-pending sidecar records the export level — the code passes `None` there (`vault_migration.py` resume and `_replacement_verdict`), so a builder following INV-14 literally would refuse an intact vault the day `SQLCIPHER_COMPAT` is raised. INV-14 now keys on the level a database was written at and names the three unrecorded cases. Q3 (lane 2): where the pin lives was unstated, and a service-layer pin would leave the v1 unlock and every migration open unpinned — now `Vault` applies it when a caller passes none. Q4 (lane 1): no leg failed if the new constant aliased `SQLCIPHER_COMPAT` — a patched-constant leg added. Q4 (orchestrator, from lane 2's open question): the amendment left § 7 counting five files and five of thirteen invariants, and omitted INV-14 from the must-fail-first list. One absolute the fix pass wrote ("no call site supplies it") narrowed before commit. Open questions: the packet window line labels one lane read as offset — windows re-checked against disk, none affected a finding.
 | 9 | 2026-09-29 | 2, cold — identical brief, packet and scrubbed copy rebuilt from disk; every lane held every question | 0 | 1 | 0 | 1 | **Two verified, two fixed; none dismissed** (the two lanes' Q4 reports merged as one). Q2 (lane 2): § 13.2 still said "every later open passes" the recorded level, which contradicted INV-14's carve-out for the v1 `vault.db` under a migration-pending sidecar — narrowed to opens of the migrated database. Q4 (both lanes): the patched-constant leg loop 8 added could not fail — an alias fixed at import escapes the patch, and a create-then-open round trip through `Vault` agrees with itself at any level. It now opens the file on a raw connection at level 4 and asserts the constant is the literal 4 in `vault.py`'s source. Own-fix share 1 of 2 (the Q4 landed on loop 8's leg). Three open questions resolved clean: the migration's v1 opens all pass no level (`vault_migration.py` S1, `_replacement_verdict`, resume step 3); INV-2's fixed-alphabet example decodes both sides identically because `decode` does not check the symbol; a restore does record its level (`backup.py`). The stale `crypto.py` comment is code the build updates.
 | 10 | 2026-09-29 | 2, cold — identical brief, scrubbed copy rebuilt from disk; every lane held every question | 0 | 0 | 0 | 1 | **One verified, one fixed, one dismissed. CAP REACHED** (3, this project's override). Both lanes returned no findings. Q4 (orchestrator, from lane 2's open question): `vault.py` and `backup.py` each bind their own `SQLCIPHER_COMPAT`, so a leg patching the wrong module stays green over a `create` that reads the export level — the leg now names `finbreak.vault.SQLCIPHER_COMPAT`. Dismissed (lane 1's open question): the self-test's scratch database is also created at the library default; pinning it or not builds the same vault. Resolved clean: every SQLCipher pin ever shipped is a SQLCipher 4 engine (`sqlcipher3-binary==0.6.0`, then `sqlcipher3-wheels`; git history of `pyproject.toml`), and the windows_build fixture opens vaults the older package wrote; and an UNPINNED database created at default 3 fails to open at default 4 (measured), so INV-14's second leg can fail today. **Own-fix share 1 of 1 — the finding landed on loop 9's leg**: a single finding, but a repair of a repair, so this review ends here and INV-14 goes to implementation as the next reviewer. Second share: 7 of 7 verified findings across loops 8–10 fall inside the armed span (81f1127, INV-14 and the passages it touched). Run total: 7 verified, 7 fixed, 1 dismissed.
+| 11 | 2026-10-01 | 2, cold — genre pinned `spec`, neutral-lane dispatch, every lane held every question; re-arm for the FIBR-0423 amendment (INV-15, § 13.3), packet 39 KB / code windows + four measured facts | 0 | 1 | 1 | 1 | **Three verified, three fixed; none dismissed.** Q4: INV-15's service test reached only the terminal branch, while branches 1 and 2 raise the same error, so a `taken_at` set at one site passed — now parametrised over all three. Q3: `taken_at`'s representation was unpinned between the raise sites, the UI and both tests — pinned to `str | None`, `datetime.fromtimestamp(st_mtime, UTC).isoformat()`, measured to parse in `format_timestamp`. Q2, found while verifying: the suite's `spec.md` numbers its own invariants from INV-14 (its INV-15 is branch 2), against its header's claim of mirroring this spec — header corrected, and INV-15's clause says how it enters the suite. Before dispatch a 1b check corrected one draft claim by measurement (the database half's file time does not move on a verify of a WAL-free copy). One false clause deleted under the carve-out ("the vault that will not open" — branch 1's vault opens). Loop 2 dispatched. |
 
 ## 13. Migration / compatibility
 
@@ -1213,7 +1219,7 @@ copy, and branch 3's rebuilt sidecar), nothing writes it afterwards, and only
 a JSON read ever opens it — where the database half is opened by SQLite, which
 folds a carried `-wal` into it. **It is shown in the
 operating system's zone and format**, because the user's own display settings
-are inside the vault that will not open.
+are inside the vault.
 
 A v1 sidecar means the vault has not migrated — open as today, then run
 S0–S6. Debris can sit beside a v1 sidecar, and **none of it is a usable
