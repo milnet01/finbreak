@@ -594,3 +594,14 @@ def test_FIBR0398_an_amount_uses_one_digit_system(name):
     for text in (shown, huge):
         digits = [ch for ch in text if ch.isdigit()]
         assert digits and all(ch in own for ch in digits), text
+
+
+@pytest.mark.parametrize("name", ["en_US", "de_DE"])
+def test_FIBR0398_an_absurdly_long_amount_is_refused_in_our_words(name):
+    """A 4400-digit amount in the ambiguous shape reached int() while its two
+    readings were rendered, and Python's own "Exceeds the limit (4300 digits)
+    for integer string conversion" message reached the user. It must get the
+    app's own ambiguous-amount refusal; the storage bound stays the service's."""
+    with pinned(name), pytest.raises(ValueError) as excinfo:
+        parse_amount_input("1" * 4400 + ".500")
+    assert str(excinfo.value).startswith("amount is ambiguous"), str(excinfo.value)[:80]

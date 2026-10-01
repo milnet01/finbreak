@@ -78,11 +78,11 @@ def _grouped(value: Decimal, decimals: int) -> str:
     text = f"{value:.{decimals}f}"
     negative = text.startswith("-")
     whole, _, frac = text.lstrip("-").partition(".")
-    grouped = (
-        locale.toString(int(whole))
-        if int(whole) <= _TOSTRING_MAX
-        else _locale_digits(whole, locale)
-    )
+    # Length first: int() of a typed value past 4300 digits raises Python's own
+    # message, which reached the user through the ambiguous-amount refusal
+    # (FIBR-0398). No string longer than _TOSTRING_MAX's can be within it.
+    fits = len(whole) <= len(str(_TOSTRING_MAX)) and int(whole) <= _TOSTRING_MAX
+    grouped = locale.toString(int(whole)) if fits else _locale_digits(whole, locale)
     body = (
         grouped + locale.decimalPoint() + _locale_digits(frac, locale)
         if decimals
