@@ -66,7 +66,12 @@ from finbreak.services.reporting import (
 )
 from finbreak.ui._amount import _NEGATIVE_TEXT, _POSITIVE_TEXT, _format_amount
 from finbreak.ui._table_state import remember_columns
-from finbreak.ui.charts import ChartTheme, build_breakdown_donut, build_trend_chart
+from finbreak.ui.charts import (
+    ChartTheme,
+    build_breakdown_donut,
+    build_trend_chart,
+    replace_chart,
+)
 from finbreak.ui.month_summary import MonthSummaryStrip
 
 
@@ -508,14 +513,15 @@ class HomeView(QWidget):
         if slices:
             col.empty.setVisible(False)
             col.pie.setVisible(True)
-            col.pie.setChart(
-                build_breakdown_donut(slices, self.tr("Other"), self._chart_theme())
+            replace_chart(
+                col.pie,
+                build_breakdown_donut(slices, self.tr("Other"), self._chart_theme()),
             )
         else:
             # No children — hide the pie (kept present), show the placeholder (D8).
             col.pie.setVisible(False)
             col.empty.setVisible(True)
-            col.pie.setChart(QChart())  # release the old series
+            replace_chart(col.pie, QChart())  # free the old chart and its series
 
         col.tree.clear()
         root = col.tree.invisibleRootItem()
@@ -618,13 +624,14 @@ class HomeView(QWidget):
         )
 
     def _render_trend(self, trend: list[MonthlyTotal]) -> None:
-        self._trend_chart.setChart(
+        replace_chart(
+            self._trend_chart,
             build_trend_chart(
                 trend,
                 self.tr("Income"),
                 self.tr("Spending"),
                 self._chart_theme(),
-            )
+            ),
         )
 
     def _add_node(

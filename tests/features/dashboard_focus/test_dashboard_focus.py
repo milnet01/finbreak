@@ -528,3 +528,20 @@ def test_INV3_empty_vault_shows_getting_started_no_columns(qtbot, service):
     home = _home(service)
     qtbot.addWidget(home)
     assert home.current_page().objectName() == "home_page_empty"
+
+
+def test_FIBR0397_a_refresh_frees_the_charts_it_replaces(qtbot, service):
+    """The three pies and the trend chart are replaced on every refresh, and
+    QChartView.setChart does not delete the chart it releases."""
+    from PySide6.QtCharts import QChartView
+
+    _seed_full(service)
+    home = _home(service)
+    qtbot.addWidget(home)
+    views = home.findChildren(QChartView)
+    assert len(views) >= 4, "precondition: three pies and the trend chart"
+    destroyed: list[int] = []
+    for view in views:
+        view.chart().destroyed.connect(lambda *_: destroyed.append(1))
+    home.refresh()
+    qtbot.waitUntil(lambda: len(destroyed) == len(views), timeout=2000)

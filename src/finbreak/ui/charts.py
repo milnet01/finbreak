@@ -30,6 +30,7 @@ from PySide6.QtCharts import (
     QBarSeries,
     QBarSet,
     QChart,
+    QChartView,
     QDateTimeAxis,
     QLineSeries,
     QPieSeries,
@@ -116,6 +117,16 @@ def _themed_chart(series: QPieSeries | QBarSeries, theme: ChartTheme) -> QChart:
     chart.legend().setLabelColor(theme.text)
     chart.setTitleBrush(theme.text)
     return chart
+
+
+def replace_chart(view: QChartView, chart: QChart) -> None:
+    """Show ``chart`` in ``view`` and free the chart it replaces.
+    ``QChartView.setChart`` releases the old chart's ownership without deleting
+    it, so each refresh used to leave one QChart alive (FIBR-0397)."""
+    old = view.chart()
+    view.setChart(chart)
+    if old is not None and old is not chart:
+        old.deleteLater()
 
 
 def build_donut_chart(

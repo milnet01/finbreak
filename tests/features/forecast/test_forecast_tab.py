@@ -344,3 +344,15 @@ def test_FIBR0328_dates_read_in_the_users_format(qtbot, vault_service) -> None:
         assert not _ISO_DATE.search(text), (
             f"the {label} still shows a raw ISO date under dd/MM/yyyy: {text!r}"
         )
+
+
+def test_FIBR0397_a_refresh_frees_the_chart_it_replaces(qtbot, vault_service):
+    """QChartView.setChart releases the old chart without deleting it, so every
+    refresh left one QChart alive (measured: five refreshes, none destroyed)."""
+    w = ForecastWidget(vault_service)
+    qtbot.addWidget(w)
+    destroyed: list[int] = []
+    for _ in range(3):
+        w._chart_view.chart().destroyed.connect(lambda *_: destroyed.append(1))
+        w.refresh()
+    qtbot.waitUntil(lambda: len(destroyed) == 3, timeout=2000)

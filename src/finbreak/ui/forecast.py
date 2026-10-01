@@ -45,7 +45,7 @@ from finbreak.services.transactions import (
 )
 from finbreak.ui._amount import _NEGATIVE_TEXT, _POSITIVE_TEXT, _format_amount
 from finbreak.ui._table_state import remember_columns
-from finbreak.ui.charts import ChartTheme, build_forecast_chart
+from finbreak.ui.charts import ChartTheme, build_forecast_chart, replace_chart
 
 # Column order is fixed so the qtbot cells are deterministically assertable (D9).
 _COL_DATE = 0
@@ -185,8 +185,9 @@ class ForecastWidget(QWidget):
 
         self._headline.setText(headline)
         self._provenance.setText(provenance)
-        self._chart_view.setChart(
-            build_forecast_chart(fc.points, self._chart_theme(), exponent)
+        replace_chart(
+            self._chart_view,
+            build_forecast_chart(fc.points, self._chart_theme(), exponent),
         )
         self._fill_events(fc, exponent, symbol)
         if not has_confirmed:
