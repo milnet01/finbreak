@@ -78,9 +78,26 @@ def _grouped(value: Decimal, decimals: int) -> str:
     text = f"{value:.{decimals}f}"
     negative = text.startswith("-")
     whole, _, frac = text.lstrip("-").partition(".")
-    grouped = locale.toString(int(whole)) if int(whole) <= _TOSTRING_MAX else whole
-    body = grouped + locale.decimalPoint() + frac if decimals else grouped
+    grouped = (
+        locale.toString(int(whole))
+        if int(whole) <= _TOSTRING_MAX
+        else _locale_digits(whole, locale)
+    )
+    body = (
+        grouped + locale.decimalPoint() + _locale_digits(frac, locale)
+        if decimals
+        else grouped
+    )
     return locale.negativeSign() + body if negative else body
+
+
+def _locale_digits(ascii_digits: str, locale: QLocale) -> str:
+    """``ascii_digits`` in ``locale``'s own digits. Python wrote them, so they are
+    ASCII, and a locale with its own digits (ar_EG, fa_IR) would otherwise show two
+    digit systems in one amount (FIBR-0398). Mapped through QLocale's own 0-9
+    rather than an offset from the zero digit."""
+    own = [locale.toString(d) for d in range(10)]
+    return "".join(own[int(ch)] for ch in ascii_digits)
 
 
 def _format_amount(

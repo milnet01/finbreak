@@ -294,7 +294,7 @@ uniqueness key.
 
 | finding | verified | disposition | was → now | must_agree |
 |---|---|---|---|---|
-| U1 amounts mix locale digits with an ASCII fraction | | | | FIBR-0153 |
+| U1 amounts mix locale digits with an ASCII fraction | yes, executed — the FIBR-0393 strip test rendered "R ٢٬٣٤٠٫00"; the ungrouped fallback for a huge whole part is ASCII too | fixed | Python's ASCII digits → `_locale_digits`, through QLocale's own 0-9, for the fraction and the fallback (a helper, not `str.translate`, which the i18n guard reads as Qt's `translate()`); red: ar_EG and fa_IR each showed two digit systems; mutations: either part left ASCII reddens it; round-trip parse tests still green | FIBR-0153 (agrees) |
 | U2 a mistyped timezone is silently saved as system | | | | FIBR-0083 |
 | U3 FIBR-0153 / FIBR-0219 describe the removed float route | | | | FIBR-0153 §3.2 INV-3; FIBR-0219 §4.2 §4.5 |
 | U4 FIBR-0127 INV-3/INV-4 and theme.py token counts | | | | FIBR-0127 |

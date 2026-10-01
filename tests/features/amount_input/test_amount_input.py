@@ -579,3 +579,18 @@ def test_a_sub_cent_fraction_past_28_digits_is_refused_not_rounded():
     assert parse_transaction("2026-03-02", Decimal("12.3400"), "Fake Row", 2)[1] == (
         1234
     )
+
+
+@pytest.mark.parametrize("name", ["ar_EG", "fa_IR"])
+def test_FIBR0398_an_amount_uses_one_digit_system(name):
+    """Under a locale with its own digits, the whole part came from QLocale and
+    the cents from Python, so an amount read "R ٢٬٣٤٠٫00" - two digit systems in
+    one number (seen on the month-summary strip)."""
+    with pinned(name):
+        locale = QLocale()
+        own = {locale.toString(d) for d in range(10)}
+        shown = _format_amount(Decimal("2340.05"), "ZAR")
+        huge = _format_amount(Decimal("92233720368547758070.50"), "ZAR")
+    for text in (shown, huge):
+        digits = [ch for ch in text if ch.isdigit()]
+        assert digits and all(ch in own for ch in digits), text
