@@ -327,7 +327,7 @@ uniqueness key.
 | B5 destination guard misses the WAL siblings | yes — `live` held only `vault.db` and the sidecar | fixed | + `vault.db-wal`, `vault.db-shm` via `_WAL_SIBLINGS`, the same `BackupDestinationError` (so B1's message covers them); red: an export to either was not refused; mutation: dropping the siblings reddens both | FIBR-0014 (agrees) |
 | B6 "{n} transactions." has no plural | yes — `tr("{n} transactions.")` | fixed | → `tr("%n transaction(s).", "", n)`, the project's plural idiom; red: a catalog's singular form could not apply ("1 transactions."); mutation: the old string reddens it | |
 | B7 FIBR-0014 says .old pruning is manual; code prunes (INV-17) | yes — INV-5 "always recoverable" and Out of scope "manual for now"; `_prune_superseded_old_copies` prunes (FIBR-0318, test contract INV-17) | fixed | INV-5 amended to the kept-set rule; the out-of-scope bullet removed; no red run: nothing observable changes | FIBR-0014 INV-5 (amended); backup test contract INV-17 (agrees) |
-| B8 FIBR-0030 §3.2 says DELETE sits inside the tr() string | | | | FIBR-0030 §3.2 |
+| B8 FIBR-0030 §3.2 says DELETE sits inside the tr() string | yes — the spec's example keeps `DELETE` inside the `tr()` literal; the code interpolates `CONFIRM_WORD` (FIBR-0216), which a translator cannot change | fixed | §3.2 amended to the interpolated form and why; no red run: nothing observable changes | FIBR-0030 §3.2 (amended) |
 
 - **cited_by:**
 - **swept:**
