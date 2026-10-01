@@ -321,7 +321,7 @@ uniqueness key.
 | finding | verified | disposition | was → now | must_agree |
 |---|---|---|---|---|
 | B1 the live vault as destination reads "too large to back up" | yes — the destination guard raises a plain `BackupError`, which the window's handler (written when INV-14 was the only export raise) always calls the size refusal | fixed | plain `BackupError` → `BackupDestinationError` (a subclass, so existing catchers still hold), caught first with its own message; red: "too large to back up" shown for the vault file; mutation: a plain `BackupError` reddens it | FIBR-0014 INV-14 (agrees) |
-| B2 export stages up to 512 MiB in the system temp dir | | | | FIBR-0014 INV-9 |
+| B2 export stages up to 512 MiB in the system temp dir | yes — `TemporaryDirectory()` with no `dir`, holding a copy up to the restore cap | fixed | system temp → a hidden `.finbreak-backup-*` dir beside the destination, removed on exit (the temp zip was already there); red: an unwritable system temp dir failed the export; mutation: no `dir=` reddens it | FIBR-0014 (names no staging place; agrees) |
 | B3 disk-full while verify migrates its copy reads wrong_password | | | | FIBR-0014 verify outcomes |
 | B4 post-install temp cleanup inside the normalising try | | | | FIBR-0014 INV-4 |
 | B5 destination guard misses the WAL siblings | yes — `live` held only `vault.db` and the sidecar | fixed | + `vault.db-wal`, `vault.db-shm` via `_WAL_SIBLINGS`, the same `BackupDestinationError` (so B1's message covers them); red: an export to either was not refused; mutation: dropping the siblings reddens both | FIBR-0014 (agrees) |

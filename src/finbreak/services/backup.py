@@ -221,10 +221,14 @@ class BackupService:
                 "schema_version": schema_version,
                 "sqlcipher_compat": SQLCIPHER_COMPAT,
             }
-            # The intermediate backup DB is already AES-encrypted (backup-keyed),
-            # so it may live in the system temp dir; only the final zip needs to
-            # land same-filesystem as dest. TemporaryDirectory removes it on exit.
-            with tempfile.TemporaryDirectory() as td:
+            # The intermediate backup DB (already AES-encrypted, backup-keyed) is
+            # staged beside dest, not in the system temp dir: it runs to the
+            # restore cap, /tmp is RAM on a tmpfs host, and a full one read as
+            # "choose another location" (FIBR-0404). TemporaryDirectory removes
+            # it on exit.
+            with tempfile.TemporaryDirectory(
+                dir=dest.parent, prefix=".finbreak-backup-"
+            ) as td:
                 tmp_db = Path(td) / _DB_ENTRY
                 self._vault.export_to(tmp_db, backup_key)
                 # Refuse what restore could never take back (INV-14, FIBR-0313 M1).

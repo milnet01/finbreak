@@ -2055,6 +2055,29 @@ def test_FIBR0404_export_refuses_the_live_vaults_wal_files(tmp_path, suffix) -> 
     auth.lock()
 
 
+def test_FIBR0404_export_stages_beside_the_destination(tmp_path, monkeypatch) -> None:
+    """Export staged its intermediate copy - up to the 512 MiB restore cap - in
+    the system temp dir: RAM on a tmpfs /tmp, and a full one was reported as
+    "choose another location". It stages beside the destination now, so an
+    unusable system temp dir does not matter."""
+    import tempfile
+
+    no_temp = tmp_path / "no-temp"
+    no_temp.mkdir()
+    no_temp.chmod(0o500)  # the system temp dir is full / unwritable
+    monkeypatch.setattr(tempfile, "tempdir", str(no_temp))
+    auth = _seeded_auth((tmp_path / "vault.db", tmp_path / "vault.kdf.json"))
+    out = tmp_path / "out"
+    out.mkdir()
+    try:
+        BackupService(auth.vault, auth).export_backup(out / "b.fbk", _BACKUP_PW)
+    finally:
+        no_temp.chmod(0o700)
+        auth.lock()
+    assert (out / "b.fbk").is_file()
+    assert sorted(p.name for p in out.iterdir()) == ["b.fbk"], "no staging left behind"
+
+
 # --------------------------------------------------------------------------- #
 # INV-20 (FIBR-0302) — restore of a .fbk written by an OLDER RELEASE
 #
