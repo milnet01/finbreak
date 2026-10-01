@@ -348,3 +348,20 @@ uniqueness key.
   D6 specifies it, so a spec change); export's `<dest>.tmp` is unlinked
   before its O_EXCL open (P3's class).
 - **falsified:** none.
+
+## FIBR-0406 — code lane 6, CSV and OFX import
+
+| finding | verified | disposition | was → now | must_agree |
+|---|---|---|---|---|
+| I1 `_resolve_zone` trusts the system zone; `date(0,0,0)` crashes "today" | | | | FIBR-0083 INV-6 |
+| I2 `_validate_span` does not canonicalise span dates | | | | FIBR-0216 parse_transaction |
+| I3 a non-UTF-8 file shows the raw codec error | | | | |
+| I4 importer errors are English f-strings, one a list repr | | | | FIBR-0434 |
+| I5 `qdate.toString(pref)` renders English month names | | | | FIBR-0083 |
+
+- **cited_by:**
+- **swept:**
+- **collateral:**
+- **surfaced:**
+- **out_of_scope:**
+- **falsified:**
