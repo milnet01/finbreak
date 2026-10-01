@@ -40,6 +40,8 @@ signaling per
 
 ### Fixed
 
+- **Dates and times that use month names or AM/PM now show them in your language instead of always in English** (FIBR-0406)
+
 - **finbreak no longer crashes on a computer whose time-zone setting names a zone that doesn't exist; it uses the computer's local time instead** (FIBR-0406)
 
 - **A restore that succeeded is no longer reported as failed when finbreak can't tidy away its temporary folder afterwards** (FIBR-0404)

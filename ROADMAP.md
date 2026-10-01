@@ -3805,6 +3805,10 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   ui/_amount.py's refusal is an English f-string, and FIBR-0219 9 and
   design.md i18n disagree on whether it must be translated. Settle that
   here with the rest.
+  Also for this pass (FIBR-0406 I4, 2026-10-01): the CSV importer's
+  and ImportService's refusals are English f-strings shown with
+  setText(str(exc)), one of them carrying a Python list repr of the
+  missing columns. Return a code plus values and translate in the UI.
   **Layman:** Some error messages when adding a transaction or editing an account can't be translated yet; it only matters once finbreak offers other languages.
   Kind: review-fix.
   Source: full-audit-2026-09-27 code lane 16 D3, queued by FIBR-0396.

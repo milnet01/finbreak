@@ -26,7 +26,8 @@ _SHORT = QLocale.FormatType.ShortFormat
 # Concrete (token, sample_label) presets — the UI prepends a dynamic "System
 # default (<detected>)" item that maps to the "system" sentinel (D5), so these
 # tables hold only pinned tokens. Labels are the D5 sample instant rendered by
-# each token (Qt renders MMM/MMMM/AP names in English regardless of locale).
+# each token in English; the app renders MMM/MMMM/AP through the current
+# QLocale, so a user in another language sees their own names (FIBR-0406).
 DATE_PRESETS: list[tuple[str, str]] = [
     ("yyyy-MM-dd", "2026-07-11"),
     ("yyyy/MM/dd", "2026/07/11"),
@@ -115,14 +116,16 @@ def _fmt_date_part(qdate: QDate, date_pref: str) -> str:
     """Three-way date formatting: a known token renders via that token; anything
     else (``"system"`` or an unknown token) via the system locale (INV-6)."""
     if date_pref in _DATE_TOKENS:
-        return qdate.toString(date_pref)
+        # Through QLocale: QDate.toString(pattern) is C-locale, so MMM/MMMM came
+        # out in English whatever the language (FIBR-0406).
+        return QLocale().toString(qdate, date_pref)
     return QLocale.system().toString(qdate, _SHORT)
 
 
 def _fmt_time_part(qtime: QTime, time_pref: str) -> str:
     """Three-way time formatting, mirroring ``_fmt_date_part``."""
     if time_pref in _TIME_TOKENS:
-        return qtime.toString(time_pref)
+        return QLocale().toString(qtime, time_pref)  # AM/PM too (FIBR-0406)
     return QLocale.system().toString(qtime, _SHORT)
 
 

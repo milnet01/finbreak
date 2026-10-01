@@ -181,3 +181,23 @@ def test_FIBR0406_an_invalid_system_zone_does_not_break_today(monkeypatch):
         "2026-07-15T10:00:00Z", "system", "yyyy-MM-dd", "HH:mm"
     )
     assert shown.startswith("2026-07-1"), shown
+
+
+def test_FIBR0406_month_and_day_period_names_follow_the_locale():
+    """qdate.toString(pattern) is C-locale, so a pinned "dd MMMM yyyy" showed
+    "11 July 2026" whatever the language - the class FIBR-0327 fixed for the
+    PDF's month name. Its mirror for times had the same flaw with AM/PM."""
+    from finbreak.datetime_format import format_date
+
+    previous = QLocale()
+    try:
+        QLocale.setDefault(QLocale(QLocale.Language.French, QLocale.Country.France))
+        shown = format_date("2026-07-11", "dd MMMM yyyy")
+        # French writes its own day period as "PM", so the time leg uses a
+        # locale whose marker differs.
+        QLocale.setDefault(QLocale(QLocale.Language.Chinese, QLocale.Country.China))
+        stamp = format_timestamp("2026-07-11T14:30:00Z", "UTC", "yyyy-MM-dd", "h:mm AP")
+    finally:
+        QLocale.setDefault(previous)
+    assert shown == "11 juillet 2026", shown
+    assert "PM" not in stamp, stamp
