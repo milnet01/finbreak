@@ -315,3 +315,23 @@ uniqueness key.
 - **surfaced:** none.
 - **out_of_scope:** none new.
 - **falsified:** none.
+
+## FIBR-0404 — code lane 4, backup
+
+| finding | verified | disposition | was → now | must_agree |
+|---|---|---|---|---|
+| B1 the live vault as destination reads "too large to back up" | | | | FIBR-0014 INV-14 |
+| B2 export stages up to 512 MiB in the system temp dir | | | | FIBR-0014 INV-9 |
+| B3 disk-full while verify migrates its copy reads wrong_password | | | | FIBR-0014 verify outcomes |
+| B4 post-install temp cleanup inside the normalising try | | | | FIBR-0014 INV-4 |
+| B5 destination guard misses the WAL siblings | | | | FIBR-0014 |
+| B6 "{n} transactions." has no plural | | | | |
+| B7 FIBR-0014 says .old pruning is manual; code prunes (INV-17) | | | | FIBR-0014 INV-5, INV-17 |
+| B8 FIBR-0030 §3.2 says DELETE sits inside the tr() string | | | | FIBR-0030 §3.2 |
+
+- **cited_by:**
+- **swept:**
+- **collateral:**
+- **surfaced:**
+- **out_of_scope:**
+- **falsified:**
