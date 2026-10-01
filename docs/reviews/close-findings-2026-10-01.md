@@ -167,3 +167,21 @@ uniqueness key.
   strip test rendered "R ٢٬٣٤٠٫00" — already FIBR-0398's Medium, which the
   audit marked not executed; this is the execution.
 - **falsified:** none.
+
+## FIBR-0394 — code lane 14, main window
+
+| finding | verified | disposition | was → now | must_agree |
+|---|---|---|---|---|
+| M1 Help > Check for updates while locked drops its answer | | | | FIBR-0054 every-outcome promise |
+| M2 auto-lock inside the save picker shows a wrong error | | | | FIBR-0013 INV-12; FIBR-0014 |
+| M3 last-used tab read once at launch | | | | |
+| M4 restore keeps the replaced vault's hint and throttle | | | | |
+| M5 untranslated UpdateError inside a translated sentence | | | | |
+| M6 FIBR-0159, FIBR-0155, FIBR-0231 §4.9 cite stale line numbers | | | | |
+
+- **cited_by:**
+- **swept:**
+- **collateral:**
+- **surfaced:**
+- **out_of_scope:**
+- **falsified:**
