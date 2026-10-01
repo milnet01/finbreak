@@ -373,5 +373,9 @@ uniqueness key.
   amended spec signatures (a new `DrillLabels` field; `today` required)
   under the "records existing code" exception, which does not cover a
   direction the run itself set. Raised with the user rather than undone.
+  **User decision 2026-10-01: accept and record** — R2 and R3 stand as
+  committed, with no gate run on FIBR-0138, FIBR-0013, FIBR-0143 or
+  FIBR-0231: they change internal call shapes of shipped features, nothing
+  a user sees. FIBR-0437 (user-visible) still owes FIBR-0083's gate.
 - **out_of_scope:** none new.
 - **falsified:** none.
