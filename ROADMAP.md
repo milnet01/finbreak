@@ -2745,7 +2745,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: review-fix.
   Source: full-audit-2026-09-27 code lane 17 (queued by FIBR-0367).
 
-- 📋 [FIBR-0398] **Queued findings from the 2026-09-27 audit: UI infrastructure lane (6 items).**
+- ✅ [FIBR-0398] **Queued findings from the 2026-09-27 audit: UI infrastructure lane (6 items).**
   From docs/reviews/2026-09-27-full-audit/code-lane-18-ui-infra.md.
   Line numbers are the audited commit's (52e5162); find sites by symbol.
   - [Medium] ui/_amount.py:81-82 -- under ar_EG or fa_IR the whole part
@@ -2770,6 +2770,14 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   - [Low] ui/_amount.py:81 -- int(whole) on a typed amount over 4300
     digits raises an interpreter message shown to the user (not
     executed). Fix: cap the input length in parse_amount_input.
+  Resolved (2026-10-01): four fixed, two queued. U1 (749a010) an amount
+  shows one digit system. U3 (b0bdc22) FIBR-0153 and FIBR-0219 describe
+  the exact path, not float. U4 (68a287b) FIBR-0127 lists the tokens
+  the code has. U6 (fb5685d) a very long amount gets the app's refusal
+  - by checking length before int(), since an input cap breaks
+  FIBR-0219 INV-9. U2 queued as FIBR-0435 (a spec decision); U5 on
+  FIBR-0434. Ledger: docs/reviews/close-findings-2026-10-01.md section
+  FIBR-0398.
   **Layman:** Six fixes in shared screen code: amounts could mix two kinds of digits in Arabic or Persian, a mistyped time zone is quietly replaced, a huge typed number gives a confusing error, and three specs are out of date.
   Kind: review-fix.
   Source: full-audit-2026-09-27 code lane 18 (queued by FIBR-0367).

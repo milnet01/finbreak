@@ -3,7 +3,7 @@
 Conformance tests for [`docs/specs/FIBR-0127.md`](../../../docs/specs/FIBR-0127.md).
 The app installs a real theme system: a registry of **six** finance-flavoured
 themes (three light — Ledger · Parchment · Mint; three dark — Midnight ·
-Graphite · Emerald), each defined by eight semantic colour **tokens** + an
+Graphite · Emerald), each defined by a set of semantic colour **tokens** + an
 `is_dark` flag that expand into a full Qt `QPalette` **and** a polish stylesheet
 (gradient/glow accents, grid row-highlighting). A **"Follow system"** mode tracks
 the OS light/dark scheme live. The choice is stored **outside the encrypted vault**

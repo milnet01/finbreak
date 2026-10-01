@@ -301,9 +301,17 @@ uniqueness key.
 | U5 the ambiguity refusal is an untranslated f-string | yes — `_ambiguous` builds English text; FIBR-0219 §9 says plain English, design.md § i18n says tr() | queued as FIBR-0434 | the same decision as FIBR-0434's service messages (it already names the ambiguous-amount message); annotated there | FIBR-0434 (annotated) |
 | U6 a 4300+-digit amount shows an interpreter message | yes, measured — `"1"*4400 + ".500"` under en_US and de_DE showed "Exceeds the limit (4300 digits) for integer string conversion…"; the `int()` is `_grouped`'s, reached while the ambiguous readings render | fixed | remedy checked and changed: the audit's input-length cap breaks FIBR-0219 INV-9 (a 400-digit input must parse; the service bound stays the one bound — its test went red), so `_grouped` compares the length before `int()` instead; red: the interpreter text was the refusal; mutation: `int()` first reddens it | FIBR-0219 INV-9 (agrees) |
 
-- **cited_by:**
-- **swept:**
-- **collateral:**
-- **surfaced:**
-- **out_of_scope:**
-- **falsified:**
+- **cited_by:** `toString(float`, "eight semantic", "8 colours", Link ←
+  `accent_soft`, `_grouped`, `_read_timezone` across docs, tests and src
+  (audit reports excluded).
+- **swept:** tests/features/theme/spec.md "eight semantic colour tokens" —
+  fixed (count dropped, as in theme.py). test_amount_input's FIBR-0327
+  docstring — agrees (describes the old bug in the past tense). `_grouped`'s
+  own docstring — agrees (fraction from the exact Decimal digits; fallback
+  ungrouped). FIBR-0219 INV-9 — agrees, and decided U6's remedy.
+  docs/journal/FIBR-0127.md and ROADMAP's FIBR-0214 notes — frozen. No
+  `.claude/code-pairs.json` exists.
+- **collateral:** none.
+- **surfaced:** none.
+- **out_of_scope:** none new.
+- **falsified:** none.
