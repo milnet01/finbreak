@@ -3844,6 +3844,23 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: review-fix.
   Source: close-findings FIBR-0404 sweep 2026-10-01.
 
+- 📋 [FIBR-0437] **Pinned date and time formats show month names and AM/PM in English, as FIBR-0083 specifies.**
+  Queued from FIBR-0406 I5 (2026-10-01). datetime_format renders a
+  pinned pattern with QDate/QTime.toString(token), which is C-locale, so
+  "dd MMMM yyyy" reads "11 July 2026" in every language and AM/PM stays
+  English. FIBR-0083 (format_timestamp's three-way rule) specifies
+  exactly that call, so localising it changes the spec's direction and
+  owes its review gate before the build. A fix was written and verified
+  (QLocale().toString(..., token), red under fr_FR and zh_CN) and then
+  withdrawn for that reason.
+  Recommendation: amend FIBR-0083 to render pinned tokens through the
+  current QLocale, run review-contract on it, then rebuild the fix, and
+  render Settings' sample labels the same way so the picker shows what
+  the app will show.
+  **Layman:** Dates written with month names always use English names; they should follow your language.
+  Kind: review-fix.
+  Source: full-audit-2026-09-27 code lane 6 I5, queued by FIBR-0406.
+
 ## v1.1.0 — Localisation
 
 The first feature minor after 1.0. Chosen to go first because it is
