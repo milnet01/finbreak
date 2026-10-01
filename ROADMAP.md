@@ -2475,7 +2475,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: review-fix.
   Source: full-audit-2026-09-27 delivery group C (queued by FIBR-0367).
 
-- 📋 [FIBR-0391] **Queued findings from the 2026-09-27 audit: reporting lane (4 items).**
+- ✅ [FIBR-0391] **Queued findings from the 2026-09-27 audit: reporting lane (4 items).**
   From docs/reviews/2026-09-27-full-audit/code-lane-11-reporting.md.
   Line numbers are the audited commit's (52e5162); find sites by symbol.
   - [Low] services/reporting.py:397-399 -- a row whose category_id is a
@@ -2495,6 +2495,14 @@ touches the § 2 surface. A security fix takes the number its change takes — �
     and its New-symbols table still describe list returns and first-wins
     duplicates, and the code cites an INV-6a FIBR-0139 never defines;
     the spec is stale. Fix: amend FIBR-0139 to match the code.
+  Resolved (2026-10-01): all four fixed, one commit each. R1 (2c35807)
+  a root-assigned row's node holds only its own rows, so the drill
+  total equals its tile again. R2 (f62a2d4) DrillLabels gains a
+  translated transfer_pair template. R3 (c15f3c1) today is required
+  by the four reporting methods and by the PDF export, which had the
+  same OS-clock fallback. R4 (e1233d4) FIBR-0139 D2, D5 and its
+  symbols table now describe the code. Ledger and sweep:
+  docs/reviews/close-findings-2026-10-01.md section FIBR-0391.
   **Layman:** Four small problems in the reports code: a total that can double-count on damaged data, one label that won't translate, a hidden fallback to the wrong clock, and a spec that no longer matches the code.
   Kind: review-fix.
   Source: full-audit-2026-09-27 code lane 11 (queued by FIBR-0367).

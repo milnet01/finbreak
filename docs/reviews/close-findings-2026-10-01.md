@@ -102,9 +102,27 @@ uniqueness key.
 | R3 `today` falls back to the OS clock | yes — four `today or date.today()` fallbacks; every src caller passes `today` (mypy clean after removal) | fixed | optional `today` + OS-clock fallback → required, in `ReportingService` and (same root cause) `PdfExportService.render_pdf_bytes`/`export`; red: a call without `today` ran; mutations: a default on any one of the six reddens it; two tests that leaned on the OS clock now pass a fixed date | callers of the four methods; FIBR-0013, 0138, 0143, 0231; month_summary docstring; pdf_export + datetime_display test text (all amended) |
 | R4 FIBR-0139 D2/D5 stale against the code | yes — `_match_inputs` returns folded tuples (FIBR-0213); seeded duplicate names resolve under the seed root (FIBR-0204); INV-6a lives in the category_library test contract, not FIBR-0139 | fixed | spec described list returns, re-folding per row and plain first-wins → D2, D5 and the symbols table describe the folded inputs and the seed-root tie-break; the code's two INV-6a citations name where that clause lives; no red run: nothing observable changes | FIBR-0139 D2, D5, symbols table |
 
-- **cited_by:**
-- **swept:**
-- **collateral:**
-- **surfaced:**
-- **out_of_scope:**
-- **falsified:**
+- **cited_by:** `DrillLabels`, `transfer_pair`, `render_pdf_bytes`,
+  `_match_inputs`, `_leaf_name_to_id`, `top_of_chain`, `INV-6a` and the
+  optional-`today` spellings across docs, src, tests and packaging. Most
+  `transfer_pair` hits are the unrelated database table of that name — no
+  verdict owed.
+- **swept:** FIBR-0013, 0138, 0139, 0143 and 0231 — fixed (amended in the
+  commit that changed the code). Test contracts dashboard_drilldown and
+  pdf_export — fixed. month_summary.py docstring and datetime_display test
+  text — fixed. FIBR-0143 INV-7 / D-sections and FIBR-0231 §4 on
+  `DrillLabels` — agree (no label count). docs/security-model.md
+  `render_pdf_bytes` — agrees (no path, unchanged). Test fakes accepting
+  `today=None` (month_summary_home, app_shell) — agree (stand-ins).
+  docs/journal/*, ROADMAP shipped notes, the audit report — frozen.
+  No `.claude/code-pairs.json` exists, so no pair list to walk.
+- **collateral:** `drill_down`'s docstring said four `tr()` strings after R2
+  added a fifth — fixed in the R3 commit.
+- **surfaced:** none.
+- **out_of_scope:** docs/specs/FIBR-0013.md names the reporting methods'
+  second argument `account_id`; the code takes `account_ids` — stale before
+  this run, left. ui/transfers.py builds its "From → To" cell with a fixed
+  arrow — already FIBR-0396, which prescribes the same `{source} → {target}`
+  template, so one translation serves both. scripts/seed_demo_vault.py keeps
+  a `today or date.today()` fallback — a demo seeder, no report path; left.
+- **falsified:** none.
