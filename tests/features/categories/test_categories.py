@@ -1032,3 +1032,36 @@ def test_FIBR0397_an_error_naming_a_category_shows_it_as_text(qtbot, service):
     assert shown.sizeHint().width() == literal.sizeHint().width(), (
         "the markup in the name was rendered, not shown"
     )
+
+
+def test_FIBR0408_the_delete_question_is_composed_by_one_template(
+    qtbot, service, monkeypatch, translate_one
+):
+    """design.md § i18n: the delete confirmation glued its two plural sentences
+    with " " +, so a translation could not order them."""
+    from PySide6.QtWidgets import QMessageBox
+
+    from finbreak.ui import categories as categories_mod
+    from finbreak.ui.categories import CategoriesWidget
+
+    svc = CategoryService(service.vault)
+    expenditure = _roots(service.vault.connection)["expenditure"]
+    leaf = svc.add_category(expenditure.id, "Ztest Gone")
+    asked: list[str] = []
+
+    def _question(_parent, _title, text, *a, **k):
+        asked.append(text)
+        return QMessageBox.StandardButton.No
+
+    monkeypatch.setattr(categories_mod.QMessageBox, "question", staticmethod(_question))
+    translate_one(
+        "CategoriesWidget", "{transactions} {rules}", "{rules} || {transactions}"
+    )
+    widget = CategoriesWidget(service)
+    qtbot.addWidget(widget)
+    widget._select_category(leaf.id)
+    widget._on_delete()
+
+    assert len(asked) == 1 and " || " in asked[0], asked
+    rules, transactions = asked[0].split(" || ")
+    assert "rule" in rules and "transaction" in transactions

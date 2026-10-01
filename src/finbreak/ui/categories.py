@@ -210,16 +210,20 @@ class CategoriesWidget(QWidget):
         confirmed = QMessageBox.question(
             self,
             self.tr("Delete category"),
-            self.tr(
-                "Deleting this category will make %n transaction(s) automatic again.",
-                "",
-                txn_count,
-            )
-            + " "
-            + self.tr(
-                "It will also remove %n rule(s) that file into it. Continue?",
-                "",
-                rule_count,
+            # One template, so a translation can order the two sentences; each
+            # keeps its own %n (FIBR-0408).
+            self.tr("{transactions} {rules}").format(
+                transactions=self.tr(
+                    "Deleting this category will make %n transaction(s) automatic "
+                    "again.",
+                    "",
+                    txn_count,
+                ),
+                rules=self.tr(
+                    "It will also remove %n rule(s) that file into it. Continue?",
+                    "",
+                    rule_count,
+                ),
             ),
         )
         if confirmed != QMessageBox.StandardButton.Yes:
