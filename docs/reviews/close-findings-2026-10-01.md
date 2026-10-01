@@ -228,3 +228,19 @@ uniqueness key.
 - **surfaced:** none.
 - **out_of_scope:** none.
 - **falsified:** none.
+
+## FIBR-0396 — code lane 16, data views
+
+| finding | verified | disposition | was → now | must_agree |
+|---|---|---|---|---|
+| D1 transfer cell arrow is a fixed literal | | | | FIBR-0201 §4.8; FIBR-0391 R2 template |
+| D2 display strings joined by +, join or f-string | | | | FIBR-0201 §4.8 |
+| D3 service error text shown via str(exc) | | | | FIBR-0219 §4.1; design.md § i18n |
+| D4 `_on_set_category` has no VaultLockedError guard | | | | |
+
+- **cited_by:**
+- **swept:**
+- **collateral:**
+- **surfaced:**
+- **out_of_scope:**
+- **falsified:**
