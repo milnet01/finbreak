@@ -15,6 +15,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import shiboken6
 from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PrivateKey,
     Ed25519PublicKey,
@@ -2421,10 +2422,8 @@ def test_FIBR0390_quit_saves_the_layout_and_drains_a_running_check(
 
 def test_manual_check_up_to_date_shows_info(qtbot, service, monkeypatch):
     window, _ = _updater_shell(qtbot, service)
-    # Unlocked first (FIBR-0216): Help→Check is only reachable from a running,
-    # unlocked app — while locked the UnlockDialog is app-modal and blocks the menu
-    # — and the result handlers now gate on that. `_updater_shell` leaves the shell
-    # never-unlocked, which was a fixture artifact rather than a reachable state.
+    # Unlocked, the common case. A check started on the locked screen (after
+    # Cancel on the unlock dialog) is FIBR0394's test below.
     window._enter_unlocked()
     shown = []
     monkeypatch.setattr(
@@ -2471,6 +2470,46 @@ def test_FIBR0216_manual_check_result_is_silent_once_locked(
 
     getattr(window, slot)(*args)
     assert not shown, "no message box may appear over the lock screen"
+
+
+@pytest.mark.parametrize(
+    ("outcome", "patched"), [("none", "information"), ("error", "warning")]
+)
+def test_FIBR0394_a_check_started_while_locked_still_answers(
+    qtbot, service, tmp_path, monkeypatch, outcome, patched
+):
+    """Cancel on the unlock screen leaves the app locked with no dialog up, and
+    Help stays enabled there, so Help -> Check for updates can be started while
+    locked. Its answer must still arrive ("gives feedback on EVERY outcome"); only
+    a lock that happens AFTER the click silences it (FIBR-0216)."""
+
+    class _Outcome(_FakeUpdateService):
+        def check_for_update(self, *, force=False):
+            if force and outcome == "error":
+                raise RuntimeError("network down")
+            return None
+
+    shown = []
+    monkeypatch.setattr(
+        f"finbreak.ui.main_window.QMessageBox.{patched}",
+        lambda *a, **k: shown.append(a),
+    )
+    window = MainWindow(
+        service,
+        update_service=_Outcome(),
+        installer=_FakeInstaller(tmp_path / "app.AppImage"),
+    )
+    qtbot.addWidget(window)
+    assert window._dialog is not None, "precondition: the unlock screen is up"
+    window._dialog.reject()  # Cancel: stay locked, no dialog
+    assert not window._unlocked and window._dialog is None
+
+    window._check_for_updates_now()
+    worker = window._manual_check_worker
+    assert worker is not None
+    qtbot.waitUntil(lambda: bool(shown), timeout=3000)
+    if shiboken6.isValid(worker):  # finished workers delete themselves
+        worker.wait(3000)
 
 
 # --------------------------------------------------------------------------- #

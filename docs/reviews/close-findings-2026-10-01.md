@@ -172,7 +172,7 @@ uniqueness key.
 
 | finding | verified | disposition | was → now | must_agree |
 |---|---|---|---|---|
-| M1 Help > Check for updates while locked drops its answer | | | | FIBR-0054 every-outcome promise |
+| M1 Help > Check for updates while locked drops its answer | yes, measured — with the unlock dialog up a window-system click on Help is blocked (setModal), but Cancel leaves the app locked with no dialog ("stay locked") and Help then opens | fixed | `if not self._unlocked` → silenced only if a lock fired after the click (`_manual_check_started_unlocked`, recorded at the click); red: no box for up-to-date or error from a check started while locked; mutations: the old gate, no gate, and not recording at the click each redden a test; a test comment claiming the menu is unreachable while locked corrected | FIBR-0054 (says nothing on this); FIBR-0216 test (still green) |
 | M2 auto-lock inside the save picker shows a wrong error | | | | FIBR-0013 INV-12; FIBR-0014 |
 | M3 last-used tab read once at launch | | | | |
 | M4 restore keeps the replaced vault's hint and throttle | | | | |

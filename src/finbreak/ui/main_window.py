@@ -396,6 +396,9 @@ class MainWindow(QMainWindow):
         self._unlocked = False  # gates the pending offer (D15)
         self._update_check_worker: UpdateCheckWorker | None = None
         self._manual_check_worker: UpdateCheckWorker | None = None  # Help→Check
+        # Whether that check was started unlocked: a lock AFTER the click silences
+        # its answer, a check started on the locked screen still answers (FIBR-0394).
+        self._manual_check_started_unlocked = True
         self._download_worker: DownloadWorker | None = None
         self._dialog: QDialog | None = None  # the current modal dialog, if any
         self._live: QWidget | None = None  # the current content widget, if any
@@ -1777,6 +1780,7 @@ class MainWindow(QMainWindow):
         running = self._manual_check_worker
         if running is not None and shiboken6.isValid(running) and running.isRunning():
             return
+        self._manual_check_started_unlocked = self._unlocked
         worker = UpdateCheckWorker(self._update_service, self, force=True)
         worker.found.connect(self._on_update_found)
         worker.none.connect(self._on_manual_check_up_to_date)
@@ -1785,9 +1789,17 @@ class MainWindow(QMainWindow):
         self._manual_check_worker = worker
         worker.start()
 
+    def _locked_since_manual_check(self) -> bool:
+        """True when an idle auto-lock fired between the click and the reply, so
+        the answer must not pop over the lock screen (FIBR-0216). A check started
+        on the locked screen — reachable after Cancel on the unlock dialog, with
+        Help still enabled — answers there, since it opened over that screen
+        (FIBR-0394)."""
+        return self._manual_check_started_unlocked and not self._unlocked
+
     def _on_manual_check_up_to_date(self) -> None:
-        if not self._unlocked:
-            return  # locked while the check was in flight (FIBR-0216) — see below
+        if self._locked_since_manual_check():
+            return
         QMessageBox.information(
             self,
             self.tr("Check for updates"),
@@ -1802,13 +1814,14 @@ class MainWindow(QMainWindow):
         # all -- so the one artefact that could explain a failing update check did
         # not exist (FIBR-0327).
         log.warning("manual update check failed: %s", exc)
-        # Both manual-check results are gated on still being unlocked. The check runs
-        # on a worker thread, so an idle auto-lock can fire between the click and the
-        # reply — and these two were the only update handlers with no guard, popping
-        # a box over the lock screen. The offer path guards on `self._dialog is
-        # prompt`; the natural gate here is the same flag `_lock` clears, since these
-        # own no dialog of their own (FIBR-0216).
-        if not self._unlocked:
+        # Both manual-check results are silenced by a lock that fired after the
+        # click. The check runs on a worker thread, so an idle auto-lock can fire
+        # between the click and the reply — and these two were the only update
+        # handlers with no guard, popping a box over the lock screen. The offer
+        # path guards on `self._dialog is prompt`; these own no dialog of their
+        # own, so they compare the lock flag `_lock` clears with its value at the
+        # click (FIBR-0216, FIBR-0394).
+        if self._locked_since_manual_check():
             return
         QMessageBox.warning(
             self,
