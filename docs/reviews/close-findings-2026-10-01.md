@@ -359,9 +359,19 @@ uniqueness key.
 | I4 importer errors are English f-strings, one a list repr | yes — csv_importer and ImportService refusals shown with `setText(str(exc))` | queued on FIBR-0434 | the same decision (typed service rejections, with FIBR-0017); annotated there | FIBR-0434 (annotated) |
 | I5 `qdate.toString(pref)` renders English month names | yes — `QDate.toString(pattern)` is C-locale; its mirror `QTime.toString` did the same for AM/PM | queued as FIBR-0437 | a fix was built and verified (96f0fa6: red under fr_FR / zh_CN, both mutations killed), then withdrawn: the sweep found FIBR-0083 specifies `dt.date().toString(token)`, so localising is a direction change that owes the spec gate BEFORE the build; reverted, queued with the amendment + gate and the Settings sample labels | FIBR-0083 three-way rule |
 
-- **cited_by:**
-- **swept:**
-- **collateral:**
-- **surfaced:**
-- **out_of_scope:**
-- **falsified:**
+- **cited_by:** `_resolve_zone`, `systemTimeZoneId`, `_validate_span`,
+  `read_file`, `DATE_PRESETS`, `toString(token)` across docs, src and tests.
+- **swept:** FIBR-0083 INV-6 (fail safe on a bad zone) — agrees with I1.
+  FIBR-0083's three-way rendering rule (`dt.date().toString(token)`) —
+  DISAGREED with the I5 fix, which was then withdrawn (bc2cf71) and queued
+  as FIBR-0437; agrees again. Settings' fixed English sample labels —
+  agree with the C-locale rendering now restored; their rework rides with
+  FIBR-0437. FIBR-0216's canonical transaction dates — agree with I2. No
+  `.claude/code-pairs.json` exists.
+- **collateral:** the I5 fix itself (96f0fa6), reverted in bc2cf71.
+- **surfaced:** the same reasoning reaches FIBR-0391 R2 and R3: both
+  amended spec signatures (a new `DrillLabels` field; `today` required)
+  under the "records existing code" exception, which does not cover a
+  direction the run itself set. Raised with the user rather than undone.
+- **out_of_scope:** none new.
+- **falsified:** none.

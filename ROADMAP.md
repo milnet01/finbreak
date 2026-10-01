@@ -3087,7 +3087,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: security.
   Source: full-audit-2026-09-27 code lane 5 (queued by FIBR-0367).
 
-- 📋 [FIBR-0406] **Queued findings from the 2026-09-27 audit: CSV and OFX import lane (5 items).**
+- ✅ [FIBR-0406] **Queued findings from the 2026-09-27 audit: CSV and OFX import lane (5 items).**
   From docs/reviews/2026-09-27-full-audit/
     code-lane-06-csv-ofx-import.md.
   Line numbers are the audited commit's (52e5162); find sites by symbol.
@@ -3110,6 +3110,14 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   - [Low] datetime_format.py:103 -- qdate.toString(date_pref) renders
     English month names whatever the UI language. Fix:
     QLocale().toString(qdate, date_pref).
+  Resolved (2026-10-01): three fixed, two queued. I1 (5a32e44) an
+  invalid system time zone falls back to local time instead of
+  crashing "today". I2 (2e8ed69) an import's span is stored as
+  canonical ISO dates. I3 (ea93c5a) a non-UTF-8 file is refused in
+  plain words. I4 queued on FIBR-0434. I5 queued as FIBR-0437: its fix
+  (96f0fa6) was withdrawn (bc2cf71) because FIBR-0083 specifies the
+  C-locale rendering and the change owes that spec's gate first.
+  Ledger: docs/reviews/close-findings-2026-10-01.md section FIBR-0406.
   **Layman:** Five smaller problems in importing CSV and OFX files, including a possible crash on computers with an unusual time-zone setting and some untranslated messages.
   Kind: review-fix.
   Source: full-audit-2026-09-27 code lane 6 (queued by FIBR-0367).
