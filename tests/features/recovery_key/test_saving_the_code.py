@@ -308,3 +308,69 @@ def test_a_link_planted_after_the_stale_part_is_cleared_is_refused(
     )
     assert warnings, "the save must be refused and the user told"
     assert not target.exists()
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0395 — a failure is told in translated words, never in the exception's
+# own English text (design.md § i18n). The marker stands in for that text.
+# --------------------------------------------------------------------------- #
+_RAW = "RAW-ENGLISH-EXCEPTION-TEXT"
+
+
+def _capture_warning_texts(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    texts: list[str] = []
+    monkeypatch.setattr(
+        recovery_module.QMessageBox,
+        "warning",
+        staticmethod(lambda _parent, _title, text: texts.append(text)),
+    )
+    return texts
+
+
+def test_FIBR0395_a_failed_save_names_no_raw_error(
+    qtbot: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    def _fail(target: Path, code: str) -> None:
+        raise OSError(_RAW)
+
+    monkeypatch.setattr(recovery_module, "_write_code_file", _fail)
+    _save_to(monkeypatch, tmp_path / "code.txt")
+    texts = _capture_warning_texts(monkeypatch)
+    dialog = RecoveryCodeDialog("ABCD-EFGH-JKMN-PQRS-TVWX-YZ01-2345")
+    qtbot.addWidget(dialog)
+    dialog._save()
+
+    assert len(texts) == 1 and "could not write" in texts[0]
+    assert _RAW not in texts[0]
+
+
+def test_FIBR0395_a_failed_keep_names_no_raw_error(
+    service: AuthService, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def _fail(self: AuthService, code: str) -> None:
+        raise RuntimeError(_RAW)
+
+    monkeypatch.setattr(AuthService, "add_recovery_key", _fail)
+    texts = _capture_warning_texts(monkeypatch)
+    assert recovery_module.keep_recovery_code(service, generate_code()) is False
+
+    assert len(texts) == 1 and "recovery code" in texts[0]
+    assert _RAW not in texts[0]
+
+
+def test_FIBR0395_a_failed_new_password_names_no_raw_error(
+    qtbot: Any, service: AuthService, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def _fail(self: AuthService, password: bytearray) -> None:
+        raise RuntimeError(_RAW)
+
+    monkeypatch.setattr(AuthService, "set_master_password", _fail)
+    dialog = recovery_module.NewMasterPasswordDialog(service)
+    qtbot.addWidget(dialog)
+    dialog._password.setText("a new password")
+    dialog._confirm.setText("a new password")
+    dialog._on_submit()
+
+    shown = dialog._error.text()
+    assert "could not be set" in shown.lower()
+    assert _RAW not in shown

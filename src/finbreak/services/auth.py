@@ -40,6 +40,8 @@ from finbreak.crypto import (
 from finbreak.errors import (
     KdfPolicyError,
     KeyUnwrapError,
+    PasswordEmptyError,
+    PasswordMismatchError,
     VaultLockedError,
     VaultStateError,
 )
@@ -226,9 +228,9 @@ class AuthService:
             if base_currency not in CURRENCY_EXPONENTS:
                 raise ValueError(f"unsupported base currency: {base_currency!r}")
             if len(password) == 0:
-                raise ValueError("password must not be empty")
+                raise PasswordEmptyError("password must not be empty")
             if password != confirm:
-                raise ValueError("passwords do not match")
+                raise PasswordMismatchError("passwords do not match")
         finally:
             _wipe(password)
             _wipe(confirm)

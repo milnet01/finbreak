@@ -23,6 +23,16 @@ class KeyUnwrapError(FinbreakError):
     is an oracle."""
 
 
+class PasswordEmptyError(FinbreakError, ValueError):
+    """A new master password was empty. A ``ValueError`` too, so a caller that
+    treats every form refusal alike still catches it; a named type so a dialog
+    can say it in translated words (FIBR-0395)."""
+
+
+class PasswordMismatchError(FinbreakError, ValueError):
+    """A new master password and its confirmation differ (FIBR-0395)."""
+
+
 class VaultStateError(FinbreakError):
     """The on-disk vault/sidecar pair is in a mixed presence state — one file
     present without the other (FIBR-0004 INV-5)."""

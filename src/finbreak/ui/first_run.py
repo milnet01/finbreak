@@ -14,6 +14,8 @@ is disabled and ``reject()`` / ``closeEvent`` return early — so the parented
 
 from __future__ import annotations
 
+import logging
+
 from PySide6.QtCore import Qt, Signal, Slot
 from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
@@ -30,6 +32,7 @@ from PySide6.QtWidgets import (
 )
 
 from finbreak.datetime_format import system_timezone_id
+from finbreak.errors import PasswordEmptyError, PasswordMismatchError
 from finbreak.models import KdfParams, NegativeStyle
 from finbreak.services.auth import (
     CURRENCY_EXPONENTS,
@@ -46,6 +49,8 @@ from finbreak.ui._datetime_prefs import (
     system_time_sample_label,
 )
 from finbreak.ui._worker import DeriveWorker, settle
+
+log = logging.getLogger(__name__)
 
 
 class FirstRunDialog(QDialog):
@@ -195,8 +200,17 @@ class FirstRunDialog(QDialog):
         confirm = bytearray(self._confirm.text().encode("utf-8"))
         try:
             self._service.validate_first_run(password, confirm, currency)
-        except ValueError as exc:
-            self._error.setText(str(exc))
+        except PasswordEmptyError:
+            self._error.setText(self.tr("The password must not be empty."))
+            return
+        except PasswordMismatchError:
+            self._error.setText(self.tr("The two passwords do not match."))
+            return
+        except ValueError:  # the currency, which the drop-down already limits
+            log.warning("first-run details refused", exc_info=True)
+            self._error.setText(
+                self.tr("Those details can't be used. Please check them and try again.")
+            )
             return
 
         # validate_first_run wiped the buffers above; re-encode a fresh one for
@@ -228,10 +242,11 @@ class FirstRunDialog(QDialog):
             return
         try:
             code = self._service.complete_first_run(raw, params, currency)
-        except Exception as exc:  # vault creation failed — surface, don't crash
-            self._error.setText(
-                self.tr("Could not create the vault: {error}").format(error=exc)
-            )
+        except Exception:  # vault creation failed — surface, don't crash
+            # In translated words; the exception's own text is English, so it
+            # goes to the log rather than into a tr() sentence (FIBR-0395).
+            log.warning("vault creation failed", exc_info=True)
+            self._error.setText(self._creation_failed_text())
             return
         # The vault now exists, so the display prefs are written here (D6) — and
         # outside the creation guard: a failed write here is not a failed
@@ -258,12 +273,13 @@ class FirstRunDialog(QDialog):
         except Exception as exc:
             unsaved = unsaved or exc
         if unsaved is not None:
+            log.warning("first-run display settings not saved: %s", unsaved)
             # Before `completed`, like the code below, so the shell holds it.
             self.prefs_not_saved.emit(
                 self.tr(
-                    "Your display settings could not be saved ({error}), so the "
-                    "defaults are in use. You can set them again in Settings."
-                ).format(error=unsaved)
+                    "Your display settings could not be saved, so the defaults "
+                    "are in use. You can set them again in Settings."
+                )
             )
         # § 4.5 step 8 is the SHELL's, and the code is handed over here — after
         # the vault exists, because a code displayed for a vault whose creation
@@ -279,6 +295,8 @@ class FirstRunDialog(QDialog):
         settle(self._worker)
         self._worker = None
         self._set_busy(False)
-        self._error.setText(
-            self.tr("Could not create the vault: {error}").format(error=exc)
-        )
+        log.warning("first-run key derivation failed: %s", exc)
+        self._error.setText(self._creation_failed_text())
+
+    def _creation_failed_text(self) -> str:
+        return self.tr("Could not create the vault. Please try again.")

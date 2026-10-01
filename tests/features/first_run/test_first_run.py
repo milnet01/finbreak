@@ -167,7 +167,8 @@ def test_FIBR0367_prefs_failure_after_creation_keeps_the_recovery_code(
     assert service.vault.is_open, "precondition: the vault was created"
     assert len(codes) == 1 and codes[0], "the recovery code is handed over"
     assert completed == [True], "the shell is told the vault exists"
-    assert len(warnings) == 1 and "disk full" in warnings[0]
+    assert len(warnings) == 1 and "could not be saved" in warnings[0]
+    assert "disk full" not in warnings[0], "untranslated error text (FIBR-0395)"
     assert "could not create the vault" not in dialog._error.text().lower()
     assert service.amount_prefs().negative_style == "brackets", (
         "the amount prefs are still written when the datetime write fails"
@@ -199,12 +200,74 @@ def test_FIBR0367_shell_shows_the_prefs_warning_after_first_run(
 
     display = window._dialog
     assert isinstance(display, RecoveryCodeDialog), "the code is still shown"
-    assert "disk full" in window.statusBar().currentMessage()
+    assert "could not be saved" in window.statusBar().currentMessage()
     display.reject()
-    assert "disk full" in window.statusBar().currentMessage(), (
+    assert "could not be saved" in window.statusBar().currentMessage(), (
         "the warning outlives the recovery display"
     )
     window._enter_unlocked()
-    assert "disk full" not in window.statusBar().currentMessage(), (
+    assert "could not be saved" not in window.statusBar().currentMessage(), (
         "consumed on show, so a later unlock does not repeat it"
     )
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0395 — failures and refusals are told in translated words, never in the
+# exception's own English text (design.md § i18n).
+# --------------------------------------------------------------------------- #
+_RAW = "RAW-ENGLISH-EXCEPTION-TEXT"
+
+
+@pytest.mark.parametrize(
+    ("password", "confirm", "expected"),
+    [
+        ("", "", "The password must not be empty."),
+        ("one password", "another password", "The two passwords do not match."),
+    ],
+)
+def test_FIBR0395_a_refused_password_is_told_in_translated_words(
+    qtbot, service, password, confirm, expected
+):
+    dialog = FirstRunDialog(service)
+    qtbot.addWidget(dialog)
+    dialog._password.setText(password)
+    dialog._confirm.setText(confirm)
+    dialog._submit.click()
+    assert dialog._error.text() == expected
+
+
+def test_FIBR0395_the_service_names_each_refusal_by_type(service):
+    from finbreak.errors import PasswordEmptyError, PasswordMismatchError
+
+    with pytest.raises(PasswordEmptyError):
+        service.validate_first_run(bytearray(), bytearray(), "ZAR")
+    with pytest.raises(PasswordMismatchError):
+        service.validate_first_run(bytearray(b"a"), bytearray(b"b"), "ZAR")
+
+
+def test_FIBR0395_a_failed_creation_names_no_raw_error(qtbot, service, monkeypatch):
+    import finbreak.ui.first_run as module
+
+    monkeypatch.setattr(module, "DeriveWorker", _SyncDeriveWorker)
+
+    def _fail(self, raw, params, currency):
+        raise RuntimeError(_RAW)
+
+    monkeypatch.setattr(AuthService, "complete_first_run", _fail)
+    dialog = FirstRunDialog(service)
+    qtbot.addWidget(dialog)
+    dialog._password.setText(_PW.decode())
+    dialog._confirm.setText(_PW.decode())
+    dialog._submit.click()
+    shown = dialog._error.text()
+    assert "could not create the vault" in shown.lower()
+    assert _RAW not in shown
+
+
+def test_FIBR0395_a_failed_derivation_names_no_raw_error(qtbot, service):
+    dialog = FirstRunDialog(service)
+    qtbot.addWidget(dialog)
+    dialog._on_failure(RuntimeError(_RAW))
+    shown = dialog._error.text()
+    assert "could not create the vault" in shown.lower()
+    assert _RAW not in shown

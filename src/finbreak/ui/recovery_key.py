@@ -14,6 +14,7 @@ is what INV-5 is about.
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 
@@ -73,6 +74,9 @@ _SELECTING_KEYS = (
     QKeySequence.StandardKey.SelectNextPage,
     QKeySequence.StandardKey.SelectPreviousPage,
 )
+
+
+log = logging.getLogger(__name__)
 
 
 class RecoveryCodeDialog(QDialog):
@@ -249,11 +253,14 @@ class RecoveryCodeDialog(QDialog):
         try:
             _write_code_file(Path(path), self._code)
         except OSError as exc:
+            # Translated words only; the OS text is English (FIBR-0395).
+            log.warning("could not save the recovery code file: %s", exc)
             QMessageBox.warning(
                 self,
                 self.tr("Could not save the file"),
-                self.tr("finbreak could not write that file: {error}").format(
-                    error=exc
+                self.tr(
+                    "finbreak could not write that file. Choose another folder "
+                    "and try again."
                 ),
             )
             return
@@ -474,9 +481,10 @@ class NewMasterPasswordDialog(QDialog):
             # exception's own wording onto a dialog already being torn down
             # (FIBR-0310 P12).
             return
-        except Exception as exc:  # a failed re-wrap must not close this dialog
+        except Exception:  # a failed re-wrap must not close this dialog
+            log.warning("setting the new master password failed", exc_info=True)
             self._error.setText(
-                self.tr("Could not set the password: {error}").format(error=exc)
+                self.tr("The password could not be set. Please try again.")
             )
             return
         finally:
@@ -508,15 +516,17 @@ def keep_recovery_code(
         # is locked" -- on a window the shell is already swapping for the unlock
         # screen, and in the words of an internal exception (FIBR-0310 P12).
         return False
-    except Exception as exc:  # a failed re-wrap must be visible, not silent
+    except Exception:  # a failed re-wrap must be visible, not silent
+        log.warning("storing the recovery code failed", exc_info=True)
         QMessageBox.warning(
             parent,
             QCoreApplication.translate(
                 "RecoveryKey", "Could not save the recovery code"
             ),
             QCoreApplication.translate(
-                "RecoveryKey", "finbreak could not store your recovery code: {error}"
-            ).format(error=exc),
+                "RecoveryKey",
+                "finbreak could not store your recovery code. Please try again.",
+            ),
         )
         return False
     return True

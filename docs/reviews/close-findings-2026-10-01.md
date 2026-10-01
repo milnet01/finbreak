@@ -207,7 +207,7 @@ uniqueness key.
 
 | finding | verified | disposition | was → now | must_agree |
 |---|---|---|---|---|
-| S1 English exception text in first_run and recovery_key dialogs | | | | design.md § i18n |
+| S1 English exception text in first_run and recovery_key dialogs | yes, and wider than cited — seven sites: first-run validation (`str(exc)`), creation, derivation and prefs failures, and the recovery-code save, keep and new-password failures (`{error}` into `tr()`) | fixed | raw text → translated words at all seven; validation names its refusal by type (`PasswordEmptyError`, `PasswordMismatchError`, both `ValueError`s), mapped to the sibling dialogs' wording; failures log the raw text; the two FIBR-0367 prefs tests, which asserted "disk full" was shown, now assert the translated sentence and its absence; red: every site showed the marker text; mutations at all nine points redden a test | first_run test contract (amended); design.md § i18n |
 | S2 Settings Save catches only VaultLockedError | | | | |
 | S3 FIBR-0054 INV-7 calls Windows updates un-wired | | | | FIBR-0054 INV-7 |
 
