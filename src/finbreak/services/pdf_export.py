@@ -166,6 +166,11 @@ class PdfExportService:
         try:
             with os.fdopen(fd, "wb") as handle:
                 handle.write(pdf_bytes)
+                # The bytes reach the disk before the rename does, or a power loss
+                # can leave a zero-length report where D1 promises the whole file
+                # or none (FIBR-0393). mkstemp opens O_RDWR, which Windows needs.
+                handle.flush()
+                os.fsync(handle.fileno())
             os.replace(tmp, out_path)
         except BaseException:
             tmp.unlink(missing_ok=True)

@@ -7,6 +7,7 @@ Period is pinned to a specific month so renders are deterministic (no clock).
 """
 
 import inspect
+import os
 from datetime import date
 from decimal import Decimal
 from io import BytesIO
@@ -382,6 +383,41 @@ def test_FIBR0393_a_failed_replace_leaves_no_temp(qapp, service, tmp_path, monke
         _svc(service).export(_options(), out, _TODAY)
     assert not out.exists()
     assert not _temps(tmp_path, "report.pdf")
+
+
+def test_FIBR0393_the_bytes_reach_the_disk_before_the_rename(
+    qapp, service, tmp_path, monkeypatch
+):
+    """D1: the report is either the whole finished file or untouched. A rename
+    the filesystem persists before the data would, after a power loss, leave a
+    zero-length report — so the temp's bytes are fsynced, then renamed. The power
+    loss itself cannot be run; this locks the order that prevents it."""
+    import finbreak.services.pdf_export as mod
+
+    events = []
+    real_fsync, real_replace = mod.os.fsync, mod.os.replace
+
+    def _fsync(fd):
+        events.append(("fsync", os.fstat(fd).st_size))
+        real_fsync(fd)
+
+    def _replace(src, dst):
+        events.append(("replace", None))
+        real_replace(src, dst)
+
+    monkeypatch.setattr(mod.os, "fsync", _fsync)
+    monkeypatch.setattr(mod.os, "replace", _replace)
+    # A real report is larger than the write buffer and bypasses it; a small one
+    # sits in the buffer, which is what proves the flush before the sync.
+    small = b"%PDF-1.7 small"
+    monkeypatch.setattr(
+        mod.PdfExportService, "render_pdf_bytes", lambda self, options, today: small
+    )
+    out = tmp_path / "report.pdf"
+    _svc(service).export(_options(), out, _TODAY)
+
+    assert [name for name, _ in events] == ["fsync", "replace"]
+    assert events[0][1] == len(small)  # every byte was written when synced
 
 
 def test_export_vault_locked_leaves_no_file(qapp, service, tmp_path):

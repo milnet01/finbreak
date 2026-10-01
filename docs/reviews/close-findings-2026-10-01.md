@@ -132,7 +132,7 @@ uniqueness key.
 | finding | verified | disposition | was → now | must_agree |
 |---|---|---|---|---|
 | P1 hidden Month/Year pickers leave bare labels | yes — `_sync_period_pickers` hid the field only; remedy checked: Home hides its pickers too, so hide the row rather than disable | fixed | field hidden, label left → `QFormLayout.setRowVisible` per row; red: bare "Month" label in Previous month; mutations: field-only hiding for either picker reddens it | FIBR-0013 mock-up note (amended: shown, not enabled) |
-| P2 no flush + fsync before os.replace | | | | FIBR-0013 D1 |
+| P2 no flush + fsync before os.replace | yes — write then `os.replace`, no sync | fixed | no sync → `flush()` + `os.fsync` before the rename; no red run of the symptom (a power loss — the symptom is the harm), the order is locked instead; red: `replace` ran with no `fsync` before it; mutations: dropping the fsync, or the flush (with a sub-buffer PDF), each redden it | FIBR-0013 D1 (agrees) |
 | P3 temp cleanup deletes a user's `<name>.part` | yes — `tmp.unlink` on `<name>.part` before the open | fixed | derived `<name>.part`, pre-deleted → `tempfile.mkstemp` (`.<name>.*.part`, O_EXCL\|O_NOFOLLOW, 0600); red: the user's `report.pdf.part` was deleted; mutations: the old pre-delete and dropping the failure cleanup each redden a test; four leftover-temp assertions repointed at the real name (they had gone vacuous), + a failed-replace test | FIBR-0013 D1 (agrees); security-model.md INV-7 note (amended) |
 | P4 empty render written and reported as exported | | | | FIBR-0013 INV-2 |
 | P5 ASCII year beside a QLocale month; chart axes not localised | | | | FIBR-0013, design.md i18n |
