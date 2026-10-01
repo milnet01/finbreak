@@ -179,6 +179,41 @@ def test_restore_from_shell_enters_unlocked_under_new_master(qtbot, tmp_path):
     service.lock()
 
 
+def test_FIBR0394_restore_clears_the_replaced_vaults_hint_and_lockout(qtbot, tmp_path):
+    """A restore always sets a NEW master password (INV-3), so the window.ini
+    hint and unlock-throttle count belong to a password that no longer opens the
+    vault. Start over clears these "vault-coupled" keys; restore kept them, so the
+    unlock screen offered the old password's hint."""
+    from datetime import UTC, datetime
+
+    from finbreak.ui._password_hint import read_hint, write_hint
+    from finbreak.ui._unlock_throttle import UnlockThrottle
+    from finbreak.ui.main_window import MainWindow
+
+    fbk = _make_fbk(tmp_path)
+    dest = tmp_path / "dest"
+    dest.mkdir()
+    service = AuthService(dest / "vault.db", dest / "vault.kdf.json")
+    write_hint("the old vault's hint")
+    UnlockThrottle().record_failure(datetime.now(UTC))
+    assert read_hint() and UnlockThrottle().load().fail_count == 1, "precondition"
+
+    window = MainWindow(service)
+    qtbot.addWidget(window)
+    window._open_restore()
+    restore = window._dialog
+    restore._source_field.setText(str(fbk))
+    restore._backup_password.setText(_BACKUP_PW)
+    restore._new_master.setText(_M2)
+    restore._confirm_master.setText(_M2)
+    window._on_restore_requested()
+
+    assert service._key is not None, "precondition: the restore succeeded"
+    assert read_hint() == ""
+    assert UnlockThrottle().load().fail_count == 0
+    service.lock()
+
+
 # --------------------------------------------------------------------------- #
 # INV-5/D4 — an interrupted restore is reconciled at next launch, not a dead-end
 # --------------------------------------------------------------------------- #

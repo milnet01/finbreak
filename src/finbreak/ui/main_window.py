@@ -1686,6 +1686,12 @@ class MainWindow(QMainWindow):
         finally:
             # Restore on every path (incl. an unlock that raises) — no stuck cursor.
             QApplication.restoreOverrideCursor()
+        # The restore set a NEW master password (FIBR-0014 INV-3), so the
+        # vault-coupled window.ini keys — the throttle lockout and the hint —
+        # belong to a password that no longer opens it. Clear them, as Start over
+        # does (FIBR-0394).
+        UnlockThrottle().reset()
+        clear_hint()
         if unlocked:
             self._status(self.tr("Backup restored"))
             self._enter_unlocked()
