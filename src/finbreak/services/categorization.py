@@ -38,7 +38,8 @@ log = logging.getLogger(__name__)
 # Which Type root each SHIPPED DEFAULT category name belongs under. The built-in
 # library names its categories by bare name, and sibling-uniqueness is per parent,
 # so the same name can legitimately live under both roots — this is the tie-break
-# (INV-6a). Derived from the seed rather than restated, so the two cannot drift.
+# (FIBR-0139 D5; category_library test contract INV-6a). Derived from the seed
+# rather than restated, so the two cannot drift.
 _DEFAULT_ROOT_KIND: dict[str, str] = {
     name: kind for kind, names in DEFAULT_CATEGORIES.items() for name in names
 }
@@ -94,17 +95,17 @@ def _leaf_name_to_id(conn: dbapi2.Connection) -> dict[str, int]:
     only merchant *patterns* are folded, not category names (FIBR-0139 D5).
 
     **Names the shipped library uses resolve under the root the DEFAULT SEED puts
-    them under (INV-6a).** Sibling-uniqueness is scoped per *parent*, so the same
-    name legitimately exists under both Type roots — ``Income > Groceries``
-    (refunds) alongside ``Expenditure > Groceries`` is a reasonable thing for a
-    user to create. A plain first-wins over ``list_all``'s ``ORDER BY parent_id,
-    …`` then hands the name to whichever root has the lower id, and the seed
-    inserts Income first — so *every* Income-side duplicate captured the library's
-    patterns for that name and silently filed spending under an Income leaf on the
-    next import. The tie cannot be broken by preferring one root: the shipped file
-    names income categories (``Salary``, ``Interest``) as well as expenditure ones.
-    ``DEFAULT_CATEGORIES`` already records which root each of those names belongs
-    to, so that is the tie-breaker.
+    them under (FIBR-0139 D5; category_library test contract INV-6a).**
+    Sibling-uniqueness is scoped per *parent*, so the same name legitimately exists
+    under both Type roots — ``Income > Groceries`` (refunds) alongside
+    ``Expenditure > Groceries`` is a reasonable thing for a user to create. A plain
+    first-wins over ``list_all``'s ``ORDER BY parent_id, …`` then hands the name
+    to whichever root has the lower id, and the seed inserts Income first — so *every*
+    Income-side duplicate captured the library's patterns for that name and silently
+    filed spending under an Income leaf on the next import. The tie cannot be broken
+    by preferring one root: the shipped file names income categories (``Salary``,
+    ``Interest``) as well as expenditure ones. ``DEFAULT_CATEGORIES`` already
+    records which root each of those names belongs to, so that is the tie-breaker.
 
     Names the seed does not know (user-created categories) keep the previous
     deterministic first-wins — the library never looks them up, so the order is
