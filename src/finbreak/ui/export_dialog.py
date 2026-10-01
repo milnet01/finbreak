@@ -269,7 +269,7 @@ class ExportDialog(QDialog):
         return ReportPrefs(mode)
 
     def options(self) -> ExportOptions:
-        """The chosen options (read after an accepted ``exec()``). ``account_ids``
+        """The chosen options (read in the ``accepted`` slot). ``account_ids``
         is ``None`` only when **All accounts** is ticked (INV-4); a blank password
         field yields ``None`` — Confirm is ignored (INV-1)."""
         if self._all_accounts_check.isChecked():

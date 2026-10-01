@@ -10,7 +10,8 @@ widget being shown (INV-9).
 * ``HomeView`` passes a ``ChartTheme`` built from its live ``palette().text()``
   colour plus the fixed FIBR-0105 positive/negative colours — so on-screen
   behaviour is unchanged from FIBR-0012.
-* The export passes an explicit Light or Dark ``ChartTheme`` (D7).
+* The export passes its one explicit light ``ChartTheme`` (FIBR-0217 withdrew
+  the dark PDF).
 
 The donut wedge palette is **fixed** regardless of theme (FIBR-0012 D9 — chosen
 to read on both light and dark), so it lives here as module constants consumed by
@@ -239,10 +240,10 @@ def build_trend_chart(
     chart = _themed_chart(series, theme)
     # Both axes take theme.text, exactly as build_forecast_chart does. Omitting
     # it left the month and value labels on QChart's default light-theme label
-    # brush, i.e. dark-on-dark against the shipped dark default (ADR-0010), and
-    # invisible in the Dark PDF export -- which is what FIBR-0013 INV-9 means by
-    # the builders taking explicit colours so an offscreen render does not depend
-    # on a live widget palette. FIBR-0012 D9 names axis text by name.
+    # brush, i.e. dark-on-dark against the shipped dark default (ADR-0010) --
+    # which is what FIBR-0013 INV-9 means by the builders taking explicit colours
+    # so an offscreen render does not depend on a live widget palette. FIBR-0012
+    # D9 names axis text by name.
     axis_x = QBarCategoryAxis()
     axis_x.append([month.label for month in trend])
     axis_x.setLabelsColor(theme.text)
