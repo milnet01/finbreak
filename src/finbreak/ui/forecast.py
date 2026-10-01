@@ -15,6 +15,7 @@ stays clock-injected (the widget supplies the clock). Every slot catches
 from __future__ import annotations
 
 import calendar
+from collections.abc import Iterable
 from datetime import date, timedelta
 
 from PySide6.QtCharts import QChartView
@@ -240,13 +241,24 @@ class ForecastWidget(QWidget):
         )
         if len(fc.anchor_sources) >= total:
             return ""
-        names = ", ".join(src.account_name for src in fc.anchor_sources)
+        names = self._join_names(src.account_name for src in fc.anchor_sources)
         return self.tr(" ({names} only)").format(names=names)
+
+    def _join_names(self, names: Iterable[str]) -> str:
+        """A list of names with a translatable separator, not a fixed ", "
+        (FIBR-0397)."""
+        return self.tr(", ").join(names)
+
+    def _then(self, text: str, more: str) -> str:
+        """Two sentences composed by one template, so a translation can order
+        them, rather than glued with " " + (FIBR-0397)."""
+        return self.tr("{text} {more}").format(text=text, more=more)
 
     def _signed_change(self, minor: int, display, symbol: str) -> str:
         """A sign-explicit net-change string: ``+R X`` / ``-R X`` / ``R0`` (D9)."""
         if minor > 0:
-            return "+" + _format_amount(display, symbol)
+            # A template, so a locale can place the sign elsewhere (FIBR-0397).
+            return self.tr("+{amount}").format(amount=_format_amount(display, symbol))
         return _format_amount(display, symbol)  # negative carries its own "-"; 0 -> R0
 
     def _provenance_text(self, fc: Forecast, exponent: int, symbol: str) -> str:
@@ -266,16 +278,22 @@ class ForecastWidget(QWidget):
             clauses = [self._source_clause(src) for src in fc.anchor_sources]
             text = self.tr(
                 "Starting balance {start} as of today — from {sources}."
-            ).format(start=start, sources=", ".join(clauses))
+            ).format(start=start, sources=self._join_names(clauses))
         if no_balance:
-            text += " " + self.tr(
-                "Excluded (no recorded balance yet): {names}."
-            ).format(names=", ".join(no_balance))
+            text = self._then(
+                text,
+                self.tr("Excluded (no recorded balance yet): {names}.").format(
+                    names=self._join_names(no_balance)
+                ),
+            )
         if not_cash:
-            text += " " + self.tr(
-                "Excluded (only current and savings balances are spendable "
-                "cash): {names}."
-            ).format(names=", ".join(not_cash))
+            text = self._then(
+                text,
+                self.tr(
+                    "Excluded (only current and savings balances are spendable "
+                    "cash): {names}."
+                ).format(names=self._join_names(not_cash)),
+            )
         return text
 
     def _source_clause(self, src) -> str:
@@ -285,8 +303,8 @@ class ForecastWidget(QWidget):
         )
         if src.since_txn_count > 0:
             # Correctly pluralised; omitted entirely when the count is 0 (D10).
-            clause += " " + self.tr(
-                "+ %n later transaction(s)", "", src.since_txn_count
+            clause = self._then(
+                clause, self.tr("+ %n later transaction(s)", "", src.since_txn_count)
             )
         return clause
 

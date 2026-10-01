@@ -356,3 +356,38 @@ def test_FIBR0397_a_refresh_frees_the_chart_it_replaces(qtbot, vault_service):
         w._chart_view.chart().destroyed.connect(lambda *_: destroyed.append(1))
         w.refresh()
     qtbot.waitUntil(lambda: len(destroyed) == 3, timeout=2000)
+
+
+def test_FIBR0397_a_signed_change_is_a_translatable_template(
+    qtbot, vault_service, translate_one
+):
+    """design.md § i18n: the "+" was glued on in code, so a locale that writes
+    the sign elsewhere could not."""
+    from decimal import Decimal
+
+    translate_one("ForecastWidget", "+{amount}", "{amount} (+)")
+    w = ForecastWidget(vault_service)
+    qtbot.addWidget(w)
+    assert w._signed_change(100, Decimal("1.00"), "ZAR") == "R 1.00 (+)"
+
+
+def test_FIBR0397_provenance_lists_and_sentences_are_templates(
+    qtbot, vault_service, translate_one
+):
+    """design.md § i18n: account names were joined with a fixed ", " and the
+    exclusion sentence was appended with " " +, so a translation could change
+    neither the separator nor the sentence order."""
+    from finbreak.models import Forecast, ForecastMode
+
+    AccountService(vault_service.vault).add_account("Savings", "savings")
+    translate_one("ForecastWidget", ", ", " / ")
+    translate_one("ForecastWidget", "{text} {more}", "{more} || {text}")
+    w = ForecastWidget(vault_service)
+    qtbot.addWidget(w)
+    today = date.today()
+    fc = Forecast(ForecastMode.NET_FLOW, 0, 0, today, [], [], [])
+    shown = w._provenance_text(fc, 2, "ZAR")
+    assert " || " in shown, shown
+    excluded, intro = shown.split(" || ")
+    assert " / " in excluded and ", " not in excluded, excluded
+    assert intro.startswith("No spendable-cash balance"), intro
