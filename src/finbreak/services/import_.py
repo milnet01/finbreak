@@ -298,7 +298,7 @@ class ImportService:
         service owns (D7/INV-7). The dedup delta and the span check are read
         **inside** the transaction, before the inserts, so nothing is counted
         then races an insert (single-connection, single-thread)."""
-        self._validate_span(period_start, period_end)
+        period_start, period_end = self._validate_span(period_start, period_end)
         conn = self._conn
         tx_repo = TransactionRepository(conn)
         period_repo = StatementPeriodRepository(conn)
@@ -465,9 +465,12 @@ class ImportService:
             )
 
     @staticmethod
-    def _validate_span(period_start: str, period_end: str) -> None:
+    def _validate_span(period_start: str, period_end: str) -> tuple[str, str]:
         """Hold a (possibly hand-edited) coverage span to the same ISO-date rigor
-        as a transaction's date: both endpoints parse, and start <= end (INV-6)."""
+        as a transaction's date: both endpoints parse, and start <= end (INV-6).
+        Returns them canonical (YYYY-MM-DD): ``fromisoformat`` also accepts
+        "20260105" and week dates, and the span is stored, keyed and sorted as a
+        string — as transaction dates are canonicalised (FIBR-0216, FIBR-0406)."""
         try:
             start = date.fromisoformat(period_start)
             end = date.fromisoformat(period_end)
@@ -475,3 +478,4 @@ class ImportService:
             raise ValueError("period endpoints must be valid ISO-8601 dates") from exc
         if start > end:
             raise ValueError("period_start must not be after period_end")
+        return start.isoformat(), end.isoformat()

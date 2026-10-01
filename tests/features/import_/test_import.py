@@ -501,6 +501,22 @@ def test_INV6_rejects_inverted_or_malformed_span(service):
         imp.commit_import(preview, "not-a-date", "2026-01-06", "s.csv")  # malformed
 
 
+def test_FIBR0406_a_span_is_stored_in_canonical_iso(service):
+    """date.fromisoformat accepts "20260105" and "2026-W02-1", so the span check
+    passed them and the raw string was stored - as the period's key, its sort
+    order and its display. Transaction dates are canonicalised (FIBR-0216); the
+    span is now too."""
+    from finbreak.repositories.statement_periods import StatementPeriodRepository
+
+    imp, acct = ImportService(service.vault), _acct(service)
+    preview = imp.preview(_csv(HEADER, [["2026-01-05", "a", "-1.00"]]), SINGLE, acct)
+    imp.commit_import(preview, "20260105", "2026-W02-2", "s.csv")
+    (period,) = StatementPeriodRepository(service.vault.connection).list_for_account(
+        acct
+    )
+    assert (period.period_start, period.period_end) == ("2026-01-05", "2026-01-06")
+
+
 def test_INV6_fresh_span_zero_delta_still_records_period(service):
     imp, acct, conn = (
         ImportService(service.vault),
