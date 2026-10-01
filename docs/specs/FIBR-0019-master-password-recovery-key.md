@@ -1,6 +1,6 @@
 # FIBR-0019 — Master-password recovery via a recovery key
 
-**Status:** accepted (2026-08-20) — four cold loops, twelve lanes, 37 verified findings, all fixed, none dismissed. Loops 1–3 were the initial gate, which reached this project's cap of 3 calmly (33% of the final loop landed on the run's own text). Loop 4 re-gated the D8 amendment per `CLAUDE.md` rule 14 and came back **violent** — five of six findings on text written the same session — so the run stops and implementation is the next reviewer. Do **not** re-gate this document; take it to `write-test`. **Amended 2026-09-29 (FIBR-0401):** INV-14 pins the cipher level of every database with none recorded; re-gated per `CLAUDE.md` rule 14 in loops 8–10, which reached the cap. Take INV-14 to implementation.
+**Status:** accepted (2026-08-20) — four cold loops, twelve lanes, 37 verified findings, all fixed, none dismissed. Loops 1–3 were the initial gate, which reached this project's cap of 3 calmly (33% of the final loop landed on the run's own text). Loop 4 re-gated the D8 amendment per `CLAUDE.md` rule 14 and came back **violent** — five of six findings on text written the same session — so the run stops and implementation is the next reviewer. Do **not** re-gate this document; take it to `write-test`. **Amended 2026-09-29 (FIBR-0401):** INV-14 pins the cipher level of every database with none recorded; re-gated per `CLAUDE.md` rule 14 in loops 8–10, which reached the cap. Take INV-14 to implementation. **Amended 2026-10-01 (FIBR-0423):** INV-15 — the rollback offer says when the copy was taken and that later changes are lost; re-gated per `CLAUDE.md` rule 14 before the UI change.
 **Kind:** security.
 **Source:** ROADMAP FIBR-0019 (user-request-2026-07-01); confirmed for the
 1.0 release 2026-08-20 (user decision recorded on FIBR-0304).
@@ -814,6 +814,26 @@ delete one slot, rewrite the sidecar atomically. The database is untouched.
   *Breaks when:* the pin is applied on open but not on create — a vault
   created while the default is moved is then written at a level no open uses.
 
+- **INV-15** — **The rollback offer says when the copy was taken, and that
+  everything changed since is lost** (FIBR-0423, amended 2026-10-01).
+  `RollbackAvailableError.taken_at` is the file time of the copy's SIDECAR
+  half as a UTC instant, or `None` where it cannot be read. The offer shows it
+  in the operating system's zone and date-and-time format, and says that
+  anything added or changed after it is lost and that a newer backup keeps
+  it. With `None` it keeps the loss sentence and drops the date. § 13.3 says
+  why each choice.
+  *Test:* `tests/features/recovery_key/test_migration.py::test_FIBR0423_rollback_offer_carries_when_the_copy_was_taken`
+  — sets the copy's two halves to two DIFFERENT past file times, drives the
+  ladder to the terminal branch, and asserts `taken_at` equals the sidecar
+  half's. `tests/features/recovery_key/test_recovery_unlock.py::test_FIBR0423_offer_names_the_date_and_the_loss`
+  — raises the error with a known instant and asserts the question holds
+  `format_timestamp(<instant>, "system", "system", "system")` and the loss
+  sentence; with `None`, the loss sentence and no date.
+  *Breaks when:* the date comes from anything but the copy — the live vault,
+  or the moment of the unlock — and the offer calls a weeks-old copy current.
+  Or the loss sentence goes, and a user restores the copy over everything
+  recorded since without being told.
+
 ## 6. Failure modes
 
 | Assumption | When it breaks | Behaviour required |
@@ -839,8 +859,8 @@ New suite `tests/features/recovery_key/`, with `spec.md` beside it per
 | `test_envelope.py` | INV-1, INV-2, INV-3 | yes — `keywrap` and `crypto` are Qt-free |
 | `test_sidecar_v2.py` | INV-4, INV-12 | yes |
 | `test_recovery_code.py` | INV-5, INV-6, INV-11 | INV-5 and INV-6 yes — `recovery_code` is pure. **INV-11 no**: its trial-unwrap seam lives in `ui/_password_hint.py`, which imports Qt, so that test needs `qtbot`. |
-| `test_migration.py` | INV-7, INV-8, INV-13 | yes — vault-level, no UI |
-| `test_recovery_unlock.py` | INV-9, INV-10 | needs `qtbot` |
+| `test_migration.py` | INV-7, INV-8, INV-13, INV-15's `taken_at` | yes — vault-level, no UI |
+| `test_recovery_unlock.py` | INV-9, INV-10, INV-15's offer text | needs `qtbot` |
 | `tests/features/vault/test_vault.py` | INV-14 | yes — vault-level, no UI |
 
 **Every one of these must be seen to fail before the change exists**
@@ -853,7 +873,8 @@ fields (§4.4); INV-12 because no `sidecar_version` field exists today at all
 (§4.4); INV-13 because no migration exists to take a
 rollback copy before; and INV-14 because nothing pins the level today, so a
 vault created at the default fails to open once the default moves (measured
-on SQLCipher 4.12.0, 2026-09-29).
+on SQLCipher 4.12.0, 2026-09-29); and INV-15 because `RollbackAvailableError`
+carries no `taken_at` and the offer names no date.
 
 **Registration.** `recovery_key` must be added to `_NO_PROSE` in
 `tests/features/prose_checks/test_prose_checks.py` — that suite fails if any
@@ -960,13 +981,14 @@ inferred from this section.
 | INV-12 | `tests/features/recovery_key/test_sidecar_v2.py::test_declining_still_writes_the_envelope` |
 | INV-13 | `tests/features/recovery_key/test_migration.py::test_no_swap_without_a_verified_rollback_copy` |
 | INV-14 | `tests/features/vault/test_vault.py::test_FIBR0401_no_vault_depends_on_the_library_cipher_default` |
+| INV-15 | `tests/features/recovery_key/test_migration.py::test_FIBR0423_rollback_offer_carries_when_the_copy_was_taken`, `tests/features/recovery_key/test_recovery_unlock.py::test_FIBR0423_offer_names_the_date_and_the_loss` |
 | The construction is cryptographically sound | **nothing** — no test in this project can establish that. It rests on AES-256-GCM and Argon2id as used, and on §4.2's AAD binding being complete. The mitigations are that no primitive is hand-rolled and that `bandit` and `pip-audit` run in the gate; neither reads a design. |
 | The user actually stored the recovery code | **nothing** — unknowable to the app. §4.5's acknowledgement step records only that a screen was dismissed. This is a real limit, not a defect, and the honest mitigation is copy that says what is being given up rather than a checkbox that implies proof. |
 | The recovery code is not written down somewhere insecure | **nothing** — outside the trust boundary (`docs/security-model.md` § 4). |
 | The user has not lost both credentials | **nothing** — FIBR-0018 restore and FIBR-0030 reset remain the last resorts, unchanged. |
 | The migration ran at all on a given user's machine | **nothing** at the time of writing — the app has no telemetry and will not gain any. A vault that never gets unlocked never migrates, which is harmless but means "every field vault is v2" is not a statement anyone can make. §15 raises what, if anything, 1.0 should do about it. |
 
-Five of nineteen rows say `nothing`. **Three** of the five are limits of
+Five of twenty rows say `nothing`. **Three** of the five are limits of
 what software can know about a human — whether the user stored the code,
 stored it safely, and has not lost both credentials — and are recorded rather
 than fixed. A fourth, whether a given user's vault migrated at all, is a
@@ -1179,6 +1201,19 @@ opens but does not read end to end. The condition this paragraph states is a
 vault the user cannot use with a verified pre-upgrade pair beside it, and that
 state meets it as squarely as an exhausted ladder does — the enumeration above
 simply predates it (FIBR-0313 C1).
+
+**The offer says when the copy was taken, and that later changes are lost
+(INV-15, FIBR-0423).** The copy can sit beside a working vault for weeks: an
+S6 that keeps failing on resume — § 6's disk-full and held-file class —
+leaves `migration_pending` set and the pair in place while the user goes on
+recording. Restoring it then drops everything since, so the user is told the
+date and can weigh it against a backup restore. **The date is the sidecar
+half's file time**: both writers of the pair create that file fresh (S0's
+copy, and branch 3's rebuilt sidecar), nothing writes it afterwards, and only
+a JSON read ever opens it — where the database half is opened by SQLite, which
+folds a carried `-wal` into it. **It is shown in the
+operating system's zone and format**, because the user's own display settings
+are inside the vault that will not open.
 
 A v1 sidecar means the vault has not migrated — open as today, then run
 S0–S6. Debris can sit beside a v1 sidecar, and **none of it is a usable
