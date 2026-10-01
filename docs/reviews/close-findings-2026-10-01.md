@@ -126,3 +126,23 @@ uniqueness key.
   template, so one translation serves both. scripts/seed_demo_vault.py keeps
   a `today or date.today()` fallback — a demo seeder, no report path; left.
 - **falsified:** none.
+
+## FIBR-0393 — code lane 13, PDF export
+
+| finding | verified | disposition | was → now | must_agree |
+|---|---|---|---|---|
+| P1 hidden Month/Year pickers leave bare labels | | | | FIBR-0013 D7 |
+| P2 no flush + fsync before os.replace | | | | FIBR-0013 D1 |
+| P3 temp cleanup deletes a user's `<name>.part` | | | | FIBR-0013 D1, INV-12 |
+| P4 empty render written and reported as exported | | | | FIBR-0013 INV-2 |
+| P5 ASCII year beside a QLocale month; chart axes not localised | | | | FIBR-0013, design.md i18n |
+| P6 slice and legend labels may render rich text | | | | |
+| P7 comments cite the withdrawn Dark theme and an unrun exec() | | | | |
+| P8 FIBR-0013 D1 describes `sections` + `today` fields | | | | FIBR-0013 D1 |
+
+- **cited_by:**
+- **swept:**
+- **collateral:**
+- **surfaced:**
+- **out_of_scope:**
+- **falsified:**
