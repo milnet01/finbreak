@@ -3211,7 +3211,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: review-fix.
   Source: full-audit-2026-09-27 code lane 8 (queued by FIBR-0367).
 
-- 📋 [FIBR-0409] **Queued findings from the 2026-09-27 audit: money services lane (3 items).**
+- ✅ [FIBR-0409] **Queued findings from the 2026-09-27 audit: money services lane (3 items).**
   From docs/reviews/2026-09-27-full-audit/
     code-lane-10-money-services.md.
   Line numbers are the audited commit's (52e5162); find sites by symbol.
@@ -3230,6 +3230,13 @@ touches the § 2 surface. A security fix takes the number its change takes — �
     account, still excluded from totals, against FIBR-0011's matching
     rule. Fix: decide whether reassign_account unlinks such pairs or
     refuses.
+  Resolved (2026-10-01): none needed a code change here. M1 queued on
+  FIBR-0434 (the English service-message decision). M2 dismissed: the
+  stale Transfers list it needs cannot arise, since the tab is re-read
+  on every activation and nothing on screen alongside it removes a
+  transaction or records a decision. M3 queued as FIBR-0438 (unlink or
+  refuse on reassign - a FIBR-0059 decision). Ledger:
+  docs/reviews/close-findings-2026-10-01.md section FIBR-0409.
   **Layman:** Error messages from the money code are always in English, and confirming many transfers at once can fail half-way if another tab changed the data first.
   Kind: review-fix.
   Source: full-audit-2026-09-27 code lane 10 (queued by FIBR-0367).
@@ -3825,6 +3832,11 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   and ImportService's refusals are English f-strings shown with
   setText(str(exc)), one of them carrying a Python list repr of the
   missing columns. Return a code plus values and translate in the UI.
+  Also for this pass (FIBR-0409 M1, 2026-10-01): every raise in
+  services/transactions.py, accounts.py and categories.py is an English
+  string, some splicing names in with f-strings, shown through
+  setText(str(exc)). ui/statements.py already builds its messages with
+  tr() from typed results and is the model to follow.
   **Layman:** Some error messages when adding a transaction or editing an account can't be translated yet; it only matters once finbreak offers other languages.
   Kind: review-fix.
   Source: full-audit-2026-09-27 code lane 16 D3, queued by FIBR-0396.
@@ -3876,6 +3888,23 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   **Layman:** Dates written with month names always use English names; they should follow your language.
   Kind: review-fix.
   Source: full-audit-2026-09-27 code lane 6 I5, queued by FIBR-0406.
+
+- 📋 [FIBR-0438] **Reassigning a statement can leave a confirmed transfer with both sides in one account, still left out of the totals.**
+  Queued from FIBR-0409 M3 (2026-10-01), an open question in the
+  audit. reassign_account (FIBR-0059) moves a statement's transactions to
+  another account; a confirmed transfer whose other leg already sits in
+  that account then has both legs in one account. FIBR-0011's rule says a
+  transfer is between two accounts, yet the pair stays confirmed, so both
+  amounts stay excluded from income and spending. FIBR-0059 says nothing
+  about transfers.
+  Recommendation: unlink such pairs during the reassign and say so in the
+  status line ("1 transfer was unlinked: both sides are now in one
+  account"), rather than refusing - a refusal would block the user
+  correcting a mis-filed statement. This decides FIBR-0059 behaviour, so
+  amend that spec and run its gate first.
+  **Layman:** Moving a statement to another account can leave a money transfer between two accounts pointing at the same account, so its amounts quietly disappear from your totals.
+  Kind: review-fix.
+  Source: full-audit-2026-09-27 code lane 10 M3, queued by FIBR-0409.
 
 ## v1.1.0 — Localisation
 

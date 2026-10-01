@@ -414,13 +414,16 @@ uniqueness key.
 
 | finding | verified | disposition | was → now | must_agree |
 |---|---|---|---|---|
-| M1 service errors are English strings spliced into setText | | | | FIBR-0434 |
-| M2 bulk confirm / reject skip the database checks | | | | FIBR-0011 INV-4; FIBR-0201 |
-| M3 reassign can leave a confirmed transfer inside one account | | | | FIBR-0011; FIBR-0059 |
+| M1 service errors are English strings spliced into setText | yes — the FIBR-0434 class across transactions, accounts and categories services | queued on FIBR-0434 | the same decision; annotated there, naming ui/statements.py as the model | FIBR-0434 (annotated) |
+| M2 bulk confirm / reject skip the database checks | no — it needs a stale Transfers list, and none can arise: `_refresh_tab` re-reads the tab on every activation, its own actions refresh it, and nothing reachable while it is shown removes a transaction or records a decision (import rebuilds the workspace; manual entry only adds) | dismissed | unreachable; coding.md §2 rules out the guard; no change | FIBR-0011 INV-4 (agrees) |
+| M3 reassign can leave a confirmed transfer inside one account | yes, by read — `reassign_account` moves rows with no transfer handling, and FIBR-0059 is silent on transfers | queued as FIBR-0438 | a design decision (unlink or refuse) that sets FIBR-0059 behaviour; recommended: unlink with a status message, amend FIBR-0059 and gate it first | FIBR-0011; FIBR-0059 |
 
-- **cited_by:**
-- **swept:**
-- **collateral:**
-- **surfaced:**
-- **out_of_scope:**
-- **falsified:**
+- **cited_by:** `confirm_many`, `reject_many`, `add_decision`,
+  `reassign_account`, `_refresh_tab` across specs and src.
+- **swept:** no code changed in this group, so no code→docs target moved;
+  FIBR-0201 §4.8's description of `confirm_many`'s consumed set — agrees.
+  No `.claude/code-pairs.json` exists.
+- **collateral:** none.
+- **surfaced:** none.
+- **out_of_scope:** none new.
+- **falsified:** none.
