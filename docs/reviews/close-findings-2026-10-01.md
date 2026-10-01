@@ -211,9 +211,20 @@ uniqueness key.
 | S2 Settings Save catches only VaultLockedError | yes — `_on_save` catches `VaultLockedError` alone around four `set_*` writes | fixed | a SQLCipher error escaped the slot → caught as `DatabaseError` (as the backup handler does): a translated warning, Settings stays open, raw text logged; red: `OperationalError` escaped `_on_save`; mutations: not catching it, and emitting `saved` anyway, each redden it | |
 | S3 FIBR-0054 INV-7 calls Windows updates un-wired | yes — INV-7 says an AppImage only and names "a future un-wired Windows build"; `detect_installer()` returns a `WindowsInstaller` for a frozen `.exe` (FIBR-0131) and requires `$APPDIR` for an AppImage (row 39) | fixed | INV-7 amended to state both installers and the `$APPDIR` check as the code does; no red run: nothing observable changes | FIBR-0054 INV-7 (amended); settings.py tooltip (agrees) |
 
-- **cited_by:**
-- **swept:**
-- **collateral:**
-- **surfaced:**
-- **out_of_scope:**
-- **falsified:**
+- **cited_by:** "un-wired", "Off an AppImage", `validate_first_run`,
+  "passwords do not match", `{error}`, `prefs_not_saved` across specs,
+  design, security model, tests and src.
+- **swept:** FIBR-0004 "a mismatch is caught in `validate_first_run`" —
+  agrees (now a typed `ValueError`). FIBR-0019 / 0029 / 0051 / 0083 and the
+  vault, password-hint and password-strength test contracts on
+  `validate_first_run` — agree (they rely on it raising `ValueError`, which
+  both new types are). tests/features/auto_update/spec.md INV-7 ("off an
+  AppImage … `$APPIMAGE` unset → None") — agrees, it describes the Linux
+  case. main_window's `prefs_not_saved` handler — agrees (shows whatever
+  text it is handed). app.py's crash dialog `{error}` — agrees: it names
+  the fault on purpose so it can be reported (FIBR-0390 C4 locks it). No
+  `.claude/code-pairs.json` exists.
+- **collateral:** none.
+- **surfaced:** none.
+- **out_of_scope:** none.
+- **falsified:** none.

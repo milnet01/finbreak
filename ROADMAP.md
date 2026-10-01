@@ -2649,7 +2649,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: review-fix.
   Source: full-audit-2026-09-27 code lane 14 (queued by FIBR-0367).
 
-- 📋 [FIBR-0395] **Queued findings from the 2026-09-27 audit: security screens lane (3 items).**
+- ✅ [FIBR-0395] **Queued findings from the 2026-09-27 audit: security screens lane (3 items).**
   From docs/reviews/2026-09-27-full-audit/code-lane-15-security-screens.md.
   Line numbers are the audited commit's (52e5162); find sites by symbol.
   - [Low] ui/first_run.py:196,242; ui/recovery_key.py:350,389 -- English
@@ -2661,6 +2661,13 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   - [Info] ui/settings.py:170 vs FIBR-0054 INV-7 -- the spec calls
     Windows un-wired for updates while Settings names the Windows build
     as supported. Fix: amend FIBR-0054 INV-7.
+  Resolved (2026-10-01): all three fixed. S1 (d86b303) seven sites on
+  the first-run and recovery-key screens now say what went wrong in
+  translated words, raw text to the log; first-run validation names
+  its refusals by type. S2 (5a52566) a storage error on Settings Save
+  is shown, not raised. S3 (db7bfc8) FIBR-0054 INV-7 names the Windows
+  installer. Ledger: docs/reviews/close-findings-2026-10-01.md section
+  FIBR-0395.
   **Layman:** Three small fixes on the password and settings screens: some error messages are English-only, one save error isn't caught, and one spec wrongly says Windows updates aren't wired up.
   Kind: review-fix.
   Source: full-audit-2026-09-27 code lane 15 (queued by FIBR-0367).
