@@ -3649,7 +3649,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: test.
   Source: full-audit-2026-09-27 tests lane T12 (queued by FIBR-0367).
 
-- 🚧 [FIBR-0423] **The pre-upgrade rollback offer says how old the copy is.**
+- ✅ [FIBR-0423] **The pre-upgrade rollback offer says how old the copy is.**
   From FIBR-0403's open question (full audit 2026-09-27 code lane 3).
   If § 13.2's S6 keeps failing on the resume path (_finish_quietly logs
   an OSError and returns), migration_pending stays set and the .pre-v2
@@ -3660,6 +3660,13 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   user can weigh it against a backup restore. Changes FIBR-0019 § 13.3,
   so the amendment is gated (review-contract --max-loops 3) before the
   UI change.
+  Resolved (2026-10-01): FIBR-0019 amended with INV-15 (e02f947) and
+  gated before the build -- loop 11 fixed three findings (the test reached
+  one of three raise sites; taken_at's form unpinned; the recovery_key
+  suite numbers its own invariants), loop 12 converged. Built in 59db2a5:
+  taken_at is the copy's sidecar half's file time, set at all three raise
+  sites; the offer shows it in the OS's zone and format with the loss
+  sentence. Red, then eight mutations killed; full gate green.
   **Layman:** If upgrading an old vault was interrupted and never finished tidying up, finbreak might later offer to restore an old copy without saying how old it is; it should tell you the date so you don't lose recent changes by accident.
   Kind: fix.
   Source: full-audit-2026-09-27 code lane 3 open question (queued by FIBR-0403).

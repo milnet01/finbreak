@@ -42,6 +42,12 @@ signaling per
 
 ### Fixed
 
+- **The offer to restore the copy kept from before an update now says when that copy was taken** (FIBR-0423)
+  If a vault upgrade was interrupted, finbreak can offer to bring back
+  the copy it kept beforehand. That copy can be weeks old, and the
+  offer now shows its date and says that anything added or changed
+  since then would be lost, so you can choose a newer backup instead.
+
 - **When a PDF statement's password is wrong, the password window now says so when it asks again** (FIBR-0408)
 
 - **After creating an account during an import, the import screen now shows what it stored, including the warning when the account has no number** (FIBR-0408)
