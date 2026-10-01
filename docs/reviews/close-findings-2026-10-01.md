@@ -202,3 +202,18 @@ uniqueness key.
   missing in four widgets) were fixed on 2026-09-27 (rows 29 and 30 of
   that ledger).
 - **falsified:** none.
+
+## FIBR-0395 — code lane 15, security screens
+
+| finding | verified | disposition | was → now | must_agree |
+|---|---|---|---|---|
+| S1 English exception text in first_run and recovery_key dialogs | | | | design.md § i18n |
+| S2 Settings Save catches only VaultLockedError | | | | |
+| S3 FIBR-0054 INV-7 calls Windows updates un-wired | | | | FIBR-0054 INV-7 |
+
+- **cited_by:**
+- **swept:**
+- **collateral:**
+- **surfaced:**
+- **out_of_scope:**
+- **falsified:**
