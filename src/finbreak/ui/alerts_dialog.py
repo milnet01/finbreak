@@ -96,6 +96,12 @@ class AlertsDialog(QDialog):
             widget = item.widget() if item is not None else None
             if widget is not None:
                 widget.setParent(None)  # detach now so findChild can't see a stale row
+                # ...but free it from the event loop, not here: this runs inside the
+                # clicked signal of the row's own Dismiss button, and setParent(None)
+                # left Python the only owner, which freed the row on the spot.
+                # deleteLater hands it back to Qt to free once the signal is done
+                # (FIBR-0397).
+                widget.deleteLater()
         try:
             alerts = self._alerts.alerts(app_today())
         except VaultLockedError:

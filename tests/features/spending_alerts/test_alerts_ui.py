@@ -373,3 +373,29 @@ def test_FIBR0367_row36_bank_text_is_shown_as_typed_not_as_markup(
     tip = _as_qt_shows(button.toolTip(), Qt.TextFormat.AutoText)
     assert name in tip, f"the tooltip drew the name as markup: {tip!r}"
     assert tip == button.accessibleName(), "hover and screen reader say the same"
+
+
+def test_FIBR0397_dismiss_never_destroys_the_button_inside_its_own_click(
+    qtbot, service
+):
+    """_render detached each old row with setParent(None), which hands it to
+    Python; the row and its button were then freed at once - inside the clicked
+    signal of that very button. Qt's rule is that a sender is freed later, from
+    the event loop."""
+    import shiboken6
+
+    _seed_one_new_recurring(service)
+    today = date.today()
+    for offset in (60, 30, 0):  # a second stream, so two rows are rebuilt
+        _add(service, (today - timedelta(days=offset)).isoformat(), -5_000, "Gym")
+    dialog = _dialog(service, AlertService(service.vault))
+    qtbot.addWidget(dialog)
+    buttons = _dismiss_buttons(dialog)
+    assert len(buttons) == 2, "precondition: two alert rows"
+    button = buttons[0]  # the first row: a later row's pass must not free it
+
+    button.click()
+
+    assert shiboken6.isValid(button), "the button was destroyed inside its click"
+    assert button not in _dismiss_buttons(dialog), "the old row has left the dialog"
+    qtbot.waitUntil(lambda: not shiboken6.isValid(button), timeout=1000)
