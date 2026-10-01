@@ -265,9 +265,9 @@ uniqueness key.
 
 | finding | verified | disposition | was → now | must_agree |
 |---|---|---|---|---|
-| C1 recurring `refresh()` unguarded after a write | | | | rules.py guard (FIBR-0211) |
-| C2 categories `_refresh` / `_add_children` unguarded | | | | rules.py guard (FIBR-0211) |
-| C3 service exception text, type name included, in AutoText labels | | | | FIBR-0434; design.md § i18n |
+| C1 recurring `refresh()` unguarded after a write | no, measured — the auto-lock is a QTimer (`AuthService._on_idle_timeout`), so it fires only from the event loop; each write and its `refresh()` run in one synchronous slot with no nested loop between; probe: with the idle timer already due, a write then re-read ran on an OPEN vault and the lock landed only once events ran; every other `refresh()` caller runs unlocked | dismissed | unreachable; no change | rules.py's FIBR-0211 guard rests on the same reasoning — harmless, left |
+| C2 categories `_refresh` / `_add_children` unguarded | no, measured — same probe on `CategoriesWidget._on_add`: the re-read ran on an open vault with the lock already due; delete's confirm box (a nested loop) sits BEFORE its guarded write | dismissed | unreachable; no change | |
+| C3 service exception text, type name included, in AutoText labels | yes — the duplicate-name refusal quotes the user's text into a rich-text label; rules.py's messages carry no user text | fixed (markup half); i18n half queued on FIBR-0434 | categories error label AutoText → PlainText; red: "<b>Rent</b>" drew 247 px against 291 px as literal text; mutation: back to rich text reddens it; the untranslated text in categories and rules annotated onto FIBR-0434 | FIBR-0434 (annotated) |
 | C4 `setChart` may leak the old QChart | | | | |
 | C5 Level-2 subject with grandchildren: empty Move-under combo | | | | 2026-09-27 ledger row 17 |
 | C6 forecast sign by concatenation, ", " separator | | | | |

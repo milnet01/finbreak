@@ -3769,6 +3769,11 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Also for this pass (FIBR-0396 sweep, 2026-10-01): the Statements
   tab's transaction-count column prints str(transaction_count), not a
   QLocale number, so it shows Western digits under every locale.
+  Also for this pass (FIBR-0397 C3, 2026-10-01): ui/categories.py's
+  add, update and delete handlers and ui/rules.py's add and update
+  handlers show str(exc) from CategoryService and CategorizationService
+  the same way. The markup half of C3 is fixed: the categories error
+  label is plain text, so a quoted category name shows as typed.
   **Layman:** Some error messages when adding a transaction or editing an account can't be translated yet; it only matters once finbreak offers other languages.
   Kind: review-fix.
   Source: full-audit-2026-09-27 code lane 16 D3, queued by FIBR-0396.

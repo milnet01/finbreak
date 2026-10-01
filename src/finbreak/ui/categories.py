@@ -91,6 +91,9 @@ class CategoriesWidget(QWidget):
         # INV-12); the `done` signal stays (unfired) so no caller/test breaks.
         self._done_button = QPushButton(self.tr("Done")) if show_done else None
         self._error = QLabel()
+        # Plain text: a refusal can quote the name the user typed, and a
+        # rich-text label would draw markup in that name (FIBR-0397).
+        self._error.setTextFormat(Qt.TextFormat.PlainText)
 
         add_row = QHBoxLayout()
         add_row.addWidget(self._name)

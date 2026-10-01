@@ -995,3 +995,31 @@ def test_FIBR0389_sibling_names_differing_only_in_spacing_are_refused(service, g
     svc.add_category(expenditure.id, "Cafe float")
     with pytest.raises(ValueError):
         svc.add_category(expenditure.id, f"Cafe{gap}float")
+
+
+def test_FIBR0397_an_error_naming_a_category_shows_it_as_text(qtbot, service):
+    """The duplicate-name refusal quotes the name the user typed, and the error
+    label rendered rich text, so a category named "<b>Rent</b>" was drawn as a
+    bold "Rent" inside the message. It must show the characters as typed."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QLabel
+
+    from finbreak.ui.categories import CategoriesWidget
+
+    svc = CategoryService(service.vault)
+    expenditure = _roots(service.vault.connection)["expenditure"]
+    svc.add_category(expenditure.id, "<b>Rent</b>")
+    widget = CategoriesWidget(service)
+    qtbot.addWidget(widget)
+    widget._tree.setCurrentItem(_item_by_id(widget._tree, expenditure.id))
+    widget._name.setText("<b>Rent</b>")
+    widget._on_add()  # a duplicate: the service refuses, naming it
+
+    shown = widget._error
+    assert "<b>Rent</b>" in shown.text(), "precondition: the refusal names it"
+    literal = QLabel()
+    literal.setTextFormat(Qt.TextFormat.PlainText)
+    literal.setText(shown.text())
+    assert shown.sizeHint().width() == literal.sizeHint().width(), (
+        "the markup in the name was rendered, not shown"
+    )
