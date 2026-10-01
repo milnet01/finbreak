@@ -1175,6 +1175,8 @@ class MainWindow(QMainWindow):
         )
         if not path:
             return  # Cancelled the save dialog — a clean no-op (dialog stays open).
+        if self._locked_during_picker(dialog):
+            return
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
             PdfExportService(self._service.vault).export(options, path, today)
@@ -1204,6 +1206,13 @@ class MainWindow(QMainWindow):
         self._teardown_dialog()
         self._status(self.tr("Report exported"))
 
+    def _locked_during_picker(self, dialog: QDialog) -> bool:
+        """True when the idle auto-lock fired inside the save picker's nested
+        event loop: ``_lock`` tore ``dialog`` down and the vault is locked, so
+        the export must stop rather than fail and warn over the lock screen
+        (FIBR-0394). The synchronous export after it cannot be interrupted."""
+        return not self._unlocked or self._dialog is not dialog
+
     # --- encrypted backup export / restore (FIBR-0014) ---------------------- #
     def _open_backup_export(self) -> None:
         # Reached from the Settings "Export backup…" button (INV-8). Tear down the
@@ -1232,6 +1241,8 @@ class MainWindow(QMainWindow):
         )
         if not path:
             return  # cancelled the save dialog — clean no-op, dialog stays open
+        if self._locked_during_picker(dialog):
+            return
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
             BackupService(self._service.vault, self._service).export_backup(

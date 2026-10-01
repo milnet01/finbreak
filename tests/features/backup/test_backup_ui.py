@@ -435,6 +435,41 @@ def test_export_recovers_cursor_on_engine_error(qtbot, paths, monkeypatch):
     auth.lock()
 
 
+def test_FIBR0394_an_auto_lock_inside_the_save_picker_ends_the_backup(
+    qtbot, paths, monkeypatch
+):
+    """The save picker runs a nested event loop, so the idle auto-lock can fire
+    inside it; the backup must then stop quietly, not warn over the lock screen."""
+    from PySide6.QtWidgets import QFileDialog, QMessageBox
+
+    from finbreak.ui.main_window import MainWindow
+    from finbreak.ui.unlock import UnlockDialog
+
+    auth = _seeded(paths)
+    window = MainWindow(auth)
+    qtbot.addWidget(window)
+    window._enter_unlocked()
+    window._open_backup_export()
+    window._dialog._password.setText(_BACKUP_PW)
+    window._dialog._confirm.setText(_BACKUP_PW)
+    out = paths[0].parent / "x.fbk"
+
+    def _locks_while_open(*a, **k):
+        window._lock()  # the idle timer fires while the picker is up
+        return str(out), ""
+
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", staticmethod(_locks_while_open))
+    warned: list[int] = []
+    monkeypatch.setattr(
+        QMessageBox, "warning", staticmethod(lambda *a, **k: warned.append(1))
+    )
+
+    window._on_backup_export_requested()
+    assert warned == [], "no backup error over the lock screen"
+    assert not out.exists()
+    assert isinstance(window._dialog, UnlockDialog)
+
+
 def test_INV14_export_dialog_handles_oversized_db_without_crashing(
     qtbot, paths, monkeypatch
 ):

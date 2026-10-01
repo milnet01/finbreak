@@ -986,6 +986,37 @@ def test_FIBR0013_export_failure_shows_message_and_keeps_dialog(
     assert window._dialog is dialog  # dialog stays open to retry
 
 
+def test_FIBR0394_an_auto_lock_inside_the_save_picker_ends_the_export(
+    qtbot, service, tmp_path, monkeypatch
+):
+    """The save picker runs a nested event loop, so the idle auto-lock can fire
+    inside it. When the picker returns, the export must stop quietly — not run
+    against the locked vault and tell the user to "choose another location" over
+    the lock screen."""
+    window = _unlocked_home_shell(qtbot, service)
+    out = tmp_path / "report.pdf"
+
+    def _locks_while_open(*a, **k):
+        window._lock()  # the idle timer fires while the picker is up
+        return str(out), "PDF files (*.pdf)"
+
+    monkeypatch.setattr(
+        main_window.QFileDialog, "getSaveFileName", staticmethod(_locks_while_open)
+    )
+    warnings: list[object] = []
+    monkeypatch.setattr(
+        main_window.QMessageBox,
+        "warning",
+        staticmethod(lambda *a, **k: warnings.append(a)),
+    )
+    window._action_export.trigger()
+    window._dialog.export_requested.emit()
+
+    assert warnings == [], "no save error over the lock screen"
+    assert not out.exists()
+    assert isinstance(window._dialog, UnlockDialog)
+
+
 def test_about_text_shows_version(qtbot, service):
     """The About box states the running version so a user can tell which build
     they're on (surfaced dogfooding v0.1.0 — the About box showed no version)."""
