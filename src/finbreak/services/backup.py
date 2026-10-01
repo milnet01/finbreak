@@ -23,10 +23,12 @@ import json
 import logging
 import os
 import secrets
+import shutil
 import tempfile
 import zipfile
 import zlib
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -122,6 +124,23 @@ _STORAGE_ERROR_CODES = (13, 10)
 def _is_storage_error(exc: DatabaseError) -> bool:
     """True when SQLite failed for lack of disk, not because of the backup."""
     return (getattr(exc, "sqlite_errorcode", 0) & 0xFF) in _STORAGE_ERROR_CODES
+
+
+@contextmanager
+def _assembly_dir(parent: Path) -> Iterator[str]:
+    """The restore's assembly dir, removed on exit — best-effort. Its removal
+    runs AFTER the install, inside the try that turns every OSError into
+    "Restore failed ... unchanged", so a removal that failed (a handle still
+    open on Windows) reported a failure over a vault that had been replaced
+    (FIBR-0404). A leftover is swept by its prefix (FIBR-0337 M4)."""
+    path = tempfile.mkdtemp(dir=parent, prefix=RESTORE_ASSEMBLY_PREFIX)
+    try:
+        yield path
+    finally:
+        try:
+            shutil.rmtree(path)
+        except OSError:
+            log.warning("could not remove the restore assembly %s", Path(path).name)
 
 
 def _noop_on_key(role: str, buffer: bytearray) -> None:
@@ -315,9 +334,7 @@ class BackupService:
             # a complete vault under the new master password. The prefix is
             # what lets `reset_vault` sweep it without guessing which
             # directories in the data location are ours (FIBR-0337 M4).
-            with tempfile.TemporaryDirectory(
-                dir=install_dir, prefix=RESTORE_ASSEMBLY_PREFIX
-            ) as td:
+            with _assembly_dir(install_dir) as td:
                 # Shared read -> guard -> materialise -> derive -> open sequence
                 # (D1); the helper owns + wipes the backup key/password buffers and
                 # returns the opened backup Vault (whose vault.db lives in this temp

@@ -40,6 +40,8 @@ signaling per
 
 ### Fixed
 
+- **A restore that succeeded is no longer reported as failed when finbreak can't tidy away its temporary folder afterwards** (FIBR-0404)
+
 - **Choosing the vault file itself as a backup's destination now says so, instead of claiming the vault is too large to back up** (FIBR-0404)
 
 - **In languages with their own digits, such as Arabic or Persian, amounts now show the cents in those digits too instead of mixing in Western digits** (FIBR-0398)

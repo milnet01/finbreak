@@ -434,6 +434,45 @@ def test_INV2_restore_reproduces_every_table(tmp_path):
         dest.lock()
 
 
+def test_FIBR0404_a_restore_leaves_no_assembly_directory(tmp_path):
+    """The assembly dir holds a complete vault under the new master password,
+    so an ordinary restore must remove it (the crash case is FIBR-0337 M4's)."""
+    from finbreak.vault import RESTORE_ASSEMBLY_PREFIX
+
+    fbk, _snapshot = _export_from_seed(tmp_path)
+    dest = _dest_auth(tmp_path)
+    BackupService(dest.vault, dest).restore_backup(fbk, _BACKUP_PW, _M2)
+    left = list(dest.vault.vault_path.parent.glob(RESTORE_ASSEMBLY_PREFIX + "*"))
+    assert left == [], left
+
+
+def test_FIBR0404_a_failed_tidy_after_a_good_restore_is_not_a_failure(
+    tmp_path, monkeypatch
+):
+    """The restore assembles the new vault in a temp dir and installs it; the
+    dir's removal ran inside the try that turns every OSError into BackupError,
+    so a removal that failed AFTER the install - a handle still open on Windows -
+    told the user "Restore failed ... unchanged" over a vault that HAD been
+    replaced. Tidying is best-effort; the restore stands."""
+    import shutil
+
+    fbk, snapshot = _export_from_seed(tmp_path)
+    dest = _dest_auth(tmp_path)
+
+    def _busy(*a, **k):
+        raise OSError("the directory is in use")
+
+    with monkeypatch.context() as patched:  # not undo(): that lifts the
+        patched.setattr(shutil, "rmtree", _busy)  # suite-wide redirects too
+        BackupService(dest.vault, dest).restore_backup(fbk, _BACKUP_PW, _M2)
+
+    assert dest.unlock(bytearray(_M2, "utf-8")) is True
+    try:
+        assert _snapshot_tables(dest.vault.connection) == snapshot
+    finally:
+        dest.lock()
+
+
 def test_INV3_separate_password_recovers_without_old_master(tmp_path):
     fbk, _snapshot = _export_from_seed(tmp_path)
     dest = _dest_auth(tmp_path)
@@ -1924,22 +1963,19 @@ def test_start_over_removes_a_crashed_restores_assembly_directory(
     auth, _d, _vb, _sb = _dest_with_vault(tmp_path)
     made: list[Path] = []
 
-    class _NoCleanupTempDir:
-        """``TemporaryDirectory`` minus the cleanup — what a crash leaves."""
+    from collections.abc import Iterator
+    from contextlib import contextmanager
 
-        def __init__(self, *, dir: Path, prefix: str | None = None) -> None:
-            self._path = tempfile.mkdtemp(dir=dir, prefix=prefix)
+    from finbreak.vault import RESTORE_ASSEMBLY_PREFIX
 
-        def __enter__(self) -> str:
-            made.append(Path(self._path))
-            return self._path
+    @contextmanager
+    def _no_cleanup_assembly(parent: Path) -> Iterator[str]:
+        """The assembly dir minus its removal — what a crash leaves."""
+        path = tempfile.mkdtemp(dir=parent, prefix=RESTORE_ASSEMBLY_PREFIX)
+        made.append(Path(path))
+        yield path
 
-        def __exit__(self, *_exc: object) -> None:
-            return None
-
-    monkeypatch.setattr(
-        "finbreak.services.backup.tempfile.TemporaryDirectory", _NoCleanupTempDir
-    )
+    monkeypatch.setattr("finbreak.services.backup._assembly_dir", _no_cleanup_assembly)
 
     def refuse(*_args: object, **_kwargs: object) -> None:
         raise OSError("injected crash before the install")
