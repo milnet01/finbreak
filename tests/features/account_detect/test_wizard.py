@@ -402,8 +402,11 @@ def test_a_second_ofx_statement_does_not_inherit_the_first_ones_match(
     assert widget._preview.account_id == seeded
 
 
-def test_create_dialog_prefills_from_the_statement() -> None:
-    """Family B determines the type; family A does not (it spans three types)."""
+def test_create_dialog_prefills_from_the_statement(qapp) -> None:
+    """Family B determines the type; family A does not (it spans three types).
+
+    Takes ``qapp``: it builds dialogs, and without the fixture it only passed
+    when an earlier test in the same worker had made the QApplication."""
     from finbreak.ui.account_create import CreateAccountDialog
 
     loan = CreateAccountDialog(number="447556667", name=None, family="B")
@@ -460,3 +463,28 @@ def test_FIBR0407_family_a_create_makes_the_user_pick_a_type(qtbot):
         QDialogButtonBox.StandardButton.Ok
     )
     assert loan_ok.isEnabled(), "a family that determines the type needs no pick"
+
+
+@pytest.mark.parametrize("keep_number", [True, False])
+def test_FIBR0408_create_it_shows_its_confirmation(
+    qtbot, service, tmp_path, keep_number
+):
+    """FIBR-0086 § 4.6: after "Create it" the wizard says what was stored - the
+    matched number, or that the account has none. Selecting the new account in
+    the combo fires the override handler, which hides the label, and the text
+    then went into a hidden label."""
+    svc = _accounts(service)
+    seeded = svc.list_accounts()[0].id
+    widget = _wizard(qtbot, service, seeded)
+    widget._select_file(_write(tmp_path, _ofx("99 888 777 6")))
+    dialog = _open_create_dialog(widget)
+    dialog._name.setText("New Savings")
+    dialog._type.setCurrentIndex(dialog._type.findData("savings"))
+    if not keep_number:
+        dialog._number.clear()
+    dialog.accept()
+
+    label = widget._account_match_label
+    assert not label.isHidden(), f"hidden: {label.text()!r}"
+    expected = "99 888 777 6" if keep_number else "no account number"
+    assert expected in label.text(), label.text()

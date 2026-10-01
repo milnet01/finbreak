@@ -384,7 +384,7 @@ uniqueness key.
 
 | finding | verified | disposition | was → now | must_agree |
 |---|---|---|---|---|
-| W1 after "Create it" the match label is hidden | | | | FIBR-0086 §4.6 |
+| W1 after "Create it" the match label is hidden | yes — the combo change runs `_on_confirm_account_changed`, which hides the label, before the text is set; spec checked first: FIBR-0086 §4.6 says the message shows | fixed | text in a hidden label → `show()` after it is set, both branches; red: hidden with the right text, with and without a number; mutation: no `show()` reddens both | FIBR-0086 §4.6 (agrees) |
 | W2 a wrong PDF password re-prompts with an identical dialog | | | | FIBR-0050 / FIBR-0085 |
 | W3 tr(...) + " " + text joins display strings | | | | design.md § i18n |
 | W4 the OFX statement label is an f-string with a raw type | | | | |

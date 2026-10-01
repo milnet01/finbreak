@@ -769,6 +769,10 @@ class ImportWizardWidget(QWidget):
                     "will not file themselves."
                 ).format(name=account.name)
             )
+        # Shown explicitly: the combo change above ran the override handler,
+        # which hides this label, so the text would land in a hidden one
+        # (FIBR-0086 § 4.6, FIBR-0408).
+        self._account_match_label.show()
         self._pending_hint = None
         self._create_account_button.hide()
 

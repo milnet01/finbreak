@@ -40,6 +40,8 @@ signaling per
 
 ### Fixed
 
+- **After creating an account during an import, the import screen now shows what it stored, including the warning when the account has no number** (FIBR-0408)
+
 
 - **finbreak no longer crashes on a computer whose time-zone setting names a zone that doesn't exist; it uses the computer's local time instead** (FIBR-0406)
 
