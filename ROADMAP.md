@@ -3681,6 +3681,21 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   refuse the statement when no year does. Changes FIBR-0050 D8 and
   adds a refusal to INV-11, so the amendment is gated (review-contract
   --max-loops 3) before the build.
+  Progress (2026-10-01): FIBR-0050 D8/INV-9/INV-9a/INV-11 amended and
+  gated (loops 16-18, converged). Build in progress, UNCOMMITTED in
+  src/finbreak/importers/standard_bank.py (_infer_years, _real_date,
+  _YEAR_SLACK, _UNPLACED_YEAR) and tests/features/standard_bank_pdf/
+  test_standard_bank.py (four new test_INV9a_* tests, all green). Two
+  existing tests now fail: test_FIBR0255_money_moving_unreadable_row_
+  refuses_the_statement and test_FIBR0216_zero_fee_row_with_a_bad_date_
+  still_degrades. Cause: a month-day that is a real date in NO year (day
+  32) used to reach parse_transaction, so a zero row degrades and a
+  money-moving row refuses for its own cause; the new rule refuses the
+  whole statement first, and D8 as gated says to. Next: amend D8 so a
+  month-day real in no year keeps the start's year and goes to row
+  validation (only a REAL date that fits no year, or two, refuses);
+  re-gate D8 (one loop, review-contract --max-loops 3); then code that
+  carve-out, rerun the import suites, mutation-check, commit.
   **Layman:** On some Standard Bank statements, one row dated just before the statement period could make that row and every row after it land a whole year late; the year should come from the statement's own dates.
   Kind: fix.
   Source: full-audit-2026-09-27 code lane 5 (queued by FIBR-0405).
