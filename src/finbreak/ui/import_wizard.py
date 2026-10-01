@@ -863,11 +863,12 @@ class ImportWizardWidget(QWidget):
             # retry is None → a friendly message was already shown; stop
         # result is None → a friendly message was already shown; stop
 
-    def _prompt_pdf_password(self, data: bytes) -> None:
+    def _prompt_pdf_password(self, data: bytes, *, retry: bool = False) -> None:
         """Show the password dialog **non-blocking** (FIBR-0065). Cancel needs no
         slot — ``finished→deleteLater`` frees the dialog and the wizard stays on the
-        pick step (the old 'cancel abandons the import cleanly'), storing nothing."""
-        dialog = PasswordDialog(self._account_name(), self)
+        pick step (the old 'cancel abandons the import cleanly'), storing nothing.
+        ``retry`` says the last password failed (FIBR-0408)."""
+        dialog = PasswordDialog(self._account_name(), self, retry=retry)
         show_modal(dialog, lambda: self._on_pdf_password(dialog, data))
 
     def _on_pdf_password(self, dialog: PasswordDialog, data: bytes) -> None:
@@ -877,7 +878,8 @@ class ImportWizardWidget(QWidget):
             if isinstance(result, bytes):
                 self._after_decrypt(result, password, remember)
             elif result is _NEED_PASSWORD:
-                self._prompt_pdf_password(data)  # wrong password → re-prompt (INV-3)
+                # wrong password → re-prompt (INV-3), saying so (FIBR-0408)
+                self._prompt_pdf_password(data, retry=True)
         except VaultLockedError:
             return  # auto-lock fired — silent, like the other handlers
         # result is None → a friendly message was already shown; stop
@@ -1742,6 +1744,7 @@ class ImportWizardWidget(QWidget):
             remember_text=self.tr(
                 "Remember this password for the account this file lands in"
             ),
+            retry=raised > 0,  # asked again: the last answer failed (FIBR-0408)
         )
         # `show_modal` wires only `accepted`, so a Cancel is otherwise
         # unobservable and this pass would wait forever on a dialog that has

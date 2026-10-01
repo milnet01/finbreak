@@ -294,6 +294,10 @@ def _wizard(qtbot, service, acct):
     return widget
 
 
+# Whether each scripted prompt was raised as a retry (FIBR-0408), in order.
+retried: list[bool] = []
+
+
 def _patch_dialog(monkeypatch, responses):
     """Replace ``import_wizard.PasswordDialog`` with a scripted fake. Each dialog
     construction pops the next response dict (``password``/``remember``/``accept``);
@@ -302,6 +306,7 @@ def _patch_dialog(monkeypatch, responses):
 
     seq = iter(responses)
     shown: list[str] = []
+    retried.clear()
 
     class _Fake(QDialog):
         """Real QDialog stand-in: auto-accepts (with the scripted password/remember)
@@ -309,10 +314,11 @@ def _patch_dialog(monkeypatch, responses):
         show_modal's real wiring. A wrong-password re-prompt constructs a fresh
         _Fake (pops the next response), driving the multi-attempt loop (FIBR-0065)."""
 
-        def __init__(self, account_name, parent=None):
+        def __init__(self, account_name, parent=None, retry=False):
             super().__init__(parent)
             self._r = next(seq)
             shown.append(account_name)
+            retried.append(retry)
 
         def show(self):
             super().show()
@@ -357,6 +363,8 @@ def test_INV7b_encrypted_prompts_and_wrong_password_reprompts(
     widget._select_file(str(path))
     assert len(shown) == 2, "a wrong password re-prompted (INV-3)"
     assert widget._stack.currentIndex() == 1, "the correct password then proceeded"
+    # FIBR-0408: the re-prompt says the last password failed; the first does not.
+    assert retried == [False, True]
 
 
 def test_INV7b_cancel_abandons_import(qtbot, service, tmp_path, monkeypatch):
@@ -1058,3 +1066,17 @@ def test_FIBR0405_a_library_value_error_is_not_shown_raw(monkeypatch, importer):
             StandardBankImporter().parse(pdf, 2)
     assert "pdfminer internal" not in str(excinfo.value)
     assert "CSV or OFX" in str(excinfo.value)
+
+
+@pytest.mark.parametrize("retry", [False, True])
+def test_FIBR0408_the_password_dialog_says_when_the_last_one_failed(qtbot, retry):
+    from PySide6.QtWidgets import QLabel
+
+    dialog = PasswordDialog("Current", retry=retry)
+    qtbot.addWidget(dialog)
+    notes = [
+        lbl
+        for lbl in dialog.findChildren(QLabel)
+        if "didn't work" in lbl.text() and not lbl.isHidden()
+    ]
+    assert bool(notes) is retry

@@ -1137,7 +1137,7 @@ def _patch_dialog(monkeypatch, responses):
         or rejects on show(), so the async _on_pdf_password slot runs through
         show_modal's real wiring (FIBR-0065 INV-5)."""
 
-        def __init__(self, account_name, parent=None):
+        def __init__(self, account_name, parent=None, retry=False):
             super().__init__(parent)
             self._r = next(seq)
             shown.append(account_name)

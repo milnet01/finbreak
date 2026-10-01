@@ -385,7 +385,7 @@ uniqueness key.
 | finding | verified | disposition | was → now | must_agree |
 |---|---|---|---|---|
 | W1 after "Create it" the match label is hidden | yes — the combo change runs `_on_confirm_account_changed`, which hides the label, before the text is set; spec checked first: FIBR-0086 §4.6 says the message shows | fixed | text in a hidden label → `show()` after it is set, both branches; red: hidden with the right text, with and without a number; mutation: no `show()` reddens both | FIBR-0086 §4.6 (agrees) |
-| W2 a wrong PDF password re-prompts with an identical dialog | | | | FIBR-0050 / FIBR-0085 |
+| W2 a wrong PDF password re-prompts with an identical dialog | yes — wizard `_on_pdf_password` and batch `_ask_password` built the same dialog again; spec checked: FIBR-0009 INV-3 says "re-shows" the dialog — a note leaves that intact (grey zone, no gate) | fixed | `PasswordDialog(retry=...)` adds "That password didn't work. Try again."; wizard passes it on the re-prompt, batch on any second prompt for a file; three test fakes widened to accept `retry`; red: the re-prompt was not marked; mutations: the dialog note, the wizard flag and the batch flag each redden a test | FIBR-0009 INV-3 (agrees) |
 | W3 tr(...) + " " + text joins display strings | | | | design.md § i18n |
 | W4 the OFX statement label is an f-string with a raw type | | | | |
 | W5 design.md quotes preview wording the app never shows | | | | design.md |

@@ -166,7 +166,7 @@ def _stub_password(monkeypatch, *, password: str | None, remember: bool = False)
     shown: list[str] = []
 
     class _Stub(QDialog):
-        def __init__(self, account_name, parent=None, remember_text=None):
+        def __init__(self, account_name, parent=None, remember_text=None, retry=False):
             super().__init__(parent)
             shown.append(account_name)
 
@@ -229,7 +229,7 @@ def test_INV3_no_commit_before_every_question_answered(
 
     # (a) — a prompt that never answers.
     class _NeverAnswers(QDialog):
-        def __init__(self, account_name, parent=None, remember_text=None):
+        def __init__(self, account_name, parent=None, remember_text=None, retry=False):
             super().__init__(parent)
 
     monkeypatch.setattr(wizard_mod, "PasswordDialog", _NeverAnswers)
@@ -1392,3 +1392,33 @@ def test_FIBR0382_row_tooltip_shows_the_path_as_typed(
     assert shown.toPlainText() == marked, (
         f"the tooltip shows {shown.toPlainText()!r}, not the path {marked!r}"
     )
+
+
+def test_FIBR0408_a_second_prompt_for_a_file_says_the_last_password_failed(
+    qtbot, service, monkeypatch, tmp_path
+):
+    """A wrong password re-asked with an identical dialog, so nothing said the
+    first one was wrong. Every prompt after the first for the same file says so."""
+    retries: list[bool] = []
+
+    class _Recorder(QDialog):
+        def __init__(self, account_name, parent=None, remember_text=None, retry=False):
+            super().__init__(parent)
+            retries.append(retry)
+
+        def show(self):
+            super().show()
+            self.accept()
+
+        def password(self):
+            return "wrong"
+
+        def remember(self):
+            return False
+
+    monkeypatch.setattr(wizard_mod, "PasswordDialog", _Recorder)
+    locked = _locked_pdf(monkeypatch, tmp_path)
+    widget = _wizard(qtbot, service)
+    widget._select_files([locked])
+    qtbot.waitUntil(lambda: len(retries) >= 2, timeout=3000)
+    assert retries[0] is False and all(retries[1:]), retries

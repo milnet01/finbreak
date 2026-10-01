@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFormLayout,
+    QLabel,
     QLineEdit,
     QVBoxLayout,
     QWidget,
@@ -34,6 +35,7 @@ class PasswordDialog(QDialog):
         account_name: str,
         parent: QWidget | None = None,
         remember_text: str | None = None,
+        retry: bool = False,
     ):
         super().__init__(parent)
         self.setWindowTitle(self.tr("PDF password"))
@@ -61,6 +63,11 @@ class PasswordDialog(QDialog):
         form.addRow(self.tr("Password"), self._field)
 
         layout = QVBoxLayout(self)
+        if retry:
+            # A re-prompt after a wrong password: without this the dialog was
+            # identical to the first, and nothing said the password failed
+            # (FIBR-0408).
+            layout.addWidget(QLabel(self.tr("That password didn't work. Try again.")))
         layout.addLayout(form)
         layout.addWidget(self._remember)
         layout.addWidget(buttons)

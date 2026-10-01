@@ -40,6 +40,8 @@ signaling per
 
 ### Fixed
 
+- **When a PDF statement's password is wrong, the password window now says so when it asks again** (FIBR-0408)
+
 - **After creating an account during an import, the import screen now shows what it stored, including the warning when the account has no number** (FIBR-0408)
 
 
