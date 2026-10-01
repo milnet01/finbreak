@@ -332,6 +332,11 @@ def test_known_total_appears_in_summary(qapp, service):
 # --------------------------------------------------------------------------- #
 # export() atomicity + INV-12 failure modes + INV-2 no-plaintext-to-disk guard.
 # --------------------------------------------------------------------------- #
+def _temps(directory, name):
+    """The export's temp files for ``name`` — `mkstemp`'s ``.<name>.*.part``."""
+    return list(directory.glob(f".{name}.*.part"))
+
+
 def test_export_writes_valid_pdf_and_cleans_temp(qapp, service, tmp_path):
     a = _accounts(service)[0].id
     _add(service, a, 100_00)
@@ -339,7 +344,7 @@ def test_export_writes_valid_pdf_and_cleans_temp(qapp, service, tmp_path):
     _svc(service).export(_options(), out, _TODAY)
     with pikepdf.open(str(out)) as doc:
         assert len(doc.pages) >= 1
-    assert not (tmp_path / "report.pdf.part").exists()  # temp removed after replace
+    assert not _temps(tmp_path, "report.pdf")  # temp removed after replace
 
 
 def test_export_encrypted_file_opens_only_with_password(qapp, service, tmp_path):
@@ -360,7 +365,23 @@ def test_export_write_error_leaves_no_file(qapp, service, tmp_path):
     with pytest.raises(OSError):
         _svc(service).export(_options(), out, _TODAY)
     assert not out.exists()
-    assert not out.with_name("report.pdf.part").exists()
+    assert not out.parent.exists()  # nothing was created, temp included
+
+
+def test_FIBR0393_a_failed_replace_leaves_no_temp(qapp, service, tmp_path, monkeypatch):
+    # INV-12: the temp exists by the time `os.replace` runs, so a failure there
+    # must remove it — a full disk or a viewer holding the target both land here.
+    import finbreak.services.pdf_export as mod
+
+    def _refuse(src, dst):
+        raise OSError("target is locked")
+
+    monkeypatch.setattr(mod.os, "replace", _refuse)
+    out = tmp_path / "report.pdf"
+    with pytest.raises(OSError, match="locked"):
+        _svc(service).export(_options(), out, _TODAY)
+    assert not out.exists()
+    assert not _temps(tmp_path, "report.pdf")
 
 
 def test_export_vault_locked_leaves_no_file(qapp, service, tmp_path):
@@ -373,7 +394,7 @@ def test_export_vault_locked_leaves_no_file(qapp, service, tmp_path):
     with pytest.raises(VaultLockedError):
         svc.export(_options(), out, _TODAY)
     assert not out.exists()
-    assert not (tmp_path / "report.pdf.part").exists()
+    assert not _temps(tmp_path, "report.pdf")
 
 
 def test_export_encryption_error_leaves_no_file(qapp, service, tmp_path, monkeypatch):
@@ -391,7 +412,7 @@ def test_export_encryption_error_leaves_no_file(qapp, service, tmp_path, monkeyp
     with pytest.raises(RuntimeError):
         _svc(service).export(_options(password="secret12"), out, _TODAY)
     assert not out.exists()
-    assert not (tmp_path / "report.pdf.part").exists()
+    assert not _temps(tmp_path, "report.pdf")
 
 
 def test_render_with_password_writes_nothing_to_disk(qapp, service, monkeypatch):
@@ -471,11 +492,26 @@ def test_export_temp_is_owner_only_and_final_file_inherits_it(qapp, service, tmp
     assert mode == 0o600, f"exported report is mode {mode:o}, expected 600"
 
 
+def test_FIBR0393_export_never_deletes_a_users_part_file(qapp, service, tmp_path):
+    """A browser names an in-progress download `<name>.part`, so a user can own
+    `report.pdf.part` beside the report they are about to export. The export's
+    temp file must not be that name, or its cleanup deletes the user's file."""
+    theirs = tmp_path / "report.pdf.part"
+    theirs.write_bytes(b"half a download")
+    out = tmp_path / "report.pdf"
+
+    _svc(service).export(_options(), out, _TODAY)
+
+    assert theirs.read_bytes() == b"half a download"
+    left = sorted(p.name for p in tmp_path.iterdir() if "report" in p.name)
+    assert left == ["report.pdf", "report.pdf.part"], "no temp file stays behind"
+
+
 def test_export_temp_refuses_to_follow_a_symlink(qapp, service, tmp_path):
-    """The `.part` name is fully predictable from the output name, so in any
-    shared or group-writable directory an attacker can pre-plant it as a symlink
-    to a file they want overwritten — `write_bytes` follows it and truncates the
-    target, as the user. `O_NOFOLLOW` is the fix, and `backup.py` already uses it.
+    """A name derived from the output (`report.pdf.part`) could be pre-planted
+    as a symlink to a file an attacker wants overwritten. The temp now has a
+    random name (FIBR-0393) and is opened O_EXCL|O_NOFOLLOW, so a planted link is
+    neither written through nor removed.
     """
     target = tmp_path / "precious.txt"
     target.write_text("do not clobber", encoding="utf-8")
@@ -484,8 +520,7 @@ def test_export_temp_refuses_to_follow_a_symlink(qapp, service, tmp_path):
 
     _svc(service).export(_options(), out, _TODAY)
 
-    # The planted link is cleared rather than written through, so the export still
-    # succeeds — what must NOT happen is the target being truncated.
+    # The export succeeds; what must NOT happen is the target being truncated.
     assert target.read_text(encoding="utf-8") == "do not clobber", (
         "the export followed a symlink and overwrote an unrelated file"
     )

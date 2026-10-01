@@ -133,7 +133,7 @@ uniqueness key.
 |---|---|---|---|---|
 | P1 hidden Month/Year pickers leave bare labels | yes — `_sync_period_pickers` hid the field only; remedy checked: Home hides its pickers too, so hide the row rather than disable | fixed | field hidden, label left → `QFormLayout.setRowVisible` per row; red: bare "Month" label in Previous month; mutations: field-only hiding for either picker reddens it | FIBR-0013 mock-up note (amended: shown, not enabled) |
 | P2 no flush + fsync before os.replace | | | | FIBR-0013 D1 |
-| P3 temp cleanup deletes a user's `<name>.part` | | | | FIBR-0013 D1, INV-12 |
+| P3 temp cleanup deletes a user's `<name>.part` | yes — `tmp.unlink` on `<name>.part` before the open | fixed | derived `<name>.part`, pre-deleted → `tempfile.mkstemp` (`.<name>.*.part`, O_EXCL\|O_NOFOLLOW, 0600); red: the user's `report.pdf.part` was deleted; mutations: the old pre-delete and dropping the failure cleanup each redden a test; four leftover-temp assertions repointed at the real name (they had gone vacuous), + a failed-replace test | FIBR-0013 D1 (agrees); security-model.md INV-7 note (amended) |
 | P4 empty render written and reported as exported | | | | FIBR-0013 INV-2 |
 | P5 ASCII year beside a QLocale month; chart axes not localised | | | | FIBR-0013, design.md i18n |
 | P6 slice and legend labels may render rich text | | | | |

@@ -434,10 +434,11 @@ be checkable. Enforcement arrives in step with the code:
   rendered and encrypted **in memory** (`render_pdf_bytes` takes no
   path) and the single write is the finished bytes, so no plaintext
   PDF is ever staged in a temp file even when a password is set,
-  reconciling with INV-4. That temp is opened `O_EXCL|O_NOFOLLOW`
-  mode `0600` and `os.replace`d into place (FIBR-0204), so the final
-  report does not inherit a loose umask and the predictable `.part`
-  name cannot be used to overwrite an unrelated file by symlink.
+  reconciling with INV-4. That temp is created by `tempfile.mkstemp`
+  — `O_EXCL|O_NOFOLLOW`, mode `0600`, a random name — and
+  `os.replace`d into place (FIBR-0204, FIBR-0393), so the final report
+  does not inherit a loose umask and no planted name can be used to
+  overwrite an unrelated file by symlink.
 - **INV-8 — One opt-in outbound flow.** The shipped app makes
   **exactly one** kind of outbound request — an opt-in, off-by-default
   update flow that reads the GitHub Releases API and downloads the
