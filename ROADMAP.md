@@ -3649,7 +3649,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: test.
   Source: full-audit-2026-09-27 tests lane T12 (queued by FIBR-0367).
 
-- 📋 [FIBR-0423] **The pre-upgrade rollback offer says how old the copy is.**
+- 🚧 [FIBR-0423] **The pre-upgrade rollback offer says how old the copy is.**
   From FIBR-0403's open question (full audit 2026-09-27 code lane 3).
   If § 13.2's S6 keeps failing on the resume path (_finish_quietly logs
   an OSError and returns), migration_pending stays set and the .pre-v2
