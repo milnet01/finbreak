@@ -409,3 +409,18 @@ uniqueness key.
   `" " +` join of display sentences in the UI — fixed (3b344a9), the
   D2 / W3 class with the same template fix.
 - **falsified:** none.
+
+## FIBR-0409 — code lane 10, money services
+
+| finding | verified | disposition | was → now | must_agree |
+|---|---|---|---|---|
+| M1 service errors are English strings spliced into setText | | | | FIBR-0434 |
+| M2 bulk confirm / reject skip the database checks | | | | FIBR-0011 INV-4; FIBR-0201 |
+| M3 reassign can leave a confirmed transfer inside one account | | | | FIBR-0011; FIBR-0059 |
+
+- **cited_by:**
+- **swept:**
+- **collateral:**
+- **surfaced:**
+- **out_of_scope:**
+- **falsified:**
