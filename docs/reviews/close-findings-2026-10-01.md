@@ -289,3 +289,21 @@ uniqueness key.
 - **surfaced:** none.
 - **out_of_scope:** none new; the translation half of C3 is on FIBR-0434.
 - **falsified:** none.
+
+## FIBR-0398 — code lane 18, UI infrastructure
+
+| finding | verified | disposition | was → now | must_agree |
+|---|---|---|---|---|
+| U1 amounts mix locale digits with an ASCII fraction | | | | FIBR-0153 |
+| U2 a mistyped timezone is silently saved as system | | | | FIBR-0083 |
+| U3 FIBR-0153 / FIBR-0219 describe the removed float route | | | | FIBR-0153 §3.2 INV-3; FIBR-0219 §4.2 §4.5 |
+| U4 FIBR-0127 INV-3/INV-4 and theme.py token counts | | | | FIBR-0127 |
+| U5 the ambiguity refusal is an untranslated f-string | | | | FIBR-0434; FIBR-0219 §9 |
+| U6 a 4300+-digit amount shows an interpreter message | | | | FIBR-0219 |
+
+- **cited_by:**
+- **swept:**
+- **collateral:**
+- **surfaced:**
+- **out_of_scope:**
+- **falsified:**
