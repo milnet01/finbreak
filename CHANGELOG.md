@@ -40,6 +40,8 @@ signaling per
 
 ### Fixed
 
+- **When an update can't be installed, the message now says why in plain words (not enough disk space, or no permission to replace the file) instead of a raw technical error** (FIBR-0394)
+
 - **Restoring a backup now clears the old password hint and any failed-unlock wait, since the restore sets a new master password** (FIBR-0394)
 
 - **After locking and unlocking, finbreak returns you to the tab you were using, not the one it opened on** (FIBR-0394)

@@ -796,14 +796,14 @@ unguarded**:
 
 | Site | Guarded by `except VaultLockedError` |
 |---|---|
-| `home.py:127` (`__init__`) | no |
-| `home.py:350` (`_on_period_changed`) | yes |
-| `home.py:358` (`_on_account_changed`) | yes |
-| `home.py:374` (`set_amount_prefs`) | no |
-| `main_window.py:799` (`_refresh_tab`) | no |
-| `main_window.py:830` (`_show_home`) | no |
-| `main_window.py:1499` (`_on_import_done`) | no |
-| `main_window.py:1508` (`_refresh_after_statement_change`) | no |
+| `home.py` (`__init__`) | no |
+| `home.py` (`_on_period_changed`) | yes |
+| `home.py` (`_on_account_changed`) | yes |
+| `home.py` (`set_amount_prefs`) | no |
+| `main_window.py` (`_refresh_tab`) | no |
+| `main_window.py` (`_show_home`) | no |
+| `main_window.py` (`_on_import_done`) | no |
+| `main_window.py` (`_refresh_after_statement_change`) | no |
 
 (`grep -n "self\.refresh()\|_home_tab\.refresh()" src/finbreak/ui/home.py
 src/finbreak/ui/main_window.py` → 8, 2026-08-05.)
