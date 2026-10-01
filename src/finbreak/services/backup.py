@@ -113,6 +113,17 @@ _DB_ENTRY = "vault.db"
 _WAL_SIBLINGS = ("-wal", "-shm")
 
 
+# SQLite's primary result codes for "the disk failed us" — SQLITE_FULL and
+# SQLITE_IOERR. The low byte, because the extended I/O codes carry the primary one
+# there (SQLITE_IOERR_WRITE is 10 | 3 << 8).
+_STORAGE_ERROR_CODES = (13, 10)
+
+
+def _is_storage_error(exc: DatabaseError) -> bool:
+    """True when SQLite failed for lack of disk, not because of the backup."""
+    return (getattr(exc, "sqlite_errorcode", 0) & 0xFF) in _STORAGE_ERROR_CODES
+
+
 def _noop_on_key(role: str, buffer: bytearray) -> None:
     return None
 
@@ -452,7 +463,11 @@ class BackupService:
                 table_counts=table_counts,
                 reason=None,
             )
-        except DatabaseError:
+        except DatabaseError as exc:
+            if _is_storage_error(exc):
+                # The disk, not the backup: a full or failing disk while the temp
+                # copy is opened and migrated (FIBR-0404) — the D7 io_error case.
+                return VerifyResult(False, None, None, "io_error")
             # Wrong backup password OR a damaged page-1 header OR an older-schema
             # body corruption read during migration — page-1 HMAC can't tell them
             # apart (INV-3).

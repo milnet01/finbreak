@@ -1282,6 +1282,37 @@ def test_INV3_verify_wrong_password_reason(tmp_path):
     assert res == VerifyResult(False, None, None, "wrong_password")
 
 
+def _a_real_disk_full_error() -> Exception:
+    """A genuine SQLITE_FULL from the engine, not a hand-made one: a scratch
+    database capped at one page, then written to."""
+    conn = sqlcipher3.dbapi2.connect(":memory:")
+    conn.execute("PRAGMA max_page_count = 1")
+    try:
+        conn.execute("CREATE TABLE t (x)")
+        conn.execute("CREATE TABLE u (x)")
+    except sqlcipher3.dbapi2.OperationalError as exc:
+        return exc
+    finally:
+        conn.close()
+    raise AssertionError("precondition: the engine did not report a full database")
+
+
+def test_FIBR0404_verify_reports_a_full_disk_as_io_error(tmp_path, monkeypatch):
+    """Verify opens and migrates a temp copy of the backup. A full disk there is
+    an SQLite OperationalError - a DatabaseError - which verify reported as
+    wrong_password, sending the user to retype a password that was right."""
+    fbk, _snap = _export_from_seed(tmp_path)
+    full = _a_real_disk_full_error()
+    assert full.sqlite_errorcode & 0xFF == 13, "precondition: SQLITE_FULL"
+
+    def _disk_full(*a, **k):
+        raise full
+
+    monkeypatch.setattr(BackupService, "_open_backup_vault", _disk_full)
+    res = _verify_service(tmp_path).verify_backup(fbk, _BACKUP_PW)
+    assert res == VerifyResult(False, None, None, "io_error")
+
+
 def test_INV4_verify_corrupt_overflow_page_reason(tmp_path):
     # A latest-schema backup with a long transaction description forces overflow
     # pages count(*) never reads; flip a byte in the tail overflow region so page-1
