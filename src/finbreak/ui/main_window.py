@@ -21,6 +21,7 @@ menu (Center / Reset) needs no vault and stays enabled while locked.
 
 from __future__ import annotations
 
+import errno
 import logging
 import os
 import tempfile
@@ -1930,18 +1931,40 @@ class MainWindow(QMainWindow):
                 self._installer.apply(path, on_before_exec=self._release_for_relaunch)
             except UpdateError as exc:
                 Path(path).unlink(missing_ok=True)
+                log.warning("update install failed: %s", exc)
                 QMessageBox.warning(
                     self,
                     self.tr("Update"),
-                    self.tr(
-                        "The update could not be installed, so finbreak is still "
-                        "on the current version. {reason}"
-                    ).format(reason=str(exc)),
+                    self._install_failure_text(exc),
                 )
         else:
             # The prompt was torn down (auto-lock) — drop the verified temp so it
             # doesn't orphan next to the running binary (INV-9).
             Path(path).unlink(missing_ok=True)
+
+    def _install_failure_text(self, exc: UpdateError) -> str:
+        """Why the swap failed, in translated words chosen by the OS error under
+        the installer's ``UpdateError``. Its own message is English — formatting
+        it into a ``tr()`` sentence left half the dialog untranslated
+        (FIBR-0394). The raw message goes to the log instead."""
+        cause = exc.__cause__
+        code = cause.errno if isinstance(cause, OSError) else None
+        if code == errno.ENOSPC:
+            return self.tr(
+                "The update could not be installed because there isn't enough "
+                "free disk space where finbreak is kept. finbreak is still on the "
+                "current version."
+            )
+        if code in (errno.EACCES, errno.EPERM, errno.EROFS):
+            return self.tr(
+                "The update could not be installed because finbreak isn't allowed "
+                "to replace its own file — the folder may be read-only or "
+                "protected. finbreak is still on the current version."
+            )
+        return self.tr(
+            "The update could not be installed, so finbreak is still on the "
+            "current version."
+        )
 
     def _on_download_failed(self, exc: object, prompt: QDialog | None) -> None:
         # Any verify/oversize/timeout/disk failure surfaces here and stays on the

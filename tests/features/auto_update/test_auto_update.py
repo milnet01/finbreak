@@ -7,6 +7,7 @@ no real signing key (a throwaway test key is monkeypatched in).
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import os
 import re
@@ -2083,17 +2084,31 @@ def test_INV6_download_ready_applies_with_key_wipe_callback(qtbot, service, tmp_
     assert wiped == ["key"]
 
 
+@pytest.mark.parametrize(
+    ("err", "says"),
+    [
+        (errno.ENOSPC, "enough free disk space"),
+        (errno.EROFS, "isn't allowed to replace"),
+        (errno.EACCES, "isn't allowed to replace"),
+        (errno.EIO, "still on the current version"),
+    ],
+)
 def test_FIBR0390_a_failed_install_warns_once_and_removes_the_download(
-    qtbot, service, tmp_path, monkeypatch
+    qtbot, service, tmp_path, monkeypatch, err, says
 ):
     """Audit delivery C12: no test drove an install that fails. ``apply()``
     raising ``UpdateError`` -- a full disk or read-only folder at the swap --
     must end in exactly one warning that says why, and must not leave the
-    verified download lying beside the running binary."""
+    verified download lying beside the running binary.
+
+    FIBR-0394: the "why" is translated text chosen by the OS error, never the
+    installer's English message dropped into a translated sentence."""
 
     class _FailingInstaller(_FakeInstaller):
         def apply(self, new_file, on_before_exec):
-            raise UpdateError("there is no space left on the disk")
+            raise UpdateError("could not install the update: raw OS text") from (
+                OSError(err, os.strerror(err))
+            )
 
     info = _sample_info()
     verified = tmp_path / "finbreak-update-abc.AppImage"
@@ -2112,7 +2127,8 @@ def test_FIBR0390_a_failed_install_warns_once_and_removes_the_download(
     window._on_download_ready(verified, prompt)
 
     assert len(warned) == 1, f"warnings: {warned}"
-    assert "there is no space left on the disk" in warned[0]
+    assert says in warned[0]
+    assert "raw OS text" not in warned[0], "an untranslated message was shown"
     assert not verified.exists(), "the verified download was left behind"
 
 
