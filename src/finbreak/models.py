@@ -394,7 +394,7 @@ class DrillNode:
 
 @dataclass(frozen=True)
 class DrillLabels:
-    """The four ``tr()``-ed fixed strings the drill-down's *service-built* labels
+    """The five ``tr()``-ed fixed strings the drill-down's *service-built* labels
     need (FIBR-0138 D2/INV-9). Because ``ReportingService`` is not a ``QObject`` it
     cannot translate, so the ``QObject`` caller passes these in — the exact
     ``build_donut_chart(spending, tr("Uncategorised"), tr("Other"))`` precedent.
@@ -405,6 +405,9 @@ class DrillLabels:
     spending: str
     transfers: str
     uncategorised: str
+    # A transfer pair's label, filled with the two account names: a template rather
+    # than a fixed arrow so a translation can reorder or mirror it (FIBR-0391).
+    transfer_pair: str
 
 
 class Direction(StrEnum):

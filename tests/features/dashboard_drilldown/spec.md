@@ -44,7 +44,8 @@ Covers:
 - **D8 — empty states.** An income-only period → a zero Spending node (`count == 0`,
   no children) + a zero Transfers node; the three tops are always present.
 - **INV-9 — UI wiring (qtbot).** `refresh()` populates the drill-down surfaces with the
-  three branch labels and a `None`-node labelled the passed `uncategorised` (proving the
+  three branch labels, a `None`-node labelled the passed `uncategorised` and an
+  account-pair node built from the passed `transfer_pair` template (proving the
   service emits no untranslated string); a merchant node with `count > 1` shows `×N`
   while a category node stays bare; the tree is read-only; the getting-started page still
   wins on a zero-transaction vault. (FIBR-0143 split the single `dashboard_drilldown` into

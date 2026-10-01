@@ -46,6 +46,7 @@ _LABELS = DrillLabels(
     spending="Spending",
     transfers="Transfers",
     uncategorised="Uncategorised",
+    transfer_pair="{source} → {target}",
 )
 
 
@@ -632,13 +633,21 @@ def test_INV9_refresh_populates_tree_with_three_translated_tops(qtbot, service):
 def test_INV9_service_threads_passed_labels_not_hardcoded_english(service):
     """The i18n falsifier: a drill_down that ignored `labels` and hard-coded the
     English strings would pass every other test (they use the English defaults).
-    Sentinel labels prove the service actually threads the four passed strings —
-    the three top nodes AND the None-bucket node — so it emits no untranslated label."""
-    a, _b = _two_accounts(service)
+    Sentinel labels prove the service actually threads the five passed strings —
+    the three top nodes, the None-bucket node AND the transfer-pair template
+    (FIBR-0391) — so it emits no untranslated label."""
+    a, b = _two_accounts(service)
     _add(service, a, 100000, "2026-01-03")  # income, uncategorised
     _add(service, a, -20000, "2026-01-04")  # spending, uncategorised
+    debit = _add(service, a, -5000, "2026-01-10", "to savings")
+    credit = _add(service, b, 5000, "2026-01-10", "from current")
+    TransferDetectionService(service.vault).confirm(debit, credit)
     sentinels = DrillLabels(
-        income="INC~", spending="SPND~", transfers="XFER~", uncategorised="UNCAT~"
+        income="INC~",
+        spending="SPND~",
+        transfers="XFER~",
+        uncategorised="UNCAT~",
+        transfer_pair="PAIR~{target}<{source}",
     )
     income, spending, transfers = ReportingService(service.vault).drill_down(
         _JAN, None, _TODAY, labels=sentinels
@@ -647,6 +656,7 @@ def test_INV9_service_threads_passed_labels_not_hardcoded_english(service):
     assert _child(spending, "UNCAT~").amount == Decimal(
         "200.00"
     )  # None-bucket echoes it
+    assert [c.label for c in transfers.children] == ["PAIR~Savings<Default"]
 
 
 def test_INV9_single_transaction_merchant_shows_bare_label_no_count(qtbot, service):
@@ -724,4 +734,4 @@ def test_ripple_scrollarea_wrap_keeps_charts_and_tiles_resolvable(qtbot, service
 def test_ripple_drillnode_and_drilllabels_are_importable():
     """The new models exports don't disturb existing ones."""
     assert DrillNode(label="x", amount=Decimal("1"), count=1, children=()).count == 1
-    assert DrillLabels("i", "s", "t", "u").uncategorised == "u"
+    assert DrillLabels("i", "s", "t", "u", "p").uncategorised == "u"

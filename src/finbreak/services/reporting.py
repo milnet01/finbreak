@@ -359,6 +359,7 @@ class ReportingService:
                 end.isoformat(),
                 account_ids,
                 exponent,
+                labels,
             ),
         ]
 
@@ -506,6 +507,7 @@ class ReportingService:
         end_iso: str,
         account_ids: frozenset[int] | None,
         exponent: int,
+        labels: DrillLabels,
     ) -> DrillNode:
         """The Transfers subtree (FIBR-0138 D4b): confirmed transfers whose **debit**
         leg is in the period and whose scope matches (either leg's account, or all),
@@ -536,7 +538,7 @@ class ReportingService:
                 for t in transfers
             ]
             node = DrillNode(
-                f"{from_account} → {to_account}",
+                labels.transfer_pair.format(source=from_account, target=to_account),
                 sum((t.display_amount for t in transfers), zero),
                 len(transfers),
                 _sorted_nodes(moves),

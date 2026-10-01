@@ -433,6 +433,7 @@ class HomeView(QWidget):
             spending=self.tr("Spending"),
             transfers=self.tr("Transfers"),
             uncategorised=self.tr("Uncategorised"),
+            transfer_pair=self.tr("{source} → {target}"),
         )
         income, spending, transfers = self._reporting.drill_down(
             prefs, account_ids, today, labels=labels

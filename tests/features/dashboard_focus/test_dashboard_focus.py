@@ -253,6 +253,7 @@ def _labels():
         spending="Spending",
         transfers="Transfers",
         uncategorised="Uncategorised",
+        transfer_pair="{source} → {target}",
     )
 
 
