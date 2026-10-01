@@ -181,7 +181,14 @@ class BackupService:
         # to run against an open vault for the same reason (FIBR-0337 L6).
         # `resolve` because dest comes from a file picker: a symlink or a `..`
         # reaches the same file by another name.
-        live = (self._vault.vault_path, self._vault.sidecar_path)
+        # The WAL siblings too: the open connection owns them, and the rename
+        # would replace one under it just the same (FIBR-0404).
+        db = self._vault.vault_path
+        live = (
+            db,
+            self._vault.sidecar_path,
+            *(db.with_name(db.name + suffix) for suffix in _WAL_SIBLINGS),
+        )
         if any(dest.resolve() == path.resolve() for path in live):
             raise BackupDestinationError(
                 "a backup cannot be written over the vault itself"

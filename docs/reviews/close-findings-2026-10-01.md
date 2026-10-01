@@ -324,7 +324,7 @@ uniqueness key.
 | B2 export stages up to 512 MiB in the system temp dir | | | | FIBR-0014 INV-9 |
 | B3 disk-full while verify migrates its copy reads wrong_password | | | | FIBR-0014 verify outcomes |
 | B4 post-install temp cleanup inside the normalising try | | | | FIBR-0014 INV-4 |
-| B5 destination guard misses the WAL siblings | | | | FIBR-0014 |
+| B5 destination guard misses the WAL siblings | yes — `live` held only `vault.db` and the sidecar | fixed | + `vault.db-wal`, `vault.db-shm` via `_WAL_SIBLINGS`, the same `BackupDestinationError` (so B1's message covers them); red: an export to either was not refused; mutation: dropping the siblings reddens both | FIBR-0014 (agrees) |
 | B6 "{n} transactions." has no plural | | | | |
 | B7 FIBR-0014 says .old pruning is manual; code prunes (INV-17) | | | | FIBR-0014 INV-5, INV-17 |
 | B8 FIBR-0030 §3.2 says DELETE sits inside the tr() string | | | | FIBR-0030 §3.2 |

@@ -2036,6 +2036,25 @@ def test_export_refuses_a_destination_that_is_the_live_vault(tmp_path, target) -
     auth.lock()
 
 
+@pytest.mark.parametrize("suffix", ["-wal", "-shm"])
+def test_FIBR0404_export_refuses_the_live_vaults_wal_files(tmp_path, suffix) -> None:
+    """The live-vault guard compared only vault.db and its sidecar, so a
+    destination naming vault.db-wal or vault.db-shm - files the open connection
+    owns - was replaced by the final rename under that connection."""
+    from finbreak.errors import BackupDestinationError
+
+    auth = _seeded_auth((tmp_path / "vault.db", tmp_path / "vault.kdf.json"))
+    dest = tmp_path / f"vault.db{suffix}"
+    before = dest.read_bytes() if dest.exists() else None
+
+    with pytest.raises(BackupDestinationError):
+        BackupService(auth.vault, auth).export_backup(dest, _BACKUP_PW)
+
+    after = dest.read_bytes() if dest.exists() else None
+    assert after == before, f"the export replaced {dest.name}"
+    auth.lock()
+
+
 # --------------------------------------------------------------------------- #
 # INV-20 (FIBR-0302) — restore of a .fbk written by an OLDER RELEASE
 #
