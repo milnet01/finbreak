@@ -665,6 +665,23 @@ def test_verify_dialog_renders_success(qtbot):
     assert "accounts" in text, "other tables show as the raw table: count list"
 
 
+def test_FIBR0404_one_transaction_is_not_transactions(qtbot, translate_one):
+    """The count line was tr("{n} transactions."), which has no plural form, so
+    a backup holding one read "1 transactions.". A catalog can only fix that
+    for a %n string."""
+    from finbreak.ui.backup_verify import BackupVerifyDialog
+
+    translate_one("BackupVerifyDialog", "%n transaction(s).", "%n transaction.")
+    dialog = BackupVerifyDialog()
+    qtbot.addWidget(dialog)
+    dialog.show_result(
+        VerifyResult(
+            ok=True, schema_version=10, table_counts={"transactions": 1}, reason=None
+        )
+    )
+    assert "1 transaction." in dialog._result.text(), dialog._result.text()
+
+
 def test_verify_dialog_renders_failure(qtbot):
     from finbreak.ui.backup_verify import BackupVerifyDialog
 

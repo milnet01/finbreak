@@ -114,7 +114,8 @@ class BackupVerifyDialog(QDialog):
             )
         ]
         if "transactions" in counts:
-            lines.append(self.tr("{n} transactions.").format(n=counts["transactions"]))
+            # %n, so a translation can give one transaction its own form (FIBR-0404).
+            lines.append(self.tr("%n transaction(s).", "", counts["transactions"]))
         if counts:
             raw = ", ".join(f"{name}: {n}" for name, n in sorted(counts.items()))
             lines.append(raw)
