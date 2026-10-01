@@ -241,7 +241,8 @@ architecture-level view; `security-model.md` is authoritative, and every
 
 Errors surface to the user; nothing is silently swallowed (per coding
 standards). Import parse errors are shown per-row in the wizard preview *before*
-anything is written — the user sees "12 of 240 rows couldn't be parsed" and can
+anything is written — the user sees the preview's counts, e.g. "228 new · 0
+duplicate · 12 error", with the failed rows marked, and can
 proceed with the good rows or fix the mapping. Storage/crypto failures raise a
 clear dialog (e.g. "wrong password"). A wrong PDF password re-prompts rather
 than aborting the whole import.
