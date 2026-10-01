@@ -450,6 +450,39 @@ def test_amount_controls_preselect_current_prefs(qtbot, service):
     assert not colour.isChecked()
 
 
+def test_FIBR0395_a_storage_error_on_save_is_shown_not_raised(
+    qtbot, service, monkeypatch
+):
+    """A write that fails in SQLCipher (a full disk, an I/O error) escaped the
+    Save slot, which caught only VaultLockedError. It must be told to the user,
+    in translated words, with Settings left open to try again."""
+    from PySide6.QtWidgets import QMessageBox
+    from sqlcipher3.dbapi2 import OperationalError
+
+    from finbreak.ui.settings import SettingsDialog
+
+    dialog = SettingsDialog(service, "ZAR")
+    qtbot.addWidget(dialog)
+    saved: list[bool] = []
+    dialog.saved.connect(lambda: saved.append(True))
+    warned: list[str] = []
+    monkeypatch.setattr(
+        QMessageBox,
+        "warning",
+        staticmethod(lambda _parent, _title, text, *a, **k: warned.append(text)),
+    )
+
+    def _io_error(prefs):
+        raise OperationalError("RAW disk I/O error")
+
+    monkeypatch.setattr(dialog._service, "set_datetime_prefs", _io_error)
+    dialog._on_save()  # must not raise
+
+    assert saved == [], "saved is not emitted when the write failed"
+    assert len(warned) == 1 and "could not be saved" in warned[0]
+    assert "RAW" not in warned[0]
+
+
 def test_amount_controls_persist_on_save(qtbot, service):
     dialog = SettingsDialog(service, "ZAR")
     qtbot.addWidget(dialog)

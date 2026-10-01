@@ -40,6 +40,8 @@ signaling per
 
 ### Fixed
 
+- **If Settings can't be saved (for example on a full disk), finbreak now says so and keeps Settings open instead of crashing** (FIBR-0395)
+
 - **The vault-creation, recovery-code and new-password screens now explain problems in plain, translatable words instead of quoting technical error text** (FIBR-0395)
 
 - **When an update can't be installed, the message now says why in plain words (not enough disk space, or no permission to replace the file) instead of a raw technical error** (FIBR-0394)

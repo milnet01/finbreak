@@ -13,6 +13,8 @@ shell so an idle auto-lock closes it before the vault shuts (INV-7).
 
 from __future__ import annotations
 
+import logging
+
 from PySide6.QtCore import Qt, Signal, Slot
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -21,10 +23,12 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QFormLayout,
     QLabel,
+    QMessageBox,
     QPushButton,
     QVBoxLayout,
     QWidget,
 )
+from sqlcipher3.dbapi2 import DatabaseError
 
 from finbreak import paths
 from finbreak.datetime_format import system_timezone_id
@@ -45,6 +49,8 @@ from finbreak.ui._datetime_prefs import (
     system_time_sample_label,
 )
 from finbreak.ui._widgets import select_combo_data
+
+log = logging.getLogger(__name__)
 
 
 class SettingsDialog(QDialog):
@@ -336,5 +342,16 @@ class SettingsDialog(QDialog):
             # settings write then reads a locked vault. Return silently (the shell
             # tears the dialog down), matching every other handler instead of
             # crashing the slot. (indie-review UI-dialogs H1; FIBR-0083 D3)
+            return
+        except DatabaseError:
+            # A write SQLCipher refused — a full disk, an I/O error. It escaped
+            # this slot. Say so in translated words and stay open to retry; the
+            # raw text is English, so it goes to the log (FIBR-0395).
+            log.warning("saving settings failed", exc_info=True)
+            QMessageBox.warning(
+                self,
+                self.tr("Settings"),
+                self.tr("Your settings could not be saved. Please try again."),
+            )
             return
         self.saved.emit()
