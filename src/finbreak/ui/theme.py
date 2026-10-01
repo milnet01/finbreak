@@ -1,6 +1,6 @@
 """App-wide theme system — six finance themes + follow-system (FIBR-0127, ADR-0010).
 
-A theme is eight semantic colour **tokens** (+ an ``is_dark`` flag) that expand,
+A theme is a set of semantic colour **tokens** (+ an ``is_dark`` flag) that expand,
 with no per-theme hardcoding, into a full Qt ``QPalette`` (``build_palette``) **and**
 a polish stylesheet (``build_stylesheet`` — gradient/glow accents, grid
 row-highlighting). ``THEMES`` registers the six ids (three light, three dark).
