@@ -3004,7 +3004,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: security.
   Source: full-audit-2026-09-27 code lane 3 (queued by FIBR-0367).
 
-- 📋 [FIBR-0404] **Queued findings from the 2026-09-27 audit: backup lane (8 items).**
+- ✅ [FIBR-0404] **Queued findings from the 2026-09-27 audit: backup lane (8 items).**
   From docs/reviews/2026-09-27-full-audit/code-lane-04-backup.md.
   Line numbers are the audited commit's (52e5162); find sites by symbol.
   - [Medium] services/backup.py:181 -- picking the live vault as the
@@ -3035,6 +3035,15 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   - [Low] docs/specs/FIBR-0030.md section 3.2 -- still says DELETE sits
     inside the tr() string; the code interpolates it (FIBR-0216), which
     is right. Fix: amend the spec.
+  Resolved (2026-10-01): all eight fixed. B1 (737f5bc) saving over the
+  vault is its own error, not "too large". B5 (9ccf4ac) the guard
+  covers the WAL files. B2 (74a5a5d) export stages beside the
+  destination. B3 (4ed2168) verify reports a full disk as io_error.
+  B4 (bdbc1e9) a good restore is not failed by its tidy-up. B6
+  (9d9183f) the count has a plural. B7 (870adab) and B8 (7eacc1b)
+  amend FIBR-0014 and FIBR-0030 to the code. The sweep's leftovers
+  are FIBR-0436. Ledger: docs/reviews/close-findings-2026-10-01.md
+  section FIBR-0404.
   **Layman:** Eight smaller problems in backup and restore, mostly misleading error messages and two spec documents that no longer match the code.
   Kind: review-fix.
   Source: full-audit-2026-09-27 code lane 4 (queued by FIBR-0367).
@@ -3813,6 +3822,23 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   **Layman:** If you mistype a time zone, finbreak quietly uses your computer's zone instead of telling you; it should say so and let you fix it.
   Kind: review-fix.
   Source: full-audit-2026-09-27 code lane 18 U2, queued by FIBR-0398.
+
+- 📋 [FIBR-0436] **Backup leftovers: restore misreads a full disk, verify stages in /tmp, export's temp name can delete a user's file.**
+  Found by the FIBR-0404 sweep (2026-10-01); each is a class FIBR-0393
+  or FIBR-0404 fixed elsewhere.
+  - restore_backup normalises a full-disk OperationalError (SQLITE_FULL)
+    to BackupError, which the window words as "Check the file and the
+    backup password". Fix: _is_storage_error, as verify now does, and a
+    disk message.
+  - verify_backup stages its copy (up to the restore cap) in the system
+    temp dir, RAM on a tmpfs host. FIBR-0033 D6 specifies that, so moving
+    it is a spec amendment with its gate.
+  - export's temp zip is <dest>.tmp, and _write_fbk unlinks that path
+    before its O_EXCL open, so a user's own file of that name is deleted.
+    Fix: tempfile.mkstemp beside dest, as FIBR-0393 P3 did for the PDF.
+  **Layman:** Three small backup problems: a full disk during restore is blamed on the password, verifying a large backup uses memory, and a rarely-named file next to a backup could be deleted.
+  Kind: review-fix.
+  Source: close-findings FIBR-0404 sweep 2026-10-01.
 
 ## v1.1.0 — Localisation
 

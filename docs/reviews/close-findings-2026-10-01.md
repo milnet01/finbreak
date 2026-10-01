@@ -329,9 +329,22 @@ uniqueness key.
 | B7 FIBR-0014 says .old pruning is manual; code prunes (INV-17) | yes — INV-5 "always recoverable" and Out of scope "manual for now"; `_prune_superseded_old_copies` prunes (FIBR-0318, test contract INV-17) | fixed | INV-5 amended to the kept-set rule; the out-of-scope bullet removed; no red run: nothing observable changes | FIBR-0014 INV-5 (amended); backup test contract INV-17 (agrees) |
 | B8 FIBR-0030 §3.2 says DELETE sits inside the tr() string | yes — the spec's example keeps `DELETE` inside the `tr()` literal; the code interpolates `CONFIRM_WORD` (FIBR-0216), which a translator cannot change | fixed | §3.2 amended to the interpolated form and why; no red run: nothing observable changes | FIBR-0030 §3.2 (amended) |
 
-- **cited_by:**
-- **swept:**
-- **collateral:**
-- **surfaced:**
-- **out_of_scope:**
-- **falsified:**
+- **cited_by:** `BackupError` export handling, "vault itself",
+  `_WAL_SIBLINGS`, `TemporaryDirectory`, `wrong_password`, `io_error`,
+  "always recoverable", "manual for now", the DELETE prompt, across
+  docs, src and tests.
+- **swept:** FIBR-0014 INV-4 / INV-14 / INV-5 — agree (INV-5 amended, B7).
+  FIBR-0033 D7 io_error — agrees with B3. FIBR-0030 §3.2 — amended (B8).
+  The FIBR-0337 M4 crash test — repointed at `_assembly_dir` (B4), still
+  red without the prefix sweep. main_window's export handler comment —
+  updated with B1. docs/security-model.md — names neither staging place
+  nor the destination guard; agrees. No `.claude/code-pairs.json` exists.
+- **collateral:** B4's first test called `monkeypatch.undo()`, which the
+  suite's isolation guard forbids; caught by the pre-push gate, fixed in
+  the unpushed commit (`monkeypatch.context()`).
+- **surfaced:** none.
+- **out_of_scope:** queued as FIBR-0436 — restore still reads SQLITE_FULL
+  as a password problem; verify stages in the system temp dir (FIBR-0033
+  D6 specifies it, so a spec change); export's `<dest>.tmp` is unlinked
+  before its O_EXCL open (P3's class).
+- **falsified:** none.
