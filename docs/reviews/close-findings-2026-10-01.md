@@ -260,3 +260,22 @@ uniqueness key.
   `str(transaction_count)`, not a locale number — noted for FIBR-0434's
   i18n pass rather than fixed blind.
 - **falsified:** none.
+
+## FIBR-0397 — code lane 17, category views
+
+| finding | verified | disposition | was → now | must_agree |
+|---|---|---|---|---|
+| C1 recurring `refresh()` unguarded after a write | | | | rules.py guard (FIBR-0211) |
+| C2 categories `_refresh` / `_add_children` unguarded | | | | rules.py guard (FIBR-0211) |
+| C3 service exception text, type name included, in AutoText labels | | | | FIBR-0434; design.md § i18n |
+| C4 `setChart` may leak the old QChart | | | | |
+| C5 Level-2 subject with grandchildren: empty Move-under combo | | | | 2026-09-27 ledger row 17 |
+| C6 forecast sign by concatenation, ", " separator | | | | |
+| C7 alerts `_render` reparents a row mid-signal | | | | |
+
+- **cited_by:**
+- **swept:**
+- **collateral:**
+- **surfaced:**
+- **out_of_scope:**
+- **falsified:**
