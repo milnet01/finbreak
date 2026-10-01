@@ -6626,6 +6626,35 @@ work, and none of it is a release decision.
   Kind: doc-fix.
   Source: review-contract-2026-09-28 CLAUDE.md loop 11.
 
+- 📋 [FIBR-0439] **The real-account-number guard never reads commit messages or the pushed commits' history.**
+  test_no_real_data.py scans `git ls-files` at HEAD only. security.md
+  2.1 bars real data from a commit or a message too. Measured
+  2026-10-01 with the test's own `_leaks` over all 1562 commits:
+  messages clean; seven commit patches carry the July FIBR-0050 leak
+  (FIBR-0244, history kept by user decision 2026-08-06), nothing since.
+  Fix: have `.githooks/pre-push` run the same matcher over each pushed
+  range's messages and patches (`git log -p <range>`), reading
+  `.corpus-numbers`, reporting commit ids only, never values. Skip where
+  the file is absent, and say so.
+  **Layman:** The check that stops a real bank account number reaching the public repo looks only at the files as they are now, so a number typed into a commit message, or added and deleted again before a push, would still be published.
+  Kind: security.
+  Source: field-pass security.md 2.1 2026-10-01.
+  Lanes: harness.
+
+- 📋 [FIBR-0440] **ci.yml's paths-ignore skips the documentation checks on GitHub with no recorded reason.**
+  local-gate.md 9's paths-ignore row (a1fbd7c) now requires that what
+  the documentation mode checks still runs on GitHub, or the project
+  records why it need not. ci.yml ignores `**.md` on push and has no
+  docs job. Recommended: record the reason in ci.yml's comment -- every
+  push to main comes through `.githooks/pre-push`, which runs
+  `ci-local.sh --docs`; a pull request still runs everything; and
+  account_detect cannot run on GitHub at all. Alternative: a small docs
+  job running `ci-local.sh --docs`.
+  **Layman:** When only documents change, GitHub runs no checks at all; the rules now ask us either to run the document checks there too or to write down why we don't need to.
+  Kind: chore.
+  Source: field-pass local-gate.md 9 2026-10-01.
+  Lanes: harness.
+
 ## 0.1.23 — released 2026-09-07
 
 - ✅ [FIBR-0295] **`act` is installed but unconfigured, so cut-release's mandatory pipeline phase cannot run.**
