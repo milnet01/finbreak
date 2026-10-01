@@ -451,12 +451,19 @@ class TransactionsView(QWidget):
         txn = self._selected_txn()
         if txn is None:
             return
-        grouped = self._categorization.leaf_categories_grouped()
+        try:
+            grouped = self._categorization.leaf_categories_grouped()
+            parent_names = self._categorization.sub_category_parent_names()
+        except VaultLockedError:
+            # The right-click menu is a nested event loop, so the idle
+            # auto-lock can fire before this runs; return quietly, like the
+            # sibling handlers (FIBR-0396).
+            return
         dialog = CategoryPickerDialog(
             grouped,
             txn.category_id,
             self,
-            parent_names=self._categorization.sub_category_parent_names(),
+            parent_names=parent_names,
         )
         show_modal(dialog, lambda: self._apply_category(dialog, txn))
 

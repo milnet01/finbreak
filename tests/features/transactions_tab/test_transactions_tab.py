@@ -253,6 +253,26 @@ def test_INV8_set_category_catches_vault_locked(qtbot, service, monkeypatch):
     view._on_set_category()  # must not raise
 
 
+def test_FIBR0396_set_category_after_an_auto_lock_does_nothing(
+    qtbot, service, monkeypatch
+):
+    """The right-click menu runs a nested event loop, so the idle auto-lock can
+    fire while it is open. "Set category…" then read the categories from a
+    locked vault, and the exception escaped the slot; every sibling handler
+    returns quietly instead."""
+    import finbreak.ui.transactions as txn_mod
+
+    txn = _add_txn(service, "PICK N PAY")
+    view = _view(service)
+    qtbot.addWidget(view)
+    opened = stub_picker(monkeypatch, txn_mod, _leaf_id(service, "Groceries"))
+    view._select_txn(txn)
+    service.lock()  # the idle timer fired while the menu was open
+
+    view._on_set_category()  # must not raise
+    assert not opened, "no picker over a locked vault"
+
+
 def test_INV8_learning_path_refresh_catches_vault_locked(qtbot, service, monkeypatch):
     """The learn-a-rule accept slot (_apply_learned_rule) ends with refresh(); an
     auto-lock that fired while the offer was open makes that refresh read a locked
