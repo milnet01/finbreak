@@ -33,6 +33,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from finbreak.datetime_format import format_timestamp
 from finbreak.errors import (
     KdfPolicyError,
     RollbackAvailableError,
@@ -90,16 +91,34 @@ def _rollback_title() -> str:
     )
 
 
-def _rollback_offer() -> str:
+def _rollback_offer(taken_at: str | None) -> str:
+    """The copy can sit beside a working vault for weeks, so the offer says when
+    it was taken and that anything since is lost (FIBR-0019 INV-15). The date is
+    in the operating system's zone and format: the user's own display settings
+    are inside the vault, which is still locked."""
+    if taken_at is None:
+        return QCoreApplication.translate(
+            "UnlockDialog",
+            "finbreak could not open this vault, but it kept a copy of it from "
+            "before the last update finished — and your password opens that "
+            "copy.\n\n"
+            "Restore it? Your accounts and transactions come back as they were "
+            "when that copy was taken, and finbreak will ask for your password "
+            "again to open them. Anything you added or changed after that is "
+            "lost — a backup newer than the copy keeps it.\n\n"
+            "Nothing is deleted if you say No — you can do this next time instead.",
+        )
     return QCoreApplication.translate(
         "UnlockDialog",
         "finbreak could not open this vault, but it kept a copy of it from "
-        "before the last update finished — and your password opens that copy.\n\n"
-        "Restore it? Your accounts and transactions come back as they were "
-        "before the update, and finbreak will ask for your password again to "
-        "open them.\n\n"
+        "{date}, before the last update finished — and your password opens that "
+        "copy.\n\n"
+        "Restore it? Your accounts and transactions come back as they were on "
+        "{date}, and finbreak will ask for your password again to open them. "
+        "Anything you added or changed after that is lost — a backup newer than "
+        "that keeps it.\n\n"
         "Nothing is deleted if you say No — you can do this next time instead.",
-    )
+    ).format(date=format_timestamp(taken_at, "system", "system", "system"))
 
 
 def _migration_write_failed() -> str:
@@ -444,11 +463,11 @@ class UnlockDialog(QDialog):
         self._set_busy(False)
         try:
             unlocked = self._service.complete_unlock(raw)
-        except RollbackAvailableError:
+        except RollbackAvailableError as offer:
             # BEFORE the VaultStateError arm below, which is its base class:
             # this is the same broken pairing plus a pre-upgrade copy that
             # opens, and § 13.3 says the app offers it rather than hiding it.
-            self._offer_rollback()
+            self._offer_rollback(offer.taken_at)
             return
         except KdfPolicyError:
             # A failed key-envelope migration can leave the sidecar unreadable,
@@ -495,7 +514,7 @@ class UnlockDialog(QDialog):
         else:
             self._show_failure()
 
-    def _offer_rollback(self) -> None:
+    def _offer_rollback(self, taken_at: str | None) -> None:
         """§ 13.3's terminal branch, made offerable (FIBR-0307 finding 7).
 
         Reachable from the PASSWORD route only, and not by omission:
@@ -517,7 +536,7 @@ class UnlockDialog(QDialog):
         answer = QMessageBox.question(
             self,
             _rollback_title(),
-            _rollback_offer(),
+            _rollback_offer(taken_at),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.Yes,
         )

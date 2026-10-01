@@ -16,6 +16,7 @@ import os
 import shutil
 import stat
 from dataclasses import replace
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -741,6 +742,87 @@ def test_the_terminal_branch_offers_the_pre_upgrade_copy(
         "route that is not one (INV-13).\n"
         f"  expected: offered == {copy_state == 'intact'} for a {copy_state} copy\n"
         f"  actual:   {type(raised.value).__name__}"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0019 INV-15 -- the offer says when the copy was taken (FIBR-0423)
+# --------------------------------------------------------------------------- #
+_COPY_DB_TIME = 1_700_000_000  # 2023-11-14
+_COPY_SIDECAR_TIME = 1_600_000_000  # 2020-09-13 -- deliberately different
+
+
+def _rollback_offered(
+    tmp_path: Path, branch: str, monkeypatch: pytest.MonkeyPatch
+) -> RollbackAvailableError:
+    """Drive § 13.3's ladder to one of the three branches that make the offer.
+
+    The copy's two halves get different past file times BEFORE the ladder runs,
+    so a date read from the database half, the live vault or the clock cannot
+    pass for the sidecar half's.
+    """
+    if branch == "branch 1":
+        vault_path, sidecar_path, _key, _digests = _fresh_v1_vault(tmp_path, "b1")
+
+        def abort_before_s6(step: str) -> None:
+            if step == "S6":
+                raise _Abort("injected crash before S6")
+
+        with pytest.raises(_Abort):
+            migrate_to_v2(
+                vault_path, sidecar_path, bytearray(_key), on_step=abort_before_s6
+            )
+        monkeypatch.setattr(vault_migration, "_reads_end_to_end", lambda *a, **k: False)
+    elif branch == "branch 2":
+        vault_path, sidecar_path, _key, _digests = _stalled_before_s5_with_filler(
+            tmp_path, "b2"
+        )
+        real_counts = vault_migration._row_counts_or_none
+
+        def live_will_not_answer(
+            db_path: Path, key: bytearray, cipher_compat: int | None
+        ) -> dict[str, int] | None:
+            if db_path == vault_path:
+                return None
+            return real_counts(db_path, key, cipher_compat)
+
+        monkeypatch.setattr(
+            vault_migration, "_row_counts_or_none", live_will_not_answer
+        )
+    else:
+        vault_path, sidecar_path, _key, _digests = _every_route_exhausted(
+            tmp_path, "terminal"
+        )
+
+    copy_vault, copy_sidecar = rollback_copy_paths(vault_path, sidecar_path)
+    os.utime(copy_vault, (_COPY_DB_TIME, _COPY_DB_TIME))
+    os.utime(copy_sidecar, (_COPY_SIDECAR_TIME, _COPY_SIDECAR_TIME))
+
+    kek, dek = _credential_for(sidecar_path)
+    with pytest.raises(RollbackAvailableError) as raised:
+        vault_migration.resume(vault_path, sidecar_path, kek, dek)
+    return raised.value
+
+
+@pytest.mark.parametrize("branch", ["branch 1", "branch 2", "terminal"])
+def test_FIBR0423_rollback_offer_carries_when_the_copy_was_taken(
+    tmp_path: Path, branch: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """FIBR-0019 INV-15: every offer says how old the copy is.
+
+    The copy can sit beside a working vault for weeks (§ 13.3), and restoring
+    it drops everything recorded since. The date is the SIDECAR half's file
+    time: both writers create that file fresh, and only a JSON read opens it.
+    """
+    offer = _rollback_offered(tmp_path, branch, monkeypatch)
+
+    expected = datetime.fromtimestamp(_COPY_SIDECAR_TIME, UTC).isoformat()
+    taken_at = getattr(offer, "taken_at", "<no taken_at attribute>")
+    assert taken_at == expected, (
+        f"FIBR-0019 INV-15: the {branch} offer must carry the copy's sidecar "
+        "half's file time, or the user is offered a copy of unknown age.\n"
+        f"  expected: {expected}\n"
+        f"  actual:   {taken_at!r}"
     )
 
 

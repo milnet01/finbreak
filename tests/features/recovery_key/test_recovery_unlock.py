@@ -784,3 +784,56 @@ def test_FIBR0402_an_abandoned_migration_is_shown_after_unlock(
     assert len(warnings) == 1, warnings
     assert "free" in warnings[0] and "space" in warnings[0], warnings[0]
     service.lock()
+
+
+@pytest.mark.parametrize("dated", [True, False])
+def test_FIBR0423_offer_names_the_date_and_the_loss(
+    qtbot: Any, service: AuthService, monkeypatch: pytest.MonkeyPatch, dated: bool
+) -> None:
+    """FIBR-0019 INV-15: the rollback offer says when the copy was taken, and
+    that anything added or changed since is lost.
+
+    The copy can sit beside a working vault for weeks, so an undated offer
+    reads as "your vault, as it was a moment ago" and a user restores it over
+    everything recorded since. With no date to show, the loss sentence stays.
+    """
+    import finbreak.ui.unlock as unlock_mod
+    from finbreak.datetime_format import format_timestamp
+    from finbreak.errors import RollbackAvailableError
+
+    taken_at = "2023-11-14T22:13:20+00:00" if dated else None
+    shown_date = format_timestamp(
+        "2023-11-14T22:13:20+00:00", "system", "system", "system"
+    )
+
+    def offer(_raw: bytes) -> None:
+        raise RollbackAvailableError("stalled migration", taken_at=taken_at)
+
+    asked: list[str] = []
+
+    def answer_no(_parent: Any, _title: str, text: str, *_a: Any, **_k: Any) -> Any:
+        asked.append(text)
+        return unlock_mod.QMessageBox.StandardButton.No
+
+    monkeypatch.setattr(service, "complete_unlock", offer)
+    monkeypatch.setattr(unlock_mod.QMessageBox, "question", answer_no)
+
+    dialog = _dialog(qtbot, service)
+    dialog._on_derived(b"derived")
+
+    assert len(asked) == 1, f"precondition: the offer is made once; asked {asked}"
+    text = asked[0]
+    assert "lost" in text, (
+        "FIBR-0019 INV-15: the offer must say that anything added or changed "
+        "after the copy was taken is lost.\n"
+        f"  actual: {text!r}"
+    )
+    if dated:
+        assert shown_date in text, (
+            "FIBR-0019 INV-15: the offer must show when the copy was taken, in "
+            "the operating system's zone and format.\n"
+            f"  expected to contain: {shown_date!r}\n"
+            f"  actual: {text!r}"
+        )
+    else:
+        assert shown_date not in text and "None" not in text, text

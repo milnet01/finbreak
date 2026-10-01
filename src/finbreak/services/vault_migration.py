@@ -20,6 +20,7 @@ import secrets
 import shutil
 from collections.abc import Callable, Mapping
 from dataclasses import replace
+from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
 
@@ -707,11 +708,11 @@ def migration_artefacts(vault_path: Path, sidecar_path: Path) -> list[Path]:
 def rollback_copy_paths(vault_path: Path, sidecar_path: Path) -> tuple[Path, Path]:
     """Where D8's pre-upgrade pair sits, as a PAIR.
 
-    Both callers are in this module and each needs both paths at once:
-    :func:`rollback_copy_is_usable` verifies them together, and
-    :func:`restore_rollback_copy` moves them in a fixed order. So this is the
-    one place the two suffixes are derived side by side, and the ordering of
-    the returned tuple is part of it.
+    Every caller is in this module: :func:`rollback_copy_is_usable` verifies
+    the pair together, :func:`restore_rollback_copy` moves it in a fixed order,
+    and :func:`rollback_copy_taken_at` reads the sidecar half's file time. So
+    this is the one place the two suffixes are derived side by side, and the
+    ordering of the returned tuple is part of it.
 
     It said "the UI's offer needs to name it", and the offer shipped naming no
     path — ``ui/unlock.py``'s ``_rollback_offer`` describes the copy in words
@@ -742,6 +743,23 @@ def rollback_copy_is_usable(
         log.info("no usable pre-upgrade copy beside the vault: %s", exc)
         return False
     return True
+
+
+def rollback_copy_taken_at(vault_path: Path, sidecar_path: Path) -> str | None:
+    """When D8's pre-upgrade pair was taken, as an ISO UTC string — or ``None``.
+
+    The copy can sit beside a working vault for weeks, so the offer says how old
+    it is (FIBR-0019 INV-15). The SIDECAR half's file time, not the database's:
+    both writers of the pair create that file fresh — S0's byte copy and branch
+    3's rebuilt sidecar — and only a JSON read ever opens it, where verifying the
+    database half folds a carried ``-wal`` into it.
+    """
+    _copy_vault, copy_sidecar = rollback_copy_paths(vault_path, sidecar_path)
+    try:
+        mtime = copy_sidecar.stat().st_mtime
+    except OSError:
+        return None
+    return datetime.fromtimestamp(mtime, UTC).isoformat()
 
 
 def restore_rollback_copy(vault_path: Path, sidecar_path: Path) -> None:
@@ -872,7 +890,8 @@ def _finish_if_readable(
         if rollback_copy_is_usable(vault_path, sidecar_path, kek_master):
             raise RollbackAvailableError(
                 "the vault opens but does not read end to end, and a copy "
-                "taken before the upgrade is beside it"
+                "taken before the upgrade is beside it",
+                taken_at=rollback_copy_taken_at(vault_path, sidecar_path),
             )
         return
     _finish_quietly(sidecar_path, sidecar, vault_path)
@@ -976,7 +995,8 @@ def resume(
                 raise RollbackAvailableError(
                     "the migrated vault is complete but the vault it would "
                     "replace cannot be read, and a copy taken before the "
-                    "upgrade is beside them"
+                    "upgrade is beside them",
+                    taken_at=rollback_copy_taken_at(vault_path, sidecar_path),
                 )
             raise VaultStateError(
                 "the migrated vault is complete but the vault it would replace "
@@ -1021,7 +1041,8 @@ def resume(
     if rollback_copy_is_usable(vault_path, sidecar_path, kek_master):
         raise RollbackAvailableError(
             "the vault and its key record disagree, and a copy taken before "
-            "the upgrade is beside them"
+            "the upgrade is beside them",
+            taken_at=rollback_copy_taken_at(vault_path, sidecar_path),
         )
     raise VaultStateError(
         "the vault and its key record disagree: no database this sidecar names "

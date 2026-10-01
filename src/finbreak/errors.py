@@ -61,7 +61,15 @@ class RollbackAvailableError(VaultStateError):
     already fails closed on it with § 6's broken-pairing message, which is the
     correct fallback; a caller that can actually make the offer catches this one
     FIRST (FIBR-0019 § 13.3, FIBR-0307 finding 7).
+
+    ``taken_at`` is when the copy was taken, as an ISO UTC string, or ``None``
+    where its file time could not be read. The copy can sit beside a working
+    vault for weeks, so the offer has to say how old it is (FIBR-0019 INV-15).
     """
+
+    def __init__(self, message: str, *, taken_at: str | None = None) -> None:
+        super().__init__(message)
+        self.taken_at = taken_at
 
 
 class VaultLockedError(FinbreakError):

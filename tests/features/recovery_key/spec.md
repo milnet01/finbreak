@@ -551,6 +551,20 @@ every credential, account and transaction here is synthetic
   the mode leg over an existing 0644 file.
   Source: full-audit-2026-09-27, code lane 15 (FIBR-0367 row 35).
 
+- **INV-29** — The rollback offer says when the copy was taken, and that
+  anything added or changed since is lost. `RollbackAvailableError.taken_at`
+  is the copy's sidecar half's file time as an ISO UTC string, set at every
+  site that raises the error, or `None` where it cannot be read; the offer
+  shows it in the operating system's zone and format, and keeps the loss
+  sentence when there is no date.
+  *Test:* `test_migration.py::test_FIBR0423_rollback_offer_carries_when_the_copy_was_taken`
+  — over branch 1, branch 2's cannot-compare refusal and the terminal branch,
+  with the copy's two halves at different past file times, `taken_at` is the
+  sidecar half's. `test_recovery_unlock.py::test_FIBR0423_offer_names_the_date_and_the_loss`
+  — the question holds `format_timestamp(<instant>, "system", "system",
+  "system")` and the loss sentence; undated, the loss sentence and no date.
+  Source: FIBR-0019 INV-15 (FIBR-0423).
+
 ## Rationale
 
 `AuthService.reset_vault` — "start over" — is the live answer to *I forgot my
@@ -587,6 +601,7 @@ discovering them:
 | `services/vault_migration.py` | new module | § 13 names no module for S0..S6. `write_rollback_copy` / `verify_rollback_copy` are separate so INV-13 can break each half; `on_step(step)` fires immediately **before** each step so INV-7 can abort at a known point. |
 | `UnlockDialog._recovery_code`, `._on_recovery_unlock()`, `.recovery_unlocked` | `ui/unlock.py` | § 4.6 fixes the route's behaviour, not its attribute names. `recovery_unlocked` must be distinct from `unlocked` so the shell can route to the forced new-password step (D6). |
 | `_password_hint.validate_hint_with_recovery(hint, password)` | `ui/_password_hint.py` | § 11 says that module gains INV-11's trial-unwrap; it does not name the function. |
+| `RollbackAvailableError(message, *, taken_at)`, `UnlockDialog._on_derived(raw)` | `errors.py`, `ui/unlock.py` | INV-29's offer test raises the error from `complete_unlock` and drives the slot that catches it; design INV-15 names the field, not how it is passed or which slot shows the offer. |
 
 `require_seam` in `_recovery_helpers.py` reports a miss as *seam absent*, naming
 the attribute and what it is for, so a rename never reads as a behaviour failure.
