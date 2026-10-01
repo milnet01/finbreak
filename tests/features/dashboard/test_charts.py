@@ -175,3 +175,38 @@ def test_FIBR0393_value_axes_use_the_locales_numbers(qapp):
         build_forecast_chart(points, _THEME, 2),
     ):
         assert chart.localizeNumbers() is True
+
+
+def _legend_text_widths(qtbot, chart):
+    """The drawn widths of the chart's rich-text items (legend and slice labels).
+    Qt gives back no text for them, so the width is what shows how a label was
+    drawn: markup is honoured if ``<b>x</b>`` draws as narrow as ``x``."""
+    from PySide6.QtCharts import QChartView
+
+    view = QChartView(chart)
+    qtbot.addWidget(view)
+    view.resize(500, 400)
+    view.show()
+    qtbot.waitExposed(view)
+    rich_text = 8  # QGraphicsTextItem::Type
+    return [
+        i.boundingRect().width() for i in view.scene().items() if i.type() == rich_text
+    ]
+
+
+@pytest.mark.parametrize("builder", ["donut", "breakdown"])
+def test_FIBR0393_a_category_name_is_shown_as_text_not_markup(qtbot, builder):
+    """A category is user data, and QtCharts draws slice and legend labels as rich
+    text: a name holding markup was interpreted (``<b>x</b>`` drew as a bold "x").
+    It must be shown as the characters the user typed."""
+    from finbreak.ui.charts import build_breakdown_donut
+
+    def chart(name):
+        if builder == "donut":
+            spend = [CategorySpend(category_id=1, name=name, amount=Decimal(5))]
+            return build_donut_chart(spend, "Uncategorised", "Other", _THEME)
+        return build_breakdown_donut([(name, Decimal(5))], "Other", _THEME)
+
+    plain = max(_legend_text_widths(qtbot, chart("x")))
+    marked_up = max(_legend_text_widths(qtbot, chart("<b>x</b>")))
+    assert marked_up > 4 * plain, "the <b>…</b> was rendered, not shown"

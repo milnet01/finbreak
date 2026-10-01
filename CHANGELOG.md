@@ -40,6 +40,8 @@ signaling per
 
 ### Fixed
 
+- **A category name containing characters like < or & is shown exactly as typed in the dashboard and PDF pie charts, never read as formatting** (FIBR-0393)
+
 - **Years in the PDF report and the month summary, and the numbers on chart axes, now use your language's own digits and separators** (FIBR-0393)
 
 - **The Export report window no longer shows empty "Month" and "Year" labels when the chosen period does not use them** (FIBR-0393)

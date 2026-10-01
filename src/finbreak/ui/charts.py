@@ -22,6 +22,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal
+from html import escape
 
 from PySide6.QtCharts import (
     QBarCategoryAxis,
@@ -127,8 +128,10 @@ def build_donut_chart(
     non-zero hole. Themed legend/title text (INV-8/INV-9)."""
     series = QPieSeries()
     series.setHoleSize(0.4)  # a non-zero hole makes it a donut
+    # QtCharts draws slice and legend labels as rich text, and a category name is
+    # user data: escape it so it shows as typed, never as markup (FIBR-0393).
     for label, amount, colour in _donut_wedges(spending, uncat_label, other_label):
-        slice_ = series.append(label, float(amount))
+        slice_ = series.append(escape(label), float(amount))
         slice_.setColor(colour)
     return _themed_chart(series, theme)
 
@@ -152,11 +155,11 @@ def build_breakdown_donut(
         keep, tail = slices[: _MAX_WEDGES - 1], slices[_MAX_WEDGES - 1 :]
     series = QPieSeries()
     series.setHoleSize(0.4)  # a non-zero hole makes it a donut
-    for i, (label, amount) in enumerate(keep):
-        series.append(label, float(amount)).setColor(_DONUT_PALETTE[i])
+    for i, (label, amount) in enumerate(keep):  # escaped: see build_donut_chart
+        series.append(escape(label), float(amount)).setColor(_DONUT_PALETTE[i])
     if tail:
         other_amount = sum((amount for _, amount in tail), Decimal(0))
-        series.append(other_label, float(other_amount)).setColor(_OTHER_COLOUR)
+        series.append(escape(other_label), float(other_amount)).setColor(_OTHER_COLOUR)
     return _themed_chart(series, theme)
 
 
