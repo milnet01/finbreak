@@ -22,6 +22,7 @@ from __future__ import annotations
 from PySide6.QtCore import QLocale, Qt
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
+from finbreak.datetime_format import format_year
 from finbreak.models import MonthCause, MonthSummary, MonthVerdict
 from finbreak.services.transactions import to_display_decimal
 from finbreak.ui._amount import _format_amount
@@ -105,7 +106,9 @@ class MonthSummaryStrip(QWidget):
         year, month = summary.month.split("-")
         name = QLocale().standaloneMonthName(int(month))
         if summary.show_year:
-            return self.tr("{month_name} {year}").format(month_name=name, year=year)
+            return self.tr("{month_name} {year}").format(
+                month_name=name, year=format_year(int(year))
+            )
         return self.tr("{month_name}").format(month_name=name)
 
     def _verdict_text(self, summary: MonthSummary, symbol: str) -> str:

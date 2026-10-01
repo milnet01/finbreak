@@ -24,6 +24,7 @@ from finbreak.services.auth import AuthService
 from finbreak.services.pdf_export import ExportOptions, PdfExportService
 from finbreak.services.reporting import (
     MODE_SPECIFIC_MONTH,
+    MODE_SPECIFIC_YEAR,
     ReportingService,
     ReportPrefs,
 )
@@ -494,7 +495,7 @@ def test_stale_account_id_drops_out_no_crash(qapp, service):
 
 def test_period_filename_slug_per_mode():
     from finbreak.services.pdf_export import period_filename_slug
-    from finbreak.services.reporting import MODE_SPECIFIC_YEAR, MODE_YEAR_TO_DATE
+    from finbreak.services.reporting import MODE_YEAR_TO_DATE
 
     today = date(2026, 7, 13)
     month = ReportPrefs(MODE_SPECIFIC_MONTH, year=2026, month=6)
@@ -606,6 +607,28 @@ def test_FIBR0327_period_month_name_follows_the_locale(qapp, service, monkeypatc
         "calendar.month_name."
     )
     assert "January 2026" not in html
+
+
+@pytest.mark.parametrize(
+    ("prefs", "expected"),
+    [
+        (ReportPrefs(MODE_SPECIFIC_YEAR, year=2026), "٢٠٢٦"),
+        (_JAN, "يناير ٢٠٢٦"),
+    ],
+)
+def test_FIBR0393_the_year_uses_the_locales_digits(qapp, service, prefs, expected):
+    """The month name comes from QLocale, so its year must too: "يناير 2026"
+    mixes the locale's month with Western digits. And no group separator — a
+    year is not a quantity ("2,026")."""
+    from PySide6.QtCore import QLocale
+
+    previous = QLocale()
+    QLocale.setDefault(QLocale("ar_EG"))
+    try:
+        label = _svc(service)._period_label(_options(prefs=prefs), _TODAY)
+    finally:
+        QLocale.setDefault(previous)
+    assert label == expected
 
 
 def _pdf_text(pdf: bytes) -> str:

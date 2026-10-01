@@ -252,6 +252,18 @@ def test_INV14a_month_form_with_year(qtbot) -> None:
     assert f"{_JUNE} 2026" in text
 
 
+def test_FIBR0393_the_strips_year_uses_the_locales_digits(qtbot) -> None:
+    """The month name is the locale's, so the year beside it must be too."""
+    previous = QLocale()
+    QLocale.setDefault(QLocale("ar_EG"))
+    try:
+        text = _render(qtbot, _summary(show_year=True))
+    finally:
+        QLocale.setDefault(previous)
+    assert "٢٠٢٦" in text
+    assert "2026" not in text
+
+
 def test_INV14a_only_slot_one_carries_the_literal_so_far_prefix(qtbot) -> None:
     """Slots 2 and 3 mark themselves provisional by TENSE, because all three
     render into one joined sentence and three "So far,"s in a row is not prose

@@ -27,7 +27,7 @@ from PySide6.QtCharts import QChart, QChartView
 from PySide6.QtCore import QBuffer, QCoreApplication, QIODevice, QLocale, QUrl
 from PySide6.QtGui import QColor, QImage, QPageSize, QPdfWriter, QTextDocument
 
-from finbreak.datetime_format import format_date
+from finbreak.datetime_format import format_date, format_year
 from finbreak.models import Account, Summary
 from finbreak.repositories.settings import SettingsRepository
 from finbreak.services.accounts import AccountService
@@ -264,7 +264,7 @@ class PdfExportService:
         prefs = options.prefs
         start, end = resolve_period(prefs, today)
         if prefs.mode == MODE_SPECIFIC_YEAR:
-            return str(end.year)
+            return format_year(end.year)
         if prefs.mode == MODE_YEAR_TO_DATE:
             pref = self._date_pref()
             return _tr("Year to date ({start} – {end})").format(
@@ -277,7 +277,8 @@ class PdfExportService:
         # month/year order is what some locales reorder (coding.md 5.2). Same
         # spelling as ui/month_summary.py (FIBR-0327).
         month = _tr("{month_name} {year}").format(
-            month_name=QLocale().standaloneMonthName(end.month), year=end.year
+            month_name=QLocale().standaloneMonthName(end.month),
+            year=format_year(end.year),
         )
         if prefs.mode == MODE_CURRENT_MONTH:
             return _tr("This month ({label})").format(label=month)

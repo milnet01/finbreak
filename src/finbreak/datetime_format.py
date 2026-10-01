@@ -120,6 +120,15 @@ def _fmt_time_part(qtime: QTime, time_pref: str) -> str:
     return QLocale.system().toString(qtime, _SHORT)
 
 
+def format_year(year: int) -> str:
+    """A year in the default locale's own digits, beside a ``QLocale`` month name
+    (coding.md § 5.2). No group separator: a year is a label, not a quantity, so
+    2026 must not print as "2,026" (FIBR-0393)."""
+    locale = QLocale()
+    locale.setNumberOptions(QLocale.NumberOption.OmitGroupSeparator)
+    return locale.toString(year)
+
+
 def format_date(iso: str, date_pref: str) -> str:
     """Reformat a stored ISO calendar date. Unparseable → ``iso`` unchanged."""
     qdate = QDate.fromString(iso, Qt.DateFormat.ISODate)

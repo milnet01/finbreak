@@ -211,6 +211,7 @@ def build_forecast_chart(
     axis_y.setLabelsColor(theme.text)
     chart.addAxis(axis_y, Qt.AlignmentFlag.AlignLeft)
     series.attachAxis(axis_y)
+    chart.setLocalizeNumbers(True)  # the locale's digits and separator (FIBR-0393)
     return chart
 
 
@@ -248,4 +249,5 @@ def build_trend_chart(
     axis_y.setLabelsColor(theme.text)
     chart.addAxis(axis_y, Qt.AlignmentFlag.AlignLeft)
     series.attachAxis(axis_y)
+    chart.setLocalizeNumbers(True)  # the locale's digits and separator (FIBR-0393)
     return chart

@@ -156,3 +156,22 @@ def test_build_trend_chart_themes_both_axis_labels(qapp):
     chart = build_trend_chart(trend, "Income", "Spending", _THEME)
     for axis in chart.axes():
         assert axis.labelsColor() == _THEME.text, f"{type(axis).__name__} unthemed"
+
+
+def test_FIBR0393_value_axes_use_the_locales_numbers(qapp):
+    """coding.md § 5.2: numbers go through the locale. A value axis left on
+    QChart's default draws C-locale numbers — a "." decimal separator and Western
+    digits — on screen and in the PDF trend chart, whatever the user's language.
+    Qt exposes no axis label text to read back, so the switch is asserted."""
+    from datetime import date
+
+    from finbreak.models import ForecastPoint
+    from finbreak.ui.charts import build_forecast_chart
+
+    trend = [MonthlyTotal(label="2026-01", income=Decimal(10), expenditure=Decimal(4))]
+    points = [ForecastPoint(on=date(2026, 3, 1), balance_minor=860000)]
+    for chart in (
+        build_trend_chart(trend, "Income", "Spending", _THEME),
+        build_forecast_chart(points, _THEME, 2),
+    ):
+        assert chart.localizeNumbers() is True
