@@ -2702,7 +2702,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: review-fix.
   Source: full-audit-2026-09-27 code lane 16 (queued by FIBR-0367).
 
-- 📋 [FIBR-0397] **Queued findings from the 2026-09-27 audit: category views lane (7 items).**
+- ✅ [FIBR-0397] **Queued findings from the 2026-09-27 audit: category views lane (7 items).**
   From docs/reviews/2026-09-27-full-audit/code-lane-17-category-views.md.
   Line numbers are the audited commit's (52e5162); find sites by symbol.
   - [Medium] ui/recurring.py:145 -- refresh() has no VaultLockedError
@@ -2731,6 +2731,16 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   - [Info] ui/alerts_dialog.py:97 -- _render reparents the row holding
     the button whose clicked signal is still being delivered; probably
     safe. Fix: use deleteLater() to remove the question.
+  Resolved (2026-10-01): four fixed, three dismissed. C3 (232a430) a
+  refusal quoting a category name shows it as typed; its translation
+  half is on FIBR-0434. C4 (23e7026) a refreshed chart frees the one
+  it replaces. C6 (79e1364) the Forecast sign, name lists and sentences
+  are templates. C7 (d67eb95) dismissing an alert no longer frees its
+  button mid-click. C1 and C2 dismissed, measured: the auto-lock is a
+  Qt timer and cannot fire between a write and its re-read. C5
+  dismissed: covered by 2026-09-27 row 17, now tested at Level 2
+  (6f4f91f). Ledger: docs/reviews/close-findings-2026-10-01.md section
+  FIBR-0397.
   **Layman:** Seven fixes in the categories, recurring and forecast screens: two screens can crash if the app auto-locks at the wrong moment, error messages are English-only, a possible memory leak in charts, and a rename that may be blocked.
   Kind: review-fix.
   Source: full-audit-2026-09-27 code lane 17 (queued by FIBR-0367).

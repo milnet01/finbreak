@@ -273,9 +273,19 @@ uniqueness key.
 | C6 forecast sign by concatenation, ", " separator | yes — `"+" + amount`, four `", ".join` name lists, and the two exclusion sentences and the later-transactions clause appended with `" " +` (the cited lines) | fixed | → `tr("+{amount}")`, `_join_names` (a translated separator), `_then` (`tr("{text} {more}")`); English output unchanged; red: the reordered sign and the separator/sentence templates were ignored; mutations: each of the three reddens a test | FIBR-0171 D9 (`+R X` in English; agrees) |
 | C7 alerts `_render` reparents a row mid-signal | yes, measured — the audit said "probably safe"; the clicked Dismiss button was already destroyed when its own `click()` returned (`setParent(None)` left Python the only owner) | fixed | freed inside its own signal → `deleteLater()` after the detach, freed from the event loop; a held reference was tried and removed as dead (PySide's `deleteLater` hands ownership back to Qt; its mutation survived); red: the button was invalid when `click()` returned; mutation: dropping `deleteLater` reddens it | |
 
-- **cited_by:**
-- **swept:**
-- **collateral:**
-- **surfaced:**
-- **out_of_scope:**
-- **falsified:**
+- **cited_by:** `setChart`, `setParent(None)`, "later transaction(s)",
+  "Excluded (no recorded balance yet)", "a category named", "Rebuilt rather
+  than refreshed" across specs, design, the three suites' contracts and
+  src. "only)" matched noise across the specs and owes no verdict.
+- **swept:** every `setChart` now goes through `charts.replace_chart` —
+  agrees. main_window's `worker.setParent(None)` — agrees (deliberate:
+  workers outlive the window on a Python reference, FIBR-0327). FIBR-0171's
+  "+ N later transaction(s)" example — agrees (English output unchanged).
+  FIBR-0032's `clipboard.setParent(self)` — agrees (a different object).
+  rules.py's FIBR-0211 refresh guard — rests on the reasoning C1/C2's
+  measurement refutes; harmless, left. No `.claude/code-pairs.json`
+  exists.
+- **collateral:** none.
+- **surfaced:** none.
+- **out_of_scope:** none new; the translation half of C3 is on FIBR-0434.
+- **falsified:** none.
