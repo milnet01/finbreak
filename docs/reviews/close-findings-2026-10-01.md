@@ -238,9 +238,25 @@ uniqueness key.
 | D3 service error text shown via str(exc) | yes — manual_entry and three accounts handlers render `str(exc)` from Qt-free services; FIBR-0219 §4.1 relies on it, design.md § i18n forbids it | queued as FIBR-0434 | needs a decision, not an edit: typed rejections across three services (one message embeds two values) plus a FIBR-0219 amendment; recommended alongside FIBR-0017, since finbreak ships English only and no user sees it before then | FIBR-0219 §4.1; design.md § i18n |
 | D4 `_on_set_category` has no VaultLockedError guard | yes — two category reads before the picker, unguarded; reached from `menu.exec`, a nested loop the auto-lock can fire in | fixed | unguarded → returns quietly on `VaultLockedError`, no picker; red: the lock error escaped the slot; mutation: dropping the guard reddens it | |
 
-- **cited_by:**
-- **swept:**
-- **collateral:**
-- **surfaced:**
-- **out_of_scope:**
-- **falsified:**
+- **cited_by:** "From → To", `_ARROW`, "suggestion(s) were skipped",
+  "balances reconcile · ", `leaf_categories_grouped`, `_on_set_category`
+  across specs, design, tests and src.
+- **swept:** FIBR-0011 and tests/features/transfers/spec.md ("From → To
+  reads debit-account → credit-account") — agree (English output
+  unchanged). FIBR-0201 §4.8 (the second, translated sentence) — agrees.
+  The accounts status test's exact English cell — agrees (still passes).
+  FIBR-0065 / 0012 / 0032 / 0123 / 0154 on `_on_set_category` — agree
+  (describe the picker flow, not a lock rule). ui/rules.py `_on_add`
+  carries the same guard (FIBR-0211) — agrees; D4 now matches it. Audit
+  reports quoting old code — frozen. No `.claude/code-pairs.json` exists.
+- **collateral:** the first `translate_one` returned "" for unmatched
+  strings, which Qt takes as a translation and blanks other labels; caught
+  before commit (the accounts test saw an empty cell) and fixed to return
+  None.
+- **surfaced:** none.
+- **out_of_scope:** tests/features/recovery_key/test_recovery_code.py's
+  local `_Catalog` returns "" the same way; harmless there (the test reads
+  only its one string), left. The Statements count column prints
+  `str(transaction_count)`, not a locale number — noted for FIBR-0434's
+  i18n pass rather than fixed blind.
+- **falsified:** none.

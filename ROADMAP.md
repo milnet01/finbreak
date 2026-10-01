@@ -2672,7 +2672,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: review-fix.
   Source: full-audit-2026-09-27 code lane 15 (queued by FIBR-0367).
 
-- 📋 [FIBR-0396] **Queued findings from the 2026-09-27 audit: data views lane (4 items).**
+- ✅ [FIBR-0396] **Queued findings from the 2026-09-27 audit: data views lane (4 items).**
   From docs/reviews/2026-09-27-full-audit/code-lane-16-data-views.md.
   Line numbers are the audited commit's (52e5162); find sites by symbol.
   - [Low] ui/transfers.py:51,172 -- the transfer cell arrow is a
@@ -2692,6 +2692,12 @@ touches the § 2 surface. A security fix takes the number its change takes — �
     categories with no VaultLockedError guard, unlike its lock-safe menu
     siblings (not executed). Fix: wrap it in try/except
     VaultLockedError: return.
+  Resolved (2026-10-01): three fixed, one queued. D1 (279c6ad) the
+  Transfers From -> To cell is a tr() template. D2 (82165cf) three
+  glued display strings are each one template. D4 (6e0ff9f) Set
+  category after an auto-lock returns quietly. D3 queued as FIBR-0434:
+  typed service rejections, best done with FIBR-0017. Ledger:
+  docs/reviews/close-findings-2026-10-01.md section FIBR-0396.
   **Layman:** Four small fixes in the account and transaction screens: text built in ways that won't translate or display right-to-left, English-only error messages, and one menu action that could crash right after an auto-lock.
   Kind: review-fix.
   Source: full-audit-2026-09-27 code lane 16 (queued by FIBR-0367).
@@ -3760,6 +3766,9 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   then amend FIBR-0219 4.1. Do it with FIBR-0017 (multi-language UI):
   finbreak ships English only, so no user sees untranslated text before
   then. Not fixed now because it needs that decision, not an edit.
+  Also for this pass (FIBR-0396 sweep, 2026-10-01): the Statements
+  tab's transaction-count column prints str(transaction_count), not a
+  QLocale number, so it shows Western digits under every locale.
   **Layman:** Some error messages when adding a transaction or editing an account can't be translated yet; it only matters once finbreak offers other languages.
   Kind: review-fix.
   Source: full-audit-2026-09-27 code lane 16 D3, queued by FIBR-0396.
