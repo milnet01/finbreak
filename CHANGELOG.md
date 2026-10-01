@@ -40,6 +40,8 @@ signaling per
 
 ### Fixed
 
+- **Choosing the vault file itself as a backup's destination now says so, instead of claiming the vault is too large to back up** (FIBR-0404)
+
 - **In languages with their own digits, such as Arabic or Persian, amounts now show the cents in those digits too instead of mixing in Western digits** (FIBR-0398)
 
 - **The dashboard and Forecast tab no longer keep each old chart in memory every time they refresh** (FIBR-0397)

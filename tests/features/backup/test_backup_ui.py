@@ -505,6 +505,43 @@ def test_FIBR0394_an_auto_lock_inside_the_save_picker_ends_the_backup(
     assert isinstance(window._dialog, UnlockDialog)
 
 
+def test_FIBR0404_saving_over_the_vault_is_not_called_too_large(
+    qtbot, paths, monkeypatch
+):
+    """Picking the live vault file as the backup's destination is refused, but
+    the window showed the one export BackupError message it knew: "this vault is
+    too large to back up". The user is owed the real reason."""
+    from PySide6.QtWidgets import QFileDialog, QMessageBox
+
+    from finbreak.ui.main_window import MainWindow
+
+    auth = _seeded(paths)
+    window = MainWindow(auth)
+    qtbot.addWidget(window)
+    window._enter_unlocked()
+    window._open_backup_export()
+    window._dialog._password.setText(_BACKUP_PW)
+    window._dialog._confirm.setText(_BACKUP_PW)
+    monkeypatch.setattr(
+        QFileDialog,
+        "getSaveFileName",
+        staticmethod(lambda *a, **k: (str(paths[0]), "")),
+    )
+    warned: list[str] = []
+    monkeypatch.setattr(
+        QMessageBox,
+        "warning",
+        staticmethod(lambda _parent, _title, text, *a, **k: warned.append(text)),
+    )
+
+    window._on_backup_export_requested()
+
+    assert len(warned) == 1
+    assert "too large" not in warned[0], warned[0]
+    assert "vault itself" in warned[0], warned[0]
+    auth.lock()
+
+
 def test_INV14_export_dialog_handles_oversized_db_without_crashing(
     qtbot, paths, monkeypatch
 ):

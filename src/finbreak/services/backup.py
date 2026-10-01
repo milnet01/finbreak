@@ -44,7 +44,12 @@ from finbreak.crypto import (
     validate_untrusted_params,
     write_sidecar_v2,
 )
-from finbreak.errors import BackupError, KdfPolicyError, SchemaVersionError
+from finbreak.errors import (
+    BackupDestinationError,
+    BackupError,
+    KdfPolicyError,
+    SchemaVersionError,
+)
 from finbreak.keywrap import SLOT_MASTER, wrap_dek
 from finbreak.migrations import LATEST_SCHEMA_VERSION
 from finbreak.services.auth import AuthService, _wipe
@@ -178,7 +183,9 @@ class BackupService:
         # reaches the same file by another name.
         live = (self._vault.vault_path, self._vault.sidecar_path)
         if any(dest.resolve() == path.resolve() for path in live):
-            raise BackupError("a backup cannot be written over the vault itself")
+            raise BackupDestinationError(
+                "a backup cannot be written over the vault itself"
+            )
         if len(backup_password) < MIN_BACKUP_PASSWORD_LEN:
             raise ValueError(
                 f"backup password must be at least {MIN_BACKUP_PASSWORD_LEN} chars"

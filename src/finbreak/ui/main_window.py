@@ -76,6 +76,7 @@ from finbreak.crypto import fsync_dir
 from finbreak.datetime_format import set_app_timezone
 from finbreak.datetime_format import today as app_today
 from finbreak.errors import (
+    BackupDestinationError,
     BackupError,
     InterruptedRestoreError,
     UpdateDownloadError,
@@ -1253,10 +1254,23 @@ class MainWindow(QMainWindow):
             BackupService(self._service.vault, self._service).export_backup(
                 Path(path), dialog.password()
             )
+        except BackupDestinationError:
+            # The picked file IS the vault (or beside it, owned by the open
+            # connection); writing there would destroy what is being backed up.
+            QMessageBox.warning(
+                self,
+                self.tr("Backup failed"),
+                self.tr(
+                    "That file is the vault itself, so finbreak won't write a "
+                    "backup over it. Please choose another name or folder."
+                ),
+            )
+            return
         except BackupError:
-            # Export raises BackupError from exactly one place — the INV-14 size
-            # refusal; every other raise in backup.py is on the restore/verify
-            # side — so this message can name the condition. It deliberately is
+            # Apart from the destination refusal above, export raises BackupError
+            # from one place — the INV-14 size refusal; every other raise in
+            # backup.py is on the restore/verify side — so this message can name
+            # the condition. It deliberately is
             # NOT the generic copy below: no other location makes an over-cap
             # vault fit, so "choose another location" would send the user round a
             # loop that cannot succeed.

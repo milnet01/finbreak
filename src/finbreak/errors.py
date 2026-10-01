@@ -103,6 +103,12 @@ class BackupError(FinbreakError):
     type, and changes nothing on disk (FIBR-0014 INV-4/11/12)."""
 
 
+class BackupDestinationError(BackupError):
+    """An export was pointed at the live vault (or a file beside it that the
+    open connection owns), which the final rename would replace. Its own type so
+    the window can say so, rather than the size refusal's words (FIBR-0404)."""
+
+
 class UpdateError(FinbreakError):
     """A recoverable auto-update failure surfaced to the user on an explicit
     **Update now** — an oversize/timed-out/dropped download or a disk error at

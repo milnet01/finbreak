@@ -320,7 +320,7 @@ uniqueness key.
 
 | finding | verified | disposition | was → now | must_agree |
 |---|---|---|---|---|
-| B1 the live vault as destination reads "too large to back up" | | | | FIBR-0014 INV-14 |
+| B1 the live vault as destination reads "too large to back up" | yes — the destination guard raises a plain `BackupError`, which the window's handler (written when INV-14 was the only export raise) always calls the size refusal | fixed | plain `BackupError` → `BackupDestinationError` (a subclass, so existing catchers still hold), caught first with its own message; red: "too large to back up" shown for the vault file; mutation: a plain `BackupError` reddens it | FIBR-0014 INV-14 (agrees) |
 | B2 export stages up to 512 MiB in the system temp dir | | | | FIBR-0014 INV-9 |
 | B3 disk-full while verify migrates its copy reads wrong_password | | | | FIBR-0014 verify outcomes |
 | B4 post-install temp cleanup inside the normalising try | | | | FIBR-0014 INV-4 |
