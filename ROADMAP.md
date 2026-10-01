@@ -2609,7 +2609,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: review-fix.
   Source: full-audit-2026-09-27 code lane 13 (queued by FIBR-0367).
 
-- 📋 [FIBR-0394] **Queued findings from the 2026-09-27 audit: main window lane (6 items).**
+- ✅ [FIBR-0394] **Queued findings from the 2026-09-27 audit: main window lane (6 items).**
   From docs/reviews/2026-09-27-full-audit/code-lane-14-main-window.md.
   Line numbers are the audited commit's (52e5162); find sites by symbol.
   - [Medium] ui/main_window.py:1679-1680,1701-1702 -- Help > Check for
@@ -2635,6 +2635,16 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   - [Low] FIBR-0159, FIBR-0155, FIBR-0231 section 4.9 -- these specs
     cite main_window.py line numbers that no longer match. Fix: replace
     the line numbers with symbol names.
+  Resolved (2026-10-01): all six fixed, one commit each. M1
+  (1e5202f) a check started while locked still answers; only a lock
+  after the click silences it. M2 (57af73d) an auto-lock inside the
+  save picker ends the PDF or backup export quietly. M3 (5f6884e)
+  unlock returns to the tab used before the lock. M4 (3fc03e1) a
+  restore clears the replaced vault's hint and lockout. M5 (9fa4e62)
+  install failures explain themselves in translated words. M6
+  (13df7bb) three specs name main_window symbols, not line numbers.
+  FIBR-0159's other drifted citations queued as FIBR-0433. Ledger:
+  docs/reviews/close-findings-2026-10-01.md section FIBR-0394.
   **Layman:** Six fixes in the main window: an update check started from the lock screen gives no answer, a wrong error after an auto-lock, the app forgetting your last tab, an old password hint after a restore, and stale spec notes.
   Kind: review-fix.
   Source: full-audit-2026-09-27 code lane 14 (queued by FIBR-0367).
@@ -3717,6 +3727,18 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: test.
   Source: full-audit-2026-09-27 delivery group C, C6 (queued from FIBR-0390).
   Lanes: update.
+
+- 📋 [FIBR-0433] **FIBR-0159 cites update_installer, update, import_wizard, pdf_export and backup by line numbers that have drifted.**
+  Found by the FIBR-0394 sweep (2026-10-01), which fixed only the
+  main_window.py citations M6 named. doc_citations resolves every other
+  FIBR-0159 citation in range, but the cited lines no longer hold what
+  the spec describes: update_installer.py:386-401 and its :392 /
+  :404-407 shorthand, update.py:193 (now a bare `continue`),
+  import_wizard.py:328, pdf_export.py:161 and backup.py:113 (blank).
+  Fix: replace each with the symbol it meant, as M6 did.
+  **Layman:** A design note about the Flathub package points at the wrong lines of the code in several places.
+  Kind: doc-fix.
+  Source: close-findings FIBR-0394 sweep 2026-10-01.
 
 ## v1.1.0 — Localisation
 

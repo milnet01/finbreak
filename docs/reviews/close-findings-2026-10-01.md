@@ -179,9 +179,26 @@ uniqueness key.
 | M5 untranslated UpdateError inside a translated sentence | yes — `.format(reason=str(exc))` on the install-failure path; the installer's messages are English f-strings around the OS error | fixed | English reason in a `tr()` sentence → `_install_failure_text`: translated text chosen by the OS error under the UpdateError (disk full; not allowed / read-only; otherwise generic), raw message to the log; the FIBR-0390 C12 test, which asserted the raw reason, now asserts the mapped text per errno; red: the raw text was shown; mutations: the raw reason back, and dropping either mapped branch, each redden it | FIBR-0054 INV-11, FIBR-0131 INV-4 (an error dialog; agree) |
 | M6 FIBR-0159, FIBR-0155, FIBR-0231 §4.9 cite stale line numbers | yes — every `main_window.py:NNN` (and its `:NNN` shorthand) in the three specs pointed elsewhere | fixed | line numbers → the symbol each pointed at (`_open_url`, `_update_supported()`, the two export handlers, `_center_kwin`, `MainWindow.__init__`…), each confirmed to exist; FIBR-0231's guard table converted whole, its `home.py` rows included; loop-log rows citing old lines left (frozen); no red run: nothing observable changes | |
 
-- **cited_by:**
-- **swept:**
-- **collateral:**
-- **surfaced:**
-- **out_of_scope:**
-- **falsified:**
+- **cited_by:** "blocks the menu", "only reachable", `reason=str(exc)`,
+  "cannot fire mid-export", `_initial_tab`, `last_tab`, `clear_hint`,
+  `UnlockThrottle().reset()` across docs, src and tests.
+- **swept:** FIBR-0014 and tests/features/backup/spec.md "cannot fire
+  mid-export" — agree (true once the picker returns, which M2 now checks).
+  FIBR-0030's coupled-keys list (throttle + hint "described the old
+  password") — agrees with M4. FIBR-0029 hint clears — agree (no exhaustive
+  list). FIBR-0052 "`setCurrentIndex(last_tab)` applied when the workspace
+  is built" and FIBR-0192's `last_tab` passages — agree with M3.
+  FIBR-0029 / FIBR-0055 "only reachable unlocked" — about Set hint and
+  Settings, not Help; agree. FIBR-0054 INV-11 / FIBR-0131 INV-4 (an
+  install failure shows a dialog) — agree with M5. tests/conftest.py
+  `_initial_tab` note — agrees. Audit reports and loop-log rows — frozen.
+  No `.claude/code-pairs.json` exists.
+- **collateral:** none.
+- **surfaced:** none.
+- **out_of_scope:** FIBR-0159's other line citations (update_installer,
+  update, import_wizard, pdf_export, backup) resolve in range but no
+  longer hold what the spec describes — queued as FIBR-0433. Lane 14's two
+  Mediums not in FIBR-0394 (first-run Cancel using `quit()`; lock wipe
+  missing in four widgets) were fixed on 2026-09-27 (rows 29 and 30 of
+  that ledger).
+- **falsified:** none.
