@@ -6,7 +6,8 @@ pairs (Confirm / Reject / Confirm all) above confirmed transfers (Unlink) — ov
 or low-harm, D8) and every slot catches ``VaultLockedError`` and returns, exactly like
 ``RulesWidget``. Each table row is a single-valued view of a two-row pair: Date +
 Description are the debit row's, Amount is the shared display magnitude, From → To is
-one ``"{from} → {to}"`` cell (debit account → credit account). All strings go through
+one ``tr("{source} → {target}")`` cell (debit account → credit account), a template so
+a translation can reorder or mirror it (FIBR-0396). All strings go through
 ``tr()`` and every widget sits in a layout manager (coding.md § 5.2).
 """
 
@@ -48,7 +49,6 @@ _COL_DATE = 0
 _COL_AMOUNT = 1
 _COL_FROM_TO = 2
 _COL_DESCRIPTION = 3
-_ARROW = "→"  # → : the From/To separator (D9)
 
 
 class TransfersWidget(QWidget):
@@ -175,7 +175,9 @@ class TransfersWidget(QWidget):
         with fill_guard(table):
             table.setRowCount(len(rows))
             for row, item in enumerate(rows):
-                from_to = f"{item.from_account} {_ARROW} {item.to_account}"
+                from_to = self.tr("{source} → {target}").format(
+                    source=item.from_account, target=item.to_account
+                )
                 table.setItem(
                     row,
                     _COL_DATE,

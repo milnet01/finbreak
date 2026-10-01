@@ -489,6 +489,44 @@ def test_INV10_tab_unlink_returns_pair_to_suggested(qtbot, service):
     assert len(widget._confirmed) == 0
 
 
+class _Catalog:
+    """A stand-in translation catalog: a QTranslator answering one source
+    string in one context, so a test proves the text goes through tr()."""
+
+    @staticmethod
+    def install(qapp, context: str, source: str, translation: str):
+        from PySide6.QtCore import QTranslator
+
+        class _One(QTranslator):
+            def translate(self, ctx, src, disambiguation=None, n=-1):
+                return translation if (ctx, src) == (context, source) else ""
+
+        catalog = _One()
+        qapp.installTranslator(catalog)
+        return catalog
+
+
+def test_FIBR0396_the_from_to_cell_is_a_translatable_template(qtbot, qapp, service):
+    """design.md § i18n: the From -> To cell was an f-string with a fixed arrow,
+    so a translation could neither reorder nor mirror it, and could disagree with
+    its own translated header. It is one tr() template now."""
+    from finbreak.ui.transfers import TransfersWidget
+
+    a, b = _two_accounts(service)
+    _add(service, a, -50000, "2026-01-05", "pay savings")
+    _add(service, b, 50000, "2026-01-05", "deposit")
+    catalog = _Catalog.install(
+        qapp, "TransfersWidget", "{source} → {target}", "{target} ← {source}"
+    )
+    try:
+        widget = TransfersWidget(service)
+        qtbot.addWidget(widget)
+        shown = cell_text(widget._suggested, 0, 2)
+    finally:
+        qapp.removeTranslator(catalog)
+    assert shown == "Savings ← Default"
+
+
 def test_INV10_tab_from_to_and_amount_cells(qtbot, service):
     from finbreak.ui.transfers import TransfersWidget
 

@@ -233,7 +233,7 @@ uniqueness key.
 
 | finding | verified | disposition | was → now | must_agree |
 |---|---|---|---|---|
-| D1 transfer cell arrow is a fixed literal | | | | FIBR-0201 §4.8; FIBR-0391 R2 template |
+| D1 transfer cell arrow is a fixed literal | yes — `f"{item.from_account} {_ARROW} {item.to_account}"` | fixed | f-string → `tr("{source} → {target}")`, the same source text as the dashboard's transfer label (FIBR-0391 R2); `_ARROW` removed (no other user); red: a stub catalog's reordered template was ignored; mutation: the untranslated literal reddens it | FIBR-0391 R2 template (agrees); only audit reports quoted the old literal (frozen) |
 | D2 display strings joined by +, join or f-string | | | | FIBR-0201 §4.8 |
 | D3 service error text shown via str(exc) | | | | FIBR-0219 §4.1; design.md § i18n |
 | D4 `_on_set_category` has no VaultLockedError guard | | | | |
