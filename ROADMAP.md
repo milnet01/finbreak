@@ -3671,7 +3671,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: fix.
   Source: full-audit-2026-09-27 code lane 3 open question (queued by FIBR-0403).
 
-- 📋 [FIBR-0424] **A Standard Bank statement row back-dated before the period is dated in the right year.**
+- 🚧 [FIBR-0424] **A Standard Bank statement row back-dated before the period is dated in the right year.**
   From FIBR-0405 finding 4. _infer_years (FIBR-0050 D8, Family A)
   seeds the year from the period start and adds one whenever a month
   is lower than the previous row's. A March statement holding a row
