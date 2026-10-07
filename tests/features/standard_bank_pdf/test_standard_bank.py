@@ -146,6 +146,74 @@ def test_INV9a_year_rollover_nov_to_feb_gap():
     assert years == [2023, 2024]
 
 
+@pytest.mark.parametrize(
+    ("md_pairs", "period", "expected"),
+    [
+        # A 28 February row on a March statement is February of 2026, and the
+        # March rows after it stay in 2026 (FIBR-0424).
+        ([(2, 28), (3, 2), (3, 15)], ("2026-03-01", "2026-03-31"), [2026, 2026, 2026]),
+        # A 30 December row on a January statement is the year BEFORE the start.
+        ([(12, 30), (1, 3)], ("2026-01-01", "2026-01-31"), [2025, 2026]),
+    ],
+)
+def test_INV9a_back_dated_row_takes_the_year_that_fits_the_period(
+    md_pairs, period, expected
+):
+    """FIBR-0050 D8: each row takes the one year that puts it inside the period
+    widened by 31 days. Rolling the year on a month decrease dated a back-dated
+    first row, and every row after it, a year late (FIBR-0424)."""
+    assert _infer_years(md_pairs, period) == expected
+
+
+def test_INV9a_row_outside_the_period_is_refused():
+    """A row more than 31 days outside the period fits no year: refuse rather
+    than guess (D8, INV-11)."""
+    with pytest.raises(ValueError, match="which year"):
+        _infer_years([(3, 2), (1, 15)], ("2026-03-01", "2026-03-31"))
+
+
+def test_INV9a_row_two_years_fit_is_refused():
+    """On a period long enough that a month-day fits two years of the widened
+    window, the row is refused rather than given either (D8, INV-11)."""
+    with pytest.raises(ValueError, match="which year"):
+        _infer_years([(1, 15)], ("2025-01-10", "2025-12-20"))
+
+
+@pytest.mark.parametrize(
+    ("md_pairs", "period", "expected"),
+    [
+        ([(5, 2), (5, 32)], ("2026-05-01", "2026-05-31"), [2026, 2026]),
+        # The START's year, not the widened window's low end or the end's year.
+        ([(2, 30)], ("2025-12-15", "2026-01-14"), [2025]),
+    ],
+)
+def test_INV9a_month_day_real_in_no_year_takes_the_start_year(
+    md_pairs, period, expected
+):
+    """D8: a month-day that is a real date in no year (day 32, 30 February) is
+    not a year question. It takes the period start's year so the row reaches
+    parse_transaction, which rejects its date: a zero row degrades and a
+    money-moving row refuses for its own cause (FIBR-0216, FIBR-0255)."""
+    assert _infer_years(md_pairs, period) == expected
+
+
+def test_INV9a_leap_day_with_no_leap_day_in_the_window_is_refused():
+    """29 February is real in a leap year, so it stays a year question (D8): with
+    no leap day in the widened period it fits no year and refuses, and with one
+    it is dated there."""
+    with pytest.raises(ValueError, match="which year"):
+        _infer_years([(2, 29)], ("2026-03-01", "2026-03-31"))
+    assert _infer_years([(2, 29)], ("2024-03-01", "2024-03-31")) == [2024]
+
+
+def test_INV9a_impossible_period_date_is_a_friendly_refusal():
+    """A garbled period line can name a day the month does not have. The year
+    rule does date arithmetic on the period, so that must reach the user as the
+    statement's own refusal, never Python's "day is out of range" (FIBR-0424)."""
+    with pytest.raises(ValueError, match="didn't parse cleanly"):
+        _infer_years([(6, 15)], ("2026-06-31", "2026-07-30"))
+
+
 def test_split_credit_card_line_two_segments():
     segs = _split_credit_card_line("21 Apr 26 Shop 350.00 9 May 26 Cafe 415.94")
     assert segs == ["21 Apr 26 Shop 350.00", "9 May 26 Cafe 415.94"]

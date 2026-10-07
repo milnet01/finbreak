@@ -35,6 +35,7 @@ from __future__ import annotations
 import io
 import re
 from collections.abc import Sequence
+from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 from enum import StrEnum
 
@@ -156,6 +157,13 @@ _CC_BROUGHT_FORWARD = re.compile(
 # (all-or-nothing) rather than silently skipping is what keeps a mis-extracted row on
 # a closing-less statement (Savings) from becoming a silent under-import (INV-11).
 _MISPARSE = "this statement didn't parse cleanly — try your bank's CSV or OFX export"
+# D8: how far outside the printed period a Family A row may be dated. A chosen
+# slack, not a measurement (FIBR-0424).
+_YEAR_SLACK = timedelta(days=31)
+_UNPLACED_YEAR = (
+    "couldn't tell which year a transaction on this statement belongs to — "
+    "try your bank's CSV or OFX export"
+)
 
 
 # --------------------------------------------------------------------------- #
@@ -427,21 +435,49 @@ def _iso(year: int, month: int, day: int) -> str:
 def _infer_years(md_pairs: list[tuple[int, int]], period: tuple[str, str]) -> list[int]:
     """Resolve the year of each ``(month, day)`` pair (Family A, D8).
 
-    Seed the year and the initial "previous month" from the period start; increment
-    the year whenever a transaction's month drops below the previous transaction's
-    (a chronological statement only decreases at a year wrap; handles a Nov->Feb
-    gap)."""
-    start_year = int(period[0][:4])
-    start_month = int(period[0][5:7])
+    Each row takes the one year that puts its date inside the printed period
+    widened by ``_YEAR_SLACK`` at each end. The year is never carried from the
+    row before: rolling it on a month decrease dated a row back-dated before the
+    period start, and every row after it, a year late (FIBR-0424). No year, or
+    two, refuses the statement rather than guessing (INV-11).
+
+    A month-day that is a real date in no year (day 32, 30 February) is not a
+    year question: it takes the start's year, so ``parse_transaction`` rejects
+    its date and ``_draft`` degrades or refuses the row by its amount.
+
+    A garbled period line can name a day its month does not have; that is the
+    statement failing to parse, not Python's "day is out of range"."""
+    try:
+        start = date.fromisoformat(period[0])
+        end = date.fromisoformat(period[1])
+    except ValueError as exc:
+        raise ValueError(_MISPARSE) from exc
+    low, high = start - _YEAR_SLACK, end + _YEAR_SLACK
     years: list[int] = []
-    year = start_year
-    prev_month = start_month
-    for month, _day in md_pairs:
-        if month < prev_month:
-            year += 1
-        years.append(year)
-        prev_month = month
+    for month, day in md_pairs:
+        # A leap year holds every month-day that any year holds.
+        if _real_date(2000, month, day) is None:
+            years.append(start.year)
+            continue
+        fits = [
+            year
+            for year in range(low.year, high.year + 1)
+            if (when := _real_date(year, month, day)) is not None
+            and low <= when <= high
+        ]
+        if len(fits) != 1:
+            raise ValueError(_UNPLACED_YEAR)
+        years.append(fits[0])
     return years
+
+
+def _real_date(year: int, month: int, day: int) -> date | None:
+    """``date(year, month, day)``, or ``None`` for a day the month lacks (a
+    29 February outside a leap year)."""
+    try:
+        return date(year, month, day)
+    except ValueError:
+        return None
 
 
 # --------------------------------------------------------------------------- #
