@@ -1995,7 +1995,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Progress (2026-07-14): the SignPath "discoverable" requirement is now MET — the Fin Break page (antsprojectshub.co.za/p/fin-break.html) is live and INDEXED on Google (confirmed via a Google search result, ~3h after publish). Requirements now: MIT ✓, public repo ✓, PRIVACY.md + SignPath attribution ✓, discoverable ✓; REMAINING = SignPath's own approval ONLY (external, awaited); GitHub 2FA confirmed ON (2026-07-14, GitHub-mandated). All contributor-side SignPath requirements (MIT, public repo, PRIVACY + attribution, discoverable, 2FA) are now MET. No code work outstanding; FIBR-0131's Windows updater is already merged and waiting for the v0.1.10 release that will bundle both the Authenticode signature (this item) and the Ed25519 .exe.sig.
   Update (2026-07-16): SignPath Foundation DECLINED the application. Plan per the user: build more of a public presence first, then reapply and hope for approval next time. Stays 🚧 (blocked on the reapplication + their approval, not on any contributor-side prep — MIT/public/2FA/discoverable are all still met). Windows .exe remains un-Authenticode-signed meanwhile → SmartScreen "unknown publisher" persists; the Ed25519 updater sidecar sig is unaffected.
 
-- 📋 [FIBR-0298] **Nothing owns refreshing the Flatpak pip closure, so its transitive wheels age silently between releases.**
+- ✅ [FIBR-0298] **Nothing owns refreshing the Flatpak pip closure, so its transitive wheels age silently between releases.**
   packaging/flatpak/python3-deps.yaml is a sha256-pinned closure regenerated
   only by a human running generate-pip-sources.sh. `pyproject.toml` pins the
   DIRECT deps, and test_FIBR0258_closure_satisfies_the_pinned_commit checks the
@@ -2042,6 +2042,11 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   minutes and the release is when the file matters.
   User decision (2026-10-07): a regenerate-and-rebuild step on the
   release checklist, not a scheduled CI job.
+  Resolved (2026-10-07, 0c670bb): .claude/bump.json's todos now carry
+  the refresh step: regenerate python3-deps.yaml before a Flathub
+  submission, take a non-empty diff only after a LOCAL=0 build ends
+  FINBREAK_SELFTEST_OK. The three bumps reverted on 2026-08-20 are left
+  to that step's first run.
   **Layman:** The Linux app-store build freezes an exact list of code libraries. Nothing checks whether newer, possibly security-fixed versions of them have come out, so the build can quietly ship old ones.
   Kind: security.
   Source: in-session-2026-08-20 (found during the FIBR-0159 pre-submit checks).
