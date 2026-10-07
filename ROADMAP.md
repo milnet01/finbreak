@@ -3939,7 +3939,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: review-fix.
   Source: full-audit-2026-09-27 code lane 18 U2, queued by FIBR-0398.
 
-- 📋 [FIBR-0436] **Backup leftovers: restore misreads a full disk, verify stages in /tmp, export's temp name can delete a user's file.**
+- ✅ [FIBR-0436] **Backup leftovers: restore misreads a full disk, verify stages in /tmp, export's temp name can delete a user's file.**
   Found by the FIBR-0404 sweep (2026-10-01); each is a class FIBR-0393
   or FIBR-0404 fixed elsewhere.
   - restore_backup normalises a full-disk OperationalError (SQLITE_FULL)
@@ -3952,6 +3952,11 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   - export's temp zip is <dest>.tmp, and _write_fbk unlinks that path
     before its O_EXCL open, so a user's own file of that name is deleted.
     Fix: tempfile.mkstemp beside dest, as FIBR-0393 P3 did for the PDF.
+  Resolved (2026-10-07, 4a1b963): restore raises BackupStorageError (a
+  BackupError subtype) for SQLITE_FULL/IOERR or ENOSPC and the window
+  names the disk; export's temp is a mkstemp beside the destination, so
+  a user's own <dest>.tmp survives. The verify staging part needs a
+  FIBR-0033 D6 amendment and its gate, so it moved to FIBR-0441.
   **Layman:** Three small backup problems: a full disk during restore is blamed on the password, verifying a large backup uses memory, and a rarely-named file next to a backup could be deleted.
   Kind: review-fix.
   Source: close-findings FIBR-0404 sweep 2026-10-01.
@@ -3994,6 +3999,20 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   **Layman:** Moving a statement to another account can leave a money transfer between two accounts pointing at the same account, so its amounts quietly disappear from your totals.
   Kind: review-fix.
   Source: full-audit-2026-09-27 code lane 10 M3, queued by FIBR-0409.
+
+- 📋 [FIBR-0441] **Verify backup stages its copy in the system temp dir, which is RAM on a tmpfs host.**
+  Split out of FIBR-0436 (2026-10-07). verify_backup copies the backup
+  (up to the restore cap) into a tempfile.TemporaryDirectory() in the
+  system temp dir, which is RAM where /tmp is tmpfs. Export already
+  stages beside its destination for this reason (FIBR-0404). FIBR-0033
+  D6 specifies the system temp dir, so moving it amends that spec and
+  owes its gate (review-contract --max-loops 3) before the build.
+  Recommended: stage under the vault's own directory (AppDataLocation),
+  which restore already uses for its params temp (FIBR-0014 INV-11).
+  **Layman:** Checking a large backup temporarily uses memory instead of disk on some Linux computers; it should use disk space like the other backup steps do.
+  Kind: review-fix.
+  Source: close-findings FIBR-0404 sweep 2026-10-01 (split from FIBR-0436).
+  Lanes: backup.
 
 ## v1.1.0 — Localisation
 

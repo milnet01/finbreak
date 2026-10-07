@@ -42,6 +42,10 @@ signaling per
 
 ### Fixed
 
+- **Restoring a backup onto a full disk now says there isn't enough disk space, instead of telling you to check the file and the backup password.** (FIBR-0436)
+
+- **Saving a backup can no longer delete a file of yours that happens to share the backup's name plus ".tmp".** (FIBR-0436)
+
 - **Ctrl+Q now quits finbreak from the password screen and the first-run screen, not only once you are unlocked.** (FIBR-0431)
 
 - **A password you ask a batch import to remember is now saved only when that statement is actually imported.** (FIBR-0427)
