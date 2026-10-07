@@ -5188,7 +5188,7 @@ will ever carry a version number. It is a third of all open work, which is the
 honest reason the roadmap felt longer than the product is far from done. Real
 work, and none of it is a release decision.
 
-- 📋 [FIBR-0246] **A real-personal-data check the gate actually runs — gitleaks does not cover it.**
+- 💭 [FIBR-0246] **A real-personal-data check the gate actually runs — gitleaks does not cover it.**
   FIBR-0244 found four real values published across six sites, by grepping
   for long digit-runs. That is a one-off, not a check: it would miss a real
   merchant name, a real address, a real date of birth, or an account number
@@ -5227,6 +5227,10 @@ work, and none of it is a release decision.
   User decision (2026-10-07): document that .corpus-numbers takes any
   real number, and park the structural rule and the names/addresses
   check as considered.
+  Parked (2026-10-07), per the user's decision: CLAUDE.md now says
+  .corpus-numbers takes any real number, entered whole (f4a84fd). The
+  structural digit-run rule for CI and the names/addresses/dates-of-birth
+  check stay unbuilt as considered; neither is needed for 1.0.
   **Layman:** Add an automatic check that stops real bank details from ever being committed — the current security scanner only looks for passwords and keys, so it has never checked for these.
   Kind: security.
   Source: in-session-2026-08-06 (gap found while closing FIBR-0244).
