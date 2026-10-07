@@ -3865,7 +3865,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Source: full-audit-2026-09-27 delivery group C, C6 (queued from FIBR-0390).
   Lanes: update.
 
-- 📋 [FIBR-0433] **FIBR-0159 cites update_installer, update, import_wizard, pdf_export and backup by line numbers that have drifted.**
+- ✅ [FIBR-0433] **FIBR-0159 cites update_installer, update, import_wizard, pdf_export and backup by line numbers that have drifted.**
   Found by the FIBR-0394 sweep (2026-10-01), which fixed only the
   main_window.py citations M6 named. doc_citations resolves every other
   FIBR-0159 citation in range, but the cited lines no longer hold what
@@ -3873,6 +3873,11 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   :404-407 shorthand, update.py:193 (now a bare `continue`),
   import_wizard.py:328, pdf_export.py:161 and backup.py:113 (blank).
   Fix: replace each with the symbol it meant, as M6 did.
+  Resolved (2026-10-07, 3b82764): every listed line citation now names
+  its symbol, each claim re-checked against the code. The PDF export's
+  quoted temp name was stale since FIBR-0393 and now describes the
+  mkstemp sibling it is. No gate: corrected citations change no
+  instruction.
   **Layman:** A design note about the Flathub package points at the wrong lines of the code in several places.
   Kind: doc-fix.
   Source: close-findings FIBR-0394 sweep 2026-10-01.
