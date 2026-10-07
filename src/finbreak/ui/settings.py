@@ -47,6 +47,7 @@ from finbreak.ui._datetime_prefs import (
     read_datetime_prefs,
     system_date_sample_label,
     system_time_sample_label,
+    timezone_field_names_a_zone,
 )
 from finbreak.ui._widgets import select_combo_data
 
@@ -321,6 +322,18 @@ class SettingsDialog(QDialog):
 
     @Slot()
     def _on_save(self) -> None:
+        # Before any write, so a refusal saves nothing (INV-10, FIBR-0435).
+        if not timezone_field_names_a_zone(self._timezone):
+            QMessageBox.warning(
+                self,
+                self.tr("Settings"),
+                self.tr(
+                    "That time zone isn't one finbreak recognises. "
+                    "Choose one from the time zone list."
+                ),
+            )
+            self._timezone.setFocus()
+            return
         try:
             self._service.set_auto_lock_minutes(self._combo.currentData())
             self._service.set_clipboard_clear_seconds(

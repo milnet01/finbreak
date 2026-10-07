@@ -271,3 +271,33 @@ def test_FIBR0395_a_failed_derivation_names_no_raw_error(qtbot, service):
     shown = dialog._error.text()
     assert "could not create the vault" in shown.lower()
     assert _RAW not in shown
+
+
+def test_INV10_first_run_refuses_a_typed_zone_that_names_no_zone(
+    qtbot, service, monkeypatch
+):
+    """FIBR-0435 — the same refusal on first run, before any key derivation or
+    vault creation starts (FIBR-0083 INV-10)."""
+    import finbreak.ui.first_run as module
+
+    started: list[bool] = []
+
+    class _Spy(_SyncDeriveWorker):
+        def start(self, priority=QThread.Priority.InheritPriority) -> None:
+            started.append(True)
+
+    monkeypatch.setattr(module, "DeriveWorker", _Spy)
+    writes: list[object] = []
+    monkeypatch.setattr(service, "set_datetime_prefs", writes.append)
+    dialog = FirstRunDialog(service)
+    qtbot.addWidget(dialog)
+    tz, _date, _time = _combos(dialog)
+    tz.setCurrentText("Not/AZone")
+    dialog._password.setText(_PW.decode())
+    dialog._confirm.setText(_PW.decode())
+
+    dialog._submit.click()
+
+    assert started == [], "no derivation may start"
+    assert writes == []
+    assert "time zone" in dialog._error.text().lower(), dialog._error.text()

@@ -47,6 +47,7 @@ from finbreak.ui._datetime_prefs import (
     read_datetime_prefs,
     system_date_sample_label,
     system_time_sample_label,
+    timezone_field_names_a_zone,
 )
 from finbreak.ui._worker import DeriveWorker, settle
 
@@ -210,6 +211,14 @@ class FirstRunDialog(QDialog):
             log.warning("first-run details refused", exc_info=True)
             self._error.setText(
                 self.tr("Those details can't be used. Please check them and try again.")
+            )
+            return
+        if not timezone_field_names_a_zone(self._timezone):  # INV-10, FIBR-0435
+            self._error.setText(
+                self.tr(
+                    "That time zone isn't one finbreak recognises. "
+                    "Choose one from the time zone list."
+                )
             )
             return
 

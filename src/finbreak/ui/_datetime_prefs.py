@@ -116,8 +116,10 @@ def _read_timezone(combo: QComboBox) -> str:
     preference the user believes they changed (FIBR-0327).
 
     The text decides whenever it disagrees with the selected item, honouring any
-    valid id (D4 "override to pin"); only text that names no zone at all degrades
-    to ``"system"``, so the field never persists a non-``str``.
+    valid id (D4 "override to pin"). Text that names no zone at all is refused
+    by both save sites first (``timezone_field_names_a_zone``, INV-10); the
+    ``"system"`` here is only the backstop, so the field never persists a
+    non-``str``.
     """
     index = combo.currentIndex()
     typed = combo.currentText().strip()
@@ -127,6 +129,20 @@ def _read_timezone(combo: QComboBox) -> str:
     if QTimeZone(typed.encode()).isValid():
         return typed
     return DATETIME_SYSTEM
+
+
+def timezone_field_names_a_zone(combo: QComboBox) -> bool:
+    """Whether the time-zone field shows its selected item or a real zone id.
+
+    False means typed text that names no zone, which Settings' Save and
+    first-run's submit refuse rather than quietly saving the system zone: a
+    pinned zone decides every timestamp and what "today" is (FIBR-0083 INV-10,
+    FIBR-0435)."""
+    index = combo.currentIndex()
+    typed = combo.currentText().strip()
+    if index >= 0 and typed == combo.itemText(index):
+        return True
+    return QTimeZone(typed.encode()).isValid()
 
 
 def read_datetime_prefs(

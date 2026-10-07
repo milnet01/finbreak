@@ -573,14 +573,20 @@ def test_datetime_freetyped_valid_zone_recovered_on_save(qtbot, service):
     assert service.datetime_prefs().timezone == "Europe/Paris"
 
 
-def test_datetime_freetyped_garbage_zone_falls_back_to_system(qtbot, service):
+def test_datetime_freetyped_garbage_zone_is_refused(qtbot, service, monkeypatch):
+    """With no item selected (index -1), typed text naming no zone used to save
+    as "system"; FIBR-0083 INV-10 refuses the Save instead (FIBR-0435)."""
+    import finbreak.ui.settings as settings_module
+
+    monkeypatch.setattr(settings_module.QMessageBox, "warning", lambda *a: None)
+    service.set_datetime_prefs(DateTimePrefs("Africa/Johannesburg", "system", "system"))
     dialog = SettingsDialog(service, "ZAR")
     qtbot.addWidget(dialog)
     tz, _date, _time = _dt_combos(dialog)
     tz.setCurrentIndex(-1)
     tz.setEditText("Not A Zone")
     dialog._on_save()
-    assert service.datetime_prefs().timezone == "system"
+    assert service.datetime_prefs().timezone == "Africa/Johannesburg"
 
 
 # --------------------------------------------------------------------------- #
@@ -682,3 +688,37 @@ def test_report_prefs_out_of_range_year_downgrades(service):
         repo.set("report_period_year", bad_year)
         repo.set("report_period_month", "")
         assert service.report_prefs() == ReportPrefs(MODE_PREVIOUS_MONTH), bad_year
+
+
+def test_INV10_settings_refuses_a_typed_zone_that_names_no_zone(
+    qtbot, service, monkeypatch
+):
+    """FIBR-0435 — typed time-zone text naming no zone was saved as "system"
+    without a word, moving every timestamp and possibly "today". Save now
+    refuses with a message naming the field, writes nothing — not even the
+    auto-lock choice that comes first — and keeps the dialog open (FIBR-0083
+    INV-10)."""
+    import finbreak.ui.settings as settings_module
+
+    before = (service.auto_lock_minutes(), service.datetime_prefs())
+    dialog = SettingsDialog(service, "ZAR")
+    qtbot.addWidget(dialog)
+    auto_lock = _combo(dialog)
+    auto_lock.setCurrentIndex((auto_lock.currentIndex() + 1) % auto_lock.count())
+    tz = dialog.findChild(QComboBox, "settings_timezone")
+    assert tz is not None
+    tz.setCurrentText("Not/AZone")
+    shown: list[str] = []
+    monkeypatch.setattr(
+        settings_module.QMessageBox,
+        "warning",
+        lambda _parent, _title, text: shown.append(text),
+    )
+    saved: list[bool] = []
+    dialog.saved.connect(lambda: saved.append(True))
+
+    dialog._on_save()
+
+    assert len(shown) == 1 and "time zone" in shown[0].lower(), shown
+    assert saved == [], "a refused Save must not report success"
+    assert (service.auto_lock_minutes(), service.datetime_prefs()) == before
