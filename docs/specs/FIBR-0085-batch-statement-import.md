@@ -349,9 +349,9 @@ pending callback drops (INV-7), and the user unlocks and starts again.
 
 **A file is both locked and unmappable.** A PDF whose password is supplied and
 which then yields no usable table falls to `failed` with the existing
-`candidate_tables` message. Its password is **not** stored, because a `failed`
-file never settles a destination account and §4.4 writes the password only
-against a settled one — so the retry will prompt again. That is the honest
+`candidate_tables` message. Its password is **not** stored, because §4.4
+writes the password only for a file RUN commits — so the retry will prompt
+again. That is the honest
 consequence of keying stored passwords to accounts rather than to files; a
 file that never reaches an account has nowhere to put it.
 
@@ -589,6 +589,7 @@ this contract.
 | INV-13 | `tests/features/batch_import/test_batch_import.py::test_INV13_undated_file_fails_before_commit` |
 | INV-14 | `tests/features/batch_import/test_batch_import_ui.py::test_INV14_done_waits_for_the_report` |
 | INV-15 | `tests/features/batch_import/test_batch_import.py::test_INV15_multi_statement_ofx_fans_out` |
+| INV-16 | `tests/features/batch_import/test_batch_import.py::test_INV16_remembered_password_written_only_on_commit` |
 | §4.1 — one selected file routes to the unchanged single-file flow | **nothing** — no test asserts the routing, and the 24 existing `_stack.currentIndex()` assertions stay green either way, so they cannot catch it; only a cold reader of `_on_pick_file` would |
 | §4.3 — the ASK callback shape (`next_question` / `answer`) | **nothing** — an interface sketch, not a contract with a failure mode; the invariants constrain the behaviour, not the seam |
 | §4.6 — the review table becomes read-only after RUN | **nothing** — no test asserts it; a cold reader, or a user who clicks a committed row |

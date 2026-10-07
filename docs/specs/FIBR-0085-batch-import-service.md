@@ -52,7 +52,7 @@ existing citations this split was shaped to preserve.
 [4.3 Four passes](#43-four-passes) ·
 [4.4 PDF passwords](#44-resolving-a-pdf-password-with-no-pick-step-account) ·
 [4.5 Cumulative dedup](#45-cumulative-dedup--the-reviewed-number-is-the-number-that-lands) ·
-[5. Invariants](#5-invariants) (INV-1, 2, 4, 9, 10, 11, 13, 15)
+[5. Invariants](#5-invariants) (INV-1, 2, 4, 9, 10, 11, 13, 15, 16)
 
 ## 4. Design
 ### 4.2 The per-file record
@@ -331,10 +331,12 @@ A password entered during the ASK pass with *Remember* ticked is **held on the
 record, not written immediately** — in `BatchFile.pending_password` /
 `remember_password` (§4.2). At prompt time the file is still unparsed, so its
 destination account is not yet known and there is nothing to key the password
-to. It is written by `AccountService.set_pdf_password(account_id, value)`
-once the destination settles (at SCAN for a matched file, at REVIEW for one the
-user places by hand), and **dropped unwritten if the file never settles one** —
-`failed`, `skipped`, or left `needs_account` when the user leaves the screen.
+to. It is written by `AccountService.set_pdf_password(account_id, value)`,
+against the record's `account_id`, **only once RUN commits that file**
+(FIBR-0427), and **dropped unwritten otherwise** — a file that ends `failed`,
+`skipped`, `already_imported`, `not_attempted` or `needs_account`, and every
+file when Cancel abandons the batch before RUN (§4.6). A file the user moves
+between accounts at REVIEW therefore writes it once, to the account it lands in.
 
 **How a decline is detected.** `PasswordDialog` is shown through the
 non-blocking `show_modal`, which wires only `accepted`; its Cancel has no slot
@@ -537,3 +539,13 @@ restated here.
   after the first. The wizard already models this correctly with its
   `_ofx_statements` list and a chooser; a batch that collapses it would be a
   regression against behaviour that ships today.
+- **INV-16** — A *Remember*-ticked password is written only for a file RUN
+  commits, and only to the account it commits to (§4.4, FIBR-0427). Cancel
+  before RUN writes none.
+  *Test:* `tests/features/batch_import/test_batch_import.py::test_INV16_remembered_password_written_only_on_commit`
+  — a record holding a ticked password is placed in account A, then moved to
+  B, and nothing is stored; after RUN commits it, B holds the password and A
+  holds none. A second batch, abandoned before RUN, stores nothing.
+  *Breaks when:* the write happens as the destination settles, in
+  `set_account` — where it was until FIBR-0427, so Cancel kept a password §4.6
+  promises to discard, and a retargeted file wrote to every account it visited.
