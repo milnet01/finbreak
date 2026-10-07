@@ -1448,6 +1448,20 @@ so Flathub review and code signing do not block this release.
   distro names checked against each target), or collect them in the freeze.
   Verify the way FIBR-0346 was: install in a bare container, self-test on
   xcb under Xvfb.
+  Progress (2026-10-07): the AppImage has the same gap. The 2026-09-29
+  dist/finbreak-selftest-x86_64.AppImage (PyInstaller onefile; names read
+  from its archive with grep -a) carries libqxcb.so, libxcb (hash-renamed),
+  libxcb-glx, -randr, -shm, -sync and -xfixes, and none of xcb-cursor,
+  -icccm, -util, -image, -keysyms, -render, -render-util, -shape or -xkb.
+  readelf on the venv's libqxcb.so and libQt6XcbQpa.so.6 lists all of
+  those as NEEDED, plus libX11, libX11-xcb and both libxkbcommon halves.
+  FIBR-0155 governs the fix: § 3.1/§ 3.5 name the host-left Requires and
+  the build-time collect-set, so either route amends it and owes its gate.
+  Leaning: bundle the xcb-util family by installing it in every freeze
+  environment (AppImage container, OBS BuildRequires), since an AppImage
+  cannot declare Depends and FIBR-0155 INV-1 keeps runtime deps minimal;
+  xkbcommon stays host-supplied (FIBR-0346). Check PyInstaller's exclude
+  list keeps none of them out before deciding.
   **Layman:** On a Linux computer missing a few common display libraries, the store-package version of finbreak cannot open its window under the older X11 display system.
   Kind: fix.
   Source: in-session-2026-09-29 (found verifying FIBR-0346).
