@@ -3721,6 +3721,11 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   key to a tr() sentence, substituting values after translation.
   Spans importers, wizard and batch import, so apply spec-format §1
   before building.
+  Deferred (2026-10-07): the same work as FIBR-0434 (typed refusals
+  mapped to tr() in the UI), which the user decided on 2026-10-07 to do
+  with FIBR-0017. finbreak ships English only, so no user sees
+  untranslated text before then. Do this with FIBR-0434 and FIBR-0017;
+  no spec until then.
   **Layman:** Messages that explain why a statement could not be imported are written in English inside the importers and cannot be translated yet; they should use the same translation system as the rest of the app.
   Kind: fix.
   Source: full-audit-2026-09-27 code lanes 5 and 6 (queued by FIBR-0405).
