@@ -223,6 +223,9 @@ REVIEW on entry and after EVERY account change, re-evaluate the whole batch:
 RUN    for each `ready` record, in (path, statement_index) order:
          commit_import(preview, preview.period_start, preview.period_end, path)
              -> ImportResult, stored on the record; outcome `committed`
+           then, if `remember_password` and `pending_password`:
+           set_pdf_password(account_id, pending_password) — outside the caught
+           set, so a failed write never reports committed rows as `failed` (§4.4)
          (ValueError, FinbreakError) -> `failed` + its message; CONTINUE (INV-1)
        on cancel, every record not yet reached -> `not_attempted` (cancelled)
 ```
@@ -422,7 +425,7 @@ fields of its own rather than reading either from the preview.
 
 ## 5. Invariants
 
-The eight this half owns — every one whose `*Test:*` names
+The invariants this half owns — every one whose `*Test:*` names
 `tests/features/batch_import/test_batch_import.py`. **INV-3, 5, 6, 7, 8 and 14**
 live in
 [the review step](FIBR-0085-batch-import-review-step.md#5-invariants) and
@@ -545,7 +548,9 @@ restated here.
   *Test:* `tests/features/batch_import/test_batch_import.py::test_INV16_remembered_password_written_only_on_commit`
   — a record holding a ticked password is placed in account A, then moved to
   B, and nothing is stored; after RUN commits it, B holds the password and A
-  holds none. A second batch, abandoned before RUN, stores nothing.
+  holds none. A second record, holding a ticked password and a settled
+  account, is abandoned as Cancel does it — `stop_from(files, 0, CANCELLED)`
+  then `discard_passwords()` — and its account stores nothing.
   *Breaks when:* the write happens as the destination settles, in
   `set_account` — where it was until FIBR-0427, so Cancel kept a password §4.6
   promises to discard, and a retargeted file wrote to every account it visited.
