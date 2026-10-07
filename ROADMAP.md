@@ -3927,7 +3927,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: review-fix.
   Source: full-audit-2026-09-27 code lane 16 D3, queued by FIBR-0396.
 
-- 📋 [FIBR-0435] **A mistyped time zone in Settings or first run is saved as the system zone without a word, as FIBR-0083 specifies.**
+- ✅ [FIBR-0435] **A mistyped time zone in Settings or first run is saved as the system zone without a word, as FIBR-0083 specifies.**
   Queued from FIBR-0398 U2 (2026-10-01). ui/_datetime_prefs.py
   _read_timezone persists "system" when the typed text names no zone,
   so a typo silently moves every timestamp and can change which day
@@ -3940,6 +3940,12 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   User decision (2026-10-07): refuse Save and first-run submit with a
   translated message naming the field, keeping the dialog open. Amend
   FIBR-0083 D3/D4 and run its gate first.
+  Resolved (2026-10-08, 1f0c022): FIBR-0083 amended (INV-10,
+  Deliverables 3 and 4) and gated with FIBR-0437 (loops 9-10,
+  converged). Settings' Save and first-run's submit refuse typed text
+  naming no zone with a message naming the field, before any write or
+  derivation. The old test pinning the "system" fallback was converted
+  to the new contract. Full suite 2598 passed; mutation_probe 3/3 killed.
   **Layman:** If you mistype a time zone, finbreak quietly uses your computer's zone instead of telling you; it should say so and let you fix it.
   Kind: review-fix.
   Source: full-audit-2026-09-27 code lane 18 U2, queued by FIBR-0398.
@@ -3966,7 +3972,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: review-fix.
   Source: close-findings FIBR-0404 sweep 2026-10-01.
 
-- 📋 [FIBR-0437] **Pinned date and time formats show month names and AM/PM in English, as FIBR-0083 specifies.**
+- ✅ [FIBR-0437] **Pinned date and time formats show month names and AM/PM in English, as FIBR-0083 specifies.**
   Queued from FIBR-0406 I5 (2026-10-01). datetime_format renders a
   pinned pattern with QDate/QTime.toString(token), which is C-locale, so
   "dd MMMM yyyy" reads "11 July 2026" in every language and AM/PM stays
@@ -3982,6 +3988,11 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   User decision (2026-10-07): render pinned tokens through the current
   QLocale, and Settings' samples the same way. Amend FIBR-0083 and run
   its gate first, then rebuild the withdrawn fix.
+  Resolved (2026-10-08, c023aa6): FIBR-0083 amended (INV-9, D5,
+  Deliverable 3) and gated with FIBR-0435. The formatter renders pinned
+  tokens through QLocale(), and the combos label presets the same way.
+  Not covered by a test: the time combo's rows (INV-9 names the date
+  row). Verified offscreen under fr_FR and ja_JP.
   **Layman:** Dates written with month names always use English names; they should follow your language.
   Kind: review-fix.
   Source: full-audit-2026-09-27 code lane 6 I5, queued by FIBR-0406.

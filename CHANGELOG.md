@@ -42,6 +42,10 @@ signaling per
 
 ### Fixed
 
+- **A mistyped time zone in Settings or at first run is now refused with a message, instead of quietly switching to your computer's zone.** (FIBR-0435)
+
+- **Dates with month names, and AM/PM, now follow your computer's language instead of always appearing in English.** (FIBR-0437)
+
 - **Restoring a backup onto a full disk now says there isn't enough disk space, instead of telling you to check the file and the backup password.** (FIBR-0436)
 
 - **Saving a backup can no longer delete a file of yours that happens to share the backup's name plus ".tmp".** (FIBR-0436)
