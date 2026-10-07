@@ -237,8 +237,11 @@ secret, so they are never committed. Put them in a **gitignored
 `.corpus-numbers`** at the repo root, one per line, as printed:
 
 **Create it in an EDITOR, never on a command line** — open
-`.corpus-numbers` in a text editor, one account number per line, exactly as
-printed on the statement. Spacing and dashes do not matter: the guard runs
+`.corpus-numbers` in a text editor, one number per line, exactly as printed on
+the statement. Any real number works, not only account numbers: a card number
+or an ID number is caught the same way (FIBR-0246). Enter each number whole:
+the guard looks for it inside every run of eight or more digits, so a short
+fragment would match unrelated numbers. Spacing and dashes do not matter: the guard runs
 `normalise_account_number` before comparing, and its search pattern allows any
 run of separators between digits, so a number split by a line-wrap is still
 found.
