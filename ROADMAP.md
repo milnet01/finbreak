@@ -3673,7 +3673,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: fix.
   Source: full-audit-2026-09-27 code lane 3 open question (queued by FIBR-0403).
 
-- 🚧 [FIBR-0424] **A Standard Bank statement row back-dated before the period is dated in the right year.**
+- ✅ [FIBR-0424] **A Standard Bank statement row back-dated before the period is dated in the right year.**
   From FIBR-0405 finding 4. _infer_years (FIBR-0050 D8, Family A)
   seeds the year from the period start and adds one whenever a month
   is lower than the previous row's. A March statement holding a row
@@ -3698,6 +3698,14 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   validation (only a REAL date that fits no year, or two, refuses);
   re-gate D8 (one loop, review-contract --max-loops 3); then code that
   carve-out, rerun the import suites, mutation-check, commit.
+  Resolved (2026-10-07): FIBR-0050 D8 amended so a month-day real in no
+  year (day 32) takes the period start's year and reaches row validation;
+  gated by review-contract loops 19-20 (converged), which also fixed
+  D13/INV-11's zero-row wording, named 29 February a year question, and
+  recorded _draft as the only parse_transaction caller and PdfError in
+  Deliverable 4. Built in a3f7742: two new INV-9a tests, red first;
+  import suites 387 passed; ruff and mypy clean; mutation_probe 3/3
+  killed.
   **Layman:** On some Standard Bank statements, one row dated just before the statement period could make that row and every row after it land a whole year late; the year should come from the statement's own dates.
   Kind: fix.
   Source: full-audit-2026-09-27 code lane 5 (queued by FIBR-0405).

@@ -42,6 +42,11 @@ signaling per
 
 ### Fixed
 
+- **A Standard Bank statement row dated just before the statement period no longer pushes that row, and every row after it, into the following year.** (FIBR-0424)
+  Each row now takes the year that places it within a month of the
+  statement's own dates. A statement whose dates cannot be placed is
+  refused, with a pointer to the bank's CSV or OFX export.
+
 - **The offer to restore the copy kept from before an update now says when that copy was taken** (FIBR-0423)
   If a vault upgrade was interrupted, finbreak can offer to bring back
   the copy it kept beforehand. That copy can be weeks old, and the
