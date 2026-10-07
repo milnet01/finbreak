@@ -181,3 +181,43 @@ def test_FIBR0406_an_invalid_system_zone_does_not_break_today(monkeypatch):
         "2026-07-15T10:00:00Z", "system", "yyyy-MM-dd", "HH:mm"
     )
     assert shown.startswith("2026-07-1"), shown
+
+
+def test_INV9_pinned_formats_render_in_the_users_language(qtbot):
+    """FIBR-0437 — a pinned token went through ``QDate.toString(token)``, which
+    is C-locale, so month names and the AM/PM marker were English in every
+    language. They are now the current locale's own, and the picker's preset
+    rows render the same way (INV-9)."""
+    from PySide6.QtWidgets import QComboBox
+
+    from finbreak.services.auth import DATETIME_SYSTEM, DateTimePrefs
+    from finbreak.ui._datetime_prefs import populate_datetime_combos
+
+    original = QLocale()
+    try:
+        QLocale.setDefault(QLocale("fr_FR"))
+        assert format_date("2026-07-11", "dd MMMM yyyy") == "11 juillet 2026"
+        tz, date, time = QComboBox(), QComboBox(), QComboBox()
+        for combo in (tz, date, time):
+            qtbot.addWidget(combo)
+        system = DateTimePrefs(DATETIME_SYSTEM, DATETIME_SYSTEM, DATETIME_SYSTEM)
+        populate_datetime_combos(
+            tz,
+            date,
+            time,
+            system_tz_label="System",
+            system_date_label="System",
+            system_time_label="System",
+            current=system,
+        )
+        assert date.itemText(date.findData("dd MMMM yyyy")) == "11 juillet 2026"
+
+        QLocale.setDefault(QLocale("ja_JP"))
+        assert (
+            format_timestamp(
+                "2026-07-11T12:30:00+00:00", "UTC", "yyyy-MM-dd", "h:mm AP"
+            )
+            == "2026-07-11 12:30 午後"
+        )
+    finally:
+        QLocale.setDefault(original)

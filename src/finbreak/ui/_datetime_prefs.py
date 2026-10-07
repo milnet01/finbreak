@@ -82,13 +82,15 @@ def populate_datetime_combos(
     select_combo_data(tz, current.timezone)
 
     date.addItem(system_date_label, DATETIME_SYSTEM)
-    for token, label in DATE_PRESETS:
-        date.addItem(label, token)
+    # Each preset row shows the sample instant as the app will render it, in
+    # the current locale's language, not the tables' English labels (INV-9).
+    for token, _label in DATE_PRESETS:
+        date.addItem(QLocale().toString(_SAMPLE_DATE, token), token)
     select_combo_data(date, current.date_format)
 
     time.addItem(system_time_label, DATETIME_SYSTEM)
-    for token, label in TIME_PRESETS:
-        time.addItem(label, token)
+    for token, _label in TIME_PRESETS:
+        time.addItem(QLocale().toString(_SAMPLE_TIME, token), token)
     select_combo_data(time, current.time_format)
 
 
