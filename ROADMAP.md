@@ -3730,7 +3730,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: fix.
   Source: full-audit-2026-09-27 code lanes 5 and 6 (queued by FIBR-0405).
 
-- 📋 [FIBR-0426] **A batch-import UI test crashed its test worker once under the full gate.**
+- ✅ [FIBR-0426] **A batch-import UI test crashed its test worker once under the full gate.**
   Seen 2026-09-29 during FIBR-0405's gate: pytest-xdist reported
   "worker 'gw5' crashed while running test_batch_import_ui.py::
   test_INV8_cancelling_a_prompt_skips_that_file_immediately". Alone it
@@ -3740,11 +3740,16 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   is a native crash (Qt or a C extension), not an assertion. To find
   out: rerun the full gate in a loop with faulthandler output kept, and
   note which test and thread the crash lands on.
+  Investigated (2026-10-07): the full suite (-m "not perf", -n 6, as
+  the gate runs it) ran five times with python -X faulthandler: 2588
+  passed, 2 skipped every time, no worker crash. Not reproduced, so
+  there is nothing to diagnose yet. If a worker crash recurs, keep the
+  whole pytest output: the faulthandler dump names the test and thread.
   **Layman:** One automated check crashed once for no clear reason and then passed every time after; it needs a closer look so it doesn't hide a real problem.
   Kind: investigate.
   Source: in-session-2026-09-29 (FIBR-0405 gate run).
 
-- 📋 [FIBR-0427] **A remembered batch-import password is saved only when the import is committed.**
+- ✅ [FIBR-0427] **A remembered batch-import password is saved only when the import is committed.**
   From FIBR-0407 finding 3 (full audit 2026-09-27 code lane 7).
   FIBR-0085's two specs contradict each other. The service spec § 4.4
   writes a Remember-ticked password once a file's account settles (at
@@ -3755,6 +3760,13 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   the password to each one. Recommended: defer the write to _commit's
   success path, which keeps § 4.6's promise. Amends § 4.4, so the change
   is gated (review-contract --max-loops 3) before the build.
+  Resolved (2026-10-07): amended docs/specs/FIBR-0085-batch-import-service.md
+  (§4.3 RUN, §4.4, new INV-16) and the shared file's §11 row; gated by
+  review-contract loops 6-7 (converged), which added the write's own
+  (ValueError, FinbreakError) handler and a failable abandoned-batch leg.
+  Built in 4a5c0dd: _commit writes the password after the file commits;
+  set_account no longer does. Two new tests, red first; batch and import
+  suites 254 passed; ruff and mypy clean; mutation_probe 3/3 killed.
   **Layman:** When importing many statements at once, a password you asked finbreak to remember is saved too early, even if you then cancel; it should be saved only once the import actually happens.
   Kind: fix.
   Source: full-audit-2026-09-27 code lane 7 (queued by FIBR-0407).

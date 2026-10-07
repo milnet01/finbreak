@@ -42,6 +42,10 @@ signaling per
 
 ### Fixed
 
+- **A password you ask a batch import to remember is now saved only when that statement is actually imported.** (FIBR-0427)
+  Cancelling before the import no longer keeps it, and a statement you
+  move to another account saves it only to the account it lands in.
+
 - **A Standard Bank statement row dated just before the statement period no longer pushes that row, and every row after it, into the following year.** (FIBR-0424)
   Each row now takes the year that places it within a month of the
   statement's own dates. A statement whose dates cannot be placed is
