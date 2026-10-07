@@ -2026,6 +2026,8 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   that regenerates the file, or a step on the release checklist.
   Recommendation: the release-checklist step, because it costs no CI
   minutes and the release is when the file matters.
+  User decision (2026-10-07): a regenerate-and-rebuild step on the
+  release checklist, not a scheduled CI job.
   **Layman:** The Linux app-store build freezes an exact list of code libraries. Nothing checks whether newer, possibly security-fixed versions of them have come out, so the build can quietly ship old ones.
   Kind: security.
   Source: in-session-2026-08-20 (found during the FIBR-0159 pre-submit checks).
@@ -3859,6 +3861,8 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   string, some splicing names in with f-strings, shown through
   setText(str(exc)). ui/statements.py already builds its messages with
   tr() from typed results and is the model to follow.
+  User decision (2026-10-07): do this together with FIBR-0017
+  (multi-language UI), not before.
   **Layman:** Some error messages when adding a transaction or editing an account can't be translated yet; it only matters once finbreak offers other languages.
   Kind: review-fix.
   Source: full-audit-2026-09-27 code lane 16 D3, queued by FIBR-0396.
@@ -3873,6 +3877,9 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   message naming the field, keeping the dialog open, rather than keeping
   the previous zone, which would leave the field showing text that was
   never saved. Then amend FIBR-0083 D3/D4 and run review-contract on it.
+  User decision (2026-10-07): refuse Save and first-run submit with a
+  translated message naming the field, keeping the dialog open. Amend
+  FIBR-0083 D3/D4 and run its gate first.
   **Layman:** If you mistype a time zone, finbreak quietly uses your computer's zone instead of telling you; it should say so and let you fix it.
   Kind: review-fix.
   Source: full-audit-2026-09-27 code lane 18 U2, queued by FIBR-0398.
@@ -3907,6 +3914,9 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   current QLocale, run review-contract on it, then rebuild the fix, and
   render Settings' sample labels the same way so the picker shows what
   the app will show.
+  User decision (2026-10-07): render pinned tokens through the current
+  QLocale, and Settings' samples the same way. Amend FIBR-0083 and run
+  its gate first, then rebuild the withdrawn fix.
   **Layman:** Dates written with month names always use English names; they should follow your language.
   Kind: review-fix.
   Source: full-audit-2026-09-27 code lane 6 I5, queued by FIBR-0406.
@@ -3924,6 +3934,8 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   account"), rather than refusing - a refusal would block the user
   correcting a mis-filed statement. This decides FIBR-0059 behaviour, so
   amend that spec and run its gate first.
+  User decision (2026-10-07): unlink such pairs during the reassign and
+  say so in the status line. Amend FIBR-0059 and run its gate first.
   **Layman:** Moving a statement to another account can leave a money transfer between two accounts pointing at the same account, so its amounts quietly disappear from your totals.
   Kind: review-fix.
   Source: full-audit-2026-09-27 code lane 10 M3, queued by FIBR-0409.
@@ -4621,6 +4633,8 @@ always keeps the password slot, so no earlier vault becomes unopenable.
   Awaiting user decision (2026-09-29). Recommendation: the remainder is
   the v1.6.0 first-run launcher feature; leave it in that release rather
   than pulling it into 1.0.
+  User decision (2026-10-07): the remainder stays in v1.6.0 as the
+  first-run launcher feature, not 1.0.
 
 - 📋 [FIBR-0220] **Agreeing with a "~ guess" cannot teach the app — the no-nag gate has no escape hatch.**
   Reported by the user 2026-08-03. VERIFIED against source; the current
@@ -5136,6 +5150,9 @@ work, and none of it is a release decision.
   Awaiting user decision (2026-09-29). Recommendation: document the
   name/address check as it stands and park both parts as considered,
   since neither is needed for 1.0.
+  User decision (2026-10-07): document that .corpus-numbers takes any
+  real number, and park the structural rule and the names/addresses
+  check as considered.
   **Layman:** Add an automatic check that stops real bank details from ever being committed — the current security scanner only looks for passwords and keys, so it has never checked for these.
   Kind: security.
   Source: in-session-2026-08-06 (gap found while closing FIBR-0244).
@@ -6403,6 +6420,9 @@ work, and none of it is a release decision.
   --no-publish, so release-linux.sh creates the release together with
   its assets. That changes CLAUDE.md's release procedure, so it owes a
   rule-14 gate first.
+  User decision (2026-10-07): run cut-release with --no-publish so
+  release-linux.sh creates the release with its assets. The CLAUDE.md
+  release procedure change owes its rule-14 gate first.
 
 - ✅ [FIBR-0352] **FIBR-0146's 13-split loop-log row has one cell too many, so its whole explanation is dropped from the render.**
   docs/specs/FIBR-0146.md, the `13-split` row of the cold-eyes
