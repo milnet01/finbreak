@@ -3795,7 +3795,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: chore.
   Source: in-session-2026-09-29 (flatpak-builder-lint while verifying FIBR-0161).
 
-- 📋 [FIBR-0429] **FIBR-0159's portal contingency would turn its own sandbox allowlist test red.**
+- ✅ [FIBR-0429] **FIBR-0159's portal contingency would turn its own sandbox allowlist test red.**
   From FIBR-0159's review loop 11 (2026-09-29), outside the FIBR-0161
   amendment it gated. § 3.5 names the fallback if the pip-bundled Qt
   does not route file dialogs through the portal: a
@@ -3805,6 +3805,12 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   the allowlist widens. The portal test passed, so the fallback is
   unused today. Fix: INV-2 says that entry, and only that one, joins the
   allowlist if the fallback is ever applied (a spec amendment, gated).
+  Resolved (2026-10-07, ce95995): FIBR-0159 INV-2 now says § 3.5's
+  portal --env= entry joins the allowlist in the same change, and no
+  other --env= does. Not gated, departing from this item's plan: the
+  fallback is unused, and a wrong word would show as a red INV-2 test
+  costing one sentence (principles trial, 2026-09-29). The reasoning is
+  in the commit body.
   **Layman:** A backup plan written into the Flatpak design would, if ever used, break one of its own checks; the design should say how the two fit together.
   Kind: doc-fix.
   Source: review-contract FIBR-0159 loop 11 (2026-09-29).
