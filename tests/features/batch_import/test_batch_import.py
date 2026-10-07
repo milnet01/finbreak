@@ -22,6 +22,7 @@ from pathlib import Path
 import pytest
 
 from conftest import _PW, _acct
+from finbreak.errors import FinbreakError
 from finbreak.importers.base import ParseResult
 from finbreak.importers.pdf_importer import PasswordError
 from finbreak.models import AccountType, ColumnMapping, TransactionDraft
@@ -29,6 +30,7 @@ from finbreak.repositories.statement_periods import StatementPeriodRepository
 from finbreak.services.accounts import AccountService
 from finbreak.services.auth import AuthService
 from finbreak.services.batch_import import (
+    CANCELLED,
     CAP_REACHED,
     BatchImportService,
     next_question,
@@ -1250,3 +1252,71 @@ def test_FIBR0407_a_failed_retarget_leaves_the_account_where_it_was(
     with pytest.raises(ValueError):
         batch.set_account(record, 42)
     assert record.account_id is None
+
+
+# -- INV-16 ------------------------------------------------------------------ #
+
+
+def test_INV16_remembered_password_written_only_on_commit(service, batch, tmp_path):
+    """A Remember-ticked password is written only for a file RUN commits, and
+    only to the account it commits to; Cancel before RUN writes none
+    (FIBR-0427).
+
+    Breaks when the write happens as the destination settles, in
+    ``set_account``: Cancel then keeps a password the review step promises to
+    discard, and a retargeted file writes to every account it visited.
+    """
+    accounts = AccountService(service.vault)
+    first = _acct(service)
+    second = accounts.add_account("Second", AccountType.CURRENT.value).id
+    files = batch.build([_write(tmp_path, "a.csv", _rows(2, tag="a"))])
+    _scan_all(batch, files)
+    record = files[0]
+    record.pending_password, record.remember_password = "s3cret", True
+
+    batch.set_account(record, first)
+    batch.set_account(record, second)
+    assert accounts.get_pdf_password(first) is None
+    assert accounts.get_pdf_password(second) is None, "written before RUN"
+
+    batch.review(files)
+    _run_all(batch, files)
+    assert record.outcome == "committed"
+    assert accounts.get_pdf_password(second) == "s3cret"
+    assert accounts.get_pdf_password(first) is None, "written to a visited account"
+
+    # A second batch, abandoned before RUN the way Cancel does it.
+    third = accounts.add_account("Third", AccountType.CURRENT.value).id
+    files = batch.build([_write(tmp_path, "b.csv", _rows(2, day_from=9, tag="b"))])
+    _scan_all(batch, files)
+    files[0].pending_password, files[0].remember_password = "other", True
+    batch.set_account(files[0], third)
+    batch.stop_from(files, 0, CANCELLED)
+    batch.discard_passwords()
+    assert accounts.get_pdf_password(third) is None
+
+
+def test_INV1_failed_password_write_leaves_the_file_committed(
+    service, batch, tmp_path, monkeypatch
+):
+    """The RUN-time password write has its own handler: a write that raises is
+    logged, the committed file stays ``committed``, and the batch goes on
+    (§ 4.3, INV-1)."""
+    account = _acct(service)
+    files = batch.build(
+        [
+            _write(tmp_path, "a.csv", _rows(2, tag="a")),
+            _write(tmp_path, "b.csv", _rows(2, day_from=9, tag="b")),
+        ]
+    )
+    _scan_all(batch, files)
+    _place(batch, files, account)
+    files[0].pending_password, files[0].remember_password = "s3cret", True
+
+    def wedged(*_a, **_k):
+        raise FinbreakError("the vault refused the write")
+
+    monkeypatch.setattr(batch._accounts, "set_pdf_password", wedged)
+    batch.review(files)
+    _run_all(batch, files)
+    assert [r.outcome for r in files] == ["committed", "committed"]

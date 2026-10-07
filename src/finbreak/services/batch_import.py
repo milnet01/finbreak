@@ -302,8 +302,8 @@ class BatchImportService:
 
     def discard_passwords(self) -> None:
         """Forget every password typed during this run (§ 4.4, § 4.6). Only a
-        *Remember*-ticked one was ever written, and that already happened when
-        its destination settled."""
+        *Remember*-ticked one is ever written, and only once RUN commits its
+        file, so a Cancel before RUN leaves nothing stored."""
         self._run_passwords.clear()
 
     @staticmethod
@@ -672,23 +672,6 @@ class BatchImportService:
             record.preview = self._imports.retarget(record.preview, account_id)
         record.account_id = account_id
         record.outcome = "ready"  # REVIEW re-derives already_imported from here
-        self._settle_password(record)
-
-    def _settle_password(self, record: BatchFile) -> None:
-        """Write a *Remember*-ticked password once the destination settles.
-
-        At prompt time the file is still unparsed, so there is nothing to key a
-        password to — § 4.4 holds it on the record instead. It is dropped
-        unwritten if the file never settles an account (``failed``, ``skipped``,
-        or left ``needs_account``), which is the honest consequence of keying
-        stored passwords to accounts rather than to files.
-        """
-        if (
-            record.remember_password
-            and record.pending_password
-            and record.account_id is not None
-        ):
-            self._accounts.set_pdf_password(record.account_id, record.pending_password)
 
     def review(self, files: Sequence[BatchFile]) -> None:
         """Re-evaluate the whole batch — on entry to the review step and after
@@ -780,6 +763,32 @@ class BatchImportService:
             record.reason = str(exc)
             return
         record.outcome = "committed"
+        self._remember_password(record)
+
+    def _remember_password(self, record: BatchFile) -> None:
+        """Write a *Remember*-ticked password for a file RUN just committed, to
+        the account it committed to (§ 4.4, INV-16).
+
+        At prompt time the file is still unparsed, so there is nothing to key a
+        password to — § 4.4 holds it on the record instead, and a file that
+        never commits drops it unwritten. The write has its own handler: the
+        rows have already landed, so a refusal here must neither report the file
+        ``failed`` nor stop the batch (INV-1).
+        """
+        if (
+            record.remember_password
+            and record.pending_password
+            and record.account_id is not None
+        ):
+            try:
+                self._accounts.set_pdf_password(
+                    record.account_id, record.pending_password
+                )
+            except (ValueError, FinbreakError) as exc:
+                log.warning(
+                    "batch import: a remembered password was not saved (%s)",
+                    type(exc).__name__,
+                )
 
     @staticmethod
     def stop_from(files: Sequence[BatchFile], index: int, reason: str) -> None:
