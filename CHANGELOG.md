@@ -42,6 +42,8 @@ signaling per
 
 ### Fixed
 
+- **Ctrl+Q now quits finbreak from the password screen and the first-run screen, not only once you are unlocked.** (FIBR-0431)
+
 - **A password you ask a batch import to remember is now saved only when that statement is actually imported.** (FIBR-0427)
   Cancelling before the import no longer keeps it, and a statement you
   move to another account saves it only to the account it lands in.
