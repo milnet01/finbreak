@@ -547,11 +547,14 @@ class MainWindow(QMainWindow):
         # Quit command and its only keyboard shortcut. close() is Qt's idiom for
         # a File->Exit item; quitOnLastWindowClosed (default true) still exits.
         self._action_quit = self._make_action(
-            "action_quit", self.tr("Quit"), None, self.close
+            "action_quit", self.tr("Quit"), None, self._quit
         )
         # The app's first keyboard shortcut (FIBR-0216): Ctrl+Q, so exiting never
-        # depends on finding a menu. `ApplicationShortcut` so it works from the
-        # locked screen, where the window holds no focused workspace.
+        # depends on finding a menu. `ApplicationShortcut` so it works when the
+        # window holds no focused workspace. That is not enough on the locked and
+        # first-run screens: they are modal dialogs, and Qt refuses an application
+        # shortcut whose widget sits outside the active modal, so each of those
+        # dialogs carries this action too (FIBR-0431).
         #
         # Spelled out rather than taken from StandardKey.Quit, which resolves
         # through the platform's binding scheme and only gives Ctrl+Q under the
@@ -763,6 +766,7 @@ class MainWindow(QMainWindow):
         dialog.completed.connect(self._enter_unlocked)
         dialog.restore_requested.connect(self._open_restore)
         dialog.rejected.connect(self._on_first_run_rejected)
+        dialog.addAction(self._action_quit)  # Ctrl+Q through the modal (FIBR-0431)
         self._open_dialog(dialog)
 
     def _show_unlock(self) -> None:
@@ -780,6 +784,7 @@ class MainWindow(QMainWindow):
         dialog.restore_requested.connect(self._open_restore)
         dialog.start_over_requested.connect(self._on_start_over)
         dialog.rejected.connect(self._teardown_dialog)  # cancel: stay locked
+        dialog.addAction(self._action_quit)  # Ctrl+Q through the modal (FIBR-0431)
         self._open_dialog(dialog)
 
     def _on_recovery_unlocked(self) -> None:
@@ -1004,6 +1009,13 @@ class MainWindow(QMainWindow):
         # QApplication.quit(), for the reason the Quit action gives: quit() skips
         # closeEvent, so the update-worker drain never ran and a launch check
         # still in flight aborted the process (full audit 2026-09-27, row 29).
+        self.close()
+
+    def _quit(self) -> None:
+        """File > Quit and Ctrl+Q. A modal start dialog is torn down first, as
+        first-run's own dismissal does, so the window can close with nothing
+        holding it; then ``close()`` for the reason above (FIBR-0431)."""
+        self._teardown_dialog()
         self.close()
 
     # --- content actions ---------------------------------------------------- #

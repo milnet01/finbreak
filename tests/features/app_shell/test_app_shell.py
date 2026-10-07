@@ -910,6 +910,42 @@ def test_FIBR0216_quit_stays_reachable_while_locked(qtbot, service):
         assert not action.isEnabled(), action.objectName()
 
 
+@pytest.mark.parametrize("screen", ["first_run", "unlock"])
+def test_FIBR0431_ctrl_q_quits_from_the_modal_start_screens(
+    qtbot, service, monkeypatch, screen
+):
+    """FIBR-0431 — Ctrl+Q did nothing on the locked and first-run screens. Qt
+    refuses an application shortcut while a modal dialog is active unless the
+    shortcut's widget sits inside it, and the Quit action's only widget was its
+    menu. The key must reach the window's close path (layout save, worker
+    drain), as File > Quit does."""
+    if screen == "unlock":
+        service.first_run(bytearray(_PW), "ZAR")
+        service.lock()
+    window = MainWindow(service)
+    qtbot.addWidget(window)
+    window.show()
+    dialog = window._dialog
+    assert isinstance(dialog, FirstRunDialog if screen == "first_run" else UnlockDialog)
+    qtbot.waitUntil(dialog.isVisible)
+    with qtbot.waitActive(dialog):  # an application shortcut needs an active window
+        dialog.activateWindow()
+    drained = []
+    real_drain = window._drain_update_workers
+    monkeypatch.setattr(
+        window, "_drain_update_workers", lambda: (drained.append(1), real_drain())
+    )
+
+    try:
+        qtbot.keyClick(dialog, Qt.Key.Key_Q, Qt.KeyboardModifier.ControlModifier)
+    finally:
+        qtbot.mouseClick(window, Qt.MouseButton.LeftButton)  # release Ctrl
+
+    assert drained == [1], "Ctrl+Q must run the window's close path"
+    assert not window.isVisible(), "and the window closed"
+    assert window._dialog is None, "with the modal dialog torn down first"
+
+
 def test_FIBR0013_open_export_opens_a_prefilled_dialog(qtbot, service):
     from finbreak.ui.export_dialog import ExportDialog
 
