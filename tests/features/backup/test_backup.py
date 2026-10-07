@@ -1053,8 +1053,8 @@ def test_INV7_export_temp_refuses_a_pre_planted_file(tmp_path):
     and renamed into place: the user's backup is then attacker-owned and
     world-readable. O_NOFOLLOW stops only the symlink case. Its sibling
     ``_write_owner_only`` in the same file already used O_EXCL, as does
-    ``pdf_export`` since FIBR-0204; the export writer is now the same shape —
-    unlink the stale temp, then create with O_EXCL so a re-plant loses the race."""
+    ``pdf_export`` since FIBR-0204. Since FIBR-0436 the temp is a random
+    ``mkstemp`` name, so a planted file at the old name is never even opened."""
     src = tmp_path / "src"
     src.mkdir()
     auth = _seeded_auth((src / "vault.db", src / "vault.kdf.json"))
@@ -1350,6 +1350,47 @@ def test_FIBR0404_verify_reports_a_full_disk_as_io_error(tmp_path, monkeypatch):
     monkeypatch.setattr(BackupService, "_open_backup_vault", _disk_full)
     res = _verify_service(tmp_path).verify_backup(fbk, _BACKUP_PW)
     assert res == VerifyResult(False, None, None, "io_error")
+
+
+def test_FIBR0436_restore_reports_a_full_disk_as_a_storage_error(tmp_path, monkeypatch):
+    """Restore normalised a full disk (SQLITE_FULL, a DatabaseError) to a plain
+    BackupError, which the window words as "check the file and the backup
+    password". It is now BackupStorageError — still a BackupError, so nothing on
+    disk changed (FIBR-0014 INV-4) — and a wrong password stays plain."""
+    from finbreak.errors import BackupStorageError
+
+    fbk, _snap = _export_from_seed(tmp_path)
+    dest = _dest_auth(tmp_path)
+    with pytest.raises(BackupError) as wrong:
+        BackupService(dest.vault, dest).restore_backup(fbk, "not-the-password1", _M2)
+    assert not isinstance(wrong.value, BackupStorageError), "a wrong password"
+
+    full = _a_real_disk_full_error()
+
+    def _disk_full(*a, **k):
+        raise full
+
+    monkeypatch.setattr(BackupService, "_open_backup_vault", _disk_full)
+    with pytest.raises(BackupStorageError):
+        BackupService(dest.vault, dest).restore_backup(fbk, _BACKUP_PW, _M2)
+
+
+def test_FIBR0436_export_leaves_a_users_dest_tmp_alone(tmp_path):
+    """Export's temp was ``<dest>.tmp``, and ``_write_fbk`` unlinked that path
+    before its O_EXCL open, so a successful export deleted a user's own file of
+    that name. The temp is now a random ``mkstemp`` name beside the destination."""
+    src = tmp_path / "src"
+    src.mkdir()
+    auth = _seeded_auth((src / "vault.db", src / "vault.kdf.json"))
+    try:
+        dest = tmp_path / "out.fbk"
+        users = dest.with_name(dest.name + ".tmp")
+        users.write_text("someone else's file\n", encoding="utf-8")
+        BackupService(auth.vault, auth).export_backup(dest, _BACKUP_PW)
+        assert users.read_text(encoding="utf-8") == "someone else's file\n"
+        assert dest.stat().st_mode & 0o777 == 0o600
+    finally:
+        auth.lock()
 
 
 def test_INV4_verify_corrupt_overflow_page_reason(tmp_path):
@@ -1814,9 +1855,8 @@ def test_a_refused_export_leaves_a_pre_existing_dest_tmp_alone(tmp_path, monkeyp
     picked, so an unrelated file of that name is one the export destroys on its
     way out of a refusal it never wrote a byte for.
 
-    ``_write_fbk``'s own unlink is a different thing and stays: it clears the
-    path so ``O_EXCL`` can win the race against a planted symlink, and there is
-    no way to check ownership first that is not itself a race.
+    Since FIBR-0436 the temp is a random ``mkstemp`` name, so no file of the
+    user's can share it; this test keeps the bystander case pinned.
     """
     import finbreak.services.backup as backup_mod
     from finbreak.errors import BackupError
@@ -1850,8 +1890,8 @@ def test_a_refused_export_leaves_a_pre_existing_dest_tmp_alone(tmp_path, monkeyp
 def test_an_export_that_fails_after_writing_the_temp_still_removes_it(
     tmp_path, monkeypatch
 ):
-    """FIBR-0313 L5, the other side of the guard — once ``_write_fbk`` has
-    created ``<dest>.tmp`` the file IS the export's, and a failure past that
+    """FIBR-0313 L5, the other side of the guard — once the export has
+    created its temp the file IS the export's, and a failure past that
     point must still take it back. Without this leg the guard added for the
     bystander case could disable the cleanup entirely and nothing would say so
     (measured with mutation_probe: dropping the flag survived).

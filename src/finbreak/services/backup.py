@@ -19,6 +19,7 @@ invariants were added to the second. Both are cited below.
 
 from __future__ import annotations
 
+import errno
 import json
 import logging
 import os
@@ -49,6 +50,7 @@ from finbreak.crypto import (
 from finbreak.errors import (
     BackupDestinationError,
     BackupError,
+    BackupStorageError,
     KdfPolicyError,
     SchemaVersionError,
 )
@@ -230,14 +232,11 @@ class BackupService:
         password_buf = bytearray(backup_password, "utf-8")
         backup_key: bytearray | None = None
         # The temp zip sits beside the destination so the os.replace is a
-        # same-filesystem rename; unlinked on any failure (no partial .fbk).
-        tmp_zip = dest.with_name(dest.name + ".tmp")
-        # The temp name is derived from the destination the user picked, so a
-        # file of that name may be someone's and not ours. Only the cleanup
-        # below is gated on this: `_write_fbk`'s own unlink stays unconditional,
-        # because clearing the path is what lets O_EXCL win the race against a
-        # planted symlink, and no ownership check ahead of it is not itself one.
-        tmp_is_ours = False
+        # same-filesystem rename, under a random `mkstemp` name (O_EXCL, 0o600):
+        # a name derived from the destination can be a file the user owns, and
+        # the export used to delete it (FIBR-0436). Only a temp this export
+        # created is unlinked on failure, so no partial .fbk is left.
+        tmp_zip: Path | None = None
         try:
             params = self._auth.new_params()  # fresh per-backup salt (INV-3)
             backup_key = derive_key(password_buf, params.salt, params)
@@ -274,13 +273,16 @@ class BackupService:
                         f"vault is too large to back up: {db_bytes} bytes exceeds "
                         f"the {MAX_BACKUP_DB_BYTES}-byte restore cap"
                     )
-                tmp_is_ours = True
-                self._write_fbk(tmp_zip, manifest, params.to_sidecar_dict(), tmp_db)
-            os.replace(tmp_zip, dest)
+                fd, tmp_name = tempfile.mkstemp(
+                    dir=dest.parent, prefix=f".{dest.name}.", suffix=".tmp"
+                )
+                staged = tmp_zip = Path(tmp_name)
+                self._write_fbk(fd, manifest, params.to_sidecar_dict(), tmp_db)
+            os.replace(staged, dest)
             fsync_dir(dest.parent)
             log.info("backup exported")
         except BaseException:
-            if tmp_is_ours:
+            if tmp_zip is not None:
                 tmp_zip.unlink(missing_ok=True)
             raise
         finally:
@@ -415,6 +417,12 @@ class BackupService:
         ) as exc:
             # Normalise every underlying failure to BackupError; on-disk state is
             # untouched (nothing installed) or recoverable from *.old (INV-4/5).
+            # A full disk keeps its own subtype, so the window names the disk
+            # rather than the password (FIBR-0436, as verify does).
+            if (isinstance(exc, DatabaseError) and _is_storage_error(exc)) or (
+                isinstance(exc, OSError) and exc.errno == errno.ENOSPC
+            ):
+                raise BackupStorageError(str(exc)) from exc
             raise BackupError(str(exc)) from exc
         finally:
             _wipe(master_key)
@@ -821,31 +829,20 @@ class BackupService:
 
     @staticmethod
     def _write_fbk(
-        tmp_zip: Path,
+        fd: int,
         manifest: dict[str, object],
         params_dict: dict[str, int | str],
         db_path: Path,
     ) -> None:
-        """Assemble the three-entry `.fbk` zip at ``tmp_zip``, owner-only + fsynced.
+        """Assemble the three-entry `.fbk` zip into ``fd``, fsynced, and close it.
 
         ``vault.db`` is stored (not deflated) — AES ciphertext is incompressible,
         and ZIP_STORED closes the DEFLATE-bomb vector on the DB entry (INV-12).
 
-        The temp name is ``<dest>.tmp``, derived from the user-chosen output path and
-        so fully predictable. ``O_NOFOLLOW`` stops only the symlink plant; under the
-        old ``O_TRUNC`` an attacker who pre-created a plain ``dest.fbk.tmp`` (mode
-        0666) in a shared export dir had it filled and renamed into place, leaving
-        the user's backup attacker-owned and world-readable. So: unlink any stale
-        temp from an earlier crashed export (``unlink`` removes the link, never its
-        target), then create with ``O_EXCL`` so a re-plant inside that window loses
-        the race. Same shape as ``_write_owner_only`` below and ``pdf_export``
-        (FIBR-0212)."""
-        tmp_zip.unlink(missing_ok=True)
-        fd = os.open(
-            tmp_zip,
-            os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
-            0o600,
-        )
+        ``fd`` is a ``tempfile.mkstemp`` beside the destination: a random name
+        opened ``O_EXCL`` at 0o600, so a file planted at a predictable name is
+        never adopted — the attacker-owned backup of FIBR-0212 — and a user's
+        own file is never touched (FIBR-0436). Same shape as ``pdf_export``."""
         with os.fdopen(fd, "wb") as handle:
             with zipfile.ZipFile(handle, "w") as zf:
                 zf.writestr(_MANIFEST_ENTRY, json.dumps(manifest, indent=2))

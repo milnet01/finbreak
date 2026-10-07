@@ -179,6 +179,40 @@ def test_restore_from_shell_enters_unlocked_under_new_master(qtbot, tmp_path):
     service.lock()
 
 
+def test_FIBR0436_a_full_disk_restore_names_the_disk(qtbot, tmp_path, monkeypatch):
+    """A restore that failed for lack of disk told the user to check the file and
+    the backup password, which sent them to retype a password that was right."""
+    from finbreak.errors import BackupStorageError
+    from finbreak.services.backup import BackupService
+    from finbreak.ui import main_window
+    from finbreak.ui.main_window import MainWindow
+
+    dest = tmp_path / "dest"
+    dest.mkdir()
+    service = AuthService(dest / "vault.db", dest / "vault.kdf.json")
+    window = MainWindow(service)
+    qtbot.addWidget(window)
+    window._open_restore()
+    restore = window._dialog
+    restore._source_field.setText(str(_make_fbk(tmp_path)))
+    restore._backup_password.setText(_BACKUP_PW)
+    restore._new_master.setText(_M2)
+    restore._confirm_master.setText(_M2)
+
+    def _disk_full(*a, **k):
+        raise BackupStorageError("database or disk is full")
+
+    shown: list[str] = []
+    monkeypatch.setattr(BackupService, "restore_backup", _disk_full)
+    monkeypatch.setattr(
+        main_window.QMessageBox, "warning", lambda _p, _t, text: shown.append(text)
+    )
+    window._on_restore_requested()
+
+    assert len(shown) == 1 and "disk space" in shown[0], shown
+    assert "password" not in shown[0], "it must not send the user to the password"
+
+
 def test_FIBR0394_restore_clears_the_replaced_vaults_hint_and_lockout(qtbot, tmp_path):
     """A restore always sets a NEW master password (INV-3), so the window.ini
     hint and unlock-throttle count belong to a password that no longer opens the

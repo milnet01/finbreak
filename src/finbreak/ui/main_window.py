@@ -78,6 +78,7 @@ from finbreak.datetime_format import today as app_today
 from finbreak.errors import (
     BackupDestinationError,
     BackupError,
+    BackupStorageError,
     InterruptedRestoreError,
     UpdateDownloadError,
     UpdateError,
@@ -1700,6 +1701,16 @@ class MainWindow(QMainWindow):
             # Open the freshly-restored vault under the new master (both derives run
             # under the one wait cursor).
             unlocked = self._service.unlock(bytearray(new_master, "utf-8"))
+        except BackupStorageError:
+            QMessageBox.warning(
+                self,
+                self.tr("Restore failed"),
+                self.tr(
+                    "There isn't enough free disk space to restore that backup. "
+                    "Free up some space, then try again."
+                ),
+            )
+            return  # on-disk vault unchanged; dialog stays open to retry
         except (BackupError, ValueError):
             QMessageBox.warning(
                 self,

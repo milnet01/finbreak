@@ -117,6 +117,13 @@ class BackupDestinationError(BackupError):
     the window can say so, rather than the size refusal's words (FIBR-0404)."""
 
 
+class BackupStorageError(BackupError):
+    """A restore failed for lack of disk — SQLite's SQLITE_FULL or SQLITE_IOERR,
+    or a write the OS refused for no space. Its own type so the window can name
+    the disk rather than send the user to retype a password that was right
+    (FIBR-0436). Still a ``BackupError``: nothing on disk changed."""
+
+
 class UpdateError(FinbreakError):
     """A recoverable auto-update failure surfaced to the user on an explicit
     **Update now** — an oversize/timed-out/dropped download or a disk error at
