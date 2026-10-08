@@ -62,8 +62,10 @@ from finbreak.vault import (
     RESTORE_ASSEMBLY_PREFIX,
     SQLCIPHER_COMPAT,
     SQLCIPHER_COMPAT_ACCEPTED,
+    VERIFY_STAGING_PREFIX,
     Vault,
     old_copy_sets,
+    verify_staging_dirs,
 )
 
 log = logging.getLogger(__name__)
@@ -442,11 +444,20 @@ class BackupService:
         then tears down. Never touches the live vault (D3); the backup key +
         password buffer are wiped on every path (INV-7). Each expected failure
         class maps to a stable ``reason`` code — a friendly answer, not a stack
-        trace (D4). A system ``TemporaryDirectory`` (removed on every path, INV-5)
-        holds only the backup's own ciphertext + a ``0o600`` params temp (D6)."""
+        trace (D4). A ``verify-staging-`` ``TemporaryDirectory`` beside the vault —
+        not the system temp dir, RAM on a tmpfs host (FIBR-0441) — holds only the
+        backup's own ciphertext + a ``0o600`` params temp (D6). Its removal, and a
+        crashed verify's leftover's, are best-effort and never change the answer
+        (INV-5)."""
         on_key = on_key or _noop_on_key
+        for leftover in verify_staging_dirs(self._vault.vault_path):
+            shutil.rmtree(leftover, ignore_errors=True)
         try:
-            with tempfile.TemporaryDirectory() as td:
+            with tempfile.TemporaryDirectory(
+                dir=self._vault.vault_path.parent,
+                prefix=VERIFY_STAGING_PREFIX,
+                ignore_cleanup_errors=True,
+            ) as td:
                 backup_vault, _compat = self._open_backup_vault(
                     src, backup_password, Path(td), on_key=on_key
                 )

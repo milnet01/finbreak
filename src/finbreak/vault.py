@@ -81,6 +81,23 @@ def restore_assembly_dirs(vault_path: Path) -> list[Path]:
     )
 
 
+VERIFY_STAGING_PREFIX = "verify-staging-"
+
+
+def verify_staging_dirs(vault_path: Path) -> list[Path]:
+    """Every leftover verify-staging directory beside the vault.
+
+    Verify stages its copy of the backup here rather than in the system temp
+    dir, which is RAM on a tmpfs host (FIBR-0441). Its cleanup is best-effort,
+    so a crash or a failed removal leaves the copy behind; the next verify and
+    `reset_vault` both remove it, which is why the prefix lives here, below
+    backup and auth alike (FIBR-0033 INV-5)."""
+    parent = vault_path.parent
+    return sorted(
+        path for path in parent.glob(f"{VERIFY_STAGING_PREFIX}*") if path.is_dir()
+    )
+
+
 def old_copy_sets(vault_path: Path, sidecar_path: Path) -> dict[str, list[Path]]:
     """Every `*.old` set beside the vault, keyed by its stamp.
 

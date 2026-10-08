@@ -63,6 +63,7 @@ from finbreak.vault import (
     Vault,
     old_copy_sets,
     restore_assembly_dirs,
+    verify_staging_dirs,
 )
 
 log = logging.getLogger(__name__)
@@ -772,7 +773,12 @@ class AuthService:
         # opens under the master password chosen for that restore. Nothing else
         # removes it: the context manager that made it cleans up on every
         # ordinary exit and a crash is not one (FIBR-0337 M4).
-        for directory in restore_assembly_dirs(vault_path):
+        # A crashed or uncleaned verify leaves a copy of a backup the same way
+        # (FIBR-0441, FIBR-0033 INV-5).
+        for directory in (
+            *restore_assembly_dirs(vault_path),
+            *verify_staging_dirs(vault_path),
+        ):
             shutil.rmtree(directory)
         for path in (
             *extra,

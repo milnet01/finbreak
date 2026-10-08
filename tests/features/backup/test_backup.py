@@ -2290,3 +2290,42 @@ def test_INV20_restores_a_backup_from_an_earlier_release(tmp_path, fbk_name, tag
         )
     finally:
         dest.lock()
+
+
+# -- FIBR-0441: verify stages beside the vault ----------------------------- #
+def test_FIBR0441_verify_stages_beside_the_vault(tmp_path, monkeypatch):
+    """Verify copied the backup into the system temp dir, which is RAM on a
+    tmpfs host. It now stages in a verify-staging- dir in the vault's own
+    directory, with a best-effort cleanup (FIBR-0033 INV-5)."""
+    from finbreak.vault import VERIFY_STAGING_PREFIX
+
+    fbk, _snap = _export_from_seed(tmp_path)
+    auth, d, _vb, _sb = _dest_with_vault(tmp_path)
+    calls: list[dict] = []
+    real = tempfile.TemporaryDirectory
+
+    def spy(*a, **k):
+        calls.append(k)
+        return real(*a, **k)
+
+    monkeypatch.setattr(tempfile, "TemporaryDirectory", spy)
+    assert BackupService(auth.vault, auth).verify_backup(fbk, _BACKUP_PW).ok
+    assert calls == [
+        {"dir": d, "prefix": VERIFY_STAGING_PREFIX, "ignore_cleanup_errors": True}
+    ]
+
+
+def test_FIBR0441_a_crashed_verifys_leftover_is_swept(tmp_path):
+    """A verify-staging- dir a crashed verify left holds a copy of a backup.
+    The next verify removes it before staging, and so does start over."""
+    fbk, _snap = _export_from_seed(tmp_path)
+    auth, d, _vb, _sb = _dest_with_vault(tmp_path)
+    for sweep in (
+        lambda: BackupService(auth.vault, auth).verify_backup(fbk, _BACKUP_PW),
+        auth.reset_vault,
+    ):
+        leftover = d / "verify-staging-crashed"
+        leftover.mkdir()
+        (leftover / "vault.db").write_bytes(b"a backup's ciphertext")
+        sweep()
+        assert not leftover.exists(), sweep
