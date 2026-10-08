@@ -408,6 +408,15 @@ so Flathub review and code signing do not block this release.
   release. Once it passes, cut and publish 1.0.0 without stopping again.
   State: FIBR-0346 and FIBR-0367 are closed; the wintest self-update is
   the last named item before the cut.
+  Revised (2026-10-08, same day): a pre-release cannot reach the real
+  updater. The installed app asks only GitHub's /releases/latest, which
+  skips prereleases, and has no feed override (services/update_fetch.py,
+  services/update.py). And the 0.1.23 -> 1.0.0 update is performed by
+  0.1.23's own code, which is already shipped. User decision: before the
+  cut, build the 1.0.0 code with windows-build.yml (no release), copy it
+  to ssh wintest and run --self-test; after publishing, update wintest
+  from 0.1.23 for real, with the user doing the unlock and the
+  "Update now" click while I verify the result over ssh.
   **Layman:** The plan for calling the app finished: what has to be true first, and which four jobs are standing in the way.
   Kind: release.
   Source: user-decision-2026-08-20 ("what gets us to v1.0?").
