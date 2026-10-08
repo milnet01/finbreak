@@ -562,8 +562,9 @@ not inline — an always-loaded file should not carry a growing audit table.*
 
 ## Cutting a release: `gh release create` is NOT the end
 
-`cut-release` carries the version bump, the tag and the GitHub release
-**but not the downloads**. `.claude/bump.json` carries less still — its
+`cut-release` carries the version bump and the tag. **Run it with
+`--no-publish`** (FIBR-0275), so it creates no GitHub release: the release is
+`release-linux.sh`'s to create, with its downloads attached. `.claude/bump.json` carries less still — its
 `_comment` says "this recipe covers the version bump only -- the signed
 AppImage build + publish is a separate manual step". The AppImage and
 the Windows `.exe` are built and attached by `scripts/release-linux.sh`
@@ -574,22 +575,25 @@ and `scripts/release-windows.sh`, and **nothing invokes those for you**.
 latest release" link and the in-app updater resolve to that page.** It has
 happened twice — FIBR-0203, then again on v0.1.20. **The guard LANDED on
 2026-08-19** (FIBR-0275, INV-8): both release scripts read the published asset
-list back and refuse to report success on an incomplete set. What it still cannot
-catch is nobody running `release-linux.sh` at all — which is exactly how a
-release ships empty — so the eight-asset read-back at the end of this section is
-still yours to run by hand. Pedigree in
+list back and refuse to report success on an incomplete set. **Since FIBR-0275
+nobody running `release-linux.sh` publishes nothing at all**: with
+`--no-publish` no release page exists until that script creates one with its
+five assets, so the empty page both cases left cannot be published. The
+eight-asset read-back at the end of this section is still yours to run, for the
+Windows half. Pedigree in
 [`docs/history/claude-md.md`](docs/history/claude-md.md).
 
 So the release path is, in order — the bump comes first, and the
 **push** is a step rather than a tidy-up:
 
 ```bash
-cut-release <X.Y.Z>          # a SKILL — invoke it; it is not on PATH. Bumps every
-                             #   version-bearing file, commits, tags, pushes, and
-                             #   creates the release — with NO assets on it
+cut-release <X.Y.Z> --no-publish  # a SKILL — invoke it; it is not on PATH. Bumps
+                             #   every version-bearing file, commits, tags and
+                             #   pushes; creates NO release (FIBR-0275)
 . .venv/bin/activate         # both scripts need cryptography
-./scripts/release-linux.sh   # AppImage + .sig + SHA256SUMS + SHA256SUMS.sig
-                             #   + linux SBOM  -> FIVE assets
+./scripts/release-linux.sh   # creates the release (--latest, CHANGELOG notes)
+                             #   with the AppImage + .sig + SHA256SUMS +
+                             #   SHA256SUMS.sig + linux SBOM -> FIVE assets
 ./scripts/release-windows.sh # .exe + .sig + windows SBOM, and it RE-UPLOADS
                              #   SHA256SUMS + .sig having merged into them
 # then re-pin the Flatpak commit: (below)
@@ -728,12 +732,10 @@ the substitute rather than configure `act`.
 
 **So Phase 2b here is `./scripts/ci-docker.sh`**, and the session's own
 Phase 2b report names the three uncovered items below. **Not the published
-release notes** — those are `cut-release`'s, lifted from the `CHANGELOG.md`
-`[X.Y.Z]` section, and they are what end users read on the download page, so a
-CI-coverage caveat does not belong there. (`release-linux.sh` sets notes only
-on its `gh release create` branch, which the documented order never reaches:
-`cut-release` has already created the release, so the script takes
-`gh release upload --clobber` and touches the notes not at all.)
+release notes** — those are `release-linux.sh`'s, lifted from the
+`CHANGELOG.md` `[X.Y.Z]` section when it creates the release (FIBR-0275), and
+they are what end users read on the download page, so a CI-coverage caveat does
+not belong there.
 
 **Why the ban does not bite: `ci-docker.sh` is not a mirror of the pipeline, it
 is the pipeline's own two scripts.** `ci.yml` has one job, four steps — install
