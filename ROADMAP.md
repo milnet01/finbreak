@@ -6469,7 +6469,7 @@ work, and none of it is a release decision.
   Kind: marketing.
   Source: in-session-2026-07-23.
 
-- 📋 [FIBR-0275] **A release can publish with no assets, and nothing notices — the README sends users to an empty page.**
+- ✅ [FIBR-0275] **A release can publish with no assets, and nothing notices — the README sends users to an empty page.**
   `cut-release` / the bump recipe carry the version bump, the tag and
   `gh release create`, but the AppImage and Windows `.exe` are built by a
   SEPARATE manual step (`.claude/bump.json` `_comment` says so). Nothing
@@ -6559,6 +6559,13 @@ work, and none of it is a release decision.
   User decision (2026-10-07): run cut-release with --no-publish so
   release-linux.sh creates the release with its assets. The CLAUDE.md
   release procedure change owes its rule-14 gate first.
+  Resolved (2026-10-08): CLAUDE.md § Cutting a release now runs
+  cut-release --no-publish, so release-linux.sh creates the release with
+  its notes and five assets and no empty page can be published (gh
+  creates a draft, uploads, then publishes). Gated by review-contract
+  loops 12-14 (converged at the cap), which added the notes read-back,
+  "assets only" for a pre-existing release, no RC through this path, and
+  corrected three stale lines.
 
 - ✅ [FIBR-0352] **FIBR-0146's 13-split loop-log row has one cell too many, so its whole explanation is dropped from the render.**
   docs/specs/FIBR-0146.md, the `13-split` row of the cold-eyes
