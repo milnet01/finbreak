@@ -424,6 +424,13 @@ so Flathub review and code signing do not block this release.
   0 (read with delayed expansion, after deleting any old result file).
   wintest facts: account `ant`, profile C:\Users\aants, Python 3.13
   installed. Next: cut 1.0.0 per .claude/rules/release.md.
+  Progress (2026-10-08): 1.0.0 CUT AND PUBLISHED. Release commit
+  e8c4369, tag v1.0.0 pushed; CI run 37779278221 green before publish.
+  release-linux.sh then release-windows.sh: 8/8 assets read back, every
+  .sig verified against RELEASE_PUBLIC_KEY_B64, release is --latest, notes
+  equal the CHANGELOG [1.0.0] section. Flatpak commit: re-pinned to
+  e8c4369. Left: OBS re-submit (proves the FIBR-0346 RPM), then the real
+  0.1.23 -> 1.0.0 update on ssh wintest with the user clicking.
   **Layman:** The plan for calling the app finished: what has to be true first, and which four jobs are standing in the way.
   Kind: release.
   Source: user-decision-2026-08-20 ("what gets us to v1.0?").
