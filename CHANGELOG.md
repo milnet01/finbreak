@@ -42,6 +42,8 @@ signaling per
 
 ### Fixed
 
+- **On a Linux computer missing a few common display libraries, finbreak's window now opens under X11; the AppImage and the Linux packages carry those libraries themselves.** (FIBR-0430)
+
 - **Checking a backup now uses disk space in finbreak's own folder instead of your computer's memory on some Linux systems.** (FIBR-0441)
 
 - **Moving a statement to another account no longer leaves a money transfer with both sides in one account and its amounts missing from your totals.** (FIBR-0438)

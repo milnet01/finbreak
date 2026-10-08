@@ -1428,7 +1428,7 @@ so Flathub review and code signing do not block this release.
   Kind: review-fix.
   Source: full-audit-2026-09-27 code lane 9 (queued by FIBR-0367).
 
-- 📋 [FIBR-0430] **The Linux packages cannot open an X11 window on a host without the xcb utility libraries.**
+- ✅ [FIBR-0430] **The Linux packages cannot open an X11 window on a host without the xcb utility libraries.**
   Found while verifying FIBR-0346 (2026-09-29). A deb built locally from
   packaging/obs/ and installed into a bare debian:13-slim ran --self-test
   offscreen, but under Xvfb with QT_QPA_PLATFORM=xcb Qt could not load
@@ -1470,6 +1470,15 @@ so Flathub review and code signing do not block this release.
   libxcb.so and libxcb-dri*, plus libGL/EGL/drm and libwayland*. So the
   xcb-util family, libX11 and libX11-xcb are collected whenever the
   freeze environment has them, and link against the host's core libxcb.
+  Resolved (2026-10-08): the xcb utility libraries and libX11-xcb are
+  installed in every freeze environment (AppImage container, .spec
+  openSUSE/Fedora BuildRequires, debian/control + .dsc Build-Depends), so
+  the freeze collects them; host Requires/Depends unchanged. Proven on a
+  bare debian:13-slim with xvfb and none of the helpers: the new AppImage
+  build and the locally built deb both pass --self-test on xcb, and the
+  released 0.1.23 AppImage fails there. Names checked on Debian 12/13,
+  Tumbleweed and Fedora 42; the RPM and the SLE/Leap branch are OBS's
+  first build.
   **Layman:** On a Linux computer missing a few common display libraries, the store-package version of finbreak cannot open its window under the older X11 display system.
   Kind: fix.
   Source: in-session-2026-09-29 (found verifying FIBR-0346).
