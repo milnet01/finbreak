@@ -2,9 +2,10 @@
 # Cut + publish the LINUX release: build the signed AppImage and publish the
 # GitHub release for the CURRENT source version (the FIBR-0016 Linux slice).
 #
-# Run this FIRST. It creates the vX.Y.Z tag + GitHub release (the tag is made
-# REMOTELY by the gh publish step — nothing here tags locally — so step 5 fetches
-# it back and the local clone has it too); the companion
+# Run this FIRST, after `cut-release <X.Y.Z> --no-publish` (FIBR-0275). It creates
+# the GitHub release on the vX.Y.Z tag cut-release pushed; on a hand bump with no
+# tag yet, the gh publish step makes the tag REMOTELY — nothing here tags locally —
+# so step 5 fetches it back and the local clone has it too. The companion
 # scripts/release-windows.sh then builds the Windows .exe against that tag and
 # attaches it to the SAME release.
 #
