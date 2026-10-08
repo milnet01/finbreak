@@ -960,7 +960,9 @@ def test_INV12_scriptlets_call_no_bare_macros() -> None:
     """
     # Precondition: the checker sees a bare macro inside a scriptlet, and
     # ignores the safe forms, so an empty result below is not a parse miss.
-    sample = "%post\n%if 0%{?fedora}\n%{?ok_macro}\n%bad_macro\n%endif\n%files\n%doc x\n"
+    sample = (
+        "%post\n%if 0%{?fedora}\n%{?ok_macro}\n%bad_macro\n%endif\n%files\n%doc x\n"
+    )
     assert _bare_macro_lines(sample) == ["%post: %bad_macro"]
 
     assert _bare_macro_lines(_read(_SPEC)) == []
