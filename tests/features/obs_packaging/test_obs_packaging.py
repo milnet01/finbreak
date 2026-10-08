@@ -913,3 +913,54 @@ def test_INV11_host_supplies_both_libxkbcommon_halves() -> None:
         drop = re.search(r"-name 'libxkbcommon\*\.so\*' -delete", text)
         assert drop, f"{name} does not remove the bundled libxkbcommon"
         assert drop.start() < text.index(selftest), f"{name}: removed after self-test"
+
+
+# --------------------------------------------------------------------------- #
+# INV-12 — no install scriptlet runs a bare macro the target may not define
+# --------------------------------------------------------------------------- #
+_SCRIPTLETS = ("pre", "post", "preun", "postun", "pretrans", "posttrans")
+_SECTION = re.compile(
+    r"^%(?:pre|post|preun|postun|pretrans|posttrans|prep|build|install|check|"
+    r"files|changelog|description|package|triggerin|triggerun|filetriggerin)\b"
+)
+_CONDITIONAL = re.compile(r"^%(?:if|ifarch|ifnarch|ifos|ifnos|elif|else|endif)\b")
+
+
+def _bare_macro_lines(spec: str) -> list[str]:
+    """Each scriptlet line that is a bare ``%name`` call.
+
+    A macro the target's rpm does not define is copied into the scriptlet
+    unexpanded, and /bin/sh reads ``%name`` as a job spec: "fg: no job
+    control", exit 1, and dnf reports the install as failed. ``%{?name}``
+    expands to nothing when undefined, so it is safe; conditionals are rpm's.
+    """
+    found: list[str] = []
+    current: str | None = None
+    for line in spec.splitlines():
+        if _SECTION.match(line):
+            current = line.split()[0][1:]
+            continue
+        if current not in _SCRIPTLETS:
+            continue
+        stripped = line.strip()
+        if not stripped.startswith("%") or _CONDITIONAL.match(stripped):
+            continue
+        if stripped.startswith("%{?"):
+            continue
+        found.append(f"%{current}: {stripped}")
+    return found
+
+
+def test_INV12_scriptlets_call_no_bare_macros() -> None:
+    """FIBR-0443: %post/%postun called %icon_theme_cache_post and
+    %desktop_database_post. Fedora 44 defines neither, so the built scriptlet
+    held the literal text and `dnf install` ended "Transaction failed", although
+    the package installed and ran. Current Fedora and openSUSE refresh the icon
+    cache and desktop database through file triggers, so no scriptlet is owed.
+    """
+    # Precondition: the checker sees a bare macro inside a scriptlet, and
+    # ignores the safe forms, so an empty result below is not a parse miss.
+    sample = "%post\n%if 0%{?fedora}\n%{?ok_macro}\n%bad_macro\n%endif\n%files\n%doc x\n"
+    assert _bare_macro_lines(sample) == ["%post: %bad_macro"]
+
+    assert _bare_macro_lines(_read(_SPEC)) == []
