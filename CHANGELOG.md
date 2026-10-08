@@ -21,6 +21,14 @@ signaling per
 
 ## [Unreleased]
 
+### Fixed
+
+- **Installing finbreak on Fedora no longer reports "Transaction failed"** (FIBR-0443)
+  The app always installed and ran, but the package's after-install step
+  called commands Fedora 44 no longer has, so the installer said it had
+  failed. The step is gone; Fedora and openSUSE refresh the menu and icons
+  themselves. The 1.0.0 Fedora package was rebuilt with this fix.
+
 ## [1.0.0] - 2026-10-08
 
 **Theme:** The 1.0 gate.

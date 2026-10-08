@@ -210,22 +210,13 @@ done
 # build roots are headless. This is the sole automated gate on the onedir path.
 FINBREAK_SELFTEST_DEBUG=1 QT_QPA_PLATFORM=offscreen %{buildroot}%{_prefix}/lib/finbreak/finbreak --self-test
 
-%post
-# Fedora needs explicit scriptlets to refresh the icon cache + desktop database.
-# openSUSE does it automatically via file triggers (gtk-update-icon-cache on
-# /usr/share/icons; desktop-file-utils on /usr/share/applications), so this is
-# Fedora-only: the Fedora macros are undefined on openSUSE and, left unbraced,
-# bash reads them as job specs ("fg: no job control"), failing %post (§5).
-%if 0%{?fedora}
-%icon_theme_cache_post
-%desktop_database_post
-%endif
-
-%postun
-%if 0%{?fedora}
-%icon_theme_cache_postun
-%desktop_database_postun
-%endif
+# No post-install or post-uninstall scriptlet: openSUSE and Fedora both
+# refresh the icon cache and the desktop database through file triggers
+# (hicolor-icon-theme on /usr/share/icons/hicolor, desktop-file-utils on
+# /usr/share/applications).
+# The Fedora macros this used to call are undefined on Fedora 44, so the
+# scriptlet ran them as shell job specs and dnf reported "Transaction failed"
+# (FIBR-0443; obs_packaging INV-12).
 
 %files
 %license LICENSE
