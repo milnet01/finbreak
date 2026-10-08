@@ -63,6 +63,18 @@ BuildRequires:  krb5
 BuildRequires:  libdbus-1-3
 BuildRequires:  libX11-6
 BuildRequires:  libxkbcommon0
+# Qt's xcb plugin links these and a bare host may lack them, so the freeze
+# collects them (FIBR-0430); unlike libxkbcommon they stay in the payload.
+BuildRequires:  libxcb-cursor0
+BuildRequires:  libxcb-icccm4
+BuildRequires:  libxcb-keysyms1
+BuildRequires:  libxcb-shape0
+BuildRequires:  libxcb-image0
+BuildRequires:  libxcb-render-util0
+BuildRequires:  libxcb-util1
+BuildRequires:  libxcb-render0
+BuildRequires:  libxcb-xkb1
+BuildRequires:  libX11-xcb1
 BuildRequires:  libfreetype6
 BuildRequires:  fontconfig
 BuildRequires:  libharfbuzz0
@@ -77,6 +89,14 @@ BuildRequires:  glib2
 BuildRequires:  dbus-libs
 BuildRequires:  libX11
 BuildRequires:  libxkbcommon
+BuildRequires:  libxcb
+BuildRequires:  libX11-xcb
+BuildRequires:  xcb-util
+BuildRequires:  xcb-util-cursor
+BuildRequires:  xcb-util-wm
+BuildRequires:  xcb-util-keysyms
+BuildRequires:  xcb-util-image
+BuildRequires:  xcb-util-renderutil
 BuildRequires:  freetype
 BuildRequires:  fontconfig
 BuildRequires:  harfbuzz

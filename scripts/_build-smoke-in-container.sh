@@ -45,9 +45,16 @@ apt-get update -qq
 # Nothing in THIS container loads Qt — it only freezes — so nothing here needs
 # the library present. ci-setup.sh installs it for the GATE, where the self-test
 # really does load QtGui; that list is a different set and must keep it.
+#
+# The xcb utility libraries on the third line ARE collected, on purpose: Qt's
+# xcb plugin links them, a bare host often lacks them, and without them the
+# app cannot open an X11 window (FIBR-0430). PyInstaller leaves out only the
+# core libxcb.so and libxcb-dri*, which stay the host's.
 apt-get install -y -qq --no-install-recommends \
     binutils file ca-certificates \
     libglib2.0-0 libgl1 libegl1 libdbus-1-3 libx11-6 \
+    libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-shape0 libxcb-image0 \
+    libxcb-render-util0 libxcb-util1 libxcb-render0 libxcb-xkb1 libx11-xcb1 \
     libfreetype6 libfontconfig1 libbrotli1 libharfbuzz0b >/dev/null
 
 echo "-- provisioning the build venv from pyproject --"
