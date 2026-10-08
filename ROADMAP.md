@@ -3807,7 +3807,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: fix.
   Source: full-audit-2026-09-27 code lane 7 (queued by FIBR-0407).
 
-- 📋 [FIBR-0428] **Move the Flatpak to the freedesktop 26.08 runtime.**
+- 💭 [FIBR-0428] **Move the Flatpak to the freedesktop 26.08 runtime.**
   Found 2026-09-29 while verifying FIBR-0161's commands:
   `flatpak-builder-lint manifest` on
   packaging/flatpak/io.github.milnet01.finbreak.yaml warns
@@ -3827,6 +3827,11 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   generator's branch (derived from the manifest, not a second copy), a
   regenerated python3-deps.yaml, and a re-check of the krb5 need. Amend
   § 3.1 and § 5 to say so, gated, before building.
+  Parked (2026-10-08, user decision): Flathub refused the finbreak
+  submission, so no published manifest needs the 26.08 runtime. Revisit
+  only on a Flathub resubmission or our own Flatpak repository
+  (FIBR-0381). Flathub's AI policy means the user edits the manifest on a
+  resubmission; on our own repository it does not apply.
   **Layman:** The Flatpak version of finbreak is built on a base system that now has a newer release; it should move to the new one.
   Kind: chore.
   Source: in-session-2026-09-29 (flatpak-builder-lint while verifying FIBR-0161).
@@ -4891,7 +4896,7 @@ that may never arrive.
   Kind: package.
   Source: user-request-2026-07-04.
 
-- 🚧 [FIBR-0159] **Publish finbreak to Flathub — the cross-distro app store (GNOME Software / KDE Discover).**
+- 🚫 [FIBR-0159] **Publish finbreak to Flathub — the cross-distro app store (GNOME Software / KDE Discover).**
   Flathub is the de-facto cross-distro app store: one submission surfaces finbreak
   in GNOME Software + KDE Discover on openSUSE, Fedora, Ubuntu, Debian, Mint, etc.
   Unlike the official distro archives (which forbid bundling and need a maintainer
@@ -5180,6 +5185,9 @@ that may never arrive.
   AI-assisted. Treat the submission as stalled or likely rejected under
   Flathub's generative-AI policy. Next step is the user's call; any
   reply to Flathub must be written by the user, not Claude.
+  Dropped (2026-10-08, user decision): Flathub refused the finbreak
+  submission. The Flatpak files stay in packaging/flatpak/ for a possible
+  own repository (FIBR-0381).
 
 - 📋 [FIBR-0160] **Add openSUSE Leap 15.6 as an OBS target (deferred — Leap ships no python 3.12+).**
   Attempted 2026-07-23: added the Leap 15.6 target + a %if 0%{?sle_version}
@@ -5205,7 +5213,7 @@ that may never arrive.
   Kind: package.
   Source: user-request-2026-07-23.
 
-- 📋 [FIBR-0356] **The Flatpak manifest targets Freedesktop runtime 25.08 while 26.08 is out.**
+- 💭 [FIBR-0356] **The Flatpak manifest targets Freedesktop runtime 25.08 while 26.08 is out.**
   flatpak-builder-lint (org.flatpak.Builder) on the Flathub fork's manifest,
   2026-09-25: exit 0, with one warning,
   `runtime-update-available-to-org.freedesktop.Platform-26.08`. The
@@ -5214,6 +5222,8 @@ that may never arrive.
   packaging/flatpak/ and the fork branch together. Not folded into the
   FIBR-0159 nudge, because an unbuilt runtime change is the wrong thing to
   land in the middle of a stalled review.
+  Parked (2026-10-08, user decision) with FIBR-0428, which it
+  duplicates: Flathub refused the submission.
   **Layman:** The Linux app-store package is built on last year's base system; a newer one is available.
   Kind: package.
   Source: in-session-2026-09-25 (flatpak-builder-lint while re-pinning the FIBR-0159 fork).
