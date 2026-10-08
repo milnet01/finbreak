@@ -83,6 +83,7 @@ desktop.ini
 # Team-shared Claude Code config that SHOULD be in version control:
 !.claude/settings.json
 !.claude/bump.json
+!.claude/rules/
 
 # Logs / runtime
 *.log

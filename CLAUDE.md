@@ -52,21 +52,10 @@ six-plus reads to answer a question the roadmap DB already answers.
    next render injects it back. Get
    an append right first time.
 
-   **`roadmap_migrate` re-ingests the file into the store, and on this project
-   you should almost never need it.** It only reads `ROADMAP.md`, so a byte-
-   identical file afterwards is the verb working, not a failure. **Run it only
-   when you KNOW something other than `roadmap_log` wrote the file** — an
-   external merge, a restore from git. **Never on the strength of its
-   counters**, which do not measure staleness: measured 2026-08-19 on a tree
-   where every `ROADMAP.md` change had come through `roadmap_log`, a `dry_run`
-   still reported **10 items updated** (`body`, `layman`, `source`, `extras`).
-   The cause is that the render → parse round trip is not lossless — **a
-   property of the round trip, so it applies to EVERY run, the sanctioned ones
-   included.** `updated_items[]` is the verb's plan to write those re-parsed
-   bodies over correct ones, in a store shared by every project on this
-   machine. **So always `dry_run` first and read `updated_items[]` item by
-   item**; anything you cannot account for as a real edit to the file is the
-   round trip, and a real run would clobber it.
+   **Before running `roadmap_migrate`, read
+   [`.claude/rules/roadmap-migrate.md`](.claude/rules/roadmap-migrate.md)**:
+   on this project it is almost never needed, and a real run can write over
+   correct items.
 
 3. **Which item is active.** The roadmap DB says which items are 🚧; it
    does not say which ONE this session is working. Where exactly one is 🚧,
@@ -153,62 +142,10 @@ for the full table and reasoning):
 
 The harness contract is [`docs/specs/FIBR-0001.md`](docs/specs/FIBR-0001.md).
 
-**Requirements:** Python ≥ 3.12 and the standalone binaries below on `PATH` —
-none of them pip packages. Every one carrying a version is pinned by
-`scripts/ci-setup.sh` (that script is the list; no count is stated here, so
-adding one cannot make this go stale):
-
-| Binary | Pinned | Why the version matters |
-|---|---|---|
-| [`git`](https://git-scm.com/) | any | **a run-time dependency of the gate, not just of checkout** — the gitignore and bundling feature tests shell out to `git check-ignore` / `git rev-parse` / `git ls-files` |
-| [`gitleaks`](https://github.com/gitleaks/gitleaks/releases) | 8.30.1 | a different build runs a different rule engine over the same `.gitleaks.toml` |
-| [`shellcheck`](https://github.com/koalaman/shellcheck/releases) | 0.11.0 | rule set differs per release; distro builds lag badly |
-| [`actionlint`](https://github.com/rhysd/actionlint/releases) | 1.7.12 | ships its own checks *and* shells out to `shellcheck` |
-| [`zizmor`](https://github.com/zizmorcore/zizmor/releases) | 1.29.0 | audit set grows per release; a newer build fails a tree an older one passed |
-
-Each **pinned** one is version-sensitive the same way: an older build runs a
-**different rule set over the same files**, so a local gate can pass where CI
-fails (or vice versa). Check with `gitleaks version`, `shellcheck --version`,
-`actionlint --version`, `zizmor --version`.
-
-**One-time dev setup** — an isolated env, then `scripts/ci-setup.sh`, which
-installs *everything else the gate needs and does not itself provide*: the
-system libraries PySide6 dlopens, `git`, the pinned binaries above, the dev
-toolchain (ruff, bandit, pip-audit, pytest, pytest-qt, mypy + `types-PyYAML`)
-**and the runtime deps** (PySide6, SQLCipher, pikepdf), which the FIBR-0003
-self-test guard imports. It is the same script `ci.yml` and `ci-docker.sh` call,
-so a local environment cannot drift from CI's:
-
-```bash
-python3 -m venv .venv
-. .venv/bin/activate
-./scripts/ci-setup.sh                    # ← the step that makes the gate runnable
-```
-
-**Do not skip that third line.** Without it `./scripts/ci-local.sh` below exits
-**127** at the first tool it cannot find — the venv is fine, the gate simply has
-no tools. *Which* tool depends on what you skipped: skip `ci-setup.sh`
-entirely and it dies on `ruff: command not found`, because `ruff` is the
-gate's very first stage and the script's Python half is what installs it.
-Install the dev group by hand but not the pinned binaries (the openSUSE route
-below) and it gets as far as `shellcheck`/`git: command not found` instead.
-**The two fixes are NOT the same.** On an apt host, run `ci-setup.sh`. On this
-desktop it cannot help you — the script is apt-only — so install the
-Requirements binaries, `git` and the Qt libraries by hand per the openSUSE route
-below. Verified by executing this section in a clean container 2026-08-11
-(FIBR-0260).
-
-`ci-setup.sh` assumes a **Debian/Ubuntu apt** host (the
-`python:3.12-slim-bookworm` image CI runs; it falls back to `sudo` when not
-root). On any other distro — this desktop is openSUSE — install the
-Requirements binaries, `git` and the Qt system libraries `ci-setup.sh` names by
-hand, then run its Python half yourself:
-
-```bash
-python -m pip install --upgrade pip      # PEP 735 --group needs pip >= 25.1
-python -m pip install --group dev
-python -m pip install .                  # runtime deps — the self-test test loads them
-```
+**Requirements and one-time dev setup** — the pinned binaries,
+`scripts/ci-setup.sh`, and the route for this openSUSE desktop — are in
+[`.claude/rules/gate.md`](.claude/rules/gate.md). Read it before setting up
+an environment, or when `./scripts/ci-local.sh` exits 127.
 
 **Run the full gate** — the same stages CI runs (lint, format-check,
 **shellcheck**, **actionlint**, **zizmor**, bandit, pip-audit **×2**, gitleaks,
@@ -298,7 +235,7 @@ range), because the gate's own scan sees only the final files (local-gate.md
 
 CI (`ci.yml`) runs this exact script, so a green local gate means green in CI
 **for everything the environment does not decide** — see the container caveat
-below for the part it cannot cover. The commonest way a red push slips through
+in `gate.md` for the part it cannot cover. The commonest way a red push slips through
 is simply *forgetting to run the gate*, and the version-controlled hook at
 `.githooks/pre-push` closes that gap. It is enabled
 in this clone; a **fresh clone must enable it once**:
@@ -313,60 +250,9 @@ transient case. Those two are the gate's only network-dependent stages.)
 A doc-only push needs no `--no-verify`: the hook picks the documentation
 checks for it (FIBR-0373).
 
-**A tag-only push needs no `--no-verify` and never did: the hook skips it by
-itself.** The habit of reaching for the flag there came from a double gate that
-no longer runs — a bypass no project document sanctioned (FIBR-0290;
-[`docs/history/claude-md.md`](docs/history/claude-md.md)). The hook reads the ref
-list git gives it and exits early when
-**every** ref is a tag **and** every tagged commit is already reachable from a
-branch of the remote being pushed to — not any remote, since a commit that
-reached another one with `--no-verify` was never gated. Anything else still takes the gate: a branch ref
-anywhere in the push, a tag whose commit is not yet on the remote (skipping
-that would publish ungated code), or a hand-run hook with no refs on stdin (run from a terminal, it does not wait
-for any).
-Locked by `tests/features/harness/` INV-5, which runs the hook against a real
-throwaway repo rather than reading it. **So do not type `--no-verify` for a
-tag** — if the gate runs on one, that is the hook telling you the commit is not
-on the remote yet.
-
-**Reproduce GitHub CI's ENVIRONMENT when the diff could move it** — the local
-gate runs on your desktop, which already has system libraries (Qt's
-`libGL`/`libEGL`/fontconfig, `git`) that a clean CI runner lacks, so a green
-local gate can still hide a red CI. That is the one gap the pre-push hook
-cannot close, because the hook runs the same script in the same environment.
-
-**It is not required before every push** — that would put a multi-minute
-container rebuild in front of every commit. Run it when the diff could move
-the environment: a dependency added, bumped or removed; a change to
-`pyproject.toml`, `scripts/ci-setup.sh`, `ci.yml` or the Dockerfile-ish parts
-of the build scripts; a new module that dlopens a system library; or the first
-push after any of those. Otherwise `ci-local.sh` (or the hook) is enough. Run
-the gate inside the **same container image CI uses**
-(`python:3.12-slim-bookworm`, fresh installs):
-
-```bash
-./scripts/ci-docker.sh                # CI's own image + both CI scripts; needs podman/docker
-```
-
-**It runs CI's image and CI's two scripts — it is not the whole workflow.**
-The two `ci.yml` steps it does not execute, and the tree it runs against, are
-named in § `cut-release` Phase 2b below; do not report a green run here as a
-full pipeline run.
-
-**It refuses `--build`.** `ci-setup.sh` installs no container runtime, so
-inside the container the smoke test would hit
-`pytest.skip("no container runtime (podman/docker) on PATH")`
-(`test_INV2_INV3_build_smoke_clean_room` in
-`tests/features/bundling/test_bundling.py`) and **silently not run** — a skip
-that reads as coverage. Run `./scripts/ci-local.sh --build` or
-`./scripts/build-smoke.sh` on the host instead.
-
-`ci.yml` and `ci-docker.sh` both run the same image and both call
-`scripts/ci-setup.sh` (environment: system libs + the pinned non-pip binaries —
-gitleaks, shellcheck, actionlint, zizmor — + deps) then
-`scripts/ci-local.sh` (the gate) — one definition each, so local and CI cannot
-drift. If a dependency bump needs a new system library, add it in **one place**
-(`ci-setup.sh`).
+**Tag-only pushes, and reproducing CI's environment with
+`./scripts/ci-docker.sh`**, are in [`.claude/rules/gate.md`](.claude/rules/gate.md).
+Read it before a tag push, and before pushing a dependency or CI change.
 
 **Run tests / a single test** (INV-6):
 
@@ -515,39 +401,9 @@ suite directory is sorted into neither ledger. Add a suite to **both** places �
 that reads a doc; the guard is what catches you if you only do one. Why it is a
 guard rather than a hand-kept list: [`docs/history/claude-md.md`](docs/history/claude-md.md).
 
-**The wider list costs a fraction of a second** against the old two — not a
-saving worth reasoning about.
-
-**What counts as "only documentation": every path the push changes ends in
-`.md`.** The hook takes, for each ref, `git diff --name-only <remote tip>
-<pushed commit>`. It fails closed: a new branch has no remote tip, so it takes
-the full gate, as does a range git cannot resolve. That is the whole test, and
-two things about it are deliberate.
-
-**The unit is the PUSH, not the last commit** — every commit going up, which is
-what that range gives you. Judge it by the commit you just made and an ungated
-code commit already queued behind it rides through the gate on a ROADMAP line's
-coat-tails, which breaches "a code change never skips the full gate" with
-nothing to notice it.
-
-**And the test is POSITIVE — a suffix, never a list of directories.** A closed
-list of directories cannot express "not code": `.githooks/pre-push`,
-`.gitleaks.toml`, `.gitignore` and any stray `.sh`, `.toml` or `.yml` all escape
-one. `.githooks/pre-push` is the case that proved it, and it is shell that
-`ci-local.sh`'s shellcheck stage names explicitly
-(`shellcheck "${SH_FILES[@]}" .githooks/pre-push`) — so a deny-list would have
-skipped the one stage reading what had just changed. Do not reinstate one
-([`docs/history/claude-md.md`](docs/history/claude-md.md)).
-
-**A `.md` anywhere counts** — `tests/features/<name>/spec.md` and
-`packaging/flatpak/README.md` included. The suites and the `gitleaks`
-scan above are what cover those. Anything else takes the full gate.
-
-**The checks are unconditional — there is no "only if it looks like a number"
-branch.** An earlier version of this rule had one, and it asked the person least
-able to answer it: you have just written the prose and know what you meant by it,
-which is exactly when a pasted number does not read as one. Pedigree in
-[`docs/history/claude-md.md`](docs/history/claude-md.md).
+**How the hook decides a push is doc-only, and why it is built that way:**
+[`.claude/rules/gate.md`](.claude/rules/gate.md). Read it before changing
+`.githooks/pre-push`.
 
 **`.corpus-numbers` is what makes the guard real, and it is per-machine.** Where
 it exists `test_no_real_data.py` runs; where it does not that test skips, and
@@ -562,323 +418,19 @@ not inline — an always-loaded file should not carry a growing audit table.*
 
 ## Cutting a release: `gh release create` is NOT the end
 
-`cut-release` carries the version bump and the tag. **Run it with
-`--no-publish`** (FIBR-0275), so it creates no GitHub release: the release is
-`release-linux.sh`'s to create, with its downloads attached. `.claude/bump.json` carries less still — its
-`_comment` says "this recipe covers the version bump only -- the signed
-AppImage build + publish is a separate manual step". The AppImage and
-the Windows `.exe` are built and attached by `scripts/release-linux.sh`
-and `scripts/release-windows.sh`, and **nothing invokes those for you**.
-(`bump.json`'s note points at the same two scripts.)
-
-**A release can publish with ZERO assets, and both the README's "download the
-latest release" link and the in-app updater resolve to that page.** It has
-happened twice — FIBR-0203, then again on v0.1.20. **The guard LANDED on
-2026-08-19** (FIBR-0275, INV-8): both release scripts read the published asset
-list back and refuse to report success on an incomplete set. **Since FIBR-0275
-nobody running `release-linux.sh` publishes nothing at all**: with
-`--no-publish` no release page exists until that script creates one with its
-five assets, so the empty page both cases left cannot be published. The
-eight-asset read-back at the end of this section is still yours to run, for the
-Windows half. Pedigree in
-[`docs/history/claude-md.md`](docs/history/claude-md.md).
-
-So the release path is, in order — the bump comes first, and the
-**push** is a step rather than a tidy-up:
-
-```bash
-cut-release <X.Y.Z> --no-publish  # a SKILL — invoke it; it is not on PATH. Bumps
-                             #   every version-bearing file, commits, tags and
-                             #   pushes; creates NO release (FIBR-0275)
-. .venv/bin/activate         # both scripts need cryptography
-./scripts/release-linux.sh   # creates the release (--latest, CHANGELOG notes)
-                             #   with the AppImage + .sig + SHA256SUMS +
-                             #   SHA256SUMS.sig + linux SBOM -> FIVE assets
-./scripts/release-windows.sh # .exe + .sig + windows SBOM, and it RE-UPLOADS
-                             #   SHA256SUMS + .sig having merged into them
-# then re-pin the Flatpak commit: (below)
-```
-
-**No release candidates on this path.** `release-linux.sh` publishes
-`v<__version__>` as the latest full release, and `cut-release --pre rc.N` leaves
-`__version__` as `X.Y.Z`, so an RC run through this script would ship as
-`vX.Y.Z`. Do not combine them.
-
-**`cut-release` is what performs step 1**, including the commit, the tag
-and the push, so do not hand-run those as well. If you bump by hand
-instead, the bump must be committed **and pushed** before
-`release-linux.sh` — see the first bullet below. Either way step 1 must
-have happened: run `release-linux.sh` against an unbumped tree and it
-reads the *old* `__version__` and finds that release's tag, then refuses unless
-HEAD is that tagged commit; if it is, it `--clobber`s assets onto the
-**previous** release.
-
-Worth knowing before you run them:
-
-- **The bump must be PUSHED, not merely committed — and since FIBR-0327
-  `release-linux.sh` enforces it.** It fetches `origin` and refuses on an
-  unpushed HEAD. Before that guard, a committed-but-unpushed bump passed and the
-  script tagged the **remote's** HEAD — the pre-bump commit — publishing assets
-  built from a version the tag does not point at
-  ([`docs/history/claude-md.md`](docs/history/claude-md.md)).
-  **Once the tag exists it also refuses unless HEAD is the tagged commit**, so
-  commit nothing between `cut-release` and this script — or run it from
-  `git checkout v<X.Y.Z>`, which it accepts (audit row 41).
-  (`dist/` is gitignored, so a dirty tree here is
-  your own ROADMAP or CHANGELOG edit.) Do not pipe either script
-  through `grep`/`tail` while debugging — that masks its exit status and
-  a refusal reads as success.
-- **`release-linux.sh` is safe against a release that already exists** —
-  step 7 branches to `gh release upload --clobber`. So a release created
-  by hand first (as 0.1.21 was) gets its assets and is not duplicated, but
-  **assets only**: that branch sets no notes, title or `--latest`, so check those
-  with `gh release view` and correct them with `gh release edit`.
-- **`release-windows.sh` needs no Windows machine**; it dispatches
-  `windows-build.yml` on the tag and waits, so it needs `gh` with
-  **workflow + repo** scope but **no container runtime** — the freeze
-  happens on a GitHub runner. Public repo, so the minutes are free.
-  Only `release-linux.sh` needs `podman`/`docker` (it builds and
-  clean-rooms the AppImage locally). **Both** need the Ed25519 key at
-  `release/finbreak-signing.key` — gitignored, local-only, and already
-  present on this machine. **Do not run `scripts/gen-signing-key.py` to
-  "fix" a missing key**: it mints a *new* one, which the hard gate
-  against the committed `RELEASE_PUBLIC_KEY_B64` then rejects, and a
-  release signed with it would be invisible to every installed copy's
-  updater.
-- **Re-pin the Flatpak `commit:` afterwards.** `bump.json` bumps the
-  manifest's `tag:` mechanically, but its sibling `commit:` cannot be —
-  the sha does not exist until the release is tagged. `release-linux.sh`
-  prints the sha as its last line; set it in
-  `packaging/flatpak/io.github.milnet01.finbreak.yaml`. Nothing verifies
-  the two point at the same object — one of the two gaps left in the
-  release path, the other being that nothing checks `release-linux.sh`
-  was run at all (FIBR-0275).
-- **A failed upload no longer skips the read-back gate (FIBR-0327).** Both
-  scripts capture the publish command's exit status instead of letting
-  `set -e` end the run there. `--clobber` deletes each asset before
-  replacing it, so a failure part-way down the list leaves the release SHORT —
-  the state the gate reports — and the script used to die before reaching
-  it. The gate now runs either way, and a
-  complete asset list after an errored upload still exits non-zero: the
-  names being right does not prove the bytes are.
-
-Finish by reading the result back yourself — **not** because the scripts skip
-it. Since 2026-08-19 each one re-reads its own upload and refuses to report
-success on an incomplete set, both doing so *before* they print "DONE". What
-that leaves is the Windows half, which lands later or not at all, and the page's
-text: with `--no-publish` nothing compares the notes with the CHANGELOG, and
-`release-linux.sh` writes `Release X.Y.Z.` when the `[X.Y.Z]` section is missing.
-The title is the fixed `finbreak vX.Y.Z`.
-
-```bash
-gh release view v<NEW> --json assets -q '[.assets[].name]|join(", ")'
-gh release view v<NEW> --json body -q .body   # must be the CHANGELOG [X.Y.Z] section
-```
-
-**A complete release carries EIGHT assets**, and anything less is broken
-rather than quiet: the AppImage, the `.exe`, a `.sig` for each,
-`SHA256SUMS`, `SHA256SUMS.sig`, and **both** SBOMs
-(`finbreak-<V>-linux.cdx.json` *and* `finbreak-<V>-windows.cdx.json`).
-Compare against v0.1.18, v0.1.19 and v0.1.21, which all carry exactly
-that set. A five-asset read-back means the Windows half has not landed —
-still building, or failed — and `release-windows.sh` exits non-zero
-*after* the Linux assets are already public, so a red Windows build
-leaves a `--latest` release the README and the updater both resolve to
-with no Windows download. Re-run it; do not walk away from a short list.
-
-**Expect transient GitHub API failures, and retry before diagnosing.** One
-release hit them on four different endpoints — `gh repo view`, the tag push, the
-`windows-build.yml` dispatch and the asset upload — and every one cleared on a
-retry ([`docs/history/claude-md.md`](docs/history/claude-md.md)).
-
-**The upload failure is the dangerous one, because it half-succeeds.**
-`release-windows.sh`'s final `gh release upload --clobber` deletes each existing
-asset before replacing it, so a failure mid-list can leave a release carrying
-`SHA256SUMS.sig` but **not** `SHA256SUMS`, and `.exe.sig` but **not** the `.exe`
-— a signed release whose signed manifest is gone.
-
-If you land there, the artifacts in `dist/` are already built, signed
-and verified, so re-upload them rather than rebuilding — **one file per
-call, so a partial failure is visible**:
-
-```bash
-for f in dist/finbreak-<V>-x86_64.exe dist/finbreak-<V>-x86_64.exe.sig \
-         dist/SHA256SUMS dist/SHA256SUMS.sig dist/finbreak-<V>-windows.cdx.json; do
-    gh release upload v<NEW> "$f" --clobber || echo "FAILED $f"
-done
-```
-
-Then read the assets back again. A batched upload wrapped in a pipe is
-how the half-state goes unnoticed twice.
-
-If the *dispatch* is what is failing, **just re-run `release-windows.sh` until
-it gets through** — the failure is intermittent rather than deterministic, and
-has needed several attempts. Do **not** dispatch by hand as a workaround: the
-script's `gh workflow run` is unguarded under `set -euo pipefail`, so it
-dispatches its *own* run and waits for a run newer than the one it recorded on
-entry. Your hand-dispatched build is discarded and a Windows freeze is burned for
-nothing — which has happened
-([`docs/history/claude-md.md`](docs/history/claude-md.md)).
-
-If the script stops **after** the build was dispatched — a failed watch,
-download or identity check — do not re-run it bare, which starts a second
-freeze. Resume the same build with `scripts/release-windows.sh --run-id <id>`;
-the script prints the id as soon as the run registers.
-
-Finish the Windows half through the script, never by hand: the steps
-you would be skipping are the Ed25519 signing and its verification
-against the committed public key.
-
-### `cut-release` Phase 2b on this project is `scripts/ci-docker.sh` (user decision 2026-08-19, FIBR-0295)
-
-`cut-release` Phase 2b runs the CI pipeline locally *before* the release
-commit, and the skill's own rule is to execute `.github/workflows/*.yml` with
-`act` and **never** substitute anything — because a hand-written mirror
-"returns green for a pipeline that will fail". **On this project the substitute
-is sanctioned, and this section is that authorisation.** `act` is installed on
-this machine (`/usr/bin/act`) and has never been configured: with no TTY its
-first run prints a runner-image menu and dies `level=fatal msg=EOF`, so the
-phase cannot run as designed. Filed as **FIBR-0295**; the decision is to adopt
-the substitute rather than configure `act`.
-
-**So Phase 2b here is `./scripts/ci-docker.sh`**, and the session's own
-Phase 2b report names the three uncovered items below. **Not the published
-release notes** — those are `release-linux.sh`'s, lifted from the
-`CHANGELOG.md` `[X.Y.Z]` section when it creates the release (FIBR-0275), and
-they are what end users read on the download page, so a CI-coverage caveat does
-not belong there.
-
-**Why the ban does not bite: `ci-docker.sh` is not a mirror of the pipeline, it
-is the pipeline's own two scripts.** `ci.yml` has one job, four steps — install
-`git`, `actions/checkout`, `./scripts/ci-setup.sh`, `./scripts/ci-local.sh` —
-inside `container: python:3.12-slim-bookworm`. `ci-docker.sh` runs the **same
-image** and calls the **same two scripts by name**. There is no second
-definition of the gate that could drift from the first, which is exactly the
-failure the skill's rule protects against, and FIBR-0001 INV-2 locks the
-single definition with `tests/features/harness/` enforcing it.
-
-**Three things it does NOT cover.** State them; do not report a full pipeline
-run.
-
-1. **`actions/checkout` running at all** — a bad SHA, a network failure, a
-   revoked action. Its *static* properties are still checked here: `zizmor`
-   is a `ci-local.sh` stage, so this run does read `ci.yml`'s pin and
-   `persist-credentials: false` — measured by reverting the pin to a mutable tag
-   and watching `zizmor` fail
-   ([`docs/history/claude-md.md`](docs/history/claude-md.md)). So do not list the
-   pin as uncovered; what is uncovered is the step executing.
-2. **The `apt-get install git ca-certificates` step** before checkout. Its
-   *effect* is covered — `ci-setup.sh` installs `git` as well — but the step
-   itself never executes.
-3. **The tree under test is your working copy, not the commit.**
-   `ci-docker.sh` sends the container the tracked files and `.git` — never
-   untracked or gitignored ones, so `.corpus-numbers` stays out, as it does on
-   GitHub. What differs is that an uncommitted edit to a tracked file is
-   tested here, while `actions/checkout` tests the commit. Commit first when
-   the run is meant to stand for the push.
-
-**If `act` is ever configured on this machine this override lapses.**
-*Configured* means `~/.config/act/actrc` exists **and**
-`act push -W .github/workflows/ci.yml -n </dev/null` exits 0. Check both at
-Phase 2b — `act --version` succeeds on an unconfigured install and settles
-nothing. Both were measured false on 2026-08-19, so the override stands
-([`docs/history/claude-md.md`](docs/history/claude-md.md)). When it lapses, Phase 2b goes
-back to executing the workflows themselves and this section is deleted rather
-than left standing as a second answer.
+**Before any release step — `cut-release`, `scripts/release-linux.sh`,
+`scripts/release-windows.sh` or a version bump — read
+[`.claude/rules/release.md`](.claude/rules/release.md).** It holds the release
+path in order, how a release has failed, and this project's `cut-release`
+Phase 2b substitute (`scripts/ci-docker.sh`; user decision 2026-08-19,
+FIBR-0295).
 
 ## Module map
 
-`src` layout; the package is `finbreak`, found by pytest via
-`pythonpath = ["src"]` (no editable install needed for the gate).
-
-**`invariant_check` needs the PACKAGE-relative path here, not the
-project-relative one — and answers `matched_count: 0` either way for some
-modules.** The verb substring-matches the path you pass against spec bodies,
-and this project's specs cite modules as `services/auth.py`, never
-`src/finbreak/services/auth.py`. Measured 2026-08-24: the project-relative
-form returned **0 matched specs over 64 scanned**, the package-relative form
-returned **16**. Worse, a spec may name a module only by SYMBOL — FIBR-0019
-writes ``vault_migration.resume`` and no path at all — so
-`services/vault_migration.py` also returns 0 while § 13 governs every line of
-it. **So a zero here is not "nothing governs this file"**: fall back to
-`workspace_search` on the module's bare name across `docs/specs/`, which is
-what finds the symbol-only citations.
-
-- `src/finbreak/` — the application package. `__init__.py` (`__version__`),
-  plus `__main__.py` + `_selftest.py` — the `python -m finbreak --self-test`
-  entry point that loads Qt + SQLCipher + qpdf (FIBR-0003). UI / services /
-  repositories / crypto modules land from P02 (see
-  [`docs/design.md`](docs/design.md) for the layered architecture).
-  - **The key envelope (FIBR-0019)** is four modules and one rule: the vault is
-    encrypted by a random **data key**, and each credential wraps its own copy
-    of it. `keywrap.py` is the AES-256-GCM slot primitive (Qt-free);
-    `services/recovery_code.py` is Crockford base32 — generate, format,
-    normalise, check-symbol, decode — and is pure; `services/vault_migration.py`
-    runs § 13's S0..S6 conversion of a v1 vault plus its resume ladder;
-    `ui/recovery_key.py` holds the one-time code display and the forced
-    new-password step. The v2 sidecar reader/writer lives in `crypto.py` beside
-    `load_and_validate_params`, which dispatches on `sidecar_version`.
-    **What Argon2id is fed for the recovery route is the DECODED 17-byte
-    payload, never the text** — Crockford maps `I`/`L` to `1` and `O` to `0`,
-    so deriving from the text would refuse a code the user transcribed
-    correctly. And `models.FORMAT_VERSION` stays `1`: it is the `.fbk` params
-    record's version, and bumping it breaks every backup restore.
-  - **Batch import (FIBR-0085)** spans three of those layers:
-    `services/batch_import.py` holds every decision (the scan ladder, the
-    stored-password ladder, the cumulative dedup counts, the caps) and is
-    Qt-free so all of it is testable headless; `ui/import_batch.py` is the
-    review-step table; `importers/sniff.py` is the Qt-free format detection
-    lifted off the wizard so the service could call it. `ui/import_wizard.py`
-    gained a fourth step and the scan/ask/run chain, and
-    `ui/account_picker.py` gained a Create-an-account affordance.
-  - **The Standard Bank import contract is stated in
-    [`docs/specs/FIBR-0050.md`](docs/specs/FIBR-0050.md) INV-11 — amend it in the
-    same commit that changes the behaviour.** It is the canonical "all-or-nothing,
-    and here is every way a statement can be refused" clause. Why the
-    same-commit rule is stated here at all:
-    [`docs/history/claude-md.md`](docs/history/claude-md.md).
-    The trap in the code: `_draft` decides
-    degrade-vs-refuse on the **amount**, never on the rejection reason —
-    `parse_transaction` checks description and date first, so a printed `0.00`
-    line can be rejected for its *date* and must still degrade (FIBR-0255 §4.1).
-- `tests/` — pytest suite. `tests/test_smoke.py` asserts the package imports;
-  `tests/features/<name>/` (spec.md + test) and `tests/fixtures/<rule>/` arrive
-  with the features they cover
-  ([`docs/standards/testing.md`](docs/standards/testing.md)).
-- `scripts/ci-local.sh` — the one-command quality + security gate (`--build`
-  adds the FIBR-0003 bundling smoke-test).
-- `scripts/ci-setup.sh` — the shared CI **environment** prep (system libs
-  PySide6 needs + the pinned non-pip binaries — gitleaks, shellcheck,
-  actionlint, zizmor — + Python deps). Called by BOTH `ci.yml` and
-  `ci-docker.sh` so the environment has a single definition.
-- `scripts/ci-docker.sh` — re-run CI's own image and CI's own two scripts
-  locally (`python:3.12-slim-bookworm`, then `ci-setup.sh` + `ci-local.sh`). Run
-  before pushing **when the diff could move the environment** — § Build and test
-  lists those triggers and says it is not required before every push. Not the
-  whole workflow either — § `cut-release` Phase 2b names what it misses.
-- `scripts/build-smoke.sh` (+ `_build-smoke-in-container.sh`) — freeze the app
-  in a `python:3.12-slim-bookworm` container (glibc ~2.36) and launch it in a
-  Python-free `debian:13-slim` container (FIBR-0003).
-- `scripts/` also holds the release path: `build-release-appimage.sh`,
-  `build-windows-exe.py` (+ `windows_freeze_flags.py`), `release-linux.sh`,
-  `release-windows.sh`, `gen-signing-key.py`, `sign-release.py`,
-  `gen-checksums.sh`, `make-icons.sh`, and the demo/screenshot helpers
-  `seed_demo_vault.py` + `capture_screenshots.py`.
-- `packaging/` — the distro recipes: `packaging/flatpak/` (Flathub manifest,
-  FIBR-0159) and `packaging/obs/` (openSUSE Build Service `.spec`, `debian/`,
-  `_service`, metainfo + desktop files, FIBR-0155).
-- `assets/` — the app icon set and the README screenshots.
-- `.github/workflows/ci.yml` — CI mirror; runs INSIDE `python:3.12-slim-bookworm`
-  and calls `ci-setup.sh` then `ci-local.sh` — the same image + scripts as
-  `ci-docker.sh`, so the *gate definition* cannot drift (single source of truth,
-  INV-2). The workflow around that gate is a different thing — § `cut-release`
-  Phase 2b names what a local run does not reach.
-- `.github/workflows/build-smoke.yml` — the dedicated, opt-in build job
-  (`workflow_dispatch` + weekly), not run on every push.
-- `.github/workflows/windows-build.yml` — the on-demand Windows `.exe` freeze
-  (unsigned; Authenticode signing is FIBR-0133, still blocked).
-- `pyproject.toml` — metadata, pinned runtime deps + `dev`/`build` groups,
-  ruff / pytest / bandit / mypy config.
+Where each part of the tree lives, and two traps (`invariant_check` paths;
+the Standard Bank import contract), are in
+[`.claude/rules/module-map.md`](.claude/rules/module-map.md). It loads by
+itself when a file under `src/` or `tests/` is read.
 
 ## Resumption flow — MANDATORY summarise-back
 
@@ -914,20 +466,8 @@ without opening it is worth the suffix. **Name a new spec the new way**;
 the first file under the new rule is
 `docs/specs/FIBR-0231-plain-english-month-summary.md`.
 
-`naming.md` is not amended yet on purpose. Amending *this* rule changes
-what a conformer writes — the spec filename — so it trips rule 14's gate
-(`review-contract <path> --genre standard`); and back-migrating the existing
-`FIBR-NNNN.md` specs means repointing every inbound citation — so both halves
-are tracked as **FIBR-0196** rather than done in passing.
-
-**Not every `docs/standards/` edit owes that gate.** Rule 14's trigger is
-a *change of direction*, not an edit: "would someone conforming to this
-document now BUILD something different, or build, check or ship it a different
-way? Name the line." A corrected date, a
-fixed count, a dead link or a reworded example changes nothing anyone
-writes — record the check in one line of the commit body and move on. In
-the grey zone, do **not** gate. This note exists so a session that reads
-`naming.md` and not that bullet does not name the next spec wrongly.
+Why it is not amended yet, and what is tracked:
+[`.claude/rules/spec-filenames.md`](.claude/rules/spec-filenames.md).
 
 ## Rule history
 
