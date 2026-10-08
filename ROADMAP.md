@@ -1462,6 +1462,9 @@ so Flathub review and code signing do not block this release.
   cannot declare Depends and FIBR-0155 INV-1 keeps runtime deps minimal;
   xkbcommon stays host-supplied (FIBR-0346). Check PyInstaller's exclude
   list keeps none of them out before deciding.
+  User decision (2026-10-08): bundle the xcb utility libraries in every
+  freeze environment (AppImage container, OBS BuildRequires), not
+  Requires/Depends. xkbcommon stays host-supplied (FIBR-0346).
   **Layman:** On a Linux computer missing a few common display libraries, the store-package version of finbreak cannot open its window under the older X11 display system.
   Kind: fix.
   Source: in-session-2026-09-29 (found verifying FIBR-0346).
@@ -3856,7 +3859,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Source: close-findings 2026-10-01, found next door to FIBR-0390 C14.
   Lanes: ui.
 
-- 📋 [FIBR-0432] **Run the Windows self-update command for real against a path with an apostrophe.**
+- ✅ [FIBR-0432] **Run the Windows self-update command for real against a path with an apostrophe.**
   test_FIBR0131_ps_single_quote_doubles_embedded_quotes and
   test_FIBR0131_relaunch_command_waits_by_image_path_not_pid check the
   PowerShell command's TEXT only. Fix: on the Windows test box
@@ -3865,6 +3868,17 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   new file into place and relaunches. Queued 2026-10-01 because the box
   was off (ssh: no route to host); do it in the same session as the
   Windows self-update test planned after FIBR-0346.
+  User decision (2026-10-08): stays queued until the user says the
+  Windows box is on.
+  Verified (2026-10-08) on ssh wintest (Windows 10 19045): the argv
+  _windows_relaunch_command builds for C:\Users\aants\fbtest\O'Brien's
+  app\finbreak.exe was run there through subprocess (Python 3.13), with
+  the %SystemRoot% powershell.exe the app resolves. Run 1 (old image
+  idle): rc 0, the new file moved over the exe (SHA-256 matched), the
+  temp was gone, and a process ran from that path. Run 2 (old image busy
+  about 3 s): the waiter held 3.8 s until it exited, then moved the file;
+  temp gone. So the image-path wait matches through the doubled quotes.
+  Test folders and processes removed after.
   **Layman:** The Windows updater is only checked on paper for folders like "O'Brien"; it needs one real run on a Windows machine.
   Kind: test.
   Source: full-audit-2026-09-27 delivery group C, C6 (queued from FIBR-0390).
@@ -4031,6 +4045,8 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   owes its gate (review-contract --max-loops 3) before the build.
   Recommended: stage under the vault's own directory (AppDataLocation),
   which restore already uses for its params temp (FIBR-0014 INV-11).
+  User decision (2026-10-08): stage the verify copy in finbreak's own
+  data folder (AppDataLocation), as restore's params temp does.
   **Layman:** Checking a large backup temporarily uses memory instead of disk on some Linux computers; it should use disk space like the other backup steps do.
   Kind: review-fix.
   Source: close-findings FIBR-0404 sweep 2026-10-01 (split from FIBR-0436).
