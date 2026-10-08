@@ -4126,6 +4126,36 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Source: review-contract FIBR-0059 loop 7 (2026-10-08).
   Lanes: ui.
 
+- 📋 [FIBR-0443] **On Fedora 44, installing the finbreak RPM reports "Transaction failed" because its post-install step calls macros Fedora no longer defines.**
+  Found verifying the 1.0.0 OBS build. `dnf -y install` of
+  finbreak-1.0.0-1.1.x86_64.rpm in a bare fedora:44 container exits 1:
+  "%post(finbreak-1.0.0-1.1.x86_64) scriptlet failed, exit status 1",
+  "fg: no job control", "Transaction failed". The package does install
+  (rpm -q finds it) and `finbreak --self-test` prints
+  FINBREAK_SELFTEST_OK.
+
+  Cause: packaging/obs/finbreak.spec's %post / %postun call
+  %icon_theme_cache_post, %desktop_database_post and their %postun
+  twins under `%if 0%{?fedora}`. On Fedora 44 `rpm --eval` returns all
+  four unexpanded, so the built scriptlet holds the literal text and
+  /bin/sh reads `%name` as a job spec. `rpm -qp --scripts` on the built
+  RPM shows the literal lines.
+
+  Not new in 1.0.0: those lines date from FIBR-0155 (eebe3a4), so earlier
+  Fedora RPMs carry it too. openSUSE Tumbleweed is unaffected (the block
+  is Fedora-only); its RPM installs cleanly and self-tests OK.
+
+  Fix direction: drop the %post / %postun blocks. Current Fedora
+  refreshes the icon cache and desktop database through file triggers,
+  which is why the macros were retired. Not yet checked: whether a
+  failing %postun in an installed 1.0.0 disturbs the upgrade to the
+  fixed package -- test the 1.0.0 -> fixed upgrade in a fedora:44
+  container before shipping. obs-submit.sh refuses recipe files that
+  differ from the release tag, so this ships as a patch release.
+  **Layman:** On Fedora, installing finbreak works but the installer says it failed, which looks like a broken package.
+  Kind: fix.
+  Source: in-session-2026-10-08 (1.0.0 OBS RPM verification).
+
 ## v1.1.0 — Localisation
 
 The first feature minor after 1.0. Chosen to go first because it is
