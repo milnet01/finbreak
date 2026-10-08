@@ -21,6 +21,10 @@ signaling per
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-10-08
+
+**Theme:** The 1.0 gate.
+
 ### Changed
 
 - **When an OFX file holds several accounts, the chooser names each account's type in words (for example "Savings") instead of the bank's code** (FIBR-0408)

@@ -90,6 +90,34 @@
   </screenshots>
 
   <releases>
+    <release version="1.0.0" date="2026-10-08">
+      <description>
+        <p>The 1.0 release. Most changes are fixes to import, backup and restore, unlocking, the update check and the vault's security.</p>
+        <p>Changed:</p>
+        <ul>
+          <li>When an OFX file holds several accounts, the chooser names each account's type in words, such as "Savings", instead of the bank's code.</li>
+          <li>Importing several statements with the same layout asks about the columns once, even if you do not name the layout. Naming the layout still saves it for next time.</li>
+          <li>PDF reports are always exported on a light page. The Light/Dark choice is gone; most exports look as they did before.</li>
+        </ul>
+        <p>Fixed:</p>
+        <ul>
+          <li>On Linux, the window opens under X11 on machines missing some common display libraries, and the AppImage and Linux packages now carry those libraries. The AppImage no longer crashes on the first keystroke, and links it opens no longer fail silently.</li>
+          <li>Backup and restore: checking a backup uses finbreak's own folder for disk space; a restore onto a full disk says so; saving a backup no longer deletes a file of yours named like its temporary file; a restore that succeeded is no longer reported as failed; a restore that cannot be undone says what happened and asks you not to delete anything; a restore no longer deletes the safety copy of the vault it replaced; a damaged or tampered backup is refused with a message; choosing the vault file as a backup's destination is refused with a message; the restore offer shows the date of its copy; recovery from an interrupted restore is saved to disk, so a power cut cannot undo it; and a restore clears the old password hint.</li>
+          <li>Import: moving a statement to another account unlinks any transfer that would be left inside one account; a password you ask a batch import to remember is saved only when that statement is imported; a Standard Bank row just before the statement period keeps the right year; a Standard Bank PDF no longer loses transactions silently; a Withdrawal and Deposit statement previews without a manual change; names differing only in spacing count as duplicates; an OFX file with an infinite balance and a CSV with an unclosed quote are handled with a message instead of crashing or losing rows; a cancelled batch import no longer keeps its reversed-amounts setting; amounts with an impossible fraction of a cent are refused; a wrong PDF password is said so when asked again; and the account created during an import shows its warning.</li>
+          <li>Dates, times and display: dates with month names and AM/PM follow your computer's language; years and chart axes use your language's own digits, and amounts in Arabic or Persian show cents in those digits too; a mistyped time zone is refused with a message, and a time zone that does not exist no longer crashes finbreak; category and account names, alerts and password hints are shown exactly as typed; PDF negative amounts follow your Settings choice; the Export report window no longer shows empty Month and Year labels; and the 0.1.23 notes wrongly mentioned a dark PDF export, which does not exist.</li>
+          <li>Calculations and screens: new-transaction and date-filter defaults follow your chosen time zone; month-end debit orders stay on month-end in the forecast; confirmed recurring items are reported correctly when none falls due by the forecast's end date; no false spending-spike alerts appear with only a few months imported; renaming a deeply nested category no longer moves it; the dashboard drill-down no longer counts a spending group twice; the dashboard and Forecast no longer keep old charts in memory; a saved PDF report covers the month its filename names; and Settings that cannot be saved stay open with a message.</li>
+          <li>Updates: pressing Esc during an update download no longer leads to a surprise restart, and the window stays open until the update installs; a failed update says whether the download dropped or the file failed its signature check, and gives the reason an install failed, such as no free disk space; Check for updates from the locked screen reports its result; and closing during a slow update check waits a few seconds and closes cleanly.</li>
+          <li>Unlocking, locking and setup: if the unlock check itself fails, finbreak says so instead of blaming your password, and does not count it against you; a damaged security-settings file or recovery-code record no longer locks out a correct master password; a vault settings file with an impossible key-strength value is refused with a message at unlock; saving a new recovery code can no longer leave a saved file that does not work; if the settings save fails during setup, setup still finishes and shows the recovery code; the setup and recovery-code screens explain problems in plain words; after locking and unlocking you return to the tab you were using; Ctrl+Q quits from the password and first-run screens; export stops quietly if the vault locks during its save; and a copied transaction is cleared from the clipboard even if the vault locks first.</li>
+          <li>Startup and crash safety: two launches right after a crash no longer run on the same vault; if the system cannot say where finbreak should keep its data, finbreak says so instead of using the folder it was started from; and the password check finishes before its screen closes, so the app no longer stops suddenly on a busy computer.</li>
+        </ul>
+        <p>Security:</p>
+        <ul>
+          <li>The updater refuses an older version, or another system's file, presented as a new release, and it no longer overwrites another application's AppImage.</li>
+          <li>The recovery code can no longer be selected into the mouse-paste buffer, and Ctrl+C clears the clipboard on the same timer as the Copy button. Locking clears every screen at once, not only the tables, and the password hint refuses your recovery code however it is typed.</li>
+          <li>Statement passwords typed during a batch import are forgotten when it ends, and a batch respects the import size limit after a password is answered.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.1.23" date="2026-09-07">
       <description>
         <p>Added:</p>

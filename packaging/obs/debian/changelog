@@ -1,3 +1,141 @@
+finbreak (1.0.0) unstable; urgency=medium
+
+  * When an OFX file holds several accounts, the chooser names each account's
+    type in words (for example "Savings") instead of the bank's code.
+  * Importing several statements with the same layout asks about the columns
+    once, even if you do not name the layout.
+  * PDF reports are always exported on a light page.
+  * On a Linux computer missing a few common display libraries, finbreak's
+    window now opens under X11; the AppImage and the Linux packages carry
+    those libraries themselves.
+  * Checking a backup now uses disk space in finbreak's own folder instead of
+    your computer's memory on some Linux systems.
+  * Moving a statement to another account no longer leaves a money transfer
+    with both sides in one account and its amounts missing from your totals.
+  * A mistyped time zone in Settings or at first run is now refused with a
+    message, instead of quietly switching to your computer's zone.
+  * Dates with month names, and AM/PM, now follow your computer's language
+    instead of always appearing in English.
+  * Restoring a backup onto a full disk now says there isn't enough disk
+    space, instead of telling you to check the file and the backup password.
+  * Saving a backup can no longer delete a file of yours that happens to share
+    the backup's name plus ".tmp".
+  * Ctrl+Q now quits finbreak from the password screen and the first-run
+    screen, not only once you are unlocked.
+  * A password you ask a batch import to remember is now saved only when that
+    statement is actually imported.
+  * A Standard Bank statement row dated just before the statement period no
+    longer pushes that row, and every row after it, into the following year.
+  * The offer to restore the copy kept from before an update now says when
+    that copy was taken.
+  * When a PDF statement's password is wrong, the password window now says so
+    when it asks again.
+  * After creating an account during an import, the import screen now shows
+    what it stored, including the warning when the account has no number.
+  * finbreak no longer crashes on a computer whose time-zone setting names a
+    zone that doesn't exist; it uses the computer's local time instead.
+  * A restore that succeeded is no longer reported as failed when finbreak
+    can't tidy away its temporary folder afterwards.
+  * Choosing the vault file itself as a backup's destination now says so,
+    instead of claiming the vault is too large to back up.
+  * In languages with their own digits, such as Arabic or Persian, amounts now
+    show the cents in those digits too instead of mixing in Western digits.
+  * The dashboard and Forecast tab no longer keep each old chart in memory
+    every time they refresh.
+  * If Settings can't be saved (for example on a full disk), finbreak now says
+    so and keeps Settings open instead of crashing.
+  * The vault-creation, recovery-code and new-password screens now explain
+    problems in plain, translatable words instead of quoting technical error
+    text.
+  * When an update can't be installed, the message now says why in plain words
+    (not enough disk space, or no permission to replace the file) instead of a
+    raw technical error.
+  * Restoring a backup now clears the old password hint and any failed-unlock
+    wait, since the restore sets a new master password.
+  * After locking and unlocking, finbreak returns you to the tab you were
+    using, not the one it opened on.
+  * If finbreak locks itself while the save window is open during a PDF or
+    backup export, the export now stops quietly instead of showing a "choose
+    another location" error over the lock screen.
+  * Help → Check for updates started from the locked screen now tells you the
+    result, instead of saying nothing when you are up to date or the check
+    fails.
+  * A category name containing characters like < or & is shown exactly as
+    typed in the dashboard and PDF pie charts, never read as formatting.
+  * Years in the PDF report and the month summary, and the numbers on chart
+    axes, now use your language's own digits and separators.
+  * The Export report window no longer shows empty "Month" and "Year" labels
+    when the chosen period does not use them.
+  * The dashboard drill-down no longer counts a spending group twice when a
+    restored or damaged vault holds a transaction filed on a top-level type.
+  * Correction to the 0.1.23 notes: there is no dark PDF export.
+  * A statement with separate Withdrawal and Deposit columns now previews
+    without adjusting the form.
+  * Two accounts or categories whose names differ only in spacing can no
+    longer both exist.
+  * Pressing Esc during an update download no longer leads to a surprise
+    restart.
+  * A failed update now says whether the download dropped or the file failed
+    its security check.
+  * A restore finbreak could not undo now says what happened and not to delete
+    anything.
+  * Alert text and the password hint are shown exactly as written.
+  * Saving a new recovery code can no longer leave you with a saved code that
+    does not work.
+  * A settings save that fails during setup no longer loses your recovery
+    code.
+  * A security check that cannot run is no longer reported as a wrong
+    password.
+  * A damaged security-settings file found after the password is checked is
+    reported, not a crash.
+  * Closing finbreak while a slow update check is still running no longer ends
+    in a crash report.
+  * Opening finbreak twice right after a crash no longer risks two copies
+    running on the same vault.
+  * If the system cannot say where finbreak should keep its data, finbreak now
+    says so instead of using the folder it was started from.
+  * finbreak no longer risks crashing just after you unlock or create a vault
+    on a busy computer.
+  * A damaged recovery-code record no longer locks you out with the right
+    master password.
+  * Restoring a backup can no longer delete the safety copy of the vault it
+    replaced.
+  * A damaged or tampered backup file is refused with a message, never a
+    crash.
+  * Standard Bank PDF imports no longer lose transactions silently.
+  * An OFX file whose balance is "Infinity" no longer crashes the import.
+  * A CSV with an unclosed quote no longer loses transactions silently.
+  * Renaming a deeply nested category no longer moves it.
+  * No false spending-spike alerts while you have few months imported.
+  * Amounts with an impossible fraction of a cent are refused, not rounded.
+  * A cancelled batch import no longer leaves its 'amounts are reversed' tick
+    behind.
+  * PDF reports show negative amounts the way you chose in Settings.
+  * Month-end debit orders stay on month-end in the forecast.
+  * New-transaction and date-filter defaults use your chosen time zone.
+  * Links opened from the Linux AppImage no longer risk failing silently.
+  * The Forecast tab no longer says you have no confirmed recurring items when
+    you do.
+  * A vault settings file hand-edited to an impossible key-strength value now
+    gets a clear refusal at unlock instead of an unhandled error.
+  * The Linux AppImage no longer crashes on the first keystroke.
+  * A saved PDF report now always covers the month its filename names.
+  * Recovering from an interrupted restore now survives a power cut.
+  * A copied transaction is now cleared from the clipboard even if the vault
+    locks first.
+  * The updater refuses an older version or another system's file dressed as a
+    new release.
+  * The updater can no longer overwrite another application's AppImage.
+  * The recovery code can no longer be copied around its clipboard auto-clear.
+  * Locking now clears every screen straight away, not only the tables.
+  * Statement passwords typed during a batch import are forgotten when it
+    ends.
+  * The password hint now refuses your recovery code however you write it —
+    without its last character, spaced out, or split across lines — not only
+    the exact printed form.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Thu, 08 Oct 2026 14:37:26 +0200
+
 finbreak (0.1.23) unstable; urgency=medium
 
   * A recovery code — a second way into your vault if you forget your master

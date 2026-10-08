@@ -10,10 +10,10 @@
 > (after confirming the download is genuinely signed). Leave it off — the
 > default — and the app never touches the internet at all.
 
-[![Status](https://img.shields.io/badge/status-early_preview-orange)]()
+[![Status](https://img.shields.io/badge/status-stable-brightgreen)]()
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-Current version: **0.1.23** (early preview). **[⬇ Download the latest
+Current version: **1.0.0**. **[⬇ Download the latest
 release](https://github.com/milnet01/finbreak/releases/latest)**, or see
 [CHANGELOG](CHANGELOG.md) for what's shipped and [ROADMAP](ROADMAP.md) for
 what's coming.
@@ -33,8 +33,9 @@ the in-app updater — a separate thing from an OS "publisher" certificate.)
 
 ## Status
 
-finbreak is in **early development** — an early preview that already does a
-lot, with more polish and features to come. What works today:
+finbreak **1.0** is the first stable release. Your vault, your backups and
+your saved import settings will keep working with every 1.x update. What it
+does:
 
 - a private, password-protected place to keep your finances (an encrypted
   vault),
@@ -144,8 +145,8 @@ finbreak now also runs on **Windows** as a self-contained `.exe`, and on **Linux
 installs as a native **RPM** on openSUSE Tumbleweed and Fedora 44 (from the
 [openSUSE Build Service](https://download.opensuse.org/repositories/home:/milnet:/finbreak/))
 alongside the existing AppImage. Still to come: **deb** packages for Debian and
-Ubuntu (the recipe exists but those targets don't build yet), a **Flatpak** on
-Flathub, and a packaged macOS app. See the [ROADMAP](ROADMAP.md) for the full
+Ubuntu (the recipe exists but those targets don't build yet) and a packaged
+macOS app. See the [ROADMAP](ROADMAP.md) for the full
 plan.
 
 ## Install
@@ -191,7 +192,7 @@ sudo dnf config-manager addrepo --from-repofile=https://download.opensuse.org/re
 sudo dnf install finbreak
 ```
 
-Debian/Ubuntu `.deb` packages and a Flathub Flatpak are still being worked on —
+Debian/Ubuntu `.deb` packages are still being worked on —
 use the AppImage above on those systems for now.
 
 **Windows** — a self-contained `finbreak.exe` (no Python needed) ships as a
