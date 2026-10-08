@@ -196,7 +196,7 @@ so Flathub review and code signing do not block this release.
   Kind: investigate.
   Source: review-contract on FIBR-0050, 2026-09-04.
 
-- 📋 [FIBR-0304] **Cut v1.0.0 — the gate is five conditions and four named blockers.**
+- 🚧 [FIBR-0304] **Cut v1.0.0 — the gate is five conditions and four named blockers.**
   User-approved 2026-08-20 on the question "what gets us to v1.0?".
   docs/standards/versioning.md 5 owns the CRITERIA; this item owns the
   current blocker list, because a standard naming today's roadmap ids
@@ -417,6 +417,13 @@ so Flathub review and code signing do not block this release.
   to ssh wintest and run --self-test; after publishing, update wintest
   from 0.1.23 for real, with the user doing the unlock and the
   "Update now" click while I verify the result over ssh.
+  Pre-cut Windows check PASSED (2026-10-08). windows-build.yml run
+  37775735216 (main at f4bfe76) built finbreak.exe; copied to ssh
+  wintest (checksum matched) and ran `finbreak.exe --self-test` with
+  FINBREAK_SELFTEST_OUT set: file read FINBREAK_SELFTEST_OK, exit code
+  0 (read with delayed expansion, after deleting any old result file).
+  wintest facts: account `ant`, profile C:\Users\aants, Python 3.13
+  installed. Next: cut 1.0.0 per .claude/rules/release.md.
   **Layman:** The plan for calling the app finished: what has to be true first, and which four jobs are standing in the way.
   Kind: release.
   Source: user-decision-2026-08-20 ("what gets us to v1.0?").
