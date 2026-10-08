@@ -833,7 +833,8 @@ def test_FIBR0059_reassign_moves_period_and_all_transactions(service):
     )
     pid = _period_id(conn, a)
 
-    moved = StatementService(service.vault).reassign_account(pid, b)
+    moved, unlinked = StatementService(service.vault).reassign_account(pid, b)
+    assert unlinked == 0, "no transfer to unlink (INV-12)"
 
     assert moved == 2, "returns the number of transactions moved (INV-4)"
     assert StatementPeriodRepository(conn).get(pid).account_id == b, "period re-pointed"
@@ -942,7 +943,8 @@ def test_FIBR0059_reassign_same_account_is_noop_returning_count(service):
 
     # Same account: the self-exclusion (existing == period_id) must NOT refuse; the
     # matched-row UPDATE returns the txn count, not 0 (INV-5).
-    moved = StatementService(service.vault).reassign_account(pid, a)
+    moved, unlinked = StatementService(service.vault).reassign_account(pid, a)
+    assert unlinked == 0, "no transfer to unlink (INV-12)"
     assert moved == 2
     assert StatementPeriodRepository(conn).get(pid).account_id == a
 
@@ -960,7 +962,8 @@ def test_FIBR0059_reassign_moves_verbatim_no_dedup(service):
     _do_import(imp, _csv(HEADER, [["2026-01-05", "x", "-1.00"]]), a)
     pid = _period_id(conn, a)
 
-    moved = StatementService(service.vault).reassign_account(pid, b)
+    moved, unlinked = StatementService(service.vault).reassign_account(pid, b)
+    assert unlinked == 0, "no transfer to unlink (INV-12)"
 
     assert moved == 1, "the statement's row is moved, not deduped away"
     assert TransactionRepository(conn).count_for_account(b) == 2, (
@@ -977,7 +980,8 @@ def test_FIBR0059_reassign_zero_txn_statement_returns_zero(service):
     )
     conn.commit()
 
-    moved = StatementService(service.vault).reassign_account(pid, b)
+    moved, unlinked = StatementService(service.vault).reassign_account(pid, b)
+    assert unlinked == 0, "no transfer to unlink (INV-12)"
     assert moved == 0, "no transactions to move"
     assert StatementPeriodRepository(conn).get(pid).account_id == b, (
         "period still re-pointed"
@@ -2005,3 +2009,128 @@ def test_FIBR0396_the_period_cell_is_one_template(qtbot, service, translate_one)
     end, start = shown.split(" ← ")
     assert start <= end, shown  # both are the same day here; the order is the point
     assert " – " not in shown
+
+
+# -- FIBR-0438: INV-12 a joined transfer is unlinked ------------------------- #
+def _confirmed_pair(service, imp, a, b):
+    """A confirmed transfer between a -100.00 row in a statement of ``a`` and its
+    +100.00 in ``b`` a day later (a different span, so INV-3 allows the move), as
+    a user confirms one on the Transfers tab."""
+    from finbreak.services.transfer_detection import TransferDetectionService
+
+    conn = service.vault.connection
+    _do_import(imp, _csv(HEADER, [["2026-03-05", "to b", "-100.00"]]), a, "a.csv")
+    _do_import(imp, _csv(HEADER, [["2026-03-06", "from a", "100.00"]]), b, "b.csv")
+    debit = conn.execute(
+        "SELECT id FROM transactions WHERE account_id = ?", (a,)
+    ).fetchone()[0]
+    credit = conn.execute(
+        "SELECT id FROM transactions WHERE account_id = ?", (b,)
+    ).fetchone()[0]
+    TransferDetectionService(service.vault).confirm(debit, credit)
+    return debit, credit
+
+
+def test_FIBR0438_a_move_unlinks_a_transfer_it_joins(service):
+    """INV-12: moving A's statement into B puts both sides of the A->B transfer in
+    one account, so the pair is unlinked inside the move and counts again."""
+    from finbreak.services.transfer_detection import TransferDetectionService
+
+    imp, a, conn = (
+        ImportService(service.vault),
+        _acct(service),
+        service.vault.connection,
+    )
+    b = _second_account(service)
+    _confirmed_pair(service, imp, a, b)
+
+    result = StatementService(service.vault).reassign_account(_period_id(conn, a), b)
+
+    assert (result.moved, result.unlinked) == (1, 1)
+    assert TransferDetectionService(service.vault).confirmed_transfer_txn_ids() == set()
+
+
+def test_FIBR0438_a_move_that_keeps_a_pair_split_unlinks_nothing(service):
+    """INV-12's scope: a move to a third account leaves the pair across two
+    accounts, and an INV-5 same-account call is a no-op for transfers too."""
+    from finbreak.services.transfer_detection import TransferDetectionService
+
+    imp, a, conn = (
+        ImportService(service.vault),
+        _acct(service),
+        service.vault.connection,
+    )
+    b = _second_account(service)
+    c = _second_account(service, "Savings", "savings")
+    pair = set(_confirmed_pair(service, imp, a, b))
+    statements = StatementService(service.vault)
+    pid = _period_id(conn, a)
+
+    assert statements.reassign_account(pid, a).unlinked == 0
+    assert statements.reassign_account(pid, c).unlinked == 0
+    assert TransferDetectionService(service.vault).confirmed_transfer_txn_ids() == pair
+
+
+def test_FIBR0438_a_failed_move_keeps_the_pair(service):
+    """INV-1 now covers INV-12's DELETE: a move wedged on its last write (the
+    transactions UPDATE) rolls the unlink back with everything else."""
+    from finbreak.services.transfer_detection import TransferDetectionService
+
+    imp, a, conn = (
+        ImportService(service.vault),
+        _acct(service),
+        service.vault.connection,
+    )
+    b = _second_account(service)
+    pair = set(_confirmed_pair(service, imp, a, b))
+    wedge = StatementService(
+        StandInVault(raising_conn(conn, "UPDATE transactions", "injected failure"))
+    )
+    with pytest.raises(RuntimeError):
+        wedge.reassign_account(_period_id(conn, a), b)
+
+    assert TransferDetectionService(service.vault).confirmed_transfer_txn_ids() == pair
+
+
+def test_FIBR0438_the_status_line_names_the_unlinked_transfers(qtbot, service):
+    """INV-8: the shell's move message names INV-12's count when it is not zero."""
+    window = _shell(qtbot, service)
+    window._on_statement_reassigned(1)
+    message = window.statusBar().currentMessage()
+    assert message.startswith("Statement account changed") and "1" in message, message
+
+
+def test_FIBR0438_a_pair_already_inside_one_account_is_not_the_moves(service):
+    """INV-12 covers only pairs the move joins. A pair whose two sides were already
+    in one account before the call (as an earlier move could leave) is left alone,
+    so an INV-5 same-account call unlinks nothing."""
+    from finbreak.services.transfer_detection import TransferDetectionService
+
+    imp, a, conn = (
+        ImportService(service.vault),
+        _acct(service),
+        service.vault.connection,
+    )
+    _do_import(
+        imp,
+        _csv(
+            HEADER, [["2026-03-05", "out", "-100.00"], ["2026-03-05", "in", "100.00"]]
+        ),
+        a,
+    )
+    debit, credit = (
+        conn.execute(
+            "SELECT id FROM transactions WHERE account_id = ? AND amount_minor "
+            + op
+            + " 0",
+            (a,),
+        ).fetchone()[0]
+        for op in ("<", ">")
+    )
+    transfers = TransferDetectionService(service.vault)
+    transfers.confirm(debit, credit)
+
+    result = StatementService(service.vault).reassign_account(_period_id(conn, a), a)
+
+    assert result.unlinked == 0
+    assert transfers.confirmed_transfer_txn_ids() == {debit, credit}

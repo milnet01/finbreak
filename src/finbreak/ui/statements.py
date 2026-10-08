@@ -58,9 +58,10 @@ class StatementsWidget(QWidget):
     # the shell can report "2 statements deleted" instead of the singular it used
     # to say after deleting five (FIBR-0201 INV-18).
     changed = Signal(int)
-    reassigned = Signal()  # a Change-account move succeeded (FIBR-0059) — distinct
-    # from `changed` because the shell's `changed` handler reports "Statement
-    # deleted"; a move shows its own message.
+    reassigned = Signal(int)  # a Change-account move succeeded (FIBR-0059) —
+    # distinct from `changed` because the shell's `changed` handler reports
+    # "Statement deleted"; a move shows its own message. Carries the transfers the
+    # move unlinked (INV-12), which that message names.
 
     def __init__(
         self,
@@ -222,7 +223,7 @@ class StatementsWidget(QWidget):
         if new_account_id == statement.account_id:
             return  # same account — nothing to move (INV-5)
         try:
-            self._statements.reassign_account(statement.id, new_account_id)
+            result = self._statements.reassign_account(statement.id, new_account_id)
         except VaultLockedError:
             return  # defense-in-depth; INV-2 destroys the dialog before this slot
         except ValueError:  # the target account already has this span (INV-3)
@@ -236,7 +237,7 @@ class StatementsWidget(QWidget):
             )
             return
         self.refresh()
-        self.reassigned.emit()
+        self.reassigned.emit(result.unlinked)
 
     def _confirm_text(self, removed: int, kept: int, statements: int) -> str:
         """The delete confirmation message — a pure function of the three counts,

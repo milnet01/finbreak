@@ -109,6 +109,27 @@ class TransferRepository:
         self._conn.commit()
         return rowcount
 
+    def delete_confirmed_joined_by_move(
+        self, statement_period_id: int, account_id: int
+    ) -> int:
+        """Delete each confirmed pair a statement's move into ``account_id`` would
+        put inside one account — one side stamped with ``statement_period_id`` and
+        not yet in ``account_id``, the other already there — returning the
+        rowcount (FIBR-0059 INV-12). Run BEFORE the move's ``UPDATE``s, which it
+        reads the pre-move accounts from, and **commit-free**: it is one write of
+        the move's owned transaction (INV-1), unlike ``delete_confirmed``."""
+        return self._conn.execute(
+            "DELETE FROM transfer_pairs WHERE status = 'confirmed' AND id IN ("
+            " SELECT p.id FROM transfer_pairs p"
+            " JOIN transactions a ON a.id = p.txn_a_id"
+            " JOIN transactions b ON b.id = p.txn_b_id"
+            " WHERE (a.statement_period_id = :sp AND a.account_id != :acc"
+            "        AND b.account_id = :acc)"
+            "    OR (b.statement_period_id = :sp AND b.account_id != :acc"
+            "        AND a.account_id = :acc))",
+            {"sp": statement_period_id, "acc": account_id},
+        ).rowcount
+
     def list_confirmed(self) -> list[TransferPair]:
         """Every confirmed pair, oldest first (``ORDER BY created_at, id`` — a
         deterministic Confirmed-table order the tests index into)."""

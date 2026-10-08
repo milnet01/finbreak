@@ -17,15 +17,25 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Sequence
-from typing import cast
+from typing import NamedTuple, cast
 
 from finbreak.db import owned_transaction
 from finbreak.models import StatementPeriod, StatementRow
 from finbreak.repositories.statement_periods import StatementPeriodRepository
 from finbreak.repositories.transactions import TransactionRepository
+from finbreak.repositories.transfers import TransferRepository
 from finbreak.vault import Vault
 
 log = logging.getLogger(__name__)
+
+
+class ReassignResult(NamedTuple):
+    """What a statement move did (FIBR-0059 INV-4): the transactions it moved,
+    and the confirmed transfers it unlinked because both sides would otherwise
+    have sat in one account (INV-12)."""
+
+    moved: int
+    unlinked: int
 
 
 class StatementService:
@@ -132,14 +142,15 @@ class StatementService:
         in an overlap delete). The UI calls this, never a repository."""
         return self.delete_preview_many((period_id,))
 
-    def reassign_account(self, period_id: int, new_account_id: int) -> int:
+    def reassign_account(self, period_id: int, new_account_id: int) -> ReassignResult:
         """Atomically re-point statement ``period_id`` **and** every transaction
-        stamped with it to ``new_account_id``, returning the number of transactions
-        moved (FIBR-0059 INV-1/INV-4). The span guard runs first — a pure read +
-        refuse, **before** ``BEGIN`` (so a refusal opens no transaction) — then one
-        owned ``BEGIN … COMMIT``; any failure ``ROLLBACK``s both ``UPDATE``s to a
-        re-openable vault. Refuses with ``ValueError`` when the target account
-        already has a **different** statement for the same span (INV-3), which
+        stamped with it to ``new_account_id``, returning the transactions moved and
+        the transfers unlinked (FIBR-0059 INV-1/INV-4/INV-12). The span guard runs
+        first — a pure read + refuse, **before** ``BEGIN`` (so a refusal opens no
+        transaction) — then one owned ``BEGIN … COMMIT``; any failure
+        ``ROLLBACK``s the unlink and both ``UPDATE``s to a re-openable vault.
+        Refuses with ``ValueError`` when the target account already has a
+        **different** statement for the same span (INV-3), which
         would otherwise duplicate rows on a later import. Re-pointing to the
         statement's current account is a no-op (the self-exclusion below), returning
         the matched-row count (INV-5)."""
@@ -157,10 +168,14 @@ class StatementService:
                 "that account already has a statement for this period — "
                 "delete or move it first"
             )
-        # Both UPDATEs are one owned unit; any failure rolls both back to a
-        # re-openable vault (FIBR-0059 INV-1).
+        # One owned unit; any failure rolls all three writes back to a re-openable
+        # vault (FIBR-0059 INV-1). The unlink goes first: it reads the moved rows'
+        # pre-move account to find the transfers this move joins (INV-12).
         with owned_transaction(conn):
+            unlinked = TransferRepository(conn).delete_confirmed_joined_by_move(
+                period_id, new_account_id
+            )
             period_repo.set_account(period_id, new_account_id)
             moved = tx_repo.reassign_account(period_id, new_account_id)
         log.info("statement account reassigned")
-        return moved
+        return ReassignResult(moved, unlinked)

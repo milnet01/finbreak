@@ -2079,11 +2079,22 @@ class MainWindow(QMainWindow):
             else self.tr("%n statements deleted", "", deleted)
         )
 
-    def _on_statement_reassigned(self) -> None:
+    def _on_statement_reassigned(self, unlinked: int) -> None:
         # A Change-account move (FIBR-0059) — its own status message, NOT the
-        # delete handler's "Statement deleted".
+        # delete handler's "Statement deleted". A transfer the move left inside one
+        # account was unlinked (INV-12), and the user is told so.
         self._refresh_after_statement_change()
-        self._status(self.tr("Statement account changed"))
+        if unlinked:
+            self._status(
+                self.tr(
+                    "Statement account changed — %n transfer(s) unlinked: both "
+                    "sides are now in one account",
+                    "",
+                    unlinked,
+                )
+            )
+        else:
+            self._status(self.tr("Statement account changed"))
 
     def _open_url(self, url: str) -> None:
         # Hands a page (a funding link) to the OS browser — a user-initiated
