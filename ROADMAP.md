@@ -4041,7 +4041,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: review-fix.
   Source: full-audit-2026-09-27 code lane 10 M3, queued by FIBR-0409.
 
-- 📋 [FIBR-0441] **Verify backup stages its copy in the system temp dir, which is RAM on a tmpfs host.**
+- ✅ [FIBR-0441] **Verify backup stages its copy in the system temp dir, which is RAM on a tmpfs host.**
   Split out of FIBR-0436 (2026-10-07). verify_backup copies the backup
   (up to the restore cap) into a tempfile.TemporaryDirectory() in the
   system temp dir, which is RAM where /tmp is tmpfs. Export already
@@ -4052,6 +4052,12 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   which restore already uses for its params temp (FIBR-0014 INV-11).
   User decision (2026-10-08): stage the verify copy in finbreak's own
   data folder (AppDataLocation), as restore's params temp does.
+  Resolved (2026-10-08): FIBR-0033 amended and gated (loops 6-7,
+  converged), which also split the DatabaseError reason row (storage code
+  -> io_error, the FIBR-0404 code) and made removal best-effort. Verify
+  stages in a verify-staging- dir beside the vault; the next verify and
+  reset_vault remove a leftover. Full suite 2605 passed; mutation_probe
+  4/4 killed.
   **Layman:** Checking a large backup temporarily uses memory instead of disk on some Linux computers; it should use disk space like the other backup steps do.
   Kind: review-fix.
   Source: close-findings FIBR-0404 sweep 2026-10-01 (split from FIBR-0436).

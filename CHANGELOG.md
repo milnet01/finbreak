@@ -42,6 +42,8 @@ signaling per
 
 ### Fixed
 
+- **Checking a backup now uses disk space in finbreak's own folder instead of your computer's memory on some Linux systems.** (FIBR-0441)
+
 - **Moving a statement to another account no longer leaves a money transfer with both sides in one account and its amounts missing from your totals.** (FIBR-0438)
   Such a transfer is unlinked during the move, and the status bar says
   how many were.
