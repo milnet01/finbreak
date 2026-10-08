@@ -413,8 +413,8 @@ as part of cutting the release, without asking, per global
 `~/.claude/CLAUDE.md` § 6 ("a release push goes immediately and
 WITHOUT asking, on every repository"). An unpushed release tag is a
 half-cut release, and the next session cannot tell a queued one from
-a failed one. `scripts/release-linux.sh` assumes this: it creates
-the `vX.Y.Z` ref on the **remote** via `gh release create`.
+a failed one. `scripts/release-linux.sh` publishes the release on that
+pushed tag (it refuses unless HEAD is the tagged commit).
 
 ## Push policy
 
@@ -604,8 +604,9 @@ and the push, so do not hand-run those as well. If you bump by hand
 instead, the bump must be committed **and pushed** before
 `release-linux.sh` — see the first bullet below. Either way step 1 must
 have happened: run `release-linux.sh` against an unbumped tree and it
-reads the *old* `__version__`, finds that release already exists, and
-`--clobber`s assets onto the **previous** release.
+reads the *old* `__version__` and finds that release's tag, then refuses unless
+HEAD is that tagged commit; if it is, it `--clobber`s assets onto the
+**previous** release.
 
 Worth knowing before you run them:
 
@@ -624,7 +625,9 @@ Worth knowing before you run them:
   a refusal reads as success.
 - **`release-linux.sh` is safe against a release that already exists** —
   step 7 branches to `gh release upload --clobber`. So a release created
-  by hand first (as 0.1.21 was) is repaired rather than duplicated.
+  by hand first (as 0.1.21 was) gets its assets and is not duplicated, but
+  **assets only**: that branch sets no notes, title or `--latest`, so check those
+  with `gh release view` and correct them with `gh release edit`.
 - **`release-windows.sh` needs no Windows machine**; it dispatches
   `windows-build.yml` on the tag and waits, so it needs `gh` with
   **workflow + repo** scope but **no container runtime** — the freeze
@@ -656,11 +659,15 @@ Worth knowing before you run them:
 
 Finish by reading the result back yourself — **not** because the scripts skip
 it. Since 2026-08-19 each one re-reads its own upload and refuses to report
-success on an incomplete set, both doing so *before* they print "DONE". The gap
-is the one named above: nothing catches a script that was never run.
+success on an incomplete set, both doing so *before* they print "DONE". What
+that leaves is the Windows half, which lands later or not at all, and the page's
+text: with `--no-publish` nothing compares the notes with the CHANGELOG, and
+`release-linux.sh` writes `Release X.Y.Z.` when the `[X.Y.Z]` section is missing.
+The title is the fixed `finbreak vX.Y.Z`.
 
 ```bash
 gh release view v<NEW> --json assets -q '[.assets[].name]|join(", ")'
+gh release view v<NEW> --json body -q .body   # must be the CHANGELOG [X.Y.Z] section
 ```
 
 **A complete release carries EIGHT assets**, and anything less is broken
