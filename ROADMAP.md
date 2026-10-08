@@ -402,6 +402,12 @@ so Flathub review and code signing do not block this release.
   on is the 2026-09-27 full audit. After that, take as many of the
   'carries no version' section's items as possible. Flathub (FIBR-0159)
   stays a non-blocker; its reviewer declined AI-assisted work.
+  User decision (2026-10-08): the 2026-09-28 go still stands. The
+  Windows self-update test runs BEFORE the cut, against a pre-release
+  test build on ssh wintest, so a failure never reaches the public
+  release. Once it passes, cut and publish 1.0.0 without stopping again.
+  State: FIBR-0346 and FIBR-0367 are closed; the wintest self-update is
+  the last named item before the cut.
   **Layman:** The plan for calling the app finished: what has to be true first, and which four jobs are standing in the way.
   Kind: release.
   Source: user-decision-2026-08-20 ("what gets us to v1.0?").
