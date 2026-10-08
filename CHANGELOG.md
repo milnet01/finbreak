@@ -27,7 +27,9 @@ signaling per
   The app always installed and ran, but the package's after-install step
   called commands Fedora 44 no longer has, so the installer said it had
   failed. The step is gone; Fedora and openSUSE refresh the menu and icons
-  themselves. The 1.0.0 Fedora package was rebuilt with this fix.
+  themselves. The 1.0.0 Fedora package was rebuilt with this fix. Upgrading
+  from an earlier Fedora package shows the message one last time, because
+  the old package's own uninstall step still runs; the upgrade completes.
 
 ## [1.0.0] - 2026-10-08
 

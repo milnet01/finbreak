@@ -196,7 +196,7 @@ so Flathub review and code signing do not block this release.
   Kind: investigate.
   Source: review-contract on FIBR-0050, 2026-09-04.
 
-- 🚧 [FIBR-0304] **Cut v1.0.0 — the gate is five conditions and four named blockers.**
+- ✅ [FIBR-0304] **Cut v1.0.0 — the gate is five conditions and four named blockers.**
   User-approved 2026-08-20 on the question "what gets us to v1.0?".
   docs/standards/versioning.md 5 owns the CRITERIA; this item owns the
   current blocker list, because a standard naming today's roadmap ids
@@ -431,6 +431,13 @@ so Flathub review and code signing do not block this release.
   equal the CHANGELOG [1.0.0] section. Flatpak commit: re-pinned to
   e8c4369. Left: OBS re-submit (proves the FIBR-0346 RPM), then the real
   0.1.23 -> 1.0.0 update on ssh wintest with the user clicking.
+  Resolved (2026-10-08): 1.0.0 is cut and published (8/8 assets, latest).
+  OBS re-submitted; FIBR-0346's RPM proved in bare Tumbleweed and Fedora 44
+  containers (self-test OK, no bundled libxkbcommon). The real Windows
+  0.1.23 -> 1.0.0 update on wintest FAILED: the swap helper dies at
+  start-up in every release v0.1.10-v1.0.0. That work moved to FIBR-0444
+  (fix + 1.0.1 + live proof). The Fedora install-message defect found here
+  is FIBR-0443, fixed in the OBS rebuild.
   **Layman:** The plan for calling the app finished: what has to be true first, and which four jobs are standing in the way.
   Kind: release.
   Source: user-decision-2026-08-20 ("what gets us to v1.0?").
@@ -4126,7 +4133,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Source: review-contract FIBR-0059 loop 7 (2026-10-08).
   Lanes: ui.
 
-- 📋 [FIBR-0443] **On Fedora 44, installing the finbreak RPM reports "Transaction failed" because its post-install step calls macros Fedora no longer defines.**
+- ✅ [FIBR-0443] **On Fedora 44, installing the finbreak RPM reports "Transaction failed" because its post-install step calls macros Fedora no longer defines.**
   Found verifying the 1.0.0 OBS build. `dnf -y install` of
   finbreak-1.0.0-1.1.x86_64.rpm in a bare fedora:44 container exits 1:
   "%post(finbreak-1.0.0-1.1.x86_64) scriptlet failed, exit status 1",
@@ -4152,9 +4159,126 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   fixed package -- test the 1.0.0 -> fixed upgrade in a fedora:44
   container before shipping. obs-submit.sh refuses recipe files that
   differ from the release tag, so this ships as a patch release.
+  User decision (2026-10-08): fix it inside the 1.0.0 release with osc
+  (a new OBS revision of 1.0.0, package release 1.2) rather than cutting
+  1.0.1. The repo spec gets the same change so later releases carry it.
+  Resolved (2026-10-08): spec %post/%postun removed (bbc88f0), INV-12
+  test red then green (8b2d35f), 26/26 obs_packaging tests pass. Same spec
+  committed to OBS as revision 17; it built 1.0.0-2.1 on all four targets.
+  Verified in bare fedora:44 with the OBS-built RPMs:
+  - fresh install of 1.0.0-2.1: dnf exit 0, no scriptlets in the package,
+    finbreak --self-test prints FINBREAK_SELFTEST_OK.
+  - upgrade 1.0.0-1.1 -> 1.0.0-2.1: completes (rpm -q shows only 2.1,
+    self-test OK), but dnf exits 1 "Transaction failed" ONE last time: the
+    OLD package's %postun runs during the upgrade and nothing in the new
+    package can stop it. CHANGELOG [Unreleased] says so.
+  Tumbleweed 1.0.0-1.1 already installed with zypper exit 0.
   **Layman:** On Fedora, installing finbreak works but the installer says it failed, which looks like a broken package.
   Kind: fix.
   Source: in-session-2026-10-08 (1.0.0 OBS RPM verification).
+
+- 📋 [FIBR-0444] **On Windows, "Update now" closes finbreak and never installs the update or reopens; the swap helper dies as it starts.**
+  Measured 2026-10-08 on ssh wintest (Windows 10 19045), the first real
+  Windows self-update: 0.1.23 -> 1.0.0, one click on "Update now". The
+  user saw the download reach 100%, the window hang about one to two
+  minutes, then close. It never reopened.
+
+  Evidence, read over ssh afterwards:
+  - The staged finbreak-update-k5ued2jq.exe beside the old .exe hashes
+    to the 1.0.0 release's SHA256SUMS entry: the download was right.
+  - finbreak-0.1.23-x86_64.exe is unchanged (the 0.1.23 hash).
+  - data_dir()/update-relaunch.log holds ONE line, 16:13:00, "relaunch:
+    staged ...; waiting for ... image to free then move + relaunch".
+  - Microsoft-Windows-PowerShell/Operational logs event 40961 "PowerShell
+    console is starting up" at 16:13:00 and nothing after it for that
+    process: no 40962 "ready", and no engine-start (400) in the Windows
+    PowerShell log. The helper died during start-up.
+  - Every path of the helper script ends by moving or deleting the staged
+    file; it is still there, so no line of the script ran.
+  - No Defender event 16:10-16:20.
+
+  Where: src/finbreak/services/update_installer.py WindowsInstaller.apply
+  spawns powershell.exe with DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP,
+  stdout/stderr to the log handle, stdin DEVNULL, then calls
+  on_before_exec() and os._exit(0) at once. That spawn is unchanged
+  v0.1.23..v1.0.0, so 1.0.0's own updates carry it.
+
+  Ruled out: PyInstaller 6.21.0's Windows bootloaders (run.exe, runw.exe)
+  import no job-object API, so the onefile parent is not killing the tree
+  through a kill-on-close job.
+
+  Cause NOT yet confirmed. Confirm by: on wintest, a Python 3.13 script
+  that Popens the same powershell argv shape (a script that writes a
+  marker file) with the same flags and handles, then os._exit(0)s; check
+  the marker. Then vary one thing at a time (no DETACHED_PROCESS /
+  CREATE_NO_WINDOW instead; a short sleep before exit; stdout to DEVNULL).
+
+  Also open: the 1-2 minute hang between the download finishing (staged
+  file written 16:11:35) and apply (16:13:00). Unexplained.
+
+  Recovery for an affected user: their data is untouched; reopening the
+  old .exe works. Moving the staged finbreak-update-*.exe over the old
+  .exe by hand installs the update.
+
+  1.0 gate note: README promises Windows automatic updates "work the same
+  as on Linux", so this breaks versioning.md section 5 condition 5 for
+  the published 1.0.0.
+  CAUSE CONFIRMED (2026-10-08, user-approved probe on wintest). A plain
+  Python 3.13 script spawning powershell.exe exactly as apply() does
+  (same argv shape, flags, stdin DEVNULL, stdout to a log handle,
+  close_fds, then os._exit(0)), whose script's first line writes a marker:
+  - DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP: no marker. Helper dies.
+  - same, parent sleeps 5 s before exiting: no marker.
+  - same, helper stdout to DEVNULL: no marker.
+  - CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP: marker "started", then
+    "finished" 3 s later, after the parent had already exited.
+  So DETACHED_PROCESS alone kills the PowerShell helper before its first
+  line, independent of PyInstaller, timing or the log handle. Fix: spawn
+  with CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP.
+
+  SPEC: docs/specs/FIBR-0131.md D3 mandates DETACHED_PROCESS and says
+  CREATE_NO_WINDOW "is not set"; its To-verify list has "yields a helper
+  that outlives finbreak's os._exit", which was never run and fails.
+  Amend the spec through review-contract before the code change.
+
+  CONSEQUENCE: the broken spawn ships in 0.1.23 and 1.0.0 and runs in the
+  OLD version, so no Windows user on those versions can self-update, to
+  any later release. They need one manual download; release notes and
+  README must say so. The fix's end-to-end proof is an update FROM the
+  first fixed release.
+  Correction (2026-10-08): the broken spawn ships in EVERY release
+  v0.1.10 through v1.0.0, not only 0.1.23 and 1.0.0. `git log -S
+  DETACHED_PROCESS` first adds it in 041d4fb (FIBR-0131, 2026-07-14) and
+  every tag v0.1.10..v1.0.0 carries it. Also measured: a --windowed
+  --onefile PyInstaller 6.21.0 parent (over ssh) gives the same result,
+  DETACHED_PROCESS dies, CREATE_NO_WINDOW survives. FIBR-0131 spec amended
+  (448cf6f) and gated with review-contract (loops 7-9 of its log).
+  Progress (2026-10-08): FIBR-0131 amendment GATED, review-contract
+  converged at loop 9 (rows 7-9; 6 findings fixed). NEXT, in order:
+  1. write-test (Route 1, red first): the spec's Test ripple flags leg -
+     monkeypatch subprocess.CREATE_NO_WINDOW / CREATE_NEW_PROCESS_GROUP /
+     DETACHED_PROCESS to single-bit sentinels 0x1/0x2/0x4 (raising=False)
+     and assert creationflags == CNW|CNPG with the DETACHED bit clear.
+     Also fix the apply-ordering leg's wording per the spec.
+  2. Fix WindowsInstaller.apply in src/finbreak/services/update_installer.py
+     (getattr CREATE_NO_WINDOW instead of DETACHED_PROCESS), and reword the
+     _powershell_path docstring + its test comment that cite DETACHED_PROCESS.
+  3. Cut 1.0.1: README + release notes must say Windows users on
+     0.1.10-1.0.0 install it by hand (spec Deliverable 6).
+  4. Live proof: the update FROM 1.0.1 (spec D6), Explorer-launched; both
+     probes so far ran over ssh, so an Explorer-launched parent is unmeasured.
+  OPEN (not decided): 0.1.10-1.0.0 leave a finbreak-update-*.exe beside
+  the .exe on every failed update; should the fixed release delete stray
+  ones at start-up?
+  WINTEST STATE: C:\Users\aants\finbreak-update-test holds
+  finbreak-0.1.23-x86_64.exe, the staged 1.0.0 file finbreak-update-k5ued2jq.exe
+  (hash = v1.0.0 SHA256SUMS) and the user's finbreak-recovery-code.txt (never
+  read it). %APPDATA%\finbreak is a fresh test vault; the user's old vault is
+  %APPDATA%\finbreak-old-0.1.9-vault, with a byte copy in
+  C:\Users\aants\finbreak-data-backup-2026-10-08.
+  **Layman:** On Windows, updating from inside the app downloads the new version, then just closes; it doesn't install it or come back.
+  Kind: fix.
+  Source: in-session-2026-10-08 (real 0.1.23 -> 1.0.0 update on ssh wintest).
 
 ## v1.1.0 — Localisation
 
