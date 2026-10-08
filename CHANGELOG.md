@@ -42,6 +42,10 @@ signaling per
 
 ### Fixed
 
+- **Moving a statement to another account no longer leaves a money transfer with both sides in one account and its amounts missing from your totals.** (FIBR-0438)
+  Such a transfer is unlinked during the move, and the status bar says
+  how many were.
+
 - **A mistyped time zone in Settings or at first run is now refused with a message, instead of quietly switching to your computer's zone.** (FIBR-0435)
 
 - **Dates with month names, and AM/PM, now follow your computer's language instead of always appearing in English.** (FIBR-0437)

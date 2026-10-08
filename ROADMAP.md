@@ -3997,7 +3997,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: review-fix.
   Source: full-audit-2026-09-27 code lane 6 I5, queued by FIBR-0406.
 
-- 📋 [FIBR-0438] **Reassigning a statement can leave a confirmed transfer with both sides in one account, still left out of the totals.**
+- ✅ [FIBR-0438] **Reassigning a statement can leave a confirmed transfer with both sides in one account, still left out of the totals.**
   Queued from FIBR-0409 M3 (2026-10-01), an open question in the
   audit. reassign_account (FIBR-0059) moves a statement's transactions to
   another account; a confirmed transfer whose other leg already sits in
@@ -4012,6 +4012,12 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   amend that spec and run its gate first.
   User decision (2026-10-07): unlink such pairs during the reassign and
   say so in the status line. Amend FIBR-0059 and run its gate first.
+  Resolved (2026-10-08): FIBR-0059 amended (INV-4, INV-8, new INV-12)
+  and gated (loops 7-9, converged at the cap). The move unlinks a
+  confirmed pair it joins into one account, inside its own transaction,
+  and the status line names the count; a pair already inside one account
+  is left alone. Full suite 2602 passed; mutation_probe 8/8 killed.
+  Stale picker test seams in that spec are FIBR-0442.
   **Layman:** Moving a statement to another account can leave a money transfer between two accounts pointing at the same account, so its amounts quietly disappear from your totals.
   Kind: review-fix.
   Source: full-audit-2026-09-27 code lane 10 M3, queued by FIBR-0409.
