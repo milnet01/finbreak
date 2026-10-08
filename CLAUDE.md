@@ -599,6 +599,11 @@ cut-release <X.Y.Z> --no-publish  # a SKILL — invoke it; it is not on PATH. Bu
 # then re-pin the Flatpak commit: (below)
 ```
 
+**No release candidates on this path.** `release-linux.sh` publishes
+`v<__version__>` as the latest full release, and `cut-release --pre rc.N` leaves
+`__version__` as `X.Y.Z`, so an RC run through this script would ship as
+`vX.Y.Z`. Do not combine them.
+
 **`cut-release` is what performs step 1**, including the commit, the tag
 and the push, so do not hand-run those as well. If you bump by hand
 instead, the bump must be committed **and pushed** before
@@ -690,8 +695,7 @@ retry ([`docs/history/claude-md.md`](docs/history/claude-md.md)).
 `release-windows.sh`'s final `gh release upload --clobber` deletes each existing
 asset before replacing it, so a failure mid-list can leave a release carrying
 `SHA256SUMS.sig` but **not** `SHA256SUMS`, and `.exe.sig` but **not** the `.exe`
-— a signed release whose signed manifest is gone. Nothing reports this loudly:
-the script has already printed its signing successes.
+— a signed release whose signed manifest is gone.
 
 If you land there, the artifacts in `dist/` are already built, signed
 and verified, so re-upload them rather than rebuilding — **one file per
@@ -918,7 +922,8 @@ are tracked as **FIBR-0196** rather than done in passing.
 
 **Not every `docs/standards/` edit owes that gate.** Rule 14's trigger is
 a *change of direction*, not an edit: "would someone conforming to this
-document now do something different? Name the line." A corrected date, a
+document now BUILD something different, or build, check or ship it a different
+way? Name the line." A corrected date, a
 fixed count, a dead link or a reworded example changes nothing anyone
 writes — record the check in one line of the commit body and move on. In
 the grey zone, do **not** gate. This note exists so a session that reads
