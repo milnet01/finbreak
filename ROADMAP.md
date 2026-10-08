@@ -1465,6 +1465,11 @@ so Flathub review and code signing do not block this release.
   User decision (2026-10-08): bundle the xcb utility libraries in every
   freeze environment (AppImage container, OBS BuildRequires), not
   Requires/Depends. xkbcommon stays host-supplied (FIBR-0346).
+  Checked (2026-10-08): PyInstaller 6.21.0's Linux exclude list
+  (PyInstaller/depend/dylib.py _unix_excludes) drops only the core
+  libxcb.so and libxcb-dri*, plus libGL/EGL/drm and libwayland*. So the
+  xcb-util family, libX11 and libX11-xcb are collected whenever the
+  freeze environment has them, and link against the host's core libxcb.
   **Layman:** On a Linux computer missing a few common display libraries, the store-package version of finbreak cannot open its window under the older X11 display system.
   Kind: fix.
   Source: in-session-2026-09-29 (found verifying FIBR-0346).
