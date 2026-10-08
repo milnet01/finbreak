@@ -4036,7 +4036,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Source: close-findings FIBR-0404 sweep 2026-10-01 (split from FIBR-0436).
   Lanes: backup.
 
-- 📋 [FIBR-0442] **FIBR-0059's UI test seams describe the blocking picker FIBR-0065 replaced.**
+- ✅ [FIBR-0442] **FIBR-0059's UI test seams describe the blocking picker FIBR-0065 replaced.**
   Surfaced by FIBR-0059's review loop 7 (2026-10-08), outside the
   FIBR-0438 amendment it gated. INV-8's enforcement line has
   `_on_reassign` call the service, and INV-10's and Deliverable 8's
@@ -4047,6 +4047,10 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   ui/statements.py's comment says the picker's contract allows None.
   Fix: re-state the seams against show_modal/_apply_reassign and settle
   the picker's return contract.
+  Resolved (2026-10-08, df68aeb): D6, INV-10, Deliverable 8 and D7 now
+  describe the show_modal picker, the _AccountPickerStub test seam and
+  selected_account_id() -> int | None. A record of existing code, so no
+  gate.
   **Layman:** A design note for changing a statement's account still describes how that screen worked before a later rewrite, which could mislead whoever next tests it.
   Kind: doc-fix.
   Source: review-contract FIBR-0059 loop 7 (2026-10-08).
