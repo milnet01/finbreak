@@ -28,7 +28,7 @@ from finbreak.errors import (
     UpdateError,
     UpdateVerificationError,
 )
-from finbreak.services import update_fetch, update_installer, update_key
+from finbreak.services import update, update_fetch, update_installer, update_key
 from finbreak.services.update import (
     UpdateInfo,
     UpdateService,
@@ -758,6 +758,147 @@ def test_FIBR0444_windows_apply_spawns_with_no_window_never_detached(
     assert isinstance(flags, int)
     assert flags & detached == 0
     assert flags == no_window | new_group
+
+
+_NOW = 1_800_000_000.0
+_STALE = _NOW - 2 * 3600  # over the hour INV-10 waits
+_FRESH = _NOW - 60  # inside the ~60 s helper window
+
+
+def _staged(directory: Path, name: str, mtime: float) -> Path:
+    path = directory / name
+    path.write_bytes(b"x")
+    os.utime(path, (mtime, mtime))
+    return path
+
+
+def test_FIBR0445_removes_stale_staged_files_and_nothing_else(tmp_path):
+    # FIBR-0131 INV-10: 0.1.10-1.0.0 left a staged finbreak-update-*.exe on every
+    # failed Windows update. Each kept fixture is stale and staged-named except
+    # for the ONE property that should keep it.
+    app_dir = tmp_path / "app"
+    app_dir.mkdir()
+    target = _staged(app_dir, "finbreak-update-tgtname1.exe", _STALE)
+    stale = [
+        _staged(app_dir, "finbreak-update-a1b2c3d4.exe", _STALE),
+        _staged(app_dir, "finbreak-update-e5f6g7h_.sig", _STALE),
+        _staged(app_dir, "finbreak-update-i9j0k1l2.sums", _STALE),
+        _staged(app_dir, "finbreak-update-m3n4o5p6.sums.sig", _STALE),
+    ]
+    kept = [
+        target,
+        _staged(app_dir, "finbreak-update-q7r8s9t0.exe", _FRESH),
+        _staged(app_dir, "finbreak-update-u1v2w3x4.sig", _FRESH),
+        _staged(app_dir, "finbreak-update-y5z6a7b8.sums", _FRESH),
+        _staged(app_dir, "finbreak-update-c9d0e1f2.sums.sig", _FRESH),
+        _staged(app_dir, "finbreak-update-notes.exe", _STALE),
+        _staged(app_dir, "finbreak-update-g3h4i5j6.txt", _STALE),
+        _staged(app_dir, "finbreak.exe", _STALE),
+    ]
+    a_dir = app_dir / "finbreak-update-k7l8m9n0.exe"
+    a_dir.mkdir()
+    os.utime(a_dir, (_STALE, _STALE))
+    outside = tmp_path / "outside.bin"
+    outside.write_bytes(b"x")
+    link = app_dir / "finbreak-update-o1p2q3r4.sig"
+    link.symlink_to(outside)
+    os.utime(link, (_STALE, _STALE), follow_symlinks=False)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    kept.append(_staged(elsewhere, "finbreak-update-s5t6u7v8.exe", _STALE))
+
+    update.remove_stale_staged_updates(WindowsInstaller(target), now=_NOW)
+
+    assert [p.name for p in stale if p.exists()] == []
+    assert [p.name for p in kept if not p.exists()] == []
+    assert a_dir.is_dir() and link.is_symlink() and outside.exists()
+
+
+def test_FIBR0445_an_undeletable_file_does_not_stop_the_rest(monkeypatch, tmp_path):
+    target = tmp_path / "finbreak.exe"
+    target.write_bytes(b"x")
+    locked = _staged(tmp_path, "finbreak-update-locked01.exe", _STALE)
+    other = _staged(tmp_path, "finbreak-update-other001.exe", _STALE)
+    real_unlink = Path.unlink
+
+    def unlink(self, *args, **kwargs):
+        if self.name == locked.name:
+            raise PermissionError("in use")
+        return real_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", unlink)
+
+    update.remove_stale_staged_updates(WindowsInstaller(target), now=_NOW)
+
+    assert locked.exists()
+    assert not other.exists()
+
+
+def test_FIBR0445_an_unreadable_directory_does_not_raise(tmp_path):
+    missing = tmp_path / "gone" / "finbreak.exe"
+    update.remove_stale_staged_updates(WindowsInstaller(missing), now=_NOW)
+
+
+def test_FIBR0445_no_installer_lists_nothing(monkeypatch):
+    def refuse(*_a, **_k):
+        raise AssertionError("listed a directory with no installer")
+
+    monkeypatch.setattr(os, "scandir", refuse)
+    monkeypatch.setattr(os, "listdir", refuse)
+    monkeypatch.setattr(Path, "iterdir", refuse)
+    update.remove_stale_staged_updates(None, now=_NOW)
+
+
+def _drive_run(monkeypatch, qapp, *, guard, others_running_after_listen):
+    """Run ``app.run`` to its end with the window, service, log file and event
+    loop stubbed, recording what the clean-up was called with."""
+    from unittest.mock import MagicMock
+
+    from finbreak import app as app_mod
+
+    calls: list[object] = []
+    sentinel = object()
+    service = MagicMock()
+    probes = iter([False, others_running_after_listen])
+    monkeypatch.setattr(app_mod, "MainWindow", lambda *a, **k: MagicMock())
+    monkeypatch.setattr(app_mod, "AuthService", lambda *a, **k: service)
+    monkeypatch.setattr(app_mod, "install_log_file", lambda _d: None)
+    monkeypatch.setattr(
+        app_mod.single_instance, "another_instance_is_running", lambda _n: next(probes)
+    )
+    monkeypatch.setattr(app_mod.single_instance, "listen", lambda _n: guard)
+    monkeypatch.setattr(app_mod, "detect_installer", lambda: sentinel)
+    monkeypatch.setattr(app_mod, "remove_stale_staged_updates", calls.append)
+    monkeypatch.setattr(qapp, "exec", lambda: 0)
+    monkeypatch.setattr(app_mod, "_finish", lambda code: code)
+    try:
+        app_mod.run([])
+    finally:
+        qapp.aboutToQuit.disconnect(service.on_about_to_quit)
+    return calls, sentinel
+
+
+def test_FIBR0445_run_cleans_up_once_it_holds_the_guard(
+    monkeypatch, qapp, app_run_isolation
+):
+    from unittest.mock import MagicMock
+
+    calls, sentinel = _drive_run(
+        monkeypatch, qapp, guard=MagicMock(), others_running_after_listen=False
+    )
+    assert calls == [sentinel]
+
+
+@pytest.mark.parametrize(
+    "others_running", [False, True], ids=["fail-open", "lost-race"]
+)
+def test_FIBR0445_run_without_the_guard_cleans_up_nothing(
+    monkeypatch, qapp, app_run_isolation, others_running
+):
+    calls, _ = _drive_run(
+        monkeypatch, qapp, guard=None, others_running_after_listen=others_running
+    )
+    assert calls == []
 
 
 def test_FIBR0131_windows_apply_spawn_failure_leaves_key_unwiped(monkeypatch, tmp_path):

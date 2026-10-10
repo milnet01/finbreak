@@ -26,6 +26,8 @@ from finbreak.errors import FinbreakError, InterruptedRestoreError, VaultStateEr
 from finbreak.loader_env import restore_system_loader_env
 from finbreak.log_file import install_log_file
 from finbreak.services.auth import AuthService
+from finbreak.services.update import remove_stale_staged_updates
+from finbreak.services.update_installer import detect_installer
 from finbreak.ui.icons import app_icon
 from finbreak.ui.main_window import MainWindow, settle_detached_workers
 from finbreak.ui.theme import ThemeController, load_theme_pref

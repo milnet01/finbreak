@@ -220,6 +220,12 @@ def _unlink(path: Path | None) -> None:
         path.unlink(missing_ok=True)
 
 
+def remove_stale_staged_updates(
+    installer: Installer | None, now: float | None = None
+) -> None:
+    """Stub (FIBR-0445): the clean-up FIBR-0131 INV-10 specifies lands next."""
+
+
 class UpdateService:
     """Orchestrates the opt-in check + the signature-verified download.
 
