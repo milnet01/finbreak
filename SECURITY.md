@@ -84,9 +84,9 @@ patch to an old one. The app's opt-in update check (off by default,
 FIBR-0054) will tell you when that release exists; nothing is
 downloaded or installed without you choosing it.
 
-While finbreak is below `1.0.0`, the stored-data formats are not yet
-frozen — `versioning.md` § 4.1 explains what the leading zero means
-here.
+Since `1.0.0`, the stored-data formats are frozen. A release that
+breaks one gets a new major version number, and its notes say what you
+must do (`versioning.md` §§ 3.1 and 5).
 
 ## Scope
 
