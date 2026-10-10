@@ -206,7 +206,11 @@ We applied to the SignPath Foundation's free certificate programme for
 open-source projects in July 2026 and were declined; the plan is to build up more
 of a public track record and reapply.
 Automatic updates work the same as on Linux — opt-in and off by default (see
-[Staying up to date](#staying-up-to-date-optional)).
+[Staying up to date](#staying-up-to-date-optional)). **If you have version 0.1.10
+to 1.0.0 on Windows, install 1.0.1 by hand once:** download the new `.exe` and
+put it in place of your old one, in the same folder. Those versions could not
+finish an in-app update on Windows; 1.0.1 fixes the step that failed, and tidies
+away the leftover download files the failed updates left in that folder.
 
 **macOS** — a packaged `.dmg` is still on the way (see [ROADMAP](ROADMAP.md)). Until
 then, you can run from source with Python 3.12+ (see
