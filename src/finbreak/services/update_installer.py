@@ -184,9 +184,9 @@ def _windows_relaunch_env() -> dict[str, str]:
 
 def _powershell_path() -> str:
     """An **absolute** ``powershell.exe`` path — resolved from ``%SystemRoot%``
-    (else ``shutil.which``), never a bare ``"powershell"``, so launching the helper
-    never depends on a ``PATH`` lookup (FIBR-0131 D3). Falls back to
-    ``"powershell.exe"`` if nothing resolves (e.g. off Windows)."""
+    (else ``shutil.which``), so on Windows launching the helper does not depend
+    on a ``PATH`` lookup (FIBR-0131 D3). Falls back to a bare ``"powershell.exe"``
+    only if nothing resolves (e.g. off Windows)."""
     system_root = os.environ.get("SystemRoot")
     if system_root:
         candidate = (

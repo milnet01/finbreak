@@ -192,6 +192,9 @@ def run(argv: list[str] | None = None) -> int:
     if guard is not None:
         window.set_single_instance_guard(guard)
         guard.newConnection.connect(lambda: _raise_existing(guard, window))
+        # Only the instance holding the guard tidies up, so no other running
+        # finbreak loses a download in progress (FIBR-0131 INV-10, FIBR-0445).
+        remove_stale_staged_updates(detect_installer())
     return _finish(app.exec())
 
 

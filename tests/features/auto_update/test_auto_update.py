@@ -793,6 +793,8 @@ def test_FIBR0445_removes_stale_staged_files_and_nothing_else(tmp_path):
         _staged(app_dir, "finbreak-update-c9d0e1f2.sums.sig", _FRESH),
         _staged(app_dir, "finbreak-update-notes.exe", _STALE),
         _staged(app_dir, "finbreak-update-g3h4i5j6.txt", _STALE),
+        _staged(app_dir, "old-finbreak-update-w9x8y7z6.exe", _STALE),
+        _staged(app_dir, "finbreak-update-v1u2t3s4.exe.part", _STALE),
         _staged(app_dir, "finbreak.exe", _STALE),
     ]
     a_dir = app_dir / "finbreak-update-k7l8m9n0.exe"
@@ -827,6 +829,15 @@ def test_FIBR0445_an_undeletable_file_does_not_stop_the_rest(monkeypatch, tmp_pa
         return real_unlink(self, *args, **kwargs)
 
     monkeypatch.setattr(Path, "unlink", unlink)
+    # The locked file is listed FIRST, so a clean-up that gives up on the first
+    # error is caught whatever order the filesystem happens to list in.
+    real_scandir = os.scandir
+
+    def scandir(path):
+        with real_scandir(path) as entries:
+            return sorted(entries, key=lambda e: e.name != locked.name)
+
+    monkeypatch.setattr(os, "scandir", scandir)
 
     update.remove_stale_staged_updates(WindowsInstaller(target), now=_NOW)
 

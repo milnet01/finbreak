@@ -17,6 +17,7 @@ import logging
 import os
 import re
 import tempfile
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -220,10 +221,42 @@ def _unlink(path: Path | None) -> None:
         path.unlink(missing_ok=True)
 
 
+_STALE_AFTER_S = 3600  # well past the swap helper's ~60 s wait (FIBR-0131 D7)
+
+
 def remove_stale_staged_updates(
     installer: Installer | None, now: float | None = None
 ) -> None:
-    """Stub (FIBR-0445): the clean-up FIBR-0131 INV-10 specifies lands next."""
+    """Delete staged update files a failed update left beside the binary
+    (FIBR-0131 INV-10). Only ``_stage_temp``'s own names — the prefix, mkstemp's
+    eight random characters, one of the suffixes it writes — older than an hour,
+    never the running binary. Best-effort: nothing here raises."""
+    if installer is None:
+        return
+    target = installer.target_path()
+    suffixes = "|".join(
+        re.escape(s)
+        for s in (Path(installer.asset_suffix()).suffix, ".sig", ".sums", ".sums.sig")
+    )
+    staged = re.compile(rf"finbreak-update-[a-z0-9_]{{8}}(?:{suffixes})")
+    cutoff = (time.time() if now is None else now) - _STALE_AFTER_S
+    try:
+        entries = list(os.scandir(target.parent))
+    except OSError as exc:
+        log.debug("stale-update clean-up: cannot list %s: %s", target.parent, exc)
+        return
+    for entry in entries:
+        path = Path(entry.path)
+        try:
+            if (
+                staged.fullmatch(entry.name)
+                and path != target
+                and entry.is_file(follow_symlinks=False)
+                and entry.stat(follow_symlinks=False).st_mtime < cutoff
+            ):
+                path.unlink()
+        except OSError as exc:
+            log.debug("stale-update clean-up: skipped %s: %s", path, exc)
 
 
 class UpdateService:

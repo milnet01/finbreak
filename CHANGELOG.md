@@ -32,6 +32,11 @@ signaling per
   The in-app update cannot fix itself, because the old version runs the
   update. Updates started from this release on use the fixed helper. Your
   data was never touched.
+- **Leftover download files from failed Windows updates are removed** (FIBR-0445)
+  Each failed update left a file named `finbreak-update-` followed by eight
+  letters and digits next to `finbreak.exe`. When finbreak starts, it now
+  deletes such files from its own folder once they are over an hour old. It
+  touches no other file.
 - **Installing finbreak on Fedora no longer reports "Transaction failed"** (FIBR-0443)
   The app always installed and ran, but the package's after-install step
   called commands Fedora 44 no longer has, so the installer said it had
