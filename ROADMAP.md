@@ -4321,6 +4321,10 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   1.0.1 is gone after its start-up.
   Never read finbreak-recovery-code.txt; never touch the user's old vault.
   Dependencies: FIBR-0444, FIBR-0445.
+  Progress (2026-10-10): 1.0.1 published (8/8 assets, latest) and
+  built on OBS revision 18 for all four targets. The website page says
+  "That release has the fixed update step"; once this proof passes, tell
+  ants-projects-hub-website so it can say updates are proven on Windows.
   **Layman:** Check on a real Windows PC that "Update now" in 1.0.1 installs the next version and reopens the app.
   Kind: test.
   Source: in-session-2026-10-10 (FIBR-0131 D6 and To verify empirically).
