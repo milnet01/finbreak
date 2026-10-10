@@ -4177,7 +4177,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: fix.
   Source: in-session-2026-10-08 (1.0.0 OBS RPM verification).
 
-- 🚧 [FIBR-0444] **On Windows, "Update now" closes finbreak and never installs the update or reopens; the swap helper dies as it starts.**
+- ✅ [FIBR-0444] **On Windows, "Update now" closes finbreak and never installs the update or reopens; the swap helper dies as it starts.**
   Measured 2026-10-08 on ssh wintest (Windows 10 19045), the first real
   Windows self-update: 0.1.23 -> 1.0.0, one click on "Update now". The
   user saw the download reach 100%, the window hang about one to two
@@ -4280,11 +4280,17 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   leftover finbreak-update-*.exe files from failed updates, at start-up,
   beside the running .exe only. Needs a FIBR-0131 amendment and gate
   first; filed as its own item.
+  Resolved (2026-10-10): WindowsInstaller.apply spawns the helper with
+  CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP (fdb3253); red-first test,
+  mutation probe 4/4 killed. CHANGELOG and README tell 0.1.10-1.0.0
+  Windows users to install 1.0.1 by hand, in the old .exe's folder.
+  Ships in 1.0.1. The live proof, an update FROM 1.0.1 on wintest
+  (FIBR-0131 D6), needs a later release: filed as FIBR-0446.
   **Layman:** On Windows, updating from inside the app downloads the new version, then just closes; it doesn't install it or come back.
   Kind: fix.
   Source: in-session-2026-10-08 (real 0.1.23 -> 1.0.0 update on ssh wintest).
 
-- 🚧 [FIBR-0445] **At start-up, delete leftover finbreak-update-* files that failed updates left beside the app.**
+- ✅ [FIBR-0445] **At start-up, delete leftover finbreak-update-* files that failed updates left beside the app.**
   Each failed "Update now" on Windows 0.1.10-1.0.0 (FIBR-0444) leaves a
   staged finbreak-update-*.exe beside the .exe, because the helper that
   would move or delete it died before running. User decision
@@ -4295,9 +4301,29 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   the installer's own directory; only names finbreak's staging makes;
   only files older than an hour; never the running binary; best-effort.
   Dependencies: FIBR-0444.
+  Resolved (2026-10-10): FIBR-0131 amended (INV-10, D7) and gated,
+  review-contract converged at loop 12 (rows 10-12, 6 findings fixed).
+  remove_stale_staged_updates + app.run wiring (6908229); 7 tests,
+  mutation probe 11/11 killed after closing two gaps. Ships in 1.0.1.
   **Layman:** Every failed Windows update in 0.1.10 to 1.0.0 left a spare download file next to the app; 1.0.1 tidies them away when it starts.
   Kind: fix.
   Source: user-decision-2026-10-10 (FIBR-0444 open question).
+
+- 📋 [FIBR-0446] **Live-prove the Windows in-app update from 1.0.1 to the next release on wintest, opened from Explorer.**
+  FIBR-0131 D6: the old version performs each update, so the first
+  update that runs the fixed helper is one started FROM 1.0.1. Needs a
+  release after 1.0.1. Steps: put 1.0.1 on wintest, launch it from
+  Explorer (both earlier probes ran over ssh; an Explorer-launched parent
+  is unmeasured), turn on update checks, click "Update now"; the user
+  clicks, I verify over ssh that the .exe was swapped, the app relaunched,
+  update-relaunch.log is clean and no finbreak-update-* file is left.
+  Also confirm FIBR-0445: a stale finbreak-update-*.exe placed beside
+  1.0.1 is gone after its start-up.
+  Never read finbreak-recovery-code.txt; never touch the user's old vault.
+  Dependencies: FIBR-0444, FIBR-0445.
+  **Layman:** Check on a real Windows PC that "Update now" in 1.0.1 installs the next version and reopens the app.
+  Kind: test.
+  Source: in-session-2026-10-10 (FIBR-0131 D6 and To verify empirically).
 
 ## v1.1.0 — Localisation
 
