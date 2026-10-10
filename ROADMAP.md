@@ -4325,6 +4325,8 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   built on OBS revision 18 for all four targets. The website page says
   "That release has the fixed update step"; once this proof passes, tell
   ants-projects-hub-website so it can say updates are proven on Windows.
+  Decision (user, 2026-10-10): no release just for this proof. Cut
+  1.0.2 once a few fixes are worth shipping, then run this item on it.
   **Layman:** Check on a real Windows PC that "Update now" in 1.0.1 installs the next version and reopens the app.
   Kind: test.
   Source: in-session-2026-10-10 (FIBR-0131 D6 and To verify empirically).
