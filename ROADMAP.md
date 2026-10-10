@@ -7102,6 +7102,16 @@ work, and none of it is a release decision.
   Source: field-pass local-gate.md 9 2026-10-01.
   Lanes: harness.
 
+- 📋 [FIBR-0447] **SECURITY.md still says finbreak is below 1.0.0, and that its stored-data formats are not yet frozen.**
+  Found 2026-10-10 while cutting 1.0.1: the paragraph opening "While
+  finbreak is below `1.0.0`" in SECURITY.md (just before § Scope) is
+  false since 1.0.0 shipped. Replace it with what versioning.md says
+  holds from 1.0 on, or delete it if nothing is owed there. Read
+  versioning.md § 4.1 first, not recall.
+  **Layman:** The security page still describes finbreak as pre-1.0, which stopped being true when 1.0.0 shipped.
+  Kind: doc-fix.
+  Source: in-session-2026-10-10.
+
 ## 0.1.23 — released 2026-09-07
 
 - ✅ [FIBR-0295] **`act` is installed but unconfigured, so cut-release's mandatory pipeline phase cannot run.**
