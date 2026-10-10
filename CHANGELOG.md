@@ -23,6 +23,15 @@ signaling per
 
 ### Fixed
 
+- **On Windows, "Update now" installs the update and reopens finbreak** (FIBR-0444)
+  Since 0.1.10, clicking "Update now" on Windows downloaded the update, closed
+  finbreak, and then did nothing: the small helper that swaps in the new
+  version was shut down by Windows before it could start. It now starts
+  correctly. **If you use finbreak on Windows and have 0.1.10 to 1.0.0,
+  download this release by hand once** and replace your old `.exe` with it.
+  The in-app update cannot fix itself, because the old version runs the
+  update. Updates started from this release on use the fixed helper. Your
+  data was never touched.
 - **Installing finbreak on Fedora no longer reports "Transaction failed"** (FIBR-0443)
   The app always installed and ran, but the package's after-install step
   called commands Fedora 44 no longer has, so the installer said it had
