@@ -90,6 +90,17 @@
   </screenshots>
 
   <releases>
+    <release version="1.0.1" date="2026-10-10">
+      <description>
+        <p>Windows updates are fixed. Windows users on 0.1.10 to 1.0.0 must install this release by hand once.</p>
+        <p>Fixed:</p>
+        <ul>
+          <li>On Windows, "Update now" installs the update and reopens finbreak. Since 0.1.10, clicking "Update now" downloaded the update, closed finbreak, and then did nothing, because Windows shut down the small helper that swaps in the new version before it could start. If you use finbreak on Windows and have 0.1.10 to 1.0.0, download this release by hand once and replace your old .exe with it. The in-app update cannot fix itself, because the old version runs the update. Updates started from this release on use the fixed helper. Your data was never touched.</li>
+          <li>Leftover download files from failed Windows updates are removed. Each failed update left a file named "finbreak-update-" followed by eight letters and digits next to finbreak.exe. When finbreak starts, it deletes such files from its own folder once they are over an hour old. It touches no other file.</li>
+          <li>Installing finbreak on Fedora no longer reports "Transaction failed". The app always installed and ran, but the package's after-install step called commands Fedora 44 no longer has. The step is gone; Fedora and openSUSE refresh the menu and icons themselves. The 1.0.0 Fedora package was rebuilt with this fix. Upgrading from an earlier Fedora package shows the message one last time, because the old package's own uninstall step still runs; the upgrade completes.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.0.0" date="2026-10-08">
       <description>
         <p>The 1.0 release. Most changes are fixes to import, backup and restore, unlocking, the update check and the vault's security.</p>

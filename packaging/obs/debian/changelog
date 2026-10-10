@@ -1,3 +1,14 @@
+finbreak (1.0.1) unstable; urgency=medium
+
+  * On Windows, "Update now" installs the update and reopens finbreak.
+    Windows users on 0.1.10 to 1.0.0 install this release by hand once,
+    replacing the old .exe in its folder.
+  * Leftover download files from failed Windows updates are removed when
+    finbreak starts.
+  * Installing finbreak on Fedora no longer reports "Transaction failed".
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Sat, 10 Oct 2026 09:46:44 +0200
+
 finbreak (1.0.0) unstable; urgency=medium
 
   * When an OFX file holds several accounts, the chooser names each account's

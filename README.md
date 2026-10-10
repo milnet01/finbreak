@@ -13,7 +13,7 @@
 [![Status](https://img.shields.io/badge/status-stable-brightgreen)]()
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-Current version: **1.0.0**. **[⬇ Download the latest
+Current version: **1.0.1**. **[⬇ Download the latest
 release](https://github.com/milnet01/finbreak/releases/latest)**, or see
 [CHANGELOG](CHANGELOG.md) for what's shipped and [ROADMAP](ROADMAP.md) for
 what's coming.

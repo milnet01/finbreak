@@ -21,6 +21,10 @@ signaling per
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-10-10
+
+**Theme:** Windows updates fixed.
+
 ### Fixed
 
 - **On Windows, "Update now" installs the update and reopens finbreak** (FIBR-0444)
