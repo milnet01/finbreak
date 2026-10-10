@@ -668,8 +668,8 @@ def test_FIBR0131_ps_single_quote_doubles_embedded_quotes():
 def test_FIBR0131_powershell_path_resolves_absolute_from_systemroot(
     monkeypatch, tmp_path
 ):
-    # A DETACHED_PROCESS child can run with a stripped PATH, so we resolve an
-    # ABSOLUTE powershell.exe from %SystemRoot%, never a bare "powershell".
+    # We resolve an ABSOLUTE powershell.exe from %SystemRoot%, never a bare
+    # "powershell", so launching the helper never depends on a PATH lookup.
     ps = tmp_path / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
     ps.parent.mkdir(parents=True)
     ps.write_bytes(b"")
@@ -725,7 +725,7 @@ def test_FIBR0131_windows_apply_spawns_then_wipes_detached_no_in_process_move(
     assert argv[0].endswith("powershell.exe")
     assert str(exe) in argv[4] and str(new_file) in argv[4]
     kwargs = record["kwargs"]
-    # getattr(subprocess, "DETACHED_PROCESS", 0) == 0 off Windows — the point is
+    # getattr(subprocess, "CREATE_NO_WINDOW", 0) == 0 off Windows — the point is
     # apply() LOADS + RUNS on Linux (no AttributeError) and reaches the Popen.
     assert "creationflags" in kwargs
     assert kwargs["close_fds"] is True

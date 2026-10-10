@@ -184,9 +184,9 @@ def _windows_relaunch_env() -> dict[str, str]:
 
 def _powershell_path() -> str:
     """An **absolute** ``powershell.exe`` path — resolved from ``%SystemRoot%``
-    (else ``shutil.which``), never a bare ``"powershell"``: a ``DETACHED_PROCESS``
-    child can run with a stripped ``PATH`` and fail to launch a bare name (FIBR-0131
-    D3). Falls back to ``"powershell.exe"`` if nothing resolves (e.g. off Windows)."""
+    (else ``shutil.which``), never a bare ``"powershell"``, so launching the helper
+    never depends on a ``PATH`` lookup (FIBR-0131 D3). Falls back to
+    ``"powershell.exe"`` if nothing resolves (e.g. off Windows)."""
     system_root = os.environ.get("SystemRoot")
     if system_root:
         candidate = (
@@ -387,10 +387,12 @@ class WindowsInstaller:
             )
             log.flush()
         stdio: TextIO | int = log if log is not None else subprocess.DEVNULL
-        # DETACHED_PROCESS + CREATE_NEW_PROCESS_GROUP are Windows-only attributes;
+        # Never DETACHED_PROCESS: PowerShell spawned with it dies before running a
+        # line, so no update ever installs (measured on Windows, FIBR-0444).
+        # CREATE_NO_WINDOW + CREATE_NEW_PROCESS_GROUP are Windows-only attributes;
         # getattr(..., 0) keeps this importable + callable off Windows (the Linux CI
         # gate drives apply() through a monkeypatched Popen — FIBR-0131 D3).
-        creationflags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(
+        creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0) | getattr(
             subprocess, "CREATE_NEW_PROCESS_GROUP", 0
         )
         try:
