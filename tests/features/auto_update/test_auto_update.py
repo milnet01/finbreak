@@ -733,6 +733,33 @@ def test_FIBR0131_windows_apply_spawns_then_wipes_detached_no_in_process_move(
     assert record["exit_code"] == 0
 
 
+def test_FIBR0444_windows_apply_spawns_with_no_window_never_detached(
+    monkeypatch, tmp_path
+):
+    # FIBR-0131 D3 (amended by FIBR-0444): measured on Windows, a PowerShell helper
+    # spawned with DETACHED_PROCESS dies before its first line, so no update ever
+    # installs; CREATE_NO_WINDOW keeps it alive. None of the three flags exists on
+    # Linux (all would read 0), so give each a distinct single bit.
+    no_window, new_group, detached = 0x1, 0x2, 0x4
+    monkeypatch.setattr(subprocess, "CREATE_NO_WINDOW", no_window, raising=False)
+    monkeypatch.setattr(
+        subprocess, "CREATE_NEW_PROCESS_GROUP", new_group, raising=False
+    )
+    monkeypatch.setattr(subprocess, "DETACHED_PROCESS", detached, raising=False)
+    exe = tmp_path / "finbreak.exe"
+    exe.write_bytes(b"OLD-EXE")
+    new_file = tmp_path / "finbreak-update-xyz.exe"
+    new_file.write_bytes(b"NEW-EXE")
+    record = _capture_relaunch(monkeypatch)
+
+    WindowsInstaller(exe).apply(new_file, lambda: None)
+
+    flags = record["kwargs"]["creationflags"]
+    assert isinstance(flags, int)
+    assert flags & detached == 0
+    assert flags == no_window | new_group
+
+
 def test_FIBR0131_windows_apply_spawn_failure_leaves_key_unwiped(monkeypatch, tmp_path):
     # A Popen failure (AV/AppLocker denies powershell.exe) must NOT wipe the key or
     # os._exit — nothing is committed (the move lives in the helper), so surface an

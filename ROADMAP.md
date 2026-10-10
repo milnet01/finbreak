@@ -4177,7 +4177,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: fix.
   Source: in-session-2026-10-08 (1.0.0 OBS RPM verification).
 
-- 📋 [FIBR-0444] **On Windows, "Update now" closes finbreak and never installs the update or reopens; the swap helper dies as it starts.**
+- 🚧 [FIBR-0444] **On Windows, "Update now" closes finbreak and never installs the update or reopens; the swap helper dies as it starts.**
   Measured 2026-10-08 on ssh wintest (Windows 10 19045), the first real
   Windows self-update: 0.1.23 -> 1.0.0, one click on "Update now". The
   user saw the download reach 100%, the window hang about one to two
@@ -4276,6 +4276,10 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   read it). %APPDATA%\finbreak is a fresh test vault; the user's old vault is
   %APPDATA%\finbreak-old-0.1.9-vault, with a byte copy in
   C:\Users\aants\finbreak-data-backup-2026-10-08.
+  Started (2026-10-10). User decision 2026-10-10: 1.0.1 also deletes
+  leftover finbreak-update-*.exe files from failed updates, at start-up,
+  beside the running .exe only. Needs a FIBR-0131 amendment and gate
+  first; filed as its own item.
   **Layman:** On Windows, updating from inside the app downloads the new version, then just closes; it doesn't install it or come back.
   Kind: fix.
   Source: in-session-2026-10-08 (real 0.1.23 -> 1.0.0 update on ssh wintest).
