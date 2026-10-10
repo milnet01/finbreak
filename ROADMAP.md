@@ -4284,6 +4284,21 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: fix.
   Source: in-session-2026-10-08 (real 0.1.23 -> 1.0.0 update on ssh wintest).
 
+- 🚧 [FIBR-0445] **At start-up, delete leftover finbreak-update-* files that failed updates left beside the app.**
+  Each failed "Update now" on Windows 0.1.10-1.0.0 (FIBR-0444) leaves a
+  staged finbreak-update-*.exe beside the .exe, because the helper that
+  would move or delete it died before running. User decision
+  2026-10-10: ship the clean-up inside 1.0.1.
+  Plan: amend FIBR-0131 (new invariant + design decision + test legs),
+  gate it with review-contract --max-loops 3, then build red-first.
+  Scope: start-up only, after the single-instance guard is held; only
+  the installer's own directory; only names finbreak's staging makes;
+  only files older than an hour; never the running binary; best-effort.
+  Dependencies: FIBR-0444.
+  **Layman:** Every failed Windows update in 0.1.10 to 1.0.0 left a spare download file next to the app; 1.0.1 tidies them away when it starts.
+  Kind: fix.
+  Source: user-decision-2026-10-10 (FIBR-0444 open question).
+
 ## v1.1.0 — Localisation
 
 The first feature minor after 1.0. Chosen to go first because it is
