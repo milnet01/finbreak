@@ -15,6 +15,7 @@ statements, no network (testing.md § 6).
 
 from __future__ import annotations
 
+import sys
 import warnings
 
 import pytest
@@ -182,16 +183,24 @@ def test_determinism_independent_of_sample_order():
 def test_clock_free_far_past_and_far_future(monkeypatch):
     """INV-2 falsifier: a hidden year window / date.today() would flip a
     decades-out year. Both a 1998 and a 2099 column must read day-first."""
+    from datetime import datetime
+
     from finbreak.importers import date_detect
     from finbreak.importers.date_detect import detect_date_format
 
-    # Poison the clock: any call to date.today() inside the detector explodes.
-    class _NoClock:
-        @staticmethod
-        def today():  # pragma: no cover - must never be called
+    # Poison the clock through the name the module binds: `datetime`, whose
+    # `strptime` the detector needs and whose `now` / `today` it must not call.
+    # No `raising=False`: if the module stops binding `datetime`, this fails.
+    class _NoClock(datetime):
+        @classmethod
+        def now(cls, tz=None):  # pragma: no cover - must never be called
             raise AssertionError("detector must not read the clock (INV-2)")
 
-    monkeypatch.setattr(date_detect, "date", _NoClock, raising=False)
+        @classmethod
+        def today(cls):  # pragma: no cover - must never be called
+            raise AssertionError("detector must not read the clock (INV-2)")
+
+    monkeypatch.setattr(date_detect, "datetime", _NoClock)
     assert detect_date_format(["20/07/1998", "21/07/1998"]).fmt == "%d/%m/%Y"
     assert detect_date_format(["20/07/2099", "21/07/2099"]).fmt == "%d/%m/%Y"
 
@@ -357,11 +366,19 @@ def test_validate_mapping_accepts_a_real_date_format():
     ImportService._validate_mapping(mapping, ["Date", "Details", "Amount"])  # no raise
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 15),
+    reason="CPython 3.15 changes year-less strptime (gh-70647); this records "
+    "the stdlib trap, and the rejection test below is what guards finbreak",
+)
 def test_FIBR0273_year_less_format_is_the_same_1900_trap():
     """Precondition for the rejection below: a year-less format does NOT fail —
     it silently succeeds and dates the row 1900, which is why validation has to
     catch it. (CPython also warns here: 3.15 will change this to an exception or
-    a different default year, so the rejection closes both halves.)"""
+    a different default year, so the rejection closes both halves.)
+
+    This asserts CPython's behaviour, not finbreak's, so it is bound to the
+    interpreters that have it."""
     from datetime import datetime
 
     with warnings.catch_warnings():
@@ -796,7 +813,13 @@ def test_added_strings_tr_wrapped_and_data_fixed_tokens(qtbot, service, tmp_path
     are the fixed % patterns (not the display example text)."""
     from finbreak.importers.date_detect import KNOWN_DATE_FORMATS
 
-    src = Path("src/finbreak/ui/import_wizard.py").read_text(encoding="utf-8")
+    src = (
+        Path(__file__).resolve().parents[3]
+        / "src"
+        / "finbreak"
+        / "ui"
+        / "import_wizard.py"
+    ).read_text(encoding="utf-8")
     # Each new user-facing phrase must be present AND reached through self.tr(
     # (the tr( may be on the line above for a wrapped literal, so allow a window).
     for phrase in (

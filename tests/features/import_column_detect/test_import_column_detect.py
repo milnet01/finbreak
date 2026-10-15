@@ -326,10 +326,25 @@ def test_no_match_returns_none_for_every_role():
 def test_pure_deterministic_and_order_independent():
     """Purity claim, modelled on date_detect's INV-2: same input -> same
     guess, and the result does not depend on incidental header order beyond
-    which original string is returned for each role."""
+    which original string is returned for each role.
+
+    Two columns compete for the date role, so a guesser that took the first
+    match in header order would answer differently for different orders. Every
+    order is tried; calling twice on one order cannot fail."""
+    from itertools import permutations
+
     from finbreak.importers.column_detect import guess_columns
 
-    header = ["Amount", "Date", "Description"]
-    first = guess_columns(header)
-    second = guess_columns(list(header))  # a fresh list, not the same object
-    assert first == second
+    header = ["Amount", "Date", "Transaction Date", "Description"]
+    expected = guess_columns(header)
+    assert expected.date == "Date", (
+        "precondition: the plainer spelling wins the date role.\n"
+        f"  actual: {expected.date!r}"
+    )
+    for order in permutations(header):
+        guess = guess_columns(list(order))
+        assert guess == expected, (
+            "the guess depends on header order.\n"
+            f"  order:    {list(order)}\n"
+            f"  expected: {expected}\n  actual:   {guess}"
+        )

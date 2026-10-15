@@ -268,6 +268,11 @@ def test_INV3_no_commit_before_every_question_answered(
     assert any(f.outcome == "ready" for f in files2), (
         "precondition: the OFX matched, so only the unplaced CSV is in question"
     )
+    # The gate itself, as leg (a) asks it. The button starts disabled, so on its
+    # own it would read the initial state if the review redrew a turn later.
+    assert not BatchImportService.can_import(files2), (
+        "no file may be committable while a row still has no destination"
+    )
     assert not widget2._batch_review._import_button.isEnabled(), (
         "Import all must stay off while any row still says — pick one —"
     )
@@ -1016,6 +1021,11 @@ def test_file_labels_costs_a_fixed_number_of_passes_over_the_set() -> None:
     Measured as PASSES OVER THE SET rather than as elapsed time, so the test
     says the same thing on a loaded machine: whatever the labelling costs, it
     must not read the set more times just because the set got longer.
+
+    What it pins is re-iteration of ``files`` and nothing wider. A quadratic
+    over a list DERIVED in one pass -- names built once, then ``names.count``
+    per row -- reads the set once at any size and passes. The per-row re-tally
+    this replaced is the shape it catches.
     """
 
     class _CountingList(list):
