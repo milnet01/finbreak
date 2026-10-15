@@ -3503,7 +3503,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: test.
   Source: full-audit-2026-09-27 tests lane T06 (queued by FIBR-0367).
 
-- 📋 [FIBR-0417] **Queued test findings from the 2026-09-27 audit: updater, app shell and unlock tests (10 items).**
+- 🚧 [FIBR-0417] **Queued test findings from the 2026-09-27 audit: updater, app shell and unlock tests (10 items).**
   From docs/reviews/2026-09-27-full-audit/tests-lane-T07-update-shell-unlock.md.
   Paths are under tests/features/; lines as of 2026-09-29.
   - auto_update/test_auto_update.py (INV-9 stays-open and the FIBR-0108
@@ -3541,6 +3541,8 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   - unlock_throttle/test_unlock_throttle.py:224 -- a 4 s lockout against
     the real clock expires on a slow runner and spawns a real worker.
     Fix: seed CAP_N failures, a future last_fail, or pin the clock.
+  Started 2026-10-15 toward 1.0.2: each finding is shown vacuous by a
+  mutation first, then tightened and shown to kill it.
   **Layman:** Several updater and window checks do not prove what their names say, and one set is slow; this tightens them and speeds them up.
   Kind: test.
   Source: full-audit-2026-09-27 tests lane T07 (queued by FIBR-0367).
@@ -6990,7 +6992,7 @@ work, and none of it is a release decision.
   Source: peer-2026-09-25 (ants-terminal-dd, ANTS-4485).
   Lanes: docs.
 
-- 🚧 [FIBR-0368] **Move finbreak off the old phase workflow and record its standards decisions (CFG-0645).**
+- ✅ [FIBR-0368] **Move finbreak off the old phase workflow and record its standards decisions (CFG-0645).**
   align-report 2026-09-28 named eight gaps. User decisions the same day:
   - The seven docs/standards/ files that share a name with a global
     standard (coding, commits, dependencies, documentation,
@@ -7010,6 +7012,12 @@ work, and none of it is a release decision.
   docs/discovery.md, one batch each -- both edits change what a
   session or a later gate does. Report sent to the ~/.claude session
   (claude-87).
+  Closed 2026-10-15: both owed gates ran. CLAUDE.md: loops 10-11,
+  converged 2026-09-28 (1e6f415, 5608b8f;
+  docs/reviews/CLAUDE-md-review-log.md). docs/discovery.md: loop 1,
+  2026-09-29, no finding inside the armed span; its four out-of-span
+  findings were fixed in-run (de2759e;
+  docs/reviews/discovery-loop-log.md).
   **Layman:** Tidy how the project records its own rules, so the machine-wide tools stop flagging it and the old step-by-step workflow can be retired.
   Kind: chore.
   Source: peer-request-claude-87-2026-09-28 (CFG-0645); user decisions 2026-09-28.
