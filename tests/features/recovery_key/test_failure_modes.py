@@ -39,7 +39,9 @@ from finbreak.services.vault_migration import (
     MIGRATING_SUFFIX,
     migrate_to_v2,
     rollback_copy_paths,
+    rollback_copy_taken_at,
 )
+from finbreak.ui.unlock import _rollback_offer
 
 pytestmark = pytest.mark.features
 
@@ -198,6 +200,8 @@ def test_the_unlock_dialog_offers_the_pre_upgrade_copy(
     vault_path, sidecar_path = paths
     _stall_with_every_route_exhausted(paths)
     copy_vault, copy_sidecar = rollback_copy_paths(vault_path, sidecar_path)
+    # Read before the answer: Yes consumes the copy this date comes from.
+    expected = _rollback_offer(rollback_copy_taken_at(vault_path, sidecar_path))
 
     asked: list[str] = []
     chosen = (
@@ -234,10 +238,12 @@ def test_the_unlock_dialog_offers_the_pre_upgrade_copy(
         "(the finding) and not one per branch.\n"
         f"  expected: 1 question asked\n  actual:   {len(asked)}"
     )
-    assert ".pre-v2" in asked[0] or "before" in asked[0].lower(), (
+    # The exact offer: any text containing "before" would include a
+    # destructive-reset question, which § 6 forbids here.
+    assert asked[0] == expected, (
         "the offer has to name what is being restored, or the user cannot "
         "tell it from the destructive reset § 6 forbids here.\n"
-        "  expected: the copy described as pre-upgrade\n"
+        f"  expected: {expected!r}\n"
         f"  actual:   {asked[0]!r}"
     )
 

@@ -746,6 +746,15 @@ def test_repeated_recovery_offers_do_not_accumulate_clipboard_guards(
     for _ in range(3):
         dialog = build_recovery_offer(service, generate_code(), window)
         dialog.deleteLater()
+    # A guard owned by anything but the window would leave the check below
+    # green, so the three must be found under it before they are retired.
+    built = [g for g in window.findChildren(ClipboardAutoClear) if shiboken6.isValid(g)]
+    assert len(built) == 3, (
+        "precondition: each recovery offer parents its clipboard guard to the "
+        "window, or the no-survivors check below looks in the wrong place.\n"
+        "  expected: 3 live guards under the window\n"
+        f"  actual:   {len(built)}"
+    )
     # Twice: the guard's own deleteLater is scheduled BY the dialog's
     # destroyed signal, so it is one hop behind and the first pump only
     # reaches the dialogs.
