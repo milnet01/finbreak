@@ -4,7 +4,9 @@ restore-into-the-unlocked-shell. Uses pytest-qt's ``qtbot``; every vault lives
 under ``tmp_path`` (testing.md § 6). Enforces tests/features/backup/spec.md.
 """
 
+import threading
 import time
+import zipfile
 
 import pytest
 from PySide6.QtCore import QTimer
@@ -36,11 +38,20 @@ def _seeded(paths) -> AuthService:
     return auth
 
 
-def _make_fbk(tmp_path):
-    """A first-run source vault exported to a `.fbk`; returns the fbk path."""
+def _make_fbk(tmp_path, account: str | None = None):
+    """A first-run source vault exported to a `.fbk`; returns the fbk path.
+
+    ``account`` seeds one named account first, so a restore can be checked for
+    the source's data rather than only for files existing."""
     src = tmp_path / "src"
     src.mkdir()
     auth = _seeded((src / "vault.db", src / "vault.kdf.json"))
+    if account is not None:
+        auth.vault.connection.execute(
+            "INSERT INTO accounts(name, type, created_at) VALUES (?, ?, ?)",
+            (account, "current", "2026-01-01T00:00:00+00:00"),
+        )
+        auth.vault.connection.commit()
     fbk = tmp_path / "backup.fbk"
     BackupService(auth.vault, auth).export_backup(fbk, _BACKUP_PW)
     auth.lock()
@@ -128,16 +139,25 @@ def test_INV9_synchronous_export_blocks_queued_timer(qtbot, paths, monkeypatch):
         QTimer.singleShot(1, lambda: fired.append("timer"))  # 1 ms << the 50 ms export
 
         real_export_to = Vault.export_to
+        export_threads: list[threading.Thread] = []
 
         def slow_export_to(self, dest, key):
+            export_threads.append(threading.current_thread())
             time.sleep(0.05)  # block the main thread well past the 1 ms timer
             return real_export_to(self, dest, key)
 
         monkeypatch.setattr(Vault, "export_to", slow_export_to)
-        BackupService(auth.vault, auth).export_backup(
-            paths[0].parent / "b.fbk", _BACKUP_PW
-        )
+        fbk = paths[0].parent / "b.fbk"
+        BackupService(auth.vault, auth).export_backup(fbk, _BACKUP_PW)
 
+        # An unfired timer alone holds for any plain call, threaded or not: the
+        # export must have run on the main thread and be finished on return.
+        assert export_threads == [threading.main_thread()], (
+            "INV-9: the export must run synchronously on the main thread.\n"
+            f"  actual: {export_threads}"
+        )
+        with zipfile.ZipFile(fbk) as zf:
+            assert sorted(zf.namelist()) == ["manifest.json", "params.json", "vault.db"]
         assert fired == [], "the queued 1 ms timer cannot fire during a blocking export"
         qtbot.wait(20)
         assert fired == ["timer"], "it fires only once the event loop resumes"
@@ -152,7 +172,7 @@ def test_INV9_synchronous_export_blocks_queued_timer(qtbot, paths, monkeypatch):
 def test_restore_from_shell_enters_unlocked_under_new_master(qtbot, tmp_path):
     from finbreak.ui.main_window import MainWindow
 
-    fbk = _make_fbk(tmp_path)
+    fbk = _make_fbk(tmp_path, account="Restored sentinel")
     dest = tmp_path / "dest"
     dest.mkdir()
     service = AuthService(dest / "vault.db", dest / "vault.kdf.json")
@@ -174,8 +194,16 @@ def test_restore_from_shell_enters_unlocked_under_new_master(qtbot, tmp_path):
     assert service._key is not None, "the shell is unlocked under the new master"
     workspace = window.centralWidget().currentWidget()
     assert workspace.objectName() == "workspace", "the unlocked workspace is shown"
-    # The restored data is present (the source's single seeded account survived).
-    assert (dest / "vault.db").exists() and (dest / "vault.kdf.json").exists()
+    # The restored data is present: files existing would also hold for an empty
+    # vault installed under the new master, so read the source's account back.
+    names = [
+        row[0] for row in service.vault.connection.execute("SELECT name FROM accounts")
+    ]
+    assert "Restored sentinel" in names, (
+        "the restore installed a vault without the backup's data.\n"
+        "  expected: the source's 'Restored sentinel' account\n"
+        f"  actual:   accounts = {names}"
+    )
     service.lock()
 
 

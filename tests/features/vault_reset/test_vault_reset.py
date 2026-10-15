@@ -433,8 +433,11 @@ def test_INV1_a_failed_database_unlink_leaves_no_orphan_wal(paths, monkeypatch):
     auth = _seeded(paths)
     vault_path, _sidecar_path = paths
     wal = vault_path.with_name(vault_path.name + "-wal")
-    wal.write_bytes(b"an outstanding write-ahead log")
+    # Planted AFTER lock(): a clean close may remove the real WAL, and a WAL
+    # already gone makes the ordering check below pass whatever the order.
     auth.lock()
+    wal.write_bytes(b"an outstanding write-ahead log")
+    assert wal.exists(), "precondition: the orphan WAL is present at reset time"
 
     real_unlink = Path.unlink
 

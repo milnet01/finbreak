@@ -985,16 +985,19 @@ def test_INV11_below_floor_params_refused_before_any_key(tmp_path):
         {"../evil.txt": b"traversal"},
         {"extra.txt": b"an unexpected fourth entry"},
     ],
-    ids=["traversal", "extra-entry"],
+    ids=["traversal-name", "extra-entry"],
 )
 def test_INV12_unsafe_zip_refused(tmp_path, extra):
+    """Both are refused by the exact entry-set check, which runs first: a
+    traversal name is a fourth entry, so the unsafe-name check after it is
+    never reached by this case."""
     from finbreak.errors import BackupError
 
     fbk, _snap = _export_from_seed(tmp_path)
     bad = tmp_path / "bad.fbk"
     _rebuild_fbk(fbk, bad, extra=extra)
     auth, d, vb, sb = _dest_with_vault(tmp_path)
-    with pytest.raises(BackupError):
+    with pytest.raises(BackupError, match="unexpected / missing / duplicate"):
         BackupService(auth.vault, auth).restore_backup(bad, _BACKUP_PW, _M2)
     _assert_unchanged(d, vb, sb)
 
@@ -1013,34 +1016,38 @@ def test_INV12_oversized_manifest_entry_refused(tmp_path):
     _assert_unchanged(d, vb, sb)
 
 
-def test_INV12_deflate_bomb_refused_on_the_ratio(tmp_path):
+def test_INV12_deflate_bomb_refused_on_the_ratio(tmp_path, monkeypatch):
     """FIBR-0212 — INV-12 requires "a suspicious ``file_size / compress_size`` ratio"
     to be rejected, and it was not implemented. The ZIP_STORED note in the code
     covers files finbreak WRITES; a restore reads an untrusted file, and
     ``_read_capped`` never inspected ``compress_type``. MEASURED here: a small
     hostile ``.fbk`` whose ``vault.db`` is deflated zeros inflates to the 512 MiB
     cap in RAM, pre-login. The declared size is honest, so only the ratio catches
-    it."""
-    from finbreak.errors import BackupError
-    from finbreak.services.backup import MAX_BACKUP_DB_BYTES
+    it.
 
+    The cap is lowered to 4 MiB for the test: ``_read_fbk`` reads it at call
+    time, and building the bomb at the real 512 MiB cost seconds and a large
+    memory spike for the same ratio check."""
+    import finbreak.services.backup as backup_mod
+    from finbreak.errors import BackupError
+
+    cap = 4 * 1024 * 1024
     fbk, _snap = _export_from_seed(tmp_path)
+    monkeypatch.setattr(backup_mod, "MAX_BACKUP_DB_BYTES", cap)
     bomb = tmp_path / "bomb.fbk"
     with zipfile.ZipFile(fbk) as zf:
         m, p = zf.read("manifest.json"), zf.read("params.json")
     with zipfile.ZipFile(bomb, "w") as zf:
         zf.writestr("manifest.json", m)
         zf.writestr("params.json", p)
-        # Zeros deflate ~1000:1, so this is a few hundred KB on disk.
-        zf.writestr(
-            "vault.db", b"\0" * MAX_BACKUP_DB_BYTES, compress_type=zipfile.ZIP_DEFLATED
-        )
-    assert bomb.stat().st_size < 2 * 1024 * 1024, "the bomb file itself is small"
+        # Zeros deflate ~1000:1, so this is a few KB on disk.
+        zf.writestr("vault.db", b"\0" * cap, compress_type=zipfile.ZIP_DEFLATED)
+    assert bomb.stat().st_size < cap // 100, "the bomb file itself is small"
 
     auth, d, vb, sb = _dest_with_vault(tmp_path)
     # `match=` is load-bearing: the declared file_size is exactly the cap, so the
     # `file_size > cap` gate does NOT fire, and without the ratio check the restore
-    # inflates all 512 MiB and *still* raises BackupError from the downstream
+    # inflates the whole cap and *still* raises BackupError from the downstream
     # "this isn't a vault" failure — a green that proves nothing (measured).
     with pytest.raises(BackupError, match="compression ratio"):
         BackupService(auth.vault, auth).restore_backup(bomb, _BACKUP_PW, _M2)
@@ -1141,8 +1148,14 @@ def test_INV13_wrong_cipher_compat_refused(tmp_path):
         fbk, bad, manifest={"sqlcipher_compat": 3}
     )  # a lower level resets HMAC
     auth, d, vb, sb = _dest_with_vault(tmp_path)
-    with pytest.raises(BackupError):
-        BackupService(auth.vault, auth).restore_backup(bad, _BACKUP_PW, _M2)
+    # Without the allowlist the open at level 3 fails on page 1 and still raises
+    # BackupError, so the guard is pinned by its message and by no key derived.
+    captured: list[str] = []
+    with pytest.raises(BackupError, match="cipher-compatibility"):
+        BackupService(auth.vault, auth).restore_backup(
+            bad, _BACKUP_PW, _M2, on_key=lambda role, buf: captured.append(role)
+        )
+    assert captured == [], "no key is derived for an unsupported compat level"
     _assert_unchanged(d, vb, sb)
 
 
@@ -1230,14 +1243,19 @@ def test_INV4_non_utf8_manifest_fails_closed(tmp_path):
         params, db = zf.read("params.json"), zf.read("vault.db")
     bad = tmp_path / "bad.fbk"
     with zipfile.ZipFile(bad, "w") as zf:
-        zf.writestr(
-            "manifest.json", b"\xff\xfe not valid utf-8"
-        )  # -> UnicodeDecodeError
+        # No byte-order mark: a leading \xff\xfe is read as UTF-16 and raises
+        # JSONDecodeError instead, so the UnicodeDecodeError branch never ran.
+        zf.writestr("manifest.json", b'{"a": "\xff"}')
         zf.writestr("params.json", params)
         zf.writestr("vault.db", db, compress_type=zipfile.ZIP_STORED)
     auth, d, vb, sb = _dest_with_vault(tmp_path)
-    with pytest.raises(BackupError):  # not a raw UnicodeDecodeError
+    with pytest.raises(BackupError, match="unreadable backup") as excinfo:
         BackupService(auth.vault, auth).restore_backup(bad, _BACKUP_PW, _M2)
+    assert isinstance(excinfo.value.__cause__, UnicodeDecodeError), (
+        "the refusal must come from the non-UTF-8 manifest, not another error.\n"
+        "  expected: __cause__ is a UnicodeDecodeError\n"
+        f"  actual:   {excinfo.value.__cause__!r}"
+    )
     _assert_unchanged(d, vb, sb)
 
 
