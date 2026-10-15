@@ -3868,7 +3868,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: fix.
   Source: full-audit-2026-09-27 code lanes 5 and 6 (queued by FIBR-0405).
 
-- ✅ [FIBR-0426] **A batch-import UI test crashed its test worker once under the full gate.**
+- 📋 [FIBR-0426] **A batch-import UI test crashed its test worker once under the full gate.**
   Seen 2026-09-29 during FIBR-0405's gate: pytest-xdist reported
   "worker 'gw5' crashed while running test_batch_import_ui.py::
   test_INV8_cancelling_a_prompt_skips_that_file_immediately". Alone it
@@ -3883,6 +3883,15 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   passed, 2 skipped every time, no worker crash. Not reproduced, so
   there is nothing to diagnose yet. If a worker crash recurs, keep the
   whole pytest output: the faulthandler dump names the test and thread.
+  Recurred 2026-10-15 during the FIBR-0421 push gate: the same test, the
+  same worker gw5, "worker 'gw5' crashed". A core dump was kept this time
+  (coredumpctl PID 1566693, SIGSEGV, 20:14:35). Its stack: QObject's
+  destructor, run from a posted DeferredDelete event inside the GLib event
+  loop, during a Python-driven processEvents (the test's qtbot.waitUntil).
+  So an object scheduled with deleteLater() is destroyed after its C++
+  side is already gone or owned elsewhere. Next: list the deleteLater()
+  calls this test's path reaches (prompt dialogs, the batch review) and
+  check each for a parent or a Python owner that also deletes it.
   **Layman:** One automated check crashed once for no clear reason and then passed every time after; it needs a closer look so it doesn't hide a real problem.
   Kind: investigate.
   Source: in-session-2026-09-29 (FIBR-0405 gate run).
