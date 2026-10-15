@@ -7279,6 +7279,8 @@ work, and none of it is a release decision.
   ants-projects-hub-website. Demo data only, never real bank data.
   2026-10-15: inbox message acked; recommended doing it after 1.0.2 is
   cut; the user has not yet chosen the timing.
+  User decision 2026-10-15: record the trailer footage after 1.0.2 is
+  cut, so it shows the newest version.
   **Layman:** Short screen recordings of finbreak in use, for the trailer on the projects website.
   Kind: marketing.
   Source: peer-request-2026-10-10 ants-projects-hub-website msg 571.
