@@ -3509,7 +3509,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: test.
   Source: full-audit-2026-09-27 tests lane T05 (queued by FIBR-0367).
 
-- 🚧 [FIBR-0416] **Queued test findings from the 2026-09-27 audit: accounts and transactions tab tests (4 items).**
+- ✅ [FIBR-0416] **Queued test findings from the 2026-09-27 audit: accounts and transactions tab tests (4 items).**
   From docs/reviews/2026-09-27-full-audit/tests-lane-T06-accounts-statements.md.
   Paths are under tests/features/; lines as of 2026-09-29.
   - accounts/test_accounts.py:1124 -- the account names sort
@@ -3527,6 +3527,11 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   - accounts/test_accounts.py:1183 -- "500" in off_text also matches
     wrong magnitudes. Fix: compare exactly with "off by " plus the money
     formatter's output for 50_000.
+  Resolution 2026-10-15 (d20325c): all four fixed, the third covering two
+  tests, so five fixes. Each was proved by a mutant the old test passed
+  and the new one failed: a constant status sort key; rows tagged one
+  off; each slot returning before its stub; a tripled magnitude. The
+  lane's HIGH finding (delete wording) was already fixed.
   **Layman:** A few account and transaction checks could pass on the wrong answer, such as a wrong amount or the wrong row; this makes them exact.
   Kind: test.
   Source: full-audit-2026-09-27 tests lane T06 (queued by FIBR-0367).
@@ -3666,7 +3671,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: test.
   Source: full-audit-2026-09-27 tests lane T09 (queued by FIBR-0367).
 
-- 📋 [FIBR-0420] **Queued test findings from the 2026-09-27 audit: categories, clipboard and table state tests (7 items).**
+- 🚧 [FIBR-0420] **Queued test findings from the 2026-09-27 audit: categories, clipboard and table state tests (7 items).**
   From docs/reviews/2026-09-27-full-audit/tests-lane-T10-categories-settings.md.
   Paths are under tests/features/; lines as of 2026-09-29.
   - clipboard/test_clipboard.py:266 -- the Selection-buffer leg skips on
