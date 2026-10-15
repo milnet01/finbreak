@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: FIBR=450 -->
+<!-- ants-roadmap-id-high-water: FIBR=451 -->
 # finbreak — Roadmap
 
 > See [CHANGELOG.md](CHANGELOG.md) for what's shipped and the current
@@ -3586,7 +3586,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: test.
   Source: full-audit-2026-09-27 tests lane T07 (queued by FIBR-0367).
 
-- 🚧 [FIBR-0418] **Queued test findings from the 2026-09-27 audit: forecast, recurring, alerts and month summary tests (9 items).**
+- ✅ [FIBR-0418] **Queued test findings from the 2026-09-27 audit: forecast, recurring, alerts and month summary tests (9 items).**
   From docs/reviews/2026-09-27-full-audit/tests-lane-T08-summary-forecast-alerts.md.
   Paths are under tests/features/; lines as of 2026-09-29.
   - forecast/test_forecast.py:168 -- comparing points with
@@ -3623,6 +3623,11 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   - spending_alerts/test_alert_service.py:191 -- ":None" not in key
     guesses one spelling. Fix: assert exactly one category spike,
     labelled Groceries.
+  Resolution 2026-10-15 (354b9c7): all nine fixed. Each was proved by a
+  mutant the old test passed and the new one failed, or, for the two
+  clock findings, by the old tests failing under a shifted app clock. The
+  month strip is now pinned to three dates. The literal schema-version
+  pins left in five other suites are filed as FIBR-0451.
   **Layman:** Some forecast and alert checks depend on today's date or cannot fail; this pins the date and makes them check real totals.
   Kind: test.
   Source: full-audit-2026-09-27 tests lane T08 (queued by FIBR-0367).
@@ -3677,7 +3682,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: test.
   Source: full-audit-2026-09-27 tests lane T09 (queued by FIBR-0367).
 
-- 🚧 [FIBR-0420] **Queued test findings from the 2026-09-27 audit: categories, clipboard and table state tests (7 items).**
+- ✅ [FIBR-0420] **Queued test findings from the 2026-09-27 audit: categories, clipboard and table state tests (7 items).**
   From docs/reviews/2026-09-27-full-audit/tests-lane-T10-categories-settings.md.
   Paths are under tests/features/; lines as of 2026-09-29.
   - clipboard/test_clipboard.py:266 -- the Selection-buffer leg skips on
@@ -3704,6 +3709,12 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   - clipboard/test_clipboard.py:394 -- a 1 s real timer, because the
     clear takes whole seconds only. Fix: let _clipboard.py take
     milliseconds (a code change; the lane rated it low).
+  Resolution 2026-10-15 (1a95e98): six
+  fixed, one dismissed. The Selection leg is kept for X11, and a
+  mode-recording fake clipboard plus a package-wide parsed backstop now
+  cover it in the gate. Dismissed: the 1 s real timer. The guard's unit
+  is seconds by FIBR-0032, so milliseconds needs that spec amended and
+  gated, to save about 2 s; not worth it.
   **Layman:** Some category, clipboard and table checks never run or check less than they claim; this makes them run and check it all.
   Kind: test.
   Source: full-audit-2026-09-27 tests lane T10 (queued by FIBR-0367).
@@ -4378,6 +4389,24 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   **Layman:** Check on a real Windows PC that "Update now" in 1.0.1 installs the next version and reopens the app.
   Kind: test.
   Source: in-session-2026-10-10 (FIBR-0131 D6 and To verify empirically).
+
+- 📋 [FIBR-0451] **Five more tests pin the schema version at 14 under unrelated names.**
+  FIBR-0418 fixed this shape in the recurring and spending-alert tests;
+  the same literal pin remains in five other suites. Each fails on the
+  next schema bump for a reason its name does not state.
+  - ofx_import/test_ofx_import.py, db_performance/test_db_performance.py,
+    import_/test_import.py, categorisation/test_categorisation.py:
+    `assert LATEST_SCHEMA_VERSION == 14`. Fix: assert the walk reaches
+    the step the test is about, and that an upgraded vault ends at
+    LATEST_SCHEMA_VERSION, as 354b9c7 did.
+  - reconciliation/test_no_schema_change.py pins 14 and checks no v15 is
+    registered. That one may be a deliberate tripwire; decide per its
+    spec INV-8 before changing it.
+  - The specs beside them (db_performance, transfers, categorisation,
+    reconciliation spec.md) quote `== 14`; amend each with its test.
+  **Layman:** Some checks will break the next time the database format changes, for a reason their names do not say; this makes them check what they claim.
+  Kind: test.
+  Source: in-session-2026-10-15 (FIBR-0418 sweep).
 
 ## v1.1.0 — Localisation
 
