@@ -544,10 +544,14 @@ def test_FIBR0192_INV5_reset_layout_restores_live_headers(qtbot, service):
 
 
 # --------------------------------------------------------------------------- #
-# INV-6 — a reset survives a rebuild (the clear-LAST discriminator)
+# INV-6 — a reset survives a rebuild (NOT a clear-first / clear-last check)
 # --------------------------------------------------------------------------- #
 def test_FIBR0192_INV6_reset_layout_survives_a_rebuild(qtbot, service):
-    """All four preconditions, or this passes against the broken ordering:
+    """A rebuild after a reset shows the default columns. It does not tell the
+    clear-first ordering from clear-last: the NOTE below and FIBR-0192's
+    coverage table say why, and no leg enforces that order.
+
+    All four preconditions, or the reset has nothing of the user's to undo:
     (a) transactions_table — the one remembered QTableWidget with
     stretchLastSection, so a window resize re-lays-out its sections at all (QT-7);
     (b) a differing, persisted width for the reset to have to erase;
@@ -556,8 +560,7 @@ def test_FIBR0192_INV6_reset_layout_survives_a_rebuild(qtbot, service):
     INI is already at the default size;
     (d) the Transactions tab must be the CURRENT one. A QTabWidget gives no layout
     pass to a page that isn't showing, so on any other tab the resize emits no
-    `sectionResized` at all and the leg goes vacuous — measured during the build,
-    where it passed against the clear-first ordering until the tab was switched.
+    `sectionResized` at all and the leg goes vacuous (measured during the build).
 
     The `fired` counter is the guard: it proves the write that must not survive
     actually happened, so this can never silently become a test that cannot fail.

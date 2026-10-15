@@ -351,14 +351,18 @@ def test_load_library_file_layer_fail_safe(monkeypatch, tmp_path):
         cl.load_library.cache_clear()  # the cache is process-wide — clear each leg
         return cl.load_library()
 
-    assert load_with_path(tmp_path / "nope.json") == []  # missing → OSError → []
-    garbage = tmp_path / "garbage.json"
-    garbage.write_text("this is not json", encoding="utf-8")
-    assert load_with_path(garbage) == []  # unparseable → []
-    nonutf8 = tmp_path / "bin.json"
-    nonutf8.write_bytes(b"\xff\xfe\x00\x01")
-    assert load_with_path(nonutf8) == []  # UnicodeDecodeError → []
-    cl.load_library.cache_clear()  # trailing clear — don't poison the cache for later
+    # The trailing clear runs even when a leg fails: the cache is process-wide,
+    # so an empty library cached from a tmp path would fail later tests too.
+    try:
+        assert load_with_path(tmp_path / "nope.json") == []  # missing → OSError → []
+        garbage = tmp_path / "garbage.json"
+        garbage.write_text("this is not json", encoding="utf-8")
+        assert load_with_path(garbage) == []  # unparseable → []
+        nonutf8 = tmp_path / "bin.json"
+        nonutf8.write_bytes(b"\xff\xfe\x00\x01")
+        assert load_with_path(nonutf8) == []  # UnicodeDecodeError → []
+    finally:
+        cl.load_library.cache_clear()
 
 
 # --------------------------------------------------------------------------- #
@@ -447,19 +451,37 @@ def test_override_library_guess_drops_marker(qtbot, service, monkeypatch):
 # Settings toggle round-trip (INV-7, qtbot)
 # --------------------------------------------------------------------------- #
 def test_settings_checkbox_reflects_and_round_trips(qtbot, service):
+    """Driven through the shell: the persist on Save is MainWindow's job, so a
+    test that persists the toggle itself passes a shell that never saves it."""
+    from PySide6.QtWidgets import QDialogButtonBox
+
+    from finbreak.ui.main_window import MainWindow
     from finbreak.ui.settings import SettingsDialog
 
     cat = CategorizationService(service.vault)
     assert cat.library_enabled() is True  # default ON
 
-    dlg = SettingsDialog(service, "ZAR", library_enabled=cat.library_enabled())
-    qtbot.addWidget(dlg)
+    window = MainWindow(service)
+    qtbot.addWidget(window)
+    window._enter_unlocked()
+    window._open_settings()
+    dlg = window._dialog
+    assert isinstance(dlg, SettingsDialog), (
+        "precondition: Settings must be the dialog the shell opened"
+    )
     assert dlg.library_enabled() is True
 
     dlg._library_checkbox.setChecked(False)  # user unticks
-    cat.set_library_enabled(dlg.library_enabled())  # shell persists on Save
-    assert cat.library_enabled() is False
+    buttons = dlg.findChild(QDialogButtonBox)
+    assert buttons is not None
+    buttons.button(QDialogButtonBox.StandardButton.Ok).click()  # Save
+    assert cat.library_enabled() is False, (
+        "Save in Settings must persist the unticked library toggle"
+    )
 
-    reopened = SettingsDialog(service, "ZAR", library_enabled=cat.library_enabled())
-    qtbot.addWidget(reopened)
+    window._open_settings()
+    reopened = window._dialog
+    assert isinstance(reopened, SettingsDialog) and reopened is not dlg, (
+        "precondition: a fresh Settings dialog must be open"
+    )
     assert reopened.library_enabled() is False  # reflects the persisted state

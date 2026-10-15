@@ -274,17 +274,77 @@ def test_INV7_selection_buffer_untouched(clip):
     )
 
 
+class _ModeRecordingClipboard:
+    """A stand-in ``QClipboard`` that records the MODE of every write, read and
+    clear. Offscreen has no Selection buffer, so the real-clipboard leg above
+    skips in the gate; this one runs everywhere and sees a mode passed in any
+    form, including one held in a variable."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, QClipboard.Mode]] = []
+        self._held: dict[QClipboard.Mode, str] = {}
+
+    def setText(self, text, mode=QClipboard.Mode.Clipboard):
+        self.calls.append(("setText", mode))
+        self._held[mode] = text
+
+    def text(self, mode=QClipboard.Mode.Clipboard):
+        self.calls.append(("text", mode))
+        return self._held.get(mode, "")
+
+    def clear(self, mode=QClipboard.Mode.Clipboard):
+        self.calls.append(("clear", mode))
+        self._held.pop(mode, None)
+
+
+def test_INV7_copy_and_clear_use_the_clipboard_mode_only():
+    board = _ModeRecordingClipboard()
+    helper = ClipboardAutoClear(board, seconds_provider=lambda: 30)  # type: ignore[arg-type]
+    helper.copy("secret")
+    helper.clear_if_ours()
+
+    ops = [op for op, _mode in board.calls]
+    assert "setText" in ops, (
+        f"precondition: the copy must write.\n  actual calls: {board.calls}"
+    )
+    clipboard_mode = QClipboard.Mode.Clipboard
+    stray = [(op, mode) for op, mode in board.calls if mode != clipboard_mode]
+    assert not stray, (
+        "the copy or clear touched a buffer other than the default Clipboard "
+        "(D6: the X11 Selection buffer is never written or cleared).\n"
+        f"  actual: {stray}"
+    )
+    # Last, so a Selection write is reported as that and not as a missing clear;
+    # without a clear, its mode was never checked.
+    assert "clear" in ops, (
+        f"the clear must have run for its mode to be checked.\n  calls: {board.calls}"
+    )
+
+
 def test_INV7_source_never_references_selection():
-    """CI-gated backstop: the Selection-buffer runtime leg skips under offscreen CI,
-    so a static check guarantees ``_clipboard.py`` never touches Selection mode."""
+    """CI-gated backstop: no module in the package names the Selection mode.
+
+    Every module, not ``_clipboard.py`` alone: a caller holding the system
+    clipboard could write the Selection buffer itself. Parsed, so a comment
+    using the word "Selection" is not a hit and ``QClipboard.Mode.Selection``
+    and ``QClipboard.Selection`` both are."""
+    import ast
     from pathlib import Path
 
-    import finbreak.ui._clipboard as mod
+    import finbreak
 
-    source = Path(mod.__file__).read_text()
-    assert "Selection" not in source, (
-        "_clipboard.py must never reference QClipboard.Selection (D6)"
+    package = Path(finbreak.__file__).parent
+    modules = sorted(package.rglob("*.py"))
+    assert any(path.name == "_clipboard.py" for path in modules), (
+        "precondition: the walk must reach the clipboard helper"
     )
+    hits = [
+        f"{path.relative_to(package)}:{node.lineno}"
+        for path in modules
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
+        if isinstance(node, ast.Attribute) and node.attr == "Selection"
+    ]
+    assert not hits, f"QClipboard.Selection is named in the package (D6): {hits}"
 
 
 # --------------------------------------------------------------------------- #

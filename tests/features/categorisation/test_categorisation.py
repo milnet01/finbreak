@@ -150,15 +150,26 @@ def test_FIBR0213_patterns_are_folded_once_not_once_per_row(service, monkeypatch
     x 113 patterns when folded once up front.
 
     Counted rather than timed: a wall-clock assertion is flaky on a shared machine,
-    and the count is the property that actually changed."""
+    and the count is the property that actually changed.
+
+    A library is injected: the autouse neutraliser leaves it empty, which gives
+    ``match_library`` nothing to fold and leaves its half of the claim unchecked.
+    No pattern or entry matches a row, so every row reaches the library."""
     import finbreak.category_library as library_mod
     import finbreak.services.categorization as cat_mod
+    from finbreak.category_library import LibraryEntry
     from finbreak.text import normalise_text as real_normalise
 
-    rows, patterns = 12, 8
+    rows, patterns, library = 12, 8, 6
+    monkeypatch.setattr(
+        library_mod,
+        "load_library",
+        lambda: [LibraryEntry(f"library-{i}", "Groceries") for i in range(library)],
+    )
     for i in range(rows):
         _add_txn(service, f"MERCHANT {i}", occurred=f"2026-01-{i + 1:02d}")
     cs = CategorizationService(service.vault)
+    assert cs.library_enabled(), "precondition: the library must be consulted"
     groceries = _leaf_id(service, "Groceries")
     for i in range(patterns):
         cs.add_rule(f"pattern-{i}", groceries)
@@ -174,11 +185,12 @@ def test_FIBR0213_patterns_are_folded_once_not_once_per_row(service, monkeypatch
     monkeypatch.setattr(library_mod, "normalise_text", counting)
     cs.apply_rules()
 
-    # Folded once: patterns + one fold per row's description. Per-row folding would
-    # be rows x patterns = 96 on its own, before the descriptions.
-    assert calls <= rows + patterns + 4, (
-        f"{calls} normalise_text calls for {rows} rows x {patterns} patterns — "
-        "the patterns are being re-folded inside the loop"
+    # Folded once: rule patterns + library entries + one fold per row's
+    # description. Per-row folding of either list would add rows x that list.
+    assert calls <= rows + patterns + library + 4, (
+        f"{calls} normalise_text calls for {rows} rows x {patterns} rule patterns "
+        f"and {library} library entries — patterns are being re-folded inside "
+        "the loop"
     )
 
 
@@ -842,9 +854,18 @@ def test_INV11_add_lists_and_apply_reports_count(qtbot, service, monkeypatch):
 
     widget._apply_button.click()
     assert _txn_cat(service, t) == (g, "rule"), "Apply re-files the matching row"
-    assert "1" in widget._status.text(), "Apply reports the re-filed count"
+    # The whole sentence: a "1" or "0" substring also passes a count of 10 or 21.
+    expected = widget.tr("Re-filed %n transaction(s).", "", 1)
+    assert widget._status.text() == expected, (
+        "Apply reports the re-filed count.\n"
+        f"  expected: {expected!r}\n  actual:   {widget._status.text()!r}"
+    )
     widget._apply_button.click()
-    assert "0" in widget._status.text(), "a second Apply reports 0 (idempotent)"
+    expected = widget.tr("Re-filed %n transaction(s).", "", 0)
+    assert widget._status.text() == expected, (
+        "a second Apply reports 0 (idempotent).\n"
+        f"  expected: {expected!r}\n  actual:   {widget._status.text()!r}"
+    )
 
 
 @pytest.mark.parametrize(
