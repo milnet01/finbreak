@@ -156,6 +156,32 @@ if [ -n "$dirty" ]; then
     exit 1
 fi
 
+# The full gate log goes to a file, not the terminal (FIBR-0448). A push made by
+# an agent otherwise carries every line of it -- pytest's per-test output and
+# skip list included -- into a context that is re-read on every later request.
+# The `== stage ==` headers still show as each stage starts. On failure the
+# failing stage's section is shown: the gate stops at its first failing stage,
+# so that is everything from the last header to the end. On success, pytest's
+# summary line and the gate's last line. CI calls ci-local.sh directly and keeps
+# the whole log.
+run_gate() {
+    local log rc
+    log="$(git rev-parse --absolute-git-dir)/ci-local.log"
+    set +e
+    ./scripts/ci-local.sh "$@" 2>&1 | tee "$log" | grep --line-buffered '^== '
+    rc=${PIPESTATUS[0]}
+    set -e
+    if [ "$rc" -ne 0 ]; then
+        echo "== pre-push: the gate failed; the failing stage's output follows =="
+        awk 'index($0, "== ") == 1 { buf = "" } { buf = buf $0 "\n" } END { printf "%s", buf }' "$log"
+    else
+        grep -E '^=+ .*(passed|failed|error)' "$log" | tail -n 1 || true
+        tail -n 1 "$log"
+    fi
+    echo "== pre-push: full log: $log =="
+    exit "$rc"
+}
+
 # A push whose every changed path ends in .md runs `ci-local.sh --docs`: the
 # test suites that read prose, and gitleaks (FIBR-0373; local-gate.md § 6).
 # The unit is every commit going up -- the remote's tip to ours, per ref -- so a
@@ -189,8 +215,8 @@ fi
 
 if [ "$docs_only" = 1 ] && [ "$classified" = 1 ]; then
     echo "== pre-push: every changed path ends in .md -- running the documentation checks =="
-    exec ./scripts/ci-local.sh --docs
+    run_gate --docs
 fi
 
 echo "== pre-push: running scripts/ci-local.sh (the CI gate) =="
-exec ./scripts/ci-local.sh
+run_gate

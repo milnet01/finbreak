@@ -1,5 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
+<!-- ants-roadmap-id-high-water: FIBR=449 -->
 # finbreak — Roadmap
 
 > See [CHANGELOG.md](CHANGELOG.md) for what's shipped and the current
@@ -7117,6 +7118,31 @@ work, and none of it is a release decision.
   **Layman:** The security page still describes finbreak as pre-1.0, which stopped being true when 1.0.0 shipped.
   Kind: doc-fix.
   Source: in-session-2026-10-10.
+
+- 🚧 [FIBR-0448] **The pre-push hook prints stage names and the failing stage only, not the whole gate log.**
+  Every `git push` ran `scripts/ci-local.sh` with its full output on the
+  terminal, so an agent's push carried the whole gate log (pytest's
+  per-test lines and skip list included) into its context, re-read on
+  every later request. The hook now tees the full log to
+  `$(git rev-parse --git-dir)/ci-local.log`, shows the `== stage ==`
+  headers live, and on failure prints the failing stage's section (from
+  the last header to the end; the gate stops at its first failing
+  stage). On success it prints pytest's summary line and the gate's last
+  line. CI is untouched: it calls `ci-local.sh` directly.
+  **Layman:** Pushing code no longer floods the assistant's screen with thousands of lines of check output, which made every later step cost more.
+  Kind: optimize.
+  Source: token-ideas-2026-10-15 (ants-terminal-95 survey).
+
+- 🚧 [FIBR-0449] **Move the reasoning in CLAUDE.md's Build-and-test and Push-policy sections into .claude/rules/gate.md.**
+  `CLAUDE.md` is read on every request. Its Build-and-test and
+  Push-policy sections are most of its length, and much of that is why a
+  rule exists rather than the rule. Keep every rule in `CLAUDE.md`; move
+  the explanation to `.claude/rules/gate.md`, which `CLAUDE.md` already
+  sends a reader to before gate or hook work. `tests/features/prose_checks/`
+  reads `CLAUDE.md` and must stay green.
+  **Layman:** The instructions loaded with every message get shorter, so each message costs less, with no rule lost.
+  Kind: optimize.
+  Source: token-ideas-2026-10-15 (ants-terminal-95 survey).
 
 ## 0.1.23 — released 2026-09-07
 

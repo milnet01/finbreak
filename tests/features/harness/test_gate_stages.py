@@ -496,6 +496,61 @@ def test_FIBR0373_the_docs_mode_skips_nothing_it_should_not(tmp_path: Path) -> N
 
 
 # --------------------------------------------------------------------------- #
+# FIBR-0448 — the hook shows stage headers and the failing stage, not the log  #
+# --------------------------------------------------------------------------- #
+def _noisy_gate(work: Path, pushed: str, exit_code: int) -> str:
+    """Commit a stub gate that prints two stages of noise; return the new HEAD."""
+    _git(work, "reset", "-q", "--hard", pushed)
+    stub = work / "scripts" / "ci-local.sh"
+    stub.write_text(
+        "#!/usr/bin/env bash\n"
+        'echo "== first =="\n'
+        'echo "first-stage-noise"\n'
+        'echo "=== 3 passed, 1 skipped in 0.1s ==="\n'
+        'echo "== second =="\n'
+        'echo "second-stage-detail"\n'
+        f'[ {exit_code} -eq 0 ] && echo "All gates passed."\n'
+        f"exit {exit_code}\n",
+        encoding="utf-8",
+    )
+    _git(work, "commit", "-qam", "noisy gate")
+    return _git(work, "rev-parse", "HEAD")
+
+
+def test_FIBR0448_a_failing_gate_shows_only_the_failing_stage(tmp_path: Path) -> None:
+    work, _sentinel, pushed = _hook_sandbox(tmp_path)
+    head = _noisy_gate(work, pushed, 1)
+    result = _run_hook_output(
+        work, f"refs/heads/main {head} refs/heads/main {pushed}\n"
+    )
+    shown = result.stdout + result.stderr
+    assert result.returncode == 1, "the gate's own status must still block the push"
+    assert "== first ==" in shown and "== second ==" in shown, "headers show live"
+    assert "second-stage-detail" in shown, "the failing stage's output is shown"
+    assert "first-stage-noise" not in shown, (
+        "a stage that passed printed its output -- the whole log reached the terminal"
+    )
+    log = Path(_git(work, "rev-parse", "--absolute-git-dir")) / "ci-local.log"
+    assert "first-stage-noise" in log.read_text(encoding="utf-8"), (
+        "the full log must be kept for a reader who needs it"
+    )
+
+
+def test_FIBR0448_a_passing_gate_shows_headers_and_the_summary(tmp_path: Path) -> None:
+    work, _sentinel, pushed = _hook_sandbox(tmp_path)
+    head = _noisy_gate(work, pushed, 0)
+    result = _run_hook_output(
+        work, f"refs/heads/main {head} refs/heads/main {pushed}\n"
+    )
+    shown = result.stdout + result.stderr
+    assert result.returncode == 0
+    assert "3 passed, 1 skipped" in shown, "say how many tests ran"
+    assert "All gates passed." in shown
+    assert "first-stage-noise" not in shown
+    assert "second-stage-detail" not in shown
+
+
+# --------------------------------------------------------------------------- #
 # local-gate.md § 2.1 — secrets over the pushed COMMITS; the gate answers for  #
 # what is pushed (tip == HEAD, no untracked files)                             #
 # --------------------------------------------------------------------------- #

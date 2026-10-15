@@ -22,6 +22,7 @@ it reads two files in the repo.
 | INV-4 | `.github/workflows/ci.yml` invokes `scripts/ci-local.sh` rather than restating any stage, so CI and local cannot drift (INV-2 of the spec). |
 | INV-5 | `.githooks/pre-push` skips the gate for a push whose refs are **all** tags **and** whose tagged commits are already reachable from a branch of the remote being pushed to — and runs it in every other case: a branch ref anywhere in the push, a tag whose commit is not yet on the remote, or an empty ref list. Exercised by running the hook, not by reading it. |
 | INV-6 | The CI base image is pinned by **digest**, never by a mutable tag alone, and `.github/workflows/ci.yml`, `scripts/ci-docker.sh` and `scripts/build-smoke.sh` pin the **same** digest (FIBR-0345). A tag can be re-pointed under the gate; a digest cannot. The three move together because the image's glibc is the frozen artifacts' floor (FIBR-0180). |
+| INV-7 | `.githooks/pre-push` keeps the gate's full log in `ci-local.log` in the git directory and shows only the `== stage ==` headers, then the failing stage's output on failure, or pytest's summary line and the gate's last line on success; the gate's exit status still decides the push (FIBR-0448). Exercised by running the hook against a stub gate. |
 
 **Why a set and not a sequence:** `FIBR-0001` INV-1 says explicitly that order is
 cheapest-first by convention and *not* part of the contract, so asserting a
