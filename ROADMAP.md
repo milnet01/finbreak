@@ -3363,7 +3363,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: test.
   Source: full-audit-2026-09-27 tests lane T01 (queued by FIBR-0367).
 
-- 📋 [FIBR-0412] **Queued test findings from the 2026-09-27 audit: recovery-key screens tests (2 items).**
+- ✅ [FIBR-0412] **Queued test findings from the 2026-09-27 audit: recovery-key screens tests (2 items).**
   From docs/reviews/2026-09-27-full-audit/tests-lane-T02-recovery-ui.md.
   Paths are under tests/features/; lines as of 2026-09-29.
   - recovery_key/test_settings_flows.py:755 -- the no-leaked-guards
@@ -3374,11 +3374,15 @@ touches the § 2 surface. A security fix takes the number its change takes — �
     passes on any text containing "before", including the
     destructive-reset wording. Fix: assert asked[0] ==
     _rollback_offer().
+  Resolution 2026-10-15 (9c6c104): both fixed. Each was proved by one
+  mutant that the old test passed and the new one failed: a guard owned
+  by the application; a destructive-reset question containing "before".
+  The expected offer is read before Yes consumes the copy it dates.
   **Layman:** Two checks on the recovery-key screens could pass for the wrong reason; this makes them check the exact thing they claim.
   Kind: test.
   Source: full-audit-2026-09-27 tests lane T02 (queued by FIBR-0367).
 
-- 📋 [FIBR-0413] **Queued test findings from the 2026-09-27 audit: backup, restore and vault reset tests (7 items).**
+- 🚧 [FIBR-0413] **Queued test findings from the 2026-09-27 audit: backup, restore and vault reset tests (7 items).**
   From docs/reviews/2026-09-27-full-audit/tests-lane-T03-backup-vault.md.
   Paths are under tests/features/; lines as of 2026-09-29.
   - backup/test_backup.py:1194 -- b"\xff\xfe..." is read as UTF-16 and
@@ -3415,7 +3419,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: test.
   Source: full-audit-2026-09-27 tests lane T03 (queued by FIBR-0367).
 
-- 📋 [FIBR-0414] **Queued test findings from the 2026-09-27 audit: CSV, OFX and PDF importer tests (11 items).**
+- 🚧 [FIBR-0414] **Queued test findings from the 2026-09-27 audit: CSV, OFX and PDF importer tests (11 items).**
   From docs/reviews/2026-09-27-full-audit/tests-lane-T04-importers.md.
   Paths are under tests/features/; lines as of 2026-09-29.
   - import_/test_import.py:319 (the both_styles case) -- the header
