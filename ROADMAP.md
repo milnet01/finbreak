@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: FIBR=449 -->
+<!-- ants-roadmap-id-high-water: FIBR=450 -->
 # finbreak — Roadmap
 
 > See [CHANGELOG.md](CHANGELOG.md) for what's shipped and the current
@@ -7163,6 +7163,19 @@ work, and none of it is a release decision.
   **Layman:** The instructions loaded with every message get shorter, so each message costs less, with no rule lost.
   Kind: optimize.
   Source: token-ideas-2026-10-15 (ants-terminal-95 survey).
+
+- 📋 [FIBR-0450] **Record 3–6 trailer footage clips for the projects-hub website.**
+  The ants-projects-hub-website session asked for footage. Its brief:
+  /home/ants/.local/share/claude-handoff/ants-projects-hub-website-trailers-2026-10-10.md
+  (shared; read it, do not delete it). Record with
+  `demoreel record -s 1920x1080 --cursor`, write a notes.md, put both in
+  /mnt/Games/Trailers/incoming/<site-slug>/, then message
+  ants-projects-hub-website. Demo data only, never real bank data.
+  2026-10-15: inbox message acked; recommended doing it after 1.0.2 is
+  cut; the user has not yet chosen the timing.
+  **Layman:** Short screen recordings of finbreak in use, for the trailer on the projects website.
+  Kind: marketing.
+  Source: peer-request-2026-10-10 ants-projects-hub-website msg 571.
 
 ## 0.1.23 — released 2026-09-07
 
