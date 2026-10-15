@@ -3316,7 +3316,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: review-fix.
   Source: full-audit-2026-09-27 code lane 10 (queued by FIBR-0367).
 
-- 📋 [FIBR-0411] **Queued test findings from the 2026-09-27 audit: recovery-key migration and envelope tests (9 items).**
+- 🚧 [FIBR-0411] **Queued test findings from the 2026-09-27 audit: recovery-key migration and envelope tests (9 items).**
   From docs/reviews/2026-09-27-full-audit/tests-lane-T01-recovery-migration.md.
   Paths are under tests/features/; lines as of 2026-09-29.
   - recovery_key/test_migration.py:134 -- the crash-point legs swallow

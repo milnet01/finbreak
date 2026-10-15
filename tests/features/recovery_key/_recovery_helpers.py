@@ -264,13 +264,22 @@ def code_secret(code: str) -> bytes:
 # --------------------------------------------------------------------------- #
 # Opening
 # --------------------------------------------------------------------------- #
-def opens_with(vault_path: Path, sidecar_path: Path, key: bytearray) -> bool:
-    """``True`` iff ``key`` is the database's raw key. Closes what it opens."""
+def opens_with(
+    vault_path: Path,
+    sidecar_path: Path,
+    key: bytearray,
+    cipher_compat: int | None = None,
+) -> bool:
+    """``True`` iff ``key`` is the database's raw key. Closes what it opens.
+
+    A migrated vault needs its recorded ``cipher_compatibility`` passed here,
+    or every key fails and a "does not open" check proves nothing.
+    """
     from sqlcipher3.dbapi2 import DatabaseError
 
     vault = Vault(vault_path, sidecar_path)
     try:
-        vault.open(bytearray(key))
+        vault.open(bytearray(key), cipher_compat=cipher_compat)
     except DatabaseError:
         return False
     vault.close()

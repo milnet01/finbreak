@@ -13,6 +13,7 @@ import errno
 import hashlib
 import inspect
 import os
+import re
 import shutil
 import stat
 from dataclasses import replace
@@ -73,6 +74,15 @@ class _Abort(RuntimeError):
     never mistaken for the abort this test asked for."""
 
 
+def _counts_in(text: str, *counts: int) -> list[int]:
+    """The row counts that appear in ``text`` as numbers of their own.
+
+    Only the counts are banned: a message may still cite a step or a section
+    (``S2``, ``§ 13.3``), so a digit there is not a leak.
+    """
+    return [n for n in set(counts) if re.search(rf"(?<![\w.]){n}(?![\w.])", text)]
+
+
 def _seed(conn: Any) -> None:
     """Put rows in the application tables a personal-finance vault carries.
 
@@ -128,12 +138,15 @@ def test_every_crash_point_still_opens(tmp_path: Path) -> None:
             if target is not None and step == target:
                 raise _Abort(f"injected crash before {step}")
 
-        try:
-            migrate_to_v2(
-                vault_path, sidecar_path, bytearray(key), on_step=abort_before
-            )
-        except _Abort:
-            pass
+        # A leg whose abort never fires would run the whole migration and pass
+        # on a vault that was never interrupted, so a set target must raise.
+        if next_step is None:
+            migrate_to_v2(vault_path, sidecar_path, bytearray(key))
+        else:
+            with pytest.raises(_Abort):
+                migrate_to_v2(
+                    vault_path, sidecar_path, bytearray(key), on_step=abort_before
+                )
 
         # A fresh app start: read the sidecar, dispatch on its shape, open.
         try:
@@ -1130,7 +1143,18 @@ def test_the_rollback_copy_is_never_world_readable(tmp_path: Path) -> None:
     The WAL copy had no chmod at ALL, so it was world-readable permanently,
     holding the same rows as the database beside it. Measured 2026-08-25 by
     running this leg against the pre-P3 code.
+
+    The umask is set to the common ``022`` for the test: under a ``077`` umask
+    the old code also created ``0o600`` files, and the leg passed on it.
     """
+    previous_umask = os.umask(0o022)
+    try:
+        _check_rollback_copy_modes(tmp_path)
+    finally:
+        os.umask(previous_umask)
+
+
+def _check_rollback_copy_modes(tmp_path: Path) -> None:
     vault_path, sidecar_path, key, _digests = _fresh_v1_vault(tmp_path, "copy-mode")
 
     live = Vault(vault_path, sidecar_path)
@@ -1186,9 +1210,19 @@ def test_a_symlink_at_the_copy_path_does_not_redirect_the_vault(
 
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(Path, "unlink", relink)
-        with pytest.raises(OSError):
+        with pytest.raises(OSError) as excinfo:
             write_rollback_copy(vault_path, sidecar_path)
 
+    assert copy_vault.is_symlink(), (
+        "precondition: the symlink must have been planted at the copy path, or "
+        "the refusal below is to some other failure."
+    )
+    assert excinfo.value.errno in (errno.EEXIST, errno.ELOOP), (
+        "the copy must refuse BECAUSE the path exists (O_EXCL) or is a link "
+        "(O_NOFOLLOW), not fail for an unrelated reason.\n"
+        "  expected: EEXIST or ELOOP\n"
+        f"  actual:   {excinfo.value!r}"
+    )
     assert elsewhere.read_bytes() == b"not the vault", (
         "the vault was copied THROUGH a symlink planted at the rollback path, "
         "so a copy of the user's whole vault was written to a location an "
@@ -1371,8 +1405,10 @@ def test_branch_3_does_not_write_to_the_live_vault_before_the_copy(
 
     real_ensure = vault_migration._ensure_rollback_copy
     seen_before_copy: list[str] = []
+    ensure_calls: list[int] = []
 
     def watch_ensure(*args: Any, **kwargs: Any) -> None:
+        ensure_calls.append(1)
         seen_before_copy.extend(ran)
         real_ensure(*args, **kwargs)
 
@@ -1380,6 +1416,13 @@ def test_branch_3_does_not_write_to_the_live_vault_before_the_copy(
 
     open_after_restart(vault_path, sidecar_path, MASTER_PASSWORD).close()
 
+    # An empty list also holds when the copy is never taken at all.
+    assert len(ensure_calls) == 1, (
+        "precondition: the ladder must secure the rollback copy exactly once, "
+        "or the ordering check below has nothing to order against.\n"
+        f"  expected: 1 call to _ensure_rollback_copy\n"
+        f"  actual:   {len(ensure_calls)}"
+    )
     assert seen_before_copy == [], (
         "the ladder opened a database WITH migrations before the rollback copy "
         "was secured, so schema writes were committed to the live v1 vault "
@@ -2656,13 +2699,13 @@ def test_a_row_count_mismatch_keeps_the_counts_out_of_the_message(
     vault_path, sidecar_path, key, _digests = _fresh_v1_vault(tmp_path, "counts-quiet")
 
     real_counts = vault_migration._row_counts
-    reads: list[int] = []
+    reads: list[dict[str, int]] = []
 
     def drifting(conn: Any) -> dict[str, int]:
         counts = dict(real_counts(conn))
-        reads.append(1)
-        if len(reads) > 1:  # the replacement's read, after export_to
+        if reads:  # the replacement's read, after export_to
             counts["transactions"] = counts.get("transactions", 0) + 4242
+        reads.append(counts)
         return counts
 
     monkeypatch.setattr(vault_migration, "_row_counts", drifting)
@@ -2676,7 +2719,8 @@ def test_a_row_count_mismatch_keeps_the_counts_out_of_the_message(
         "nothing anyone can act on.\n"
         f"  actual:   {message!r}"
     )
-    assert not any(ch.isdigit() for ch in message), (
+    leaked = _counts_in(message, *(n for counts in reads for n in counts.values()))
+    assert not leaked, (
         "security-model INV-9: the row counts are in the refusal message, and "
         "that message is logged by _unlock_v1's log.exception -- so they reach "
         "the plaintext log beside the encrypted vault.\n"
@@ -2727,7 +2771,7 @@ def test_the_resume_row_compare_logs_table_names_not_counts(
         "the warning must name the table that disagreed, and only that one.\n"
         f"  actual:   {line!r}"
     )
-    assert not any(ch.isdigit() for ch in line), (
+    assert not _counts_in(line, 1234, 11, 7), (
         "security-model INV-9: the row counts went into the plaintext log.\n"
         "  expected: table names only\n"
         f"  actual:   {line!r}"

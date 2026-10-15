@@ -544,6 +544,15 @@ def test_the_recovery_route_still_refuses_its_own_damaged_slot(
     intact = read_v2_sidecar(sidecar_path)
     kek = kek_for(code_secret(code), intact, SLOT_RECOVERY)
 
+    # Control: the same KEK unlocks the intact slot, so the refusal below is
+    # the damage and not a KEK that never worked.
+    control = AuthService(vault_path, sidecar_path)
+    assert control.complete_recovery_unlock(bytes(kek)) is True, (
+        "precondition: the recovery KEK must unlock the intact sidecar, or the "
+        "refusal below proves nothing about the damaged slot."
+    )
+    control.lock()
+
     damaged = read_v2_sidecar(sidecar_path)
     damaged[SLOTS][SLOT_RECOVERY]["nonce_hex"] = "00" * 4
     sidecar_path.write_text(json.dumps(damaged), encoding="utf-8")

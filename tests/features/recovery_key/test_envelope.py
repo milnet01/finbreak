@@ -132,7 +132,20 @@ def test_dek_is_not_derived_from_any_credential(
     v1.close()
     migrate_to_v2(migrated_vault, migrated_sidecar, bytearray(v1_key))
 
-    assert not opens_with(migrated_vault, migrated_sidecar, bytearray(v1_key)), (
+    # Both opens below take the sidecar's recorded compatibility level, and the
+    # first proves the vault opens at all -- otherwise any key would fail.
+    migrated = read_v2_sidecar(migrated_sidecar)
+    compat = migrated.get("cipher_compatibility")
+    migrated_dek = unwrap_slot(MASTER_PASSWORD, migrated, SLOT_MASTER)
+    assert opens_with(
+        migrated_vault, migrated_sidecar, migrated_dek, cipher_compat=compat
+    ), (
+        "precondition: the migrated vault must open with its own unwrapped DEK, "
+        "or the v1-key refusal below is a vault no key opens."
+    )
+    assert not opens_with(
+        migrated_vault, migrated_sidecar, bytearray(v1_key), cipher_compat=compat
+    ), (
         "INV-1 leg 3: the PRE-migration v1 key still opens the migrated "
         "database -- so the migration declared the existing Argon2id output to "
         "BE the DEK, which is § 8.1's rejected design. That is what makes the "
@@ -255,9 +268,14 @@ def test_tampered_slot_fails_closed(
     # and stays true if the v2 load path never consults it -- so the weakening
     # this leg exists to catch could arrive by that route and leave the leg
     # green. load_and_validate_params IS the path AuthService.load_params takes.
+    # Control first: the same file, un-weakened, at the same path, loads -- so
+    # the refusal below is the halved memory and nothing else about the copy.
+    weakened_path = sidecar_path.parent / "weakened.kdf.json"
+    weakened_path.write_text(json.dumps(pristine), encoding="utf-8")
+    load_and_validate_params(weakened_path)
+
     tampered = read_v2_sidecar(sidecar_path)
     tampered["kdf"]["memory_kib"] = int(tampered["kdf"]["memory_kib"]) // 2
-    weakened_path = sidecar_path.parent / "weakened.kdf.json"
     weakened_path.write_text(json.dumps(tampered), encoding="utf-8")
     with pytest.raises(KdfPolicyError):
         load_and_validate_params(weakened_path)
@@ -287,13 +305,22 @@ def test_tampered_slot_fails_closed(
 
 
 def _kek_arg(node: ast.Call) -> tuple[str, ast.expr] | None:
-    """A ``wrap_dek`` / ``unwrap_dek`` call as ``(name, kek argument)``, or None."""
-    if not isinstance(node.func, ast.Name) or node.func.id not in _WRAPPERS:
+    """A ``wrap_dek`` / ``unwrap_dek`` call as ``(name, kek argument)``, or None.
+
+    Matches ``keywrap.wrap_dek(...)`` as well as a bare ``wrap_dek(...)``.
+    """
+    if isinstance(node.func, ast.Name):
+        name = node.func.id
+    elif isinstance(node.func, ast.Attribute):
+        name = node.func.attr
+    else:
+        return None
+    if name not in _WRAPPERS:
         return None
     for keyword in node.keywords:
         if keyword.arg == "kek":
-            return node.func.id, keyword.value
-    return (node.func.id, node.args[0]) if node.args else None
+            return name, keyword.value
+    return (name, node.args[0]) if node.args else None
 
 
 def _is_bytes_call(node: ast.expr) -> bool:
