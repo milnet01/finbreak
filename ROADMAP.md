@@ -3719,7 +3719,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: test.
   Source: full-audit-2026-09-27 tests lane T10 (queued by FIBR-0367).
 
-- 🚧 [FIBR-0421] **Queued test findings from the 2026-09-27 audit: time zone and theme tests (6 items).**
+- ✅ [FIBR-0421] **Queued test findings from the 2026-09-27 audit: time zone and theme tests (6 items).**
   From docs/reviews/2026-09-27-full-audit/tests-lane-T11-theme-locale-conftest.md.
   Paths are under tests/features/; lines as of 2026-09-29.
   - datetime_display/test_datetime_display.py:282 -- no precondition
@@ -3739,6 +3739,13 @@ touches the § 2 surface. A security fix takes the number its change takes — �
     assert no value in vars(controller) is an AuthService or Vault.
   - theme/test_theme.py:592 -- 1.25 s with a real Argon2id service. Fix:
     use a module-scoped unlocked service if the KDF dominates.
+  Resolution 2026-10-15 (18b3d27): five fixed, one dismissed. The three
+  time-zone tests freeze the clock and pick a zone off the system day;
+  each was proved by a mutant, and they pass under UTC, Kiritimati and
+  Niue. Theme controllers a test builds are now retired: 14 live
+  controllers after the suite became 0. The no-vault check reads every
+  attribute. Dismissed on measurement: the every-glyph test is under 1 s
+  and the KDF is 0.07 s of it, so a shared service would save nothing.
   **Layman:** Some time-zone checks pass by luck of the hour, and some theme tests leave objects behind; this makes both reliable.
   Kind: test.
   Source: full-audit-2026-09-27 tests lane T11 (queued by FIBR-0367).
