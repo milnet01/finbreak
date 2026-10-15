@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: FIBR=451 -->
+<!-- ants-roadmap-id-high-water: FIBR=452 -->
 # finbreak — Roadmap
 
 > See [CHANGELOG.md](CHANGELOG.md) for what's shipped and the current
@@ -3750,7 +3750,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: test.
   Source: full-audit-2026-09-27 tests lane T11 (queued by FIBR-0367).
 
-- 🚧 [FIBR-0422] **Queued test findings from the 2026-09-27 audit: build, release and packaging tests (11 items).**
+- ✅ [FIBR-0422] **Queued test findings from the 2026-09-27 audit: build, release and packaging tests (11 items).**
   From docs/reviews/2026-09-27-full-audit/tests-lane-T12-harness-packaging.md.
   Paths are under tests/features/; lines as of 2026-09-29.
   - bundling/test_bundling.py:381 -- it counts pins in every tracked
@@ -3785,6 +3785,13 @@ touches the § 2 surface. A security fix takes the number its change takes — �
     removed from RAM-backed /tmp. Fix: use tmp_path.
   Also stale, not a lane finding: bundling/test_bundling.py says no
   pytest-timeout plugin is configured; pyproject.toml sets timeout 300.
+  Resolution 2026-10-15 (aeffa03): ten fixed, one queued. Each fix was
+  proved by a break the old test missed and the new one caught, or by a
+  skip or a cwd error turning into a pass or a fail as it should. The
+  stale "no pytest-timeout" comment is corrected. Also fixed: the TLS
+  self-test crashed its worker when run first (no Qt application); it
+  now takes the qapp fixture. Queued: the flatpak expired skip, as
+  FIBR-0452, because Flathub is dropped and the recipe may be retired.
   **Layman:** Some build and release checks match comments or docs instead of the real steps, or skip silently; this makes them fail when a step goes.
   Kind: test.
   Source: full-audit-2026-09-27 tests lane T12 (queued by FIBR-0367).
@@ -4423,6 +4430,21 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   **Layman:** Some checks will break the next time the database format changes, for a reason their names do not say; this makes them check what they claim.
   Kind: test.
   Source: in-session-2026-10-15 (FIBR-0418 sweep).
+
+- 📋 [FIBR-0452] **Decide the fate of packaging/flatpak/ and its tests now Flathub is dropped.**
+  FIBR-0422's flatpak finding: packaging/flatpak/python3-deps.yaml is
+  committed, but test_recipe_files_present does not list it and
+  _require_deps still skips when it is missing, so deleting it turns
+  about six guards into skips. Flathub was dropped (FIBR-0159,
+  2026-10-08), so hardening these tests guards a target no release uses.
+  Recommended: retire packaging/flatpak/ and
+  tests/features/flatpak_packaging/ together, with any doc that names
+  them. The alternative is the finding's own fix: list _DEPS in
+  test_recipe_files_present and drop the skip. Needs the user's say:
+  it removes a packaging target.
+  **Layman:** The app no longer ships to Flathub, but its packaging files and their checks are still here; this decides whether to remove them.
+  Kind: chore.
+  Source: full-audit-2026-09-27 tests lane T12, via FIBR-0422.
 
 ## v1.1.0 — Localisation
 
