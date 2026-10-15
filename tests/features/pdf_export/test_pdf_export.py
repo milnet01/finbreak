@@ -134,7 +134,11 @@ def test_named_accounts_header_lists_names(qapp, service):
     _add(service, a, 100_00)
     _add(service, b, 50_00)
     html, _ = _svc(service)._build_html(_options(account_ids=frozenset({a, b})), _TODAY)
-    assert "Savings" in html
+    # The header block only: the By-account table below also names every account.
+    header = html.split("<h2>", 1)[0]
+    assert "Savings" in header, (
+        f"the header must name the selected accounts.\n  actual: {header!r}"
+    )
 
 
 def test_over_three_accounts_collapses_to_count(qapp, service):
@@ -467,16 +471,36 @@ def test_export_encryption_error_leaves_no_file(qapp, service, tmp_path, monkeyp
     assert not _temps(tmp_path, "report.pdf")
 
 
-def test_render_with_password_writes_nothing_to_disk(qapp, service, monkeypatch):
-    # INV-2 (behavioural): render+encrypt is pure in-memory — no Path.write_bytes.
+def test_render_with_password_writes_nothing_to_disk(qapp, service):
+    # INV-2 (behavioural): render+encrypt is pure in-memory. Every Python route to
+    # a file is watched for a write-mode open, not only Path.write_bytes: the
+    # module's own writer uses os.open, through tempfile.
+    import builtins
+
     a = _accounts(service)[0].id
     _add(service, a, 100_00)
     writes: list[str] = []
-    monkeypatch.setattr(
-        Path, "write_bytes", lambda self, data: writes.append(str(self))
-    )
-    pdf = _svc(service).render_pdf_bytes(_options(password="secret12"), _TODAY)
-    assert writes == []
+    real_os_open, real_open = os.open, builtins.open
+    write_flags = os.O_WRONLY | os.O_RDWR | os.O_CREAT
+
+    def _os_open(path, flags, *args, **kwargs):
+        if flags & write_flags:
+            writes.append(f"os.open {path}")
+        return real_os_open(path, flags, *args, **kwargs)
+
+    def _open(file, mode="r", *args, **kwargs):
+        if any(ch in mode for ch in "wax+"):
+            writes.append(f"open {file}")
+        return real_open(file, mode, *args, **kwargs)
+
+    # A scoped patch, never monkeypatch.undo(): undo() also lifts the autouse
+    # fixtures that keep the test session out of the user's real files.
+    with pytest.MonkeyPatch.context() as watch:
+        watch.setattr(Path, "write_bytes", lambda self, data: writes.append(str(self)))
+        watch.setattr(os, "open", _os_open)
+        watch.setattr(builtins, "open", _open)
+        pdf = _svc(service).render_pdf_bytes(_options(password="secret12"), _TODAY)
+    assert writes == [], f"INV-2: the render wrote to disk: {writes}"
     pikepdf.open(BytesIO(pdf), password="secret12").close()  # really encrypted
 
 
@@ -536,9 +560,16 @@ def test_export_temp_is_owner_only_and_final_file_inherits_it(qapp, service, tmp
     inode, so the FINAL pdf carried 0644 (umask 022) or 0664 (umask 002). The
     sibling `services/backup.py` already opens its temp `0o600` explicitly; this
     is the same class of file with the weaker posture.
+
+    The umask is set to the common ``022``: under ``077`` the old code also
+    produced ``0600``, and the test passed against the defect.
     """
     out = tmp_path / "report.pdf"
-    _svc(service).export(_options(), out, _TODAY)
+    previous_umask = os.umask(0o022)
+    try:
+        _svc(service).export(_options(), out, _TODAY)
+    finally:
+        os.umask(previous_umask)
 
     mode = out.stat().st_mode & 0o777
     assert mode == 0o600, f"exported report is mode {mode:o}, expected 600"
@@ -570,7 +601,11 @@ def test_export_temp_refuses_to_follow_a_symlink(qapp, service, tmp_path):
     out = tmp_path / "report.pdf"
     (tmp_path / "report.pdf.part").symlink_to(target)
 
-    _svc(service).export(_options(), out, _TODAY)
+    previous_umask = os.umask(0o022)  # under 077 a umask-derived mode is 0600 too
+    try:
+        _svc(service).export(_options(), out, _TODAY)
+    finally:
+        os.umask(previous_umask)
 
     # The export succeeds; what must NOT happen is the target being truncated.
     assert target.read_text(encoding="utf-8") == "do not clobber", (

@@ -125,8 +125,8 @@ def test_breakdown_donut_does_not_touch_the_spending_donut(qapp):
 
 # --------------------------------------------------------------------------- #
 # HomeView — the three-column dashboard (qtbot). Seeding mirrors the FIBR-0138
-# drilldown fixtures; the recurring card is seeded relative to real ``date.today()``
-# because the widget calls ``summary(date.today())`` (unscoped, INV-3/D5).
+# drilldown fixtures. The recurring card is unscoped (INV-3/D5): HomeView reads
+# ``app_today()``, so that is pinned to ``_TODAY`` and the seeds count back from it.
 # --------------------------------------------------------------------------- #
 from datetime import timedelta  # noqa: E402
 
@@ -157,6 +157,18 @@ from finbreak.ui._amount import (  # noqa: E402
 _JAN = ReportPrefs(MODE_SPECIFIC_MONTH, year=2026, month=1)
 # A specific month resolves the same whatever today is; the service still needs one.
 _TODAY = date(2026, 7, 12)
+
+
+@pytest.fixture(autouse=True)
+def _pinned_app_today(monkeypatch):
+    """HomeView's day is ``_TODAY``, the day the recurring seeds count back from.
+
+    Seeding from the machine clock while HomeView reads ``app_today()`` agreed
+    only while the zone setting was "system" and no midnight fell in between.
+    """
+    import finbreak.ui.home as home_module
+
+    monkeypatch.setattr(home_module, "app_today", lambda: _TODAY)
 
 
 @pytest.fixture
@@ -198,9 +210,9 @@ def _set_cat(service, txn_id, category_id):
 
 
 def _confirm_recurring(service, account_id, amount_minor, desc):
-    """Seed 4 monthly occurrences ending at real today (30-day gaps → the monthly
-    band, active as of today) and confirm the detected merchant. Returns the key."""
-    today = date.today()
+    """Seed 4 monthly occurrences ending at ``_TODAY`` (30-day gaps → the monthly
+    band, active as of that day) and confirm the detected merchant. Returns the key."""
+    today = _TODAY
     for k in range(4):
         _add(
             service,
@@ -337,11 +349,17 @@ def test_INV2_confirmed_transfer_only_in_transfers_column(qtbot, service):
         xfer_tree.topLevelItem(i).text(0) for i in range(xfer_tree.topLevelItemCount())
     ]
     assert any("Default" in t and "Savings" in t for t in tops)  # the pair
-    # The transfer legs are absent from Expenditure/Income pies.
-    for col in ("expenditure", "income"):
+    # The transfer legs are absent from Expenditure/Income pies. A leaked leg is
+    # uncategorised, so it would join the Uncategorised slice rather than show an
+    # account name: the pie totals are what change.
+    expected = {"expenditure": 550, "income": 3000}  # transfers excluded
+    for col, total in expected.items():
         pie = home.findChild(QChartView, f"dashboard_pie_{col}")
-        labels = {s.label() for s in pie.chart().series()[0].slices()}
-        assert not any("Savings" in ll or "Default" in ll for ll in labels)
+        values = [s.value() for s in pie.chart().series()[0].slices()]
+        assert sum(values) == pytest.approx(total), (
+            f"INV-2: the {col} pie carries a confirmed transfer leg.\n"
+            f"  expected: {total}\n  actual:   {sum(values)}"
+        )
 
 
 # --- INV-4/D8: empty branch -------------------------------------------------- #
@@ -396,7 +414,11 @@ def test_INV6_net_strip_shows_summary_net_coloured(qtbot, service):
     home = _home(service, amount_prefs=AmountPrefs("minus", True))
     qtbot.addWidget(home)
     net = home.findChild(QLabel, "dashboard_net")
-    assert "2" in net.text() and "450" in net.text()
+    expected = f"Net {_format_amount(Decimal('2450.00'), 'ZAR')}"
+    assert net.text() == expected, (
+        f"INV-6: the Net strip shows the wrong figure.\n"
+        f"  expected: {expected!r}\n  actual:   {net.text()!r}"
+    )
     assert _POSITIVE_TEXT.name() in net.styleSheet()  # positive net
 
 
@@ -412,7 +434,7 @@ def test_INV5_recurring_card_sums_confirmed_and_forces_role_colour(qtbot, servic
     service.set_report_prefs(_JAN)
     home = _home(service, amount_prefs=AmountPrefs("minus", True))
     qtbot.addWidget(home)
-    summary = RecurringService(service.vault).summary(date.today())
+    summary = RecurringService(service.vault).summary(_TODAY)
     assert summary.monthly_out > 0  # sanity: the confirmed OUT is summed
 
     out_label = home.findChild(QLabel, "dashboard_recurring_out")
@@ -455,7 +477,7 @@ def test_INV5_recurring_card_shows_figures_when_net_zero(qtbot, service):
     service.set_report_prefs(_JAN)
     home = _home(service, amount_prefs=AmountPrefs("minus", True))  # colour on
     qtbot.addWidget(home)
-    summary = RecurringService(service.vault).summary(date.today())
+    summary = RecurringService(service.vault).summary(_TODAY)
     assert summary.monthly_in > 0 and summary.monthly_out > 0 and summary.net == 0
     in_label = home.findChild(QLabel, "dashboard_recurring_in")
     out_label = home.findChild(QLabel, "dashboard_recurring_out")
@@ -492,7 +514,7 @@ def test_INV3_recurring_card_reflects_a_confirm_on_next_refresh(qtbot, service):
     a, _b = _two_accounts(service)
     _add(service, a, 300000, "2026-01-03", "SALARY")
     # Seed the occurrences but DON'T confirm — the card starts in hint mode.
-    today = date.today()
+    today = _TODAY
     for k in range(4):
         when = (today - timedelta(days=30 * k)).isoformat()
         _add(service, a, -19900, when, "Netflix REF")

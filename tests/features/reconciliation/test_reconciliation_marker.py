@@ -11,6 +11,7 @@ mechanical `_list` -> `_table` swap would not compile into anything meaningful).
 """
 
 from collections.abc import Iterator
+from decimal import Decimal
 
 import pytest
 
@@ -19,6 +20,7 @@ from finbreak.repositories.statement_periods import StatementPeriodRepository
 from finbreak.repositories.transactions import TransactionRepository
 from finbreak.services.accounts import AccountService
 from finbreak.services.auth import AuthService
+from finbreak.ui._amount import _format_amount
 from finbreak.ui.accounts import AccountsWidget
 
 pytestmark = pytest.mark.features
@@ -96,7 +98,12 @@ def test_INV9_marker_per_status(qtbot, service) -> None:
 
     one_text = _row_text(widget, "OneGap")
     assert "⚠" in one_text and "off by" in one_text
-    assert "500" in one_text, "the discrepancy magnitude (R 500.00) is rendered"
+    off_by = f"off by {_format_amount(Decimal('500.00'), 'ZAR')}"
+    assert off_by in one_text, (
+        'the discrepancy magnitude is rendered exactly; a bare "500" would also '
+        "match a wrong magnitude such as R 1,500.00.\n"
+        f"  expected: {off_by!r} in the row\n  actual:   {one_text!r}"
+    )
 
     two_text = _row_text(widget, "TwoGap")
     assert "⚠" in two_text and "2 periods" in two_text

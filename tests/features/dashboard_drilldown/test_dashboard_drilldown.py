@@ -527,26 +527,39 @@ def test_INV7_siblings_descending_by_magnitude(service):
 
 
 def test_INV7_equal_magnitude_leaves_order_by_category_id(service):
-    """Two same-named leaves with equal magnitude order deterministically — the
-    total key falls through label to the per-node string key (category_id)."""
+    """Two same-named siblings with equal magnitude order by category id — the
+    total key falls through label to the per-node string key (``cat:{id}``).
+
+    The siblings must tie on label, so they are two top-of-chain categories both
+    named "Same": one under Spending's root, one under Income's root holding a
+    negative row (which still files under Spending, INV-1). Their own rows have
+    different merchants, which is what tells the two nodes apart."""
     a, _b = _two_accounts(service)
-    exp_root = _root(service, "expenditure")
-    p1 = CategoryService(service.vault).add_category(exp_root.id, "Ztest P1")
-    p2 = CategoryService(service.vault).add_category(exp_root.id, "Ztest P2")
-    o1 = CategoryService(service.vault).add_category(p1.id, "Same").id
-    o2 = CategoryService(service.vault).add_category(p2.id, "Same").id
-    _set_cat(service, _add(service, a, -10000, "2026-01-05"), o1)
-    _set_cat(service, _add(service, a, -10000, "2026-01-06"), o2)  # equal magnitude
-    # Deterministic across repeated builds (no ORDER BY in the read).
-    first = [c.label for c in _drill(service)[1].children]
-    second = [c.label for c in _drill(service)[1].children]
-    assert first == second
+    exp_same = _expenditure_leaf(service, "Same")
+    inc_same = _income_leaf(service, "Same")
+    _set_cat(service, _add(service, a, -10000, "2026-01-05", "ALPHA"), exp_same)
+    _set_cat(service, _add(service, a, -10000, "2026-01-06", "BRAVO"), inc_same)
+    assert len(str(exp_same)) == len(str(inc_same)), (
+        "precondition: ids of equal width, so string and numeric order agree"
+    )
+    merchant_by_id = {exp_same: "Alpha", inc_same: "Bravo"}
+
+    same = [c for c in _drill(service)[1].children if c.label == "Same"]
+    shown = [node.children[0].label for node in same]
+    expected = [merchant_by_id[i] for i in sorted(merchant_by_id)]
+    assert shown == expected, (
+        "INV-7: equal-magnitude, equal-label siblings must order by category id.\n"
+        f"  expected: {expected}\n  actual:   {shown}"
+    )
 
 
 def test_INV7_same_date_same_amount_txn_leaves_sort_totally(service):
     """Two leaves tying on BOTH magnitude and label (same date, same amount) still
-    sort — the third `txn:{id}` key keeps the order total (no TypeError) and the tree
-    deterministic build-to-build (the read has no ORDER BY)."""
+    sort — the third `txn:{id}` key keeps the order total (no TypeError).
+
+    The two leaves are identical in every field a ``DrillNode`` carries, so their
+    order cannot be observed; the test checks only that the tie neither raises nor
+    collapses them."""
     a, _b = _two_accounts(service)
     leaf = _expenditure_leaf(service, "Ztest Dup")
     _set_cat(service, _add(service, a, -10000, "2026-01-05", "SHOP"), leaf)
@@ -559,7 +572,6 @@ def test_INV7_same_date_same_amount_txn_leaves_sort_totally(service):
         return [(c.label, c.amount, c.count) for c in merchant.children]
 
     assert len(snapshot()) == 2  # both leaves present, the tie did not collapse them
-    assert snapshot() == snapshot()  # deterministic across independent builds
 
 
 def test_INV7_three_top_nodes_are_always_fixed_order(service):

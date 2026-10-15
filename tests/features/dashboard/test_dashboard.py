@@ -23,6 +23,7 @@ from finbreak.services.reporting import (
     ReportingService,
     ReportPrefs,
 )
+from finbreak.ui._amount import _format_amount
 
 pytestmark = pytest.mark.features
 
@@ -158,9 +159,17 @@ def test_INV7_tiles_show_income_expenditure_net(qtbot, service):
     income = home.findChild(QLabel, "dashboard_total_income")
     expenditure = home.findChild(QLabel, "dashboard_total_expenditure")
     net = home.findChild(QLabel, "dashboard_net")
-    assert "3" in income.text() and "000" in income.text()
-    assert "500" in expenditure.text()
-    assert "2" in net.text() and "500" in net.text()  # net 2500
+    # Exact strings: a substring such as "500" also matches R 1,500.00 or R 5,000.00.
+    shown = (income.text(), expenditure.text(), net.text())
+    expected = (
+        _format_amount(Decimal("3000.00"), "ZAR"),
+        _format_amount(Decimal("500.00"), "ZAR"),
+        f"Net {_format_amount(Decimal('2500.00'), 'ZAR')}",
+    )
+    assert shown == expected, (
+        "INV-7: the headline money figures are wrong.\n"
+        f"  expected: {expected}\n  actual:   {shown}"
+    )
 
 
 def test_INV7_donut_has_a_slice_per_category(qtbot, service):
@@ -219,19 +228,30 @@ def test_INV7_trend_has_twelve_categories(qtbot, service):
 # INV-7 / D6 — selector persistence
 # --------------------------------------------------------------------------- #
 def test_INV7_period_selector_change_persists_and_rerenders(qtbot, service):
-    from PySide6.QtWidgets import QComboBox
+    from PySide6.QtWidgets import QComboBox, QLabel
 
     a = _first_account(service)
     _add(service, a, 100000, "2026-01-03")
+    _add(service, a, 50000, "2026-03-03")  # outside January, inside 2026
     service.set_report_prefs(_JAN)
     home = _home(service)
     qtbot.addWidget(home)
+    income = home.findChild(QLabel, "dashboard_total_income")
+    assert income.text() == _format_amount(Decimal("1000.00"), "ZAR"), (
+        "precondition: January alone shows R 1,000.00"
+    )
     selector = home.findChild(QComboBox, "period_selector")
     # Switch to "Specific year" — the year picker's value drives it.
     year_index = selector.findData(MODE_SPECIFIC_YEAR)
     selector.setCurrentIndex(year_index)
     stored = service.report_prefs()
     assert stored.mode == MODE_SPECIFIC_YEAR
+    # The re-render half: the year's figure includes the March row.
+    assert income.text() == _format_amount(Decimal("1500.00"), "ZAR"), (
+        "the period changed but the dashboard did not re-render.\n"
+        "  expected: the 2026 income, R 1,500.00\n"
+        f"  actual:   {income.text()!r}"
+    )
 
 
 def test_INV7_account_selector_lists_all_accounts_first(qtbot, service):

@@ -91,13 +91,6 @@ def _pair(service: AuthService) -> tuple[int, int]:
 # --------------------------------------------------------------------------- #
 # INV-9 — schema v7 -> v8
 # --------------------------------------------------------------------------- #
-def test_INV9_v8_is_reachable_from_the_latest_schema() -> None:
-    """INV-9 is about this feature's own v7 -> v8 step, so it pins that the walk
-    reaches v8. The equality this replaces named 10 in its own test name while
-    asserting 13 (FIBR-0327)."""
-    assert LATEST_SCHEMA_VERSION >= 8
-
-
 def test_INV9_v7_upgrades_to_v9(paths):
     vault_path, sidecar = paths
     salt = bytes(range(SALT_LEN))
@@ -550,11 +543,20 @@ def test_INV10_every_slot_catches_vault_locked(
     elif method != "confirm_all":  # confirm_all needs no selection
         widget._suggested.selectRow(0)
 
+    calls: list[str] = []
+
     def _boom(*a, **k):
+        calls.append(method)
         raise VaultLockedError("locked mid-click")
 
     monkeypatch.setattr(widget._detection, method, _boom)
     getattr(widget, button).click()  # must not raise
+    # A click that never reaches the patched call would also "not raise".
+    assert calls == [method], (
+        f"INV-10: the {button} click never reached {method}, so the lock was "
+        "never raised and the slot's guard went unchecked.\n"
+        f"  expected: [{method!r}]\n  actual:   {calls}"
+    )
 
 
 def test_INV10_transfers_toolbar_action_has_a_rendering_icon(qtbot, service):
