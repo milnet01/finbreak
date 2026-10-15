@@ -3316,7 +3316,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: review-fix.
   Source: full-audit-2026-09-27 code lane 10 (queued by FIBR-0367).
 
-- 🚧 [FIBR-0411] **Queued test findings from the 2026-09-27 audit: recovery-key migration and envelope tests (9 items).**
+- ✅ [FIBR-0411] **Queued test findings from the 2026-09-27 audit: recovery-key migration and envelope tests (9 items).**
   From docs/reviews/2026-09-27-full-audit/tests-lane-T01-recovery-migration.md.
   Paths are under tests/features/; lines as of 2026-09-29.
   - recovery_key/test_migration.py:134 -- the crash-point legs swallow
@@ -3353,6 +3353,12 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   - recovery_key/test_envelope.py:291 -- the static wrapper guard
     matches bare-name calls only, so keywrap.wrap_dek(...) escapes it.
     Fix: also match ast.Attribute nodes whose attr is in _WRAPPERS.
+  Resolution 2026-10-15 (db24738): all nine fixed, none dismissed or queued.
+  Each was proved by one mutant: the old test passed it, the new one
+  failed. Finding 8 was shown both ways: a correct message citing S2
+  failed the old test and passes the new one. opens_with gained an
+  optional cipher_compat argument; its other callers are unchanged.
+  Full gate green: 2616 passed, 2 skipped.
   **Layman:** Some checks on the recovery-key upgrade could pass even if the upgrade broke; this tightens them so they fail when they should.
   Kind: test.
   Source: full-audit-2026-09-27 tests lane T01 (queued by FIBR-0367).
