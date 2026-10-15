@@ -307,23 +307,37 @@ def test_read_header_returns_fieldnames():
 _NO_STYLE = ColumnMapping("Date", "Details", None, None, None, "%Y-%m-%d", False)
 
 
+_BOTH_HEADER = ["Date", "Details", "Amount", "Debit", "Credit"]
+
+
 @pytest.mark.parametrize(
-    "bad",
+    "bad, header, message",
     [
-        _NO_STYLE,
-        ColumnMapping("Date", "Details", "Missing", None, None, "%Y-%m-%d", False),
-        ColumnMapping(
-            "Date", "Details", "Amount", "Debit", "Credit", "%Y-%m-%d", False
+        (_NO_STYLE, HEADER, "exactly one amount style"),
+        (
+            ColumnMapping("Date", "Details", "Missing", None, None, "%Y-%m-%d", False),
+            HEADER,
+            "not in the file header",
+        ),
+        # Every column is in this header, so only the one-amount-style check can
+        # refuse it; with HEADER the missing-column check refused it instead.
+        (
+            ColumnMapping(
+                "Date", "Details", "Amount", "Debit", "Credit", "%Y-%m-%d", False
+            ),
+            _BOTH_HEADER,
+            "exactly one amount style",
         ),
     ],
     ids=["no_amount_style", "missing_column", "both_styles"],
 )
-def test_service_preview_rejects_bad_mapping_config(service, bad):
+def test_service_preview_rejects_bad_mapping_config(service, bad, header, message):
     # Parametrized (FIBR-0063) so one bad-config's failure can't mask the others.
     imp = ImportService(service.vault)
     acct = _acct(service)
-    text = _csv(HEADER, [["2026-01-05", "a", "-1.00"]])
-    with pytest.raises(ValueError):
+    row = ["2026-01-05", "a", "-1.00", "", ""][: len(header)]
+    text = _csv(header, [row])
+    with pytest.raises(ValueError, match=message):
         imp.preview(text, bad, acct)
 
 
@@ -955,19 +969,41 @@ def test_validate_mapping_rejects_duplicate_column_roles():
         ImportService._validate_mapping(dup, ["Date", "Amount"])
 
 
-def test_read_capped_bounds_read_against_endless_symlink(service, tmp_path):
-    """The size cap is enforced by a bounded read, so a symlink to an endless
-    source (/dev/zero) is refused as 'too large' rather than read unbounded into
-    memory — a stat-only cap sees st_size 0 and would slip through. (indie-review
-    hardening of the FIBR-0041 cap)"""
-    import os
+def test_read_capped_bounds_read_against_endless_symlink(
+    service, tmp_path, monkeypatch
+):
+    """The size cap is enforced by a bounded read, so an endless source (a
+    symlink to /dev/zero, say) is refused as 'too large' rather than read
+    unbounded into memory — a stat-only cap sees st_size 0 and would slip
+    through. (indie-review hardening of the FIBR-0041 cap)
 
-    if not (hasattr(os, "symlink") and os.path.exists("/dev/zero")):
-        pytest.skip("POSIX symlink + /dev/zero required")
-    link = tmp_path / "statement.csv"
-    os.symlink("/dev/zero", link)
-    with pytest.raises(ValueError):
-        ImportService(service.vault).read_file_bytes(str(link))
+    The endless source is a fake handle, not /dev/zero: a regression to an
+    unbounded read must FAIL here, not allocate until the machine runs out of
+    memory. The file on disk is empty, so its size says 0 as /dev/zero's does.
+    """
+    import finbreak.services.import_ as import_module
+
+    class _Endless:
+        def __enter__(self) -> "_Endless":
+            return self
+
+        def __exit__(self, *exc: object) -> None:
+            return None
+
+        def read(self, size: int = -1) -> bytes:
+            if size is None or size < 0:
+                raise AssertionError(
+                    "the import read an endless source with no size bound"
+                )
+            return b"\0" * size
+
+    path = tmp_path / "statement.csv"
+    path.write_bytes(b"")
+    monkeypatch.setattr(
+        import_module, "open", lambda *a, **k: _Endless(), raising=False
+    )
+    with pytest.raises(ValueError, match="too large"):
+        ImportService(service.vault).read_file_bytes(str(path))
 
 
 # --------------------------------------------------------------------------- #

@@ -10,7 +10,6 @@ financial data, no network (testing.md § 6). No migration this phase (the
 first-run vault is already at v4, D9).
 """
 
-import logging
 from collections.abc import Iterator
 from decimal import Decimal
 from pathlib import Path
@@ -279,7 +278,8 @@ def test_INV4_statement_less_envelope_raises_value_error(service):
         _OFX_HEADER + "<OFX><SIGNONMSGSRSV1><SONRS><STATUS><CODE>0<SEVERITY>INFO"
         "</STATUS><DTSERVER>20260101</SONRS></SIGNONMSGSRSV1></OFX>"
     ).encode()
-    with pytest.raises(ValueError):
+    # The distinct message, not the boundary catch's generic one (INV-4).
+    with pytest.raises(ValueError, match="no statements were found"):
         OfxImporter().parse(data, _exp(service))
 
 
@@ -542,13 +542,31 @@ def test_INV8_no_schema_change(service):
     assert version == 14
 
 
+_NETWORK_MODULES = frozenset(
+    {"socket", "http", "urllib", "ssl", "ftplib", "requests", "asyncio"}
+)
+
+
 def test_INV8_no_network_import_in_ofx_module():
-    src = Path("src/finbreak/importers/ofx_importer.py").read_text()
-    for banned in ("import socket", "import http", "urllib", "requests", "ftplib"):
-        assert banned not in src, f"no network surface in the importer ({banned})"
+    # Every import's ROOT module, from the parsed source: a substring list let
+    # `from http.client import ...`, `import ssl` and asyncio through.
+    import ast
+
+    import finbreak.importers.ofx_importer as ofx_module
+
+    tree = ast.parse(Path(ofx_module.__file__).read_text(encoding="utf-8"))
+    roots: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            roots.update(alias.name.split(".")[0] for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module and not node.level:
+            roots.add(node.module.split(".")[0])
+    assert "ofxparse" in roots, "precondition: the walk must see the module's imports"
+    banned = sorted(roots & _NETWORK_MODULES)
+    assert not banned, f"no network surface in the importer: {banned}"
 
 
-def test_INV8_formula_and_path_fields_stored_inert(service, caplog):
+def test_INV8_formula_and_path_fields_stored_inert(service):
     acct, conn = _acct(service), service.vault.connection
     data = _ofx(
         _stmt(
@@ -558,17 +576,18 @@ def test_INV8_formula_and_path_fields_stored_inert(service, caplog):
             ]
         )
     )
+    # No "password not logged" check here: no secret reaches this block (the
+    # master password is used only by the fixture, before it), so it could not
+    # fail.
     imp = ImportService(service.vault)
-    with caplog.at_level(logging.DEBUG):
-        _, result = OfxImporter().parse(data, _exp(service))[0]
-        preview = imp.preview_result(result, acct)
-        assert preview.period_start is not None and preview.period_end is not None
-        imp.commit_import(preview, preview.period_start, preview.period_end, "x.ofx")
+    _, result = OfxImporter().parse(data, _exp(service))[0]
+    preview = imp.preview_result(result, acct)
+    assert preview.period_start is not None and preview.period_end is not None
+    imp.commit_import(preview, preview.period_start, preview.period_end, "x.ofx")
     stored = {
         r[0] for r in conn.execute("SELECT description FROM transactions").fetchall()
     }
     assert stored == {"=cmd|'/c calc'!A1", "../../etc/passwd"}, "stored verbatim, inert"
-    assert _PW.decode() not in caplog.text
 
 
 # --------------------------------------------------------------------------- #
@@ -668,7 +687,9 @@ def test_investment_statement_refused_not_crashed(service):
         "<UNITS>10<UNITPRICE>5<TOTAL>-50</INVBUY><BUYTYPE>BUY</BUYSTOCK>"
         "</INVTRANLIST></INVSTMTRS></INVSTMTTRNRS></INVSTMTMSGSRSV1></OFX>"
     ).encode()
-    with pytest.raises(ValueError):
+    # Matched so the boundary catch's generic refusal cannot stand in for the
+    # investment filter this test is about.
+    with pytest.raises(ValueError, match="investment/brokerage"):
         OfxImporter().parse(inv, _exp(service))
 
 

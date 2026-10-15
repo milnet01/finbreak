@@ -776,29 +776,29 @@ def test_FIBR0190_INV1_family_e_detected():
     assert detect_standard_bank(_text("family_e_current.pdf")) is Family.E
 
 
-@pytest.mark.parametrize(
-    "name, expected",
-    [
-        ("checksum_fail_a.pdf", Family.A),
-        ("completeness_fail_a.pdf", Family.A),
-        ("family_a_current.pdf", Family.A),
-        ("family_a_rcp_euro.pdf", Family.A),
-        # A post-E addition (FIBR-0252), so it has no "as before" — but detection
-        # is exactly what breaks if its column header or legal marker is ever
-        # disturbed, which is why it earns a place in this list.
-        ("family_a_zero_fee.pdf", Family.A),
-        ("family_b_homeloan.pdf", Family.B),
-        ("family_b_no_closing.pdf", Family.B),
-        ("family_b_unstorable_balances.pdf", Family.B),
-        ("family_c_creditcard.pdf", Family.C),
-        ("family_c_fail.pdf", Family.C),
-        ("family_d_moneymarket.pdf", Family.D),
-        ("mixed_footer_a.pdf", Family.A),
-        ("non_sb.pdf", None),
-        ("quiet_month_a.pdf", Family.A),
-        ("savings_no_closing.pdf", Family.A),
-    ],
-)
+_PRE_E_EXPECTED = [
+    ("checksum_fail_a.pdf", Family.A),
+    ("completeness_fail_a.pdf", Family.A),
+    ("family_a_current.pdf", Family.A),
+    ("family_a_rcp_euro.pdf", Family.A),
+    # A post-E addition (FIBR-0252), so it has no "as before" — but detection
+    # is exactly what breaks if its column header or legal marker is ever
+    # disturbed, which is why it earns a place in this list.
+    ("family_a_zero_fee.pdf", Family.A),
+    ("family_b_homeloan.pdf", Family.B),
+    ("family_b_no_closing.pdf", Family.B),
+    ("family_b_unstorable_balances.pdf", Family.B),
+    ("family_c_creditcard.pdf", Family.C),
+    ("family_c_fail.pdf", Family.C),
+    ("family_d_moneymarket.pdf", Family.D),
+    ("mixed_footer_a.pdf", Family.A),
+    ("non_sb.pdf", None),
+    ("quiet_month_a.pdf", Family.A),
+    ("savings_no_closing.pdf", Family.A),
+]
+
+
+@pytest.mark.parametrize("name, expected", _PRE_E_EXPECTED)
 def test_FIBR0190_INV2_existing_fixtures_detect_as_before(name, expected):
     # §7.2 — adding E steals no existing statement. Parametrised so a regression in
     # one family isn't masked behind a bundled assert.
@@ -807,8 +807,15 @@ def test_FIBR0190_INV2_existing_fixtures_detect_as_before(name, expected):
 
 def test_FIBR0190_INV2_covers_every_pre_e_fixture():
     # Guards the leg above against a new fixture landing uncovered (its list is
-    # hand-written, so a glob mismatch is the failure mode).
-    assert len(_PRE_E_FIXTURES) == 15
+    # hand-written, so a glob mismatch is the failure mode). Names, not a count:
+    # a renamed fixture, or one added as another goes, keeps the count.
+    listed = {name for name, _family in _PRE_E_EXPECTED}
+    on_disk = set(_PRE_E_FIXTURES)
+    assert listed == on_disk, (
+        "the hand-written detection list and the fixture folder disagree.\n"
+        f"  on disk, not listed: {sorted(on_disk - listed)}\n"
+        f"  listed, not on disk: {sorted(listed - on_disk)}"
+    )
 
 
 def test_FIBR0190_INV4_INV10_INV11_family_e_end_to_end():

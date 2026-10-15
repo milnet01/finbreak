@@ -10,6 +10,7 @@ would block). Every on-disk vault uses ``tmp_path``; the fixture PDFs are commit
 gridded blobs (reportlab stays probe-only); encrypted variants are made in-test.
 """
 
+import ast
 import io
 import logging
 import os
@@ -207,19 +208,67 @@ def test_INV2_decrypt_extract_writes_no_file(tmp_path, monkeypatch):
     assert set(cwd.iterdir()) == before_cwd, "decrypt+extract wrote to the CWD"
 
 
+_WRITE_MODULES = frozenset({"tempfile", "shutil"})
+_WRITE_METHODS = frozenset({"write_text", "write_bytes"})
+_WRITE_OS_CALLS = frozenset({"open", "write", "replace", "rename"})
+
+
+def _disk_writes(tree: ast.AST) -> list[str]:
+    """Every way the parsed module could write a file, as ``line: what``.
+
+    An ast walk, not a token list: the list it replaces had no ``write_text``,
+    ``os.open`` or ``shutil`` and only four spellings of a write mode.
+    """
+    found: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name.split(".")[0] in _WRITE_MODULES:
+                    found.append(f"{node.lineno}: import {alias.name}")
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            if node.module.split(".")[0] in _WRITE_MODULES:
+                found.append(f"{node.lineno}: from {node.module} import")
+        elif isinstance(node, ast.Call):
+            func = node.func
+            if isinstance(func, ast.Name) and func.id == "open":
+                mode = node.args[1] if len(node.args) > 1 else None
+                for keyword in node.keywords:
+                    if keyword.arg == "mode":
+                        mode = keyword.value
+                # No mode reads; a mode the walk cannot read counts as a write.
+                text = (
+                    "r"
+                    if mode is None
+                    else mode.value
+                    if isinstance(mode, ast.Constant)
+                    else None
+                )
+                if mode is not None and (
+                    not isinstance(text, str) or set(text) & set("wax+")
+                ):
+                    found.append(f"{node.lineno}: open(..., {ast.unparse(mode)})")
+            elif isinstance(func, ast.Attribute):
+                if func.attr in _WRITE_METHODS:
+                    found.append(f"{node.lineno}: .{func.attr}(...)")
+                elif (
+                    isinstance(func.value, ast.Name)
+                    and func.value.id == "os"
+                    and func.attr in _WRITE_OS_CALLS
+                ):
+                    found.append(f"{node.lineno}: os.{func.attr}(...)")
+    return found
+
+
 def test_INV2_module_has_no_disk_write_token():
-    src = Path("src/finbreak/importers/pdf_importer.py").read_text()
-    for tok in (
-        "tempfile",
-        "NamedTemporaryFile",
-        ".write_bytes(",
-        "os.write",
-        '"w"',
-        '"wb"',
-        "'w'",
-        "'wb'",
-    ):
-        assert tok not in src, f"disk-write token in the importer: {tok!r}"
+    import finbreak.importers.pdf_importer as pdf_module
+
+    tree = ast.parse(Path(pdf_module.__file__).read_text(encoding="utf-8"))
+    assert any(
+        isinstance(node, ast.FunctionDef) and node.name == "_normalise_to_plaintext"
+        for node in ast.walk(tree)
+    ), "precondition: the walk must be reading the PDF importer"
+    writes = _disk_writes(tree)
+    assert not writes, f"disk-write call in the importer: {writes}"
 
 
 # --------------------------------------------------------------------------- #
@@ -274,12 +323,35 @@ def test_INV6_two_table_returns_both_candidates():
     assert _PDF_HEADER in headers
 
 
-def test_INV6_header_only_candidate_dropped():
+def test_INV6_header_only_candidate_dropped(monkeypatch):
     # group_tables_by_header keeps a header-only group as a len-1 candidate;
-    # candidate_tables drops it with the same len > 1 filter (composed here).
-    grouped = group_tables_by_header([[["A", "B"]], [["C", "D"], ["x", "1"]]])
-    assert [len(c) for c in grouped] == [1, 2]
-    assert [c for c in grouped if len(c) > 1] == [[["C", "D"], ["x", "1"]]]
+    # candidate_tables must drop it. The extractor is stubbed so the page holds
+    # exactly one header-only table beside one real one.
+    import pdfplumber
+
+    import finbreak.importers.pdf_importer as pdf_mod
+
+    tables = [[["A", "B"]], [["C", "D"], ["x", "1"]]]
+    assert [len(c) for c in group_tables_by_header(tables)] == [1, 2], (
+        "precondition: grouping alone keeps the header-only table"
+    )
+
+    class _Page:
+        def extract_tables(self) -> list[list[list[str]]]:
+            return tables
+
+    class _Pdf:
+        pages = [_Page()]
+
+        def __enter__(self) -> "_Pdf":
+            return self
+
+        def __exit__(self, *exc: object) -> None:
+            return None
+
+    monkeypatch.setattr(pdf_mod, "_normalise_to_plaintext", lambda raw, pw: raw)
+    monkeypatch.setattr(pdfplumber, "open", lambda *a, **k: _Pdf())
+    assert PdfImporter().candidate_tables(b"%PDF-stub") == [[["C", "D"], ["x", "1"]]]
 
 
 # --------------------------------------------------------------------------- #
@@ -679,14 +751,6 @@ def test_INV8_first_run_vault_is_v9(service):
     assert version == LATEST_SCHEMA_VERSION
 
 
-def test_INV8_v9_is_reachable_from_the_latest_schema() -> None:
-    """INV-8 is about this feature's own v9 step, so it pins that the walk
-    reaches v9 -- not what the latest happens to be. The equality this replaces
-    named 10 in its own test name while asserting 13, which is the proof it was
-    never maintained; it went red again on the v14 index (FIBR-0327)."""
-    assert LATEST_SCHEMA_VERSION >= 9
-
-
 def test_INV8_v5_upgrades_through_v9_adds_provenance_column(paths):
     # The v5->v6 provenance-column coverage (FIBR-0052 INV-13a): a v5 vault walks to
     # v7 and, along the way at v5->v6, gains the nullable
@@ -795,7 +859,9 @@ def test_INV11_wizard_defines_no_password_attribute():
     # / `self._on_pdf_password(...)` methods, which carry the password only as a
     # local/param, never on the long-lived wizard. `self._stored_pw` (the FIBR-0057
     # re-target carry) uses "pw", not "password", so it is out of scope by name.
-    src = Path("src/finbreak/ui/import_wizard.py").read_text()
+    import finbreak.ui.import_wizard as wizard_module
+
+    src = Path(wizard_module.__file__).read_text(encoding="utf-8")
     assert not re.search(r"self\._[A-Za-z0-9_]*password(?!\()", src)
 
 
