@@ -3503,7 +3503,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: test.
   Source: full-audit-2026-09-27 tests lane T06 (queued by FIBR-0367).
 
-- 🚧 [FIBR-0417] **Queued test findings from the 2026-09-27 audit: updater, app shell and unlock tests (10 items).**
+- ✅ [FIBR-0417] **Queued test findings from the 2026-09-27 audit: updater, app shell and unlock tests (10 items).**
   From docs/reviews/2026-09-27-full-audit/tests-lane-T07-update-shell-unlock.md.
   Paths are under tests/features/; lines as of 2026-09-29.
   - auto_update/test_auto_update.py (INV-9 stays-open and the FIBR-0108
@@ -3543,6 +3543,12 @@ touches the § 2 surface. A security fix takes the number its change takes — �
     Fix: seed CAP_N failures, a future last_fail, or pin the clock.
   Started 2026-10-15 toward 1.0.2: each finding is shown vacuous by a
   mutation first, then tightened and shown to kill it.
+  Done 2026-10-15 (bd68816). Nine fixed, each
+  proved by a mutation the old test let pass and the new one catches;
+  the lockout test was shown robust to a clock 5 s slow. One dismissed:
+  the service fixture is no longer slow (slowest setup 0.08 s, measured
+  2026-10-15). Also: transactions.py now sits in INV-1's _FILES;
+  home.py's menu.exec( exemption was dropped, as home.py has none.
   **Layman:** Several updater and window checks do not prove what their names say, and one set is slow; this tightens them and speeds them up.
   Kind: test.
   Source: full-audit-2026-09-27 tests lane T07 (queued by FIBR-0367).
