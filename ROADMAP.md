@@ -3425,7 +3425,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: test.
   Source: full-audit-2026-09-27 tests lane T03 (queued by FIBR-0367).
 
-- 🚧 [FIBR-0414] **Queued test findings from the 2026-09-27 audit: CSV, OFX and PDF importer tests (11 items).**
+- ✅ [FIBR-0414] **Queued test findings from the 2026-09-27 audit: CSV, OFX and PDF importer tests (11 items).**
   From docs/reviews/2026-09-27-full-audit/tests-lane-T04-importers.md.
   Paths are under tests/features/; lines as of 2026-09-29.
   - import_/test_import.py:319 (the both_styles case) -- the header
@@ -3464,11 +3464,17 @@ touches the § 2 surface. A security fix takes the number its change takes — �
     ofx_import/test_ofx_import.py:546 -- source paths are relative to
     the working directory, so pytest from elsewhere errors. Fix: resolve
     through Path(__file__).parents[N].
+  Resolution 2026-10-15 (aee2531): all eleven fixed. Seven were proved by a
+  mutant the old test passed and the new one failed. Two that could not
+  fail were removed (the OFX password-log check; the PDF schema-version
+  pin, which the v4/v5 walk tests carry). The endless-read test now uses
+  a fake handle, so a regression fails instead of exhausting memory. The
+  working-directory paths were shown failing from tests/ before the fix.
   **Layman:** Several import checks could pass without testing the rule they name; this makes each one fail if that rule breaks.
   Kind: test.
   Source: full-audit-2026-09-27 tests lane T04 (queued by FIBR-0367).
 
-- 🚧 [FIBR-0415] **Queued test findings from the 2026-09-27 audit: batch import and detection tests (6 items).**
+- ✅ [FIBR-0415] **Queued test findings from the 2026-09-27 audit: batch import and detection tests (6 items).**
   From docs/reviews/2026-09-27-full-audit/tests-lane-T05-batch-detect.md.
   Paths are under tests/features/; lines as of 2026-09-29.
   - batch_import/test_batch_import_ui.py:271 -- INV-3 leg (b) checks
@@ -3493,11 +3499,17 @@ touches the § 2 surface. A security fix takes the number its change takes — �
     near :333 -- they assert CPython strptime behaviour that changes in
     3.15, not finbreak's. Fix: make it a comment or mark it as bound to
     the Python version.
+  Resolution 2026-10-15 (0f6e8fa): all six closed. Three were proved by
+  a mutant the old test passed and the new one failed; the cwd-relative
+  path was shown failing from tests/. The pass-counter docstring was
+  narrowed to what it pins. The year-less strptime test is bound to
+  Python below 3.15 (gh-70647); the empty-format sibling stays, as
+  nothing in it is slated to change.
   **Layman:** Some checks on importing many statements and on detecting dates and columns cannot fail as written; this makes them real checks.
   Kind: test.
   Source: full-audit-2026-09-27 tests lane T05 (queued by FIBR-0367).
 
-- 📋 [FIBR-0416] **Queued test findings from the 2026-09-27 audit: accounts and transactions tab tests (4 items).**
+- 🚧 [FIBR-0416] **Queued test findings from the 2026-09-27 audit: accounts and transactions tab tests (4 items).**
   From docs/reviews/2026-09-27-full-audit/tests-lane-T06-accounts-statements.md.
   Paths are under tests/features/; lines as of 2026-09-29.
   - accounts/test_accounts.py:1124 -- the account names sort
@@ -3569,7 +3581,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: test.
   Source: full-audit-2026-09-27 tests lane T07 (queued by FIBR-0367).
 
-- 📋 [FIBR-0418] **Queued test findings from the 2026-09-27 audit: forecast, recurring, alerts and month summary tests (9 items).**
+- 🚧 [FIBR-0418] **Queued test findings from the 2026-09-27 audit: forecast, recurring, alerts and month summary tests (9 items).**
   From docs/reviews/2026-09-27-full-audit/tests-lane-T08-summary-forecast-alerts.md.
   Paths are under tests/features/; lines as of 2026-09-29.
   - forecast/test_forecast.py:168 -- comparing points with
@@ -3610,7 +3622,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: test.
   Source: full-audit-2026-09-27 tests lane T08 (queued by FIBR-0367).
 
-- 📋 [FIBR-0419] **Queued test findings from the 2026-09-27 audit: dashboard, reports and PDF export tests (12 items).**
+- 🚧 [FIBR-0419] **Queued test findings from the 2026-09-27 audit: dashboard, reports and PDF export tests (12 items).**
   From docs/reviews/2026-09-27-full-audit/tests-lane-T09-dashboard-reporting-export.md.
   Paths are under tests/features/; lines as of 2026-09-29.
   - dashboard_focus/test_dashboard_focus.py:339 -- a leaked transfer
