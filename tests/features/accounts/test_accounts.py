@@ -588,11 +588,20 @@ def test_add_account_swallows_vault_locked_silently(qtbot, service, monkeypatch)
     qtbot.addWidget(widget)
     widget._name.setText("New")
 
+    calls: list[int] = []
+
     def locked(*a, **k):
+        calls.append(1)
         raise VaultLockedError("the vault is locked")
 
     monkeypatch.setattr(widget._accounts, "add_account", locked)
     widget._on_add()  # must not raise
+    # An _on_add that never reaches the stub would also leave the label empty.
+    assert calls == [1], (
+        "precondition: _on_add must call add_account, or the swallow this test "
+        "names was never exercised.\n"
+        f"  expected: 1 call\n  actual:   {len(calls)}"
+    )
     assert widget._error.text() == "", "VaultLockedError is swallowed silently"
 
 
@@ -1114,32 +1123,41 @@ def test_INV9_status_column_sorts_by_severity_and_composes_its_text(qtbot, servi
     """Ascending: every OFF above every quiet above every RECONCILED. Both quiet
     shapes are required — an empty cell sorts FIRST lexically but BETWEEN by
     rank, and a key-only cell (U+1F511) sorts LAST lexically but MIDDLE
-    (FIBR-0113 INV-9)."""
+    (FIBR-0113 INV-9).
+
+    Name order, either way round, is not rank order: enabling sorting first
+    sorts by Name, and a constant sort key keeps whichever name order that
+    left, so the grouping below fails on either."""
     from PySide6.QtCore import Qt
 
+    from finbreak.services.transactions import (
+        read_minor_unit_exponent,
+        to_display_decimal,
+    )
+    from finbreak.ui._amount import _format_amount
     from finbreak.ui.accounts import AccountsWidget
 
     svc = AccountService(service.vault)
     # OFF — two statements, nothing bridging them.
-    off = svc.add_account("AAoff", "current").id
+    off = svc.add_account("Coff", "current").id
     _statement(service, off, "2026-01-01", "2026-04-30", "apr.pdf", 100_000)
     _statement(service, off, "2026-05-01", "2026-05-31", "may.pdf", 150_000)
     # Quiet with NO marker at all — one statement only (NOT_ENOUGH_DATA).
-    quiet = svc.add_account("BBquiet", "savings").id
+    quiet = svc.add_account("Aquiet", "savings").id
     _statement(service, quiet, "2026-01-01", "2026-04-30", "s.ofx", 100_000)
     # Quiet with the key marker ONLY.
-    quiet_key = svc.add_account("CCquietkey", "savings").id
+    quiet_key = svc.add_account("Equietkey", "savings").id
     _statement(service, quiet_key, "2026-01-01", "2026-04-30", "s2.ofx", 100_000)
     svc.set_pdf_password(quiet_key, "PW-Q")
     # RECONCILED — two statements bridged exactly.
-    good = svc.add_account("DDgood", "current").id
+    good = svc.add_account("Bgood", "current").id
     _statement(service, good, "2026-01-01", "2026-04-30", "apr.pdf", 100_000)
     _statement(service, good, "2026-05-01", "2026-05-31", "may.pdf", 150_000)
     TransactionRepository(service.vault.connection).add(
         good, "2026-05-15", 50_000, "bridge"
     )
     # RECONCILED with a key.
-    good_key = svc.add_account("EEgoodkey", "current").id
+    good_key = svc.add_account("Dgoodkey", "current").id
     _statement(service, good_key, "2026-01-01", "2026-04-30", "a.pdf", 100_000)
     _statement(service, good_key, "2026-05-01", "2026-05-31", "b.pdf", 150_000)
     TransactionRepository(service.vault.connection).add(
@@ -1158,11 +1176,11 @@ def test_INV9_status_column_sorts_by_severity_and_composes_its_text(qtbot, servi
     # two quiet and the two reconciled rows is unspecified.
     order = _names(widget)
     rank = {
-        "AAoff": 0,
-        "BBquiet": 1,
-        "CCquietkey": 1,
-        "DDgood": 2,
-        "EEgoodkey": 2,
+        "Coff": 0,
+        "Aquiet": 1,
+        "Equietkey": 1,
+        "Bgood": 2,
+        "Dgoodkey": 2,
     }
     ranks = [rank[name] for name in order]
     assert ranks == sorted(ranks), f"severity grouping broken: {order}"
@@ -1172,15 +1190,23 @@ def test_INV9_status_column_sorts_by_severity_and_composes_its_text(qtbot, servi
     # combination — a substring check passes on a cell that still carries the
     # "  ·  " prefix § 4.2 removes from the four tr() literals.
     key_text = "🔑 statement password saved"
-    assert _cell(widget, "BBquiet", _COL_STATUS) == ""
-    assert _cell(widget, "CCquietkey", _COL_STATUS) == key_text
-    assert _cell(widget, "DDgood", _COL_STATUS) == "✓ balances reconcile"
+    assert _cell(widget, "Aquiet", _COL_STATUS) == ""
+    assert _cell(widget, "Equietkey", _COL_STATUS) == key_text
+    assert _cell(widget, "Bgood", _COL_STATUS) == "✓ balances reconcile"
     assert (
-        _cell(widget, "EEgoodkey", _COL_STATUS) == f"✓ balances reconcile · {key_text}"
+        _cell(widget, "Dgoodkey", _COL_STATUS) == f"✓ balances reconcile · {key_text}"
     ), "reconciliation text FIRST, key second — a deliberate reversal of the list"
-    off_text = _cell(widget, "AAoff", _COL_STATUS)
+    off_text = _cell(widget, "Coff", _COL_STATUS)
     assert off_text.startswith("⚠ off by "), f"no leading separator: {off_text!r}"
-    assert "500" in off_text, "the discrepancy magnitude is rendered"
+    # Exact: a substring "500" also matches 1 500.00, 500.01 or 5 500.00.
+    expected_off = "⚠ off by " + _format_amount(
+        to_display_decimal(50_000, read_minor_unit_exponent(service.vault.connection)),
+        TransactionService(service.vault).base_currency(),
+    )
+    assert off_text == expected_off, (
+        "the discrepancy magnitude is rendered exactly.\n"
+        f"  expected: {expected_off!r}\n  actual:   {off_text!r}"
+    )
 
 
 # -- INV-12 — the two new form fields --------------------------------------- #

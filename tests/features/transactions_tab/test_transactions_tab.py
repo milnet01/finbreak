@@ -24,6 +24,7 @@ from finbreak.services.transactions import TransactionService
 pytestmark = pytest.mark.features
 
 _COL_AMOUNT = 1
+_COL_DESCRIPTION = 3
 
 
 @pytest.fixture
@@ -244,13 +245,22 @@ def test_INV8_set_category_catches_vault_locked(qtbot, service, monkeypatch):
     view = _view(service)
     qtbot.addWidget(view)
 
+    calls: list[int] = []
+
     def _boom(*a, **k):
+        calls.append(1)
         raise VaultLockedError("locked mid-dialog")
 
     monkeypatch.setattr(view._categorization, "set_manual_category", _boom)
     stub_picker(monkeypatch, txn_mod, _leaf_id(service, "Groceries"))
     view._select_txn(txn)
     view._on_set_category()  # must not raise
+    # A slot that never reaches the write would also not raise.
+    assert calls == [1], (
+        "precondition: the slot must reach set_manual_category, or the guard "
+        "this test names was never exercised.\n"
+        f"  expected: 1 call\n  actual:   {len(calls)}"
+    )
 
 
 def test_FIBR0396_set_category_after_an_auto_lock_does_nothing(
@@ -454,6 +464,14 @@ def test_INV9_resort_then_context_acts_on_correct_txn(qtbot, service):
     view._select_txn(coffee)
     # The tag is over the FILTERED list, so the selection resolves to the right txn.
     assert view._selected_txn().id == coffee
+    # The round trip above reads back through the same tag mapping, so it holds
+    # even when the highlighted row shows a different transaction.
+    shown = cell_text(view._table, view._table.currentRow(), _COL_DESCRIPTION)
+    assert shown == "Zzz late coffee", (
+        "the highlighted row is not the transaction Set category acts on.\n"
+        "  expected: 'Zzz late coffee'\n"
+        f"  actual:   {shown!r}"
+    )
 
 
 # --------------------------------------------------------------------------- #
