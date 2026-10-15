@@ -7,8 +7,10 @@ and opens a dialog. The FIBR-0172 dismiss contract (INV-18: calls
 ``AlertService.dismiss`` inside a ``VaultLockedError``-silent guard, then rebuilds
 in place) is unchanged — it just lives in the dialog now.
 
-The view renders with ``date.today()`` (FIBR-0172 D8), so the fixtures seed
-recurring charges relative to today. Offscreen Qt (conftest); no network, no real
+The views read the app clock (``app_today`` in ``ui.home`` and
+``ui.alerts_dialog``), so every test pins both to ``_TODAY`` and seeds relative to
+it -- a fixture seeded from the real date drifts from the app clock across a
+midnight. Offscreen Qt (conftest); no network, no real
 financial data (testing.md § 6).
 """
 
@@ -35,6 +37,14 @@ from finbreak.services.transactions import read_minor_unit_exponent
 from finbreak.ui.alerts_dialog import AlertsDialog
 
 pytestmark = pytest.mark.features
+
+_TODAY = date(2026, 3, 18)
+
+
+@pytest.fixture(autouse=True)
+def _pinned_clock(monkeypatch) -> None:
+    for module in ("finbreak.ui.home", "finbreak.ui.alerts_dialog"):
+        monkeypatch.setattr(f"{module}.app_today", lambda: _TODAY)
 
 
 @pytest.fixture
@@ -77,9 +87,8 @@ def _dialog(svc: AuthService, alerts: AlertService) -> AlertsDialog:
 def _seed_one_new_recurring(svc: AuthService) -> None:
     """Three monthly OUT charges ending today: a suggested OUT stream (occurrences 3)
     -> exactly one new-recurring alert, regardless of the date the test runs."""
-    today = date.today()
     for offset in (60, 30, 0):
-        _add(svc, (today - timedelta(days=offset)).isoformat(), -9_999, "Spotify")
+        _add(svc, (_TODAY - timedelta(days=offset)).isoformat(), -9_999, "Spotify")
 
 
 def _dismiss_buttons(root) -> list[QPushButton]:
@@ -99,7 +108,7 @@ def _alerts_button(home) -> QPushButton:
 # --------------------------------------------------------------------------- #
 def test_button_is_quiet_and_disabled_when_no_alerts(qtbot, service) -> None:
     # A lone transaction: the dashboard renders, but nothing raises an alert.
-    _add(service, (date.today() - timedelta(days=5)).isoformat(), -5_000, "One-off")
+    _add(service, (_TODAY - timedelta(days=5)).isoformat(), -5_000, "One-off")
     home = _home(service, AlertService(service.vault))
     qtbot.addWidget(home)
 
@@ -236,37 +245,53 @@ def test_FIBR0216_dismiss_computes_the_alert_set_once_not_twice(
     """FIBR-0216 — a dismiss re-renders the dialog's rows (computing the alert set)
     and then Home's `refresh_alerts` computed the identical set again for its count:
     two full unfiltered transaction scans plus two recurring-detection passes per
-    click. `changed` now carries the count the dialog already holds."""
+    click. `changed` now carries the count the dialog already holds.
+
+    Driven through the real shell: the second computation lived in the wiring
+    from the dialog to Home, which a dialog built on its own never reaches. The
+    count is taken on the class, because the shell builds its own services."""
+    from finbreak.ui.main_window import MainWindow
+
     _seed_one_new_recurring(service)
-    alerts = AlertService(service.vault)
-    real = alerts.alerts
+    real = AlertService.alerts
     calls: list[object] = []
 
-    def counting(today):
+    def counting(self, today):
         calls.append(today)
-        return real(today)
+        return real(self, today)
 
-    monkeypatch.setattr(alerts, "alerts", counting)
-    dialog = _dialog(service, alerts)
-    qtbot.addWidget(dialog)
+    monkeypatch.setattr(AlertService, "alerts", counting)
+    window = MainWindow(service)
+    qtbot.addWidget(window)
+    window._enter_unlocked()
+    home = window._home_tab
+    assert home is not None
+    assert _alerts_button(home).text() == "Alerts (1)", "precondition: one alert"
 
-    calls.clear()  # ignore the build-time render
-    received: list[int] = []
-    dialog.changed.connect(received.append)
+    _alerts_button(home).click()  # the shell opens the dialog on alerts_requested
+    dialog = window._dialog
+    assert isinstance(dialog, AlertsDialog), "the shell opened the alerts dialog"
+
+    calls.clear()  # ignore the build-time renders
     with qtbot.waitSignal(dialog.changed, timeout=1000):
         _dismiss_buttons(dialog)[0].click()
 
     assert len(calls) == 1, (
         f"the alert set is computed once per dismiss, not {len(calls)}"
     )
-    assert received == [0], "and `changed` carries the remaining count for Home"
+    assert _alerts_button(home).text() == "Alerts", (
+        "and Home takes the remaining count the dialog carried"
+    )
 
 
 def test_dialog_dismiss_is_vault_locked_silent(qtbot, service, monkeypatch) -> None:
     _seed_one_new_recurring(service)
     alerts = AlertService(service.vault)
 
+    hits: list[str] = []
+
     def boom(key: str) -> None:
+        hits.append(key)
         raise VaultLockedError("auto-lock fired mid-click")
 
     monkeypatch.setattr(alerts, "dismiss", boom)
@@ -276,6 +301,8 @@ def test_dialog_dismiss_is_vault_locked_silent(qtbot, service, monkeypatch) -> N
     buttons = _dismiss_buttons(dialog)
     assert len(buttons) == 1
     buttons[0].click()  # must NOT raise — the handler swallows VaultLockedError
+    # A click that never reached the raiser would pass the row check below too.
+    assert hits == ["new_recurring:spotify"], "the click reached the locked vault"
     # The dismiss failed, so the row is still present.
     assert len(_dismiss_buttons(dialog)) == 1
 
@@ -385,9 +412,8 @@ def test_FIBR0397_dismiss_never_destroys_the_button_inside_its_own_click(
     import shiboken6
 
     _seed_one_new_recurring(service)
-    today = date.today()
     for offset in (60, 30, 0):  # a second stream, so two rows are rebuilt
-        _add(service, (today - timedelta(days=offset)).isoformat(), -5_000, "Gym")
+        _add(service, (_TODAY - timedelta(days=offset)).isoformat(), -5_000, "Gym")
     dialog = _dialog(service, AlertService(service.vault))
     qtbot.addWidget(dialog)
     buttons = _dismiss_buttons(dialog)

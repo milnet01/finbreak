@@ -17,7 +17,7 @@ from PySide6.QtCore import Qt
 
 from conftest import _PW, build_v8_vault, keyed_connection, raising_conn
 from finbreak.crypto import SALT_LEN
-from finbreak.migrations import LATEST_SCHEMA_VERSION, run_migrations
+from finbreak.migrations import _MIGRATIONS, LATEST_SCHEMA_VERSION, run_migrations
 from finbreak.models import Cadence, Direction, RecurringSummary
 from finbreak.repositories.accounts import AccountRepository
 from finbreak.repositories.recurring import RecurringRepository
@@ -293,8 +293,12 @@ def _has_recurring_decisions(conn) -> bool:
     )
 
 
-def test_INV10_latest_schema_version_is_10() -> None:
-    assert LATEST_SCHEMA_VERSION == 14
+def test_INV10_v9_is_reachable_from_the_latest_schema() -> None:
+    """INV-10 is this feature's own v8 -> v9 step, so it pins that the walk
+    reaches v9 rather than what the latest happens to be (as FIBR-0327 did for
+    the v11 suite)."""
+    assert LATEST_SCHEMA_VERSION >= 9
+    assert 9 in _MIGRATIONS
 
 
 def test_INV10_v8_upgrades_to_v9(paths) -> None:
@@ -304,7 +308,8 @@ def test_INV10_v8_upgrades_to_v9(paths) -> None:
 
     conn = keyed_connection(vault_path, salt)
     run_migrations(conn)  # v8 -> v9 (walks to LATEST)
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 14
+    version = conn.execute("SELECT version FROM schema_version").fetchone()[0]
+    assert version == LATEST_SCHEMA_VERSION
 
     assert _has_recurring_decisions(conn)
     # A fresh table — no rows.
@@ -560,18 +565,27 @@ def test_INV11_recurring_ui_strings_are_tr_wrapped() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# INV-12 — the Recurring tab (RecurringWidget, qtbot). Transactions are seeded
-# relative to date.today() so the monthly series is always active.
+# INV-12 — the Recurring tab (RecurringWidget, qtbot). The widget's clock is
+# pinned to _WIDGET_TODAY and transactions are seeded relative to it, so the
+# monthly series is active whatever day the suite runs.
 # --------------------------------------------------------------------------- #
+_WIDGET_TODAY = date(2026, 3, 18)
+
+
+@pytest.fixture(autouse=True)
+def _pinned_widget_clock(monkeypatch) -> None:
+    """Every test in this file: only the widget reads this clock."""
+    monkeypatch.setattr("finbreak.ui.recurring.app_today", lambda: _WIDGET_TODAY)
+
+
 def _seed_recent_monthly(
     svc: AuthService, account_id: int, amount_minor: int, desc: str, n: int = 3
 ) -> list[int]:
-    today = date.today()
     return [
         _add_txn(
             svc,
             account_id,
-            (today - timedelta(days=30 * k)).isoformat(),
+            (_WIDGET_TODAY - timedelta(days=30 * k)).isoformat(),
             amount_minor,
             desc,
         )
@@ -642,7 +656,11 @@ def test_INV12_empty_state_message(qtbot, vault_service) -> None:
     w = RecurringWidget(vault_service)  # no transactions seeded
     qtbot.addWidget(w)
     assert w._suggested.rowCount() == 0
-    assert w._status.text() != ""  # an empty-state message is shown
+    # The empty-state wording itself: any non-empty text, an error included,
+    # would pass a check for "something is shown".
+    assert "no recurring items detected" in w._status.text().lower(), (
+        f"the empty-state message is shown.\n  actual:   {w._status.text()!r}"
+    )
 
 
 @pytest.mark.parametrize(
@@ -673,11 +691,16 @@ def test_INV12_slots_catch_vault_locked(
     else:
         w._suggested.selectRow(0)
 
+    hits: list[object] = []
+
     def _boom(*args, **kwargs):
+        hits.append(args)
         raise VaultLockedError("locked mid-click")
 
     monkeypatch.setattr(w._recurring, method, _boom)
     getattr(w, button).click()  # must not raise
+    # A click that never reached the service would pass the line above too.
+    assert len(hits) == 1, f"the {button} click reached {method}: {hits}"
 
 
 def test_INV12_workspace_has_eight_tabs_with_recurring_after_transfers(

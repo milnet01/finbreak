@@ -23,6 +23,15 @@ from finbreak.ui.forecast import ForecastWidget
 
 pytestmark = pytest.mark.features
 
+# The widget reads the app clock; every test pins it here and seeds relative to
+# the same date, so a run crossing midnight or a month end cannot move a leg.
+_TODAY = date(2026, 3, 18)
+
+
+@pytest.fixture(autouse=True)
+def _pinned_clock(monkeypatch) -> None:
+    monkeypatch.setattr("finbreak.ui.forecast.app_today", lambda: _TODAY)
+
 
 @pytest.fixture
 def vault_service(paths) -> Iterator[AuthService]:
@@ -37,7 +46,7 @@ def _acct(svc: AuthService) -> int:
 
 
 def _seed_anchored(svc: AuthService) -> None:
-    today = date.today()
+    today = _TODAY
     a = _acct(svc)
     repo = StatementPeriodRepository(svc.vault.connection)
     repo.add(
@@ -187,13 +196,18 @@ def test_refresh_swallows_a_vault_lock_from_the_text_builders(
     w.refresh()
     assert w._headline.text(), "the fixture renders before the lock is simulated"
 
+    hits: list[object] = []
+
     def locked(*a, **k):
+        hits.append(a)
         raise VaultLockedError("the vault is locked")
 
     # The reads the guard was written to cover, and nothing else — patched on the
     # class, since both builders construct their own AccountService.
     monkeypatch.setattr(AccountService, "list_accounts", locked)
     w.refresh()  # must not raise
+    # A refresh that never reached the read would pass the line above too.
+    assert hits, "the refresh reached the locked account read"
 
 
 def test_INV14_debt_account_named_as_excluded_for_the_right_reason(
@@ -202,7 +216,7 @@ def test_INV14_debt_account_named_as_excluded_for_the_right_reason(
     """A credit card with a recorded balance is excluded because it isn't cash —
     the provenance line must say so, not claim it has no balance yet (FIBR-0179)."""
     _seed_anchored(vault_service)
-    today = date.today()
+    today = _TODAY
     card = AccountService(vault_service.vault).add_account("Visa", "credit_card").id
     StatementPeriodRepository(vault_service.vault.connection).add(
         card,
@@ -238,7 +252,7 @@ def test_INV14_debt_only_vault_still_names_the_reason_in_net_flow(
     credit-card user holding a statement was told there was no balance yet and
     the account was never named at all.
     """
-    today = date.today()
+    today = _TODAY
     card = AccountService(vault_service.vault).add_account("Visa", "credit_card").id
     StatementPeriodRepository(vault_service.vault.connection).add(
         card,
@@ -384,7 +398,7 @@ def test_FIBR0397_provenance_lists_and_sentences_are_templates(
     translate_one("ForecastWidget", "{text} {more}", "{more} || {text}")
     w = ForecastWidget(vault_service)
     qtbot.addWidget(w)
-    today = date.today()
+    today = _TODAY
     fc = Forecast(ForecastMode.NET_FLOW, 0, 0, today, [], [], [])
     shown = w._provenance_text(fc, 2, "ZAR")
     assert " || " in shown, shown

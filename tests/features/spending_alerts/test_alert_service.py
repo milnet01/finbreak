@@ -187,8 +187,13 @@ def test_INV5_transfer_and_none_bucket_excluded_from_spike(service) -> None:
     spikes = _by_kind(alerts, AlertKind.CATEGORY_SPIKE)
     # The excluded transfer (-500000, Groceries) did NOT inflate June past 250000.
     assert spikes[0].amount_minor == 250_000
-    # The None/uncategorised bucket never produces a spike alert.
-    assert all(":None" not in a.key for a in alerts)
+    # The None/uncategorised bucket never produces a spike alert. Counted rather
+    # than matched on a key spelling: a None spike keyed any other way is still
+    # a second spike.
+    assert [s.label for s in spikes] == ["Groceries"], (
+        "only the Groceries spike fires; the uncategorised bucket would spike too.\n"
+        f"  actual:   {[(s.label, s.key) for s in spikes]}"
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -211,6 +216,15 @@ def test_INV9_suggested_overdue_out_yields_no_missed_debit(service) -> None:
     # A monthly OUT stream, overdue, but NEVER confirmed -> no missed-debit alert.
     for day in ("2026-04-10", "2026-05-10", "2026-06-10"):
         _add(svc, a, day, -45_000, "Insurance")
+    insurance = [
+        it
+        for it in RecurringService(svc.vault).candidates(_TODAY)
+        if it.merchant_key == "insurance"
+    ]
+    assert insurance and insurance[0].direction is Direction.OUT, (
+        "precondition: Insurance must be a detected OUT stream, or the check "
+        f"below never meets a suggested one: {insurance}"
+    )
     alerts = AlertService(svc.vault).alerts(_TODAY)
     assert _by_kind(alerts, AlertKind.MISSED_DEBIT) == []
 

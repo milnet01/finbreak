@@ -8,8 +8,10 @@ which drive `HomeView`'s own slots — one ``except VaultLockedError``-guarded
 ``qtbot``, so neither can live in the service or strip file; and both are
 `HomeView`'s own, so this file needs no ``MainWindow``.
 
-`HomeView.refresh()` reads the real clock, so every fixture here is seeded
-**relative to ``date.today()``** rather than to a pinned date.
+`HomeView` reads the app clock, ``finbreak.ui.home.app_today``, so every test
+here pins it to one fixed date and seeds relative to that date. Seeding from
+the real date while the view read the app clock made each leg's branch depend
+on the day the suite ran.
 """
 
 from __future__ import annotations
@@ -46,6 +48,16 @@ from finbreak.ui.month_summary import MonthSummaryStrip
 pytestmark = pytest.mark.features
 
 
+# A mid-month date: the current month's head is past _MIN_ELAPSED_DAYS.
+_TODAY = date(2026, 3, 18)
+
+
+@pytest.fixture(autouse=True)
+def _pinned_clock(monkeypatch) -> None:
+    """Pin the view's clock to ``_TODAY``; a test needing another day re-pins."""
+    monkeypatch.setattr("finbreak.ui.home.app_today", lambda: _TODAY)
+
+
 @pytest.fixture
 def service(paths) -> Iterator[AuthService]:
     svc = AuthService(*paths)
@@ -54,9 +66,9 @@ def service(paths) -> Iterator[AuthService]:
     svc.lock()
 
 
-def _months_back(count: int) -> list[tuple[int, int]]:
-    """``count`` calendar months ending at THIS month, oldest first."""
-    year, month = date.today().year, date.today().month
+def _months_back(count: int, today: date = _TODAY) -> list[tuple[int, int]]:
+    """``count`` calendar months ending at ``today``'s month, oldest first."""
+    year, month = today.year, today.month
     months: list[tuple[int, int]] = []
     for _ in range(count):
         months.append((year, month))
@@ -65,13 +77,13 @@ def _months_back(count: int) -> list[tuple[int, int]]:
     return months
 
 
-def _seed(svc: AuthService) -> None:
+def _seed(svc: AuthService, today: date = _TODAY) -> None:
     """R5,000 of unchanging spend on the 3rd of each of the last five months — so
     the previous month has three complete baseline months behind it, and the
     current month's truncated head (which starts at day 1) contains its row."""
     account_id = AccountService(svc.vault).list_accounts()[0].id
     repo = TransactionRepository(svc.vault.connection)
-    for year, month in _months_back(5):
+    for year, month in _months_back(5, today):
         repo.add(account_id, f"{year:04d}-{month:02d}-03", -500_000, "Grocer")
 
 
@@ -219,26 +231,40 @@ def test_switching_back_to_a_month_mode_brings_the_strip_back(qtbot, service) ->
     [MODE_PREVIOUS_MONTH, MODE_CURRENT_MONTH, MODE_SPECIFIC_MONTH],
     ids=["previous_month", "current_month", "specific_month"],
 )
-def test_the_strip_shows_exactly_what_the_service_says(qtbot, service, mode) -> None:
+@pytest.mark.parametrize(
+    "today",
+    [date(2026, 3, 4), date(2026, 3, 18), date(2026, 3, 30)],
+    ids=["before_the_7th", "after_the_7th", "day_30_head_capped"],
+)
+def test_the_strip_shows_exactly_what_the_service_says(
+    qtbot, service, monkeypatch, mode, today
+) -> None:
     """The wiring contract: `HomeView` hides on ``None`` and shows otherwise, and
-    decides nothing itself. Current month is the leg that varies with the real
-    date — before the 7th its truncated head is under ``_MIN_ELAPSED_DAYS`` and
-    the strip is correctly silent — so the expectation is read from the service
-    rather than pinned."""
+    decides nothing itself. Current month is the leg that varies with the date —
+    before the 7th its truncated head is under ``_MIN_ELAPSED_DAYS`` and the
+    strip is correctly silent; on the 30th the head is capped below February's
+    last day — so each of those days is pinned rather than left to the run date."""
+    monkeypatch.setattr("finbreak.ui.home.app_today", lambda: today)
     service.set_report_prefs(ReportPrefs(MODE_PREVIOUS_MONTH))
-    _seed(service)
+    _seed(service, today)
     home = _home(service)
     qtbot.addWidget(home)
     if mode == MODE_SPECIFIC_MONTH:
-        year, month = _prev_month(date.today().year, date.today().month)
+        year, month = _prev_month(today.year, today.month)
         home._year_picker.setValue(year)
         home._month_picker.setCurrentIndex(home._month_picker.findData(month))
     _select(home, mode)
 
     expected = MonthSummaryService(service.vault).summary(
-        home.current_prefs(), None, date.today()
+        home.current_prefs(), None, today
     )
-    assert _strip(home).isHidden() is (expected is None)
+    silent = mode == MODE_CURRENT_MONTH and today.day < 7
+    assert (expected is None) is silent, (
+        "precondition: the service must be silent only on the current month "
+        "before the 7th, or this leg is not exercising the branch its id names.\n"
+        f"  expected: silent={silent}\n  actual:   {expected!r}"
+    )
+    assert _strip(home).isHidden() is silent
 
 
 # --------------------------------------------------------------------------- #
@@ -346,7 +372,7 @@ def test_INV10_the_strip_and_the_net_tile_share_ONE_clock_reading(
     red — which a pair of real reads on the same day never would."""
     home = _home_showing(qtbot, service)
     month, reporting = _record(home)
-    ticking = _TickingClock(date.today())
+    ticking = _TickingClock(_TODAY)
     monkeypatch.setattr("finbreak.ui.home.app_today", ticking)
 
     home.refresh()

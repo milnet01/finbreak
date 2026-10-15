@@ -162,6 +162,15 @@ def test_INV13_step_line_shape_and_running_totals() -> None:
     assert all(
         fc.points[i].on <= fc.points[i + 1].on for i in range(len(fc.points) - 1)
     )
+    # The running totals themselves, worked by hand: the points are built FROM
+    # running_after_minor, so comparing the two alone is an identity.
+    running = [e.running_after_minor for e in fc.events]
+    assert running == [15_000, 12_000, 22_000, 19_000], (
+        "INV-13: each event's running balance is the start plus every event so "
+        "far.\n"
+        "  expected: [15_000, 12_000, 22_000, 19_000]\n"
+        f"  actual:   {running}"
+    )
     # each interior point equals its event's running total, in event order
     for point, event in zip(fc.points[1:-1], fc.events, strict=True):
         assert point.on == event.on

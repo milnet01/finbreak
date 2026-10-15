@@ -107,6 +107,13 @@ def test_INV3_only_confirmed_items_project(service) -> None:
     for day in _NETFLIX_DAYS:
         _add(svc, a, day, -8_000, "Gym")
     _confirm_netflix(svc)  # only Netflix confirmed
+    detected = {
+        it.merchant_key for it in RecurringService(svc.vault).candidates(_TODAY)
+    }
+    assert "gym" in detected, (
+        "precondition: Gym must be a detected (suggested) item, or the check "
+        f"below never meets an unconfirmed one: {sorted(detected)}"
+    )
 
     fc = ForecastService(svc.vault).forecast(_TODAY, _HORIZON)
     merchants = {e.merchant for e in fc.events}
