@@ -291,10 +291,9 @@ def test_INV4_public_key_loads_an_ed25519_key():
     assert isinstance(key, Ed25519PublicKey)
 
 
-def test_INV4_placeholder_key_fails_closed():
-    """Until Phase 1's keygen fills the real key, the committed placeholder is
-    all-zero bytes: the module imports + ``public_key()`` loads, but no real
-    signature verifies against it (fail closed)."""
+def test_INV4_a_signature_from_another_key_does_not_verify():
+    """The committed release key refuses a signature made by any other key (fail
+    closed). That it accepts its own releases is INV-15's historical check."""
     from cryptography.exceptions import InvalidSignature
 
     priv = Ed25519PrivateKey.generate()
@@ -1661,7 +1660,9 @@ def test_INV9_update_dialog_never_uses_exec():
     import finbreak.ui.update_dialog as module
 
     source = Path(module.__file__).read_text()
-    assert ".exec(" not in source
+    # Both re-enter the event loop; processEvents carries no .exec( token
+    # (the dialog_lifecycle INV-1 pattern, FIBR-0085 INV-6).
+    assert not re.search(r"\.exec\(|processEvents", source)
 
 
 def _prompt(qtbot):
@@ -1672,16 +1673,25 @@ def _prompt(qtbot):
     return dialog
 
 
-def test_prompt_later_emits_and_does_not_persist(qtbot):
+def _click(qtbot, button) -> None:
+    from PySide6.QtCore import Qt
+
+    qtbot.mouseClick(button, Qt.MouseButton.LeftButton)
+
+
+def test_prompt_later_emits_and_does_not_persist(qtbot, window_ini):
     dialog = _prompt(qtbot)
     with qtbot.waitSignal(dialog.later, timeout=1000):
-        dialog._on_later()
+        _click(qtbot, dialog._later_button)
+    assert not window_ini.exists(), "Later must persist nothing"
 
 
-def test_prompt_skip_emits(qtbot):
+def test_prompt_skip_emits_and_leaves_persisting_to_the_shell(qtbot, window_ini):
     dialog = _prompt(qtbot)
     with qtbot.waitSignal(dialog.skip, timeout=1000):
-        dialog._on_skip()
+        _click(qtbot, dialog._skip_button)
+    # The shell records the skip (test_D15_skip_persists_...); the prompt does not.
+    assert not window_ini.exists(), "the prompt itself must persist nothing"
 
 
 def test_prompt_shows_release_notes_inline(qtbot):
@@ -1713,14 +1723,28 @@ def test_prompt_hides_notes_when_body_empty(qtbot):
     assert notes is None or notes.isHidden()  # no empty panel
 
 
-def test_INV9_prompt_update_now_emits_and_stays_open_busy(qtbot):
+def _busy_prompt(qtbot):
+    """A shown prompt after a click on Update now, checked still open.
+
+    ``result() == 0`` cannot show that: it is also ``Rejected``, so a prompt
+    that closed would pass. Visible, with ``finished`` never fired, can."""
     dialog = _prompt(qtbot)
+    dialog.show()
+    qtbot.waitExposed(dialog)
+    finished: list[int] = []
+    dialog.finished.connect(finished.append)
     with qtbot.waitSignal(dialog.update_now, timeout=1000):
-        dialog._on_update_now()
-    # it does NOT accept()/reject() — it stays open in the busy state (D15)
-    assert dialog.result() == 0  # neither Accepted nor Rejected
+        _click(qtbot, dialog._update_button)
+    assert not dialog.isHidden(), "Update now closed the prompt"
+    assert finished == [], f"Update now finished the prompt with {finished}"
+    return dialog
+
+
+def test_INV9_prompt_update_now_emits_and_stays_open_busy(qtbot, window_ini):
+    dialog = _busy_prompt(qtbot)  # it stays open in the busy state (D15)
     assert not dialog._later_button.isEnabled()  # buttons disabled while busy
     assert not dialog._update_button.isEnabled()
+    assert not window_ini.exists(), "Update now must persist nothing"
 
 
 def test_esc_and_close_cannot_hide_the_prompt_mid_download(qtbot):
@@ -1769,8 +1793,7 @@ def test_esc_before_the_download_is_later_not_a_hidden_prompt(qtbot):
 def test_FIBR0108_prompt_bar_goes_determinate_on_a_known_size(qtbot):
     """A download that advertises its size drives a real percentage bar; before
     the first report the bar is still the indeterminate busy one (FIBR-0108)."""
-    dialog = _prompt(qtbot)
-    dialog._on_update_now()
+    dialog = _busy_prompt(qtbot)
     assert (dialog._busy.minimum(), dialog._busy.maximum()) == (0, 0)  # busy
 
     dialog.set_progress(512, 2048)
@@ -1782,8 +1805,7 @@ def test_FIBR0108_prompt_bar_goes_determinate_on_a_known_size(qtbot):
 def test_FIBR0108_prompt_bar_stays_indeterminate_when_size_unknown(qtbot):
     """No Content-Length ⇒ total 0 ⇒ the bar keeps its striped busy look rather
     than jumping to a made-up denominator (FIBR-0108)."""
-    dialog = _prompt(qtbot)
-    dialog._on_update_now()
+    dialog = _busy_prompt(qtbot)
     dialog.set_progress(512, 0)
     assert (dialog._busy.minimum(), dialog._busy.maximum()) == (0, 0)
 
@@ -2120,6 +2142,7 @@ def test_INV9_download_ready_after_prompt_gone_does_not_apply(qtbot, service, tm
     window._enter_unlocked()
     window._on_update_found(info)
     prompt = window._dialog
+    assert isinstance(prompt, UpdateDialog), "no update prompt was shown"
     window._teardown_dialog()  # an auto-lock tears the prompt down mid-download
 
     window._on_download_ready(verified, prompt)
@@ -2141,6 +2164,7 @@ def test_download_failed_while_prompt_live_warns_and_closes(
     window._enter_unlocked()
     window._on_update_found(info)
     prompt = window._dialog
+    assert isinstance(prompt, UpdateDialog), "no update prompt was shown"
 
     window._on_download_failed(RuntimeError("boom"), prompt)
     assert warned  # the user is told they're still on the current version (INV-11)
@@ -2230,6 +2254,7 @@ def test_download_failed_after_autolock_teardown_stays_silent(
     window._enter_unlocked()
     window._on_update_found(info)
     prompt = window._dialog
+    assert isinstance(prompt, UpdateDialog), "no update prompt was shown"
     window._teardown_dialog()  # an auto-lock tears the prompt down mid-download
     current = window._dialog
 
@@ -2248,6 +2273,7 @@ def test_INV6_download_ready_applies_with_key_wipe_callback(qtbot, service, tmp_
     window._enter_unlocked()
     window._on_update_found(info)
     prompt = window._dialog
+    assert isinstance(prompt, UpdateDialog), "no update prompt was shown"
 
     wiped: list[str] = []
     service.on_about_to_quit = lambda: wiped.append("key")  # spy on the real wipe
@@ -2297,6 +2323,7 @@ def test_FIBR0390_a_failed_install_warns_once_and_removes_the_download(
     window._enter_unlocked()
     window._on_update_found(info)
     prompt = window._dialog
+    assert isinstance(prompt, UpdateDialog), "no update prompt was shown"
     warned: list[str] = []
     monkeypatch.setattr(
         "finbreak.ui.main_window.QMessageBox.warning",

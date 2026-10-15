@@ -249,11 +249,14 @@ def service(paths: tuple[Path, Path]) -> Iterator[AuthService]:
 def test_INV6_worker_not_spawned_during_lockout(qtbot, service: AuthService) -> None:
     from finbreak.ui.unlock import UnlockDialog
 
-    # Owe a delay: three recent failures → delay(3) == 4 s, elapsed ~0 → remaining > 0.
+    # Owe the longest delay: CAP_N recent failures → 30 s, against the real clock
+    # the dialog reads. A shorter one (3 failures → 4 s) can expire on a slow
+    # runner before _on_unlock, which then spawns a real derive worker.
     now = datetime.now(UTC)
     seed = UnlockThrottle()
-    for _ in range(3):
+    for _ in range(CAP_N):
         seed.record_failure(now)
+    assert seed.remaining(datetime.now(UTC)) > 10, "precondition: a long lockout"
 
     dialog = UnlockDialog(service)
     qtbot.addWidget(dialog)

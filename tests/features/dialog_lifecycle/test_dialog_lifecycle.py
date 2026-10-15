@@ -3,8 +3,8 @@
 No content-widget pop-up may block the event loop via ``dialog.exec()``: the H-B
 crash (auto-lock during a nested ``exec()`` loop → deleted-C++-object
 ``RuntimeError``) can only exist where a blocking ``exec()`` does. A source grep
-over the four converted files asserts the only surviving ``.exec(`` is the Home
-context ``QMenu`` (a pop-up menu, not a modal dialog — out of scope).
+over the content-widget files asserts the only surviving ``.exec(`` is the
+Transactions context ``QMenu`` (a pop-up menu, not a modal dialog — out of scope).
 
 INV-4 locks the other half of the bargain: dropping ``exec()`` means the dialog is
 no longer owned by a nested loop, so ``show_modal`` must free it itself on a
@@ -25,15 +25,16 @@ from conftest import _pump_deferred_delete
 from finbreak.ui.modal import show_modal
 
 _UI_DIR = Path(ui_pkg.__file__).parent
-# Five members since FIBR-0085: `import_batch.py` is a content widget like the
-# rest, and a new UI module sits OUTSIDE this guard until it is named here — a
-# guard that silently does not cover new code is worse than no guard.
+# `import_batch.py` joined in FIBR-0085 and `transactions.py` in FIBR-0417. A new
+# UI module sits OUTSIDE this guard until it is named here — a guard that
+# silently does not cover new code is worse than no guard.
 _FILES = (
     "home.py",
     "rules.py",
     "statements.py",
     "import_wizard.py",
     "import_batch.py",
+    "transactions.py",
 )
 # Two tokens, not one (FIBR-0085 INV-6). `.exec(` catches `dialog.exec()`, but a
 # modal `QProgressDialog` driven by a bare `QApplication.processEvents()` loop
@@ -46,7 +47,7 @@ _EXEC = re.compile(r"\.exec\(|processEvents")
 
 # -- INV-7 (coverage guard) --------------------------------------------------- #
 #
-# _FILES above is hand-maintained, and the INV-1 grep only ever looks at its five
+# _FILES above is hand-maintained, and the INV-1 grep only ever looks at its
 # names. A UI module created and never added to it is not a failing case for
 # INV-1 — it is an ABSENT one: the grep has nothing to iterate, so it passes
 # while covering nothing (FIBR-0277). Every module under ``ui/`` that is not in
@@ -162,13 +163,6 @@ _NOT_CONTENT_WIDGETS: dict[str, str] = {
         "cannot fire there. Every other dialog main_window opens goes through "
         "its own tracked, non-blocking _open_dialog slot."
     ),
-    "transactions.py": (
-        "TransactionsView: the Transactions tab. It opens CategoryPickerDialog "
-        "and RuleEditDialog non-blocking via show_modal (lines 407-436), and "
-        "its right-click menu is a QMenu — menu.exec( at line 384 — the "
-        "identical shape to the existing home.py exemption above (a pop-up "
-        "menu, not a modal dialog, out of scope)."
-    ),
     # -- content-widget tabs that own no dialog at all (inline forms, or -------
     #    direct-apply actions with no modal step) --------------------------- #
     "accounts.py": (
@@ -248,7 +242,7 @@ _NOT_CONTENT_WIDGETS: dict[str, str] = {
 
 def test_INV7_every_ui_module_is_classified() -> None:
     """FIBR-0277 — the coverage-hole guard. _FILES is hand-maintained and INV-1's
-    grep only iterates its five names, so a UI module created and never added to
+    grep only iterates its names, so a UI module created and never added to
     either list is silently uncovered rather than failing. This asserts every
     ``*.py`` under ``ui/`` is accounted for in exactly one of the two sets, so
     the omission turns this test red instead of shrinking INV-1's reach."""
@@ -279,9 +273,10 @@ def test_INV1_no_blocking_dialog_exec_in_content_widgets() -> None:
         for lineno, line in enumerate((_UI_DIR / name).read_text().splitlines(), 1):
             if not _EXEC.search(line):
                 continue
-            # Sole exemption: the Home right-click context menu (a QMenu, not a
-            # modal dialog; reads no dialog object after, out of scope).
-            if name == "home.py" and "menu.exec(" in line:
+            # Sole exemption: the Transactions right-click context menu (a QMenu,
+            # not a modal dialog; reads no dialog object after, out of scope).
+            # Line-level, so any other blocking call in that file still fails.
+            if name == "transactions.py" and "menu.exec(" in line:
                 continue
             offenders.append(f"{name}:{lineno}: {line.strip()}")
     assert not offenders, (

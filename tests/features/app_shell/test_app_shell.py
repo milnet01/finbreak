@@ -803,14 +803,27 @@ def test_FIBR0116_colours_are_theme_aware_and_hover_is_more_saturated():
     assert dark_vibrant.saturationF() > dark_muted.saturationF()  # hover pops
 
 
-def test_FIBR0116_unmapped_glyph_falls_back_to_neutral(qtbot):
-    """A glyph with no mapped hue returns the plain neutral icon, not a crash."""
+def test_FIBR0116_unmapped_glyph_falls_back_to_neutral(qtbot, monkeypatch):
+    """A glyph with no mapped hue returns the plain neutral icon, not a crash.
+
+    Every shipped glyph has a hue, so the test takes one away. The mapped render
+    must differ from the neutral one first, or the equality below proves nothing.
+    """
     from PySide6.QtCore import QSize
 
-    from finbreak.ui.icons import toolbar_icon
+    from finbreak.ui import icons
 
-    ic = toolbar_icon("lock")  # mapped -> coloured, non-null
-    assert not ic.pixmap(QSize(24, 24)).isNull()
+    def image(ic):
+        return ic.pixmap(QSize(24, 24)).toImage()
+
+    neutral = image(icons.icon("lock"))
+    assert not neutral.isNull()
+    assert image(icons.toolbar_icon("lock")) != neutral, "control: mapped is tinted"
+
+    monkeypatch.delitem(icons._ICON_HUES, "lock")
+    assert image(icons.toolbar_icon("lock")) == neutral, (
+        "an unmapped glyph must render exactly as the neutral icon"
+    )
 
 
 def test_rules_toolbar_action_has_a_rendering_icon(qtbot, service):

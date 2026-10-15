@@ -7,6 +7,9 @@ flow. Vaults live under ``tmp_path``; ``window.ini`` is redirected to tmp by the
 autouse ``window_ini`` fixture; no network, no real data.
 """
 
+import ast
+import inspect
+import textwrap
 import unicodedata
 from pathlib import Path
 
@@ -173,10 +176,27 @@ def test_INV5_wrong_password_false(service):
 
 def test_INV5_uses_constant_time_compare():
     # Constant-time can't be proven by a timing test here — assert the source uses
-    # hmac.compare_digest, not ==, as a grep-style backstop (spec INV-5).
-    source = Path(auth_mod.__file__).read_text(encoding="utf-8")
-    assert "hmac.compare_digest" in source
-    assert "import hmac" in source
+    # hmac.compare_digest, not ==, as a grep-style backstop (spec INV-5). Read
+    # verify_password alone: auth.py has other compare_digest calls, so a
+    # file-wide grep stays green if this method switches to ==.
+    tree = ast.parse(textwrap.dedent(inspect.getsource(AuthService.verify_password)))
+    digest_calls = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "compare_digest"
+    ]
+    key_compares = [
+        ast.unparse(node)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Compare)
+        and any(isinstance(op, (ast.Eq, ast.NotEq)) for op in node.ops)
+        and "_key" in ast.unparse(node)
+    ]
+    assert digest_calls, "verify_password must compare with hmac.compare_digest"
+    assert not key_compares, f"verify_password compares the key with: {key_compares}"
+    assert "import hmac" in Path(auth_mod.__file__).read_text(encoding="utf-8")
 
 
 def test_INV5_raises_when_locked(service):
