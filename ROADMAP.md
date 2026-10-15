@@ -3627,7 +3627,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: test.
   Source: full-audit-2026-09-27 tests lane T08 (queued by FIBR-0367).
 
-- 🚧 [FIBR-0419] **Queued test findings from the 2026-09-27 audit: dashboard, reports and PDF export tests (12 items).**
+- ✅ [FIBR-0419] **Queued test findings from the 2026-09-27 audit: dashboard, reports and PDF export tests (12 items).**
   From docs/reviews/2026-09-27-full-audit/tests-lane-T09-dashboard-reporting-export.md.
   Paths are under tests/features/; lines as of 2026-09-29.
   - dashboard_focus/test_dashboard_focus.py:339 -- a leaked transfer
@@ -3667,6 +3667,12 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   services/pdf_export.py falls back to date.today() when no today is
   passed, the same latent wrong-month shape the reporting lane item
   describes. Fix: make today required.
+  Resolution 2026-10-15 (ba7d2b3): all twelve closed. Ten were proved by a
+  mutant the old test passed and the new one failed; the recurring card
+  was shown to depend on the machine clock (120-day shift) and no longer
+  does. Two vacuous checks were removed (identical drill-down leaves; the
+  schema-version pin, which test_INV9_v7_upgrades_to_v9 covers). The code
+  note was already fixed by c15f3c1 (FIBR-0391): today is required.
   **Layman:** Several dashboard and report checks accept wrong money figures or cannot fail; this makes them compare exact amounts.
   Kind: test.
   Source: full-audit-2026-09-27 tests lane T09 (queued by FIBR-0367).
@@ -3702,7 +3708,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: test.
   Source: full-audit-2026-09-27 tests lane T10 (queued by FIBR-0367).
 
-- 📋 [FIBR-0421] **Queued test findings from the 2026-09-27 audit: time zone and theme tests (6 items).**
+- 🚧 [FIBR-0421] **Queued test findings from the 2026-09-27 audit: time zone and theme tests (6 items).**
   From docs/reviews/2026-09-27-full-audit/tests-lane-T11-theme-locale-conftest.md.
   Paths are under tests/features/; lines as of 2026-09-29.
   - datetime_display/test_datetime_display.py:282 -- no precondition
@@ -3726,7 +3732,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: test.
   Source: full-audit-2026-09-27 tests lane T11 (queued by FIBR-0367).
 
-- 📋 [FIBR-0422] **Queued test findings from the 2026-09-27 audit: build, release and packaging tests (11 items).**
+- 🚧 [FIBR-0422] **Queued test findings from the 2026-09-27 audit: build, release and packaging tests (11 items).**
   From docs/reviews/2026-09-27-full-audit/tests-lane-T12-harness-packaging.md.
   Paths are under tests/features/; lines as of 2026-09-29.
   - bundling/test_bundling.py:381 -- it counts pins in every tracked
