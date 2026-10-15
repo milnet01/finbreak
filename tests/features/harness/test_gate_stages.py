@@ -19,6 +19,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+import yaml
 
 pytestmark = pytest.mark.features
 
@@ -179,14 +180,36 @@ def test_INV4_ci_invokes_the_gate_script_and_restates_no_stage() -> None:
     the two lists can drift — which is the whole reason it shells out."""
     ci = _CI_YML.read_text(encoding="utf-8")
     assert "./scripts/ci-local.sh" in ci, "ci.yml no longer invokes the gate script"
-    # A stage name appearing as its own `run:` command means CI has started
-    # re-listing stages. Checked against the spec's table so a newly-added
-    # stage is covered automatically.
-    for stage in _stages_in_spec():
-        assert f"run: {stage}" not in ci, (
-            f"ci.yml runs `{stage}` directly instead of via ci-local.sh — "
-            f"that is a second definition of the gate list (INV-2)."
-        )
+    # A stage name appearing as a command in any step's `run` body means CI has
+    # started re-listing stages — including inside a multi-line `run: |`
+    # block, which a `run: <stage>` text match misses. Checked against the
+    # spec's table so a newly-added stage is covered automatically.
+    stages = _stages_in_spec()
+    workflow = yaml.safe_load(ci)
+    restated: list[str] = []
+    for job_name, job in workflow["jobs"].items():
+        for step in job.get("steps", []):
+            for command in _commands(step.get("run", "")):
+                words = command.split()
+                if words[:2] == ["python", "-m"] or words[:2] == ["python3", "-m"]:
+                    words = words[2:]
+                if words and words[0] in stages:
+                    restated.append(f"{job_name}: {command}")
+    assert not restated, (
+        f"ci.yml runs gate stages directly instead of via ci-local.sh — "
+        f"that is a second definition of the gate list (INV-2): {restated}"
+    )
+
+
+def _commands(run: str) -> list[str]:
+    """Each shell command in a `run` body: split on lines and on `&&`, `||`,
+    `;` and `|`."""
+    return [
+        part.strip()
+        for line in run.splitlines()
+        for part in re.split(r"&&|\|\||;|\|", line)
+        if part.strip() and not part.strip().startswith("#")
+    ]
 
 
 # --------------------------------------------------------------------------- #

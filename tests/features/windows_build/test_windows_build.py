@@ -12,7 +12,10 @@ from __future__ import annotations
 import importlib.util
 import re
 import shutil
-import tempfile
+import subprocess
+import sys
+import tomllib
+import types
 import zipfile
 from pathlib import Path
 
@@ -45,10 +48,11 @@ def _fixture_consts():
     return _load_by_path("_fibr0015_fixture", _FIXTURE_DIR / "_generate_fixture.py")
 
 
-def _open_vault(db_src: Path, sidecar_src: Path, password: str, **open_kw) -> Vault:
-    """Copy a committed vault pair into a temp (open() migrates in place) and open
+def _open_vault(
+    td: Path, db_src: Path, sidecar_src: Path, password: str, **open_kw
+) -> Vault:
+    """Copy a committed vault pair into ``td`` (open() migrates in place) and open
     it under the installed sqlcipher3 package with the given password."""
-    td = Path(tempfile.mkdtemp())
     db, sidecar = td / "vault.db", td / "vault.kdf.json"
     shutil.copyfile(db_src, db)
     shutil.copyfile(sidecar_src, sidecar)
@@ -141,9 +145,9 @@ def test_sqlcipher_export_and_rekey_round_trip(paths, tmp_path):
 # --- INV-1: cross-package upgrade path (committed -binary fixtures) -----------
 
 
-def test_binary_created_vault_opens_cross_package():
+def test_binary_created_vault_opens_cross_package(tmp_path):
     c = _fixture_consts()
-    vault = _open_vault(c.VAULT_DB, c.VAULT_SIDECAR, c.MASTER_PASSWORD)
+    vault = _open_vault(tmp_path, c.VAULT_DB, c.VAULT_SIDECAR, c.MASTER_PASSWORD)
     row = vault.connection.execute(
         "SELECT description, amount_minor FROM transactions WHERE description = ?",
         (c.SENTINEL_DESCRIPTION,),
@@ -218,20 +222,78 @@ def test_windows_flags_match_linux_freeze():
 # --- INV-2/5/6: Windows freeze driver shape ----------------------------------
 
 
-def test_driver_uses_os_pathsep_not_hardcoded_colon():
-    src = _DRIVER_FILE.read_text()
-    assert "os.pathsep" in src, "--add-data must join with os.pathsep (INV-5)"
+# These run the driver's own functions rather than grep its source: its
+# docstring names os.pathsep, tomllib and every Qt binding, so a text match
+# survives the logic being deleted.
+def _driver():
+    saved = list(sys.path)  # the driver prepends scripts/ to import its flags
+    try:
+        return _load_by_path("_fibr0015_build_windows_exe", _DRIVER_FILE)
+    finally:
+        sys.path[:] = saved
+
+
+def test_driver_uses_os_pathsep_not_hardcoded_colon(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """--add-data must join with os.pathsep (INV-5): run main() with every
+    subprocess faked and a Windows separator, and read the PyInstaller argv."""
+    driver = _driver()
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, **_kw):
+        calls.append([str(part) for part in cmd])
+        if "PyInstaller" in cmd:
+            (tmp_path / "dist" / "finbreak.exe").write_bytes(b"")
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(driver, "subprocess", types.SimpleNamespace(run=fake_run))
+    monkeypatch.setattr(driver, "os", types.SimpleNamespace(pathsep=";"))
+    monkeypatch.setattr(driver, "_REPO_ROOT", tmp_path)
+    monkeypatch.setattr(driver, "_assert_single_qt_binding", lambda: None)
+    driver.main()
+
+    freeze = next(c for c in calls if "PyInstaller" in c)
+    add_data = [freeze[i + 1] for i, a in enumerate(freeze) if a == "--add-data"]
+    expected = [
+        f"{driver._ICONS_SRC};{driver.flags.ADD_DATA_TARGET}",
+        f"{driver._DATA_SRC};{driver.flags.DATA_ADD_DATA_TARGET}",
+    ]
+    assert add_data == expected, (
+        f"--add-data must join with os.pathsep (';' here); expected {expected}, "
+        f"got {add_data}"
+    )
 
 
 def test_driver_reads_deps_from_manifest():
-    src = _DRIVER_FILE.read_text()
-    # deps must come from pyproject, not a hand-listed set (INV-6)
-    assert "tomllib" in src and "dependencies" in src
+    """Deps come from pyproject, not a hand-listed set (INV-6)."""
+    with (_REPO_ROOT / "pyproject.toml").open("rb") as fh:
+        expected = tomllib.load(fh)["project"]["dependencies"]
+    got = _driver()._runtime_deps()
+    assert got == expected, (
+        f"driver deps must be pyproject [project].dependencies; expected "
+        f"{expected}, got {got}"
+    )
 
 
-def test_driver_has_single_qt_binding_guard():
-    src = _DRIVER_FILE.read_text()
-    assert re.search(r"PySide2|PySide6|PyQt5|PyQt6", src)  # single-Qt guard (INV-2)
+@pytest.mark.parametrize(
+    ("installed", "refuses"),
+    [({"PySide6"}, False), ({"PySide6", "PyQt6"}, True), (set(), True)],
+)
+def test_driver_has_single_qt_binding_guard(monkeypatch, installed, refuses):
+    """Exactly one Qt binding may be installed before PyInstaller runs (INV-2)."""
+    driver = _driver()
+    monkeypatch.setattr(driver, "_installed", lambda name: name in installed)
+    try:
+        driver._assert_single_qt_binding()
+        refused = False
+    except SystemExit:
+        refused = True
+    assert refused == refuses, (
+        f"with {sorted(installed)} installed the guard should "
+        f"{'refuse' if refuses else 'pass'}; it did "
+        f"{'refuse' if refused else 'pass'}"
+    )
 
 
 def test_driver_uses_canonical_flag_list():
@@ -252,12 +314,24 @@ def test_driver_freezes_windowed_gui_exe():
     assert "--windowed" in src
 
 
-def test_selftest_can_redirect_sentinel_to_a_file():
+def test_selftest_can_redirect_sentinel_to_a_file(qapp, monkeypatch, tmp_path):
     """`--windowed` sets sys.stdout/stderr to None on Windows, so the CI
     `--self-test` sentinel can't be read from stdout. `__main__` must honour
     FINBREAK_SELFTEST_OUT and write the sentinel to that file instead."""
-    src = (_REPO_ROOT / "src" / "finbreak" / "__main__.py").read_text()
-    assert "FINBREAK_SELFTEST_OUT" in src
+    import finbreak.__main__ as main_mod
+
+    out = tmp_path / "selftest.txt"
+    monkeypatch.setenv("FINBREAK_SELFTEST_OUT", str(out))
+    monkeypatch.setattr(main_mod.sys, "argv", ["finbreak", "--self-test"])
+
+    rc = main_mod.main()
+
+    assert out.exists(), f"FINBREAK_SELFTEST_OUT named {out}; nothing written there"
+    text = out.read_text(encoding="utf-8").strip()
+    assert text == "FINBREAK_SELFTEST_OK", (
+        f"expected FINBREAK_SELFTEST_OK in {out.name}, got {text!r}"
+    )
+    assert rc == 0
 
 
 def test_driver_embeds_the_app_icon():

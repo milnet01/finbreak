@@ -349,8 +349,11 @@ def test_INV5_windows_sbom_generated_across_two_files():
     assert "runtime-frozen.txt" in driver, (
         "build-windows-exe.py must write the frozen closure"
     )
-    assert "freeze" in driver, (
-        "build-windows-exe.py must pip-freeze the runtime closure"
+    # The argv literal, not the bare word: "freeze" is always present via the
+    # `windows_freeze_flags` import.
+    assert '"-m", "pip", "freeze"' in driver, (
+        "build-windows-exe.py must pip-freeze the runtime closure: expected the "
+        'argv `"-m", "pip", "freeze"`, not found'
     )
 
     # File 2: the workflow audits it into a CycloneDX SBOM (bash for `|| true`).
@@ -599,11 +602,23 @@ def test_INV8_readback_failure_actually_aborts_not_swallowed(
         "which swallows a non-zero exit — a guard that cannot fail the "
         "script is indistinguishable from no guard at all"
     )
-    assert re.search(r"\bexit\s+[1-9]\d*\b", guard), (
-        f"{script.name}: post-publish read-back region has no `exit <nonzero>` "
-        "— under `set -euo pipefail` a failed check must still actually abort "
-        "the script for 'fail loudly' to mean anything"
+    # Bind each exit to its own incomplete-set branch: the region also holds
+    # unrelated exits (read-back retries exhausted, PUBLISH SUSPECT), so one
+    # nonzero exit anywhere in it proves nothing about these.
+    findings = [m.start() for m in re.finditer(r"PUBLISH INCOMPLETE", guard)]
+    assert findings, (
+        f"{script.name}: post-publish read-back reports no 'PUBLISH INCOMPLETE' "
+        "finding at all — expected one per incomplete-set check"
     )
+    for start in findings:
+        branch_end = re.compile(r"^\s*(?:fi|;;)\s*$", re.MULTILINE).search(guard, start)
+        branch = guard[start : branch_end.start() if branch_end else len(guard)]
+        line = guard.count("\n", 0, start)
+        assert re.search(r"\bexit\s+[1-9]\d*\b", branch), (
+            f"{script.name}: the 'PUBLISH INCOMPLETE' finding {line} lines into "
+            "the read-back has no `exit <nonzero>` before its branch closes — "
+            "expected it to abort the script, got a warning that carries on:\n" + branch
+        )
 
 
 # --------------------------------------------------------------------------- #

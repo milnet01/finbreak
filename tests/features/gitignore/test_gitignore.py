@@ -15,29 +15,32 @@ tools like pytest/ruff drop inside their own cache dirs. Testing in-place would
 let such a nested rule mask a typo in our pattern.
 """
 
+import os
 import subprocess
 from pathlib import Path
 
 import pytest
 
-_PROJECT_GITIGNORE = (
-    Path(
-        subprocess.run(
-            ["git", "rev-parse", "--show-toplevel"],
-            capture_output=True,
-            text=True,
-            check=True,
-        ).stdout.strip()
-    )
-    / ".gitignore"
-)
+# Anchored to this file, not the cwd: run from inside another repo, a
+# `git rev-parse` root would test THAT repo's .gitignore.
+_PROJECT_GITIGNORE = Path(__file__).resolve().parents[3] / ".gitignore"
+
+# The developer's global and system git config must not reach the throwaway
+# repo: an `init.templateDir` there seeds `info/exclude`, which check-ignore
+# honours, so a template excluding `*.db` would hide a lost project rule
+# (the FIBR-0306 shape).
+_HERMETIC_ENV = {
+    **os.environ,
+    "GIT_CONFIG_GLOBAL": os.devnull,
+    "GIT_CONFIG_SYSTEM": os.devnull,
+}
 
 
 @pytest.fixture(scope="module")
 def ignore_repo(tmp_path_factory):
     """A fresh git repo whose only rules are a copy of the project `.gitignore`."""
     repo = tmp_path_factory.mktemp("ignore_repo")
-    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True, env=_HERMETIC_ENV)
     (repo / ".gitignore").write_text(
         _PROJECT_GITIGNORE.read_text(encoding="utf-8"), encoding="utf-8"
     )
@@ -60,6 +63,7 @@ def _is_ignored(repo: Path, path: str) -> bool:
             path,
         ],
         cwd=repo,
+        env=_HERMETIC_ENV,
     )
     if result.returncode not in (0, 1):
         raise RuntimeError(

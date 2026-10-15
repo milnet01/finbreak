@@ -18,14 +18,9 @@ from pathlib import Path
 
 import pytest
 
-_PROJECT_ROOT = Path(
-    subprocess.run(
-        ["git", "rev-parse", "--show-toplevel"],
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout.strip()
-)
+# Anchored to this file, not the cwd: pytest run from another directory must
+# still test THIS project.
+_PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 
 def _run_cli(*args: str) -> subprocess.CompletedProcess[str]:
@@ -42,8 +37,8 @@ def _run_cli(*args: str) -> subprocess.CompletedProcess[str]:
         capture_output=True,
         text=True,
         # Fail fast if the self-test subprocess hangs (e.g. a regression spins up
-        # a real event loop instead of exiting) — no pytest-timeout plugin is
-        # configured, so without this the whole gate blocks until the CI job cap.
+        # a real event loop instead of exiting) — far sooner than the suite-wide
+        # 300s pytest-timeout limit would.
         timeout=60,
     )
 
@@ -301,16 +296,18 @@ def _container_runtime() -> str | None:
 def test_INV2_INV3_build_smoke_clean_room():
     """build-smoke.sh freezes both artifacts and runs them Python-free (exit 0).
 
-    Opt-in: skips unless FINBREAK_BUILD_SMOKE=1 and the tooling is present, so
-    the everyday gate never blocks on the multi-minute build (INV-5/INV-6).
+    Opt-in: skips unless FINBREAK_BUILD_SMOKE=1, so the everyday gate never
+    blocks on the multi-minute build (INV-5/INV-6). Once opted in, missing
+    tooling FAILS: a skip would report the build as covered when it never ran.
     """
     if os.environ.get("FINBREAK_BUILD_SMOKE") != "1":
         pytest.skip("set FINBREAK_BUILD_SMOKE=1 to run the build+clean-room test")
     script = _PROJECT_ROOT / "scripts" / "build-smoke.sh"
-    if not script.exists():
-        pytest.skip("scripts/build-smoke.sh not present yet")
     if _container_runtime() is None:
-        pytest.skip("no container runtime (podman/docker) on PATH")
+        pytest.fail(
+            "FINBREAK_BUILD_SMOKE=1 asks for the build+clean-room test, but no "
+            "container runtime (podman/docker) is on PATH, so it cannot run"
+        )
 
     result = subprocess.run([str(script)], cwd=_PROJECT_ROOT)
     assert result.returncode == 0, "build-smoke.sh must exit 0 (both artifacts pass)"
@@ -324,15 +321,37 @@ def test_INV2_INV3_build_smoke_clean_room():
 # recipes each name `pyinstaller==` inline, and windows-build.yml names
 # `pip-audit==` inline. Without this gate, bumping the pyproject pin silently
 # leaves all of them behind — a class of drift docs/specs/FIBR-0155.md § 805-808
-# already flagged. The scan walks tracked files, so a NEW call-site is covered
-# automatically; `min_sites` guards against the scan passing vacuously if a build
-# path stops pinning (or moves).
+# already flagged. The drift scan walks tracked files outside the prose (docs,
+# Markdown, .claude/), so a NEW call-site is covered automatically, and a dated
+# record quoting an old pin never blocks a bump. Each named build file must
+# still carry the pin, so a build path that stops pinning (or moves) fails.
 # --------------------------------------------------------------------------- #
 _LOCKSTEP_PINS = (
-    # (distribution, pyproject dependency-group, minimum expected inline sites)
-    ("pyinstaller", "build", 6),  # pyproject + 5 build paths (one names it twice)
-    ("pip-audit", "dev", 2),  # pyproject + windows-build.yml's SBOM step
+    # (distribution, pyproject dependency-group, build files that must pin it)
+    (
+        "pyinstaller",
+        "build",
+        (
+            "scripts/_build-smoke-in-container.sh",
+            "scripts/build-windows-exe.py",
+            "packaging/obs/finbreak.spec",
+            "packaging/obs/debian/rules",
+            "packaging/obs/vendor-wheels.sh",
+        ),
+    ),
+    (
+        "pip-audit",
+        "dev",
+        (
+            "scripts/_build-smoke-in-container.sh",
+            ".github/workflows/windows-build.yml",
+        ),
+    ),
 )
+
+
+def _is_prose(rel: str) -> bool:
+    return rel.startswith(("docs/", ".claude/")) or rel.endswith(".md")
 
 
 def _group_pin(pattern: re.Pattern[str], group_name: str) -> str:
@@ -344,9 +363,9 @@ def _group_pin(pattern: re.Pattern[str], group_name: str) -> str:
     return pins[0]
 
 
-@pytest.mark.parametrize(("dist", "group", "min_sites"), _LOCKSTEP_PINS)
+@pytest.mark.parametrize(("dist", "group", "build_files"), _LOCKSTEP_PINS)
 def test_INV7_build_tool_pins_are_in_lockstep(
-    dist: str, group: str, min_sites: int
+    dist: str, group: str, build_files: tuple[str, ...]
 ) -> None:
     pattern = re.compile(rf"{re.escape(dist)}==([0-9][0-9A-Za-z.\-+]*)")
     expected = _group_pin(pattern, group)
@@ -359,10 +378,10 @@ def test_INV7_build_tool_pins_are_in_lockstep(
     ).stdout.split("\0")
 
     offenders: list[str] = []
-    sites = 0
+    pinned_in: set[str] = set()
     for rel in tracked:
-        if not rel or rel.startswith("tests/features/bundling/"):
-            continue  # this file names the pattern itself
+        if not rel or rel.startswith("tests/features/bundling/") or _is_prose(rel):
+            continue  # this file names the pattern itself; prose is not a build
         path = _PROJECT_ROOT / rel
         try:
             text = path.read_text(encoding="utf-8")
@@ -370,7 +389,7 @@ def test_INV7_build_tool_pins_are_in_lockstep(
             continue
         for lineno, line in enumerate(text.splitlines(), 1):
             for match in pattern.finditer(line):
-                sites += 1
+                pinned_in.add(rel)
                 if match.group(1) != expected:
                     offenders.append(f"{rel}:{lineno}: {match.group(0)}")
 
@@ -378,9 +397,10 @@ def test_INV7_build_tool_pins_are_in_lockstep(
         f"{dist} pin drift — pyproject [dependency-groups] {group} says "
         f"{expected}, but:\n" + "\n".join(offenders)
     )
-    assert sites >= min_sites, (
-        f"expected >= {min_sites} inline {dist} pins, found {sites} — did a "
-        f"build path stop pinning it, or move?"
+    unpinned = sorted(set(build_files) - pinned_in)
+    assert not unpinned, (
+        f"expected every build path to pin {dist}=={expected} inline; these "
+        f"no longer do (stopped pinning, or moved?): {unpinned}"
     )
 
 
@@ -692,7 +712,7 @@ def test_FIBR0208_the_clean_room_supplies_libxkbcommon_from_the_host():
 # FIBR-0392 (2026-09-27 audit, code lane 12) — the self-test proves TLS loads.
 # --------------------------------------------------------------------------- #
 @pytest.mark.features
-def test_FIBR0392_tls_is_checked_and_reported_by_name(monkeypatch):
+def test_FIBR0392_tls_is_checked_and_reported_by_name(qapp, monkeypatch):
     """`app.py` imports `update_fetch`, which imports `ssl` and `certifi` at
     module scope, so a bundle missing libssl or certifi's cacert.pem dies at
     launch -- and the self-test had no leg for either, so it printed OK (the

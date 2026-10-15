@@ -32,29 +32,29 @@ Exercises the entry-point modes of `python -m finbreak` (INV-1 table):
 
 `test_INV2_INV3_build_smoke_clean_room` runs `scripts/build-smoke.sh` and asserts exit 0
 (both artifacts print `FINBREAK_SELFTEST_OK` in the Python-free container,
-INV-2/INV-3). It **skips** unless ALL hold, so the everyday gate never blocks
-on a multi-minute build (INV-5/INV-6):
-
-- `FINBREAK_BUILD_SMOKE=1` is set (the same opt-in switch as the build stage);
-- `scripts/build-smoke.sh` exists;
-- a container runtime (`podman` or `docker`) is on `PATH`.
+INV-2/INV-3). It **skips** unless `FINBREAK_BUILD_SMOKE=1` is set (the same
+opt-in switch as the build stage), so the everyday gate never blocks on a
+multi-minute build (INV-5/INV-6). Once opted in it **fails** when no container
+runtime (`podman` or `docker`) is on `PATH`: a skip would report the build as
+covered when it never ran.
 
 ## Build-tool pin lockstep (dev venv — `features` marker)
 
-**INV-7** — every hard-coded `<tool>==<version>` in a **tracked** file matches
-the pin in `pyproject.toml`'s PEP 735 dependency group, for each of:
+**INV-7** — every hard-coded `<tool>==<version>` in a **tracked** file outside
+the prose (`docs/`, `.claude/`, any `.md`) matches the pin in `pyproject.toml`'s PEP 735 dependency group, for each of:
 
 | Tool | Authoritative group | Inline call-sites |
 |------|--------------------|-------------------|
 | `pyinstaller` | `build` | `scripts/_build-smoke-in-container.sh` (×2), `scripts/build-windows-exe.py`, `packaging/obs/vendor-wheels.sh`, `packaging/obs/debian/rules`, `packaging/obs/finbreak.spec` |
-| `pip-audit` | `dev` | `.github/workflows/windows-build.yml` (the SBOM step) |
+| `pip-audit` | `dev` | `scripts/_build-smoke-in-container.sh`, `.github/workflows/windows-build.yml` (the SBOM step) |
 
 No build path installs either tool via `--group build` / `--group dev` — each
 names the version inline — so a bump to the pyproject pin would otherwise leave
 all of them silently behind (the drift class `docs/specs/FIBR-0155.md` § 805-808
 flagged). The test scans `git ls-files`, so a **new** call-site is covered
-automatically; a per-tool `min_sites` floor stops the scan passing vacuously if
-a build path drops or moves its pin. Adding a third tool is one row in
+automatically, and a dated record quoting an old pin never blocks a bump. Each
+call-site file in the table must still carry the pin, so a build path that
+drops or moves its pin fails by name. Adding a third tool is one row in
 `_LOCKSTEP_PINS`.
 
 ## The libxkbcommon pair stays on the host (dev venv — `features` marker)
