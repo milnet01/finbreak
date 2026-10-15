@@ -761,6 +761,8 @@ class BackupService:
                     raise BackupError(
                         "backup has unexpected / missing / duplicate entries"
                     )
+                # Unreachable while the exact entry-set check above stands; kept
+                # as defence in depth if that check is ever loosened.
                 for info in infos:
                     name = info.filename
                     if name != os.path.basename(name) or ".." in Path(name).parts:
