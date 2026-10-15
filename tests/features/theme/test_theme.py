@@ -21,6 +21,7 @@ from finbreak.services.auth import AuthService
 from finbreak.ui import theme
 from finbreak.ui.main_window import MainWindow
 from finbreak.ui.settings import SettingsDialog
+from finbreak.vault import Vault
 
 pytestmark = pytest.mark.features
 
@@ -37,12 +38,23 @@ def theme_isolation():
     """Snapshot & restore the shared qapp's palette / style / stylesheet (D12), so
     an applied theme can't leak into a sibling test. Restore the style by NAME
     (``style()`` is a borrowed pointer ``setStyle`` deletes) — style first (a
-    ``setStyle`` re-polish can reset the palette), then palette, then stylesheet."""
+    ``setStyle`` re-polish can reset the palette), then palette, then stylesheet.
+
+    A ``ThemeController`` the test built is retired too. Each is parented to the
+    shared app and listens for OS scheme changes, so one left in "system" mode
+    re-themes whatever test is running when the scheme next flips."""
     app = QApplication.instance()
     style_name = app.style().objectName()
     palette = QPalette(app.palette())
     stylesheet = app.styleSheet()
+    controllers = set(app.findChildren(theme.ThemeController))
     yield
+    for controller in set(app.findChildren(theme.ThemeController)) - controllers:
+        app.styleHints().colorSchemeChanged.disconnect(
+            controller._on_color_scheme_changed
+        )
+        controller.setParent(None)
+        controller.deleteLater()
     if style_name:
         app.setStyle(style_name)
     app.setPalette(palette)
@@ -492,8 +504,16 @@ def test_INV12_no_vault_reference(qtbot, theme_isolation):
     controller = theme.ThemeController(app)
     controller.set_theme("graphite")  # no AuthService / Vault anywhere in scope
     assert app.styleSheet() != ""
-    assert not hasattr(controller, "vault")
-    assert not hasattr(controller, "_service")
+    # Every attribute, not two guessed names: `_vault` or `_auth` would pass those.
+    held = [
+        name
+        for name, value in vars(controller).items()
+        if isinstance(value, (AuthService, Vault))
+    ]
+    assert held == [], (
+        "INV-12: the theme controller holds vault state.\n"
+        f"  expected: no AuthService or Vault attribute\n  actual:   {held}"
+    )
 
 
 # --------------------------------------------------------------------------- #

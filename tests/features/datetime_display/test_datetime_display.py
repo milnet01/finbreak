@@ -5,8 +5,10 @@ formatter under a held ``DateTimePrefs``; formatting never mutates stored data;
 a Settings Save pushes new prefs to the open tabs live. Vault under ``tmp_path``.
 """
 
+from datetime import date
+
 import pytest
-from PySide6.QtCore import QTimeZone
+from PySide6.QtCore import QDate, QDateTime, QTime, QTimeZone
 from PySide6.QtWidgets import QComboBox
 
 from conftest import _PW, _acct
@@ -26,6 +28,37 @@ _JHB = DateTimePrefs("Africa/Johannesburg", "yyyy/MM/dd", "HH:mm")
 _STMT_SQL = (
     "SELECT period_start, period_end, imported_at FROM statement_periods WHERE id=?"
 )
+
+# 10:30 UTC on 31 March 2026: Kiritimati (UTC+14) is on 1 April, Niue (UTC-11)
+# on 30 March.
+_FROZEN_UTC = QDateTime(QDate(2026, 3, 31), QTime(10, 30), QTimeZone.utc())
+
+
+def _freeze_app_clock(monkeypatch: pytest.MonkeyPatch, instant: QDateTime) -> None:
+    """Hold ``currentDateTimeUtc`` -- the one source ``today_in`` reads -- at
+    ``instant``, so a test reading the clock twice cannot straddle a midnight."""
+    import finbreak.datetime_format as dtf
+
+    class _Frozen(QDateTime):
+        @staticmethod
+        def currentDateTimeUtc() -> QDateTime:  # type: ignore[override]
+            return QDateTime(instant)
+
+    monkeypatch.setattr(dtf, "QDateTime", _Frozen)
+
+
+def _zone_off_the_system_day() -> str:
+    """Kiritimati or Niue, whichever is not on the system zone's day now.
+
+    They are always on different days, so one of them always qualifies."""
+    from finbreak.datetime_format import today_in
+
+    system_day = today_in(DATETIME_SYSTEM)
+    for zone in ("Pacific/Kiritimati", "Pacific/Niue"):
+        if today_in(zone) != system_day:
+            return zone
+    raise AssertionError("Kiritimati and Niue cannot both be on the system's day")
+
 
 # Statements table columns (mirror ui/statements.py).
 _COL_PERIOD = 1
@@ -220,24 +253,20 @@ def test_FIBR0204_unofferable_timezone_is_preserved_not_downgraded(qtbot, monkey
 # boundary a whole month of totals moved with the traveller rather than with
 # the vault.
 # --------------------------------------------------------------------------- #
-def test_FIBR0327_app_clock_follows_the_pinned_zone():
-    """Two zones 25 hours apart disagree about the calendar day for one hour in
-    every 24 — and always at a month boundary, which is where the totals move."""
+def test_FIBR0327_app_clock_follows_the_pinned_zone(monkeypatch):
+    """Two zones 25 hours apart disagree about the calendar day, at a month
+    boundary here, which is where the totals move.
+
+    The clock is frozen: read live, a midnight passing between the reads below
+    failed the test for a reason that is not the app's."""
     from finbreak.datetime_format import set_app_timezone, today, today_in
 
+    _freeze_app_clock(monkeypatch, _FROZEN_UTC)
     east = today_in("Pacific/Kiritimati")  # UTC+14
     west = today_in("Pacific/Niue")  # UTC-11
-    # The zones are 25 hours apart, so their calendar dates differ by ONE day
-    # for 23 hours out of every 24 and by TWO for the remaining hour — 10:00 to
-    # 11:00 UTC, when Kiritimati has reached tomorrow and Niue is still on
-    # yesterday. Never zero, which is the property the legs below need.
-    #
-    # The bound read `in (0, 1)`: it admitted the case that cannot happen and
-    # excluded the one that happens daily, so this suite went red for an hour a
-    # day. Caught by the gate on 2026-09-03 during that hour.
-    assert (east - west).days in (1, 2), (
-        "the two zones must disagree about the calendar day, or the legs below "
-        "prove nothing about which clock the app reads.\n"
+    assert (east, west) == (date(2026, 4, 1), date(2026, 3, 30)), (
+        "precondition: the frozen instant puts the two zones on different days, "
+        "or the legs below prove nothing about which clock the app reads.\n"
         f"  actual:   {east} vs {west}"
     )
 
@@ -250,36 +279,62 @@ def test_FIBR0327_app_clock_follows_the_pinned_zone():
         set_app_timezone(DATETIME_SYSTEM)
 
 
-def test_FIBR0327_unknown_or_empty_zone_falls_back_to_the_system_day():
+def test_FIBR0327_unknown_or_empty_zone_falls_back_to_the_system_day(monkeypatch):
     """A stored pref can be a zone this build does not know (an OS update, a
-    vault from another machine). It must not crash or return a wrong day."""
-    from finbreak.datetime_format import set_app_timezone, today, today_in
+    vault from another machine). It must not crash or return a wrong day.
 
-    system_day = today_in(DATETIME_SYSTEM)
-    assert today_in("Not/AZone") == system_day
+    One reading of the clock could not tell the system zone from a fixed one --
+    UTC, say -- whenever the two share a day. So the fallback's zone is checked
+    by id, and its day is checked at every hour of a frozen day."""
+    from finbreak.datetime_format import (
+        _resolve_zone,
+        set_app_timezone,
+        today,
+        today_in,
+    )
+
+    assert _resolve_zone("Not/AZone").id() == QTimeZone.systemTimeZoneId(), (
+        "an unknown zone must fall back to the system zone, not a fixed one.\n"
+        f"  expected: {QTimeZone.systemTimeZoneId()!r}\n"
+        f"  actual:   {_resolve_zone('Not/AZone').id()!r}"
+    )
     try:
         set_app_timezone("")
-        assert today() == system_day
+        for hour in range(24):
+            _freeze_app_clock(monkeypatch, _FROZEN_UTC.addSecs(hour * 3600))
+            system_day = today_in(DATETIME_SYSTEM)
+            assert today_in("Not/AZone") == system_day, f"unknown zone, +{hour} h"
+            assert today() == system_day, f"empty pref, +{hour} h"
     finally:
         set_app_timezone(DATETIME_SYSTEM)
 
 
-def test_FIBR0327_main_window_pushes_the_stored_pin_into_the_app_clock(qtbot, tmp_path):
+def test_FIBR0327_main_window_pushes_the_stored_pin_into_the_app_clock(
+    qtbot, tmp_path, monkeypatch
+):
     """The outcome, not the mechanism: after a Settings save the app clock is on
-    the stored zone, so the next Home refresh computes its month there."""
+    the stored zone, so the next Home refresh computes its month there.
+
+    The pinned zone must be on a different day from the system zone, or a save
+    that never reached the app clock would pass."""
     import finbreak.datetime_format as dtf
     from finbreak.datetime_format import today_in
 
+    _freeze_app_clock(monkeypatch, _FROZEN_UTC)
+    zone = _zone_off_the_system_day()
     auth = AuthService(tmp_path / "vault.db", tmp_path / "vault.kdf.json")
     auth.first_run(bytearray(_PW), "ZAR")
     try:
         window = MainWindow(auth)
         qtbot.addWidget(window)
-        auth.set_datetime_prefs(
-            DateTimePrefs("Pacific/Kiritimati", DATETIME_SYSTEM, DATETIME_SYSTEM)
-        )
+        auth.set_datetime_prefs(DateTimePrefs(zone, DATETIME_SYSTEM, DATETIME_SYSTEM))
         window._on_settings_saved()
-        assert dtf.today() == today_in("Pacific/Kiritimati")
+        assert dtf.today() == today_in(zone), (
+            f"the saved pin ({zone}) did not reach the app clock.\n"
+            f"  expected: {today_in(zone)}\n"
+            f"  actual:   {dtf.today()} (the system day is "
+            f"{today_in(DATETIME_SYSTEM)})"
+        )
     finally:
         dtf.set_app_timezone(DATETIME_SYSTEM)
         auth.lock()
