@@ -165,3 +165,47 @@ branch.** An earlier version of this rule had one, and it asked the person least
 able to answer it: you have just written the prose and know what you meant by it,
 which is exactly when a pasted number does not read as one. Pedigree in
 [`docs/history/claude-md.md`](../../docs/history/claude-md.md).
+
+## Why each gate stage is there
+
+The shellcheck/actionlint/zizmor stages cover the gate's own delivery machinery — the shell scripts and workflows that build and publish releases, which no Python stage reads. `zizmor` is the supply-chain half of that: it fails the gate if a workflow `uses:` reverts from a commit SHA to a mutable tag, or a checkout starts persisting its token (FIBR-0226). `pip-audit` runs **twice** against two different advisory databases — the default PyPI one and OSV.dev (`-s osv`, FIBR-0227) — because neither is a superset and only OSV.dev carries the malicious-package feed that catches a hijacked release with no CVE. Both runs start with the gate and finish alongside the other stages, so they add little to its runtime (FIBR-0373).
+
+## Why the hook exists, and why it refuses a dirty tree
+
+The gate reads the files on disk, so its verdict is about the working tree and not about the commits being pushed — the same thing only after a commit-then-push of `HEAD`. The dangerous direction is real: a fix present in the tree but not in the commit, or an untracked module the code imports, makes the gate green about code that never leaves the machine. The commonest way a red push slips through is simply *forgetting to run the gate*, and the version-controlled hook at `.githooks/pre-push` closes that gap.
+
+## Which suites read prose
+
+What each suite in `scripts/ci-local.sh`'s `DOCS_SUITES` reads:
+
+- **`tests/features/harness/`** (FIBR-0001 INV-1) reads
+  **`docs/specs/FIBR-0001.md`** and compares its stage table against
+  `scripts/ci-local.sh`, so a "doc-only" edit to *that one spec* can
+  genuinely turn the suite red. **This is why the old
+  "not `docs/specs/FIBR-0001.md`" carve-out is gone rather than dropped**
+  — the check that enforced it now runs on every doc-only push, so the
+  exception has nothing left to do.
+- **`tests/features/account_detect/test_no_real_data.py`** (FIBR-0086
+  INV-8) walks `git ls-files` and reads **every tracked text file** —
+  specs, ROADMAP, CHANGELOG included. That is deliberate: the guard binds
+  prose, because a real account number reached a spec once and sat there a
+  month (FIBR-0244).
+- **`tests/features/release_integrity/`** (INV-7) reads
+  **`docs/security-model.md`** and asserts the signed-`SHA256SUMS` note, an
+  `INV-13` definition, and that the 800 characters after it name `SHA256SUMS`
+  and match `sign|Ed25519`. **Reflowing that section is enough to turn it
+  red** — the paragraph does not have to be wrong, only rearranged.
+- **`tests/features/flatpak_packaging/`** asserts `packaging/flatpak/README.md`
+  **exists**, so moving or deleting that doc is a red doc-only push. Existence
+  only — it never reads the contents.
+- **`tests/features/prose_checks/`** (FIBR-0278) reads **`CLAUDE.md`** — it asserts the fenced command in its § Doc-only pushes runs `ci-local.sh --docs` and
+  names no suites of its own. It also asserts `DOCS_SUITES` matches its
+  `_READS_PROSE` ledger, and that every directory under `tests/features/` is
+  sorted into that ledger or into `_NO_PROSE`.
+- **`gitleaks dir .`** scans prose too, and `.githooks/pre-push` exists
+  because of a red **docs-only** commit (`a0cc895`).
+
+**Two near-misses**, so the membership rule in CLAUDE.md § Doc-only pushes is
+not theoretical — `bundling` cites specs in its docstring only, and `gitignore` names `docs/design.md` but tests it inside a fresh tmp repo holding a copy of `.gitignore` alone, so that file's real presence is irrelevant and deleting it turns nothing red.
+
+**Why no grep re-derives the list:** `account_detect` walks `git ls-files` and reads every tracked text file without naming one, so no path literal betrays it — any search-based audit misses the broadest member.

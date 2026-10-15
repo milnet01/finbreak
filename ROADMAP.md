@@ -7119,7 +7119,7 @@ work, and none of it is a release decision.
   Kind: doc-fix.
   Source: in-session-2026-10-10.
 
-- 🚧 [FIBR-0448] **The pre-push hook prints stage names and the failing stage only, not the whole gate log.**
+- ✅ [FIBR-0448] **The pre-push hook prints stage names and the failing stage only, not the whole gate log.**
   Every `git push` ran `scripts/ci-local.sh` with its full output on the
   terminal, so an agent's push carried the whole gate log (pytest's
   per-test lines and skip list included) into its context, re-read on
@@ -7129,17 +7129,23 @@ work, and none of it is a release decision.
   the last header to the end; the gate stops at its first failing
   stage). On success it prints pytest's summary line and the gate's last
   line. CI is untouched: it calls `ci-local.sh` directly.
+  Shipped (2026-10-15) in dabb9d1. Its own push was the field test:
+  20 lines shown against a 266-line gate log, 2616 passed, 2 skipped.
   **Layman:** Pushing code no longer floods the assistant's screen with thousands of lines of check output, which made every later step cost more.
   Kind: optimize.
   Source: token-ideas-2026-10-15 (ants-terminal-95 survey).
 
-- 🚧 [FIBR-0449] **Move the reasoning in CLAUDE.md's Build-and-test and Push-policy sections into .claude/rules/gate.md.**
+- ✅ [FIBR-0449] **Move the reasoning in CLAUDE.md's Build-and-test and Push-policy sections into .claude/rules/gate.md.**
   `CLAUDE.md` is read on every request. Its Build-and-test and
   Push-policy sections are most of its length, and much of that is why a
   rule exists rather than the rule. Keep every rule in `CLAUDE.md`; move
   the explanation to `.claude/rules/gate.md`, which `CLAUDE.md` already
   sends a reader to before gate or hook work. `tests/features/prose_checks/`
   reads `CLAUDE.md` and must stay green.
+  Shipped (2026-10-15). CLAUDE.md went from 26662 to about 22700
+  bytes: the stage reasons, the dirty-tree reasons and the per-suite list
+  moved word for word to `.claude/rules/gate.md`; two paragraphs the
+  history file already held were deleted. Every rule sentence stayed.
   **Layman:** The instructions loaded with every message get shorter, so each message costs less, with no rule lost.
   Kind: optimize.
   Source: token-ideas-2026-10-15 (ants-terminal-95 survey).

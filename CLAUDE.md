@@ -150,16 +150,7 @@ an environment, or when `./scripts/ci-local.sh` exits 127.
 **Run the full gate** — the same stages CI runs (lint, format-check,
 **shellcheck**, **actionlint**, **zizmor**, bandit, pip-audit **×2**, gitleaks,
 **mypy**, tests; FIBR-0001 INV-1/INV-2). Note the mypy stage: a green `pytest`
-alone is **not** a green gate. The shellcheck/actionlint/zizmor stages cover the
-gate's own delivery machinery — the shell scripts and workflows that build and
-publish releases, which no Python stage reads. `zizmor` is the supply-chain half
-of that: it fails the gate if a workflow `uses:` reverts from a commit SHA to a
-mutable tag, or a checkout starts persisting its token (FIBR-0226). `pip-audit`
-runs **twice** against two different advisory databases — the default PyPI one
-and OSV.dev (`-s osv`, FIBR-0227) — because neither is a superset and only
-OSV.dev carries the malicious-package feed that catches a hijacked release with
-no CVE. Both runs start with the gate and finish alongside the other stages,
-so they add little to its runtime (FIBR-0373):
+alone is **not** a green gate ([`gate.md`](.claude/rules/gate.md) § Why each gate stage is there):
 
 ```bash
 ./scripts/ci-local.sh
@@ -198,10 +189,7 @@ hands the values to `pytest` without them appearing on a command line, in
 not.
 
 Without it `tests/features/account_detect/test_no_real_data.py` **skips**, and
-a skipping test reads as coverage while providing none. **Wiring a source is not
-the same as supplying one** — the route landed days before the file did, and only
-the later date is when the tree was first actually scanned
-([`docs/history/claude-md.md`](docs/history/claude-md.md)). `FINBREAK_CORPUS_NUMBERS`
+a skipping test reads as coverage while providing none. `FINBREAK_CORPUS_NUMBERS`
 (comma-separated) overrides **where the numbers come from** — for a machine
 that keeps them elsewhere, or a run against a different set. **Its value comes
 from a gitignored file written in an editor and substituted in, never typed**:
@@ -222,11 +210,7 @@ instead of the full gate**, also by the hook's own choice (§ Doc-only pushes).
 
 **It also refuses outright on a tree with uncommitted or untracked files, or
 when the commit being pushed is not the one checked out**, rather than running.
-The gate reads the files on disk, so its verdict is about the working tree and
-not about the commits being pushed — the same thing only after a
-commit-then-push of `HEAD`. The dangerous direction is real: a fix present in
-the tree but not in the commit, or an untracked module the code imports, makes
-the gate green about code that never leaves the machine. Commit, stash or
+Commit, stash or
 remove them first; pushing past the refusal with `--no-verify` needs the user's
 say-so (`commits.md` § 2.3), like any other skipped hook. **And on every push it
 scans each commit being pushed for secrets** (`gitleaks git` over the pushed
@@ -235,9 +219,7 @@ range), because the gate's own scan sees only the final files (local-gate.md
 
 CI (`ci.yml`) runs this exact script, so a green local gate means green in CI
 **for everything the environment does not decide** — see the container caveat
-in `gate.md` for the part it cannot cover. The commonest way a red push slips through
-is simply *forgetting to run the gate*, and the version-controlled hook at
-`.githooks/pre-push` closes that gap. It is enabled
+in `gate.md` for the part it cannot cover. It is enabled
 in this clone; a **fresh clone must enable it once**:
 
 ```bash
@@ -314,13 +296,6 @@ This repo is **public**, so commits push freely.
 phase tag is a build marker and carries nothing private**, so publishing it costs
 nothing on a public repo.
 
-This repo used to hold that `<ID>-complete` tags stay local until you authorise a
-push. **That rule is retired because it was never enforceable**: `cut-release`
-Phase 5 on a public repo is `git push --follow-tags origin <branch>`
-(`~/.claude/skills/cut-release/SKILL.md` § Phase 5), and `/close-phase` Step 6
-offered the same command while this project still ran it. Both took the push
-path every time here, so the tags went up regardless.
-
 **Do not reinstate the ban without changing the tooling first.** Three earlier
 drafts tried, and each contradicted itself —
 [`docs/history/claude-md.md`](docs/history/claude-md.md).
@@ -354,46 +329,13 @@ clear, and § Build and test three screens up says never to print those values.
 stale.** It has, twice. **Do not justify the skip by claiming no Python stage
 reads prose** — that is the false claim both earlier versions rested on, and it
 is why the list is now bound to the tree by a guard rather than kept by hand
-([`docs/history/claude-md.md`](docs/history/claude-md.md)):
-
-- **`tests/features/harness/`** (FIBR-0001 INV-1) reads
-  **`docs/specs/FIBR-0001.md`** and compares its stage table against
-  `scripts/ci-local.sh`, so a "doc-only" edit to *that one spec* can
-  genuinely turn the suite red. **This is why the old
-  "not `docs/specs/FIBR-0001.md`" carve-out is gone rather than dropped**
-  — the check that enforced it now runs on every doc-only push, so the
-  exception has nothing left to do.
-- **`tests/features/account_detect/test_no_real_data.py`** (FIBR-0086
-  INV-8) walks `git ls-files` and reads **every tracked text file** —
-  specs, ROADMAP, CHANGELOG included. That is deliberate: the guard binds
-  prose, because a real account number reached a spec once and sat there a
-  month (FIBR-0244).
-- **`tests/features/release_integrity/`** (INV-7) reads
-  **`docs/security-model.md`** and asserts the signed-`SHA256SUMS` note, an
-  `INV-13` definition, and that the 800 characters after it name `SHA256SUMS`
-  and match `sign|Ed25519`. **Reflowing that section is enough to turn it
-  red** — the paragraph does not have to be wrong, only rearranged.
-- **`tests/features/flatpak_packaging/`** asserts `packaging/flatpak/README.md`
-  **exists**, so moving or deleting that doc is a red doc-only push. Existence
-  only — it never reads the contents.
-- **`tests/features/prose_checks/`** (FIBR-0278) reads **this file** — it
-  asserts the fenced command in this section runs `ci-local.sh --docs` and
-  names no suites of its own. It also asserts `DOCS_SUITES` matches its
-  `_READS_PROSE` ledger, and that every directory under `tests/features/` is
-  sorted into that ledger or into `_NO_PROSE`.
-- **`gitleaks dir .`** scans prose too, and `.githooks/pre-push` exists
-  because of a red **docs-only** commit (`a0cc895`).
+([`docs/history/claude-md.md`](docs/history/claude-md.md)).
+What each suite reads: [`gate.md`](.claude/rules/gate.md) § Which suites read prose.
 
 **The membership rule: a suite belongs here if it reads a tracked doc's
-CONTENTS or requires one to EXIST.** Two near-misses, so the rule is not
-theoretical — `bundling` cites specs in its docstring only, and `gitignore`
-names `docs/design.md` but tests it inside a fresh tmp repo holding a copy of
-`.gitignore` alone, so that file's real presence is irrelevant and deleting it
-turns nothing red.
+CONTENTS or requires one to EXIST.**
 
-**No grep re-derives this list, so do not try to.** `account_detect` walks
-`git ls-files` and reads every tracked text file without naming one, so no path
-literal betrays it — any search-based audit misses the broadest member.
+**No grep re-derives this list, so do not try to.**
 `tests/features/prose_checks/` (**FIBR-0278**) is the guard instead: it fails if
 `DOCS_SUITES` and its `_READS_PROSE` ledger disagree, and it fails if any
 suite directory is sorted into neither ledger. Add a suite to **both** places —

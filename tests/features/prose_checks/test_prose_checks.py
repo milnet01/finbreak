@@ -75,8 +75,8 @@ _READS_PROSE = frozenset(
     }
 )
 
-# Every other suite directory. Two are near-misses CLAUDE.md calls out by
-# name -- each mentions a doc path but is excluded, and the comment says why.
+# Every other suite directory. Two are near-misses .claude/rules/gate.md calls
+# out by name -- each mentions a doc path but is excluded, and the comment says why.
 _NO_PROSE = frozenset(
     {
         "log_file",
