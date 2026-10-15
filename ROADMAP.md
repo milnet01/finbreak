@@ -3382,7 +3382,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: test.
   Source: full-audit-2026-09-27 tests lane T02 (queued by FIBR-0367).
 
-- 🚧 [FIBR-0413] **Queued test findings from the 2026-09-27 audit: backup, restore and vault reset tests (7 items).**
+- ✅ [FIBR-0413] **Queued test findings from the 2026-09-27 audit: backup, restore and vault reset tests (7 items).**
   From docs/reviews/2026-09-27-full-audit/tests-lane-T03-backup-vault.md.
   Paths are under tests/features/; lines as of 2026-09-29.
   - backup/test_backup.py:1194 -- b"\xff\xfe..." is read as UTF-16 and
@@ -3415,6 +3415,12 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   unsafe-name check in services/backup.py _read_fbk is unreachable
   behind the exact entry-set check. Decide whether to keep it as
   defence in depth (say so in a comment) or remove it.
+  Resolution 2026-10-15 (5e0f78e): all seven fixed. Six were proved by a
+  mutant the old test passed and the new one failed. The deflate-bomb fix
+  is a speed fix (6.2 s to 0.3 s): both versions catch its mutant. The
+  code note was decided as keep: the unsafe-name check in _read_fbk stays
+  as defence in depth, with a comment saying so. The lane's two HIGH
+  findings were already fixed under FIBR-0367.
   **Layman:** Several backup and restore checks could pass even if the protection they test were removed; this makes each one prove its own point.
   Kind: test.
   Source: full-audit-2026-09-27 tests lane T03 (queued by FIBR-0367).
@@ -3462,7 +3468,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: test.
   Source: full-audit-2026-09-27 tests lane T04 (queued by FIBR-0367).
 
-- 📋 [FIBR-0415] **Queued test findings from the 2026-09-27 audit: batch import and detection tests (6 items).**
+- 🚧 [FIBR-0415] **Queued test findings from the 2026-09-27 audit: batch import and detection tests (6 items).**
   From docs/reviews/2026-09-27-full-audit/tests-lane-T05-batch-detect.md.
   Paths are under tests/features/; lines as of 2026-09-29.
   - batch_import/test_batch_import_ui.py:271 -- INV-3 leg (b) checks
