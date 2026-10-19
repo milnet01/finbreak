@@ -1900,8 +1900,23 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Source: user-request-2026-07-01.
   Lanes: ui, perf.
 
-- 📋 [FIBR-0097] **Virtualize the transaction tables — QTableWidget → QTableView + QAbstractTableModel.**
+- 🚧 [FIBR-0097] **Virtualize the transaction tables — QTableWidget → QTableView + QAbstractTableModel.**
   Verified 2026-07-11: Home, Statements, and Rules use QTableWidget (ui/home.py, ui/statements.py, ui/rules.py), which builds a widget for EVERY cell — fine at 50 rows, sluggish at thousands. Migrate to QTableView + a QAbstractTableModel so rendering is virtualized (only visible rows built). Also a cleaner data/view separation that FIBR-0012 (sort/filter) and FIBR-0084 (movable/resizable columns) build on naturally. Sizeable refactor; own spec. Deps: FIBR-0051/0052 (the current widgets).
+  Started 2026-10-19. Measured (offscreen, one account, best of 3):
+  TransactionsView.refresh 134 ms at 2,000 rows, 1,474 ms at 20,000,
+  4,128 ms at 50,000. cProfile at 20,000: amount formatting about a
+  third, the Python SortableItem.__lt__ sort about a quarter, the rest
+  item construction and setItem. Scope narrowed to the Transactions view:
+  it is the one table whose rows grow with the user's history; Statements,
+  Rules, Accounts, Transfers, Recurring and Forecast hold dozens. Tried
+  and reverted: caching _locale_digits' ten toString calls (about 6%, not
+  worth a module global). Blast radius (mapped 2026-10-19): main_window's
+  lock wipe (_clear_decrypted_rows empties QTableWidget only - a model
+  view would keep decrypted rows after lock), reset_columns and
+  remember_columns (QTableWidget/QTreeWidget only), FIBR-0153 INV-9,
+  FIBR-0032 section 2, FIBR-0192 INV-5..8, FIBR-0139 INV-9, FIBR-0105
+  INV-4, and about 100 test call sites in 11 files. Several subsystems,
+  so it gets a spec (spec-format.md section 1) before any build.
   **Layman:** Keep the transaction lists fast even with thousands of rows by only drawing the rows you can actually see.
   Kind: perf.
   Source: claude-suggestion-2026-07-11.
