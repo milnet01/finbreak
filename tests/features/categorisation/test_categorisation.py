@@ -19,7 +19,7 @@ from PySide6.QtWidgets import QDialog, QMessageBox
 from conftest import _PW, RuleStub, build_v6_vault, keyed_connection, raising_conn
 from finbreak.crypto import SALT_LEN
 from finbreak.errors import VaultLockedError
-from finbreak.migrations import LATEST_SCHEMA_VERSION, run_migrations
+from finbreak.migrations import _MIGRATIONS, LATEST_SCHEMA_VERSION, run_migrations
 from finbreak.models import (
     CategorizationRule,
     Category,
@@ -197,8 +197,11 @@ def test_FIBR0213_patterns_are_folded_once_not_once_per_row(service, monkeypatch
 # --------------------------------------------------------------------------- #
 # INV-15 — schema v6 -> v7
 # --------------------------------------------------------------------------- #
-def test_INV15_latest_schema_version_is_10():
-    assert LATEST_SCHEMA_VERSION == 14
+def test_INV15_v7_is_reachable_from_the_latest_schema() -> None:
+    """INV-15 is this feature's own v6 -> v7 step, so it pins that the
+    walk reaches v7 rather than what the latest happens to be (FIBR-0451)."""
+    assert LATEST_SCHEMA_VERSION >= 7
+    assert 7 in _MIGRATIONS
 
 
 def test_INV15_v6_upgrades_to_v9(paths):
@@ -212,7 +215,10 @@ def test_INV15_v6_upgrades_to_v9(paths):
     ).fetchall()
 
     run_migrations(conn)  # v6 -> v9 (walks to LATEST)
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 14
+    assert (
+        conn.execute("SELECT version FROM schema_version").fetchone()[0]
+        == LATEST_SCHEMA_VERSION
+    )
 
     cols = {r[1] for r in conn.execute("PRAGMA table_info(transactions)").fetchall()}
     assert {"category_id", "category_source"} <= cols
@@ -265,13 +271,19 @@ def test_INV15_idempotent_at_v9(paths):
     conn = keyed_connection(vault_path, salt)
     run_migrations(conn)
     run_migrations(conn)  # re-run: no-op at v9
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 14
+    assert (
+        conn.execute("SELECT version FROM schema_version").fetchone()[0]
+        == LATEST_SCHEMA_VERSION
+    )
     conn.close()
 
 
 def test_INV15_first_run_vault_is_v9(service):
     conn = service.vault.connection
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 14
+    assert (
+        conn.execute("SELECT version FROM schema_version").fetchone()[0]
+        == LATEST_SCHEMA_VERSION
+    )
     cols = {r[1] for r in conn.execute("PRAGMA table_info(transactions)").fetchall()}
     assert {"category_id", "category_source"} <= cols
 

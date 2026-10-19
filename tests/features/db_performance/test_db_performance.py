@@ -15,7 +15,7 @@ from conftest import (
     raising_conn,
 )
 from finbreak.crypto import SALT_LEN, derive_key
-from finbreak.migrations import LATEST_SCHEMA_VERSION, run_migrations
+from finbreak.migrations import _MIGRATIONS, LATEST_SCHEMA_VERSION, run_migrations
 from finbreak.repositories.transactions import TransactionRepository
 from finbreak.repositories.transfers import (
     CANDIDATE_PAIRS_SQL,
@@ -60,8 +60,11 @@ def service(paths):
 # --------------------------------------------------------------------------- #
 # INV-1 — schema v10 + the v9->v10 migration
 # --------------------------------------------------------------------------- #
-def test_INV1_latest_schema_version_is_14() -> None:
-    assert LATEST_SCHEMA_VERSION == 14
+def test_INV1_v10_is_reachable_from_the_latest_schema() -> None:
+    """INV-1 is this feature's own v9 -> v10 step, so it pins that the
+    walk reaches v10 rather than what the latest happens to be (FIBR-0451)."""
+    assert LATEST_SCHEMA_VERSION >= 10
+    assert 10 in _MIGRATIONS
 
 
 def test_INV1_v9_upgrades_to_v10_adding_indexes(paths) -> None:
@@ -72,7 +75,10 @@ def test_INV1_v9_upgrades_to_v10_adding_indexes(paths) -> None:
     conn = keyed_connection(vault_path, salt)
     assert _index_names(conn) == set(), "v9 ships no indexes"
     run_migrations(conn)  # v9 -> v10 (walks to LATEST)
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 14
+    assert (
+        conn.execute("SELECT version FROM schema_version").fetchone()[0]
+        == LATEST_SCHEMA_VERSION
+    )
     assert _index_names(conn) == _EXPECTED_INDEXES
     # Pure-DDL step: the row survives untouched (no backfill).
     assert conn.execute("SELECT count(*) FROM transactions").fetchone()[0] == 1
@@ -108,7 +114,10 @@ def test_INV1_idempotent_at_latest(paths) -> None:
     conn = keyed_connection(vault_path, salt)
     run_migrations(conn)  # v9 -> v10
     run_migrations(conn)  # no-op at latest — no duplicate indexes
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 14
+    assert (
+        conn.execute("SELECT version FROM schema_version").fetchone()[0]
+        == LATEST_SCHEMA_VERSION
+    )
     assert _index_names(conn) == _EXPECTED_INDEXES
     conn.close()
 

@@ -33,7 +33,7 @@ from finbreak.crypto import (
     validate_params,
 )
 from finbreak.errors import KdfPolicyError, VaultLockedError, VaultStateError
-from finbreak.migrations import DEFAULT_ACCOUNT_NAME
+from finbreak.migrations import DEFAULT_ACCOUNT_NAME, LATEST_SCHEMA_VERSION
 from finbreak.models import FORMAT_VERSION, KdfParams
 from finbreak.repositories.accounts import AccountRepository
 from finbreak.services.auth import AuthService
@@ -620,9 +620,12 @@ def test_INV5_first_run_creates_settings_and_both_files(service, paths):
         == "2"
     )
     # First-run now migrates the fresh v1 baseline straight to the latest
-    # schema (FIBR-0005 D1), so a new vault lands at v9 (the current
-    # LATEST_SCHEMA_VERSION), not v1.
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 14
+    # schema (FIBR-0005 D1), so a new vault lands at LATEST_SCHEMA_VERSION,
+    # not v1.
+    assert (
+        conn.execute("SELECT version FROM schema_version").fetchone()[0]
+        == LATEST_SCHEMA_VERSION
+    )
     assert vault_path.exists() and sidecar_path.exists()
 
 

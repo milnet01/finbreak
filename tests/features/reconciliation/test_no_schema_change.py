@@ -18,7 +18,12 @@ pytestmark = pytest.mark.features
 
 
 def test_INV8_schema_version_at_current_latest_v14() -> None:
-    assert LATEST_SCHEMA_VERSION == 14
+    # A deliberate tripwire (FIBR-0451): a schema bump must fail here so a human
+    # confirms the new step is not reconciliation's before moving the pin.
+    assert LATEST_SCHEMA_VERSION == 14, (
+        f"schema is now v{LATEST_SCHEMA_VERSION}: confirm reconciliation registered "
+        "no migration of its own, then move this pin and spec INV-8 to the new latest"
+    )
 
 
 def test_INV8_no_unregistered_next_migration() -> None:

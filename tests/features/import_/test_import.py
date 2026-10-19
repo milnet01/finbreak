@@ -30,7 +30,7 @@ from conftest import (
 from finbreak.crypto import SALT_LEN, derive_key
 from finbreak.errors import VaultLockedError
 from finbreak.importers.csv_importer import CsvImporter, read_header
-from finbreak.migrations import LATEST_SCHEMA_VERSION, run_migrations
+from finbreak.migrations import _MIGRATIONS, LATEST_SCHEMA_VERSION, run_migrations
 from finbreak.models import ColumnMapping, NegativeStyle
 from finbreak.repositories.import_profiles import ImportProfileRepository
 from finbreak.repositories.statement_periods import StatementPeriodRepository
@@ -597,7 +597,10 @@ def test_INV8_v3_upgrades_to_v4_creates_tables_others_untouched(paths):
     before_cats = conn.execute("SELECT id, name, kind FROM categories").fetchall()
 
     run_migrations(conn)  # v3 -> v9 (full run_migrations now walks to LATEST)
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 14
+    assert (
+        conn.execute("SELECT version FROM schema_version").fetchone()[0]
+        == LATEST_SCHEMA_VERSION
+    )
     assert conn.execute("SELECT count(*) FROM import_profiles").fetchone()[0] == 0
     assert conn.execute("SELECT count(*) FROM statement_periods").fetchone()[0] == 0
 
@@ -647,19 +650,28 @@ def test_INV8_idempotent_at_v9(paths):
     conn = keyed_connection(vault_path, salt)
     run_migrations(conn)  # v3 -> v9
     run_migrations(conn)  # re-run: no-op at v9
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 14
+    assert (
+        conn.execute("SELECT version FROM schema_version").fetchone()[0]
+        == LATEST_SCHEMA_VERSION
+    )
     conn.close()
 
 
 def test_INV8_first_run_vault_is_v9_with_empty_import_tables(service):
     conn = service.vault.connection
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 14
+    assert (
+        conn.execute("SELECT version FROM schema_version").fetchone()[0]
+        == LATEST_SCHEMA_VERSION
+    )
     assert conn.execute("SELECT count(*) FROM import_profiles").fetchone()[0] == 0
     assert conn.execute("SELECT count(*) FROM statement_periods").fetchone()[0] == 0
 
 
-def test_INV8_latest_schema_version_is_10():
-    assert LATEST_SCHEMA_VERSION == 14
+def test_INV8_v4_is_reachable_from_the_latest_schema() -> None:
+    """INV-8 is this feature's own v3 -> v4 step, so it pins that the
+    walk reaches v4 rather than what the latest happens to be (FIBR-0451)."""
+    assert LATEST_SCHEMA_VERSION >= 4
+    assert 4 in _MIGRATIONS
 
 
 # --------------------------------------------------------------------------- #
