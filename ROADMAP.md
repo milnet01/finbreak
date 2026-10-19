@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: FIBR=453 -->
+<!-- ants-roadmap-id-high-water: FIBR=454 -->
 # finbreak — Roadmap
 
 > See [CHANGELOG.md](CHANGELOG.md) for what's shipped and the current
@@ -4542,6 +4542,36 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   **Layman:** The app no longer ships to Flathub, but its packaging files and their checks are still here; this decides whether to remove them.
   Kind: chore.
   Source: full-audit-2026-09-27 tests lane T12, via FIBR-0422.
+
+- 📋 [FIBR-0454] **Readability fixes in the recurring and transfer services: a dead helper, stale comments, hidden conventions.**
+  Found by a trial run of the draft review-readability skill, one cold lane
+  over services/recurring.py and services/transfer_detection.py; each
+  finding checked against the code on 2026-10-19.
+  1. recurring._add_cadence has no caller in src/ (only
+     tests/features/recurring/test_recurring.py). forecast.py's
+     ForecastInput.anchor comment and _occurrences docstring still say
+     next_expected is _add_cadence(last_seen, ...), "already clamped";
+     detect_recurring now builds it with _add_cadence_n(..., intended_day),
+     which is not. Drop the helper (move its test to _add_cadence_n) and
+     correct both comments.
+  2. _add_cadence_n is underscore-private but forecast.py imports it. Make it
+     public or say so on the function.
+  3. _add_months' `day or d.day` relies on 0 meaning "anchor's own day";
+     forecast passes day_of_month=0 by default. The convention is written
+     only in forecast.py; state it at _add_months / _add_cadence_n.
+  4. _add_cadence_n's last line handles YEARLY by fall-through. Cadence has
+     four members today, so it is correct; a fifth would silently project
+     yearly. Make the YEARLY test explicit.
+  5. confirmed_transfer_txn_ids' docstring and the module docstring name one
+     future consumer (FIBR-0012); five services call it today (recurring,
+     reporting, pdf_export, month_summary, alerts). State the contract.
+  6. confirm_many's docstring: "exactly as confirm_all did" is history.
+  Lead for review-code, unverified: confirm_many skips _record's
+  is_confirmed guard, so a stale selection holding an already-confirmed
+  transaction could double-link or raise a raw IntegrityError.
+  **Layman:** Tidy up a few misleading names and notes in the code that finds repeat payments and transfers, so the next person to change it does not break the forecast.
+  Kind: review-fix.
+  Source: review-readability draft trial 2026-10-19 (recurring.py + transfer_detection.py).
 
 ## v1.1.0 — Localisation
 
