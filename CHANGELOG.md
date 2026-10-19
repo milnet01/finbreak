@@ -21,6 +21,13 @@ signaling per
 
 ## [Unreleased]
 
+### Removed
+
+- **The Flatpak build recipe is gone — finbreak will not be listed on Flathub** (FIBR-0452)
+  Version 0.1.17 said a Flathub listing would follow. That plan was dropped,
+  and the Flatpak recipe has now been removed. On Linux, install finbreak
+  from the AppImage or the openSUSE Build Service packages (RPM/deb).
+
 ## [1.0.1] - 2026-10-10
 
 **Theme:** Windows updates fixed.
