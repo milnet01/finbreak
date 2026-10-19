@@ -3899,6 +3899,23 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   side is already gone or owned elsewhere. Next: list the deleteLater()
   calls this test's path reaches (prompt dialogs, the batch review) and
   check each for a parent or a Python owner that also deletes it.
+  Recurred 2026-10-19 during the FIBR-0439 gate: same test, same worker
+  gw5. Core dump kept (SIGSEGV, 14:22:43). gdb, unwinding through the
+  signal frame: sendPostedEvents -> QObject::event (a DeferredDelete) ->
+  a destructor in PySide6's QtWidgets.abi3.so -> a call to 0x471. So the
+  2026-10-15 and 2026-10-19 crashes are one shape: a deleteLater()'d
+  Python-subclassed widget whose wrapper is already freed when its
+  destructor runs. It ran in pytest-qt's processEvents straight after the
+  test body, before teardown closed the wizard, so the likeliest object is
+  the test's `_Stub` PasswordDialog (show_modal's finished->deleteLater).
+  That stub rejects inside show(); conftest's PickerStub and the Standard
+  Bank `_Fake` do the same and have never crashed. The difference on the
+  batch path is the extra `rejected` lambda in `_ask_password`.
+  Not reproduced: the test alone 15 times, alone under gc.set_threshold
+  1/10/100 three times each, and the full suite under -n 6 twelve times
+  (2633 passed every run). Next: the same full-suite loop with
+  PYTHONMALLOC=debug or under a PySide6 debug build, so a freed wrapper
+  faults at the free rather than at the later delete.
   **Layman:** One automated check crashed once for no clear reason and then passed every time after; it needs a closer look so it doesn't hide a real problem.
   Kind: investigate.
   Source: in-session-2026-09-29 (FIBR-0405 gate run).
