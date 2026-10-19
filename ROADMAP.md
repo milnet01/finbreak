@@ -4532,7 +4532,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Also decided 2026-10-19: 1.0.2 waits for a user-visible fix.
   Started 2026-10-19, after FIBR-0097 and FIBR-0099 were started (user
   chose this order).
-  Shipped 2026-10-19 (449ceed): packaging/flatpak/ and
+  Shipped 2026-10-19 (753ec84): packaging/flatpak/ and
   tests/features/flatpak_packaging/ removed, with every live reference
   (bump.json, release-linux.sh, DOCS_SUITES and the prose_checks ledger,
   gitleaks, docs). The ignored build output inside packaging/flatpak/
