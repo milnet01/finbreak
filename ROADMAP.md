@@ -7225,7 +7225,7 @@ work, and none of it is a release decision.
   Kind: doc-fix.
   Source: review-contract-2026-09-28 CLAUDE.md loop 11.
 
-- 📋 [FIBR-0439] **The real-account-number guard never reads commit messages or the pushed commits' history.**
+- ✅ [FIBR-0439] **The real-account-number guard never reads commit messages or the pushed commits' history.**
   test_no_real_data.py scans `git ls-files` at HEAD only. security.md
   2.1 bars real data from a commit or a message too. Measured
   2026-10-01 with the test's own `_leaks` over all 1562 commits:
@@ -7235,6 +7235,14 @@ work, and none of it is a release decision.
   range's messages and patches (`git log -p <range>`), reading
   `.corpus-numbers`, reporting commit ids only, never values. Skip where
   the file is absent, and say so.
+  Shipped 2026-10-19 in 34e822f. .githooks/pre-push runs the tree test's
+  own matcher (test_no_real_data.py, now also runnable as a script) over
+  each pushed range: every commit's message and added lines. Commit ids
+  only are printed. Removed lines are not counted, so scrubbing a published
+  number is not refused. No .corpus-numbers: skipped, and the hook says so.
+  Whole history, measured 2026-10-19: 3 commits add a corpus number (a
+  whole-patch search finds 7, the 2026-10-01 count), all July FIBR-0050
+  commits already on the remote. First live run: the 34e822f push.
   **Layman:** The check that stops a real bank account number reaching the public repo looks only at the files as they are now, so a number typed into a commit message, or added and deleted again before a push, would still be published.
   Kind: security.
   Source: field-pass security.md 2.1 2026-10-01.
