@@ -179,8 +179,8 @@ use them.
   orders the rows by § 4.1's sort key; tied rows keep their current relative
   order in both directions; the default is Date, newest first.
   *Test:* `test_FIBR0097_each_column_sorts_by_its_key` — a fixture where text
-  order and key order disagree in every keyed column (amounts `-1000`, `200`,
-  `30`; dates across a year boundary; one guess row and one plain row of the
+  order and key order disagree in every keyed column (display amounts
+  `-1000.00`, `200.00`, `30.00`; dates across a year boundary; one guess row and one plain row of the
   same category; two rows on one day), sorted both ways per column.
   *Breaks when:* amounts sort as text, a guess row sorts apart from its plain
   siblings, or the sort is unstable.
@@ -199,8 +199,8 @@ use them.
   *Test:* `tests/features/app_shell/test_lock_wipe.py`'s `_survivors` also
   scans the Python attributes of each item view's model;
   `test_row30_lock_leaves_no_decrypted_value_in_any_tab` then covers this tab.
-  The scan is seen to fail against a `clear_rows` that empties `_master`
-  alone.
+  The widened scan is seen to fail against a `clear_rows` that makes the
+  model report no rows but leaves it holding the old list.
   *Breaks when:* `clear_rows` drops the view's lists but leaves the model
   holding the old one, which `_model_texts` cannot see once `rowCount()` is 0
   — so a reset that only zeroes the count must also fail.
@@ -251,8 +251,8 @@ use them.
 | INV-7 | `clipboard/test_clipboard.py` |
 
 INV-2 and INV-5 are written first and seen red: INV-2 counts 2,000 calls
-against the current table, and INV-5's widened scan fails against a
-`clear_rows` that skips the model. INV-3 and INV-4 pass against the current
+against the current table, and INV-5's widened scan fails against the
+`clear_rows` INV-5 names. INV-3 and INV-4 pass against the current
 table too, which sorts by the same keys, stably, and clears the selection on
 a refill. They are written first as parity locks.
 
