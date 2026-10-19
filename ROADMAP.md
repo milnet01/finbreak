@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: FIBR=452 -->
+<!-- ants-roadmap-id-high-water: FIBR=453 -->
 # finbreak — Roadmap
 
 > See [CHANGELOG.md](CHANGELOG.md) for what's shipped and the current
@@ -7380,6 +7380,20 @@ work, and none of it is a release decision.
   **Layman:** Short screen recordings of finbreak in use, for the trailer on the projects website.
   Kind: marketing.
   Source: peer-request-2026-10-10 ants-projects-hub-website msg 571.
+
+- ✅ [FIBR-0453] **Bump actions/upload-artifact from 7.0.1 to 7.0.2 in windows-build.yml.**
+  Taken from Dependabot PR #2 as a local commit, so the subject
+  carries an id (commits.md § 1.1). The new pin
+  cf430e030ddbb5b0abf93d22962f4752f3646cd9 was checked against the
+  upstream v7.0.2 tag on 2026-10-19. Upstream notes: better retries
+  on HTTP 429 and @actions/artifact 6.3.1. windows-build.yml is
+  workflow_dispatch only, so the PR's CI never ran this step; the
+  next Windows release build is its first real run.
+  Shipped 2026-10-19: the pin is bumped. actionlint and zizmor pass on
+  the file. PR #2 is closed in favour of this commit.
+  **Layman:** Keeps the tool that uploads the built Windows program up to date; nothing changes for users.
+  Kind: chore.
+  Source: dependabot-pr-2-2026-10-14.
 
 ## 0.1.23 — released 2026-09-07
 
