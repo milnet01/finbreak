@@ -49,7 +49,6 @@ cut-release <X.Y.Z> --no-publish  # a SKILL — invoke it; it is not on PATH. Bu
                              #   SHA256SUMS.sig + linux SBOM -> FIVE assets
 ./scripts/release-windows.sh # .exe + .sig + windows SBOM, and it RE-UPLOADS
                              #   SHA256SUMS + .sig having merged into them
-# then re-pin the Flatpak commit: (below)
 ```
 
 **No release candidates on this path.** `release-linux.sh` publishes
@@ -98,14 +97,7 @@ Worth knowing before you run them:
   against the committed `RELEASE_PUBLIC_KEY_B64` then rejects, and a
   release signed with it would be invisible to every installed copy's
   updater.
-- **Re-pin the Flatpak `commit:` afterwards.** `bump.json` bumps the
-  manifest's `tag:` mechanically, but its sibling `commit:` cannot be —
-  the sha does not exist until the release is tagged. `release-linux.sh`
-  prints the sha as its last line; set it in
-  `packaging/flatpak/io.github.milnet01.finbreak.yaml`. Nothing verifies
-  the two point at the same object — one of the two gaps left in the
-  release path, the other being that nothing checks `release-linux.sh`
-  was run at all (FIBR-0275).
+- **Nothing checks that `release-linux.sh` was run at all** (FIBR-0275).
 - **A failed upload no longer skips the read-back gate (FIBR-0327).** Both
   scripts capture the publish command's exit status instead of letting
   `set -e` end the run there. `--clobber` deletes each asset before

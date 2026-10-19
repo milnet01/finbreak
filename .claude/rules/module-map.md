@@ -85,9 +85,8 @@ what finds the symbol-only citations.
   `release-windows.sh`, `gen-signing-key.py`, `sign-release.py`,
   `gen-checksums.sh`, `make-icons.sh`, and the demo/screenshot helpers
   `seed_demo_vault.py` + `capture_screenshots.py`.
-- `packaging/` — the distro recipes: `packaging/flatpak/` (Flathub manifest,
-  FIBR-0159) and `packaging/obs/` (openSUSE Build Service `.spec`, `debian/`,
-  `_service`, metainfo + desktop files, FIBR-0155).
+- `packaging/obs/` — the distro recipes for the openSUSE Build Service
+  (`.spec`, `debian/`, `_service`, metainfo + desktop files, FIBR-0155).
 - `assets/` — the app icon set and the README screenshots.
 - `.github/workflows/ci.yml` — CI mirror; runs INSIDE `python:3.12-slim-bookworm`
   and calls `ci-setup.sh` then `ci-local.sh` — the same image + scripts as

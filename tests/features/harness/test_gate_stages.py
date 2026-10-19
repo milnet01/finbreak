@@ -155,10 +155,10 @@ def test_INV2_spec_table_quotes_the_redacting_invocation() -> None:
 # --------------------------------------------------------------------------- #
 def test_INV3_shellcheck_targets_every_tracked_script() -> None:
     """The first cut globbed `scripts/*.sh` and so skipped the seven packaging
-    recipes under packaging/obs/ and packaging/flatpak/ — the OBS and Flathub
-    publish path the stage claimed to protect. A glob has to be widened by hand
-    whenever scripts appear somewhere new, and nothing reports that it went
-    stale; `git ls-files` cannot."""
+    recipes under packaging/obs/ and the since-retired packaging/flatpak/ — the
+    OBS and Flathub publish path the stage claimed to protect. A glob has to be
+    widened by hand whenever scripts appear somewhere new, and nothing reports
+    that it went stale; `git ls-files` cannot."""
     script = _script()
     assert "git ls-files '*.sh'" in script, (
         "the shellcheck stage no longer selects via `git ls-files '*.sh'`. A "

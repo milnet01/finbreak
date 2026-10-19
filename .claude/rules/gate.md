@@ -156,8 +156,7 @@ one. `.githooks/pre-push` is the case that proved it, and it is shell that
 skipped the one stage reading what had just changed. Do not reinstate one
 ([`docs/history/claude-md.md`](../../docs/history/claude-md.md)).
 
-**A `.md` anywhere counts** — `tests/features/<name>/spec.md` and
-`packaging/flatpak/README.md` included. The suites and the `gitleaks`
+**A `.md` anywhere counts** — `tests/features/<name>/spec.md` included. The suites and the `gitleaks`
 scan in CLAUDE.md § Doc-only pushes are what cover those. Anything else takes the full gate.
 
 **The checks are unconditional — there is no "only if it looks like a number"
@@ -195,9 +194,6 @@ What each suite in `scripts/ci-local.sh`'s `DOCS_SUITES` reads:
   `INV-13` definition, and that the 800 characters after it name `SHA256SUMS`
   and match `sign|Ed25519`. **Reflowing that section is enough to turn it
   red** — the paragraph does not have to be wrong, only rearranged.
-- **`tests/features/flatpak_packaging/`** asserts `packaging/flatpak/README.md`
-  **exists**, so moving or deleting that doc is a red doc-only push. Existence
-  only — it never reads the contents.
 - **`tests/features/prose_checks/`** (FIBR-0278) reads **`CLAUDE.md`** — it asserts the fenced command in its § Doc-only pushes runs `ci-local.sh --docs` and
   names no suites of its own. It also asserts `DOCS_SUITES` matches its
   `_READS_PROSE` ledger, and that every directory under `tests/features/` is

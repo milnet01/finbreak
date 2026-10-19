@@ -174,8 +174,7 @@ here only apply to **non-`.py`** names.)
   **reverse-DNS application ID** (dots, mixed case — mandated by
   freedesktop / Flatpak / AppStream), which deliberately overrides §2's
   lowercase + one-separator rules: `io.github.milnet01.finbreak.desktop`,
-  `io.github.milnet01.finbreak.metainfo.xml`, the Flatpak manifest
-  `io.github.milnet01.finbreak.yml`. The app-ID **and** their directory were
+  `io.github.milnet01.finbreak.metainfo.xml`. The app-ID **and** their directory were
   fixed when the packaging phase (ADR-0007) landed (FIBR-0155): the app-ID is
   **`io.github.milnet01.finbreak`** and the recipes live in `packaging/obs/`. **Qt translation
   catalogs** likewise take Qt's `<app>_<locale>` form (`finbreak_de.ts` →

@@ -66,9 +66,6 @@ _READS_PROSE = frozenset(
         # the INV-13 definition, and the 800 chars after it (INV-7) --
         # reflowing that section is enough to turn it red.
         "release_integrity",
-        # Asserts packaging/flatpak/README.md EXISTS (contents not read) --
-        # moving or deleting that file is a red doc-only push.
-        "flatpak_packaging",
         # This suite: INV-1 below parses CLAUDE.md's own fenced command, so it
         # reads a tracked doc's contents and is a member of its own ledger.
         "prose_checks",

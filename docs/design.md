@@ -340,8 +340,7 @@ implementation time.
 Every released artifact must run on a clean machine with **no prerequisites** —
 no system Python, no pip, no pre-installed native libraries. PyInstaller
 (Windows/macOS) and AppImage (Linux) bundle the CPython interpreter and every
-dependency into the artifact; the Flatpak ships against the Freedesktop runtime
-on Flathub. The build's real work is ensuring the **native** dependencies are
+dependency into the artifact. The build's real work is ensuring the **native** dependencies are
 collected, not just the Python ones — the SQLCipher library, the needed Qt
 plugins (platform, SQL driver, image formats), and the qpdf library behind
 `pikepdf` — because a missing native lib is the classic cause of a bundle that

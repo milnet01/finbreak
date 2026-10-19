@@ -424,9 +424,9 @@ def test_INV7_security_model_records_signed_manifest_inv13():
 # --------------------------------------------------------------------------- #
 def test_FIBR0184_release_linux_fetches_the_tag_it_published():
     """The script never runs `git tag` — `gh release create` creates the ref on
-    the REMOTE. Without a fetch the local clone has no such tag, so the very next
-    step (.claude/bump.json's Flatpak `commit:` re-pin, which resolves
-    `git rev-parse v<NEW>^{commit}`) fails on a ref that demonstrably exists."""
+    the REMOTE. Without a fetch the local clone has no such tag, so
+    `git rev-parse v<NEW>` and a re-run from `git checkout v<NEW>` fail on a ref
+    that demonstrably exists."""
     # Comment-blind: this file's own prose names both commands, and so do the
     # script's explanatory comments — scan the executable lines only.
     text = "\n".join(
@@ -740,7 +740,6 @@ def _release_sandbox(tmp_path: Path) -> Path:
             '<release version="1.2.3" date="2026-01-01">\n'
         ),
         "packaging/obs/debian/changelog": "finbreak (1.2.3) unstable\n",
-        "packaging/flatpak/io.github.milnet01.finbreak.yaml": "tag: v1.2.3\n",
         "packaging/obs/_service": '<param name="revision">v1.2.3</param>\n',
         ".claude/bump.json": (_REPO_ROOT / ".claude" / "bump.json").read_text(),
         ".gitignore": "build-started\n",
@@ -851,11 +850,11 @@ def test_release_linux_builds_from_a_detached_checkout_of_the_tag(tmp_path):
 
 def test_release_linux_checks_every_file_bump_json_checks(tmp_path):
     """FIBR-0399: the lockstep check said it mirrored bump.json's post_check
-    and tested four of its files. A Flatpak tag left on the old version passed
-    it and reached the build."""
+    and tested four of its files. A file outside those four left on the old
+    version passed it and reached the build; the OBS revision is one such file."""
     work = _release_sandbox(tmp_path)
-    flatpak = work / "packaging/flatpak/io.github.milnet01.finbreak.yaml"
-    flatpak.write_text("tag: v1.2.2\n")
+    obs_service = work / "packaging/obs/_service"
+    obs_service.write_text('<param name="revision">v1.2.2</param>\n')
     _commit_and_push(work, "half-bumped")
     _tag_head(work)
 

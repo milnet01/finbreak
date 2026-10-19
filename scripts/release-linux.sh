@@ -23,7 +23,7 @@
 #      GitHub release (non-prerelease, --latest) with the AppImage + .sig + those
 #      supply-chain artifacts, and notes lifted from the CHANGELOG [X.Y.Z] section.
 #   5. Fetch the just-published tag so `git rev-parse vX.Y.Z` resolves locally,
-#      and print its sha — the Flatpak `commit:` re-pin needs exactly that.
+#      and print its sha.
 #
 # Prerequisites: the project venv ACTIVE (`. .venv/bin/activate` — cryptography is
 # needed to sign + verify), podman/docker on PATH (the build container), a signing
@@ -355,21 +355,15 @@ fi
 
 # Step 8 — bring the tag home. The publish step above creates the ref on the
 # REMOTE only (nothing in this script tags locally), so without this the local
-# clone has no $TAG and the very next release step — .claude/bump.json's Flatpak
-# `commit:` re-pin, which resolves `git rev-parse $TAG^{commit}` — fails on a tag
-# that demonstrably exists on GitHub. Non-fatal: the release is already published,
-# so a fetch hiccup must not exit non-zero and read as a failed release.
+# clone has no $TAG: `git rev-parse $TAG` and a re-run from `git checkout $TAG`
+# fail on a tag that demonstrably exists on GitHub. Non-fatal: the release is
+# already published, so a fetch hiccup must not exit non-zero and read as a
+# failed release.
 if git fetch --tags --quiet origin 2>/dev/null && SHA="$(git rev-parse "$TAG^{commit}" 2>/dev/null)"; then
     echo "== release-linux: fetched $TAG locally — commit $SHA =="
 else
-    SHA=""
-    echo "== release-linux: WARNING — could not fetch $TAG locally; run 'git fetch --tags origin' before the Flatpak re-pin ==" >&2
+    echo "== release-linux: WARNING — could not fetch $TAG locally; run 'git fetch --tags origin' ==" >&2
 fi
 
 echo "== release-linux: DONE — $TAG published with the Linux AppImage + .sig =="
 echo "   Next: run scripts/release-windows.sh to build, sign, and attach the Windows .exe."
-# `[ -n ]` as the LAST command would make an empty SHA the script's exit status
-# under `set -e`, turning a published release into a reported failure.
-if [ -n "$SHA" ]; then
-    echo "   Then re-pin the Flatpak source: set commit: $SHA in packaging/flatpak/io.github.milnet01.finbreak.yaml"
-fi

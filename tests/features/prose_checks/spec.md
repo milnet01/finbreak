@@ -24,9 +24,8 @@ is honest only when something forces every new member to be sorted into it.
 
 ## The ledger, as of this writing
 
-`_READS_PROSE` (5, each with the reason inline in the test module):
-`account_detect`, `harness`, `release_integrity`, `flatpak_packaging`,
-`prose_checks` (this suite reads `CLAUDE.md` itself, so it is its own
+`_READS_PROSE` (each with the reason inline in the test module):
+`account_detect`, `harness`, `release_integrity`, `prose_checks` (this suite reads `CLAUDE.md` itself, so it is its own
 member — see INV-1's fence check).
 
 `_NO_PROSE` is every other suite directory. Two are near-misses called out by

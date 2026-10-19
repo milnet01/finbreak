@@ -41,7 +41,7 @@ Most valuable, roughly in order:
   learn something from a file that should not carry it.
 - The steps to reproduce, and the version you saw it on.
 - Which platform and install method (AppImage, Windows `.exe`,
-  Flatpak, RPM/deb, running from source).
+  RPM/deb, running from source).
 
 **Please do not include real financial data.** No real account numbers,
 statements or vault files — a redacted or synthetic sample is always

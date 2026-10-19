@@ -132,8 +132,9 @@ for the full table and reasoning):
 - **Security gate:** bandit, pip-audit, gitleaks (see
   [`docs/security-model.md`](docs/security-model.md))
 - **Packaging:** PyInstaller (Windows `.exe`, macOS `.app`/`.dmg`),
-  AppImage + Flatpak/Flathub and native RPM/deb via the openSUSE Build
-  Service (Linux; `packaging/obs/`, FIBR-0155) (ADR-0007)
+  AppImage and native RPM/deb via the openSUSE Build Service (Linux;
+  `packaging/obs/`, FIBR-0155) (ADR-0007). Flathub was dropped (FIBR-0159,
+  2026-10-08) and its recipe removed (FIBR-0452)
 - **License:** MIT; local-only apart from an opt-in, off-by-default
   update check (FIBR-0054; stdlib `urllib`, confined to
   `services/update_fetch.py`).

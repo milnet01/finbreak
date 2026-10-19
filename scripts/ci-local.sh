@@ -40,7 +40,6 @@ DOCS_SUITES=(
     tests/features/account_detect/
     tests/features/harness/
     tests/features/release_integrity/
-    tests/features/flatpak_packaging/
     tests/features/prose_checks/
 )
 if [ "${1:-}" = "--docs" ]; then
@@ -99,7 +98,7 @@ ruff format --check src tests
 #
 # Selected via `git ls-files`, NOT a fixed glob: the first cut of this stage used
 # `scripts/*.sh` and silently missed the 7 packaging recipes under packaging/obs/
-# and packaging/flatpak/ — i.e. exactly the publish path it claimed to cover. A
+# and the since-retired packaging/flatpak/ — i.e. exactly the publish path it claimed to cover. A
 # directory glob has to be widened by hand every time scripts appear somewhere
 # new, and nothing tells you it went stale. The hook has no .sh suffix, so it is
 # named separately.
