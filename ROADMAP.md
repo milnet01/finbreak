@@ -4413,7 +4413,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: test.
   Source: in-session-2026-10-10 (FIBR-0131 D6 and To verify empirically).
 
-- 📋 [FIBR-0451] **Five more tests pin the schema version at 14 under unrelated names.**
+- 🚧 [FIBR-0451] **Five more tests pin the schema version at 14 under unrelated names.**
   FIBR-0418 fixed this shape in the recurring and spending-alert tests;
   the same literal pin remains in five other suites. Each fails on the
   next schema bump for a reason its name does not state.
@@ -4427,6 +4427,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
     spec INV-8 before changing it.
   - The specs beside them (db_performance, transfers, categorisation,
     reconciliation spec.md) quote `== 14`; amend each with its test.
+  Started 2026-10-19 on the user's go-ahead.
   **Layman:** Some checks will break the next time the database format changes, for a reason their names do not say; this makes them check what they claim.
   Kind: test.
   Source: in-session-2026-10-15 (FIBR-0418 sweep).
@@ -4442,6 +4443,9 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   them. The alternative is the finding's own fix: list _DEPS in
   test_recipe_files_present and drop the skip. Needs the user's say:
   it removes a packaging target.
+  User decision 2026-10-19: yes, retire packaging/flatpak/ and
+  tests/features/flatpak_packaging/. Taken after FIBR-0451.
+  Also decided 2026-10-19: 1.0.2 waits for a user-visible fix.
   **Layman:** The app no longer ships to Flathub, but its packaging files and their checks are still here; this decides whether to remove them.
   Kind: chore.
   Source: full-audit-2026-09-27 tests lane T12, via FIBR-0422.
