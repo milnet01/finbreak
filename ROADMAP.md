@@ -4516,7 +4516,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: test.
   Source: in-session-2026-10-15 (FIBR-0418 sweep).
 
-- 🚧 [FIBR-0452] **Decide the fate of packaging/flatpak/ and its tests now Flathub is dropped.**
+- ✅ [FIBR-0452] **Decide the fate of packaging/flatpak/ and its tests now Flathub is dropped.**
   FIBR-0422's flatpak finding: packaging/flatpak/python3-deps.yaml is
   committed, but test_recipe_files_present does not list it and
   _require_deps still skips when it is missing, so deleting it turns
@@ -4532,6 +4532,13 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Also decided 2026-10-19: 1.0.2 waits for a user-visible fix.
   Started 2026-10-19, after FIBR-0097 and FIBR-0099 were started (user
   chose this order).
+  Shipped 2026-10-19 (449ceed): packaging/flatpak/ and
+  tests/features/flatpak_packaging/ removed, with every live reference
+  (bump.json, release-linux.sh, DOCS_SUITES and the prose_checks ledger,
+  gitleaks, docs). The ignored build output inside packaging/flatpak/
+  was deleted at the user's say. A separate 1.1 GB .flatpak-builder/
+  cache at the repo root was kept, with its gitleaks skip. Full gate
+  green: 2613 passed, 2 skipped.
   **Layman:** The app no longer ships to Flathub, but its packaging files and their checks are still here; this decides whether to remove them.
   Kind: chore.
   Source: full-audit-2026-09-27 tests lane T12, via FIBR-0422.
