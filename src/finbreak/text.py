@@ -31,6 +31,13 @@ _NOISE_PREFIXES = (
     "EFT",
     "DR",
 )
+# One pattern, compiled once: an alternation tries its branches in the order
+# written, so it picks the same prefix the longest-first loop did. Building one
+# regex per prefix per call was most of a dashboard refresh (FIBR-0027).
+_NOISE_PREFIX = re.compile(
+    "(?:" + "|".join(map(re.escape, _NOISE_PREFIXES)) + r")\b\s*", re.IGNORECASE
+)
+_REF_DIGITS = re.compile(r"\d{3,}")
 
 
 def normalise_text(text: str) -> str:
@@ -97,19 +104,12 @@ def merchant_name(description: str) -> str:
     if not stripped:
         return ""
     working = stripped
-    shed = True
-    while shed:
-        shed = False
-        for prefix in _NOISE_PREFIXES:
-            match = re.match(re.escape(prefix) + r"\b\s*", working, re.IGNORECASE)
-            # A non-empty prefix always consumes ≥ 1 char, so a match makes progress.
-            if match:
-                working = working[match.end() :]
-                shed = True
-                break
+    # A non-empty prefix always consumes ≥ 1 char, so each match makes progress.
+    while match := _NOISE_PREFIX.match(working):
+        working = working[match.end() :]
     tokens: list[str] = []
     for token in working.split():
-        if re.search(r"\d{3,}", token):  # a ref/card/date fragment
+        if _REF_DIGITS.search(token):  # a ref/card/date fragment
             continue
         if sum(ch.isdigit() for ch in token) * 2 > len(token):  # majority digits
             continue

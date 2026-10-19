@@ -747,3 +747,34 @@ def test_ripple_drillnode_and_drilllabels_are_importable():
     """The new models exports don't disturb existing ones."""
     assert DrillNode(label="x", amount=Decimal("1"), count=1, children=()).count == 1
     assert DrillLabels("i", "s", "t", "u", "p").uncategorised == "u"
+
+
+@pytest.mark.perf
+def test_FIBR0027_merchant_name_costs_a_small_multiple_of_normalise_text():
+    """Recurring detection calls ``merchant_name`` once per transaction, twice per
+    dashboard refresh, so its cost is most of that refresh (FIBR-0027, measured
+    2026-10-19). Building a regex per noise prefix per call made it about 41x
+    ``normalise_text`` over the same descriptions; one compiled pattern makes it
+    about 10x. The baseline runs on the same machine (testing.md § 3.4)."""
+    import random
+    import time
+
+    rnd = random.Random(1)
+    words = ["POS", "CARD", "PURCHASE", "WOOLWORTHS", "DEBIT", "ORDER", "SPAR",
+             "1234567", "REF", "12/09", "UBER*TRIP"]  # fmt: skip
+    descriptions = [
+        " ".join(rnd.choice(words) for _ in range(rnd.randint(2, 7)))
+        for _ in range(5000)
+    ]
+
+    def best(fn):
+        runs = []
+        for _ in range(5):
+            start = time.perf_counter()
+            for text in descriptions:
+                fn(text)
+            runs.append(time.perf_counter() - start)
+        return min(runs)
+
+    ratio = best(merchant_name) / best(normalise_text)
+    assert ratio < 20, f"merchant_name costs {ratio:.0f}x normalise_text"

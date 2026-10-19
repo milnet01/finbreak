@@ -1859,12 +1859,23 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Source: in-session-2026-09-21 (isolated while closing FIBR-0309).
   Lanes: crypto, ui.
 
-- 📋 [FIBR-0027] **SQL-side dashboard aggregation + incremental refresh.**
+- 🚧 [FIBR-0027] **SQL-side dashboard aggregation + incremental refresh.**
   Compute dashboard summaries / charts with SQL `GROUP BY` rather than
   Python loops, and refresh incrementally on a single-row edit instead of
   a full recompute; add supporting indexes (`date`, `category_id`). Keeps
   the dashboard fast at tens of thousands of transactions. Target phase:
   P10. Dependencies: FIBR-0012. Lanes: reporting, perf. Kind: perf.
+  Started 2026-10-19. Measured first (offscreen, 20,000 transactions in
+  one account, best of 3): HomeView.refresh 603 ms; 2,000 rows 64 ms;
+  50,000 rows 1,445 ms. cProfile at 20,000: about 97% of it is
+  services.recurring.detect_recurring, run twice per refresh (the
+  recurring card's snapshot and the alerts' summary), and inside it
+  text.merchant_name, which builds a regex per noise prefix per call
+  (re.escape + re.match, eight per description). The reporting sums are
+  not the cost, so the SQL GROUP BY this item proposes would buy almost
+  nothing; the indexes it asks for exist since schema v10 (FIBR-0026).
+  Redirected to the measured cost: one compiled prefix pattern in
+  merchant_name, then detection run once per refresh.
   **Layman:** The dashboard stays fast once you have tens of thousands of transactions, and editing one row no longer recalculates everything.
   Kind: perf.
   Source: user-request-2026-07-01.
