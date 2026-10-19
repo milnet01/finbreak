@@ -99,9 +99,9 @@ Any other role returns `None`. An index outside the rows returns `None`.
 enabled. `sort`:
 
 1. emits `layoutAboutToBeChanged`;
-2. reorders the row list with Python's `sorted(key=…, reverse=descending)`,
-   which is stable in both directions, so ties keep the service's order — as
-   the current table's stable sort does;
+2. sorts the shared row list in place with `list.sort(key=…,
+   reverse=descending)`, which is stable in both directions, so tied rows keep
+   their current relative order — as the current table's sort does;
 3. remaps every persistent index from its old row to its new one
    (`changePersistentIndexList`), so the selection stays on the same
    transaction;
@@ -120,7 +120,9 @@ so a refill keeps the user's sort. A reset drops the selection, which is what
 - `_build_table` returns a `QTableView` with the same `objectName`
   (`transactions_table`), edit triggers, selection behaviour, selection mode,
   stretch and resize mode, context-menu policy and the same call order, with
-  `remember_columns` still last (FIBR-0192 § 4.2).
+  `remember_columns` still last (FIBR-0192 § 4.2). `setModel` comes before
+  every header call: a `QTableView` header has no sections until it has a
+  model, so `remember_columns` would capture an empty default.
 - `self._rows` stays the filtered list, and the model holds that same list
   object — sorted in place — so `_rows[i]` is the transaction on view row `i`.
   `_selected_txn` reads the selected row from the selection model; `_select_txn`
@@ -174,8 +176,8 @@ use them.
   model for every row's text (a `ResizeToContents` mode on either header).
 
 - **INV-3 — Sorting orders by the same keys.** A header sort on each column
-  orders the rows by § 4.1's sort key; ties keep the service's order in both
-  directions; the default is Date, newest first.
+  orders the rows by § 4.1's sort key; tied rows keep their current relative
+  order in both directions; the default is Date, newest first.
   *Test:* `test_FIBR0097_each_column_sorts_by_its_key` — a fixture where text
   order and key order disagree in every keyed column (amounts `-1000`, `200`,
   `30`; dates across a year boundary; one guess row and one plain row of the
@@ -209,7 +211,8 @@ use them.
   5-section header still yields 6 columns without an error (FIBR-0153 INV-9).
   *Test:* `tests/features/table_state/test_table_state.py` and the FIBR-0153
   INV-9 test in `test_transactions_tab.py`, with their lookups changed from
-  `QTableWidget` to `QTableView`.
+  `QTableWidget` to `QTableView`. `test_table_state.py`'s `_sort_keys` reads
+  each row's § 4.1 sort key from the view's `_rows`, in order.
   *Breaks when:* `reset_columns` still searches for `QTableWidget` only, which
   skips this table.
 
@@ -247,16 +250,19 @@ use them.
 | INV-6 | `table_state/test_table_state.py`; `test_transactions_tab.py`'s FIBR-0153 INV-9 test |
 | INV-7 | `clipboard/test_clipboard.py` |
 
-INV-2, INV-3 and INV-4 are written first and seen red against the current
-table: INV-2 counts 2,000 calls, INV-4's first half passes today (the current
-table remaps too) and is kept as a parity lock, and INV-3's tie leg is the
-one most likely to differ. INV-5's widened scan is seen red against a
-`clear_rows` that skips the model.
+INV-2 and INV-5 are written first and seen red: INV-2 counts 2,000 calls
+against the current table, and INV-5's widened scan fails against a
+`clear_rows` that skips the model. INV-3 and INV-4 pass against the current
+table too, which sorts by the same keys, stably, and clears the selection on
+a refill. They are written first as parity locks.
 
 A `perf`-marked test (`test_FIBR0097_refresh_scales_with_painted_rows`) prints
-the refresh time at 2,000 and 20,000 rows and asserts the ratio stays under
-4; the current table measures about 11 (§ 2). The gate excludes `perf`
-(testing.md § 3.4).
+the refresh time at 2,000 and 20,000 rows. At 20,000 it asserts the refresh
+takes under 4 times as long as `list_transactions()` alone, timed in the same
+test. Measured 2026-10-19 at 20,000: `list_transactions()` 41 ms, the current
+refresh 1,499 ms, and a refresh whose fill builds no items 91 ms. The ratio
+between the two sizes is no test: the vault read, the filter and the sort
+still grow with the rows. The gate excludes `perf` (testing.md § 3.4).
 
 Test call sites that read the table move from `item(r, c)` to
 `model().index(r, c).data(role)`, from `rowCount()` to `model().rowCount()`,
