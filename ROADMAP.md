@@ -1859,7 +1859,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Source: in-session-2026-09-21 (isolated while closing FIBR-0309).
   Lanes: crypto, ui.
 
-- 🚧 [FIBR-0027] **SQL-side dashboard aggregation + incremental refresh.**
+- ✅ [FIBR-0027] **SQL-side dashboard aggregation + incremental refresh.**
   Compute dashboard summaries / charts with SQL `GROUP BY` rather than
   Python loops, and refresh incrementally on a single-row edit instead of
   a full recompute; add supporting indexes (`date`, `category_id`). Keeps
@@ -1876,17 +1876,26 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   nothing; the indexes it asks for exist since schema v10 (FIBR-0026).
   Redirected to the measured cost: one compiled prefix pattern in
   merchant_name, then detection run once per refresh.
+  Shipped 2026-10-19 in 6a54fbc: one compiled noise-prefix pattern in
+  merchant_name. HomeView.refresh at 20,000 transactions 603 -> 145 ms.
+  merchant_name output byte-identical over 20,000 synthetic descriptions.
+  Perf test test_FIBR0027_merchant_name_costs_a_small_multiple_of_normalise_text
+  (red at 54x the baseline on the old code, about 10x now; the gate
+  excludes perf). Not done, on purpose: SQL GROUP BY (not the cost), and
+  one shared detection pass (would change FIBR-0172 D8/INV-16 for ~70 ms).
   **Layman:** The dashboard stays fast once you have tens of thousands of transactions, and editing one row no longer recalculates everything.
   Kind: perf.
   Source: user-request-2026-07-01.
   Lanes: reporting, perf.
 
-- 📋 [FIBR-0028] **Virtual table model for the transaction list.**
+- 🚫 [FIBR-0028] **Virtual table model for the transaction list.**
   Back
   the transaction table with a `QAbstractTableModel` (lazy / virtual
   rows) rather than per-row widgets, so a large history scrolls smoothly.
   Target phase: P10. Dependencies: FIBR-0012. Lanes: ui, perf.
   Kind: perf. Source: user-request-2026-07-01.
+  Dropped 2026-10-19 as a duplicate of FIBR-0097, which asks for the same
+  QAbstractTableModel change and carries the verified detail.
   **Layman:** A long transaction history scrolls smoothly instead of slowing down as it grows.
   Source: user-request-2026-07-01.
   Lanes: ui, perf.
