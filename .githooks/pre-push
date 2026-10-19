@@ -75,6 +75,17 @@ if [ -n "$REFS" ]; then
             echo "== or could not read the range $range                              ==" >&2
             exit 1
         fi
+        # gitleaks cannot match a bank account number, so the same range is
+        # searched for the real ones in .corpus-numbers: each commit's message
+        # and added lines (FIBR-0439). The matcher is the tracked-tree test's
+        # own, so the two cannot drift. No file, nothing to search for: skip,
+        # and say so.
+        if [ -f .corpus-numbers ]; then
+            read -ra range_args <<< "$range"
+            PYTHONPATH=src python3 tests/features/account_detect/test_no_real_data.py "${range_args[@]}" || exit 1
+        else
+            echo "== pre-push: no .corpus-numbers, so the pushed commits were not searched for real account numbers ==" >&2
+        fi
     done <<< "$REFS"
 fi
 saw_ref=0

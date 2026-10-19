@@ -215,7 +215,9 @@ remove them first; pushing past the refusal with `--no-verify` needs the user's
 say-so (`commits.md` § 2.3), like any other skipped hook. **And on every push it
 scans each commit being pushed for secrets** (`gitleaks git` over the pushed
 range), because the gate's own scan sees only the final files (local-gate.md
-§ 2.1).
+§ 2.1). Where `.corpus-numbers` exists it also searches each pushed
+commit's message and added lines for the real account numbers, which
+`gitleaks` cannot match (FIBR-0439).
 
 CI (`ci.yml`) runs this exact script, so a green local gate means green in CI
 **for everything the environment does not decide** — see the container caveat

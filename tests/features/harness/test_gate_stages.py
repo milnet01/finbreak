@@ -623,6 +623,72 @@ def test_a_secret_added_and_removed_inside_the_push_is_refused(
     assert not sentinel.exists(), "it must refuse before spending the gate"
 
 
+# FIBR-0439: the real-account-number guard over the pushed commits. The key is
+# invented; the scanner and the package it imports are linked in from this tree.
+_SYNTHETIC_ACCOUNT = "44 333 222 1"
+_SCANNER = Path("tests") / "features" / "account_detect" / "test_no_real_data.py"
+
+
+def _corpus_sandbox(tmp_path: Path, message: str) -> tuple[Path, Path, str, str]:
+    """The hook sandbox with a `.corpus-numbers` and one unpushed commit carrying
+    `message`. Returns (worktree, sentinel, pushed sha, head sha)."""
+    import shutil
+
+    work, sentinel, pushed = _hook_sandbox(tmp_path)
+    _git(work, "reset", "-q", "--hard", pushed)
+    (work / "src").symlink_to(_ROOT / "src")
+    (work / _SCANNER).parent.mkdir(parents=True)
+    shutil.copy(_ROOT / _SCANNER, work / _SCANNER)
+    (work / ".corpus-numbers").write_text(f"{_SYNTHETIC_ACCOUNT}\n", encoding="utf-8")
+    with (work / ".gitignore").open("a", encoding="utf-8") as ignore:
+        ignore.write("src\ntests/\n.corpus-numbers\n")
+    _git(work, "commit", "-qam", message)
+    return work, sentinel, pushed, _git(work, "rev-parse", "HEAD")
+
+
+def test_FIBR0439_a_corpus_number_in_a_pushed_message_is_refused(
+    tmp_path: Path,
+) -> None:
+    work, sentinel, pushed, head = _corpus_sandbox(
+        tmp_path, f"fix the import of {_SYNTHETIC_ACCOUNT}"
+    )
+    result = _run_hook_output(
+        work, f"refs/heads/main {head} refs/heads/main {pushed}\n"
+    )
+    shown = result.stdout + result.stderr
+    assert result.returncode != 0, (
+        "a real account number in a commit message reached the public history: "
+        "the guard read only the tracked files"
+    )
+    assert not sentinel.exists(), "it must refuse before spending the gate"
+    assert head in shown, "name the commit, so it can be amended"
+    assert _SYNTHETIC_ACCOUNT not in shown, "never print the value"
+
+
+def test_FIBR0439_a_clean_push_with_a_corpus_still_runs_the_gate(
+    tmp_path: Path,
+) -> None:
+    """The other half: the scan must not have become a refusal of every push."""
+    work, sentinel, pushed, head = _corpus_sandbox(tmp_path, "an ordinary change")
+    result = _run_hook_output(
+        work, f"refs/heads/main {head} refs/heads/main {pushed}\n"
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert sentinel.exists()
+
+
+def test_FIBR0439_without_a_corpus_the_hook_says_it_skipped(tmp_path: Path) -> None:
+    work, sentinel, pushed = _hook_sandbox(tmp_path)
+    head = _git(work, "rev-parse", "HEAD")
+    result = _run_hook_output(
+        work, f"refs/heads/main {head} refs/heads/main {pushed}\n"
+    )
+    assert sentinel.exists()
+    assert ".corpus-numbers" in result.stdout + result.stderr, (
+        "a skip nobody is told about reads as a clean scan"
+    )
+
+
 def test_a_push_of_a_commit_other_than_head_is_refused(tmp_path: Path) -> None:
     """A clean tree proves the files match HEAD, never that HEAD is what is being
     pushed: `git push origin side` from main gates main's bytes."""

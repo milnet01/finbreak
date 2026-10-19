@@ -916,8 +916,9 @@ reference to a frozen 3-field value object, or `None`.
 covers prose, and the CHANGELOG entry, the README line, the ROADMAP
 annotations and each commit message on this feature are all published. Write
 them about *shapes* ("the account number printed on the statement"), never
-about values. The `test_no_real_data.py` grep covers the tracked tree, which
-catches the files but **not** commit messages; those are on the author.
+about values. The `test_no_real_data.py` grep covers the tracked tree. The
+pre-push hook runs the same matcher over each pushed commit's message and
+added lines, where `.corpus-numbers` exists (FIBR-0439).
 
 ## 13. Cold-eyes loop log
 

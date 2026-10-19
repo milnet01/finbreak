@@ -23,6 +23,7 @@ file once and the pre-push hook enforces it from then on.
 import os
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -122,6 +123,56 @@ def _tracked_files(root: Path) -> list[Path]:
         check=True,
     ).stdout
     return [root / name for name in listed.split("\0") if name]
+
+
+def _git_text(root: Path, *args: str) -> str:
+    return subprocess.run(
+        ["git", *args],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        errors="replace",
+        check=True,
+    ).stdout
+
+
+def _added_text(patch: str) -> str:
+    """The lines a patch adds, joined so a number wrapped across two still reads
+    as one. Removed lines are left out: they are already in the history, and
+    refusing the push that deletes one would block the fix (FIBR-0439)."""
+    added: list[str] = []
+    in_hunk = False
+    for line in patch.splitlines():
+        if line.startswith("diff "):
+            in_hunk = False
+        elif line.startswith("@@"):
+            in_hunk = True
+        elif in_hunk and line.startswith("+"):
+            added.append(line[1:])
+    return "\n".join(added)
+
+
+def leaking_commits(root: Path, revisions: list[str], keys: set[str]) -> list[str]:
+    """The commits ``git rev-list <revisions>`` names whose message or added lines
+    hold a key (FIBR-0439). The tree scan above cannot see either: a message is
+    in no file, and a line added then deleted before a push is gone from HEAD.
+    """
+    found: list[str] = []
+    for sha in _git_text(root, "rev-list", *revisions).split():
+        message = _git_text(root, "log", "-1", "--format=%B", sha)
+        patch = _git_text(
+            root,
+            "show",
+            "--format=",
+            "-U0",
+            "--no-color",
+            "--no-ext-diff",
+            "--no-textconv",
+            sha,
+        )
+        if _leaks(message, keys) or _leaks(_added_text(patch), keys):
+            found.append(sha)
+    return found
 
 
 @pytest.mark.parametrize(
@@ -243,3 +294,189 @@ def test_FIBR0248_both_separators_accepted(separator):
     """Commas suit the env var, newlines suit the file; both routes feed one
     parser, so neither can drift."""
     assert corpus_keys(f"11222333 4{separator}55667778") == {"112223334", "55667778"}
+
+
+# --- FIBR-0439: the commits being pushed, not just the tree at HEAD ---
+#
+# `test_no_corpus_numbers_in_tree` reads the files as they are now. A number in a
+# commit message, or added and deleted again before a push, is in no tracked file
+# and still reaches the public history. The pre-push hook runs `main` over each
+# pushed range. The key below is invented.
+
+_SYNTHETIC = "44 333 222 1"
+_HERMETIC_GIT = {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_SYSTEM": os.devnull}
+
+
+def _history_repo(tmp_path: Path) -> tuple[Path, str]:
+    """A repo with one base commit; returns (root, base sha)."""
+
+    def git(*args: str) -> None:
+        subprocess.run(
+            ["git", *args],
+            cwd=tmp_path,
+            check=True,
+            capture_output=True,
+            env={**os.environ, **_HERMETIC_GIT},
+        )
+
+    git("init", "-q", "-b", "main")
+    git("config", "user.email", "t@example.invalid")
+    git("config", "user.name", "t")
+    (tmp_path / "a.txt").write_text("nothing here\n", encoding="utf-8")
+    git("add", "a.txt")
+    git("commit", "-qm", "base")
+    return tmp_path, _head(tmp_path)
+
+
+def _head(root: Path) -> str:
+    return subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=root,
+        check=True,
+        capture_output=True,
+        text=True,
+        env={**os.environ, **_HERMETIC_GIT},
+    ).stdout.strip()
+
+
+def _commit(root: Path, message: str, text: str | None = None) -> str:
+    """Write `text` to a.txt (unchanged when None) and commit with `message`."""
+    if text is not None:
+        (root / "a.txt").write_text(text, encoding="utf-8")
+    subprocess.run(
+        ["git", "commit", "-qam", message, "--allow-empty"],
+        cwd=root,
+        check=True,
+        capture_output=True,
+        env={**os.environ, **_HERMETIC_GIT},
+    )
+    return _head(root)
+
+
+_KEYS = {normalise_account_number(_SYNTHETIC)}
+
+
+def test_FIBR0439_a_number_added_and_deleted_inside_the_push_is_found(tmp_path):
+    root, base = _history_repo(tmp_path)
+    added = _commit(root, "add a line", f"acct {_SYNTHETIC}\n")
+    removed = _commit(root, "remove it again", "nothing here\n")
+
+    found = leaking_commits(root, [f"{base}..{removed}"], _KEYS)
+
+    assert found == [added], (
+        "the tree at the tip is clean, so only a scan of each pushed commit's "
+        "added lines can see the number that went up in its history"
+    )
+
+
+def test_FIBR0439_a_number_in_a_commit_message_is_found(tmp_path):
+    root, base = _history_repo(tmp_path)
+    leak = _commit(root, f"import fix for {_SYNTHETIC}")
+
+    assert leaking_commits(root, [f"{base}..{leak}"], _KEYS) == [leak]
+
+
+def test_FIBR0439_a_number_wrapped_across_added_lines_is_found(tmp_path):
+    root, base = _history_repo(tmp_path)
+    leak = _commit(root, "wrapped", "acct 44 333\n  222 1 end\n")
+
+    assert leaking_commits(root, [f"{base}..{leak}"], _KEYS) == [leak], (
+        "prose is hard-wrapped, so the added lines must be read as one text, "
+        "not line by line"
+    )
+
+
+def test_FIBR0439_removing_a_number_already_published_is_not_a_leak(tmp_path):
+    """The deleted line is already in the remote's history; refusing the push
+    that removes it would block the very fix."""
+    root, _base = _history_repo(tmp_path)
+    published = _commit(root, "old leak", f"acct {_SYNTHETIC}\n")
+    fix = _commit(root, "scrub it", "nothing here\n")
+
+    assert leaking_commits(root, [f"{published}..{fix}"], _KEYS) == []
+
+
+def test_FIBR0439_main_names_the_commit_and_never_the_number(
+    tmp_path, monkeypatch, capsys
+):
+    root, base = _history_repo(tmp_path)
+    leak = _commit(root, f"note {_SYNTHETIC}")
+    (root / CORPUS_FILE).write_text(f"{_SYNTHETIC}\n", encoding="utf-8")
+    monkeypatch.delenv("FINBREAK_CORPUS_NUMBERS", raising=False)
+    monkeypatch.chdir(root)
+
+    rc = main([f"{base}..{leak}"])
+
+    shown = capsys.readouterr()
+    output = shown.out + shown.err
+    assert rc == 1
+    assert leak in output, "say which commit, so it can be amended"
+    assert not _leaks(output.replace(leak, ""), _KEYS), (
+        "the report must never print the value it found"
+    )
+
+
+def test_FIBR0439_main_says_so_when_there_is_nothing_to_search_for(
+    tmp_path, monkeypatch, capsys
+):
+    root, base = _history_repo(tmp_path)
+    leak = _commit(root, f"note {_SYNTHETIC}")
+    monkeypatch.delenv("FINBREAK_CORPUS_NUMBERS", raising=False)
+    monkeypatch.chdir(root)
+
+    rc = main([f"{base}..{leak}"])
+
+    assert rc == 0, "a machine without the corpus has nothing to search for"
+    assert "skipped" in capsys.readouterr().err, "a silent skip reads as a clean scan"
+
+
+def test_FIBR0439_main_fails_closed_on_a_range_git_cannot_read(tmp_path, monkeypatch):
+    root, _base = _history_repo(tmp_path)
+    (root / CORPUS_FILE).write_text(f"{_SYNTHETIC}\n", encoding="utf-8")
+    monkeypatch.delenv("FINBREAK_CORPUS_NUMBERS", raising=False)
+    monkeypatch.chdir(root)
+
+    assert main(["no-such-ref..HEAD"]) == 2, (
+        "an unreadable range is neither clean nor a leak; the push must stop"
+    )
+
+
+def main(revisions: list[str]) -> int:
+    """The pre-push half of INV-8 (FIBR-0439): 0 clean or skipped, 1 a leak, 2 an
+    unreadable range. Prints commit ids only, never a value it matched."""
+    root = Path(_git_text(Path.cwd(), "rev-parse", "--show-toplevel").strip())
+    raw = corpus_numbers_raw(root)
+    if not raw:
+        print(
+            f"== pre-push: no {CORPUS_FILE}, so the pushed commits were not "
+            "searched for real account numbers (skipped) ==",
+            file=sys.stderr,
+        )
+        return 0
+    keys = corpus_keys(raw)
+    if not keys:
+        print(f"== pre-push: {CORPUS_FILE} holds no usable digits ==", file=sys.stderr)
+        return 2
+    try:
+        leaks = leaking_commits(root, revisions, keys)
+    except subprocess.CalledProcessError:
+        print(
+            f"== pre-push: git could not read {' '.join(revisions)}, so the "
+            "account-number scan did not run ==",
+            file=sys.stderr,
+        )
+        return 2
+    if leaks:
+        print(
+            "== pre-push: a real account number is in the message or added "
+            "lines of these commits. Rewrite them before pushing: ==",
+            *leaks,
+            sep="\n",
+            file=sys.stderr,
+        )
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
