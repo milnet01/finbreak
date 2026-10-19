@@ -4413,7 +4413,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: test.
   Source: in-session-2026-10-10 (FIBR-0131 D6 and To verify empirically).
 
-- 🚧 [FIBR-0451] **Five more tests pin the schema version at 14 under unrelated names.**
+- ✅ [FIBR-0451] **Five more tests pin the schema version at 14 under unrelated names.**
   FIBR-0418 fixed this shape in the recurring and spending-alert tests;
   the same literal pin remains in five other suites. Each fails on the
   next schema bump for a reason its name does not state.
@@ -4428,6 +4428,14 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   - The specs beside them (db_performance, transfers, categorisation,
     reconciliation spec.md) quote `== 14`; amend each with its test.
   Started 2026-10-19 on the user's go-ahead.
+  Shipped 2026-10-19 in ce8288a. The db_performance, categorisation and
+  import_ pin tests now check that the walk reaches their own step; the
+  upgraded-vault checks there and in ofx_import and vault compare with
+  LATEST_SCHEMA_VERSION. The reconciliation pin stays as a deliberate
+  tripwire (spec INV-8) and now says what to do when it fails. Proved
+  with mutants: a no-op v15 step fails 14 old tests and only the
+  tripwire among the new; dropping step 4, 7 or 10 fails each new test
+  while the old ones pass. Gate: 2623 passed, 2 skipped.
   **Layman:** Some checks will break the next time the database format changes, for a reason their names do not say; this makes them check what they claim.
   Kind: test.
   Source: in-session-2026-10-15 (FIBR-0418 sweep).
