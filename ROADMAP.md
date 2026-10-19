@@ -1921,8 +1921,32 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: perf.
   Source: claude-suggestion-2026-07-11.
 
-- 📋 [FIBR-0099] **Faster cold start — PyInstaller --onedir inside the AppImage (skip per-launch extraction).**
+- 🚧 [FIBR-0099] **Faster cold start — PyInstaller --onedir inside the AppImage (skip per-launch extraction).**
   Verified 2026-07-11: the release build uses PyInstaller --onefile (scripts/_build-smoke-in-container.sh:85), which re-extracts the whole bundle to /tmp on EVERY launch (adds seconds of cold-start latency). Since the AppImage is ITSELF a self-contained mounted container, freeze with --onedir and place the dir inside the AppDir — the app then runs directly, no per-launch extraction. Transparent to the user; measure before/after start time and confirm the FIBR-0003 clean-room bundling proof still passes. Deps: FIBR-0003/FIBR-0054 (build pipeline).
+  Started 2026-10-19. Measured on this machine, a throwaway venv holding only
+  `pip install .` + pyinstaller==6.21.0 and the release freeze flags from
+  scripts/_build-smoke-in-container.sh, `--self-test`, warm cache, five
+  alternating runs: --onefile 1.54-1.61 s, --onedir 0.50-0.52 s (onedir
+  287 MB unpacked, onefile 117 MB). The released 1.0.1 AppImage: 1.49-1.51
+  s warm. So about 1 s per launch is extraction, plus 287 MB written to
+  /tmp (RAM-backed here) every launch. Not yet measured: onedir INSIDE an
+  AppImage (squashfs reads lazily, expect a little above 0.5 s).
+  Contract: docs/specs/FIBR-0003.md INV-2 ("a PyInstaller --onefile
+  executable and an AppImage that wraps that same onefile") and INV-3
+  ("the PyInstaller onefile runs directly (it self-extracts ...)") bind
+  the single-file mode, so this item is an AMENDMENT of FIBR-0003 in
+  place (write-spec Step 1 item 4), gated by review-contract --max-loops 3
+  before the build change. No new spec at this id. Change once gated:
+  freeze --onedir, copy the dir into the AppDir (usr/lib/finbreak/),
+  AppRun execs it, build-smoke.sh's clean-room launches the dir's binary;
+  tests/features/bundling and release_integrity read these scripts.
+  Already proven elsewhere: packaging/obs/finbreak.spec freezes --onedir.
+  Updater: _relaunch_pids waits on (pid, ppid); under onedir the ppid is
+  the AppImage runtime, which unmounts after the app exits, so waiting on
+  it stays correct; only docstrings (update_installer.py, loader_env.py,
+  FIBR-0054) describe onefile. Windows stays --onefile (single .exe).
+  Verify LD_LIBRARY_PATH/_ORIG under onedir (/proc/<pid>/environ of a
+  running GUI) before trusting loader_env.py unchanged.
   **Layman:** Make the app open faster by not unpacking itself every single time you launch it.
   Kind: perf.
   Source: claude-suggestion-2026-07-11.
