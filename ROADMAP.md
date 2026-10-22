@@ -4585,6 +4585,12 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   vulnerable pillow code, and whether certifi 2026.7.22 is in the
   advisory's affected range. A rebuild picks up the fixes; whether that
   makes 1.0.2 is the user's call.
+  2026-10-22: src/ never imports PIL and calls no pdfplumber image API
+  (to_image, .images) - a regex search of src/ finds neither. So
+  finbreak's own code does not reach pillow; whether pdfplumber or
+  pikepdf decode an image during text extraction is still unverified.
+  Recommendation: ship the fixed versions with the next release rather
+  than cutting 1.0.2 for this alone.
   **Layman:** The downloadable 1.0.1 includes an image library with known security holes; a new release would ship the fixed version.
   Kind: security.
   Source: gate-finding-2026-10-22.
