@@ -21,6 +21,14 @@ signaling per
 
 ## [Unreleased]
 
+### Changed
+
+- **The Transactions tab opens quickly however long your history is** (FIBR-0097)
+  The list now draws only the rows on screen. With 20,000 transactions,
+  opening the tab took about 1.3 seconds and now takes about 0.1 seconds
+  (measured on the developer's machine). The list looks and sorts exactly
+  as before.
+
 ### Removed
 
 - **The Flatpak build recipe is gone — finbreak will not be listed on Flathub** (FIBR-0452)

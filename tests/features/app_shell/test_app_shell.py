@@ -329,7 +329,19 @@ def test_INV4c_autolock_empties_the_rows_before_the_deferred_delete(qtbot, servi
 
     This asserts the wipe happens at LOCK time by deliberately NOT pumping: the
     tables are empty while the object is still valid."""
-    from PySide6.QtWidgets import QTableWidget
+    from PySide6.QtWidgets import QTableView, QTableWidget
+
+    def filled_tables(workspace):
+        # The Transactions table is a QTableView over a model (FIBR-0097), so it
+        # is named here; a bare findChildren(QTableView) would also catch the
+        # date pickers' calendars, which always have rows.
+        tables = [
+            *workspace.findChildren(QTableWidget),
+            workspace.findChild(QTableView, "transactions_table"),
+        ]
+        return [
+            t.objectName() for t in tables if t is not None and t.model().rowCount() > 0
+        ]
 
     window = _unlocked_home_shell(qtbot, service)
     TransactionService(service.vault).add_transaction(
@@ -337,17 +349,16 @@ def test_INV4c_autolock_empties_the_rows_before_the_deferred_delete(qtbot, servi
     )
     workspace = window.centralWidget().currentWidget()
     window._transactions_tab.refresh()
-    filled = [t for t in workspace.findChildren(QTableWidget) if t.rowCount() > 0]
-    assert filled, "the fixture put rows on screen before the lock"
+    assert "transactions_table" in filled_tables(workspace), (
+        "the fixture put rows on screen before the lock"
+    )
 
     service._on_idle_timeout()  # no _pump_deferred_delete() — the whole point
 
     assert shiboken6.isValid(workspace), (
         "the widget is still alive — this is the deferred-delete window under test"
     )
-    still_filled = [
-        t.objectName() for t in workspace.findChildren(QTableWidget) if t.rowCount() > 0
-    ]
+    still_filled = filled_tables(workspace)
     assert not still_filled, f"decrypted rows survived the lock in: {still_filled}"
 
 

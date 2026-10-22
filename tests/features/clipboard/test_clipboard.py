@@ -14,7 +14,7 @@ from PySide6.QtCore import QObject, QPoint
 from PySide6.QtGui import QClipboard, QGuiApplication
 from PySide6.QtWidgets import QComboBox, QMenu
 
-from conftest import _PW
+from conftest import _PW, cell_text
 from finbreak.errors import VaultLockedError
 from finbreak.repositories.accounts import AccountRepository
 from finbreak.repositories.settings import SettingsRepository
@@ -92,8 +92,8 @@ def _add_txn(service, description, amount=-1000, occurred_on="2026-01-05"):
 
 
 def _row_of(view, description):
-    for r in range(view._table.rowCount()):
-        if view._table.item(r, _COL_DESCRIPTION).text() == description:
+    for r in range(view._table.model().rowCount()):
+        if cell_text(view._table, r, _COL_DESCRIPTION) == description:
             return r
     raise AssertionError(f"no visible row for {description!r}")
 
@@ -154,7 +154,7 @@ def test_INV2_copy_amount_pushes_rendered_cell_text(qtbot, service):
     view._select_txn(txn)
 
     row = _row_of(view, "COFFEE SHOP")
-    expected = view._table.item(row, _COL_AMOUNT).text()
+    expected = cell_text(view._table, row, _COL_AMOUNT)
     assert expected, "the rendered amount cell is non-empty"
     view._on_copy_amount()
     assert fake.copied == [expected], "copy-amount pushes the WYSIWYG cell text"
@@ -190,7 +190,7 @@ def test_INV8_copy_is_lock_safe(qtbot, service):
     qtbot.addWidget(view)
     view._select_txn(txn)
     row = _row_of(view, "COFFEE SHOP")
-    expected_amount = view._table.item(row, _COL_AMOUNT).text()
+    expected_amount = cell_text(view._table, row, _COL_AMOUNT)
 
     service.lock()
     # Positive control: a genuine vault read DOES raise in this locked state, so a

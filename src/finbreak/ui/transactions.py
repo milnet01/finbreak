@@ -11,10 +11,19 @@ that list and never re-hit the DB.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from decimal import Decimal
 
-from PySide6.QtCore import QDate, QObject, QPoint, Qt
-from PySide6.QtGui import QGuiApplication
+from PySide6.QtCore import (
+    QAbstractTableModel,
+    QDate,
+    QModelIndex,
+    QObject,
+    QPersistentModelIndex,
+    QPoint,
+    Qt,
+)
+from PySide6.QtGui import QBrush, QGuiApplication
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -25,8 +34,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMenu,
-    QTableWidget,
-    QTableWidgetItem,
+    QTableView,
     QVBoxLayout,
     QWidget,
 )
@@ -45,15 +53,7 @@ from finbreak.services.transactions import TransactionService
 from finbreak.services.transfer_detection import TransferDetectionService
 from finbreak.ui._amount import _NEGATIVE_TEXT, _POSITIVE_TEXT, _format_amount
 from finbreak.ui._clipboard import ClipboardAutoClear
-from finbreak.ui._table_state import (
-    SortableItem,
-    enable_sorting,
-    fill_guard,
-    remember_columns,
-    select_by_index,
-    selected_index,
-    tag_row,
-)
+from finbreak.ui._table_state import enable_sorting, remember_columns
 from finbreak.ui._widgets import add_grouped_categories
 from finbreak.ui.category_picker import CategoryPickerDialog
 from finbreak.ui.modal import show_modal
@@ -71,6 +71,176 @@ _COL_CATEGORY = 5
 # The "All accounts" / "All categories" sentinel — a real object so it can never be
 # confused with the ``None`` that marks the Uncategorised category (D8).
 _FILTER_ALL = object()
+
+_Row = tuple[Transaction, Decimal, str, str]  # (txn, display amount, account, category)
+_Index = QModelIndex | QPersistentModelIndex
+_ROOT = QModelIndex()  # the invalid index: a flat table's only parent
+
+
+@dataclass(frozen=True)
+class _Render:
+    """What one fill renders with, built by the view once per fill (FIBR-0097
+    § 4.1). The translated strings arrive already translated, so they keep the
+    ``TransactionsView`` translation context (§ 4.4)."""
+
+    date_format: str
+    amount_prefs: AmountPrefs
+    currency: str  # the base-currency ISO code (FIBR-0153 INV-6)
+    transfer_labels: dict[int, str]  # {txn_id: "Transfer to/from <account>"}
+    guess_template: str  # "{category} ~ guess"
+    guess_tooltip: str
+
+
+class TransactionsModel(QAbstractTableModel):
+    """The Transactions table's rows (FIBR-0097). Qt asks ``data`` only for the
+    cells it paints, so a refill formats a screenful, not every row.
+
+    The row list is the view's own ``_rows`` object, sorted in place, so view row
+    ``i`` is ``_rows[i]``."""
+
+    def __init__(self, headers: list[str], parent: QObject | None = None):
+        super().__init__(parent)
+        self._headers = headers
+        self._rows: list[_Row] = []
+        self._render: _Render | None = None
+        # The last sort Qt asked for; a refill re-applies it. Date, newest first,
+        # is the header's own initial indicator.
+        self._sort = (_COL_DATE, Qt.SortOrder.DescendingOrder)
+
+    def set_rows(self, rows: list[_Row], render: _Render) -> None:
+        self.beginResetModel()
+        self._rows = rows
+        self._render = render
+        self._sort_rows(*self._sort)
+        self.endResetModel()
+
+    def clear(self) -> None:
+        """Drop the rows AND the render: its transfer labels name accounts
+        (FIBR-0097 INV-5)."""
+        self.beginResetModel()
+        self._rows = []
+        self._render = None
+        self.endResetModel()
+
+    def row_at(self, row: int) -> _Row:
+        return self._rows[row]
+
+    def rowCount(self, parent: _Index = _ROOT) -> int:
+        return 0 if parent.isValid() else len(self._rows)
+
+    def columnCount(self, parent: _Index = _ROOT) -> int:
+        return 0 if parent.isValid() else len(self._headers)
+
+    def headerData(
+        self,
+        section: int,
+        orientation: Qt.Orientation,
+        role: int = Qt.ItemDataRole.DisplayRole,
+    ) -> object:
+        if (
+            orientation == Qt.Orientation.Horizontal
+            and role == Qt.ItemDataRole.DisplayRole
+            and 0 <= section < len(self._headers)
+        ):
+            return self._headers[section]
+        return super().headerData(section, orientation, role)  # row numbers
+
+    def data(self, index: _Index, role: int = Qt.ItemDataRole.DisplayRole) -> object:
+        render = self._render
+        if render is None or not index.isValid() or index.row() >= len(self._rows):
+            return None  # a repaint between a reset and its layout (§ 6)
+        row = self._rows[index.row()]
+        transaction, display, _account, category = row
+        column = index.column()
+        if role == Qt.ItemDataRole.DisplayRole:
+            return self._text(row, column, render)
+        if (
+            role == Qt.ItemDataRole.ForegroundRole
+            and column == _COL_AMOUNT
+            and render.amount_prefs.colour
+            and display != 0
+        ):
+            return QBrush(_NEGATIVE_TEXT if display < 0 else _POSITIVE_TEXT)
+        if (
+            role == Qt.ItemDataRole.ToolTipRole
+            and column == _COL_CATEGORY
+            and self._is_guess(transaction, category, render)
+        ):
+            return render.guess_tooltip
+        return None
+
+    def sort(
+        self, column: int, order: Qt.SortOrder = Qt.SortOrder.AscendingOrder
+    ) -> None:
+        self._sort = (column, order)
+        self.layoutAboutToBeChanged.emit()
+        old_rows = list(self._rows)
+        self._sort_rows(column, order)
+        new_row = {id(row): i for i, row in enumerate(self._rows)}
+        # Persistent indexes (the selection) follow their transaction, not their
+        # row number, so the next action lands on the row the user picked.
+        old = self.persistentIndexList()
+        self.changePersistentIndexList(
+            old,
+            [self.index(new_row[id(old_rows[i.row()])], i.column()) for i in old],
+        )
+        self.layoutChanged.emit()
+
+    def _sort_rows(self, column: int, order: Qt.SortOrder) -> None:
+        render = self._render
+        if render is None or not 0 <= column < len(self._headers):
+            return
+        # list.sort is stable both ways, so tied rows keep their order.
+        self._rows.sort(
+            key=lambda row: self._key(row, column, render),
+            reverse=order == Qt.SortOrder.DescendingOrder,
+        )
+
+    @staticmethod
+    def _is_guess(transaction: Transaction, category: str, render: _Render) -> bool:
+        """A ``library`` row (a built-in guess) with a name and no transfer label
+        shows the "~ guess" marker and tooltip (FIBR-0139 D7)."""
+        return (
+            transaction.category_source == CategorySource.LIBRARY.value
+            and bool(category)
+            and transaction.id not in render.transfer_labels
+        )
+
+    def _text(self, row: _Row, column: int, render: _Render) -> str:
+        transaction, display, account, category = row
+        if column == _COL_DATE:
+            return format_date(transaction.occurred_on, render.date_format)
+        if column == _COL_AMOUNT:
+            return _format_amount(
+                display, render.currency, render.amount_prefs.negative_style
+            )
+        if column == _COL_CURRENCY:
+            return render.currency
+        if column == _COL_DESCRIPTION:
+            return transaction.description
+        if column == _COL_ACCOUNT:
+            return account
+        label = render.transfer_labels.get(transaction.id)
+        if label is not None:
+            return label  # a confirmed transfer leg's label wins (FIBR-0151)
+        if self._is_guess(transaction, category, render):
+            return render.guess_template.format(category=category)
+        return category
+
+    def _key(self, row: _Row, column: int, render: _Render) -> str | Decimal:
+        """What a column sorts by. Date sorts on the ISO date and Amount on the
+        ``Decimal``, never their formatted text. Category sorts on the BARE name,
+        so a guessed row sorts with its plain-named siblings, or on a transfer
+        leg's label, so the two legs group. Every other column sorts on its text.
+        One key type per column, so no comparison mixes types."""
+        transaction, display, _account, category = row
+        if column == _COL_DATE:
+            return transaction.occurred_on
+        if column == _COL_AMOUNT:
+            return display
+        if column == _COL_CATEGORY:
+            return render.transfer_labels.get(transaction.id, category)
+        return self._text(row, column, render)
 
 
 class TransactionsView(QWidget):
@@ -169,14 +339,8 @@ class TransactionsView(QWidget):
         row.addWidget(self._category)
         return row
 
-    def _build_table(self) -> QTableWidget:
-        self._table = QTableWidget(0, 6)
-        # A distinct objectName so remember_columns keys this table's saved layout
-        # uniquely — without it, this table and the (also multi-column) Statements
-        # table share the empty "columns/" key and cross-corrupt each other's widths
-        # + drag-reorder order (FIBR-0012 indie-review).
-        self._table.setObjectName("transactions_table")
-        self._table.setHorizontalHeaderLabels(
+    def _build_table(self) -> QTableView:
+        self._model = TransactionsModel(
             [
                 self.tr("Date"),
                 self.tr("Amount"),
@@ -184,13 +348,23 @@ class TransactionsView(QWidget):
                 self.tr("Description"),
                 self.tr("Account"),
                 self.tr("Category"),
-            ]
+            ],
+            self,
         )
+        self._table = QTableView()
+        # Before every header call: a QTableView header has no sections until it
+        # has a model, so remember_columns would capture an empty default.
+        self._table.setModel(self._model)
+        # A distinct objectName so remember_columns keys this table's saved layout
+        # uniquely — without it, this table and the (also multi-column) Statements
+        # table share the empty "columns/" key and cross-corrupt each other's widths
+        # + drag-reorder order (FIBR-0012 indie-review).
+        self._table.setObjectName("transactions_table")
         self._table.horizontalHeader().setSectionResizeMode(
             QHeaderView.ResizeMode.Interactive
         )
         self._table.horizontalHeader().setStretchLastSection(True)
-        self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         enable_sorting(self._table)
@@ -210,6 +384,7 @@ class TransactionsView(QWidget):
         self._master = []
         self._rows = []
         self._transfer_labels = {}  # "Transfer to <account>" per row
+        self._model.clear()  # its rows and its render (FIBR-0097 INV-5)
 
     def refresh(self) -> None:
         """Reload the master list from the vault and rebuild the account / category
@@ -322,42 +497,20 @@ class TransactionsView(QWidget):
         if self._loading:
             return
         self._rows = [row for row in self._master if self._matches(row)]
-        symbol = self._transactions.base_currency()
-        with fill_guard(self._table):
-            self._table.setRowCount(len(self._rows))
-            for row, (transaction, display, account_name, category_name) in enumerate(
-                self._rows
-            ):
-                self._table.setItem(
-                    row,
-                    _COL_DATE,
-                    SortableItem(
-                        format_date(transaction.occurred_on, self._prefs.date_format),
-                        transaction.occurred_on,
-                    ),
-                )
-                amount_item = SortableItem(
-                    _format_amount(display, symbol, self._amount_prefs.negative_style),
-                    display,
-                )
-                if self._amount_prefs.colour:
-                    if display < 0:
-                        amount_item.setForeground(_NEGATIVE_TEXT)
-                    elif display > 0:
-                        amount_item.setForeground(_POSITIVE_TEXT)
-                self._table.setItem(row, _COL_AMOUNT, amount_item)
-                # The ISO code in its own column (display-only, non-editable — same
-                # treatment as the Account cell). One fixed value per vault today
-                # (FIBR-0153), forward-compatible with future multi-currency.
-                self._table.setItem(row, _COL_CURRENCY, QTableWidgetItem(symbol))
-                self._table.setItem(
-                    row, _COL_DESCRIPTION, QTableWidgetItem(transaction.description)
-                )
-                self._table.setItem(row, _COL_ACCOUNT, QTableWidgetItem(account_name))
-                self._table.setItem(
-                    row, _COL_CATEGORY, self._category_cell(transaction, category_name)
-                )
-                tag_row(self._table, row, row)  # tag = filtered-list index (sort-safe)
+        self._model.set_rows(
+            self._rows,
+            _Render(
+                date_format=self._prefs.date_format,
+                amount_prefs=self._amount_prefs,
+                currency=self._transactions.base_currency(),
+                transfer_labels=self._transfer_labels,
+                guess_template=self.tr("{category} ~ guess"),
+                guess_tooltip=self.tr(
+                    "Guessed from the built-in library — right-click to confirm "
+                    "or change."
+                ),
+            ),
+        )
 
     def _matches(self, row: tuple[Transaction, Decimal, str, str]) -> bool:
         """AND of the active filters (each inactive when unset, INV-9)."""
@@ -381,42 +534,6 @@ class TransactionsView(QWidget):
             return False
         return True
 
-    def _category_cell(
-        self, transaction: Transaction, category_name: str
-    ) -> SortableItem:
-        """The Category cell (FIBR-0139 D7). **Every** cell is a ``SortableItem`` keyed
-        on the **bare** ``category_name`` — so a guessed row sorts *with* its
-        plain-named siblings (``SortableItem.__lt__`` uses the sort key only when
-        *both* items carry one; a mix of ``SortableItem`` and plain items would fall
-        back to a display-text compare and split the group). A ``'library'`` row (a
-        built-in guess) shows a "~ guess" marker + tooltip; a rule / manual /
-        uncategorised row shows the plain name. Display-only: the sort key (bare name)
-        and the id-keyed filter are unaffected (INV-9).
-
-        A confirmed transfer leg overrides the category name with its directional
-        "Transfer to/from <account>" label (FIBR-0151); the label is also its sort
-        key, so the two legs group together when the column is sorted."""
-        label = self._transfer_labels.get(transaction.id)
-        if label is not None:
-            return SortableItem(label, label)
-        is_guess = transaction.category_source == CategorySource.LIBRARY.value and bool(
-            category_name
-        )
-        display = (
-            self.tr("{category} ~ guess").format(category=category_name)
-            if is_guess
-            else category_name
-        )
-        item = SortableItem(display, category_name)
-        if is_guess:
-            item.setToolTip(
-                self.tr(
-                    "Guessed from the built-in library — right-click to confirm "
-                    "or change."
-                )
-            )
-        return item
-
     # --- category set + learning (moved verbatim from HomeView) ------------ #
     def _show_context_menu(self, pos: QPoint) -> None:
         if self._selected_txn() is None:
@@ -434,12 +551,11 @@ class TransactionsView(QWidget):
     def _on_copy_amount(self) -> None:
         # The already-rendered Amount cell text (WYSIWYG) — no vault read, so this is
         # lock-safe even if the auto-lock fired while the menu was open (INV-8/D1).
-        if self._selected_txn() is None:
+        row = self._selected_row()
+        if row is None:
             return
-        row = next(iter({i.row() for i in self._table.selectedItems()}))
-        item = self._table.item(row, _COL_AMOUNT)
-        text = item.text() if item is not None else ""
-        self._clipboard.copy(text)
+        text = self._model.index(row, _COL_AMOUNT).data()
+        self._clipboard.copy(text or "")
 
     def _on_copy_description(self) -> None:
         txn = self._selected_txn()
@@ -511,12 +627,18 @@ class TransactionsView(QWidget):
         self._apply_filters()
 
     # --- test / shell accessors -------------------------------------------- #
+    def _selected_row(self) -> int | None:
+        """The single selected view row, or ``None`` unless exactly one is."""
+        rows = self._table.selectionModel().selectedRows()
+        return rows[0].row() if len(rows) == 1 else None
+
     def _selected_txn(self) -> Transaction | None:
-        index = selected_index(self._table)
-        return None if index is None else self._rows[index][0]
+        row = self._selected_row()
+        return None if row is None else self._model.row_at(row)[0]
 
     def _select_txn(self, txn_id: int) -> None:
         for i, row in enumerate(self._rows):
             if row[0].id == txn_id:
-                select_by_index(self._table, i)
+                self._table.clearSelection()
+                self._table.selectRow(i)
                 return

@@ -11,7 +11,7 @@ import pytest
 from PySide6.QtCore import QDate, QDateTime, QTime, QTimeZone
 from PySide6.QtWidgets import QComboBox
 
-from conftest import _PW, _acct
+from conftest import _PW, _acct, cell_text
 from finbreak.datetime_format import format_date, format_timestamp
 from finbreak.services.auth import AuthService, DateTimePrefs
 from finbreak.services.categorization import CategorizationService
@@ -111,7 +111,7 @@ def test_transactions_date_uses_prefs(qtbot, service):
         DateTimePrefs("system", "yyyy/MM/dd", "system"),
     )
     qtbot.addWidget(view)
-    assert view._table.item(0, 0).text() == "2026/06/19"
+    assert cell_text(view._table, 0, 0) == "2026/06/19"
 
 
 # ---- INV-1: display-only, stored rows unchanged -----------------------------
@@ -181,7 +181,7 @@ def test_settings_save_pushes_prefs_to_open_tabs(qtbot, service):
     assert window._prefs.date_format == "yyyy/MM/dd"
     # The Date column lives on the Transactions tab now (Home is the dashboard).
     assert (
-        window._transactions_tab._table.item(0, 0).text()
+        cell_text(window._transactions_tab._table, 0, 0)
         == format_date("2026-06-19", "yyyy/MM/dd")
         == "2026/06/19"
     )

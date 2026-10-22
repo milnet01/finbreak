@@ -8,7 +8,7 @@ re-sort-then-act (INV-9).
 """
 
 import pytest
-from PySide6.QtCore import QDate
+from PySide6.QtCore import QDate, Qt
 
 from conftest import _PW, cell_text, spy_learning, stub_picker
 from finbreak.errors import VaultLockedError
@@ -80,9 +80,9 @@ def _txn_cat(service, txn_id):
 
 
 def _cat_cell(view, description):
-    for r in range(view._table.rowCount()):
-        if view._table.item(r, 3).text() == description:
-            return view._table.item(r, 5).text()
+    for r in range(view._table.model().rowCount()):
+        if cell_text(view._table, r, 3) == description:
+            return cell_text(view._table, r, 5)
     raise AssertionError(f"no visible row for {description!r}")
 
 
@@ -98,10 +98,10 @@ def test_FIBR0153_INV6_currency_column_shows_code(qtbot, service):
     view = _view(service)
     qtbot.addWidget(view)
     code = TransactionService(service.vault).base_currency()
-    rows = view._table.rowCount()
+    rows = view._table.model().rowCount()
     assert rows == 2
     for r in range(rows):
-        assert view._table.item(r, _COL_CURRENCY).text() == code
+        assert cell_text(view._table, r, _COL_CURRENCY) == code
 
 
 def test_FIBR0153_INV7_column_shape_is_six_and_category_at_five(qtbot, service):
@@ -113,11 +113,11 @@ def test_FIBR0153_INV7_column_shape_is_six_and_category_at_five(qtbot, service):
     CategorizationService(service.vault).set_manual_category(txn, g)
     view = _view(service)
     qtbot.addWidget(view)
-    assert view._table.columnCount() == 6
+    assert view._table.model().columnCount() == 6
     assert _COL_CATEGORY == 5
-    for r in range(view._table.rowCount()):
-        if view._table.item(r, 3).text() == "PICK N PAY":
-            assert view._table.item(r, _COL_CATEGORY).text() == "Groceries"
+    for r in range(view._table.model().rowCount()):
+        if cell_text(view._table, r, 3) == "PICK N PAY":
+            assert cell_text(view._table, r, _COL_CATEGORY) == "Groceries"
             break
     else:
         raise AssertionError("no visible row for PICK N PAY")
@@ -141,7 +141,7 @@ def test_FIBR0153_INV9_stale_five_column_layout_is_safe(qtbot, service, window_i
 
     view = _view(service)  # must not raise applying the stale 5-column blob
     qtbot.addWidget(view)
-    assert view._table.columnCount() == 6
+    assert view._table.model().columnCount() == 6
 
 
 # --------------------------------------------------------------------------- #
@@ -360,7 +360,7 @@ def test_INV9_search_filters_by_description_substring(qtbot, service):
     qtbot.addWidget(view)
     view._search.setText("coffee")  # case-insensitive
     descriptions = {
-        view._table.item(r, 3).text() for r in range(view._table.rowCount())
+        cell_text(view._table, r, 3) for r in range(view._table.model().rowCount())
     }
     assert descriptions == {"Coffee shop", "Coffee beans"}
 
@@ -373,7 +373,7 @@ def test_INV9_date_range_filter(qtbot, service):
     view._date_from.setDate(QDate(2026, 1, 1))
     view._date_to.setDate(QDate(2026, 1, 31))
     descriptions = {
-        view._table.item(r, 3).text() for r in range(view._table.rowCount())
+        cell_text(view._table, r, 3) for r in range(view._table.model().rowCount())
     }
     assert descriptions == {"Coffee shop"}  # only the January row
 
@@ -384,7 +384,7 @@ def test_INV9_account_filter(qtbot, service):
     qtbot.addWidget(view)
     view._account.setCurrentIndex(view._account.findData(b))
     descriptions = {
-        view._table.item(r, 3).text() for r in range(view._table.rowCount())
+        cell_text(view._table, r, 3) for r in range(view._table.model().rowCount())
     }
     assert descriptions == {"Coffee beans"}  # only account B
 
@@ -396,13 +396,13 @@ def test_INV9_category_filter_and_uncategorised(qtbot, service):
     # A specific category.
     view._category.setCurrentIndex(view._category.findData(groceries))
     descriptions = {
-        view._table.item(r, 3).text() for r in range(view._table.rowCount())
+        cell_text(view._table, r, 3) for r in range(view._table.model().rowCount())
     }
     assert descriptions == {"Coffee shop"}
     # "Uncategorised" selects category_id is None.
     view._category.setCurrentIndex(view._category.findData(None))
     descriptions = {
-        view._table.item(r, 3).text() for r in range(view._table.rowCount())
+        cell_text(view._table, r, 3) for r in range(view._table.model().rowCount())
     }
     assert descriptions == {"Rent payment", "Coffee beans"}
 
@@ -444,12 +444,14 @@ def test_INV9_all_filters_combine_AND(qtbot, service):
     view._category.setCurrentIndex(view._category.findData(groceries))
     # Only "Coffee shop" satisfies all four at once.
     descriptions = [
-        view._table.item(r, 3).text() for r in range(view._table.rowCount())
+        cell_text(view._table, r, 3) for r in range(view._table.model().rowCount())
     ]
     assert descriptions == ["Coffee shop"]
     # Clearing the search widens the set back (still AND of the other three).
     view._search.setText("")
-    widened = {cell_text(view._table, r, 3) for r in range(view._table.rowCount())}
+    widened = {
+        cell_text(view._table, r, 3) for r in range(view._table.model().rowCount())
+    }
     assert widened == {"Coffee shop"}
 
 
@@ -460,13 +462,13 @@ def test_INV9_resort_then_context_acts_on_correct_txn(qtbot, service):
     qtbot.addWidget(view)
     view._search.setText("coffee")  # narrow to the two coffee rows
     # Sort by Amount ascending — the biggest magnitude (-99999) goes first/last.
-    view._table.sortItems(_COL_AMOUNT)
+    view._table.sortByColumn(_COL_AMOUNT, Qt.SortOrder.AscendingOrder)
     view._select_txn(coffee)
     # The tag is over the FILTERED list, so the selection resolves to the right txn.
     assert view._selected_txn().id == coffee
     # The round trip above reads back through the same tag mapping, so it holds
     # even when the highlighted row shows a different transaction.
-    shown = cell_text(view._table, view._table.currentRow(), _COL_DESCRIPTION)
+    shown = cell_text(view._table, view._table.currentIndex().row(), _COL_DESCRIPTION)
     assert shown == "Zzz late coffee", (
         "the highlighted row is not the transaction Set category acts on.\n"
         "  expected: 'Zzz late coffee'\n"
@@ -519,11 +521,12 @@ def test_FIBR0105_amount_colour_marks_direction_when_on(qtbot, service, monkeypa
         AmountPrefs("minus", True),
     )
     qtbot.addWidget(view)
-    table = view._table
-    assert table.item(0, _COL_AMOUNT).foreground().color() == _NEGATIVE_TEXT
-    assert table.item(1, _COL_AMOUNT).foreground().color() == _POSITIVE_TEXT
-    assert table.item(2, _COL_AMOUNT).data(Qt.ItemDataRole.ForegroundRole) is None
-    assert table.item(0, _COL_DATE).data(Qt.ItemDataRole.ForegroundRole) is None
+    model = view._table.model()
+    fg = Qt.ItemDataRole.ForegroundRole
+    assert model.index(0, _COL_AMOUNT).data(fg).color() == _NEGATIVE_TEXT
+    assert model.index(1, _COL_AMOUNT).data(fg).color() == _POSITIVE_TEXT
+    assert model.index(2, _COL_AMOUNT).data(fg) is None
+    assert model.index(0, _COL_DATE).data(fg) is None
 
 
 def test_FIBR0105_amount_colour_off_sets_no_foreground(qtbot, service, monkeypatch):
@@ -541,11 +544,12 @@ def test_FIBR0105_amount_colour_off_sets_no_foreground(qtbot, service, monkeypat
         AmountPrefs("minus", True),
     )
     qtbot.addWidget(view)
-    table = view._table
-    assert table.item(0, _COL_AMOUNT).foreground().color() == _NEGATIVE_TEXT
+    model = view._table.model()
+    fg = Qt.ItemDataRole.ForegroundRole
+    assert model.index(0, _COL_AMOUNT).data(fg).color() == _NEGATIVE_TEXT
     view.set_amount_prefs(AmountPrefs("minus", False))
-    assert table.item(0, _COL_AMOUNT).data(Qt.ItemDataRole.ForegroundRole) is None
-    assert table.item(1, _COL_AMOUNT).data(Qt.ItemDataRole.ForegroundRole) is None
+    assert model.index(0, _COL_AMOUNT).data(fg) is None
+    assert model.index(1, _COL_AMOUNT).data(fg) is None
 
 
 def test_FIBR0327_ticking_date_range_does_not_empty_the_table(qtbot, service):
@@ -564,16 +568,16 @@ def test_FIBR0327_ticking_date_range_does_not_empty_the_table(qtbot, service):
     view = _view(service)
     qtbot.addWidget(view)
     view.refresh()
-    before = view._table.rowCount()
+    before = view._table.model().rowCount()
     assert before == 2
 
     view._date_enable.setChecked(True)
 
-    assert view._table.rowCount() == before, (
+    assert view._table.model().rowCount() == before, (
         "FIBR-0327: ticking the date range must not hide rows until the user "
         "narrows it.\n"
         f"  before: {before} rows\n"
-        f"  after:  {view._table.rowCount()} rows\n"
+        f"  after:  {view._table.model().rowCount()} rows\n"
         f"  range:  {view._date_from.date().toString('yyyy-MM-dd')} .. "
         f"{view._date_to.date().toString('yyyy-MM-dd')}"
     )
@@ -595,10 +599,248 @@ def test_FIBR0327_a_range_the_user_set_survives_a_refresh(qtbot, service):
     view._date_enable.setChecked(True)
     view._date_from.setDate(QDate(2026, 3, 1))
     view._date_to.setDate(QDate(2026, 3, 31))
-    assert view._table.rowCount() == 1  # FUEL only
+    assert view._table.model().rowCount() == 1  # FUEL only
 
     view.refresh()
 
     assert view._date_from.date() == QDate(2026, 3, 1), "the user's range stands"
     assert view._date_to.date() == QDate(2026, 3, 31)
-    assert view._table.rowCount() == 1
+    assert view._table.model().rowCount() == 1
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0097 — the table is a model over the filtered rows
+# --------------------------------------------------------------------------- #
+def _rows_view(service, monkeypatch, specs, **kwargs):
+    """A TransactionsView over hand-built rows. Each spec is ``(description,
+    occurred_on, display, account_name, category_name, category_source)``; the
+    view's own vault holds no transactions, so no transfer label applies."""
+    from finbreak.models import Transaction
+    from finbreak.ui.transactions import TransactionsView
+
+    txn = TransactionService(service.vault)
+    rows = [
+        (
+            Transaction(
+                i + 1,
+                1,
+                occurred_on,
+                0,
+                description,
+                "2026-07-01T00:00:00",
+                None,
+                source,
+            ),
+            display,
+            account,
+            category,
+        )
+        for i, (description, occurred_on, display, account, category, source) in (
+            enumerate(specs)
+        )
+    ]
+    monkeypatch.setattr(txn, "list_transactions", lambda: rows)
+    monkeypatch.setattr(txn, "base_currency", lambda: "ZAR")
+    return TransactionsView(txn, CategorizationService(service.vault), **kwargs)
+
+
+def _shown_descriptions(view):
+    """The Description column, top to bottom, as the table shows it."""
+    model = view._table.model()
+    return [model.index(r, _COL_DESCRIPTION).data() for r in range(model.rowCount())]
+
+
+def test_FIBR0097_refresh_formats_only_painted_rows(qtbot, service, monkeypatch):
+    """INV-2: with 2,000 transactions in a shown 1200x800 view, a refresh formats
+    the amounts Qt paints, not one per row."""
+    from decimal import Decimal
+
+    from PySide6.QtWidgets import QApplication
+
+    import finbreak.ui.transactions as module
+
+    specs = [
+        (f"row{i}", "2026-07-01", Decimal(i), "Account", "", None) for i in range(2000)
+    ]
+    view = _rows_view(service, monkeypatch, specs)
+    qtbot.addWidget(view)
+    view.resize(1200, 800)
+    view.show()
+    qtbot.waitExposed(view)
+    QApplication.processEvents()
+
+    calls = 0
+    real = module._format_amount
+
+    def counting(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(module, "_format_amount", counting)
+    view.refresh()
+    QApplication.processEvents()
+
+    assert 0 < calls < 200, (
+        "FIBR-0097 INV-2: a refresh must format only the painted Amount cells.\n"
+        f"  _format_amount calls: {calls} for 2000 rows"
+    )
+
+
+def test_FIBR0097_each_column_sorts_by_its_key(qtbot, service, monkeypatch):
+    """INV-3: a header sort orders by the column's key, not its text, keeps tied
+    rows in their current order both ways, and the default is Date, newest
+    first. Text order and key order disagree in every keyed column."""
+    from decimal import Decimal
+
+    from PySide6.QtCore import Qt
+
+    from finbreak.services.auth import DATETIME_SYSTEM, DateTimePrefs
+    from finbreak.ui.transactions import (
+        _COL_ACCOUNT,
+        _COL_CATEGORY,
+        _COL_CURRENCY,
+        _COL_DATE,
+    )
+
+    library = "library"
+    # (description, date, display, account, category, source). dd/MM/yyyy puts
+    # "20/12/2025" after "05/01/2026" as text; "-1000.00" sorts before "30.00"
+    # as text either way round; "Groceries ~ guess" sorts after "Groceries
+    # extra" as text while its key, "Groceries", sorts before it.
+    specs = [
+        ("a", "2026-01-05", Decimal("200.00"), "Cheque", "Groceries", library),
+        ("b", "2025-12-20", Decimal("-1000.00"), "Savings", "Groceries extra", None),
+        ("c", "2026-01-05", Decimal("30.00"), "Cheque", "Groceries", None),
+        ("d", "2026-02-01", Decimal("30.00"), "Savings", "", None),
+    ]
+    keys = {
+        _COL_DATE: {s[0]: s[1] for s in specs},
+        _COL_AMOUNT: {s[0]: s[2] for s in specs},
+        _COL_CURRENCY: {s[0]: "ZAR" for s in specs},
+        _COL_DESCRIPTION: {s[0]: s[0] for s in specs},
+        _COL_ACCOUNT: {s[0]: s[3] for s in specs},
+        _COL_CATEGORY: {s[0]: s[4] for s in specs},
+    }
+    view = _rows_view(
+        service,
+        monkeypatch,
+        specs,
+        prefs=DateTimePrefs(DATETIME_SYSTEM, "dd/MM/yyyy", DATETIME_SYSTEM),
+    )
+    qtbot.addWidget(view)
+
+    assert _shown_descriptions(view) == ["d", "a", "c", "b"], "Date, newest first"
+
+    for column, key in keys.items():
+        for order in (Qt.SortOrder.AscendingOrder, Qt.SortOrder.DescendingOrder):
+            before = _shown_descriptions(view)
+            view._table.sortByColumn(column, order)
+            expected = sorted(
+                before,
+                key=key.__getitem__,
+                reverse=order == Qt.SortOrder.DescendingOrder,
+            )
+            assert _shown_descriptions(view) == expected, (
+                f"FIBR-0097 INV-3: column {column}, {order.name}\n"
+                f"  before:   {before}\n"
+                f"  expected: {expected}\n"
+                f"  actual:   {_shown_descriptions(view)}"
+            )
+
+
+def test_FIBR0097_selection_survives_a_sort_and_not_a_refill(
+    qtbot, service, monkeypatch
+):
+    """INV-4: the selection follows its transaction through a sort on any
+    column, and a refill clears it."""
+    from decimal import Decimal
+
+    from PySide6.QtCore import Qt
+
+    from finbreak.services.auth import AmountPrefs
+
+    specs = [
+        ("a", "2026-01-05", Decimal("200.00"), "Cheque", "Groceries", None),
+        ("b", "2025-12-20", Decimal("-1000.00"), "Savings", "Rent", None),
+        ("c", "2026-02-01", Decimal("30.00"), "Cheque", "", None),
+    ]
+    view = _rows_view(service, monkeypatch, specs)
+    qtbot.addWidget(view)
+    view._select_txn(2)  # "b"
+
+    for column in range(6):
+        for order in (Qt.SortOrder.AscendingOrder, Qt.SortOrder.DescendingOrder):
+            view._table.sortByColumn(column, order)
+            selected = view._selected_txn()
+            assert selected is not None and selected.description == "b", (
+                f"FIBR-0097 INV-4: the selection moved off 'b' on column {column}, "
+                f"{order.name}: now {selected and selected.description!r}"
+            )
+
+    view.set_amount_prefs(AmountPrefs("minus", False))
+    assert view._selected_txn() is None, "a refill clears the selection"
+
+
+@pytest.mark.perf
+def test_FIBR0097_refresh_scales_with_painted_rows(qtbot, service):
+    """§ 7's perf check: print the refresh time at 2,000 and 20,000 rows, and at
+    20,000 hold the refresh under 4x ``list_transactions()`` alone, timed here on
+    the same machine (testing.md § 3.4). Measured 2026-10-19 at 20,000: the vault
+    read 41 ms, the QTableWidget refresh 1,499 ms."""
+    import time
+    from datetime import UTC, date, datetime, timedelta
+
+    from PySide6.QtWidgets import QApplication
+
+    def best(fn):
+        runs = []
+        for _ in range(3):
+            start = time.perf_counter()
+            fn()
+            runs.append(time.perf_counter() - start)
+        return min(runs)
+
+    account = _first_account(service)
+    conn = service.vault.connection
+    created = datetime.now(UTC).isoformat()
+    view = _view(service)
+    qtbot.addWidget(view)
+    view.resize(1200, 800)
+    view.show()
+    qtbot.waitExposed(view)
+
+    def refresh():
+        view.refresh()
+        QApplication.processEvents()
+
+    seeded = 0
+    for size in (2000, 20000):
+        conn.executemany(
+            "INSERT INTO transactions"
+            "(account_id, occurred_on, amount_minor, description, created_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            [
+                (
+                    account,
+                    (date(2020, 1, 1) + timedelta(days=i % 2000)).isoformat(),
+                    -(i % 9973) - 1,
+                    f"PURCHASE {i}",
+                    created,
+                )
+                for i in range(seeded, size)
+            ],
+        )
+        conn.commit()
+        seeded = size
+        refresh_s = best(refresh)
+        read_s = best(view._transactions.list_transactions)
+        assert view._table.model().rowCount() == size
+        print(
+            f"\nFIBR-0097 perf: {size} rows — refresh {refresh_s * 1000:.0f} ms, "
+            f"list_transactions {read_s * 1000:.0f} ms"
+        )
+    assert refresh_s < 4 * read_s, (
+        f"at 20,000 rows the refresh took {refresh_s * 1000:.0f} ms, "
+        f"{refresh_s / read_s:.1f}x the {read_s * 1000:.0f} ms vault read"
+    )

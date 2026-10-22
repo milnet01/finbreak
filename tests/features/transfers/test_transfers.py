@@ -609,9 +609,9 @@ def _txn_view(service: AuthService):
 
 
 def _category_text(view, description: str) -> str:
-    for r in range(view._table.rowCount()):
-        if view._table.item(r, _COL_DESCRIPTION).text() == description:
-            return view._table.item(r, _COL_CATEGORY).text()
+    for r in range(view._table.model().rowCount()):
+        if cell_text(view._table, r, _COL_DESCRIPTION) == description:
+            return cell_text(view._table, r, _COL_CATEGORY)
     raise AssertionError(f"no row for {description!r}")
 
 

@@ -10,5 +10,8 @@ Contract for the relocated, filterable transaction table (INV-8/9 / D7/D8):
 - **INV-9 — filters combine (AND).** Search ∧ date-range ∧ account ∧ category,
   each inactive when unset; the visible rows are the AND of the active predicates;
   "Uncategorised" selects `category_id is None`; after a header re-sort the
-  right-click still acts on the correct transaction (the row tag is over the
-  filtered list).
+  right-click still acts on the correct transaction.
+- **FIBR-0097 — the table is a model.** The table is a `QTableView` over
+  `TransactionsModel`; its contract is
+  `docs/specs/FIBR-0097-transactions-table-model.md`, whose INV-2 to INV-4
+  and perf test live in this suite.

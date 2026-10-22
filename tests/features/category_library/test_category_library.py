@@ -16,8 +16,9 @@ the test body (`_inject`, after the autouse patch — last-write-wins) or carry
 from pathlib import Path
 
 import pytest
+from PySide6.QtCore import Qt
 
-from conftest import _PW, spy_learning, stub_picker
+from conftest import _PW, cell_text, spy_learning, stub_picker
 from finbreak.category_library import (
     LibraryEntry,
     fold_entries,
@@ -105,9 +106,9 @@ def _view(service):
 
 
 def _cat_text(view, description):
-    for r in range(view._table.rowCount()):
-        if view._table.item(r, _COL_DESCRIPTION).text() == description:
-            return view._table.item(r, _COL_CATEGORY).text()
+    for r in range(view._table.model().rowCount()):
+        if cell_text(view._table, r, _COL_DESCRIPTION) == description:
+            return cell_text(view._table, r, _COL_CATEGORY)
     raise AssertionError(f"no row for {description!r}")
 
 
@@ -381,12 +382,13 @@ def test_guess_marker_and_tooltip_present(qtbot, service):
     assert _cat_text(view, "NETFLIX") == "Groceries ~ guess"  # guess marked
     assert _cat_text(view, "WOOLIES") == "Groceries"  # manual plain
     # the marker carries an explanatory tooltip; the plain row does not.
-    for r in range(view._table.rowCount()):
-        item = view._table.item(r, _COL_CATEGORY)
-        if item.text() == "Groceries ~ guess":
-            assert item.toolTip()
-        elif item.text() == "Groceries":
-            assert not item.toolTip()
+    model = view._table.model()
+    for r in range(model.rowCount()):
+        index = model.index(r, _COL_CATEGORY)
+        if index.data() == "Groceries ~ guess":
+            assert index.data(Qt.ItemDataRole.ToolTipRole)
+        elif index.data() == "Groceries":
+            assert not index.data(Qt.ItemDataRole.ToolTipRole)
 
 
 def test_guess_cell_sorts_with_its_plain_named_siblings(qtbot, service):
@@ -394,7 +396,7 @@ def test_guess_cell_sorts_with_its_plain_named_siblings(qtbot, service):
     # A splitter category whose NAME sorts after "Groceries" but whose display text
     # ("Groceries and more") sorts BETWEEN "Groceries" and "Groceries ~ guess" — so a
     # display-text sort would split the two Groceries cells; the bare-name key groups
-    # them (this is why EVERY Category cell is a SortableItem, D7).
+    # them (D7; the Category key is the bare name, FIBR-0097 § 4.1).
     roots = {
         r.kind: r
         for r in CategoryRepository(service.vault.connection).children_of(None)
@@ -413,10 +415,11 @@ def test_guess_cell_sorts_with_its_plain_named_siblings(qtbot, service):
 
     view = _view(service)
     qtbot.addWidget(view)
-    view._table.sortItems(_COL_CATEGORY)
+    view._table.sortByColumn(_COL_CATEGORY, Qt.SortOrder.AscendingOrder)
 
     cats = [
-        view._table.item(r, _COL_CATEGORY).text() for r in range(view._table.rowCount())
+        cell_text(view._table, r, _COL_CATEGORY)
+        for r in range(view._table.model().rowCount())
     ]
     groceries_rows = [
         i for i, t in enumerate(cats) if t in ("Groceries", "Groceries ~ guess")

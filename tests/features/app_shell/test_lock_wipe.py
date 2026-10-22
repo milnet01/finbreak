@@ -186,7 +186,13 @@ def _survivors(root: QWidget) -> list[str]:
         elif isinstance(widget, QChartView):
             texts.extend(_chart_texts(widget))
         if isinstance(widget, QAbstractItemView) and widget.model() is not None:
-            texts.extend(_model_texts(widget.model()))
+            model = widget.model()
+            texts.extend(_model_texts(model))
+            # A Python model is a QObject, which _scan_python stops at, and once it
+            # reports no rows _model_texts reads nothing — so a model still holding
+            # the old row list behind rowCount() == 0 shows only here (FIBR-0097).
+            for attr, value in getattr(model, "__dict__", {}).items():
+                _scan_python(value, f"{name}.model().{attr}", hits, seen)
         hits.extend(f"{name}: {t!r}" for t in texts if _holds_marker(t))
     return sorted(set(hits))
 

@@ -425,8 +425,10 @@ def test_INV7c_transaction_shows_account_name_in_table(qtbot, service):
         TransactionService(service.vault), CategorizationService(service.vault)
     )
     qtbot.addWidget(view)
-    assert view._table.rowCount() == 1
-    cells = [cell_text(view._table, 0, c) for c in range(view._table.columnCount())]
+    assert view._table.model().rowCount() == 1
+    cells = [
+        cell_text(view._table, 0, c) for c in range(view._table.model().columnCount())
+    ]
     assert any(DEFAULT_ACCOUNT_NAME in c for c in cells), "the account name is shown"
 
 

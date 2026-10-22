@@ -1,5 +1,7 @@
 """Reusable ``QTableWidget`` behaviour: click-to-sort + remembered column layout
-(FIBR-0117).
+(FIBR-0117). The sorting and remembered-column helpers also serve the one
+``QTableView``, the Transactions table (FIBR-0097); the row-tag helpers are
+``QTableWidget`` only.
 
 Two behaviours the list tables share:
 
@@ -31,6 +33,7 @@ from contextlib import contextmanager
 from PySide6.QtCore import QByteArray, QSettings, Qt
 from PySide6.QtWidgets import (
     QHeaderView,
+    QTableView,
     QTableWidget,
     QTableWidgetItem,
     QTreeWidget,
@@ -69,7 +72,7 @@ class SortableItem(QTableWidgetItem):
         return super().__lt__(other)
 
 
-def enable_sorting(table: QTableWidget) -> None:
+def enable_sorting(table: QTableView) -> None:
     """Turn on header-click sorting (asc/desc toggle) with a visible indicator."""
     table.setSortingEnabled(True)
     table.horizontalHeader().setSortIndicatorShown(True)
@@ -170,13 +173,13 @@ def _settings() -> QSettings:
     return QSettings(str(paths.window_settings_path()), QSettings.Format.IniFormat)
 
 
-def _header_of(view: QTableWidget | QTreeWidget) -> QHeaderView:
-    """The column header of either view kind — QTableWidget names it
-    ``horizontalHeader``, QTreeWidget just ``header``."""
-    return view.horizontalHeader() if isinstance(view, QTableWidget) else view.header()
+def _header_of(view: QTableView | QTreeWidget) -> QHeaderView:
+    """The column header of either view kind — QTableView (and so QTableWidget)
+    names it ``horizontalHeader``, QTreeWidget just ``header``."""
+    return view.horizontalHeader() if isinstance(view, QTableView) else view.header()
 
 
-def remember_columns(view: QTableWidget | QTreeWidget) -> None:
+def remember_columns(view: QTableView | QTreeWidget) -> None:
     """Restore ``view``'s saved column layout (widths / order / sort) and re-save it
     on every resize, reorder, or sort. Keyed by ``objectName`` in the window INI —
     call once, as the **last** line of the view's header setup (see below).
@@ -246,8 +249,8 @@ def reset_columns(root: QWidget) -> None:
     That is harmless from ``_reset_layout`` **only** because its trailing
     ``settings.remove("columns")`` erases those writes (§4.4). Any other caller
     must either clear afterwards or accept that the default is now persisted."""
-    views: list[QTableWidget | QTreeWidget] = [
-        *root.findChildren(QTableWidget),
+    views: list[QTableView | QTreeWidget] = [
+        *root.findChildren(QTableView),  # QTableWidget is a QTableView
         *root.findChildren(QTreeWidget),
     ]
     for view in views:

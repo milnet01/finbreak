@@ -16,6 +16,7 @@ import shiboken6
 from PySide6.QtCore import QPoint, QSettings, QSize, Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QTableView,
     QTableWidget,
     QTableWidgetItem,
     QTreeWidget,
@@ -371,15 +372,22 @@ def _window_ini() -> QSettings:
     return QSettings(str(fb_paths.window_settings_path()), QSettings.Format.IniFormat)
 
 
-def _sort_keys(table: QTableWidget, col: int) -> list[Any]:
-    """Each row's sort key in `col` — every Transactions cell is a SortableItem, so
-    this is the value Qt actually ordered by (falls back to display text)."""
+def _sort_keys(view: Any, col: int) -> list[Any]:
+    """Each row's sort key in `col`, top to bottom: the Transactions table sorts
+    Date on the ISO date, Amount on the Decimal and Category on the bare name
+    (FIBR-0097 § 4.1), every other column on its text. The view's `_rows` is in
+    view order."""
+    model = view._table.model()
     out: list[Any] = []
-    for row in range(table.rowCount()):
-        item = table.item(row, col)
-        assert item is not None
-        key = item.data(Qt.ItemDataRole.UserRole + 1)
-        out.append(item.text() if key is None else key)
+    for row, (txn, display, _account, category) in enumerate(view._rows):
+        if col == 0:
+            out.append(txn.occurred_on)
+        elif col == 1:
+            out.append(display)
+        elif col == 5:
+            out.append(category)
+        else:
+            out.append(model.index(row, col).data())
     return out
 
 
@@ -511,7 +519,7 @@ def test_FIBR0192_INV5_reset_layout_restores_live_headers(qtbot, service):
     setStretchLastSection(True), so the last section's width is decided by the
     layout pass and differs between the unshown and shown widget."""
     window = _unlocked_shell(qtbot, service)
-    table = window.findChild(QTableWidget, "transactions_table")
+    table = window.findChild(QTableView, "transactions_table")
     assert table is not None
     header = table.horizontalHeader()
     default_width = header.sectionSize(0)
@@ -552,7 +560,7 @@ def test_FIBR0192_INV6_reset_layout_survives_a_rebuild(qtbot, service):
     coverage table say why, and no leg enforces that order.
 
     All four preconditions, or the reset has nothing of the user's to undo:
-    (a) transactions_table — the one remembered QTableWidget with
+    (a) transactions_table — the one remembered table with
     stretchLastSection, so a window resize re-lays-out its sections at all (QT-7);
     (b) a differing, persisted width for the reset to have to erase;
     (c) a starting window size ≠ _DEFAULT_WINDOW_SIZE, or the reset's resize is a
@@ -570,7 +578,7 @@ def test_FIBR0192_INV6_reset_layout_survives_a_rebuild(qtbot, service):
     window = _unlocked_shell(qtbot, service)
     assert window._workspace is not None
     window._workspace.setCurrentIndex(_TAB_TRANSACTIONS)  # (d)
-    table = window.findChild(QTableWidget, "transactions_table")
+    table = window.findChild(QTableView, "transactions_table")
     assert table is not None
     header = table.horizontalHeader()
     default_width = header.sectionSize(0)
@@ -662,15 +670,15 @@ def test_FIBR0192_INV8_reset_restores_build_time_default_not_saved_state(
     probe._table.setColumnWidth(0, default_width + 111)
 
     window = _unlocked_shell(qtbot, service)
-    table = window.findChild(QTableWidget, "transactions_table")
+    table = window.findChild(QTableView, "transactions_table")
     assert table is not None
     assert table.horizontalHeader().sectionSize(0) == default_width + 111, (
         "the seeded layout must actually have been restored at construction"
     )
 
     header = table.horizontalHeader()
-    table.sortItems(3, Qt.SortOrder.AscendingOrder)  # Description — a user sort
-    assert table.rowCount() >= 3
+    table.sortByColumn(3, Qt.SortOrder.AscendingOrder)  # Description — a user sort
+    assert table.model().rowCount() >= 3
     before = (header.sortIndicatorSection(), header.sortIndicatorOrder())
 
     window._reset_layout()
@@ -687,7 +695,8 @@ def test_FIBR0192_INV8_reset_restores_build_time_default_not_saved_state(
         "the restored default sort must differ from the user's, or a blocked "
         "restore would leave the rows correct by coincidence and this cannot fail"
     )
-    keys = _sort_keys(table, after[0])
+    assert window._transactions_tab is not None
+    keys = _sort_keys(window._transactions_tab, after[0])
     expected = sorted(keys, reverse=after[1] == Qt.SortOrder.DescendingOrder)
     assert keys == expected, "the restored sort arrow must match the row order"
 
@@ -712,7 +721,7 @@ def test_FIBR0199_reset_clear_discriminates_a_destroyed_remembered_view(qtbot, s
     rely on to prove destruction.
     """
     window = _unlocked_shell(qtbot, service)
-    table = window.findChild(QTableWidget, "transactions_table")
+    table = window.findChild(QTableView, "transactions_table")
     assert table is not None
     default_width = table.horizontalHeader().sectionSize(0)
 

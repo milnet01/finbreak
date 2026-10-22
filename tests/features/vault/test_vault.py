@@ -761,7 +761,9 @@ def test_INV6_main_window_lists_saved_transaction(qtbot, service):
         TransactionService(service._vault), CategorizationService(service._vault)
     )
     qtbot.addWidget(view)
-    assert view._table.rowCount() == 1, "the saved transaction appears in the table"
+    assert view._table.model().rowCount() == 1, (
+        "the saved transaction appears in the table"
+    )
 
 
 def test_main_window_date_field_renders_unambiguous_iso(qtbot, service):

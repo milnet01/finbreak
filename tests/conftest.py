@@ -21,7 +21,7 @@ from pathlib import Path
 
 import pytest
 from PySide6.QtCore import QStandardPaths
-from PySide6.QtWidgets import QDialog, QTableWidget
+from PySide6.QtWidgets import QDialog, QTableView
 from sqlcipher3 import dbapi2
 
 from finbreak.crypto import KEY_LEN, SALT_LEN, derive_key
@@ -94,13 +94,14 @@ def _pump_deferred_delete() -> None:
     QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 
 
-def cell_text(table: QTableWidget, row: int, column: int) -> str:
-    """One table cell's text, failing if the cell holds no item. Never returns
-    "" for a missing item: that would let an assertion on the text pass against
-    a table that rendered nothing (FIBR-0331)."""
-    item = table.item(row, column)
-    assert item is not None, f"no item at row {row}, column {column}"
-    return item.text()
+def cell_text(table: QTableView, row: int, column: int) -> str:
+    """One table cell's text, failing if the cell holds no text. Never returns
+    "" for a missing cell: that would let an assertion on the text pass against
+    a table that rendered nothing (FIBR-0331). Reads through the model, so a
+    ``QTableWidget`` and the Transactions ``QTableView`` (FIBR-0097) both work."""
+    text = table.model().index(row, column).data()
+    assert text is not None, f"no cell at row {row}, column {column}"
+    return str(text)
 
 
 def raising_conn(real, trigger: str, message: str, *, on: str = "execute"):

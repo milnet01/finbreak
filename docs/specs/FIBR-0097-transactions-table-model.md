@@ -62,8 +62,10 @@ beside the view — the view is its only user.
 
 ```python
 class TransactionsModel(QAbstractTableModel):
+    def __init__(self, headers: list[str], parent: QObject | None = None): ...
     def set_rows(self, rows: list[tuple[Transaction, Decimal, str, str]],
                  render: _Render) -> None: ...   # beginResetModel/endResetModel
+    def clear(self) -> None: ...   # no rows and no _Render (§ 4.3)
     def row_at(self, row: int) -> tuple[Transaction, Decimal, str, str]: ...
     def rowCount(self, parent=QModelIndex()) -> int: ...
     def columnCount(self, parent=QModelIndex()) -> int: ...   # 6
@@ -138,8 +140,10 @@ so a refill keeps the user's sort. A reset drops the selection, which is what
 ### 4.4 Translated strings stay in the view
 
 The headers, the `"{category} ~ guess"` template and the guess tooltip stay
-literal `self.tr(...)` calls in `TransactionsView`, evaluated once per fill
-into `_Render`. Moving them into the model would change their translation
+literal `self.tr(...)` calls in `TransactionsView`. The template and tooltip
+are evaluated once per fill into `_Render`. The headers are evaluated once, in
+`_build_table`, and passed to the model's constructor: the header needs them
+before the first fill and after `clear()`, when there is no `_Render`. Moving them into the model would change their translation
 context from `TransactionsView` to `TransactionsModel`, and
 `tests/features/i18n/test_translatable_strings.py` requires the literal
 argument shape they already have.
