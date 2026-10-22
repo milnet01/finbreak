@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: FIBR=454 -->
+<!-- ants-roadmap-id-high-water: FIBR=455 -->
 # finbreak — Roadmap
 
 > See [CHANGELOG.md](CHANGELOG.md) for what's shipped and the current
@@ -4572,6 +4572,22 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   **Layman:** Tidy up a few misleading names and notes in the code that finds repeat payments and transfers, so the next person to change it does not break the forecast.
   Kind: review-fix.
   Source: review-readability draft trial 2026-10-19 (recurring.py + transfer_detection.py).
+
+- 📋 [FIBR-0455] **Released 1.0.1 bundles pillow 12.3.0 and certifi 2026.7.22, both with published advisories.**
+  Found 2026-10-22: the pre-push pip-audit stage failed on the dev venv
+  with 24 advisories against pillow 12.3.0 (fixed in 13.0.0) and one
+  against certifi 2026.6.17 (PYSEC-2026-4320, fixed in 2026.10.19).
+  Upgrading the venv cleared the gate; neither is pinned below the fix
+  (pillow is transitive via pdfplumber, pikepdf and reportlab; certifi is
+  ">=2024.2.2"). dist/finbreak-1.0.1-linux.cdx.json and -windows.cdx.json
+  both record pillow 12.3.0 and certifi 2026.7.22, so the shipped builds
+  carry them. Unverified: whether finbreak's PDF import path reaches the
+  vulnerable pillow code, and whether certifi 2026.7.22 is in the
+  advisory's affected range. A rebuild picks up the fixes; whether that
+  makes 1.0.2 is the user's call.
+  **Layman:** The downloadable 1.0.1 includes an image library with known security holes; a new release would ship the fixed version.
+  Kind: security.
+  Source: gate-finding-2026-10-22.
 
 ## v1.1.0 — Localisation
 
