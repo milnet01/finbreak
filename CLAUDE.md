@@ -258,7 +258,7 @@ qpdf) travel into a Python-free bundle:
 
 ```bash
 python -m finbreak --self-test        # in-process: loads all three, prints a sentinel
-./scripts/build-smoke.sh              # freeze onefile + AppImage, launch each in a container
+./scripts/build-smoke.sh              # freeze onedir + AppImage, launch each in a container
 ./scripts/ci-local.sh --build         # the gate PLUS the build+clean-room test (opt-in)
 ```
 

@@ -570,13 +570,15 @@ def test_FIBR0392_the_relaunch_waits_for_every_pid_it_is_given(tmp_path):
     assert "REACHED-THE-IMAGE" in out
 
 
-def test_FIBR0392_a_frozen_build_waits_for_its_bootloader_too(monkeypatch):
+def test_FIBR0099_a_frozen_build_waits_on_itself_not_its_launcher(monkeypatch):
+    """The onedir AppImage (FIBR-0099) runs as ONE process, and its parent is
+    whatever launched it: a shell, or the desktop. Waiting on that parent would
+    hold the relaunch until the user's terminal or desktop session exits."""
     from finbreak.services import update_installer as ui
 
-    monkeypatch.setattr(ui.sys, "frozen", True, raising=False)
-    assert ui._relaunch_pids() == (os.getpid(), os.getppid())
-    monkeypatch.setattr(ui.sys, "frozen", False, raising=False)
-    assert ui._relaunch_pids() == (os.getpid(),)
+    for frozen in (True, False):
+        monkeypatch.setattr(ui.sys, "frozen", frozen, raising=False)
+        assert ui._relaunch_pids() == (os.getpid(),)
 
 
 def test_relaunch_writes_diagnostic_log(monkeypatch, tmp_path):

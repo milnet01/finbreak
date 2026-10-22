@@ -293,7 +293,7 @@ def _container_runtime() -> str | None:
 @pytest.mark.integration
 # Freezes the app and builds an AppImage: far past the suite-wide 300s limit.
 @pytest.mark.timeout(3600)
-def test_INV2_INV3_build_smoke_clean_room():
+def test_INV2_INV3_build_smoke_clean_room(tmp_path):
     """build-smoke.sh freezes both artifacts and runs them Python-free (exit 0).
 
     Opt-in: skips unless FINBREAK_BUILD_SMOKE=1, so the everyday gate never
@@ -311,6 +311,32 @@ def test_INV2_INV3_build_smoke_clean_room():
 
     result = subprocess.run([str(script)], cwd=_PROJECT_ROOT)
     assert result.returncode == 0, "build-smoke.sh must exit 0 (both artifacts pass)"
+    _assert_appimage_wraps_onedir(
+        _PROJECT_ROOT / "dist",
+        "finbreak-selftest",
+        "finbreak-selftest-x86_64.AppImage",
+        tmp_path,
+    )
+
+
+def _assert_appimage_wraps_onedir(
+    dist: Path, name: str, appimage: str, extract_dir: Path
+) -> None:
+    """INV-2 (FIBR-0099): the freeze is a --onedir directory, and the AppImage
+    holds that directory at usr/lib/<name>/, so a launch extracts nothing. A
+    onefile wrapped in the AppImage unpacks itself into /tmp on every launch."""
+    bootloader = dist / name / name
+    assert bootloader.is_file() and os.access(bootloader, os.X_OK), (
+        f"{dist / name} must be a --onedir directory holding its bootloader"
+    )
+    subprocess.run(
+        [str(dist / appimage), "--appimage-extract", f"usr/lib/{name}/{name}"],
+        cwd=extract_dir,
+        check=True,
+        stdout=subprocess.DEVNULL,
+    )
+    inner = extract_dir / "squashfs-root" / "usr" / "lib" / name / name
+    assert inner.is_file(), f"the AppImage must hold the onedir at usr/lib/{name}/"
 
 
 # --------------------------------------------------------------------------- #

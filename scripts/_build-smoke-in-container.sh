@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # Runs INSIDE the build container (invoked by scripts/build-smoke.sh). Freezes
-# `python -m finbreak --self-test` to a PyInstaller --onefile and wraps that same
-# binary in an AppImage, proving every native stack travels: Qt (PySide6),
+# `python -m finbreak --self-test` to a PyInstaller --onedir and wraps that same
+# directory in an AppImage, proving every native stack travels: Qt (PySide6),
 # SQLCipher, qpdf (pikepdf), Argon2 (argon2-cffi), and ofxparse's tree incl.
 # native lxml. The image is python:3.12-slim-bookworm: it ships a
 # SHARED libpython (PyInstaller needs one — manylinux's is static) and an
 # older-than-host glibc (~2.36), which bounds the artifact's floor below the
 # debian:13-slim test target (FIBR-0003 INV-2/INV-4).
 #
-# Reads ONEFILE / APPIMAGE from the environment; writes both artifacts to /out
+# Reads FREEZE_NAME / APPIMAGE from the environment; writes both artifacts to /out
 # (a host bind-mount). /src is the read-only project root; /cache persists the
 # fetched appimagetool between runs.
 set -euo pipefail
@@ -122,7 +122,7 @@ if [ "$qt_count" != "1" ]; then
     exit 1
 fi
 
-echo "-- freezing --onefile --"
+echo "-- freezing --onedir --"
 # The self-test imports every native stack LAZILY (inside its _check_* fn), so
 # each needs help travelling into the frozen bundle. sqlcipher3/pikepdf use the
 # hidden-import + collect-binaries pair; argon2-cffi (native lib in the separate
@@ -143,7 +143,12 @@ echo "-- freezing --onefile --"
 # travel). The Qt SVG plugins (imageformats/qsvg + iconengines/qsvgicon) that RENDER
 # the SVGs are collected by PyInstaller's PySide6 hook by default; PNG decoding is
 # built into Qt Gui, so app.png needs no extra plugin.
-pyinstaller --onefile --name "$ONEFILE" \
+# --onedir, not --onefile (FIBR-0099): the AppImage is already a mounted
+# image, so a onefile inside it unpacked its whole tree into /tmp on every
+# launch. The directory replaces any earlier build's file or directory of the
+# same name, which PyInstaller will not overwrite on its own.
+rm -rf "/out/$FREEZE_NAME"
+pyinstaller --onedir --noconfirm --name "$FREEZE_NAME" \
     --paths /src/src \
     --add-data "/src/src/finbreak/ui/icons:finbreak/ui/icons" \
     --add-data "/src/src/finbreak/data:finbreak/data" \
@@ -203,12 +208,12 @@ echo "$APPIMAGETOOL_SHA256  $TOOL" | sha256sum -c - >/dev/null || {
 
 echo "-- assembling AppDir --"
 rm -rf "$APPDIR"
-mkdir -p "$APPDIR/usr/bin"
-cp "/out/$ONEFILE" "$APPDIR/usr/bin/$ONEFILE"
+mkdir -p "$APPDIR/usr/lib"
+cp -a "/out/$FREEZE_NAME" "$APPDIR/usr/lib/$FREEZE_NAME"
 cat > "$APPDIR/AppRun" <<EOF
 #!/bin/sh
 HERE="\$(dirname "\$(readlink -f "\$0")")"
-exec "\$HERE/usr/bin/$ONEFILE" "\$@"
+exec "\$HERE/usr/lib/$FREEZE_NAME/$FREEZE_NAME" "\$@"
 EOF
 chmod +x "$APPDIR/AppRun"
 # Desktop metadata is env-driven so the same freeze serves both the self-test
@@ -222,15 +227,15 @@ APP_CATEGORIES="${APP_CATEGORIES:-Utility;}"
 # finbreak") — or the panel cannot associate the running window with its launcher
 # and shows a SECOND icon. StartupWMClass is the X11 half, matched against WM_CLASS
 # (derived from applicationName(), the bare "finbreak", not the versioned binary).
-# Both default to $ONEFILE so the self-test stub, which nobody pins to a panel, is
+# Both default to $FREEZE_NAME so the self-test stub, which nobody pins to a panel, is
 # unchanged; the release build exports the real values.
-APP_ID="${APP_ID:-$ONEFILE}"
-APP_WM_CLASS="${APP_WM_CLASS:-$ONEFILE}"
+APP_ID="${APP_ID:-$FREEZE_NAME}"
+APP_WM_CLASS="${APP_WM_CLASS:-$FREEZE_NAME}"
 cat > "$APPDIR/$APP_ID.desktop" <<EOF
 [Desktop Entry]
 Type=Application
 Name=$APP_DISPLAY_NAME
-Exec=$ONEFILE
+Exec=$FREEZE_NAME
 Icon=$APP_ID
 StartupWMClass=$APP_WM_CLASS
 Categories=$APP_CATEGORIES

@@ -3,7 +3,7 @@
 # PySide6, the SQLCipher library, and qpdf behind pikepdf) freeze into a
 # portable Linux artifact and run with NO Python installed.
 #
-# Builds a PyInstaller --onefile AND an AppImage of `python -m finbreak
+# Builds a PyInstaller --onedir AND an AppImage of `python -m finbreak
 # --self-test` inside a python:3.12-slim-bookworm container (glibc ~2.36, so the
 # floor is bounded to the container's, not the bleeding-edge build host), then
 # launches each
@@ -38,7 +38,7 @@ fi
 
 if [ "$MODE" = "release" ]; then
     VERSION="$(python3 -c "import re, pathlib; print(re.search(r'__version__ = \"([^\"]+)\"', pathlib.Path('$ROOT/src/finbreak/__init__.py').read_text()).group(1))")"
-    ONEFILE="finbreak-$VERSION"
+    FREEZE_NAME="finbreak-$VERSION"
     APPIMAGE="finbreak-$VERSION-x86_64.AppImage"
     export APP_DISPLAY_NAME="finbreak"
     # The launcher's identity (FIBR-0188). APP_ID is the .desktop BASENAME, which
@@ -54,7 +54,7 @@ if [ "$MODE" = "release" ]; then
     export APP_ICON_SRC="/src/src/finbreak/ui/icons/app.png"
     echo "== build-release: version=$VERSION artifact=$APPIMAGE =="
 else
-    ONEFILE="finbreak-selftest"
+    FREEZE_NAME="finbreak-selftest"
     APPIMAGE="finbreak-selftest-x86_64.AppImage"
 fi
 
@@ -83,7 +83,7 @@ echo "== build-smoke: freezing in $BUILD_IMAGE (this takes a few minutes) =="
     -v "$ROOT":/src:ro \
     -v "$DIST":/out \
     -v "$CACHE":/cache \
-    -e "ONEFILE=$ONEFILE" \
+    -e "FREEZE_NAME=$FREEZE_NAME" \
     -e "APPIMAGE=$APPIMAGE" \
     -e "APP_DISPLAY_NAME=${APP_DISPLAY_NAME:-}" \
     -e "APP_ID=${APP_ID:-}" \
@@ -94,7 +94,7 @@ echo "== build-smoke: freezing in $BUILD_IMAGE (this takes a few minutes) =="
     -e "VERSION=${VERSION:-}" \
     "$BUILD_IMAGE" bash /src/scripts/_build-smoke-in-container.sh
 
-[ -x "$DIST/$ONEFILE" ] || { echo "build-smoke: onefile not produced" >&2; exit 1; }
+[ -x "$DIST/$FREEZE_NAME/$FREEZE_NAME" ] || { echo "build-smoke: onedir not produced" >&2; exit 1; }
 [ -f "$DIST/$APPIMAGE" ] || { echo "build-smoke: AppImage not produced" >&2; exit 1; }
 
 # --- prepare the clean-room image -------------------------------------------
@@ -154,7 +154,7 @@ run_clean_room() {
 # The frozen binary is identical for both modes (it IS the GUI app; --self-test
 # is a runtime arg), so the release AppImage proves it loads Python-free through
 # the exact same sentinel check — that is the INV-15 clean-room proof for it.
-run_clean_room "onefile" "/artifact/$ONEFILE" --self-test
+run_clean_room "onedir" "/artifact/$FREEZE_NAME/$FREEZE_NAME" --self-test
 run_clean_room "AppImage" "/artifact/$APPIMAGE" --self-test
 
 echo "== build-smoke: PASS — both artifacts ran with no Python installed =="

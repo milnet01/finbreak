@@ -40,18 +40,19 @@ def _relaunch_env() -> dict[str, str]:
     """The environment for the ``/bin/sh`` relaunch waiter (and the image it execs).
 
     ``PYINSTALLER_RESET_ENVIRONMENT=1`` is PyInstaller 6.10+'s **official**
-    restart signal: it makes the new onefile bootloader reset its own internal
-    ``_PYI_*`` state and treat itself as a fresh top-level instance (re-extract),
-    instead of assuming it is a worker subprocess of the old one and reusing the
-    now-deleted extraction dir. (Per the PyInstaller docs we must NOT hand-edit the
-    private ``_PYI_*`` vars; this flag is the supported mechanism.) We additionally
+    restart signal: it makes the new image's bootloader reset its own internal
+    ``_PYI_*`` state, inherited from the old one, and treat itself as a fresh
+    top-level instance rather than a worker subprocess of the old one. (Per the
+    PyInstaller docs we must NOT hand-edit the private ``_PYI_*`` vars; this flag
+    is the supported mechanism.) We additionally
     drop the AppImage runtime's own markers so the outer runtime re-mounts cleanly.
 
     **Loader-path restoration (the real 0.1.6→0.1.7 "closed but didn't reopen"):**
-    the frozen onefile app runs with ``LD_LIBRARY_PATH`` pointing at its private
-    ``_MEI`` extraction dir so it finds its *bundled* libs. Inherited by the
-    ``/bin/sh`` waiter, the **system** shell then loads those bundled libs —
-    e.g. an ``_MEI`` ``libreadline.so.8`` incompatible with the system
+    the frozen app runs with ``LD_LIBRARY_PATH`` pointing at its bundled-library
+    dir (``_internal/`` in the onedir AppImage, FIBR-0099) so it finds its
+    *bundled* libs. Inherited by the ``/bin/sh`` waiter, the **system** shell
+    then loads those bundled libs — e.g. a bundled ``libreadline.so.8``
+    incompatible with the system
     ``/bin/sh`` — and dies on a symbol lookup *before it can relaunch*
     (evidenced in ``update-relaunch.log``). PyInstaller preserves the pre-launch
     value in ``LD_LIBRARY_PATH_ORIG``; we restore it (or drop it when there was
@@ -69,8 +70,7 @@ def _relaunch_env() -> dict[str, str]:
 
 def _relaunch_command(appimage: str, pids: Sequence[int]) -> list[str]:
     """A detached ``/bin/sh`` waiter: block until every OLD process in *pids* has
-    fully exited — so the AppImage's FUSE mount is unmounted and its PyInstaller
-    ``_MEI`` extraction dir is cleaned — THEN ``exec`` the swapped image.
+    fully exited, THEN ``exec`` the swapped image.
     ``_relaunch_pids`` says which processes those are.
 
     Launching the new image *before* the old one tears down is the "closed but
@@ -106,13 +106,11 @@ def _relaunch_command(appimage: str, pids: Sequence[int]) -> list[str]:
 
 
 def _relaunch_pids() -> tuple[int, ...]:
-    """The processes the relaunch must outlive. A frozen onefile build runs as
-    TWO: the PyInstaller bootloader and the Python child it spawned. The child
-    is this process; the bootloader, its parent, cleans the ``_MEI`` dir after
-    the child exits, so waiting on the child alone let the new image start
-    while the old one was still tearing down (FIBR-0392)."""
-    if getattr(sys, "frozen", False):
-        return (os.getpid(), os.getppid())
+    """The processes the relaunch must outlive: this one alone. The onedir
+    AppImage (FIBR-0099) runs as ONE process, whose parent is whatever launched
+    it — a shell, or the desktop — so waiting on the parent would hold the
+    relaunch until that exits. (The onefile build ran as two, and FIBR-0392
+    waited on its bootloader parent too.)"""
     return (os.getpid(),)
 
 
@@ -313,9 +311,9 @@ class AppImageInstaller:
         # image and immediately exiting (the 0.1.4→0.1.5 attempt) still raced the
         # old image's teardown: the fresh onefile bootloader collided with the
         # still-mounted FUSE image and died ("closed but didn't reopen"). Instead we
-        # spawn a tiny /bin/sh that WAITS for this process to fully exit — FUSE
-        # unmounted, _MEI extraction dir cleaned — and only THEN execs the swapped
-        # image with a reset environment (see _relaunch_env / _relaunch_command). A
+        # spawn a tiny /bin/sh that WAITS for this process to fully exit, and only
+        # THEN execs the swapped image with a reset environment (see _relaunch_env /
+        # _relaunch_command). A
         # NEW SESSION lets the waiter outlive this process's exit. Any output is
         # captured to the relaunch log so a future silent failure leaves evidence.
         pids = _relaunch_pids()

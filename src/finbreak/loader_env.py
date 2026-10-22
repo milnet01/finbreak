@@ -1,7 +1,8 @@
 """The dynamic-loader variables a PyInstaller bundle leaks to its children.
 
-The onefile bootloader repoints ``LD_LIBRARY_PATH`` at its private ``_MEI``
-extraction dir so the app finds its *bundled* libraries, and saves any pre-launch
+The bootloader repoints ``LD_LIBRARY_PATH`` at its bundled-library dir
+(``_internal/`` in the onedir AppImage, FIBR-0099; measured 2026-10-22) so the
+app finds its *bundled* libraries, and saves any pre-launch
 value in ``LD_LIBRARY_PATH_ORIG``. It never touches ``LD_PRELOAD``: neither name
 appears in a 6.21.0 bootloader or the AppImage runtime (measured 2026-09-29), so
 an ``LD_PRELOAD`` in the environment is the user's own and is left alone

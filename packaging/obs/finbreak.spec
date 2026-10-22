@@ -154,8 +154,8 @@ tar -xf %{SOURCE1}
 python3 -c "import tomllib; print('\n'.join(tomllib.load(open('pyproject.toml','rb'))['project']['dependencies']))" > _deps.txt
 pip install --no-index --find-links vendor/ -r _deps.txt pyinstaller==6.21.0
 # Freeze --onedir targeting __main__.py. Flags mirror scripts/_build-smoke-in-container.sh
-# (the gated onefile freeze) — the SAME collect/hidden-import set; only the output
-# mode differs (--onedir vs --onefile). Keep in lockstep with that script and with
+# (the gated AppImage freeze) — the SAME --onedir mode and collect/hidden-import set.
+# Keep in lockstep with that script and with
 # debian/rules (§ 3.5 — the flag list is duplicated across the two recipes by design).
 pyinstaller --onedir --name finbreak \
     --paths src \
