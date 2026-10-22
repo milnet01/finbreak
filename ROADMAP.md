@@ -1969,6 +1969,19 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   FIBR-0054) describe onefile. Windows stays --onefile (single .exe).
   Verify LD_LIBRARY_PATH/_ORIG under onedir (/proc/<pid>/environ of a
   running GUI) before trusting loader_env.py unchanged.
+  2026-10-22: built and pushed. Spec: docs/specs/FIBR-0003.md INV-2/INV-3
+  amended in place (3afcd1d), not reviewed per the user's 2026-10-22
+  ruling (purpose unchanged). Build: 266eeac freezes --onedir, AppDir
+  usr/lib/<name>/, AppRun execs it; FINBREAK_BUILD_SMOKE=1 build +
+  clean-room test passed, with a new layout check (red on 1.0.1).
+  Measured from a mounted AppImage, --self-test, warm, six alternating
+  runs: 0.78-0.84 s vs 1.0.1's 1.49-1.65 s. Found and fixed in the same
+  commit: the onedir app is one process whose parent is its launcher,
+  so _relaunch_pids now waits on this process only (FIBR-0054 D8
+  amended); LD_LIBRARY_PATH/_ORIG behave as before. Gate green.
+  Next: a review-code pass over update_installer.py and the build
+  scripts; the updater relaunch is unproven on a real 1.0.2 update
+  until the next release.
   **Layman:** Make the app open faster by not unpacking itself every single time you launch it.
   Kind: perf.
   Source: claude-suggestion-2026-07-11.
