@@ -1925,6 +1925,13 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   column holds the base-currency code; INV-5 is seen red after the
   build. Calm cap; nothing filed. Spec Status: accepted (2026-10-22).
   Next: build under the spec (TDD).
+  Built 2026-10-22 (47401a9): TransactionsModel + QTableView. Perf test,
+  same machine: 20,000 rows refresh 1,281 ms before, 98 ms after (2,000
+  rows: 112 ms to 16 ms). INV-2 seen red at 2,000 _format_amount calls;
+  INV-3/4/5 each shown to catch a mutation. test_app_shell INV4c had
+  stopped seeing the table; it now names it. Gate green, 2616 passed.
+  Next: a review-code --single pass over the change (workflow.md § 6
+  condition 4), then flip to shipped.
   **Layman:** Keep the transaction lists fast even with thousands of rows by only drawing the rows you can actually see.
   Kind: perf.
   Source: claude-suggestion-2026-07-11.
