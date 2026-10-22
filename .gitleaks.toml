@@ -14,9 +14,6 @@ paths = [
   '''\.git/''',
   '''dist/''',
   '''build/''',
-  # flatpak-builder's download/build cache (FIBR-0159): git-ignored, and full of
-  # third-party wheels whose high-entropy strings trip the default detectors.
-  '''\.flatpak-builder/''',
   # release/ holds ONLY the maintainer's local, git-ignored Ed25519 signing
   # *private* key (scripts/gen-signing-key.py). `gitleaks dir .` scans disk
   # regardless of .gitignore, so it would flag that key on every push. It can
