@@ -15,6 +15,7 @@ stays inert off a supported package (INV-7).
 
 from __future__ import annotations
 
+import contextlib
 import os
 import shutil
 
@@ -89,7 +90,15 @@ def _relaunch_command(appimage: str, pids: Sequence[int]) -> list[str]:
     ``"$1"`` the path never reaches the shell's parser at all, so there is no
     quoting to get right (FIBR-0327).
     """
-    alive = " || ".join(f"kill -0 {int(pid)} 2>/dev/null" for pid in pids)
+    # `kill -0` succeeds on a zombie, and the old process is reaped by whatever
+    # launched it, so a pid whose /proc state is Z counts as exited. The state is
+    # the field after the LAST ')' — the command name before it may hold any byte.
+    alive = " || ".join(
+        f"{{ kill -0 {int(pid)} 2>/dev/null && "
+        f"[ \"$(sed 's/.*) //' /proc/{int(pid)}/stat 2>/dev/null | cut -c1)\" "
+        "!= Z ]; }"
+        for pid in pids
+    )
     waited = " ".join(str(int(pid)) for pid in pids)
     script = (
         f'echo "[finbreak] waiting for pid {waited} to exit before relaunch"; '
@@ -140,6 +149,17 @@ def _relaunch_log_handle() -> TextIO | None:
         return None
 
 
+def _log_line(log: TextIO | None, text: str) -> None:
+    """Write one relaunch-log line and flush it, never raising. These writes run
+    after the swap and the key wipe, so an OSError (a full disk, just after a
+    large download) must not escape into a live GUI holding a wiped key."""
+    if log is None:
+        return
+    with contextlib.suppress(OSError):
+        log.write(text)
+        log.flush()
+
+
 def _run_before_exec(on_before_exec: Callable[[], None]) -> None:
     """Run the key-wipe callback once the update is committed, and never let it
     raise. By then the binary is swapped (Linux) or the helper is waiting for this
@@ -150,9 +170,10 @@ def _run_before_exec(on_before_exec: Callable[[], None]) -> None:
         on_before_exec()
     except Exception as exc:  # the exit below must still happen
         log = _relaunch_log_handle()
+        _log_line(log, f"relaunch: key-wipe callback failed ({exc!r}); exiting\n")
         if log is not None:
-            log.write(f"relaunch: key-wipe callback failed ({exc!r}); exiting anyway\n")
-            log.close()
+            with contextlib.suppress(OSError):
+                log.close()
 
 
 # --------------------------------------------------------------------------- #
@@ -299,10 +320,22 @@ class AppImageInstaller:
             # without the execute bit, and it replaces a $APPIMAGE that was
             # already 0o755. Not a permissive-mask smell (bandit B103).
             os.chmod(new_file, 0o755)  # nosec B103
+            # Flush the staged bytes before the rename, so a power cut just after
+            # it cannot leave a truncated $APPIMAGE in its place.
+            with open(new_file, "rb") as staged:
+                os.fsync(staged.fileno())
             os.replace(new_file, self._appimage_path)
         except OSError as exc:
             new_file.unlink(missing_ok=True)
             raise UpdateError(f"could not install the update: {exc}") from exc
+        # And the directory entry after it. Best-effort: the swap has committed,
+        # so a failure here must not turn into an UpdateError.
+        with contextlib.suppress(OSError):
+            dir_fd = os.open(self._appimage_path.parent, os.O_RDONLY)
+            try:
+                os.fsync(dir_fd)
+            finally:
+                os.close(dir_fd)
         # The swap succeeded — wipe the derived key before we hand the process
         # over, since the relaunch replaces this process and never runs Qt's
         # aboutToQuit (INV-6). Then relaunch the just-swapped AppImage.
@@ -318,12 +351,11 @@ class AppImageInstaller:
         # captured to the relaunch log so a future silent failure leaves evidence.
         pids = _relaunch_pids()
         log = _relaunch_log_handle()
-        if log is not None:
-            log.write(
-                f"{time.strftime('%Y-%m-%d %H:%M:%S')} relaunch: swapped in "
-                f"{self._appimage_path}; waiting on pid {pids} then exec\n"
-            )
-            log.flush()
+        _log_line(
+            log,
+            f"{time.strftime('%Y-%m-%d %H:%M:%S')} relaunch: swapped in "
+            f"{self._appimage_path}; waiting on pid {pids} then exec\n",
+        )
         stdio: TextIO | int = log if log is not None else subprocess.DEVNULL
         try:
             # B603: fixed /bin/sh waiter, our own argv.
@@ -341,9 +373,7 @@ class AppImageInstaller:
             # so we must NOT return into a live GUI with a wiped key. Log best-effort
             # and hard-exit anyway: the new AppImage is in place, so a manual relaunch
             # gets the new version (the documented two-cycle degrade), never a zombie.
-            if log is not None:
-                log.write(f"relaunch spawn failed ({exc}); exit for manual restart\n")
-                log.flush()
+            _log_line(log, f"relaunch spawn failed ({exc}); exit for manual restart\n")
         os._exit(0)
 
 

@@ -23,6 +23,11 @@ signaling per
 
 ### Changed
 
+- **finbreak starts faster on Linux** (FIBR-0099)
+  The AppImage no longer unpacks the whole app into a temporary folder
+  every time it starts. A start took about 1.5 seconds and now takes
+  about 0.8 seconds (measured on the developer's machine).
+
 - **The Transactions tab opens quickly however long your history is** (FIBR-0097)
   The list now draws only the rows on screen. With 20,000 transactions,
   opening the tab took about 1.3 seconds and now takes about 0.1 seconds

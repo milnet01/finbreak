@@ -987,6 +987,109 @@ def test_FIBR0392_a_raising_wipe_after_the_swap_still_relaunches_and_exits(
     assert appimage.read_bytes() == b"NEW-APP"
 
 
+class _FullDiskLog:
+    """A relaunch-log handle on a full disk: every write and flush raises."""
+
+    def write(self, text: str) -> int:
+        raise OSError(28, "No space left on device")
+
+    def flush(self) -> None:
+        raise OSError(28, "No space left on device")
+
+    def close(self) -> None:
+        pass
+
+
+def test_FIBR0099_a_full_disk_relaunch_log_still_relaunches_and_exits(
+    monkeypatch, tmp_path
+):
+    # review-code 2026-10-22 finding 1: the log writes after the swap and the
+    # key wipe were unguarded, so a full disk raised OSError out of apply() into
+    # a live GUI holding a wiped key on a replaced install.
+    appimage = tmp_path / "app.AppImage"
+    appimage.write_bytes(b"OLD-APP")
+    new_file = tmp_path / "new.AppImage"
+    new_file.write_bytes(b"NEW-APP")
+    record = _capture_relaunch(monkeypatch)
+    monkeypatch.setattr(update_installer, "_relaunch_log_handle", _FullDiskLog)
+
+    AppImageInstaller(appimage).apply(new_file, _raising_wipe(record["order"]))
+
+    assert record["order"] == ["wipe", "relaunch", "exit"]
+
+
+def test_FIBR0099_a_full_disk_log_after_a_failed_spawn_still_exits(
+    monkeypatch, tmp_path
+):
+    appimage = tmp_path / "app.AppImage"
+    appimage.write_bytes(b"OLD-APP")
+    new_file = tmp_path / "new.AppImage"
+    new_file.write_bytes(b"NEW-APP")
+    order: list[str] = []
+
+    def boom_popen(*a, **k):
+        raise OSError("fork/exec failed")
+
+    monkeypatch.setattr(update_installer.subprocess, "Popen", boom_popen)
+    monkeypatch.setattr(os, "_exit", lambda code: order.append("exit"))
+    monkeypatch.setattr(update_installer, "_relaunch_log_handle", _FullDiskLog)
+
+    AppImageInstaller(appimage).apply(new_file, lambda: order.append("wipe"))
+
+    assert order == ["wipe", "exit"]
+
+
+def test_FIBR0099_the_relaunch_does_not_wait_on_a_zombie(tmp_path):
+    # review-code 2026-10-22 finding 2: `kill -0` succeeds on a zombie. The old
+    # process is now reaped by whatever launched it, so a slow reaper held the
+    # relaunch for the full ~60 s cap.
+    import time
+
+    target = tmp_path / "finbreak.AppImage"
+    target.write_text("#!/bin/sh\necho REACHED-THE-IMAGE\n")
+    target.chmod(0o755)
+    zombie = subprocess.Popen(["true"])  # exits at once and is NOT reaped yet
+    time.sleep(0.3)
+    try:
+        waiter = subprocess.Popen(  # nosec B603 - fixed /bin/sh, our own argv
+            _relaunch_command(str(target), (zombie.pid,)),
+            stdout=subprocess.PIPE,
+            text=True,
+        )
+        out, _ = waiter.communicate(timeout=5)
+    finally:
+        zombie.wait()
+    assert "REACHED-THE-IMAGE" in out
+
+
+def test_FIBR0099_the_swap_is_flushed_to_disk_around_the_rename(monkeypatch, tmp_path):
+    # review-code 2026-10-22 finding 3: a power cut just after os.replace could
+    # leave a truncated $APPIMAGE. The staged bytes are fsynced before the
+    # rename, and the directory entry after it.
+    appimage = tmp_path / "app.AppImage"
+    appimage.write_bytes(b"OLD-APP")
+    new_file = tmp_path / "new.AppImage"
+    new_file.write_bytes(b"NEW-APP")
+    _capture_relaunch(monkeypatch)
+    events: list[str] = []
+    real_fsync, real_replace = os.fsync, os.replace
+
+    def fsync(fd: int) -> None:
+        events.append("fsync " + os.readlink(f"/proc/self/fd/{fd}"))
+        real_fsync(fd)
+
+    def replace(src, dst) -> None:
+        events.append("replace")
+        real_replace(src, dst)
+
+    monkeypatch.setattr(update_installer.os, "fsync", fsync)
+    monkeypatch.setattr(update_installer.os, "replace", replace)
+
+    AppImageInstaller(appimage).apply(new_file, lambda: None)
+
+    assert events == [f"fsync {new_file}", "replace", f"fsync {tmp_path}"]
+
+
 def test_FIBR0392_windows_a_raising_wipe_after_the_spawn_still_exits(
     monkeypatch, tmp_path
 ):
