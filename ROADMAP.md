@@ -1943,7 +1943,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: perf.
   Source: claude-suggestion-2026-07-11.
 
-- 🚧 [FIBR-0099] **Faster cold start — PyInstaller --onedir inside the AppImage (skip per-launch extraction).**
+- ✅ [FIBR-0099] **Faster cold start — PyInstaller --onedir inside the AppImage (skip per-launch extraction).**
   Verified 2026-07-11: the release build uses PyInstaller --onefile (scripts/_build-smoke-in-container.sh:85), which re-extracts the whole bundle to /tmp on EVERY launch (adds seconds of cold-start latency). Since the AppImage is ITSELF a self-contained mounted container, freeze with --onedir and place the dir inside the AppDir — the app then runs directly, no per-launch extraction. Transparent to the user; measure before/after start time and confirm the FIBR-0003 clean-room bundling proof still passes. Deps: FIBR-0003/FIBR-0054 (build pipeline).
   Started 2026-10-19. Measured on this machine, a throwaway venv holding only
   `pip install .` + pyinstaller==6.21.0 and the release freeze flags from
@@ -1982,6 +1982,12 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Next: a review-code pass over update_installer.py and the build
   scripts; the updater relaunch is unproven on a real 1.0.2 update
   until the next release.
+  Shipped 2026-10-22 (3afcd1d spec, 266eeac build, a72d557 + 03f74ab
+  review fixes). review-code --single, one lane: 0 critical, 0 high,
+  2 medium, 4 low; all six fixed (full-disk relaunch log, zombie wait,
+  fsync around the swap, stale .sig, two argv splices, a comment).
+  Gate 2620 passed. Still unproven: the relaunch on a real update to
+  the first release carrying this, which only that release can test.
   **Layman:** Make the app open faster by not unpacking itself every single time you launch it.
   Kind: perf.
   Source: claude-suggestion-2026-07-11.
