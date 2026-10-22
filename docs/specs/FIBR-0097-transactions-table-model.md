@@ -1,7 +1,7 @@
 <!-- ants-spec-format: 1 -->
 # FIBR-0097 — Back the Transactions table with a model so it builds only the rows on screen
 
-**Status:** spec draft (2026-10-19).
+**Status:** accepted (2026-10-22).
 **Kind:** perf.
 **Source:** ROADMAP FIBR-0097 (claude-suggestion-2026-07-11); FIBR-0028
 (user-request-2026-07-01) was dropped into it as a duplicate on 2026-10-19.
@@ -73,7 +73,7 @@ class TransactionsModel(QAbstractTableModel):
 ```
 
 `_Render` is a frozen dataclass the view builds once per fill: the date
-format, the `AmountPrefs`, the currency symbol, the transfer-label map, and
+format, the `AmountPrefs`, the base-currency code (`base_currency()`), the transfer-label map, and
 the translated strings (§ 4.4). The model holds no reference to a service or
 the vault.
 
@@ -84,7 +84,7 @@ the vault.
 |---|---|---|---|
 | `_COL_DATE` | `format_date(occurred_on, date_format)` | — | `occurred_on` (ISO string) |
 | `_COL_AMOUNT` | `_format_amount(display, symbol, negative_style)` | `ForegroundRole`: `_NEGATIVE_TEXT` / `_POSITIVE_TEXT` when colour is on and the amount is non-zero, else `None` | `display` (`Decimal`) |
-| `_COL_CURRENCY` | the symbol | — | display text |
+| `_COL_CURRENCY` | the base-currency code | — | display text |
 | `_COL_DESCRIPTION` | `description` | — | display text |
 | `_COL_ACCOUNT` | the account name | — | display text |
 | `_COL_CATEGORY` | the transfer label, else the "~ guess" form for a `library` row with a name, else the name | `ToolTipRole`: the guess tooltip on a guess row | the transfer label, else the bare name |
@@ -130,7 +130,8 @@ so a refill keeps the user's sort. A reset drops the selection, which is what
 - `_on_copy_amount` copies the selected row's Amount `DisplayRole`, the text
   the column renders (FIBR-0032 INV-2 and INV-8: no vault read).
 - `clear_rows` empties `_master` and `_rows` **and resets the model to no
-  rows**. `main_window._clear_decrypted_rows` already calls it by duck type;
+  rows and no `_Render`**, as it empties `_transfer_labels` today: the
+  transfer-label map names accounts. `main_window._clear_decrypted_rows` already calls it by duck type;
   its `QTableWidget` branch does not reach a `QTableView` and does not need to.
 - `set_datetime_prefs` / `set_amount_prefs` refill as they do now.
 
@@ -181,7 +182,8 @@ use them.
   *Test:* `test_FIBR0097_each_column_sorts_by_its_key` — a fixture where text
   order and key order disagree in every keyed column (display amounts
   `-1000.00`, `200.00`, `30.00`; dates across a year boundary; one guess row and one plain row of the
-  same category; two rows on one day), sorted both ways per column.
+  same category, plus a category whose name sorts between that name and its
+  "~ guess" form; two rows on one day), sorted both ways per column.
   *Breaks when:* amounts sort as text, a guess row sorts apart from its plain
   siblings, or the sort is unstable.
 
@@ -200,9 +202,9 @@ use them.
   scans the Python attributes of each item view's model;
   `test_row30_lock_leaves_no_decrypted_value_in_any_tab` then covers this tab.
   The widened scan is seen to fail against a `clear_rows` that makes the
-  model report no rows but leaves it holding the old list.
+  model report no rows but leaves it holding the old list or `_Render`.
   *Breaks when:* `clear_rows` drops the view's lists but leaves the model
-  holding the old one, which `_model_texts` cannot see once `rowCount()` is 0
+  holding the old list or `_Render`, which `_model_texts` cannot see once `rowCount()` is 0
   — so a reset that only zeroes the count must also fail.
 
 - **INV-6 — Remembered columns and Reset layout still reach this table.**
@@ -250,9 +252,10 @@ use them.
 | INV-6 | `table_state/test_table_state.py`; `test_transactions_tab.py`'s FIBR-0153 INV-9 test |
 | INV-7 | `clipboard/test_clipboard.py` |
 
-INV-2 and INV-5 are written first and seen red: INV-2 counts 2,000 calls
-against the current table, and INV-5's widened scan fails against the
-`clear_rows` INV-5 names. INV-3 and INV-4 pass against the current
+INV-2 is written first and seen red: it counts 2,000 calls against the
+current table. INV-5's widened scan finds no Python model to scan until the
+model exists, so it is seen red after the build, against the `clear_rows`
+INV-5 names. INV-3 and INV-4 pass against the current
 table too, which sorts by the same keys, stably, and clears the selection on
 a refill. They are written first as parity locks.
 
