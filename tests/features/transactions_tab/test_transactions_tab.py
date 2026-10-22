@@ -687,6 +687,22 @@ def test_FIBR0097_refresh_formats_only_painted_rows(qtbot, service, monkeypatch)
     )
 
 
+def _old_text_rank(texts):
+    """Each row's rank in the order the pre-FIBR-0097 ``QTableWidget`` sorted
+    plain text cells, which is the order the text columns must keep. Equal
+    texts share a rank. ``texts`` maps a row's description to its cell text."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QTableWidget, QTableWidgetItem
+
+    values = sorted(set(texts.values()))
+    table = QTableWidget(len(values), 1)
+    for row, text in enumerate(values):
+        table.setItem(row, 0, QTableWidgetItem(text))
+    table.sortItems(0, Qt.SortOrder.AscendingOrder)
+    rank = {table.item(row, 0).text(): row for row in range(len(values))}
+    return {description: rank[text] for description, text in texts.items()}
+
+
 def test_FIBR0097_each_column_sorts_by_its_key(qtbot, service, monkeypatch):
     """INV-3: a header sort orders by the column's key, not its text, keeps tied
     rows in their current order both ways, and the default is Date, newest
@@ -707,19 +723,28 @@ def test_FIBR0097_each_column_sorts_by_its_key(qtbot, service, monkeypatch):
     # (description, date, display, account, category, source). dd/MM/yyyy puts
     # "20/12/2025" after "05/01/2026" as text; "-1000.00" sorts before "30.00"
     # as text either way round; "Groceries ~ guess" sorts after "Groceries
-    # extra" as text while its key, "Groceries", sorts before it.
+    # extra" as text while its key, "Groceries", sorts before it. Mixed case
+    # in the text columns: by character code "Banana" sorts before "apple",
+    # where the old table put "apple" first.
     specs = [
-        ("a", "2026-01-05", Decimal("200.00"), "Cheque", "Groceries", library),
-        ("b", "2025-12-20", Decimal("-1000.00"), "Savings", "Groceries extra", None),
-        ("c", "2026-01-05", Decimal("30.00"), "Cheque", "Groceries", None),
-        ("d", "2026-02-01", Decimal("30.00"), "Savings", "", None),
+        ("apple", "2026-01-05", Decimal("200.00"), "cheque", "Groceries", library),
+        (
+            "Banana",
+            "2025-12-20",
+            Decimal("-1000.00"),
+            "Savings",
+            "Groceries extra",
+            None,
+        ),
+        ("cherry", "2026-01-05", Decimal("30.00"), "cheque", "Groceries", None),
+        ("Dates", "2026-02-01", Decimal("30.00"), "Savings", "", None),
     ]
     keys = {
         _COL_DATE: {s[0]: s[1] for s in specs},
         _COL_AMOUNT: {s[0]: s[2] for s in specs},
-        _COL_CURRENCY: {s[0]: "ZAR" for s in specs},
-        _COL_DESCRIPTION: {s[0]: s[0] for s in specs},
-        _COL_ACCOUNT: {s[0]: s[3] for s in specs},
+        _COL_CURRENCY: _old_text_rank({s[0]: "ZAR" for s in specs}),
+        _COL_DESCRIPTION: _old_text_rank({s[0]: s[0] for s in specs}),
+        _COL_ACCOUNT: _old_text_rank({s[0]: s[3] for s in specs}),
         _COL_CATEGORY: {s[0]: s[4] for s in specs},
     }
     view = _rows_view(
@@ -730,7 +755,9 @@ def test_FIBR0097_each_column_sorts_by_its_key(qtbot, service, monkeypatch):
     )
     qtbot.addWidget(view)
 
-    assert _shown_descriptions(view) == ["d", "a", "c", "b"], "Date, newest first"
+    assert _shown_descriptions(view) == ["Dates", "apple", "cherry", "Banana"], (
+        "Date, newest first"
+    )
 
     for column, key in keys.items():
         for order in (Qt.SortOrder.AscendingOrder, Qt.SortOrder.DescendingOrder):

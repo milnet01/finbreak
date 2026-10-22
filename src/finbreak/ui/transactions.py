@@ -1,10 +1,10 @@
 """TransactionsView — the searchable/filterable transaction table (FIBR-0012 D7/D8).
 
-The transaction table, its right-click **Set category…** → learn-a-rule chain, and
-the ``_table_state`` sort / remembered-columns move **verbatim** here from the old
-``HomeView`` (Home is now the dashboard). Added on top: a four-filter bar — search
-(description substring), date range, account, and category — each independently
-active and **AND-combined** (INV-9). ``refresh()`` reloads the master
+The transaction table and its right-click **Set category…** → learn-a-rule chain
+moved here from the old ``HomeView`` (Home is now the dashboard); the table is now
+a ``TransactionsModel`` that sorts itself (FIBR-0097). Added on top: a four-filter
+bar — search (description substring), date range, account, and category — each
+independently active and **AND-combined** (INV-9). ``refresh()`` reloads the master
 ``list_transactions()`` list (tab activation only); the filters run in memory over
 that list and never re-hit the DB.
 """
@@ -16,6 +16,7 @@ from decimal import Decimal
 
 from PySide6.QtCore import (
     QAbstractTableModel,
+    QCollator,
     QDate,
     QModelIndex,
     QObject,
@@ -190,10 +191,20 @@ class TransactionsModel(QAbstractTableModel):
         render = self._render
         if render is None or not 0 <= column < len(self._headers):
             return
+        descending = order == Qt.SortOrder.DescendingOrder
         # list.sort is stable both ways, so tied rows keep their order.
+        if column in (_COL_DATE, _COL_AMOUNT, _COL_CATEGORY):
+            self._rows.sort(
+                key=lambda row: self._key(row, column, render), reverse=descending
+            )
+            return
+        # The text columns sort as the QTableWidget did, by the user's locale, so
+        # "apple" sorts before "Banana". QCollator matched its order on 300 random
+        # sets (2026-10-22); built per sort, so a changed locale is honoured.
+        collator = QCollator()
         self._rows.sort(
-            key=lambda row: self._key(row, column, render),
-            reverse=order == Qt.SortOrder.DescendingOrder,
+            key=lambda row: collator.sortKey(self._text(row, column, render)),
+            reverse=descending,
         )
 
     @staticmethod
@@ -227,20 +238,20 @@ class TransactionsModel(QAbstractTableModel):
             return render.guess_template.format(category=category)
         return category
 
-    def _key(self, row: _Row, column: int, render: _Render) -> str | Decimal:
-        """What a column sorts by. Date sorts on the ISO date and Amount on the
-        ``Decimal``, never their formatted text. Category sorts on the BARE name,
-        so a guessed row sorts with its plain-named siblings, or on a transfer
-        leg's label, so the two legs group. Every other column sorts on its text.
-        One key type per column, so no comparison mixes types."""
+    @staticmethod
+    def _key(row: _Row, column: int, render: _Render) -> str | Decimal:
+        """What a keyed column sorts by. Date sorts on the ISO date and Amount on
+        the ``Decimal``, never their formatted text. Category sorts on the BARE
+        name, so a guessed row sorts with its plain-named siblings, or on a
+        transfer leg's label, so the two legs group. Category compares as plain
+        Python strings, as its ``SortableItem`` keys did. One key type per column,
+        so no comparison mixes types."""
         transaction, display, _account, category = row
         if column == _COL_DATE:
             return transaction.occurred_on
         if column == _COL_AMOUNT:
             return display
-        if column == _COL_CATEGORY:
-            return render.transfer_labels.get(transaction.id, category)
-        return self._text(row, column, render)
+        return render.transfer_labels.get(transaction.id, category)
 
 
 class TransactionsView(QWidget):

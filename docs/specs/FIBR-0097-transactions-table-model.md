@@ -109,6 +109,12 @@ enabled. `sort`:
    transaction;
 4. emits `layoutChanged`.
 
+Date, Amount and Category compare their keys as Python values, as the
+`SortableItem` keys did. Currency, Description and Account compare their text
+through a `QCollator` for the current locale, as the `QTableWidgetItem` text
+compare did: "apple" sorts before "Banana". `QCollator().compare` matched the
+`QTableWidget` order on 300 random text sets (2026-10-22, PySide6 6.11.1).
+
 The default stays Date, newest first: the header's initial indicator is
 section 0, descending, for `QTableWidget` and `QTableView` alike (measured
 2026-10-19, PySide6 6.11.1).

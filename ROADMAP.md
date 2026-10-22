@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: FIBR=455 -->
+<!-- ants-roadmap-id-high-water: FIBR=456 -->
 # finbreak — Roadmap
 
 > See [CHANGELOG.md](CHANGELOG.md) for what's shipped and the current
@@ -4609,6 +4609,20 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   **Layman:** The downloadable 1.0.1 includes an image library with known security holes; a new release would ship the fixed version.
   Kind: security.
   Source: gate-finding-2026-10-22.
+
+- 📋 [FIBR-0456] **Check whether the Transactions date-range pickers keep the first and last transaction dates after a lock.**
+  Raised 2026-10-22 by the review-code --single pass over FIBR-0097, as an
+  open question, not a verified finding. _seed_date_range (FIBR-0327) sets
+  the two QDateEdits to the earliest and latest transaction dates while
+  the box is unchecked. The lane thinks the lock wipe clears their visible
+  text but not their stored date. Unverified; not part of FIBR-0097. To
+  settle: does FIBR-0322 count a transaction date as a decrypted value,
+  and what does a QDateEdit's date() return after _clear_decrypted_rows?
+  test_lock_wipe's markers are a description and an amount, so it would
+  not see a date.
+  **Layman:** Make sure locking the app also forgets the date range shown above the transaction list.
+  Kind: investigate.
+  Source: review-code-2026-10-22.
 
 ## v1.1.0 — Localisation
 
