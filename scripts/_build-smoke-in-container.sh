@@ -83,7 +83,7 @@ if [ -n "${VERSION:-}" ]; then
     # This pip freeze IS the runtime closure PyInstaller then collects from — no
     # build tools, no re-resolution of the ranged/transitive versions. Honest
     # scope (§ 2 out-of-scope residuals): NOT a byte-level proof every listed
-    # package landed in the one-file; installing PyInstaller after this snapshot
+    # package landed in the bundle; installing PyInstaller after this snapshot
     # can bump a SHARED transitive (e.g. packaging) by a patch; and a plain freeze
     # also lists base tooling (pip/setuptools/wheel) PyInstaller does not bundle.
     FROZEN="$(mktemp)"
@@ -248,7 +248,7 @@ EOF
 if [ -n "${APP_ICON_SRC:-}" ] && [ -f "$APP_ICON_SRC" ]; then
     cp "$APP_ICON_SRC" "$APPDIR/$APP_ID.png"
 else
-    python -c "from PIL import Image; Image.new('RGBA', (64, 64), (30, 120, 80, 255)).save('$APPDIR/$APP_ID.png')"
+    python -c 'import sys; from PIL import Image; Image.new("RGBA", (64, 64), (30, 120, 80, 255)).save(sys.argv[1])' "$APPDIR/$APP_ID.png"
 fi
 
 echo "-- building AppImage --"

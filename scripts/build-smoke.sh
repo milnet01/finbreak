@@ -37,7 +37,8 @@ if [ "${1:-}" = "--release" ]; then
 fi
 
 if [ "$MODE" = "release" ]; then
-    VERSION="$(python3 -c "import re, pathlib; print(re.search(r'__version__ = \"([^\"]+)\"', pathlib.Path('$ROOT/src/finbreak/__init__.py').read_text()).group(1))")"
+    # The path arrives as an argument, never spliced into the Python source.
+    VERSION="$(python3 -c 'import re, pathlib, sys; print(re.search(r"__version__ = \"([^\"]+)\"", pathlib.Path(sys.argv[1]).read_text()).group(1))' "$ROOT/src/finbreak/__init__.py")"
     FREEZE_NAME="finbreak-$VERSION"
     APPIMAGE="finbreak-$VERSION-x86_64.AppImage"
     export APP_DISPLAY_NAME="finbreak"
@@ -70,6 +71,9 @@ fi
 echo "== build-smoke: runner=$RUNNER =="
 
 mkdir -p "$DIST" "$CACHE"
+# A signature left by an earlier build of the same name would no longer match the
+# rebuilt AppImage, and an unsigned rebuild would still list it as an artifact.
+rm -f "$DIST/$APPIMAGE.sig"
 
 # --- 1) build both artifacts inside the python:3.12-slim-bookworm container -
 # The build phase needs network (pip + appimagetool fetch); only the run phase
