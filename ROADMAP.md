@@ -1917,6 +1917,14 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   FIBR-0032 section 2, FIBR-0192 INV-5..8, FIBR-0139 INV-9, FIBR-0105
   INV-4, and about 100 test call sites in 11 files. Several subsystems,
   so it gets a spec (spec-format.md section 1) before any build.
+  2026-10-22: review-contract loop 3 (the cap) on
+  docs/specs/FIBR-0097-transactions-table-model.md, commit c12d11f. Four
+  verified findings, all fixed: clear_rows also drops the model's
+  _Render (its transfer labels name accounts); INV-3's fixture gains a
+  category sorting between a name and its "~ guess" form; the Currency
+  column holds the base-currency code; INV-5 is seen red after the
+  build. Calm cap; nothing filed. Spec Status: accepted (2026-10-22).
+  Next: build under the spec (TDD).
   **Layman:** Keep the transaction lists fast even with thousands of rows by only drawing the rows you can actually see.
   Kind: perf.
   Source: claude-suggestion-2026-07-11.
