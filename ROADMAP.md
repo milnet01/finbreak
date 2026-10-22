@@ -1900,7 +1900,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Source: user-request-2026-07-01.
   Lanes: ui, perf.
 
-- 🚧 [FIBR-0097] **Virtualize the transaction tables — QTableWidget → QTableView + QAbstractTableModel.**
+- ✅ [FIBR-0097] **Virtualize the transaction tables — QTableWidget → QTableView + QAbstractTableModel.**
   Verified 2026-07-11: Home, Statements, and Rules use QTableWidget (ui/home.py, ui/statements.py, ui/rules.py), which builds a widget for EVERY cell — fine at 50 rows, sluggish at thousands. Migrate to QTableView + a QAbstractTableModel so rendering is virtualized (only visible rows built). Also a cleaner data/view separation that FIBR-0012 (sort/filter) and FIBR-0084 (movable/resizable columns) build on naturally. Sizeable refactor; own spec. Deps: FIBR-0051/0052 (the current widgets).
   Started 2026-10-19. Measured (offscreen, one account, best of 3):
   TransactionsView.refresh 134 ms at 2,000 rows, 1,474 ms at 20,000,
@@ -1932,6 +1932,13 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   stopped seeing the table; it now names it. Gate green, 2616 passed.
   Next: a review-code --single pass over the change (workflow.md § 6
   condition 4), then flip to shipped.
+  Shipped 2026-10-22 (47401a9, 1a3b58b). review-code --single: 3 LOW
+  findings and 2 open questions, all dispositioned. Fixed: the module
+  docstring; FIBR-0139 INV-9/D7 pointers. The text-compare question
+  turned up a wider regression, fixed in 1a3b58b: Currency, Description
+  and Account sorted by character code, not by locale as before; INV-3
+  now takes their order from a QTableWidget. Filed: FIBR-0456 (do the
+  date-range pickers keep dates after a lock), unverified.
   **Layman:** Keep the transaction lists fast even with thousands of rows by only drawing the rows you can actually see.
   Kind: perf.
   Source: claude-suggestion-2026-07-11.
