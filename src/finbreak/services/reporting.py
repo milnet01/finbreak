@@ -23,7 +23,7 @@ from __future__ import annotations
 import calendar
 from dataclasses import dataclass
 from datetime import date
-from typing import NamedTuple
+from typing import NamedTuple, cast
 
 from sqlcipher3 import dbapi2
 
@@ -154,8 +154,6 @@ class ReportingService:
     def base_currency(self) -> str:
         """The display symbol the tiles format with (the same ``settings`` seam
         ``TransactionService.base_currency`` reads)."""
-        from typing import cast
-
         value = SettingsRepository(self._conn).get("base_currency")
         return cast(str, value)
 
