@@ -930,6 +930,32 @@ def test_FIBR0057_changing_account_on_preview_retargets_the_commit(
     assert len(StatementPeriodRepository(conn).list_for_account(current)) == 0
 
 
+def test_FIBR0057_retarget_relabels_the_preview_status_column(qtbot, service, tmp_path):
+    """Re-targeting re-runs the dedup, so a row's Duplicate/OK label changes with
+    the account. The summary counts followed it, but the per-row Status column kept
+    the old account's labels — a wrong value on the screen read before commit."""
+    from finbreak.ui.import_wizard import ImportWizardWidget
+
+    current, credit = _two_accounts(service)
+    imp = ImportService(service.vault)
+    rows = [["2026-01-05", "Coffee", "-10.00"]]
+    _do_import(imp, _csv(HEADER, rows), SINGLE, current)
+    imp.save_profile("MyBank", HEADER, SINGLE)
+    path = _write_csv(tmp_path, "stmt.csv", HEADER, rows)
+
+    widget = ImportWizardWidget(service)
+    qtbot.addWidget(widget)
+    widget._account_combo.setCurrentIndex(widget._account_combo.findData(current))
+    widget._select_file(str(path))
+    status_col = widget._preview_table.columnCount() - 1
+    assert widget._preview_table.item(0, status_col).text() == "Duplicate"
+
+    widget._confirm_account_combo.setCurrentIndex(
+        widget._confirm_account_combo.findData(credit)
+    )
+    assert widget._preview_table.item(0, status_col).text() == "OK"
+
+
 # --------------------------------------------------------------------------- #
 # INV-11 — no secret logged across a match -> preview -> import cycle
 # --------------------------------------------------------------------------- #

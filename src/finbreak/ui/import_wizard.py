@@ -1437,9 +1437,10 @@ class ImportWizardWidget(QWidget):
     def _on_confirm_account_changed(self, _index: int) -> None:
         """Re-target the pending import to the account chosen on the preview step
         (FIBR-0057): re-run the dedup under the new account and refresh the counts
-        so the committed account matches what is shown. Drafts, error rows and the
-        period are account-independent, so the table + period pickers are left
-        untouched (no reset of a hand-edited period)."""
+        so the committed account matches what is shown. The table is refilled
+        because its Status column shows each row's per-account Duplicate/OK verdict;
+        the period is account-independent, so the period pickers are left untouched
+        (no reset of a hand-edited period)."""
         if self._preview is None:
             return
         account_id = self._confirm_account_combo.currentData()
@@ -1458,6 +1459,7 @@ class ImportWizardWidget(QWidget):
             self._preview = self._imports.retarget(self._preview, account_id)
         except VaultLockedError:
             return  # auto-lock fired — silent, like the other handlers
+        self._fill_preview_table(self._preview)
         self._apply_preview_counts(self._preview)
 
     def _fill_preview_table(self, preview: ImportPreview) -> None:
