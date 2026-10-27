@@ -554,11 +554,9 @@ def _capture_opening(region_lines: list[str], fmt: Fmt) -> Decimal:
     parser first, and `_parse_family_e` raises its own suffixed message from inside
     the per-row loop (FIBR-0190 §4.4)."""
     for line in region_lines:
-        if _BROUGHT_FORWARD in line.lower() or _E_OPENING in line.lower():
-            toks = _money_tokens(line)
-            if toks:
-                bal = toks[-1]
-                return _signed_balance(bal, fmt)
+        bal = _anchor_balance(line, fmt)
+        if bal is not None:
+            return bal
     raise ValueError(
         "couldn't find the opening balance on this statement — "
         "try your bank's CSV or OFX export"
@@ -573,7 +571,7 @@ def _capture_closing(full_text: str, family: Family, fmt: Fmt) -> Decimal | None
     for line in full_text.splitlines():
         low = line.lower()
         for marker in _CLOSING_MARKERS[family]:
-            if low.strip().startswith(marker) or marker in low:
+            if marker in low:
                 toks = _money_tokens(line)
                 if toks:
                     bal = toks[-1]
@@ -951,9 +949,7 @@ def _parse_family_a(
     groups = _fold(lines)
     prev_balance: Decimal | None = None
     md_pairs: list[tuple[int, int]] = []
-    staged: list[
-        tuple[str, Decimal, str, Decimal]
-    ] = []  # desc, |amt|, amt_tok, balance
+    staged: list[tuple[str, Decimal]] = []  # desc, signed delta
     for line, cont in groups:
         bf = _anchor_balance(line, fmt)
         if bf is not None:
@@ -975,7 +971,7 @@ def _parse_family_a(
         delta = balance - prev_balance
         _verify_row(delta, amt_tok, fmt, check_sign=True)
         full_desc = " ".join([_clean_desc(desc)] + cont).strip()
-        staged.append((full_desc, delta, "", balance))
+        staged.append((full_desc, delta))
         md_pairs.append((int(mm), int(dd)))
         prev_balance = balance
     years = _infer_years(md_pairs, period)
@@ -988,7 +984,7 @@ def _parse_family_a(
                 desc,
                 exponent,
             )
-            for i, (desc, delta, _t, _b) in enumerate(staged)
+            for i, (desc, delta) in enumerate(staged)
         ]
     )
     return ParseResult(drafts, errors, None, None)
