@@ -341,9 +341,8 @@ class MonthSummaryService:
         prior: dict[str, int] = {}
         for window in baselines:
             for _id, _on, magnitude, description in window:
-                prior[self._key(description)] = (
-                    prior.get(self._key(description), 0) + magnitude
-                )
+                key = self._key(description)
+                prior[key] = prior.get(key, 0) + magnitude
 
         best: MonthCause | None = None
         best_excess = 0

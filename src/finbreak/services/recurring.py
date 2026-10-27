@@ -209,14 +209,13 @@ def detect_recurring(
         med = median_low(magnitudes)
         if _TOL_DEN * max(abs(mag - med) for mag in magnitudes) > _TOL_NUM * med:
             continue
-        ordered = sorted(
-            members, key=lambda m: (date.fromisoformat(m.occurred_on), m.id)
-        )
+        # occurred_on is canonical ISO (parse_transaction), so it sorts as a date.
+        ordered = sorted(members, key=lambda m: (m.occurred_on, m.id))
         dates = [date.fromisoformat(m.occurred_on) for m in ordered]
         gaps = [
-            (dates[i + 1] - dates[i]).days
-            for i in range(len(dates) - 1)
-            if (dates[i + 1] - dates[i]).days != 0
+            gap
+            for earlier, later in zip(dates, dates[1:], strict=False)
+            if (gap := (later - earlier).days) != 0
         ]
         cadence = _classify(gaps)
         if cadence is None:
@@ -225,6 +224,7 @@ def detect_recurring(
         if (today - last_seen).days > _ACTIVE_GRACE * nominal_interval_days(cadence):
             continue
         amount = to_display_decimal(med, exponent)
+        day_of_month = intended_day(dates)
         items.append(
             RecurringItem(
                 merchant=merchant_name(ordered[0].description),
@@ -236,11 +236,9 @@ def detect_recurring(
                 occurrences=len(members),
                 first_seen=dates[0],
                 last_seen=last_seen,
-                next_expected=_add_cadence_n(
-                    last_seen, cadence, 1, intended_day(dates)
-                ),
+                next_expected=_add_cadence_n(last_seen, cadence, 1, day_of_month),
                 txn_ids=tuple(m.id for m in ordered),
-                day_of_month=intended_day(dates),
+                day_of_month=day_of_month,
             )
         )
     items.sort(
