@@ -11,6 +11,7 @@ that list and never re-hit the DB.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from decimal import Decimal
 
@@ -507,7 +508,8 @@ class TransactionsView(QWidget):
     def _apply_filters(self) -> None:
         if self._loading:
             return
-        self._rows = [row for row in self._master if self._matches(row)]
+        matches = self._matches()
+        self._rows = [row for row in self._master if matches(row)]
         self._model.set_rows(
             self._rows,
             _Render(
@@ -523,27 +525,32 @@ class TransactionsView(QWidget):
             ),
         )
 
-    def _matches(self, row: tuple[Transaction, Decimal, str, str]) -> bool:
-        """AND of the active filters (each inactive when unset, INV-9)."""
-        transaction = row[0]
+    def _matches(self) -> Callable[[tuple[Transaction, Decimal, str, str]], bool]:
+        """The AND of the active filters (each inactive when unset, INV-9), as a
+        predicate. The widget state is read once here, not once per row."""
         needle = self._search.text().strip().casefold()
-        if needle and needle not in transaction.description.casefold():
-            return False
-        if self._date_enable.isChecked():
-            start = self._date_from.date().toString("yyyy-MM-dd")
-            end = self._date_to.date().toString("yyyy-MM-dd")
-            if not (start <= transaction.occurred_on <= end):
-                return False
+        dated = self._date_enable.isChecked()
+        start = self._date_from.date().toString("yyyy-MM-dd")
+        end = self._date_to.date().toString("yyyy-MM-dd")
         account_data = self._account.currentData()
-        if account_data is not _FILTER_ALL and transaction.account_id != account_data:
-            return False
         category_data = self._category.currentData()
-        if (
-            category_data is not _FILTER_ALL
-            and transaction.category_id != category_data
-        ):
-            return False
-        return True
+
+        def matches(row: tuple[Transaction, Decimal, str, str]) -> bool:
+            transaction = row[0]
+            return (
+                (not needle or needle in transaction.description.casefold())
+                and (not dated or start <= transaction.occurred_on <= end)
+                and (
+                    account_data is _FILTER_ALL
+                    or transaction.account_id == account_data
+                )
+                and (
+                    category_data is _FILTER_ALL
+                    or transaction.category_id == category_data
+                )
+            )
+
+        return matches
 
     # --- category set + learning (moved verbatim from HomeView) ------------ #
     def _show_context_menu(self, pos: QPoint) -> None:
