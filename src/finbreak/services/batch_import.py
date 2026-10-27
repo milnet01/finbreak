@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import logging
 from collections import Counter
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -419,7 +419,7 @@ class BatchImportService:
         ``needs_password``. Any non-password failure propagates to ``scan``'s
         net, so the friendly-message mapping has one home.
         """
-        for password in [None, *self._password_ladder()]:
+        for password in self._password_candidates():
             if password in record.tried_passwords:
                 continue
             record.tried_passwords.add(password)
@@ -429,6 +429,12 @@ class BatchImportService:
                 continue
         record.outcome = "needs_password"
         return None
+
+    def _password_candidates(self) -> Iterator[str | None]:
+        """``None`` first, then the ladder — built only if ``None`` fails, so an
+        unencrypted PDF (the common case) costs no account or password reads."""
+        yield None
+        yield from self._password_ladder()
 
     def _password_ladder(self) -> list[str]:
         """Every account's remembered password, then every password typed so far
