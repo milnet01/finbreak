@@ -1022,10 +1022,12 @@ class MainWindow(QMainWindow):
     # --- content actions ---------------------------------------------------- #
     def _show_home(self) -> None:
         workspace = self._ensure_workspace()
-        if self._home_tab is not None:
-            self._home_tab.refresh()
-            self._refresh_count(self._home_tab.transaction_count())
-        workspace.setCurrentIndex(_TAB_HOME)
+        # A real tab change refreshes Home through _on_tab_changed; refreshing here
+        # as well ran the dashboard's whole-vault reads twice per click.
+        if workspace.currentIndex() == _TAB_HOME:
+            self._refresh_tab(_TAB_HOME)
+        else:
+            workspace.setCurrentIndex(_TAB_HOME)
 
     def _open_transactions(self) -> None:
         self._ensure_workspace().setCurrentIndex(_TAB_TRANSACTIONS)
@@ -1071,11 +1073,14 @@ class MainWindow(QMainWindow):
         self._teardown_dialog()
         self._status(self.tr("Added transaction"))
         workspace = self._ensure_workspace()
-        if self._transactions_tab is not None:
-            self._transactions_tab.refresh()
         if self._home_tab is not None:
             self._refresh_count(self._home_tab.transaction_count())
-        workspace.setCurrentIndex(_TAB_TRANSACTIONS)
+        # Only an unchanged index needs the explicit refresh: a tab change runs
+        # _on_tab_changed, which refreshes Transactions itself.
+        if workspace.currentIndex() == _TAB_TRANSACTIONS:
+            self._refresh_tab(_TAB_TRANSACTIONS)
+        else:
+            workspace.setCurrentIndex(_TAB_TRANSACTIONS)
 
     def _open_alerts(self) -> None:
         """The spending alerts, behind Home's Alerts button (FIBR-0185). Reachable
@@ -2049,11 +2054,11 @@ class MainWindow(QMainWindow):
 
     def _on_import_done(self) -> None:
         # Rebuild a fresh workspace and land on Statements so the just-imported
-        # statement is visible; refresh Home + the count (D5/INV-11).
+        # statement is visible; refresh the count (D5/INV-11). Home needs no
+        # refresh: the rebuilt HomeView read the vault when it was constructed.
         workspace = self._build_workspace()
         workspace.setCurrentIndex(_TAB_STATEMENTS)
         if self._home_tab is not None:
-            self._home_tab.refresh()
             self._refresh_count(self._home_tab.transaction_count())
 
     def _refresh_after_statement_change(self) -> None:
