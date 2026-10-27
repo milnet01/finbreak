@@ -384,11 +384,16 @@ class CategoriesWidget(QWidget):
 
     def _refresh(self) -> None:
         self._tree.clear()
-        for root in self._categories.children_of(None):
+        # One read, grouped in memory, instead of a children_of query per node.
+        # list_all orders siblings exactly as children_of does (name, then id).
+        by_parent: dict[int | None, list[Category]] = {}
+        for category in self._categories.list_all():
+            by_parent.setdefault(category.parent_id, []).append(category)
+        for root in by_parent.get(None, []):
             label = self._type_labels.get(root.kind or "", root.name)
             root_item = self._make_item(label, root)
             self._tree.addTopLevelItem(root_item)
-            self._add_children(root_item, root.id)
+            self._add_children(root_item, root.id, by_parent)
         self._tree.expandAll()
         # Re-gate. `currentItemChanged` does not fire on the empty-to-populated
         # rebuild above, so without this the buttons keep the enablement they
@@ -398,13 +403,18 @@ class CategoriesWidget(QWidget):
         # and simply wins.
         self._on_selection_changed()
 
-    def _add_children(self, parent_item: QTreeWidgetItem, parent_id: int) -> None:
+    def _add_children(
+        self,
+        parent_item: QTreeWidgetItem,
+        parent_id: int,
+        by_parent: dict[int | None, list[Category]],
+    ) -> None:
         """Recursively attach every descendant of ``parent_id`` — unbounded, so a
         pre-existing node deeper than the UI cap still renders (FIBR-0154 § 4.2)."""
-        for child in self._categories.children_of(parent_id):
+        for child in by_parent.get(parent_id, []):
             child_item = self._make_item(child.name, child)
             parent_item.addChild(child_item)
-            self._add_children(child_item, child.id)
+            self._add_children(child_item, child.id, by_parent)
 
     @staticmethod
     def _make_item(label: str, category: Category) -> QTreeWidgetItem:
