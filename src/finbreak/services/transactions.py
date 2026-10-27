@@ -42,6 +42,14 @@ def read_minor_unit_exponent(conn: dbapi2.Connection) -> int:
     return int(cast(str, value))
 
 
+def read_base_currency(conn: dbapi2.Connection) -> str:
+    """The base currency's display symbol, from ``settings`` — the one read
+    ``TransactionService`` and ``ReportingService`` share. Same
+    ``SettingsRepository`` seam as ``read_minor_unit_exponent`` (FIBR-0080);
+    base_currency is a v1 invariant, so ``cast`` asserts its presence."""
+    return cast(str, SettingsRepository(conn).get("base_currency"))
+
+
 def parse_transaction(
     occurred_on: str, raw_amount: str | Decimal, description: str, exponent: int
 ) -> tuple[str, int, str]:
@@ -186,10 +194,7 @@ class TransactionService:
         return read_minor_unit_exponent(self._vault.connection)
 
     def base_currency(self) -> str:
-        # Same SettingsRepository seam as read_minor_unit_exponent (FIBR-0080);
-        # base_currency is a v1 invariant so ``cast`` asserts its presence.
-        value = SettingsRepository(self._vault.connection).get("base_currency")
-        return cast(str, value)
+        return read_base_currency(self._vault.connection)
 
     def add_transaction(
         self,

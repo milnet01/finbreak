@@ -2698,7 +2698,7 @@ def test_a_row_count_mismatch_keeps_the_counts_out_of_the_message(
     """
     vault_path, sidecar_path, key, _digests = _fresh_v1_vault(tmp_path, "counts-quiet")
 
-    real_counts = vault_migration._row_counts
+    real_counts = vault_migration.row_counts
     reads: list[dict[str, int]] = []
 
     def drifting(conn: Any) -> dict[str, int]:
@@ -2708,7 +2708,7 @@ def test_a_row_count_mismatch_keeps_the_counts_out_of_the_message(
         reads.append(counts)
         return counts
 
-    monkeypatch.setattr(vault_migration, "_row_counts", drifting)
+    monkeypatch.setattr(vault_migration, "row_counts", drifting)
 
     with caplog.at_level("ERROR"), pytest.raises(VaultStateError) as excinfo:
         migrate_to_v2(vault_path, sidecar_path, bytearray(key))

@@ -57,7 +57,7 @@ from finbreak.errors import (
 from finbreak.keywrap import SLOT_MASTER, wrap_dek
 from finbreak.migrations import LATEST_SCHEMA_VERSION
 from finbreak.services.auth import AuthService, _wipe
-from finbreak.services.vault_migration import migration_artefacts
+from finbreak.services.vault_migration import migration_artefacts, row_counts
 from finbreak.vault import (
     RESTORE_ASSEMBLY_PREFIX,
     SQLCIPHER_COMPAT,
@@ -478,19 +478,7 @@ class BackupService:
                         "SELECT version FROM schema_version"
                     ).fetchone()[0]
                     # 4c — per-table row counts, display only (never a pass gate).
-                    names = [
-                        r[0]
-                        for r in conn.execute(
-                            "SELECT name FROM sqlite_master WHERE type='table' "
-                            "AND name NOT LIKE 'sqlite_%'"
-                        ).fetchall()
-                    ]
-                    # B608: `n` is a table name read from sqlite_master (never
-                    # user input) — the dynamic enumeration the spec mandates.
-                    table_counts = {
-                        n: conn.execute(f"SELECT count(*) FROM {n}").fetchone()[0]  # nosec B608
-                        for n in names
-                    }
+                    table_counts = row_counts(conn)
                 finally:
                     backup_vault.close()  # 4d
             return VerifyResult(

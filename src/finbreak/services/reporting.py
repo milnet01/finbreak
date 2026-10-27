@@ -23,7 +23,7 @@ from __future__ import annotations
 import calendar
 from dataclasses import dataclass
 from datetime import date
-from typing import NamedTuple, cast
+from typing import NamedTuple
 
 from sqlcipher3 import dbapi2
 
@@ -38,8 +38,11 @@ from finbreak.models import (
 )
 from finbreak.repositories.categories import CategoryRepository
 from finbreak.repositories.reporting import ReportingRepository
-from finbreak.repositories.settings import SettingsRepository
-from finbreak.services.transactions import read_minor_unit_exponent, to_display_decimal
+from finbreak.services.transactions import (
+    read_base_currency,
+    read_minor_unit_exponent,
+    to_display_decimal,
+)
 from finbreak.services.transfer_detection import TransferDetectionService
 from finbreak.text import merchant_name, normalise_text
 from finbreak.vault import Vault
@@ -154,8 +157,7 @@ class ReportingService:
     def base_currency(self) -> str:
         """The display symbol the tiles format with (the same ``settings`` seam
         ``TransactionService.base_currency`` reads)."""
-        value = SettingsRepository(self._conn).get("base_currency")
-        return cast(str, value)
+        return read_base_currency(self._conn)
 
     def transaction_count(self) -> int:
         """A live, whole-vault ``count(*)`` (unfiltered). The getting-started toggle

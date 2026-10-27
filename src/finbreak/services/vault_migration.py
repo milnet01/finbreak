@@ -131,11 +131,12 @@ def _drop_wal_siblings(db_path: Path) -> None:
         _suffixed(db_path, suffix).unlink(missing_ok=True)
 
 
-def _row_counts(conn: Connection) -> dict[str, int]:
+def row_counts(conn: Connection) -> dict[str, int]:
     """Per-table row counts for EVERY table, enumerated from ``sqlite_master``.
 
     Every table, not just the ones anything seeded — S2 has to catch a
     replacement that dropped a table nobody thought to look for (INV-8).
+    ``backup.verify_backup`` reuses it for its display-only counts.
     """
     names = [
         row[0]
@@ -145,8 +146,8 @@ def _row_counts(conn: Connection) -> dict[str, int]:
         ).fetchall()
     ]
     # B608: `name` is a table name read from sqlite_master (never user input),
-    # and SQLite cannot bind an identifier as a parameter — the same dynamic
-    # enumeration, and the same justification, as backup.py's verify counts.
+    # and SQLite cannot bind an identifier as a parameter. Quoted, so a name
+    # that needs quoting counts instead of raising.
     return {
         name: conn.execute(f'SELECT count(*) FROM "{name}"').fetchone()[0]  # nosec B608
         for name in names
@@ -268,7 +269,7 @@ def _row_counts_or_none(
     except DatabaseError:
         return None
     try:
-        return _row_counts(probe.connection)
+        return row_counts(probe.connection)
     except (DatabaseError, MemoryError):
         return None
     finally:
@@ -566,7 +567,7 @@ def _convert(
     try:
         live.export_to(migrating_db, dek)
         _fsync(migrating_db)
-        expected_counts = _row_counts(live.connection)
+        expected_counts = row_counts(live.connection)
     finally:
         live.close()
 
@@ -581,7 +582,7 @@ def _convert(
             raise VaultStateError(
                 f"the migrated vault failed integrity_check: {integrity}"
             )
-        actual_counts = _row_counts(replacement.connection)
+        actual_counts = row_counts(replacement.connection)
         if actual_counts != expected_counts:
             # Named, never counted: this message reaches `_unlock_v1`'s
             # `log.exception`, so the counts would land in the plaintext log
