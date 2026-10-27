@@ -163,6 +163,14 @@ def test_INV5_digits_only_falls_back_to_trimmed_raw():
     assert merchant_name("!!!") == "!!!"  # punctuation-only edges strip to empty → raw
 
 
+def test_INV5_title_case_does_not_capitalise_after_an_apostrophe():
+    """``str.title()`` starts a new word at every non-letter, so it rendered
+    "MCDONALD'S" as "Mcdonald'S". An apostrophe is inside a word; a hyphen is not."""
+    assert merchant_name("MCDONALD'S 12345") == "Mcdonald's"
+    assert merchant_name("NANDO’S") == "Nando’s"
+    assert merchant_name("COCA-COLA") == "Coca-Cola"
+
+
 def test_INV5_company_suffix_is_retained_v1():
     """v1 does NOT strip PTY/LTD — so a suffix keys separately (documents the
     behaviour; a future suffix-strip is then a deliberate change, not silent)."""

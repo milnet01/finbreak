@@ -117,4 +117,14 @@ def merchant_name(description: str) -> str:
         if token:
             tokens.append(token)
     cleaned = " ".join(tokens)
-    return cleaned.title() if cleaned else stripped
+    return _title_case(cleaned) if cleaned else stripped
+
+
+# A word for title-casing: letters/digits, with an apostrophe allowed INSIDE it.
+# ``str.title()`` treats the apostrophe as a word break ("Mcdonald'S").
+_TITLE_WORD = re.compile(r"\w+(?:['\u2019]\w+)*")
+
+
+def _title_case(text: str) -> str:
+    """``str.title()`` without capitalising the letter after an apostrophe."""
+    return _TITLE_WORD.sub(lambda m: m.group().capitalize(), text)
