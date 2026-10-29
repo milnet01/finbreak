@@ -41,6 +41,18 @@ signaling per
   and the Flatpak recipe has now been removed. On Linux, install finbreak
   from the AppImage or the openSUSE Build Service packages (RPM/deb).
 
+### Security
+
+- **Two bundled libraries are updated to versions with their security fixes** (FIBR-0455)
+  Version 1.0.1 shipped pillow 12.3.0, an image library, and certifi
+  2026.7.22, the list of trusted website certificates. Security warnings
+  were published for both after 1.0.1 came out. This release bundles
+  pillow 13.0.0 or later and certifi 2026.10.19 or later. The certifi fix
+  matters for the optional update check: it no longer trusts certificates
+  from a certificate authority whose keys were stolen. Updates were
+  already safe, because finbreak checks each downloaded update against
+  its own signing key.
+
 ## [1.0.1] - 2026-10-10
 
 **Theme:** Windows updates fixed.
