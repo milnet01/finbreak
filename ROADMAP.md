@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: FIBR=456 -->
+<!-- ants-roadmap-id-high-water: FIBR=459 -->
 # finbreak — Roadmap
 
 > See [CHANGELOG.md](CHANGELOG.md) for what's shipped and the current
@@ -2009,6 +2009,11 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   `transfer_pairs(txn_a_id)` and `transfer_pairs(txn_b_id)` (a v10->v11 forward
   migration) if a large multi-year vault with many detected transfers measures a
   slow statement delete. Kind: perf.
+  2026-10-29: the PR #4 review sweep found this again from a second
+  side. `TransferRepository`'s pair lookup filters
+  `(txn_a_id = ? OR txn_b_id = ?)`, and `txn_b_id` has no index, so that
+  query scans `transfer_pairs` too. The migration is now the next schema
+  version after `LATEST_SCHEMA_VERSION`, no longer v10->v11.
   **Layman:** Make deleting a big statement fast even when transfers have been detected.
   Kind: perf.
   Source: claude-suggestion-2026-07-17 (deferred from FIBR-0098).
@@ -4649,6 +4654,40 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   **Layman:** Make sure locking the app also forgets the date range shown above the transaction list.
   Kind: investigate.
   Source: review-code-2026-10-22.
+
+- 📋 [FIBR-0457] **The batch-import review table rebuilds every row after each step.**
+  `BatchReviewWidget.refresh` in `ui/import_batch.py` re-reads the
+  account list and resets every row. The wizard calls it after each scan
+  and run step, so a batch of N files costs O(N^2) cell writes. Fix:
+  repaint the one row whose record changed, and keep the full refresh
+  for `set_files`. Surfaced by the PR #4 review sweep.
+  **Layman:** Keep a large batch import responsive by redrawing only the file that changed.
+  Kind: perf.
+  Source: pr-4-review-sweep-2026-10-27 (filed on user request 2026-10-29).
+  Lanes: ui/import_batch.py, ui/import_wizard.py.
+
+- 📋 [FIBR-0458] **Each imported PDF is decrypted and normalised more than once.**
+  `_normalise_to_plaintext` runs in `decrypt_to_plaintext` (called by
+  the wizard and the batch scan), again in `StandardBankImporter.parse`,
+  and again in `PdfImporter.candidate_tables`. Each run is a pikepdf
+  open and rewrite of the whole file. Fix: normalise once and pass the
+  plaintext on, or skip the rewrite on input already normalised.
+  Surfaced by the PR #4 review sweep.
+  **Layman:** Import PDF statements faster by reading each file once instead of several times.
+  Kind: perf.
+  Source: pr-4-review-sweep-2026-10-27 (filed on user request 2026-10-29).
+  Lanes: importers/pdf_importer.py, importers/standard_bank.py.
+
+- 📋 [FIBR-0459] **PDF export loads every transaction, then filters by period in Python.**
+  `PdfExportService._transactions_html` calls
+  `TransactionService.list_transactions()` for the whole vault, then
+  keeps rows inside the period and account scope. Fix: a repository
+  query bounded by date (and account) so SQLite does the filter on
+  `idx_transactions_occurred_on`. Surfaced by the PR #4 review sweep.
+  **Layman:** Make a PDF report of one month fast even in a vault holding many years.
+  Kind: perf.
+  Source: pr-4-review-sweep-2026-10-27 (filed on user request 2026-10-29).
+  Lanes: services/pdf_export.py, repositories/transactions.py.
 
 ## v1.1.0 — Localisation
 
