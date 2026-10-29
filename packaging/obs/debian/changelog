@@ -1,3 +1,13 @@
+finbreak (1.0.2) unstable; urgency=medium
+
+  * Two bundled libraries, pillow and certifi, are updated to versions
+    with their security fixes.
+  * finbreak starts faster on Linux.
+  * The Transactions tab opens quickly however long your history is.
+  * The Flatpak build recipe is removed; finbreak will not be on Flathub.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Thu, 29 Oct 2026 07:33:43 +0200
+
 finbreak (1.0.1) unstable; urgency=medium
 
   * On Windows, "Update now" installs the update and reopens finbreak.

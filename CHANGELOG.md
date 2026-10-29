@@ -21,6 +21,10 @@ signaling per
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-10-29
+
+**Theme:** Security updates and a faster app.
+
 ### Changed
 
 - **finbreak starts faster on Linux** (FIBR-0099)

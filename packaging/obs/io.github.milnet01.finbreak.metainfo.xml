@@ -90,6 +90,24 @@
   </screenshots>
 
   <releases>
+    <release version="1.0.2" date="2026-10-29">
+      <description>
+        <p>Security updates and a faster app.</p>
+        <p>Changed:</p>
+        <ul>
+          <li>finbreak starts faster on Linux. The AppImage no longer unpacks the whole app into a temporary folder every time it starts. A start took about 1.5 seconds and now takes about 0.8 seconds (measured on the developer's machine).</li>
+          <li>The Transactions tab opens quickly however long your history is. The list now draws only the rows on screen. With 20,000 transactions, opening the tab took about 1.3 seconds and now takes about 0.1 seconds (measured on the developer's machine). The list looks and sorts exactly as before.</li>
+        </ul>
+        <p>Removed:</p>
+        <ul>
+          <li>The Flatpak build recipe is gone, and finbreak will not be listed on Flathub. Version 0.1.17 said a Flathub listing would follow. That plan was dropped, and the Flatpak recipe has now been removed. On Linux, install finbreak from the AppImage or the openSUSE Build Service packages (RPM/deb).</li>
+        </ul>
+        <p>Security:</p>
+        <ul>
+          <li>Two bundled libraries are updated to versions with their security fixes. Version 1.0.1 shipped pillow 12.3.0, an image library, and certifi 2026.7.22, the list of trusted website certificates. Security warnings were published for both after 1.0.1 came out. This release bundles pillow 13.0.0 or later and certifi 2026.10.19 or later. The certifi fix matters for the optional update check: it no longer trusts certificates from a certificate authority whose keys were stolen. Updates were already safe, because finbreak checks each downloaded update against its own signing key.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.0.1" date="2026-10-10">
       <description>
         <p>Windows updates are fixed. Windows users on 0.1.10 to 1.0.0 must install this release by hand once.</p>
