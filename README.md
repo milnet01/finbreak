@@ -142,12 +142,11 @@ does:
   have to the front instead of opening a second copy.
 
 finbreak now also runs on **Windows** as a self-contained `.exe`, and on **Linux**
-installs as a native **RPM** on openSUSE Tumbleweed and Fedora 44 (from the
+installs as a native **RPM** on openSUSE Tumbleweed and Fedora 44 and a native
+**deb** on Debian 13 and Ubuntu 24.04 (from the
 [openSUSE Build Service](https://download.opensuse.org/repositories/home:/milnet:/finbreak/))
-alongside the existing AppImage. Still to come: **deb** packages for Debian and
-Ubuntu (the recipe exists but those targets don't build yet) and a packaged
-macOS app. See the [ROADMAP](ROADMAP.md) for the full
-plan.
+alongside the existing AppImage. Still to come: a packaged macOS app. See the
+[ROADMAP](ROADMAP.md) for the full plan.
 
 ## Install
 
@@ -178,9 +177,9 @@ Each release also ships a `.sig` file next to the AppImage — that's the
 signature finbreak uses to check updates are genuine; you don't need to do
 anything with it yourself.
 
-**Linux (openSUSE Tumbleweed / Fedora 44)** — finbreak is also packaged as a
-native RPM, so your usual updater keeps it current. Add the repository once,
-then install:
+**Linux (openSUSE Tumbleweed / Fedora 44 / Debian 13 / Ubuntu 24.04)** —
+finbreak is also packaged as a native RPM or deb, so your usual updater keeps it
+current. Add the repository once, then install:
 
 ```bash
 # openSUSE Tumbleweed
@@ -190,10 +189,12 @@ sudo zypper refresh && sudo zypper install finbreak
 # Fedora 44
 sudo dnf config-manager addrepo --from-repofile=https://download.opensuse.org/repositories/home:/milnet:/finbreak/Fedora_44/home:milnet:finbreak.repo
 sudo dnf install finbreak
-```
 
-Debian/Ubuntu `.deb` packages are still being worked on —
-use the AppImage above on those systems for now.
+# Debian 13 (for Ubuntu 24.04, write xUbuntu_24.04 in place of Debian_13 on both lines)
+wget -qO- https://download.opensuse.org/repositories/home:/milnet:/finbreak/Debian_13/Release.key | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/finbreak.gpg > /dev/null
+echo 'deb https://download.opensuse.org/repositories/home:/milnet:/finbreak/Debian_13/ /' | sudo tee /etc/apt/sources.list.d/finbreak.list
+sudo apt update && sudo apt install finbreak
+```
 
 **Windows** — a self-contained `finbreak.exe` (no Python needed) ships as a
 release asset on each

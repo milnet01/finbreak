@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: FIBR=459 -->
+<!-- ants-roadmap-id-high-water: FIBR=460 -->
 # finbreak — Roadmap
 
 > See [CHANGELOG.md](CHANGELOG.md) for what's shipped and the current
@@ -4708,6 +4708,28 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: perf.
   Source: pr-4-review-sweep-2026-10-27 (filed on user request 2026-10-29).
   Lanes: services/pdf_export.py, repositories/transactions.py.
+
+- ✅ [FIBR-0460] **The README says the Debian and Ubuntu .deb packages do not build yet, but they have shipped since 0.1.23.**
+  Two lines in README.md are stale: the status paragraph ("the recipe
+  exists but those targets don't build yet") and § Install ("Debian/Ubuntu
+  .deb packages are still being worked on"). FIBR-0158 shipped the deb
+  builds in 0.1.23; packaging/obs/README.md already says so.
+  Checked 2026-11-03: OBS reports Debian_13 and xUbuntu_24.04 succeeded
+  for 1.0.2. Both published repos list finbreak 1.0.2-1. In a clean
+  debian:13-slim and ubuntu:24.04 container, adding the repo key and
+  source, then apt-get install finbreak, installs 1.0.2-1, and
+  finbreak --self-test prints FINBREAK_SELFTEST_OK.
+  Fix: say the debs ship, and add apt install steps beside the zypper
+  and dnf ones.
+  Fixed 2026-11-03: README.md now names Debian 13 and Ubuntu 24.04
+  beside the RPM distros and gives apt steps. The steps were run exactly
+  as written, as a non-root user with sudo, in clean debian:13-slim and
+  ubuntu:24.04 containers: 1.0.2-1 installs and --self-test prints
+  FINBREAK_SELFTEST_OK. The steps use wget rather than curl, because a
+  default Debian install may not include curl.
+  **Layman:** The README tells Debian and Ubuntu users to use the AppImage, when a normal apt package already works for them.
+  Kind: doc-fix.
+  Source: in-session-2026-11-03 (1.0.2 OBS check).
 
 ## v1.1.0 — Localisation
 
