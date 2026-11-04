@@ -4945,6 +4945,12 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   the new state. Needs a way to tell a current unresolvable from a
   stale one (a settle period, or seeing the dirty flag set and cleared
   since the commit).
+  2026-11-05, d88de00: took the settle-period option. An unresolvable
+  or broken row counts as final only from poll SETTLE_POLLS (default 3)
+  and shows "(settling)" before then; one that stays unbuildable still
+  fails with its log. Stub tests cover both. Gate green. Live proof
+  rides on the next release's OBS submit, with FIBR-0462/0463.
+  Next: review-code over this and FIBR-0465, then ship.
   **Layman:** Right after a fix is sent to the build service, the status check can report the old 'cannot build' result as if it were new.
   Kind: fix.
   Source: review-code-2026-11-04b (FIBR-0274/0462/0463 close-out).
