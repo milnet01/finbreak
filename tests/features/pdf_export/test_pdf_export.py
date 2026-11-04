@@ -268,6 +268,40 @@ def test_same_date_rows_sorted_by_id(qapp, service):
     assert html.index("alpha") < html.index("beta")  # ascending id tiebreak
 
 
+def test_FIBR0459_list_keeps_both_period_edges_and_drops_neighbours(qapp, service):
+    """January means 1 Jan to 31 Jan inclusive. A bounded query that used `<`
+    for the end, or compared against a timestamp, loses the 31st."""
+    a = _accounts(service)[0].id
+    _add(service, a, -1_00, occurred_on="2025-12-31", desc="edge-dec-31")
+    _add(service, a, -2_00, occurred_on="2026-01-01", desc="edge-jan-01")
+    _add(service, a, -3_00, occurred_on="2026-01-31", desc="edge-jan-31")
+    _add(service, a, -4_00, occurred_on="2026-02-01", desc="edge-feb-01")
+    html, _ = _svc(service)._build_html(
+        _options(include_summary=False, include_charts=False), _TODAY
+    )
+    assert "edge-jan-01" in html and "edge-jan-31" in html
+    assert "edge-dec-31" not in html and "edge-feb-01" not in html
+
+
+def test_FIBR0459_list_reads_only_the_period_not_the_whole_vault(
+    qapp, service, monkeypatch
+):
+    """The transaction list asks the database for the period's rows. Reading
+    every transaction and filtering in Python made a one-month report of a
+    many-year vault cost the whole vault."""
+    a = _accounts(service)[0].id
+    _add(service, a, -5_00, occurred_on="2026-01-10", desc="in-period")
+
+    def _whole_table(self):
+        raise AssertionError("the export read every transaction in the vault")
+
+    monkeypatch.setattr(TransactionRepository, "list_all", _whole_table)
+    html, _ = _svc(service)._build_html(
+        _options(include_summary=False, include_charts=False), _TODAY
+    )
+    assert "in-period" in html
+
+
 def test_empty_period_still_valid_pdf(qapp, service):
     a = _accounts(service)[0].id
     _add(service, a, 100_00)  # January data; export an empty March 2020

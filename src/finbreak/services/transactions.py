@@ -210,15 +210,20 @@ class TransactionService:
             account_id, occurred_on, amount_minor, description
         )
 
-    def list_transactions(self) -> list[tuple[Transaction, Decimal, str, str]]:
+    def list_transactions(
+        self, between: tuple[str, str] | None = None
+    ) -> list[tuple[Transaction, Decimal, str, str]]:
         """Each row + its display amount + its account name + its category name
         (both id->name maps resolved once, not per row; FIBR-0010 D12). The
-        category name is the leaf's name, or ``""`` for an uncategorised row."""
+        category name is the leaf's name, or ``""`` for an uncategorised row.
+        ``between`` is an inclusive ``(start_iso, end_iso)`` date range; ``None``
+        lists every row."""
         exponent = self._exponent()
         conn = self._vault.connection
         account_names = {a.id: a.name for a in AccountRepository(conn).list_all()}
         category_names = {c.id: c.name for c in CategoryRepository(conn).list_all()}
-        rows = TransactionRepository(conn).list_all()
+        repo = TransactionRepository(conn)
+        rows = repo.list_all() if between is None else repo.list_between(*between)
         return [
             (
                 row,

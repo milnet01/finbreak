@@ -126,6 +126,19 @@ class TransactionRepository:
         ).fetchall()
         return [Transaction(*row) for row in rows]
 
+    def list_between(self, start_iso: str, end_iso: str) -> list[Transaction]:
+        """The rows dated ``start_iso`` to ``end_iso`` inclusive, in ``list_all``'s
+        order. A period report reads its period, not the whole vault; the
+        ``occurred_on`` index serves the range (FIBR-0459)."""
+        rows = self._conn.execute(
+            "SELECT id, account_id, occurred_on, amount_minor, description, "
+            "created_at, category_id, category_source "
+            "FROM transactions WHERE occurred_on BETWEEN ? AND ? "
+            "ORDER BY occurred_on, id",
+            (start_iso, end_iso),
+        ).fetchall()
+        return [Transaction(*row) for row in rows]
+
     def by_ids(self, txn_ids: Collection[int]) -> list[Transaction]:
         """The rows for a KNOWN set of ids, in ``list_all``'s order.
 

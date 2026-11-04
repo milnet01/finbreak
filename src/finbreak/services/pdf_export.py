@@ -396,15 +396,16 @@ class PdfExportService:
         transfer_ids = TransferDetectionService(
             self._vault
         ).confirmed_transfer_txn_ids()
-        rows = TransactionService(self._vault).list_transactions()
+        # The query returns the period's rows in (occurred_on, id) order -- the id
+        # tiebreak keeps same-date rows reproducible (INV-6).
+        rows = TransactionService(self._vault).list_transactions(
+            between=(start_iso, end_iso)
+        )
         selected = [
-            (txn, disp, acct, cat)
-            for (txn, disp, acct, cat) in rows
-            if start_iso <= txn.occurred_on <= end_iso
-            and (options.account_ids is None or txn.account_id in options.account_ids)
+            row
+            for row in rows
+            if options.account_ids is None or row[0].account_id in options.account_ids
         ]
-        # (occurred_on, id) — id tiebreak keeps same-date rows reproducible (INV-6).
-        selected.sort(key=lambda r: (r[0].occurred_on, r[0].id))
         show_account = len(self._accounts_in_scope(options)) > 1
         # Read once, not per row — it is a vault read.
         date_pref = self._date_pref()
