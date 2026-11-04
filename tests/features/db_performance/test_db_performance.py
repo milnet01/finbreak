@@ -19,6 +19,7 @@ from finbreak.migrations import _MIGRATIONS, LATEST_SCHEMA_VERSION, run_migratio
 from finbreak.repositories.transactions import TransactionRepository
 from finbreak.repositories.transfers import (
     CANDIDATE_PAIRS_SQL,
+    IS_CONFIRMED_SQL,
     TRANSFER_WINDOW_DAYS,
 )
 from finbreak.services.accounts import AccountService
@@ -29,7 +30,8 @@ pytestmark = pytest.mark.features
 
 # The perf indexes a vault carries once it has walked to LATEST: the five the
 # v9->v10 migration creates (FIBR-0098/0071/0026), plus the transfer-candidate
-# index added at v13->v14 (FIBR-0327).
+# index added at v13->v14 (FIBR-0327) and the transfer_pairs.txn_b_id index
+# added at v14->v15 (FIBR-0147).
 _V10_INDEXES = {
     "idx_transactions_account_date_amount",
     "idx_transactions_occurred_on",
@@ -37,7 +39,10 @@ _V10_INDEXES = {
     "idx_transactions_statement_period_id",
     "idx_categorization_rules_category_id",
 }
-_EXPECTED_INDEXES = _V10_INDEXES | {"idx_transactions_amount_date"}
+_EXPECTED_INDEXES = _V10_INDEXES | {
+    "idx_transactions_amount_date",
+    "idx_transfer_pairs_txn_b_id",
+}
 
 
 def _index_names(conn) -> set[str]:
@@ -233,3 +238,30 @@ def test_INV5_candidate_pairs_seeks_the_amount_date_index(service) -> None:
         "is read. Only the range terms tell the two apart.\n"
         f"  actual plan:\n{joined}"
     )
+
+
+# --------------------------------------------------------------------------- #
+# INV-6 — transfer_pairs lookups seek both columns (FIBR-0147)
+# --------------------------------------------------------------------------- #
+def test_INV6_transfer_pairs_lookups_never_scan_the_table(service) -> None:
+    """Both columns of ``transfer_pairs`` reference a transaction. ``txn_a_id``
+    leads the UNIQUE index, but ``txn_b_id`` had no index of its own, so every
+    "already in a confirmed pair?" check scanned the table. The candidate join
+    runs that check twice per candidate row, and a statement delete runs the
+    cascade lookup once per deleted row."""
+    conn = service.vault.connection
+    plans = {
+        "candidate_pairs": _plan(conn, CANDIDATE_PAIRS_SQL, {"window": 3}),
+        "is_confirmed": _plan(conn, IS_CONFIRMED_SQL, (1, 1)),
+    }
+    for name, plan in plans.items():
+        # "SCAN p" (the join's alias) or "SCAN transfer_pairs"; a seek is SEARCH.
+        scans = [
+            s
+            for s in plan
+            if s.split()[:2] in (["SCAN", "p"], ["SCAN", "transfer_pairs"])
+        ]
+        assert not scans, (
+            f"{name} scans transfer_pairs instead of seeking an index.\n"
+            "  actual plan:\n    " + "\n    ".join(plan)
+        )

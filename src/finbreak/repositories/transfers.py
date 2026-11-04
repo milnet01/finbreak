@@ -35,6 +35,14 @@ TRANSFER_WINDOW_DAYS = 3
 # as statement_periods.py / import_profiles.py.
 
 
+# ``is_confirmed``'s statement, at module level for the same reason as the one
+# below: its plan must seek both columns (FIBR-0147).
+IS_CONFIRMED_SQL = (
+    "SELECT 1 FROM transfer_pairs WHERE status = 'confirmed' "
+    "AND (txn_a_id = ? OR txn_b_id = ?) LIMIT 1"
+)
+
+
 # ``candidate_pairs``' statement, at module level so a test can EXPLAIN it without
 # re-spelling it. The plan is part of the contract here: with ``amount_minor``
 # reachable through an index the join seeks, and without one SQLite builds a
@@ -151,11 +159,7 @@ class TransferRepository:
     def is_confirmed(self, txn_id: int) -> bool:
         """Whether ``txn_id`` already belongs to a confirmed pair (the INV-4 guard)."""
         return (
-            self._conn.execute(
-                "SELECT 1 FROM transfer_pairs WHERE status = 'confirmed' "
-                "AND (txn_a_id = ? OR txn_b_id = ?) LIMIT 1",
-                (txn_id, txn_id),
-            ).fetchone()
+            self._conn.execute(IS_CONFIRMED_SQL, (txn_id, txn_id)).fetchone()
             is not None
         )
 

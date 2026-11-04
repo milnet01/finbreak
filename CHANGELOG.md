@@ -21,6 +21,17 @@ signaling per
 
 ## [Unreleased]
 
+### Changed
+
+- **A PDF report of one period reads only that period** (FIBR-0459)
+  The report used to load every transaction in the vault before keeping the
+  period's rows. A one-month report of a many-year vault is now faster.
+
+- **The Transfers tab and statement deletes stay fast as transfers build up** (FIBR-0147)
+  The check for "is this transaction already in a confirmed transfer?" read
+  the whole list of transfers each time. A new database index answers it
+  directly. Your vault upgrades itself the first time this version opens it.
+
 ## [1.0.2] - 2026-10-29
 
 **Theme:** Security updates and a faster app.

@@ -21,7 +21,7 @@ from finbreak.errors import SchemaVersionError
 
 log = logging.getLogger(__name__)
 
-LATEST_SCHEMA_VERSION = 14
+LATEST_SCHEMA_VERSION = 15
 
 # Seed data written by the v1->v2 migration (D8) — NOT a UI string, so never
 # run through tr(); the user renames it in the Accounts manager.
@@ -471,6 +471,24 @@ def _migrate_to_v14(conn: dbapi2.Connection) -> None:
         conn.execute("UPDATE schema_version SET version = 14")
 
 
+def _migrate_to_v15(conn: dbapi2.Connection) -> None:
+    """v14 -> v15: index ``transfer_pairs(txn_b_id)``.
+
+    Both columns reference ``transactions(id)`` with ``ON DELETE CASCADE``, and
+    SQLite does not index a foreign key. ``txn_a_id`` leads the
+    ``UNIQUE(txn_a_id, txn_b_id)`` index, so only ``txn_b_id`` lacked one. So
+    every "already in a confirmed pair?" check scanned the table: twice per
+    candidate row in ``candidate_pairs``, once in ``is_confirmed``, and once
+    per deleted row in a statement delete's cascade (FIBR-0147).
+
+    Pure DDL, like ``_migrate_to_v14``: no backfill, one atomic unit."""
+    with owned_transaction(conn):
+        conn.execute(
+            "CREATE INDEX idx_transfer_pairs_txn_b_id ON transfer_pairs(txn_b_id)"
+        )
+        conn.execute("UPDATE schema_version SET version = 15")
+
+
 _MIGRATIONS = {
     2: _migrate_to_v2,
     3: _migrate_to_v3,
@@ -485,4 +503,5 @@ _MIGRATIONS = {
     12: _migrate_to_v12,
     13: _migrate_to_v13,
     14: _migrate_to_v14,
+    15: _migrate_to_v15,
 }
