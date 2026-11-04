@@ -659,7 +659,11 @@ case "$1" in
     if [ "$n" -le "${OSC_FAIL_RESULTS:-0}" ]; then
       echo "osc: results unreachable" >&2; exit 1
     fi
-    cat "$OSC_RESULTS" ;;
+    cat "$OSC_RESULTS"
+    # osc hides an excluded repo unless asked to show it.
+    case " $* " in
+      *" --show-excluded "*) [ -z "${OSC_EXCLUDED:-}" ] || cat "$OSC_EXCLUDED" ;;
+    esac ;;
   api)
     [ -z "${OSC_FAIL_API:-}" ] || { echo "osc: api unreachable" >&2; exit 1; }
     case "$2" in
@@ -835,9 +839,10 @@ def test_FIBR0317_submit_fails_unless_obs_holds_the_release_source(tmp_path, hel
     [
         (("RELEASE", "finbreak-1.0.2.obscpio"), False),
         (("RELEASE", "finbreak-1.0.2.tar"), False),
+        (("RELEASE", "finbreak-1.0.2.tar.xz"), False),
         (("RELEASE", "RELEASE.obscpio"), True),
     ],
-    ids=["old-obscpio", "old-tar", "own-obscpio"],
+    ids=["old-obscpio", "old-tar", "old-tar-xz", "own-obscpio"],
 )
 def test_FIBR0462_the_read_back_counts_every_source_archive(tmp_path, held, ok):
     """The read-back looked at .tar.gz files only, so five old .obscpio
@@ -863,7 +868,12 @@ def test_FIBR0462_old_archives_leave_the_checkout_before_the_services(tmp_path):
     root = _tagged_repo(tmp_path)
     co = tmp_path / "co" / "home:milnet:finbreak" / "finbreak"
     (co / ".osc").mkdir(parents=True)
-    old = ["finbreak-1.0.0.obscpio", "finbreak-1.0.0.tar", "finbreak-1.0.0.tar.gz"]
+    old = [
+        "finbreak-1.0.0.obscpio",
+        "finbreak-1.0.0.tar",
+        "finbreak-1.0.0.tar.gz",
+        "finbreak-1.0.0.tar.xz",
+    ]
     for name in old:
         (co / name).write_bytes(b"old")
     env = _osc_env(tmp_path, OBS_WORKDIR=str(tmp_path / "co"))
@@ -1033,6 +1043,28 @@ def test_FIBR0463_a_result_built_from_the_old_source_is_not_final(tmp_path, fina
     assert "timed out" in result.stderr, result.stderr
 
 
+def test_FIBR0463_an_excluded_repo_is_a_failure(tmp_path):
+    """osc hides an excluded repo by default, so a target that stopped
+    building at all (no .dsc: every deb repo excluded) read as green."""
+    excluded = tmp_path / "excluded.txt"
+    excluded.write_text("Debian_13 x86_64 finbreak excluded\n")
+    result = _status(
+        tmp_path, "repo x86_64 finbreak succeeded\n", OSC_EXCLUDED=str(excluded)
+    )
+
+    assert result.returncode != 0, result.stdout
+    assert "Debian_13 (excluded)" in result.stdout, result.stdout
+
+
+def test_FIBR0463_no_polls_is_a_timeout_not_a_crash(tmp_path):
+    """With MAX_POLLS=0 the loop never ran, `pending` was never set, and
+    `set -u` stopped the script with an unbound-variable error."""
+    result = _status(tmp_path, "repo x86_64 finbreak succeeded\n", MAX_POLLS="0")
+
+    assert result.returncode != 0, result.stdout
+    assert "timed out" in result.stderr, result.stderr
+
+
 def test_FIBR0463_a_failing_poll_says_why(tmp_path):
     """Each poll sent osc's error to /dev/null, so a run that could not reach
     OBS timed out without saying why."""
@@ -1057,7 +1089,9 @@ def _status(
     results = tmp_path / "results.txt"
     results.write_text(rows)
     env = _osc_env(
-        tmp_path, OSC_RESULTS=str(results), POLL_SECS="0", MAX_POLLS="2", **extra
+        tmp_path,
+        OSC_RESULTS=str(results),
+        **{"POLL_SECS": "0", "MAX_POLLS": "2", **extra},
     )
     return subprocess.run(
         ["sh", str(_OBS / "obs-status.sh")],

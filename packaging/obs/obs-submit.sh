@@ -36,9 +36,13 @@ if ! git -C "$ROOT" rev-parse -q --verify "$TAG^{commit}" >/dev/null; then
     echo "obs-submit: _service builds '$TAG', which is not a tag in this repo" >&2
     exit 1
 fi
+# Two assignments, so a failing `git diff` stops the script rather than the
+# substitution taking `ls-files`'s status alone.
 # shellcheck disable=SC2086 # SHIPPED is a list of paths without spaces
-DRIFT="$(git -C "$ROOT" diff --name-only "$TAG" -- $SHIPPED;
-         git -C "$ROOT" ls-files --others --exclude-standard -- $SHIPPED)"
+CHANGED="$(git -C "$ROOT" diff --name-only "$TAG" -- $SHIPPED)"
+# shellcheck disable=SC2086
+UNTRACKED="$(git -C "$ROOT" ls-files --others --exclude-standard -- $SHIPPED)"
+DRIFT="$(printf '%s\n%s' "$CHANGED" "$UNTRACKED" | sed '/^$/d')"
 if [ -n "$DRIFT" ]; then
     echo "obs-submit: these differ from $TAG, the source OBS will build:" >&2
     echo "$DRIFT" >&2
@@ -51,7 +55,7 @@ fi
 # overrides the URL, for the tests.
 URL="${OBS_SCM_URL:-$(sed -n 's:.*<param name="url">\(.*\)</param>.*:\1:p' "$HERE/_service")}"
 LOCAL="$(git -C "$ROOT" rev-parse "$TAG^{commit}")"
-REMOTE_REFS="$(git ls-remote "$URL" "refs/tags/$TAG" "refs/tags/$TAG^{}")" || {
+REMOTE_REFS="$(git ls-remote -- "$URL" "refs/tags/$TAG" "refs/tags/$TAG^{}")" || {
     echo "obs-submit: could not read $TAG from $URL" >&2
     exit 1
 }
@@ -125,7 +129,7 @@ cd "$CO"
 # archive and refuses when more than one candidate is present (FIBR-0158). An
 # old .obscpio breaks no build, but `osc addremove` would keep it on OBS for
 # good (FIBR-0462).
-rm -f finbreak-*.tar.gz finbreak-*.tar finbreak-*.obscpio
+rm -f finbreak-*.tar finbreak-*.tar.* finbreak-*.obscpio
 
 echo ">>> running source services (obs_scm + tar + set_version)"
 osc -A "$API" service manualrun
@@ -137,8 +141,7 @@ osc -A "$API" add _service finbreak.spec finbreak.dsc finbreak-rpmlintrc \
     finbreak-*.tar.gz vendor.tar.gz debian.tar.gz
 osc -A "$API" addremove
 
-VER="$(sed -n 's/^__version__ = "\(.*\)"/\1/p' "$ROOT/src/finbreak/__init__.py")"
-osc -A "$API" commit -m "${OBS_MSG:-finbreak $VER}"
+osc -A "$API" commit -m "${OBS_MSG:-finbreak ${TAG#v}}"
 
 # 5. Read the package back (FIBR-0317). OBS builds whatever source it holds,
 #    and its builds stayed green on an old one for six releases. Refuse unless
@@ -149,7 +152,7 @@ LISTING="$(osc -A "$API" ls "$PROJ" "$PKG")" || {
     echo "obs-submit: could not list $PROJ/$PKG after the commit" >&2
     exit 1
 }
-HELD="$(printf '%s\n' "$LISTING" | grep -E '^finbreak-.*\.(tar\.gz|tar|obscpio)$' || true)"
+HELD="$(printf '%s\n' "$LISTING" | grep -E '^finbreak-.*\.(tar(\..+)?|obscpio)$' || true)"
 OTHER="$(printf '%s\n' "$HELD" | grep -vxF -e "$WANT" -e "finbreak-${TAG#v}.obscpio" || true)"
 if ! printf '%s\n' "$HELD" | grep -qxF "$WANT" || [ -n "$OTHER" ]; then
     echo "obs-submit: OBS should hold $WANT and no other release's source; it holds:" >&2

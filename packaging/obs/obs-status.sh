@@ -17,8 +17,8 @@ MAX_POLLS="${MAX_POLLS:-80}"
 is_pending() {
     case "$1" in
         scheduled|building|dispatching|blocked|signing|finished|locked|deleting|""|unknown) return 0 ;;
-        # A trailing * marks a result from the previous source, with the
-        # rebuild still queued (FIBR-0317).
+        # osc stars a result that is not current: built from the previous
+        # source with the rebuild queued (FIBR-0317), or not yet published.
         *\*) return 0 ;;
         *) return 1 ;;
     esac
@@ -38,12 +38,13 @@ built_from() {
 }
 
 i=0
+pending=1
 while [ "$i" -lt "$MAX_POLLS" ]; do
     i=$((i + 1))
     printf '[poll %s] ' "$i"
     pending=0
     # osc's error, if any, reaches stderr: a run that cannot reach OBS says why.
-    res="$(osc -A "$API" results "$PROJ" "$PKG")" || res=""
+    res="$(osc -A "$API" results --show-excluded "$PROJ" "$PKG")" || res=""
     [ -n "$res" ] || pending=1
     # Each line: <repo> <arch> <package> <status>
     while read -r repo arch _pkg status _rest; do
@@ -73,14 +74,16 @@ if [ "$pending" -ne 0 ]; then
 fi
 
 echo "=== final ==="
-final="$(osc -A "$API" results "$PROJ" "$PKG")" || { echo "!!! could not read the build results" >&2; exit 1; }
+final="$(osc -A "$API" results --show-excluded "$PROJ" "$PKG")" || { echo "!!! could not read the build results" >&2; exit 1; }
 echo "$final"
 
-# Dump the log tail for any repo that did not succeed. A here-document, not a
-# pipe, so `failed` is set in this shell rather than in a subshell.
+# Dump the log tail for any repo that did not succeed. osc hides an excluded
+# repo unless asked, and excluded means no package at all, so it fails here
+# (FIBR-0463). A here-document, not a pipe, so `failed` is set in this shell
+# rather than in a subshell.
 while read -r repo arch _pkg status _rest; do
     [ -n "${repo:-}" ] || continue
-    if [ "$status" != "succeeded" ] && [ "$status" != "excluded" ] && [ "$status" != "disabled" ]; then
+    if [ "$status" != "succeeded" ] && [ "$status" != "disabled" ]; then
         failed=1
         echo "########## $repo ($status) ##########"
         osc -A "$API" buildlog "$PROJ" "$PKG" "$repo" "$arch" 2>&1 | tail -40
