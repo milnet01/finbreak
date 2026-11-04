@@ -69,6 +69,7 @@ from finbreak.services.batch_import import (
     BatchFile,
     BatchImportService,
     next_question,
+    stored_passwords,
 )
 from finbreak.services.import_ import ImportPreview, ImportService
 from finbreak.services.transactions import (
@@ -855,25 +856,36 @@ class ImportWizardWidget(QWidget):
             return None
 
     def _begin_decrypt(self, data: bytes) -> None:
-        """First decrypt attempt: no password, then the **stored** password once
-        (FIBR-0009 INV-4), then prompt. Trying the stored password only here (entered
-        once per import) structurally guarantees it is attempted at most once — never
-        re-tried on a wrong-password re-prompt, which never re-enters this method."""
+        """First decrypt attempt: no password, then each **stored** password once
+        (FIBR-0009 INV-4), then prompt. Trying them only here (entered once per
+        import) structurally guarantees each is attempted at most once per import —
+        never re-tried on a wrong-password re-prompt, which never re-enters this
+        method."""
         result = self._try_decrypt(data, None)
-        if isinstance(result, bytes):
-            self._after_decrypt(result, None, remember=False)
-        elif result is _NEED_PASSWORD:
-            stored = self._accounts.get_pdf_password(self._target_account_id())
-            if stored is None:
-                self._prompt_pdf_password(data)
-                return
+        if result is not _NEED_PASSWORD:
+            if isinstance(result, bytes):
+                self._after_decrypt(result, None, remember=False)
+            return  # None → a friendly message was already shown; stop
+        for stored in self._stored_pw_ladder():
             retry = self._try_decrypt(data, stored)
             if isinstance(retry, bytes):
                 self._after_decrypt(retry, stored, remember=False)
-            elif retry is _NEED_PASSWORD:
-                self._prompt_pdf_password(data)
-            # retry is None → a friendly message was already shown; stop
-        # result is None → a friendly message was already shown; stop
+                return
+            if retry is None:
+                return  # a friendly message was already shown; stop
+        self._prompt_pdf_password(data)
+
+    def _stored_pw_ladder(self) -> list[str]:
+        """Each remembered PDF password once: the pick-step account's first, as
+        the likeliest, then every other account's (FIBR-0274). FIBR-0249 stores
+        a password on the account the rows land on, which need not be the one
+        picked here. All of them are the same user's, so trying one against
+        another account's statement discloses nothing."""
+        first = self._accounts.get_pdf_password(self._target_account_id())
+        rest = stored_passwords(
+            self._accounts.list_accounts(), self._accounts.get_pdf_password
+        )
+        return [p for p in dict.fromkeys([first, *rest]) if p]
 
     def _prompt_pdf_password(self, data: bytes, *, retry: bool = False) -> None:
         """Show the password dialog **non-blocking** (FIBR-0065). Cancel needs no

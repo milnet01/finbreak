@@ -1552,7 +1552,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   FIBR-0086 § 4.4's quoted code was updated in the same commit. Taken up
   now under the 2026-09-29 instruction to fix every open fix item.
 
-- 📋 [FIBR-0274] **The stored-password auto-try consults only the pick-step account, so a re-targeted statement re-prompts next month.**
+- 🚧 [FIBR-0274] **The stored-password auto-try consults only the pick-step account, so a re-targeted statement re-prompts next month.**
   `_begin_decrypt` looks the remembered password up with
   `get_pdf_password(self._target_account_id())` — necessarily the PICK-STEP
   account, because the destination is not known until the PDF has been
@@ -1584,6 +1584,15 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   correct and the most work.
   Recommendation 2026-11-04: option (a). Try each distinct stored PDF password once, in a fixed order (the pick-step account's first), and restate FIBR-0009 INV-4 as "each stored password at most once per import". Every password is the same user's, so this widens no access; it removes a re-prompt each month. (b) is more correct but keys secrets on parsed file content, which is a bigger design. It changes a stated invariant, so it needs your yes first.
   Decision (user, 2026-11-04): option (a). Restate FIBR-0009 INV-4 as "each stored password at most once per import".
+  Started 2026-11-04: building option (a).
+  Built 2026-11-04 (option a). The wizard's _begin_decrypt tries each
+  distinct stored PDF password once, the pick-step account's first, then
+  every other account's (batch_import.stored_passwords, reused), before
+  prompting. A password found on another account is not re-stored.
+  FIBR-0009 INV-4 and INV-7f restated; impl row in its loop log.
+  CHANGELOG [Unreleased] entry added. Red first: two new wizard tests
+  failed on their own assertions, then passed; gate green. Awaits the
+  batched review-code.
   **Layman:** After the app learns that a locked statement belongs to a different account than the one first selected, it still looks for the remembered password under the first one next month — so you get asked for the password again.
   Kind: enhancement.
   Source: in-session-2026-08-14 (found while fixing FIBR-0249).

@@ -707,6 +707,61 @@ def test_FIBR0249_a_password_the_provisional_account_already_had_is_restored(
     )
 
 
+def test_FIBR0274_a_password_remembered_on_another_account_opens_the_pdf(
+    qtbot, service, tmp_path, monkeypatch
+):
+    """FIBR-0249 moves a remembered password onto the account the rows land on,
+    but the next import looked only at the account picked first, so the user
+    was asked again every month. Every stored password is the user's own."""
+    accounts = AccountService(service.vault)
+    current = accounts.add_account("Current acct", "current").id
+    credit = accounts.add_account("Credit Card acct", "credit_card").id
+    accounts.set_pdf_password(credit, "secret")
+    enc = _encrypt(_fixture("single_table.pdf"), user="secret")
+    path = _write(tmp_path, "locked.pdf", enc)
+    shown = _patch_dialog(monkeypatch, [{"password": "secret"}])
+
+    widget = _wizard(qtbot, service, current)
+    widget._select_file(str(path))
+
+    assert shown == [], "prompted although a stored password opens the file"
+    assert widget._stack.currentIndex() == 1
+    assert accounts.get_pdf_password(current) is None, "nothing new stored"
+    assert accounts.get_pdf_password(credit) == "secret"
+
+
+def test_FIBR0274_each_stored_password_is_tried_once_pick_step_first(
+    qtbot, service, tmp_path, monkeypatch
+):
+    """FIBR-0009 INV-4 as restated: each stored password at most once per
+    import, the pick-step account's first, and a wrong one re-prompts."""
+    accounts = AccountService(service.vault)
+    other = accounts.add_account("Other acct", "current").id
+    credit = accounts.add_account("Credit Card acct", "credit_card").id
+    picked = accounts.add_account("Picked acct", "current").id
+    accounts.set_pdf_password(other, "wrong-1")
+    accounts.set_pdf_password(credit, "wrong-0")  # the picked one's, again
+    accounts.set_pdf_password(picked, "wrong-0")
+    enc = _encrypt(_fixture("single_table.pdf"), user="secret")
+    path = _write(tmp_path, "locked.pdf", enc)
+    shown = _patch_dialog(monkeypatch, [{"password": "secret"}])
+    tried: list[str | None] = []
+    real = PdfImporter.decrypt_to_plaintext
+
+    def _spy(data: bytes, password: str | None) -> bytes:
+        tried.append(password)
+        return real(data, password)
+
+    monkeypatch.setattr(PdfImporter, "decrypt_to_plaintext", staticmethod(_spy))
+
+    widget = _wizard(qtbot, service, picked)
+    widget._select_file(str(path))
+
+    assert tried == [None, "wrong-0", "wrong-1", "secret"], tried
+    assert len(shown) == 1 and retried == [False]
+    assert widget._stack.currentIndex() == 1
+
+
 # --------------------------------------------------------------------------- #
 # INV-8 — v4->v5 migration + credential hygiene
 # --------------------------------------------------------------------------- #

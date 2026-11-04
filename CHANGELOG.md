@@ -21,6 +21,14 @@ signaling per
 
 ## [Unreleased]
 
+### Changed
+
+- **A remembered statement password works whichever account you pick** (FIBR-0274)
+  When a locked PDF's rows went to a different account than the one picked
+  first, its remembered password moved there, and next month's import asked
+  for it again. The import now tries each remembered password once before
+  asking.
+
 ## [1.0.3] - 2026-11-04
 
 **Theme:** Faster reports and transfers, and locking forgets more.
