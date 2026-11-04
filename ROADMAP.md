@@ -1583,7 +1583,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   account; (c) accept the re-prompt and say so in the UI. (b) is the most
   correct and the most work.
   Recommendation 2026-11-04: option (a). Try each distinct stored PDF password once, in a fixed order (the pick-step account's first), and restate FIBR-0009 INV-4 as "each stored password at most once per import". Every password is the same user's, so this widens no access; it removes a re-prompt each month. (b) is more correct but keys secrets on parsed file content, which is a bigger design. It changes a stated invariant, so it needs your yes first.
-  Waiting-on: user (adopt option (a) and restate FIBR-0009 INV-4? I recommend (a), 2026-11-04)
+  Decision (user, 2026-11-04): option (a). Restate FIBR-0009 INV-4 as "each stored password at most once per import".
   **Layman:** After the app learns that a locked statement belongs to a different account than the one first selected, it still looks for the remembered password under the first one next month — so you get asked for the password again.
   Kind: enhancement.
   Source: in-session-2026-08-14 (found while fixing FIBR-0249).
@@ -4738,20 +4738,20 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: investigate.
   Source: review-code-2026-10-22.
 
-- 📋 [FIBR-0457] **The batch-import review table rebuilds every row after each step.**
+- 🚫 [FIBR-0457] **The batch-import review table rebuilds every row after each step.**
   `BatchReviewWidget.refresh` in `ui/import_batch.py` re-reads the
   account list and resets every row. The wizard calls it after each scan
   and run step, so a batch of N files costs O(N^2) cell writes. Fix:
   repaint the one row whose record changed, and keep the full refresh
   for `set_files`. Surfaced by the PR #4 review sweep.
   Measured 2026-11-04 (offscreen Qt, BatchReviewWidget.refresh, mean of 10): 5.2 ms per full refresh at 50 files, 17.0 ms at 200, the batch cap (_MAX_BATCH_FILES). At about two refreshes per file, the worst case adds about 7 s across a 200-file batch, against the import work itself, and no single turn blocks for more than about one frame. A one-row repaint saves little and adds a path where a row can show stale status. Recommendation: drop it.
-  Waiting-on: user (drop FIBR-0457, given the measurement above? I recommend dropping, 2026-11-04)
+  Decision (user, 2026-11-04): dropped on the measurement above.
   **Layman:** Keep a large batch import responsive by redrawing only the file that changed.
   Kind: perf.
   Source: pr-4-review-sweep-2026-10-27 (filed on user request 2026-10-29).
   Lanes: ui/import_batch.py, ui/import_wizard.py.
 
-- 📋 [FIBR-0458] **Each imported PDF is decrypted and normalised more than once.**
+- 🚫 [FIBR-0458] **Each imported PDF is decrypted and normalised more than once.**
   `_normalise_to_plaintext` runs in `decrypt_to_plaintext` (called by
   the wizard and the batch scan), again in `StandardBankImporter.parse`,
   and again in `PdfImporter.candidate_tables`. Each run is a pikepdf
@@ -4759,7 +4759,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   plaintext on, or skip the rewrite on input already normalised.
   Surfaced by the PR #4 review sweep.
   Measured 2026-11-04 on a synthetic 10-page, 550-line text PDF (no real statement): one _normalise_to_plaintext takes 1.9 ms; pdfplumber's text read of the same file takes 1625 ms. The two redundant normalises cost about 0.2% of one read. Skipping the rewrite on "already normalised" input would also skip _refuse_a_compression_bomb, which runs only inside it, so that half of the fix weakens a security check. Recommendation: drop it.
-  Waiting-on: user (drop FIBR-0458, given the measurement above? I recommend dropping, 2026-11-04)
+  Decision (user, 2026-11-04): dropped on the measurement above.
   **Layman:** Import PDF statements faster by reading each file once instead of several times.
   Kind: perf.
   Source: pr-4-review-sweep-2026-10-27 (filed on user request 2026-10-29).
