@@ -4602,7 +4602,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: chore.
   Source: full-audit-2026-09-27 tests lane T12, via FIBR-0422.
 
-- 📋 [FIBR-0454] **Readability fixes in the recurring and transfer services: a dead helper, stale comments, hidden conventions.**
+- ✅ [FIBR-0454] **Readability fixes in the recurring and transfer services: a dead helper, stale comments, hidden conventions.**
   Found by a trial run of the draft review-readability skill, one cold lane
   over services/recurring.py and services/transfer_detection.py; each
   finding checked against the code on 2026-10-19.
@@ -4628,6 +4628,16 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Lead for review-code, unverified: confirm_many skips _record's
   is_confirmed guard, so a stale selection holding an already-confirmed
   transaction could double-link or raise a raw IntegrityError.
+  Done 2026-11-04 (51dda5d): all six points. Point 1's claim was half
+  right: next_expected is built by _add_cadence_n now, but it is still
+  day-clamped, so the comments keep "already clamped" and name the
+  right function. Point 2: documented on the function rather than
+  renamed. Point 4: assert_never after an explicit YEARLY test; mypy
+  goes red when that branch is removed. The confirm_many lead was
+  checked and is not reachable today: every confirm, confirm-all and
+  unlink is in ui/transfers.py and each refreshes the candidate list,
+  so no stale selection reaches confirm_many. A second surface that
+  confirms transfers would make it reachable.
   **Layman:** Tidy up a few misleading names and notes in the code that finds repeat payments and transfers, so the next person to change it does not break the forecast.
   Kind: review-fix.
   Source: review-readability draft trial 2026-10-19 (recurring.py + transfer_detection.py).
