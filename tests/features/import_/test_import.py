@@ -1294,8 +1294,7 @@ def _case_import_carries_stored_password(
     widget, service, tmp_path, monkeypatch, accounts
 ):
     _seed_csv_preview(widget, service, tmp_path, accounts)
-    _current, other = accounts
-    # The rows commit, and the vault locks before the password is carried across
+    # The rows commit, and the vault locks before the password is saved
     # — the one leg whose guard sits AFTER the work has already succeeded.
     from finbreak.services.import_ import ImportResult
 
@@ -1306,7 +1305,7 @@ def _case_import_carries_stored_password(
             inserted_count=0, duplicate_count=0, error_count=0, period_recorded=False
         ),
     )
-    widget._stored_pw = (other, "hunter2", None)
+    widget._remember_pw = "hunter2"
     return widget._on_import
 
 

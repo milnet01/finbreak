@@ -7,12 +7,10 @@ a wrong password (INV-3); Cancel abandons the import cleanly.
 
 It lives in its **own** module (not ``import_wizard``) so the *entered* password
 sits only on this dialog's field while the prompt is open, not smeared across the
-wizard. NOTE: the remember-for-this-account flow added later (FIBR-0057) does
-briefly hold a **confirmed** password on ``ImportWizardWidget._stored_pw`` after a
-successful decrypt — a deliberate, bounded widening of FIBR-0009 INV-11's original
-"never on a wizard attribute", so a re-target can carry the password to the
-committed account; it is cleared on the next file pick. All strings go through
-``tr()`` (coding.md § 5.2).
+wizard. The one exception is a password the user asked to remember: the
+wizard holds it on ``_remember_pw`` from a successful decrypt until the import
+commits or ends, because only then is its account known (FIBR-0009 INV-11,
+FIBR-0465). All strings go through ``tr()`` (coding.md § 5.2).
 """
 
 from __future__ import annotations

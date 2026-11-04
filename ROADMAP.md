@@ -4949,7 +4949,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: fix.
   Source: review-code-2026-11-04b (FIBR-0274/0462/0463 close-out).
 
-- 📋 [FIBR-0465] **The import wizard keeps two plaintext statement passwords on itself until commit, against FIBR-0009 INV-11.**
+- 🚧 [FIBR-0465] **The import wizard keeps two plaintext statement passwords on itself until commit, against FIBR-0009 INV-11.**
   Found by review-code 2026-11-04 (lane 2, MEDIUM). Pre-existing:
   fbb3857 (FIBR-0249, 2026-08-14) added `_stored_pw = (account_id,
   password, prior)`. INV-11 says the wizard holds no password

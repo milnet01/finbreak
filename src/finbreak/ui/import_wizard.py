@@ -170,17 +170,14 @@ class ImportWizardWidget(QWidget):
         # same object really does leave the samples valid.
         self._date_sample_text: str | None = None
         self._date_sample_cache: dict[str, list[str]] = {}
-        # PDF only (FIBR-0057): the (account_id, password) a "remember" persisted
-        # during THIS import, under the provisional file-select account. If the
-        # user then re-targets the import (preview step), the committed rows land
-        # on a different account, so the password is carried there too on commit.
-        self._stored_pw: tuple[int, str, str | None] | None = None
-        # Every exit that is NOT a completed import gives the provisional
-        # account its own password back (FIBR-0321). `done` is the one signal
-        # all four cancel routes reach, so this single connection covers them;
-        # a completed import has already settled and cleared the record, which
-        # makes it a no-op there.
-        self.done.connect(self._release_stored_pw)
+        # PDF only: a verified password the user asked to remember, held until
+        # the import commits and then saved to the account the rows land on
+        # (FIBR-0465). The only password this wizard holds (FIBR-0009 INV-11).
+        # The destination is not known until commit, and the user can still
+        # change it on the preview step, so nothing is written earlier.
+        self._remember_pw: str | None = None
+        # `done` is the one signal every exit reaches, completed or cancelled.
+        self.done.connect(self._drop_remembered_pw)
         # FIBR-0086: the statement's own account details, held only while the
         # preview shows a `no_match` — the Create button reads it. None in every
         # other outcome, which is what keeps creation unreachable from `no_number`.
@@ -533,10 +530,8 @@ class ImportWizardWidget(QWidget):
         # map step is really reached, so an OFX pick after a CSV one cannot
         # inherit the previous file's mapping-step remedy (FIBR-0253).
         self._has_mapping_step = False
-        # A fresh file — give the provisional account its own password back
-        # BEFORE dropping the record, or ours stays on it with its own gone
-        # (FIBR-0321). Dropping alone was the leak.
-        self._release_stored_pw()
+        # A fresh file: the previous one's password is not this one's.
+        self._drop_remembered_pw()
         # Seed the preview step's destination picker from the pick-step choice
         # (FIBR-0057). The confirm combo is the single source of truth for the
         # committed account from here on — every preview + the PDF-password
@@ -911,20 +906,11 @@ class ImportWizardWidget(QWidget):
     def _after_decrypt(
         self, plaintext: bytes, password: str | None, remember: bool
     ) -> None:
-        """Persist a **verified** password (decrypt just succeeded) iff the user
-        asked to remember it — both writes inside the one ``remember and password``
-        branch, so no ``(account_id, None)`` is ever stashed — then continue."""
+        """Hold a **verified** password (decrypt just succeeded) iff the user
+        asked to remember it, then continue. It is saved only when the import
+        commits (``_save_remembered_pw``, FIBR-0465)."""
         if remember and password:
-            account_id = self._target_account_id()
-            # Read the provisional account's OWN password before overwriting it.
-            # A later re-target MOVES ours off this account (FIBR-0249), and the
-            # only safe way to do that is to know what was there rather than
-            # guess — which is what the copy-instead-of-move was working around.
-            prior = self._accounts.get_pdf_password(account_id)
-            self._accounts.set_pdf_password(account_id, password)
-            # Remember which account we stored it under (the provisional
-            # file-select one), so a later re-target carries it across (FIBR-0057).
-            self._stored_pw = (account_id, password, prior)
+            self._remember_pw = password
         self._continue_after_decrypt(plaintext)
 
     def _continue_after_decrypt(self, plaintext: bytes) -> None:
@@ -1566,101 +1552,55 @@ class ImportWizardWidget(QWidget):
                 ),
             )
         try:
-            self._carry_stored_pw_to_committed_account()
+            self._save_remembered_pw()
         except VaultLockedError:
             # The rows are already committed, so this still finishes. An
-            # auto-lock here only leaves the remembered password on the
-            # provisional account; `_release_stored_pw`, wired to `done`, is
-            # itself guarded and settles what it can.
+            # auto-lock here means the password is not remembered, and the
+            # next import asks for it again; no account holds a wrong one.
             pass
         self.done.emit()
 
-    def _carry_stored_pw_to_committed_account(self) -> None:
-        """If a PDF password was remembered during this import (persisted against
-        the provisional file-select account) and the user then re-targeted the
-        import to a different account (FIBR-0057), **move** it to the account the
-        rows actually landed on — so its auto-apply works next time, and no
-        account is left holding a password that is not its own.
+    def _save_remembered_pw(self) -> None:
+        """Save the password the user asked to remember to the account the
+        rows landed on, so the next import of this account's statements opens
+        without asking.
+
+        Written only now, never at decrypt time (FIBR-0465): until commit the
+        destination can still change on the preview step, and an early write
+        to the pick-step account had to be undone on every other exit, which
+        an auto-lock could not do (FIBR-0249, FIBR-0321).
 
         Replaces a password already remembered on the destination: the prompt
         is reached only after every stored password failed on this statement,
         that one included, and the user asked for this one to be kept
         (FIBR-0274; user decision 2026-11-04).
 
-        **Moves rather than copies (FIBR-0249).** A copy left this statement's
-        password permanently on whichever account the pick step happened to show
-        — since FIBR-0086's auto-detect, routinely not the destination — which
-        is a credential filed against the wrong record. The copy existed because
-        the provisional account's password *might* be its own (a stored-password
-        auto-try that failed is exactly what leads to the manual prompt), and
-        removing it blindly would destroy it. So `_after_decrypt` records what
-        was there **before** it wrote, and this restores that value: the
-        account's own password if it had one, and nothing if it did not.
+        A FAILED commit never reaches here, so the password stays held for the
+        retry.
         """
-        if self._stored_pw is None or self._preview is None:
+        if self._remember_pw is None or self._preview is None:
             return
-        stored_account, password, prior = self._stored_pw
-        final_account = self._preview.account_id
-        if stored_account == final_account:
-            self._stored_pw = None  # stored where the rows landed; settled
-            return
-        self._accounts.set_pdf_password(final_account, password)
-        # Restore the provisional account: the entry we wrote there was never
-        # that account's to keep.
-        self._accounts.set_pdf_password(stored_account, prior)
-        self._stored_pw = None  # settled — `_release_stored_pw` must not re-run it
+        password, self._remember_pw = self._remember_pw, None
+        self._accounts.set_pdf_password(self._preview.account_id, password)
 
     def clear_rows(self) -> None:
         """Drop the parsed statement at LOCK time (FIBR-0322): the raw text, the
         parsed OFX statements, the decrypted PDF table cells, the batch and every
         password held for it. The shell's item-model clear reaches none of
-        them. The stored-password record goes too: after a lock it can no
-        longer be written back (see ``_release_stored_pw``)."""
+        them. The password held for "remember" goes too, unsaved."""
         self._text = None
         self._date_sample_text = None
         self._ofx_statements = []
         self._pdf_candidates = []
         self._batch_files = []
         self._batch.discard_passwords()
-        self._stored_pw = None
+        self._drop_remembered_pw()
 
-    def _release_stored_pw(self) -> None:
-        """Give the provisional account its password back, on any exit that is
-        NOT a completed import (FIBR-0321).
-
-        The write in ``_after_decrypt`` is eager: it happens before the
-        destination is known, because the decrypt needs the password now and
-        the pick-step account is the only one there is. Only a successful
-        commit used to undo it, so cancelling, or picking a different file,
-        left ours on an account it was never that account's to hold — with
-        that account's own password discarded.
-
-        Reached from ``done``, which every cancel route emits, so one
-        connection covers the pick step, the preview step, the map step and
-        the batch review. After a completed import
-        ``_carry_stored_pw_to_committed_account`` has already settled and
-        cleared the record, so this is a no-op there. A FAILED commit
-        deliberately does not settle: the wizard stays open for a retry, and
-        the retry needs the record.
-
-        **An idle auto-lock is the one exit this cannot repair**, and that is
-        stated rather than hidden: the shell destroys the wizard without
-        emitting ``done``, and the vault is already locked, so there is nothing
-        to write with. The wrong account keeps the entry until the user next
-        edits it. Closing that needs the write to stop being eager, which is
-        FIBR-0321's other branch and a redesign of this step.
-        """
-        if self._stored_pw is None:
-            return
-        stored_account, _password, prior = self._stored_pw
-        self._stored_pw = None
-        try:
-            self._accounts.set_pdf_password(stored_account, prior)
-        except VaultLockedError:
-            # An auto-lock between the write and this call. Nothing can be
-            # written to a locked vault, and raising out of a Qt slot is the
-            # crash class FIBR-0212 exists to stop.
-            return
+    def _drop_remembered_pw(self) -> None:
+        """Forget the password held for "remember" without saving it: the
+        import ended (``done``), was locked, or moved on to another file. A
+        completed import has already saved and cleared it."""
+        self._remember_pw = None
 
     # -- the batch (FIBR-0085) ------------------------------------------------
     #

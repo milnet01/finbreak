@@ -548,10 +548,13 @@ def test_INV7f_remembered_password_auto_applies_no_prompt(
     qtbot, service, tmp_path, monkeypatch
 ):
     acct = _acct(service)
+    ImportService(service.vault).save_profile("bank", _PDF_HEADER, _PDF_MAPPING)
     enc = _encrypt(_fixture("single_table.pdf"), user="secret")
     path = _write(tmp_path, "locked.pdf", enc)
     _patch_dialog(monkeypatch, [{"password": "secret", "remember": True}])
-    _wizard(qtbot, service, acct)._select_file(str(path))
+    first = _wizard(qtbot, service, acct)
+    first._select_file(str(path))
+    first._import_button.click()  # saved when the import completes (FIBR-0465)
     assert AccountService(service.vault).get_pdf_password(acct) == "secret", "stored"
 
     # second import: the dialog must not be constructed at all (auto-applied).
@@ -564,7 +567,7 @@ def test_INV7f_remembered_password_auto_applies_no_prompt(
     monkeypatch.setattr(import_wizard, "PasswordDialog", _NoDialog)
     widget = _wizard(qtbot, service, acct)
     widget._select_file(str(path))
-    assert widget._stack.currentIndex() == 1, "reached the map step with no prompt"
+    assert widget._stack.currentIndex() == 2, "reached the preview with no prompt"
 
 
 def test_INV7f_stored_password_that_fails_falls_back_to_prompt(
@@ -624,7 +627,7 @@ def test_FIBR0057_remembered_pdf_password_follows_a_retarget(
     widget = _wizard(qtbot, service, current)
     widget._select_file(str(path))
     assert widget._stack.currentIndex() == 2, "profile + single table -> preview"
-    assert accounts.get_pdf_password(current) == "secret", "stored under provisional"
+    assert accounts.get_pdf_password(current) is None, "nothing saved before commit"
 
     # The user corrects the destination to Credit Card, then imports.
     widget._confirm_account_combo.setCurrentIndex(
@@ -654,9 +657,9 @@ def test_FIBR0249_retarget_MOVES_the_password_off_the_provisional_account(
 
     widget = _wizard(qtbot, service, current)
     widget._select_file(str(path))
-    assert accounts.get_pdf_password(current) == "secret", (
-        "precondition: it is stored on the provisional account first, because "
-        "the destination is not known until the PDF is decrypted and parsed"
+    assert accounts.get_pdf_password(current) is None, (
+        "nothing is saved before commit, because the destination is not known "
+        "until then (FIBR-0465)"
     )
 
     widget._confirm_account_combo.setCurrentIndex(
@@ -934,16 +937,17 @@ def test_INV11_password_not_in_exception_message():
 
 
 def test_INV11_wizard_defines_no_password_attribute():
-    # Credential-hygiene backstop (FIBR-0009 INV-11): the wizard holds no
-    # password-named *attribute* (a stored credential value). The `(?!\()` excludes
-    # method *calls* — FIBR-0065's state machine has `self._prompt_pdf_password(...)`
-    # / `self._on_pdf_password(...)` methods, which carry the password only as a
-    # local/param, never on the long-lived wizard. `self._stored_pw` (the FIBR-0057
-    # re-target carry) uses "pw", not "password", so it is out of scope by name.
+    # Credential-hygiene backstop (FIBR-0009 INV-11): the one password the
+    # wizard may hold is `_remember_pw`, until commit (FIBR-0465). Only an
+    # assignment creates an attribute, so methods such as
+    # `_prompt_pdf_password` are not matched. "pw" is matched too: an earlier
+    # holder dodged this check by that spelling.
     import finbreak.ui.import_wizard as wizard_module
 
     src = Path(wizard_module.__file__).read_text(encoding="utf-8")
-    assert not re.search(r"self\._[A-Za-z0-9_]*password(?!\()", src)
+    assigned = r"self\.(_\w*(?:password|pw))\b(?:\s*:[^=\n]+)?\s*=(?!=)"
+    holders = set(re.findall(assigned, src))
+    assert holders == {"_remember_pw"}, holders
 
 
 def test_candidate_tables_maps_pdf_parse_error_to_value_error(monkeypatch):
@@ -978,8 +982,8 @@ def test_FIBR0321_cancelling_restores_the_provisional_accounts_own_password(
     on the provisional account with that account's own password discarded — a
     credential filed against the wrong record, and a real one destroyed.
 
-    The write is eager because the decrypt needs the password before any
-    destination is known; what was missing is undoing it on the way out.
+    FIBR-0465 removed the early write, so there is nothing left to undo;
+    this now checks the account ends as it began.
 
     FIBR-0389 B5: this emitted ``done`` instead of clicking a Cancel, and never
     reached the map step's Cancel (which is not wired straight to ``done``) or
@@ -1001,9 +1005,8 @@ def test_FIBR0321_cancelling_restores_the_provisional_accounts_own_password(
 
     widget = _wizard(qtbot, service, current)
     widget._select_file(str(path))
-    assert accounts.get_pdf_password(current) == "secret", (
-        "precondition: the eager write must have landed, or there is nothing "
-        "for the cancel to undo"
+    assert accounts.get_pdf_password(current) == own, (
+        "nothing is saved before commit (FIBR-0465)"
     )
     page_index = _STEP_PREVIEW if step == "preview" else _STEP_MAP
     assert widget._stack.currentIndex() == page_index, "precondition: that step"
@@ -1038,7 +1041,9 @@ def test_FIBR0321_picking_another_file_restores_before_dropping_the_record(
 
     widget = _wizard(qtbot, service, current)
     widget._select_file(str(locked))
-    assert accounts.get_pdf_password(current) == "secret", "precondition: written"
+    assert accounts.get_pdf_password(current) == "the accounts own password", (
+        "nothing is saved before commit (FIBR-0465)"
+    )
 
     widget._select_file(str(plain))  # the user changes their mind about the file
 
@@ -1107,6 +1112,37 @@ def test_FIBR0321_remembering_without_retargeting_keeps_the_password(
     assert accounts.get_pdf_password(current) == "secret", (
         "INV-7f: the user ticked Remember and imported to the account it was "
         "stored against, and the password is gone.\n"
+        f"  actual:   {accounts.get_pdf_password(current)!r}"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# FIBR-0465 — a remembered password is written only when the import commits
+# --------------------------------------------------------------------------- #
+def test_FIBR0465_an_auto_lock_before_commit_leaves_the_account_untouched(
+    qtbot, service, tmp_path, monkeypatch
+):
+    """The exit FIBR-0321 said it could not repair. An idle auto-lock clears
+    the wizard and destroys it without `done`, so an early write to the
+    pick-step account was never undone, and that account's own password was
+    lost. Writing only at commit leaves nothing to undo."""
+    accounts = AccountService(service.vault)
+    current = accounts.add_account("Current acct", "current").id
+    accounts.set_pdf_password(current, "its-own-one")
+    ImportService(service.vault).save_profile("bank", _PDF_HEADER, _PDF_MAPPING)
+    enc = _encrypt(_fixture("single_table.pdf"), user="secret")
+    path = _write(tmp_path, "locked.pdf", enc)
+    _patch_dialog(monkeypatch, [{"password": "secret", "remember": True}])
+
+    widget = _wizard(qtbot, service, current)
+    widget._select_file(str(path))
+    assert widget._stack.currentIndex() == 2, "precondition: on the preview step"
+
+    widget.clear_rows()  # what the shell does at lock time (FIBR-0322)
+
+    assert accounts.get_pdf_password(current) == "its-own-one", (
+        "a lock before commit left this statement's password on the pick-step "
+        "account in place of its own.\n"
         f"  actual:   {accounts.get_pdf_password(current)!r}"
     )
 

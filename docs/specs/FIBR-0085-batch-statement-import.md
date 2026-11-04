@@ -111,7 +111,7 @@ stronger-sounding "before any work" is impossible.
 `ui/import_wizard.py::ImportWizardWidget` selects a file with
 `QFileDialog.getOpenFileName` (singular) and holds each run's state in
 instance scalars — `_text`, `_header`, `_source_path`, `_preview`,
-`_ofx_statements`, `_pdf_candidates`, `_date_ambiguous`, `_stored_pw`,
+`_ofx_statements`, `_pdf_candidates`, `_date_ambiguous`, `_remember_pw`,
 `_pending_hint`. One file's worth of everything. `ImportWizardWidget.done` is
 a payload-free `Signal()` that `MainWindow._on_import_done` handles by
 rebuilding the workspace, so finishing an import tears the screen down.

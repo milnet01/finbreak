@@ -1362,7 +1362,7 @@ def test_FIBR0410_a_single_file_import_warns_about_a_disagreeing_balance(
             closing_balance_mismatch=True,
         ),
     )
-    monkeypatch.setattr(widget, "_carry_stored_pw_to_committed_account", lambda: None)
+    monkeypatch.setattr(widget, "_save_remembered_pw", lambda: None)
     warnings: list[str] = []
     monkeypatch.setattr(
         wizard_mod.QMessageBox,
