@@ -1582,6 +1582,8 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   the FILE (issuing bank, or the detected account number) rather than by
   account; (c) accept the re-prompt and say so in the UI. (b) is the most
   correct and the most work.
+  Recommendation 2026-11-04: option (a). Try each distinct stored PDF password once, in a fixed order (the pick-step account's first), and restate FIBR-0009 INV-4 as "each stored password at most once per import". Every password is the same user's, so this widens no access; it removes a re-prompt each month. (b) is more correct but keys secrets on parsed file content, which is a bigger design. It changes a stated invariant, so it needs your yes first.
+  Waiting-on: user (adopt option (a) and restate FIBR-0009 INV-4? I recommend (a), 2026-11-04)
   **Layman:** After the app learns that a locked statement belongs to a different account than the one first selected, it still looks for the remembered password under the first one next month — so you get asked for the password again.
   Kind: enhancement.
   Source: in-session-2026-08-14 (found while fixing FIBR-0249).
@@ -1651,8 +1653,16 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: security.
   Source: indie-review-2026-07-23.
 
-- 📋 [FIBR-0180] **Decide deliberately whether to move the CI/build base image off Debian 12 (bookworm, now oldstable).**
+- ✅ [FIBR-0180] **Decide deliberately whether to move the CI/build base image off Debian 12 (bookworm, now oldstable).**
   ci.yml, ci-docker.sh and build-smoke.sh all pin python:3.12-slim-bookworm. Debian 13 (trixie) has been stable since Aug 2025, so bookworm is oldstable and a python:3.12-slim-trixie image exists. This is NOT a routine bump: the build image's glibc (~2.36) is the EFFECTIVE floor of every frozen artifact (libpython links it - see the pyproject.toml dependencies comment), so moving to trixie raises the minimum glibc an AppImage/.exe user needs. The debt sweep added that rationale as a comment on ci.yml's container line rather than bumping. Decide: (a) hold on bookworm until the AppImage's target-distro floor justifies moving, or (b) bump all three call-sites together and re-run build-smoke to confirm the clean-room launch still passes on the oldest distro we claim to support. Either way, record the decision so the next sweep does not re-raise it.
+  Decision 2026-11-04 (mine, delegated while the user is away): (a) hold
+  on bookworm. Trixie's glibc is 2.41 and Ubuntu 24.04 LTS ships 2.39,
+  so a trixie-built AppImage or onedir would not start on the current
+  Ubuntu LTS. Bookworm's 2.36 runs on it. Revisit when the oldest distro
+  finbreak supports ships glibc 2.41 or newer, or when bookworm leaves
+  Debian LTS. Keep refreshing the pinned bookworm digest on each
+  dependency sweep, as ci.yml says. A sweep should not re-raise this
+  before then.
   **Layman:** Our build machine runs an older Debian. Moving to the newer one is a trade-off: it may stop finbreak running on older Linux systems, so it needs a decision rather than a routine update.
   Kind: chore.
   Source: debt-sweep-2026-07-26.
