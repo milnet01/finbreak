@@ -179,7 +179,10 @@ below cover the two surfaces; there is no C++ in the codebase.
   strings with `+` or bare f-strings, and don't wrap non-display strings
   (log lines, DB keys, enum values). Pass **string literals** to `tr()` /
   `translate()` — `lupdate` extracts only literal arguments, so a string built
-  in a variable or helper produces an empty catalog entry. This holds from the
+  in a variable or helper produces an empty catalog entry. It also skips a
+  literal call inside an f-string, so assign the translated text to a variable
+  first and put the variable in the f-string (measured 2026-11-04, FIBR-0311).
+  `tests/features/i18n/` checks both. This holds from the
   first UI (P02) — it makes the FIBR-0017 (P12) i18n pass a translate-and-ship
   step instead of a rewrite.
 - **Live language switching:** widgets re-translate on `QEvent.LanguageChange`
