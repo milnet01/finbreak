@@ -4719,6 +4719,8 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   and run step, so a batch of N files costs O(N^2) cell writes. Fix:
   repaint the one row whose record changed, and keep the full refresh
   for `set_files`. Surfaced by the PR #4 review sweep.
+  Measured 2026-11-04 (offscreen Qt, BatchReviewWidget.refresh, mean of 10): 5.2 ms per full refresh at 50 files, 17.0 ms at 200, the batch cap (_MAX_BATCH_FILES). At about two refreshes per file, the worst case adds about 7 s across a 200-file batch, against the import work itself, and no single turn blocks for more than about one frame. A one-row repaint saves little and adds a path where a row can show stale status. Recommendation: drop it.
+  Waiting-on: user (drop FIBR-0457, given the measurement above? I recommend dropping, 2026-11-04)
   **Layman:** Keep a large batch import responsive by redrawing only the file that changed.
   Kind: perf.
   Source: pr-4-review-sweep-2026-10-27 (filed on user request 2026-10-29).
@@ -4731,6 +4733,8 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   open and rewrite of the whole file. Fix: normalise once and pass the
   plaintext on, or skip the rewrite on input already normalised.
   Surfaced by the PR #4 review sweep.
+  Measured 2026-11-04 on a synthetic 10-page, 550-line text PDF (no real statement): one _normalise_to_plaintext takes 1.9 ms; pdfplumber's text read of the same file takes 1625 ms. The two redundant normalises cost about 0.2% of one read. Skipping the rewrite on "already normalised" input would also skip _refuse_a_compression_bomb, which runs only inside it, so that half of the fix weakens a security check. Recommendation: drop it.
+  Waiting-on: user (drop FIBR-0458, given the measurement above? I recommend dropping, 2026-11-04)
   **Layman:** Import PDF statements faster by reading each file once instead of several times.
   Kind: perf.
   Source: pr-4-review-sweep-2026-10-27 (filed on user request 2026-10-29).
