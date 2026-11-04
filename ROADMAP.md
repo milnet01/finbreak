@@ -3980,7 +3980,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: fix.
   Source: full-audit-2026-09-27 code lanes 5 and 6 (queued by FIBR-0405).
 
-- 📋 [FIBR-0426] **A batch-import UI test crashed its test worker once under the full gate.**
+- 🚧 [FIBR-0426] **A batch-import UI test crashed its test worker once under the full gate.**
   Seen 2026-09-29 during FIBR-0405's gate: pytest-xdist reported
   "worker 'gw5' crashed while running test_batch_import_ui.py::
   test_INV8_cancelling_a_prompt_skips_that_file_immediately". Alone it
