@@ -1663,6 +1663,8 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Debian LTS. Keep refreshing the pinned bookworm digest on each
   dependency sweep, as ci.yml says. A sweep should not re-raise this
   before then.
+  Release note (1.0.3): no CHANGELOG entry. A recorded decision; nothing
+  a user sees changed.
   **Layman:** Our build machine runs an older Debian. Moving to the newer one is a trade-off: it may stop finbreak running on older Linux systems, so it needs a decision rather than a routine update.
   Kind: chore.
   Source: debt-sweep-2026-07-26.
@@ -1691,6 +1693,8 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   inside an f-string (probe, any quote style). The i18n guard now
   reports that shape, coding.md says so, and _KNOWN_OFFENDER and its
   expiry leg are gone.
+  Release note (1.0.3): no CHANGELOG entry. Translation plumbing; the
+  app ships no translations yet, so nothing a user sees changed.
   **Layman:** The PDF report's labels look translated in the code but would come out in English in every language.
   Kind: refactor.
   Source: in-session-2026-08-25 (FIBR-0310 R3).
@@ -1774,6 +1778,8 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   unless it was named. Locked by
   test_batch_import_ui.py::test_FIBR0388_a_same_layout_batch_asks_about_its_columns_once,
   parametrised named and unnamed; both pass. No code change.
+  Release note (1.0.3): no CHANGELOG entry. Found already fixed; no code
+  changed.
   **Layman:** Import thirty spreadsheets of the same layout without naming a saved layout, and it still asks you thirty times.
   Kind: ux.
   Source: in-session-2026-09-03 (observed while fixing FIBR-0319).
@@ -4670,6 +4676,8 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   unlink is in ui/transfers.py and each refreshes the candidate list,
   so no stale selection reaches confirm_many. A second surface that
   confirms transfers would make it reachable.
+  Release note (1.0.3): no CHANGELOG entry. Code comments and names
+  only; no behaviour change.
   **Layman:** Tidy up a few misleading names and notes in the code that finds repeat payments and transfers, so the next person to change it does not break the forecast.
   Kind: review-fix.
   Source: review-readability draft trial 2026-10-19 (recurring.py + transfer_detection.py).
@@ -4799,6 +4807,8 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   ubuntu:24.04 containers: 1.0.2-1 installs and --self-test prints
   FINBREAK_SELFTEST_OK. The steps use wget rather than curl, because a
   default Debian install may not include curl.
+  Release note (1.0.3): no CHANGELOG entry. A README fix, not an app
+  change.
   **Layman:** The README tells Debian and Ubuntu users to use the AppImage, when a normal apt package already works for them.
   Kind: doc-fix.
   Source: in-session-2026-11-03 (1.0.2 OBS check).
