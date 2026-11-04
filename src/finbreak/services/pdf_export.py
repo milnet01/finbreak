@@ -52,12 +52,18 @@ from finbreak.ui.charts import ChartTheme, build_donut_chart, build_trend_chart
 from finbreak.vault import Vault
 
 
-def _tr(text: str) -> str:
-    """Translate outside a QObject (the service isn't one). No ``.qm`` is loaded
-    yet, so this returns the source string — the `tr()` convention that keeps every
-    user-facing string translatable (coding.md § 5.2), the non-widget analogue of
-    ``self.tr()``."""
-    return QCoreApplication.translate("PdfExport", text)
+def _income_spending_net() -> tuple[str, str, str]:
+    """The three summary labels, shared by the summary table, the per-account
+    table and the trend chart. The service is not a QObject, so it calls
+    ``QCoreApplication.translate`` with a literal context and text: that is
+    the shape ``pyside6-lupdate`` extracts. A wrapper taking the text as an
+    argument extracts nothing, and neither does a call inside an f-string
+    (FIBR-0311)."""
+    return (
+        QCoreApplication.translate("PdfExport", "Income"),
+        QCoreApplication.translate("PdfExport", "Spending"),
+        QCoreApplication.translate("PdfExport", "Net"),
+    )
 
 
 def period_filename_slug(prefs: ReportPrefs, today: date) -> str:
@@ -252,10 +258,12 @@ class PdfExportService:
         """``All accounts`` for ``None``; the names comma-joined for ≤ 3; ``{n}
         accounts`` beyond 3 (a bounded header string, D2)."""
         if options.account_ids is None:
-            return _tr("All accounts")
+            return QCoreApplication.translate("PdfExport", "All accounts")
         names = [a.name for a in self._accounts_in_scope(options)]
         if len(names) > 3:
-            return _tr("{n} accounts").format(n=len(names))
+            return QCoreApplication.translate("PdfExport", "{n} accounts").format(
+                n=len(names)
+            )
         return ", ".join(names)
 
     def _period_label(self, options: ExportOptions, today: date) -> str:
@@ -267,33 +275,41 @@ class PdfExportService:
             return format_year(end.year)
         if prefs.mode == MODE_YEAR_TO_DATE:
             pref = self._date_pref()
-            return _tr("Year to date ({start} – {end})").format(
+            return QCoreApplication.translate(
+                "PdfExport", "Year to date ({start} – {end})"
+            ).format(
                 start=format_date(start.isoformat(), pref),
                 end=format_date(end.isoformat(), pref),
             )
         # QLocale, not calendar.month_name: that one is C-locale English whatever
         # the app's language, in a module where every other string goes through
-        # _tr(). Composed through a template rather than an f-string, because
+        # translate(). Composed through a template rather than an f-string, because
         # month/year order is what some locales reorder (coding.md 5.2). Same
         # spelling as ui/month_summary.py (FIBR-0327).
-        month = _tr("{month_name} {year}").format(
+        month = QCoreApplication.translate("PdfExport", "{month_name} {year}").format(
             month_name=QLocale().standaloneMonthName(end.month),
             year=format_year(end.year),
         )
         if prefs.mode == MODE_CURRENT_MONTH:
-            return _tr("This month ({label})").format(label=month)
+            return QCoreApplication.translate(
+                "PdfExport", "This month ({label})"
+            ).format(label=month)
         if prefs.mode == MODE_PREVIOUS_MONTH:
-            return _tr("Previous month ({label})").format(label=month)
+            return QCoreApplication.translate(
+                "PdfExport", "Previous month ({label})"
+            ).format(label=month)
         return month  # SPECIFIC_MONTH — the month alone, no redundant parenthetical
 
     def _header_html(self, options: ExportOptions, today: date, symbol: str) -> str:
-        title = _tr("finbreak — Financial Report")
-        generated = _tr("Generated {date} · Accounts: {names} · {currency}").format(
+        title = QCoreApplication.translate("PdfExport", "finbreak — Financial Report")
+        generated = QCoreApplication.translate(
+            "PdfExport", "Generated {date} · Accounts: {names} · {currency}"
+        ).format(
             date=escape(format_date(today.isoformat(), self._date_pref())),
             names=escape(self._account_names(options)),
             currency=escape(symbol),
         )
-        period = _tr("Period: {label}").format(
+        period = QCoreApplication.translate("PdfExport", "Period: {label}").format(
             label=escape(self._period_label(options, today))
         )
         return f"<h1>{escape(title)}</h1><p>{generated}</p><p>{period}</p>"
@@ -308,7 +324,8 @@ class PdfExportService:
         symbol: str,
     ) -> str:
         combined = reporting.summary(options.prefs, options.account_ids, today)
-        html = f"<h2>{_tr('Summary')}</h2>" + self._summary_table(combined, symbol)
+        heading = QCoreApplication.translate("PdfExport", "Summary")
+        html = f"<h2>{heading}</h2>" + self._summary_table(combined, symbol)
         in_scope = self._accounts_in_scope(options)
         if len(in_scope) > 1:
             # Per-account lines (multi-account only, INV-5): each over its own set,
@@ -317,10 +334,12 @@ class PdfExportService:
                 self._per_account_row(reporting, options.prefs, today, symbol, acct)
                 for acct in in_scope
             )
+            by_account = QCoreApplication.translate("PdfExport", "By account")
+            income, spending, net = _income_spending_net()
             html += (
-                f"<h3>{_tr('By account')}</h3><table>"
-                f"<tr><th></th><th>{_tr('Income')}</th>"
-                f"<th>{_tr('Spending')}</th><th>{_tr('Net')}</th></tr>"
+                f"<h3>{by_account}</h3><table>"
+                f"<tr><th></th><th>{income}</th>"
+                f"<th>{spending}</th><th>{net}</th></tr>"
                 f"{rows}</table>"
             )
         return html
@@ -332,11 +351,12 @@ class PdfExportService:
         inc = escape(_format_amount(s.income, symbol, style))
         spend = escape(_format_amount(s.expenditure, symbol, style))
         net = escape(_format_amount(s.net, symbol, style))
+        income, spending, net_label = _income_spending_net()
         return (
             "<table>"
-            f"<tr><td>{_tr('Income')}</td><td>{inc}</td></tr>"
-            f"<tr><td>{_tr('Spending')}</td><td>{spend}</td></tr>"
-            f"<tr><td>{_tr('Net')}</td><td>{net}</td></tr>"
+            f"<tr><td>{income}</td><td>{inc}</td></tr>"
+            f"<tr><td>{spending}</td><td>{spend}</td></tr>"
+            f"<tr><td>{net_label}</td><td>{net}</td></tr>"
             "</table>"
         )
 
@@ -369,10 +389,14 @@ class PdfExportService:
         )
         trend = reporting.monthly_trend(options.prefs, options.account_ids, today)
         images: list[tuple[str, QImage]] = []
-        parts = [f"<h2>{_tr('Charts')}</h2>"]
+        heading = QCoreApplication.translate("PdfExport", "Charts")
+        parts = [f"<h2>{heading}</h2>"]
         if spending:
             donut = build_donut_chart(
-                spending, _tr("Uncategorised"), _tr("Other"), theme.chart
+                spending,
+                QCoreApplication.translate("PdfExport", "Uncategorised"),
+                QCoreApplication.translate("PdfExport", "Other"),
+                theme.chart,
             )
             images.append(("finbreak://chart/donut", self._rasterise(donut)))
             parts.append('<img src="finbreak://chart/donut" width="500">')
@@ -380,9 +404,13 @@ class PdfExportService:
             # Empty period: the on-screen dashboard shows a placeholder label, not a
             # slice-less blank donut — mirror that per-surface here (INV-13). The
             # trend still renders (an all-zero bar chart is a valid, non-error view).
-            parts.append(f"<p>{_tr('No spending in this period')}</p>")
+            empty = QCoreApplication.translate(
+                "PdfExport", "No spending in this period"
+            )
+            parts.append(f"<p>{empty}</p>")
+        income_label, spending_label, _net = _income_spending_net()
         trend_chart = build_trend_chart(
-            trend, _tr("Income"), _tr("Spending"), theme.chart
+            trend, income_label, spending_label, theme.chart
         )
         images.append(("finbreak://chart/trend", self._rasterise(trend_chart)))
         parts.append('<img src="finbreak://chart/trend" width="500">')
@@ -410,18 +438,24 @@ class PdfExportService:
         # Read once, not per row — it is a vault read.
         date_pref = self._date_pref()
         negative_style = self._negative_style()
-        header = f"<tr><th>{_tr('Date')}</th>"
+        columns = [QCoreApplication.translate("PdfExport", "Date")]
         if show_account:
-            header += f"<th>{_tr('Account')}</th>"
-        header += (
-            f"<th>{_tr('Description')}</th><th>{_tr('Category')}</th>"
-            f"<th>{_tr('Amount')}</th></tr>"
-        )
+            columns.append(QCoreApplication.translate("PdfExport", "Account"))
+        columns += [
+            QCoreApplication.translate("PdfExport", "Description"),
+            QCoreApplication.translate("PdfExport", "Category"),
+            QCoreApplication.translate("PdfExport", "Amount"),
+        ]
+        header = "<tr>" + "".join(f"<th>{c}</th>" for c in columns) + "</tr>"
         body_rows = []
         for txn, disp, acct, cat in selected:
             # Marker keyed on the transfer-id SET, not a category name, so a real
             # category literally named "Transfer" is unaffected (INV-6).
-            category_cell = _tr("⇄ Transfer") if txn.id in transfer_ids else escape(cat)
+            category_cell = (
+                QCoreApplication.translate("PdfExport", "⇄ Transfer")
+                if txn.id in transfer_ids
+                else escape(cat)
+            )
             # The user's date format, as the header and the period line above
             # already use (FIBR-0013 D6). Rendering the raw stored ISO here put
             # two date conventions in one document -- "Generated 11/07/2026" over
@@ -435,12 +469,14 @@ class PdfExportService:
                 f"<td>{escape(_format_amount(disp, symbol, negative_style))}</td>"
             )
             body_rows.append("<tr>" + "".join(cells) + "</tr>")
-        footnote_text = _tr(
+        footnote_text = QCoreApplication.translate(
+            "PdfExport",
             "Summary and charts exclude money moved between your own "
-            "accounts (transfers)."
+            "accounts (transfers).",
         )
+        heading = QCoreApplication.translate("PdfExport", "Transactions")
         return (
-            f"<h2>{_tr('Transactions')}</h2>"
+            f"<h2>{heading}</h2>"
             f"<table>{header}{''.join(body_rows)}</table>"
             f"<p>{footnote_text}</p>"
         )

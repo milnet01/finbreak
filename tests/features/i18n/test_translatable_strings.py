@@ -17,6 +17,11 @@ and neither of the others::
     QCoreApplication.translate(CTX, "text")     -> DROPPED
     helper("text")  # wrapper calling translate -> DROPPED
 
+and a literal call inside an f-string is dropped too (measured 2026-11-04,
+FIBR-0311), whatever the quotes::
+
+    f"<h2>{self.tr('text')}</h2>"               -> DROPPED
+
 An AST walk rather than a ``pyside6-lupdate`` run: the rule is about the shape
 of the call, the walk needs no tool on PATH, and it names the offending line
 instead of reporting an absence from a catalog.
@@ -52,12 +57,21 @@ def _is_literal_str(node: ast.expr) -> bool:
 def _offences(path: Path) -> list[str]:
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     found: list[str] = []
+    in_fstring = {
+        id(inner)
+        for joined in ast.walk(tree)
+        if isinstance(joined, ast.JoinedStr)
+        for inner in ast.walk(joined)
+    }
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
             continue
         name = node.func.attr
         wanted = _LITERAL_ARGS.get(name)
         if wanted is None:
+            continue
+        if id(node) in in_fstring:
+            found.append(f"{path.name}:{node.lineno}: {name}() inside an f-string")
             continue
         for index in wanted:
             if index >= len(node.args):
@@ -71,22 +85,8 @@ def _offences(path: Path) -> list[str]:
     return found
 
 
-# The one module still holding the wrapper shape. NOT an allowance: it has 30
-# call sites, a third of them inside f-strings where the inlined call blows the
-# line limit, so making it conform is a readability refactor of the PDF renderer
-# rather than the plumbing fix FIBR-0310 R3 is. Filed as FIBR-0311 and excluded
-# here BY NAME, with the leg below failing once it is clean so the exception
-# cannot outlive the work.
-_KNOWN_OFFENDER = "pdf_export.py"
-
-
 def test_no_tr_call_takes_a_non_literal_argument() -> None:
-    offences = [
-        line
-        for path in sorted(_SRC.rglob("*.py"))
-        if path.name != _KNOWN_OFFENDER
-        for line in _offences(path)
-    ]
+    offences = [line for path in sorted(_SRC.rglob("*.py")) for line in _offences(path)]
     assert not offences, (
         "a tr() / translate() argument lupdate reads is not a string literal, so "
         "these strings extract to an EMPTY catalog entry and ship "
@@ -111,31 +111,16 @@ def test_the_walk_actually_sees_a_planted_offence(tmp_path: Path) -> None:
         "        QCoreApplication.translate(CTX, 'literal')\n"
         "    def c(self):\n"
         "        self.tr(f'{MSG} interpolated')\n"
+        "    def d(self):\n"
+        "        return f'<h2>{self.tr(\"literal\")}</h2>'\n"
         "    def ok(self):\n"
         "        self.tr('a literal')\n"
         "        QCoreApplication.translate('Ctx', 'a literal')\n",
         encoding="utf-8",
     )
     lines = _offences(planted)
-    assert len(lines) == 3, (
-        "the walk must catch all three dropped shapes and neither of the two "
+    assert len(lines) == 4, (
+        "the walk must catch all four dropped shapes and neither of the two "
         "good ones, or a green run above proves nothing.\n"
-        f"  expected: 3 offences\n  actual:   {len(lines)} -- {lines}"
-    )
-
-
-def test_the_known_offender_is_still_one() -> None:
-    """The exclusion above expires by failing, not by being remembered.
-
-    A named exception that stays green after the work lands is how a stale
-    allowance survives a codebase for years. When ``pdf_export.py`` conforms,
-    this leg goes red and both it and ``_KNOWN_OFFENDER`` come out.
-    """
-    offences = _offences(_SRC / "services" / _KNOWN_OFFENDER)
-    assert offences, (
-        f"{_KNOWN_OFFENDER} no longer takes a non-literal tr()/translate() "
-        "argument, so the exclusion in this module is spent: delete "
-        "`_KNOWN_OFFENDER`, its use in the leg above, and this leg (FIBR-0311).\n"
-        "  expected: at least one offence while the exclusion stands\n"
-        "  actual:   none"
+        f"  expected: 4 offences\n  actual:   {len(lines)} -- {lines}"
     )
