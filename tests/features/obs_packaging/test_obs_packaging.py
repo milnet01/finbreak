@@ -671,6 +671,7 @@ case "$1" in
   add) [ -z "${OSC_FAIL_ADD:-}" ] || { echo "osc: add failed" >&2; exit 1; } ;;
   results) cat "$OSC_RESULTS" ;;
   buildlog) echo "log tail" ;;
+  ls) [ -z "${OSC_LS:-}" ] || cat "$OSC_LS" ;;
 esac
 exit 0
 """
@@ -683,6 +684,7 @@ def _osc_env(tmp_path: Path, **extra: str) -> dict[str, str]:
     stubs.mkdir(exist_ok=True)
     (stubs / "osc").write_text(_OSC_STUB)
     (stubs / "osc").chmod(0o755)
+    extra.setdefault("OSC_LS", _obs_listing(tmp_path, _release_tarball()))
     return {
         **os.environ,
         "PATH": f"{stubs}:{os.environ['PATH']}",
@@ -774,9 +776,26 @@ def test_FIBR0400_a_failed_osc_add_stops_the_submit(tmp_path):
 # FIBR-0385 — one submission, one moment: the recipes and the wheel bundle
 # must match the release tag the source is taken from.
 # --------------------------------------------------------------------------- #
+def _obs_listing(tmp_path: Path, *tarballs: str) -> str:
+    """A file standing in for `osc ls`: the package's files after a commit."""
+    listing = tmp_path / "osc-ls.txt"
+    listing.write_text("\n".join(["_service", "finbreak.spec", *tarballs]) + "\n")
+    return str(listing)
+
+
+def _release_tarball() -> str:
+    tag = re.search(r'<param name="revision">v([^<]+)</param>', _SERVICE.read_text())
+    assert tag is not None
+    return f"finbreak-{tag.group(1)}.tar.gz"
+
+
 def test_FIBR0385_a_clean_tree_at_the_tag_submits(tmp_path):
     root = _tagged_repo(tmp_path)
-    env = _osc_env(tmp_path, OBS_WORKDIR=str(tmp_path / "co"))
+    env = _osc_env(
+        tmp_path,
+        OBS_WORKDIR=str(tmp_path / "co"),
+        OSC_LS=_obs_listing(tmp_path, _release_tarball()),
+    )
 
     result = _submit(root, env)
 
@@ -784,6 +803,30 @@ def test_FIBR0385_a_clean_tree_at_the_tag_submits(tmp_path):
     assert result.returncode == 0, result.stdout + result.stderr
     assert any(c.startswith("commit") for c in calls), calls
     assert "vendored" not in calls, "a bundle newer than pyproject was rebuilt"
+
+
+@pytest.mark.parametrize(
+    "held",
+    [("finbreak-1.0.2.tar.gz",), ("finbreak-1.0.2.tar.gz", "RELEASE"), ()],
+    ids=["old-only", "old-and-new", "none"],
+)
+def test_FIBR0317_submit_fails_unless_obs_holds_the_release_source(tmp_path, held):
+    """OBS sat six versions behind with green builds: the builds were green on
+    the OLD source. The submit now reads the package back after its commit and
+    fails unless the release tag's tarball is the one source archive OBS holds."""
+    root = _tagged_repo(tmp_path)
+    tarballs = [_release_tarball() if t == "RELEASE" else t for t in held]
+    env = _osc_env(
+        tmp_path,
+        OBS_WORKDIR=str(tmp_path / "co"),
+        OSC_LS=_obs_listing(tmp_path, *tarballs),
+    )
+
+    result = _submit(root, env)
+
+    assert any(c.startswith("commit") for c in _osc_calls(tmp_path))
+    assert result.returncode != 0, result.stdout
+    assert _release_tarball() in result.stderr, result.stderr
 
 
 @pytest.mark.parametrize(
