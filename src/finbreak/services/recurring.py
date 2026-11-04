@@ -15,6 +15,7 @@ from collections import defaultdict
 from datetime import date, timedelta
 from decimal import ROUND_HALF_EVEN, Decimal
 from statistics import median_low
+from typing import assert_never
 
 from sqlcipher3 import dbapi2
 
@@ -73,23 +74,13 @@ def nominal_interval_days(cadence: Cadence) -> int:
 def _add_months(d: date, months: int, day: int | None = None) -> date:
     """``d`` plus ``months`` calendar months, clamping the day to the target
     month's length (Jan 31 + 1 → Feb 28/29). ``day`` overrides ``d.day`` as the
-    day to aim for — see :func:`intended_day`."""
+    day to aim for — see :func:`intended_day`. ``None`` or ``0`` means ``d``'s own
+    day: ``ForecastInput.day_of_month`` stores "no override" as ``0``."""
     total = d.month - 1 + months
     year = d.year + total // 12
     month = total % 12 + 1
     day = min(day or d.day, calendar.monthrange(year, month)[1])
     return date(year, month, day)
-
-
-def _add_cadence(d: date, cadence: Cadence) -> date:
-    """The next expected date after ``d`` for ``cadence`` (D7) — calendar-aware for
-    month/year (day-clamped), fixed-day for week/fortnight.
-
-    **One step only.** To walk several steps use :func:`_add_cadence_n` from a fixed
-    anchor — chaining this function re-feeds a clamped day back in and ratchets a
-    month-end item down permanently.
-    """
-    return _add_cadence_n(d, cadence, 1)
 
 
 def intended_day(dates: list[date]) -> int:
@@ -123,8 +114,12 @@ def _add_cadence_n(
 
     ``day`` is the day of the month to aim for on the month cadences, where the
     anchor itself was clamped (:func:`intended_day`); ignored for week/fortnight.
+    ``None`` or ``0`` means the anchor's own day, as in :func:`_add_months`.
 
     Strictly increasing in ``n`` for every cadence, so callers can loop on it.
+
+    Shared with ``services/forecast.py``, which imports it despite the
+    underscore: the two services must step dates identically.
     """
     if cadence is Cadence.WEEKLY:
         return anchor + timedelta(days=7 * n)
@@ -132,7 +127,9 @@ def _add_cadence_n(
         return anchor + timedelta(days=14 * n)
     if cadence is Cadence.MONTHLY:
         return _add_months(anchor, n, day)
-    return _add_months(anchor, 12 * n, day)
+    if cadence is Cadence.YEARLY:
+        return _add_months(anchor, 12 * n, day)
+    assert_never(cadence)  # a new Cadence member fails mypy here
 
 
 def _classify(gaps: list[int]) -> Cadence | None:

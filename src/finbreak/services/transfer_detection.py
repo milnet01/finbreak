@@ -7,7 +7,8 @@ the repository's ``(debit_id, credit_id)`` candidate tuples into display-ready
 ``Transaction`` rows, the shared display magnitude, and both account names once per
 call), and records the user's confirm/reject/unlink decisions — never touching a
 ``transactions`` row (INV-12). Only confirmed pairs enter
-``confirmed_transfer_txn_ids()``, the exclusion primitive FIBR-0012 consumes (INV-5).
+``confirmed_transfer_txn_ids()``, the exclusion primitive (INV-5): every service
+that totals money drops those ids as internal movement.
 """
 
 from __future__ import annotations
@@ -86,8 +87,12 @@ class TransferDetectionService:
         return result
 
     def confirmed_transfer_txn_ids(self) -> set[int]:
-        """The INV-5 exclusion primitive: the ids in every confirmed pair (the set
-        FIBR-0012's dashboard totals will drop as internal movement)."""
+        """The INV-5 exclusion primitive: the ids in every confirmed pair.
+
+        Contract: a confirmed transfer is money moving between the user's own
+        accounts, so any figure of income, spending or recurring money must
+        drop these ids. The dashboard, PDF export, month summary, alerts and
+        recurring detection all do."""
         return self._transfers().confirmed_txn_ids()
 
     # -- decisions (each write is one per-decision commit, D6) ----------------
@@ -124,14 +129,13 @@ class TransferDetectionService:
         candidate order for ``confirm_all`` — and it decides which of two
         conflicting pairs wins.
 
-        Calls ``add_decision`` directly rather than ``_record``, exactly as
-        ``confirm_all`` did: ``_record``'s two guards both **raise**, and the
-        consumed-set already covers the first while the second is unreachable for
-        pairs resolved from a live candidate list. Routing through it would turn a
-        skip into an exception at the user. Nothing about what is *written*
-        changes — ``_record`` only guards, and ``add_decision`` canonicalises the
-        pair internally (``min``/``max``) whether or not ``_record`` was
-        involved."""
+        Calls ``add_decision`` directly rather than ``_record``: ``_record``'s two
+        guards both **raise**, and the consumed-set already covers the first while
+        the second is unreachable for pairs resolved from a live candidate list.
+        Routing through it would turn a skip into an exception at the user.
+        Nothing about what is *written* changes — ``_record`` only guards, and
+        ``add_decision`` canonicalises the pair internally (``min``/``max``)
+        whether or not ``_record`` was involved."""
         repo = self._transfers()
         consumed: set[int] = set()
         count = 0

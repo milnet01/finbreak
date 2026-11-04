@@ -26,7 +26,7 @@ from finbreak.services.accounts import AccountService
 from finbreak.services.auth import AuthService
 from finbreak.services.recurring import (
     RecurringService,
-    _add_cadence,
+    _add_cadence_n,
     _monthly_equivalent,
     _RecurRow,
     detect_recurring,
@@ -251,11 +251,11 @@ def test_nominal_interval_days() -> None:
 
 
 # INV-11 — calendar clamp: Jan 31 +monthly → Feb 28; Feb 29 +yearly → Feb 28.
-def test_add_cadence_clamps_month_end() -> None:
-    assert _add_cadence(date(2026, 1, 31), Cadence.MONTHLY) == date(2026, 2, 28)
-    assert _add_cadence(date(2024, 2, 29), Cadence.YEARLY) == date(2025, 2, 28)
-    assert _add_cadence(date(2026, 1, 5), Cadence.WEEKLY) == date(2026, 1, 12)
-    assert _add_cadence(date(2026, 1, 5), Cadence.FORTNIGHTLY) == date(2026, 1, 19)
+def test_add_cadence_n_one_step_clamps_month_end() -> None:
+    assert _add_cadence_n(date(2026, 1, 31), Cadence.MONTHLY, 1) == date(2026, 2, 28)
+    assert _add_cadence_n(date(2024, 2, 29), Cadence.YEARLY, 1) == date(2025, 2, 28)
+    assert _add_cadence_n(date(2026, 1, 5), Cadence.WEEKLY, 1) == date(2026, 1, 12)
+    assert _add_cadence_n(date(2026, 1, 5), Cadence.FORTNIGHTLY, 1) == date(2026, 1, 19)
 
 
 # INV-11 — monthly-equivalent rounds ROUND_HALF_EVEN over the D8 formula

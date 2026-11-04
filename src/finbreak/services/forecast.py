@@ -61,8 +61,8 @@ class ForecastInput:
     amount_minor: int
     # The LAST OBSERVED occurrence, not the next expected one. Projection steps
     # n cadences from here, so the anchor must be a date the bank actually
-    # produced; `next_expected` is `_add_cadence(last_seen, ...)`, i.e. already
-    # day-clamped, and anchoring on it degrades every later date (see
+    # produced; `next_expected` is `_add_cadence_n(last_seen, cadence, 1, ...)`,
+    # i.e. already day-clamped, and anchoring on it degrades every later date (see
     # `_occurrences`). The first due date is derived by the roll-forward there,
     # so it does not need carrying separately.
     anchor: date
@@ -87,12 +87,12 @@ def _occurrences(item: ForecastInput, today: date, horizon: date) -> list[date]:
     Termination is guaranteed — ``_add_cadence_n`` is strictly increasing in ``n``.
 
     The anchor is ``last_seen``, not ``next_expected``. ``next_expected`` is
-    itself ``_add_cadence(last_seen, cadence)`` — one already-clamped step — so
-    anchoring on it re-introduced the exact degradation the paragraph above says
-    this function avoids: a Jan-31 item anchors on Feb 28 and then projects Mar
-    28, Apr 28, May 28, while the bank debits the 31st, 30th, 31st. Month-end
-    debit orders are the common case, and at a horizon boundary the wrong dates
-    move the projected end balance.
+    itself ``_add_cadence_n(last_seen, cadence, 1, day)`` — one already-clamped
+    step — so anchoring on it re-introduced the exact degradation the paragraph
+    above says this function avoids: a Jan-31 item anchors on Feb 28 and then
+    projects Mar 28, Apr 28, May 28, while the bank debits the 31st, 30th, 31st.
+    Month-end debit orders are the common case, and at a horizon boundary the
+    wrong dates move the projected end balance.
 
     Anchoring on ``last_seen`` is not enough by itself: when ``last_seen`` fell
     in a short month the bank had already clamped it, so its ``.day`` is 28 or

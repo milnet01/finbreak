@@ -1,7 +1,7 @@
 """FIBR-0171 — the pure projection core `project_forecast` (spec D6).
 
 Clock-free (``today`` is a parameter), no I/O, **no Decimal** — signed integer
-minor units only. Reuses FIBR-0142's `_add_cadence` occurrence stepper.
+minor units only. Reuses FIBR-0142's `_add_cadence_n` occurrence stepper.
 
 Enforces tests/features/forecast/spec.md INV-1/2/4/5/11/13.
 """
@@ -82,10 +82,10 @@ def test_INV2_anchor_sources_carried_through() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# INV-4 — projection window (today, horizon]; _add_cadence stepping + clamp
+# INV-4 — projection window (today, horizon]; _add_cadence_n stepping + clamp
 # --------------------------------------------------------------------------- #
 def test_INV4_rolls_forward_past_a_stale_next_expected() -> None:
-    # next_expected is months before today: roll with _add_cadence until strictly
+    # next_expected is months before today: roll with _add_cadence_n until strictly
     # after today, then emit within the horizon.
     item = _item(-1_000, "2026-01-01", Cadence.MONTHLY)
     fc = project_forecast(0, [item], date(2026, 3, 15), date(2026, 5, 31))
@@ -260,7 +260,7 @@ def test_FIBR0171_month_end_item_projects_to_month_end_not_the_28th():
     """A month-end recurring item keeps landing on month-end.
 
     `ForecastInput` carried `next_expected`, which is itself
-    `_add_cadence(last_seen, cadence)` -- one already-clamped step. Anchoring
+    `_add_cadence_n(last_seen, cadence, 1)` -- one already-clamped step. Anchoring
     projection on it meant a Jan-31 debit order anchored on Feb 28 and then
     projected Mar 28, Apr 28, May 28, while the bank debits the 31st, 30th,
     31st. That is the exact degradation `_occurrences`' own docstring says the
@@ -288,7 +288,7 @@ def test_FIBR0171_to_input_anchors_on_last_seen_not_next_expected():
     The test above proves `_occurrences` steps correctly FROM its anchor; this
     one proves the service hands it the right one. The defect lived here:
     `_to_input` passed `next_expected`, which `recurring.py` computes as
-    `_add_cadence(last_seen, cadence)` -- already day-clamped -- so every
+    `_add_cadence_n(last_seen, cadence, 1)` -- already day-clamped -- so every
     projected date after the first drifted off month-end. Without this leg the
     sibling test passes with the defect reinstated, because it builds its input
     directly.
