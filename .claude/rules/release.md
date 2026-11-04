@@ -49,7 +49,14 @@ cut-release <X.Y.Z> --no-publish  # a SKILL — invoke it; it is not on PATH. Bu
                              #   SHA256SUMS.sig + linux SBOM -> FIVE assets
 ./scripts/release-windows.sh # .exe + .sig + windows SBOM, and it RE-UPLOADS
                              #   SHA256SUMS + .sig having merged into them
+./packaging/obs/obs-submit.sh  # the RPM/deb packages on OBS: needs osc logged
+                             #   in; refuses unless OBS then holds this
+                             #   release's source (FIBR-0317)
+./packaging/obs/obs-status.sh  # waits for every OBS build; non-zero on a failure
 ```
+
+**Skip the OBS steps and the distro packages stay on the old version while
+their builds show green** — green on the old source (FIBR-0317).
 
 **No release candidates on this path.** `release-linux.sh` publishes
 `v<__version__>` as the latest full release, and `cut-release --pre rc.N` leaves

@@ -117,4 +117,15 @@ osc -A "$API" addremove
 VER="$(sed -n 's/^__version__ = "\(.*\)"/\1/p' "$ROOT/src/finbreak/__init__.py")"
 osc -A "$API" commit -m "${OBS_MSG:-finbreak $VER}"
 
+# 5. Read the package back (FIBR-0317). OBS builds whatever source it holds,
+#    and its builds stayed green on an old one for six releases. Refuse unless
+#    the release tag's tarball is the only source archive there.
+WANT="finbreak-${TAG#v}.tar.gz"
+HELD="$(osc -A "$API" ls "$PROJ" "$PKG" | grep '^finbreak-.*\.tar\.gz$' || true)"
+if [ "$HELD" != "$WANT" ]; then
+    echo "obs-submit: OBS should hold exactly $WANT; it holds:" >&2
+    echo "${HELD:-(no source archive)}" >&2
+    exit 1
+fi
+
 echo "OK — committed. Watch the builds with: packaging/obs/obs-status.sh"

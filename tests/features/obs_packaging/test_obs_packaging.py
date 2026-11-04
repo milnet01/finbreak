@@ -684,7 +684,8 @@ def _osc_env(tmp_path: Path, **extra: str) -> dict[str, str]:
     stubs.mkdir(exist_ok=True)
     (stubs / "osc").write_text(_OSC_STUB)
     (stubs / "osc").chmod(0o755)
-    extra.setdefault("OSC_LS", _obs_listing(tmp_path, _release_tarball()))
+    if "OSC_LS" not in extra:
+        extra["OSC_LS"] = _obs_listing(tmp_path, _release_tarball())
     return {
         **os.environ,
         "PATH": f"{stubs}:{os.environ['PATH']}",
@@ -894,8 +895,11 @@ def test_FIBR0385_a_bundle_older_than_its_inputs_is_rebuilt(tmp_path, newer):
         ("repo x86_64 finbreak succeeded\n", 0, ""),
         ("repo x86_64 finbreak failed\n", 1, "failed"),
         ("repo x86_64 finbreak building\n", 1, "timed out"),
+        # FIBR-0317: OBS stars a result left over from the previous source while
+        # the rebuild is queued. The status stopped polling on it at once.
+        ("repo x86_64 finbreak succeeded*\n", 1, "timed out"),
     ],
-    ids=["succeeded", "failed", "timeout"],
+    ids=["succeeded", "failed", "timeout", "outdated"],
 )
 def test_FIBR0400_obs_status_exit_reflects_the_builds(
     tmp_path, rows, expect_rc, expect_text

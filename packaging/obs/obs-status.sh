@@ -16,6 +16,9 @@ MAX_POLLS="${MAX_POLLS:-80}"
 is_pending() {
     case "$1" in
         scheduled|building|dispatching|blocked|signing|finished|""|unknown) return 0 ;;
+        # A trailing * marks a result from the previous source, with the
+        # rebuild still queued (FIBR-0317).
+        *\*) return 0 ;;
         *) return 1 ;;
     esac
 }

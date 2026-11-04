@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: FIBR=460 -->
+<!-- ants-roadmap-id-high-water: FIBR=461 -->
 # finbreak — Roadmap
 
 > See [CHANGELOG.md](CHANGELOG.md) for what's shipped and the current
@@ -2249,7 +2249,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Source: in-session-2026-08-20 (found during the FIBR-0159 pre-submit checks).
   Lanes: packaging, security.
 
-- 📋 [FIBR-0317] **Nothing re-submits to OBS on release, so the published RPMs sat six versions behind.**
+- 🚧 [FIBR-0317] **Nothing re-submits to OBS on release, so the published RPMs sat six versions behind.**
   Measured 2026-08-31: the OBS package still held finbreak-0.1.16.tar.gz, from
   2026-07-23, while __version__ was 0.1.22. The Tumbleweed and Fedora builds were
   green the whole time -- green on the old source, which is why nothing looked
@@ -2273,6 +2273,8 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   the eight-asset one CLAUDE.md prescribes for a GitHub release. Same class as
   FIBR-0275, where a release published with zero assets went unnoticed for ten
   days.
+  2026-11-04: started. OBS still serves 1.0.2 while 1.0.3 is released;
+  _service already names v1.0.3.
   **Layman:** The openSUSE/Fedora packages on the build service were still the version from late July, because publishing a new release never updates them. Anyone installing from there got old software.
   Kind: package.
   Source: in-session-2026-08-31 (found while working FIBR-0158).
@@ -4812,6 +4814,18 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   **Layman:** The README tells Debian and Ubuntu users to use the AppImage, when a normal apt package already works for them.
   Kind: doc-fix.
   Source: in-session-2026-11-03 (1.0.2 OBS check).
+
+- ✅ [FIBR-0461] **obs-status.sh stopped polling on a starred (outdated) OBS result and called it a failure.**
+  Measured 2026-11-04 on the 1.0.3 submit: the first poll read
+  `succeeded*` on all four repos. OBS stars a result left from the previous
+  source while the rebuild is queued. is_pending did not match it, so the
+  loop ended at poll 1, the final pass treated `succeeded*` as not
+  succeeded, printed the 1.0.2 build log and exited 1. Fixed with FIBR-0317:
+  a trailing `*` counts as pending. Test: the `outdated` case of
+  test_FIBR0400_obs_status_exit_reflects_the_builds.
+  **Layman:** After sending a new version to the openSUSE build service, the status check gave up at once and reported a failure, while the real builds were still running.
+  Kind: fix.
+  Source: in-session-2026-11-04 (found while working FIBR-0317).
 
 ## v1.1.0 — Localisation
 
