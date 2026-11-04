@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: FIBR=461 -->
+<!-- ants-roadmap-id-high-water: FIBR=463 -->
 # finbreak — Roadmap
 
 > See [CHANGELOG.md](CHANGELOG.md) for what's shipped and the current
@@ -2249,7 +2249,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Source: in-session-2026-08-20 (found during the FIBR-0159 pre-submit checks).
   Lanes: packaging, security.
 
-- 🚧 [FIBR-0317] **Nothing re-submits to OBS on release, so the published RPMs sat six versions behind.**
+- ✅ [FIBR-0317] **Nothing re-submits to OBS on release, so the published RPMs sat six versions behind.**
   Measured 2026-08-31: the OBS package still held finbreak-0.1.16.tar.gz, from
   2026-07-23, while __version__ was 0.1.22. The Tumbleweed and Fedora builds were
   green the whole time -- green on the old source, which is why nothing looked
@@ -2282,6 +2282,13 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   finbreak-1.0.3.tar.gz held; all four repos succeeded. Status-script bug
   found on the way: FIBR-0461. Left: workflow.md § 6 review step (review-code
   on the two scripts), then flip to shipped.
+  2026-11-04: shipped. review-code (one cold lane, both OBS scripts) run;
+  dispositions: 2 dismissed as false positives (osc results is four
+  columns; details append only under -v; checked against installed osc,
+  logged to .ants_review_falsepos.jsonl), the rest queued as FIBR-0462
+  (old .obscpio archives pile up on OBS; read-back counts .tar.gz only)
+  and FIBR-0463 (possible stale-green race in obs-status.sh). None blocks
+  this item: OBS is in the release path and 1.0.3's source is verified.
   **Layman:** The openSUSE/Fedora packages on the build service were still the version from late July, because publishing a new release never updates them. Anyone installing from there got old software.
   Kind: package.
   Source: in-session-2026-08-31 (found while working FIBR-0158).
@@ -4833,6 +4840,46 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   **Layman:** After sending a new version to the openSUSE build service, the status check gave up at once and reported a failure, while the real builds were still running.
   Kind: fix.
   Source: in-session-2026-11-04 (found while working FIBR-0317).
+
+- 📋 [FIBR-0462] **OBS keeps every old .obscpio source archive, and the submit read-back cannot see them.**
+  Found by review-code 2026-11-04, verified the same day: the OBS package
+  holds finbreak-0.1.22/1.0.0/1.0.1/1.0.2/1.0.3.obscpio (about 16 MB each)
+  beside finbreak-1.0.3.tar.gz (build-obs/.osc/_files). obs-submit.sh's
+  `rm -f finbreak-*.tar.gz` never removes an old .obscpio, `osc addremove`
+  commits each new one, and the INV-13 read-back greps only `.tar.gz`, so
+  "the one source archive" is weaker than written. Builds still succeed.
+  Fix: remove old finbreak-*.obscpio (and any .tar) before manualrun, and
+  make the read-back count every finbreak-* archive. Needs a re-submit, so
+  it lands with the next release (1.0.3 is not re-submitted).
+  In the same script, from the same review:
+  - The drift check uses `ls-files --exclude-standard`, but
+    `tar ... debian` packs gitignored files too. Nothing ignored is there
+    today (git status --ignored); build debian.tar.gz from git instead.
+  - `osc ls ... | grep || true` hides an osc failure as
+    "(no source archive)". Fails closed; the message misleads.
+  - The drift check reads the LOCAL tag; obs_scm fetches it from GitHub.
+    Nothing checks they are the same commit.
+  **Layman:** Each release leaves its old source bundle on the build service, so the package there keeps growing, and the check after a submit only looks at one kind of file.
+  Kind: fix.
+  Source: review-code-2026-11-04 (FIBR-0317 close-out).
+
+- 📋 [FIBR-0463] **obs-status.sh can pass on the previous build if it polls before OBS marks the results stale.**
+  Found by review-code 2026-11-04; NOT reproduced. The first poll after
+  obs-submit.sh's commit may see the old source's plain `succeeded` (no `*`)
+  if OBS has not yet set the dirty flag, and exit 0 for the old build -
+  the stale-green failure FIBR-0317 exists to stop. On 1.0.3 the first
+  polls did show `*` (FIBR-0461), so the window, if any, is short.
+  Fix: wait until the results' source matches the commit just made (e.g.
+  srcmd5 from `osc api /source/<proj>/<pkg>` against the build's), not only
+  until nothing is pending.
+  Same script, same review:
+  - `locked` and `deleting` count as final, so they report as failures;
+    add them to the pending list.
+  - `2>/dev/null || true` on each poll hides osc's error; a run that fails
+    throughout times out without saying why.
+  **Layman:** Straight after a submit, the build service may still show the last release's green results for a moment, and the status check could take that as success.
+  Kind: fix.
+  Source: review-code-2026-11-04 (FIBR-0317 close-out).
 
 ## v1.1.0 — Localisation
 
