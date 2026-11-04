@@ -23,6 +23,7 @@ from PySide6.QtCore import (
     QObject,
     QPersistentModelIndex,
     QPoint,
+    QSignalBlocker,
     Qt,
 )
 from PySide6.QtGui import QBrush, QGuiApplication
@@ -397,6 +398,12 @@ class TransactionsView(QWidget):
         self._rows = []
         self._transfer_labels = {}  # "Transfer to <account>" per row
         self._model.clear()  # its rows and its render (FIBR-0097 INV-5)
+        # The pickers hold the first and last transaction dates (_seed_date_range).
+        # Clearing a QDateEdit's text leaves its date, so reset the date itself
+        # (FIBR-0456).
+        for picker in (self._date_from, self._date_to):
+            with QSignalBlocker(picker):
+                picker.setDate(picker.minimumDate())
 
     def refresh(self) -> None:
         """Reload the master list from the vault and rebuild the account / category

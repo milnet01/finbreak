@@ -26,6 +26,7 @@ from PySide6.QtCore import QAbstractItemModel, QModelIndex, QObject, Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
+    QDateEdit,
     QLabel,
     QLineEdit,
     QPlainTextEdit,
@@ -225,6 +226,29 @@ def test_row30_lock_leaves_no_decrypted_value_in_any_tab(qtbot, service):
         "decrypted values outlived the lock in the still-alive workspace:\n  "
         + "\n  ".join(survived)
     )
+
+
+def test_FIBR0456_lock_forgets_the_transaction_date_span(qtbot, service):
+    """The Transactions date pickers are seeded with the first and last
+    transaction dates (FIBR-0327). The lock wipe clears a QDateEdit's inner
+    line edit, which empties the visible text but not the stored date, so
+    ``date()`` still answered with two values read from the vault."""
+    window = _unlocked(qtbot, service)
+    workspace = window.centralWidget().currentWidget()
+    for index in range(workspace.count()):
+        workspace.setCurrentIndex(index)
+    date_from = workspace.findChild(QDateEdit, "txn_date_from")
+    date_to = workspace.findChild(QDateEdit, "txn_date_to")
+    today = date.today()
+    assert date_from.date().toPython() == today - timedelta(days=92), (
+        "precondition: the picker must hold the earliest seeded date"
+    )
+    assert date_to.date().toPython() == today
+
+    service._on_idle_timeout()
+
+    assert date_from.date() == date_from.minimumDate(), date_from.date()
+    assert date_to.date() == date_to.minimumDate(), date_to.date()
 
 
 _HEADER = ["Date", "Details", "Amount"]
