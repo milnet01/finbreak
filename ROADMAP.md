@@ -2006,7 +2006,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: perf.
   Source: user-suggestion-2026-07-11.
 
-- 📋 [FIBR-0147] **Index the transfer_pairs cascade-delete FK columns.**
+- ✅ [FIBR-0147] **Index the transfer_pairs cascade-delete FK columns.**
   Surfaced while shipping FIBR-0098. `transfer_pairs` (FIBR-0011) has two
   `ON DELETE CASCADE` FKs — `txn_a_id` / `txn_b_id` REFERENCES transactions(id) —
   but SQLite does NOT auto-index FK columns, so each transaction delete scans
@@ -2022,6 +2022,13 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   `(txn_a_id = ? OR txn_b_id = ?)`, and `txn_b_id` has no index, so that
   query scans `transfer_pairs` too. The migration is now the next schema
   version after `LATEST_SCHEMA_VERSION`, no longer v10->v11.
+  Done 2026-11-04 as schema v15: one index, transfer_pairs(txn_b_id).
+  txn_a_id needed none; it leads the UNIQUE index. The plans showed a
+  bigger cost than the delete: candidate_pairs scanned transfer_pairs
+  twice per candidate row on every Transfers-tab refresh. db_performance
+  INV-6 now asserts no scan in candidate_pairs or is_confirmed. Model
+  timing (plain SQLite, 3000 pairs, 600-row delete): 1.1 s without, 0.19
+  s with.
   **Layman:** Make deleting a big statement fast even when transfers have been detected.
   Kind: perf.
   Source: claude-suggestion-2026-07-17 (deferred from FIBR-0098).
