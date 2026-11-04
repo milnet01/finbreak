@@ -4,7 +4,8 @@
 # build log that did not succeed.
 #
 # Run standalone after obs-submit.sh. Override via env: OBS_API, OBS_PROJECT,
-# OBS_PACKAGE, POLL_SECS (default 45), MAX_POLLS (default 80).
+# OBS_PACKAGE, POLL_SECS (default 45), MAX_POLLS (default 80), SETTLE_POLLS
+# (default 3).
 set -eu
 
 API="${OBS_API:-https://api.opensuse.org}"
@@ -12,6 +13,7 @@ PROJ="${OBS_PROJECT:-home:milnet:finbreak}"
 PKG="${OBS_PACKAGE:-finbreak}"
 POLL_SECS="${POLL_SECS:-45}"
 MAX_POLLS="${MAX_POLLS:-80}"
+SETTLE_POLLS="${SETTLE_POLLS:-3}"
 
 # A repo row is "done" once it is no longer scheduled/building/etc.
 is_pending() {
@@ -54,6 +56,13 @@ while [ "$i" -lt "$MAX_POLLS" ]; do
         elif { [ "$status" = succeeded ] || [ "$status" = failed ]; } &&
             [ "$(built_from "$repo" "$arch")" != "$SRCMD5" ]; then
             status="$status(old-source)"
+            pending=1
+        elif { [ "$status" = unresolvable ] || [ "$status" = broken ]; } &&
+            [ "$i" -lt "$SETTLE_POLLS" ]; then
+            # No build job dates these, so one shown straight after a commit
+            # may be the previous source's. Believe it only once OBS has had
+            # SETTLE_POLLS polls to replace it (FIBR-0464).
+            status="$status(settling)"
             pending=1
         fi
         printf '%s=%s ' "$repo" "$status"

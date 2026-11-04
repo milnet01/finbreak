@@ -4934,7 +4934,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: fix.
   Source: review-code-2026-11-04 (FIBR-0317 close-out).
 
-- 📋 [FIBR-0464] **obs-status.sh takes a stale unresolvable or broken row as final right after a commit.**
+- 🚧 [FIBR-0464] **obs-status.sh takes a stale unresolvable or broken row as final right after a commit.**
   Found by review-code 2026-11-04 (lane 1, MEDIUM), not reproduced.
   FIBR-0463 waits for a succeeded or failed row to come from the
   committed source (srcmd5 vs the newest _jobhistory job). An
@@ -4960,6 +4960,12 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   commit so nothing needs restoring, or amend INV-11 to name this one
   holder and its lifetime. Every password involved is the same user's,
   held in process memory only.
+  2026-11-05, e63e310: took the defer-the-write option. The wizard
+  holds one password, `_remember_pw`, and saves it at commit to the
+  account the rows land on, as the batch import does; every other exit
+  drops it unsaved. This also closes the auto-lock gap FIBR-0321 left.
+  FIBR-0009 INV-4/INV-11 amended; the INV-11 check now catches "pw".
+  Gate green. Next: review-code over this and FIBR-0464, then ship.
   **Layman:** While a statement import is open, the app holds the statement password in memory for longer than its own design says it should.
   Kind: security.
   Source: review-code-2026-11-04b (FIBR-0274/0462/0463 close-out).

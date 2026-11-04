@@ -659,7 +659,13 @@ case "$1" in
     if [ "$n" -le "${OSC_FAIL_RESULTS:-0}" ]; then
       echo "osc: results unreachable" >&2; exit 1
     fi
-    cat "$OSC_RESULTS"
+    # The first $OSC_STALE_POLLS calls show $OSC_STALE, the previous source's
+    # results as OBS can still report them straight after a commit.
+    if [ "$n" -le "${OSC_STALE_POLLS:-0}" ]; then
+      cat "$OSC_STALE"
+    else
+      cat "$OSC_RESULTS"
+    fi
     # osc hides an excluded repo unless asked to show it.
     case " $* " in
       *" --show-excluded "*) [ -z "${OSC_EXCLUDED:-}" ] || cat "$OSC_EXCLUDED" ;;
@@ -1041,6 +1047,36 @@ def test_FIBR0463_a_result_built_from_the_old_source_is_not_final(tmp_path, fina
 
     assert result.returncode != 0, result.stdout
     assert "timed out" in result.stderr, result.stderr
+
+
+@pytest.mark.parametrize("stale", ["unresolvable", "broken"])
+def test_FIBR0464_a_stale_unbuildable_row_is_not_taken_as_final(tmp_path, stale):
+    """An unresolvable or broken row has no build job to date it, so straight
+    after a commit the previous source's state was taken as the answer, and
+    the resubmit meant to fix it reported failure at once."""
+    old = tmp_path / "stale.txt"
+    old.write_text(f"repo x86_64 finbreak {stale}\n")
+    result = _status(
+        tmp_path,
+        "repo x86_64 finbreak succeeded\n",
+        OSC_STALE=str(old),
+        OSC_STALE_POLLS="2",  # the first poll and the final read, as it was
+        SETTLE_POLLS="3",
+        MAX_POLLS="5",
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize("state", ["unresolvable", "broken"])
+def test_FIBR0464_a_current_unbuildable_row_still_fails(tmp_path, state):
+    """The wait must end: a row that stays unbuildable is a failure, with its
+    log shown, not a timeout."""
+    result = _status(tmp_path, f"repo x86_64 finbreak {state}\n", MAX_POLLS="10")
+
+    assert result.returncode != 0, result.stdout
+    assert f"repo ({state})" in result.stdout, result.stdout
+    assert "timed out" not in result.stderr, result.stderr
 
 
 def test_FIBR0463_an_excluded_repo_is_a_failure(tmp_path):
