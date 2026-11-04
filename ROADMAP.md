@@ -1657,7 +1657,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: chore.
   Source: debt-sweep-2026-07-26.
 
-- 📋 [FIBR-0311] **services/pdf_export.py's translated strings extract to an empty catalog.**
+- ✅ [FIBR-0311] **services/pdf_export.py's translated strings extract to an empty catalog.**
   The module routes 30 user-facing strings through a one-argument `_tr(text)`
   wrapper, and pyside6-lupdate extracts nothing through a wrapper -- measured
   2026-08-25 on a probe file. Its own docstring claims the opposite: "keeps every
@@ -1673,6 +1673,14 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   tests/features/i18n/ excludes this file BY NAME and carries a leg that goes RED
   once it conforms, so the exclusion cannot outlive the work. Closing this item
   means deleting `_KNOWN_OFFENDER`, its use, and that leg.
+  Done 2026-11-04 (bae0142): every label calls
+  QCoreApplication.translate("PdfExport", ...) with literals, and those
+  used inside f-strings are assigned to a variable first.
+  pyside6-lupdate over the file extracts 26 strings, against 0 before.
+  New finding, fixed in the same pass: lupdate also skips a literal call
+  inside an f-string (probe, any quote style). The i18n guard now
+  reports that shape, coding.md says so, and _KNOWN_OFFENDER and its
+  expiry leg are gone.
   **Layman:** The PDF report's labels look translated in the code but would come out in English in every language.
   Kind: refactor.
   Source: in-session-2026-08-25 (FIBR-0310 R3).
@@ -4721,12 +4729,17 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Source: pr-4-review-sweep-2026-10-27 (filed on user request 2026-10-29).
   Lanes: importers/pdf_importer.py, importers/standard_bank.py.
 
-- 📋 [FIBR-0459] **PDF export loads every transaction, then filters by period in Python.**
+- ✅ [FIBR-0459] **PDF export loads every transaction, then filters by period in Python.**
   `PdfExportService._transactions_html` calls
   `TransactionService.list_transactions()` for the whole vault, then
   keeps rows inside the period and account scope. Fix: a repository
   query bounded by date (and account) so SQLite does the filter on
   `idx_transactions_occurred_on`. Surfaced by the PR #4 review sweep.
+  Done 2026-11-04: list_transactions(between=(start, end)) reads the
+  period through TransactionRepository.list_between, an inclusive query
+  that seeks idx_transactions_occurred_on. Accounts are still filtered
+  in Python. Tests pin both period edges and that the export never calls
+  list_all. FIBR-0013 D6 amended.
   **Layman:** Make a PDF report of one month fast even in a vault holding many years.
   Kind: perf.
   Source: pr-4-review-sweep-2026-10-27 (filed on user request 2026-10-29).
