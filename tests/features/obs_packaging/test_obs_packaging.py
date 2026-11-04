@@ -432,26 +432,9 @@ def test_INV9_deb_source_recipe() -> None:
     # bare debian/ directory — `osc add debian` stores a directory as
     # debian.obscpio, a form debtransform cannot read at all, so a package
     # carrying it silently has no working deb recipe (part (c) above depends on
-    # this actually happening, not just being declared).
-    tar_line = next(
-        (
-            ln
-            for ln in submit.splitlines()
-            if "debian.tar.gz" in ln and ln.strip().startswith("tar")
-        ),
-        None,
-    )
-    assert tar_line is not None, (
-        "obs-submit.sh must pack the debian/ recipe into debian.tar.gz via a "
-        "`tar ... debian.tar.gz ... debian` invocation — without it, the file "
-        "DEBTRANSFORM-FILES-TAR: names is never actually produced"
-    )
-    assert tar_line.rstrip().endswith("debian"), (
-        f"obs-submit.sh's debian.tar.gz tar invocation must target the debian "
-        f"directory as its last argument, so the archive's top-level entry is "
-        f"debian/ as debtransform expects: {tar_line!r}"
-    )
-
+    # this actually happening, not just being declared). That the archive is
+    # produced, with debian/ at its top, is proven by running the script:
+    # test_FIBR0462_debian_tar_holds_only_tracked_files.
     lines = submit.splitlines()
     osc_add_line = None
     for i, ln in enumerate(lines):
@@ -685,7 +668,9 @@ case "$1" in
       *) echo "<directory name=\\"finbreak\\" srcmd5=\\"${OSC_SOURCE_MD5:-new}\\">" ;;
     esac ;;
   buildlog) echo "log tail" ;;
-  ls) [ -z "${OSC_LS:-}" ] || cat "$OSC_LS" ;;
+  ls)
+    [ -z "${OSC_FAIL_LS:-}" ] || { echo "osc: ls unreachable" >&2; exit 1; }
+    [ -z "${OSC_LS:-}" ] || cat "$OSC_LS" ;;
 esac
 exit 0
 """
@@ -759,9 +744,10 @@ def _tagged_repo(tmp_path: Path) -> Path:
 
 
 def _submit(root: Path, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+    # obs_scm fetches the tag from GitHub; here the repo itself stands in.
     return subprocess.run(
         ["sh", str(root / "packaging" / "obs" / "obs-submit.sh")],
-        env=env,
+        env={"OBS_SCM_URL": str(root), **env},
         capture_output=True,
         text=True,
         timeout=60,
@@ -842,6 +828,109 @@ def test_FIBR0317_submit_fails_unless_obs_holds_the_release_source(tmp_path, hel
     assert any(c.startswith("commit") for c in _osc_calls(tmp_path))
     assert result.returncode != 0, result.stdout
     assert _release_tarball() in result.stderr, result.stderr
+
+
+@pytest.mark.parametrize(
+    ("held", "ok"),
+    [
+        (("RELEASE", "finbreak-1.0.2.obscpio"), False),
+        (("RELEASE", "finbreak-1.0.2.tar"), False),
+        (("RELEASE", "RELEASE.obscpio"), True),
+    ],
+    ids=["old-obscpio", "old-tar", "own-obscpio"],
+)
+def test_FIBR0462_the_read_back_counts_every_source_archive(tmp_path, held, ok):
+    """The read-back looked at .tar.gz files only, so five old .obscpio
+    archives sat on OBS beside the release tarball and the check passed."""
+    root = _tagged_repo(tmp_path)
+    stem = _release_tarball().removesuffix(".tar.gz")
+    names = [t.replace("RELEASE", stem) if "RELEASE." in t else t for t in held]
+    names = [_release_tarball() if t == "RELEASE" else t for t in names]
+    env = _osc_env(
+        tmp_path,
+        OBS_WORKDIR=str(tmp_path / "co"),
+        OSC_LS=_obs_listing(tmp_path, *names),
+    )
+
+    result = _submit(root, env)
+
+    assert (result.returncode == 0) == ok, result.stdout + result.stderr
+
+
+def test_FIBR0462_old_archives_leave_the_checkout_before_the_services(tmp_path):
+    """Only old .tar.gz files were removed, so `osc addremove` kept every
+    earlier release's .obscpio in the package."""
+    root = _tagged_repo(tmp_path)
+    co = tmp_path / "co" / "home:milnet:finbreak" / "finbreak"
+    (co / ".osc").mkdir(parents=True)
+    old = ["finbreak-1.0.0.obscpio", "finbreak-1.0.0.tar", "finbreak-1.0.0.tar.gz"]
+    for name in old:
+        (co / name).write_bytes(b"old")
+    env = _osc_env(tmp_path, OBS_WORKDIR=str(tmp_path / "co"))
+
+    result = _submit(root, env)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert [n for n in old if (co / n).exists()] == []
+
+
+def test_FIBR0462_debian_tar_holds_only_tracked_files(tmp_path):
+    """debian.tar.gz was packed from the working tree, so a gitignored file
+    under debian/ shipped although the drift check never looked at it."""
+    import tarfile
+
+    root = _tagged_repo(tmp_path)
+    (root / ".gitignore").write_text("*.ignored\n")
+    (root / "packaging" / "obs" / "debian" / "notes.ignored").write_text("x\n")
+    env = _osc_env(tmp_path, OBS_WORKDIR=str(tmp_path / "co"))
+
+    result = _submit(root, env)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    archive = tmp_path / "co" / "home:milnet:finbreak" / "finbreak" / "debian.tar.gz"
+    with tarfile.open(archive) as tar:
+        members = {m.name.rstrip("/"): m for m in tar.getmembers()}
+    assert "debian/notes.ignored" not in members
+    assert all(n == "debian" or n.startswith("debian/") for n in members), members
+    assert members["debian/rules"].mode & 0o111, "debian/rules lost its exec bit"
+
+
+def test_FIBR0462_a_failed_listing_is_not_reported_as_empty(tmp_path):
+    """`osc ls | grep || true` turned an osc failure into "(no source
+    archive)", which sends the reader looking at the wrong thing."""
+    root = _tagged_repo(tmp_path)
+    env = _osc_env(tmp_path, OBS_WORKDIR=str(tmp_path / "co"), OSC_FAIL_LS="1")
+
+    result = _submit(root, env)
+
+    assert result.returncode != 0, result.stdout
+    assert "ls unreachable" in result.stderr, result.stderr
+    assert "(no source archive)" not in result.stderr, result.stderr
+
+
+@pytest.mark.parametrize("remote", ["moved", "missing"])
+def test_FIBR0462_the_remote_tag_must_be_the_local_one(tmp_path, remote):
+    """The drift check read the LOCAL tag, while obs_scm fetches it from
+    GitHub. A tag moved or never pushed meant OBS built something else."""
+    root = _tagged_repo(tmp_path)
+    tag = re.search(r'<param name="revision">([^<]+)</param>', _SERVICE.read_text())
+    assert tag is not None
+    other = tmp_path / "other"
+    subprocess.run(
+        ["git", "clone", "-q", str(root), str(other)], check=True, capture_output=True
+    )
+    if remote == "moved":
+        _git(other, "commit", "-q", "--allow-empty", "-m", "elsewhere")
+        _git(other, "tag", "-f", tag.group(1))
+    else:
+        _git(other, "tag", "-d", tag.group(1))
+    env = _osc_env(tmp_path, OBS_WORKDIR=str(tmp_path / "co"), OBS_SCM_URL=str(other))
+
+    result = _submit(root, env)
+
+    assert result.returncode != 0, result.stdout
+    assert tag.group(1) in result.stderr, result.stderr
+    assert _osc_calls(tmp_path) == [], "refused only after touching OBS"
 
 
 @pytest.mark.parametrize(

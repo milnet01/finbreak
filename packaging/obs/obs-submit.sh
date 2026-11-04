@@ -7,8 +7,9 @@
 #
 # Needs: osc (authenticated), obs-service-tar + obs-service-obs_scm, and a
 # glibc >= 2.34 host for the wheel vendoring. Override via env: OBS_API,
-# OBS_PROJECT, OBS_PACKAGE, OBS_WORKDIR, OBS_MSG. vendor.tar.gz is rebuilt when
-# pyproject.toml is newer than it; set REVENDOR=1 to force a fresh one anyway.
+# OBS_PROJECT, OBS_PACKAGE, OBS_WORKDIR, OBS_MSG, OBS_SCM_URL. vendor.tar.gz is
+# rebuilt when pyproject.toml is newer than it; set REVENDOR=1 to force a fresh
+# one anyway.
 # Refuses when the recipe files or pyproject.toml differ from the release tag
 # _service builds (FIBR-0385).
 set -eu
@@ -42,6 +43,22 @@ if [ -n "$DRIFT" ]; then
     echo "obs-submit: these differ from $TAG, the source OBS will build:" >&2
     echo "$DRIFT" >&2
     echo "Commit them in a release, or run from 'git checkout $TAG'." >&2
+    exit 1
+fi
+
+# obs_scm fetches the tag from the _service URL, not from this repo, so the
+# check above only holds if that tag is this one (FIBR-0462). OBS_SCM_URL
+# overrides the URL, for the tests.
+URL="${OBS_SCM_URL:-$(sed -n 's:.*<param name="url">\(.*\)</param>.*:\1:p' "$HERE/_service")}"
+LOCAL="$(git -C "$ROOT" rev-parse "$TAG^{commit}")"
+REMOTE_REFS="$(git ls-remote "$URL" "refs/tags/$TAG" "refs/tags/$TAG^{}")" || {
+    echo "obs-submit: could not read $TAG from $URL" >&2
+    exit 1
+}
+# An annotated tag lists its commit on the ^{} line; a lightweight one on its own.
+REMOTE="$(printf '%s\n' "$REMOTE_REFS" | awk '/\^\{\}$/ {p = $1} !p && NF {l = $1} END {print p ? p : l}')"
+if [ "$REMOTE" != "$LOCAL" ]; then
+    echo "obs-submit: $TAG at $URL is '${REMOTE:-missing}', but here it is $LOCAL" >&2
     exit 1
 fi
 
@@ -80,8 +97,12 @@ cp "$VENDOR" "$CO/vendor.tar.gz"
 # DEBTRANSFORM-FILES-TAR, which is how the wheel closure reaches the deb build
 # tree at vendor/ -- deb builds have no RPM-style Source1. Verified 2026-08-31
 # by running debtransform and dpkg-source -x on the result (FIBR-0158).
+#
+# Packed from the tag, not the working tree, so a gitignored file under
+# debian/ -- which the drift check cannot see -- never ships (FIBR-0462).
 echo ">>> packing debian.tar.gz"
-tar -C "$HERE" -czf "$CO/debian.tar.gz" debian
+git -C "$ROOT" archive --format=tar.gz --prefix=debian/ \
+    -o "$CO/debian.tar.gz" "$TAG:packaging/obs/debian"
 
 # Retire the directory form an earlier revision committed. `osc add debian`
 # stores a directory as debian.obscpio, which debtransform cannot read, so it
@@ -98,11 +119,13 @@ fi
 #    the changelog to the .dsc Version, adding an entry when they disagree.
 cd "$CO"
 
-# Drop any previously-committed source tarball before the services mint the new
-# one. Two of them is fatal to the deb build and silent on the RPM side: the RPM
-# takes Source0 by exact name, while debtransform discovers its source archive
-# and refuses when more than one candidate is present (FIBR-0158).
-rm -f finbreak-*.tar.gz
+# Drop every previously-committed source archive before the services mint the
+# new ones. Two tarballs is fatal to the deb build and silent on the RPM side:
+# the RPM takes Source0 by exact name, while debtransform discovers its source
+# archive and refuses when more than one candidate is present (FIBR-0158). An
+# old .obscpio breaks no build, but `osc addremove` would keep it on OBS for
+# good (FIBR-0462).
+rm -f finbreak-*.tar.gz finbreak-*.tar finbreak-*.obscpio
 
 echo ">>> running source services (obs_scm + tar + set_version)"
 osc -A "$API" service manualrun
@@ -119,11 +142,17 @@ osc -A "$API" commit -m "${OBS_MSG:-finbreak $VER}"
 
 # 5. Read the package back (FIBR-0317). OBS builds whatever source it holds,
 #    and its builds stayed green on an old one for six releases. Refuse unless
-#    the release tag's tarball is the only source archive there.
+#    the release tag's tarball is there and every source archive is this
+#    release's: its tarball, and the .obscpio obs_scm made it from (FIBR-0462).
 WANT="finbreak-${TAG#v}.tar.gz"
-HELD="$(osc -A "$API" ls "$PROJ" "$PKG" | grep '^finbreak-.*\.tar\.gz$' || true)"
-if [ "$HELD" != "$WANT" ]; then
-    echo "obs-submit: OBS should hold exactly $WANT; it holds:" >&2
+LISTING="$(osc -A "$API" ls "$PROJ" "$PKG")" || {
+    echo "obs-submit: could not list $PROJ/$PKG after the commit" >&2
+    exit 1
+}
+HELD="$(printf '%s\n' "$LISTING" | grep -E '^finbreak-.*\.(tar\.gz|tar|obscpio)$' || true)"
+OTHER="$(printf '%s\n' "$HELD" | grep -vxF -e "$WANT" -e "finbreak-${TAG#v}.obscpio" || true)"
+if ! printf '%s\n' "$HELD" | grep -qxF "$WANT" || [ -n "$OTHER" ]; then
+    echo "obs-submit: OBS should hold $WANT and no other release's source; it holds:" >&2
     echo "${HELD:-(no source archive)}" >&2
     exit 1
 fi

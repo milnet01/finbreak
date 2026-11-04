@@ -4841,7 +4841,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: fix.
   Source: in-session-2026-11-04 (found while working FIBR-0317).
 
-- 📋 [FIBR-0462] **OBS keeps every old .obscpio source archive, and the submit read-back cannot see them.**
+- 🚧 [FIBR-0462] **OBS keeps every old .obscpio source archive, and the submit read-back cannot see them.**
   Found by review-code 2026-11-04, verified the same day: the OBS package
   holds finbreak-0.1.22/1.0.0/1.0.1/1.0.2/1.0.3.obscpio (about 16 MB each)
   beside finbreak-1.0.3.tar.gz (build-obs/.osc/_files). obs-submit.sh's
@@ -4859,6 +4859,20 @@ touches the § 2 surface. A security fix takes the number its change takes — �
     "(no source archive)". Fails closed; the message misleads.
   - The drift check reads the LOCAL tag; obs_scm fetches it from GitHub.
     Nothing checks they are the same commit.
+  Started 2026-11-04. Code and tests now; the live proof waits for the
+  next release's submit (1.0.3 is not re-submitted).
+  Built 2026-11-04. obs-submit.sh now: removes old finbreak-*.tar,
+  .tar.gz and .obscpio before the services run; refuses unless OBS holds
+  this release's tarball and no other release's archive (its own .obscpio
+  is allowed); packs debian.tar.gz with git archive from the tag, so only
+  tracked files ship; stops with its own message when osc ls fails;
+  refuses unless the _service URL's tag is the local tag's commit
+  (git ls-remote, annotated or lightweight). INV-9's text scan of the tar
+  line became a run of the script; obs_packaging spec.md INV-9 and INV-13
+  rows updated. Red first: seven new cases failed on their own
+  assertions; gate green. Live, read-only: GitHub's v1.0.3 resolves to the
+  local commit 02e9603. Not run live: a real submit (next release).
+  Awaits the batched review-code.
   **Layman:** Each release leaves its old source bundle on the build service, so the package there keeps growing, and the check after a submit only looks at one kind of file.
   Kind: fix.
   Source: review-code-2026-11-04 (FIBR-0317 close-out).
