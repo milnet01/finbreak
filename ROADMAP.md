@@ -4699,7 +4699,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: security.
   Source: gate-finding-2026-10-22.
 
-- 📋 [FIBR-0456] **Check whether the Transactions date-range pickers keep the first and last transaction dates after a lock.**
+- ✅ [FIBR-0456] **Check whether the Transactions date-range pickers keep the first and last transaction dates after a lock.**
   Raised 2026-10-22 by the review-code --single pass over FIBR-0097, as an
   open question, not a verified finding. _seed_date_range (FIBR-0327) sets
   the two QDateEdits to the earliest and latest transaction dates while
@@ -4709,6 +4709,14 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   and what does a QDateEdit's date() return after _clear_decrypted_rows?
   test_lock_wipe's markers are a description and an amount, so it would
   not see a date.
+  Settled 2026-11-04: confirmed and fixed. After a lock,
+  QDateEdit.date() still returned the earliest seeded transaction date;
+  the wipe cleared only the inner line edit's text.
+  TransactionsView.clear_rows now resets both pickers to their minimum
+  date. A dated span read from the vault counts as a decrypted value,
+  the same as the rows FIBR-0322 clears. Test:
+  test_lock_wipe.py::test_FIBR0456_lock_forgets_the_transaction_date_span
+  (red before, green after).
   **Layman:** Make sure locking the app also forgets the date range shown above the transaction list.
   Kind: investigate.
   Source: review-code-2026-10-22.

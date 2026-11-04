@@ -32,6 +32,13 @@ signaling per
   the whole list of transfers each time. A new database index answers it
   directly. Your vault upgrades itself the first time this version opens it.
 
+### Fixed
+
+- **Locking now also forgets the Transactions date range** (FIBR-0456)
+  The two date pickers above the transaction list start at your first and last
+  transaction dates. Locking cleared what they showed but kept the dates in
+  memory. They are now reset too.
+
 ## [1.0.2] - 2026-10-29
 
 **Theme:** Security updates and a faster app.
