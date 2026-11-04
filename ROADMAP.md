@@ -1748,7 +1748,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: investigate.
   Source: review-code 2026-08-31 lane=update-installer.
 
-- 📋 [FIBR-0332] **A batch mapping answered with the profile-name field blank is still asked once per file.**
+- ✅ [FIBR-0332] **A batch mapping answered with the profile-name field blank is still asked once per file.**
   Surfaced while fixing FIBR-0319 and deliberately NOT widened into it.
 
   FIBR-0319 makes an answered mapping settle every other file sharing that
@@ -1767,6 +1767,13 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   § 4.3 decision 1 says re-asking an answered question is babysitting, and
   thirty identical questions is what that decision exists to prevent. The
   spec should say which, and the code follow.
+  Found already fixed, 2026-11-04: FIBR-0389 B6 applies an answered
+  mapping to every other blocked file with the exact same header,
+  whether or not the layout was named (BatchImportService's
+  mapping-retry docstring says so). Nothing is saved for a later batch
+  unless it was named. Locked by
+  test_batch_import_ui.py::test_FIBR0388_a_same_layout_batch_asks_about_its_columns_once,
+  parametrised named and unnamed; both pass. No code change.
   **Layman:** Import thirty spreadsheets of the same layout without naming a saved layout, and it still asks you thirty times.
   Kind: ux.
   Source: in-session-2026-09-03 (observed while fixing FIBR-0319).
