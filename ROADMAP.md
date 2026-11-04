@@ -3980,7 +3980,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: fix.
   Source: full-audit-2026-09-27 code lanes 5 and 6 (queued by FIBR-0405).
 
-- 🚧 [FIBR-0426] **A batch-import UI test crashed its test worker once under the full gate.**
+- 📋 [FIBR-0426] **A batch-import UI test crashed its test worker once under the full gate.**
   Seen 2026-09-29 during FIBR-0405's gate: pytest-xdist reported
   "worker 'gw5' crashed while running test_batch_import_ui.py::
   test_INV8_cancelling_a_prompt_skips_that_file_immediately". Alone it
@@ -4021,6 +4021,19 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   (2633 passed every run). Next: the same full-suite loop with
   PYTHONMALLOC=debug or under a PySide6 debug build, so a freed wrapper
   faults at the free rather than at the later delete.
+  Investigated 2026-11-04: the full suite (-m "not perf", -n 6, as
+  the gate runs it) under PYTHONMALLOC=debug and -X faulthandler, 40
+  runs: 10 alone, then 30 as two loops side by side so 12 workers loaded
+  all 12 cores. 2622 passed, 2 skipped every run; no worker crash, no
+  core dump. With the earlier loops that is 57 clean full-suite runs
+  against 3 crashes, all inside a push gate. Reading the code: the
+  stub's reject() runs inside show(), inside a QTimer-driven slot,
+  inside qtbot.waitUntil's processEvents, so its deleteLater is posted
+  from a nested loop level that a real Cancel click never uses. That is
+  a lead, not a proven cause. Parked: no more blind loops. On the next
+  recurrence keep the core dump and get a Python-level stack with
+  py-bt (gdb plus python debug symbols), which names the object being
+  deleted.
   **Layman:** One automated check crashed once for no clear reason and then passed every time after; it needs a closer look so it doesn't hide a real problem.
   Kind: investigate.
   Source: in-session-2026-09-29 (FIBR-0405 gate run).
