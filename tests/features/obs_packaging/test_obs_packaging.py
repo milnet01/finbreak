@@ -669,7 +669,21 @@ echo "$*" >> "$OSC_LOG"
 case "$1" in
   checkout) mkdir -p "$2/$3/.osc" ;;
   add) [ -z "${OSC_FAIL_ADD:-}" ] || { echo "osc: add failed" >&2; exit 1; } ;;
-  results) cat "$OSC_RESULTS" ;;
+  results)
+    # The first $OSC_FAIL_RESULTS calls fail, as a dropped connection would.
+    n=$(cat "$OSC_LOG.results" 2>/dev/null || echo 0); n=$((n + 1))
+    echo "$n" > "$OSC_LOG.results"
+    if [ "$n" -le "${OSC_FAIL_RESULTS:-0}" ]; then
+      echo "osc: results unreachable" >&2; exit 1
+    fi
+    cat "$OSC_RESULTS" ;;
+  api)
+    [ -z "${OSC_FAIL_API:-}" ] || { echo "osc: api unreachable" >&2; exit 1; }
+    case "$2" in
+      */_jobhistory*)
+        echo "<jobhist package=\\"finbreak\\" srcmd5=\\"${OSC_BUILT_MD5:-new}\\"/>" ;;
+      *) echo "<directory name=\\"finbreak\\" srcmd5=\\"${OSC_SOURCE_MD5:-new}\\">" ;;
+    esac ;;
   buildlog) echo "log tail" ;;
   ls) [ -z "${OSC_LS:-}" ] || cat "$OSC_LS" ;;
 esac
@@ -898,27 +912,71 @@ def test_FIBR0385_a_bundle_older_than_its_inputs_is_rebuilt(tmp_path, newer):
         # FIBR-0317: OBS stars a result left over from the previous source while
         # the rebuild is queued. The status stopped polling on it at once.
         ("repo x86_64 finbreak succeeded*\n", 1, "timed out"),
+        # FIBR-0463: a lock or a delete is not a finished build.
+        ("repo x86_64 finbreak locked\n", 1, "timed out"),
+        ("repo x86_64 finbreak deleting\n", 1, "timed out"),
     ],
-    ids=["succeeded", "failed", "timeout", "outdated"],
+    ids=["succeeded", "failed", "timeout", "outdated", "locked", "deleting"],
 )
 def test_FIBR0400_obs_status_exit_reflects_the_builds(
     tmp_path, rows, expect_rc, expect_text
 ):
     """obs-status.sh exited 0 on a failed build and when its polls ran out."""
+    result = _status(tmp_path, rows)
+
+    assert (result.returncode != 0) == bool(expect_rc), result.stdout
+    assert expect_text in (result.stdout + result.stderr)
+
+
+@pytest.mark.parametrize("final", ["succeeded", "failed"])
+def test_FIBR0463_a_result_built_from_the_old_source_is_not_final(tmp_path, final):
+    """Straight after a commit OBS can still show the last source's results
+    without the `*` that marks them stale. The status must wait for a build of
+    the source just committed, not take the old one as the answer."""
+    result = _status(
+        tmp_path,
+        f"repo x86_64 finbreak {final}\n",
+        OSC_SOURCE_MD5="new",
+        OSC_BUILT_MD5="old",
+    )
+
+    assert result.returncode != 0, result.stdout
+    assert "timed out" in result.stderr, result.stderr
+
+
+def test_FIBR0463_a_failing_poll_says_why(tmp_path):
+    """Each poll sent osc's error to /dev/null, so a run that could not reach
+    OBS timed out without saying why."""
+    result = _status(tmp_path, "repo x86_64 finbreak succeeded\n", OSC_FAIL_RESULTS="2")
+
+    assert result.returncode != 0, result.stdout
+    assert "results unreachable" in result.stdout + result.stderr
+
+
+def test_FIBR0463_an_unreadable_source_stops_the_status(tmp_path):
+    """Without the committed source's checksum there is nothing to match the
+    builds against, so the status cannot call any of them current."""
+    result = _status(tmp_path, "repo x86_64 finbreak succeeded\n", OSC_FAIL_API="1")
+
+    assert result.returncode != 0, result.stdout
+    assert "api unreachable" in result.stderr, result.stderr
+
+
+def _status(
+    tmp_path: Path, rows: str, **extra: str
+) -> subprocess.CompletedProcess[str]:
     results = tmp_path / "results.txt"
     results.write_text(rows)
-    env = _osc_env(tmp_path, OSC_RESULTS=str(results), POLL_SECS="0", MAX_POLLS="2")
-
-    result = subprocess.run(
+    env = _osc_env(
+        tmp_path, OSC_RESULTS=str(results), POLL_SECS="0", MAX_POLLS="2", **extra
+    )
+    return subprocess.run(
         ["sh", str(_OBS / "obs-status.sh")],
         env=env,
         capture_output=True,
         text=True,
         timeout=60,
     )
-
-    assert (result.returncode != 0) == bool(expect_rc), result.stdout
-    assert expect_text in (result.stdout + result.stderr)
 
 
 # --------------------------------------------------------------------------- #

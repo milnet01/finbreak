@@ -4863,7 +4863,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: fix.
   Source: review-code-2026-11-04 (FIBR-0317 close-out).
 
-- 📋 [FIBR-0463] **obs-status.sh can pass on the previous build if it polls before OBS marks the results stale.**
+- 🚧 [FIBR-0463] **obs-status.sh can pass on the previous build if it polls before OBS marks the results stale.**
   Found by review-code 2026-11-04; NOT reproduced. The first poll after
   obs-submit.sh's commit may see the old source's plain `succeeded` (no `*`)
   if OBS has not yet set the dirty flag, and exit 0 for the old build -
@@ -4877,6 +4877,18 @@ touches the § 2 surface. A security fix takes the number its change takes — �
     add them to the pending list.
   - `2>/dev/null || true` on each poll hides osc's error; a run that fails
     throughout times out without saying why.
+  Started 2026-11-04 (user: take FIBR-0463, FIBR-0462, FIBR-0274 in
+  turn).
+  Built 2026-11-04. obs-status.sh reads the committed source's srcmd5
+  (osc api /source/<proj>/<pkg>) and treats a succeeded or failed row as
+  final only when the newest _jobhistory job for that repo/arch has the
+  same srcmd5; locked and deleting are pending; poll errors reach stderr.
+  Red first: six new stub cases failed on their own assertions, then
+  passed; gate green. Live read-only run against 1.0.3: exit 0 on the
+  first poll, and _jobhistory limit=1 returns the newest job (rev 20).
+  Not live-tested: the old-source window itself; the next release's
+  submit exercises it. Awaits the batched review-code with FIBR-0462
+  and FIBR-0274.
   **Layman:** Straight after a submit, the build service may still show the last release's green results for a moment, and the status check could take that as success.
   Kind: fix.
   Source: review-code-2026-11-04 (FIBR-0317 close-out).

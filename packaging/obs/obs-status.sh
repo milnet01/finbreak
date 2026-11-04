@@ -1,6 +1,7 @@
 #!/bin/sh
 # obs-status.sh (FIBR-0155) — poll the OBS build results until every repo reaches
-# a terminal state, then print the tail of any build log that did not succeed.
+# a terminal state built from the committed source, then print the tail of any
+# build log that did not succeed.
 #
 # Run standalone after obs-submit.sh. Override via env: OBS_API, OBS_PROJECT,
 # OBS_PACKAGE, POLL_SECS (default 45), MAX_POLLS (default 80).
@@ -15,7 +16,7 @@ MAX_POLLS="${MAX_POLLS:-80}"
 # A repo row is "done" once it is no longer scheduled/building/etc.
 is_pending() {
     case "$1" in
-        scheduled|building|dispatching|blocked|signing|finished|""|unknown) return 0 ;;
+        scheduled|building|dispatching|blocked|signing|finished|locked|deleting|""|unknown) return 0 ;;
         # A trailing * marks a result from the previous source, with the
         # rebuild still queued (FIBR-0317).
         *\*) return 0 ;;
@@ -23,21 +24,42 @@ is_pending() {
     esac
 }
 
+# The checksum of the source just committed. Straight after a commit OBS can
+# still show the last source's results without the `*`, so a build result is
+# final only once OBS built it from this source (FIBR-0463).
+src="$(osc -A "$API" api "/source/$PROJ/$PKG")" || { echo "!!! could not read the OBS source" >&2; exit 1; }
+SRCMD5="$(printf '%s\n' "$src" | sed -n 's/^<directory .*srcmd5="\([^"]*\)".*/\1/p')"
+[ -n "$SRCMD5" ] || { echo "!!! the OBS source listing carries no srcmd5" >&2; exit 1; }
+
+# The source checksum of the newest build job for repo $1, arch $2.
+built_from() {
+    osc -A "$API" api "/build/$PROJ/$1/$2/_jobhistory?package=$PKG&limit=1" |
+        sed -n 's/.*srcmd5="\([^"]*\)".*/\1/p' | tail -1
+}
+
 i=0
 while [ "$i" -lt "$MAX_POLLS" ]; do
     i=$((i + 1))
-    res="$(osc -A "$API" results "$PROJ" "$PKG" 2>/dev/null || true)"
-    pending=0
     printf '[poll %s] ' "$i"
+    pending=0
+    # osc's error, if any, reaches stderr: a run that cannot reach OBS says why.
+    res="$(osc -A "$API" results "$PROJ" "$PKG")" || res=""
+    [ -n "$res" ] || pending=1
     # Each line: <repo> <arch> <package> <status>
-    echo "$res" | while read -r repo arch _pkg status _rest; do
+    while read -r repo arch _pkg status _rest; do
         [ -n "${repo:-}" ] || continue
+        if is_pending "$status"; then
+            pending=1
+        elif { [ "$status" = succeeded ] || [ "$status" = failed ]; } &&
+            [ "$(built_from "$repo" "$arch")" != "$SRCMD5" ]; then
+            status="$status(old-source)"
+            pending=1
+        fi
         printf '%s=%s ' "$repo" "$status"
-    done
+    done <<RESULTS
+$res
+RESULTS
     echo
-    echo "$res" | awk '{print $4}' | while read -r st; do
-        is_pending "$st" && echo pending
-    done | grep -q pending && pending=1 || pending=0
     [ "$pending" -eq 0 ] && break
     sleep "$POLL_SECS"
 done
