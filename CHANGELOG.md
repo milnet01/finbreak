@@ -21,6 +21,10 @@ signaling per
 
 ## [Unreleased]
 
+## [1.0.3] - 2026-11-04
+
+**Theme:** Faster reports and transfers, and locking forgets more.
+
 ### Changed
 
 - **A PDF report of one period reads only that period** (FIBR-0459)

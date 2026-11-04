@@ -1,3 +1,13 @@
+finbreak (1.0.3) unstable; urgency=medium
+
+  * A PDF report of one period reads only that period, so it is faster
+    on a vault with many years of history.
+  * The Transfers tab and statement deletes stay fast as transfers build
+    up. Your vault upgrades itself the first time this version opens it.
+  * Locking now also forgets the Transactions date range.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Wed, 04 Nov 2026 09:42:20 +0200
+
 finbreak (1.0.2) unstable; urgency=medium
 
   * Two bundled libraries, pillow and certifi, are updated to versions
