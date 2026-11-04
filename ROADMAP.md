@@ -2275,6 +2275,13 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   days.
   2026-11-04: started. OBS still serves 1.0.2 while 1.0.3 is released;
   _service already names v1.0.3.
+  2026-11-04: decision taken -- option (a), OBS is a step in the release path.
+  Built in bf461d6 (red test) + 99974f0 (fix), pushed; gate 2629 passed.
+  release.md and bump.json list obs-submit.sh + obs-status.sh; obs-submit.sh
+  reads the package back (INV-13). 1.0.3 submitted (OBS revision 20): only
+  finbreak-1.0.3.tar.gz held; all four repos succeeded. Status-script bug
+  found on the way: FIBR-0461. Left: workflow.md § 6 review step (review-code
+  on the two scripts), then flip to shipped.
   **Layman:** The openSUSE/Fedora packages on the build service were still the version from late July, because publishing a new release never updates them. Anyone installing from there got old software.
   Kind: package.
   Source: in-session-2026-08-31 (found while working FIBR-0158).
