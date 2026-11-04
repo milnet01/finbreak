@@ -707,6 +707,32 @@ def test_FIBR0249_a_password_the_provisional_account_already_had_is_restored(
     )
 
 
+def test_FIBR0274_a_remembered_password_replaces_the_destinations_failed_one(
+    qtbot, service, tmp_path, monkeypatch
+):
+    """The destination kept its own password, which had just failed on this
+    statement, so the one the user asked to remember was kept nowhere and the
+    next import asked again (user decision 2026-11-04: replace it)."""
+    accounts = AccountService(service.vault)
+    current = accounts.add_account("Current acct", "current").id
+    credit = accounts.add_account("Credit Card acct", "credit_card").id
+    accounts.set_pdf_password(credit, "old-one")
+    ImportService(service.vault).save_profile("bank", _PDF_HEADER, _PDF_MAPPING)
+    enc = _encrypt(_fixture("single_table.pdf"), user="secret")
+    path = _write(tmp_path, "locked.pdf", enc)
+    _patch_dialog(monkeypatch, [{"password": "secret", "remember": True}])
+
+    widget = _wizard(qtbot, service, current)
+    widget._select_file(str(path))
+    widget._confirm_account_combo.setCurrentIndex(
+        widget._confirm_account_combo.findData(credit)
+    )
+    widget._import_button.click()
+
+    assert accounts.get_pdf_password(credit) == "secret"
+    assert accounts.get_pdf_password(current) is None
+
+
 def test_FIBR0274_a_password_remembered_on_another_account_opens_the_pdf(
     qtbot, service, tmp_path, monkeypatch
 ):

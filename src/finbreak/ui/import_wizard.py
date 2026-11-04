@@ -1582,8 +1582,10 @@ class ImportWizardWidget(QWidget):
         rows actually landed on — so its auto-apply works next time, and no
         account is left holding a password that is not its own.
 
-        Only fills an empty slot on the destination (never clobbers a password
-        already remembered there).
+        Replaces a password already remembered on the destination: the prompt
+        is reached only after every stored password failed on this statement,
+        that one included, and the user asked for this one to be kept
+        (FIBR-0274; user decision 2026-11-04).
 
         **Moves rather than copies (FIBR-0249).** A copy left this statement's
         password permanently on whichever account the pick step happened to show
@@ -1602,10 +1604,9 @@ class ImportWizardWidget(QWidget):
         if stored_account == final_account:
             self._stored_pw = None  # stored where the rows landed; settled
             return
-        if self._accounts.get_pdf_password(final_account) is None:
-            self._accounts.set_pdf_password(final_account, password)
-        # Restore the provisional account, whether or not the destination took
-        # ours: the entry we wrote there was never that account's to keep.
+        self._accounts.set_pdf_password(final_account, password)
+        # Restore the provisional account: the entry we wrote there was never
+        # that account's to keep.
         self._accounts.set_pdf_password(stored_account, prior)
         self._stored_pw = None  # settled — `_release_stored_pw` must not re-run it
 

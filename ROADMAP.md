@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: FIBR=463 -->
+<!-- ants-roadmap-id-high-water: FIBR=465 -->
 # finbreak — Roadmap
 
 > See [CHANGELOG.md](CHANGELOG.md) for what's shipped and the current
@@ -1552,7 +1552,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   FIBR-0086 § 4.4's quoted code was updated in the same commit. Taken up
   now under the 2026-09-29 instruction to fix every open fix item.
 
-- 🚧 [FIBR-0274] **The stored-password auto-try consults only the pick-step account, so a re-targeted statement re-prompts next month.**
+- ✅ [FIBR-0274] **The stored-password auto-try consults only the pick-step account, so a re-targeted statement re-prompts next month.**
   `_begin_decrypt` looks the remembered password up with
   `get_pdf_password(self._target_account_id())` — necessarily the PICK-STEP
   account, because the destination is not known until the PDF has been
@@ -1593,6 +1593,12 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   CHANGELOG [Unreleased] entry added. Red first: two new wizard tests
   failed on their own assertions, then passed; gate green. Awaits the
   batched review-code.
+  Shipped 2026-11-04. review-code lane 2: the re-target carry now
+  replaces a password the destination already held, since that one just
+  failed on this statement (user decision 2026-11-04); its LOW
+  (unguarded vault reads) was refuted, since _on_pick_file catches
+  VaultLockedError. Filed: FIBR-0465 (_stored_pw holds passwords against
+  FIBR-0009 INV-11; pre-existing since FIBR-0249).
   **Layman:** After the app learns that a locked statement belongs to a different account than the one first selected, it still looks for the remembered password under the first one next month — so you get asked for the password again.
   Kind: enhancement.
   Source: in-session-2026-08-14 (found while fixing FIBR-0249).
@@ -4850,7 +4856,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: fix.
   Source: in-session-2026-11-04 (found while working FIBR-0317).
 
-- 🚧 [FIBR-0462] **OBS keeps every old .obscpio source archive, and the submit read-back cannot see them.**
+- ✅ [FIBR-0462] **OBS keeps every old .obscpio source archive, and the submit read-back cannot see them.**
   Found by review-code 2026-11-04, verified the same day: the OBS package
   holds finbreak-0.1.22/1.0.0/1.0.1/1.0.2/1.0.3.obscpio (about 16 MB each)
   beside finbreak-1.0.3.tar.gz (build-obs/.osc/_files). obs-submit.sh's
@@ -4882,11 +4888,16 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   assertions; gate green. Live, read-only: GitHub's v1.0.3 resolves to the
   local commit 02e9603. Not run live: a real submit (next release).
   Awaits the batched review-code.
+  Shipped 2026-11-04. review-code fixes (bd7f63d): any .tar compression
+  is cleared and refused; the drift check keeps git diff's exit status;
+  the OBS commit message takes the tag's version; ls-remote takes --;
+  spec INV-13 wording matches. Live proof still waits for the next
+  release's submit.
   **Layman:** Each release leaves its old source bundle on the build service, so the package there keeps growing, and the check after a submit only looks at one kind of file.
   Kind: fix.
   Source: review-code-2026-11-04 (FIBR-0317 close-out).
 
-- 🚧 [FIBR-0463] **obs-status.sh can pass on the previous build if it polls before OBS marks the results stale.**
+- ✅ [FIBR-0463] **obs-status.sh can pass on the previous build if it polls before OBS marks the results stale.**
   Found by review-code 2026-11-04; NOT reproduced. The first poll after
   obs-submit.sh's commit may see the old source's plain `succeeded` (no `*`)
   if OBS has not yet set the dirty flag, and exit 0 for the old build -
@@ -4912,9 +4923,46 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Not live-tested: the old-source window itself; the next release's
   submit exercises it. Awaits the batched review-code with FIBR-0462
   and FIBR-0274.
+  Shipped 2026-11-04. review-code (2 lanes, scratch
+  review-code-2026-11-04b) over 8460b70..26be170: excluded repos now
+  shown and failed, MAX_POLLS=0 reports a timeout (bd7f63d). Filed:
+  FIBR-0464 (a stale unresolvable/broken row reads as final). Won't fix:
+  the jobhistory pipeline's lost exit status; osc's error already
+  reaches stderr and the row stays pending. Settled live: /source and
+  _jobhistory srcmd5 agree for 1.0.3; no repo excluded or unpublished.
   **Layman:** Straight after a submit, the build service may still show the last release's green results for a moment, and the status check could take that as success.
   Kind: fix.
   Source: review-code-2026-11-04 (FIBR-0317 close-out).
+
+- 📋 [FIBR-0464] **obs-status.sh takes a stale unresolvable or broken row as final right after a commit.**
+  Found by review-code 2026-11-04 (lane 1, MEDIUM), not reproduced.
+  FIBR-0463 waits for a succeeded or failed row to come from the
+  committed source (srcmd5 vs the newest _jobhistory job). An
+  unresolvable or broken row has no job to compare, so if OBS still
+  shows the previous source's state at the first poll, the script fails
+  at once, on the very resubmit meant to fix it (a corrected
+  BuildRequires). Fails closed: re-running obs-status.sh later reads
+  the new state. Needs a way to tell a current unresolvable from a
+  stale one (a settle period, or seeing the dirty flag set and cleared
+  since the commit).
+  **Layman:** Right after a fix is sent to the build service, the status check can report the old 'cannot build' result as if it were new.
+  Kind: fix.
+  Source: review-code-2026-11-04b (FIBR-0274/0462/0463 close-out).
+
+- 📋 [FIBR-0465] **The import wizard keeps two plaintext statement passwords on itself until commit, against FIBR-0009 INV-11.**
+  Found by review-code 2026-11-04 (lane 2, MEDIUM). Pre-existing:
+  fbb3857 (FIBR-0249, 2026-08-14) added `_stored_pw = (account_id,
+  password, prior)`. INV-11 says the wizard holds no password
+  attribute and the password lives only in the dialog for the modal's
+  duration; the `_pw` spelling passes INV-11's name grep. `prior` (the
+  provisional account's own password) is held so it can be restored
+  when the remembered one moves. Fix options: defer the vault write to
+  commit so nothing needs restoring, or amend INV-11 to name this one
+  holder and its lifetime. Every password involved is the same user's,
+  held in process memory only.
+  **Layman:** While a statement import is open, the app holds the statement password in memory for longer than its own design says it should.
+  Kind: security.
+  Source: review-code-2026-11-04b (FIBR-0274/0462/0463 close-out).
 
 ## v1.1.0 — Localisation
 

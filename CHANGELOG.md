@@ -27,7 +27,8 @@ signaling per
   When a locked PDF's rows went to a different account than the one picked
   first, its remembered password moved there, and next month's import asked
   for it again. The import now tries each remembered password once before
-  asking.
+  asking. A password you ask it to remember now replaces an older one on the
+  account the rows go to, instead of being dropped.
 
 ## [1.0.3] - 2026-11-04
 
