@@ -1108,7 +1108,9 @@ def test_FIBR0466_an_unreadable_reason_still_reports_the_failure(tmp_path):
     """Under `set -e` a failed details read would end the script before it
     said a build failed."""
     result = _status(
-        tmp_path, "repo x86_64 finbreak unresolvable\n", MAX_POLLS="10",
+        tmp_path,
+        "repo x86_64 finbreak unresolvable\n",
+        MAX_POLLS="10",
         OSC_FAIL_DETAILS="1",
     )
 
