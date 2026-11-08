@@ -96,8 +96,8 @@ echo "=== final ==="
 final="$(osc -A "$API" results --show-excluded "$PROJ" "$PKG")" || { echo "!!! could not read the build results" >&2; exit 1; }
 echo "$final"
 
-# Dump the log tail for any repo that did not succeed. osc hides an excluded
-# repo unless asked, and excluded means no package at all, so it fails here
+# Say why each repo that did not succeed failed. osc hides an excluded repo
+# unless asked, and excluded means no package at all, so it fails here
 # (FIBR-0463). A here-document, not a pipe, so `failed` is set in this shell
 # rather than in a subshell.
 while read -r repo arch _pkg status _rest; do
@@ -105,7 +105,15 @@ while read -r repo arch _pkg status _rest; do
     if [ "$status" != "succeeded" ] && [ "$status" != "disabled" ]; then
         failed=1
         echo "########## $repo ($status) ##########"
-        osc -A "$API" buildlog "$PROJ" "$PKG" "$repo" "$arch" 2>&1 | tail -40
+        case "$status" in
+            # These never built, so there is no log; OBS keeps the reason
+            # (a missing BuildRequires, say) in the row's details (FIBR-0466).
+            unresolvable|broken|excluded)
+                osc -A "$API" results --show-excluded -r "$repo" -a "$arch" \
+                    --format '%(details)s' "$PROJ" "$PKG" 2>&1 ||
+                    echo "(could not read the reason from OBS)" ;;
+            *) osc -A "$API" buildlog "$PROJ" "$PKG" "$repo" "$arch" 2>&1 | tail -40 ;;
+        esac
     fi
 done <<RESULTS
 $final

@@ -653,6 +653,12 @@ case "$1" in
   checkout) mkdir -p "$2/$3/.osc" ;;
   add) [ -z "${OSC_FAIL_ADD:-}" ] || { echo "osc: add failed" >&2; exit 1; } ;;
   results)
+    # A --format query reads one row's details: OBS's reason it cannot build.
+    case " $* " in
+      *" --format "*)
+        [ -z "${OSC_FAIL_DETAILS:-}" ] || { echo "osc: details unreachable"; exit 1; }
+        echo "${OSC_DETAILS:-None}"; exit 0 ;;
+    esac
     # The first $OSC_FAIL_RESULTS calls fail, as a dropped connection would.
     n=$(cat "$OSC_LOG.results" 2>/dev/null || echo 0); n=$((n + 1))
     echo "$n" > "$OSC_LOG.results"
@@ -1071,12 +1077,52 @@ def test_FIBR0464_a_stale_unbuildable_row_is_not_taken_as_final(tmp_path, stale)
 @pytest.mark.parametrize("state", ["unresolvable", "broken"])
 def test_FIBR0464_a_current_unbuildable_row_still_fails(tmp_path, state):
     """The wait must end: a row that stays unbuildable is a failure, with its
-    log shown, not a timeout."""
+    reason shown, not a timeout."""
     result = _status(tmp_path, f"repo x86_64 finbreak {state}\n", MAX_POLLS="10")
 
     assert result.returncode != 0, result.stdout
     assert f"repo ({state})" in result.stdout, result.stdout
     assert "timed out" not in result.stderr, result.stderr
+
+
+@pytest.mark.parametrize("state", ["unresolvable", "broken", "excluded"])
+def test_FIBR0466_an_unbuildable_row_shows_why(tmp_path, state):
+    """A row that never built has no build log, so osc printed its own "no
+    log" error where the reason belonged. OBS keeps the reason in the row's
+    details, and the status must show it."""
+    rows = "repo x86_64 finbreak succeeded\n"
+    extra = {"OSC_DETAILS": "nothing provides python3-foo"}
+    if state == "excluded":
+        excluded = tmp_path / "excluded.txt"
+        excluded.write_text("Debian_13 x86_64 finbreak excluded\n")
+        extra["OSC_EXCLUDED"] = str(excluded)
+    else:
+        rows = f"repo x86_64 finbreak {state}\n"
+    result = _status(tmp_path, rows, MAX_POLLS="10", **extra)
+
+    assert result.returncode != 0, result.stdout
+    assert "nothing provides python3-foo" in result.stdout, result.stdout
+
+
+def test_FIBR0466_an_unreadable_reason_still_reports_the_failure(tmp_path):
+    """Under `set -e` a failed details read would end the script before it
+    said a build failed."""
+    result = _status(
+        tmp_path, "repo x86_64 finbreak unresolvable\n", MAX_POLLS="10",
+        OSC_FAIL_DETAILS="1",
+    )
+
+    assert result.returncode != 0, result.stdout
+    assert "could not read the reason" in result.stdout, result.stdout
+    assert "at least one build failed" in result.stderr, result.stderr
+
+
+def test_FIBR0466_a_failed_build_still_shows_its_log(tmp_path):
+    """A build that ran and failed has a log, and its tail is the reason."""
+    result = _status(tmp_path, "repo x86_64 finbreak failed\n", MAX_POLLS="10")
+
+    assert result.returncode != 0, result.stdout
+    assert "log tail" in result.stdout, result.stdout
 
 
 @pytest.mark.parametrize("knob", ["SETTLE_POLLS", "MAX_POLLS", "POLL_SECS"])
