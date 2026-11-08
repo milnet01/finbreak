@@ -30,6 +30,15 @@ signaling per
   asking. A password you ask it to remember now replaces an older one on the
   account the rows go to, instead of being dropped.
 
+### Security
+
+- **A statement password you ask to remember is saved only when the import finishes** (FIBR-0465)
+  The import used to save it as soon as the PDF opened, to the account picked
+  first. It kept that account's old password in memory too, to put back later.
+  If the app locked itself mid-import, the new password could be left on the
+  wrong account. Now it holds one password and saves it at the end, to the
+  account the rows go to. Leaving the import any other way saves nothing.
+
 ## [1.0.3] - 2026-11-04
 
 **Theme:** Faster reports and transfers, and locking forgets more.
