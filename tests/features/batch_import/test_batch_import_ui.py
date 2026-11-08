@@ -1373,6 +1373,39 @@ def test_FIBR0410_a_single_file_import_warns_about_a_disagreeing_balance(
     assert len(warnings) == 1 and "closing balance" in warnings[0], warnings
 
 
+def test_FIBR0465_the_password_is_saved_before_the_balance_warning_blocks(
+    qtbot, service, monkeypatch
+):
+    """The balance warning runs its own event loop, so an idle auto-lock can
+    fire while it is open. Saved after it, the remembered password then hit
+    a locked vault and was silently forgotten, though the rows had committed."""
+    from types import SimpleNamespace
+
+    widget = _wizard(qtbot, service)
+    widget._preview = SimpleNamespace(account_id=7)  # type: ignore[assignment]
+    widget._remember_pw = "pw"
+    monkeypatch.setattr(
+        widget._imports,
+        "commit_import",
+        lambda *_a, **_k: ImportResult(
+            inserted_count=3,
+            duplicate_count=0,
+            error_count=0,
+            period_recorded=False,
+            closing_balance_mismatch=True,
+        ),
+    )
+    order: list[str] = []
+    monkeypatch.setattr(
+        widget._accounts, "set_pdf_password", lambda *_a: order.append("saved")
+    )
+    monkeypatch.setattr(
+        wizard_mod.QMessageBox, "warning", lambda *_a, **_k: order.append("warning")
+    )
+    widget._on_import()
+    assert order == ["saved", "warning"], order
+
+
 def test_FIBR0382_row_tooltip_shows_the_path_as_typed(
     qtbot, service, profile, tmp_path
 ):

@@ -1538,6 +1538,15 @@ class ImportWizardWidget(QWidget):
         except (ValueError, FinbreakError) as exc:
             self._error.setText(str(exc))
             return
+        # Before the warning below: it runs its own event loop, so an auto-lock
+        # can fire while it is open.
+        try:
+            self._save_remembered_pw()
+        except VaultLockedError:
+            # The rows are already committed, so this still finishes. An
+            # auto-lock here means the password is not remembered, and the
+            # next import asks for it again; no account holds a wrong one.
+            pass
         if result.closing_balance_mismatch:
             # FIBR-0171 INV-12 keeps the recorded balance; a different one here
             # usually means the wrong file for the period (FIBR-0410).
@@ -1551,13 +1560,6 @@ class ImportWizardWidget(QWidget):
                     "Statements tab."
                 ),
             )
-        try:
-            self._save_remembered_pw()
-        except VaultLockedError:
-            # The rows are already committed, so this still finishes. An
-            # auto-lock here means the password is not remembered, and the
-            # next import asks for it again; no account holds a wrong one.
-            pass
         self.done.emit()
 
     def _save_remembered_pw(self) -> None:
@@ -1611,6 +1613,8 @@ class ImportWizardWidget(QWidget):
     def _select_files(self, paths: list[str]) -> None:
         """Start a batch over >= 2 selected files (§ 4.3)."""
         self._error.clear()
+        # Other files: a refused PDF's password is not theirs (INV-11).
+        self._drop_remembered_pw()
         self._batch_files = self._batch.build(paths)
         self._batch_index = 0
         self._batch_phase = "scan"

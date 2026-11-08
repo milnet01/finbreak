@@ -1147,6 +1147,36 @@ def test_FIBR0465_an_auto_lock_before_commit_leaves_the_account_untouched(
     )
 
 
+def test_FIBR0465_starting_a_batch_drops_the_held_password(
+    qtbot, service, tmp_path, monkeypatch
+):
+    """INV-11: the held password ends when the wizard moves to another file.
+    A locked PDF that decrypts and is then refused leaves the wizard on the
+    pick step; a single-file pick dropped the password, a 2+-file pick kept it
+    for the whole batch. The attribute is asserted because holding it in memory
+    is the whole defect: it is never written anywhere."""
+    current = AccountService(service.vault).add_account("Current acct", "current").id
+    blank = pikepdf.new()
+    blank.add_blank_page()
+    out = io.BytesIO()
+    blank.save(out)
+    locked = _write(tmp_path, "no_table.pdf", _encrypt(out.getvalue(), user="secret"))
+    first = _write(tmp_path, "a.csv", b"Date,Amount\n2026-01-01,1.00\n")
+    second = _write(tmp_path, "b.csv", b"Date,Amount\n2026-01-02,2.00\n")
+    _patch_dialog(monkeypatch, [{"password": "secret", "remember": True}])
+
+    widget = _wizard(qtbot, service, current)
+    widget._select_file(str(locked))
+    assert widget._remember_pw == "secret", "precondition: held after the decrypt"
+    assert widget._stack.currentIndex() == 0, "precondition: refused, on the pick step"
+
+    widget._select_files([str(first), str(second)])
+
+    assert widget._remember_pw is None, (
+        "a batch started after a refused locked PDF still holds that file's password"
+    )
+
+
 # --------------------------------------------------------------------------- #
 # FIBR-0405 — a compression bomb is refused before anything inflates it
 # --------------------------------------------------------------------------- #
