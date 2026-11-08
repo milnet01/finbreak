@@ -4893,6 +4893,10 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   the OBS commit message takes the tag's version; ls-remote takes --;
   spec INV-13 wording matches. Live proof still waits for the next
   release's submit.
+  Live proof (2026-11-08, 1.0.4 OBS submit, revision 21): obs-submit.sh
+  deleted every old source archive (0.1.22 to 1.0.3 obscpio, the 1.0.3
+  tarball), sent only the 1.0.4 ones, and its read-back passed before it
+  reported OK.
   **Layman:** Each release leaves its old source bundle on the build service, so the package there keeps growing, and the check after a submit only looks at one kind of file.
   Kind: fix.
   Source: review-code-2026-11-04 (FIBR-0317 close-out).
@@ -4930,6 +4934,9 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   the jobhistory pipeline's lost exit status; osc's error already
   reaches stderr and the row stays pending. Settled live: /source and
   _jobhistory srcmd5 agree for 1.0.3; no repo excluded or unpublished.
+  Live proof (2026-11-08, 1.0.4): obs-status.sh polled six times and
+  exited 0 with all four repos succeeded; each was matched against the
+  committed source's srcmd5, so none was a 1.0.3 result.
   **Layman:** Straight after a submit, the build service may still show the last release's green results for a moment, and the status check could take that as success.
   Kind: fix.
   Source: review-code-2026-11-04 (FIBR-0317 close-out).
@@ -4958,6 +4965,9 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Queued as FIBR-0466: the empty build log for an unbuildable row. Gate
   green. Shipped; live proof still rides on the next release's OBS
   submit, with FIBR-0462/0463.
+  Live run (2026-11-08, 1.0.4): no repo went unresolvable, broken or
+  excluded, so the settle wait was not exercised live; the run exited 0
+  on four succeeded repos.
   **Layman:** Right after a fix is sent to the build service, the status check can report the old 'cannot build' result as if it were new.
   Kind: fix.
   Source: review-code-2026-11-04b (FIBR-0274/0462/0463 close-out).
@@ -4991,7 +5001,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: security.
   Source: review-code-2026-11-04b (FIBR-0274/0462/0463 close-out).
 
-- 📋 [FIBR-0466] **obs-status.sh shows an empty build log for an unresolvable or broken row instead of the reason.**
+- 🚧 [FIBR-0466] **obs-status.sh shows an empty build log for an unresolvable or broken row instead of the reason.**
   Found by review-code 2026-11-08 (lane 1, LOW). The failure loop runs
   `osc buildlog` for every row that did not succeed. An unresolvable or
   broken row never built, so there is no log and osc prints its own
@@ -5000,6 +5010,14 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   osc command prints those details (`osc results -v` is the candidate)
   is unverified here and needs a live OBS row to confirm, so check it on
   the next release's OBS submit, with FIBR-0462/0463/0464.
+  2026-11-08, 9fc0b69: fixed. osc 1.28.0 has no `results -v`; an
+  unresolvable, broken or excluded row now prints `osc results -r -a
+  --format '%(details)s'`, run against the live project on the 1.0.4
+  submit (printed None for a building row). A failed or unfinished row
+  keeps its log tail. Red first; three mutants killed. Not seen live: an
+  unresolvable row's details text. Next: review-code, then ship.
+  Release note (2026-11-08): no CHANGELOG entry; release tooling, ships
+  in no artifact.
   **Layman:** When the build service cannot build a package at all, the status check shows a blank log rather than saying why.
   Kind: review-fix.
   Source: review-code-2026-11-08 (FIBR-0464/0465 close-out).
