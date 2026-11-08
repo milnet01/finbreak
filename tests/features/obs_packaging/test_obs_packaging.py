@@ -1049,7 +1049,7 @@ def test_FIBR0463_a_result_built_from_the_old_source_is_not_final(tmp_path, fina
     assert "timed out" in result.stderr, result.stderr
 
 
-@pytest.mark.parametrize("stale", ["unresolvable", "broken"])
+@pytest.mark.parametrize("stale", ["unresolvable", "broken", "excluded"])
 def test_FIBR0464_a_stale_unbuildable_row_is_not_taken_as_final(tmp_path, stale):
     """An unresolvable or broken row has no build job to date it, so straight
     after a commit the previous source's state was taken as the answer, and
@@ -1077,6 +1077,16 @@ def test_FIBR0464_a_current_unbuildable_row_still_fails(tmp_path, state):
     assert result.returncode != 0, result.stdout
     assert f"repo ({state})" in result.stdout, result.stdout
     assert "timed out" not in result.stderr, result.stderr
+
+
+@pytest.mark.parametrize("knob", ["SETTLE_POLLS", "MAX_POLLS", "POLL_SECS"])
+def test_FIBR0464_a_count_that_is_not_a_whole_number_is_refused(tmp_path, knob):
+    """`[ "$i" -lt 3s ]` fails inside an `elif` without tripping `set -e`, so a
+    mistyped SETTLE_POLLS silently switched the settle period off."""
+    result = _status(tmp_path, "repo x86_64 finbreak succeeded\n", **{knob: "3s"})
+
+    assert result.returncode != 0, result.stdout
+    assert f"{knob} must be a whole number" in result.stderr, result.stderr
 
 
 def test_FIBR0463_an_excluded_repo_is_a_failure(tmp_path):

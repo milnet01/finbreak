@@ -14,6 +14,16 @@ PKG="${OBS_PACKAGE:-finbreak}"
 POLL_SECS="${POLL_SECS:-45}"
 MAX_POLLS="${MAX_POLLS:-80}"
 SETTLE_POLLS="${SETTLE_POLLS:-3}"
+# A non-number fails `[ -lt ]` inside an `elif` without tripping `set -e`, which
+# would silently switch the settle period off.
+whole_number() {
+    case "$2" in
+        ''|*[!0-9]*) echo "!!! $1 must be a whole number, got '$2'" >&2; exit 2 ;;
+    esac
+}
+whole_number POLL_SECS "$POLL_SECS"
+whole_number MAX_POLLS "$MAX_POLLS"
+whole_number SETTLE_POLLS "$SETTLE_POLLS"
 
 # A repo row is "done" once it is no longer scheduled/building/etc.
 is_pending() {
@@ -57,11 +67,11 @@ while [ "$i" -lt "$MAX_POLLS" ]; do
             [ "$(built_from "$repo" "$arch")" != "$SRCMD5" ]; then
             status="$status(old-source)"
             pending=1
-        elif { [ "$status" = unresolvable ] || [ "$status" = broken ]; } &&
-            [ "$i" -lt "$SETTLE_POLLS" ]; then
+        elif { [ "$status" = unresolvable ] || [ "$status" = broken ] ||
+            [ "$status" = excluded ]; } && [ "$i" -lt "$SETTLE_POLLS" ]; then
             # No build job dates these, so one shown straight after a commit
-            # may be the previous source's. Believe it only once OBS has had
-            # SETTLE_POLLS polls to replace it (FIBR-0464).
+            # may be the previous source's. Believe it only from poll
+            # SETTLE_POLLS, after SETTLE_POLLS-1 waits (FIBR-0464).
             status="$status(settling)"
             pending=1
         fi
