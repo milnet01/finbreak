@@ -90,6 +90,19 @@
   </screenshots>
 
   <releases>
+    <release version="1.0.4" date="2026-11-08">
+      <description>
+        <p>Remembered statement passwords follow the right account, and are saved more safely.</p>
+        <p>Changed:</p>
+        <ul>
+          <li>A remembered statement password works whichever account you pick. When a locked PDF's rows went to a different account than the one picked first, its remembered password moved there, and next month's import asked for it again. The import now tries each remembered password once before asking. A password you ask it to remember now replaces an older one on the account the rows go to, instead of being dropped.</li>
+        </ul>
+        <p>Security:</p>
+        <ul>
+          <li>A statement password you ask to remember is saved only when the import finishes. The import used to save it as soon as the PDF opened, to the account picked first. It kept that account's old password in memory too, to put back later. If the app locked itself mid-import, the new password could be left on the wrong account. Now it holds one password and saves it at the end, to the account the rows go to. Leaving the import any other way saves nothing.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.0.3" date="2026-11-04">
       <description>
         <p>Faster reports and transfers, and locking forgets more.</p>

@@ -1,3 +1,13 @@
+finbreak (1.0.4) unstable; urgency=medium
+
+  * A remembered statement password works whichever account you pick.
+    The import now tries each remembered password once before asking.
+  * A statement password you ask to remember is saved only when the
+    import finishes, to the account the rows go to. Leaving the import
+    any other way saves nothing.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Sun, 08 Nov 2026 20:27:32 +0200
+
 finbreak (1.0.3) unstable; urgency=medium
 
   * A PDF report of one period reads only that period, so it is faster

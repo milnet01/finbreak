@@ -21,6 +21,10 @@ signaling per
 
 ## [Unreleased]
 
+## [1.0.4] - 2026-11-08
+
+**Theme:** Remembered statement passwords follow the right account, and are saved more safely.
+
 ### Changed
 
 - **A remembered statement password works whichever account you pick** (FIBR-0274)
