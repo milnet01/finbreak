@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: FIBR=465 -->
+<!-- ants-roadmap-id-high-water: FIBR=466 -->
 # finbreak — Roadmap
 
 > See [CHANGELOG.md](CHANGELOG.md) for what's shipped and the current
@@ -4934,7 +4934,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: fix.
   Source: review-code-2026-11-04 (FIBR-0317 close-out).
 
-- 🚧 [FIBR-0464] **obs-status.sh takes a stale unresolvable or broken row as final right after a commit.**
+- ✅ [FIBR-0464] **obs-status.sh takes a stale unresolvable or broken row as final right after a commit.**
   Found by review-code 2026-11-04 (lane 1, MEDIUM), not reproduced.
   FIBR-0463 waits for a succeeded or failed row to come from the
   committed source (srcmd5 vs the newest _jobhistory job). An
@@ -4945,17 +4945,24 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   the new state. Needs a way to tell a current unresolvable from a
   stale one (a settle period, or seeing the dirty flag set and cleared
   since the commit).
-  2026-11-05, d88de00: took the settle-period option. An unresolvable
+  2026-11-05, 4b38189: took the settle-period option. An unresolvable
   or broken row counts as final only from poll SETTLE_POLLS (default 3)
   and shows "(settling)" before then; one that stays unbuildable still
   fails with its log. Stub tests cover both. Gate green. Live proof
   rides on the next release's OBS submit, with FIBR-0462/0463.
   Next: review-code over this and FIBR-0465, then ship.
+  2026-11-08, review-code (--since dff7637) lane 1: 1 MEDIUM (calibrated
+  LOW), 3 LOW, 1 INFO. Fixed in 8298b08: the three count settings must
+  be whole numbers; an excluded row settles too; the comment states the
+  wait right; packaging/obs/README.md documents the settle period.
+  Queued as FIBR-0466: the empty build log for an unbuildable row. Gate
+  green. Shipped; live proof still rides on the next release's OBS
+  submit, with FIBR-0462/0463.
   **Layman:** Right after a fix is sent to the build service, the status check can report the old 'cannot build' result as if it were new.
   Kind: fix.
   Source: review-code-2026-11-04b (FIBR-0274/0462/0463 close-out).
 
-- 🚧 [FIBR-0465] **The import wizard keeps two plaintext statement passwords on itself until commit, against FIBR-0009 INV-11.**
+- ✅ [FIBR-0465] **The import wizard keeps two plaintext statement passwords on itself until commit, against FIBR-0009 INV-11.**
   Found by review-code 2026-11-04 (lane 2, MEDIUM). Pre-existing:
   fbb3857 (FIBR-0249, 2026-08-14) added `_stored_pw = (account_id,
   password, prior)`. INV-11 says the wizard holds no password
@@ -4972,9 +4979,30 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   drops it unsaved. This also closes the auto-lock gap FIBR-0321 left.
   FIBR-0009 INV-4/INV-11 amended; the INV-11 check now catches "pw".
   Gate green. Next: review-code over this and FIBR-0464, then ship.
+  2026-11-08, review-code (--since dff7637) lane 2: 1 MEDIUM, 2 LOW, 2
+  INFO. Fixed in 24edeee: a batch started after a refused locked PDF now
+  drops the held password; it is saved before the blocking balance
+  warning, so an auto-lock there no longer loses it; INV-11 now names
+  the single-file route and points a batch's passwords to
+  FIBR-0085-batch-import-service.md § 4.4. Dismissed with reasons in
+  that commit's body: the uncaught database error, and both INFOs. Gate
+  green. Shipped.
   **Layman:** While a statement import is open, the app holds the statement password in memory for longer than its own design says it should.
   Kind: security.
   Source: review-code-2026-11-04b (FIBR-0274/0462/0463 close-out).
+
+- 📋 [FIBR-0466] **obs-status.sh shows an empty build log for an unresolvable or broken row instead of the reason.**
+  Found by review-code 2026-11-08 (lane 1, LOW). The failure loop runs
+  `osc buildlog` for every row that did not succeed. An unresolvable or
+  broken row never built, so there is no log and osc prints its own
+  "no log" error; the reason (a missing BuildRequires, say) is in the
+  row's details. The exit status is already right. Not fixed now: which
+  osc command prints those details (`osc results -v` is the candidate)
+  is unverified here and needs a live OBS row to confirm, so check it on
+  the next release's OBS submit, with FIBR-0462/0463/0464.
+  **Layman:** When the build service cannot build a package at all, the status check shows a blank log rather than saying why.
+  Kind: review-fix.
+  Source: review-code-2026-11-08 (FIBR-0464/0465 close-out).
 
 ## v1.1.0 — Localisation
 
