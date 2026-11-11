@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: FIBR=466 -->
+<!-- ants-roadmap-id-high-water: FIBR=467 -->
 # finbreak — Roadmap
 
 > See [CHANGELOG.md](CHANGELOG.md) for what's shipped and the current
@@ -1645,8 +1645,17 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   **Layman:** Turn on stricter automatic type-checking to catch more bugs before they ship.
   Kind: refactor.
 
-- 📋 [FIBR-0103] **Consolidate presentation formatting into one module.**
+- 🚫 [FIBR-0103] **Consolidate presentation formatting into one module.**
   FIBR-0083 introduces src/finbreak/datetime_format.py (date/time display). Fold the existing amount/currency QLocale formatting (ui/_amount.py::_format_amount -> QLocale.toCurrencyString; already lifted out of ui/home.py and now imported by 8 modules, so the remaining work is the fold into a shared formatting package) into a shared formatting package alongside it, so all presentation logic is centralised + unit-tested in one place (Rule of Three: date + currency + future). Deps: FIBR-0083 (lands the first formatter). Small refactor; do AFTER FIBR-0083 ships.
+  Closed 2026-11-11. The user's goal is no drift between copies of the
+  formatting. A search of src for other money or date display formatting
+  (toCurrencyString, .2f, strftime, QLocale().toString, literal date
+  patterns) found every displayed amount going through ui/_amount.py's
+  _format_amount and every displayed date through datetime_format.py. The
+  only near-copy is the Settings preview list in ui/_datetime_prefs.py,
+  which calls QLocale().toString with the same preset tokens. The two
+  modules share no logic, so merging them would rewrite imports in about
+  44 files and prevent no drift. The user deferred the call to Claude.
   **Layman:** Keep all the 'how numbers and dates look' code in one tidy, tested place.
   Kind: refactor.
   Source: claude-suggestion-2026-07-11.
@@ -2066,6 +2075,22 @@ touches the § 2 surface. A security fix takes the number its change takes — �
 
 - 📋 [FIBR-0104] **Move slow statement import onto a worker thread (responsive UI + native overlap).**
   User idea (multi-threading for performance). Honest framing: Python's GIL means threading helps RESPONSIVENESS + native-code overlap, NOT pure-Python CPU parallelism. The app already threads its two slow blocking ops correctly (Argon2 key derivation via DeriveWorker; network via UpdateCheck/DownloadWorker — both native/GIL-releasing). Best next win: move IMPORT (pdfplumber text extraction, in-memory pikepdf decrypt, CSV/OFX parse, dedup + commit) onto a QThread worker (reuse the ui/_worker.py DeriveWorker pattern) with a progress indicator — today it runs ON THE UI THREAD (security-model / FIBR-0075 note: pdfplumber extract runs on the UI thread), so a large statement freezes the window. These ops are native-heavy (pdfplumber/pikepdf C++, SQLCipher C) so they RELEASE the GIL → genuine overlap with the GUI. CAVEAT: SQLite/SQLCipher connections are NOT shareable across threads — the worker needs its OWN connection to the vault (or marshal results back via signals). Pure-Python CPU hotspots (rule matching) won't benefit (GIL) — indexes (FIBR-0098) + virtualized tables (FIBR-0097) are the levers there. Deps: FIBR-0007/0008/0009 (import), reuses the QThread worker pattern; pairs with FIBR-0065 (non-blocking dialog discipline)."
+  MEASURED 2026-11-11 (machine busy, load average about 4.6, so rough):
+  PdfImporter().candidate_tables on synthetic Qt-printed statements, no
+  real data, took about 2s at 100 rows, 5s at 500 and 17.5s at 1500,
+  all on the UI thread. The freeze is real. Batch import already yields
+  between files (ImportWizardWidget._arm), so the stall is inside one
+  file's extraction.
+
+  Narrower design than the bullet assumes: the slow step,
+  decrypt_to_plaintext plus candidate_tables in
+  ui/import_wizard.py (_try_decrypt, _extract_pdf_tables), takes bytes
+  and returns tables. It never touches the vault. So a worker can run
+  just that, and the SQLCipher-connection-per-thread caveat does not
+  arise; dedup and commit stay on the UI thread. What it must handle: an
+  auto-lock destroying the wizard while the worker runs (the existing
+  DeriveWorker pattern and the FIBR-0204 worker drain in closeEvent), and
+  the password ladder in _begin_decrypt, which calls decrypt repeatedly.
   **Layman:** When importing a big statement, do the heavy reading on a background thread with a progress bar so the window stays responsive instead of freezing.
   Kind: perf.
   Source: user-suggestion-2026-07-11.
@@ -2155,6 +2180,12 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   leg may currently share a sign, which opposite-sign transfer matching would miss).
   If a real detection gap exists, split it out as a bug-fix. Touches ui/_amount.py +
   the Transactions table render; the account type is on models.Account.type.
+  2026-11-11: open question answered by the user: repayments show
+  negative on loan accounts after import. No code treats loan accounts
+  differently today (AccountType.HOME_LOAN / PERSONAL_LOAN appear only in
+  labels). The transfer-detection gap is real and is split out as
+  FIBR-0467; settle it before this display change, since flipping the
+  display sign of a row that is also mis-paired would hide the defect.
   **Layman:** On home-loan / personal-loan accounts, your payments (which reduce what you owe) will read as positive/green and interest &amp; fees (which increase what you owe) as negative/red — the natural way round, instead of the current back-to-front look.
   Kind: feature.
   Source: user-request-2026-07-12 (approved 2026-07-13).
@@ -5102,6 +5133,28 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   **Layman:** When the build service cannot build a package at all, the status check shows a blank log rather than saying why.
   Kind: review-fix.
   Source: review-code-2026-11-08 (FIBR-0464/0465 close-out).
+
+- 📋 [FIBR-0467] **Transfer detection never pairs a loan repayment whose two legs are both negative.**
+  Split out of FIBR-0121, which said to do so if its open question
+  found a detection gap. The user confirmed on 2026-11-11 that loan
+  repayments show negative on the loan account after import. The
+  current-account leg is negative too (money out, FIBR-0007's sign rule).
+  Transfer candidates are paired only on opposite amounts: the candidate
+  query in repositories/transfers.py joins ON c.amount_minor =
+  -d.amount_minor. So the two legs of a repayment never become a
+  suggestion.
+
+  Not yet checked: whether the loan leg is negative because of how the
+  bank prints loan statements or because of how the importer reads them.
+  That decides whether the fix belongs in the importer (store the loan
+  leg as money in) or in detection (also pair same-sign legs when one
+  account is a loan). Settle it before choosing. Correctness-critical:
+  it changes which rows count as spending in the dashboard totals.
+  **Layman:** A loan repayment shows up as money out of your current account and also as a minus on the loan account, so finbreak never offers to link the two as a transfer and counts the payment as spending.
+  Kind: fix.
+  Source: user-answer-2026-11-11 (FIBR-0121 open question).
+  Lanes: transfers, import.
+  Splits-from: FIBR-0121.
 
 ## v1.1.0 — Localisation
 
