@@ -48,7 +48,7 @@ prefixed so the two specs' invariants don't collide (see `docs/specs/FIBR-0131.m
 |-----|--------------|
 | FIBR-0131 INV-1 | Platform detection: `win32 + sys.frozen` → `WindowsInstaller(sys.executable)`; `win32` not-frozen → `None`; non-Windows unaffected. Off an installer the feature is inert (Settings disabled; Help→Check reports "not available"). |
 | FIBR-0131 INV-2 | Installer-driven asset-picker: `_select_assets(assets, suffix)` picks the `.exe` under `WindowsInstaller.asset_suffix()` and the `.AppImage` under `AppImageInstaller`'s, each + `.sig` (a release carrying both picks per-platform); `check_for_update` short-circuits to `None` with **zero** fetcher calls when there's no installer. |
-| FIBR-0131 INV-3 | The Windows swap is out-of-process, by **image path**: `_windows_relaunch_command` polls `Get-Process … $_.Path -eq $exe` (no `-Id`/PID), aborts (`Remove-Item` the temp, no relaunch) if the image never frees, else retries `Move-Item` then `Start-Process`; the argv[0] is an absolute `powershell.exe` (not bare `powershell`); paths single-quote-escaped. |
+| FIBR-0131 INV-3 | The Windows swap is out-of-process, by **image path**: `_windows_relaunch_command` polls `Get-Process … $_.Path -eq $exe` (no `-Id`/PID), aborts (`Remove-Item` the temp, no relaunch) if the image never frees, else retries two plain renames (old aside, new in; no `-Force`) then `Start-Process`; on Windows, a staged file held open leaves the old exe in place and a free one is installed with nothing left beside it (`test_windows_swap_live.py`, FIBR-0469); the argv[0] is an absolute `powershell.exe` (not bare `powershell`); paths single-quote-escaped. |
 | FIBR-0131 INV-4 | `WindowsInstaller.apply` spawns the helper **before** wiping the key, then `os._exit`s — no in-process file move; a spawn failure leaves the key un-wiped. The flags are `CREATE_NO_WINDOW \| CREATE_NEW_PROCESS_GROUP`, never `DETACHED_PROCESS` (FIBR-0444), `getattr`-guarded so `apply` loads + runs on the Linux gate. |
 | FIBR-0131 INV-5 | `_windows_relaunch_env` sets `PYINSTALLER_RESET_ENVIRONMENT=1` (+ passes unrelated vars through); no POSIX `LD_*` fixups. |
 | FIBR-0131 INV-6 | `download_and_verify` stages the temp with the installer-derived extension (`.exe`), so a Windows download isn't a misnamed `*.AppImage`. |
@@ -67,9 +67,10 @@ row key (they refine a shipped invariant rather than adding a numbered one):
 **Coverage honesty (INV-3/INV-4):** the Linux gate tests the **command/env
 construction** and the `apply` **ordering** (spawn→wipe→exit; spawn-failure leaves
 the key un-wiped) with a monkeypatched `Popen`/`os._exit`. The PowerShell helper's
-**runtime execution** — the image-free poll, the abort branch, the `Move-Item`
+**runtime execution** — the image-free poll, the abort branch, the rename
 retry, the temp `Remove-Item`, the relaunch — is **empirical-only on Windows** (a
-manual two-cycle leg, § docs/specs/FIBR-0131.md "To verify empirically"), exactly
+manual two-cycle leg, § docs/specs/FIBR-0131.md "To verify empirically"; the
+rename swap alone is `test_windows_swap_live.py`, which skips off Windows), exactly
 as the Linux `/bin/sh` relaunch legs are honest about being AppImage-runtime-only.
 
 INV-13/INV-9 grep legs and the Settings/shell `qtbot` legs live in the Qt section

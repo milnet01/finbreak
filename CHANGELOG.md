@@ -28,6 +28,15 @@ signaling per
   statement…" bar shows. Importing several files at once still reads
   each PDF in the foreground (FIBR-0468).
 
+### Fixed
+
+- **A failed update on Windows no longer deletes finbreak** (FIBR-0469)
+  If another program, such as a virus scanner, held the downloaded
+  update open, the update could delete the old program and then the
+  new one. Now the old program stays in place when the swap fails.
+  The installed copy runs the swap, so this protects updates made from
+  this version onward.
+
 ## [1.0.4] - 2026-11-08
 
 **Theme:** Remembered statement passwords follow the right account, and are saved more safely.

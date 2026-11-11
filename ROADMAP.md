@@ -5194,7 +5194,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: perf.
   Source: FIBR-0104-follow-up-2026-11-11.
 
-- 📋 [FIBR-0469] **Windows update swap can delete the old exe and then the new one, leaving no program.**
+- ✅ [FIBR-0469] **Windows update swap can delete the old exe and then the new one, leaving no program.**
   _windows_relaunch_command (services/update_installer.py) installs
   the update with `Move-Item -Force` over the running exe's path. The
   rolodex session measured on wintest 2026-11-11 (PowerShell 5.1):
@@ -5207,6 +5207,15 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   plain renames (old exe aside, new in, old restored on failure),
   which is what rolodex's ROLO-0042 draft does. Check FIBR-0131 D3 /
   INV-3 before changing behaviour.
+  2026-11-11: reproduced on wintest with finbreak's own helper:
+  with the staged file held open, `Move-Item -Force` deleted
+  finbreak.exe. Fixed in `_windows_relaunch_command`: two plain
+  renames (old to `<exe>.old`, new in, old restored on failure);
+  the temp is deleted only while the exe exists. Spec FIBR-0131
+  INV-3/INV-6/D3 amended (loop-log row `impl`). Test:
+  tests/features/auto_update/test_windows_swap_live.py (Windows
+  only): red before, green after, and it caught a mutant with the
+  restores removed. Ships in the next release.
   **Layman:** A failed update on Windows could leave you with no finbreak program at all, neither the old version nor the new one.
   Kind: fix.
   Source: peer-report-rolodex-2026-11-11.

@@ -237,10 +237,12 @@ def _windows_relaunch_command(exe: str, new_file: str) -> list[str]:
     running ``exe`` (``Get-Process ... $_.Path -eq $exe``), which is tree-agnostic
     and recycling-proof. On a ~60 s cap elapsing with the image still busy it
     **aborts** (removes the staged temp, no move, no relaunch) so it can never spawn
-    a second instance over a still-running first. Otherwise it retries the move
-    (AV/indexer lock-lag), removing the temp if the move ultimately fails, and
-    relaunches. ``exe``/``new_file`` are our own paths (``sys.executable`` + the
-    verified staged temp), never user input; both are single-quote-escaped."""
+    a second instance over a still-running first. Otherwise it retries the swap
+    (AV/indexer lock-lag) as two plain renames, never ``Move-Item -Force``, which
+    deletes ``exe`` before failing on a locked source (FIBR-0469). It removes the
+    temp only while ``exe`` exists, and relaunches. ``exe``/``new_file`` are our
+    own paths (``sys.executable`` + the verified staged temp), never user input;
+    both are single-quote-escaped."""
     exe_q = _ps_single_quote(exe)
     new_q = _ps_single_quote(new_file)
     # A live process running the target .exe image (single braces — this is a plain
@@ -250,19 +252,32 @@ def _windows_relaunch_command(exe: str, new_file: str) -> list[str]:
     )
     rm_temp = "Remove-Item -LiteralPath $new -Force -ErrorAction SilentlyContinue"
     script = (
-        f"$exe = {exe_q}; $new = {new_q}; "
+        f"$exe = {exe_q}; $new = {new_q}; $old = $exe + '.old'; "
         # Poll until the .exe image is free (~60 s cap = 300 x 200 ms).
         f"for ($i = 0; $i -lt 300; $i++) {{ "
         f"if (-not ({running})) {{ break }}; Start-Sleep -Milliseconds 200 }} "
         # Cap elapsed and still busy -> abort: don't orphan the temp, don't relaunch.
         f"if ({running}) {{ {rm_temp}; exit 1 }} "
-        # Image free: retry the move (5 x 500 ms) for AV/indexer lock-lag.
+        # A leftover from an earlier update would block the aside rename.
+        f"if (Test-Path -LiteralPath $exe) {{ "
+        f"Remove-Item -LiteralPath $old -Force -ErrorAction SilentlyContinue }} "
+        # Image free: retry the swap (5 x 500 ms) for AV/indexer lock-lag. Old
+        # aside, new in; when the second rename fails, the first is undone.
         f"$moved = $false; "
-        f"for ($j = 0; $j -lt 5; $j++) {{ try {{ "
-        f"Move-Item -LiteralPath $new -Destination $exe -Force -ErrorAction Stop; "
-        f"$moved = $true; break }} catch {{ Start-Sleep -Milliseconds 500 }} }} "
-        # A move that never took: clean the temp (no accretion), still relaunch old.
-        f"if (-not $moved) {{ {rm_temp} }} "
+        f"for ($j = 0; $j -lt 5; $j++) {{ "
+        f"try {{ Move-Item -LiteralPath $exe -Destination $old -ErrorAction Stop }} "
+        f"catch {{ Start-Sleep -Milliseconds 500; continue }}; "
+        f"try {{ Move-Item -LiteralPath $new -Destination $exe -ErrorAction Stop; "
+        f"$moved = $true; break }} catch {{ "
+        f"Move-Item -LiteralPath $old -Destination $exe -ErrorAction SilentlyContinue; "
+        f"Start-Sleep -Milliseconds 500 }} }} "
+        f"if (-not (Test-Path -LiteralPath $exe)) {{ "
+        f"Move-Item -LiteralPath $old -Destination $exe "
+        f"-ErrorAction SilentlyContinue }} "
+        # Delete only what has a copy elsewhere; still relaunch whichever exe is there.
+        f"if ($moved) {{ Remove-Item -LiteralPath $old -Force "
+        f"-ErrorAction SilentlyContinue }} "
+        f"elseif (Test-Path -LiteralPath $exe) {{ {rm_temp} }} "
         f"Start-Process -FilePath $exe"
     )
     return [_powershell_path(), "-NoProfile", "-NonInteractive", "-Command", script]
