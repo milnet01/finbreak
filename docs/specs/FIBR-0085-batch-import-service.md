@@ -178,9 +178,10 @@ SCAN   refuse the batch before reading anything, if
          classify by extension/sniff  (importers/sniff.py: looks_like_ofx /
                                        looks_like_pdf — §4.1)
          PDF  -> decrypt (§4.4); locked -> needs_password, stop this file
-                 StandardBankImporter.parse(pdf_bytes, exponent, password)
+                 read_pdf(plaintext, exponent): one open_pdf, then
+                 StandardBankImporter.parse_document(pdf, exponent)
                      -> ParseResult, or None if not a recognised SB statement
-                 None -> PdfImporter.candidate_tables(...) + table_to_text(...)
+                 None -> PdfImporter.tables_in(pdf) + table_to_text(...)
                          then the CSV ladder below on that text
          OFX  -> OfxImporter.parse(data, exponent) -> [(info, ParseResult), ...]
                  FAN OUT: one record per statement, statement_index 0..N-1 (§4.2)

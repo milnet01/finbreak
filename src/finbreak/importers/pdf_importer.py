@@ -27,8 +27,8 @@ import base64
 import csv
 import io
 import zlib
-from collections.abc import Callable
-from contextlib import ExitStack
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager, suppress
 from typing import TYPE_CHECKING
 
 import pikepdf
@@ -219,24 +219,31 @@ class PdfImporter:
         return _normalise_to_plaintext(data, password)
 
 
-def open_pdf(pdf_bytes: bytes, password: str | None = None) -> PDF:
+@contextmanager
+def open_pdf(pdf_bytes: bytes, password: str | None = None) -> Iterator[PDF]:
     """``pdf_bytes`` normalised (decrypted, decoded size checked) and opened with
     ``pdfplumber``, refused past ``_MAX_PDF_PAGES`` (INV-9). Both PDF readers
-    open through here, so neither can skip a check. The caller closes it: use
-    ``with``. ``pikepdf.PasswordError`` passes through for the prompt (INV-3)."""
+    open through here, so neither can skip a check. Use it with ``with``.
+    ``pikepdf.PasswordError`` passes through for the prompt (INV-3)."""
     import pdfplumber
 
     plaintext = _normalise_to_plaintext(pdf_bytes, password)
     pdf = read_untrusted(lambda: pdfplumber.open(io.BytesIO(plaintext)))
-    with ExitStack() as close_on_refusal:
-        close_on_refusal.enter_context(pdf)
+    try:
         if read_untrusted(lambda: len(pdf.pages)) > _MAX_PDF_PAGES:
             raise PdfRefusal(
                 "this PDF has too many pages to import — "
                 "try your bank's CSV or OFX export"
             )
-        close_on_refusal.pop_all()
-    return pdf
+        yield pdf
+    finally:
+        # pdfplumber's close() builds every page again, so a page that broke
+        # the read raises the library's raw error a second time, replacing the
+        # friendly one (FIBR-0470 review). The document is in memory, and the
+        # read has already succeeded or failed by now, so a close error is
+        # dropped.
+        with suppress(Exception):
+            pdf.close()
 
 
 def read_untrusted[T](read: Callable[[], T]) -> T:

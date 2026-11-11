@@ -1476,6 +1476,36 @@ def test_FIBR0405_a_library_value_error_is_not_shown_raw(monkeypatch, importer):
     assert "CSV or OFX" in str(excinfo.value)
 
 
+def _pdf_with_a_bad_rotate() -> bytes:
+    """One page whose ``/Rotate`` is a name, not a number: pdfplumber raises a
+    raw ``TypeError`` each time it builds that page."""
+    pdf = pikepdf.new()
+    pdf.add_blank_page()
+    pdf.pages[0].obj["/Rotate"] = pikepdf.Name("/X")
+    out = io.BytesIO()
+    pdf.save(out)
+    return out.getvalue()
+
+
+@pytest.mark.parametrize("route", ["read_pdf", "generic", "standard_bank"])
+def test_FIBR0470_a_page_that_breaks_closing_still_fails_friendly(route):
+    """Closing a pdfplumber document builds its pages again. A refusal that
+    closed the document outside the untrusted-PDF boundary let that rebuild's
+    raw ``TypeError`` replace the friendly ``ValueError``, and the wizard's and
+    the batch's error nets catch neither (FIBR-0470 review)."""
+    from finbreak.importers.standard_bank import StandardBankImporter
+    from finbreak.services.batch_import import read_pdf
+
+    pdf = _pdf_with_a_bad_rotate()
+    with pytest.raises(ValueError, match="CSV or OFX"):
+        if route == "read_pdf":
+            read_pdf(pdf, 2)
+        elif route == "generic":
+            PdfImporter().candidate_tables(pdf)
+        else:
+            StandardBankImporter().parse(pdf, 2)
+
+
 @pytest.mark.parametrize("retry", [False, True])
 def test_FIBR0408_the_password_dialog_says_when_the_last_one_failed(qtbot, retry):
     from PySide6.QtWidgets import QLabel
