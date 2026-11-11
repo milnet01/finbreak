@@ -5001,7 +5001,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: security.
   Source: review-code-2026-11-04b (FIBR-0274/0462/0463 close-out).
 
-- 🚧 [FIBR-0466] **obs-status.sh shows an empty build log for an unresolvable or broken row instead of the reason.**
+- ✅ [FIBR-0466] **obs-status.sh shows an empty build log for an unresolvable or broken row instead of the reason.**
   Found by review-code 2026-11-08 (lane 1, LOW). The failure loop runs
   `osc buildlog` for every row that did not succeed. An unresolvable or
   broken row never built, so there is no log and osc prints its own
@@ -5018,6 +5018,18 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   unresolvable row's details text. Next: review-code, then ship.
   Release note (2026-11-08): no CHANGELOG entry; release tooling, ships
   in no artifact.
+  2026-11-11, 128ea47: review-code (one lane, --since 182cf4f)
+  found two gaps, both fixed test-first. A starred row (not current,
+  or blocked, which osc always stars) and a scheduled row fell through
+  to the build log on a timeout; blocked and scheduled now show the
+  reason too. A row with no details printed osc's "None"; it now says
+  "(OBS gave no reason)". Script header and packaging/obs/README.md
+  updated. Four tests red first; each part of the fix removed in turn
+  sent one red. Dismissed: unfiltered OBS text on the terminal (our own
+  project's output, read by whoever releases), the final read
+  disagreeing with the last poll (the final read is what is printed
+  and judged), an osc crash on a repo-level broken row (osc's code).
+  Full gate green. Still not seen live: an unresolvable row's details.
   **Layman:** When the build service cannot build a package at all, the status check shows a blank log rather than saying why.
   Kind: review-fix.
   Source: review-code-2026-11-08 (FIBR-0464/0465 close-out).
