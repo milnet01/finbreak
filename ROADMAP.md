@@ -2071,12 +2071,14 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: perf.
   Source: claude-suggestion-2026-07-17 (deferred from FIBR-0098).
 
-- 📋 [FIBR-0049] **First-run onboarding / empty-state guidance on the home screen.**
+- 🚧 [FIBR-0049] **First-run onboarding / empty-state guidance on the home screen.**
   The home screen opens on the manual add-transaction form with cryptic fields (Amount, Description) and no guidance, which confused a real non-technical tester. Add empty-state help + inline field hints (Amount = money in/out, negative = out; Description = what it was for).
   **Layman:** A friendly welcome for a brand-new user — 'import a statement, or add a transaction by hand' — instead of a bare form.
   Kind: ux.
   Source: user-request-2026-07-04.
   Empty-state half delivered by FIBR-0051 (P07.5): the HomeView getting-started page is this bullet's "friendly welcome — import a statement or add a transaction". Remaining scope: the inline Amount/Description field hints on the manual-entry form (not in FIBR-0051). Stays open for those hints.
+  Started 2026-11-11: the remaining inline Amount/Description hints on
+  the manual-entry form.
 
 - 🚧 [FIBR-0072] **Warn (or disable chrome) when navigating away from an in-progress import.**
   main_window._open_import() never disables the toolbar/menu, so clicking Home/Statements/Accounts/Categories/Rules mid-import silently rebuilds the workspace and destroys the in-progress wizard (chosen file, column mapping, unsaved preview) with no confirmation. Either confirm before discarding, or disable navigation chrome during an import (as locked states do).

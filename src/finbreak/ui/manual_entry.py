@@ -68,7 +68,24 @@ class ManualEntryDialog(QDialog):
         form.addRow(self.tr("Account"), self._account)
         form.addRow(self.tr("Date"), self._date)
         form.addRow(self.tr("Amount"), self._amount)
+        form.addRow(
+            "",
+            _hint(
+                self._amount,
+                self.tr(
+                    "Money in is a plain number. Money out starts with a minus "
+                    "sign (-)."
+                ),
+            ),
+        )
         form.addRow(self.tr("Description"), self._description)
+        form.addRow(
+            "",
+            _hint(
+                self._description,
+                self.tr("What it was for: the shop, the bill, or who paid you."),
+            ),
+        )
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
@@ -115,3 +132,13 @@ class ManualEntryDialog(QDialog):
             self._error.setText(str(exc))
             return
         self.committed.emit()
+
+
+def _hint(field: QWidget, text: str) -> QLabel:
+    """A short, always-visible line under ``field`` saying what it wants
+    (FIBR-0049). A placeholder alone vanishes once typing starts; the same words
+    go to the field's accessible description so a screen reader hears them."""
+    label = QLabel(text)
+    label.setWordWrap(True)
+    field.setAccessibleDescription(text)
+    return label

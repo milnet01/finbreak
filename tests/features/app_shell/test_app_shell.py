@@ -18,6 +18,7 @@ from PySide6.QtCore import QEvent, QLocale, Qt, QThread
 from PySide6.QtGui import QAction, QDesktopServices, QKeyEvent
 from PySide6.QtWidgets import (
     QApplication,
+    QFormLayout,
     QLabel,
     QPushButton,
     QStackedWidget,
@@ -592,6 +593,23 @@ def test_INV9_manual_entry_roundtrip_from_non_home(qtbot, service):
     assert workspace.currentWidget().objectName() == "tab_transactions", (
         "committing from any tab lands on Transactions so the new row is visible (D11)"
     )
+
+
+def test_FIBR0049_amount_and_description_carry_a_visible_hint(qtbot, service):
+    # A non-technical tester could not tell what Amount and Description wanted.
+    # The hint is on screen, not only a placeholder that vanishes on typing, and a
+    # screen reader hears it with the field.
+    window = _unlocked_home_shell(qtbot, service)
+    window._action_manual_entry.trigger()
+    dlg = window._dialog
+    form = dlg.findChild(QFormLayout)
+
+    for field, words in ((dlg._amount, "minus"), (dlg._description, "for")):
+        row, _ = form.getWidgetPosition(field)
+        hint = form.itemAt(row + 1, QFormLayout.ItemRole.FieldRole).widget()
+        assert isinstance(hint, QLabel) and hint.isVisible(), field.objectName()
+        assert words in hint.text()
+        assert field.accessibleDescription() == hint.text()
 
 
 def _actions_that_replace_the_import(window: MainWindow) -> list[QAction]:
