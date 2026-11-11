@@ -5250,7 +5250,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Lanes: transfers, import.
   Splits-from: FIBR-0121.
 
-- 🚧 [FIBR-0468] **Batch import still reads each PDF on the UI thread.**
+- ✅ [FIBR-0468] **Batch import still reads each PDF on the UI thread.**
   FIBR-0104 moved only the single-file wizard's PDF read off the UI
   thread. BatchImportService.scan_step (services/batch_import.py) still
   runs StandardBankImporter.parse and PdfImporter.candidate_tables
@@ -5260,6 +5260,12 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   machine). scan_step also reads the vault (profiles, account match),
   so only its read half can move: split it as FIBR-0104 split
   _continue_after_decrypt, reusing ui/_worker.py start_job.
+  2026-11-11: shipped in c12348a, review fix in 1c3a2ef; ships in
+  1.1.0. The batch decrypts on the UI thread, then reads each PDF on a
+  start_job worker; scan, re-scan and an answered password all route
+  through _read_then. review-code --single (one lane): 0 C/H/M, 3 LOW,
+  1 INFO. One LOW fixed (clear_rows), two filed as FIBR-0471; the INFO
+  and both open questions settled with no change.
   **Layman:** Importing many statements at once still freezes the window for a few seconds per large PDF; the single-file import no longer does.
   Kind: perf.
   Source: FIBR-0104-follow-up-2026-11-11.
