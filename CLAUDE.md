@@ -387,7 +387,9 @@ itself when a file under `src/` or `tests/` is read.
 3. **Summarise back to the user:** "We're on `<ID>`, last did `<X>`,
    next is `<Y>`." Take `<X>` from `git log --oneline -5` and `<Y>` from the
    latest note in the active item's body (`roadmap_query id`).
-4. Wait for confirm or redirect.
+4. Wait for confirm or redirect, **unless the user pasted a hand-off note**.
+   That note is the go-ahead: summarise, then start its next step (user,
+   2026-11-11; they may be away from the desk). Nothing checks this.
 
 **Never skip step 3.** Catching state-recovery errors before
 working is cheaper than corrective rounds later.
