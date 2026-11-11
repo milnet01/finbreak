@@ -1722,7 +1722,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: refactor.
   Source: in-session-2026-08-25 (FIBR-0310 R3).
 
-- 📋 [FIBR-0320] **The Linux relaunch waits on the PyInstaller child, where Windows was redesigned to wait on the image.**
+- 🚫 [FIBR-0320] **The Linux relaunch waits on the PyInstaller child, where Windows was redesigned to wait on the image.**
   FIBR-0131 D3 states that onefile is a two-process tree and that the bootloader
   parent holds the write-lock and does the _MEI cleanup, then concludes waiting on
   a single PID is fragile. Windows was redesigned to poll the exe image path; the
@@ -1771,9 +1771,17 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   AppImage showed ONE Python process directly under the AppImage runtime,
   with no bootloader parent. So the two-process tree is onefile-specific.
   finbreak is onefile, so this item still applies to it.
+  Closed 2026-11-11, resolved elsewhere. FIBR-0392 (25b37e3, 2026-09-29)
+  made the relaunch wait for the onefile bootloader as well as the app,
+  which is this item's fix. FIBR-0099 (266eeac, 2026-10-22) then made the
+  AppImage wrap a --onedir freeze, which runs as ONE process (the
+  2026-09-25 input above), so _relaunch_pids in
+  services/update_installer.py returns os.getpid() alone, correctly. The
+  premise "finbreak is onefile" no longer holds.
   **Layman:** After a self-update the app might fail to reopen -- and it cannot be tested until the next update ships.
   Kind: investigate.
   Source: review-code 2026-08-31 lane=update-installer.
+  Duplicate-of: FIBR-0392.
 
 - ✅ [FIBR-0332] **A batch mapping answered with the profile-name field blank is still asked once per file.**
   Surfaced while fixing FIBR-0319 and deliberately NOT widened into it.
@@ -2095,12 +2103,19 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: ux.
   Source: indie-review-2026-07-10 (M-shell1).
 
-- 📋 [FIBR-0111] **Show the currency in its own column, separate from the amount value.**
+- 🚫 [FIBR-0111] **Show the currency in its own column, separate from the amount value.**
   User request 2026-07-12 (screenshot): the Home Amount column renders "ZAR69.00" / "-ZAR25,000.00" with the currency crammed against the number, hard to read. Give the currency its own column (or right-align the bare number and show the currency code separately), so the value column holds just the formatted number + sign. Touches HomeView._format_amount / the Amount column layout (FIBR-0105 amount-display work) and should carry through to the future dedicated Transactions tab (FIBR-0109). Keep the negative-style (minus/brackets) + red/green colour prefs (FIBR-0105) working on the value column.
+  Closed 2026-11-11 as a duplicate: FIBR-0153 (commit 4132649, released
+  in 0.1.17) delivered this request in the form the user refined it to on
+  2026-07-19. The Transactions table has its own Currency column
+  (_COL_CURRENCY in ui/transactions.py), and the amount reads "R 1,234.49"
+  with a space instead of "ZAR69.00". The Home Amount column this item
+  named no longer exists: Home is now a dashboard.
   **Layman:** Put the currency code (e.g. ZAR) in its own column so the number is easy to read, instead of "ZAR69.00" crammed together.
   Kind: ux.
   Source: user-request-2026-07-12.
   Lanes: ui.
+  Duplicate-of: FIBR-0153.
 
 - 📋 [FIBR-0121] **Loan-account sign display: show debt-reducing amounts as positive on loan-type accounts.**
   Approach APPROVED by user (2026-07-13): DISPLAY-ONLY, display-time inversion for
