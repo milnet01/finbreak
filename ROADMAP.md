@@ -5250,7 +5250,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Lanes: transfers, import.
   Splits-from: FIBR-0121.
 
-- 📋 [FIBR-0468] **Batch import still reads each PDF on the UI thread.**
+- 🚧 [FIBR-0468] **Batch import still reads each PDF on the UI thread.**
   FIBR-0104 moved only the single-file wizard's PDF read off the UI
   thread. BatchImportService.scan_step (services/batch_import.py) still
   runs StandardBankImporter.parse and PdfImporter.candidate_tables

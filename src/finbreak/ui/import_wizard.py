@@ -59,7 +59,6 @@ from finbreak.importers.pdf_importer import (
     table_to_text,
 )
 from finbreak.importers.sniff import looks_like_ofx, looks_like_pdf
-from finbreak.importers.standard_bank import StandardBankImporter
 from finbreak.models import ColumnMapping, ImportProfile, NegativeStyle, OfxAccountInfo
 from finbreak.services.account_match import match_account
 from finbreak.services.accounts import AccountService
@@ -69,7 +68,9 @@ from finbreak.services.batch_import import (
     STOPPED_BY_ERROR,
     BatchFile,
     BatchImportService,
+    PdfTables,
     next_question,
+    read_pdf,
     stored_passwords,
 )
 from finbreak.services.import_ import ImportPreview, ImportService
@@ -111,20 +112,6 @@ class _NeedPassword:
 
 
 _NEED_PASSWORD = _NeedPassword()
-
-
-_PdfTables = list[list[list[str | None]]]
-
-
-def _read_pdf(plaintext: bytes, exponent: int) -> ParseResult | _PdfTables:
-    """The slow half of a PDF pick, run on a worker thread (FIBR-0104): a
-    Standard Bank statement's parse, else the generic candidate tables. It
-    reads only the bytes it is given, never the vault, whose connection
-    belongs to the UI thread."""
-    sb_result = StandardBankImporter().parse(plaintext, exponent)
-    if sb_result is not None:
-        return sb_result
-    return PdfImporter().candidate_tables(plaintext)
 
 
 class ImportWizardWidget(QWidget):
@@ -204,7 +191,8 @@ class ImportWizardWidget(QWidget):
         # -- batch state (FIBR-0085) -----------------------------------------
         # All of it inert until >= 2 files are selected: one file routes to the
         # single-file flow above, entirely unchanged (§ 4.1).
-        self._batch = BatchImportService(service.vault)
+        # PDFs are read on a worker thread, one at a time (FIBR-0468).
+        self._batch = BatchImportService(service.vault, defer_pdf_reads=True)
         self._batch_files: list[BatchFile] = []
         self._batch_index = 0
         # Which pass the batch is in. It is a GUARD, not bookkeeping: § 4.7
@@ -222,6 +210,12 @@ class ImportWizardWidget(QWidget):
         # records can share a path (an OFX fan-out) and `BatchFile` compares by
         # value, so neither the path nor a list index is a safe key.
         self._batch_prompts: dict[int, int] = {}
+        # The PDF read in flight, the record it is for, and the chain turn to
+        # run once it is settled (FIBR-0468). Clearing `_batch_read` cuts the
+        # read off: its result is dropped (`_on_batch_read`).
+        self._batch_read: JobWorker | None = None
+        self._batch_reading: BatchFile | None = None
+        self._batch_then: Callable[[], None] | None = None
 
         self._stack = QStackedLayout()
         self._error = QLabel()
@@ -955,7 +949,7 @@ class ImportWizardWidget(QWidget):
         self._account_combo.setEnabled(False)
         self._reading.show()
         self._pdf_worker = start_job(
-            lambda: _read_pdf(plaintext, exponent),
+            lambda: read_pdf(plaintext, exponent),
             self._on_pdf_read,
             self._on_pdf_read_failed,
         )
@@ -997,7 +991,7 @@ class ImportWizardWidget(QWidget):
             if isinstance(result, ParseResult):
                 self._show_sb_statement(result)
             else:
-                self._show_pdf_tables(cast(_PdfTables, result))
+                self._show_pdf_tables(cast(PdfTables, result))
         except VaultLockedError:
             return  # auto-lock fired — silent, like the other handlers
 
@@ -1015,7 +1009,7 @@ class ImportWizardWidget(QWidget):
         except (PdfError, ValueError, FinbreakError) as exc:
             self._show_pdf_read_error(exc)
 
-    def _show_pdf_tables(self, candidates: _PdfTables) -> None:
+    def _show_pdf_tables(self, candidates: PdfTables) -> None:
         # The generic-PDF route: extracted to a CSV-text table and mapped like a
         # CSV, so the D7 banner's mapping remedy applies here exactly as it does
         # to a CSV (FIBR-0253). Both endings below carry it — the map step, and
@@ -1663,6 +1657,7 @@ class ImportWizardWidget(QWidget):
         # A read still running delivers nothing to a locked wizard: the tables
         # it would hand over are decrypted statement rows (_is_current_read).
         self._pdf_worker = None
+        self._batch_read = None
         self._batch_files = []
         self._batch.discard_passwords()
         self._drop_remembered_pw()
@@ -1718,7 +1713,37 @@ class ImportWizardWidget(QWidget):
             return
         self._batch_index = self._batch.scan_step(self._batch_files, self._batch_index)
         self._batch_review.refresh()
-        self._arm(self._scan_next)
+        self._read_then(self._scan_next)
+
+    def _read_then(self, then: Callable[[], None]) -> None:
+        """Queue *then* as the chain's next turn — once the PDF the last turn
+        decrypted, if any, has been read on a worker thread (FIBR-0468)."""
+        pending = self._batch.take_pdf_read(self._batch_files)
+        if pending is None:
+            self._arm(then)
+            return
+        self._batch_reading, job = pending
+        self._batch_then = then
+        self._batch_read = start_job(job, self._on_batch_read, self._on_batch_read)
+
+    @Slot(object)
+    def _on_batch_read(self, result: object) -> None:
+        """Settle the record a worker read, then carry on with the chain. A
+        result from a read that Cancel or a lock cut off is dropped."""
+        if self.sender() is not self._batch_read:
+            return
+        record, then = self._batch_reading, self._batch_then
+        self._batch_read = self._batch_reading = self._batch_then = None
+        if record is None or then is None:
+            return  # unreachable: `_read_then` sets all three together
+        try:
+            self._batch.settle_pdf_read(
+                record, cast(ParseResult | PdfTables | BaseException, result)
+            )
+        except VaultLockedError:
+            return  # auto-lock fired between turns — the shell takes over
+        self._batch_review.refresh()
+        self._read_then(then)
 
     @Slot()
     def _begin_ask(self) -> None:
@@ -1742,7 +1767,7 @@ class ImportWizardWidget(QWidget):
             return  # auto-lock fired between turns — the shell takes over
         if rescanned:
             self._batch_review.refresh()
-            self._arm(self._begin_ask)
+            self._read_then(self._begin_ask)
             return
         record = next_question(self._batch_files)
         if record is None:
@@ -1763,7 +1788,7 @@ class ImportWizardWidget(QWidget):
         and queue the next question on its own turn."""
         self._batch_review.refresh()
         self._goto_step(_STEP_BATCH)
-        self._arm(self._begin_ask)
+        self._read_then(self._begin_ask)
 
     def _ask_password(self, record: BatchFile) -> None:
         raised = self._batch_prompts.get(id(record), 0)
@@ -1922,6 +1947,7 @@ class ImportWizardWidget(QWidget):
         report standing. Neither emits `done`."""
         was_running = self._batch_phase == "run"
         self._batch_phase = "report" if was_running else "idle"
+        self._batch_read = None  # a PDF read in flight delivers nothing
         self._batch.stop_from(self._batch_files, self._batch_index, CANCELLED)
         # Every typed password is discarded unwritten, running or not (§ 4.6).
         self._batch.discard_passwords()

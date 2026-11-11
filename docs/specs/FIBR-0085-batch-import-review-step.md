@@ -185,6 +185,9 @@ before any are chosen:
   `docs/design.md` § Concurrency puts import on the GUI thread deliberately.
   Moving a write transaction onto a second thread is a concurrency change to
   the storage layer wearing a UI feature's clothes.
+  **Reading a decrypted PDF is the one exception** (FIBR-0468). It touches no
+  vault, so it runs on a `ui/_worker.py::start_job` thread while the chain
+  waits. The chain resumes on the UI thread once the read reports.
 
 The batch is driven by a **one-file-per-event-loop-turn chain**:
 

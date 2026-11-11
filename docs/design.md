@@ -285,9 +285,9 @@ UI state.
 
 CSV and OFX parsing and every import's dedup and commit run on the GUI thread —
 personal statements parse well within a frame budget (FIBR-0007 D11). Reading a
-PDF picked in the single-file import is the exception: it took many seconds on
-a large statement, so it runs on a worker thread (FIBR-0009 D14). Batch import
-still reads each PDF on the GUI thread (FIBR-0468). A worker never touches the vault; the
+PDF is the exception: it took many seconds on a large statement, so it runs on
+a worker thread, in the single-file import (FIBR-0009 D14) and in a batch
+(FIBR-0468). A worker never touches the vault; the
 SQLCipher connection stays on the GUI thread. DB writes are serialised through
 the repository layer.
 

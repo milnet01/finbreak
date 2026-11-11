@@ -18,6 +18,7 @@ fixture is a ``.pdf``-named file of arbitrary bytes plus a fake decrypt
 RowError through the real scan ladder into a rendered cell.
 """
 
+import threading
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -1465,3 +1466,117 @@ def test_FIBR0408_a_second_prompt_for_a_file_says_the_last_password_failed(
     widget._select_files([locked])
     qtbot.waitUntil(lambda: len(retries) >= 2, timeout=3000)
     assert retries[0] is False and all(retries[1:]), retries
+
+
+# -- FIBR-0468: a batch reads each PDF off the UI thread --------------------- #
+
+
+def _held_sb_reader(monkeypatch) -> tuple[threading.Event, list[threading.Thread]]:
+    """Hold the Standard Bank reader until the returned event is set, and
+    record which thread ran it. On the UI thread the hold would freeze the test
+    itself, so it gives up after two seconds and fails loudly instead."""
+    from finbreak.importers.standard_bank import StandardBankImporter
+
+    gate = threading.Event()
+    seen: list[threading.Thread] = []
+    real = StandardBankImporter.parse
+
+    def held(self, *args, **kwargs):
+        seen.append(threading.current_thread())
+        if not gate.wait(2):
+            raise AssertionError("the PDF read held the UI thread")
+        return real(self, *args, **kwargs)
+
+    monkeypatch.setattr(StandardBankImporter, "parse", held)
+    return gate, seen
+
+
+def _sb_and_csv(tmp_path: Path) -> list[str]:
+    return [
+        str(_SB_FIXTURES / "family_a_zero_fee.pdf"),
+        _csv(tmp_path, "plain.csv", _rows(2)),
+    ]
+
+
+def test_FIBR0468_a_batch_reads_each_pdf_off_the_ui_thread(
+    qtbot, service, profile, tmp_path, monkeypatch
+):
+    """A big statement takes many seconds to read. Read on the UI thread, it
+    froze the window for that long, Cancel included."""
+    gate, seen = _held_sb_reader(monkeypatch)
+    widget = _wizard(qtbot, service)
+    widget._select_files(_sb_and_csv(tmp_path))
+    qtbot.waitUntil(lambda: bool(seen), timeout=3000)
+    assert seen[0] is not threading.main_thread()
+    assert widget._batch_review._cancel_button.isEnabled(), "Cancel stays live"
+    gate.set()
+    qtbot.waitUntil(
+        lambda: all(f.outcome == "needs_account" for f in widget._batch_files),
+        timeout=10_000,
+    )
+    statement = widget._batch_files[0]
+    assert statement.path.endswith(".pdf") and statement.parsed is not None
+
+
+def test_FIBR0468_cancel_mid_read_drops_the_result(
+    qtbot, service, profile, tmp_path, monkeypatch
+):
+    """Cancel while a PDF is being read. The read cannot be stopped, but its
+    result must not revive the dropped batch."""
+    gate, seen = _held_sb_reader(monkeypatch)
+    widget = _wizard(qtbot, service)
+    widget._select_files(_sb_and_csv(tmp_path))
+    qtbot.waitUntil(lambda: bool(seen), timeout=3000)
+    worker = widget._batch_read
+    widget._batch_review._cancel_button.click()
+    gate.set()
+    assert worker.wait(10_000)
+    qtbot.wait(100)  # deliver anything the worker queued
+    assert widget._batch_files == []
+    assert widget._batch_phase == "idle"
+    assert widget._stack.currentIndex() == _STEP_PICK
+
+
+def test_FIBR0468_a_pdf_unlocked_by_a_typed_password_is_read_off_the_ui_thread(
+    qtbot, service, tmp_path, monkeypatch
+):
+    """A locked PDF is read only once its password is known: after the answer
+    for the first file, and in the re-scans that answer queues for the rest."""
+    from finbreak.importers.base import ParseResult
+    from finbreak.models import TransactionDraft
+
+    def fake_decrypt(data: bytes, password: str | None = None) -> bytes:
+        if password != "sesame":
+            raise PasswordError("wrong password")
+        return b"%PDF-1.7 plain"
+
+    threads: list[threading.Thread] = []
+
+    class _StubSb:
+        @staticmethod
+        def parse(data, exponent, password=None):
+            threads.append(threading.current_thread())
+            return ParseResult(
+                drafts=[TransactionDraft(1, "2026-03-05", -1000, "Fake Row")],
+                errors=[],
+                period_start="2026-03-01",
+                period_end="2026-03-31",
+            )
+
+    monkeypatch.setattr(
+        "finbreak.services.batch_import.PdfImporter.decrypt_to_plaintext",
+        staticmethod(fake_decrypt),
+    )
+    monkeypatch.setattr("finbreak.services.batch_import.StandardBankImporter", _StubSb)
+    paths = []
+    for name in ("a.pdf", "b.pdf"):
+        (tmp_path / name).write_bytes(b"%PDF-1.7 encrypted")
+        paths.append(str(tmp_path / name))
+    _stub_password(monkeypatch, password="sesame")
+
+    widget = _wizard(qtbot, service)
+    widget._select_files(paths)
+    qtbot.waitUntil(lambda: widget._batch_phase == "review", timeout=10_000)
+
+    assert len(threads) == 2, f"{len(threads)} reads for two unlocked files"
+    assert threading.main_thread() not in threads

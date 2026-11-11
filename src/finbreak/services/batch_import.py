@@ -28,7 +28,9 @@ from __future__ import annotations
 import logging
 from collections import Counter
 from collections.abc import Callable, Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass, field
+from functools import partial
 from typing import Literal
 
 from finbreak.errors import FinbreakError
@@ -120,6 +122,21 @@ _UNSETTLED: frozenset[str] = _BLOCKING | {"needs_account", "waiting"}
 # or `None` for "the user declined this file".
 type Answer = str | ColumnMapping | None
 
+# A PDF's candidate tables: rows of cells, as `PdfImporter.candidate_tables`
+# returns them.
+type PdfTables = list[list[list[str | None]]]
+
+
+def read_pdf(plaintext: bytes, exponent: int) -> ParseResult | PdfTables:
+    """The slow half of reading a PDF: a Standard Bank statement's parse,
+    else the generic candidate tables. It reads only the bytes it is given,
+    never the vault, so it can run on a worker thread (FIBR-0104, FIBR-0468).
+    The single-file wizard and the batch both call it."""
+    sb_result = StandardBankImporter().parse(plaintext, exponent)
+    if sb_result is not None:
+        return sb_result
+    return PdfImporter().candidate_tables(plaintext)
+
 
 @dataclass
 class BatchFile:
@@ -161,6 +178,9 @@ class BatchFile:
     # Queued by an answer for `rescan_step`, which the wizard runs one per turn
     # (§ 4.7); an answer no longer re-scans the whole batch in its own slot.
     rescan: bool = False
+    # A decrypted PDF waiting to be read: set by SCAN when the service defers
+    # PDF reads, taken by `take_pdf_read` (FIBR-0468).
+    plaintext: bytes | None = field(default=None, repr=False)
 
     @property
     def sort_key(self) -> tuple[str, int]:
@@ -265,8 +285,12 @@ def cumulative_counts(files: Sequence[BatchFile], imports: ImportService) -> Non
 
 
 class BatchImportService:
-    def __init__(self, vault: Vault):
+    def __init__(self, vault: Vault, *, defer_pdf_reads: bool = False):
+        """``defer_pdf_reads`` leaves each decrypted PDF on its record for the
+        caller to read on a worker thread (``take_pdf_read``, then
+        ``settle_pdf_read``) instead of reading it here (FIBR-0468)."""
         self._vault = vault
+        self._defer_pdf_reads = defer_pdf_reads
         self._imports = ImportService(vault)
         self._accounts = AccountService(vault)
         # A vault-level setting, not per-account (§ 4.3), so it is settled once
@@ -345,22 +369,29 @@ class BatchImportService:
         Returns the ADDITIONAL records created by an OFX fan-out (empty for
         every other format, and for OFX after the first statement).
         """
-        try:
+        with self._scan_net(record):
             if looks_like_ofx(record.path):
                 return self._scan_ofx(record)
             if looks_like_pdf(record.path):
                 self._scan_pdf(record)
             else:
                 self._scan_csv(record)
+        return []
+
+    @contextmanager
+    def _scan_net(self, record: BatchFile) -> Iterator[None]:
+        """Fail ``record`` with a friendly reason on an expected error.
+
+        The same net the wizard's single-file path uses, not a bare
+        ``except Exception`` (coding.md § 2): an unexpected type still escapes
+        and is a bug, where "continue past anything" would hide one behind a
+        per-file report line."""
+        try:
+            yield
         except PdfError as exc:
             self._fail(record, PDF_UNREADABLE, exc)
         except (ValueError, OSError, FinbreakError) as exc:
-            # The same net the wizard's single-file path uses, not a bare
-            # `except Exception` (coding.md § 2): an unexpected type still
-            # escapes and is a bug, where "continue past anything" would hide
-            # one behind a per-file report line.
             self._fail(record, str(exc), exc)
-        return []
 
     @staticmethod
     def _fail(record: BatchFile, reason: str, exc: Exception) -> None:
@@ -402,15 +433,44 @@ class BatchImportService:
             plaintext = self._decrypt(record, data)
             if plaintext is None:
                 return  # needs_password — ASK will come back to this record
-            sb_result = StandardBankImporter().parse(plaintext, self._exponent)
-            if sb_result is not None:
-                self._settle_parse(record, sb_result)
+            if self._defer_pdf_reads:
+                record.plaintext = plaintext  # still `waiting`
                 return
-            candidates = PdfImporter().candidate_tables(plaintext)
-            record.source_text = table_to_text(
-                candidates[default_table_index(candidates)]
-            )
+            self._settle_pdf(record, read_pdf(plaintext, self._exponent))
+            return
         self._scan_csv(record)
+
+    def _settle_pdf(self, record: BatchFile, read: ParseResult | PdfTables) -> None:
+        """Finish a PDF from what ``read_pdf`` returned: a Standard Bank parse
+        settles at once; generic tables go down the CSV ladder."""
+        if isinstance(read, ParseResult):
+            self._settle_parse(record, read)
+            return
+        record.source_text = table_to_text(read[default_table_index(read)])
+        self._scan_csv(record)
+
+    def take_pdf_read(
+        self, files: Sequence[BatchFile]
+    ) -> tuple[BatchFile, Callable[[], ParseResult | PdfTables]] | None:
+        """The record whose decrypted PDF is waiting to be read, and the read to
+        run on a worker thread; ``None`` when no PDF is waiting. The record lets
+        go of its plaintext here, so a read is handed out once. The read touches
+        no vault (FIBR-0468)."""
+        for record in files:
+            if record.plaintext is not None:
+                plaintext, record.plaintext = record.plaintext, None
+                return record, partial(read_pdf, plaintext, self._exponent)
+        return None
+
+    def settle_pdf_read(
+        self, record: BatchFile, read: ParseResult | PdfTables | BaseException
+    ) -> None:
+        """Finish ``record`` from its worker's result, or fail it from the
+        exception the read raised, as an inline scan would have (FIBR-0468)."""
+        with self._scan_net(record):
+            if isinstance(read, BaseException):
+                raise read
+            self._settle_pdf(record, read)
 
     def _decrypt(self, record: BatchFile, data: bytes) -> bytes | None:
         """No password, then each distinct known password once, then the user.
