@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: FIBR=470 -->
+<!-- ants-roadmap-id-high-water: FIBR=471 -->
 # finbreak — Roadmap
 
 > See [CHANGELOG.md](CHANGELOG.md) for what's shipped and the current
@@ -5305,6 +5305,19 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   **Layman:** Importing a PDF from a bank other than Standard Bank takes longer than it needs to, because the file is opened and read twice.
   Kind: perf.
   Source: code-review-FIBR-0104-2026-11-11.
+
+- 📋 [FIBR-0471] **Batch scan has dead lock handlers and no stop-and-report on an unexpected error.**
+  BatchImportService._scan_net catches FinbreakError, and VaultLockedError
+  is a subclass, so the wizard's `except VaultLockedError` after
+  rescan_step and settle_pdf_read can never fire. A lock is safe today
+  only because clear_rows runs in the lock slot and the scan runs between
+  turns. Separately, an error type outside the net escapes _scan_next or
+  _on_batch_read: the chain stops, the record stays `waiting`, and only
+  Cancel is left. RUN has a stop-and-report handler for this (FIBR-0407);
+  SCAN has none. Both predate FIBR-0468, which found them.
+  **Layman:** If something unexpected goes wrong while a batch import is reading files, the batch can stop with only Cancel left to press.
+  Kind: review-fix.
+  Source: review-code-FIBR-0468-2026-11-11.
 
 ## v1.1.0 — Localisation
 

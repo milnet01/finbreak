@@ -1580,3 +1580,22 @@ def test_FIBR0468_a_pdf_unlocked_by_a_typed_password_is_read_off_the_ui_thread(
 
     assert len(threads) == 2, f"{len(threads)} reads for two unlocked files"
     assert threading.main_thread() not in threads
+
+
+def test_FIBR0468_a_lock_mid_read_lets_go_of_the_record_being_read(
+    qtbot, service, profile, tmp_path, monkeypatch
+):
+    """A lock drops the batch and every password held for it (§ 4.4). The
+    record being read holds the passwords tried on it, so the wizard must let
+    go of it too, not only of the read."""
+    gate, seen = _held_sb_reader(monkeypatch)
+    widget = _wizard(qtbot, service)
+    widget._select_files(_sb_and_csv(tmp_path))
+    qtbot.waitUntil(lambda: bool(seen), timeout=3000)
+    worker = widget._batch_read
+    widget.clear_rows()
+    gate.set()
+    assert worker.wait(10_000)
+    qtbot.wait(100)  # deliver anything the worker queued
+    assert widget._batch_reading is None
+    assert widget._batch_then is None

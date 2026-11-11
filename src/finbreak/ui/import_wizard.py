@@ -1657,7 +1657,10 @@ class ImportWizardWidget(QWidget):
         # A read still running delivers nothing to a locked wizard: the tables
         # it would hand over are decrypted statement rows (_is_current_read).
         self._pdf_worker = None
-        self._batch_read = None
+        # The records these hold carry the passwords tried on them, and the
+        # file being mapped carries its decrypted text.
+        self._batch_read = self._batch_reading = self._batch_then = None
+        self._batch_asking = None
         self._batch_files = []
         self._batch.discard_passwords()
         self._drop_remembered_pw()
