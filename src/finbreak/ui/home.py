@@ -333,7 +333,8 @@ class HomeView(QWidget):
         return ReportPrefs(mode)
 
     def _selected_account_id(self) -> int | None:
-        return self._account_selector.currentData()
+        account_id: int | None = self._account_selector.currentData()
+        return account_id
 
     # --- signals ----------------------------------------------------------- #
     def _on_period_changed(self) -> None:

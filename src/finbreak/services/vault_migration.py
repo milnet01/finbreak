@@ -28,7 +28,6 @@ from sqlcipher3.dbapi2 import Connection, DatabaseError
 
 from finbreak.crypto import (
     KEY_LEN,
-    SIDECAR_VERSION,
     SlotRecord,
     VaultSidecar,
     fsync_dir,
@@ -41,7 +40,7 @@ from finbreak.crypto import (
 )
 from finbreak.errors import KdfPolicyError, RollbackAvailableError, VaultStateError
 from finbreak.keywrap import SLOT_MASTER, wrap_dek
-from finbreak.models import KdfParams
+from finbreak.models import SIDECAR_VERSION, KdfParams
 from finbreak.vault import SQLCIPHER_COMPAT, Vault
 
 log = logging.getLogger(__name__)

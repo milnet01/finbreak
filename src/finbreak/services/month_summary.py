@@ -76,7 +76,8 @@ def _minor(major: int, exponent: int) -> int:
     """Scale a major-unit threshold to minor units. Not named ``floor``: it
     scales, it does not round. ``services.transactions.to_minor`` does this job
     for a Decimal and is deliberately not reused — INV-1 forbids Decimal here."""
-    return major * 10**exponent
+    scaled: int = major * 10**exponent
+    return scaled
 
 
 def _baseline_mean(total: int) -> int:

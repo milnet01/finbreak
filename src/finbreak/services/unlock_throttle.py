@@ -46,7 +46,8 @@ def backoff_delay_seconds(n: int) -> float:
     if n <= 0:
         return 0.0
     exponent = min(n, CAP_N) - 1
-    return min(BASE_DELAY_SECONDS * 2**exponent, MAX_DELAY_SECONDS)
+    delay: float = min(BASE_DELAY_SECONDS * 2**exponent, MAX_DELAY_SECONDS)
+    return delay
 
 
 def remaining_lockout_seconds(

@@ -21,6 +21,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from cryptography.exceptions import InvalidSignature
 from PySide6.QtCore import QSettings
@@ -106,7 +107,7 @@ def _version_gt(latest: tuple[int, ...], current: tuple[int, ...]) -> bool:
 # --------------------------------------------------------------------------- #
 # D14 / FIBR-0131 D2 — asset-selection predicate (installer-driven suffix)
 # --------------------------------------------------------------------------- #
-def _select_assets(assets: list[dict], suffix: str) -> tuple[str, str] | None:
+def _select_assets(assets: list[dict[str, Any]], suffix: str) -> tuple[str, str] | None:
     """From a release's ``assets[]`` return ``(asset_url, sig_url)`` — the lone
     asset whose name ends in *suffix* (``-x86_64.AppImage`` on Linux,
     ``-x86_64.exe`` on Windows — the active installer's ``asset_suffix()``) plus the
@@ -127,7 +128,7 @@ def _select_assets(assets: list[dict], suffix: str) -> tuple[str, str] | None:
     return asset_url, sig_url
 
 
-def _select_manifest(assets: list[dict]) -> tuple[str, str] | None:
+def _select_manifest(assets: list[dict[str, Any]]) -> tuple[str, str] | None:
     """The release's signed ``SHA256SUMS`` and ``SHA256SUMS.sig`` URLs, or
     ``None`` unless each is present exactly once with a URL (FIBR-0169 INV-1)."""
     urls = []
@@ -177,7 +178,7 @@ def _version_string(tag: str) -> str:
 
 
 def _accumulated_notes(
-    releases: list[dict], current: tuple[int, ...], offered: tuple[int, ...]
+    releases: list[dict[str, Any]], current: tuple[int, ...], offered: tuple[int, ...]
 ) -> str:
     """Every release body newer than *current* and no newer than *offered*, newest
     first, headed by its version (FIBR-0152).
@@ -273,9 +274,9 @@ class UpdateService:
         settings_path: Path,
         installer: Installer | None,
         *,
-        fetcher=update_fetch,
+        fetcher: Any = update_fetch,  # the module, or a test double of it
         current_version: str = __version__,
-    ):
+    ) -> None:
         self._settings_path = settings_path
         self._installer = installer
         self._fetcher = fetcher
@@ -297,7 +298,8 @@ class UpdateService:
         settings.sync()
 
     def is_skipped(self, version: str) -> bool:
-        return self._settings().value(_KEY_SKIPPED) == version
+        skipped: object = self._settings().value(_KEY_SKIPPED)
+        return skipped == version
 
     def skip_version(self, version: str) -> None:
         settings = self._settings()
@@ -361,7 +363,7 @@ class UpdateService:
         self,
         current: tuple[int, ...],
         offered: tuple[int, ...],
-        offered_release: dict,
+        offered_release: dict[str, Any],
     ) -> str:
         """The bodies of every release between the running version and the offered
         one — or just the offered release's body (FIBR-0152).

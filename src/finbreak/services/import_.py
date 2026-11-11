@@ -22,6 +22,8 @@ from datetime import date
 from pathlib import Path
 from typing import cast
 
+from sqlcipher3 import dbapi2
+
 from finbreak.db import owned_transaction
 from finbreak.importers.base import ParseResult, RowError
 from finbreak.importers.csv_importer import CsvImporter, read_header
@@ -125,7 +127,7 @@ class ImportService:
         self._vault = vault
 
     @property
-    def _conn(self):
+    def _conn(self) -> dbapi2.Connection:
         return self._vault.connection
 
     @staticmethod
@@ -389,7 +391,7 @@ class ImportService:
         preserved). Existing counts are taken against **all** rows in the bucket,
         so a duplicate of a manually-entered row is deduped too."""
         incoming = Counter(self._key(d) for d in drafts)
-        existing_by_bucket: dict[tuple[str, int], Counter] = {}
+        existing_by_bucket: dict[tuple[str, int], Counter[str]] = {}
         delta: dict[tuple[str, int, str], int] = {}
         for key in incoming:
             occurred_on, amount_minor, norm = key
@@ -403,7 +405,7 @@ class ImportService:
                 )
             delta[key] = max(0, incoming[key] - existing_by_bucket[bucket][norm])
 
-        kept: Counter = Counter()
+        kept: Counter[tuple[str, int, str]] = Counter()
         to_insert: list[TransactionDraft] = []
         for draft in drafts:
             key = self._key(draft)

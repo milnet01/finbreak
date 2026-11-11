@@ -198,6 +198,22 @@ ignore_missing_imports = true
 # reopening. It is NOT yet on for `tests`, where most functions are unannotated:
 # measured 2026-09-03, 345 errors across 25 files. That is tracked separately —
 # turning it on here and silencing it there would close the gate gap on paper.
+#
+# The rest is `--strict` as far as mypy allows per module (FIBR-0102): `strict`
+# itself is a global-only switch, and turning it on globally would reach `tests`.
+# `src` was made clean under it on 2026-11-11. One strict flag is left off:
+# `no_implicit_reexport` judges the IMPORTER, so here it fails the tests that
+# monkeypatch a module's own imports (`update_installer.sys`), not `src`.
 [[tool.mypy.overrides]]
 module = ["finbreak.*"]
 check_untyped_defs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+disallow_untyped_calls = true
+disallow_untyped_decorators = true
+disallow_any_generics = true
+disallow_subclassing_any = true
+warn_return_any = true
+warn_unused_ignores = true
+strict_equality = true
+extra_checks = true

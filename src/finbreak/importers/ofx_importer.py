@@ -27,6 +27,8 @@ from __future__ import annotations
 
 import io
 import re
+from datetime import datetime
+from typing import Any
 
 from ofxparse import OfxParser
 from ofxparse.ofxparse import AccountType
@@ -44,7 +46,8 @@ _MAX_OFX_TRANSACTIONS = 100_000
 _OFX_TZ_SUFFIX = re.compile(r"\[[-+]?\d+\.?\d*:\w*\]$")
 
 
-class _LocalDateOfxParser(OfxParser):
+# ofxparse ships no stubs, so its base class is Any to mypy (FIBR-0102).
+class _LocalDateOfxParser(OfxParser):  # type: ignore[misc]
     """An ``OfxParser`` that preserves the **as-posted local calendar date** of
     every OFX datetime (FIBR-0042). The base ``parseOfxDateTime`` normalises a
     timezone-bearing ``<DTPOSTED>``/``<DTSTART>``/``<DTEND>`` to UTC
@@ -60,9 +63,10 @@ class _LocalDateOfxParser(OfxParser):
     OFX date the parse produces."""
 
     @classmethod
-    def parseOfxDateTime(cls, ofxDateTime):  # camelCase: overrides the base name
+    def parseOfxDateTime(cls, ofxDateTime: str) -> datetime | None:  # base's name
         neutralised = _OFX_TZ_SUFFIX.sub("[0:GMT]", ofxDateTime.strip())
-        return super().parseOfxDateTime(neutralised)
+        parsed: datetime | None = super().parseOfxDateTime(neutralised)
+        return parsed
 
 
 class OfxImporter:
@@ -137,7 +141,7 @@ class OfxImporter:
 
     @staticmethod
     def _parse_statement(
-        statement, exponent: int, source_account: SourceAccountHint | None = None
+        statement: Any, exponent: int, source_account: SourceAccountHint | None = None
     ) -> ParseResult:
         drafts: list[TransactionDraft] = []
         errors: list[RowError] = []
@@ -203,7 +207,7 @@ class OfxImporter:
 
 
 def _embedded_span(
-    statement, drafts: list[TransactionDraft]
+    statement: Any, drafts: list[TransactionDraft]
 ) -> tuple[str | None, str | None]:
     """The authoritative coverage span (D4): the embedded DTSTART/DTEND. ofxparse
     0.21 sets ``start_date``/``end_date`` to the empty string ``''`` (not

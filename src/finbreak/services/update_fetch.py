@@ -18,7 +18,7 @@ import time
 import urllib.request
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import IO, Any
 
 import certifi
 
@@ -72,7 +72,15 @@ class _HttpsOnlyRedirectHandler(urllib.request.HTTPRedirectHandler):
     on the asset; this closes the confidentiality gap for the *unsigned* API JSON.
     """
 
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
+    def redirect_request(
+        self,
+        req: urllib.request.Request,
+        fp: IO[bytes],
+        code: int,
+        msg: str,
+        headers: Any,  # http.client.HTTPMessage; `http` is banned here (INV-12)
+        newurl: str,
+    ) -> urllib.request.Request | None:
         _require_https(newurl)  # raises before the redirect is followed
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
@@ -132,18 +140,19 @@ def _get_json(url: str, *, timeout: float, max_bytes: int) -> Any:
 
 def fetch_latest_release(
     owner: str, repo: str, *, timeout: float, max_bytes: int
-) -> dict:
+) -> dict[str, Any]:
     """GET ``/repos/{owner}/{repo}/releases/latest`` and return the parsed JSON.
 
     ``/releases/latest`` excludes prereleases (D11) — this is the endpoint the
     offer decision rests on."""
     url = _API_URL_TEMPLATE.format(owner=owner, repo=repo)
-    return _get_json(url, timeout=timeout, max_bytes=max_bytes)
+    release: dict[str, Any] = _get_json(url, timeout=timeout, max_bytes=max_bytes)
+    return release
 
 
 def fetch_releases(
     owner: str, repo: str, *, timeout: float, max_bytes: int
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """GET ``/repos/{owner}/{repo}/releases`` — the newest page, newest first.
 
     Feeds the accumulated "what's new" text for a user several versions behind
@@ -151,10 +160,13 @@ def fetch_releases(
     prereleases, so filtering them is the caller's job. Same host, same cap +
     timeout discipline, same module — no new network surface (INV-12)."""
     url = _RELEASES_URL_TEMPLATE.format(owner=owner, repo=repo)
-    return _get_json(url, timeout=timeout, max_bytes=max_bytes)
+    releases: list[dict[str, Any]] = _get_json(
+        url, timeout=timeout, max_bytes=max_bytes
+    )
+    return releases
 
 
-def _content_length(response) -> int:
+def _content_length(response: Any) -> int:  # HTTPResponse; `http` banned (INV-12)
     """The body size the server advertises, or ``0`` when the header is absent or
     not a plain decimal count (FIBR-0108). Zero is the caller's "size unknown"
     signal — it keeps the progress bar indeterminate rather than inventing a

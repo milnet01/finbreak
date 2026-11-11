@@ -81,15 +81,17 @@ class CategorizationRuleRepository:
         row = self._conn.execute(
             "SELECT min(priority) FROM categorization_rules"
         ).fetchone()
-        return row[0]
+        priority: int | None = row[0]
+        return priority
 
     def count_for_category(self, category_id: int) -> int:
         """How many rules target ``category_id`` (the INV-8 blast radius; shape-
         mirror of ``TransactionRepository.count_for_account``)."""
-        return self._conn.execute(
+        count: int = self._conn.execute(
             "SELECT count(*) FROM categorization_rules WHERE category_id = ?",
             (category_id,),
         ).fetchone()[0]
+        return count
 
     def delete_for_category(self, category_id: int) -> int:
         """Delete every rule targeting ``category_id`` and return the rowcount.

@@ -56,4 +56,5 @@ class CategoryPickerDialog(QDialog):
 
     def selected_category_id(self) -> int | None:
         """The chosen leaf's id, or ``None`` for the *Uncategorised* choice."""
-        return self._combo.currentData()
+        category_id: int | None = self._combo.currentData()
+        return category_id

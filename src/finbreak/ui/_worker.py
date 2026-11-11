@@ -8,7 +8,7 @@ of ms derivation and every wipe stays on the owning thread.
 
 from __future__ import annotations
 
-from PySide6.QtCore import QThread, Signal
+from PySide6.QtCore import QObject, QThread, Signal
 
 from finbreak.models import KdfParams
 from finbreak.services.auth import derive_raw
@@ -18,7 +18,9 @@ class DeriveWorker(QThread):
     done = Signal(bytes)
     failed = Signal(object)
 
-    def __init__(self, password: bytearray, params: KdfParams, parent=None):
+    def __init__(
+        self, password: bytearray, params: KdfParams, parent: QObject | None = None
+    ) -> None:
         super().__init__(parent)
         self._password = password
         self._params = params

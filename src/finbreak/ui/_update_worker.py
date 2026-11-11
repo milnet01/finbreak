@@ -11,7 +11,7 @@ an unexpected bug; the download surfaces its ``UpdateError`` /
 
 from __future__ import annotations
 
-from PySide6.QtCore import QThread, Signal
+from PySide6.QtCore import QObject, QThread, Signal
 
 from finbreak.services.update import UpdateInfo, UpdateService
 
@@ -21,7 +21,13 @@ class UpdateCheckWorker(QThread):
     none = Signal()
     failed = Signal(object)  # an exception (unexpected — the check is fail-safe)
 
-    def __init__(self, service: UpdateService, parent=None, *, force: bool = False):
+    def __init__(
+        self,
+        service: UpdateService,
+        parent: QObject | None = None,
+        *,
+        force: bool = False,
+    ) -> None:
         super().__init__(parent)
         self._service = service
         self._force = force  # a manual Help→Check check bypasses the opt-in gate
@@ -43,7 +49,9 @@ class DownloadWorker(QThread):
     failed = Signal(object)  # an UpdateError / UpdateVerificationError
     progress = Signal(int, int)  # (received, total) bytes; total 0 = size unknown
 
-    def __init__(self, service: UpdateService, info: UpdateInfo, parent=None):
+    def __init__(
+        self, service: UpdateService, info: UpdateInfo, parent: QObject | None = None
+    ) -> None:
         super().__init__(parent)
         self._service = service
         self._info = info

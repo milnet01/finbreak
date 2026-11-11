@@ -1081,7 +1081,8 @@ class ImportWizardWidget(QWidget):
         """The account the import will land on — the preview step's destination
         picker, seeded from the pick step and user-correctable (FIBR-0057). The
         single source of truth for every preview and the PDF-password lookup."""
-        return self._confirm_account_combo.currentData()
+        account_id: int = self._confirm_account_combo.currentData()
+        return account_id
 
     def _account_name(self) -> str:
         return self._confirm_account_combo.currentText()

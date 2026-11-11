@@ -1603,7 +1603,7 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   Kind: enhancement.
   Source: in-session-2026-08-14 (found while fixing FIBR-0249).
 
-- 📋 [FIBR-0102] **Tighten mypy toward strict.**
+- 🚧 [FIBR-0102] **Tighten mypy toward strict.**
   Verified 2026-07-11: [tool.mypy] sets only python_version + per-module stub-ignores — NOT strict. Enable strict (or stage it: disallow_untyped_defs, warn_return_any, disallow_any_generics, no_implicit_optional) to catch a class of bugs at the type layer — valuable for a money app. Incremental: turn flags on one at a time, fix the fallout, keep the gate green each step. Deps: none (gate/CI config).
   MEASURED (2026-09-21), and it SPLITS the item into one tractable half and one
   much larger one. mypy --strict over src+tests reports 3800 errors across 107
@@ -1624,6 +1624,14 @@ touches the § 2 surface. A security fix takes the number its change takes — �
   inherited by whoever picks this up.
 
   Source: a check-code sweep with --strict, run 2026-09-21.
+  2026-11-11: the src half is done. mypy --strict src is clean, and the gate
+  now holds it there: pyproject's finbreak.* override carries every
+  per-module strict flag except no_implicit_reexport, which judges the
+  importer and so fails tests that monkeypatch a module's own imports.
+  Two parameters in services/update_fetch.py are typed Any rather than
+  http.client types, because INV-12's network-import guard bans `http`
+  under src. The tests half stays a separate decision, as measured
+  above. Awaiting review-code with the rest of the batch.
   **Layman:** Turn on stricter automatic type-checking to catch more bugs before they ship.
   Kind: refactor.
 

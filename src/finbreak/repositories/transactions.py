@@ -198,9 +198,10 @@ class TransactionRepository:
         SQLite assigns a new ``INTEGER PRIMARY KEY`` row ``max(rowid) + 1``, so every
         row inserted after this read has a strictly greater id — an exact "the rows
         this import added" boundary, with no per-row id round-trip (FIBR-0213)."""
-        return self._conn.execute(
+        last_id: int = self._conn.execute(
             "SELECT coalesce(max(id), 0) FROM transactions"
         ).fetchone()[0]
+        return last_id
 
     def set_category(
         self, txn_id: int, category_id: int | None, source: str | None
@@ -232,10 +233,11 @@ class TransactionRepository:
     def count_for_category(self, category_id: int) -> int:
         """How many rows are filed under ``category_id`` (manual **and** rule) — the
         transaction half of the INV-8 blast radius."""
-        return self._conn.execute(
+        count: int = self._conn.execute(
             "SELECT count(*) FROM transactions WHERE category_id = ?",
             (category_id,),
         ).fetchone()[0]
+        return count
 
     def existing_for(
         self, account_id: int, occurred_on: str, amount_minor: int
@@ -373,10 +375,11 @@ class TransactionRepository:
         return total, count
 
     def count_for_account(self, account_id: int) -> int:
-        return self._conn.execute(
+        count: int = self._conn.execute(
             "SELECT count(*) FROM transactions WHERE account_id = ?",
             (account_id,),
         ).fetchone()[0]
+        return count
 
     def _commit(self) -> None:
         self._conn.commit()

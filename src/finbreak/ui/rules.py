@@ -104,7 +104,8 @@ class RuleEditDialog(QDialog):
         """The chosen leaf's id, or ``None`` when the combo is empty (no leaf
         categories exist). OK is disabled in that state, so a committed dialog
         always yields an int (FIBR-0079)."""
-        return self._category.currentData()
+        category_id: int | None = self._category.currentData()
+        return category_id
 
 
 class RulesWidget(QWidget):

@@ -163,7 +163,10 @@ class ReportingService:
         """A live, whole-vault ``count(*)`` (unfiltered). The getting-started toggle
         (INV-7) and the status-bar figure (INV-14) both read it, so the count is
         never a cached list gone stale."""
-        return self._conn.execute("SELECT count(*) FROM transactions").fetchone()[0]
+        count: int = self._conn.execute("SELECT count(*) FROM transactions").fetchone()[
+            0
+        ]
+        return count
 
     def _excluded(self) -> set[int]:
         """The confirmed-transfer txn ids to drop from every figure (INV-1)."""

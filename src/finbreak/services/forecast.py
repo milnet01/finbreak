@@ -22,6 +22,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 
+from sqlcipher3 import dbapi2
+
 from finbreak.models import (
     AccountType,
     AnchorSource,
@@ -183,7 +185,7 @@ class ForecastService:
         self._vault = vault
 
     @property
-    def _conn(self):
+    def _conn(self) -> dbapi2.Connection:
         return self._vault.connection
 
     def forecast(self, today: date, horizon: date) -> Forecast:

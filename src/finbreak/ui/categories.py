@@ -134,7 +134,8 @@ class CategoriesWidget(QWidget):
 
     def _kind_of_item(self, item: QTreeWidgetItem) -> str | None:
         """The kind token of a Type root item (``None`` for a category)."""
-        return item.data(0, _KIND_ROLE)
+        kind: str | None = item.data(0, _KIND_ROLE)
+        return kind
 
     @staticmethod
     def _depth_of_item(item: QTreeWidgetItem) -> int:

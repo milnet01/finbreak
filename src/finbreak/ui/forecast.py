@@ -17,6 +17,7 @@ from __future__ import annotations
 import calendar
 from collections.abc import Iterable
 from datetime import date, timedelta
+from decimal import Decimal
 
 from PySide6.QtCharts import QChartView
 from PySide6.QtCore import Qt, Slot
@@ -35,7 +36,7 @@ from PySide6.QtWidgets import (
 from finbreak.datetime_format import format_date
 from finbreak.datetime_format import today as app_today
 from finbreak.errors import VaultLockedError
-from finbreak.models import Forecast, ForecastMode
+from finbreak.models import AnchorSource, Forecast, ForecastMode
 from finbreak.services.accounts import AccountService
 from finbreak.services.auth import DATETIME_SYSTEM, AuthService, DateTimePrefs
 from finbreak.services.forecast import CASH_TYPES, ForecastService
@@ -254,7 +255,7 @@ class ForecastWidget(QWidget):
         them, rather than glued with " " + (FIBR-0397)."""
         return self.tr("{text} {more}").format(text=text, more=more)
 
-    def _signed_change(self, minor: int, display, symbol: str) -> str:
+    def _signed_change(self, minor: int, display: Decimal, symbol: str) -> str:
         """A sign-explicit net-change string: ``+R X`` / ``-R X`` / ``R0`` (D9)."""
         if minor > 0:
             # A template, so a locale can place the sign elsewhere (FIBR-0397).
@@ -296,7 +297,7 @@ class ForecastWidget(QWidget):
             )
         return text
 
-    def _source_clause(self, src) -> str:
+    def _source_clause(self, src: AnchorSource) -> str:
         clause = self.tr("{name}'s statement of {as_of}").format(
             name=src.account_name,
             as_of=format_date(src.as_of.isoformat(), self._prefs.date_format),

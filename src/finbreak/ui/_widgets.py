@@ -100,7 +100,7 @@ def _combo_item(combo: QComboBox, index: int) -> QStandardItem:
     ``QComboBox.model()`` is typed ``QAbstractItemModel`` (no ``.item()``); the
     default model is a ``QStandardItemModel``, so both casts are safe and keep
     mypy green without a runtime guard (matching the no-assert-in-src idiom)."""
-    return cast(QStandardItem, cast(QStandardItemModel, combo.model()).item(index))
+    return cast(QStandardItemModel, combo.model()).item(index)
 
 
 def _rest_on_first_selectable(combo: QComboBox) -> None:

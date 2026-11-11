@@ -112,7 +112,8 @@ class CreateAccountDialog(QDialog):
         super().accept()
 
     def entered_type(self) -> str:
-        return self._type.currentData()
+        account_type: str = self._type.currentData()
+        return account_type
 
     def entered_number(self) -> str:
         return self._number.text()

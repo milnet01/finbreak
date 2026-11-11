@@ -17,7 +17,7 @@ import csv
 import io
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
-from typing import Any
+from typing import Any, cast
 
 from finbreak.importers.base import ParseResult, RowError
 from finbreak.models import ColumnMapping, TransactionDraft
@@ -187,18 +187,21 @@ class CsvImporter:
             raise ValueError(f'could not read the amount "{raw}"') from None
 
     @staticmethod
-    def _single_amount(row: dict, mapping: ColumnMapping) -> Decimal:
-        amount = CsvImporter._to_decimal(row[mapping.amount_column].strip())
+    def _single_amount(row: dict[str, Any], mapping: ColumnMapping) -> Decimal:
+        # Called only for the single-column style, where amount_column is set.
+        column = cast(str, mapping.amount_column)
+        amount = CsvImporter._to_decimal(row[column].strip())
         return -amount if mapping.invert_amount else amount
 
     @staticmethod
-    def _debit_credit_amount(row: dict, mapping: ColumnMapping) -> Decimal:
+    def _debit_credit_amount(row: dict[str, Any], mapping: ColumnMapping) -> Decimal:
         """Debit → money **out** (negative), credit → money **in** (positive);
         exactly one populated. The cells are **unsigned magnitudes**, so a
         negative value is a mis-mapping to surface, not a sign to reinterpret
         (ADR-0005 no-silent-mis-map) — a ``ValueError`` → a RowError (D5)."""
-        debit = row[mapping.debit_column].strip()
-        credit = row[mapping.credit_column].strip()
+        # Called only for the debit/credit style, where both columns are set.
+        debit = row[cast(str, mapping.debit_column)].strip()
+        credit = row[cast(str, mapping.credit_column)].strip()
         if bool(debit) == bool(credit):
             raise ValueError("exactly one of debit / credit must be populated")
         magnitude = CsvImporter._to_decimal(debit or credit)

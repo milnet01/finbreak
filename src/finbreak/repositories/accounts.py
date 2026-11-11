@@ -70,7 +70,8 @@ class AccountRepository:
         self._conn.commit()
 
     def count(self) -> int:
-        return self._conn.execute("SELECT count(*) FROM accounts").fetchone()[0]
+        count: int = self._conn.execute("SELECT count(*) FROM accounts").fetchone()[0]
+        return count
 
     # -- remembered PDF password (v5, FIBR-0009 D6) ---------------------------
     # Read/written by dedicated accessors, NOT selected into the broadly-passed

@@ -100,4 +100,5 @@ class AccountPickerDialog(QDialog):
 
     def selected_account_id(self) -> int | None:
         """The chosen account, or ``None`` while nothing has been picked."""
-        return self._combo.currentData()
+        account_id: int | None = self._combo.currentData()
+        return account_id

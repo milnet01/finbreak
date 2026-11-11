@@ -19,6 +19,8 @@ import logging
 from collections.abc import Sequence
 from typing import NamedTuple, cast
 
+from sqlcipher3 import dbapi2
+
 from finbreak.db import owned_transaction
 from finbreak.models import StatementPeriod, StatementRow
 from finbreak.repositories.statement_periods import StatementPeriodRepository
@@ -43,7 +45,7 @@ class StatementService:
         self._vault = vault
 
     @property
-    def _conn(self):
+    def _conn(self) -> dbapi2.Connection:
         return self._vault.connection
 
     def list_statements(self) -> list[StatementRow]:

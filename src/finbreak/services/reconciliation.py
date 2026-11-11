@@ -25,6 +25,8 @@ Two layers on the pure-vs-service seam (D8), mirroring ``forecast.py``:
 
 from __future__ import annotations
 
+from sqlcipher3 import dbapi2
+
 from finbreak.models import (
     AccountReconciliation,
     AccountType,
@@ -95,7 +97,7 @@ class ReconciliationService:
         self._vault = vault
 
     @property
-    def _conn(self):
+    def _conn(self) -> dbapi2.Connection:
         return self._vault.connection
 
     def account_statuses(self) -> dict[int, AccountReconciliation]:
