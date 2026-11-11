@@ -17,8 +17,9 @@ import ssl
 import time
 import urllib.request
 from collections.abc import Callable
+from email.message import Message
 from pathlib import Path
-from typing import IO, Any
+from typing import IO, Any, Protocol
 
 import certifi
 
@@ -166,7 +167,12 @@ def fetch_releases(
     return releases
 
 
-def _content_length(response: Any) -> int:  # HTTPResponse; `http` banned (INV-12)
+class _HasHeaders(Protocol):
+    # http.client.HTTPResponse's shape, named without importing `http` (INV-12).
+    headers: Message
+
+
+def _content_length(response: _HasHeaders) -> int:
     """The body size the server advertises, or ``0`` when the header is absent or
     not a plain decimal count (FIBR-0108). Zero is the caller's "size unknown"
     signal — it keeps the progress bar indeterminate rather than inventing a

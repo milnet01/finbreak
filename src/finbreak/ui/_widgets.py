@@ -98,7 +98,7 @@ def add_grouped_categories(
 def _combo_item(combo: QComboBox, index: int) -> QStandardItem:
     """The backing ``QStandardItem`` at ``index`` (just-added, so in-range).
     ``QComboBox.model()`` is typed ``QAbstractItemModel`` (no ``.item()``); the
-    default model is a ``QStandardItemModel``, so both casts are safe and keep
+    default model is a ``QStandardItemModel``, so the cast is safe and keeps
     mypy green without a runtime guard (matching the no-assert-in-src idiom)."""
     return cast(QStandardItemModel, combo.model()).item(index)
 

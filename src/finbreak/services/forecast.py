@@ -21,8 +21,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
-
-from sqlcipher3 import dbapi2
+from typing import TYPE_CHECKING
 
 from finbreak.models import (
     AccountType,
@@ -41,6 +40,9 @@ from finbreak.repositories.transactions import TransactionRepository
 from finbreak.services.recurring import RecurringService, _add_cadence_n
 from finbreak.services.transactions import read_minor_unit_exponent, to_minor
 from finbreak.vault import Vault
+
+if TYPE_CHECKING:  # the annotation only; vault.py imports it at runtime
+    from sqlcipher3 import dbapi2
 
 # The account types whose printed closing balance follows the canonical
 # ``amount_minor`` convention (money out −, money in +), so bringing it current with

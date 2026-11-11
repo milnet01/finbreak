@@ -604,31 +604,33 @@ def test_FIBR0049_amount_and_description_carry_a_visible_hint(qtbot, service):
     dlg = window._dialog
     form = dlg.findChild(QFormLayout)
 
-    for field, words in ((dlg._amount, "minus"), (dlg._description, "for")):
+    for field, words in (
+        (dlg._amount, ("Money in", "Money out", "minus")),
+        (dlg._description, ("What it was for",)),
+    ):
         row, _ = form.getWidgetPosition(field)
         hint = form.itemAt(row + 1, QFormLayout.ItemRole.FieldRole).widget()
         assert isinstance(hint, QLabel) and hint.isVisible(), field.objectName()
-        assert words in hint.text()
+        assert all(w in hint.text() for w in words), hint.text()
         assert field.accessibleDescription() == hint.text()
+        assert form.itemAt(row + 1, QFormLayout.ItemRole.LabelRole) is None, (
+            "an empty label beside the hint is a blank a screen reader announces"
+        )
 
 
-def _actions_that_replace_the_import(window: MainWindow) -> list[QAction]:
-    # Every toolbar/View action that would rebuild the workspace over a live
-    # import wizard (or, for Export, do nothing because Home is gone).
-    return [
-        window._action_home,
-        window._action_transactions,
-        window._action_statements,
-        window._action_accounts,
-        window._action_categories,
-        window._action_rules,
-        window._action_transfers,
-        window._action_recurring,
-        window._action_forecast,
-        window._action_manual_entry,
-        window._action_import,
-        window._action_export,
-    ]
+def _chrome_actions(window: MainWindow) -> list[QAction]:
+    # Read off the real toolbar and File/View menus rather than a copy of the
+    # production list, so a new navigation action is covered without anyone
+    # remembering to add it here (FIBR-0072 review). Lock and Quit are the two
+    # that are meant to end an import.
+    actions = (
+        window._toolbar.actions()
+        + window._menu_file.actions()
+        + window._menu_view.actions()
+    )
+    keep = {window._action_lock, window._action_quit}
+    unique = dict.fromkeys(a for a in actions if not a.isSeparator() and a not in keep)
+    return list(unique)
 
 
 def test_FIBR0072_navigating_away_cannot_discard_an_open_import(qtbot, service):
@@ -636,17 +638,17 @@ def test_FIBR0072_navigating_away_cannot_discard_an_open_import(qtbot, service):
     window._action_import.trigger()
     wizard = window._live
 
-    for action in _actions_that_replace_the_import(window):
+    for action in _chrome_actions(window):
         action.trigger()
+        window._teardown_dialog()  # an action that opens a dialog closes it again
         assert window._live is wizard, (
             f"{action.objectName()} discarded the import in progress"
         )
     assert window._action_lock.isEnabled(), "Lock stays reachable mid-import"
-    assert window._action_settings.isEnabled(), "Settings does not touch the wizard"
 
     wizard.done.emit()  # what the wizard's Cancel and finish both send
 
-    for action in _actions_that_replace_the_import(window):
+    for action in _chrome_actions(window):
         assert action.isEnabled(), f"{action.objectName()} stayed off after import"
 
 
@@ -658,8 +660,32 @@ def test_FIBR0072_a_lock_mid_import_does_not_leave_navigation_off(qtbot, service
     assert service.unlock(bytearray(_PW))  # what the unlock dialog's worker does
     window._enter_unlocked()
 
-    for action in _actions_that_replace_the_import(window):
+    for action in _chrome_actions(window):
         assert action.isEnabled(), f"{action.objectName()} stayed off after unlock"
+
+
+def test_FIBR0072_a_late_done_after_auto_lock_keeps_the_locked_chrome_off(
+    qtbot, service
+):
+    # The wizard can still emit `done` after an auto-lock destroyed it: a warning
+    # it opened was showing, and its deferred delete has not run yet. What keeps
+    # the chrome off is the lock's wipe blocking the wizard's signals
+    # (`_clear_decrypted_rows`); this pins that against the FIBR-0072 re-enable.
+    window = _unlocked_home_shell(qtbot, service)
+    window._action_import.trigger()
+    wizard = window._live
+
+    service._on_idle_timeout()
+    assert shiboken6.isValid(wizard), "precondition: the delete is still pending"
+    wizard.done.emit()
+
+    for action in (
+        window._action_import,
+        window._action_manual_entry,
+        window._action_export,
+        window._action_settings,
+    ):
+        assert not action.isEnabled(), f"{action.objectName()} is live while locked"
 
 
 def test_INV9_manual_entry_cancel_and_invalid(qtbot, service):

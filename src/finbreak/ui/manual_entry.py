@@ -68,23 +68,18 @@ class ManualEntryDialog(QDialog):
         form.addRow(self.tr("Account"), self._account)
         form.addRow(self.tr("Date"), self._date)
         form.addRow(self.tr("Amount"), self._amount)
-        form.addRow(
-            "",
-            _hint(
-                self._amount,
-                self.tr(
-                    "Money in is a plain number. Money out starts with a minus "
-                    "sign (-)."
-                ),
+        _add_hint(
+            form,
+            self._amount,
+            self.tr(
+                "Money in is a plain number. Money out starts with a minus sign (-)."
             ),
         )
         form.addRow(self.tr("Description"), self._description)
-        form.addRow(
-            "",
-            _hint(
-                self._description,
-                self.tr("What it was for: the shop, the bill, or who paid you."),
-            ),
+        _add_hint(
+            form,
+            self._description,
+            self.tr("What it was for: the shop, the bill, or who paid you."),
         )
 
         buttons = QDialogButtonBox(
@@ -134,11 +129,13 @@ class ManualEntryDialog(QDialog):
         self.committed.emit()
 
 
-def _hint(field: QWidget, text: str) -> QLabel:
+def _add_hint(form: QFormLayout, field: QWidget, text: str) -> None:
     """A short, always-visible line under ``field`` saying what it wants
     (FIBR-0049). A placeholder alone vanishes once typing starts; the same words
-    go to the field's accessible description so a screen reader hears them."""
+    go to the field's accessible description so a screen reader hears them.
+    It goes in the field column only: ``addRow("", hint)`` would add an empty
+    label a screen reader could announce."""
     label = QLabel(text)
     label.setWordWrap(True)
     field.setAccessibleDescription(text)
-    return label
+    form.setWidget(form.rowCount(), QFormLayout.ItemRole.FieldRole, label)

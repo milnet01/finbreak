@@ -20,9 +20,7 @@ from collections import Counter
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
-from typing import cast
-
-from sqlcipher3 import dbapi2
+from typing import TYPE_CHECKING, cast
 
 from finbreak.db import owned_transaction
 from finbreak.importers.base import ParseResult, RowError
@@ -35,6 +33,9 @@ from finbreak.services.categorization import recategorize_auto_rows
 from finbreak.services.transactions import read_minor_unit_exponent
 from finbreak.text import normalise_text
 from finbreak.vault import Vault
+
+if TYPE_CHECKING:  # the annotation only; vault.py imports it at runtime
+    from sqlcipher3 import dbapi2
 
 log = logging.getLogger(__name__)
 

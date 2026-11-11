@@ -2381,14 +2381,14 @@ class MainWindow(QMainWindow):
         # setShortcut/QKeySequence across the app returned nothing). Quit needs no
         # vault, so it stays enabled and the menu stays openable.
         self._set_workspace_actions_enabled(enabled)
-        self._action_settings.setEnabled(enabled)
         self._action_lock.setEnabled(enabled)
 
     def _set_workspace_actions_enabled(self, enabled: bool) -> None:
         # The actions that rebuild the workspace, or need it. While the import
         # wizard is live they are off: each would destroy the wizard and the
-        # file and column choices in it, unasked (FIBR-0072). Lock and Settings
-        # stay on — a lock is meant to destroy it, and Settings never touches it.
+        # file and column choices in it, unasked (FIBR-0072). Settings is off too:
+        # a save changes the amount and timezone prefs the open wizard was built
+        # with. Lock stays on — a lock is meant to destroy the wizard.
         for action in (
             self._action_home,
             self._action_transactions,
@@ -2402,5 +2402,6 @@ class MainWindow(QMainWindow):
             self._action_manual_entry,
             self._action_import,
             self._action_export,
+            self._action_settings,
         ):
             action.setEnabled(enabled)

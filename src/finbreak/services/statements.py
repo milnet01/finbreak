@@ -17,9 +17,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Sequence
-from typing import NamedTuple, cast
-
-from sqlcipher3 import dbapi2
+from typing import TYPE_CHECKING, NamedTuple, cast
 
 from finbreak.db import owned_transaction
 from finbreak.models import StatementPeriod, StatementRow
@@ -27,6 +25,9 @@ from finbreak.repositories.statement_periods import StatementPeriodRepository
 from finbreak.repositories.transactions import TransactionRepository
 from finbreak.repositories.transfers import TransferRepository
 from finbreak.vault import Vault
+
+if TYPE_CHECKING:  # the annotation only; vault.py imports it at runtime
+    from sqlcipher3 import dbapi2
 
 log = logging.getLogger(__name__)
 

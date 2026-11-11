@@ -25,7 +25,7 @@ Two layers on the pure-vs-service seam (D8), mirroring ``forecast.py``:
 
 from __future__ import annotations
 
-from sqlcipher3 import dbapi2
+from typing import TYPE_CHECKING
 
 from finbreak.models import (
     AccountReconciliation,
@@ -36,6 +36,9 @@ from finbreak.repositories.accounts import AccountRepository
 from finbreak.repositories.statement_periods import StatementPeriodRepository
 from finbreak.repositories.transactions import TransactionRepository
 from finbreak.vault import Vault
+
+if TYPE_CHECKING:  # the annotation only; vault.py imports it at runtime
+    from sqlcipher3 import dbapi2
 
 # The account types whose printed closing balance follows the canonical
 # ``amount_minor`` convention, so ``C_prev + Σ`` holds directly (FIBR-0177 D1).
